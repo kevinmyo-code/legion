@@ -55,6 +55,12 @@ from tests.test_assistant import KEY, _start, _tool, google  # noqa: F401 - fixt
 
 pytestmark = pytest.mark.django_db
 
+@pytest.fixture(autouse=True)
+def _web_voice_engine(both_web_engines):
+    """Blind review finding 11: this suite runs on both web voice engines."""
+    return both_web_engines
+
+
 
 # =============================================================================
 # Fixtures
@@ -402,13 +408,22 @@ def test_the_named_outside_account_and_body_routes_are_denied():
 def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
     """`allows_recruiter = True` skips the three tables, so the doors it opens are pinned here:
     adding one is a decision someone reads. The conversation door (2026-11-03) takes a visitor's
-    OWN conversation record and reads nothing; device logs stay denied."""
+    OWN conversation record and reads nothing; device logs stay denied. The turn door (ADR 0102,
+    2026-11-17) is the demo's cascade voice: the same tool fence as the tool door
+    (`tests/test_assistant_cascade.py`). The transcribe door (2026-11-17) is its early
+    speech-to-text: it answers nothing, runs no tool and is charged to the demo budget
+    (`tests/test_demo_voice_first.py`). The robotic door marks a turn number on the visitor's own
+    record (`tests/test_sounding_human.py`)."""
     opened = {p for p, c in ROUTES if _guarded(c) and getattr(c, "allows_recruiter", False)}
     assert opened == {
         "/api/assistant/companion",
         "/api/assistant/conversation",
+        "/api/assistant/robotic",
         "/api/assistant/session",
         "/api/assistant/tool",
+        "/api/assistant/transcribe",
+        "/api/assistant/turn",
+        "/api/assistant/turn/cancel",
         "/api/demo/asset/x",
         "/api/demo/content",
         "/api/demo/session",

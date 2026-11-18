@@ -519,6 +519,38 @@ def auth_client(household_user):
 
 
 @pytest.fixture(autouse=True)
+def _web_voice_on_live(monkeypatch):
+    """ADR 0102: the web assistant's default engine is the cascade for every role. The suite
+    written for the Live path (mint, tool door, record, budget, write guard) pins Live, which
+    stays whole behind the switch; `tests/test_assistant_cascade.py` clears this and tests the
+    defaults and the cascade itself."""
+    monkeypatch.setenv("LEGION_WEB_VOICE", "live")
+    monkeypatch.setenv("LEGION_WEB_VOICE_RECRUITER", "live")
+
+
+@pytest.fixture(params=["live", "cascade"])
+def both_web_engines(request, monkeypatch):
+    """Blind review 2026-11-17, finding 11: a suite that uses this runs once per web voice engine,
+    so it is tested on the production default (cascade) as well as on Live. On the cascade run a
+    test that asks for a Live token (`POST /api/assistant/session`, refused 409 there by design)
+    is skipped at that point: what it checks is Live's mint, covered by the live run."""
+    monkeypatch.setenv("LEGION_WEB_VOICE", request.param)
+    monkeypatch.setenv("LEGION_WEB_VOICE_RECRUITER", request.param)
+    if request.param == "cascade":
+        from rest_framework.test import APIClient
+
+        post = APIClient.post
+
+        def guarded(self, path, *args, **kwargs):
+            if str(path).rstrip("/") == "/api/assistant/session":
+                pytest.skip("asks for a Live token: covered by the live run")
+            return post(self, path, *args, **kwargs)
+
+        monkeypatch.setattr(APIClient, "post", guarded)
+    return request.param
+
+
+@pytest.fixture(autouse=True)
 def _no_nhtsa(monkeypatch):
     """No test reaches the network: `vehicle_recalls`' one call to NHTSA fails
     in words unless a test hands it an answer (`tests/test_parity_tools.py`)."""

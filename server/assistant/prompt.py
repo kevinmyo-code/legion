@@ -62,7 +62,11 @@ WEB_FRAME = (
     "may see: a row another member keeps private is invisible to you, so never guess at one. "
     f"Some things work only in LEGION's Android phone app, never from here: "
     f"{', '.join(PHONE_ONLY)}. If asked for one, say plainly that it can only be done in the "
-    "phone app - never pretend to do it - and offer what you can do here. For news, weather, "
+    "phone app - never pretend to do it - and offer what you can do here. Everything else your "
+    "tools do works from here, lists, checklists, the calendar, purchases and records included: "
+    "when asked to change one of those, call the tool and let its result say what happened; "
+    "never claim a change, and never give a reason it cannot be done, that no tool result gave "
+    "you. For news, weather, "
     "scores, prices or any general fact outside the household's data, use web_search, and name "
     "the sources it returns when you answer; never guess. "
     # Memory v2 (ADR 0075, Kevin 2026-11-05: "centralized memory"). A sentence here used to say
@@ -273,6 +277,32 @@ def web_shared_clauses() -> str:
     return "".join(shared_clauses.CLAUSES[name] for name in shared_clauses.WEB_ORDER)
 
 
+def build_system_prompt_parts(
+    *,
+    companion: ResolvedCompanion,
+    first_name: str,
+    now: datetime,
+    utc_offset_minutes: int | None,
+    offset_from_household: bool = False,
+    recruiter: bool = False,
+) -> tuple[str, str]:
+    """(the stable body, the per-conversation tail: the clock and who is speaking).
+
+    The web cascade (ADR 0102) caches the body with the tool declarations as an explicit Gemini
+    context cache and sends the tail with each turn, so the clock never breaks the cache. Live
+    joins the two (`build_system_prompt`), unchanged."""
+    who = companion.clause
+    if companion.delivery:
+        who += " " + companion.delivery
+    if recruiter:
+        who += "\n\n" + RECRUITER_REGISTER
+    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else MEMORY_CLAUSE)
+    body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
+    clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
+    speaker = VISITOR_FACT if recruiter else member_fact(first_name)
+    return body, f"{clock} {speaker}"
+
+
 def build_system_prompt(
     *,
     companion: ResolvedCompanion,
@@ -285,13 +315,12 @@ def build_system_prompt(
     """`recruiter` (ADR 0068) adds the visitor register after the companion's
     own, the demo frame after the web frame, and says who is speaking as a
     visitor rather than a member. Off, the prompt is unchanged."""
-    who = companion.clause
-    if companion.delivery:
-        who += " " + companion.delivery
-    if recruiter:
-        who += "\n\n" + RECRUITER_REGISTER
-    frame = WEB_FRAME + LANGUAGE_RULE + (RECRUITER_FRAME if recruiter else MEMORY_CLAUSE)
-    body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
-    clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
-    speaker = VISITOR_FACT if recruiter else member_fact(first_name)
-    return f"{body}\n\n{clock} {speaker}"
+    body, tail = build_system_prompt_parts(
+        companion=companion,
+        first_name=first_name,
+        now=now,
+        utc_offset_minutes=utc_offset_minutes,
+        offset_from_household=offset_from_household,
+        recruiter=recruiter,
+    )
+    return f"{body}\n\n{tail}"

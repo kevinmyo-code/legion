@@ -27,6 +27,12 @@ from tests.test_engine_mcp import call, client_with
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("google")]
 
+@pytest.fixture(autouse=True)
+def _web_voice_engine(both_web_engines):
+    """Blind review finding 11: this suite runs on both web voice engines."""
+    return both_web_engines
+
+
 
 @pytest.fixture(autouse=True)
 def fake_web(monkeypatch):

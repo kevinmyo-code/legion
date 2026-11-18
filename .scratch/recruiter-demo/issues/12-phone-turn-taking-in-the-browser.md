@@ -3,12 +3,12 @@ map: recruiter-demo
 ticket: "12"
 title: "The phone's tuned turn-taking and barge-in, in the browser"
 type: build
-status: open
-status-detail: "spike first: Silero + Smart Turn in onnxruntime-web on a mid-range phone"
+status: built
+status-detail: "built on feat/demo-voice-first (ADR 0103); owes a run on a real phone browser, iPhone Safari untested"
 blockers: []
 blocked-by: []
 open-blockers: 0
-ready: true
+ready: false
 tags: [ticket]
 ---
 

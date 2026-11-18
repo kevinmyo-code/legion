@@ -8154,3 +8154,23 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   - Unprompted mentions pass the compulsion test and the ADR 0091 check-in rules.
   - The greeting picker is the first consumer once it runs on the engine.
 - ADR 0101.
+
+## 2026-11-17 - The web assistant's voice moves to the engine's cascade; recruiter first (Kevin)
+
+- **Kevin's words:** *"recruiter demo > can it [go] to our current cloud pipeline too"*. Reason: cost (Live speech-to-speech against speech-to-text, a flash-lite text loop and Gemini TTS).
+- **Built (branch `feat/web-assistant-cascade`, not shipped):**
+  - `POST /api/assistant/turn`: the browser posts one utterance or one typed message; the engine transcribes, runs the text model's tool loop over the web tool door, speaks the reply and streams it back. No token reaches the browser.
+  - The engine is chosen by the server per role: `cascade` for a recruiter's visit, `live` for a member, in code. `LEGION_WEB_VOICE` and `LEGION_WEB_VOICE_RECRUITER` override; neither is passed to Cloud Run yet.
+  - The recruiter's fence is the tool door's own code; the turn's words, tool calls and timings go to the existing conversation record.
+- **Then, the same day (Kevin):** *"same voice behavior across everything. midcon demo and legion"*, *"keep listening unless user says stop or taps to close"*, *"context aware spoken greetings on open too"*, *"the exact same legion cloud pipeline, par the wakeword"*. So: cascade is the default for every role (Live is the fallback behind the switch), the phone's conversation window, stop phrases, fillers and failure lines, a spoken greeting on open, and the phone's explicit prompt cache.
+- **Open for Kevin:** the 1.2 s end-of-speech silence window.
+- ADR 0102.
+
+## 2026-11-17 - The demo goes voice-first; the phone's turn-taking runs in the browser (Kevin)
+
+- **Why:** few visitors who opened the demo went on to talk to it, and the opening was too long.
+- **Built (branch `feat/demo-voice-first`, not shipped):** the phone's Silero + Smart Turn turn-taking and barge-in gate in the browser (onnxruntime-web), early transcripts, a voice-first `/try` link (orb, tap enters, five-second opening, chips, captions, typing, tour, ask card, live strip), funnel counts, and fillers that name the tool that started (all voices).
+- **Voice, after auditioning (Kevin):** *"i like neno plain. and with tags where possible"*, then *"recruiter demo can stay puck plain"* and *"with tags where possible ofc"*. The cascade's voice is per role: members `en-us-neno` at first, since replaced (members `en-gb-advisor-3`, Kevin's pick later the same day; the demo `Puck`). Both plain, with expression tags (`<chuckle>`, `<laugh>`, `<sigh>`, `<short pause>`) on a few code lines and rarely from the model. Tags are spoken only and never shown, stored or checked.
+- **Persona and delivery (Kevin, the same day, `.legion/reports/voice-persona-1117.md`):** *"round when spoken like a real person. exact on screen for verification"* and *"use as many tags as u can"*. Code rounds spoken amounts, and the exact figure stays in captions and cards (amends ADR 0094's verbatim money sentence). Tags are used liberally: 16 heard-tested, one per sentence. The prompt carries a warmer colleague note. Pace stays 1.0x on the web until a pitch-kept time-stretch is built.
+- **Open for Kevin:** whether `/try` should open to anyone without a code; whether a code-box or returning visitor should also get the voice-first stage (built for the link only).
+- ADR 0103.

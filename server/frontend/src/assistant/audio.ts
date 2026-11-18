@@ -41,8 +41,20 @@ export interface AudioIO {
   stopMic(): void
   /** Queue 16-bit mono audio at `rate` (Gemini's 24 kHz) behind what is already queued. */
   play(pcm: Int16Array, rate: number): void
-  /** Drop everything queued and stop what is sounding (an interruption). */
+  /**
+   * Open the playback side only, inside a tap (Safari plays nothing a tap did not unlock): for an
+   * answer to a tapped question when the microphone is not open; `onPlaying` reports playback until
+   * the microphone opens and brings its own handlers. Optional; a fake may skip it.
+   */
+  unlock?(onPlaying?: (playing: boolean) => void): void
+  /** Drop everything queued and stop what is sounding (an interruption). Undoes a `pause`. */
   flush(): void
+  /**
+   * Hold playback where it is, keeping what is queued (the barge-in gate fired and its verdict is
+   * not in yet), and carry on from there. Optional: without them a barge-in cuts at once.
+   */
+  pause?(): void
+  resume?(): void
   /** Everything: mic, playback, contexts. Safe to call twice. */
   dispose(): void
   /**

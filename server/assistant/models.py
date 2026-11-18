@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.conf import settings
 from django.db import models
 from django.db.models.functions import Now
 
@@ -130,3 +131,42 @@ class ReadThroughTurn(models.Model):
                 fields=["conversation", "turn"], name="assistant_read_through_turn_once"
             ),
         ]
+
+
+class TurnCancel(models.Model):
+    """A browser asked to stop one of its own turns (`POST /api/assistant/turn/cancel`, 2026-11-17).
+
+    The running turn checks for its row at every stage boundary, from any worker or instance (it is
+    in the database), and stops before the next paid call. `turn_id` is the browser's own UUID for
+    the turn; a row only ever stops the turn of the user who made it. Not a tenant table: it says
+    nothing but "this user's turn X was stopped", and rows older than a day are deleted when new
+    ones are made.
+    """
+
+    turn_id = models.UUIDField()
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "assistant_turn_cancel"
+        constraints = [
+            models.UniqueConstraint(fields=["turn_id", "user"], name="turn_cancel_once_per_user")
+        ]
+        indexes = [models.Index(fields=["at"], name="turn_cancel_at")]
+
+
+class TurnSeen(models.Model):
+    """A turn id the engine has started (2026-11-17): the page re-sends a refused (`busy`) turn
+    with the same id, so an id that already ran is never a second turn or a second charge. Same
+    scope and life as `TurnCancel`: the caller's own ids, kept a day."""
+
+    turn_id = models.UUIDField()
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "assistant_turn_seen"
+        constraints = [
+            models.UniqueConstraint(fields=["turn_id", "user"], name="turn_seen_once_per_user")
+        ]
+        indexes = [models.Index(fields=["at"], name="turn_seen_at")]

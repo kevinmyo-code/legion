@@ -37,6 +37,8 @@ type AudioSessionNavigator = Navigator & { audioSession?: { type: string } }
 export function createWebAudio(): AudioIO {
   let capture: AudioContext | null = null
   let playback: AudioContext | null = null
+  /** Held by `pause()` (a barge-in awaiting its verdict): only `resume()` or a flush lets it go. */
+  let paused = false
   let stream: MediaStream | null = null
   let source: MediaStreamAudioSourceNode | null = null
   let node: AudioWorkletNode | null = null
@@ -75,7 +77,8 @@ export function createWebAudio(): AudioIO {
         playback = new AudioContext()
       }
     }
-    if (playback.state === 'suspended') void playback.resume()
+    // A new context starts suspended until a tap; a paused one stays paused while audio is queued.
+    if (playback.state === 'suspended' && !paused) void playback.resume()
     if (!outTap) {
       outTap = makeTap(playback)
       outTap.connect(playback.destination)
@@ -182,6 +185,11 @@ export function createWebAudio(): AudioIO {
 
     stopMic,
 
+    unlock(onPlaying) {
+      if (!handlers && onPlaying) handlers = { onChunk: () => {}, onMicLost: () => {}, onPlaying }
+      ensurePlayback()
+    },
+
     play(pcm, rate) {
       const context = ensurePlayback()
       const buffer = context.createBuffer(1, pcm.length, rate)
@@ -212,6 +220,18 @@ export function createWebAudio(): AudioIO {
       if (idleTimer) clearTimeout(idleTimer)
       idleTimer = null
       setSounding(false)
+      paused = false
+      if (playback?.state === 'suspended') void playback.resume()
+    },
+
+    pause() {
+      paused = true
+      if (playback?.state === 'running') void playback.suspend()
+    },
+
+    resume() {
+      paused = false
+      if (playback?.state === 'suspended') void playback.resume()
     },
 
     dispose() {

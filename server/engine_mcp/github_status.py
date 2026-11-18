@@ -39,6 +39,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from legion import deadline
+
 API = "https://api.github.com"
 API_VERSION = "2022-11-28"
 TIMEOUT_SECONDS = 8
@@ -126,7 +128,7 @@ def _get(cfg: Config, path: str):
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=deadline.cap(TIMEOUT_SECONDS)) as response:  # noqa: S310
             raw = response.read()
     except urllib.error.HTTPError as exc:
         raise GitHubFailed(_http_sentence(exc.code), exc.code) from exc

@@ -30,6 +30,12 @@ from tests.test_recruiter import _recruiter_browser, _visitor_token
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("google")]
 
+@pytest.fixture(autouse=True)
+def _web_voice_engine(both_web_engines):
+    """Blind review finding 11: this suite runs on both web voice engines."""
+    return both_web_engines
+
+
 URL = "/api/assistant/conversation"
 CLIENT_NOW = 1_800_000_000_000  # the browser's clock at the mint, epoch ms
 

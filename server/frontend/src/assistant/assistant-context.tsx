@@ -14,7 +14,9 @@ import {
 import { api } from '@/api/client'
 import { useSurface } from '@/lib/surface'
 
-import { createLiveDeps, preloadAudio } from './deps'
+import { CascadeClient, type CascadeDeps } from './cascade-client'
+import type { AssistantClient } from './client'
+import { createCascadeDeps, createLiveDeps, preloadAudio } from './deps'
 import { LiveClient, type AssistantState, type LiveDeps } from './live-client'
 
 /**
@@ -59,7 +61,7 @@ export interface ChatCopy {
 }
 
 interface AssistantContextValue {
-  client: LiveClient
+  client: AssistantClient
   ui: AssistantUi
   /** The page's chat copy, if it set any; `AssistantChat` falls back to its own. */
   copy?: ChatCopy
@@ -82,17 +84,41 @@ export function useCompanionRead() {
   })
 }
 
+/**
+ * Which engine this caller's assistant runs on (ADR 0102), and what the cascade needs to know.
+ * The server decides per role; the other engine's door refuses.
+ */
+export const ENGINE_QUERY = {
+  queryKey: ['assistant', 'engine'],
+  queryFn: async () => {
+    const { data, response } = await api.GET('/api/assistant/session')
+    if (!data) throw new Error(`GET /api/assistant/session answered ${response.status}`)
+    return data
+  },
+  retry: false,
+  staleTime: Infinity,
+} as const
+
+export function useAssistantEngine(enabled = true) {
+  return useQuery({ ...ENGINE_QUERY, enabled })
+}
+
 export function AssistantProvider({
   children,
   deps,
+  cascadeDeps,
   openingTurn,
   continueTurn,
   sessionLimit,
   copy,
   defaultOpen = false,
+  voiceFirst,
+  funnelRef,
 }: {
   children: ReactNode
   deps?: LiveDeps
+  /** Tests: stand in for the engine's turn route when the engine answers `cascade`. */
+  cascadeDeps?: CascadeDeps
   /** Opt-in: a hidden first turn so the assistant speaks first (`LiveOptions.openingTurn`). */
   openingTurn?: string
   /** Opt-in: what a later conversation on the same page starts with instead (`LiveOptions.continueTurn`). */
@@ -107,6 +133,20 @@ export function AssistantProvider({
    * full-screen sheet, which must never pop up on its own.
    */
   defaultOpen?: boolean
+  /**
+   * The demo's voice-first door (Kevin, 2026-11-17): the conversation is the engine's cascade from
+   * the first tap, before any visit exists to ask which engine; `prepare` enters the visit inside
+   * that tap, and `funnelRef` tags the page's funnel counts.
+   */
+  voiceFirst?: {
+    prepare: (signal: AbortSignal) => Promise<boolean>
+    funnelRef?: string
+    sessionMinutes?: number | null
+    /** The engine answered `live_engine`: ask it again (the page then shows the Live page). */
+    onEngineLive?: () => void
+  }
+  /** The demo's ref tag: when set, the conversation counts its funnel steps under it. */
+  funnelRef?: string
 }) {
   const surface = useSurface()
   const surfaceRef = useRef(surface)
@@ -129,15 +169,46 @@ export function AssistantProvider({
   useEffect(() => {
     limitRef.current = sessionLimit
   }, [sessionLimit])
-  const [client] = useState(
-    () =>
-      new LiveClient(deps ?? createLiveDeps(), {
+  const engine = useAssistantEngine(!voiceFirst)
+  const voiceFirstRef = useRef(voiceFirst)
+  const [client, setClient] = useState<AssistantClient>(() =>
+    voiceFirstRef.current
+      ? new CascadeClient(cascadeDeps ?? createCascadeDeps({ funnelRef: voiceFirstRef.current.funnelRef }), {
+          companionName: null,
+          sessionMinutes: voiceFirstRef.current.sessionMinutes ?? null,
+          endOnHidden: () => surfaceRef.current === 'family',
+          openingTurn: () => openingRef.current ?? null,
+          continueTurn: () => continueRef.current ?? null,
+          sessionLimit: () => limitRef.current ?? null,
+          prepare: (signal) => voiceFirstRef.current!.prepare(signal),
+          speakTyped: true,
+          ...(voiceFirstRef.current.onEngineLive ? { onEngineLive: () => voiceFirstRef.current?.onEngineLive?.() } : {}),
+        })
+      : new LiveClient(deps ?? createLiveDeps(), {
         endOnHidden: () => surfaceRef.current === 'family',
         openingTurn: () => openingRef.current ?? null,
         continueTurn: () => continueRef.current ?? null,
         sessionLimit: () => limitRef.current ?? null,
       }),
   )
+  // The engine answered `cascade`: the conversation runs on the engine's own voice pipeline
+  // (ADR 0102). Swapped once, before anything was said (the answer arrives as the page mounts).
+  const cascadeInfo = engine.data?.engine === 'cascade' ? engine.data : null
+  useEffect(() => {
+    if (!cascadeInfo) return
+    setClient((current) => {
+      if (current instanceof CascadeClient) return current
+      const next: AssistantClient = new CascadeClient(cascadeDeps ?? createCascadeDeps({ funnelRef }), {
+        companionName: cascadeInfo.companion_name,
+        sessionMinutes: cascadeInfo.session_minutes ?? null,
+        endOnHidden: () => surfaceRef.current === 'family',
+        openingTurn: () => openingRef.current ?? null,
+        continueTurn: () => continueRef.current ?? null,
+        sessionLimit: () => limitRef.current ?? null,
+      })
+      return next
+    })
+  }, [cascadeInfo, cascadeDeps, funnelRef])
   useEffect(() => {
     client.attach()
     return () => client.dispose()

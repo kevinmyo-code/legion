@@ -192,7 +192,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/assistant/session": {
+    "/api/assistant/robotic": {
         parameters: {
             query?: never;
             header?: never;
@@ -200,6 +200,29 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
+        /**
+         * Mark a reply as sounding robotic (the turn number only)
+         * @description The `robotic` marker's hands path (voice-persona section 8): a thumbs-down on a reply that
+         *     sounded robotic. The caller's own conversation record gets the turn number; no words are
+         *     sent or kept. The spoken path is "that sounded robotic" (`cascade.is_robotic_remark`).
+         */
+        post: operations["api_assistant_robotic_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which voice engine this caller's assistant runs on (live or cascade) */
+        get: operations["api_assistant_session_retrieve"];
         put?: never;
         /** Start a live conversation: mint a locked Gemini Live token */
         post: operations["api_assistant_session_create"];
@@ -220,6 +243,77 @@ export interface paths {
         put?: never;
         /** Run one tool call from a live conversation, as the signed-in member */
         post: operations["api_assistant_tool_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe what has been said so far (no answer, nothing stored)
+         * @description Speech to text only, for the page's early start (the phone's speculation, `Speculation.kt`,
+         *     adapted): at about 300 ms of silence the page sends what was said so far, and when the turn
+         *     ends with no more speech it sends the words to `POST /api/assistant/turn` as `text` with
+         *     `spoken`. If the person speaks again the transcript is thrown away. Nothing is answered here,
+         *     no tool runs and nothing is recorded; a demo visit's budget is charged one speech share.
+         */
+        post: operations["api_assistant_transcribe_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * One assistant turn on the engine's voice pipeline, answered as Server-Sent Events
+         * @description text/event-stream, one event per thing that happened: `turn` {conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `greeting` {kind, text} (a greeting turn); `working` {tool}; `filler` {tool, text} (the line said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); `speech_failed` {reason}; `speech_stopped` {reason} (the rest of the answer is shown, not spoken); `done` {status, final_text, writes_ran, words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no `audio`. Every refusal body is {detail, code}: `bad_request` (400), `no_conversation` (404), `live_engine`, `time_limit`, `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`, `demo_full`, `budget` and `throttled` (429), `no_key` (503). `turn_id` names the turn for `POST /api/assistant/turn/cancel`.
+         */
+        post: operations["api_assistant_turn_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/turn/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop one of the caller's own turns (idempotent, costs nothing)
+         * @description Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
+         *     and the server only notices a dropped stream at its next write). Marks the turn cancelled in
+         *     the database, from any worker or instance. The running turn looks at its stage boundaries
+         *     (before transcription, each model round, each tool, each speech request, and every 250 ms
+         *     while it waits on speech): from then on it starts no further paid call. What is already in
+         *     flight runs to its end (one model round, one tool, or the speech requests already sent), and
+         *     the turn's slot comes free when its stream ends. Idempotent; 204 whether or not the turn is
+         *     still running; costs nothing; a row stops only the caller's own turn.
+         */
+        post: operations["api_assistant_turn_cancel_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2204,6 +2298,27 @@ export interface paths {
         put?: never;
         /** Enter the recruiter demo with the shared invite code */
         post: operations["api_demo_enter_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/funnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Count one step of the demo (a count only: no visitor, no words)
+         * @description One step of the demo happened (`demo.funnel`). Anonymous (a page load comes before any
+         *     visit), throttled per address, and it stores a count only.
+         */
+        post: operations["api_demo_funnel_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5915,6 +6030,25 @@ export interface components {
             stored_lines: number;
             detail: string;
         };
+        AssistantEngine: {
+            /**
+             * @description `live`: mint with `POST /api/assistant/session` and talk to Gemini Live. `cascade`: post each utterance or typed message to `POST /api/assistant/turn`; the engine transcribes, answers with its tools and speaks (ADR 0102). Decided by the server per role; the other door refuses with 409.
+             *
+             *     * `live` - live
+             *     * `cascade` - cascade
+             */
+            engine: components["schemas"]["EngineEnum"];
+            companion_name: string;
+            voice_name: string;
+            /** @description `cascade`: the utterance is 16-bit mono PCM at this rate. */
+            input_audio_rate: number;
+            /** @description `cascade`: the reply's audio is 16-bit mono PCM at this rate. */
+            output_audio_rate: number;
+            /** @description `cascade`: the longest utterance the turn route accepts. */
+            max_utterance_seconds: number;
+            /** @description How long one conversation may last, for a recruiter's demo visit (`LEGION_DEMO_MAX_SESSION_MINUTES`); null for a member. */
+            session_minutes: number | null;
+        };
         AssistantPack: {
             /** @description Bumped on every change to the wording. */
             version: number;
@@ -5938,6 +6072,15 @@ export interface components {
         AssistantPackToolText: {
             description?: string;
             result_prefix?: string;
+        };
+        AssistantRoboticRequest: {
+            /**
+             * Format: uuid
+             * @description The caller's own conversation.
+             */
+            conversation_id: string;
+            /** @description The reply's turn. */
+            turn: number;
         };
         AssistantSession: {
             /** @description The ephemeral token's full name (`auth_tokens/...`). Pass it as the `access_token` query parameter on `ws_url`. One conversation; the setup it carries is locked, so the browser's own `setup` message is ignored. */
@@ -6011,6 +6154,67 @@ export interface components {
             text: string;
             /** @description What the screen draws beside the transcript, built by the engine from the tool's own rows (`engine_mcp/cards.py`): `card` is bars, timeline, car, steps, checklist, diagram, resume, readings, status_list or trend. Absent when the tool has none. Never sent to Gemini: `response` is the whole of what the browser forwards. */
             card?: unknown;
+        };
+        AssistantTranscribeRequest: {
+            /**
+             * Format: uri
+             * @description What has been said so far: raw 16-bit little-endian mono PCM at 16 kHz, at most 28 seconds. Never stored.
+             */
+            audio: string;
+        };
+        AssistantTranscript: {
+            /** @description The words; empty for none. */
+            text: string;
+            /** @description How long the transcription took. */
+            ms: number;
+        };
+        AssistantTurnCancelRequest: {
+            /**
+             * Format: uuid
+             * @description The id the browser gave the turn to stop.
+             */
+            turn_id: string;
+        };
+        AssistantTurnRequest: {
+            /**
+             * Format: uri
+             * @description One utterance: raw 16-bit little-endian mono PCM at 16 kHz, no header, at most 28 seconds. Send this OR `text`. Never stored.
+             */
+            audio?: string;
+            /** @description A typed message, answered in text only (no speech). Send this OR `audio`. */
+            text?: string;
+            /**
+             * Format: uuid
+             * @description The conversation this turn continues: the `conversation_id` of an earlier turn's `turn` event. Omit it to start a new conversation.
+             */
+            conversation_id?: string | null;
+            /** @description As for `POST /api/assistant/session`. */
+            utc_offset_minutes?: number | null;
+            /** @description As for `POST /api/assistant/session`; read when a conversation starts. */
+            client_now_ms?: number | null;
+            /**
+             * @description With `text`: the page transcribed the utterance early (`POST /api/assistant/transcribe`) and the answer is spoken, as for `audio`.
+             * @default false
+             */
+            spoken: boolean;
+            /** @description With `audio`: the utterance began while a reply was playing (a barge-in). Only such a turn is checked for the reply heard back (an echo): one that repeats the reply that was playing ends as no speech. A turn without it is never checked. */
+            barge_in?: boolean;
+            /**
+             * Format: uuid
+             * @description The browser's own id for this turn, so it can be stopped with `POST /api/assistant/turn/cancel`.
+             */
+            turn_id?: string | null;
+            /** @description A demo visit's one-minute tour: the beat to play (from 0). With `audio` or `text`, what was said or typed during the tour: 'skip' plays this beat, 'stop' ends the tour, anything else is a question and the tour ends. */
+            tour?: number | null;
+            /**
+             * @description The greeting on open, spoken: no `audio` or `text` with it. A member's is built from their greeting facts; a demo visit's is scripted.
+             * @default false
+             */
+            greet: boolean;
+            /** @description With `greet`: JSON the page keeps for the greeting's caps, `{"today": [kinds led with today], "last": kind, "hellos": [last hellos]}`. */
+            greeting_history?: string;
+            /** @description A hidden line the page puts ahead of the person's words (the demo's opener). Never shown, never recorded as theirs. */
+            preface?: string;
         };
         AverageSpend: {
             months: string[];
@@ -7302,6 +7506,11 @@ export interface components {
             /** @description Where the visitor came from, as the resume link said (`/try?ref=acme`). Letters, digits, `_`, `-` and `.`, up to 64. Stored on the visit; never shown to the model. */
             ref?: string;
         };
+        DemoFunnel: {
+            event: components["schemas"]["EventEnum"];
+            /** @default  */
+            ref: string;
+        };
         DemoRefusal: {
             /** @description What did not happen, in words. Show it. */
             detail: string;
@@ -7460,6 +7669,12 @@ export interface components {
             words: string;
         };
         /**
+         * @description * `live` - live
+         *     * `cascade` - cascade
+         * @enum {string}
+         */
+        EngineEnum: "live" | "cascade";
+        /**
          * @description * `engine` - engine
          *     * `phone` - phone
          * @enum {string}
@@ -7521,6 +7736,17 @@ export interface components {
             /** @description For a suggestion, the members who pinned it ("I want to go"), oldest pin first. Always [] for anything else. A wish, never a plan: nothing that counts plans reads it. Read-only; pin with POST /api/events/{id}/pins, unpin with DELETE /api/events/{id}/pins/mine. */
             readonly pinned_by: components["schemas"]["PinnedBy"][];
         };
+        /**
+         * @description * `page_load` - page_load
+         *     * `orb_tap` - orb_tap
+         *     * `first_word` - first_word
+         *     * `turns_3` - turns_3
+         *     * `tour_started` - tour_started
+         *     * `tour_finished` - tour_finished
+         *     * `resume_opened` - resume_opened
+         * @enum {string}
+         */
+        EventEnum: "page_load" | "orb_tap" | "first_word" | "turns_3" | "tour_started" | "tour_finished" | "resume_opened";
         EventSkip: {
             /** Format: uuid */
             readonly id: string;
@@ -11173,6 +11399,49 @@ export interface components {
             /** Format: double */
             trend_lbs: number;
         };
+        /**
+         * @description A refusal of `POST /api/assistant/turn` (round 3 N8): the words, and the `code` the page
+         *     acts on (`TURN_REFUSAL_CODES`).
+         */
+        TurnRefusal: {
+            /** @description What did not happen, in words to show. */
+            detail: string;
+            /**
+             * @description What the page does next.
+             *
+             *     * `bad_request` - bad_request
+             *     * `budget` - budget
+             *     * `busy` - busy
+             *     * `demo_full` - demo_full
+             *     * `duplicate` - duplicate
+             *     * `live_engine` - live_engine
+             *     * `member_cap` - member_cap
+             *     * `no_conversation` - no_conversation
+             *     * `no_key` - no_key
+             *     * `throttled` - throttled
+             *     * `time_limit` - time_limit
+             *     * `too_long` - too_long
+             */
+            code: components["schemas"]["TurnRefusalCodeEnum"];
+            /** @description With `busy`: when to send the same request again. */
+            retry_ms?: number;
+        };
+        /**
+         * @description * `bad_request` - bad_request
+         *     * `budget` - budget
+         *     * `busy` - busy
+         *     * `demo_full` - demo_full
+         *     * `duplicate` - duplicate
+         *     * `live_engine` - live_engine
+         *     * `member_cap` - member_cap
+         *     * `no_conversation` - no_conversation
+         *     * `no_key` - no_key
+         *     * `throttled` - throttled
+         *     * `time_limit` - time_limit
+         *     * `too_long` - too_long
+         * @enum {string}
+         */
+        TurnRefusalCodeEnum: "bad_request" | "budget" | "busy" | "demo_full" | "duplicate" | "live_engine" | "member_cap" | "no_conversation" | "no_key" | "throttled" | "time_limit" | "too_long";
         TurnRequest: {
             transcript: string;
             /** Format: uuid */
@@ -12090,6 +12359,67 @@ export interface operations {
             };
         };
     };
+    api_assistant_robotic_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantRoboticRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssistantRoboticRequest"];
+                "multipart/form-data": components["schemas"]["AssistantRoboticRequest"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body did not fit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not this caller's conversation. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_assistant_session_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantEngine"];
+                };
+            };
+        };
+    };
     api_assistant_session_create: {
         parameters: {
             query?: never;
@@ -12115,6 +12445,15 @@ export interface operations {
             };
             /** @description The body did not fit. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description This caller's assistant runs on the cascade (`GET` says `cascade`); no token is minted. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12184,6 +12523,201 @@ export interface operations {
                 };
             };
             /** @description Too many calls; nothing ran. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_assistant_transcribe_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["AssistantTranscribeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantTranscript"];
+                };
+            };
+            /** @description The body did not fit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description This caller is on live voice. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too long. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many, or over budget. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The words could not be had. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description No Gemini key on this server. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_assistant_turn_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["AssistantTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description text/event-stream, as described. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body did not fit; nothing ran. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRefusal"];
+                };
+            };
+            /** @description No conversation with that id is the caller's. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRefusal"];
+                };
+            };
+            /** @description `live_engine`, `time_limit`, `busy` (the caller's own earlier turn has not released; send the same request again after `retry_ms`) or `duplicate` (this `turn_id` was already answered). Nothing ran. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRefusal"];
+                };
+            };
+            /** @description The utterance is too long: over MAX_UTTERANCE_SECONDS of 16 kHz 16-bit mono PCM, judged on the upload's size in bytes. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRefusal"];
+                };
+            };
+            /** @description `throttled` (too many turns per member, and per address for a demo visit), `demo_full` (every demo slot or this address's slot is in use), `budget` or `member_cap`. Nothing ran. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRefusal"];
+                };
+            };
+            /** @description No Gemini key on this server. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRefusal"];
+                };
+            };
+        };
+    };
+    api_assistant_turn_cancel_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantTurnCancelRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssistantTurnCancelRequest"];
+                "multipart/form-data": components["schemas"]["AssistantTurnCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body did not fit. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many stops in a short time, from this caller or this address. */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -16463,6 +16997,46 @@ export interface operations {
             };
             /** @description The visit's demo household could not be seeded. Nothing created. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_funnel_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoFunnel"];
+                "application/x-www-form-urlencoded": components["schemas"]["DemoFunnel"];
+                "multipart/form-data": components["schemas"]["DemoFunnel"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
