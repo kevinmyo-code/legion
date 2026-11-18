@@ -3,6 +3,7 @@ package com.kevin.legion.ui.typeset
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.unit.dp
 import com.kevin.legion.ui.apps.DockPin
 import com.kevin.legion.ui.apps.DrawerApp
 import com.kevin.legion.ui.apps.letterFolders
@@ -73,7 +75,7 @@ class TypesetBucketsAndIconsTest {
 
     private fun tray(query: String = "", onOpen: (DrawerApp) -> Unit = {}, onLong: (DrawerApp) -> Unit = {}) {
         composeTestRule.setContent {
-            var open by mutableStateOf<String?>(null)
+            var open by remember { mutableStateOf<String?>(null) }
             SoftTheme {
                 TypesetAppsIndex(
                     folders = letterFolders(apps.filter { it.label.contains(query, ignoreCase = true) }),
@@ -114,6 +116,48 @@ class TypesetBucketsAndIconsTest {
         assertEquals("example.abacus", pinned?.packageName)
         composeTestRule.onNodeWithText("Close").performClick()
         composeTestRule.onNodeWithText("Atlas").assertDoesNotExist()
+    }
+
+    @Test
+    fun `contents keep a 48dp cell: seven across 360dp, six across 320dp, five stay five`() {
+        assertEquals(7, contentsColumns(7, 360.dp))
+        assertEquals(6, contentsColumns(7, 320.dp))
+        assertEquals(5, contentsColumns(5, 320.dp))
+    }
+
+    @Test
+    fun `an open folder is modal, a tap on its blank space keeps it open`() {
+        tray()
+        composeTestRule.onNodeWithContentDescription("Folder A, 2 apps").performClick()
+        // The page behind is out of reach while the folder is open.
+        composeTestRule.onNodeWithContentDescription("Folder B, 1 app").assertDoesNotExist()
+        // "2 apps" is plain text on the panel: tapping it is a tap on blank panel, not the scrim.
+        composeTestRule.onNodeWithText("2 apps").performClick()
+        composeTestRule.onNodeWithText("Atlas").assertExists()
+    }
+
+    @Test
+    fun `a folder whose letter goes away closes itself`() {
+        var apps by mutableStateOf(this.apps)
+        var open by mutableStateOf<String?>("B")
+        composeTestRule.setContent {
+            SoftTheme {
+                TypesetAppsIndex(
+                    folders = letterFolders(apps),
+                    query = "",
+                    onQueryChange = {},
+                    blocked = { false },
+                    onOpen = {},
+                    onLongPress = {},
+                    openFolder = open,
+                    onOpenFolder = { open = it },
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Beacon").assertExists()
+        apps = apps.filter { it.label != "Beacon" }
+        composeTestRule.waitForIdle()
+        assertNull(open)
     }
 
     @Test

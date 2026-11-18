@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +67,7 @@ fun AppsScreen() {
     // Ticket 07: the letter folder that is open as a dialog, if any.
     var openFolder by remember { mutableStateOf<LetterFolder?>(null) }
     // The Typeset tray's open folder, by its letter (home-ui 2026-11-17).
-    var openLetter by remember { mutableStateOf<String?>(null) }
+    var openLetter by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reload) {
         loaded = AppDrawerCache.refresh(context)

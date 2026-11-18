@@ -1,5 +1,14 @@
 package com.kevin.legion.ui.typeset
 
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -11,16 +20,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -82,12 +88,17 @@ fun TypesetAppsIndex(
     onOpenFolder: (String?) -> Unit = {},
 ) {
     val paused = workPaused == true
-    val cellFor: @Composable RowScope.(DrawerApp) -> Unit = { app ->
+    val cellFor: @Composable (DrawerApp, Modifier) -> Unit = { app, cellModifier ->
         val icon = icons[iconKey(app.profileKey, app.packageName, app.className)]
-        AppCell(app, icon, blocked(app), paused, onOpen, onLongPress)
+        AppCell(app, icon, blocked(app), paused, onOpen, onLongPress, cellModifier)
     }
+    val open = folders.firstOrNull { it.letter == openFolder }
+    // A folder whose last app went away (or that the find line filtered out) closes itself.
+    LaunchedEffect(openFolder, open) { if (openFolder != null && open == null) onOpenFolder(null) }
     Box(modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        // While a folder is open the page behind is out of TalkBack's reach: the folder is modal.
+        val behind = if (open != null) Modifier.clearAndSetSemantics {} else Modifier
+        Column(Modifier.fillMaxSize().then(behind).padding(horizontal = 16.dp)) {
             Text(
                 "ALL APPS",
                 style = TypesetType.caps,
@@ -105,17 +116,22 @@ fun TypesetAppsIndex(
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
             }
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 8.dp)) {
-                if (query.isBlank()) {
-                    IconRows(folders, FOLDER_COLUMNS) { folder ->
-                        FolderTile(folder, icons) { onOpenFolder(folder.letter) }
+            // Lazy: a one-letter query matches most apps, and only the rows on screen are composed.
+            val grid = Modifier.fillMaxWidth().padding(top = 8.dp)
+            if (query.isBlank()) {
+                LazyVerticalGrid(GridCells.Fixed(FOLDER_COLUMNS), grid) {
+                    items(folders, key = { it.letter }) { folder ->
+                        FolderTile(folder, icons, Modifier.fillMaxWidth()) { onOpenFolder(folder.letter) }
                     }
-                } else {
-                    IconRows(folders.flatMap { it.apps }, SEARCH_COLUMNS, cellFor)
+                }
+            } else {
+                val matches = folders.flatMap { it.apps }
+                LazyVerticalGrid(GridCells.Fixed(SEARCH_COLUMNS), grid) {
+                    items(matches, key = ::appKey) { app -> cellFor(app, Modifier.fillMaxWidth()) }
                 }
             }
         }
-        folders.firstOrNull { it.letter == openFolder }?.let { folder ->
+        open?.let { folder ->
             BackHandler { onOpenFolder(null) }
             FolderOverlay(folder, onClose = { onOpenFolder(null) }, cell = cellFor)
         }
@@ -171,10 +187,15 @@ const val WORK_PAUSE_LINE = "Pause work apps"
 
 /** A letter bucket: a ruled square holding its first four apps' icons, the letter and the count under it. */
 @Composable
-private fun RowScope.FolderTile(folder: LetterFolder, icons: Map<String, ImageBitmap>, onClick: () -> Unit) {
+private fun FolderTile(
+    folder: LetterFolder,
+    icons: Map<String, ImageBitmap>,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     val description = "Folder ${folder.letter}, ${appCountLabel(folder.apps.size)}"
     Column(
-        Modifier.weight(1f)
+        modifier
             .clickable(role = Role.Button, onClickLabel = "Open folder ${folder.letter}", onClick = onClick)
             .semantics(mergeDescendants = true) { contentDescription = description }
             .padding(vertical = 6.dp),
@@ -222,7 +243,7 @@ private fun MiniIcon(icon: ImageBitmap?, app: DrawerApp?) {
 
 /** An open folder over the page: a scrim (tap, Close or Back closes it), the letter, the count, three to a row. */
 @Composable
-private fun FolderOverlay(folder: LetterFolder, onClose: () -> Unit, cell: @Composable RowScope.(DrawerApp) -> Unit) {
+private fun FolderOverlay(folder: LetterFolder, onClose: () -> Unit, cell: @Composable (DrawerApp, Modifier) -> Unit) {
     Box(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM))
             .clickable(role = Role.Button, onClickLabel = "Close folder ${folder.letter}", onClick = onClose),
@@ -231,7 +252,13 @@ private fun FolderOverlay(folder: LetterFolder, onClose: () -> Unit, cell: @Comp
         Column(
             Modifier.padding(horizontal = 20.dp).fillMaxWidth().heightIn(max = FolderMaxHeight)
                 .background(SoftColors.ground).border(1.dp, SoftColors.text)
-                .clickable(enabled = false) {}
+                // Taps on the panel's own blank space land here and go no further (not on the scrim).
+                .pointerInput(Unit) { detectTapGestures { } }
+                // Its own pane for TalkBack, read as one group, with the page behind cleared.
+                .semantics {
+                    paneTitle = "Folder ${folder.letter}"
+                    isTraversalGroup = true
+                }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -251,8 +278,8 @@ private fun FolderOverlay(folder: LetterFolder, onClose: () -> Unit, cell: @Comp
                 }
             }
             HorizontalDivider(thickness = 1.dp, color = SoftColors.text)
-            Column(Modifier.padding(top = 8.dp).verticalScroll(rememberScrollState())) {
-                IconRows(folder.apps, DIALOG_COLUMNS, cell)
+            LazyVerticalGrid(GridCells.Fixed(DIALOG_COLUMNS), Modifier.padding(top = 8.dp)) {
+                items(folder.apps, key = ::appKey) { app -> cell(app, Modifier.fillMaxWidth()) }
             }
         }
     }
@@ -262,13 +289,14 @@ private fun FolderOverlay(folder: LetterFolder, onClose: () -> Unit, cell: @Comp
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 @Suppress("LongParameterList")
-private fun RowScope.AppCell(
+private fun AppCell(
     app: DrawerApp,
     icon: ImageBitmap?,
     isBlocked: Boolean,
     workPaused: Boolean,
     onOpen: (DrawerApp) -> Unit,
     onLongPress: (DrawerApp) -> Unit,
+    modifier: Modifier,
 ) {
     val words = listOfNotNull(
         "work".takeIf { app.isWork },
@@ -276,7 +304,7 @@ private fun RowScope.AppCell(
         "blocked".takeIf { isBlocked },
     )
     Column(
-        Modifier.weight(1f)
+        modifier
             .heightIn(min = MinTarget)
             .combinedClickable(
                 role = Role.Button,
@@ -320,13 +348,16 @@ private fun RowScope.AppCell(
     }
 }
 
+/** A stable key for a drawer app: a work twin shares its package with the personal app. */
+private fun appKey(app: DrawerApp): String = "${app.profileKey}/${app.packageName}/${app.className}"
+
 private const val FOLDER_COLUMNS = 4
 private const val SEARCH_COLUMNS = 4
 private const val DIALOG_COLUMNS = 3
 private const val MINI_ICONS = 4
 private const val SCRIM = 0.4f
 private const val DIMMED = 0.5f
-private val MinTarget = 44.dp
+private val MinTarget = 48.dp
 private val FolderBox = 64.dp
 private val MiniIconSize = 22.dp
 private val AppIconSize = 44.dp
