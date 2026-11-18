@@ -389,7 +389,9 @@ def engine_latency_line(at: datetime.datetime, msg: str) -> tuple:
 
 
 def engine_interrupted_line(at: datetime.datetime) -> tuple:
-    return (at, line(at, TID_ENGINE, AUDIT, "interrupted source=barge_in"))
+    # The engine sees only that the turn stopped (a cancel or a hang-up); the page's own line says
+    # what stopped it (tap, typed or barge_in).
+    return (at, line(at, TID_ENGINE, AUDIT, "interrupted source=stopped"))
 
 
 def record_lines(request, conversation_id, stamped: list[tuple]) -> None:

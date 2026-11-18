@@ -12,10 +12,13 @@
  * so a retry after a lost answer costs nothing.
  */
 
+/** What cut a reply: the orb or a chip tapped, words typed, or speech over it. */
+export type InterruptSource = 'tap' | 'typed' | 'barge_in'
+
 export type RecordEvent =
   | { kind: 'user'; at_ms: number; text: string; typed: boolean }
   | { kind: 'assistant'; at_ms: number; text: string }
-  | { kind: 'interrupted'; at_ms: number; reason: 'server' | 'barge_in' }
+  | { kind: 'interrupted'; at_ms: number; reason: 'server' | InterruptSource }
   | { kind: 'turn_complete'; at_ms: number }
   | { kind: 'tool_cancelled'; at_ms: number; id: string; name: string }
   | { kind: 'mic_open' | 'mic_closed'; at_ms: number; reason: string }

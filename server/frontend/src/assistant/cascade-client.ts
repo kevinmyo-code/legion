@@ -13,7 +13,7 @@ import {
   closingTone,
   micNotice,
 } from './cascade-words'
-import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
+import { ConversationRecord, type InterruptSource, type RecordEvent, type RecordTransport } from './conversation-record'
 import { Backstop } from './backstop'
 import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
@@ -360,7 +360,7 @@ export class CascadeClient {
     const aloud = this.voiceOpen || this.options.speakTyped === true
     if (aloud) this.unlockPlayback()
     const wasSpeaking = this.playing
-    this.cutReply('barge_in')
+    this.cutReply('typed')
     this.stopListening()
     this.push({ kind: 'me', text, via: 'typed', open: false })
     if (wasSpeaking) this.push({ kind: 'sys', text: 'Stopped speaking because you typed.' })
@@ -392,7 +392,7 @@ export class CascadeClient {
         this.tapDuringEntry()
         return Promise.resolve()
       }
-      if (this.playing || this.awaiting) this.cutReply('barge_in')
+      if (this.playing || this.awaiting) this.cutReply('tap')
       this.listen()
       return Promise.resolve()
     }
@@ -482,7 +482,7 @@ export class CascadeClient {
     if (this.state.phase === 'ended' || this.disposed) return
     if (beat === 0) this.deps.funnel?.('tour_started')
     this.unlockPlayback()
-    this.cutReply('barge_in')
+    this.cutReply('tap')
     this.stopListening()
     void this.afterPrepare(() => this.turn({ tour: beat }, true))
   }
@@ -495,7 +495,7 @@ export class CascadeClient {
     const text = raw.trim()
     if (!text || this.state.phase === 'ended' || this.disposed) return false
     this.unlockPlayback()
-    this.cutReply('barge_in')
+    this.cutReply('tap')
     this.stopListening()
     // The engine says it back as `heard`, which draws the line.
     void this.afterPrepare(() => this.turn({ text, spoken: true }, true))
@@ -603,7 +603,7 @@ export class CascadeClient {
       return
     }
     if (!this.playing && !this.awaiting) return
-    this.cutReply('barge_in')
+    this.cutReply('tap')
     if (this.voiceOpen) this.listen()
     this.refresh()
   }
@@ -1226,7 +1226,7 @@ export class CascadeClient {
     this.turnId = null
   }
 
-  private cutReply(source: 'barge_in' | null) {
+  private cutReply(source: InterruptSource | null) {
     const wasActive = this.playing || this.awaiting
     this.bargePending = null
     this.deadline?.clear()
