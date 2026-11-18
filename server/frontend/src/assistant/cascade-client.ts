@@ -5,6 +5,7 @@ import {
   CONVERSATION_CLOSED,
   ENDED_LIMIT,
   ENDED_LOCKED,
+  ENTRY_STALLED,
   TONE_RATE,
   TURN_STALLED,
   UNREACHABLE,
@@ -16,7 +17,7 @@ import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
 import { mergedCard } from './merge-card'
 import { readRefusal } from './refusals'
-import { TurnDeadline } from './turn-deadline'
+import { ENTRY_MS, ENTRY_TAP_MS, TurnDeadline } from './turn-deadline'
 import { newTurnId, postTurn } from './turn-post'
 import { utterance } from './utterance'
 import type { TurnDetector } from './turn/detector'
@@ -207,6 +208,7 @@ export class CascadeClient {
   private prepared = false
   /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
   private entering = false
+  private enteringSince = 0
   /** The mic's permission settled for the conversation being opened. */
   private micReady = false
   /** The last turn ended `busy`: the next tap listens in the same conversation. */
@@ -351,7 +353,10 @@ export class CascadeClient {
     if (this.state.phase === 'ended' || this.disposed) return Promise.resolve()
     if (this.voiceOpen) {
       // Taps while the visit is being entered are ignored: a double tap on first contact is one.
-      if (this.entering) return Promise.resolve()
+      if (this.entering) {
+        this.tapDuringEntry()
+        return Promise.resolve()
+      }
       if (this.playing || this.awaiting) this.cutReply('barge_in')
       this.listen()
       return Promise.resolve()
@@ -474,18 +479,15 @@ export class CascadeClient {
       const generation = this.turnGeneration
       this.awaiting = true
       this.entering = true
+      this.enteringSince = this.deps.now()
       this.refresh()
-      this.preparing ??= this.options
-        .prepare()
-        .catch(() => false)
-        .then((ok) => {
-          this.preparing = null
-          if (ok) this.prepared = true
-          return ok
-        })
-      const ok = await this.preparing
-      this.entering = false
+      const entry = (this.preparing ??= this.enter(this.options.prepare))
+      // Nothing inside the entry has a deadline of its own; the mic is already open.
+      const deadline = setTimeout(() => this.abandonEntry(), ENTRY_MS)
+      const ok = await entry
+      clearTimeout(deadline)
       if (generation !== this.turnGeneration || this.disposed) return
+      this.entering = false
       this.awaiting = false
       // The orb held "starting" through the entry; the mic is ready if its permission settled.
       if (this.state.mic === 'starting' && this.micReady) this.set({ mic: 'off' })
@@ -498,9 +500,40 @@ export class CascadeClient {
     await then()
   }
 
+  private enter(prepare: () => Promise<boolean>): Promise<boolean> {
+    const entry: Promise<boolean> = prepare()
+      .catch(() => false)
+      .then((ok) => {
+        if (this.preparing === entry) this.preparing = null
+        if (ok) this.prepared = true
+        return ok
+      })
+    return entry
+  }
+
+  /**
+   * A tap during the entry: ignored in its first seconds (a double tap on first contact is one),
+   * after that it gives up on an entry that is taking too long.
+   */
+  private tapDuringEntry() {
+    if (this.deps.now() - this.enteringSince >= ENTRY_TAP_MS) this.abandonEntry()
+  }
+
+  /** The entry hung: the mic goes, a notice says so, and the next tap enters afresh. */
+  private abandonEntry() {
+    if (!this.entering) return
+    this.entering = false
+    this.preparing = null
+    this.cutReply(null)
+    this.voiceOpen = false
+    this.micGeneration += 1
+    this.audioIO?.stopMic()
+    this.set({ mic: 'off', notice: ENTRY_STALLED })
+  }
+
   /** A tap while listening closes the conversation (spec 21); while it speaks, it interrupts. */
   stopVoice() {
-    if (this.entering) return
+    if (this.entering) return this.tapDuringEntry()
     if (this.listening || this.state.mic === 'starting') {
       this.close(false)
       return
@@ -510,7 +543,8 @@ export class CascadeClient {
 
   /** Stop the reply now, its audio and the engine's turn, and listen again (spec 20). */
   interrupt() {
-    if (this.entering || (!this.playing && !this.awaiting)) return
+    if (this.entering) return this.tapDuringEntry()
+    if (!this.playing && !this.awaiting) return
     this.cutReply('barge_in')
     if (this.voiceOpen) this.listen()
     this.refresh()

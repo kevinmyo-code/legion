@@ -4,6 +4,8 @@ import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type FunnelEvent,
 import { EARLY_TRANSCRIPT, createCascadeDeps } from './deps'
 import { MAX_UTTERANCE_MS, WINDOW_MS } from './endpointer'
 import { MAX_UTTERANCE_SAMPLES } from './utterance'
+import { ENTRY_STALLED } from './cascade-words'
+import { ENTRY_MS, ENTRY_TAP_MS } from './turn-deadline'
 import { pcm16ToBase64 } from './pcm'
 import type { SseEvent } from './sse'
 import { BargeInGate } from './turn/barge-in-gate'
@@ -405,6 +407,46 @@ describe('the demo', () => {
     t.audio.handlers?.onPlaying(false)
     await settle()
     expect(t.client.getState().mic).toBe('on')
+  })
+
+  it('an entry that hangs lets the mic go after its deadline, says so, and a tap enters afresh', async () => {
+    vi.useFakeTimers()
+    try {
+      const prepare = vi.fn(() => new Promise<boolean>(() => {}))
+      const t = build([spoken('Hi.')], { prepare })
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(ENTRY_MS - 100)
+      expect(t.audio.micOpen).toBe(true)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(t.audio.micOpen).toBe(false)
+      expect(t.client.getState().mic).toBe('off')
+      expect(t.client.getState().activity).not.toBe('thinking')
+      expect(t.client.getState().notice?.text).toBe(ENTRY_STALLED.text)
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(prepare).toHaveBeenCalledTimes(2)
+      expect(t.audio.micOpen).toBe(true)
+      expect(t.requests).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('during a slow entry a tap in the first two seconds is ignored, a later one gives up on it', async () => {
+    vi.useFakeTimers()
+    try {
+      const t = build([spoken('Hi.')], { prepare: () => new Promise<boolean>(() => {}) })
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(1_000)
+      t.client.interrupt()
+      expect(t.audio.micOpen).toBe(true)
+      await vi.advanceTimersByTimeAsync(ENTRY_TAP_MS)
+      t.client.interrupt()
+      expect(t.audio.micOpen).toBe(false)
+      expect(t.client.getState().notice?.text).toBe(ENTRY_STALLED.text)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a client the page let go of during the entry asks the engine for nothing', async () => {

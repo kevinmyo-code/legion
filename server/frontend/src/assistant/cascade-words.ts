@@ -10,6 +10,12 @@ export const UNREACHABLE = "Not answered: couldn't reach the engine. Nothing was
 /** The engine still had the last turn after the retries (`turn-post.ts`). */
 export const STILL_BUSY = 'Still finishing the last answer. Tap to try again.'
 
+/** The demo entry past its deadline, or given up by a tap (`turn-deadline.ts` ENTRY_MS). */
+export const ENTRY_STALLED: Notice = {
+  kind: 'engine-unreachable',
+  text: 'Opening the demo is taking too long. Tap to try again.',
+}
+
 /** A turn past its deadline (`turn-deadline.ts`). A tool may have run, so it claims nothing either way. */
 export const TURN_STALLED: Notice = {
   kind: 'engine-unreachable',
