@@ -180,7 +180,8 @@ internal fun orbPhase(phase: Phase, enabled: Boolean): OrbPhase = when {
 internal fun slotTile(slot: DockSlotUi): TypesetDockTile {
     val letters = slot.label.filter { it.isLetterOrDigit() }
     val monogram = letters.take(2).lowercase().replaceFirstChar { it.uppercase() }.ifBlank { "?" }
-    return TypesetDockTile(monogram, slot.label)
+    val status = com.kevin.legion.ui.home.slotStatusWord(slot)?.takeIf { it != "Loading" }
+    return TypesetDockTile(monogram, slot.label, icon = slot.icon, status = status)
 }
 
 /** The Controls panel's state, taps and feed gate. */

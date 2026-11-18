@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Drawn for LEGION (home-ui 2026-11-17): a controller outline, a cross and two buttons, the Games entry's glyph. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+  <path
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="64"
+      android:fillColor="#00000000"
+      android:pathData="M260,300H700A180,180 0 0 1 700,660H260A180,180 0 0 1 260,300Z"/>
+  <path
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="56"
+      android:pathData="M230,480H390M310,400V560"/>
+  <path
+      android:fillColor="@android:color/white"
+      android:pathData="M620,430m-40,0a40,40 0 1 0 80,0a40,40 0 1 0 -80,0ZM700,530m-40,0a40,40 0 1 0 80,0a40,40 0 1 0 -80,0Z"/>
+</vector>
