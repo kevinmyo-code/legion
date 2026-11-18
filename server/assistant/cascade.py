@@ -59,7 +59,10 @@ one `cascade_turn` line on the record and in the log, numbers only, never words.
 from __future__ import annotations
 
 import base64
+import concurrent.futures
+import contextvars
 import dataclasses
+import functools
 import logging
 import queue
 import re
@@ -71,7 +74,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, connection, connections, transaction
 
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
@@ -102,7 +105,7 @@ from assistant.surface import recruiter_only_tool, refusal_for, tools_for
 from devicelogs import web_conversation
 from engine_mcp import cards
 from engine_mcp.models import Outcome
-from engine_mcp.tools import SPEAK_VERBATIM, run_engine_tool, run_tool
+from engine_mcp.tools import SPEAK_VERBATIM, ToolResult, run_engine_tool, run_tool
 from household.models import is_recruiter
 from household.tenancy import household_of
 from llm import cap as member_cap
@@ -640,6 +643,44 @@ class DoorCall:
     ms: int = 0
 
 
+TOOL_TIMED_OUT_READ = (
+    "Not answered: {name} took too long, so the turn stopped waiting for it. Nothing was changed."
+)
+TOOL_TIMED_OUT_WRITE = (
+    "Not confirmed: {name} was still running when the turn stopped waiting for it. The change may "
+    "still go through; say so, and that they should check before asking again."
+)
+# Said at the end of a turn whose write was still running at its deadline.
+CHANGE_UNCERTAIN = (
+    "That change was still running when I stopped waiting: check it before asking again."
+)
+_TOOL_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="cascade-tool")
+
+
+def run_with_deadline(work, deadline_s: float):
+    """`work()`'s result, or None when it is still running at `deadline_s` (round 2 finding 2: the
+    tool deadline was never enforced, so a slow tool held the turn's thread and its demo slot).
+
+    The tool runs on its own thread with its own database connection, which it closes when done;
+    the turn stops waiting, the tool may still finish. Inside an open transaction (a test, or a
+    caller's `atomic`) a second connection could not see its rows, so it runs inline there."""
+    if connection.in_atomic_block:
+        return work()
+    context = contextvars.copy_context()
+
+    def run():
+        try:
+            return context.run(work)
+        finally:
+            connections.close_all()
+
+    future = _TOOL_POOL.submit(run)
+    try:
+        return future.result(timeout=deadline_s)
+    except concurrent.futures.TimeoutError:
+        return None
+
+
 class WebDoor:
     """`agents.runtime.tools.ToolGateway` over the web assistant's tool door: the same checks, in
     the same order, as `AssistantToolView.post`, plus the `end_conversation` control."""
@@ -652,6 +693,8 @@ class WebDoor:
         self.recruiter = is_recruiter(self.user)
         self.calls: list[DoorCall] = []
         self.end_requested = False
+        # A write that was still running when its deadline passed: it may yet go through.
+        self.uncertain = False
         # Section 10: the model said the sentence was not for it, and the code-read signals.
         self.not_for_me = False
         self.addressed: dict[str, bool] = {}
@@ -735,9 +778,19 @@ class WebDoor:
             else:
                 only_here = recruiter_only_tool(name, self.user)
                 if only_here is not None:
-                    result = run_engine_tool(self.request, only_here, args)
+                    work = functools.partial(run_engine_tool, self.request, only_here, args)
                 else:
-                    result = run_tool(self.request, name, args)
+                    work = functools.partial(run_tool, self.request, name, args)
+                result = run_with_deadline(work, deadline_s)
+                if result is None:
+                    # Still running when the turn stopped waiting (round 2 finding 2). A write may
+                    # yet go through, so nothing claims it did or did not.
+                    writes = self._writes(name)
+                    self.uncertain = self.uncertain or writes
+                    timed_out = TOOL_TIMED_OUT_WRITE if writes else TOOL_TIMED_OUT_READ
+                    result = ToolResult(
+                        text=timed_out.format(name=name), is_error=True, outcome=Outcome.FAILED
+                    )
                 ok, outcome, text, guard = not result.is_error, result.outcome, result.text, None
         call_id = call.id or f"c{len(self.calls) + 1}"
         # Known at once: whatever fails after this, the turn knows the write went through.
@@ -1324,6 +1377,8 @@ def _answer(
     wrote = door.wrote()
     if guard_refused:
         yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)
+    elif door.uncertain:
+        yield say(CHANGE_UNCERTAIN)
     elif unbacked:
         if wrote:
             yield say(CHANGE_MADE)
@@ -1336,7 +1391,7 @@ def _answer(
     if failure is not None:
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
-        yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
+        yield say(NO_TEXT + ("" if door.wrote() or door.uncertain else NOTHING_CHANGED))
     yield from speaker.drain()
     if not door.end_requested and is_stop_utterance(words):
         door.end_requested = True

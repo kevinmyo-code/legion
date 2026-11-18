@@ -213,3 +213,38 @@ def test_the_demo_cap_is_half_one_instances_threads(monkeypatch):
     assert turn_slots.demo_slots() == 1
     monkeypatch.setenv(turn_slots.SLOTS_ENV, "3")
     assert turn_slots.demo_slots() == 3
+
+
+# ---- finding 2: the tool deadline holds the turn's thread for no longer than it says ------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_slow_tool_is_stopped_waiting_for_at_its_deadline(member, engine, monkeypatch):
+    import time
+
+    from agents.runtime.model import FakeModel, call, say
+    from assistant import cascade
+    from engine_mcp.tools import ok
+
+    def slow(request, name, args):
+        time.sleep(3.0)
+        return ok("late")
+
+    monkeypatch.setattr(cascade, "run_tool", slow)
+    monkeypatch.setattr(
+        cascade, "LIMITS", cascade.dataclasses.replace(cascade.LIMITS, tool_timeout_s=0.5)
+    )
+    engine.model = FakeModel([call("list_events", {}), say("It took too long.")])
+    started = time.monotonic()
+    events = _events(_post(member, text="What's on?"))
+    assert time.monotonic() - started < 2.5
+    tool = _of(events, "tool")[0]
+    assert tool["ok"] is False and "took too long" in tool["text"]
+
+
+def test_a_write_still_running_at_its_deadline_is_said_as_uncertain():
+    from assistant import cascade
+
+    assert cascade.run_with_deadline(lambda: "done", 1.0) == "done"
+    assert "may still go through" in cascade.TOOL_TIMED_OUT_WRITE
+    assert "check it" in cascade.CHANGE_UNCERTAIN
