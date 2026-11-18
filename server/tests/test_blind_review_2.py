@@ -248,3 +248,37 @@ def test_a_write_still_running_at_its_deadline_is_said_as_uncertain():
     assert cascade.run_with_deadline(lambda: "done", 1.0) == "done"
     assert "may still go through" in cascade.TOOL_TIMED_OUT_WRITE
     assert "check it" in cascade.CHANGE_UNCERTAIN
+
+
+# ---- finding 7: a missed tour reply and a broken turn are said, not only shown ------------------
+
+
+def test_a_tour_transcription_failure_is_said(visitor, engine):
+    from assistant import cascade
+
+    def fail(pcm):
+        raise SpeechFailure("stt_unreachable")
+
+    engine.speech.transcribe = fail
+    events = _events(_post(visitor, tour=1, audio=PCM))
+    assert _of(events, "error")
+    assert [t for t, _v in engine.speech.spoken] == [cascade.MISSED_LINE]
+
+
+def test_a_broken_spoken_turn_says_so_from_memory(member, engine, monkeypatch, household_user):
+    from agents.runtime.model import FakeModel, call, say
+    from assistant import cascade, voice_engine
+    from engine_mcp import cards
+
+    audio = cascade.FillerAudio(spawn=lambda work: work())
+    audio.warm(engine.speech, voice_engine.voice_for(household_user))
+    monkeypatch.setattr(cascade, "FILLER_AUDIO", audio)
+
+    def broken(card, recruiter):
+        raise RuntimeError("card drawing failed")
+
+    monkeypatch.setattr(cards, "for_viewer", broken)
+    engine.model = FakeModel([call("list_events", {}), say("Clear.")])
+    events = _events(_post(member, audio=PCM))
+    kinds = [k for k, _ in events]
+    assert kinds[-2:] == ["audio", "error"]

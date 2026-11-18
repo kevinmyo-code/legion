@@ -952,6 +952,9 @@ def _turn_sse(
         cascade.log.warning("assistant cascade: turn failed", exc_info=True)
         report.status = "failed"
         wrote = report.door is not None and report.door.wrote()
+        said = cascade.failure_audio(voice, wrote) if spoken else None
+        if said is not None:
+            yield said.sse()
         yield cascade.ev.error(TURN_FAILED_AFTER_WRITE if wrote else TURN_FAILED).sse()
     finally:
         if turn is not None:

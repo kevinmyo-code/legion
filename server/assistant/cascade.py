@@ -291,6 +291,24 @@ NOTHING_CHANGED = " Nothing was changed."
 NOTHING_HEARD = "Nothing heard, so nothing was asked."
 STT_FAILED = "Not answered: the words could not be made out just now."
 MISSED_LINE = "Didn't catch that, say it again?"
+# A turn that broke is said too, from memory, when its line is in hand (round 2 turn review 7):
+# the voice cannot be asked for new speech once the turn has failed.
+FAILED_SPOKEN = "Sorry, something broke on my end. Nothing was changed."
+FAILED_AFTER_WRITE_SPOKEN = (
+    "Sorry, something broke on my end, but the change you asked for went through."
+)
+SPOKEN_FAILURES = (MISSED_LINE, FAILED_SPOKEN, FAILED_AFTER_WRITE_SPOKEN)
+
+
+def failure_audio(voice: str, wrote: bool) -> ev.Event | None:
+    """The spoken failure line's audio for `voice`, if it has been made; else None."""
+    line = FAILED_AFTER_WRITE_SPOKEN if wrote else FAILED_SPOKEN
+    clip = FILLER_AUDIO.get(voice, line)
+    if not clip:
+        return None
+    return ev.Event("audio", {"pcm": base64.b64encode(clip).decode("ascii"), "rate": OUTPUT_RATE})
+
+
 # ADR 0090's reason in code, spoken whenever a turn that read outside text does not make a change
 # it was asked for (measured 2026-11-17: the model gave a false reason, "that only works in the
 # phone app", or claimed the change). The person's next message may make it.
@@ -399,7 +417,7 @@ class FillerAudio:
         self._spawn = spawn or (lambda work: threading.Thread(target=work, daemon=True).start())
 
     def warm(self, speech, voice: str, lines=None) -> int:
-        lines = fillers.all_lines() if lines is None else lines
+        lines = (*fillers.all_lines(), *SPOKEN_FAILURES) if lines is None else lines
         missing = []
         with self._lock:
             now = time.monotonic()
@@ -1034,6 +1052,9 @@ def run_turn(
                 except SpeechFailure as exc:
                     timings["stt_failed"] = str(exc)
                     report.status = "stt_failed"
+                    # Said, as on the answer path (round 2 turn review 7).
+                    speaker.add(MISSED_LINE)
+                    yield from speaker.drain()
                     yield ev.error(STT_FAILED)
                     return
                 timings.update(stt_ms=heard.ms, audio_ms=heard.audio_ms)
