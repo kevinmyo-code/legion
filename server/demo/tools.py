@@ -1,57 +1,132 @@
 """`about_kevin`: a recruiter asks about Kevin himself (recruiter-demo ticket 10).
 
-One read tool, recruiters only. It returns the `profile` sections Kevin wrote
-in his private content.json (`demo.content`, loaded into
-`demo.models.RecruiterContent`), and nothing else: never household data, which
-a recruiter's role cannot read anyway, and never an inference.
+One read tool, recruiters only. It speaks the `profile` sections Kevin wrote in his private
+content.json (`demo.content`, loaded into `demo.models.RecruiterContent`), and nothing else: never
+household data, which a recruiter's role cannot read anyway, and never an inference.
 
-**Kept out of the engine registry on purpose.** `engine_mcp.tools.TOOLS` is
-what `/mcp` lists and what every member's web assistant is declared; this tool
-is for strangers reading about Kevin, and "recruiters only" is the rule. So it
-lives here, `assistant.surface.RECRUITER_ONLY_TOOLS` names it, and the
-assistant's tool door runs it through `engine_mcp.tools.run_engine_tool`, the
-same checks a registry tool gets. A member's web assistant is never told of
-it, and asking for it by name is refused as an unknown tool.
+**Code speaks the profile; the model only chooses (2026-11-18).** The model reworded the profile it
+was handed (a graduation date moved, a degree level appeared), so it is no longer handed it. It
+is declared the section TITLES only (`declared_for`), picks sections by id, and this tool returns
+the exact sentences (`demo.profile.speak`) under `structured[SPEAK_VERBATIM]`; the cascade speaks
+and shows them and ends the turn there. What the cascade's model gets back is `FOR_MODEL`: which
+titles were read, no sentence of them. Its history replays the same marker (`REPLAY_AS`), never
+the sentences, so a later turn has nothing of his to reword either.
+
+The old Live path (`POST /api/assistant/tool`, the voice rollback) has no code speaker: its result
+TEXT carries the sentences with "say exactly these", as before this change.
+
+**Kept out of the engine registry on purpose.** `engine_mcp.tools.TOOLS` is what `/mcp` lists and
+what every member's web assistant is declared; this tool is for strangers reading about Kevin,
+and "recruiters only" is the rule. So it lives here, `assistant.surface.RECRUITER_ONLY_TOOLS` names
+it, and the assistant's tool door runs it through `engine_mcp.tools.run_engine_tool`, the same
+checks a registry tool gets. A member's web assistant is never told of it, and asking for it by
+name is refused as an unknown tool.
 """
 
 from __future__ import annotations
 
-from engine_mcp.tools import EngineTool, ToolResult, ok, refused
+import dataclasses
 
-NOT_SHARED = "Kevin hasn't shared that here; ask him directly"
+from demo import profile as profile_text
+from demo.profile import NOT_SHARED
+from engine_mcp.tools import (
+    ENDS_TURN,
+    FOR_MODEL,
+    REPLAY_AS,
+    SPEAK_EXACT,
+    SPEAK_VERBATIM,
+    EngineTool,
+    ToolResult,
+    ok,
+    refused,
+)
 
 NO_PROFILE = (
     "Nothing was read. Kevin hasn't shared a profile on this engine yet, so there is nothing "
-    f"to answer from. Say: \"{NOT_SHARED}.\""
+    f'to answer from. Say: "{NOT_SHARED}."'
 )
 
+SECTIONS_PLACEHOLDER = "{sections}"
+
 DESCRIPTION = (
-    "What Kevin, the person who built LEGION, has written about himself for recruiters: "
-    "his experience, skills, location, work authorisation, availability, what he is looking "
-    "for, and how to reach him, one section each. Answer questions about Kevin ONLY from this "
-    "text, in its own words. Anything about Kevin it does not say - including anything you "
-    f"could guess from it - is not known: say \"{NOT_SHARED}.\" Never use the demo household's "
-    "data to answer about Kevin; that household is made up. This rule is for facts ABOUT KEVIN "
-    "only. A general question that merely comes up - what a visa such as the H-1B1 is, what a "
-    "term means, how something works - is not about Kevin: never answer it with that sentence; "
-    "answer it plainly from general knowledge or web_search, and say which."
+    "Says what Kevin, the person who built LEGION, has written about himself for recruiters, in "
+    "his own words: code reads the sections you pick aloud and shows them, and that is the "
+    "answer; the turn ends there. Call it FIRST for any question about Kevin himself, and say "
+    "nothing about him yourself, before or after: you are never shown his profile, so anything "
+    "you said about him would be made up. Pick every section that answers the question, by id: "
+    f"{SECTIONS_PLACEHOLDER}. When none of them covers what was asked, call it with no sections: "
+    f'code then says "{NOT_SHARED}." For more of a long section, call it again with rest_of set '
+    "to that id. offer adds one closing question (resume or contact) when it would help. Never "
+    "use the demo household's data to answer about Kevin; that household is made up. This tool "
+    "is for facts ABOUT KEVIN only. A general question that merely comes up - what a visa such as "
+    "the H-1B1 is, what a term means, how something works - is not about Kevin: never call this "
+    "tool for it and never answer it with that sentence; answer it plainly from general "
+    "knowledge or web_search, and say which."
 )
+
+
+def _row_and_sections(user):
+    from demo.models import RecruiterContent
+
+    row = RecruiterContent.for_user(user)
+    profile = (row.content or {}).get("profile") if row is not None else None
+    return row, profile_text.sections_of(profile)
+
+
+def declared_for(tool: EngineTool, user) -> EngineTool:
+    """`about_kevin` as `user`'s assistant is told about it: the section ids and titles of THIS
+    visitor's content version, never a sentence of them (like `diagrams.catalogue.declared_for`)."""
+    _row, sections = _row_and_sections(user)
+    listing = "; ".join(f"{s.id} ({s.title})" for s in sections) or "none (nothing shared yet)"
+    schema = dict(tool.input_schema)
+    properties = dict(schema["properties"])
+    if sections:
+        ids = [s.id for s in sections]
+        properties["sections"] = {
+            **properties["sections"],
+            "items": {"type": "string", "enum": ids},
+        }
+        properties["rest_of"] = {**properties["rest_of"], "enum": ids}
+    schema["properties"] = properties
+    description = tool.description.replace(SECTIONS_PLACEHOLDER, listing)
+    return dataclasses.replace(tool, input_schema=schema, description=description)
 
 
 def _about_kevin(request, arguments: dict) -> ToolResult:
-    from demo.models import RecruiterContent
-
-    row = RecruiterContent.for_user(getattr(request, "user", None))
-    profile = (row.content or {}).get("profile") if row is not None else None
-    if not profile:
+    row, sections = _row_and_sections(getattr(request, "user", None))
+    if not sections:
         return refused(NO_PROFILE)
-    sections = "\n\n".join(f"{name}:\n{text.strip()}" for name, text in profile.items())
+    chosen = [c for c in arguments.get("sections") or [] if isinstance(c, str)]
+    spoken = profile_text.speak(sections, chosen, arguments.get("rest_of") or None)
+    links = (row.content or {}).get("links") or {}
+    closing = spoken.more or profile_text.offer_line(
+        arguments.get("offer"),
+        has_resume=row.resume is not None,
+        has_contact=any(links.values()),
+    )
+    lines = [*spoken.lines, *([closing] if closing else [])]
+    if spoken.read:
+        titles = ", ".join(spoken.read)
+        for_model = (
+            f"Done: read aloud and shown, word for word, from Kevin's profile: {titles}. The "
+            "turn ends here."
+        )
+        replay = f"(Read aloud from Kevin's profile: {titles}.)"
+    else:
+        for_model = f'Done: said "{profile_text.NOT_SHARED_LINE}" The turn ends here.'
+        replay = None
     return ok(
-        "Kevin's profile, as he wrote it. Answer questions about Kevin only from this; for "
-        f"anything about Kevin it does not say, say \"{NOT_SHARED}.\" A general question (what a "
-        "visa or a term is) is not about Kevin: answer that from general knowledge or web_search."
-        f"\n\n{sections}",
-        {"sections": list(profile)},
+        # The Live path's model has no code speaker, so it is handed the sentences to say.
+        "Say exactly these sentences about Kevin, word for word, and add nothing about him:\n"
+        + "\n".join(lines),
+        {
+            SPEAK_VERBATIM: lines,
+            SPEAK_EXACT: True,
+            ENDS_TURN: True,
+            FOR_MODEL: for_model,
+            REPLAY_AS: replay,
+            "sections": list(spoken.read),
+        },
     )
 
 
@@ -61,7 +136,22 @@ ABOUT_KEVIN = EngineTool(
     description=DESCRIPTION,
     input_schema={
         "type": "object",
-        "properties": {},
+        "properties": {
+            "sections": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Section ids that answer the question; empty when none does.",
+            },
+            "offer": {
+                "type": "string",
+                "enum": list(profile_text.OFFER_KEYS),
+                "description": "One closing question to add, or none.",
+            },
+            "rest_of": {
+                "type": "string",
+                "description": "A long section's id, to read the part after what was read.",
+            },
+        },
         "required": [],
         "additionalProperties": False,
     },

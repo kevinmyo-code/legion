@@ -103,7 +103,16 @@ from assistant.surface import recruiter_only_tool, refusal_for, tools_for
 from devicelogs import web_conversation
 from engine_mcp import cards
 from engine_mcp.models import Outcome
-from engine_mcp.tools import SPEAK_VERBATIM, ToolResult, run_engine_tool, run_tool
+from engine_mcp.tools import (
+    ENDS_TURN,
+    FOR_MODEL,
+    REPLAY_AS,
+    SPEAK_EXACT,
+    SPEAK_VERBATIM,
+    ToolResult,
+    run_engine_tool,
+    run_tool,
+)
 from household.models import is_recruiter
 from household.tenancy import household_of
 from legion import deadline
@@ -124,7 +133,8 @@ LIMITS = LoopLimits(
     turn_timeout_s=30.0,
     max_input_tokens=120_000,
 )
-VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances"})
+# `about_kevin`: his profile, spoken by code and never by the model (2026-11-18, `demo/tools.py`).
+VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances", "about_kevin"})
 # Cached input, in hundredths of a micro-dollar per token: the rate the agent turn quotes for
 # flash-lite (`agents/legion/turn.py`, $0.03 / 1M). An ESTIMATE, like every cost here.
 CACHED_MICRO_USD_PER_TOKEN_X100 = 3
@@ -755,8 +765,13 @@ class DoorCall:
     outcome: str
     text: str
     card: dict | None = None
-    verbatim: str | None = None
+    # Sentences code wrote for this result, said and shown as they are (`VERBATIM_TOOLS`).
+    verbatim: tuple[str, ...] | None = None
     ms: int = 0
+    # Said with every figure exact; the turn's whole answer; what history replays instead.
+    exact: bool = False
+    ends_turn: bool = False
+    replay: str | None = None
 
 
 TURN_STOPPED = "Not run: the turn was stopped."
@@ -766,6 +781,37 @@ TOOL_TIMED_OUT = (
     "Not done: {name} took too long, so it was stopped and nothing it did was kept. Nothing was "
     "changed."
 )
+
+
+@dataclass(frozen=True)
+class _Verbatim:
+    lines: tuple[str, ...]
+    exact: bool
+    ends_turn: bool
+    for_model: str | None
+    replay: str | None
+
+
+def _verbatim(name: str, result) -> _Verbatim | None:
+    """The code-written sentences a `VERBATIM_TOOLS` result asks to be said (`SPEAK_VERBATIM`, one
+    sentence or a list) and how (`engine_mcp.tools`), or None."""
+    if result is None or name not in VERBATIM_TOOLS:
+        return None
+    data = result.structured or {}
+    said = data.get(SPEAK_VERBATIM)
+    raw = [said] if isinstance(said, str) else said if isinstance(said, list) else []
+    lines = tuple(line.strip() for line in raw if isinstance(line, str) and line.strip())
+    if not lines:
+        return None
+    for_model = data.get(FOR_MODEL)
+    replay = data.get(REPLAY_AS)
+    return _Verbatim(
+        lines,
+        exact=bool(data.get(SPEAK_EXACT)),
+        ends_turn=bool(data.get(ENDS_TURN)),
+        for_model=for_model if isinstance(for_model, str) and for_model else None,
+        replay=replay if isinstance(replay, str) and replay else None,
+    )
 
 
 def _run_by_deadline(work, deadline_s: float):
@@ -964,12 +1010,24 @@ class WebDoor:
             text=text,
         )
         card = cards.for_viewer(result.card, self.recruiter) if result is not None else None
-        verbatim = None
-        if ok and result is not None and name in VERBATIM_TOOLS:
-            said = (result.structured or {}).get(SPEAK_VERBATIM)
-            verbatim = said.strip() if isinstance(said, str) and said.strip() else None
+        spoken = _verbatim(name, result) if ok else None
+        if spoken is not None and spoken.for_model:
+            # What the model and the page's strip see: never the code-spoken sentences themselves
+            # (the profile: the model is never handed a sentence of it, `demo/tools.py`).
+            text = spoken.for_model
         ms = int((time.monotonic() - clock) * 1000)
-        self.calls[-1] = DoorCall(name, ok, outcome, text, card, verbatim, ms)
+        self.calls[-1] = DoorCall(
+            name,
+            ok,
+            outcome,
+            text,
+            card,
+            spoken.lines if spoken else None,
+            ms,
+            exact=bool(spoken and spoken.exact),
+            ends_turn=bool(spoken and spoken.ends_turn),
+            replay=spoken.replay if spoken else None,
+        )
         tool = self.tools().get(name)
         return ToolOutcome(
             name=name,
@@ -979,6 +1037,7 @@ class WebDoor:
             outcome="ok" if ok else str(outcome),
             guard=guard,
             ms=int((time.monotonic() - clock) * 1000),
+            ends_turn=bool(spoken and spoken.ends_turn),
         )
 
     def actions(self) -> list[dict]:
@@ -1043,6 +1102,21 @@ class TurnReport:
     door: object | None = None
     said: list[str] = field(default_factory=list)
     timings: dict = field(default_factory=dict)
+    # What the conversation's history replays for some of `said` (by index): a marker in place of
+    # a sentence the model must never see again (his profile, a tour line about him), or "" to
+    # replay nothing for it. The record still keeps `said` as it was.
+    replay: dict[int, str] = field(default_factory=dict)
+
+    def say(self, text: str, replay: str | None = None) -> None:
+        if replay is not None:
+            self.replay[len(self.said)] = replay
+        self.said.append(text)
+
+    def history_text(self) -> str:
+        """`said` as the next turn's history may hold it."""
+        return " ".join(
+            self.replay.get(i, line) for i, line in enumerate(self.said) if self.replay.get(i, line)
+        ).strip()
 
 
 class CancelCheck:
@@ -1483,14 +1557,15 @@ def _answer(
         rewritten from the model's words (findings 4 and 10): when in doubt its sentence stays."""
         return not claims_unbacked_outcome(text, door.actions())
 
-    def say(text: str, tagged: str | None = None):
+    def say(text: str, tagged: str | None = None, replay: str | None = None):
         """`text` is what is shown, stored and checked (no tags, ever); `tagged` is a model
         sentence as written, its allowed tags kept for speech only (`speech_tags`). Code lines
-        (verbatim figures, refusals, failures) pass no `tagged` and are spoken plain."""
+        (verbatim figures, refusals, failures) pass no `tagged` and are spoken plain. `replay` is
+        what history keeps of it instead (`TurnReport.replay`)."""
         nonlocal sentences, first_sentence
         text = speech_tags.untagged(text)
         sentences += 1
-        report.said.append(text)
+        report.say(text, replay)
         if first_sentence is None:
             first_sentence = int((clock() - t0) * 1000)
         speaker.add(tagged if tagged is not None else text, expressive=tagged is not None)
@@ -1549,7 +1624,14 @@ def _answer(
                 # hand, so a line would only delay what comes next, a code-written sentence first.
                 if done.verbatim and not verbatim_said:
                     verbatim_said = True
-                    yield say(done.verbatim)
+                    if done.exact:
+                        # Code's own sentences (his profile): no figure in them is rounded.
+                        speaker.exact = True
+                    for i, line in enumerate(done.verbatim):
+                        marker = None
+                        if done.replay is not None:
+                            marker = done.replay if i == 0 else ""
+                        yield say(line, replay=marker)
                 continue
             if event.type == "sentence":
                 tagged = event.data["text"]
@@ -1695,6 +1777,7 @@ def _not_for_me(request, door, speaker, report, timings):
     decision = addressed_decision(door.addressed, model_says_not=True)
     report.status = decision
     report.said.clear()
+    report.replay.clear()
     timings["addressed"] = 0 if decision == "not_addressed" else 1
     signals = " ".join(f"{k}={int(v)}" for k, v in sorted(door.addressed.items()))
     now = datetime.now(UTC)
@@ -1784,7 +1867,12 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
         said, nxt = tour.END_LINE, None
     # Only the tour's own code lines may carry a tag; words from the content never do.
     shown = speech_tags.untagged(said)
-    report.said.append(shown)
+    # A line from his content or a diagram's caption states facts about him: history replays
+    # which beat was read, never its words, so no later turn can reword them (2026-11-18).
+    marker = None
+    if said not in tour.CODE_LINES and index < len(beats):
+        marker = f"(Tour line read aloud: {beats[index].key}.)"
+    report.say(shown, marker)
     report.timings["sentences"] = 1
     speaker.add(said, expressive=said in tour.CODE_LINES)
     yield ev.Event("sentence", {"text": shown})

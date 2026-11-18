@@ -383,6 +383,13 @@ def engine_assistant_line(at: datetime.datetime, text: str) -> tuple:
     return (at, line(at, TID_ENGINE, AUDIT, f"assistant text={quoted(text, CAP_TURN)}"))
 
 
+def engine_replay_line(at: datetime.datetime, text: str) -> tuple:
+    """What `history` replays for the assistant line that follows it, in place of its words: a
+    marker for sentences the model must never be handed again (his profile, 2026-11-18). Written
+    just before that line; empty means replay nothing for it."""
+    return (at, line(at, TID_ENGINE, AUDIT, f"assistant_replay text={quoted(text, CAP_TURN)}"))
+
+
 def engine_latency_line(at: datetime.datetime, msg: str) -> tuple:
     """A timing line: numbers and names only, never words."""
     return (at, line(at, TID_ENGINE, LATENCY, msg))
@@ -451,6 +458,13 @@ CUT_OFF_NOTE = "(They spoke over this reply and stopped it here.)"
 
 
 _WRITE_DONE = re.compile(r" tool_result id=\S+ name=(?P<name>\S+) success=true ")
+_REPLAY = re.compile(
+    r"^\S+ \S+  0  "
+    + str(TID_ENGINE)
+    + r" I "
+    + AUDIT
+    + r": assistant_replay text=(?P<text>\".*\")$"
+)
 
 
 def history(
@@ -473,7 +487,15 @@ def history(
         else:
             turns.append({"role": "model", "parts": [{"text": words}]})
 
+    replay: str | None = None
     for text in body:
+        found = _REPLAY.match(text)
+        if found is not None:
+            try:
+                replay = json.loads(found.group("text"))
+            except ValueError:
+                replay = ""
+            continue
         done = _WRITE_DONE.search(text) if writes else None
         if done is not None and done.group("name") in writes:
             # A change that went through is part of the history even when its reply never reached
@@ -495,9 +517,12 @@ def history(
             words = json.loads(match.group("text"))
         except ValueError:
             continue
+        role = "user" if match.group("user") else "model"
+        if role == "model" and replay is not None:
+            # The marker written before this line stands in for its words.
+            words, replay = replay, None
         if not isinstance(words, str) or not words.strip():
             continue
-        role = "user" if match.group("user") else "model"
         if role == "user":
             users += 1
         if turns and turns[-1]["role"] == role:
