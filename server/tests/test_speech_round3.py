@@ -185,3 +185,22 @@ def test_when_speech_stops_early_the_closing_line_is_said_and_the_page_is_told(
     spoken = [text for text, _voice in engine.speech.spoken]
     assert any(cascade.CHANGE_NOT_MADE in text for text in spoken), spoken
     assert [e for k, e in events if k == "speech_stopped"]
+
+
+# ---- small b: only stage directions are stripped; other bracketed or starred words are kept -----
+
+
+@pytest.mark.parametrize(
+    ("text", "kept"),
+    [
+        ("That is *really* close.", "That is really close."),
+        ("Per [Reuters] the rate held.", "Per Reuters the rate held."),
+        ("Well [laughs] that went well.", "Well that went well."),
+        ("Okay *sighs* fine.", "Okay fine."),
+        ("Right [short pause] next one.", "Right next one."),
+    ],
+)
+def test_only_stage_directions_are_stripped(text, kept):
+    from assistant import speech_tags
+
+    assert speech_tags.untagged(text) == kept
