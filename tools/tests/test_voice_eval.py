@@ -185,12 +185,21 @@ def test_a_case_that_proves_nothing_here_is_reported_apart_and_not_counted():
     facts, runs = parse(lines)
     out, summary = ve.scorecard(cases, runs, facts, phone=False)
     assert "pass 1/1" in out[0]
-    assert out[1].startswith("not counted, proves nothing on this layer (1): cannot_fail")
+    assert out[1].startswith("passed, not counted, proves nothing on this layer (1): cannot_fail")
     assert any(l.startswith("N/A   cannot_fail") for l in out)
     assert summary["passed"] == 1 and summary["not_counted"] == ["cannot_fail"]
     # On the phone the same case counts.
     _, phone = ve.scorecard(cases, runs, facts, phone=True)
     assert phone["not_counted"] == []
+
+
+def test_a_marked_case_that_fails_is_shown_and_counted_as_a_failure():
+    cases = [{"id": "cannot_fail", "say": "x", "proves_nothing_on": "laptop: why", "expect": {"ends": True}}]
+    facts, runs = parse(case_lines("cannot_fail", "x", [], "ok"))
+    out, summary = ve.scorecard(cases, runs, facts, phone=False)
+    assert "pass 0/1" in out[0]
+    assert any(l.startswith("FAIL  cannot_fail") for l in out)
+    assert summary["failed"] == 1 and summary["not_counted"] == []
 
 
 def test_committed_cases_load_and_have_unique_ids():

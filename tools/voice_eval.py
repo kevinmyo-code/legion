@@ -590,8 +590,9 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         cost, notes, tok = price(run)
         notes_all.update(notes)
         total += cost
-        # A case that cannot fail on this layer is reported apart, never counted (2026-11-18 review r2 B).
-        na = str(case.get("proves_nothing_on", "")).startswith("phone" if phone else "laptop")
+        # A case that proves nothing on this layer is reported apart when it passes (2026-11-18 review r2
+        # B); when it fails it is a failure like any other, since its checks are real (r3).
+        na = v.passed and str(case.get("proves_nothing_on", "")).startswith("phone" if phone else "laptop")
         if na:
             na_ids.append(case["id"])
         else:
@@ -632,7 +633,7 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
             + ("  cost INCOMPLETE: some calls have no price on file" if any(not r["priced"] for r in rows) else "")
             + f"  cost {usd(total)} (ESTIMATE"
             + (f", incl. {usd(overhead)} for the context cache" if overhead else "") + ")")
-    na_line = ([f"not counted, proves nothing on this layer ({len(na_ids)}): {', '.join(na_ids)}"]
+    na_line = ([f"passed, not counted, proves nothing on this layer ({len(na_ids)}): {', '.join(na_ids)}"]
                if na_ids else [])
     tail = [f"note: {n}" for n in sorted(notes_all)]
     tail.append(voice_cost.ESTIMATE)
