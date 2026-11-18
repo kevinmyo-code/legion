@@ -29,8 +29,8 @@ class ToolOutcome:
     # The guard that stopped the call, if one did.
     guard: str | None = None
     ms: int = 0
-    # The result IS the turn's answer (code says it): the loop runs no later call of the round and
-    # asks the model nothing more.
+    # The result IS the turn's answer (code says it): the loop finishes the round's calls and asks
+    # the model nothing more.
     ends_turn: bool = False
 
 
