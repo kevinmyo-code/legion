@@ -80,10 +80,10 @@ internal object SpokenLanguages {
     }
 
     private val ASK = Regex(
-        "(?i)\\b((speak|talk|reply|answer)( to me)?( in)?|switch( over)?( to| into)?|change( it)?( to| into)?|" +
+        // Verbs of speaking only: "change it to Thai" is about food, not the conversation (review).
+        "(?i)\\b((speak|talk|reply|answer)( to me)?( in)?|switch( over)?( to| into)?|" +
             "let'?s (talk|speak|do this|continue) in)\\s+" +
-            "(english|burmese|myanmar|spanish|mandarin|chinese|thai|malay|french|german|japanese|korean|hindi|" +
-            "vietnamese|tagalog|italian|portuguese|arabic|russian)\\b",
+            "(english|burmese|myanmar|spanish|mandarin|chinese|thai|malay)\\b",
     )
     private val ALIASES = mapOf(
         "myanmar" to "Burmese", "mandarin" to "Mandarin Chinese", "chinese" to "Mandarin Chinese",
@@ -98,6 +98,30 @@ internal object SpokenLanguages {
         val name = ALIASES[asked] ?: asked.replaceFirstChar { it.uppercase() }
         val lang = spoken.firstOrNull { it.name.equals(name, ignoreCase = true) }
         return if (lang != null) Switch.To(lang) else Switch.NotInSettings(name)
+    }
+
+    /** What a turn does to the conversation's language ([decide]). */
+    sealed interface Decision {
+        data object Stay : Decision
+        data class To(val language: Language) : Decision
+        /** Say [line] and answer nothing else this turn; the language stays. */
+        data class Refuse(val line: String, val why: String) : Decision
+    }
+
+    /**
+     * The one rule the session and the voice eval share: a request for one of his languages, or a
+     * sentence spoken in one, switches; one he has not added gets [notInSettingsLine]; on the laptop
+     * voice ([cloud] false) anything but English gets [LAPTOP_ENGLISH_ONLY].
+     */
+    fun decide(heard: String, spoken: List<Language>, current: Language, cloud: Boolean): Decision {
+        val asked = request(heard, spoken)
+        if (asked is Switch.NotInSettings) return Decision.Refuse(notInSettingsLine(asked.name), "not_in_settings")
+        val next = (asked as? Switch.To)?.language ?: writtenIn(heard, spoken) ?: return Decision.Stay
+        return when {
+            next == current -> Decision.Stay
+            next != ENGLISH && !cloud -> Decision.Refuse(LAPTOP_ENGLISH_ONLY, "laptop")
+            else -> Decision.To(next)
+        }
     }
 
     /** The enabled non-English language [text] is mostly written in (he spoke it), or null. */

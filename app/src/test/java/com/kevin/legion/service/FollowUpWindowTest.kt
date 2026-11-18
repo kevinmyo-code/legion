@@ -329,6 +329,9 @@ class FollowUpWindowTest {
         assertEquals(FollowUpWindow.QUESTION_WINDOW_MS, FollowUpWindow.windowAfter("Want me to look into it?"))
         assertEquals(FollowUpWindow.QUESTION_WINDOW_MS, FollowUpWindow.windowAfter("Didn't catch that. Say it again? "))
         assertEquals(FollowUpWindow.WINDOW_MS, FollowUpWindow.windowAfter("The quiz is due tonight."))
+        assertEquals(FollowUpWindow.QUESTION_WINDOW_MS, FollowUpWindow.windowAfter("He asked, \"Ready?\""))
+        assertEquals(FollowUpWindow.QUESTION_WINDOW_MS, FollowUpWindow.windowAfter("(Want the rest?)"))
+        assertEquals(FollowUpWindow.QUESTION_WINDOW_MS, FollowUpWindow.windowAfter("ဟုတ်လား？"))
         assertEquals(FollowUpWindow.WINDOW_MS, FollowUpWindow.windowAfter(null))
         assertEquals(8_000L, FollowUpWindow.WINDOW_MS)
     }

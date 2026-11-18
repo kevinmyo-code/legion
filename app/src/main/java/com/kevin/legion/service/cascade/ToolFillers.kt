@@ -57,6 +57,16 @@ internal object ToolFillers {
     /** Tools that never get a line: ending the conversation is itself the last thing said. */
     val SILENT: Set<String> = setOf("end_conversation")
 
+    /**
+     * Tools that use [GENERIC] on purpose (local and quick; a line only if one is still running after
+     * [FAST_DELAY_MS]). Every tool the model can call is in [LINES], here, or in [SILENT]
+     * (`ToolFillersTest`), so a new tool is a decision, not a silent default.
+     */
+    val GENERIC_TOOLS: Set<String> = setOf(
+        "body_log", "clock", "control_music", "email", "goal", "memory", "money", "navigate", "phone", "place",
+        "play_music", "trip", "voice_note",
+    )
+
     /** Every line any tool may say, for warming and keeping ([ScriptedLines.KEEP]). */
     val ALL: List<String> = (LINES.values.flatten() + GENERIC).distinct()
 

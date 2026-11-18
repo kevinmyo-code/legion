@@ -21,6 +21,7 @@ class SpokenLanguagesTest {
     fun `the default setting is the English pin`() {
         assertEquals(CloudSpeechWire.STT_INSTRUCTION, SpokenLanguages.sttInstruction(englishOnly))
         assertTrue(SttGuard.verdict("¿Qué pasó con el coche?", 2_000, accepted = englishOnly) is SttGuard.Verdict.Drop)
+        assertTrue(SttGuard.verdict("dijo que no hay nada para hoy", 2_000, accepted = englishOnly) is SttGuard.Verdict.Drop)
         assertTrue(SttGuard.verdict(burmeseLine, 2_000, accepted = englishOnly) is SttGuard.Verdict.Drop)
     }
 
@@ -46,7 +47,12 @@ class SpokenLanguagesTest {
         assertEquals(SpokenLanguages.Switch.To(SpokenLanguages.ENGLISH), SpokenLanguages.request("speak English", withBurmese))
         assertEquals(SpokenLanguages.Switch.To(SpokenLanguages.ENGLISH), SpokenLanguages.request("English.", withBurmese))
         assertEquals(SpokenLanguages.Switch.NotInSettings("Burmese"), SpokenLanguages.request("speak Burmese", englishOnly))
-        assertEquals(SpokenLanguages.Switch.NotInSettings("French"), SpokenLanguages.request("switch to French", withBurmese))
+        assertNull("not a language on the list: no offer", SpokenLanguages.request("switch to French", withBurmese))
+        assertNull("food, not the conversation", SpokenLanguages.request("change it to Thai", withBurmese))
+        assertEquals(SpokenLanguages.Decision.To(burmese), SpokenLanguages.decide("speak Burmese", withBurmese, SpokenLanguages.ENGLISH, cloud = true))
+        assertTrue(SpokenLanguages.decide("speak Burmese", withBurmese, SpokenLanguages.ENGLISH, cloud = false) is SpokenLanguages.Decision.Refuse)
+        assertTrue(SpokenLanguages.decide("speak Thai", withBurmese, SpokenLanguages.ENGLISH, cloud = true) is SpokenLanguages.Decision.Refuse)
+        assertEquals(SpokenLanguages.Decision.Stay, SpokenLanguages.decide("speak Burmese", withBurmese, burmese, cloud = true))
         assertNull(SpokenLanguages.request("how do you say hello in Spanish", withBurmese))
         assertNull(SpokenLanguages.request("what's on my calendar", withBurmese))
         assertTrue(SpokenLanguages.notInSettingsLine("French").contains("Settings"))

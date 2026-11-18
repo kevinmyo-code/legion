@@ -24,15 +24,13 @@ class ToolFillersTest {
         val decls = CascadeRules.declarations(LiveToolbox.declarations())
         val names = (0 until decls.length()).map { decls.getJSONObject(it).getString("name") }
         assertTrue(names.size > 10)
+        val mapped = ToolFillers.LINES.keys.map { it.substringBefore(':') }.toSet()
         for (n in names) {
-            val key = ToolFillers.keyOf(n, JSONObject())
-            if (n in ToolFillers.SILENT) {
-                assertNull(n, key)
-            } else {
-                val plan = ToolFillers.plan(listOf(ToolFillers.Call(n, JSONObject(), false)))!!
-                assertTrue(n, plan.lines.isNotEmpty())
-            }
+            // Against the explicit lists, never the fallback: a new tool must be a decision.
+            assertTrue("$n has no line and is not listed generic or silent", n in mapped || n in ToolFillers.GENERIC_TOOLS || n in ToolFillers.SILENT)
+            if (n in ToolFillers.SILENT) assertNull(n, ToolFillers.keyOf(n, JSONObject()))
         }
+        assertTrue(ToolFillers.GENERIC_TOOLS.none { it in mapped })
         // The specialists and the reads with a network hop have their own words, not the generic ones.
         for (n in listOf("ask", "look_up", "day", "ask_engine")) {
             if (n in names) assertTrue(n, n in ToolFillers.LINES)
@@ -75,7 +73,8 @@ class ToolFillersTest {
 
     @Test
     fun `no line claims an outcome, each is short and kept in memory`() {
-        val outcome = Regex("(?i)\b(done|set|sent|saved|added|cleared|booked|found|fine|ok|ready)\b")
+        val outcome = Regex("""(?i)\b(done|set|sent|saved|added|cleared|booked|found|fine|ok|ready)\b""")
+        assertTrue("the check itself works", outcome.containsMatchIn("Timer set."))
         for (line in ToolFillers.ALL) {
             assertFalse(line, outcome.containsMatchIn(line))
             assertTrue(line, line.split(' ').size <= 6 && line.length <= 36)

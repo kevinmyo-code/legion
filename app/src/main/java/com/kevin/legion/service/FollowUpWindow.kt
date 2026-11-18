@@ -27,8 +27,11 @@ object FollowUpWindow {
     const val QUESTION_WINDOW_MS = 12_000L
 
     /** The window after [lastLine], the last thing the assistant said (null: none). */
-    fun windowAfter(lastLine: String?): Long =
-        if (lastLine?.trimEnd()?.endsWith("?") == true) QUESTION_WINDOW_MS else WINDOW_MS
+    fun windowAfter(lastLine: String?): Long = if (isQuestion(lastLine)) QUESTION_WINDOW_MS else WINDOW_MS
+
+    /** [line] asks something: it ends in `?` or `？`, a closing quote or bracket after it aside. */
+    fun isQuestion(line: String?): Boolean =
+        line?.trimEnd { it.isWhitespace() || it in "\"')]”’»" }?.lastOrNull()?.let { it == '?' || it == '？' } == true
 
     /**
      * 2026-10-27, Kevin: "the conversation sometimes ends randomly while im still talking". The

@@ -11,45 +11,52 @@ import org.junit.Test
  * believed; ordinary English, short or long, is.
  */
 class SttGuardTest {
-    private fun drop(text: String, ms: Long = 2_000) = SttGuard.verdict(text, ms) as? SttGuard.Verdict.Drop
+    private fun drop(text: String, ms: Long = 2_000, afterQuestion: Boolean = false) =
+        SttGuard.verdict(text, ms, afterQuestion = afterQuestion) as? SttGuard.Verdict.Drop
+
+    private fun keeps(text: String, ms: Long = 2_000, afterQuestion: Boolean = false) =
+        SttGuard.verdict(text, ms, afterQuestion = afterQuestion) is SttGuard.Verdict.Keep
 
     @Test
     fun `spanish and other-script fragments are not believed`() {
         assertEquals("not_english", drop("Oye, mira.")?.reason)
         assertEquals("not_english", drop("¿Qué pasó?")?.reason)
-        assertEquals("not_english", drop("cambió las prioridades del día.")?.reason)
+        assertEquals("not_english", drop("dijo que no hay nada para hoy")?.reason)
         assertEquals("not_english_script", drop("嗯")?.reason)
         assertEquals("not_english_script", drop("Привет")?.reason)
     }
 
     @Test
+    fun `english with a Spanish-looking word or an accent is english`() {
+        for (s in listOf("Find a café near me", "Call José", "El Paso.", "Play lo fi", "Add jalapeño to the list")) {
+            assertTrue(s, keeps(s))
+        }
+        assertTrue(SttGuard.verdict("Call Inés", 1_500, known = setOf("inés")) is SttGuard.Verdict.Keep)
+    }
+
+    @Test
     fun `an English sentence with an aside in another script keeps the English`() {
-        val v = SttGuard.verdict("嗯 This truck is the invented Ranger.", 3_000)
-        assertEquals(SttGuard.Verdict.Keep("This truck is the invented Ranger."), v)
+        val v = SttGuard.verdict("嗯 This truck is the invented Zephyr.", 3_000)
+        assertEquals(SttGuard.Verdict.Keep("This truck is the invented Zephyr."), v)
     }
 
     @Test
-    fun `far too short for the audio is not believed, a short real answer is`() {
-        assertEquals("too_short", drop("0", 1_100)?.reason)
-        assertEquals("too_short", drop("Hi.", 6_000)?.reason)
-        for (ok in listOf("No.", "Yes.", "Yes, please.", "Bye.")) {
-            assertTrue(ok, SttGuard.verdict(ok, 1_500) is SttGuard.Verdict.Keep)
-        }
-        assertTrue(SttGuard.verdict("2", 500) is SttGuard.Verdict.Keep)
+    fun `real short answers are kept`() {
+        assertTrue(keeps("5.", 3_500))
+        assertTrue(keeps("0", 1_100))
+        assertTrue(keeps("Twenty.", 3_200))
+        assertTrue(keeps("Yes.", 1_500))
+        assertTrue("after a question a one-word answer stands", keeps("Sure.", 3_400, afterQuestion = true))
+        assertTrue(keeps("Zephyr.", 3_400, afterQuestion = true))
+        assertTrue(keeps("Timer.", 1_500))
+        assertTrue(keeps("Calendar.", 1_500))
+        assertTrue(keeps("Do it.", 3_400))
     }
 
     @Test
-    fun `ordinary English passes, an accented name he uses passes`() {
-        for (ok in listOf(
-            "Can you clear the codes on the Ranger?",
-            "The adapter is in the Fit, use that one.",
-            "What's on my calendar for tomorrow?",
-            "No, I said the café on Main.",
-        )) {
-            assertTrue(ok, SttGuard.verdict(ok, 3_000) is SttGuard.Verdict.Keep)
-        }
-        assertTrue(SttGuard.verdict("Call José", 1_500, known = setOf("josé")) is SttGuard.Verdict.Keep)
-        assertEquals("not_english", drop("Call José", 1_500)?.reason)
+    fun `one word from long audio, not a number and not an answer, is silence`() {
+        assertEquals("too_short", drop("Uh.", 3_500)?.reason)
+        assertTrue("too_short" in SttGuard.SILENT_REASONS)
     }
 
     @Test
@@ -72,14 +79,14 @@ class SttGuardTest {
     }
 
     @Test
-    fun `a transcript made only of the hint's own words was read, not heard, and counts as silence`() {
-        val known = setOf("ranger", "fit", "honda")
-        assertEquals("hint_only", (SttGuard.verdict("OBD adapter, dongle.", 2_000) as SttGuard.Verdict.Drop).reason)
-        assertEquals("hint_only", (SttGuard.verdict("Ranger. Honda Fit.", 2_000, known) as SttGuard.Verdict.Drop).reason)
-        assertTrue(SttGuard.verdict("Clear the codes on the Ranger.", 2_000, known) is SttGuard.Verdict.Keep)
-        assertTrue(SttGuard.verdict("It's the Ranger.", 1_500, known) is SttGuard.Verdict.Keep)
-        assertTrue("hint_only" in SttGuard.SILENT_REASONS && "too_short" in SttGuard.SILENT_REASONS)
-        assertTrue("not_english" !in SttGuard.SILENT_REASONS)
+    fun `two or more words made only of the hint's own words were read, not heard, and count as silence`() {
+        assertEquals("hint_only", drop("OBD adapter, dongle.")?.reason)
+        // Names are not in the hint any more, so a car's name is never dropped as hint.
+        val known = setOf("zephyr", "comet")
+        assertTrue(SttGuard.verdict("Zephyr. Comet.", 2_000, known) is SttGuard.Verdict.Keep)
+        assertTrue(keeps("Clear the codes on the Zephyr."))
+        assertTrue("an answer to a question stands", keeps("Oil change, recall.", afterQuestion = true))
+        assertTrue("hint_only" in SttGuard.SILENT_REASONS && "not_english" !in SttGuard.SILENT_REASONS)
     }
 
     @Test
@@ -87,6 +94,7 @@ class SttGuardTest {
         assertEquals("", CloudSpeechWire.cleanTranscript("<none>"))
         assertEquals("", CloudSpeechWire.cleanTranscript(" <NONE>. "))
         assertEquals("None of them.", CloudSpeechWire.cleanTranscript("None of them."))
+        assertEquals("None.", CloudSpeechWire.cleanTranscript("None."))
         assertTrue(CloudSpeechWire.STT_INSTRUCTION.contains(CloudSpeechWire.NO_SPEECH))
         assertTrue(SpokenLanguages.sttInstruction(listOf(SpokenLanguages.ENGLISH) + SpokenLanguages.OFFERED).contains(CloudSpeechWire.NO_SPEECH))
     }
