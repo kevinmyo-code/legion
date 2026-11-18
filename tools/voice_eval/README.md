@@ -111,6 +111,7 @@ sent typed and the scorecard says why.
 - `missed`: the transcript guard dropped the words and the spoken miss was said (laptop; a model
   saying "didn't catch" does not count).
 - `proves_nothing_on` (case level): the layer where the case cannot fail when its feature breaks,
-  with why and the unit test that does prove it. It still runs; read its PASS there as nothing.
+  with why and the unit test that does prove it. It still runs, shows as `N/A`, and is left out
+  of the pass count, on its own "not counted" line.
 - `grade`: a rubric for the optional LLM grader (`--grade`), shown in its own LLM column; it never
   changes PASS or FAIL.

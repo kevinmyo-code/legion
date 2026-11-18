@@ -576,6 +576,7 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
     lines, rows = [], []
     total = Decimal(0)
     passed = failed = missing = 0
+    na_ids: list[str] = []
     notes_all: set[str] = set()
     model = next((r.model for r in runs if r.model), run_facts.get("model", "?"))
     for case in cases:
@@ -589,17 +590,22 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         cost, notes, tok = price(run)
         notes_all.update(notes)
         total += cost
-        passed += v.passed
-        failed += not v.passed
+        # A case that cannot fail on this layer is reported apart, never counted (2026-11-18 review r2 B).
+        na = str(case.get("proves_nothing_on", "")).startswith("phone" if phone else "laptop")
+        if na:
+            na_ids.append(case["id"])
+        else:
+            passed += v.passed
+            failed += not v.passed
         tools = " ".join(c.key + ("[refused]" if c.refused_for_test else "") for t in run.turns for c in t.calls) or "-"
         turn_ms = [t.timings.get("test_turn_ms") or t.timings.get("eot_reply_ms") for t in run.turns]
         ms = "/".join(str(x) for x in turn_ms if x is not None) or (str(run.ms) if run.ms else "-")
-        row = {"id": case["id"], "pass": v.passed, "llm": v.llm, "tools": tools, "ms": ms,
+        row = {"id": case["id"], "pass": v.passed, "proves_nothing": na, "llm": v.llm, "tools": tools, "ms": ms,
                "tokens": tok, "usd": str(cost), "priced": not any("no price" in n for n in notes), "failures": v.failures, "warnings": v.warnings,
                "answer": " | ".join(t.answer for t in run.turns), "notes": run.notes,
                "timings": run.timings}
         rows.append(row)
-        flag = "PASS" if v.passed else "FAIL"
+        flag = "N/A " if na else "PASS" if v.passed else "FAIL"
         llm = f"  LLM {v.llm}" if v.llm else ""
         money = usd(cost) if row["priced"] else "no price"
         lines.append(f"{flag}  {case['id']:<22} {tools[:48]:<48} {ms:>11}  "
@@ -626,14 +632,17 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
             + ("  cost INCOMPLETE: some calls have no price on file" if any(not r["priced"] for r in rows) else "")
             + f"  cost {usd(total)} (ESTIMATE"
             + (f", incl. {usd(overhead)} for the context cache" if overhead else "") + ")")
+    na_line = ([f"not counted, proves nothing on this layer ({len(na_ids)}): {', '.join(na_ids)}"]
+               if na_ids else [])
     tail = [f"note: {n}" for n in sorted(notes_all)]
     tail.append(voice_cost.ESTIMATE)
     if grader:
         tail.append("LLM = an LLM grader's opinion on the case's rubric; it does not change PASS/FAIL.")
     facts = {k: v for k, v in run_facts.items() if not k.startswith("_")}
     summary = {"model": model, "phone": phone, "passed": passed, "failed": failed, "missing": missing,
+               "not_counted": na_ids,
                "usd": str(total), "overhead_usd": str(overhead), "cases": rows, "run": facts}
-    return [head, ""] + lines + [""] + tail, summary
+    return [head] + na_line + [""] + lines + [""] + tail, summary
 
 
 def compare(summaries: list[dict]) -> list[str]:

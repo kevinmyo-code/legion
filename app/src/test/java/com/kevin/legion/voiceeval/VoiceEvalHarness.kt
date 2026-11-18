@@ -33,10 +33,12 @@ import com.kevin.legion.service.cascade.SpokenLanguages
 import com.kevin.legion.service.cascade.ToolFillers
 import com.kevin.legion.service.cascade.TtsTags
 import com.kevin.legion.service.tools.LiveSurface
+import com.kevin.legion.service.tools.day.RelativeDay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -44,8 +46,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * One eval case as the harness needs it: an id and what is said, turn by turn. [dongle] "unknown"
- * plugs a made-up OBD adapter in whose car nobody has named (no VIN); [sttAudio] speaks each turn
+ * One eval case as the harness needs it: an id and what is said, turn by turn. [sttAudio] speaks each turn
  * with the cloud voice and transcribes it with the cloud transcriber before the model hears it.
  */
 internal data class EvalCase(
@@ -106,6 +107,11 @@ internal class VoiceEvalHarness(
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val toolSeq = AtomicInteger(0)
+
+    /** As the session: the day the preamble gave the model, the turn's start, its date-taking calls. */
+    private var promptDay: java.time.LocalDate = java.time.LocalDate.now()
+    private var turnStartedAt: java.time.LocalTime = java.time.LocalTime.now()
+    private val dateCalls = AtomicInteger(0)
 
     suspend fun runCase(case: EvalCase) {
         out(TEST_TAG, "case_begin id=${LiveAudit.token(case.id)}")
@@ -187,6 +193,8 @@ internal class VoiceEvalHarness(
             }
             audit.user(heard, final = true)
             val t0 = now()
+            turnStartedAt = java.time.LocalTime.now()
+            dateCalls.set(0)
             var firstMs = -1L
             var fillerSaid = false
             val raw = StringBuilder()
@@ -204,6 +212,9 @@ internal class VoiceEvalHarness(
 
                     // The holding line the phone would say as these tools start ([ToolFillers]).
                     override fun onToolsStarting(calls: List<Pair<String, JSONObject>>) {
+                        dateCalls.addAndGet(
+                            calls.count { (n, a) -> LiveSurface.resolve(n, a).let { RelativeDay.isDateCall(it.name, it.args) } },
+                        )
                         if (firstMs >= 0 || fillerSaid) return
                         val plan = ToolFillers.plan(
                             calls.map { (n, a) -> ToolFillers.Call(n, a, CascadeRules.isWrite(n, a)) },
@@ -315,8 +326,9 @@ internal class VoiceEvalHarness(
                 ?: screenOnly()
             in SCREEN_TOOLS -> screenOnly()
             else -> withTimeoutOrNull(CascadeSession.TOOL_BACKSTOP_MS) {
-                LiveToolbox.dispatch(context, resolved, resolvedArgs, readThrough, userText)
-                    ?: JSONObject().put("success", true)
+                withContext(RelativeDay.TurnDates(promptDay, turnStartedAt, dateCalls.get() <= 1)) {
+                    LiveToolbox.dispatch(context, resolved, resolvedArgs, readThrough, userText)
+                } ?: JSONObject().put("success", true)
             } ?: JSONObject().put("success", false).put("message", "That took too long and timed out.")
         }
         return LiveSurface.withRule(resolved, response)
