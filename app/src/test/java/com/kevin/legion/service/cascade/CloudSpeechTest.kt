@@ -100,15 +100,16 @@ class CloudSpeechTest {
     }
 
     @Test
-    fun `the voice request asks for audio in Puck, in the 3_8 shape or the older one`() {
-        assertEquals("Puck", CloudSpeechWire.VOICE)
+    fun `the voice request asks for audio in Alfred's default voice, in the 3_8 shape or the older one`() {
+        assertEquals("en-gb-advisor-3", CloudSpeechWire.VOICE)
+        assertEquals("Puck", CloudSpeechWire.FALLBACK_VOICE)
         val now = CloudSpeechWire.speak("Invented line.", legacyVoice = false)
         val cfg = now.getJSONObject("generationConfig")
         assertEquals("AUDIO", cfg.getJSONArray("responseModalities").getString(0))
-        assertEquals("Puck", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
+        assertEquals("en-gb-advisor-3", cfg.getJSONObject("speechConfig").getJSONObject("voiceConfig").getString("voice"))
         val old = CloudSpeechWire.speak("Invented line.", legacyVoice = true)
         assertEquals(
-            "Puck",
+            "en-gb-advisor-3",
             old.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
                 .getJSONObject("prebuiltVoiceConfig").getString("voiceName"),
         )
@@ -288,12 +289,16 @@ class CloudSpeechTest {
             }
         }
         val kept = ConcurrentHashMap<String, ByteArray>()
-        val tts = GeminiTts(fake, scope, keepLines = setOf("Listening."), kept = kept, voice = "en-us-neno")
+        val logs = Collections.synchronizedList(mutableListOf<String>())
+        val tts = GeminiTts(fake, scope, log = { logs.add(it) }, keepLines = setOf("Listening."), kept = kept, voice = "en-us-neno")
         assertArrayEquals(byteArrayOf(1, 2), collect(tts.speak("Listening.")))
         assertEquals("Puck", voices.last())
         // The kept clip is filed under the voice that spoke it.
         assertTrue(kept.keys.single().contains("|Puck|"))
         assertTrue(tts.performsTags)
+        // A second line goes straight to Puck; the fallback is logged once.
+        collect(tts.speak("Invented second line."))
+        assertEquals(1, logs.count { it.startsWith("tts_voice_fallback") })
     }
 
     @Test

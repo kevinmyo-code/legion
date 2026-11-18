@@ -91,11 +91,13 @@ internal object CloudSpeechWire {
     const val TTS_MODEL = "gemini-3.8-flash-tts"
 
     /**
-     * The default cloud voice: Puck, the voice Live spoke in (Kevin, 2026-11-17: Neno was auditioned
-     * and dropped; a British voice is being chosen). Settings > Voice engine > Voice sets another by
-     * its id ([VoiceEngineSettings.cloudVoice]); the cloud voice no longer follows the Live voice setting.
+     * The default cloud voice for Alfred: the en-GB library voice "Authoritative Advisor 3" (Kevin,
+     * 2026-11-17: "this is my choice Authoritative Advisor 3 / en-gb-advisor-3"; checked live in this
+     * request shape: accepted, tags accepted, ~7% slower than Puck, so the 1.15x speed default stays).
+     * Settings > Voice engine > Cloud voice sets Puck or another id ([VoiceEngineSettings.cloudVoice]);
+     * the cloud voice no longer follows the Live voice setting.
      */
-    const val VOICE = "Puck"
+    const val VOICE = "en-gb-advisor-3"
 
     /** If Google refuses the chosen voice by name (a 400), the conversation goes on in Puck, never silent. */
     const val FALLBACK_VOICE = "Puck"
@@ -528,7 +530,8 @@ internal class GeminiTts(
                         allowFallback && !fallbackVoice && voice != CloudSpeechWire.FALLBACK_VOICE
                     ) {
                         fallbackVoice = true
-                        log("tts_voice_fallback to=${CloudSpeechWire.FALLBACK_VOICE}")
+                        // Once per conversation: the flag stays set, so this is never logged twice.
+                        log("tts_voice_fallback from=$voice to=${CloudSpeechWire.FALLBACK_VOICE}")
                         o = request(asked)
                     }
                     // One retry for a dropped request or a server error, only before any audio

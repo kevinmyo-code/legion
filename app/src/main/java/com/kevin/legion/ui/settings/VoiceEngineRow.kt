@@ -146,7 +146,17 @@ fun VoiceEngineRow() {
                 )
                 Spacer(Modifier.width(8.dp))
                 DeckButton(
-                    text = "Back to Puck",
+                    text = "Puck",
+                    enabled = voice != CloudSpeechWire.FALLBACK_VOICE,
+                    onClick = {
+                        VoiceEngineSettings.setCloudVoice(context, CloudSpeechWire.FALLBACK_VOICE)
+                        voice = CloudSpeechWire.FALLBACK_VOICE
+                        voiceNote = null
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                DeckButton(
+                    text = "Default",
                     enabled = voice != CloudSpeechWire.VOICE,
                     onClick = {
                         VoiceEngineSettings.setCloudVoice(context, CloudSpeechWire.VOICE)
