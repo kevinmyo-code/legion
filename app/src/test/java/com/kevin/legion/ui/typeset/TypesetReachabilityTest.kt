@@ -110,6 +110,7 @@ class TypesetReachabilityTest {
         "RingActivity" to "an alarm ringing",
         "DumbBounceActivity" to "the feed blocker's bounce screen",
         "MirrorSyncActivity" to "the engine mirror's sync host",
+        "PinShortcutActivity" to "the system's pin-shortcut confirmation, opened by an app's request",
         "ClockLauncher" to "the phone launcher's Clock icon; Clock is on the contents line",
     )
 

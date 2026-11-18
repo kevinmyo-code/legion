@@ -256,6 +256,22 @@
              2026-10-04; removed 2026-10-05 by the chat panel): the text field now lives in a
              bottom sheet, its own window, which handles the keyboard itself. Resizing THIS window
              as well would make the strip jump under the sheet. -->
+        <!-- The default launcher's pin confirmation (2026-11-18). With LEGION as the home app, an
+             activity for CONFIRM_PIN_SHORTCUT is what makes ShortcutManager.isRequestPinShortcutSupported()
+             true; without it Chrome hides "Add to Home screen" / "Install app" altogether. The system
+             starts it with the request in EXTRA_PIN_ITEM_REQUEST; anything else that opens it finds no
+             request and it closes (LauncherApps.getPinItemRequest returns null). -->
+        <activity
+            android:name=".ui.apps.PinShortcutActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.content.pm.action.CONFIRM_PIN_SHORTCUT" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"

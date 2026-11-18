@@ -84,7 +84,10 @@ fun AppsScreen() {
         val graph = remember(context) { (context.applicationContext as com.kevin.legion.MidnightApplication).dumb }
         SoftTheme {
             com.kevin.legion.ui.typeset.TypesetAppsIndex(
-                folders = remember(state.apps, query) { letterFolders(filterDrawer(state.apps, query)) },
+                // Pinned shortcuts (a web app Chrome added) file under their letter beside the apps.
+                folders = remember(state.apps, state.shortcuts, query) {
+                    letterFolders(filterDrawer(state.apps + state.shortcuts, query))
+                },
                 query = query,
                 onQueryChange = { query = it },
                 blocked = { app -> graph.blockPolicy.verdict(app.packageName).blocked },
@@ -193,7 +196,26 @@ fun AppsScreen() {
         }
     }
 
-    pinMenuApp?.let { app ->
+    pinMenuApp?.takeIf { it.shortcutId != null }?.let { shortcut ->
+        // A pinned shortcut is on the home row already: its one action is to take it off.
+        PinMenuSheet(
+            app = shortcut,
+            pinned = true,
+            onDismiss = { pinMenuApp = null },
+            onTogglePin = {
+                val state = loaded
+                val handle = state?.handles?.get(shortcut.profileKey)
+                message = if (state == null || handle == null) {
+                    "Couldn't find the profile ${shortcut.label} belongs to."
+                } else {
+                    PinnedShortcutsAndroid.unpin(context, shortcut, state.shortcuts, handle)
+                }
+                pinMenuApp = null
+                reload++
+            },
+        )
+    }
+    pinMenuApp?.takeIf { it.shortcutId == null }?.let { app ->
         PinMenuSheet(
             app = app,
             pinned = DockPin(app.packageName, app.profileKey) in pins,
@@ -260,6 +282,8 @@ internal fun launchDrawerApp(
 ): String? {
     val handle = state.handles[app.profileKey] ?: return "Couldn't find the profile ${app.label} belongs to."
     if (app.isWork && state.workPaused) return pausedMessage
+    // A pinned shortcut (a web app, say) opens through LauncherApps, not as an activity.
+    if (app.shortcutId != null) return PinnedShortcutsAndroid.start(context, app, handle)
     return runCatching {
         context.getSystemService(LauncherApps::class.java)
             .startMainActivity(ComponentName(app.packageName, app.className), handle, null, null)

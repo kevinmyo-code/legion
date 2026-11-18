@@ -101,6 +101,13 @@ class TypesetHomeScreenshotTest {
         Home(cards = emptyList(), night = true, full = true)
     }
 
+    /** A web app Chrome pinned to LEGION (2026-11-18) sits on the home row after the pinned apps. */
+    @Test
+    @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
+    fun `front page - a pinned web app shortcut on the home row, day`() = shot("typeset-home-shortcut-day.png") {
+        Home(cards = emptyList(), night = false, full = true, dock = DOCK.take(4) + SHORTCUT)
+    }
+
     @Test
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
     fun `controls panel, day`() = shot("typeset-controls-day.png") { Controls() }
@@ -116,6 +123,7 @@ class TypesetHomeScreenshotTest {
         phase: OrbPhase = OrbPhase.IDLE,
         status: String = "Tap to talk",
         full: Boolean = false,
+        dock: List<TypesetDockTile> = DOCK,
     ) {
         ShellHome {
             if (full) {
@@ -126,7 +134,7 @@ class TypesetHomeScreenshotTest {
                     night = night,
                     cards = cards,
                     actions = TypesetHomeActions(),
-                    dock = DOCK,
+                    dock = dock,
                     groups = {
                         Row(Modifier.fillMaxWidth()) {
                             GROUPS.forEach { TypesetGroupCell(it, onClick = {}, onLongClick = {}) }
@@ -202,6 +210,8 @@ class TypesetHomeScreenshotTest {
             CategoryUi(HomeCategory.MAIL, listOf(slot("Workmail", "test.workmail", BLUE, paused = true, work = true))),
             CategoryUi(HomeCategory.CHAT, emptyList()),
         )
+        /** A pinned shortcut reads as a tile like any app: its mark over its name. */
+        val SHORTCUT = TypesetDockTile("We", "Weather board", icon = GREEN)
         val DOCK = listOf(
             TypesetDockTile("Ch", "Chatter", icon = GREEN),
             TypesetDockTile("Wo", "Workmail", icon = BLUE, status = "Paused"),

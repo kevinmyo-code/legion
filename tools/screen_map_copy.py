@@ -289,6 +289,8 @@ ACTIVITIES = {
 
 # Manifest activities that are not screens an agent navigates to, and why.
 IGNORED_ACTIVITIES = {
+    ".ui.apps.PinShortcutActivity": "the default launcher's pin confirmation (2026-11-18); the system opens "
+                                    "it when an app such as Chrome asks to add a shortcut",
     ".ui.AssistActivity": "the system assistant entry point (long-press); it hands off to the service",
     ".ui.mirror.MirrorSyncActivity": "a sync handoff with no UI of its own to verify",
     ".ui.dumb.DumbBounceActivity": "the screen a blocked app bounces to in Matrix mode; reached by "

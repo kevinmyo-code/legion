@@ -14,6 +14,11 @@ data class DrawerApp(
     val isWork: Boolean,
     /** Opaque key back to the Android `UserHandle` the row came from. */
     val profileKey: Int,
+    /**
+     * Set for a pinned shortcut (a web app Chrome added, say) rather than an app: it opens through
+     * `LauncherApps.startShortcut`, and long press removes it (2026-11-18, [PinnedShortcuts]).
+     */
+    val shortcutId: String? = null,
 )
 
 /**

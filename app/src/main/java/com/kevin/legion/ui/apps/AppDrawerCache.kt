@@ -2,6 +2,7 @@ package com.kevin.legion.ui.apps
 
 import android.content.Context
 import android.content.pm.LauncherApps
+import android.content.pm.ShortcutInfo
 import android.os.Handler
 import android.os.Looper
 import android.os.UserHandle
@@ -23,6 +24,12 @@ internal class Loaded(
     val handles: Map<Int, UserHandle>,
     val workProfile: UserHandle?,
     val workPaused: Boolean,
+    /**
+     * Shortcuts pinned to LEGION as the home app ([PinnedShortcuts]), as drawer rows with a
+     * [DrawerApp.shortcutId]. Kept apart from [apps] so the dock pins, the category chooser, the
+     * block list and Matrix's drawer keep reading apps only.
+     */
+    val shortcuts: List<DrawerApp> = emptyList(),
 )
 
 internal fun iconKey(profileKey: Int, packageName: String, className: String) = "$profileKey/$packageName/$className"
@@ -97,6 +104,12 @@ internal object AppDrawerCache {
                 override fun onPackagesUnavailable(packageNames: Array<out String>, user: UserHandle,
                     replacing: Boolean) =
                     changed(context, packageNames.toList())
+                // A shortcut pinned, removed or updated (a web app's new name or icon): re-read.
+                override fun onShortcutsChanged(
+                    packageName: String,
+                    shortcuts: List<ShortcutInfo>,
+                    user: UserHandle,
+                ) = changed(context, listOf(packageName))
             }, Handler(Looper.getMainLooper()))
             callbackRegistered = true
         }
@@ -117,11 +130,14 @@ internal object AppDrawerCache {
         val handles = mutableMapOf<Int, UserHandle>()
         var work: UserHandle? = null
         val profiles = runCatching { launcherApps.profiles }.getOrDefault(listOf(me))
+        val shortcuts = mutableListOf<DrawerApp>()
+        val dpi = context.resources.displayMetrics.densityDpi
         for (profile in profiles) {
             val key = userManager.getSerialNumberForUser(profile).toInt()
             handles[key] = profile
             val isWork = profile != me
             if (isWork) work = profile
+            shortcuts += PinnedShortcutsAndroid.load(launcherApps, profile, key, isWork, dpi, ICON_PX, icons)
             val activities = runCatching { launcherApps.getActivityList(null, profile) }.getOrDefault(emptyList())
             for (info in activities) {
                 val component = info.componentName
@@ -142,11 +158,11 @@ internal object AppDrawerCache {
             }
         }
         // Forget icons for apps that are gone, so the map can't grow forever.
-        val live = apps.mapTo(HashSet()) { iconKey(it.profileKey, it.packageName, it.className) }
+        val live = (apps + shortcuts).mapTo(HashSet()) { iconKey(it.profileKey, it.packageName, it.className) }
         icons.keys.retainAll(live)
         unreadable.retainAll(live)
         val paused = work?.let { runCatching { userManager.isQuietModeEnabled(it) }.getOrDefault(false) } ?: false
-        return Loaded(apps, HashMap(icons), handles, work, paused)
+        return Loaded(apps, HashMap(icons), handles, work, paused, shortcuts)
     }
 }
 

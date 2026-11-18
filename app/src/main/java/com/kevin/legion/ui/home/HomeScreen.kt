@@ -335,11 +335,28 @@ fun HomeScreen(
         calendar = calendar,
         money = money,
         clock = clock,
-        dockSlots = buildDockSlots(pins, drawerSnapshot),
+        // The pinned apps, then the shortcuts pinned to LEGION (a web app Chrome added), as one row.
+        dockSlots = com.kevin.legion.ui.apps.PinnedShortcuts.homeRow(
+            buildDockSlots(pins, drawerSnapshot),
+            shortcutSlots(drawerSnapshot),
+        ),
         onLaunchSlot = launchSlot,
         onUnpinSlot = { slot ->
-            pins = DockPins.unpin(pins, slot.pin)
-            DockPinsStore.write(context, pins)
+            val shortcut = slot.app?.takeIf { it.shortcutId != null }
+            val snapshot = drawerSnapshot
+            if (shortcut != null && snapshot != null) {
+                // A pinned shortcut comes off LEGION's home through LauncherApps; the cache re-reads.
+                val handle = snapshot.handles[shortcut.profileKey]
+                dockMessage = handle?.let {
+                    com.kevin.legion.ui.apps.PinnedShortcutsAndroid.unpin(context, shortcut, snapshot.shortcuts, it)
+                } ?: "Couldn't find the profile ${shortcut.label} belongs to."
+                scope.launch {
+                    drawerSnapshot = runCatching { AppDrawerCache.refresh(context) }.getOrNull() ?: snapshot
+                }
+            } else {
+                pins = DockPins.unpin(pins, slot.pin)
+                DockPinsStore.write(context, pins)
+            }
         },
         onMoveSlot = { slot, delta ->
             pins = DockPins.move(pins, slot.pin, delta = delta)
