@@ -4,6 +4,9 @@ import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type FunnelEvent,
 import { EARLY_TRANSCRIPT, createCascadeDeps } from './deps'
 import { MAX_UTTERANCE_MS, WINDOW_MS } from './endpointer'
 import { MAX_UTTERANCE_SAMPLES } from './utterance'
+import { ENTRY_STALLED } from './cascade-words'
+import { ENTRY_MS, ENTRY_TAP_MS } from './turn-deadline'
+import { HIDDEN_CLOSE_MS } from './backstop'
 import { pcm16ToBase64 } from './pcm'
 import type { SseEvent } from './sse'
 import { BargeInGate } from './turn/barge-in-gate'
@@ -315,6 +318,61 @@ describe('noise (review 2026-11-17: a fan or a TV kept the conversation open)', 
   })
 })
 
+describe('wall-clock backstops (review r3: a suspended capture sends no chunks)', () => {
+  async function openOnFakeTimers() {
+    const t = build([spoken('Hello.')])
+    void t.client.startVoice()
+    await vi.advanceTimersByTimeAsync(0)
+    t.audio.handlers?.onPlaying(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.client.getState().mic).toBe('on')
+    return t
+  }
+
+  it('with no chunks at all, the follow-up window still lapses on the clock and the mic is let go', async () => {
+    vi.useFakeTimers()
+    try {
+      const t = await openOnFakeTimers()
+      await vi.advanceTimersByTimeAsync(WINDOW_MS - 1_500)
+      expect(t.client.getState().mic).toBe('on')
+      await vi.advanceTimersByTimeAsync(2_500)
+      expect(t.audio.micOpen).toBe(false)
+      expect(t.client.getState().lines.at(-1)).toMatchObject({ kind: 'sys', text: CONVERSATION_CLOSED })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hidden for a few seconds with the conversation open, it closes; back sooner, it carries on', async () => {
+    vi.useFakeTimers()
+    const setHidden = (hidden: boolean) => {
+      Object.defineProperty(document, 'visibilityState', { value: hidden ? 'hidden' : 'visible', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+    try {
+      const t = await openOnFakeTimers()
+      const chunk = new Int16Array(320)
+      const tick = async (ms: number) => {
+        for (let at = 0; at < ms; at += 500) {
+          t.audio.handlers?.onChunk(chunk)
+          await vi.advanceTimersByTimeAsync(500)
+        }
+      }
+      setHidden(true)
+      await tick(HIDDEN_CLOSE_MS - 1_000)
+      setHidden(false)
+      await tick(HIDDEN_CLOSE_MS)
+      expect(t.client.getState().mic).toBe('on')
+      setHidden(true)
+      await tick(HIDDEN_CLOSE_MS + 500)
+      expect(t.audio.micOpen).toBe(false)
+    } finally {
+      setHidden(false)
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('early transcripts, off for this ship (deps.ts EARLY_TRANSCRIPT)', () => {
   it("the page's deps carry no early transcript", () => {
     expect(EARLY_TRANSCRIPT).toBe(false)
@@ -405,6 +463,46 @@ describe('the demo', () => {
     t.audio.handlers?.onPlaying(false)
     await settle()
     expect(t.client.getState().mic).toBe('on')
+  })
+
+  it('an entry that hangs lets the mic go after its deadline, says so, and a tap enters afresh', async () => {
+    vi.useFakeTimers()
+    try {
+      const prepare = vi.fn(() => new Promise<boolean>(() => {}))
+      const t = build([spoken('Hi.')], { prepare })
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(ENTRY_MS - 100)
+      expect(t.audio.micOpen).toBe(true)
+      await vi.advanceTimersByTimeAsync(200)
+      expect(t.audio.micOpen).toBe(false)
+      expect(t.client.getState().mic).toBe('off')
+      expect(t.client.getState().activity).not.toBe('thinking')
+      expect(t.client.getState().notice?.text).toBe(ENTRY_STALLED.text)
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(prepare).toHaveBeenCalledTimes(2)
+      expect(t.audio.micOpen).toBe(true)
+      expect(t.requests).toHaveLength(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('during a slow entry a tap in the first two seconds is ignored, a later one gives up on it', async () => {
+    vi.useFakeTimers()
+    try {
+      const t = build([spoken('Hi.')], { prepare: () => new Promise<boolean>(() => {}) })
+      void t.client.startVoice()
+      await vi.advanceTimersByTimeAsync(1_000)
+      t.client.interrupt()
+      expect(t.audio.micOpen).toBe(true)
+      await vi.advanceTimersByTimeAsync(ENTRY_TAP_MS)
+      t.client.interrupt()
+      expect(t.audio.micOpen).toBe(false)
+      expect(t.client.getState().notice?.text).toBe(ENTRY_STALLED.text)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a client the page let go of during the entry asks the engine for nothing', async () => {

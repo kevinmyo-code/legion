@@ -8,17 +8,27 @@ import type { TurnStart } from './cascade-client'
 export const BUSY_RETRY_MS = 400
 export const BUSY_TRIES = 5
 export const BUSY_BUDGET_MS = 6_000
+/** `demo_full` (the demo's turn cap, per address or demo-wide): a slower, shorter wait. */
+export const FULL_RETRY_MS = 1_500
+export const FULL_TRIES = 3
+
+/** Codes worth posting the same turn again for: how far apart, how many posts, how long in all. */
+const RETRY: Record<string, { ms: (given: number | null | undefined) => number; tries: number; budgetMs: number }> = {
+  busy: { ms: (given) => given ?? BUSY_RETRY_MS, tries: BUSY_TRIES, budgetMs: BUSY_BUDGET_MS },
+  demo_full: { ms: () => FULL_RETRY_MS, tries: FULL_TRIES, budgetMs: FULL_RETRY_MS * (FULL_TRIES - 1) },
+}
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-/** Post until it is not `busy`, the tries run out, or `wanted()` says nobody is waiting any more. */
+/** Post until it is not retried, the tries run out, or `wanted()` says nobody is waiting any more. */
 export async function postTurn(post: () => Promise<TurnStart>, wanted: () => boolean): Promise<TurnStart> {
   let waited = 0
   for (let tries = 1; ; tries++) {
     const start = await post()
-    if (start.ok || start.code !== 'busy' || !wanted()) return start
-    const ms = start.retryMs ?? BUSY_RETRY_MS
-    if (tries >= BUSY_TRIES || waited + ms > BUSY_BUDGET_MS) return start
+    const rule = start.ok || !start.code ? undefined : RETRY[start.code]
+    if (start.ok || !rule || !wanted()) return start
+    const ms = rule.ms(start.retryMs)
+    if (tries >= rule.tries || waited + ms > rule.budgetMs) return start
     waited += ms
     await wait(ms)
     if (!wanted()) return start

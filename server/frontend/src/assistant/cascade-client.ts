@@ -1,22 +1,24 @@
-import { asCard, mergeCar, type Card } from '@/components/assistant/cards/types'
+import { asCard } from '@/components/assistant/cards/types'
 
 import { AudioError, type AudioIO, type AudioLevels } from './audio'
 import {
   CONVERSATION_CLOSED,
   ENDED_LIMIT,
   ENDED_LOCKED,
+  ENTRY_STALLED,
   TONE_RATE,
-  STILL_BUSY,
   TURN_STALLED,
   UNREACHABLE,
   closingTone,
   micNotice,
-  refusalNotice,
 } from './cascade-words'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
+import { Backstop } from './backstop'
 import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
-import { TurnDeadline } from './turn-deadline'
+import { mergedCard } from './merge-card'
+import { readRefusal } from './refusals'
+import { ENTRY_MS, ENTRY_TAP_MS, TurnDeadline } from './turn-deadline'
 import { newTurnId, postTurn } from './turn-post'
 import { utterance } from './utterance'
 import type { TurnDetector } from './turn/detector'
@@ -141,6 +143,8 @@ export interface CascadeOptions {
   prepare?: () => Promise<boolean>
   /** Typed messages are answered aloud even with no voice conversation open (the demo's stage). */
   speakTyped?: boolean
+  /** The engine says this caller is on Live now (`live_engine`): the page asks again and swaps. */
+  onEngineLive?: () => void
 }
 
 /** Pre-roll kept ahead of the first voiced chunk (20 ms chunks), so the first word is not clipped. */
@@ -207,6 +211,9 @@ export class CascadeClient {
   private prepared = false
   /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
   private entering = false
+  /** The closing tone is what is playing. */
+  private toning = false
+  private enteringSince = 0
   /** The mic's permission settled for the conversation being opened. */
   private micReady = false
   /** The last turn ended `busy`: the next tap listens in the same conversation. */
@@ -226,15 +233,23 @@ export class CascadeClient {
 
   private readonly onPageHide = () => this.record?.beacon()
   private readonly onVisibility = () => {
-    if (
-      typeof document !== 'undefined' &&
-      document.visibilityState === 'hidden' &&
-      this.options.endOnHidden() &&
-      this.state.phase === 'live'
-    ) {
+    if (typeof document === 'undefined') return
+    const hidden = document.visibilityState === 'hidden'
+    if (hidden && this.options.endOnHidden() && this.state.phase === 'live') {
       this.end(ENDED_LOCKED)
+      return
     }
+    if (this.voiceOpen) this.backstop.visibility(hidden)
   }
+  private readonly backstop = new Backstop(
+    () => this.deps.now(),
+    () => {
+      if (this.listening) this.close(true)
+    },
+    () => {
+      if (this.voiceOpen) this.close(true)
+    },
+  )
 
   constructor(deps: CascadeDeps, options: CascadeOptions) {
     this.deps = deps
@@ -351,7 +366,10 @@ export class CascadeClient {
     if (this.state.phase === 'ended' || this.disposed) return Promise.resolve()
     if (this.voiceOpen) {
       // Taps while the visit is being entered are ignored: a double tap on first contact is one.
-      if (this.entering) return Promise.resolve()
+      if (this.entering) {
+        this.tapDuringEntry()
+        return Promise.resolve()
+      }
       if (this.playing || this.awaiting) this.cutReply('barge_in')
       this.listen()
       return Promise.resolve()
@@ -474,18 +492,15 @@ export class CascadeClient {
       const generation = this.turnGeneration
       this.awaiting = true
       this.entering = true
+      this.enteringSince = this.deps.now()
       this.refresh()
-      this.preparing ??= this.options
-        .prepare()
-        .catch(() => false)
-        .then((ok) => {
-          this.preparing = null
-          if (ok) this.prepared = true
-          return ok
-        })
-      const ok = await this.preparing
-      this.entering = false
+      const entry = (this.preparing ??= this.enter(this.options.prepare))
+      // Nothing inside the entry has a deadline of its own; the mic is already open.
+      const deadline = setTimeout(() => this.abandonEntry(), ENTRY_MS)
+      const ok = await entry
+      clearTimeout(deadline)
       if (generation !== this.turnGeneration || this.disposed) return
+      this.entering = false
       this.awaiting = false
       // The orb held "starting" through the entry; the mic is ready if its permission settled.
       if (this.state.mic === 'starting' && this.micReady) this.set({ mic: 'off' })
@@ -498,9 +513,40 @@ export class CascadeClient {
     await then()
   }
 
+  private enter(prepare: () => Promise<boolean>): Promise<boolean> {
+    const entry: Promise<boolean> = prepare()
+      .catch(() => false)
+      .then((ok) => {
+        if (this.preparing === entry) this.preparing = null
+        if (ok) this.prepared = true
+        return ok
+      })
+    return entry
+  }
+
+  /**
+   * A tap during the entry: ignored in its first seconds (a double tap on first contact is one),
+   * after that it gives up on an entry that is taking too long.
+   */
+  private tapDuringEntry() {
+    if (this.deps.now() - this.enteringSince >= ENTRY_TAP_MS) this.abandonEntry()
+  }
+
+  /** The entry hung: the mic goes, a notice says so, and the next tap enters afresh. */
+  private abandonEntry() {
+    if (!this.entering) return
+    this.entering = false
+    this.preparing = null
+    this.cutReply(null)
+    this.voiceOpen = false
+    this.micGeneration += 1
+    this.audioIO?.stopMic()
+    this.set({ mic: 'off', notice: ENTRY_STALLED })
+  }
+
   /** A tap while listening closes the conversation (spec 21); while it speaks, it interrupts. */
   stopVoice() {
-    if (this.entering) return
+    if (this.entering) return this.tapDuringEntry()
     if (this.listening || this.state.mic === 'starting') {
       this.close(false)
       return
@@ -510,7 +556,14 @@ export class CascadeClient {
 
   /** Stop the reply now, its audio and the engine's turn, and listen again (spec 20). */
   interrupt() {
-    if (this.entering || (!this.playing && !this.awaiting)) return
+    if (this.entering) return this.tapDuringEntry()
+    if (this.toning && !this.voiceOpen) {
+      // A tap over the closing tone means "again": a new conversation at once, from this tap.
+      this.audioIO?.flush()
+      void this.startVoice()
+      return
+    }
+    if (!this.playing && !this.awaiting) return
     this.cutReply('barge_in')
     if (this.voiceOpen) this.listen()
     this.refresh()
@@ -553,6 +606,7 @@ export class CascadeClient {
     this.listening = true
     this.endpointer = new Endpointer()
     this.chunks = []
+    this.backstop.listening()
     if (!keepTurn) {
       this.speechStarted = false
       this.detector?.reset()
@@ -575,6 +629,7 @@ export class CascadeClient {
       else this.detector?.replyEnded()
     }
     this.playing = playing
+    if (!playing) this.toning = false
     if (!playing && !this.awaiting) this.replyDrained()
     this.refresh()
   }
@@ -654,6 +709,7 @@ export class CascadeClient {
 
   private onChunk(pcm: Int16Array, generation: number) {
     if (generation !== this.micGeneration) return
+    this.backstop.chunk()
     if (this.detector) {
       // The models hear everything; while the reply plays only the barge-in gate listens, and only
       // in full duplex. Half-duplex: nothing heard while the assistant speaks is kept (spec 19).
@@ -703,6 +759,7 @@ export class CascadeClient {
     if (!this.voiceOpen && this.state.mic === 'off' && !this.conversationId) return
     this.cutReply(null)
     if (tone) this.audioIO?.play(closingTone(), TONE_RATE)
+    this.toning = tone && this.playing
     this.rec({ kind: 'mic_closed', reason: tone ? 'window' : 'tap' })
     this.voiceOpen = false
     this.noSpeechRun = 0
@@ -713,6 +770,7 @@ export class CascadeClient {
     this.rememberLastAsked()
     this.finishRecord(CONVERSATION_CLOSED)
     this.conversationId = null
+    this.backstop.stop()
     if (this.limitTimer) clearTimeout(this.limitTimer)
     this.limitTimer = null
     this.push({ kind: 'sys', text: CONVERSATION_CLOSED })
@@ -782,8 +840,8 @@ export class CascadeClient {
     this.afterReply = null
     this.replyFrom = input.greet ? null : this.deps.now()
     this.set({ phase: 'live', notice: null })
-    const startedConversation = this.conversationId === null
-    const request: TurnRequest = {
+    let startedConversation = this.conversationId === null
+    let request: TurnRequest = {
       ...input,
       ...(input.greet ? { greetingHistory: this.caps.history() } : {}),
       conversationId: this.conversationId,
@@ -793,10 +851,19 @@ export class CascadeClient {
     }
     let start: TurnStart
     try {
-      start = await postTurn(
-        () => this.deps.startTurn(request, abort.signal),
-        () => generation === this.turnGeneration,
-      )
+      const post = () =>
+        postTurn(
+          () => this.deps.startTurn(request, abort.signal),
+          () => generation === this.turnGeneration,
+        )
+      start = await post()
+      if (!start.ok && start.code === 'no_conversation' && request.conversationId && generation === this.turnGeneration) {
+        // The engine no longer has this conversation: the same words start a new one, once.
+        this.conversationId = null
+        startedConversation = true
+        request = { ...request, conversationId: null, preface: this.preface(Boolean(input.greet)) }
+        start = await post()
+      }
     } catch {
       if (generation !== this.turnGeneration) return
       this.turnId = null
@@ -920,7 +987,9 @@ export class CascadeClient {
         if (name === 'end_conversation') return null
         const ok = data.ok === true
         const text = typeof data.text === 'string' ? data.text : ''
-        const card = this.mergedCard(asCard(data.card))
+        const merged = mergedCard(this.state.lines, asCard(data.card))
+        if (merged.replaces !== null) this.update(merged.replaces, { card: undefined } as Partial<Line>)
+        const card = merged.card
         this.push({
           kind: 'tool',
           ok,
@@ -1010,33 +1079,32 @@ export class CascadeClient {
     }
   }
 
-  /** Decided by the engine's `code`; an engine that sends none is read by the status alone. */
   private refused(status: number, detail: string | null, code: string | null) {
-    if (code === 'busy') {
-      this.stillBusy()
-      return
+    const refusal = readRefusal(status, detail, code, this.conversationId !== null)
+    switch (refusal.type) {
+      case 'wait':
+        return this.stillBusy(refusal.text)
+      case 'end':
+        return this.end(this.options.sessionLimit?.()?.trim() || (refusal.text ?? ENDED_LIMIT))
+      case 'close':
+        return this.closeWith(refusal.notice)
+      case 'live':
+        if (!this.options.onEngineLive) return this.closeWith({ kind: 'mint-failed', text: detail ?? 'The assistant could not answer that.' })
+        // Quietly: the page swaps to the Live engine's page, and nothing greets into the same refusal.
+        this.close(false)
+        return this.options.onEngineLive()
+      case 'listen':
+        if (refusal.caption) this.push({ kind: 'sys', text: refusal.caption })
+        this.settle(this.spokenTurn)
     }
-    const timeLimit = code !== null ? code === 'time_limit' : status === 409
-    if (timeLimit && this.conversationId) {
-      // A demo conversation's time limit.
-      this.end(this.options.sessionLimit?.()?.trim() || (detail ?? ENDED_LIMIT))
-      return
-    }
-    const notice = refusalNotice(status, detail)
-    if (notice) {
-      this.closeWith(notice)
-      return
-    }
-    this.push({ kind: 'sys', text: detail ?? 'The engine refused that, so nothing was asked.' })
-    this.settle(this.spokenTurn)
   }
 
   /**
    * Still `busy` after the retries: the conversation stays (its id, its record), the mic is let go,
    * and the next tap listens in it again rather than greeting.
    */
-  private stillBusy() {
-    this.push({ kind: 'sys', text: STILL_BUSY })
+  private stillBusy(text: string) {
+    this.push({ kind: 'sys', text })
     if (!this.voiceOpen) return
     this.voiceOpen = false
     this.stopListening()
@@ -1077,6 +1145,7 @@ export class CascadeClient {
   }
 
   private stopEverything() {
+    this.backstop.stop()
     if (this.limitTimer) clearTimeout(this.limitTimer)
     this.limitTimer = null
     this.micGeneration += 1
@@ -1118,29 +1187,5 @@ export class CascadeClient {
         return
       }
     }
-  }
-
-  /** As `LiveClient.mergedCard`: one car card per car, one diagram card per view. */
-  private mergedCard(card: Card | undefined): Card | undefined {
-    if (!card) return undefined
-    const lines = this.state.lines
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i]
-      if (line.kind !== 'tool' || !line.card) continue
-      if (card.card === 'car' && line.card.card === 'car' && line.card.name === card.name) {
-        this.update(line.id, { card: undefined } as Partial<Line>)
-        return mergeCar(line.card, card)
-      }
-      if (
-        card.card === 'diagram' &&
-        line.card.card === 'diagram' &&
-        line.card.project === card.project &&
-        line.card.view === card.view
-      ) {
-        this.update(line.id, { card: undefined } as Partial<Line>)
-      }
-      return card
-    }
-    return card
   }
 }

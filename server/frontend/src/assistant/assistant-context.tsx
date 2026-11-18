@@ -138,7 +138,13 @@ export function AssistantProvider({
    * the first tap, before any visit exists to ask which engine; `prepare` enters the visit inside
    * that tap, and `funnelRef` tags the page's funnel counts.
    */
-  voiceFirst?: { prepare: () => Promise<boolean>; funnelRef?: string; sessionMinutes?: number | null }
+  voiceFirst?: {
+    prepare: () => Promise<boolean>
+    funnelRef?: string
+    sessionMinutes?: number | null
+    /** The engine answered `live_engine`: ask it again (the page then shows the Live page). */
+    onEngineLive?: () => void
+  }
   /** The demo's ref tag: when set, the conversation counts its funnel steps under it. */
   funnelRef?: string
 }) {
@@ -176,6 +182,7 @@ export function AssistantProvider({
           sessionLimit: () => limitRef.current ?? null,
           prepare: () => voiceFirstRef.current!.prepare(),
           speakTyped: true,
+          ...(voiceFirstRef.current.onEngineLive ? { onEngineLive: () => voiceFirstRef.current?.onEngineLive?.() } : {}),
         })
       : new LiveClient(deps ?? createLiveDeps(), {
         endOnHidden: () => surfaceRef.current === 'family',

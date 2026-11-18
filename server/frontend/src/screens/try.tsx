@@ -300,13 +300,16 @@ function VoiceFirstVisit({
     enteredRef.current = entered
     enterRef.current = enter
   }, [entered, enter])
+  const queryClient = useQueryClient()
   const voiceFirst = useMemo(
     () => ({
       prepare: () => (enteredRef.current ? Promise.resolve(true) : enterRef.current()),
       funnelRef: refTag ?? '',
       sessionMinutes: 5,
+      // The server switched this visit to Live mid-visit: ask again, and `TryScreen` swaps pages.
+      onEngineLive: () => void queryClient.invalidateQueries({ queryKey: ENGINE_QUERY.queryKey }),
     }),
-    [refTag],
+    [refTag, queryClient],
   )
   return (
     <AssistantProvider

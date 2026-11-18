@@ -5,6 +5,10 @@
  * always gets to say its own "took too long" first. The first event (`turn`) is sent before any
  * model runs, so its wait only covers the network and the engine taking the request.
  */
+/** The demo entry (the visit, the engine question) inside the opening tap: past this, give up. */
+export const ENTRY_MS = 12_000
+/** Taps in the entry's first seconds are one double tap; a tap after this gives up on it. */
+export const ENTRY_TAP_MS = 2_000
 export const FIRST_EVENT_MS = 20_000
 export const TURN_MS = 75_000
 
