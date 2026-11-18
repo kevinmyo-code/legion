@@ -52,6 +52,8 @@ import com.kevin.legion.service.turn.TurnTaker
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
 import com.kevin.legion.service.testturn.TestTurns
+import com.kevin.legion.service.tools.LiveSurface
+import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.DtcClearController
 import kotlinx.coroutines.CancellationException
@@ -72,6 +74,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.util.concurrent.atomic.AtomicBoolean
@@ -283,8 +286,14 @@ internal class CascadeSession(
     /** "Didn't catch that" said this many times in a row; the third closes the conversation. */
     private var missedInARow = 0
 
+    /** The date the model's prompt states as today ([RelativeDay.TurnDates]). */
+    @Volatile private var promptDay: LocalDate = LocalDate.now()
+
     /** The writes a stopped turn finished before he could hear them ([ScriptedLines.doneLine]). */
-    @Volatile private var unheardWrites: List<String> = emptyList()
+    @Volatile private var unheardWrites: List<ScriptedLines.WriteFact> = emptyList()
+
+    /** What of that stopped turn's reply he did hear (a write it confirmed is not said twice). */
+    @Volatile private var unheardSaid: String = ""
 
     /** Transcripts of noise in a row ([SttGuard.NOISE]): silent, but capped ([MAX_NOISE_IN_A_ROW]). */
     private var noiseInARow = 0
@@ -295,11 +304,15 @@ internal class CascadeSession(
     /** What one turn has done so far: what [Handover] needs if the laptop drops mid-turn. */
     private class TurnRecord(val heard: String, val fromUser: Boolean = true) {
         val reply = StringBuffer()
+
+        /** When the turn started, and its date-taking tool calls so far ([RelativeDay.TurnDates]). */
+        val startedAt: LocalTime = LocalTime.now()
+        @Volatile var dateCalls = 0
         val toolsRan = mutableListOf<String>()
         val writesDone = mutableListOf<String>()
 
-        /** Each finished write's own result message (code-written, never the model's words). */
-        val writeLines = mutableListOf<String>()
+        /** Each write's facts, done or failed ([ScriptedLines.writeFact]), never its message. */
+        val writeFacts = mutableListOf<ScriptedLines.WriteFact>()
         @Volatile var readThrough = false
         @Volatile var fillerPlayed = false
 
@@ -489,6 +502,8 @@ internal class CascadeSession(
         )
         val base = scope.async(Dispatchers.IO) {
             val t = System.currentTimeMillis()
+            // The date the model is given: the prepared prompt's day, or today as it is built now.
+            promptDay = prepared?.day ?: LocalDate.now()
             (prepared?.split ?: CascadePrompt.split(brain.buildBaseInstruction())).also {
                 LiveLatency.log(LiveLatency.TAG, "open_base_ms=${System.currentTimeMillis() - t}")
                 // The date paragraph alone until the live context lands.
@@ -1044,8 +1059,17 @@ internal class CascadeSession(
             is SttResult.Text -> {
                 // "Stop", "goodbye": before every noise and length guard, and on his latest words alone,
                 // so a stop said during a lookup ends the conversation, never restarts the lookup.
-                if (endsConversation(stt.text)) return endByStop(u, stt.text)
-                when (val v = verdictOf(stt)) {
+                // A stop over no voice (a burst read as "Bye.") is not a stop; the guard below decides it.
+                val stop = endsConversation(stt.text) && SttGuard.stopVoiced(stt.voicedMs)
+                val v = verdictOf(stt)
+                // Every turn, numbers and the decision only: real car audio tunes the thresholds later.
+                LiveLatency.log(
+                    LiveLatency.TAG,
+                    "stt_voiced ms=${stt.voicedMs ?: -1} audio_ms=${stt.audioMs ?: -1} decision=" +
+                        if (stop) "stop" else (v as? SttGuard.Verdict.Drop)?.reason ?: "keep",
+                )
+                if (stop) return endByStop(u, stt.text)
+                when (v) {
                     is SttGuard.Verdict.Keep -> v.text
                     is SttGuard.Verdict.Drop -> {
                         // Not plausibly his English (2026-11-17: Spanish and Chinese fragments, one acted
@@ -1215,7 +1239,10 @@ internal class CascadeSession(
             withContext(NonCancellable) {
                 reply.interrupt()
                 // A write that finished under a stop is said before the tone ([endByStop]).
-                if (record.fromUser) unheardWrites = synchronized(record) { record.writeLines.toList() }
+                if (record.fromUser) {
+                    unheardWrites = synchronized(record) { record.writeFacts.toList() }
+                    unheardSaid = reply.spoken()
+                }
                 if (!record.merged && (carry.isBlank() || record.toolsRan.isNotEmpty())) {
                     recordTurn(heard, withWrites(reply.spoken(), record), record.readThrough, seq, record.fromUser)
                 }
@@ -1408,8 +1435,9 @@ internal class CascadeSession(
     private suspend fun endByStop(u: TurnUtterance, words: String) {
         discardDraftOf(u, "not_answered")
         carry = ""
-        val done = ScriptedLines.doneLine(unheardWrites)
+        val done = ScriptedLines.doneLine(unheardWrites, unheardSaid)
         unheardWrites = emptyList()
+        unheardSaid = ""
         recordTurn(words, done.orEmpty())
         if (done != null && backend != null && player != null) {
             val reply = newSpeaker(null)
@@ -1558,14 +1586,17 @@ internal class CascadeSession(
                 in CascadeRules.LIVE_ONLY_TOOLS ->
                     JSONObject().put("success", false).put("message", "That only works on the Live voice engine.")
                 // A read-through opener (ADR 0090) marks the turn before the loop's own flag can.
-                else -> host.runTool(
-                    name,
-                    args,
-                    // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
-                    readThrough || record.startMarked,
-                    if (record.fromUser) record.heard else "",
-                    seq,
-                )
+                // The turn's date facts ride in the call's context to the date fix ([RelativeDay.corrected]).
+                else -> withContext(RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1)) {
+                    host.runTool(
+                        name,
+                        args,
+                        // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
+                        readThrough || record.startMarked,
+                        if (record.fromUser) record.heard else "",
+                        seq,
+                    )
+                }
             }
         } finally {
             toolsInFlight.decrementAndGet()
@@ -1602,6 +1633,10 @@ internal class CascadeSession(
          * only gets here after confirmation ([SpeculativeAnswer] holds this call until then).
          */
         override fun onToolsStarting(calls: List<Pair<String, JSONObject>>) {
+            // Before any of this round runs: the date fix only touches a turn's one date-taking call.
+            record.dateCalls += calls.count { (n, a) ->
+                LiveSurface.resolve(n, a).let { RelativeDay.isDateCall(it.name, it.args) }
+            }
             if (!record.fromUser || record.fillerPlayed || reply.anyText) return
             val plan = ToolFillers.plan(calls.map { (n, a) -> ToolFillers.Call(n, a, CascadeRules.isWrite(n, a)) })
                 ?: return
@@ -1619,13 +1654,14 @@ internal class CascadeSession(
         }
 
         override fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) {
-            if (CascadeRules.isWrite(name, args)) noteChange(response)
-            if (writeDone) {
-                synchronized(record) {
-                    record.writesDone.add(name)
-                    record.writeLines.add(response.optString("message"))
-                }
+            val write = CascadeRules.isWrite(name, args)
+            if (write) {
+                noteChange(response)
+                val r = LiveSurface.resolve(name, args)
+                val fact = ScriptedLines.writeFact(r.name, r.args.optString("action"), response, ok = writeDone)
+                synchronized(record) { record.writeFacts.add(fact) }
             }
+            if (writeDone) synchronized(record) { record.writesDone.add(name) }
             LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$name sent=true async=false")
         }
 
@@ -1869,6 +1905,8 @@ internal class CascadeSession(
         }
         if (b.tts.sampleRate == ListenCue.SAMPLE_RATE) {
             p.awaitDrained()
+            // Counted as playback, as the opening cue is: on half-duplex the mic never takes it as a turn.
+            onReplyAudible()
             val gen = p.generation()
             withContext(Dispatchers.IO) { p.write(ListenCue.earconPcm(), gen) }
         }

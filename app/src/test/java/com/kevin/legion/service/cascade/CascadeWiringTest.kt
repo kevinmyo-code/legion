@@ -116,6 +116,7 @@ class CascadeWiringTest {
         val lost = bodyOf(s, "sayVoiceLost")
         assertTrue("a kept line only when it is in hand", lost.contains("inHand("))
         assertTrue("else the earcon", lost.contains("earconPcm()"))
+        assertTrue("the earcon is playback, never a turn", lost.indexOf("onReplyAudible()") in 0 until lost.indexOf("earconPcm()"))
         assertTrue("the window opens again", lost.contains("afterReply()"))
         for (closer in listOf("closingTone", "shutdown(", "handOver(")) assertFalse(closer, lost.contains(closer))
         assertTrue("a scripted line on the cloud voice too", bodyOf(s, "onScriptedFailed").contains("sayVoiceLost("))
@@ -127,17 +128,18 @@ class CascadeWiringTest {
     fun `a stop is checked before every noise guard and never restarts the waiting request`() {
         val s = session()
         val run = bodyOf(s, "runTurn")
-        val stop = run.indexOf("endsConversation(stt.text)")
-        assertTrue(stop >= 0)
-        assertTrue("before the transcript guard", stop < run.indexOf("verdictOf(stt)"))
+        val stop = run.indexOf("endsConversation(stt.text) && SttGuard.stopVoiced(stt.voicedMs)")
+        assertTrue("a stop over no voice is not a stop", stop >= 0)
+        assertTrue("decided before the transcript guard can drop it", stop < run.indexOf("if (stop) return endByStop(u, stt.text)"))
+        assertTrue("every turn logs voiced time and the decision", run.contains("stt_voiced ms="))
         assertTrue("recovered words too", run.contains("endsConversation(recovered)"))
         val end = bodyOf(s, "endByStop")
         assertTrue("the waiting request is dropped, not answered", end.contains("carry = \"\""))
         assertTrue(end.contains("endByVoice()"))
         assertFalse(end.contains("answerTurn("))
         assertTrue("after a question only a hard stop", bodyOf(s, "endsConversation").contains("FollowUpWindow.isQuestion(lastClipText)"))
-        // Why the order matters: a stop heard over loud noise may score as noise and be dropped.
-        assertTrue(SttGuard.verdict("Stop.", 0L) is SttGuard.Verdict.Drop)
+        // A zero-voice "Bye." is noise for the guard, which counts it toward the cap.
+        assertTrue(SttGuard.verdict("Bye.", 0L) is SttGuard.Verdict.Drop)
     }
 
     @Test
@@ -156,11 +158,15 @@ class CascadeWiringTest {
     fun `every tool that takes a date gets his day word, at the one dispatch door, before any toolbox`() {
         val toolbox = stripComments(File(sourceRoot(), "service/LiveToolbox.kt").readText())
         val dispatch = bodyOf(toolbox, "dispatch")
-        val fix = dispatch.indexOf("RelativeDay.corrected(args, userText")
+        val fix = dispatch.indexOf("RelativeDay.corrected(name, args, userText, it)")
         assertTrue(fix >= 0)
         assertTrue("before the first toolbox and the big when", fix < dispatch.indexOf("EngineToolbox.dispatch(") && fix < dispatch.indexOf("return when (name)"))
         assertTrue("the result carries the note", dispatch.contains("put(\"date_note\", note)"))
         assertEquals("one path: no tool corrects on its own", 1, Regex("RelativeDay\\.corrected\\(").findAll(toolbox).count())
+        assertTrue("only a voice turn's context carries the day", dispatch.contains("coroutineContext[RelativeDay.TurnDates]"))
+        val s = session()
+        assertTrue("the session gives the prompt's day and the turn's count", s.contains("RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1)"))
+        assertTrue("counted before the round runs", s.contains("RelativeDay.isDateCall("))
     }
 
     @Test
