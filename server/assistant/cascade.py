@@ -1911,11 +1911,28 @@ _FIGURE_WORDS = re.compile(
 )
 
 
+# Round 4 speech N2: "one" as a clock time ("at one", "one tonight"), "both" (a count), and a span
+# of time ("a week from now", "in a month").
+_FIGURE_PHRASES = re.compile(
+    r"\bat one\b"
+    r"|\bone (?:tonight|today|tomorrow|this|o'clock|am|pm|a\.m\.|p\.m\.|fifteen|thirty|forty)\b"
+    r"|\bboth\b"
+    r"|\b(?:a|an) (?:minute|hour|day|week|fortnight|month|year)s?\b"
+    r"(?= (?:from now|ago|away|out|left|or so|to go|later))"
+    r"|\bin (?:a|an) (?:minute|hour|day|week|fortnight|month|year)\b",
+    re.I,
+)
+
+
 def greeting_states_a_figure(text: str) -> bool:
     """True when a model-worded greeting states any figure (round 2 speech review A: checking or
     rewriting figures in free model text never converged, so a greeting carries none). The
     scripted line is said instead; a figure that belongs in a greeting is written by code."""
-    return bool(re.search(r"[0-9$%\u00a3\u20ac]", text) or _FIGURE_WORDS.search(text))
+    return bool(
+        re.search(r"[0-9$%\u00a3\u20ac]", text)
+        or _FIGURE_WORDS.search(text)
+        or _FIGURE_PHRASES.search(text)
+    )
 
 
 def greeting_is_honest(text: str) -> bool:
