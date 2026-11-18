@@ -18,7 +18,7 @@ from household.timezones import utc_offset_minutes as zone_offset_minutes
 
 
 def system_prompt_parts_for(
-    user, *, now: datetime, utc_offset_minutes: int | None
+    user, *, now: datetime, utc_offset_minutes: int | None, cascade: bool = False
 ) -> tuple[str, str, ResolvedCompanion]:
     """(the prompt's stable body, its clock-and-speaker tail, the companion it speaks as): the
     one prompt both voice engines use (Live joins the two, `system_prompt_for`; the cascade
@@ -44,6 +44,7 @@ def system_prompt_parts_for(
         utc_offset_minutes=utc_offset_minutes,
         offset_from_household=from_household,
         recruiter=is_recruiter(user),
+        cascade=cascade,
     )
     return body, tail, companion
 

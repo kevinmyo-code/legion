@@ -1384,6 +1384,7 @@ class AssistantTurnView(_AssistantView):
                 request.user,
                 now=datetime.now(UTC),
                 utc_offset_minutes=data.get("utc_offset_minutes"),
+                cascade=True,
             )
             _audit(request, AssistantCall.SESSION, Outcome.OK)
             turn_input = cascade.TurnInput(

@@ -100,6 +100,7 @@ from assistant import echo, fillers, read_through, speech_tags, spoken_figures, 
 from assistant.models import AssistantCall
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
+from demo.tools import spoken_for as about_kevin_spoken_for
 from devicelogs import web_conversation
 from engine_mcp import cards
 from engine_mcp.models import Outcome
@@ -888,6 +889,10 @@ class WebDoor:
     def tools(self) -> dict:
         if self._tools is None:
             self._tools = {t.name: t for t in tools_for(self.user)}
+            if "about_kevin" in self._tools:
+                # The one seam between the engines for his profile: on the cascade code speaks it
+                # and the model only picks sections; Live keeps `demo.tools.ABOUT_KEVIN` as it was.
+                self._tools["about_kevin"] = about_kevin_spoken_for(self.user)
         return self._tools
 
     def declarations(self, spec=None) -> list[dict]:
@@ -974,6 +979,8 @@ class WebDoor:
                 guard = "recruiter" if self.recruiter else "not_allowed"
             else:
                 only_here = recruiter_only_tool(name, self.user)
+                if only_here is not None and name == "about_kevin":
+                    only_here = self.tools()[name]
                 if only_here is not None:
                     work = functools.partial(run_engine_tool, self.request, only_here, args)
                 else:
@@ -1557,13 +1564,18 @@ def _answer(
         rewritten from the model's words (findings 4 and 10): when in doubt its sentence stays."""
         return not claims_unbacked_outcome(text, door.actions())
 
-    def say(text: str, tagged: str | None = None, replay: str | None = None):
+    def say(
+        text: str, tagged: str | None = None, replay: str | None = None, exact_text: bool = False
+    ):
         """`text` is what is shown, stored and checked (no tags, ever); `tagged` is a model
         sentence as written, its allowed tags kept for speech only (`speech_tags`). Code lines
         (verbatim figures, refusals, failures) pass no `tagged` and are spoken plain. `replay` is
-        what history keeps of it instead (`TurnReport.replay`)."""
+        what history keeps of it instead (`TurnReport.replay`). `exact_text`: code's verbatim
+        sentences (his profile) are shown exactly as written, never put through the tag stripper,
+        which would drop an asterisk or a bracketed word from them."""
         nonlocal sentences, first_sentence
-        text = speech_tags.untagged(text)
+        if not exact_text:
+            text = speech_tags.untagged(text)
         sentences += 1
         report.say(text, replay)
         if first_sentence is None:
@@ -1631,7 +1643,7 @@ def _answer(
                         marker = None
                         if done.replay is not None:
                             marker = done.replay if i == 0 else ""
-                        yield say(line, replay=marker)
+                        yield say(line, replay=marker, exact_text=done.exact)
                 continue
             if event.type == "sentence":
                 tagged = event.data["text"]
@@ -1867,10 +1879,11 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
         said, nxt = tour.END_LINE, None
     # Only the tour's own code lines may carry a tag; words from the content never do.
     shown = speech_tags.untagged(said)
-    # A line from his content or a diagram's caption states facts about him: history replays
-    # which beat was read, never its words, so no later turn can reword them (2026-11-18).
+    # A beat that states facts about him (his own lead): history replays which beat was read, never
+    # its words, so no later turn can reword them (2026-11-18). A diagram's caption is about the
+    # project and stays, so a follow-up about the diagram still has it.
     marker = None
-    if said not in tour.CODE_LINES and index < len(beats):
+    if index < len(beats) and beats[index].about_him:
         marker = f"(Tour line read aloud: {beats[index].key}.)"
     report.say(shown, marker)
     report.timings["sentences"] = 1
