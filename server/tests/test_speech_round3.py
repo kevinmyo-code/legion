@@ -221,3 +221,32 @@ def test_the_spoken_examples_write_every_figure_exactly_in_digits():
     # a word; every example reply writes its figures in digits.
     replies = re.findall(r'-> "([^"]*)"', examples)
     assert replies and not [r for r in replies if words.search(r)]
+
+
+# ---- finding 8 leftovers: the greeting's extra speech fetch and a transcription retry are
+# ---- reserved before they can be paid for --------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_transcription_retry_and_the_greetings_fetch_are_reserved(visitor, engine, monkeypatch):
+    from agents.runtime.model import FakeModel, say
+    from demo import budget as demo_budget
+    from tests.test_assistant_cascade import PCM, _events, _post
+
+    asked = []
+    real = demo_budget.reserve_cascade_turn
+
+    def spy(**kwargs):
+        asked.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(demo_budget, "reserve_cascade_turn", spy)
+    engine.model = FakeModel([say("Hi."), say("Hi.")])
+    _events(_post(visitor, text="Hi.", spoken="true"))
+    _events(_post(visitor, audio=PCM))
+    typed, heard = asked
+    assert heard["rounds"] == typed["rounds"] + 1  # one transcription retry
+    asked.clear()
+    _events(_post(visitor, greet="true"))
+    missing = cascade.FILLER_AUDIO.missing("Puck")
+    assert asked[0]["speech_requests"] == cascade.MAX_TTS_REQUESTS + missing + 1
