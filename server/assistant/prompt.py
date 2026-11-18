@@ -216,7 +216,15 @@ RECRUITER_FRAME = (
 CASCADE_ABOUT_KEVIN = (
     (
         "and only then add what legion_docs or about_kevin say.",
-        "and only then add what legion_docs says, or call about_kevin last.",
+        "and only then add what legion_docs says.",
+    ),
+    # What HE did, his role or a job of his is about him: his own words first, never a diagram
+    # walk-through in the model's words (blind review, 2026-11-18). The project's own architecture
+    # keeps the diagram-first rule.
+    (
+        "going one level deeper - or about what Kevin did on a project or job, or how he builds "
+        "with AI agents, gets",
+        "going one level deeper - or about how he builds with AI agents, gets",
     ),
     (
         "For questions about Kevin himself, use about_kevin and answer only from what it returns; "
@@ -225,7 +233,9 @@ CASCADE_ABOUT_KEVIN = (
         "For questions about Kevin himself, call about_kevin first and say nothing about him "
         "yourself: code reads his own words aloud and that is the answer; you are never shown "
         "them. When none of its sections covers the question, call it with no sections and code "
-        "says \"Kevin hasn't shared that here; ask him directly.\"",
+        "says \"Kevin hasn't shared that here; ask him directly.\" A question about what Kevin "
+        "did, his role or a job of his is about him too: call about_kevin first, never "
+        "show_diagram, and pass offer=diagram so code offers the diagram for it.",
     ),
     (
         "answer what they are and how he built them from about_kevin, never from legion_docs",
