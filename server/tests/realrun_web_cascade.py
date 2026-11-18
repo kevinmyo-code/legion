@@ -448,7 +448,10 @@ def test_realrun_gate(real, household_user):
     stray = [c for c in heard if c not in allowed]
     assert not stray, (stray, row.get("heard_back"))
     # The exact figure is on screen in the same turn: the captions carry the tool's own amount.
-    assert any(c in tools for c in _cents_in(row["said"])), row["said"]
+    # Read in either form the tool writes it ("$2,333.61" or "2,333.61 USD"): the money tools
+    # print "N USD", and a caption that repeats that exact figure meets this check (ship
+    # 2026-11-18: "$"-only matching failed a correct, exact answer).
+    assert any(c in tools for c in _amounts_in(row["said"])), row["said"]
 
     row = _gate_turn(real, visitor, "recruiter", "gate_stop", "stop")
     assert (row.get("done") or {}).get("end") is True, row
