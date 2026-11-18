@@ -1526,6 +1526,18 @@ class AssistantTurnCancelThrottle(_PerMemberThrottle):
     scope = "assistant_turn_cancel"
 
 
+class AssistantTurnCancelIpThrottle(ClientIpThrottleMixin, SimpleRateThrottle):
+    """The cancel route per address too (round 3 N6): every visit is a fresh user."""
+
+    scope = "assistant_turn_cancel_ip"
+
+    def get_cache_key(self, request, view):
+        user = getattr(request, "user", None)
+        if user is None or not user.is_authenticated:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
 class AssistantTurnCancelRequestSerializer(serializers.Serializer):
     turn_id = serializers.UUIDField(help_text="The id the browser gave the turn to stop.")
 
@@ -1537,7 +1549,7 @@ class AssistantTurnCancelView(_AssistantView):
     instance; it then starts no further paid call and releases its slot. Idempotent; 204 whether
     or not the turn is still running; costs nothing; a row stops only the caller's own turn."""
 
-    throttle_classes = [AssistantTurnCancelThrottle]
+    throttle_classes = [AssistantTurnCancelThrottle, AssistantTurnCancelIpThrottle]
     audit_kind = AssistantCall.SESSION
 
     @extend_schema(

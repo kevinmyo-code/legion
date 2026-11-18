@@ -615,6 +615,8 @@ REST_FRAMEWORK = {
         "assistant_turn": os.environ.get("LEGION_ASSISTANT_TURN_RATE", "").strip() or "20/min",
         # The turn's stop button (2026-11-17): cheap, but not a free loop.
         "assistant_turn_cancel": "60/min",
+        # The same per address (round 3 N6): fresh visits from one network share it.
+        "assistant_turn_cancel_ip": "120/min",
         "assistant_turn_ip": (
             os.environ.get("LEGION_ASSISTANT_TURN_IP_RATE", "").strip() or "120/hour"
         ),
