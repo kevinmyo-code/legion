@@ -205,6 +205,10 @@ NOT_FOR_ME_DECLARATION = {
     "parameters": {"type": "object", "properties": {}},
 }
 NOT_FOR_ME_RESPONSE = "Not for you: say nothing."
+CHANGED_SO_FOR_YOU = (
+    "A change already went through in this turn, so it was for you: say what was done."
+)
+NOT_FOR_ME_NO_WRITE = "Nothing was changed: that sentence was not for the assistant."
 NAMED_RESPONSE = "They said your name: it was for you. Answer them."
 # What the page shows (never says) when it is not sure the sentence was for it (section 10.4).
 UNSURE_CUE = "Were you talking to me? Say my name or tap to go on."
@@ -669,6 +673,10 @@ class WebDoor:
             ]
         return self._declarations
 
+    def _writes(self, name: str) -> bool:
+        tool = self.tools().get(name)
+        return bool(tool is not None and tool.writes)
+
     def is_slow(self, name: str) -> bool:
         # The runtime says `working` before a slow tool; the web's slow list is the fillers'
         # (a tool whose line goes out at its start), which covers the runtime's own SLOW_TOOLS.
@@ -699,14 +707,22 @@ class WebDoor:
         if len(self.calls) >= MAX_TOOL_CALLS:
             ok, outcome, text, guard = False, Outcome.REFUSED, TOO_MANY_TOOLS, "limit"
         elif name == NOT_FOR_ME_TOOL:
-            self.not_for_me = True
             named = self.addressed.get("named", False)
-            ok, outcome, text, guard = (
-                True,
-                Outcome.OK,
-                (NAMED_RESPONSE if named else NOT_FOR_ME_RESPONSE),
-                None,
-            )
+            if self.wrote():
+                # A turn in which a change went through was for the assistant, whatever the model
+                # says now: it must say what was done (round 2 finding 4).
+                ok, outcome, text, guard = True, Outcome.OK, CHANGED_SO_FOR_YOU, None
+            else:
+                self.not_for_me = not named
+                ok, outcome, text, guard = (
+                    True,
+                    Outcome.OK,
+                    (NAMED_RESPONSE if named else NOT_FOR_ME_RESPONSE),
+                    None,
+                )
+        elif self.not_for_me and self._writes(name):
+            # Nothing changes on a sentence that was not for the assistant.
+            ok, outcome, text, guard = False, Outcome.REFUSED, NOT_FOR_ME_NO_WRITE, "not_for_me"
         elif name == END_TOOL:
             # A control, not a data tool: the page closes the conversation after the sign-off.
             self.end_requested = True
@@ -1184,7 +1200,7 @@ def _answer(
                     filler_said = line is not None
                 continue
             if event.type == "tool" and door.calls[-1].name == NOT_FOR_ME_TOOL:
-                if not door.addressed.get("named"):
+                if door.not_for_me:
                     # Not for it (section 10): no reply, no tool, no filler. The loop stops here.
                     break
                 continue
@@ -1259,7 +1275,7 @@ def _answer(
         )
         _meter(request, model_name, rounds)
 
-    if door.not_for_me and not door.addressed.get("named"):
+    if door.not_for_me:
         yield from _not_for_me(request, door, speaker, report, timings)
         return
     record_user()

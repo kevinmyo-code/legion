@@ -102,3 +102,47 @@ def test_remember_refused_after_a_web_search_says_why(member, engine):
     assert remember["ok"] is False
     said = [s["text"] for s in _of(events, "sentence")]
     assert said[-1] == cascade.READ_THROUGH_WAIT
+
+
+# ---- finding 4: a turn in which a change went through is never "not for me" ---------------------
+
+
+def test_not_for_me_after_a_write_says_what_was_done(member, engine):
+    from agents.runtime.model import FakeModel, Finish, PartEvent, ToolCallEvent, Usage, say
+    from assistant import cascade
+    from checklists.models import Checklist
+
+    both = [
+        PartEvent({"functionCall": {"name": "create_checklist", "args": {"name": "Hardware"}}}),
+        ToolCallEvent("", "create_checklist", {"name": "Hardware"}),
+        PartEvent({"functionCall": {"name": cascade.NOT_FOR_ME_TOOL, "args": {}}}),
+        ToolCallEvent("", cascade.NOT_FOR_ME_TOOL, {}),
+        Usage(100, 0, 5, 105),
+        Finish("STOP"),
+    ]
+    engine.model = FakeModel([both, say("I made the hardware list.")])
+    events = _events(_post(member, text="Make a hardware list."))
+    done = _of(events, "done")[0]
+    assert "ignored" not in done
+    assert done["writes_ran"] is True
+    assert [s["text"] for s in _of(events, "sentence")] == ["I made the hardware list."]
+    assert Checklist.objects.filter(name="Hardware").exists()
+
+
+def test_no_write_runs_after_not_for_me(member, engine):
+    from agents.runtime.model import FakeModel, Finish, PartEvent, ToolCallEvent, Usage
+    from assistant import cascade
+    from checklists.models import Checklist
+
+    both = [
+        PartEvent({"functionCall": {"name": cascade.NOT_FOR_ME_TOOL, "args": {}}}),
+        ToolCallEvent("", cascade.NOT_FOR_ME_TOOL, {}),
+        PartEvent({"functionCall": {"name": "create_checklist", "args": {"name": "Side talk"}}}),
+        ToolCallEvent("", "create_checklist", {"name": "Side talk"}),
+        Usage(100, 0, 5, 105),
+        Finish("STOP"),
+    ]
+    engine.model = FakeModel([both])
+    events = _events(_post(member, text="Ha, make a list of that, he said."))
+    assert _of(events, "done")[0]["ignored"] == "not_addressed"
+    assert not Checklist.objects.filter(name="Side talk").exists()
