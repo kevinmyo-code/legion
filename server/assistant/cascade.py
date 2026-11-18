@@ -98,6 +98,7 @@ from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
 from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
+from assistant.profile_facts import ProfileFacts
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
 from devicelogs import web_conversation
@@ -835,6 +836,8 @@ class WebDoor:
         # Section 10: the model said the sentence was not for it, and the code-read signals.
         self.not_for_me = False
         self.addressed: dict[str, bool] = {}
+        # The profile `about_kevin` returned this turn, for its fact check (`profile_facts`).
+        self.profile: ProfileFacts | None = None
         self._tools = None
         self._declarations = None
         read_through.set_turn(request, conversation_id, turn)
@@ -965,6 +968,10 @@ class WebDoor:
         )
         card = cards.for_viewer(result.card, self.recruiter) if result is not None else None
         verbatim = None
+        if ok and result is not None and name == "about_kevin":
+            profile = (result.structured or {}).get("profile")
+            if isinstance(profile, dict) and profile:
+                self.profile = ProfileFacts({str(k): str(v) for k, v in profile.items()})
         if ok and result is not None and name in VERBATIM_TOOLS:
             said = (result.structured or {}).get(SPEAK_VERBATIM)
             verbatim = said.strip() if isinstance(said, str) and said.strip() else None
@@ -1496,6 +1503,14 @@ def _answer(
         speaker.add(tagged if tagged is not None else text, expressive=tagged is not None)
         return ev.Event("sentence", {"text": text})
 
+    def say_checked(text: str, tagged: str):
+        """A model sentence, after `about_kevin`: a fact a recruiter weighs is said in the
+        profile's own words (`profile_facts`); anything else as written."""
+        spoken = door.profile.check(text) if door.profile is not None else text
+        if spoken is None:
+            return
+        yield say(text, tagged) if spoken == text else say(spoken)
+
     loop = run_loop(
         spec,
         state,
@@ -1573,7 +1588,7 @@ def _answer(
                 if not honest(text):
                     held_claims.append((text, tagged))
                     continue
-                yield say(text, tagged)
+                yield from say_checked(text, tagged)
                 continue
             yield event
     finally:
@@ -1628,7 +1643,7 @@ def _answer(
             if not honest(text):
                 held_claims.append((text, tagged))
                 continue
-            yield say(text, tagged)
+            yield from say_checked(text, tagged)
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
         _meter(request, model_name, rounds[-1:])
@@ -1648,7 +1663,7 @@ def _answer(
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
     for text, tagged in held_claims:
         if honest(text):
-            yield say(text, tagged)
+            yield from say_checked(text, tagged)
         else:
             unbacked += 1
     wrote = door.wrote()

@@ -51,7 +51,9 @@ def _about_kevin(request, arguments: dict) -> ToolResult:
         f"anything about Kevin it does not say, say \"{NOT_SHARED}.\" A general question (what a "
         "visa or a term is) is not about Kevin: answer that from general knowledge or web_search."
         f"\n\n{sections}",
-        {"sections": list(profile)},
+        # The profile itself rides along for the voice turn's fact check
+        # (`assistant.profile_facts`); it is never sent to the model a second time.
+        {"sections": list(profile), "profile": dict(profile)},
     )
 
 
