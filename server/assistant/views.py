@@ -58,6 +58,7 @@ from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES, RECRUITER_O
 from assistant.session import system_prompt_parts_for, token_request_for
 from assistant.surface import recruiter_only_tool, refusal_for
 from demo import budget as demo_budget
+from demo import suggestions
 from devicelogs import web_conversation
 from engine_mcp import cards
 from engine_mcp.models import Outcome
@@ -903,6 +904,17 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
             '`{"today": [kinds led with today], "last": kind, "hellos": [last hellos]}`.'
         ),
     )
+    chip = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=4_000,
+        help_text=(
+            "With `text`: the token of a suggestion chip the engine offered this visitor "
+            "(`POST /api/demo/chips`), whose question `text` is word for word. The chip's own "
+            "checked lookup then answers it; any other token is ignored and the turn is a plain "
+            "typed one."
+        ),
+    )
     preface = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -1398,6 +1410,7 @@ class AssistantTurnView(_AssistantView):
                 heard_before=web_conversation.utterances_received(row),
                 barge_in=bool(data.get("barge_in")) and audio is not None,
                 last_reply=web_conversation.last_reply(row),
+                chip=suggestions.chip_for(request.user, data.get("chip"), text),
             )
             response = StreamingHttpResponse(
                 _turn_sse(

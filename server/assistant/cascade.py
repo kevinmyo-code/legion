@@ -89,10 +89,13 @@ from agents.runtime.loop import (
     run_loop,
 )
 from agents.runtime.model import (
+    Finish,
     ModelClient,
     ModelFailure,
     ModelRequest,
+    PartEvent,
     TextDelta,
+    ToolCallEvent,
     Usage,
 )
 from agents.runtime.spec import AgentSpec
@@ -102,6 +105,7 @@ from assistant.models import AssistantCall
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
 from assistant.spoken_words import speakable_words
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
+from demo import suggestions
 from demo.tools import spoken_for as about_kevin_spoken_for
 from devicelogs import web_conversation
 from engine_mcp import cards
@@ -761,6 +765,10 @@ class DoorCall:
     exact: bool = False
     ends_turn: bool = False
     replay: str | None = None
+    # The call's arguments and its result's plain data, for the follow-up chips
+    # (`demo.suggestions`): never sent to the model or the page from here.
+    args: dict = field(default_factory=dict)
+    data: dict | None = None
 
 
 TURN_STOPPED = "Not run: the turn was stopped."
@@ -1031,6 +1039,8 @@ class WebDoor:
             exact=bool(spoken and spoken.exact),
             ends_turn=bool(spoken and spoken.ends_turn),
             replay=spoken.replay if spoken else None,
+            args=args,
+            data=result.structured if (ok and result is not None) else None,
         )
         tool = self.tools().get(name)
         return ToolOutcome(
@@ -1087,6 +1097,51 @@ class TurnInput:
     last_reply: str = ""
     # The one-minute tour (`assistant/tour.py`): the beat to play, or None.
     tour_beat: int | None = None
+    # A tapped suggestion chip offered to this visitor (`demo.suggestions.chip_for`): its checked
+    # lookup is the turn's first round, never the model's pick.
+    chip: object | None = None
+
+
+# A function call the model did not make carries this in place of a thought signature (Gemini's
+# documented value for a call injected into the conversation).
+INJECTED_SIGNATURE = "skip_thought_signature_validator"
+
+
+class ChipFirst:
+    """The model, with the turn's first round already decided: the tapped chip's own checked call
+    (`demo.suggestions`), never the model's pick of tool or arguments. Sits above the counting
+    layer, so that round is no model call and costs nothing; a later round, if the result needs
+    wording, is the real model's. A chip whose tool ends the turn in code (his profile) is answered
+    with no model call at all."""
+
+    def __init__(self, inner, chip):
+        self.inner = inner
+        self.chip = chip
+        self.scripted = False
+        self._row_skipped = False
+
+    def stream(self, req):
+        if not self.scripted:
+            self.scripted = True
+            args = dict(self.chip.args)
+            yield PartEvent(
+                {
+                    "functionCall": {"name": self.chip.tool, "args": args},
+                    "thoughtSignature": INJECTED_SIGNATURE,
+                }
+            )
+            yield ToolCallEvent("chip", self.chip.tool, args)
+            yield Usage()
+            yield Finish("STOP")
+            return
+        yield from self.inner.stream(req)
+
+    def skip_row(self) -> bool:
+        """True once, for the scripted round's row: it is not a model call."""
+        if self._row_skipped:
+            return False
+        self._row_skipped = True
+        return True
 
 
 @dataclass
@@ -1528,6 +1583,15 @@ def _answer(
         limits=LIMITS,
     )
     rounds: list[dict] = []
+    chip_first = None
+    if turn_input.chip is not None:
+        chip_first = model = ChipFirst(model, turn_input.chip)
+        timings["chip"] = 1
+
+    def on_model_call(row: dict) -> None:
+        if chip_first is None or not chip_first.skip_row():
+            rounds.append(row)
+
     first_sentence = None
     verbatim_said = False
     filler_said = False
@@ -1587,7 +1651,7 @@ def _answer(
         door,
         system=system,
         hooks=LoopHooks(
-            on_model_call=rounds.append,
+            on_model_call=on_model_call,
             clock=clock,
             started=t0,
             cancelled=door.cancelled,
@@ -1781,6 +1845,17 @@ def _answer(
         # The demo's live strip (recruiter only): what this turn is estimated to have cost.
         extra["cost_usd"] = round(turn_cost_usd(timings, speaker.done), 5)
         extra["tools_ms"] = [[c.name, c.ms] for c in door.calls]
+        # The follow-up chips: only what ran, signed for this visitor; the page asks for the
+        # checked chips after the answer (`demo.suggestions`), never inside the turn.
+        offer = (
+            None
+            if door.end_requested
+            else suggestions.turn_offer(
+                door.user, door.calls, " ".join(report.said), report.status
+            )
+        )
+        if offer is not None:
+            extra["offer"] = offer
     yield ev.done(
         report.status,
         " ".join(report.said).strip(),
@@ -2001,7 +2076,11 @@ def _greet(
                 _whole(report.timings.get("speech_fetched")) + fetched
             )
     yield from speaker.drain()
-    yield ev.done("greeting", text, False)
+    extra = {}
+    if door.recruiter and not turn_input.preface:
+        # The first greeting carries the examples' offer (`demo.suggestions.EXAMPLES`).
+        extra["offer"] = suggestions.examples_offer(door.user)
+    yield ev.done("greeting", text, False, **extra)
 
 
 # A figure in any form (round 3 speech S2, ruling A: NO figure at all in a model-worded greeting):

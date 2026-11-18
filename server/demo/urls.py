@@ -1,6 +1,6 @@
 from django.urls import path
 
-from demo.content_views import DemoAssetView, DemoContentView, DemoSessionView
+from demo.content_views import DemoAssetView, DemoChipsView, DemoContentView, DemoSessionView
 from demo.views import DemoEnterView, DemoFunnelView
 
 urlpatterns = [
@@ -9,4 +9,5 @@ urlpatterns = [
     path("session", DemoSessionView.as_view(), name="demo-session"),
     path("content", DemoContentView.as_view(), name="demo-content"),
     path("asset/<str:kind>", DemoAssetView.as_view(), name="demo-asset"),
+    path("chips", DemoChipsView.as_view(), name="demo-chips"),
 ]

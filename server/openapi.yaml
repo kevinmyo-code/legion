@@ -5193,6 +5193,50 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: That file is not loaded.
+  /api/demo/chips:
+    post:
+      operationId: api_demo_chips_create
+      description: |-
+        After the answer has gone out: the offer's chips, each checked answerable for THIS visitor
+        (`demo.suggestions.answerable`). Reads only. An offer made for someone else, or expired, gives
+        no chips (an empty list, never an error the page must show).
+      summary: The checked suggestion chips for a turn's offer (reads only)
+      tags:
+      - demo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DemoChipsRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DemoChipsRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DemoChipsRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoChips'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoRefusal'
+          description: Not a recruiter's visit.
   /api/demo/content:
     get:
       operationId: api_demo_content_retrieve
@@ -14426,6 +14470,13 @@ components:
           description: 'With `greet`: JSON the page keeps for the greeting''s caps,
             `{"today": [kinds led with today], "last": kind, "hellos": [last hellos]}`.'
           maxLength: 2000
+        chip:
+          type: string
+          description: 'With `text`: the token of a suggestion chip the engine offered
+            this visitor (`POST /api/demo/chips`), whose question `text` is word for
+            word. The chip''s own checked lookup then answers it; any other token
+            is ignored and the turn is a plain typed one.'
+          maxLength: 4000
         preface:
           type: string
           description: A hidden line the page puts ahead of the person's words (the
@@ -17291,6 +17342,41 @@ components:
       - calories_kcal
       - effective_from
       - protein_g
+    DemoChip:
+      type: object
+      properties:
+        label:
+          type: string
+          description: What the chip shows.
+        question:
+          type: string
+          description: The whole question a tap asks, word for word.
+        token:
+          type: string
+          description: Sent back as the turn's `chip` with the question.
+      required:
+      - label
+      - question
+      - token
+    DemoChips:
+      type: object
+      properties:
+        chips:
+          type: array
+          items:
+            $ref: '#/components/schemas/DemoChip'
+      required:
+      - chips
+    DemoChipsRequest:
+      type: object
+      properties:
+        offer:
+          type: string
+          description: The `offer` of a turn's `done` event (the greeting's, or an
+            answer's).
+          maxLength: 8000
+      required:
+      - offer
     DemoEnterRequest:
       type: object
       properties:

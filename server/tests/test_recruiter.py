@@ -413,7 +413,9 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
     (`tests/test_assistant_cascade.py`). The transcribe door (2026-11-17) is its early
     speech-to-text: it answers nothing, runs no tool and is charged to the demo budget
     (`tests/test_demo_voice_first.py`). The robotic door marks a turn number on the visitor's own
-    record (`tests/test_sounding_human.py`)."""
+    record (`tests/test_sounding_human.py`). The chips door (demo stage 2, 2026-11-18) checks the
+    engine's own suggestions for a turn's signed offer with reads only (`demo/suggestions.py`,
+    `tests/test_demo_suggestions.py`)."""
     opened = {p for p, c in ROUTES if _guarded(c) and getattr(c, "allows_recruiter", False)}
     assert opened == {
         "/api/assistant/companion",
@@ -425,6 +427,7 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
         "/api/assistant/turn",
         "/api/assistant/turn/cancel",
         "/api/demo/asset/x",
+        "/api/demo/chips",
         "/api/demo/content",
         "/api/demo/session",
     }

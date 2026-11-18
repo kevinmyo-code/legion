@@ -2270,6 +2270,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/chips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The checked suggestion chips for a turn's offer (reads only)
+         * @description After the answer has gone out: the offer's chips, each checked answerable for THIS visitor
+         *     (`demo.suggestions.answerable`). Reads only. An offer made for someone else, or expired, gives
+         *     no chips (an empty list, never an error the page must show).
+         */
+        post: operations["api_demo_chips_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/content": {
         parameters: {
             query?: never;
@@ -6213,6 +6235,8 @@ export interface components {
             greet: boolean;
             /** @description With `greet`: JSON the page keeps for the greeting's caps, `{"today": [kinds led with today], "last": kind, "hellos": [last hellos]}`. */
             greeting_history?: string;
+            /** @description With `text`: the token of a suggestion chip the engine offered this visitor (`POST /api/demo/chips`), whose question `text` is word for word. The chip's own checked lookup then answers it; any other token is ignored and the turn is a plain typed one. */
+            chip?: string;
             /** @description A hidden line the page puts ahead of the person's words (the demo's opener). Never shown, never recorded as theirs. */
             preface?: string;
         };
@@ -7500,6 +7524,21 @@ export interface components {
             protein_g: number;
             /** Format: date */
             effective_from: string;
+        };
+        DemoChip: {
+            /** @description What the chip shows. */
+            label: string;
+            /** @description The whole question a tap asks, word for word. */
+            question: string;
+            /** @description Sent back as the turn's `chip` with the question. */
+            token: string;
+        };
+        DemoChips: {
+            chips: components["schemas"]["DemoChip"][];
+        };
+        DemoChipsRequest: {
+            /** @description The `offer` of a turn's `done` event (the greeting's, or an answer's). */
+            offer: string;
         };
         DemoEnterRequest: {
             code: string;
@@ -16904,6 +16943,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_chips_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DemoChipsRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["DemoChipsRequest"];
+                "multipart/form-data": components["schemas"]["DemoChipsRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoChips"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not a recruiter's visit. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoRefusal"];
                 };
             };
         };

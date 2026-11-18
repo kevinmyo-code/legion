@@ -291,3 +291,54 @@ class DemoAssetView(APIView):
             response["Content-Disposition"] = f'attachment; filename="{RESUME_DOWNLOAD_NAME}"'
         # `resume_image` is drawn inline by the resume modal: no disposition.
         return response
+
+
+# =============================================================================
+# POST /api/demo/chips: the checked suggestion chips for a turn's offer (`demo.suggestions`)
+# =============================================================================
+
+
+class DemoChipsRequestSerializer(serializers.Serializer):
+    offer = serializers.CharField(
+        max_length=8_000,
+        help_text="The `offer` of a turn's `done` event (the greeting's, or an answer's).",
+    )
+
+
+class DemoChipSerializer(serializers.Serializer):
+    label = serializers.CharField(help_text="What the chip shows.")
+    question = serializers.CharField(help_text="The whole question a tap asks, word for word.")
+    token = serializers.CharField(help_text="Sent back as the turn's `chip` with the question.")
+
+
+class DemoChipsSerializer(serializers.Serializer):
+    chips = DemoChipSerializer(many=True)
+
+
+class DemoChipsView(APIView):
+    """After the answer has gone out: the offer's chips, each checked answerable for THIS visitor
+    (`demo.suggestions.answerable`). Reads only. An offer made for someone else, or expired, gives
+    no chips (an empty list, never an error the page must show)."""
+
+    permission_classes = [RecruiterOnly]
+    allows_recruiter = True
+
+    @extend_schema(
+        tags=DEMO_TAGS,
+        operation_id="api_demo_chips_create",
+        summary="The checked suggestion chips for a turn's offer (reads only)",
+        request=DemoChipsRequestSerializer,
+        responses={
+            200: DemoChipsSerializer,
+            400: DetailSerializer,
+            403: OpenApiResponse(DemoRefusalSerializer, description="Not a recruiter's visit."),
+        },
+    )
+    def post(self, request):
+        from demo import suggestions
+
+        body = DemoChipsRequestSerializer(data=request.data)
+        if not body.is_valid():
+            return Response({"detail": f"No chips: {body.errors}"}, status=400)
+        chips = suggestions.chips_for_offer(request, body.validated_data["offer"]) or []
+        return Response({"chips": chips}, headers={"Cache-Control": "private, no-store"})
