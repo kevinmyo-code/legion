@@ -1165,9 +1165,12 @@ class AssistantTurnView(_AssistantView):
                         status.HTTP_429_TOO_MANY_REQUESTS,
                     )
 
+            carried_window = None
             if row is not None and row.raw_bytes > RECORD_ROLLOVER_BYTES:
                 # A full record would freeze the turn number (finding 9): the conversation goes
-                # on in a new record, and the page learns its id from the first event.
+                # on in a new record, and the page learns its id from the first event. It keeps
+                # its time window, so a demo's time limit is not reset by it (round 2 finding 9).
+                carried_window = row.window_start
                 row = None
             if row is None:
                 row = web_conversation.start(
@@ -1175,6 +1178,9 @@ class AssistantTurnView(_AssistantView):
                     model=f"cascade/{voice_engine.text_model()}",
                     client_now_ms=data.get("client_now_ms"),
                 )
+                if carried_window is not None:
+                    row.window_start = carried_window
+                    row.save(update_fields=["window_start"])
             history, turn_no = web_conversation.history(
                 row,
                 max_turns=cascade.HISTORY_TURNS,

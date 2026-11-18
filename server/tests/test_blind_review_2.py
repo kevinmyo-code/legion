@@ -317,3 +317,26 @@ def test_speech_is_reserved_per_request_and_given_back_when_unused(visitor, engi
     lines = len(set(fillers.all_lines()) | set(cascade.SPOKEN_FAILURES))
     # One text call used; the speech share; one speech request plus the lines set out to be made.
     assert day.reserved_cents == 1 + 1 + budget.speech_requests_cents(1 + lines)
+
+
+# ---- finding 9: the record rollover does not reset a demo conversation's time limit -------------
+
+
+def test_a_rolled_over_record_keeps_the_conversations_time_window(visitor, engine, monkeypatch):
+    from datetime import timedelta
+
+    from agents.runtime.model import FakeModel, say
+    from assistant import views
+    from devicelogs.models import DeviceLog
+
+    engine.model = FakeModel([say("Hello.")])
+    first = _of(_events(_post(visitor, text="Hi.")), "turn")[0]["conversation_id"]
+    row = DeviceLog.objects.get(batch_id=first)
+    row.window_start = row.window_start - timedelta(minutes=3)
+    row.save(update_fields=["window_start"])
+    monkeypatch.setattr(views, "RECORD_ROLLOVER_BYTES", 0)
+    engine.model = FakeModel([say("Still here.")])
+    second = _of(_events(_post(visitor, text="Again.", conversation_id=first)), "turn")[0]
+    rolled = DeviceLog.objects.get(batch_id=second["conversation_id"])
+    assert rolled.batch_id != row.batch_id
+    assert rolled.window_start == row.window_start
