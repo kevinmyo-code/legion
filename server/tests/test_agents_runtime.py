@@ -33,8 +33,7 @@ from agents.runtime.tools import ToolOutcome
 AGENTS = Path(__file__).resolve().parent.parent / "agents"
 
 
-# ======================================================================
-
+# =============================================================================
 # The import boundary (ADR 0100)
 # =============================================================================
 
@@ -265,7 +264,8 @@ def test_only_the_first_sentence_is_cut_and_only_when_asked():
         "then it picks one.",
         later,
     ]
-=======
+
+
 def test_a_tool_whose_outcome_ends_the_turn_stops_the_loop_with_no_further_round():
     """A gateway may say a call's result IS the answer (code speaks it): the loop still runs every
     call of that round (a resume opens, a write is made), then asks the model nothing more."""
