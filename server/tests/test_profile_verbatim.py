@@ -222,6 +222,38 @@ def test_what_is_said_is_whole_sections_in_his_order_capped(chosen, rest_of, lin
     assert len(spoken.lines) <= profile.CAP
 
 
+@pytest.mark.parametrize(
+    ("chosen", "lines", "more"),
+    [
+        # Every section from the top of his file while they fit; the rest named in his order.
+        (
+            ["overview"],
+            LOCATION + AVAILABILITY + EDUCATION,
+            "There's more on Experience, Salary, Contact, Roles wanted; just ask.",
+        ),
+        # With named ids too, it is still the overview.
+        (
+            ["salary", "overview", "contact"],
+            LOCATION + AVAILABILITY + EDUCATION,
+            "There's more on Experience, Salary, Contact, Roles wanted; just ask.",
+        ),
+        # A named pick is unchanged.
+        (["salary", "contact"], SALARY + CONTACT, None),
+    ],
+)
+def test_overview_reads_his_sections_in_his_order(chosen, lines, more):
+    spoken = speak(SECTIONS, chosen)
+    assert list(spoken.lines) == lines
+    assert spoken.more == more
+
+
+def test_overview_is_declared_first_with_the_titles(loaded, visitor_user):
+    tool = spoken_for(visitor_user)
+    enum = tool.input_schema["properties"]["sections"]["items"]["enum"]
+    assert enum[0] == "overview"
+    assert "overview (a general question about him)" in tool.description
+
+
 def test_a_more_line_names_only_titles_that_exist():
     for chosen in (
         ["experience"],
@@ -270,7 +302,8 @@ def test_the_model_is_declared_titles_and_ids_never_a_sentence(loaded, visitor_u
     assert "roles_wanted (Roles wanted)" in tool.description
     # Postgres keeps a JSON object's keys in its own order, so the ids are compared as a set.
     assert set(tool.input_schema["properties"]["sections"]["items"]["enum"]) == {
-        s.id for s in profile.sections_of(PROFILE)
+        "overview",
+        *(s.id for s in profile.sections_of(PROFILE)),
     }
     declared = json.dumps({"d": tool.description, "s": tool.input_schema})
     for sentence in ALL_SENTENCES + [LEAD]:
@@ -311,6 +344,15 @@ HE_IS_GREAT = say("He is a fine engineer.")
 TABLE = [
     ("about", "Tell me about Kevin.", [ak("education", "location")], LOCATION + EDUCATION),
     ("study", "Where did he study?", [ak("education")], EDUCATION),
+    (
+        "overview",
+        "What's his background?",
+        [ak("overview")],
+        LOCATION
+        + AVAILABILITY
+        + EDUCATION
+        + ["There's more on Experience, Salary, Contact, Roles wanted; just ask."],
+    ),
     ("graduate", "When does he graduate?", [ak("education")], EDUCATION),
     ("start", "When can he start?", [ak("availability")], AVAILABILITY),
     ("based", "Where is he based?", [ak("location")], LOCATION),

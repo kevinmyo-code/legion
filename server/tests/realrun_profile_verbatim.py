@@ -36,6 +36,7 @@ pytestmark = [pytest.mark.django_db, pytest.mark.live_model]
 
 KEVIN_RUNS = int(os.environ.get("REALRUN_KEVIN_RUNS", "10"))
 STATUS_RUNS = int(os.environ.get("REALRUN_STATUS_RUNS", "5"))
+BACKGROUND_RUNS = int(os.environ.get("REALRUN_BACKGROUND_RUNS", "3"))
 CONTENT_DIR = os.environ.get("REALRUN_CONTENT_DIR", "")
 MORE = re.compile(
     r"^There's more on .+(; just ask\.| than I can read out here; ask him directly\.)$"
@@ -66,9 +67,11 @@ def test_realrun_profile_verbatim(real, tmp_path):  # noqa: F811
     raw = _load(tmp_path)
     sentences = {s for section in profile.sections_of(raw) for s in section.sentences}
     client = _visitor()
-    asks = [("kevin", "Tell me about Kevin.")] * KEVIN_RUNS + [
-        ("status", "Is Kevin authorised to work in the US?")
-    ] * STATUS_RUNS
+    asks = (
+        [("kevin", "Tell me about Kevin.")] * KEVIN_RUNS
+        + [("background", "What's his background?")] * BACKGROUND_RUNS
+        + [("status", "Is Kevin authorised to work in the US?")] * STATUS_RUNS
+    )
     summary = {
         "turns": 0,
         "model_sentences_in_about_kevin_turns": 0,
