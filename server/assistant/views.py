@@ -1277,7 +1277,10 @@ class AssistantTurnView(_AssistantView):
                 else cascade.MAX_ROUNDS + 1
             ) + 1
             spoken_turn = (
-                greet or audio is not None or bool(data.get("spoken")) or tour_beat is not None
+                greet
+                or audio is not None
+                or bool(data.get("spoken"))
+                or (tour_beat is not None and not text)
             )
             voice = voice_engine.voice_for(request.user)
             # Speech reserved per request it may make: the turn's own, and the filler and failure

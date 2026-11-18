@@ -1145,7 +1145,8 @@ def run_turn(
         turn_input.audio is not None
         or turn_input.greet
         or turn_input.spoken
-        or turn_input.tour_beat is not None
+        # A tour beat is narrated; a typed question during it is a typed turn (round 3 N9).
+        or (turn_input.tour_beat is not None and not turn_input.text)
     )
     system = cached_system(system)
     yield ev.Event("turn", {"conversation_id": str(conversation_id), "turn": turn})
