@@ -1,3 +1,4 @@
+# ruff: noqa: F811 - fixtures imported from the cascade tests
 """Blind review round 3, speech (`review-demo-voice-first-1117-speech-r3.md`): one test per finding,
 written to fail before its fix. Ruling B stands: the failure mode is "spoken exactly", never
 "spoken wrong", so heuristics are removed, not tuned. Google is never called; every word is
@@ -8,6 +9,13 @@ from __future__ import annotations
 import pytest
 
 from assistant import cascade
+from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
+    _clean,
+    engine,
+    member,
+    visitor,
+    visitor_user,
+)
 
 # ---- S2: a model-worded greeting carries no figure in any form ----------------------------------
 
@@ -129,3 +137,51 @@ def test_a_clip_spoken_in_the_fallback_is_never_kept_under_the_members_voice():
     line = cascade.SPOKEN_FAILURES[0]
     audio.warm(speech, "en-gb-advisor-3", [line])
     assert audio.get("en-gb-advisor-3", line) is None
+
+
+# ---- S4: a long or multi-round answer is spoken to its end; when speech must stop early, the
+# ---- closing honesty line is still said and the page is told ------------------------------------
+
+LONG_ANSWER = " ".join(f"Point {n} is about the week ahead and what it holds." for n in range(1, 9))
+
+
+def _two_tools_then(answer: str):
+    from agents.runtime.model import FakeModel, call, say
+
+    def lead(text, name):
+        return say(text)[:2] + call(name)
+
+    return FakeModel(
+        [
+            lead("Let me look at the calendar first.", "list_events"),
+            lead("And the lists as well.", "list_checklists"),
+            say(answer),
+        ]
+    )
+
+
+@pytest.mark.django_db
+def test_a_long_answer_after_two_tools_is_spoken_to_its_end(member, engine):
+    from tests.test_assistant_cascade import _events, _post
+
+    engine.model = _two_tools_then(LONG_ANSWER + " That is the lot.")
+    events = _events(_post(member, text="Walk me through the week.", spoken="true"))
+    spoken = " ".join(text for text, _voice in engine.speech.spoken)
+    assert "That is the lot." in spoken
+    assert not [e for k, e in events if k == "speech_stopped"]
+
+
+@pytest.mark.django_db
+def test_when_speech_stops_early_the_closing_line_is_said_and_the_page_is_told(
+    visitor, engine, monkeypatch
+):
+    from demo import budget as demo_budget
+    from tests.test_assistant_cascade import _events, _post
+
+    monkeypatch.setattr(demo_budget, "reserve_speech_requests", lambda *a, **k: None)
+    # A claimed change with no write: the closing honesty line must still be heard.
+    engine.model = _two_tools_then(LONG_ANSWER + " I've added it to your list.")
+    events = _events(_post(visitor, text="Walk me through the week.", spoken="true"))
+    spoken = [text for text, _voice in engine.speech.spoken]
+    assert any(cascade.CHANGE_NOT_MADE in text for text in spoken), spoken
+    assert [e for k, e in events if k == "speech_stopped"]
