@@ -1781,18 +1781,18 @@ def _greet(
     yield ev.done("greeting", text, False)
 
 
-# A figure in any form: digits, a currency or percent sign, or a number word beside a money or
-# quantity word ("nine hundred bucks", "forty dollars", "three tasks").
-_NUMBER_WORD = (
-    r"(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
-    r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|"
-    r"ninety|hundred|thousand|million|billion|half|dozen|a couple)"
-)
-_FIGURE_IN_WORDS = re.compile(
-    _NUMBER_WORD
-    + r"[\s-]+(\w+[\s-]+)?(dollars?|bucks?|cents?|grand|percent|per cent|pounds?|kilos?|miles?|"
-    r"items?|tasks?|things?|events?|bills?|charges?|workouts?|sets?|reps?|days?|hours?|minutes?|"
-    r"times?|left|due|over|under)\b",
+# A figure in any form (round 3 speech S2, ruling A: NO figure at all in a model-worded greeting):
+# digits, a currency or percent sign, any number word but "one", any ordinal, a fraction word, or
+# a clock time in words. "one" is allowed alone: it is a pronoun or an article far more often
+# ("one thing", "a quiet one"); "one hundred" is still caught by "hundred".
+_FIGURE_WORDS = re.compile(
+    r"\b(zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
+    r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|"
+    r"eighty|ninety|hundreds?|thousands?|millions?|billions?|dozens?|couple|"
+    r"first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|"
+    r"\w+teenth|\w+tieth|hundredth|thousandth|"
+    r"half|halves|quarters?|thirds|fourths|fifths|tenths|twice|thrice|double|triple|"
+    r"noon|midnight|o'clock|oclock)\b",
     re.I,
 )
 
@@ -1801,7 +1801,7 @@ def greeting_states_a_figure(text: str) -> bool:
     """True when a model-worded greeting states any figure (round 2 speech review A: checking or
     rewriting figures in free model text never converged, so a greeting carries none). The
     scripted line is said instead; a figure that belongs in a greeting is written by code."""
-    return bool(re.search(r"[0-9$%\u00a3\u20ac]", text) or _FIGURE_IN_WORDS.search(text))
+    return bool(re.search(r"[0-9$%\u00a3\u20ac]", text) or _FIGURE_WORDS.search(text))
 
 
 def greeting_is_honest(text: str) -> bool:
