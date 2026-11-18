@@ -85,6 +85,7 @@ from agents.runtime.loop import (
     TIMEOUT_WORDS,
     LoopHooks,
     SentenceSplitter,
+    first_clause,
     run_loop,
 )
 from agents.runtime.model import (
@@ -515,29 +516,12 @@ TTS_REQUEST_CEILING = 16
 GROUP_SENTENCES = 3
 GROUP_CHARS = 400
 # A first sentence longer than this many words has its first clause spoken on its own.
-FIRST_CLAUSE_WORDS = 14
-_CLAUSE_BREAK = re.compile(r"(?<=[,;:\u2014])\s+")
-
-
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
 
 def _first_sentence(text: str) -> tuple[str, str]:
     parts = _SENTENCE_END.split(text, maxsplit=1)
     return parts[0], parts[1] if len(parts) > 1 else ""
-
-
-def first_clause(sentence: str) -> tuple[str, str]:
-    """(what is spoken at once, the rest). A long first sentence is split after its first comma
-    that leaves at least four words in front; a short one goes whole."""
-    words = sentence.split()
-    if len(words) <= FIRST_CLAUSE_WORDS:
-        return sentence, ""
-    for match in _CLAUSE_BREAK.finditer(sentence):
-        head = sentence[: match.start()].strip()
-        if len(head.split()) >= 4 and len(sentence[match.end() :].split()) >= 3:
-            return head, sentence[match.end() :].strip()
-    return sentence, ""
 
 
 def _transcribe(speech, pcm: bytes, timings: dict):
@@ -1505,7 +1489,11 @@ def _answer(
         door,
         system=system,
         hooks=LoopHooks(
-            on_model_call=rounds.append, clock=clock, started=t0, cancelled=door.cancelled
+            on_model_call=rounds.append,
+            clock=clock,
+            started=t0,
+            cancelled=door.cancelled,
+            early_clause=speaker.enabled,
         ),
     )
     result = None

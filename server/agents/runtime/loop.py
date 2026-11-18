@@ -57,6 +57,22 @@ CANCELLED = "cancelled"
 FAILED = "failed"
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+# The first clause of an answer is spoken before its sentence ends (2026-11-18, speed): once a first
+# sentence passes this many words, it is cut at its first , ; or : after the next number of words.
+FIRST_CLAUSE_PAST_WORDS = 8
+FIRST_CLAUSE_MIN_WORDS = 6
+_CLAUSE_BREAK = re.compile(r"(?<=[,;:])\s+")
+
+
+def first_clause(text: str) -> tuple[str, str]:
+    """(what may be said at once, the rest) for a first sentence, whole or still streaming."""
+    if len(text.split()) <= FIRST_CLAUSE_PAST_WORDS:
+        return text, ""
+    for match in _CLAUSE_BREAK.finditer(text):
+        head, rest = text[: match.start()].strip(), text[match.end() :]
+        if len(head.split()) >= FIRST_CLAUSE_MIN_WORDS and rest.strip():
+            return head, rest
+    return text, ""
 
 
 @dataclass
@@ -68,6 +84,8 @@ class LoopHooks:
     on_model_call: Callable[[dict], None] = lambda row: None
     clock: Callable[[], float] = time.monotonic
     started: float | None = None
+    # Each round's first sentence may come out clause first (`SentenceSplitter`): a voice turn.
+    early_clause: bool = False
 
 
 @dataclass
@@ -80,16 +98,30 @@ class LoopResult:
 
 
 class SentenceSplitter:
-    """Text in as it streams, whole sentences out."""
+    """Text in as it streams, whole sentences out. With `early_clause`, the first sentence's first
+    clause comes out on its own, as soon as it exists (`first_clause`)."""
 
-    def __init__(self):
+    def __init__(self, early_clause: bool = False):
         self._buf = ""
+        self._early = early_clause
 
     def feed(self, text: str) -> list[str]:
         self._buf += text
         parts = _SENTENCE_END.split(self._buf)
         self._buf = parts.pop()
-        return [p.strip() for p in parts if p.strip()]
+        out = [p.strip() for p in parts if p.strip()]
+        if not self._early:
+            return out
+        if out:
+            self._early = False
+            head, rest = first_clause(out[0])
+            return [head, rest.strip(), *out[1:]] if rest else out
+        head, rest = first_clause(self._buf)
+        if rest:
+            self._early = False
+            self._buf = rest.lstrip()
+            return [head]
+        return out
 
     def flush(self) -> list[str]:
         rest, self._buf = self._buf.strip(), ""
@@ -150,7 +182,7 @@ def run_loop(
         calls: list[ToolCall] = []
         usage = Usage()
         finish = ""
-        splitter = SentenceSplitter()
+        splitter = SentenceSplitter(early_clause=hooks.early_clause and round_no == 0)
         t0 = hooks.clock()
         first_ms = None
         try:
