@@ -410,8 +410,9 @@ def record_lines(request, conversation_id, stamped: list[tuple]) -> None:
 
 
 def utterances_received(row: DeviceLog) -> int:
-    """How many turns other than the greeting this conversation has received, answered or not
-    (ignored side talk and no-speech turns included): one timing line each (round 3 speech S5)."""
+    """How many utterances heard as speech this conversation has received, answered or not
+    (ignored side talk included; the greeting, echoes and room noise not): one timing line each
+    (round 3 speech S5, round 4)."""
     from devicelogs.views import inflate_capped
 
     body = inflate_capped(bytes(row.body_gz)).decode("utf-8", errors="replace")
@@ -420,8 +421,10 @@ def utterances_received(row: DeviceLog) -> int:
         for text in body.splitlines()
         if "cascade_turn status=" in text
         and "cascade_turn status=greeting" not in text
-        # The assistant's own reply heard back is not an utterance (the echo layer).
+        # The assistant's own reply heard back is not an utterance (the echo layer), and nor is
+        # room noise (round 4 speech: only utterances heard as speech count).
         and "cascade_turn status=echo" not in text
+        and "cascade_turn status=nothing_heard" not in text
     )
 
 
