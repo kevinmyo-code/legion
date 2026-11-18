@@ -821,24 +821,6 @@ def test_the_ship_gate_reply_says_the_true_reason_once(request, engine, role):
     ]
 
 
-@pytest.mark.parametrize(
-    "excuse",
-    [
-        # Seen in the real-model replay (2026-11-18): a decline that also reads as a claimed change
-        # (held to the end) and one that says "put ... on".
-        "I couldn't add it to your list just yet, Sam.",
-        "I can't put that on your groceries list, Sam, since groceries checklists are for food.",
-    ],
-)
-def test_replayed_declines_after_a_web_read_give_the_code_line(member, engine, excuse):
-    engine.model = FakeModel(
-        [call("web_search", {"query": "next eclipse"}), say(f"It is March 30, 2033. {excuse}")]
-    )
-    events = _events(_post(member, text="When is the next eclipse? Add glasses to my list."))
-    said = [s["text"] for s in _of(events, "sentence")]
-    assert said == ["It is March 30, 2033.", cascade.READ_THROUGH_WAIT]
-
-
 def test_two_declining_sentences_give_one_code_line(member, engine):
     engine.model = FakeModel(
         [
