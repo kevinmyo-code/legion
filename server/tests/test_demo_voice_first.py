@@ -279,10 +279,12 @@ def test_an_early_transcript_is_answered_aloud_without_transcribing_again(member
 
 def test_the_opening_is_short_names_the_tour_and_the_recording_and_never_says_train():
     line = strip(web_greeting.recruiter_hello("Alfred"))
-    assert len(line.split()) <= 22
+    # About five seconds spoken (2026-11-17: 7.1 to 8.0 s measured at 22 words).
+    assert len(line.split()) <= web_greeting.MAX_GREETING_WORDS
+    assert len(strip(web_greeting.recruiter_hello("")).split()) <= web_greeting.MAX_GREETING_WORDS + 1
     assert "tour" in line and "recorded" in line
     assert "train" not in line.lower()
-    assert web_greeting.recruiter_hello("").startswith("Hi, I'm Kevin's assistant.")
+    assert web_greeting.recruiter_hello("").startswith("I'm Kevin's assistant.")
 
 
 @pytest.mark.parametrize(

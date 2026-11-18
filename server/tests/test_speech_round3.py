@@ -254,3 +254,28 @@ def test_a_transcription_retry_and_the_greetings_fetch_are_reserved(visitor, eng
     _events(_post(visitor, greet="true"))
     missing = cascade.FILLER_AUDIO.missing("Puck")
     assert asked[0]["speech_requests"] == cascade.MAX_TTS_REQUESTS + missing + 1
+
+
+# ---- the greeting stays short: about 14 words spoken (2026-11-17: 7.1 to 8.0 s measured) --------
+
+
+def test_every_scripted_greeting_line_is_short():
+    from assistant import web_greeting
+
+    for line in (*web_greeting.ACK_LINES, web_greeting.recruiter_hello("Alfred")):
+        assert len(line.split()) <= web_greeting.MAX_GREETING_WORDS, line
+
+
+@pytest.mark.parametrize(
+    ("greeting", "kept"),
+    [
+        ("Busy stretch ahead, but nothing you can't handle.", True),
+        (
+            "Looks like quite a busy stretch is coming up for you over the next few days, "
+            "so pace yourself and keep an eye on it.",
+            False,
+        ),
+    ],
+)
+def test_a_model_greeting_over_the_word_cap_is_refused(greeting, kept):
+    assert cascade.greeting_is_honest(greeting) is kept
