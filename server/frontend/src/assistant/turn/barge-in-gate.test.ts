@@ -230,8 +230,10 @@ describe('BargeInGate (the phone gate)', () => {
   })
 
   it("the web's own count: two self-interrupts it found switch the conversation to half-duplex", () => {
+    // One per barge-in, and a reply has at most one: the second is over the next reply.
     const g = gate()
     expect(g.countSelfInterrupt()).toBe(false)
+    g.onReplyStart()
     expect(g.countSelfInterrupt()).toBe(true)
     g.onReplyStart()
     expect(g.armedNow).toBe(false)
