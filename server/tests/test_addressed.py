@@ -138,3 +138,18 @@ def test_tap_then_side_talk_twice_gets_at_most_one_acknowledgement(
         events = _events(_post(member, audio=PCM, conversation_id=conversation))
         acks += len([f for f in _of(events, "filler") if f["tool"] == ""])
     assert acks <= 1
+
+
+def test_room_noise_before_the_first_question_does_not_use_up_the_acknowledgement(
+    member, engine, monkeypatch, household_user
+):
+    """Round 4 speech: only utterances heard as speech count."""
+    _warm(monkeypatch, engine, household_user)
+    engine.model = FakeModel([say("Morning.")])
+    conversation = _of(_events(_post(member, greet="true")), "turn")[0]["conversation_id"]
+    engine.speech.heard = ""  # room noise: nothing heard
+    _events(_post(member, audio=PCM, conversation_id=conversation))
+    engine.speech.heard = "What did we spend on groceries last month?"
+    engine.model = FakeModel([say("About four hundred.")])
+    events = _events(_post(member, audio=PCM, conversation_id=conversation))
+    assert [f["tool"] for f in _of(events, "filler")] == [""]
