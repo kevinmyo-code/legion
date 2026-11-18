@@ -36,6 +36,9 @@ function money(usd: number | null): string {
   return usd < 0.01 ? `${(usd * 100).toFixed(2)}¢` : `$${usd.toFixed(3)}`
 }
 
+// A sliver of orb is not a reachable orb: it counts as on screen only when half of it shows.
+const ORB_SEEN: IntersectionObserverInit = { threshold: 0.5 }
+
 export function VoiceStage({ content, error }: { content?: DemoContent | null; error?: string | null }) {
   const { client, state, name } = useAssistant()
   const [draft, setDraft] = useState('')
@@ -51,7 +54,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
     const observer = new IntersectionObserver((entries) => {
       const latest = entries[entries.length - 1]
       if (latest) setOrbSeen(latest.isIntersecting)
-    })
+    }, ORB_SEEN)
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
