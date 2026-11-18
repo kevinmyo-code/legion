@@ -2120,6 +2120,7 @@ object LiveToolbox {
      * [Event.structuredMeta] (a JSON object string). This function just decodes that column
      * straight into the `meta` field below - same shape the model always saw, sourced differently.
      */
+    @Suppress("ReturnCount") // a bad window, the day he said, or the window asked for
     private suspend fun readCalendar(context: Context, args: JSONObject, userText: String? = null): JSONObject {
         val zone = java.time.ZoneId.systemDefault()
         // His own day word wins over a one-day date the model worked out (RelativeDay.saidDay).

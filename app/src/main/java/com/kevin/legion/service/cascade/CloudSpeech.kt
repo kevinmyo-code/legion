@@ -480,6 +480,9 @@ internal class GeminiTts(
 
     private val voiceNow: String get() = if (fallbackVoice) CloudSpeechWire.FALLBACK_VOICE else voice
 
+    /** Fallback allowed (not Settings' voice test) and the clip was not already sent in Puck. */
+    private fun mayRetryInPuck(sentIn: String): Boolean = allowFallback && sentIn != CloudSpeechWire.FALLBACK_VOICE
+
     private fun isVoiceRefusal(o: StreamOutcome): Boolean =
         o is StreamOutcome.HttpError && o.code == HTTP_BAD_REQUEST && !CloudSpeechWire.isVoiceShapeRejected(o)
 
@@ -511,8 +514,8 @@ internal class GeminiTts(
     override fun warm(lines: Collection<String>): Int {
         var asked = 0
         for (text in lines.distinct()) {
-            if (text.isBlank() || text !in keepLines || kept[keyOf(text)] != null) continue
-            if (!warming.add(keyOf(text))) continue
+            val due = text.isNotBlank() && text in keepLines && kept[keyOf(text)] == null
+            if (!due || !warming.add(keyOf(text))) continue
             Clip(ids.addAndGet(2), text, warmUp = true).start()
             asked++
         }
@@ -556,7 +559,7 @@ internal class GeminiTts(
                     }
                     // A voice Google refuses by name (a 400 that is not about the shape): this clip again in
                     // Puck, whatever another clip already flipped; a voice refusal never flips the shape.
-                    if (isVoiceRefusal(o) && bytes == 0L && allowFallback && sentIn != CloudSpeechWire.FALLBACK_VOICE) {
+                    if (isVoiceRefusal(o) && bytes == 0L && mayRetryInPuck(sentIn)) {
                         if (!fallbackVoice) {
                             fallbackVoice = true
                             refusedVoice = voice to now()

@@ -113,6 +113,7 @@ internal object SpokenLanguages {
      * sentence spoken in one, switches; one he has not added gets [notInSettingsLine]; on the laptop
      * voice ([cloud] false) anything but English gets [LAPTOP_ENGLISH_ONLY].
      */
+    @Suppress("ReturnCount") // refused, nothing asked, or the switch
     fun decide(heard: String, spoken: List<Language>, current: Language, cloud: Boolean): Decision {
         val asked = request(heard, spoken)
         if (asked is Switch.NotInSettings) return Decision.Refuse(notInSettingsLine(asked.name), "not_in_settings")

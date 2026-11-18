@@ -90,7 +90,8 @@ internal object SttGuard {
             }
         }
         val number = bare.isNotEmpty() && bare.all { w -> w.all(Char::isDigit) || w in NUMBER_WORDS }
-        if (!afterQuestion && !number && bare.size < 2 && audioMs >= LONG_AUDIO_MS) return Verdict.Drop("too_short")
+        val oneWordLong = bare.size < 2 && audioMs >= LONG_AUDIO_MS
+        if (!afterQuestion && !number && oneWordLong) return Verdict.Drop("too_short")
         if (!afterQuestion && bare.size >= 2 && bare.all { it in DOMAIN_VOCAB }) return Verdict.Drop("hint_only")
         return Verdict.Keep(kept)
     }
