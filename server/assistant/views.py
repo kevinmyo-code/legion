@@ -1058,6 +1058,19 @@ TURN_REFUSAL_CODES = {
 BUSY_RETRY_MS = 1000
 
 
+class TurnRefusalSerializer(serializers.Serializer):
+    """A refusal of `POST /api/assistant/turn` (round 3 N8): the words, and the `code` the page
+    acts on (`TURN_REFUSAL_CODES`)."""
+
+    detail = serializers.CharField(help_text="What did not happen, in words to show.")
+    code = serializers.ChoiceField(
+        choices=sorted(TURN_REFUSAL_CODES), help_text="What the page does next."
+    )
+    retry_ms = serializers.IntegerField(
+        required=False, help_text="With `busy`: when to send the same request again."
+    )
+
+
 def _more_speech(user):
     """How a running turn reserves more speech requests (round 3 S4): against the demo budget for
     a visit, without limit (bar the turn's ceiling) for a member."""
@@ -1144,33 +1157,37 @@ class AssistantTurnView(_AssistantView):
         responses={
             200: OpenApiResponse(description="text/event-stream, as described."),
             400: OpenApiResponse(
-                DetailSerializer, description="The body did not fit; nothing ran."
+                TurnRefusalSerializer, description="The body did not fit; nothing ran."
             ),
             404: OpenApiResponse(
-                DetailSerializer, description="No conversation with that id is the caller's."
+                TurnRefusalSerializer, description="No conversation with that id is the caller's."
             ),
             409: OpenApiResponse(
-                DetailSerializer,
+                TurnRefusalSerializer,
                 description=(
-                    "This caller's assistant runs on live voice, or a demo conversation reached "
-                    "its time limit. Nothing ran."
+                    "`live_engine`, `time_limit`, `busy` (the caller's own earlier turn has not "
+                    "released; send the same request again after `retry_ms`) or `duplicate` (this "
+                    "`turn_id` was already answered). Nothing ran."
                 ),
             ),
             413: OpenApiResponse(
-                DetailSerializer,
+                TurnRefusalSerializer,
                 description=(
                     "The utterance is too long: over MAX_UTTERANCE_SECONDS of 16 kHz 16-bit mono "
                     "PCM, judged on the upload's size in bytes."
                 ),
             ),
             429: OpenApiResponse(
-                DetailSerializer,
+                TurnRefusalSerializer,
                 description=(
-                    "Too many turns (per member, and per address for a demo visit), or today's "
-                    "demo budget or the member's own spend limit is used up. Nothing ran."
+                    "`throttled` (too many turns per member, and per address for a demo visit), "
+                    "`demo_full` (every demo slot or this address's slot is in use), `budget` or "
+                    "`member_cap`. Nothing ran."
                 ),
             ),
-            503: OpenApiResponse(DetailSerializer, description="No Gemini key on this server."),
+            503: OpenApiResponse(
+                TurnRefusalSerializer, description="No Gemini key on this server."
+            ),
         },
     )
     def post(self, request):
@@ -1557,9 +1574,12 @@ class AssistantTurnCancelRequestSerializer(serializers.Serializer):
 class AssistantTurnCancelView(_AssistantView):
     """Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
     and the server only notices a dropped stream at its next write). Marks the turn cancelled in
-    the database, where the running turn looks at every stage boundary, from any worker or
-    instance; it then starts no further paid call and releases its slot. Idempotent; 204 whether
-    or not the turn is still running; costs nothing; a row stops only the caller's own turn."""
+    the database, from any worker or instance. The running turn looks at its stage boundaries
+    (before transcription, each model round, each tool, each speech request, and every 250 ms
+    while it waits on speech): from then on it starts no further paid call. What is already in
+    flight runs to its end (one model round, one tool, or the speech requests already sent), and
+    the turn's slot comes free when its stream ends. Idempotent; 204 whether or not the turn is
+    still running; costs nothing; a row stops only the caller's own turn."""
 
     throttle_classes = [AssistantTurnCancelThrottle, AssistantTurnCancelIpThrottle]
     audit_kind = AssistantCall.SESSION
@@ -1572,6 +1592,10 @@ class AssistantTurnCancelView(_AssistantView):
         responses={
             204: None,
             400: OpenApiResponse(DetailSerializer, description="The body did not fit."),
+            429: OpenApiResponse(
+                DetailSerializer,
+                description="Too many stops in a short time, from this caller or this address.",
+            ),
         },
     )
     def post(self, request):

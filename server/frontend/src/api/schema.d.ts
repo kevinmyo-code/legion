@@ -284,7 +284,7 @@ export interface paths {
         put?: never;
         /**
          * One assistant turn on the engine's voice pipeline, answered as Server-Sent Events
-         * @description text/event-stream, one event per thing that happened: `turn` {conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `greeting` {kind, text} (a greeting turn); `working` {tool}; `filler` {tool, text} (the line said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); `speech_failed` {reason}; `done` {status, final_text, writes_ran, words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no `audio`. Every refusal body is {detail, code}: `bad_request` (400), `no_conversation` (404), `live_engine`, `time_limit`, `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`, `demo_full`, `budget` and `throttled` (429), `no_key` (503). `turn_id` names the turn for `POST /api/assistant/turn/cancel`.
+         * @description text/event-stream, one event per thing that happened: `turn` {conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `greeting` {kind, text} (a greeting turn); `working` {tool}; `filler` {tool, text} (the line said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); `speech_failed` {reason}; `speech_stopped` {reason} (the rest of the answer is shown, not spoken); `done` {status, final_text, writes_ran, words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no `audio`. Every refusal body is {detail, code}: `bad_request` (400), `no_conversation` (404), `live_engine`, `time_limit`, `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`, `demo_full`, `budget` and `throttled` (429), `no_key` (503). `turn_id` names the turn for `POST /api/assistant/turn/cancel`.
          */
         post: operations["api_assistant_turn_create"];
         delete?: never;
@@ -306,9 +306,12 @@ export interface paths {
          * Stop one of the caller's own turns (idempotent, costs nothing)
          * @description Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
          *     and the server only notices a dropped stream at its next write). Marks the turn cancelled in
-         *     the database, where the running turn looks at every stage boundary, from any worker or
-         *     instance; it then starts no further paid call and releases its slot. Idempotent; 204 whether
-         *     or not the turn is still running; costs nothing; a row stops only the caller's own turn.
+         *     the database, from any worker or instance. The running turn looks at its stage boundaries
+         *     (before transcription, each model round, each tool, each speech request, and every 250 ms
+         *     while it waits on speech): from then on it starts no further paid call. What is already in
+         *     flight runs to its end (one model round, one tool, or the speech requests already sent), and
+         *     the turn's slot comes free when its stream ends. Idempotent; 204 whether or not the turn is
+         *     still running; costs nothing; a row stops only the caller's own turn.
          */
         post: operations["api_assistant_turn_cancel_create"];
         delete?: never;
@@ -11394,6 +11397,49 @@ export interface components {
             /** Format: double */
             trend_lbs: number;
         };
+        /**
+         * @description A refusal of `POST /api/assistant/turn` (round 3 N8): the words, and the `code` the page
+         *     acts on (`TURN_REFUSAL_CODES`).
+         */
+        TurnRefusal: {
+            /** @description What did not happen, in words to show. */
+            detail: string;
+            /**
+             * @description What the page does next.
+             *
+             *     * `bad_request` - bad_request
+             *     * `budget` - budget
+             *     * `busy` - busy
+             *     * `demo_full` - demo_full
+             *     * `duplicate` - duplicate
+             *     * `live_engine` - live_engine
+             *     * `member_cap` - member_cap
+             *     * `no_conversation` - no_conversation
+             *     * `no_key` - no_key
+             *     * `throttled` - throttled
+             *     * `time_limit` - time_limit
+             *     * `too_long` - too_long
+             */
+            code: components["schemas"]["TurnRefusalCodeEnum"];
+            /** @description With `busy`: when to send the same request again. */
+            retry_ms?: number;
+        };
+        /**
+         * @description * `bad_request` - bad_request
+         *     * `budget` - budget
+         *     * `busy` - busy
+         *     * `demo_full` - demo_full
+         *     * `duplicate` - duplicate
+         *     * `live_engine` - live_engine
+         *     * `member_cap` - member_cap
+         *     * `no_conversation` - no_conversation
+         *     * `no_key` - no_key
+         *     * `throttled` - throttled
+         *     * `time_limit` - time_limit
+         *     * `too_long` - too_long
+         * @enum {string}
+         */
+        TurnRefusalCodeEnum: "bad_request" | "budget" | "busy" | "demo_full" | "duplicate" | "live_engine" | "member_cap" | "no_conversation" | "no_key" | "throttled" | "time_limit" | "too_long";
         TurnRequest: {
             transcript: string;
             /** Format: uuid */
@@ -12588,7 +12634,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["TurnRefusal"];
                 };
             };
             /** @description No conversation with that id is the caller's. */
@@ -12597,16 +12643,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["TurnRefusal"];
                 };
             };
-            /** @description This caller's assistant runs on live voice, or a demo conversation reached its time limit. Nothing ran. */
+            /** @description `live_engine`, `time_limit`, `busy` (the caller's own earlier turn has not released; send the same request again after `retry_ms`) or `duplicate` (this `turn_id` was already answered). Nothing ran. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["TurnRefusal"];
                 };
             };
             /** @description The utterance is too long: over MAX_UTTERANCE_SECONDS of 16 kHz 16-bit mono PCM, judged on the upload's size in bytes. */
@@ -12615,16 +12661,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["TurnRefusal"];
                 };
             };
-            /** @description Too many turns (per member, and per address for a demo visit), or today's demo budget or the member's own spend limit is used up. Nothing ran. */
+            /** @description `throttled` (too many turns per member, and per address for a demo visit), `demo_full` (every demo slot or this address's slot is in use), `budget` or `member_cap`. Nothing ran. */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["TurnRefusal"];
                 };
             };
             /** @description No Gemini key on this server. */
@@ -12633,7 +12679,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["TurnRefusal"];
                 };
             };
         };
@@ -12662,6 +12708,15 @@ export interface operations {
             };
             /** @description The body did not fit. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Too many stops in a short time, from this caller or this address. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
