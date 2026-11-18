@@ -287,3 +287,35 @@ def test_every_scripted_greeting_line_is_short():
 )
 def test_a_model_greeting_over_the_word_cap_is_refused(greeting, kept):
     assert cascade.greeting_is_honest(greeting) is kept
+
+
+def test_a_sentence_whose_speech_fails_in_the_member_voice_is_said_in_puck_once():
+    """Round 4 speech N3: a refusal that arrives as an in-stream error says only "(400)", so the
+    voice is never marked bad; the sentence is said in Puck rather than not at all."""
+    import base64
+    import json
+
+    from assistant.speech import GeminiSpeech, Spoken
+
+    class InStream:
+        def __init__(self):
+            self.voices = []
+
+        def lines(self, url, headers, data, timeout):
+            shape = json.loads(data)["generationConfig"]["speechConfig"]["voiceConfig"]
+            name = shape.get("voice") or shape.get("prebuiltVoiceConfig", {}).get("voiceName")
+            self.voices.append(name)
+            if name == "en-gb-advisor-3":
+                yield 'data: {"error": {"code": 400}}'
+                return
+            audio = base64.b64encode(b"\x01\x00" * 240).decode()
+            part = {"inlineData": {"mimeType": "audio/l16", "data": audio}}
+            yield "data: " + json.dumps({"candidates": [{"content": {"parts": [part]}}]})
+
+    transport = InStream()
+    speech = GeminiSpeech(lambda: "key", stt_model="stt", transport=transport)
+    stats = Spoken()
+    assert b"".join(speech.speak("Hello there.", "en-gb-advisor-3", stats))
+    assert stats.voice == "Puck"
+    assert transport.voices[-1] == "Puck"
+    assert not speech.bad_voices  # the error named no voice: nothing is marked
