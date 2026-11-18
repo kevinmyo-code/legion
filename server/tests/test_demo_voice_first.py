@@ -111,6 +111,9 @@ def test_a_slow_tool_gets_its_line_when_it_starts(member, engine, monkeypatch, h
 
 def test_a_tool_that_has_returned_gets_no_line(member, engine, monkeypatch, household_user):
     # Round 2 speech review 7: a fast tool's line played after it returned, only adding delay.
+    # The old 700 ms wait set to nothing, as a slow turn would have it (the attribute is gone
+    # now; on 7d4664e5 this made the line play).
+    monkeypatch.setattr(fillers, "FAST_AFTER_MS", 0, raising=False)
     _warm(monkeypatch, engine, household_user)
     engine.model = FakeModel([call("list_events", {}), say("Your day is clear.")])
     events = _events(_post(member, audio=PCM))
@@ -120,6 +123,7 @@ def test_a_tool_that_has_returned_gets_no_line(member, engine, monkeypatch, hous
 def test_no_filler_in_front_of_a_code_written_sentence(member, engine, monkeypatch, household_user):
     from engine_mcp.tools import SPEAK_VERBATIM, ToolResult
 
+    monkeypatch.setattr(fillers, "FAST_AFTER_MS", 0, raising=False)  # as above
     _warm(monkeypatch, engine, household_user)
 
     def fake(request, name, args):
@@ -350,9 +354,35 @@ def test_a_question_during_the_tour_is_answered(visitor, engine, tmp_path):
     assert "tour" not in _of(events, "done")[0]
 
 
-def test_the_tour_is_the_demos_alone_and_takes_no_text(member, visitor, engine):
+def test_the_tour_is_the_demos_alone(member, visitor, engine):
     assert _post(member, tour=0).status_code == 400
-    assert _post(visitor, tour=0, text="hi").status_code == 400
+    assert _post(visitor, tour=0, text="hi", audio=PCM).status_code == 400
+
+
+@pytest.mark.parametrize("how", ["typed", "spoken"])
+def test_stop_during_the_tour_typed_or_spoken_ends_it(visitor, engine, tmp_path, how):
+    # The page sends the beat with a typed turn too (2026-11-17): typed is handled as said.
+    load_fake(tmp_path)
+    if how == "typed":
+        events = _events(_post(visitor, tour=1, text="stop"))
+    else:
+        engine.speech.heard = "stop"
+        events = _events(_post(visitor, tour=1, audio=PCM))
+    assert [s["text"] for s in _of(events, "sentence")] == [tour.STOPPED_LINE]
+    assert _of(events, "done")[0]["tour"]["next"] is None
+
+
+@pytest.mark.parametrize("how", ["typed", "spoken"])
+def test_a_question_during_the_tour_typed_or_spoken_is_answered(visitor, engine, tmp_path, how):
+    load_fake(tmp_path)
+    engine.model = FakeModel([say("About three hundred a month.")])
+    if how == "typed":
+        events = _events(_post(visitor, tour=1, text="What does the household spend on food?"))
+    else:
+        engine.speech.heard = "What does the household spend on food?"
+        events = _events(_post(visitor, tour=1, audio=PCM))
+    assert [s["text"] for s in _of(events, "sentence")] == ["About three hundred a month."]
+    assert "tour" not in _of(events, "done")[0]
 
 
 # =============================================================================

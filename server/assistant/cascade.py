@@ -1087,11 +1087,23 @@ def run_turn(
                 )
                 words = heard.text
                 yield ev.Event("heard", {"text": words})
+            elif turn_input.text:
+                # Typed during the tour: the same as said (2026-11-17, the page sends the beat).
+                words = turn_input.text.strip()
+            if words is not None and not words.strip():
+                # No speech during the tour: silence, as on the answer path.
+                report.status = "nothing_heard"
+                yield ev.done("nothing_heard", "", False, ignored="no_speech")
+                return
             if words is None or tour.is_skip(words) or tour.is_stop(words):
                 yield from _tour(request, door, speaker, report, turn_input.tour_beat, words)
                 return
             turn_input = dataclasses.replace(
-                turn_input, audio=None, text=words, spoken=True, tour_beat=None
+                turn_input,
+                audio=None,
+                text=words,
+                spoken=turn_input.audio is not None or turn_input.spoken,
+                tour_beat=None,
             )
         yield from _answer(
             request,

@@ -862,9 +862,9 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
         min_value=0,
         max_value=20,
         help_text=(
-            "A demo visit's one-minute tour: the beat to play (from 0). With `audio`, what was "
-            "said during the tour: 'skip' plays this beat, 'stop' ends the tour, anything else is "
-            "a question and the tour ends."
+            "A demo visit's one-minute tour: the beat to play (from 0). With `audio` or `text`, "
+            "what was said or typed during the tour: 'skip' plays this beat, 'stop' ends the "
+            "tour, anything else is a question and the tour ends."
         ),
     )
     greet = serializers.BooleanField(
@@ -1095,10 +1095,10 @@ class AssistantTurnView(_AssistantView):
                 "Nothing was answered. A greeting carries no `audio` or `text`.",
                 status.HTTP_400_BAD_REQUEST,
             )
-        if tour_beat is not None and text:
+        if tour_beat is not None and text and upload is not None:
             return _refuse(
                 request,
-                "Nothing was answered. A tour beat carries no `text`.",
+                "Nothing was answered. A tour turn carries `audio` or `text`, not both.",
                 status.HTTP_400_BAD_REQUEST,
             )
         if not greet and tour_beat is None and (upload is None) == (not text):
@@ -1149,7 +1149,7 @@ class AssistantTurnView(_AssistantView):
                 1
                 if greet
                 else 0
-                if tour_beat is not None and audio is None
+                if tour_beat is not None and audio is None and not text
                 else cascade.MAX_ROUNDS + 1
             ) + 1
             spoken_turn = (
