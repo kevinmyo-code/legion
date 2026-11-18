@@ -428,22 +428,24 @@ def test_realrun_voice_map(real, household_user, monkeypatch):
 def _noise_clips(real) -> dict[str, bytes]:
     import math
     import random
-    import struct
 
     from tests.test_no_speech import NOISE, _pcm
 
     rate = 16_000
     rnd = random.Random(9)
     room = [rnd.gauss(0, 120) + 90 * math.sin(2 * math.pi * 60 * i / rate) for i in range(rate * 2)]
-    tts = real.audio_for("vf_car")
-    count = len(tts) // 2
-    samples = struct.unpack(f"<{count}h", tts[: count * 2])
-    echo = struct.pack(f"<{count}h", *(int(v * 0.05) for v in samples))
     clips = {"digital_silence": b"\x00\x00" * rate * 2}
     clips.update({name: _pcm(make()) for name, make in NOISE.items()})
     clips["room_tone"] = _pcm(room)
-    clips["tts_echo_5pct"] = echo
     return clips
+
+
+def _scaled(pcm: bytes, factor: float) -> bytes:
+    import struct
+
+    count = len(pcm) // 2
+    samples = struct.unpack(f"<{count}h", pcm[: count * 2])
+    return struct.pack(f"<{count}h", *(int(v * factor) for v in samples))
 
 
 def test_realrun_no_speech_never_becomes_words(real):
@@ -475,8 +477,13 @@ def test_realrun_no_speech_never_becomes_words(real):
             rows.append(row)
             real._write({"case": "no-speech", **row})
     questions = []
-    for key in ("spend", "car", "vf_docs", "vf_car"):
-        heard = real.speech.transcribe(real.audio_for(key))
+    # A clearly spoken quiet question is speech: being heard is right (ruling 2026-11-17; a
+    # loudness floor would cut off soft-spoken people).
+    quiet = {"vf_car_5pct": _scaled(real.audio_for("vf_car"), 0.05)}
+    for key in ("spend", "car", "vf_docs", "vf_car", "vf_car_5pct"):
+        audio = quiet.get(key) or real.audio_for(key)
+        heard = real.speech.transcribe(audio)
+        key = key.removesuffix("_5pct") if key in quiet else key
         want = set(re.findall(r"[a-z']+", QUESTIONS[key].lower()))
         got = set(re.findall(r"[a-z']+", heard.text.lower()))
         overlap = len(want & got) / max(len(want), 1)
@@ -487,3 +494,46 @@ def test_realrun_no_speech_never_becomes_words(real):
     )
     assert all(r["text"] == "" for r in rows), [r for r in rows if r["text"]]
     assert all(q["overlap"] >= 0.8 for q in questions), questions
+
+
+def test_realrun_the_last_reply_heard_back_is_an_echo(real, db):
+    """The server's echo layer (2026-11-17): a reply the assistant really spoke in this
+    conversation, played back as the next utterance at 5% and 30% volume, and with its first
+    half cut off, ends as `echo` (or as no speech, when too quiet to send): no model round,
+    nothing stored as their line."""
+    from tests.realrun_web_cascade import _to_16k
+    from tests.test_assistant_cascade import _record
+
+    visitor = _visitor()
+    first = _post(
+        real, visitor, "echo-source", text="When is the car due for service?", spoken="true"
+    )
+    cid = first["conversation_id"]
+    reply16 = _to_16k(first["_pcm"])
+    half = len(reply16) // 2
+    half -= half % 2
+    cases = {
+        "echo_5pct": _scaled(reply16, 0.05),
+        "echo_30pct": _scaled(reply16, 0.30),
+        "echo_tail_30pct": _scaled(reply16[half:], 0.30),
+    }
+    rows = []
+    for name, pcm in cases.items():
+        row = _post(real, visitor, name, audio=pcm, conversation_id=cid)
+        statuses = re.findall(r"cascade_turn status=(\w+)", _record(cid))
+        rows.append(
+            {
+                "case": name,
+                "outcome": statuses[-1],
+                "said": row["said"],
+                "tools": row["tools"],
+            }
+        )
+    record = _record(cid)
+    real._write({"case": "echo", "reply_words": len(first["said"].split()), "rows": rows})
+    print("ECHO", json.dumps(rows))
+    for r in rows:
+        assert r["outcome"] in ("echo", "nothing_heard"), r
+        assert r["said"] == "" and r["tools"] == [], r
+    assert record.count("user final=true") == 1  # only the question, never the echo
+    assert any(r["outcome"] == "echo" for r in rows), rows  # the layer itself was exercised
