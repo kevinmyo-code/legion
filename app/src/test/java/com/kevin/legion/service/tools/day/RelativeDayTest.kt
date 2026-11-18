@@ -5,6 +5,7 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The words a date tool takes resolve on the LOCAL date, at both edges of the night (2026-11-16). */
@@ -43,23 +44,37 @@ class RelativeDayTest {
         assertEquals(tue.plusDays(1), RelativeDay.saidDay("What about tomorrow", tue))
         assertEquals(tue, RelativeDay.saidDay("what do I have due today", tue))
         assertEquals(tue, RelativeDay.saidDay("anything tonight?", tue))
-        assertEquals(tue.minusDays(1), RelativeDay.saidDay("what did I miss yesterday", tue))
     }
 
     @Test fun `anything more than one plain day word is left to the model`() {
         for (s in listOf(
             "the day after tomorrow", "tomorrow and the next day", "tomorrow or Friday", "this week",
             "tomorrow, the 19th", "what's due next Tuesday", "today and tomorrow", "", null,
+            // The review's cases: another day named beside the day word.
+            "tomorrow and Thanksgiving", "not tomorrow, the twenty first", "in two days, not tomorrow",
+            "a fortnight from today", "move the dentist to tomorrow", "what did I miss yesterday",
         )) {
             assertNull(s, RelativeDay.saidDay(s, tue))
         }
     }
 
-    @Test fun `a one-day read of another day becomes the day he said, a range or the right day is kept`() {
+    @Test fun `a date one day off the day he said becomes that day, in any date argument, with a note`() {
         val tomorrow = tue.plusDays(1)
-        assertEquals(tomorrow to tomorrow, RelativeDay.correct(tue.plusDays(2), tue.plusDays(2), tomorrow))
-        assertNull(RelativeDay.correct(tomorrow, tomorrow, tomorrow))
-        assertNull(RelativeDay.correct(tue, tue.plusDays(6), tomorrow))
-        assertNull(RelativeDay.correct(tue.plusDays(2), tue.plusDays(2), null))
+        fun fix(args: String, words: String = "and tomorrow?") = RelativeDay.corrected(org.json.JSONObject(args), words, tue)
+        val read = fix("""{"from":"${tue.plusDays(2)}","to":"${tue.plusDays(2)}"}""")!!
+        assertEquals(tomorrow.toString(), read.first.getString("from"))
+        assertEquals(tomorrow.toString(), read.first.getString("to"))
+        assertTrue(read.second.contains(tomorrow.toString()))
+        // A write's single date moves too; other fields are untouched.
+        val write = fix("""{"action":"add","date":"$tue","text":"invented"}""", "remind me tomorrow")!!.first
+        assertEquals(tomorrow.toString(), write.getString("date"))
+        assertEquals("invented", write.getString("text"))
+        assertEquals(tomorrow.toString(), fix("""{"day":"${tue.plusDays(2)}"}""", "tick it off for tomorrow")!!.first.getString("day"))
+        // Kept: the right day, two days off, a range, a word, nothing said.
+        assertNull(fix("""{"date":"$tomorrow"}"""))
+        assertNull(fix("""{"date":"${tue.plusDays(3)}"}"""))
+        assertNull(fix("""{"from":"$tue","to":"${tue.plusDays(6)}"}"""))
+        assertNull(fix("""{"date":"tomorrow"}"""))
+        assertNull(fix("""{"date":"${tue.plusDays(2)}"}""", "what about Thursday"))
     }
 }
