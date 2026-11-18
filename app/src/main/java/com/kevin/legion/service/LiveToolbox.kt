@@ -859,7 +859,7 @@ object LiveToolbox {
         args: JSONObject,
         touchedReadThroughToolThisTurn: Boolean = false,
         // What the user said (or typed) in the turn that called this tool - null when the caller
-        // has no turn to read it from. Only clear_codes' yes-check reads it (2026-11-05).
+        // has no turn to read it from. clear_codes' yes-check and the date fix (RelativeDay.corrected) read it.
         userText: String? = null,
     ): JSONObject? {
         // Live cost diet (2026-11-10): an action tool's call runs as the tool it stands for. The
@@ -868,6 +868,11 @@ object LiveToolbox {
             if (r.name != name) return dispatch(context, r.name, r.args, touchedReadThroughToolThisTurn, userText)
         }
         LiveSurface.unknownAction(name, args)?.let { return it }
+        // His own day word wins over a date one day off it, for every tool that takes a date, reads
+        // and writes alike (RelativeDay.corrected; 2026-11-17 evening: "and tomorrow?" read today+2).
+        RelativeDay.corrected(args, userText, RelativeDay.today())?.let { (fixed, note) ->
+            return dispatch(context, name, fixed, touchedReadThroughToolThisTurn, userText)?.put("date_note", note)
+        }
         MidnightEvents.toolDispatched(name)
         // Category A guard (ticket 01 §0): if a live-hardware tool got handed a
         // `vehicle` argument anyway (the model shouldn't, since these declare no
@@ -1262,7 +1267,7 @@ object LiveToolbox {
             "read_mail" -> readMail(context, args)
             "track_package" -> trackPackage(context)
             "flight_status" -> flightStatus(context)
-            "read_calendar" -> readCalendar(context, args, userText)
+            "read_calendar" -> readCalendar(context, args)
             "complete_task" -> nameIt(
                 completeTask(context, args, onNoMatch = {
                     tickReminderOrTodo(context, args.optString("title"), args.optBoolean("done", true))
@@ -2120,21 +2125,10 @@ object LiveToolbox {
      * [Event.structuredMeta] (a JSON object string). This function just decodes that column
      * straight into the `meta` field below - same shape the model always saw, sourced differently.
      */
-    @Suppress("ReturnCount") // a bad window, the day he said, or the window asked for
-    private suspend fun readCalendar(context: Context, args: JSONObject, userText: String? = null): JSONObject {
+    private suspend fun readCalendar(context: Context, args: JSONObject): JSONObject {
         val zone = java.time.ZoneId.systemDefault()
-        // His own day word wins over a one-day date the model worked out (RelativeDay.saidDay).
-        val today = RelativeDay.today(zone)
-        val asked = RelativeDay.parse(args.optString("from"), today)
-            ?.let { f -> RelativeDay.parse(args.optString("to"), today)?.let { f to it } }
-        val said = asked?.let { (f, t) -> RelativeDay.correct(f, t, RelativeDay.saidDay(userText, today)) }
-        val from = said?.first?.toString() ?: args.optString("from")
-        val to = said?.second?.toString() ?: args.optString("to")
-        val window = parseCalendarWindow(from, to, zone) ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
-        if (said != null) {
-            val note = "Read for ${RelativeDay.label(said.first)}, the day he said, not the date asked for."
-            return readCalendarWindow(context, zone, window, args.optString("city")).put("date_note", note)
-        }
+        val window = parseCalendarWindow(args.optString("from"), args.optString("to"), zone)
+            ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
         return readCalendarWindow(context, zone, window, args.optString("city"))
     }
 
@@ -4063,6 +4057,12 @@ object LiveToolbox {
             // A module-clear question left waiting is void now (one question at a time).
             com.kevin.legion.vehicle.diag.DiagVoice.forget()
             gate.asked(userText)
+            // The adapter may have dropped during the read: armed first, then checked, so a disconnect
+            // on either side of this line leaves no question waiting (2026-11-18 review).
+            if (!ObdBluetoothManager.isConnected) {
+                gate.reset()
+                return result(false, "The OBD adapter disconnected, so I can't clear anything.")
+            }
             out.put("needsConfirmation", true)
                 .put("instruction", com.kevin.legion.vehicle.ClearCodesVoiceGate.ASK_AND_WAIT)
         } else {

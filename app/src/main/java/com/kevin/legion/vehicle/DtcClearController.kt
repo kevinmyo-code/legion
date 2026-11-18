@@ -31,10 +31,11 @@ object DtcClearController {
     val voiceGate = ClearCodesVoiceGate()
 
     /**
-     * The adapter dropped: any clear question still waiting is void (2026-11-17 review). A yes must
-     * answer a question asked on the connection it would clear; the next connection may be another car.
+     * Any clear question still waiting is void: the adapter dropped (2026-11-17 review: a yes must
+     * answer a question asked on the connection it would clear; the next one may be another car), or
+     * the conversation it was asked in ended (2026-11-18 review).
      */
-    fun onAdapterDisconnected() {
+    fun forgetClearQuestion() {
         voiceGate.reset()
         com.kevin.legion.vehicle.diag.DiagVoice.gate.reset()
     }
