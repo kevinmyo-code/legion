@@ -856,7 +856,10 @@ def test_a_browser_that_hangs_up_before_a_write_stops_it_from_running(member, en
     assert Checklist.objects.count() == before
     record = _record(conversation)
     assert "cascade_turn status=cancelled" in record
-    assert "interrupted source=barge_in" in record
+    # The engine saw the turn stop; it cannot know why. The page's own line names the source
+    # (tap, typed or barge_in), so the engine never claims one (2026-11-18).
+    assert "interrupted source=stopped" in record
+    assert "source=barge_in" not in record
 
 
 @pytest.mark.parametrize(

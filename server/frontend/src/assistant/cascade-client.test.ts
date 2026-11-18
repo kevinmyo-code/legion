@@ -243,6 +243,29 @@ describe('CascadeClient', () => {
     expect(ai.at(-1)).toMatchObject({ text: 'A long answer.', cut: true })
   })
 
+  it.each([
+    ['a tap', 'tap'],
+    ['typing', 'typed'],
+  ] as const)('the record says %s cut the reply, not a barge-in', async (_how, reason) => {
+    async function* slow(): AsyncGenerator<SseEvent> {
+      yield { type: 'sentence', data: { text: 'A long answer.' } }
+      yield { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([1])), rate: 24000 } }
+      await new Promise(() => {})
+    }
+    const { client, audio, recorded } = build([greeting(), { ok: true, events: slow() }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    if (reason === 'tap') client.interrupt()
+    else client.send('Something else.')
+    await settle()
+    client.reset()
+    await settle()
+    const cuts = recorded.filter((e) => e.kind === 'interrupted')
+    expect(cuts).toEqual([{ kind: 'interrupted', reason, at_ms: expect.any(Number) }])
+  })
+
   it('nothing heard is a caption and listening resumes', async () => {
     const { client, audio } = build([
       greeting(),
