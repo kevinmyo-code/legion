@@ -217,10 +217,17 @@ if (A.scenario === 'vf-tap') {
   await sync()
   const firstEndedAtTap = Boolean(q?.complete)
   // A diagram the answer opened covers the orb (seen 2026-11-17): noted, closed, then the tap.
-  const modalOpen = (await page.locator('[role="dialog"][data-state="open"]').count()) > 0
-  R.notes.push(`modal over orb at tap: ${modalOpen}`)
-  if (modalOpen) await page.keyboard.press('Escape')
-  await orb.click({ timeout: 5000 })
+  // A diagram the answer opened covers the orb (seen 2026-11-17): the dialog's own Interrupt
+  // control is the tap then; the dialog is closed afterwards to reach the typed box.
+  const dialog = page.locator('[role="dialog"][data-state="open"]')
+  const modalOpen = (await dialog.count()) > 0
+  R.tapVia = modalOpen ? 'dialog' : 'orb'
+  if (modalOpen) {
+    await dialog.getByRole('button', { name: 'Interrupt', exact: true }).click({ timeout: 5000 })
+    await page.keyboard.press('Escape')
+  } else {
+    await orb.click({ timeout: 5000 })
+  }
   await page.getByLabel(/^Type to /).fill('When is the car due for service?')
   await page.getByLabel(/^Type to /).press('Enter')
   const answered = await waitFor(async () => turns.some((t) => t.kind === 'text' && t.status === 200 && t.complete), 90000)
@@ -231,7 +238,7 @@ if (A.scenario === 'vf-tap') {
   const a = await audit()
   const nextAudio = a.buffers.filter((b) => next?.at !== undefined && b.t > next.at).length
   check('tap_then_new_question_is_answered', asked && playing && answered && next?.status === 200 && Boolean(next?.said) && next?.done?.status !== 'cancelled', {
-    first: { heard: q?.heard, done: q?.done, failed: q?.failed ?? null, endedAtTap: firstEndedAtTap }, cancels, busyBefore,
+    first: { heard: q?.heard, done: q?.done, failed: q?.failed ?? null, endedAtTap: firstEndedAtTap }, cancels, busyBefore, tapVia: R.tapVia,
     next: { status: next?.status, said: (next?.said ?? '').slice(0, 160), done: next?.done, audioChunks: nextAudio },
   })
   check('tap_posts_a_cancel', firstEndedAtTap || cancels.some((c) => c.status === 204), { cancels, firstEndedAtTap })
