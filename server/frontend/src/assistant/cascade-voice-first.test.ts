@@ -6,6 +6,7 @@ import { MAX_UTTERANCE_MS, WINDOW_MS } from './endpointer'
 import { MAX_UTTERANCE_SAMPLES } from './utterance'
 import { ENTRY_STALLED } from './cascade-words'
 import { ENTRY_MS, ENTRY_TAP_MS } from './turn-deadline'
+import { HIDDEN_CLOSE_MS } from './backstop'
 import { pcm16ToBase64 } from './pcm'
 import type { SseEvent } from './sse'
 import { BargeInGate } from './turn/barge-in-gate'
@@ -314,6 +315,61 @@ describe('noise (review 2026-11-17: a fan or a TV kept the conversation open)', 
       await settle()
     }
     expect(t.client.getState().mic).toBe('on')
+  })
+})
+
+describe('wall-clock backstops (review r3: a suspended capture sends no chunks)', () => {
+  async function openOnFakeTimers() {
+    const t = build([spoken('Hello.')])
+    void t.client.startVoice()
+    await vi.advanceTimersByTimeAsync(0)
+    t.audio.handlers?.onPlaying(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.client.getState().mic).toBe('on')
+    return t
+  }
+
+  it('with no chunks at all, the follow-up window still lapses on the clock and the mic is let go', async () => {
+    vi.useFakeTimers()
+    try {
+      const t = await openOnFakeTimers()
+      await vi.advanceTimersByTimeAsync(WINDOW_MS - 1_500)
+      expect(t.client.getState().mic).toBe('on')
+      await vi.advanceTimersByTimeAsync(2_500)
+      expect(t.audio.micOpen).toBe(false)
+      expect(t.client.getState().lines.at(-1)).toMatchObject({ kind: 'sys', text: CONVERSATION_CLOSED })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hidden for a few seconds with the conversation open, it closes; back sooner, it carries on', async () => {
+    vi.useFakeTimers()
+    const setHidden = (hidden: boolean) => {
+      Object.defineProperty(document, 'visibilityState', { value: hidden ? 'hidden' : 'visible', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }
+    try {
+      const t = await openOnFakeTimers()
+      const chunk = new Int16Array(320)
+      const tick = async (ms: number) => {
+        for (let at = 0; at < ms; at += 500) {
+          t.audio.handlers?.onChunk(chunk)
+          await vi.advanceTimersByTimeAsync(500)
+        }
+      }
+      setHidden(true)
+      await tick(HIDDEN_CLOSE_MS - 1_000)
+      setHidden(false)
+      await tick(HIDDEN_CLOSE_MS)
+      expect(t.client.getState().mic).toBe('on')
+      setHidden(true)
+      await tick(HIDDEN_CLOSE_MS + 500)
+      expect(t.audio.micOpen).toBe(false)
+    } finally {
+      setHidden(false)
+      vi.useRealTimers()
+    }
   })
 })
 

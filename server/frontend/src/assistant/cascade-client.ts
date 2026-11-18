@@ -13,6 +13,7 @@ import {
   micNotice,
 } from './cascade-words'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
+import { Backstop } from './backstop'
 import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
 import { mergedCard } from './merge-card'
@@ -228,15 +229,23 @@ export class CascadeClient {
 
   private readonly onPageHide = () => this.record?.beacon()
   private readonly onVisibility = () => {
-    if (
-      typeof document !== 'undefined' &&
-      document.visibilityState === 'hidden' &&
-      this.options.endOnHidden() &&
-      this.state.phase === 'live'
-    ) {
+    if (typeof document === 'undefined') return
+    const hidden = document.visibilityState === 'hidden'
+    if (hidden && this.options.endOnHidden() && this.state.phase === 'live') {
       this.end(ENDED_LOCKED)
+      return
     }
+    if (this.voiceOpen) this.backstop.visibility(hidden)
   }
+  private readonly backstop = new Backstop(
+    () => this.deps.now(),
+    () => {
+      if (this.listening) this.close(true)
+    },
+    () => {
+      if (this.voiceOpen) this.close(true)
+    },
+  )
 
   constructor(deps: CascadeDeps, options: CascadeOptions) {
     this.deps = deps
@@ -587,6 +596,7 @@ export class CascadeClient {
     this.listening = true
     this.endpointer = new Endpointer()
     this.chunks = []
+    this.backstop.listening()
     if (!keepTurn) {
       this.speechStarted = false
       this.detector?.reset()
@@ -688,6 +698,7 @@ export class CascadeClient {
 
   private onChunk(pcm: Int16Array, generation: number) {
     if (generation !== this.micGeneration) return
+    this.backstop.chunk()
     if (this.detector) {
       // The models hear everything; while the reply plays only the barge-in gate listens, and only
       // in full duplex. Half-duplex: nothing heard while the assistant speaks is kept (spec 19).
@@ -747,6 +758,7 @@ export class CascadeClient {
     this.rememberLastAsked()
     this.finishRecord(CONVERSATION_CLOSED)
     this.conversationId = null
+    this.backstop.stop()
     if (this.limitTimer) clearTimeout(this.limitTimer)
     this.limitTimer = null
     this.push({ kind: 'sys', text: CONVERSATION_CLOSED })
@@ -1116,6 +1128,7 @@ export class CascadeClient {
   }
 
   private stopEverything() {
+    this.backstop.stop()
     if (this.limitTimer) clearTimeout(this.limitTimer)
     this.limitTimer = null
     this.micGeneration += 1
