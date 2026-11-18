@@ -210,8 +210,8 @@ class TypesetHomeScreenshotTest {
             CategoryUi(HomeCategory.MAIL, listOf(slot("Workmail", "test.workmail", BLUE, paused = true, work = true))),
             CategoryUi(HomeCategory.CHAT, emptyList()),
         )
-        /** A pinned shortcut reads as a tile like any app: its mark over its name. */
-        val SHORTCUT = TypesetDockTile("We", "Weather board", icon = GREEN)
+        /** A pinned shortcut: its mark over its name, and who made it under that (review 2026-11-18). */
+        val SHORTCUT = TypesetDockTile("We", "Weather board", icon = GREEN, note = "Browser", isShortcut = true)
         val DOCK = listOf(
             TypesetDockTile("Ch", "Chatter", icon = GREEN),
             TypesetDockTile("Wo", "Workmail", icon = BLUE, status = "Paused"),

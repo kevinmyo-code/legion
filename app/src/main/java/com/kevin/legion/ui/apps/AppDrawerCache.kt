@@ -137,13 +137,17 @@ internal object AppDrawerCache {
         val profiles = runCatching { launcherApps.profiles }.getOrDefault(listOf(me))
         val shortcuts = mutableListOf<DrawerApp>()
         val dpi = context.resources.displayMetrics.densityDpi
+        val pm = context.packageManager
+        val appName: (String) -> String? = { pkg ->
+            runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrNull()
+        }
         for (profile in profiles) {
             val key = userManager.getSerialNumberForUser(profile).toInt()
             handles[key] = profile
             val isWork = profile != me
             if (isWork) work = profile
             shortcuts += PinnedShortcutsAndroid.load(
-                launcherApps, profile, key, isWork, dpi, ICON_PX, icons, unreadable,
+                launcherApps, profile, key, isWork, dpi, ICON_PX, icons, unreadable, appName,
             )
             val activities = runCatching { launcherApps.getActivityList(null, profile) }.getOrDefault(emptyList())
             for (info in activities) {

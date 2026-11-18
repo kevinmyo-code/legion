@@ -37,6 +37,10 @@ data class TypesetDockTile(
     val name: String,
     val icon: androidx.compose.ui.graphics.ImageBitmap? = null,
     val status: String? = null,
+    /** The small line under the name: who made a shortcut ("Chrome"); null for none. */
+    val note: String? = null,
+    /** A pinned shortcut, not an app: its menu removes it, and it has no place to move to. */
+    val isShortcut: Boolean = false,
 )
 
 /** What the Typeset home draws with nothing asked: the glance. Pure data, built by [TypesetHomeDerive]. */

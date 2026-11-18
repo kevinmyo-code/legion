@@ -301,6 +301,7 @@ private fun AppCell(
     modifier: Modifier,
 ) {
     val words = listOfNotNull(
+        app.origin,
         "work".takeIf { app.isWork },
         "paused".takeIf { app.isWork && workPaused },
         "blocked".takeIf { isBlocked },

@@ -61,6 +61,8 @@ internal fun RowScope.TypesetIconCell(
     description: String? = null,
     dimmed: Boolean = false,
     italic: Boolean = false,
+    /** A second, smaller line under the label: who made a shortcut ("Chrome"), "work". Null for none. */
+    note: String? = null,
     icon: @Composable () -> Unit,
 ) {
     Column(
@@ -88,6 +90,16 @@ internal fun RowScope.TypesetIconCell(
             autoSize = TextAutoSize.StepBased(minFontSize = MinLabel, maxFontSize = style.fontSize, stepSize = 0.5.sp),
             modifier = Modifier.fillMaxWidth().padding(top = 1.dp),
         )
+        note?.let {
+            BasicText(
+                it,
+                style = NoteStyle.copy(color = SoftColors.text2),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                autoSize = TextAutoSize.StepBased(MinLabel, IconLabel.fontSize, stepSize = 0.5.sp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -153,3 +165,6 @@ private val MinLabel = 9.sp
 
 /** Small serif for a label under an icon: one step under `small`, so seven fit a phone's width. */
 internal val IconLabel = TypesetType.small.copy(fontSize = 12.sp, lineHeight = 14.sp)
+
+/** The note under a label: the label's size, italic, centred. Declared after [IconLabel], which it copies. */
+private val NoteStyle = IconLabel.copy(fontStyle = FontStyle.Italic, textAlign = TextAlign.Center)

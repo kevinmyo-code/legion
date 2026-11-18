@@ -30,7 +30,9 @@ class PinShortcutScreenshotTest {
     private fun shot(file: String, edition: TypesetEdition) {
         composeTestRule.setContent {
             CompositionLocalProvider(LocalTypesetEdition provides edition) {
-                SoftTheme { PinShortcutSheet(label = "Weather board", from = "Browser", onAdd = {}, onCancel = {}) }
+                SoftTheme {
+                    PinShortcutSheet(label = "Weather board", from = "Browser", mark = null, onAdd = {}, onCancel = {})
+                }
             }
         }
         composeTestRule.onRoot().captureRoboImage(file)

@@ -453,8 +453,9 @@ private fun RowScope.DockTile(t: TypesetDockTile, actions: TypesetHomeActions) {
                 label = t.name,
                 onClick = { actions.onOpenApp(t) },
                 onLongClick = { menu = true },
-                description = listOfNotNull(t.name, t.status?.lowercase()).joinToString(", "),
+                description = listOfNotNull(t.name, t.note, t.status?.lowercase()).joinToString(", "),
                 dimmed = t.status != null,
+                note = t.note,
             ) { AppGlyph(t.icon, t.monogram) }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {

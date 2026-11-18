@@ -166,15 +166,40 @@ class TypesetBucketsAndIconsTest {
         var cancelled = 0
         composeTestRule.setContent {
             SoftTheme {
-                com.kevin.legion.ui.apps.PinShortcutSheet("Weather board", "Browser", { added++ }, { cancelled++ })
+                com.kevin.legion.ui.apps.PinShortcutSheet(
+                    "Weather board", "Browser", mark = null, onAdd = { added++ }, onCancel = { cancelled++ },
+                )
             }
         }
-        composeTestRule.onNodeWithText("From Browser").performClick()
+        // Its name and its maker before Add (review 2026-11-18); tapping them is not a cancel.
+        composeTestRule.onNodeWithText("Weather board").assertExists()
+        composeTestRule.onNodeWithText("A shortcut from Browser").performClick()
         assertEquals(0, cancelled)
         composeTestRule.onNodeWithText("Add").performClick()
         assertEquals(1, added)
         composeTestRule.onNodeWithText("Cancel").performClick()
         assertEquals(1, cancelled)
+    }
+
+    @Test
+    fun `a pinned web shortcut says who made it, under its name, in All apps`() {
+        val shortcut = com.kevin.legion.ui.apps.PinnedShortcuts.asDrawerApp(
+            "example.browser", "w1", "Bank login", false, 0, origin = "Browser",
+        )
+        composeTestRule.setContent {
+            SoftTheme {
+                TypesetAppsIndex(
+                    folders = letterFolders(apps + shortcut),
+                    query = "bank",
+                    onQueryChange = {},
+                    blocked = { false },
+                    onOpen = {},
+                    onLongPress = {},
+                )
+            }
+        }
+        composeTestRule.onNodeWithText("Bank login").assertExists()
+        composeTestRule.onNodeWithText("Browser").assertExists()
     }
 
     @Test

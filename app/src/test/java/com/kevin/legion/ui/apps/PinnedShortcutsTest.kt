@@ -42,6 +42,15 @@ class PinnedShortcutsTest {
     }
 
     @Test
+    fun `a shortcut carries where it came from, or says it is a shortcut`() {
+        val fromBrowser = PinnedShortcuts.asDrawerApp("example.browser", "w", "Bank login", false, 0, origin = "Browser")
+        assertEquals("Browser", fromBrowser.origin)
+        assertEquals("shortcut", PinnedShortcuts.asDrawerApp("example.x", "x", "X", false, 0, origin = null).origin)
+        // An app has no origin line.
+        assertNull(DrawerApp("Bank", "example.bank", "example.bank.Main", false, 0).origin)
+    }
+
+    @Test
     fun `removing one shortcut keeps the package's others pinned (pinShortcuts replaces the set)`() {
         val a = shortcut("a", "Alpha")
         val b = shortcut("b", "Beta")

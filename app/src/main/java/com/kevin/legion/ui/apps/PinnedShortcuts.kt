@@ -31,8 +31,21 @@ internal object PinnedShortcuts {
     /** The home row: the pinned apps first, in their order, then the shortcuts, at most this many. */
     const val HOME_ROW_MAX = 6
 
-    fun asDrawerApp(packageName: String, id: String, label: String, isWork: Boolean, profileKey: Int) =
-        DrawerApp(label, packageName, CLASS_PREFIX + id, isWork, profileKey, shortcutId = id)
+    /** What the line under a shortcut says when the app that made it has no readable name. */
+    const val UNKNOWN_ORIGIN = "shortcut"
+
+    @Suppress("LongParameterList") // one row: its app, id, words, profile and maker
+    fun asDrawerApp(
+        packageName: String,
+        id: String,
+        label: String,
+        isWork: Boolean,
+        profileKey: Int,
+        origin: String? = null,
+    ) = DrawerApp(
+        label, packageName, CLASS_PREFIX + id, isWork, profileKey,
+        shortcutId = id, origin = origin?.takeIf { it.isNotBlank() } ?: UNKNOWN_ORIGIN,
+    )
 
     /**
      * The ids still pinned for [remove]'s package and profile once it is gone.
@@ -53,6 +66,9 @@ internal interface PinRequest {
     val isValid: Boolean
     val label: String
     val fromPackage: String
+
+    /** The shortcut's icon as a monochrome mark, shown on the sheet before Add; null for its monogram. */
+    val mark: ImageBitmap? get() = null
 
     /** True when the system pinned it. */
     fun accept(): Boolean
@@ -79,7 +95,18 @@ internal object PinConfirm {
 
 /** [PinRequest] over the platform request. */
 @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
-internal class PlatformPinRequest(private val request: LauncherApps.PinItemRequest) : PinRequest {
+internal class PlatformPinRequest(
+    private val request: LauncherApps.PinItemRequest,
+    private val apps: LauncherApps,
+    private val densityDpi: Int,
+) : PinRequest {
+    override val mark: ImageBitmap? by lazy {
+        runCatching {
+            request.shortcutInfo
+                ?.let { apps.getShortcutIconDrawable(it, densityDpi) }
+                ?.let { AppMonochrome.mark(it, MARK_PX) }
+        }.getOrNull()
+    }
     override val isShortcut: Boolean get() = request.requestType == LauncherApps.PinItemRequest.REQUEST_TYPE_SHORTCUT
     override val isValid: Boolean get() = request.isValid
     override val label: String get() = request.shortcutInfo?.shortLabel?.toString().orEmpty()
@@ -96,7 +123,8 @@ internal object PinnedShortcutsAndroid {
     fun request(context: Context, intent: Intent?): PinRequest? {
         if (intent == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
         val apps = context.getSystemService(LauncherApps::class.java) ?: return null
-        return apps.getPinItemRequest(intent)?.let(::PlatformPinRequest)
+        val dpi = context.resources.displayMetrics.densityDpi
+        return apps.getPinItemRequest(intent)?.let { PlatformPinRequest(it, apps, dpi) }
     }
 
     /**
@@ -114,6 +142,8 @@ internal object PinnedShortcutsAndroid {
         iconPx: Int,
         marks: MutableMap<String, ImageBitmap>,
         unreadable: MutableSet<String>,
+        /** The installed app's name for a package, or null. */
+        appName: (String) -> String?,
     ): List<DrawerApp> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return emptyList()
         if (!runCatching { launcherApps.hasShortcutHostPermission() }.getOrDefault(false)) return emptyList()
@@ -123,7 +153,9 @@ internal object PinnedShortcutsAndroid {
             .getOrNull().orEmpty()
         return infos.filter { it.isEnabled }.map { info ->
             val label = (info.shortLabel ?: info.longLabel ?: info.id).toString()
-            val row = PinnedShortcuts.asDrawerApp(info.`package`, info.id, label, isWork, profileKey)
+            val row = PinnedShortcuts.asDrawerApp(
+                info.`package`, info.id, label, isWork, profileKey, origin = appName(info.`package`),
+            )
             val key = iconKey(profileKey, row.packageName, row.className)
             // Every outcome is kept: a mark, or "no usable mark" (the monogram), so a shortcut's icon is
             // drawn once, not on every return home. A change to the package evicts both (the cache's
@@ -160,3 +192,6 @@ internal object PinnedShortcutsAndroid {
 
     private const val TOO_OLD = "Shortcuts need Android 7.1 or later."
 }
+
+/** The confirm sheet's mark, the drawer cache's size. */
+private const val MARK_PX = 96

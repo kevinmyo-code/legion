@@ -32,6 +32,7 @@ import com.kevin.legion.ui.theme.soft.ProvideTypesetEdition
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.SoftTheme
 import com.kevin.legion.ui.theme.soft.TypesetType
+import com.kevin.legion.ui.typeset.AppGlyph
 
 /**
  * The default launcher's pin confirmation (`LauncherApps.ACTION_CONFIRM_PIN_SHORTCUT`, 2026-11-18).
@@ -58,6 +59,7 @@ class PinShortcutActivity : ComponentActivity() {
                     PinShortcutSheet(
                         label = request.label,
                         from = from,
+                        mark = request.mark,
                         onAdd = {
                             val words = when (PinConfirm.add(request)) {
                                 PinConfirm.Outcome.ADDED -> "${request.label} is on your home screen."
@@ -78,7 +80,13 @@ class PinShortcutActivity : ComponentActivity() {
 
 /** The sheet: a scrim (a tap on it cancels) and a ruled panel at the foot. Stateless. */
 @Composable
-internal fun PinShortcutSheet(label: String, from: String, onAdd: () -> Unit, onCancel: () -> Unit) {
+internal fun PinShortcutSheet(
+    label: String,
+    from: String,
+    mark: androidx.compose.ui.graphics.ImageBitmap?,
+    onAdd: () -> Unit,
+    onCancel: () -> Unit,
+) {
     // The scrim is a sibling under the panel, not its parent: a clickable would merge the panel's
     // pane title, which cannot merge.
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -93,8 +101,15 @@ internal fun PinShortcutSheet(label: String, from: String, onAdd: () -> Unit, on
                 .padding(16.dp),
         ) {
             Text("ADD TO HOME SCREEN", style = TypesetType.caps, color = SoftColors.text2)
-            Text(label, style = TypesetType.lead, color = SoftColors.text, modifier = Modifier.padding(top = 8.dp))
-            Text("From $from", style = TypesetType.smallItalic, color = SoftColors.text2)
+            // Its mark, its name and who is asking, all before Add (review 2026-11-18): a page titled like
+            // an app is still plainly a shortcut from the browser.
+            Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                AppGlyph(mark, label.filter { it.isLetterOrDigit() }.take(2).ifBlank { "?" })
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text(label, style = TypesetType.lead, color = SoftColors.text)
+                    Text("A shortcut from $from", style = TypesetType.smallItalic, color = SoftColors.text2)
+                }
+            }
             HorizontalDivider(Modifier.padding(top = 12.dp), thickness = 1.dp, color = SoftColors.text)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 SheetButton("Cancel", onCancel)
