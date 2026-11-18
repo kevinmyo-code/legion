@@ -294,3 +294,21 @@ def test_scripted_greetings_never_repeat_running():
 
     said = [web_greeting.ack_line(pick=lambda options: options[0]) for _ in range(6)]
     assert all(a != b for a, b in zip(said, said[1:], strict=False))
+
+
+# ---- round 2 speech review 8: only a <word> tag is a tag; markup and stage directions go ---------
+
+
+@pytest.mark.parametrize(
+    ("raw", "shown"),
+    [
+        ('Hold on <break time="500ms"/> there.', "Hold on there."),
+        ("[laughs] That was good.", "That was good."),
+        ("*laughs* That was good.", "That was good."),
+        ("if spending < income and savings > zero", "if spending < income and savings > zero"),
+        ("3 < 4 and 5 > 2", "3 < 4 and 5 > 2"),
+    ],
+)
+def test_markup_and_stage_directions_are_removed_and_real_text_is_kept(raw, shown):
+    assert speech_tags.untagged(raw) == shown
+    assert speech_tags.for_speech(raw) == shown

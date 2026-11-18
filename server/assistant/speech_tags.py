@@ -50,7 +50,19 @@ PROMPT_LINE = (
 )
 
 # Any angle-bracket tag of words (`<long pause>`, `<breath>`, `</b>`), with the space around it.
-_TAG = re.compile(r"\s*<\s*/?\s*([A-Za-z][A-Za-z _-]{0,30}?)\s*/?\s*>\s*")
+# A tag is a `<word>` shape only: one word, or one of the few two-word sound tags. Text between a
+# "<" and a ">" that holds other words or operators is real text ("if spending < income and
+# savings > zero") and is never removed (round 2 speech review 8).
+_TAG = re.compile(
+    r"\s*<\s*/?\s*([A-Za-z][A-Za-z-]{0,30}(?:\s(?:pause|breath|clearing))?)\s*/?\s*>\s*"
+)
+# Markup and stage directions a model may write: SSML (`<break time="500ms"/>`), "[laughs]",
+# "*laughs*". Never spoken, never shown.
+_MARKUP = re.compile(
+    r"\s*<\s*/?\s*[A-Za-z][\w:-]*(?:\s+[\w:-]+\s*=\s*(?:\"[^\"]*\"|'[^']*'))+\s*/?\s*>\s*"
+    r"|\s*\[[A-Za-z][A-Za-z -]{0,30}\]\s*"
+    r"|\s*\*[A-Za-z][A-Za-z -]{0,30}\*\s*"
+)
 # An amount, a date, a code, a figure: any digit, or a currency or percent sign.
 _FIGURE = re.compile(r"[0-9$£€%]")
 _SPACE_BEFORE = re.compile(r"\s+([,.!?;:])")
@@ -75,14 +87,16 @@ def _tidy(text: str) -> str:
 
 
 def untagged(text: str) -> str:
-    """`text` with every tag removed: what is shown, stored, logged and checked."""
-    if "<" not in (text or ""):
-        return text or ""
-    return _tidy(_TAG.sub(" ", text))
+    """`text` with every tag, markup and stage direction removed: what is shown, stored, logged
+    and checked."""
+    text = text or ""
+    if not any(c in text for c in "<[*"):
+        return text
+    return _tidy(_TAG.sub(" ", _MARKUP.sub(" ", text)))
 
 
 def has_tag(text: str) -> bool:
-    return bool(_TAG.search(text or ""))
+    return bool(_TAG.search(text or "") or _MARKUP.search(text or ""))
 
 
 # Section 9 (measured): a tag on a short line stretched a five-word sign-off from 2.3 s to 4-5 s.
@@ -108,11 +122,13 @@ def for_speech(text: str, *, expressive: bool = True) -> str:
     """What is sent to speech. Keeps the first allowed tag of an expressive sentence and removes
     every other tag. A sentence with a figure, date or time, a refusal or a confirmation keeps
     none."""
-    if "<" not in (text or ""):
-        return text or ""
+    text = text or ""
+    if not any(c in text for c in "<[*"):
+        return text
     plain = untagged(text)
     if not expressive or not casual(plain):
         return plain
+    text = _MARKUP.sub(" ", text)
     kept = False
 
     def one(match: re.Match) -> str:
