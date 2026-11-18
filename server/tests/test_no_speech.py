@@ -153,7 +153,12 @@ def test_no_speech_keeps_nothing_of_the_demo_budget_when_nothing_was_paid(visito
         ("...", ""),
         ("Transcribe this audio.", ""),
         ("Write down exactly what the speaker says", ""),
-        ("[laughs] okay sure", "okay sure"),
+        # Round 3 speech, small c: a marker counts only as the WHOLE transcript; words around it
+        # are real speech and are never cut.
+        ("[laughs] okay sure", "[laughs] okay sure"),
+        ("No speech detected.", ""),
+        ("No audible speech.", ""),
+        ("Rates went up (two percent) this year.", "Rates went up (two percent) this year."),
         ("Nothing.", "Nothing."),
         ('"Add milk to the list."', "Add milk to the list."),
     ],
