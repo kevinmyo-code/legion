@@ -38,7 +38,7 @@ tags: [adr]
 
 ## Context
 
-Kevin, 2026-11-17: since 2026-11-06 there were about 30 page loads and one entry. The one outside visitor heard a 16 s opening and left after two turns. He asked for the voice to be the centre of the page, and for the phone's turn-taking (recruiter-demo ticket 12). In an addendum, for all voices: fillers should say what the assistant is actually doing.
+Kevin, 2026-11-17: few visitors who opened the demo went on to talk to it, and the opening was too long. He asked for the voice to be the centre of the page, and for the phone's turn-taking (recruiter-demo ticket 12). In an addendum, for all voices: fillers should say what the assistant is actually doing.
 
 ## Consequences
 

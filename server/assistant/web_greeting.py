@@ -41,8 +41,8 @@ HELLO = "hello"
 MAX_AVOID_CHARS = 80
 MAX_AVOID_LINES = 3
 
-# The demo's opening (Kevin, 2026-11-17: the first ten seconds lost the one outside visitor to a
-# 16 s hello). About five seconds: who is speaking, one thing to ask, and the recording notice as
+# The demo's opening (Kevin, 2026-11-17: the old hello ran far too long for a first visit). About
+# five seconds: who is speaking, one thing to ask, and the recording notice as
 # one short clause (Kevin's 2026-11-03 ruling: say conversations are recorded to improve the
 # assistant; never the word "train"). The full notice stays on screen by the mic. Spoken from code,
 # word for word, and kept in memory once made so it starts inside the tap.
