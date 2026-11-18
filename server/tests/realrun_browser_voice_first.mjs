@@ -230,9 +230,12 @@ if (A.scenario === 'vf-tap') {
   }
   await page.getByLabel(/^Type to /).fill('When is the car due for service?')
   await page.getByLabel(/^Type to /).press('Enter')
-  const answered = await waitFor(async () => turns.some((t) => t.kind === 'text' && t.status === 200 && t.complete), 90000)
+  // A typed question with the voice on is posted as spoken text (answered aloud).
+  const typedKinds = ['text', 'spoken-text']
+  const typed = () => turns.filter((t) => typedKinds.includes(t.kind) && t !== q)
+  const answered = await waitFor(async () => typed().some((t) => t.status === 200 && t.complete), 90000)
   await sync()
-  const texts = turns.filter((t) => t.kind === 'text')
+  const texts = typed()
   const next = texts.find((t) => t.status === 200) ?? texts[texts.length - 1]
   const busyBefore = texts.filter((t) => t.status === 409).length
   const a = await audit()
