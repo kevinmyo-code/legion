@@ -64,20 +64,36 @@ class SttGuardTest {
     }
 
     @Test
-    fun `only the audio decides noise, never the words`() {
-        // 3 s of steady road noise the transcriber called words: silence, whatever the words.
+    fun `noise is a single word over almost no voice, never two words or a voiced word`() {
+        // 3 s of steady road noise the transcriber called a word: silence.
         val hum = audio(3_000)
         assertTrue(SttGuard.voicedMs(hum) < SttGuard.MIN_VOICED_MS)
-        for (t in listOf("Check engine light.", "Uh.", "Stop the music.", "Add milk to groceries.")) {
+        for (t in listOf("Uh.", "Yes.", "Bye.")) {
             assertEquals(t, SttGuard.NOISE, (SttGuard.verdict(t, SttGuard.voicedMs(hum)) as? SttGuard.Verdict.Drop)?.reason)
         }
+        // Two or more words always stand, whatever the audio scored.
+        for (t in listOf("Check engine light.", "Stop the music.", "Add milk to groceries.", "Clear codes.")) {
+            assertTrue(t, keeps(t, 0))
+        }
+        // A real short answer in a loud car scores about 60 ms at 12 dB (review r2): kept from 60 ms on.
+        assertTrue(keeps("Yes.", SttGuard.MIN_VOICED_MS))
+        assertTrue(keeps("Two.", 59) == false)
+        assertEquals(60L, SttGuard.MIN_VOICED_MS)
         // One short word over the same noise, with the turn's pre-roll and end silence around it: kept.
         val word = audio(3_000, 200, 1_200 to 350)
         assertTrue(SttGuard.voicedMs(word) in 300L..400L)
-        assertTrue(keeps("Clear codes.", SttGuard.voicedMs(word)))
+        assertTrue(keeps("Yes.", SttGuard.voicedMs(word)))
         // Level-free: the same shapes 30 dB quieter score the same (this phone's speech is -51 to -74 dBFS).
         assertTrue(SttGuard.voicedMs(audio(3_000, 6, 1_200 to 350)) in 300L..400L)
         assertEquals(setOf(SttGuard.NOISE), SttGuard.SILENT_REASONS)
+    }
+
+    @Test
+    fun `a stop needs a voice under it, or nothing measured`() {
+        assertTrue(SttGuard.stopVoiced(null))
+        assertTrue(SttGuard.stopVoiced(150))
+        assertTrue(!SttGuard.stopVoiced(0))
+        assertTrue(!SttGuard.stopVoiced(149))
     }
 
     @Test

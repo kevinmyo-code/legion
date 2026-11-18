@@ -50,9 +50,10 @@ internal object SttGuard {
      * - nothing is left once scripts none of his languages use are removed (`not_english_script`);
      * - it reads as Spanish (`not_english`): `¿` or `¡`, or at least two thirds of its words are
      *   Spanish-only words (accented letters alone never count: "café", "José", "jalapeño");
-     * - the audio itself says no one spoke: under [MIN_VOICED_MS] above its own floor (`noise`,
-     *   silence). The words never decide this (2026-11-18 review: "clear codes", "oil change" were
-     *   dropped as the hint read back).
+     * - noise (`noise`, silence): BOTH the transcript is a single word AND under [MIN_VOICED_MS] of
+     *   its audio stood above its own floor. Two or more words, or that much voice, always stand
+     *   (2026-11-18 review r2: at highway noise a real "Yes." scored about 60 ms at 12 dB; the words
+     *   alone never decide, as "clear codes" and "oil change" once were dropped).
      */
     @Suppress("ReturnCount") // one exit per reason
     fun verdict(
@@ -64,7 +65,8 @@ internal object SttGuard {
     ): Verdict {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Verdict.Keep("")
-        if (voicedMs != null && voicedMs < MIN_VOICED_MS) return Verdict.Drop(NOISE)
+        val oneWord = trimmed.split(Regex("\\s+")).count { w -> w.any { it.isLetterOrDigit() } } <= 1
+        if (oneWord && voicedMs != null && voicedMs < MIN_VOICED_MS) return Verdict.Drop(NOISE)
         // Scripts none of his languages use (CJK, Cyrillic, Arabic...) are removed word by word; words in
         // his languages' scripts stay.
         val scripts = accepted.map { it.script }.toSet() + Character.UnicodeScript.LATIN
@@ -112,8 +114,14 @@ internal object SttGuard {
         return rms.count { it >= gate } * WINDOW_MS
     }
 
-    /** Under this much voiced audio nothing was said: one short word ("Stop.", "Yes.") is 250 ms or more. */
-    const val MIN_VOICED_MS = 150L
+    /** A single word over less than this much voice is noise (2026-11-18 r2: kept low, to be tuned on car audio). */
+    const val MIN_VOICED_MS = 60L
+
+    /** A stop phrase ends the conversation only over at least this much voice (or with none measured). */
+    const val STOP_MIN_VOICED_MS = 150L
+
+    /** A stop may end the conversation: its audio carried a voice, or nothing was measured. */
+    fun stopVoiced(voicedMs: Long?): Boolean = voicedMs == null || voicedMs >= STOP_MIN_VOICED_MS
     const val VOICE_OVER_FLOOR_DB = 12.0
     private const val WINDOW_MS = 30L
     private const val SAMPLE_RATE = 16_000
