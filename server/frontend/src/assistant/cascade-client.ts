@@ -215,7 +215,7 @@ export class CascadeClient {
   /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
   private entering = false
   /** The gate fired over the reply, which is paused until its verdict; a turn that ended meanwhile. */
-  private bargePending: { held: Int16Array | null } | null = null
+  private bargePending: { held: Int16Array | null; afterReply: 'listen' | 'close' | 'tour' | null } | null = null
   /** Audio right after the reply ended that is not yet listened to (ECHO_TAIL_MS). */
   private tailLeftMs = 0
   /** The closing tone is what is playing. */
@@ -703,7 +703,8 @@ export class CascadeClient {
     if (!this.voiceOpen || (!this.playing && !this.awaiting) || !this.fullDuplex) return
     if (this.audioIO?.pause) {
       this.audioIO.pause()
-      this.bargePending = { held: null }
+      // What follows the reply (listen, close, the next beat) must survive listen() below.
+      this.bargePending = { held: null, afterReply: this.afterReply }
     } else this.cutForBargeIn()
     this.listen(true)
     this.speechStarted = true
@@ -722,6 +723,7 @@ export class CascadeClient {
     this.bargePending = null
     if (selfInterrupt) {
       // Its own voice: what was heard goes, and the answer plays on from where it paused.
+      this.afterReply ??= pending.afterReply
       this.stopListening()
       this.detector?.reset()
       this.audioIO?.resume?.()

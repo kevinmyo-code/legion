@@ -166,6 +166,9 @@ describe('the models in the conversation', () => {
     expect(t.detector.replies.started).toBe(1)
     t.audio.handlers?.onPlaying(false)
     expect(t.detector.replies.ended).toBe(1)
+    // The reply's tail in the room reaches the models, not yet as a turn.
+    for (let ms = 0; ms < ECHO_TAIL_MS; ms += 20) t.audio.handlers?.onChunk(new Int16Array(320))
+    expect(t.detector.pushes.at(-1)).toEqual({ listening: false, playing: false })
     // Every chunk reaches the models; while the reply plays it is marked as playback.
     t.audio.handlers?.onPlaying(true)
     t.audio.handlers?.onChunk(new Int16Array(320))

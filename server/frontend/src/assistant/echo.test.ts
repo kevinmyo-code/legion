@@ -66,7 +66,10 @@ class Room extends FakeAudio {
     super.play(pcm, rate)
     this.queue.push(pcm)
   }
+  /** Flushes that cut audio still to play (a typed question over silence flushes nothing real). */
+  cuts = 0
   flush() {
+    if (this.queue.length > 0) this.cuts += 1
     this.queue = []
     this.at = 0
     super.flush()
@@ -173,9 +176,11 @@ describe('the reply heard back by the microphone', () => {
     expect(fires).toBeLessThanOrEqual(2)
     expect(requests.filter((r) => r.audio)).toHaveLength(0)
     expect(requests).toHaveLength(3)
-    expect(room.flushes).toBe(0)
+    expect(room.cuts).toBe(0)
     expect(room.playedSamples).toBe(replies.reduce((n, r) => n + r.length, 0))
     expect(client.fullDuplex).toBe(false)
+    // And after each answer the conversation listened again; it still is.
+    expect(client.getState().mic).toBe('on')
     client.dispose()
   })
 })
