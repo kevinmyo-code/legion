@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from legion import deadline
+from agents.runtime import deadline
 
 API = "https://generativelanguage.googleapis.com/v1beta"
 
