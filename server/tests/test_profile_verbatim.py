@@ -69,7 +69,7 @@ LOCATION = [
 AVAILABILITY = ["Can start in June 2031."]
 SALARY = ["Expects $123,456 a year."]
 CONTACT = ["Email: pat@example.invalid", "Portfolio: example.invalid/pat"]
-ROLES = ["Data engineer", "Support engineer"]
+ROLES = ["- Data engineer", "- Support engineer"]
 EXPERIENCE = [
     "Analyst intern at Fabrikam Example Co. in 2029.",
     "Built ten pretend dashboards.",
@@ -124,7 +124,13 @@ def loaded(tmp_path):
         ("Done! Next? Yes.", ["Done!", "Next?", "Yes."]),
         ('He said "Hi." Then left.', ['He said "Hi."', "Then left."]),
         ("Line one\nLine two", ["Line one", "Line two"]),
-        ("- bullet one\n* bullet two\n1. numbered", ["bullet one", "bullet two", "numbered"]),
+        # Said as written: a bullet or a number is part of the line (blind review, 2026-11-18).
+        (
+            "- bullet one\n* bullet two\n1. numbered",
+            ["- bullet one", "* bullet two", "1. numbered"],
+        ),
+        ("2029. Joined Fabrikam as an intern.", ["2029.", "Joined Fabrikam as an intern."]),
+        ("1. 2. 3.", ["1.", "2.", "3."]),
         ("Lives in the U.S. for now.", ["Lives in the U.S. for now."]),
         # In doubt it does not cut: an acronym that ends a sentence keeps the next one with it.
         # Both are still his words, said as written.
@@ -138,9 +144,9 @@ def test_a_section_is_cut_into_sentences_only_where_one_ends(text, sentences):
     assert split_sentences(text) == sentences
 
 
-def test_cutting_keeps_every_character_but_a_bullet():
+def test_cutting_keeps_every_character():
     for text in PROFILE.values():
-        flat = "".join(text.replace("- ", "").split())
+        flat = "".join(text.split())
         assert "".join("".join(split_sentences(text)).split()) == flat
 
 
@@ -209,7 +215,8 @@ SECTIONS = profile.sections_of(PROFILE)
         ),
         (["experience"], "experience", EXPERIENCE[5:], None),
         ([], "experience", EXPERIENCE[5:], None),
-        ([], "availability", AVAILABILITY, None),
+        # A section already read whole: said so, not read again.
+        ([], "availability", ["That's all of Availability."], None),
         (["hobbies"], None, [NOT_SHARED_LINE], None),
         ([], None, [NOT_SHARED_LINE], None),
         (["education", "hobbies"], None, EDUCATION, None),
@@ -422,7 +429,7 @@ TABLE = [
     ),
     # After the call nothing of the model's is asked for or said.
     ("nothing after", "Tell me about Kevin.", [ak("availability"), HE_IS_GREAT], AVAILABILITY),
-    # A later call in the same round never runs: the profile was the answer (stated limit).
+    # A later call in the same round still runs; the turn then ends on the profile.
     (
         "call after",
         "Kevin, and the docs?",
@@ -491,7 +498,7 @@ FOLLOW_UPS = [
         "Go on.",
         [ak(rest_of="experience")],
         EXPERIENCE[5:],
-        f"(Read aloud from Kevin's profile: Experience.) {MORE}",
+        f"(Read aloud from Kevin's profile: Experience, sentences 1 to 5 of 7.) {MORE}",
     ),
     (
         "the same question again",
@@ -534,6 +541,129 @@ def test_a_follow_up_sees_the_question_put_to_the_visitor_and_never_his_sentence
     assert {"role": "model", "parts": [{"text": replayed}]} in asked.contents
     for request in engine.model.requests:
         assert not _profile_in(request), case
+
+
+# =============================================================================
+# Blind review 2026-11-18: lost answers, cap edges, his order unknown, his work
+# =============================================================================
+
+LONG = {"Story": " ".join(f"Pretend fact number {n}." for n in range(1, 13))}
+MANY = {**PROFILE, **{f"Extra {n}": f"Extra fact {n}." for n in range(1, 7)}}
+
+
+def test_a_long_section_carries_on_past_its_second_part_and_says_where_it_stopped():
+    sections = profile.sections_of(LONG)
+    first = speak(sections, ["story"])
+    assert len(first.lines) == 5 and first.more == MORE
+    assert first.part == "sentences 1 to 5 of 12"
+    second = speak(sections, [], "story")
+    assert second.lines[0] == "Pretend fact number 6." and second.more == MORE
+    assert second.part == "sentences 6 to 10 of 12"
+    third = speak(sections, [], "story", from_sentence=11)
+    assert list(third.lines) == ["Pretend fact number 11.", "Pretend fact number 12."]
+    assert third.more is None and third.part == "sentences 11 to 12 of 12"
+    done = speak(sections, [], "story", from_sentence=13)
+    assert list(done.lines) == ["That's all of Story."]
+
+
+def test_the_more_line_names_four_titles_at_most_then_and_more():
+    spoken = speak(profile.sections_of(MANY), ["overview"])
+    assert spoken.more == (
+        "There's more on Experience, Salary, Contact, Roles wanted and more; just ask."
+    )
+
+
+def test_without_his_order_the_overview_asks_which_one_and_reads_nothing():
+    sections = profile.sections_of(PROFILE)
+    spoken = speak(sections, ["overview"], ordered=False)
+    assert spoken.read == ()
+    assert list(spoken.lines) == [
+        "I can tell you about Location, Availability, Education, Experience, Salary, Contact, "
+        "Roles wanted; which one?"
+    ]
+    # A named pick is not affected.
+    assert list(speak(sections, ["education"], ordered=False).lines) == EDUCATION
+
+
+def test_a_row_loaded_before_the_order_was_kept_gets_the_which_one_line(loaded, visitor, engine):
+    from demo.models import RecruiterContent
+
+    row = RecruiterContent.current()
+    row.content = {k: v for k, v in row.content.items() if k != profile.PROFILE_ORDER}
+    row.save(update_fields=["content"])
+    engine.model = FakeModel([ak("overview")])
+    events = _events(_post(visitor, text="Tell me about Kevin."))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert len(said) == 1 and said[0].startswith("I can tell you about ")
+    assert said[0].endswith("; which one?")
+
+
+def _net_cash(monkeypatch):
+    """account_balances as a household with cash would answer: one code-written money sentence."""
+    import dataclasses
+
+    from engine_mcp import tools as engine_tools
+
+    line = "Net cash is $1,234 across two accounts."
+
+    def handler(request, arguments):
+        return engine_tools.ok("Balances.", {engine_tools.SPEAK_VERBATIM: line})
+
+    tool = dataclasses.replace(engine_tools.TOOLS_BY_NAME["account_balances"], handler=handler)
+    monkeypatch.setitem(engine_tools.TOOLS_BY_NAME, "account_balances", tool)
+    return line
+
+
+@pytest.mark.parametrize("cash_first", [True, False])
+def test_net_cash_and_his_profile_in_one_turn_are_both_said(
+    loaded, visitor, engine, monkeypatch, cash_first
+):
+    cash = _net_cash(monkeypatch)
+    calls = [call("account_balances"), ak("availability")]
+    if not cash_first:
+        calls.reverse()
+    engine.model = FakeModel([both(*calls)])
+    events = _events(_post(visitor, text="What's the net cash, and tell me about Kevin?"))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert cash in said
+    assert AVAILABILITY[0] in said
+
+
+def test_a_resume_asked_for_in_the_same_round_still_opens(loaded, visitor, engine):
+    engine.model = FakeModel([both(ak("availability"), call("show_resume"))])
+    events = _events(_post(visitor, text="When can he start, and show me his resume."))
+    assert [t["name"] for t in _of(events, "tool")] == ["about_kevin", "show_resume"]
+    assert any(t.get("card", {}).get("card") == "resume" for t in _of(events, "tool"))
+    assert [s["text"] for s in _of(events, "sentence")] == AVAILABILITY
+
+
+def test_a_write_in_the_same_round_is_confirmed_in_code_words(loaded, visitor, engine):
+    engine.model = FakeModel(
+        [both(call("create_checklist", {"name": "Questions for Kevin"}), ak("availability"))]
+    )
+    events = _events(
+        _post(visitor, text="Make a list called questions for Kevin. When can he start?")
+    )
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert said == AVAILABILITY + [cascade.CHANGE_MADE]
+    assert _of(events, "done")[0]["writes_ran"] is True
+
+
+def test_a_question_about_his_work_is_his_words_first_and_the_diagram_is_offered():
+    from assistant.prompt import RECRUITER_FRAME, cascade_recruiter_frame
+
+    frame = cascade_recruiter_frame()
+    assert "what Kevin did on a project or job, or how he builds" not in frame
+    assert "call about_kevin first, never show_diagram, and pass offer=diagram" in frame
+    # Live keeps it as it was (`test_profile_live_unchanged.py` checks the bytes).
+    assert "what Kevin did on a project or job, or how he builds" in RECRUITER_FRAME
+
+
+def test_the_diagram_offer_is_said_only_when_a_diagram_can_be_shown():
+    assert profile.offer_line("diagram", has_resume=False, has_contact=False, has_diagram=True) == (
+        "Want the diagram for that?"
+    )
+    assert profile.offer_line("diagram", has_resume=True, has_contact=True) is None
 
 
 def test_his_status_gets_the_not_shared_line_and_a_visa_type_is_answered(loaded, visitor, engine):
@@ -643,7 +773,7 @@ def test_no_model_request_in_a_conversation_ever_holds_his_sentences(loaded, vis
         assert _profile_in(request) == []
     later = json.dumps(engine.model.requests[-1].contents)
     assert "(Read aloud from Kevin's profile: Location, Education.)" in later
-    assert "(Read aloud from Kevin's profile: Experience.)" in later
+    assert "(Read aloud from Kevin's profile: Experience, sentences 1 to 5 of 7.)" in later
     assert "(Tour line read aloud: who.)" in later
     # A diagram's caption is about the project, not him: the follow-up still sees it.
     assert json.dumps(caption)[1:-1] in later

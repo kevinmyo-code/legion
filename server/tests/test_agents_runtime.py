@@ -220,8 +220,8 @@ def test_cancel_stops_before_the_next_round_and_before_a_tool():
 
 
 def test_a_tool_whose_outcome_ends_the_turn_stops_the_loop_with_no_further_round():
-    """A gateway may say a call's result IS the answer (code speaks it): the loop then runs no
-    later call of that round and asks the model nothing more, and the turn is done."""
+    """A gateway may say a call's result IS the answer (code speaks it): the loop still runs every
+    call of that round (a resume opens, a write is made), then asks the model nothing more."""
 
     class EndsTurn(FakeGateway):
         def call(self, state, spec, call, deadline_s):
@@ -236,7 +236,7 @@ def test_a_tool_whose_outcome_ends_the_turn_stops_the_loop_with_no_further_round
     events, result = _drive(run_loop(_spec(), _state(), model, gateway, system="s"))
     assert result.status == "done"
     assert len(model.requests) == 1
-    assert [name for name, _ in gateway.calls] == ["read_x"]
+    assert [name for name, _ in gateway.calls] == ["read_x", "read_y"]
     assert [e.type for e in events if e.type == "sentence"] == []
 
 
