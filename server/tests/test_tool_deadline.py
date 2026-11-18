@@ -27,6 +27,8 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     _post,
     engine,
     member,
+    visitor,
+    visitor_user,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -321,3 +323,47 @@ def test_the_capped_timeout_reaches_the_transport(monkeypatch):
         except Exception:  # noqa: BLE001 - only the timeout handed over matters here
             pass
     assert handed and handed[0] <= 0.3
+
+
+# ---- round 4 turn review R1: a web search never holds the demo budget row during its call --------
+
+
+def test_a_search_in_flight_does_not_hold_the_demo_budget_row(visitor, engine, monkeypatch):
+    from agents.runtime.model import FakeModel, call, say
+    from demo import budget
+    from demo.models import DemoBudgetDay
+    from engine_mcp import web_search
+
+    in_flight, finish = threading.Event(), threading.Event()
+
+    def slow_search(query, **_kw):
+        in_flight.set()
+        finish.wait(5)
+        return web_search.WebAnswer(query=query, answer="Sunny all week.")
+
+    monkeypatch.setattr(web_search, "search", slow_search)
+    engine.model = FakeModel([call("web_search", {"query": "weather"}), say("Sunny all week.")])
+    result = {}
+
+    def turn():
+        try:
+            result["events"] = _events(_post(visitor, text="What's the weather?"))
+        finally:
+            from django.db import connections
+
+            connections.close_all()
+
+    thread = threading.Thread(target=turn)
+    thread.start()
+    try:
+        assert in_flight.wait(5)
+        started = time.monotonic()
+        other = budget.reserve_cascade_turn(rounds=1, spoken=False)  # another visitor's turn
+        waited = time.monotonic() - started
+    finally:
+        finish.set()
+        thread.join(10)
+    assert other is not None and waited < 0.5, waited
+    tool = _of(result["events"], "tool")[0]
+    assert tool["name"] == "web_search" and tool["ok"] is True
+    assert DemoBudgetDay.objects.get().web_searches == 1  # charged once, and kept
