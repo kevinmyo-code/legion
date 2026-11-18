@@ -244,11 +244,13 @@ private fun MiniIcon(icon: ImageBitmap?, app: DrawerApp?) {
 /** An open folder over the page: a scrim (tap, Close or Back closes it), the letter, the count, three to a row. */
 @Composable
 private fun FolderOverlay(folder: LetterFolder, onClose: () -> Unit, cell: @Composable (DrawerApp, Modifier) -> Unit) {
-    Box(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM))
-            .clickable(role = Role.Button, onClickLabel = "Close folder ${folder.letter}", onClick = onClose),
-        contentAlignment = Alignment.Center,
-    ) {
+    // The scrim is a sibling under the panel, not its parent: a clickable merges its descendants'
+    // semantics, and a pane title cannot merge (the first test run threw on exactly that).
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM))
+                .clickable(role = Role.Button, onClickLabel = "Close folder ${folder.letter}", onClick = onClose),
+        )
         Column(
             Modifier.padding(horizontal = 20.dp).fillMaxWidth().heightIn(max = FolderMaxHeight)
                 .background(SoftColors.ground).border(1.dp, SoftColors.text)

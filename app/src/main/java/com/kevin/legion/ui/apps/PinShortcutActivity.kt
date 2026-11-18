@@ -79,11 +79,13 @@ class PinShortcutActivity : ComponentActivity() {
 /** The sheet: a scrim (a tap on it cancels) and a ruled panel at the foot. Stateless. */
 @Composable
 internal fun PinShortcutSheet(label: String, from: String, onAdd: () -> Unit, onCancel: () -> Unit) {
-    Box(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM))
-            .clickable(role = Role.Button, onClickLabel = "Cancel", onClick = onCancel),
-        contentAlignment = Alignment.BottomCenter,
-    ) {
+    // The scrim is a sibling under the panel, not its parent: a clickable would merge the panel's
+    // pane title, which cannot merge.
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Box(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM))
+                .clickable(role = Role.Button, onClickLabel = "Cancel", onClick = onCancel),
+        )
         Column(
             Modifier.fillMaxWidth().background(SoftColors.ground).border(1.dp, SoftColors.text)
                 .pointerInput(Unit) { detectTapGestures { } } // a tap on the panel is not a cancel

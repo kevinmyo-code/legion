@@ -161,6 +161,23 @@ class TypesetBucketsAndIconsTest {
     }
 
     @Test
+    fun `the pin confirmation offers Add and Cancel, and a tap on the panel cancels nothing`() {
+        var added = 0
+        var cancelled = 0
+        composeTestRule.setContent {
+            SoftTheme {
+                com.kevin.legion.ui.apps.PinShortcutSheet("Weather board", "Browser", { added++ }, { cancelled++ })
+            }
+        }
+        composeTestRule.onNodeWithText("From Browser").performClick()
+        assertEquals(0, cancelled)
+        composeTestRule.onNodeWithText("Add").performClick()
+        assertEquals(1, added)
+        composeTestRule.onNodeWithText("Cancel").performClick()
+        assertEquals(1, cancelled)
+    }
+
+    @Test
     fun `finding an app shows every match flat, with work and blocked in words`() {
         tray(query = "l")
         composeTestRule.onNodeWithText("Atlas").assertExists()
