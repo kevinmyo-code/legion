@@ -226,6 +226,13 @@ class TypesetBucketsAndIconsTest {
     }
 
     @Test
+    fun `TalkBack reads an app's name, then double tap to open`() {
+        tray(query = "atlas")
+        val node = composeTestRule.onNodeWithText("Atlas").fetchSemanticsNode()
+        assertEquals("open", node.config[androidx.compose.ui.semantics.SemanticsActions.OnClick].label)
+    }
+
+    @Test
     fun `a pinned web shortcut says who made it, under its name, in All apps`() {
         val shortcut = com.kevin.legion.ui.apps.PinnedShortcuts.asDrawerApp(
             "example.browser", "w1", "Bank login", false, 0, origin = "Browser",

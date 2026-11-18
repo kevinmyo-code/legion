@@ -311,8 +311,10 @@ private fun AppCell(
             .heightIn(min = MinTarget)
             .combinedClickable(
                 role = Role.Button,
-                onClickLabel = app.label,
-                onLongClickLabel = "Pin or unpin",
+                // TalkBack reads the name, then "double tap to open" (review 2026-11-18: it said
+                // "double tap to <name>").
+                onClickLabel = "open",
+                onLongClickLabel = if (app.shortcutId != null) "remove shortcut" else "pin or unpin",
                 onLongClick = { onLongPress(app) },
                 onClick = { onOpen(app) },
             )
