@@ -42,12 +42,15 @@ function pushModalEntry() {
 export function ScreenModalProvider({
   lines,
   footer,
+  onOpenChange,
   children,
 }: {
   /** The conversation's lines: the newest diagram or resume card opens the modal. */
   lines?: readonly Line[]
   /** What the modal carries at its foot (the voice controls). */
   footer?: ReactNode
+  /** Told when the modal opens and closes (the cascade's quiet window lapse under a card). */
+  onOpenChange?: (open: boolean) => void
   children: ReactNode
 }) {
   const [shown, setShown] = useState<ModalCard | null>(null)
@@ -66,6 +69,10 @@ export function ScreenModalProvider({
   }, [lines])
 
   const open = shown !== null
+  // Idempotent on the other side, so a new callback each render is harmless.
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
   const pushed = useRef(false)
   useEffect(() => {
     if (!open) return

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { DemoContent } from '@/api/demo'
 import { UNNAMED, useAssistant } from '@/assistant/assistant-context'
-import { CascadeClient } from '@/assistant/cascade-client'
+import { CascadeClient, type SuggestChip } from '@/assistant/cascade-client'
 import type { Line } from '@/assistant/live-client'
 import { orbMode } from '@/components/assistant/orb'
 import { VoiceOrb } from '@/components/assistant/voice-orb'
@@ -12,7 +12,8 @@ import { VoiceOrb } from '@/components/assistant/voice-orb'
  * spoken opening and a page to read before talking lose people, so: one large orb and one line;
  * the tap that opens the audio is the tap that enters the visit, and the opening is about five
  * seconds. Under the orb, for people who
- * cannot talk: tappable questions answered aloud, the one-minute tour, captions always on, and a
+ * cannot talk: the engine's suggestion chips (answered aloud once the greeting, recording notice
+ * included, has played to its end; typed before that), the one-minute tour, captions always on, and a
  * box to type (answered aloud too, and an open conversation carries on after it). The full recording notice sits by the mic. A live strip shows what the engine is
  * doing (tool, how long, the turn's estimated cost). The ask (resume, contact) stays on screen.
  * Mobile first: one column at 360 px.
@@ -20,11 +21,8 @@ import { VoiceOrb } from '@/components/assistant/voice-orb'
 
 export const STAGE_LINE = 'Tap and ask me about Kevin'
 export const RECORDING_NOTICE = 'Conversations here may be recorded to improve the assistant.'
-export const QUESTION_CHIPS = [
-  'Tell me about Kevin.',
-  'How is LEGION built?',
-  'What did this household spend last month?',
-] as const
+/** After the follow-up window lapsed quietly under an open card (item 4). */
+export const ASK_MORE = 'Tap to ask more'
 
 function lastOf(lines: readonly Line[], kind: Line['kind']): Line | undefined {
   for (let i = lines.length - 1; i >= 0; i--) if (lines[i].kind === kind) return lines[i]
@@ -75,10 +73,9 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
     else if (voiceOn) client.stopVoice()
     else void client.startVoice()
   }
-  const ask = (question: string) => {
+  const tapChip = (chip: SuggestChip) => {
     freshIfEnded()
-    if (cascade) cascade.ask(question)
-    else client.send(question)
+    cascade?.tapChip(chip)
   }
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -95,7 +92,9 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       ? `${who} is thinking…`
       : voiceOn
         ? 'Listening. Tap to stop.'
-        : STAGE_LINE
+        : cascade?.lapsedQuietly
+          ? ASK_MORE
+          : STAGE_LINE
 
   // Its own class name: it once borrowed `rc-stage`, the phone section's sticky class, and stayed
   // pinned with no background over everything scrolling under it (live demo, 2026-11-18).
@@ -163,18 +162,33 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
           </button>
         </p>
       )}
-      <div data-stage="chips" className="flex max-w-[34rem] flex-wrap justify-center gap-2">
-        {cascade && (
-          <button type="button" className="rc-ask-q" data-stage="tour" onClick={() => cascade.startTour(0)}>
-            Take the one-minute tour
-          </button>
-        )}
-        {QUESTION_CHIPS.map((question) => (
-          <button key={question} type="button" className="rc-ask-q" onClick={() => ask(question)}>
-            {question}
-          </button>
-        ))}
-      </div>
+      {cascade && (
+        <button type="button" className="rc-ask-q" data-stage="tour" onClick={() => cascade.startTour(0)}>
+          Take the one-minute tour
+        </button>
+      )}
+      {/* The engine's chips, checked for this visit (`demo/suggestions.py`): one row that scrolls
+          sideways, so a phone's page never grows wider than the screen. */}
+      {cascade && cascade.chips.length > 0 && (
+        <div
+          data-stage="chips"
+          role="group"
+          aria-label="Suggested questions"
+          className="flex w-full max-w-[34rem] flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1"
+        >
+          {cascade.chips.map((chip) => (
+            <button
+              key={chip.token}
+              type="button"
+              className="rc-ask-q flex-none whitespace-nowrap"
+              title={chip.question}
+              onClick={() => tapChip(chip)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
       <form onSubmit={submit} data-stage="form" className="flex w-full max-w-[34rem] gap-2">
         <input
           value={draft}

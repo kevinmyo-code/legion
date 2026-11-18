@@ -12,7 +12,7 @@ import { FakeAudio, settle } from '@/test/fake-live'
 
 import indexCss from '../../index.css?raw'
 
-import { QUESTION_CHIPS, VoiceStage } from './voice-stage'
+import { VoiceStage } from './voice-stage'
 
 /**
  * The browser run (2026-11-17): an answer that opened a diagram covered the orb, so a tap to stop
@@ -64,7 +64,8 @@ describe('the voice stage with a card open over it', () => {
   ])('while %s, the dialog has a control that stops him in one tap and cancels the turn', async (_when, withAudio) => {
     const { audio, cancels } = stage(withAudio)
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: QUESTION_CHIPS[1] }))
+      fireEvent.change(screen.getByRole('textbox', { name: /^Type to / }), { target: { value: 'How is LEGION built?' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
       await settle()
     })
     const dialog = await screen.findByRole('dialog')
@@ -216,5 +217,70 @@ describe('the interrupt control when the orb is off screen', () => {
     stage(true)
     expect(observers.length).toBeGreaterThan(0)
     expect(observers.every(({ options }) => options?.threshold === 0.5)).toBe(true)
+  })
+})
+
+/**
+ * Demo stage 2 (item 1): the chips are the engine's, checked for this visit and sent after the
+ * greeting; the page writes none. One row that scrolls sideways (the 390 px width is asserted in
+ * the real-browser check, `tests/realrun_browser_voice_first.mjs` vf-chips).
+ */
+describe('the suggestion chips on the stage', () => {
+  const CHIPS = [
+    { label: 'About Kevin', question: 'Tell me about Kevin.', token: 'chip-1' },
+    { label: 'How LEGION is built', question: 'Show me how LEGION is built.', token: 'chip-2' },
+  ]
+
+  function chipStage() {
+    const audio = new FakeAudio()
+    const requests: Parameters<CascadeDeps['startTurn']>[0][] = []
+    async function* greeting(): AsyncGenerator<SseEvent> {
+      yield { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } }
+      yield { type: 'sentence', data: { text: 'Hi. Chats are recorded.' } }
+      yield { type: 'done', data: { status: 'greeting', final_text: 'Hi.', offer: 'offer-0' } }
+    }
+    async function* answer(): AsyncGenerator<SseEvent> {
+      yield { type: 'turn', data: { conversation_id: 'c-1', turn: 1 } }
+      yield { type: 'sentence', data: { text: 'He studies.' } }
+      yield { type: 'done', data: { status: 'done', final_text: 'He studies.' } }
+    }
+    const deps: CascadeDeps = {
+      startTurn: async (request): Promise<TurnStart> => {
+        requests.push(request)
+        return { ok: true, events: request.greet ? greeting() : answer() }
+      },
+      chips: async () => CHIPS,
+      audio: () => audio,
+      now: () => Date.now(),
+      utcOffsetMinutes: () => 0,
+    }
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <AssistantProvider voiceFirst={{ prepare: async () => true }} cascadeDeps={deps}>
+          <AssistantModals>
+            <VoiceStage />
+          </AssistantModals>
+        </AssistantProvider>
+      </QueryClientProvider>,
+    )
+    return { requests }
+  }
+
+  test('none before the greeting; the engine chips in one sideways row after it; a tap asks with its token', async () => {
+    const { requests } = chipStage()
+    expect(screen.queryByRole('group', { name: 'Suggested questions' })).toBeNull()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    const row = await screen.findByRole('group', { name: 'Suggested questions' })
+    expect(row.className).toContain('flex-nowrap')
+    expect(row.className).toContain('overflow-x-auto')
+    expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual(['About Kevin', 'How LEGION is built'])
+    await act(async () => {
+      fireEvent.click(within(row).getByRole('button', { name: 'About Kevin' }))
+      await settle()
+    })
+    expect(requests.at(-1)).toMatchObject({ text: 'Tell me about Kevin.', chip: 'chip-1' })
   })
 })

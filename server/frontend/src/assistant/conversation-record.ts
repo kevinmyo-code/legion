@@ -23,7 +23,7 @@ export type RecordEvent =
   | { kind: 'tool_cancelled'; at_ms: number; id: string; name: string }
   | { kind: 'mic_open' | 'mic_closed'; at_ms: number; reason: string }
   | { kind: 'session_end'; at_ms: number; reason: string }
-  | { kind: 'latency'; at_ms: number; metric: 'cold_start' | 'reply'; ms: number }
+  | { kind: 'latency'; at_ms: number; metric: 'cold_start' | 'reply' | 'first_audio'; ms: number }
 
 /** How the events reach the engine; `deps.ts` has the real one, tests a fake. */
 export interface RecordTransport {

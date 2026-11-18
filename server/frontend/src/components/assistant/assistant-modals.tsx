@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { useAssistant } from '@/assistant/assistant-context'
+import { CascadeClient } from '@/assistant/cascade-client'
 import { ScreenModalProvider } from '@/components/assistant/cards/presenter'
 import { statusWords } from '@/components/assistant/chat'
 import { orbMode } from '@/components/assistant/orb'
@@ -11,9 +12,13 @@ import { VoiceOrb } from '@/components/assistant/voice-orb'
  * Mounted inside `AssistantProvider` by the app shell and the recruiter page.
  */
 export function AssistantModals({ children }: { children: ReactNode }) {
-  const { state } = useAssistant()
+  const { client, state } = useAssistant()
+  // The cascade closes a lapsed follow-up window quietly while a card is open (item 4).
+  const onOpenChange = (open: boolean) => {
+    if (client instanceof CascadeClient) client.setCardOpen(open)
+  }
   return (
-    <ScreenModalProvider lines={state.lines} footer={<ModalVoiceBar />}>
+    <ScreenModalProvider lines={state.lines} footer={<ModalVoiceBar />} onOpenChange={onOpenChange}>
       {children}
     </ScreenModalProvider>
   )
@@ -28,12 +33,14 @@ export function AssistantModals({ children }: { children: ReactNode }) {
 export function ModalVoiceBar() {
   const { client, state, name } = useAssistant()
   const live = state.phase === 'connecting' || state.phase === 'live'
-  if (!live && state.mic === 'off') return null
+  // The window lapsed quietly under this card: the bar stays, saying a tap asks more.
+  const askMore = client instanceof CascadeClient && client.lapsedQuietly
+  if (!live && state.mic === 'off' && !askMore) return null
   // Thinking too: an answer that opens a card is often still being worked out, and the modal
   // covers the stage's orb, so this is the one tap that stops him (the 2026-11-17 browser run).
   const busy = state.activity === 'speaking' || state.activity === 'thinking'
   const voiceOn = state.mic !== 'off'
-  const words = statusWords(state, name) || (voiceOn ? 'Listening' : `${name} is here`)
+  const words = askMore && !voiceOn ? 'Tap to ask more' : statusWords(state, name) || (voiceOn ? 'Listening' : `${name} is here`)
   return (
     <div data-modal="voice" className="flex min-h-12 items-center gap-2.5 rounded-full bg-surface-2 py-1 pr-1 pl-1.5">
       <span aria-hidden="true" className="grid size-10 flex-none place-items-center">

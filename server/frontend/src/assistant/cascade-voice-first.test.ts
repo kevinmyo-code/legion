@@ -596,7 +596,7 @@ describe('the demo', () => {
     await settle()
     expect(t.requests).toHaveLength(0)
     expect(t.client.send('Hello?')).toBe(false)
-    t.client.ask('Tell me about Kevin.')
+    t.client.tapChip({ label: 'About Kevin', question: 'Tell me about Kevin.', token: 'chip-t' })
     await settle()
     expect(t.requests).toHaveLength(0)
   })
@@ -721,12 +721,15 @@ describe('the demo', () => {
     expect(sys).toContain('Were you talking to me? Say my name or tap to go on.')
   })
 
-  it('a tapped question is answered aloud without opening the microphone', async () => {
+  const CHIP = { label: 'About Kevin', question: 'Tell me about Kevin.', token: 'chip-t' }
+
+  it('a chip tapped with no conversation open is a typed turn: no voice before the notice is heard', async () => {
     const t = build([spoken('He builds things.')])
-    expect(t.client.ask('Tell me about Kevin.')).toBe(true)
+    expect(t.client.tapChip(CHIP)).toBe(true)
     await settle()
-    expect(t.requests[0]).toMatchObject({ text: 'Tell me about Kevin.', spoken: true })
+    expect(t.requests[0]).toMatchObject({ text: 'Tell me about Kevin.', chip: 'chip-t' })
+    expect(t.requests[0].spoken).toBeUndefined()
     expect(t.audio.micOpen).toBe(false)
-    expect(t.audio.played).toHaveLength(1)
+    expect(t.audio.played).toHaveLength(0)
   })
 })

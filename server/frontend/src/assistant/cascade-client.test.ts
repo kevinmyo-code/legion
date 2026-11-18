@@ -44,7 +44,7 @@ function greeting(text = 'Essay still waiting, huh?', kind = 'due'): TurnStart {
 
 function build(
   answers: TurnStart[] = [],
-  options: { visitor?: boolean; speakTyped?: boolean; onEngineLive?: () => void } = {},
+  options: { visitor?: boolean; speakTyped?: boolean; onEngineLive?: () => void; chips?: CascadeDeps['chips'] } = {},
 ) {
   const audio = new FakeAudio()
   const requests: TurnRequest[] = []
@@ -72,6 +72,7 @@ function build(
     utcOffsetMinutes: () => -300,
     record,
     greetingStore: { load: () => store.value, save: (v) => (store.value = v) },
+    ...(options.chips ? { chips: options.chips } : {}),
   }
   const client = new CascadeClient(deps, {
     companionName: 'Alfred',
@@ -479,7 +480,7 @@ describe('CascadeClient', () => {
     const { client, signals } = build([{ ok: true, events: silent() }])
     vi.useFakeTimers()
     try {
-      client.ask('Tell me about Kevin.')
+      client.tapChip({ label: 'About Kevin', question: 'Tell me about Kevin.', token: 'chip-t' })
       await vi.advanceTimersByTimeAsync(FIRST_EVENT_MS + 100)
       expect(signals[0].aborted).toBe(true)
       expect(client.getState().activity).not.toBe('thinking')
@@ -743,5 +744,104 @@ describe('CascadeClient', () => {
     expect(kinds).toContain('mic_open')
     expect(kinds).not.toContain('user')
     expect(kinds).not.toContain('assistant')
+  })
+})
+
+describe('suggestion chips (the demo)', () => {
+  const CHIPS = [
+    { label: 'About Kevin', question: 'Tell me about Kevin.', token: 'chip-1' },
+    { label: 'His resume', question: "Show me Kevin's resume.", token: 'chip-2' },
+  ]
+
+  function offered(events: SseEvent[], offer: string): TurnStart {
+    return {
+      ok: true,
+      events: stream(events.map((e) => (e.type === 'done' ? { ...e, data: { ...e.data, offer } } : e))),
+    }
+  }
+
+  function greetingWithOffer(): TurnStart {
+    return offered(
+      [
+        { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } },
+        { type: 'greeting', data: { kind: 'scripted', text: 'Hi. Chats are recorded.' } },
+        { type: 'sentence', data: { text: 'Hi. Chats are recorded.' } },
+        { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([1, 2])), rate: 24000 } },
+        { type: 'done', data: { status: 'greeting' } },
+      ],
+      'offer-0',
+    )
+  }
+
+  it("shows the engine's checked chips for a turn's offer, asked after the answer", async () => {
+    const asked: string[] = []
+    const { client, audio } = build([greetingWithOffer()], {
+      chips: async (offer) => {
+        asked.push(offer)
+        return CHIPS
+      },
+    })
+    await open(client, audio)
+    await settle()
+    expect(asked).toEqual(['offer-0'])
+    expect(client.chips).toEqual(CHIPS)
+  })
+
+  it('a new turn clears the chips, and chips that arrive after a newer turn started are dropped', async () => {
+    let release: (chips: typeof CHIPS) => void = () => {}
+    const { client, audio } = build([greetingWithOffer()], {
+      chips: () => new Promise((resolve) => (release = resolve)),
+    })
+    await open(client, audio)
+    client.send('Something else.')
+    await settle()
+    release(CHIPS)
+    await settle()
+    expect(client.chips).toEqual([])
+  })
+
+  it('tapped after the greeting played to its end, a chip is asked aloud and cuts the reply in flight', async () => {
+    const { client, audio, requests, cancels } = build([greetingWithOffer()], { chips: async () => CHIPS })
+    await open(client, audio)
+    await settle()
+    expect(client.tapChip(CHIPS[0])).toBe(true)
+    await settle()
+    expect(requests.at(-1)).toMatchObject({ text: 'Tell me about Kevin.', spoken: true, chip: 'chip-1' })
+    expect(cancels).toHaveLength(0)
+  })
+
+  it('a greeting cut short is not the notice heard: a chip tapped after it is a typed turn', async () => {
+    const { client, audio, requests } = build([greetingWithOffer()], { chips: async () => CHIPS })
+    await client.startVoice()
+    await settle()
+    // Interrupted while the greeting plays.
+    audio.handlers?.onPlaying(true)
+    client.interrupt()
+    await settle()
+    client.tapChip(CHIPS[1])
+    await settle()
+    expect(requests.at(-1)).toMatchObject({ text: "Show me Kevin's resume.", chip: 'chip-2' })
+    expect(requests.at(-1)!.spoken).toBeUndefined()
+  })
+
+  it('a follow-up window that lapses under an open card closes quietly and keeps the chips', async () => {
+    const { client, audio } = build([greetingWithOffer()], { chips: async () => CHIPS })
+    await open(client, audio)
+    await settle()
+    client.setCardOpen(true)
+    const before = audio.played.length
+    feed(audio, QUIET, WINDOW_MS + 40)
+    expect(client.getState().mic).toBe('off')
+    expect(audio.played.length).toBe(before)
+    expect(client.lapsedQuietly).toBe(true)
+    expect(client.chips).toEqual(CHIPS)
+  })
+
+  it('the conversation ending for good clears the chips', async () => {
+    const { client, audio } = build([greetingWithOffer()], { chips: async () => CHIPS })
+    await open(client, audio)
+    await settle()
+    client.reset()
+    expect(client.chips).toEqual([])
   })
 })

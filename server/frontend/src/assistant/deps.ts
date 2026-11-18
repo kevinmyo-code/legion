@@ -2,7 +2,7 @@ import { api, csrfToken } from '@/api/client'
 import { asCard } from '@/components/assistant/cards/types'
 
 import type { AudioIO } from './audio'
-import type { CascadeDeps, FunnelEvent, TurnRequest, TurnStart } from './cascade-client'
+import type { CascadeDeps, FunnelEvent, SuggestChip, TurnRequest, TurnStart } from './cascade-client'
 import type { TurnDetector } from './turn/detector'
 import type { RecordEvent, RecordTransport } from './conversation-record'
 import type { LiveDeps, Notice, SessionResult, ToolContext, ToolResult } from './live-client'
@@ -208,6 +208,7 @@ export function turnForm(request: TurnRequest): FormData {
   if (request.preface) form.append('preface', request.preface)
   if (request.turnId) form.append('turn_id', request.turnId)
   if (request.bargeIn) form.append('barge_in', '1')
+  if (request.chip && request.text) form.append('chip', request.chip)
   return form
 }
 
@@ -332,11 +333,22 @@ async function robotic(conversationId: string, turn: number): Promise<boolean> {
   }
 }
 
+/** The checked chips for a turn's offer (the demo). None on any failure: chips are optional. */
+async function chips(offer: string): Promise<SuggestChip[]> {
+  try {
+    const { data } = await api.POST('/api/demo/chips', { body: { offer } })
+    return data?.chips ?? []
+  } catch {
+    return []
+  }
+}
+
 export function createCascadeDeps(options: { funnelRef?: string } = {}): CascadeDeps {
   return {
     startTurn,
     cancelTurn,
     robotic,
+    chips,
     turnDetector: loadTurnModels,
     ...(EARLY_TRANSCRIPT ? { transcribe } : {}),
     bargeIn: VOICE_BARGE_IN,

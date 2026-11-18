@@ -11,7 +11,7 @@ import { DAY_CARD, SPEND_CARD } from '@/test/cards-seed'
 import { renderApp } from '@/test/render-app'
 import type { DemoContent, DemoMedia } from '@/api/demo'
 import { FIRST_QUESTIONS, OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
-import { QUESTION_CHIPS, RECORDING_NOTICE, STAGE_LINE } from '@/components/demo/voice-stage'
+import { RECORDING_NOTICE, STAGE_LINE } from '@/components/demo/voice-stage'
 import { ENTRY_TAP_MS } from '@/assistant/turn-deadline'
 
 /**
@@ -160,9 +160,9 @@ describe('/try', () => {
     expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
     expect(engine.demo.funnel).toEqual(expect.arrayContaining(['page_load:acme', 'orb_tap:acme']))
-    // The stage stays above the page: chips, the tour, typing, and the ask.
+    // The stage stays above the page: the tour, typing, and the ask. Chips come from the engine
+    // after the greeting (`demo/suggestions.py`); the page writes none of its own.
     expect(screen.getByRole('button', { name: 'Take the one-minute tour' })).toBeInTheDocument()
-    for (const chip of QUESTION_CHIPS) expect(screen.getByRole('button', { name: chip })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /^Type to / })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'His resume (PDF)' })).toBeInTheDocument()
   })

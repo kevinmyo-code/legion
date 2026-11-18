@@ -77,6 +77,15 @@ export interface TurnRequest {
   turnId?: string
   /** Its audio began over a reply (a barge-in judged a person): the engine checks it for echo. */
   bargeIn?: boolean
+  /** A suggestion chip's token (`POST /api/demo/chips`); `text` is its question word for word. */
+  chip?: string
+}
+
+/** A suggestion chip the engine offered and checked for this visitor (`demo/suggestions.py`). */
+export interface SuggestChip {
+  label: string
+  question: string
+  token: string
 }
 
 export interface GreetingHistory {
@@ -117,6 +126,8 @@ export interface CascadeDeps {
   robotic?: (conversationId: string, turn: number) => Promise<boolean>
   /** One step of the demo for its funnel counts (`POST /api/demo/funnel`). */
   funnel?: (event: FunnelEvent) => void
+  /** The checked chips for a turn's `offer`, asked after the answer has gone out (the demo). */
+  chips?: (offer: string) => Promise<SuggestChip[]>
 }
 
 export type FunnelEvent = 'orb_tap' | 'first_word' | 'turns_3' | 'tour_started' | 'tour_finished' | 'resume_opened'
@@ -162,7 +173,15 @@ const PREROLL_CHUNKS = 15
 
 export { CONVERSATION_CLOSED, closingTone }
 
-type TurnInput = { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number; bargeIn?: boolean }
+type TurnInput = {
+  audio?: Int16Array
+  text?: string
+  greet?: boolean
+  spoken?: boolean
+  tour?: number
+  bargeIn?: boolean
+  chip?: string
+}
 /** The demo entry in flight (`CascadeClient.enter`). */
 type Entry = { done: Promise<boolean>; abort: AbortController; timer: ReturnType<typeof setTimeout> }
 type Draft<T> = T extends unknown ? Omit<T, 'id'> : never
@@ -195,6 +214,8 @@ export class CascadeClient {
   private lastAsked: string | null = null
   private limitTimer: ReturnType<typeof setTimeout> | null = null
   private replyFrom: number | null = null
+  /** When this spoken turn was posted, until its first sound plays (`first_audio`, item 2d). */
+  private audioFrom: number | null = null
   private spokenTurn = false
   // ---- the phone's turn-taking (turn/detector.ts) ----
   private detector: TurnDetector | null = null
@@ -244,6 +265,17 @@ export class CascadeClient {
   strip: StripState = { tools: [], costUsd: null }
   /** The last reply's turn number, for the robotic marker. */
   private lastTurn: number | null = null
+  // ---- suggestion chips (the demo) ----
+  /** The chips on screen: the examples after the greeting, then each answer's follow-ups. */
+  chips: readonly SuggestChip[] = []
+  /** The greeting (which holds the recording notice) has played to its end, uncut, on this page. */
+  private noticeHeard = false
+  /** The turn playing now is the greeting. */
+  private greetPlaying = false
+  /** A card is open over the page (`AssistantModals`). */
+  private cardOpen = false
+  /** The follow-up window lapsed under an open card and closed quietly: "Tap to ask more". */
+  lapsedQuietly = false
 
   private readonly deps: CascadeDeps
   private readonly options: CascadeOptions
@@ -488,17 +520,25 @@ export class CascadeClient {
   }
 
   /**
-   * A tapped question answered aloud, for someone who cannot talk (the demo's chips). Call it from
-   * the tap: it opens the playback side there (Safari) without opening the microphone.
+   * A tapped suggestion chip. With a conversation open and the recording notice heard to its end,
+   * it is like talking over him: playback stops, the turn in flight is cancelled, and the chip's
+   * question is asked and answered aloud. Otherwise it is a typed turn, answered in text: no voice
+   * starts before the notice has been heard (the engine's chip check is the same either way).
    */
-  ask(raw: string): boolean {
-    const text = raw.trim()
+  tapChip(chip: SuggestChip): boolean {
+    const text = chip.question.trim()
     if (!text || this.state.phase === 'ended' || this.disposed) return false
-    this.unlockPlayback()
+    const aloud = this.voiceOpen && this.noticeHeard
+    if (aloud) this.unlockPlayback()
     this.cutReply('tap')
     this.stopListening()
-    // The engine says it back as `heard`, which draws the line.
-    void this.afterPrepare(() => this.turn({ text, spoken: true }, true))
+    if (aloud) {
+      // The engine says it back as `heard`, which draws the line.
+      void this.afterPrepare(() => this.turn({ text, spoken: true, chip: chip.token }, true))
+    } else {
+      this.push({ kind: 'me', text, via: 'typed', open: false })
+      void this.afterPrepare(() => this.turn({ text, chip: chip.token }, false, true))
+    }
     return true
   }
 
@@ -618,6 +658,8 @@ export class CascadeClient {
     this.finishRecord('New conversation.')
     this.stopEverything()
     this.conversationId = null
+    this.chips = []
+    this.lapsedQuietly = false
     this.set({ phase: 'idle', mic: 'off', lines: [], notice: null, ended: null })
   }
 
@@ -670,8 +712,18 @@ export class CascadeClient {
       if (playing) this.detector?.replyStarted()
       else this.detector?.replyEnded()
     }
+    if (playing && this.audioFrom !== null) {
+      // Post to first sound, beside the engine's own first-audio time in the record (item 2d).
+      this.rec({ kind: 'latency', metric: 'first_audio', ms: Math.max(this.deps.now() - this.audioFrom, 0) })
+      this.audioFrom = null
+    }
     this.playing = playing
     if (!playing) this.toning = false
+    if (!playing && !this.awaiting && this.greetPlaying) {
+      // The greeting, recording notice included, played to its end: chips may now speak.
+      this.greetPlaying = false
+      this.noticeHeard = true
+    }
     if (!playing && !this.awaiting) this.replyDrained()
     this.refresh()
   }
@@ -810,7 +862,7 @@ export class CascadeClient {
       // The endpointer runs the follow-up window (spec 14, 15) on the clock and the length cap from
       // the models' speech; noise alone never holds it open or reaches the cap.
       const verdict = this.endpointer.push(pcm, this.speechStarted)
-      if (verdict === 'lapsed') this.close(true)
+      if (verdict === 'lapsed') this.lapse()
       else if (verdict === 'max') {
         this.detector.reset()
         this.chunks.push(pcm)
@@ -825,7 +877,7 @@ export class CascadeClient {
     this.chunks.push(pcm)
     if (!this.endpointer.heardSpeech && this.chunks.length > PREROLL_CHUNKS) this.chunks.shift()
     if (verdict === 'end' || verdict === 'max') this.sendUtterance()
-    else if (verdict === 'lapsed') this.close(true)
+    else if (verdict === 'lapsed') this.lapse()
   }
 
   private sendUtterance() {
@@ -844,15 +896,31 @@ export class CascadeClient {
   }
 
   /**
+   * The follow-up window lapsed. Over an open card (a diagram, the resume) it closes quietly: no
+   * tone, the chips and the typed box stay, and the status reads "Tap to ask more" (item 4).
+   */
+  private lapse() {
+    if (!this.cardOpen) return this.close(true)
+    this.close(false, 'window')
+    this.lapsedQuietly = true
+    this.refresh()
+  }
+
+  /** The page's card modal opened or closed (`AssistantModals`). */
+  setCardOpen(open: boolean) {
+    this.cardOpen = open
+  }
+
+  /**
    * Close the conversation (window lapsed, end_conversation, or a tap): the phone's closing tone
    * when it closed by itself, then the note (spec 17). The next tap opens a new one, with a greeting.
    */
-  private close(tone: boolean) {
+  private close(tone: boolean, reason: 'window' | 'tap' = tone ? 'window' : 'tap') {
     if (!this.voiceOpen && this.state.mic === 'off' && !this.conversationId) return
     this.cutReply(null)
     if (tone) this.audioIO?.play(closingTone(), TONE_RATE)
     this.toning = tone && this.playing
-    this.rec({ kind: 'mic_closed', reason: tone ? 'window' : 'tap' })
+    this.rec({ kind: 'mic_closed', reason })
     this.voiceOpen = false
     this.noSpeechRun = 0
     this.resumeOnTap = false
@@ -914,6 +982,10 @@ export class CascadeClient {
     }
     if (input.tour === undefined) this.tourNext = null
     this.strip = { tools: [], costUsd: null }
+    // A new turn: the last answer's chips go (the next answer brings its own).
+    this.chips = []
+    this.lapsedQuietly = false
+    this.greetPlaying = Boolean(input.greet)
     this.lastReply = ''
     this.heardLineId = null
     this.dropTurn()
@@ -931,6 +1003,7 @@ export class CascadeClient {
     this.awaiting = true
     this.afterReply = null
     this.replyFrom = input.greet ? null : this.deps.now()
+    this.audioFrom = spoken ? this.deps.now() : null
     this.set({ phase: 'live', notice: null })
     let startedConversation = this.conversationId === null
     let request: TurnRequest = {
@@ -976,6 +1049,7 @@ export class CascadeClient {
     let open: number | null = null
     let end = false
     let tourNext: number | null = null
+    let offer: string | null = null
     const touring = input.tour !== undefined
     try {
       for await (const event of start.events) {
@@ -986,6 +1060,7 @@ export class CascadeClient {
           const tour = event.data.tour as { next?: number | null } | undefined
           tourNext = typeof tour?.next === 'number' ? tour.next : null
           if (typeof event.data.cost_usd === 'number') this.strip = { ...this.strip, costUsd: event.data.cost_usd }
+          if (typeof event.data.offer === 'string') offer = event.data.offer
           if (touring && tour && tourNext === null) this.deps.funnel?.('tour_finished')
         }
         open = this.onEvent(event, open, startedConversation)
@@ -1013,8 +1088,24 @@ export class CascadeClient {
           this.settle(spoken)
         }
         this.refresh()
+        // After the answer has gone out: the chips are asked for, and shown only if no newer
+        // turn has started by then.
+        if (offer !== null) void this.loadChips(offer, generation)
       }
     }
+  }
+
+  private async loadChips(offer: string, generation: number) {
+    if (!this.deps.chips) return
+    let chips: SuggestChip[]
+    try {
+      chips = await this.deps.chips(offer)
+    } catch {
+      return
+    }
+    if (generation !== this.turnGeneration || this.disposed || this.state.phase === 'ended') return
+    this.chips = chips
+    this.refresh()
   }
 
   /** After a spoken turn: listen again once the reply has played (spec 14). */
@@ -1228,6 +1319,9 @@ export class CascadeClient {
 
   private cutReply(source: InterruptSource | null) {
     const wasActive = this.playing || this.awaiting
+    // A greeting cut short does not count as the recording notice heard.
+    this.greetPlaying = false
+    this.audioFrom = null
     this.bargePending = null
     this.deadline?.clear()
     this.dropTurn()
@@ -1274,6 +1368,7 @@ export class CascadeClient {
     this.stopEverything()
     this.finishRecord(sentence)
     this.conversationId = null
+    this.chips = []
     this.set({ phase: 'ended', mic: 'off', ended: sentence })
   }
 
