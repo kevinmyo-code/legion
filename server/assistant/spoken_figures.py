@@ -93,11 +93,14 @@ def _value(match: re.Match) -> Decimal:
 # Between two amounts: a range ("$10-$20", "$10 to $20", "$10 and $20"), said exactly.
 _RANGE_AFTER = re.compile(r"\s*(?:[-\u2013\u2014]|to|and|or)\s*[-\u2212]?\$", re.I)
 _RANGE_BEFORE = re.compile(r"(?:[-\u2013\u2014]|\bto|\band|\bor)\s*$", re.I)
-# Words that already say the amount is negative: the sign is not said a second time.
-_NEGATIVE_WORDS = re.compile(
-    r"\b(overdrawn|owe|owed|owing|debt|short|negative|minus|deficit|in the red|down|behind|"
-    r"over budget|overspent)\b",
-    re.I,
+# A sign word RIGHT BEFORE the amount already says it is negative ("overdrawn by -$45.20"): only
+# then is "minus" not said a second time. Anywhere else the sign is always said (round 3 S1).
+_SIGN_RIGHT_BEFORE = re.compile(
+    r"\b(overdrawn|owe|owed|owing|short|negative|minus|deficit of|in the red)(\s+by)?\s*$", re.I
+)
+# Two amounts with only spaces and a hyphen or dash between them are a range ("$1,450 -$1,500").
+_AMOUNT_RIGHT_BEFORE = re.compile(
+    r"\$\s?[\d,]+(\.\d+)?(\s?(thousand|million|billion|k|m|bn))?\s*[-–—]?\s*$", re.I
 )
 
 
@@ -114,8 +117,10 @@ def speakable(sentence: str, *, exact: bool = False) -> str:
         before, after = sentence[: match.start()], sentence[match.end() :]
         if _RANGE_AFTER.match(after) or (_RANGE_BEFORE.search(before) and "$" in before):
             return match.group(0)
+        if match.group("sign") and _AMOUNT_RIGHT_BEFORE.search(before):
+            return match.group(0)
         said = spoken_money(_value(match))
-        if match.group("sign") and not _NEGATIVE_WORDS.search(before):
+        if match.group("sign") and not _SIGN_RIGHT_BEFORE.search(before):
             said = f"minus {said}"
         return said
 
