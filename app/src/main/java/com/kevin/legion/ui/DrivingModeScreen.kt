@@ -645,7 +645,7 @@ private fun SegmentColumn(
     val valueColor = if (!hasReading || stale) sem.faint else liveColor
     val litCount = litSegmentCount(fraction, totalSegments)
     val litNormalColor = if (stale) sem.faint else liveColor
-    val litRedlineColor = if (stale) sem.faint else DeckChrome
+    val litRedlineColor = if (stale) sem.faint else redlineInk()
     val unlitNormalColor = sem.ruleFaint
     val unlitRedlineColor = sem.chromeDim
     val gridColor = sem.ruleFaint
@@ -1072,3 +1072,11 @@ private fun PreviewDrivingModeNoData() = LegionTheme {
         onExit = {},
     )
 }
+
+/**
+ * The lit redline colour: full chrome red, except on day paper, where that red is under 3:1 against
+ * the paper and the accent ink takes its place (home-ui 2026-11-17).
+ */
+@Composable
+private fun redlineInk(): Color =
+    if (com.kevin.legion.ui.theme.soft.onDayPaper()) com.kevin.legion.ui.theme.soft.SoftColors.onAlert else DeckChrome

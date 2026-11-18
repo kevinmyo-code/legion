@@ -32,14 +32,14 @@ internal fun TurnBanner(nav: NavState) {
     val turn = nav.guidance?.turn
     val arrowRotation = if (nav.rerouting || turn == null) 0f else NavFormat.turnRotation(turn.modifier)
     Row(
-        Modifier.fillMaxWidth().background(accent.container, RoundedCornerShape(20.dp)).padding(16.dp),
+        Modifier.fillMaxWidth().background(accent.darkContainer, RoundedCornerShape(20.dp)).padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MsIcon(
             R.drawable.ms_navigation,
             contentDescription = null,
-            tint = accent.onContainer,
+            tint = accent.darkOnContainer,
             size = 44.dp,
             modifier = Modifier.rotate(arrowRotation),
         )
@@ -54,13 +54,14 @@ internal fun TurnBanner(nav: NavState) {
                 turn != null -> turn.text
                 else -> "Waiting for the first instruction"
             }
-            // On the area accent's own fixed dark container, so the light text it was designed with,
+            // On the area accent's own fixed dark container (it stays dark on day paper too), so the
+            // light text it was designed with,
             // not the edition's ink (ink on dark teal is unreadable on the day edition, ADR 0081).
             Text(big, style = MaterialTheme.typography.headlineLarge, color = SoftDarkPalette.text)
             Text(
                 small,
                 style = MaterialTheme.typography.titleMedium,
-                color = accent.onContainer,
+                color = accent.darkOnContainer,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

@@ -1,5 +1,7 @@
 package com.kevin.legion.ui.assistant
 
+import androidx.compose.runtime.ReadOnlyComposable
+import com.kevin.legion.ui.theme.soft.onDayPaper
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -196,7 +198,10 @@ internal fun AssistantOffRow(onTap: () -> Unit) {
 
 /** The blocked/silenced pill tone (home-launcher ticket 02) - a literal the ticket names inline,
  * separate from the shared [SoftColors] table, since nothing else in this ticket's scope reads it. */
-private val MicBlockedContainer = Color(0xFF3A2E12)
+private val MicBlockedContainer: Color
+    @Composable @ReadOnlyComposable get() = if (onDayPaper()) SoftColors.alertContainer else MicBlockedDark
+
+private val MicBlockedDark = Color(0xFF3A2E12)
 
 /**
  * Plain UI half of [AssistantStrip] - immutable [AssistantStripResolver.State]

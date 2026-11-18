@@ -70,14 +70,14 @@ class ClaudeFileActivity : ComponentActivity() {
             launch(ClaudeFileIntents.view(this, single))
         }
         setContent {
-            SoftTheme {
+            com.kevin.legion.ui.theme.soft.ProvideTypesetEdition { SoftTheme {
                 ClaudeFilesContent(
                     files = files,
                     onOpen = { launch(ClaudeFileIntents.view(this, it)) },
                     onShare = { launch(ClaudeFileIntents.share(this, it)) },
                     onClose = ::finish,
                 )
-            }
+            } }
         }
     }
 

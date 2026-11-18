@@ -1,5 +1,8 @@
 package com.kevin.legion.ui.common
 
+import com.kevin.legion.ui.theme.soft.textWellFill
+import androidx.compose.runtime.ReadOnlyComposable
+import com.kevin.legion.ui.theme.soft.AreaAccent
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -53,7 +56,7 @@ internal fun SettingsGearMenu(
         DropdownMenu(
             expanded = open,
             onDismissRequest = { open = false },
-            containerColor = SoftColors.cardHighest,
+            containerColor = textWellFill(),
             shape = RoundedCornerShape(18.dp),
         ) {
             SettingsMenuItems(
@@ -64,9 +67,10 @@ internal fun SettingsGearMenu(
     }
 }
 
-/** The phone-settings row's tile and glyph (the prototype's blue); LEGION's row uses the app's own accent. */
-private val PhoneTile = Color(0xFF1F3450)
-private val PhoneGlyph = Color(0xFFA8C8FF)
+/** The phone-settings row's tile and glyph: the prototype's blue, which is [AreaAccent.CALENDAR]'s pair
+ * (so it turns light with the rest on day paper); LEGION's row uses the app's own accent. */
+private val PhoneTile: Color @Composable @ReadOnlyComposable get() = AreaAccent.CALENDAR.container
+private val PhoneGlyph: Color @Composable @ReadOnlyComposable get() = AreaAccent.CALENDAR.onContainer
 
 /** The two menu rows, split out so a screenshot can draw them without a popup window. */
 @Composable

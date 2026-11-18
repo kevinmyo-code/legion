@@ -61,12 +61,16 @@ class MirrorSyncActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            LegionTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    MirrorSyncScreen()
+            // The Typeset edition, so day paper reaches this screen too (home-ui 2026-11-17). Edge to
+            // edge: the bars stay this activity's own.
+            com.kevin.legion.ui.theme.soft.ProvideTypesetEdition(systemBars = false) {
+                LegionTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        MirrorSyncScreen()
+                    }
                 }
             }
         }
