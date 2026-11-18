@@ -43,7 +43,16 @@ export function ModalVoiceBar() {
         {words}
       </p>
       {busy && (
-        <button type="button" onClick={() => client.interrupt()} className="h-10 rounded-full px-3 text-sm">
+        <button
+          type="button"
+          onClick={(event) => {
+            // This button goes once he stops: keep the keyboard in the dialog, on its Close.
+            const dialog = event.currentTarget.closest('[role="dialog"]')
+            client.interrupt()
+            dialog?.querySelector<HTMLElement>('button[aria-label="Close"]')?.focus()
+          }}
+          className="h-10 rounded-full px-3 text-sm"
+        >
           Interrupt
         </button>
       )}

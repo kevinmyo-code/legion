@@ -70,5 +70,7 @@ describe('the voice stage with a card open over it', () => {
     expect(cancels).toHaveLength(1)
     expect(audio.flushes).toBe(flushes + 1)
     expect(within(dialog).queryByRole('button', { name: 'Interrupt' })).not.toBeInTheDocument()
+    // The keyboard stays in the dialog, on its Close.
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close' }))
   })
 })
