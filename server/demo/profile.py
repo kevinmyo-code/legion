@@ -9,7 +9,7 @@ profile, so it has nothing to reword.
 
 - `split_sentences`: a section's text as sentences, cut where a sentence ends and nowhere else
   (a line break ends one; "B.S.", "U.S.", "Ph.D.", "e.g.", a single initial and the number that
-  opens a line do not). When in
+  opens a sentence do not). When in
   doubt it does NOT cut: two sentences spoken as one are still his words.
 - `speak`: the picked sections' sentences in his own order, capped at `CAP`, whole sections only,
   plus at most one closing line from a fixed list.
@@ -62,15 +62,16 @@ _INITIAL = re.compile(r"^[A-Z]\.$")
 _END = re.compile(r"[.!?][\"'”’)\]]*\s+(?=[A-Z0-9\"'“‘(\[])")
 
 
-def _ends_here(text: str, stop_at: int) -> bool:
+def _ends_here(text: str, stop_at: int, opens_at: int) -> bool:
     """Whether the stop at `stop_at` ends a sentence: not when the word it closes is an
-    abbreviation, a dotted acronym, a single initial, or the number that opens the line (a list
-    item's "1." or a year-led "2029.": the item is said whole, not as "one." then the rest)."""
+    abbreviation, a dotted acronym, a single initial, or the number that opens the sentence at
+    `opens_at` (a list item's "1." or a year-led "2029.": said whole, not as "one." then the
+    rest)."""
     if text[stop_at] != ".":
         return True
     start = text.rfind(" ", 0, stop_at) + 1
     word = text[start : stop_at + 1].lstrip("(\"'“‘[")
-    if start == 0 and word[:-1].isdigit():
+    if start == opens_at and word[:-1].isdigit():
         return False
     if _DOTTED.match(word) or _INITIAL.match(word):
         return False
@@ -87,7 +88,7 @@ def split_sentences(text: str) -> list[str]:
             continue
         start = 0
         for match in _END.finditer(line):
-            if _ends_here(line, match.start()):
+            if _ends_here(line, match.start(), start):
                 piece = line[start : match.end()].strip()
                 if piece:
                     out.append(piece)
