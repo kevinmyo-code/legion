@@ -387,6 +387,70 @@ def test_what_the_visitor_hears_about_kevin(loaded, visitor, engine, case, words
         assert not _profile_in(request), case
 
 
+# Follow-ups: the same table's columns plus the prior turns of the conversation. The next turn's
+# model must still see what was asked of the visitor (the offer, the "more" line), and a section
+# asked for again is said again word for word.
+STUDY = ("Where did he study?", [ak("education", offer="resume")])
+FOLLOW_UPS = [
+    (
+        "yes to the offer",
+        [STUDY],
+        "Yes.",
+        [call("show_resume"), say("His resume is on the screen now.")],
+        ["His resume is on the screen now."],
+        "(Read aloud from Kevin's profile: Education.) Want to see his résumé?",
+    ),
+    (
+        "go on after the cap",
+        [("His experience?", [ak("experience")])],
+        "Go on.",
+        [ak(rest_of="experience")],
+        EXPERIENCE[5:],
+        f"(Read aloud from Kevin's profile: Experience.) {MORE_EXPERIENCE}",
+    ),
+    (
+        "the same question again",
+        [("Where did he study?", [ak("education")])],
+        "Where did he study, again?",
+        [ak("education")],
+        EDUCATION,
+        "(Read aloud from Kevin's profile: Education.)",
+    ),
+    (
+        "a follow-up with no tool",
+        [("Where did he study?", [ak("education")])],
+        "Is that a good school?",
+        [say("I can't judge schools; ask him directly.")],
+        ["I can't judge schools; ask him directly."],
+        "(Read aloud from Kevin's profile: Education.)",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("case", "prior", "words", "rounds", "said", "replayed"),
+    FOLLOW_UPS,
+    ids=[row[0] for row in FOLLOW_UPS],
+)
+def test_a_follow_up_sees_the_question_put_to_the_visitor_and_never_his_sentences(
+    loaded, visitor, engine, case, prior, words, rounds, said, replayed
+):
+    engine.model = FakeModel([r for _, prior_rounds in prior for r in prior_rounds] + list(rounds))
+    conversation = None
+    for prior_words, _ in prior:
+        fields = {"text": prior_words}
+        if conversation:
+            fields["conversation_id"] = conversation
+        events = _events(_post(visitor, **fields))
+        conversation = _of(events, "turn")[0]["conversation_id"]
+    events = _events(_post(visitor, text=words, conversation_id=conversation))
+    assert [s["text"] for s in _of(events, "sentence")] == said
+    asked = engine.model.requests[len(engine.model.requests) - len(rounds)]
+    assert {"role": "model", "parts": [{"text": replayed}]} in asked.contents
+    for request in engine.model.requests:
+        assert not _profile_in(request), case
+
+
 def test_his_status_gets_the_not_shared_line_and_a_visa_type_is_answered(loaded, visitor, engine):
     engine.model = FakeModel([ak()])
     status = _events(_post(visitor, text="Is Kevin authorised to work in the US?"))
