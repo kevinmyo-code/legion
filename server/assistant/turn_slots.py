@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 
 from django.db import connection
@@ -36,6 +37,8 @@ _NS_USER = 0x4C45  # "LE"
 _NS_DEMO = 0x4744  # "GD"
 _NS_ADDRESS = 0x4950  # "IP"
 
+# How long a turn waits for the same caller's earlier turn to release (2026-11-17, interrupt).
+OWN_TURN_WAIT_S = 2.5
 BUSY_SELF = (
     "Nothing was answered: your last question is still being answered. Wait for it or stop it, "
     "then ask again."
@@ -108,8 +111,13 @@ def acquire(user, address: str = "") -> tuple[Held | None, str | None, int]:
         return Held(), None, 0
     held = Held()
     user_key = _key(f"user:{user.pk}")
-    if not _try(_NS_USER, user_key):
-        return None, BUSY_SELF, 409
+    # The caller's OWN earlier turn may still be stopping (an interrupt: the server learns of the
+    # abort only at its next stage boundary). Wait for it a little; never for anyone else's.
+    deadline = time.monotonic() + OWN_TURN_WAIT_S
+    while not _try(_NS_USER, user_key):
+        if time.monotonic() >= deadline:
+            return None, BUSY_SELF, 409
+        time.sleep(0.1)
     held.locks.append((_NS_USER, user_key))
     if is_recruiter(user):
         address_key = _key(f"ip:{address or 'unknown'}")

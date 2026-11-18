@@ -8,6 +8,7 @@ from assistant.views import (
     AssistantSessionView,
     AssistantToolView,
     AssistantTranscribeView,
+    AssistantTurnCancelView,
     AssistantTurnView,
 )
 
@@ -16,6 +17,7 @@ urlpatterns = [
     path("tool", AssistantToolView.as_view(), name="assistant-tool"),
     # ADR 0102: one cascade turn, answered as Server-Sent Events.
     path("turn", AssistantTurnView.as_view(), name="assistant-turn"),
+    path("turn/cancel", AssistantTurnCancelView.as_view(), name="assistant-turn-cancel"),
     path("transcribe", AssistantTranscribeView.as_view(), name="assistant-transcribe"),
     path("robotic", AssistantRoboticView.as_view(), name="assistant-robotic"),
     path("conversation", AssistantConversationView.as_view(), name="assistant-conversation"),

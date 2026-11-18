@@ -423,6 +423,7 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
         "/api/assistant/tool",
         "/api/assistant/transcribe",
         "/api/assistant/turn",
+        "/api/assistant/turn/cancel",
         "/api/demo/asset/x",
         "/api/demo/content",
         "/api/demo/session",

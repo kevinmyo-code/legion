@@ -613,6 +613,8 @@ REST_FRAMEWORK = {
         # is up to a few model calls plus speech on the household's key. Same per-process
         # LocMemCache caveat as `mcp` above.
         "assistant_turn": os.environ.get("LEGION_ASSISTANT_TURN_RATE", "").strip() or "20/min",
+        # The turn's stop button (2026-11-17): cheap, but not a free loop.
+        "assistant_turn_cancel": "60/min",
         "assistant_turn_ip": (
             os.environ.get("LEGION_ASSISTANT_TURN_IP_RATE", "").strip() or "120/hour"
         ),

@@ -856,6 +856,14 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
             "/api/assistant/transcribe`) and the answer is spoken, as for `audio`."
         ),
     )
+    turn_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text=(
+            "The browser's own id for this turn, so it can be stopped with "
+            "`POST /api/assistant/turn/cancel`."
+        ),
+    )
     tour = serializers.IntegerField(
         required=False,
         allow_null=True,
@@ -921,6 +929,7 @@ def _turn_sse(
     companion_name="",
     held=None,
     reserved_speech=0,
+    cancelled=None,
 ):
     report = cascade.TurnReport()
     spoken = turn_input.audio is not None or turn_input.greet
@@ -937,6 +946,7 @@ def _turn_sse(
             context=context,
             voice=voice,
             companion_name=companion_name,
+            cancelled=cancelled or (lambda: False),
             model_name=voice_engine.text_model(),
             model=model,
             speech=speech,
@@ -1007,9 +1017,68 @@ def _greeting_history(raw: str | None) -> dict:
     return {"today": today, "last": last, "hellos": hellos}
 
 
-def _refuse(request, detail: str, code: int) -> Response:
+def _refuse(request, detail: str, code: int, slug: str | None = None, **extra) -> Response:
+    """A refusal in words. On the turn route every refusal also carries a `code` slug the page
+    acts on (`TURN_REFUSAL_CODES`), never its words."""
     _audit(request, AssistantCall.SESSION, Outcome.REFUSED)
-    return Response({"detail": detail}, status=code)
+    body = {"detail": detail}
+    if slug is not None:
+        body["code"] = slug
+    body.update(extra)
+    return Response(body, status=code)
+
+
+# The turn route's refusal codes (the page's contract with the server, 2026-11-17: interrupt must
+# not read as the time limit). `busy` also carries `retry_ms`.
+TURN_REFUSAL_CODES = {
+    "bad_request": "400: the body did not fit (one audio or one text; a tour is the demo's).",
+    "no_conversation": "404: no conversation with that id is the caller's.",
+    "live_engine": "409: this caller's assistant runs on live voice.",
+    "time_limit": "409: a demo conversation reached its time limit.",
+    "busy": "409: the caller's own earlier turn has not released yet; retry after `retry_ms`.",
+    "duplicate": "409: a turn with this `turn_id` was already answered (a re-send).",
+    "too_long": "413: the utterance is over the length limit.",
+    "member_cap": "429: the member's own daily spend limit is used up.",
+    "demo_full": "429: every demo slot is in use, or another demo turn from this address runs.",
+    "budget": "429: today's demo budget is used up.",
+    "throttled": "429: too many turns in a short time.",
+    "no_key": "503: no Gemini key on this server.",
+}
+BUSY_RETRY_MS = 1000
+
+
+def _first_time(user, turn_id) -> bool:
+    """Marks `turn_id` started for `user`; False when it had already started."""
+    from django.db import IntegrityError
+
+    from assistant.models import TurnSeen
+
+    try:
+        with transaction.atomic():
+            TurnSeen.objects.create(turn_id=turn_id, user=user)
+    except IntegrityError:
+        return False
+    TurnSeen.objects.filter(at__lt=datetime.now(UTC) - timedelta(days=1)).delete()
+    return True
+
+
+class _TurnThrottled(exceptions.APIException):
+    """DRF's `Throttled`, with the turn route's `code` in its body (`Throttled` appends its wait
+    to a string detail, so it cannot carry one)."""
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+
+    def __init__(self, wait):
+        self.wait = None if wait is None else max(int(wait), 1)
+        super().__init__(
+            detail={
+                "detail": (
+                    "Nothing was read, written or started. You have asked the assistant for too "
+                    "much in a short time; the engine refused this before running it."
+                ),
+                "code": "throttled",
+            }
+        )
 
 
 class AssistantTurnView(_AssistantView):
@@ -1069,15 +1138,20 @@ class AssistantTurnView(_AssistantView):
             503: OpenApiResponse(DetailSerializer, description="No Gemini key on this server."),
         },
     )
+    def throttled(self, request, wait):
+        _audit(request, self.audit_kind, Outcome.THROTTLED, None)
+        raise _TurnThrottled(wait)
+
     def post(self, request):
         if voice_engine.engine_for(request.user) != voice_engine.CASCADE:
-            return _refuse(request, LIVE_ONLY, status.HTTP_409_CONFLICT)
+            return _refuse(request, LIVE_ONLY, status.HTTP_409_CONFLICT, "live_engine")
         body = AssistantTurnRequestSerializer(data=request.data)
         if not body.is_valid():
             return _refuse(
                 request,
                 f"Nothing was answered. The request did not fit: {body.errors}",
                 status.HTTP_400_BAD_REQUEST,
+                "bad_request",
             )
         data = body.validated_data
         upload, text = data.get("audio"), (data.get("text") or "").strip()
@@ -1088,24 +1162,28 @@ class AssistantTurnView(_AssistantView):
                 request,
                 "Nothing was answered. The tour is the demo's.",
                 status.HTTP_400_BAD_REQUEST,
+                "bad_request",
             )
         if greet and (upload is not None or text):
             return _refuse(
                 request,
                 "Nothing was answered. A greeting carries no `audio` or `text`.",
                 status.HTTP_400_BAD_REQUEST,
+                "bad_request",
             )
         if tour_beat is not None and text and upload is not None:
             return _refuse(
                 request,
                 "Nothing was answered. A tour turn carries `audio` or `text`, not both.",
                 status.HTTP_400_BAD_REQUEST,
+                "bad_request",
             )
         if not greet and tour_beat is None and (upload is None) == (not text):
             return _refuse(
                 request,
                 "Nothing was answered. Send one utterance as `audio` or one `text`.",
                 status.HTTP_400_BAD_REQUEST,
+                "bad_request",
             )
         audio = None
         if upload is not None:
@@ -1115,11 +1193,12 @@ class AssistantTurnView(_AssistantView):
                     "Nothing was answered. An utterance may last at most "
                     f"{MAX_UTTERANCE_SECONDS} seconds.",
                     status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    "too_long",
                 )
             audio = upload.read(MAX_AUDIO_BYTES + 1)[:MAX_AUDIO_BYTES]
             audio = audio[: len(audio) - len(audio) % 2]
         if gemini_key() is None:
-            return _refuse(request, KEY_ABSENT, status.HTTP_503_SERVICE_UNAVAILABLE)
+            return _refuse(request, KEY_ABSENT, status.HTTP_503_SERVICE_UNAVAILABLE, "no_key")
 
         row = None
         if data.get("conversation_id"):
@@ -1130,19 +1209,35 @@ class AssistantTurnView(_AssistantView):
                     request,
                     "Nothing was answered. No conversation with that id is yours.",
                     status.HTTP_404_NOT_FOUND,
+                    "no_conversation",
                 )
             limit = timedelta(minutes=demo_budget.max_session_minutes())
             if is_recruiter(request.user) and datetime.now(UTC) - row.window_start > limit:
-                return _refuse(request, TIME_LIMIT, status.HTTP_409_CONFLICT)
+                return _refuse(request, TIME_LIMIT, status.HTTP_409_CONFLICT, "time_limit")
 
         if member_cap.over_cap(request.user):
-            return _refuse(request, member_cap.USED_UP, status.HTTP_429_TOO_MANY_REQUESTS)
-        # One turn in flight per caller, and a small cap on demo turns engine-wide (finding 1).
+            return _refuse(
+                request, member_cap.USED_UP, status.HTTP_429_TOO_MANY_REQUESTS, "member_cap"
+            )
+        # One turn in flight per caller (waiting briefly for the caller's own earlier turn to
+        # release, as after an interrupt), and a small cap on demo turns engine-wide.
         held, busy, busy_status = turn_slots.acquire(request.user, client_ip(request))
         if held is None:
-            return _refuse(request, busy, busy_status)
+            if busy == turn_slots.BUSY_SELF:
+                return _refuse(request, busy, busy_status, "busy", retry_ms=BUSY_RETRY_MS)
+            return _refuse(request, busy, busy_status, "demo_full")
         reservation = None
         try:
+            if data.get("turn_id") and not _first_time(request.user, data["turn_id"]):
+                # The page re-sends a `busy` turn with its id; one that already ran is never a
+                # second turn or a second charge.
+                held.release()
+                return _refuse(
+                    request,
+                    "Nothing was answered again: this turn has already been answered.",
+                    status.HTTP_409_CONFLICT,
+                    "duplicate",
+                )
             # The loop's rounds plus the one tool-free ask again (spec 23); a greeting is one call.
             # One more for a prompt cache the turn may have to make (round 2 turn review 8).
             reserved_rounds = (
@@ -1174,6 +1269,7 @@ class AssistantTurnView(_AssistantView):
                         request,
                         demo_budget.used_up_message(request.user, "text"),
                         status.HTTP_429_TOO_MANY_REQUESTS,
+                        "budget",
                     )
 
             carried_window = None
@@ -1229,6 +1325,7 @@ class AssistantTurnView(_AssistantView):
                     companion.name,
                     held,
                     reserved_speech,
+                    cascade.CancelCheck(request.user.pk, data.get("turn_id")),
                 ),
                 content_type="text/event-stream",
             )
@@ -1390,4 +1487,49 @@ class AssistantRoboticView(_AssistantView):
                 request, "Nothing was marked: no such conversation.", status.HTTP_404_NOT_FOUND
             )
         cascade.mark_robotic(request, conversation, body.validated_data["turn"], source="tap")
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AssistantTurnCancelThrottle(_PerMemberThrottle):
+    scope = "assistant_turn_cancel"
+
+
+class AssistantTurnCancelRequestSerializer(serializers.Serializer):
+    turn_id = serializers.UUIDField(help_text="The id the browser gave the turn to stop.")
+
+
+class AssistantTurnCancelView(_AssistantView):
+    """Stop one of the caller's own turns (2026-11-17: an interrupt must stop the engine's work,
+    and the server only notices a dropped stream at its next write). Marks the turn cancelled in
+    the database, where the running turn looks at every stage boundary, from any worker or
+    instance; it then starts no further paid call and releases its slot. Idempotent; 204 whether
+    or not the turn is still running; costs nothing; a row stops only the caller's own turn."""
+
+    throttle_classes = [AssistantTurnCancelThrottle]
+    audit_kind = AssistantCall.SESSION
+
+    @extend_schema(
+        tags=ASSISTANT_TAGS,
+        operation_id="api_assistant_turn_cancel_create",
+        summary="Stop one of the caller's own turns (idempotent, costs nothing)",
+        request=AssistantTurnCancelRequestSerializer,
+        responses={
+            204: None,
+            400: OpenApiResponse(DetailSerializer, description="The body did not fit."),
+        },
+    )
+    def post(self, request):
+        from assistant.models import TurnCancel
+
+        body = AssistantTurnCancelRequestSerializer(data=request.data)
+        if not body.is_valid():
+            return _refuse(
+                request,
+                f"Nothing was stopped. {body.errors}",
+                status.HTTP_400_BAD_REQUEST,
+                "bad_request",
+            )
+        TurnCancel.objects.get_or_create(turn_id=body.validated_data["turn_id"], user=request.user)
+        # The table only needs the last day: a turn lasts a minute at most.
+        TurnCancel.objects.filter(at__lt=datetime.now(UTC) - timedelta(days=1)).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -556,6 +556,8 @@ class Speaker:
         self._pending: list[str] = []
         self.requests = 0
         self.skipped = 0
+        self.cancelled = _never
+        self.cancelled_often = _never
 
     def spoken_text(self, text: str, expressive: bool = False) -> str:
         """What goes to speech for `text`: its figures rounded like a person says them
@@ -593,6 +595,8 @@ class Speaker:
             self._pending = []
 
     def _submit(self, spoken: str) -> None:
+        if self.cancelled():
+            return
         if self.requests >= MAX_TTS_REQUESTS:
             # What the turn's speech reserve covers (finding 6); the rest is shown, not said.
             self.skipped += 1
@@ -628,6 +632,13 @@ class Speaker:
 
     def _take(self, block: bool) -> Iterator[ev.Event]:
         while self.jobs:
+            if self.cancelled_often():
+                # Stopped: what is queued or still speaking is dropped, nothing more is asked for.
+                for job in self.jobs:
+                    job.cancelled.set()
+                self.jobs.clear()
+                self._pending = []
+                return
             head = self.jobs[0]
             # Never past the turn's own deadline, however many sentences are still queued.
             wait = min(TTS_WAIT_S, max(self.deadline - self.clock(), 0.05))
@@ -678,6 +689,7 @@ class DoorCall:
     ms: int = 0
 
 
+TURN_STOPPED = "Not run: the turn was stopped."
 TOOL_TIMED_OUT_READ = (
     "Not answered: {name} took too long, so the turn stopped waiting for it. Nothing was changed."
 )
@@ -730,6 +742,8 @@ class WebDoor:
         self.end_requested = False
         # A write that was still running when its deadline passed: it may yet go through.
         self.uncertain = False
+        # The browser's cancel (`CancelCheck`), asked before each tool.
+        self.cancelled = _never
         # Section 10: the model said the sentence was not for it, and the code-read signals.
         self.not_for_me = False
         self.addressed: dict[str, bool] = {}
@@ -794,7 +808,9 @@ class WebDoor:
         clock = time.monotonic()
         name, args = call.name, dict(call.args or {})
         result = None
-        if len(self.calls) >= MAX_TOOL_CALLS:
+        if self.cancelled():
+            ok, outcome, text, guard = False, Outcome.REFUSED, TURN_STOPPED, "cancelled"
+        elif len(self.calls) >= MAX_TOOL_CALLS:
             ok, outcome, text, guard = False, Outcome.REFUSED, TOO_MANY_TOOLS, "limit"
         elif name == NOT_FOR_ME_TOOL:
             named = self.addressed.get("named", False)
@@ -930,6 +946,47 @@ class TurnReport:
     timings: dict = field(default_factory=dict)
 
 
+class CancelCheck:
+    """"Has the browser cancelled this turn?" (`POST /api/assistant/turn/cancel`, 2026-11-17):
+    answered from the database, so a cancel sent to any worker or instance is seen. Called at each
+    stage boundary (before a model round, a tool, a speech request); `often` is the same question
+    for the places asked many times a second (between audio chunks), asked at most every
+    `every_s`. Once true it stays true. No `turn_id`, never cancelled."""
+
+    def __init__(self, user_id, turn_id, clock=time.monotonic, every_s: float = 0.2):
+        self.user_id = user_id
+        self.turn_id = turn_id
+        self.clock = clock
+        self.every_s = every_s
+        self.hit = False
+        self._asked = None
+
+    def __call__(self) -> bool:
+        if self.hit or self.turn_id is None:
+            return self.hit
+        self._asked = self.clock()
+        from assistant.models import TurnCancel
+
+        try:
+            self.hit = TurnCancel.objects.filter(
+                turn_id=self.turn_id, user_id=self.user_id
+            ).exists()
+        except DatabaseError:
+            return False
+        return self.hit
+
+    def often(self) -> bool:
+        if self.hit or self.turn_id is None:
+            return self.hit
+        if self._asked is not None and self.clock() - self._asked < self.every_s:
+            return False
+        return self()
+
+
+def _never() -> bool:
+    return False
+
+
 class CountingModel:
     """Counts every paid model call started: each `stream` and each prompt cache made, so a
     cancelled round, a resend after a broken cache (counted under the cache layer, round 2 turn
@@ -1022,9 +1079,11 @@ def run_turn(
     clock: Callable[[], float] = time.monotonic,
     filler_audio: FillerAudio | None = None,
     companion_name: str = "",
+    cancelled: Callable[[], bool] = _never,
 ) -> Iterator[ev.Event]:
     """Yields the turn's events. Fills `report` as it goes, so a caller that stops reading (the
-    browser hung up) still knows what happened."""
+    browser hung up) still knows what happened. `cancelled` is asked at every stage boundary: once
+    true, no further paid call starts."""
     t0 = clock()
     timings = report.timings
     filler_audio = filler_audio or FILLER_AUDIO
@@ -1046,7 +1105,10 @@ def run_turn(
     yield ev.Event("turn", {"conversation_id": str(conversation_id), "turn": turn})
     door = WebDoor(request, conversation_id, turn)
     report.door = door
+    door.cancelled = cancelled
     speaker = Speaker(speech, voice, enabled=speak, clock=clock)
+    speaker.cancelled = cancelled
+    speaker.cancelled_often = getattr(cancelled, "often", cancelled)
     if speak and turn_input.audio is None:
         # The filler lines' audio, fetched while the floor is theirs (spec 22). For audio, only
         # once speech was heard: room noise must cost nothing (round 2 cloud run, 2026-11-17).
@@ -1183,6 +1245,11 @@ def _answer(
             stt_output_tokens=heard.output_tokens,
         )
         words = heard.text
+        if door.cancelled():
+            # Stopped while being transcribed: no model round starts.
+            report.status = "cancelled"
+            yield ev.done("cancelled", "", False)
+            return
         if words:
             timings["speech_fetched"] = filler_audio.warm(speech, speaker.voice)
         if not words:
@@ -1312,7 +1379,9 @@ def _answer(
         model,
         door,
         system=system,
-        hooks=LoopHooks(on_model_call=rounds.append, clock=clock, started=t0),
+        hooks=LoopHooks(
+            on_model_call=rounds.append, clock=clock, started=t0, cancelled=door.cancelled
+        ),
     )
     result = None
     try:
@@ -1409,6 +1478,11 @@ def _answer(
         yield from _not_for_me(request, door, speaker, report, timings)
         return
     record_user()
+    if door.cancelled():
+        # The browser stopped this turn: nothing more is asked for or said (2026-11-17, cancel).
+        report.status = "cancelled"
+        yield ev.done("cancelled", " ".join(report.said).strip(), door.wrote())
+        return
     report.status = result.status if result is not None else "cancelled"
     failure = _failure_words(result, door)
     if (
