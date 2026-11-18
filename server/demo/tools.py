@@ -115,6 +115,9 @@ def _about_kevin(request, arguments: dict) -> ToolResult:
             "turn ends here."
         )
         replay = f"(Read aloud from Kevin's profile: {titles}.)"
+        if closing:
+            # Fixed words and titles only: kept so a "yes" or "go on" next turn has its question.
+            replay += f" {closing}"
     else:
         for_model = f'Done: said "{profile_text.NOT_SHARED_LINE}" The turn ends here.'
         replay = None
