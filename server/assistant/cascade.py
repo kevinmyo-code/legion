@@ -326,8 +326,7 @@ READ_THROUGH_WAIT = (
 _CANNOT_CHANGE = re.compile(
     r"\b(?:can't|cannot|can not|couldn't|could not|unable to|not able to|won't be able to|"
     r"don't have (?:a|the|any) (?:tool|way|ability)|no (?:tool|way) to)\b[^.;!?]{0,40}?"
-    r"\b(?:add|change|save|update|create|delete|remove|edit|tick|schedule|book|write|log|move|"
-    r"put\b[^.;!?]{0,30}?\b(?:on|in|onto|into|to))\b",
+    r"\b(?:add|change|save|update|create|delete|remove|edit|tick|schedule|book|write|log)\b",
     re.I,
 )
 _ELSEWHERE = re.compile(r"\b(?:phone app|mobile app|the app|another device)\b", re.I)
@@ -1672,10 +1671,7 @@ def _answer(
     speaker.closing = True
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
     for text, tagged in held_claims:
-        if tainted() and not door.wrote() and declines_a_change(text):
-            # "I couldn't add it" reads as a claim too: the same true reason, once.
-            declined += 1
-        elif honest(text):
+        if honest(text):
             yield say(text, tagged)
         else:
             unbacked += 1
