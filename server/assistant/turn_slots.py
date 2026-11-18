@@ -139,6 +139,17 @@ def _wait_for_own_turn(user_key: int, address_key: int | None) -> bool:
                 log.warning("turn slots: waiter unlock failed", exc_info=True)
 
 
+def _no_waiter_but_mine(address_key: int, waited: bool) -> bool:
+    """True when no OTHER post from this address is waiting for its own turn: a waiter counts
+    against its address (round 3 D2). A post that just waited has released its own waiter lock."""
+    if waited:
+        return True
+    if not _try(_NS_ADDRESS_WAITER, address_key):
+        return False
+    _unlock(_NS_ADDRESS_WAITER, address_key)
+    return True
+
+
 def acquire(user, address: str = "") -> tuple[Held | None, str | None, int]:
     """(the held locks, or None with the refusal words and its HTTP status). `address` is the
     caller's (`legion.client_ip`), counted for demo turns only."""
@@ -149,11 +160,16 @@ def acquire(user, address: str = "") -> tuple[Held | None, str | None, int]:
     user_key = _key(f"user:{user.pk}")
     recruiter = is_recruiter(user)
     address_key = _key(f"ip:{address or 'unknown'}")
+    waited = False
     if not _try(_NS_USER, user_key):
         if not _wait_for_own_turn(user_key, address_key if recruiter else None):
             return None, BUSY_SELF, 409
+        waited = True
     held.locks.append((_NS_USER, user_key))
     if recruiter:
+        if not _no_waiter_but_mine(address_key, waited):
+            held.release()
+            return None, BUSY_ADDRESS, 429
         if not _try(_NS_ADDRESS, address_key):
             held.release()
             return None, BUSY_ADDRESS, 429
