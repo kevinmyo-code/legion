@@ -9,12 +9,13 @@ import {
   UNREACHABLE,
   closingTone,
   micNotice,
+  refusalNotice,
 } from './cascade-words'
 import { ConversationRecord, type RecordEvent, type RecordTransport } from './conversation-record'
 import { Endpointer } from './endpointer'
 import { GreetingCaps } from './greeting-caps'
 import type { TurnDetector } from './turn/detector'
-import type { AssistantState, Line } from './live-client'
+import type { AssistantState, Line, Notice } from './live-client'
 import { base64ToPcm16 } from './pcm'
 import type { SseEvent } from './sse'
 
@@ -681,6 +682,16 @@ export class CascadeClient {
     this.set({ mic: 'off', phase: 'idle' })
   }
 
+  /**
+   * Close and say why (a refusal, a stalled turn): the mic is let go, the closing tone plays, the
+   * reason stays on screen as the notice (the caption line under it is "Conversation closed"), and
+   * the next tap opens a new conversation.
+   */
+  private closeWith(notice: Notice) {
+    this.close(true)
+    this.set({ notice })
+  }
+
   // ---- one turn ------------------------------------------------------------
 
   private preface(greet: boolean): string | undefined {
@@ -931,30 +942,18 @@ export class CascadeClient {
   }
 
   private refused(status: number, detail: string | null) {
-    const said = (fallback: string) => detail ?? fallback
-    switch (status) {
-      case 409:
-        // A demo conversation's time limit, or this page asked the wrong engine.
-        if (this.conversationId) {
-          this.end(this.options.sessionLimit?.()?.trim() || said(ENDED_LIMIT))
-          return
-        }
-        this.set({ notice: { kind: 'mint-failed', text: said('The assistant could not answer that.') } })
-        return
-      case 429:
-        this.set({ notice: { kind: 'throttled', text: said('Too much at once. Try again in a little while.') } })
-        return
-      case 503:
-        this.set({ notice: { kind: 'no-key', text: said("The assistant isn't set up on this server.") } })
-        return
-      case 401:
-      case 403:
-        this.set({ notice: { kind: 'signed-out', text: 'You are signed out, so nothing was asked. Sign in again.' } })
-        return
-      default:
-        this.push({ kind: 'sys', text: said('The engine refused that, so nothing was asked.') })
-        this.settle(this.spokenTurn)
+    if (status === 409 && this.conversationId) {
+      // A demo conversation's time limit.
+      this.end(this.options.sessionLimit?.()?.trim() || (detail ?? ENDED_LIMIT))
+      return
     }
+    const notice = refusalNotice(status, detail)
+    if (notice) {
+      this.closeWith(notice)
+      return
+    }
+    this.push({ kind: 'sys', text: detail ?? 'The engine refused that, so nothing was asked.' })
+    this.settle(this.spokenTurn)
   }
 
   private closeAi(open: number | null, cut: boolean) {

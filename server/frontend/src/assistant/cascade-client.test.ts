@@ -322,6 +322,38 @@ describe('CascadeClient', () => {
     expect(client.getState().notice).toEqual({ kind: 'throttled', text: "Today's demo budget is used up." })
   })
 
+  it.each([
+    [409, 'Refused here.'],
+    [429, 'Refused here.'],
+    [503, 'Refused here.'],
+    [401, 'You are signed out, so nothing was asked. Sign in again.'],
+    [403, 'You are signed out, so nothing was asked. Sign in again.'],
+  ])('a %i refusal settles: mic let go, the tone, the words on screen, and a tap starts again', async (status, words) => {
+    const { client, audio, requests } = build([{ ok: false, status, detail: 'Refused here.' }])
+    await client.startVoice()
+    await settle()
+    expect(audio.micOpen).toBe(false)
+    expect(client.getState().mic).toBe('off')
+    expect(client.getState().activity).toBe('idle')
+    expect(audio.played.at(-1)!.pcm.length).toBe(3600)
+    expect(client.getState().notice?.text).toBe(words)
+    await client.startVoice()
+    await settle()
+    expect(requests).toHaveLength(2)
+    expect(requests[1].greet).toBe(true)
+    expect(audio.micOpen).toBe(true)
+  })
+
+  it('a refusal mid-conversation lets the mic go too', async () => {
+    const { client, audio } = build([greeting(), { ok: false, status: 429, detail: "Today's demo budget is used up." }])
+    await open(client, audio)
+    feed(audio, LOUD, 300)
+    feed(audio, QUIET, SILENCE_MS + 20)
+    await settle()
+    expect(audio.micOpen).toBe(false)
+    expect(client.getState().notice?.text).toBe("Today's demo budget is used up.")
+  })
+
   it('sends the browser record only what the engine cannot know', async () => {
     const { client, audio, recorded } = build([greeting()])
     await open(client, audio)
