@@ -2,20 +2,20 @@ package com.kevin.legion.ui.apps
 
 import android.content.Context
 import android.content.pm.LauncherApps
+import android.content.pm.ShortcutInfo
 import android.os.Handler
 import android.os.Looper
 import android.os.UserHandle
 import android.os.UserManager
 import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 /** Everything the drawer renders, captured at one moment. */
@@ -25,6 +25,12 @@ internal class Loaded(
     val handles: Map<Int, UserHandle>,
     val workProfile: UserHandle?,
     val workPaused: Boolean,
+    /**
+     * Shortcuts pinned to LEGION as the home app ([PinnedShortcuts]), as drawer rows with a
+     * [DrawerApp.shortcutId]. Kept apart from [apps] so the dock pins, the category chooser, the
+     * block list and Matrix's drawer keep reading apps only.
+     */
+    val shortcuts: List<DrawerApp> = emptyList(),
 )
 
 internal fun iconKey(profileKey: Int, packageName: String, className: String) = "$profileKey/$packageName/$className"
@@ -56,6 +62,9 @@ internal object AppDrawerCache {
 
     @Volatile private var cached: Loaded? = null
     private val icons = ConcurrentHashMap<String, ImageBitmap>()
+
+    /** Apps whose icon gave no readable mark; tried again only when the package changes. */
+    private val unreadable: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var callbackRegistered = false
@@ -71,10 +80,14 @@ internal object AppDrawerCache {
     }
 
     /** Re-read the app list, reusing every icon still valid. One refresh at a time. */
-    suspend fun refresh(context: Context): Loaded = mutex.withLock {
-        val app = context.applicationContext
-        registerCallback(app)
-        load(app).also { cached = it }
+    // Off the main thread whoever calls it (review 2026-11-18: Home and All apps called it from
+    // Main on every return): the package and shortcut reads and any icon drawing run on IO.
+    suspend fun refresh(context: Context): Loaded = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val app = context.applicationContext
+            registerCallback(app)
+            load(app).also { cached = it }
+        }
     }
 
     @Suppress("ReturnCount") // guard clauses, one worded exit each
@@ -96,6 +109,12 @@ internal object AppDrawerCache {
                 override fun onPackagesUnavailable(packageNames: Array<out String>, user: UserHandle,
                     replacing: Boolean) =
                     changed(context, packageNames.toList())
+                // A shortcut pinned, removed or updated (a web app's new name or icon): re-read.
+                override fun onShortcutsChanged(
+                    packageName: String,
+                    shortcuts: List<ShortcutInfo>,
+                    user: UserHandle,
+                ) = changed(context, listOf(packageName))
             }, Handler(Looper.getMainLooper()))
             callbackRegistered = true
         }
@@ -104,6 +123,7 @@ internal object AppDrawerCache {
     /** A package changed: drop its icons so they are redrawn, and refresh in the background. */
     private fun changed(context: Context, packageNames: List<String>) {
         evictIcons(icons, packageNames)
+        unreadable.removeAll { key -> key.split('/').getOrNull(1) in packageNames.toSet() }
         scope.launch { runCatching { refresh(context) } }
     }
 
@@ -115,11 +135,20 @@ internal object AppDrawerCache {
         val handles = mutableMapOf<Int, UserHandle>()
         var work: UserHandle? = null
         val profiles = runCatching { launcherApps.profiles }.getOrDefault(listOf(me))
+        val shortcuts = mutableListOf<DrawerApp>()
+        val dpi = context.resources.displayMetrics.densityDpi
+        val pm = context.packageManager
+        val appName: (String) -> String? = { pkg ->
+            runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrNull()
+        }
         for (profile in profiles) {
             val key = userManager.getSerialNumberForUser(profile).toInt()
             handles[key] = profile
             val isWork = profile != me
             if (isWork) work = profile
+            shortcuts += PinnedShortcutsAndroid.load(
+                launcherApps, profile, key, isWork, dpi, ICON_PX, icons, unreadable, appName,
+            )
             val activities = runCatching { launcherApps.getActivityList(null, profile) }.getOrDefault(emptyList())
             for (info in activities) {
                 val component = info.componentName
@@ -128,18 +157,23 @@ internal object AppDrawerCache {
                 if (!isWork && ownEntry) continue
                 apps += DrawerApp(info.label.toString(), component.packageName, component.className, isWork, key)
                 val k = iconKey(key, component.packageName, component.className)
-                // The slow part, and now only done for icons not already held.
-                if (!icons.containsKey(k)) {
-                    runCatching { info.getBadgedIcon(0).toBitmap(ICON_PX, ICON_PX).asImageBitmap() }
-                        .getOrNull()?.let { icons[k] = it }
+                // The slow part, and now only done for marks not already held or already found
+                // unreadable. A mark is monochrome (Kevin, 2026-11-18): AppMonochrome picks the layer;
+                // an app with no readable mark has no entry and shows its monogram.
+                if (!icons.containsKey(k) && k !in unreadable) {
+                    when (val mark = runCatching { AppMonochrome.mark(info.getIcon(0), ICON_PX) }.getOrNull()) {
+                        null -> unreadable += k
+                        else -> icons[k] = mark
+                    }
                 }
             }
         }
         // Forget icons for apps that are gone, so the map can't grow forever.
-        val live = apps.mapTo(HashSet()) { iconKey(it.profileKey, it.packageName, it.className) }
+        val live = (apps + shortcuts).mapTo(HashSet()) { iconKey(it.profileKey, it.packageName, it.className) }
         icons.keys.retainAll(live)
+        unreadable.retainAll(live)
         val paused = work?.let { runCatching { userManager.isQuietModeEnabled(it) }.getOrDefault(false) } ?: false
-        return Loaded(apps, HashMap(icons), handles, work, paused)
+        return Loaded(apps, HashMap(icons), handles, work, paused, shortcuts)
     }
 }
 

@@ -418,7 +418,7 @@ private fun drawPreview(style: Style, routes: List<NavigationRoute>, selected: I
         if (i == selected) {
             style.addLayer(
                 lineLayer("$PREVIEW_CASING_ID$i", "$PREVIEW_SOURCE_ID$i") {
-                    lineColor(AreaAccent.FLEET.container.toArgb())
+                    lineColor(AreaAccent.FLEET.darkContainer.toArgb())
                     lineWidth(CASING_WIDTH)
                     lineCap(LineCap.ROUND)
                     lineJoin(LineJoin.ROUND)
@@ -426,7 +426,7 @@ private fun drawPreview(style: Style, routes: List<NavigationRoute>, selected: I
             )
             style.addLayer(
                 lineLayer("$PREVIEW_LINE_ID$i", "$PREVIEW_SOURCE_ID$i") {
-                    lineColor(AreaAccent.FLEET.onContainer.toArgb())
+                    lineColor(AreaAccent.FLEET.darkOnContainer.toArgb())
                     lineWidth(LINE_WIDTH)
                     lineCap(LineCap.ROUND)
                     lineJoin(LineJoin.ROUND)

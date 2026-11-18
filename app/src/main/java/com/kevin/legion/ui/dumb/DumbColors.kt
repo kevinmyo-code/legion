@@ -1,5 +1,9 @@
 package com.kevin.legion.ui.dumb
 
+import com.kevin.legion.ui.theme.soft.onDayPaper
+import com.kevin.legion.ui.theme.soft.SoftColors
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import com.kevin.legion.dumb.rain.RainPalette
@@ -26,3 +30,18 @@ internal object DumbColors {
 }
 
 internal val DumbMono = FontFamily.Monospace
+
+/**
+ * The feed-blocked page's colours (home-ui review 2026-11-18). That page is shown outside Matrix, so
+ * on day paper it is Typeset ink on paper ("day mode fully day on every screen"); everywhere else,
+ * and on every Matrix screen (never on day paper), the Matrix colours above, unchanged.
+ */
+internal object PassInk {
+    val ground: Color @Composable @ReadOnlyComposable get() = if (onDayPaper()) SoftColors.ground else DumbColors.ground
+    val text: Color @Composable @ReadOnlyComposable get() = if (onDayPaper()) SoftColors.text else DumbColors.text
+    val body: Color @Composable @ReadOnlyComposable get() = if (onDayPaper()) SoftColors.text else DumbColors.body
+    val dim: Color @Composable @ReadOnlyComposable get() = if (onDayPaper()) SoftColors.text2 else DumbColors.dim
+    val outline: Color
+        @Composable @ReadOnlyComposable get() = if (onDayPaper()) SoftColors.outline else DumbColors.outline
+    val field: Color @Composable @ReadOnlyComposable get() = if (onDayPaper()) SoftColors.card else DumbColors.field
+}

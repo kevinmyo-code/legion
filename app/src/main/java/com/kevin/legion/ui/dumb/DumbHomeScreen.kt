@@ -291,7 +291,8 @@ internal fun PillButton(label: String, onClick: () -> Unit, primary: Boolean, mo
             .heightIn(min = 44.dp)
             .clip(shape)
             .then(
-                if (primary) Modifier.background(DumbColors.text) else Modifier.border(1.dp, DumbColors.outline, shape),
+                // PassInk: the Matrix colours everywhere but the feed-blocked page by day.
+                if (primary) Modifier.background(PassInk.text) else Modifier.border(1.dp, PassInk.outline, shape),
             )
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 12.dp),
@@ -299,7 +300,7 @@ internal fun PillButton(label: String, onClick: () -> Unit, primary: Boolean, mo
     ) {
         Text(
             label,
-            color = if (primary) DumbColors.ground else DumbColors.text,
+            color = if (primary) PassInk.ground else PassInk.text,
             fontSize = 15.sp,
             fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Normal,
         )

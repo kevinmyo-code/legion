@@ -1,6 +1,6 @@
 package com.kevin.legion.ui.home
 
-import androidx.compose.foundation.Image
+import com.kevin.legion.ui.apps.AppMark
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -208,7 +208,7 @@ private fun AppGlyph(icon: ImageBitmap?, size: Dp) {
         Modifier.size(size).clip(RoundedCornerShape(12.dp)).background(SoftColors.cardHigh),
         contentAlignment = Alignment.Center,
     ) {
-        if (icon != null) Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(size - GLYPH_INSET))
+        if (icon != null) AppMark(icon, modifier = Modifier.size(size - GLYPH_INSET))
     }
 }
 

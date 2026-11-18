@@ -1,5 +1,6 @@
 package com.kevin.legion.ui.navigation
 
+import com.kevin.legion.ui.theme.soft.onDayPaper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -54,9 +55,14 @@ internal fun TurnBanner(nav: NavState) {
                 turn != null -> turn.text
                 else -> "Waiting for the first instruction"
             }
-            // On the area accent's own fixed dark container, so the light text it was designed with,
-            // not the edition's ink (ink on dark teal is unreadable on the day edition, ADR 0081).
-            Text(big, style = MaterialTheme.typography.headlineLarge, color = SoftDarkPalette.text)
+            // The card follows the page (review 2026-11-18): by day a pale teal with ink, by night the
+            // dark teal with the light text it was designed with. Ink on dark teal is unreadable, so
+            // the distance takes the colour that matches the card, never the edition's ink alone.
+            Text(
+                big,
+                style = MaterialTheme.typography.headlineLarge,
+                color = if (onDayPaper()) SoftColors.text else SoftDarkPalette.text,
+            )
             Text(
                 small,
                 style = MaterialTheme.typography.titleMedium,

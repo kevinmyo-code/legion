@@ -101,9 +101,10 @@ internal fun Overlay(state: TetrisUiState, actions: TetrisActions) {
     }
 }
 
+/** The Tetris page keeps its dark look in both editions, so its button keeps the fixed light tone. */
 @Composable
 internal fun toneButton() = ButtonDefaults.buttonColors(
-    containerColor = GamesTone.onContainer,
-    contentColor = GamesTone.container,
+    containerColor = GamesTone.darkOnContainer,
+    contentColor = GamesTone.darkContainer,
 )
 

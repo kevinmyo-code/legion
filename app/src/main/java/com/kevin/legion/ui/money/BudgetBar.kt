@@ -102,8 +102,14 @@ fun BarTone.fillColor(): Color = when (this) {
     BarTone.OVER -> SoftColors.onAlert
 }
 
-/** The prototype's bar blue (`--fill`). */
-val BAR_FILL = Color(0xFF8FA7D6)
+/** The prototype's bar blue (`--fill`); on day paper a deeper blue, so the bar holds 3:1 on paper
+ * and on its track (home-ui 2026-11-17). */
+val BAR_FILL: Color
+    @androidx.compose.runtime.Composable @androidx.compose.runtime.ReadOnlyComposable
+    get() = if (com.kevin.legion.ui.theme.soft.onDayPaper()) BAR_FILL_DAY else BAR_FILL_DARK
+
+private val BAR_FILL_DARK = Color(0xFF8FA7D6)
+private val BAR_FILL_DAY = Color(0xFF5B76AE)
 
 /**
  * The bar: name and "spent / cap" on one line, the track filled to spent / cap, and the note

@@ -93,7 +93,7 @@ script and the commit hook.
 <a id="s-apps"></a>
 ### App drawer
 
-Every app on the phone (LEGION as the home app, ADR 0050).
+Every app on the phone (LEGION as the home app, ADR 0050), in letter folders (desc `Folder A, N apps`; a tap opens it over the page, `Close` shuts it); typing in `Find an app` lists every match flat.
 
 - **Id:** `apps` (`LegionRoute.APPS`)
 - **Code:** `ui/apps/AppsScreen.kt`
@@ -298,7 +298,7 @@ Canvas grades from the engine (daily-loops 03): each course with Canvas's own gr
 <a id="s-home"></a>
 ### Home
 
-What LEGION opens to: the today card, the Money panel, the panel buttons (More, Books, Games) and the chat button. In Matrix mode this route shows Matrix HOME instead (`matrix/home`).
+What LEGION opens to: the Typeset front page (the glance, the orb, then the contents (Today, Money, Car, ... More), the app groups (Bank, Music, Maps, Mail, Chat) and the pinned apps, each a small icon with its name under it; tap the name). In Matrix mode this route shows Matrix HOME instead (`matrix/home`).
 
 - **Id:** `home` (`LegionRoute.HOME`)
 - **Code:** `ui/home/HomeScreen.kt`

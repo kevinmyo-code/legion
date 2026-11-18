@@ -27,10 +27,12 @@ not-configured) - see `EngineWidgetStatesScreenshotTest`'s own class doc for exa
 covers which state and why that split was chosen over inventing a new production seam.
 
 **Device profile**: every test renders at `w384dp-h832dp` (`ScreenshotDeviceConfig.QUALIFIERS`) -
-the real phone this app ships on (Galaxy A25, `memory/MEMORY.md`). **Dark only**: `ui/theme/Theme.kt`
-is a stated, deliberate dark-only design (VACUUM/SENTRY, no `LegionThemeFollowingSystem`, no light
-`ColorScheme` exists anywhere in the app) - there is no light baseline to render because there is no
-light theme to render it against.
+the real phone this app ships on (Galaxy A25, `memory/MEMORY.md`). **Editions**: Robolectric renders not-night by default, so a test that wraps `SoftTheme` with no
+provided edition draws the Typeset DAY edition; a `-night` qualifier draws the night one. A test that
+uses `LegionTheme` with no `LocalTypesetEdition` provided keeps the old dark VACUUM look, which is why
+those baselines stayed dark: on the phone `LegionTheme` turns to day paper only under an explicit DAY
+edition (home-ui 2026-11-17, `legionDay`). `DaySweepShotsTest` renders every shell route in both
+editions as review PNGs outside the repo (see its doc), not as baselines.
 
 ## Recording vs. verifying
 

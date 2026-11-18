@@ -3,6 +3,9 @@
 
 package com.kevin.legion.ui.body
 
+import com.kevin.legion.ui.theme.soft.textWellFill
+import androidx.compose.runtime.ReadOnlyComposable
+import com.kevin.legion.ui.theme.soft.onDayPaper
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,8 +73,15 @@ import java.time.LocalDate
  * is the state holder). Voice reaches the same controller (ADR 0035).
  */
 
-private val GoodContainer = Color(0xFF173D2B)
-private val CautionContainer = Color(0xFF3D331A)
+// Night and soft-dark keep the original dark tones; day paper takes a light tint of the same hue
+// (home-ui 2026-11-17), the text on it stays good/caution ink.
+private val GoodContainer: Color
+    @Composable @ReadOnlyComposable get() = if (onDayPaper()) GoodContainerDay else GoodContainerDark
+private val CautionContainer: Color
+    @Composable @ReadOnlyComposable get() = if (onDayPaper()) SoftColors.alertContainer else CautionContainerDark
+private val GoodContainerDark = Color(0xFF173D2B)
+private val GoodContainerDay = Color(0xFFE0EEE5)
+private val CautionContainerDark = Color(0xFF3D331A)
 
 // ------------------------------------------------------------------------------ the card
 
@@ -249,7 +259,7 @@ private fun DecisionLine(
         Modifier
             .padding(top = 12.dp)
             .fillMaxWidth()
-            .background(SoftColors.cardHighest, RoundedCornerShape(14.dp))
+            .background(textWellFill(), RoundedCornerShape(14.dp))
             .padding(12.dp),
     ) {
         Text(line, style = MaterialTheme.typography.bodyMedium, color = SoftColors.text)

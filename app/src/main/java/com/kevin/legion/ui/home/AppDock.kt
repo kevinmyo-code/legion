@@ -2,7 +2,7 @@
 
 package com.kevin.legion.ui.home
 
-import androidx.compose.foundation.Image
+import com.kevin.legion.ui.apps.AppMark
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -81,6 +81,23 @@ internal fun buildDockSlots(pins: List<DockPin>, loaded: Loaded?): List<DockSlot
     )
 }
 
+/**
+ * The shortcuts pinned to LEGION as home-row slots, by label (2026-11-18, [com.kevin.legion.ui.apps.PinnedShortcuts]).
+ * Each gets a pin of its own ("shortcut:" plus package and id) so it never matches, moves or
+ * unpins the app it belongs to; launching and removing go through its [DockSlotUi.app]'s shortcut id.
+ */
+internal fun shortcutSlots(loaded: Loaded?): List<DockSlotUi> = loaded?.shortcuts.orEmpty()
+    .sortedBy { it.label.lowercase() }
+    .map { s ->
+        DockSlotUi(
+            pin = DockPin("shortcut:${s.packageName}/${s.shortcutId}", s.profileKey),
+            app = s,
+            label = s.label,
+            icon = loaded?.icons?.get(iconKey(s.profileKey, s.packageName, s.className)),
+            paused = s.isWork && loaded?.workPaused == true,
+        )
+    }
+
 /** Every callback [AppDock] needs - [onLaunch] gets the slot's own [DrawerApp] only when one
  * resolved (a "not installed" slot has nothing to launch); the caller decides the failure sentence
  * either way, same posture [com.kevin.legion.ui.apps.AppsScreen]'s own `onOpen` already holds. */
@@ -155,7 +172,7 @@ private fun RowScope.DockIcon(slot: DockSlotUi, onClick: () -> Unit, onLongClick
         ) {
             val icon = slot.icon
             if (icon != null) {
-                Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(44.dp))
+                AppMark(icon, modifier = Modifier.size(44.dp))
             }
             // icon == null with slot.app != null: the drawer snapshot hasn't warmed this icon yet -
             // the label below still shows, per ticket's own "show the label while an icon loads".

@@ -80,7 +80,7 @@ class TypesetReachabilityTest {
         "sheet:more" to Page("More"),
         "sheet:controls" to Page("CONTROLS"),
         "sheet:claude-watch" to Page("Claude sessions"),
-        "sheet:groups" to Page("BANK"),
+        "sheet:groups" to Page("Bank"),
         // Activities.
         "MainActivity" to Page("LEGION"),
         "ClockActivity" to Page("Clock"),
@@ -110,6 +110,7 @@ class TypesetReachabilityTest {
         "RingActivity" to "an alarm ringing",
         "DumbBounceActivity" to "the feed blocker's bounce screen",
         "MirrorSyncActivity" to "the engine mirror's sync host",
+        "PinShortcutActivity" to "the system's pin-shortcut confirmation, opened by an app's request",
         "ClockLauncher" to "the phone launcher's Clock icon; Clock is on the contents line",
     )
 
@@ -121,7 +122,7 @@ class TypesetReachabilityTest {
 
     private val pageWords: Set<String> =
         TypesetHomeDerive.CONTENTS.toSet() + statusLineWords +
-            setOf("LEGION", "CONTROLS", "All apps", "due today", "BANK")
+            setOf("LEGION", "CONTROLS", "All apps", "due today", "Bank")
 
     private fun routes(): Set<String> = LegionRoute::class.java.declaredFields
         .filter { it.type == String::class.java && java.lang.reflect.Modifier.isStatic(it.modifiers) }

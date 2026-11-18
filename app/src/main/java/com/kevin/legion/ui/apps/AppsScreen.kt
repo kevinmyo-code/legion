@@ -8,6 +8,7 @@ import android.content.pm.LauncherApps
 import android.os.Build
 import android.os.UserHandle
 import android.os.UserManager
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,27 +66,39 @@ fun AppsScreen() {
     var pinMenuApp by remember { mutableStateOf<DrawerApp?>(null) }
     // Ticket 07: the letter folder that is open as a dialog, if any.
     var openFolder by remember { mutableStateOf<LetterFolder?>(null) }
+    // The Typeset tray's open folder, by its letter (home-ui 2026-11-17).
+    var openLetter by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(reload) {
-        loaded = AppDrawerCache.refresh(context)
+        // Guarded (review 2026-11-18): a throwing read keeps the last list rather than closing All apps.
+        loaded = runCatching { AppDrawerCache.refresh(context) }.getOrNull() ?: loaded
     }
 
-    // Typeset (ADR 0081): outside Matrix mode the drawer is an index by first letter, names in
-    // full, with "blocked" beside a feed app from the same block list (ADR 0066). Matrix keeps
-    // the folder grid in the else branch, unchanged. The pin sheet at the end serves both.
+    // Typeset (ADR 0081): outside Matrix mode the drawer is the letter folders again, drawn in
+    // Typeset (Kevin, 2026-11-17), with "blocked" under a feed app from the same block list
+    // (ADR 0066). Matrix keeps its folder grid in the else branch, unchanged. The open folder is
+    // held by its letter (its apps are re-read from the filtered list each time), and the pin sheet
+    // at the end serves both.
     val typesetIndex = !com.kevin.legion.ui.theme.LocalMatrixMode.current && loaded?.apps?.isNotEmpty() == true
     if (typesetIndex) {
         val state = loaded!!
         val graph = remember(context) { (context.applicationContext as com.kevin.legion.MidnightApplication).dumb }
         SoftTheme {
             com.kevin.legion.ui.typeset.TypesetAppsIndex(
-                folders = remember(state.apps, query) { letterFolders(filterDrawer(state.apps, query)) },
+                // Pinned shortcuts (a web app Chrome added) file under their letter beside the apps.
+                folders = remember(state.apps, state.shortcuts, query) {
+                    letterFolders(filterDrawer(state.apps + state.shortcuts, query))
+                },
                 query = query,
                 onQueryChange = { query = it },
                 blocked = { app -> graph.blockPolicy.verdict(app.packageName).blocked },
-                onOpen = { app -> message = launchDrawerApp(context, app, state, PAUSED_TYPESET) },
+                onOpen = { app ->
+                    openLetter = null
+                    message = launchDrawerApp(context, app, state, PAUSED_TYPESET)
+                },
                 onLongPress = { app -> pinMenuApp = app },
-                modifier = Modifier.fillMaxSize(),
+                // Its own ground: the shell under it is the old pure black by night.
+                modifier = Modifier.fillMaxSize().background(com.kevin.legion.ui.theme.soft.SoftColors.ground),
                 message = message,
                 workPaused = state.workPaused.takeIf { state.workProfile != null },
                 onToggleWork = {
@@ -93,6 +107,9 @@ fun AppsScreen() {
                         reload++
                     }
                 },
+                icons = state.icons,
+                openFolder = openLetter,
+                onOpenFolder = { openLetter = it },
             )
         }
     } else
@@ -180,7 +197,26 @@ fun AppsScreen() {
         }
     }
 
-    pinMenuApp?.let { app ->
+    pinMenuApp?.takeIf { it.shortcutId != null }?.let { shortcut ->
+        // A pinned shortcut's one action takes it off the home row AND All apps, so it says so and
+        // asks once (review 2026-11-18).
+        RemoveShortcutSheet(
+            shortcut = shortcut,
+            onDismiss = { pinMenuApp = null },
+            onRemove = {
+                val state = loaded
+                val handle = state?.handles?.get(shortcut.profileKey)
+                message = if (state == null || handle == null) {
+                    "Couldn't find the profile ${shortcut.label} belongs to."
+                } else {
+                    PinnedShortcutsAndroid.unpin(context, shortcut, handle)
+                }
+                pinMenuApp = null
+                reload++
+            },
+        )
+    }
+    pinMenuApp?.takeIf { it.shortcutId == null }?.let { app ->
         PinMenuSheet(
             app = app,
             pinned = DockPin(app.packageName, app.profileKey) in pins,
@@ -204,6 +240,47 @@ fun AppsScreen() {
                 pinMenuApp = null
             },
         )
+    }
+}
+
+/**
+ * Long-press on a pinned shortcut: "Remove shortcut", then once more "Remove", because it comes off
+ * the home screen and All apps both. Only that shortcut goes; the app's other pins stay.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun RemoveShortcutSheet(shortcut: DrawerApp, onDismiss: () -> Unit, onRemove: () -> Unit) {
+    var confirming by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Text(
+            shortcut.label,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+        if (confirming) {
+            Text(
+                "Remove ${shortcut.label} from the home screen and All apps?",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+            SheetRow("Remove", onRemove)
+            SheetRow("Keep", onDismiss)
+        } else {
+            SheetRow(com.kevin.legion.ui.typeset.REMOVE_SHORTCUT) { confirming = true }
+        }
+    }
+}
+
+@Composable
+private fun SheetRow(words: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(52.dp).clickable(onClick = onClick).padding(horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(words, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -247,6 +324,8 @@ internal fun launchDrawerApp(
 ): String? {
     val handle = state.handles[app.profileKey] ?: return "Couldn't find the profile ${app.label} belongs to."
     if (app.isWork && state.workPaused) return pausedMessage
+    // A pinned shortcut (a web app, say) opens through LauncherApps, not as an activity.
+    if (app.shortcutId != null) return PinnedShortcutsAndroid.start(context, app, handle)
     return runCatching {
         context.getSystemService(LauncherApps::class.java)
             .startMainActivity(ComponentName(app.packageName, app.className), handle, null, null)

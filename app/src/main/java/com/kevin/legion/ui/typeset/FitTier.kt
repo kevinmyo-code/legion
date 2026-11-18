@@ -46,6 +46,7 @@ internal enum class FitTier(
     // The orb is the hero (Kevin, 2026-11-10: "about 2.5x the size of what it is now", 96dp then):
     // the first tiers give up spacing and secondary lines before the orb gives up any size.
     // Columns: gap, figureLines, stacked, dateline, orb, statusOwnLine, dockTiles, dockNames.
+    // dockNames is no longer read: since 2026-11-17 every pinned app shows its name under its icon.
     ROOMY(12.dp, 2, true, true, HERO, true, true, true),
     SNUG(8.dp, 1, true, true, HERO, true, true, true),
     TRIM(6.dp, 0, true, true, HERO, true, true, true),

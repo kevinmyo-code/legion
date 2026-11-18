@@ -180,7 +180,16 @@ internal fun orbPhase(phase: Phase, enabled: Boolean): OrbPhase = when {
 internal fun slotTile(slot: DockSlotUi): TypesetDockTile {
     val letters = slot.label.filter { it.isLetterOrDigit() }
     val monogram = letters.take(2).lowercase().replaceFirstChar { it.uppercase() }.ifBlank { "?" }
-    return TypesetDockTile(monogram, slot.label)
+    val status = com.kevin.legion.ui.home.slotStatusWord(slot)?.takeIf { it != "Loading" }
+    val shortcut = slot.app?.shortcutId != null
+    return TypesetDockTile(
+        monogram, slot.label, icon = slot.icon, status = status,
+        // Who made a shortcut, and "work" for a work-profile app or shortcut: the icons are one ink now,
+        // so a personal and a work copy must differ in words (review 2026-11-18).
+        note = listOfNotNull(slot.app?.origin.takeIf { shortcut }, "work".takeIf { slot.app?.isWork == true })
+            .joinToString(", ").ifBlank { null },
+        isShortcut = shortcut,
+    )
 }
 
 /** The Controls panel's state, taps and feed gate. */
