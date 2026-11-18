@@ -16,6 +16,7 @@ contents, tool schemas and thought signatures, and is not built (plan section 13
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -147,7 +148,11 @@ class UrllibTransport:
             raise ModelFailure(f"Gemini could not be reached ({type(exc).__name__})") from None
         try:
             yield from resp
-        except TimeoutError as exc:
+        except (OSError, http.client.HTTPException) as exc:
+            # A timeout, a reset connection, a cut-off body or a TLS error mid-response: the caller
+            # retries or says it in words (blind review 2026-11-17, round 2 finding 6). `OSError`
+            # covers `TimeoutError`, `ConnectionError` and `ssl.SSLError`; `IncompleteRead` is an
+            # `HTTPException`.
             raise ModelFailure(f"Gemini stopped answering ({type(exc).__name__})") from None
         finally:
             resp.close()

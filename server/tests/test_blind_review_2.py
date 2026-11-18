@@ -1,0 +1,67 @@
+# ruff: noqa: F811 - fixtures imported from the cascade tests
+"""Blind review round 2, part 1 (turn path and safety), 2026-11-17
+(`review-demo-voice-first-1117-turn.md`): one test per finding, written to fail before its fix.
+Google is never called; every word is invented."""
+
+from __future__ import annotations
+
+import http.client
+
+import pytest
+
+from agents.runtime import model as runtime_model
+from assistant.speech import GeminiSpeech, SpeechFailure
+from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
+    PCM,
+    _clean,
+    _events,
+    _of,
+    _post,
+    _record,
+    engine,
+    member,
+    visitor,
+    visitor_user,
+)
+from tests.test_no_speech import _pcm, _speechlike
+
+pytestmark = pytest.mark.django_db
+
+
+# ---- finding 6: a transcription cut off mid-response is retried, then a spoken miss -------------
+
+
+class _CutOff:
+    """What `urlopen` hands back when the connection drops while the body streams."""
+
+    def __init__(self, exc):
+        self.exc = exc
+
+    def __iter__(self):
+        yield b'data: {"candidates": []}\n'
+        raise self.exc
+
+    def close(self):
+        pass
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ConnectionResetError("reset by peer"),
+        http.client.IncompleteRead(b"partial"),
+        TimeoutError("read timed out"),
+    ],
+)
+def test_a_transcription_cut_off_mid_response_is_retried_then_a_speech_failure(monkeypatch, exc):
+    calls = []
+
+    def urlopen(req, timeout):
+        calls.append(req.full_url)
+        return _CutOff(exc)
+
+    monkeypatch.setattr(runtime_model.urllib.request, "urlopen", urlopen)
+    real = GeminiSpeech(lambda: "key", stt_model="stt")
+    with pytest.raises(SpeechFailure):
+        real.transcribe(_pcm(_speechlike()))
+    assert len(calls) == 2  # tried once more, then said as a miss
