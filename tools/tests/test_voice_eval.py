@@ -295,3 +295,13 @@ def test_a_tag_in_the_answer_or_on_a_money_line_fails():
     spoken = case_lines("tags_never_on_money", "balance", [], "You have forty dollars <chuckle>.")
     _, runs = parse(spoken)
     assert any("expression tag" in f for f in ve.score_case(case, runs[0], phone=True).failures)
+
+
+def test_a_silent_case_passes_only_when_nothing_is_said_or_run():
+    case = {"id": "quiet", "say": "x", "expect": {"silent": True}}
+    said = case_lines("quiet", "", [], "Hello there.")
+    _, runs = parse(said)
+    assert any("on silence" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+    quiet = [l for l in case_lines("quiet", "", [], "") if "assistant text" not in l]
+    _, runs = parse(quiet)
+    assert ve.score_case(case, runs[0], phone=False).passed

@@ -415,9 +415,9 @@
       "id": "burmese_default_missed",
       "say": "မနက်ဖြန် ကျွန်တော့် ပြက္ခဒိန်မှာ ဘာတွေရှိလဲ။",
       "stt_audio": true,
-      "why": "Languages: with the default setting (English only) Burmese speech is a sentence not caught",
+      "why": "Languages: with the default setting (English only) the transcriber answers no-speech for Burmese, so it is silence: nothing said, nothing run (the no-voice rule beats a spoken miss)",
       "expect": {
-        "answer_has": ["(?i)catch"]
+        "silent": true
       }
     }
   ]

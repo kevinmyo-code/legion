@@ -150,7 +150,7 @@ internal class VoiceEvalHarness(
             // The session's gate on what the transcriber wrote ([SttGuard]): a transcript it does not
             // believe never reaches the model; the missed line is said instead.
             val verdict = SttGuard.verdict(heardRaw, 0L, accepted = languages)
-            if (verdict is SttGuard.Verdict.Drop) {
+            if (verdict is SttGuard.Verdict.Drop && verdict.reason !in SttGuard.SILENT_REASONS) {
                 audit.user(heardRaw, final = true)
                 out(LiveLatency.TAG, "stt_rejected reason=${verdict.reason} chars=${heardRaw.length}")
                 audit.assistant(ScriptedLines.MISSED, readThrough = false)
@@ -160,7 +160,14 @@ internal class VoiceEvalHarness(
                 history.add(ChatTurn(fromUser = false, text = ScriptedLines.MISSED))
                 continue
             }
-            val heard = (verdict as SttGuard.Verdict.Keep).text
+            val heard = (verdict as? SttGuard.Verdict.Keep)?.text.orEmpty()
+            // Nothing was heard (no voice, or a transcript dropped as silence): the session says nothing.
+            if (heard.isBlank()) {
+                audit.user(heard, final = true)
+                out(TEST_TAG, "heard text=\"\"")
+                audit.turnComplete()
+                continue
+            }
             // The session's language rule (CascadeSession.followLanguage), cloud voice.
             val asked = SpokenLanguages.request(heard, languages)
             if (asked is SpokenLanguages.Switch.NotInSettings) {

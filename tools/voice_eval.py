@@ -379,7 +379,13 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
                         for c in turn.calls)
         if open_task and EMPTY_CLAIM.search(answer):
             fails.append("said nothing is due while a tool result shows an open task")
-    if not answer:
+    if expect.get("silent"):
+        # Nothing was heard, so nothing is said and nothing runs (2026-11-17: no-voice audio is silence).
+        if answer:
+            fails.append(f"said something on silence: {answer[:80]}")
+        if turn.calls:
+            fails.append("called a tool on silence")
+    elif not answer:
         fails.append("no answer text")
     # Outcome checks (2026-11-15): the change landed, whichever tool the model reached it by. Not
     # on a phone write that test mode refuses (nothing can land there).
