@@ -87,7 +87,7 @@ class WakePhrasesTest {
         assertFalse(WakePhrases.isSleepPhrase("add milk to the list"))
     }
 
-    // --- stop and goodbye (Kevin, 2026-11-18: "telling alfred goodbye should stop the turn right?") ---
+    // --- stop and goodbye (2026-11-18) ---
 
     @Test
     fun `every stop and goodbye phrase ends the conversation when it is the whole turn`() {
@@ -119,6 +119,24 @@ class WakePhrasesTest {
             "is that it?", "that's it for the groceries, add eggs", "bye bye birdie is on tonight",
         )) {
             assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        }
+    }
+
+    @Test
+    fun `the review's missing stops end it too`() {
+        for (p in listOf("Nevermind.", "Bye bye!", "Stop, stop.", "Thank you, bye.", "Thanks, goodbye.", "That's all, thanks.", "That's it, thanks.")) {
+            assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred"))
+        }
+    }
+
+    @Test
+    fun `after a question only a hard stop ends it, the soft ones may be his answer`() {
+        for (p in listOf("Stop.", "Goodbye.", "Good bye, Alfred.", "Bye.", "Bye bye.", "Go away.", "Stand down.")) {
+            assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred", afterQuestion = true))
+        }
+        for (p in listOf("That's it.", "That's all.", "Never mind.", "We're done.", "I'm done.", "That will be all.", "Thanks, bye.")) {
+            assertFalse(p, WakePhrases.isSleepPhrase(p, "Alfred", afterQuestion = true))
+            assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred"))
         }
     }
 }

@@ -8,15 +8,15 @@ package com.kevin.legion.service.cascade
  * Two halves, both pure:
  * - [hint]: a compact vocabulary line for the STT request (never the text model's prompt): the
  *   words he uses for the car and the tools. No names.
- * - [verdict]: a transcript that is not plausibly English, or far too short for the audio it came
- *   from, is not sent to the model. The session treats it as words it did not catch (it says so,
- *   and the floor is his), never as an instruction.
+ * - [verdict]: a transcript that is not plausibly English, or from audio with no voice in it, is
+ *   not sent to the model. Foreign words get the spoken miss; noise gets silence. Never an
+ *   instruction.
  */
 internal object SttGuard {
     /**
      * The fixed half of the hint: his car and tool words that a general model mishears. Words only, never
-     * an example number or sentence (2026-11-17, Midcon: a transcriber handed examples wrote them back as
-     * "speech" from room noise). Trouble codes are described by shape, not by an example code.
+     * an example number or sentence (2026-11-17: in the dashboard voice app, a transcriber handed
+     * examples wrote them back as "speech" from room noise). Trouble codes are described by shape.
      */
     const val DOMAIN_WORDS = "OBD, OBD adapter, dongle, trouble codes (a letter then four digits), clear the " +
         "codes, check engine light, coolant, odometer, oil change, recall, to-do list, reminder, calendar, timer, navigate"
@@ -29,15 +29,11 @@ internal object SttGuard {
      */
     fun hint(): String = "Words he often says: $DOMAIN_WORDS."
 
-    /** Every word the fixed hint names, lower case: a transcript of nothing else was not heard, it was read. */
-    private val DOMAIN_VOCAB: Set<String> =
-        words(DOMAIN_WORDS) - setOf("a", "the", "then", "four", "digits", "letter", "to", "do", "list", "light")
-
-    private fun words(text: String): Set<String> =
-        text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.toSet()
-
     /** Drop reasons that mean "nothing was said": silence, never a spoken "didn't catch that". */
-    val SILENT_REASONS: Set<String> = setOf("too_short", "hint_only")
+    val SILENT_REASONS: Set<String> = setOf(NOISE)
+
+    /** The drop reason for a transcript of audio with no voice in it ([voicedMs]). */
+    const val NOISE = "noise"
 
     sealed interface Verdict {
         /** Believed: [text] goes to the model (a non-Latin aside like "嗯" already removed). */
@@ -48,29 +44,27 @@ internal object SttGuard {
     }
 
     /**
-     * [text] as heard from [audioMs] of audio; [known] are names on the phone (one word each, lower
-     * case), never counted as foreign; [afterQuestion]: the last thing said asked him something, so a
-     * one-word answer is expected. Dropped when:
+     * [text] as heard; [voicedMs] is how much of its audio carried a voice ([voicedMs], null when not
+     * measured); [known] are names on the phone (one word each, lower case), never counted foreign.
+     * Dropped when:
      * - nothing is left once scripts none of his languages use are removed (`not_english_script`);
      * - it reads as Spanish (`not_english`): `¿` or `¡`, or at least two thirds of its words are
      *   Spanish-only words (accented letters alone never count: "café", "José", "jalapeño");
-     * - one word from [LONG_AUDIO_MS] or more of audio, not a number, and not an answer to a question
-     *   (`too_short`, silence);
-     * - two or more words, all from the hint's fixed words, and not an answer to a question
-     *   (`hint_only`, silence: the transcriber read its hint back).
-     * Digits and number words are never dropped as short ("5." answers "how many minutes?").
+     * - the audio itself says no one spoke: under [MIN_VOICED_MS] above its own floor (`noise`,
+     *   silence). The words never decide this (2026-11-18 review: "clear codes", "oil change" were
+     *   dropped as the hint read back).
      */
-    @Suppress("ReturnCount", "CyclomaticComplexMethod") // one exit per reason, one clause per rule
+    @Suppress("ReturnCount") // one exit per reason
     fun verdict(
         text: String,
-        audioMs: Long,
+        voicedMs: Long?,
         known: Set<String> = emptySet(),
         /** His languages ([SpokenLanguages]); English alone is the pin. */
         accepted: List<SpokenLanguages.Language> = listOf(SpokenLanguages.ENGLISH),
-        afterQuestion: Boolean = false,
     ): Verdict {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Verdict.Keep("")
+        if (voicedMs != null && voicedMs < MIN_VOICED_MS) return Verdict.Drop(NOISE)
         // Scripts none of his languages use (CJK, Cyrillic, Arabic...) are removed word by word; words in
         // his languages' scripts stay.
         val scripts = accepted.map { it.script }.toSet() + Character.UnicodeScript.LATIN
@@ -89,27 +83,48 @@ internal object SttGuard {
                 return Verdict.Drop("not_english")
             }
         }
-        val number = bare.isNotEmpty() && bare.all { w -> w.all(Char::isDigit) || w in NUMBER_WORDS }
-        val oneWordLong = bare.size < 2 && audioMs >= LONG_AUDIO_MS
-        if (!afterQuestion && !number && oneWordLong) return Verdict.Drop("too_short")
-        if (!afterQuestion && bare.size >= 2 && bare.all { it in DOMAIN_VOCAB }) return Verdict.Drop("hint_only")
         return Verdict.Keep(kept)
     }
 
-    private fun isLatin(c: Char): Boolean = Character.UnicodeScript.of(c.code) == Character.UnicodeScript.LATIN
+    /**
+     * Milliseconds of [pcm16k] (16 kHz PCM16 mono) in [WINDOW_MS] windows whose RMS stands at least
+     * [VOICE_OVER_FLOOR_DB] above the audio's own quiet floor (its 10th-percentile window). Relative,
+     * not absolute: this phone's speech arrives anywhere from -51 to -74 dBFS. A steady hum, road
+     * noise or fan stays within a few dB of its floor and scores near 0; a spoken word, even one,
+     * scores its length. Every phone turn holds its pre-roll and end-of-turn silence, so a floor exists.
+     */
+    @Suppress("MagicNumber") // PCM16 byte layout
+    fun voicedMs(pcm16k: ByteArray): Long {
+        val samplesPerWindow = SAMPLE_RATE / 1000 * WINDOW_MS.toInt()
+        val n = pcm16k.size / 2 / samplesPerWindow
+        if (n == 0) return 0
+        val rms = DoubleArray(n) { w ->
+            var sum = 0.0
+            for (i in 0 until samplesPerWindow) {
+                val at = 2 * (w * samplesPerWindow + i)
+                val v = ((pcm16k[at].toInt() and 0xff) or (pcm16k[at + 1].toInt() shl 8)).toShort().toDouble()
+                sum += v * v
+            }
+            kotlin.math.sqrt(sum / samplesPerWindow)
+        }
+        val floor = maxOf(rms.sorted()[(n * FLOOR_PERCENTILE) / 100], MIN_FLOOR)
+        val gate = floor * Math.pow(10.0, VOICE_OVER_FLOOR_DB / 20.0)
+        return rms.count { it >= gate } * WINDOW_MS
+    }
 
-    const val LONG_AUDIO_MS = 3_000L
+    /** Under this much voiced audio nothing was said: one short word ("Stop.", "Yes.") is 250 ms or more. */
+    const val MIN_VOICED_MS = 150L
+    const val VOICE_OVER_FLOOR_DB = 12.0
+    private const val WINDOW_MS = 30L
+    private const val SAMPLE_RATE = 16_000
+    private const val FLOOR_PERCENTILE = 10
+    private const val MIN_FLOOR = 1.0
 
     /** Two words in three. */
     private const val FOREIGN_NUMERATOR = 2
     private const val FOREIGN_DENOMINATOR = 3
 
     private const val SPANISH_MARKS = "¿¡"
-
-    private val NUMBER_WORDS = setOf(
-        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
-        "fifteen", "twenty", "thirty", "forty", "fifty", "sixty", "hundred", "half", "a", "an",
-    )
 
     /** Common Spanish words that are not English words too ("no", "me", "a" are not here). */
     private val SPANISH_WORDS = setOf(
