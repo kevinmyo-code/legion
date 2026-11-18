@@ -177,8 +177,6 @@ export class CascadeClient {
   private speechStarted = false
   /** The reply that was playing when the person talked over it, for the echo check. */
   private bargedOver: string | null = null
-  /** The gate's own verdict already counted this barge-in as the reply's echo. */
-  private bargeCounted = false
   private lastReply = ''
   /** Turns in a row the engine heard no speech in (noise sent as an utterance). */
   private noSpeechRun = 0
@@ -338,6 +336,9 @@ export class CascadeClient {
     }
     // The greeting goes now, in the tap, while the mic permission settles.
     this.voiceOpen = true
+    // Barge-in falls back to half-duplex for one conversation, never for the page.
+    this.halfDuplex = false
+    this.detector?.gate.newConversation()
     this.deps.funnel?.('orb_tap')
     this.loadDetector()
     void this.greetAfterPrepare()
@@ -385,7 +386,6 @@ export class CascadeClient {
           onEnd: (audio, _reason, silenceMs) => this.onTurnEnd(audio, silenceMs),
           onBargeIn: () => this.onBargeIn(),
           onVerdict: (v) => {
-            if (v.selfInterrupt) this.bargeCounted = true
             if (v.nowDisabled) this.halfDuplex = true
           },
         })
@@ -599,7 +599,6 @@ export class CascadeClient {
   private onBargeIn() {
     if (!this.voiceOpen || (!this.playing && !this.awaiting) || !this.fullDuplex) return
     this.bargedOver = this.lastReply
-    this.bargeCounted = false
     this.bargeIns += 1
     this.cutReply('barge_in')
     this.listen(true)
@@ -950,7 +949,8 @@ export class CascadeClient {
     }
     const over = this.bargedOver
     this.bargedOver = null
-    if (over === null || !this.detector || this.bargeCounted) return
+    // The gate counts each barge-in once, whether its verdict or this comes first.
+    if (over === null || !this.detector) return
     const words = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
     const reply = over.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ')
     // Nothing heard, or only what the assistant was saying: the barge-in was its own voice. Two of

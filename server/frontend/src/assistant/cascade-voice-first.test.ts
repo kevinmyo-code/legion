@@ -66,6 +66,8 @@ class StubDetector implements TurnDetector {
   }
   replyStarted() {
     this.replies.started++
+    // As the real detector: the gate learns each reply (and counts one barge-in per reply).
+    this.gate.onReplyStart()
   }
   replyEnded() {
     this.replies.ended++
@@ -218,6 +220,17 @@ describe('the models in the conversation', () => {
     t.audio.handlers?.onPlaying(true)
     t.detector.fire()
     expect(t.client.bargeIns).toBe(before)
+  })
+
+  it('half-duplex lasts one conversation: the next one has barge-in again', async () => {
+    const t = build([spoken('Hello.')])
+    await open(t)
+    t.detector.gate.disable()
+    expect(t.client.fullDuplex).toBe(false)
+    t.client.stopVoice()
+    await t.client.startVoice()
+    expect(t.client.fullDuplex).toBe(true)
+    expect(t.detector.gate.selfInterrupts).toBe(0)
   })
 
   it('a real question after a barge-in is not counted against it', async () => {

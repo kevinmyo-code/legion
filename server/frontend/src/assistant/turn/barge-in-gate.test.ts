@@ -9,6 +9,7 @@ import {
   SPAN_WINDOWS,
   SUSTAIN_MS,
   SUSTAIN_WINDOWS,
+  VERDICT_MS,
   WINDOW_MS,
   peakLevel,
   type GateEvent,
@@ -239,5 +240,37 @@ describe('BargeInGate (the phone gate)', () => {
   it('peak level is the largest absolute sample, as on the phone', () => {
     expect(peakLevel(new Int16Array([100, -2500, 300]))).toBe(2500)
     expect(peakLevel(new Float32Array([0.5, -0.25]))).toBe(16384)
+  })
+})
+
+describe('one barge-in counts once (review 2026-11-17)', () => {
+  const VERDICT_WINDOWS = Math.ceil(VERDICT_MS / WINDOW_MS) + 1
+
+  it("the page counting it first, then the gate's verdict: one self-interrupt", () => {
+    const g = gate()
+    expect(fires(feed(g, windows, 0.95, loud))).toHaveLength(1)
+    expect(g.countSelfInterrupt()).toBe(false)
+    const v = verdicts(feed(g, VERDICT_WINDOWS, 0.05, 500))
+    expect(v).toHaveLength(1)
+    expect(g.selfInterrupts).toBe(1)
+    expect(g.disabled).toBe(false)
+  })
+
+  it("the gate's verdict first, then the page: one self-interrupt", () => {
+    const g = gate()
+    feed(g, windows, 0.95, loud)
+    expect(verdicts(feed(g, VERDICT_WINDOWS, 0.05, 500))[0].selfInterrupt).toBe(true)
+    expect(g.countSelfInterrupt()).toBe(false)
+    expect(g.selfInterrupts).toBe(1)
+  })
+
+  it('a new conversation turns barge-in back on', () => {
+    const g = gate()
+    g.disable()
+    g.newConversation()
+    g.onReplyStart()
+    expect(g.disabled).toBe(false)
+    expect(g.selfInterrupts).toBe(0)
+    expect(fires(feed(g, windows, 0.95, loud))).toHaveLength(1)
   })
 })
