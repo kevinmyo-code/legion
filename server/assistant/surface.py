@@ -276,7 +276,6 @@ def tools_for(user):
     but for `run_procedure`, whose `name` enum lists what THIS user may run
     (`procedures.listing.tool_for`), and `show_diagram`, whose projects and
     views are the ones THIS user can be shown (`diagrams.catalogue.declared_for`)."""
-    from demo.tools import declared_for as about_kevin_for
     from diagrams.catalogue import declared_for
     from procedures.listing import tool_for
 
@@ -289,9 +288,6 @@ def tools_for(user):
             # Only the diagrams this caller can be shown: never a withheld project (arch-diagrams
             # ticket 01: no Quanex for the LinkedIn version), never one with nothing loaded.
             tool = declared_for(tool, user)
-        elif tool.name == "about_kevin":
-            # Its section ids and titles, never a sentence of them (`demo.tools`).
-            tool = about_kevin_for(tool, user)
         out.append(tool)
     return out
 

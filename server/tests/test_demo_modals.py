@@ -117,7 +117,7 @@ def test_the_recruiter_prompt_puts_the_diagram_first():
     assert "goes deeper" in DIAGRAM_RULE
     # Read before the rules that send the model to about_kevin and legion_docs.
     rule_at = RECRUITER_FRAME.index(DIAGRAM_RULE)
-    assert rule_at < RECRUITER_FRAME.index("call about_kevin first")
+    assert rule_at < RECRUITER_FRAME.index("use about_kevin")
     assert rule_at < RECRUITER_FRAME.index("use legion_docs")
 
 

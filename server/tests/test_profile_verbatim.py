@@ -21,10 +21,9 @@ import pytest
 
 from agents.runtime.model import FakeModel, call, say
 from assistant import cascade, tour
-from assistant.surface import tools_for
 from demo import profile
 from demo.profile import NOT_SHARED_LINE, OFFERS, Section, speak, split_sentences
-from engine_mcp.tools import FOR_MODEL, SPEAK_VERBATIM
+from demo.tools import ABOUT_KEVIN, spoken_for
 from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     _clean,
     _events,
@@ -81,6 +80,7 @@ EXPERIENCE = [
     "Shipped a mock forecast.",
 ]
 ALL_SENTENCES = EDUCATION + LOCATION + AVAILABILITY + SALARY + CONTACT + ROLES + EXPERIENCE
+MORE = profile.MORE
 MORE_EXPERIENCE = "There's more on Experience; just ask."
 # A fake hero lead: the tour's "who" beat says it, so it is a sentence about him too.
 LEAD = "Pat Example is a pretend analyst who builds fake things."
@@ -172,39 +172,51 @@ SECTIONS = profile.sections_of(PROFILE)
     [
         (["education"], None, EDUCATION, None),
         (["education", "education"], None, EDUCATION, None),
+        # Spoken in his order (Location, Availability, Education), whatever order was picked.
         (
             ["education", "location", "availability"],
             None,
-            EDUCATION + LOCATION + AVAILABILITY,
+            LOCATION + AVAILABILITY + EDUCATION,
             None,
         ),
-        # Six sentences: the shortest three fit (5) and Location is named; the model's order kept.
+        # Six sentences: the first three in his order fit (5); Salary, after them, is named.
         (
-            ["education", "location", "availability", "salary"],
+            ["salary", "education", "location", "availability"],
             None,
-            EDUCATION + AVAILABILITY + SALARY,
-            "There's more on Location; just ask.",
+            LOCATION + AVAILABILITY + EDUCATION,
+            "There's more on Salary; just ask.",
         ),
-        (["experience", "availability"], None, AVAILABILITY, MORE_EXPERIENCE),
-        (["experience"], None, EXPERIENCE[:5], MORE_EXPERIENCE),
-        (["experience"], "experience", None, None),
+        # The first that does not fit stops the reading; it and every one after it are named.
+        (
+            ["salary", "experience", "availability"],
+            None,
+            AVAILABILITY,
+            "There's more on Experience, Salary; just ask.",
+        ),
+        (
+            ["location", "roles_wanted", "contact", "salary"],
+            None,
+            LOCATION + SALARY + CONTACT,
+            "There's more on Roles wanted; just ask.",
+        ),
+        # The first picked section alone is over the cap: its head, and there is more.
+        (["experience"], None, EXPERIENCE[:5], MORE),
+        (
+            ["contact", "experience", "salary"],
+            None,
+            EXPERIENCE[:5],
+            "There's more on Experience, Salary, Contact; just ask.",
+        ),
+        (["experience"], "experience", EXPERIENCE[5:], None),
         ([], "experience", EXPERIENCE[5:], None),
         ([], "availability", AVAILABILITY, None),
         (["hobbies"], None, [NOT_SHARED_LINE], None),
         ([], None, [NOT_SHARED_LINE], None),
         (["education", "hobbies"], None, EDUCATION, None),
-        (
-            ["experience", "contact"],
-            None,
-            CONTACT,
-            MORE_EXPERIENCE,
-        ),
     ],
 )
-def test_what_is_said_is_whole_sections_capped_shortest_first(chosen, rest_of, lines, more):
+def test_what_is_said_is_whole_sections_in_his_order_capped(chosen, rest_of, lines, more):
     spoken = speak(SECTIONS, chosen, rest_of)
-    if lines is None:  # rest_of wins over sections
-        lines = EXPERIENCE[5:]
     assert list(spoken.lines) == lines
     assert spoken.more == more
     assert len(spoken.lines) <= profile.CAP
@@ -214,12 +226,37 @@ def test_a_more_line_names_only_titles_that_exist():
     for chosen in (
         ["experience"],
         ["experience", "contact", "education"],
-        ["hobbies", "experience"],
+        ["hobbies", "experience", "salary"],
+        ["availability", "experience", "roles_wanted"],
     ):
         more = speak(SECTIONS, chosen).more or ""
+        if more == MORE:
+            continue
         named = more.removeprefix("There's more on ").removesuffix("; just ask.")
-        for title in named.replace(" and ", ", ").split(", ") if named else []:
+        for title in named.split(", ") if named else []:
             assert title in PROFILE, title
+
+
+def test_his_order_survives_the_database_and_an_old_row_keeps_the_stored_order(tmp_path):
+    """Postgres keeps a JSON object's keys in its own order (by length first), so the loader
+    stores the order he wrote beside the profile; the page is never served it."""
+    from demo.content import public_content
+    from demo.models import RecruiterContent
+
+    load_fake(tmp_path, content=_content())
+    content = RecruiterContent.current().content
+    assert content[profile.PROFILE_ORDER] == list(PROFILE)
+    assert [
+        s.title for s in profile.sections_of(content["profile"], content[profile.PROFILE_ORDER])
+    ] == list(PROFILE)
+    assert profile.PROFILE_ORDER not in public_content(content)
+    # A row loaded before the order was kept: the stored order, nothing dropped.
+    stored = profile.sections_of(content["profile"])
+    assert sorted(s.title for s in stored) == sorted(PROFILE)
+    # An order naming a section no longer there, or missing one, still gives every section once.
+    mixed = profile.sections_of(PROFILE, ["Salary", "Gone", "Location"])
+    assert [s.title for s in mixed][:2] == ["Salary", "Location"]
+    assert sorted(s.title for s in mixed) == sorted(PROFILE)
 
 
 # =============================================================================
@@ -228,7 +265,7 @@ def test_a_more_line_names_only_titles_that_exist():
 
 
 def test_the_model_is_declared_titles_and_ids_never_a_sentence(loaded, visitor_user):
-    tool = next(t for t in tools_for(visitor_user) if t.name == "about_kevin")
+    tool = spoken_for(visitor_user)
     assert "education (Education)" in tool.description
     assert "roles_wanted (Roles wanted)" in tool.description
     # Postgres keeps a JSON object's keys in its own order, so the ids are compared as a set.
@@ -241,7 +278,7 @@ def test_the_model_is_declared_titles_and_ids_never_a_sentence(loaded, visitor_u
 
 
 def test_with_no_profile_the_declaration_says_nothing_is_shared(visitor_user):
-    tool = next(t for t in tools_for(visitor_user) if t.name == "about_kevin")
+    tool = spoken_for(visitor_user)
     assert "none (nothing shared yet)" in tool.description
     assert "enum" not in tool.input_schema["properties"]["sections"]["items"]
 
@@ -272,7 +309,7 @@ HE_IS_GREAT = say("He is a fine engineer.")
 
 # id | visitor words | scripted model rounds | expected caption (= what is spoken)
 TABLE = [
-    ("about", "Tell me about Kevin.", [ak("education", "location")], EDUCATION + LOCATION),
+    ("about", "Tell me about Kevin.", [ak("education", "location")], LOCATION + EDUCATION),
     ("study", "Where did he study?", [ak("education")], EDUCATION),
     ("graduate", "When does he graduate?", [ak("education")], EDUCATION),
     ("start", "When can he start?", [ak("availability")], AVAILABILITY),
@@ -284,18 +321,24 @@ TABLE = [
         "experience",
         "Tell me about his experience.",
         [ak("experience")],
-        EXPERIENCE[:5] + [MORE_EXPERIENCE],
+        EXPERIENCE[:5] + [MORE],
     ),
     ("rest", "Tell me the rest of his experience.", [ak(rest_of="experience")], EXPERIENCE[5:]),
     ("authorised", "Is Kevin authorised to work in the US?", [ak()], [NOT_SHARED_LINE]),
     ("sponsor", "Does he need sponsorship?", [ak()], [NOT_SHARED_LINE]),
-    ("unknown id", "What are his hobbies?", [ak("hobbies")], [NOT_SHARED_LINE]),
-    ("known and unknown", "Education and hobbies?", [ak("education", "hobbies")], EDUCATION),
+    # An id that is not one of his sections is refused by the tool's own schema; asked again.
+    ("unknown id", "What are his hobbies?", [ak("hobbies"), ak()], [NOT_SHARED_LINE]),
+    (
+        "known and unknown",
+        "Education and hobbies?",
+        [ak("education", "hobbies"), ak("education")],
+        EDUCATION,
+    ),
     (
         "over the cap",
         "Tell me everything about him.",
         [ak("education", "location", "availability", "salary")],
-        EDUCATION + AVAILABILITY + SALARY + ["There's more on Location; just ask."],
+        LOCATION + AVAILABILITY + EDUCATION + ["There's more on Salary; just ask."],
     ),
     (
         "long and short",
@@ -319,7 +362,7 @@ TABLE = [
         "more wins over offer",
         "His experience?",
         [ak("experience", offer="resume")],
-        EXPERIENCE[:5] + [MORE_EXPERIENCE],
+        EXPERIENCE[:5] + [MORE],
     ),
     # An offer outside the fixed list is refused by the tool's schema; asked again, it is said.
     (
@@ -406,7 +449,7 @@ FOLLOW_UPS = [
         "Go on.",
         [ak(rest_of="experience")],
         EXPERIENCE[5:],
-        f"(Read aloud from Kevin's profile: Experience.) {MORE_EXPERIENCE}",
+        f"(Read aloud from Kevin's profile: Experience.) {MORE}",
     ),
     (
         "the same question again",
@@ -496,18 +539,19 @@ def test_the_tool_event_and_the_model_get_the_titles_not_the_sentences(loaded, v
     assert not any(sentence in tool["text"] for sentence in ALL_SENTENCES)
 
 
-def test_the_old_live_path_is_handed_the_sentences_to_say(loaded, visitor_user):
-    """The voice rollback (Live, `POST /api/assistant/tool`) has no code speaker."""
-    from demo.tools import ABOUT_KEVIN
+def test_live_keeps_the_tool_that_hands_the_model_the_profile(loaded, visitor_user):
+    """The voice rollback (Live) has no code speaker: its about_kevin is dev's, unchanged (the
+    byte-for-byte check against 421306f0 is `test_profile_live_unchanged.py`)."""
+    from assistant.surface import tools_for
+
+    live = next(t for t in tools_for(visitor_user) if t.name == "about_kevin")
+    assert live is ABOUT_KEVIN
 
     class Request:
         user = visitor_user
 
-    result = ABOUT_KEVIN.handler(Request(), {"sections": ["education"]})
-    assert result.text.startswith("Say exactly these sentences about Kevin, word for word")
-    assert all(sentence in result.text for sentence in EDUCATION)
-    assert result.structured[SPEAK_VERBATIM] == EDUCATION
-    assert "B.S." not in result.structured[FOR_MODEL]
+    result = ABOUT_KEVIN.handler(Request(), {})
+    assert all(sentence in result.text.replace("\n", " ") for sentence in AVAILABILITY)
 
 
 # =============================================================================
@@ -548,14 +592,20 @@ def test_no_model_request_in_a_conversation_ever_holds_his_sentences(loaded, vis
     _events(_post(visitor, text="Did he graduate?", conversation_id=conversation))
     beat = _events(_post(visitor, tour=0, conversation_id=conversation))
     assert [s["text"] for s in _of(beat, "sentence")][0] == LEAD
+    diagram = _events(_post(visitor, tour=1, conversation_id=conversation))
+    caption = [s["text"] for s in _of(diagram, "sentence")][0]
+    assert _of(diagram, "tool")[0]["name"] == "show_diagram"
     _events(_post(visitor, text="What was that?", conversation_id=conversation))
     assert len(engine.model.requests) == 4
     for request in engine.model.requests:
         assert _profile_in(request) == []
     later = json.dumps(engine.model.requests[-1].contents)
-    assert "(Read aloud from Kevin's profile: Education, Location.)" in later
+    assert "(Read aloud from Kevin's profile: Location, Education.)" in later
     assert "(Read aloud from Kevin's profile: Experience.)" in later
     assert "(Tour line read aloud: who.)" in later
+    # A diagram's caption is about the project, not him: the follow-up still sees it.
+    assert json.dumps(caption)[1:-1] in later
+    assert "(Tour line read aloud: legion.)" not in later
 
 
 def test_the_record_keeps_what_was_said_and_history_replays_the_marker(loaded, visitor, engine):

@@ -463,7 +463,7 @@ def test_about_kevin_reads_the_profile_and_nothing_of_either_household(world):
     from tests.test_recruiter_content import fake_content
 
     RecruiterContent.objects.create(content=fake_content())
-    text = _allowed(world, "about_kevin", {"sections": ["experience", "location"]})
+    text = _allowed(world, "about_kevin", {})
     assert "pretend work at Example Corp" in text
     # The profile is all it reads: no demo row either.
     assert "Greenleaf Market" not in text and "Oat milk" not in text
