@@ -113,5 +113,8 @@ sent typed and the scorecard says why.
 - `proves_nothing_on` (case level): the layer where the case cannot fail when its feature breaks,
   with why and the unit test that does prove it. It still runs; a PASS there shows as `N/A` and is
   left out of the pass count, on its own "not counted" line; a FAIL is shown and counted.
+- `known_limit` (case level): a recorded known limit, named. The case never fails or counts; a
+  successful write in it prints `KNOWN LIMIT <name>: <tool/action>` on its row (`KNWN`) and on the
+  "known limits" line, so each run shows how often it happens.
 - `grade`: a rubric for the optional LLM grader (`--grade`), shown in its own LLM column; it never
   changes PASS or FAIL.

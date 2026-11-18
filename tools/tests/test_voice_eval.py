@@ -202,6 +202,25 @@ def test_a_marked_case_that_fails_is_shown_and_counted_as_a_failure():
     assert summary["failed"] == 1 and summary["not_counted"] == []
 
 
+def test_a_known_limit_never_fails_and_records_a_write():
+    case = {"id": "lone", "say": "Five.", "known_limit": "lone_word_write", "expect": {"answer_not": ["(?i)catch"]}}
+    switched = case_lines("lone", "Five.", [("car", {"action": "switch_vehicle", "vehicle": "Invented Fit"},
+                                             '{"success":true,"message":"You are on the Invented Fit now."}')], "Five.")
+    facts, runs = parse(switched)
+    v = ve.score_case(case, runs[0], phone=False)
+    assert v.passed and v.known_limit == "lone_word_write: car/switch_vehicle"
+    assert any(w.startswith("KNOWN LIMIT lone_word_write: car/switch_vehicle") for w in v.warnings)
+    out, summary = ve.scorecard([case], runs, facts, phone=False)
+    assert "pass 0/0" in out[0]
+    assert any("known limits, recorded, not counted (1 of 1 showed): lone KNOWN LIMIT lone_word_write: car/switch_vehicle" in l for l in out)
+    assert any(l.startswith("KNWN  lone") for l in out)
+    assert summary["known_limits"] == ["lone KNOWN LIMIT lone_word_write: car/switch_vehicle"]
+    # No write: still recorded, nothing flagged.
+    facts, runs = parse(case_lines("lone", "Five.", [], "Five what?"))
+    v = ve.score_case(case, runs[0], phone=False)
+    assert v.passed and v.known_limit is None
+
+
 def test_committed_cases_load_and_have_unique_ids():
     cases = ve.load_cases([ve.CASES])
     assert len(cases) >= 10

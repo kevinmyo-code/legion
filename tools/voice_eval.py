@@ -342,6 +342,7 @@ class Verdict:
     failures: list[str]
     warnings: list[str]
     llm: str | None = None  # "PASS"/"FAIL: why"/None
+    known_limit: str | None = None  # "<limit>: <tool/action, ...>" when a recorded known limit showed
 
 
 def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, write: bool,
@@ -514,6 +515,14 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
     layer = "phone" if phone else "laptop"
     if str(case.get("proves_nothing_on", "")).startswith(layer):
         warns.append(f"proves nothing on the {layer}: {case['proves_nothing_on'].split(':', 1)[-1].strip()}")
+    # A recorded known limit (2026-11-18, Kevin "A"): the case never fails; a successful write in it is
+    # recorded as `KNOWN LIMIT <name>: <tool/action>` so every run shows how often the limit shows.
+    limit = case.get("known_limit")
+    if limit:
+        writes = [c.key for t in run.turns for c in t.calls if c.success and _looks_write(c)]
+        hit = f"{limit}: {', '.join(writes)}" if writes else None
+        notes = [f"recorded only: {f}" for f in fails] + ([f"KNOWN LIMIT {hit}"] if hit else [])
+        return Verdict(True, [], warns + notes, known_limit=hit)
     return Verdict(not fails, fails, warns)
 
 
@@ -577,6 +586,7 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
     total = Decimal(0)
     passed = failed = missing = 0
     na_ids: list[str] = []
+    known_rows: list[str] = []
     notes_all: set[str] = set()
     model = next((r.model for r in runs if r.model), run_facts.get("model", "?"))
     for case in cases:
@@ -593,7 +603,10 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         # A case that proves nothing on this layer is reported apart when it passes (2026-11-18 review r2
         # B); when it fails it is a failure like any other, since its checks are real (r3).
         na = v.passed and str(case.get("proves_nothing_on", "")).startswith("phone" if phone else "laptop")
-        if na:
+        known = bool(case.get("known_limit"))
+        if known:
+            known_rows.append(f"{case['id']} " + (f"KNOWN LIMIT {v.known_limit}" if v.known_limit else "no write"))
+        elif na:
             na_ids.append(case["id"])
         else:
             passed += v.passed
@@ -601,17 +614,17 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         tools = " ".join(c.key + ("[refused]" if c.refused_for_test else "") for t in run.turns for c in t.calls) or "-"
         turn_ms = [t.timings.get("test_turn_ms") or t.timings.get("eot_reply_ms") for t in run.turns]
         ms = "/".join(str(x) for x in turn_ms if x is not None) or (str(run.ms) if run.ms else "-")
-        row = {"id": case["id"], "pass": v.passed, "proves_nothing": na, "llm": v.llm, "tools": tools, "ms": ms,
+        row = {"id": case["id"], "pass": v.passed, "proves_nothing": na, "known_limit": v.known_limit, "llm": v.llm, "tools": tools, "ms": ms,
                "tokens": tok, "usd": str(cost), "priced": not any("no price" in n for n in notes), "failures": v.failures, "warnings": v.warnings,
                "answer": " | ".join(t.answer for t in run.turns), "notes": run.notes,
                "timings": run.timings}
         rows.append(row)
-        flag = "N/A " if na else "PASS" if v.passed else "FAIL"
+        flag = "KNWN" if known else "N/A " if na else "PASS" if v.passed else "FAIL"
         llm = f"  LLM {v.llm}" if v.llm else ""
         money = usd(cost) if row["priced"] else "no price"
         lines.append(f"{flag}  {case['id']:<22} {tools[:48]:<48} {ms:>11}  "
                      f"in {tok['prompt']:>6} cached {tok['cached']:>6} out {tok['out']:>4}  {money:>8}{llm}")
-        if verbose or not v.passed:
+        if verbose or not v.passed or v.known_limit:
             for f in v.failures:
                 lines.append(f"      x {f}")
             for w in v.warnings:
@@ -635,13 +648,16 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
             + (f", incl. {usd(overhead)} for the context cache" if overhead else "") + ")")
     na_line = ([f"passed, not counted, proves nothing on this layer ({len(na_ids)}): {', '.join(na_ids)}"]
                if na_ids else [])
+    hits = sum("KNOWN LIMIT" in r for r in known_rows)
+    if known_rows:
+        na_line.append(f"known limits, recorded, not counted ({hits} of {len(known_rows)} showed): {'; '.join(known_rows)}")
     tail = [f"note: {n}" for n in sorted(notes_all)]
     tail.append(voice_cost.ESTIMATE)
     if grader:
         tail.append("LLM = an LLM grader's opinion on the case's rubric; it does not change PASS/FAIL.")
     facts = {k: v for k, v in run_facts.items() if not k.startswith("_")}
     summary = {"model": model, "phone": phone, "passed": passed, "failed": failed, "missing": missing,
-               "not_counted": na_ids,
+               "not_counted": na_ids, "known_limits": known_rows,
                "usd": str(total), "overhead_usd": str(overhead), "cases": rows, "run": facts}
     return [head] + na_line + [""] + lines + [""] + tail, summary
 

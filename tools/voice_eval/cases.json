@@ -383,9 +383,19 @@
     },
     {
       "id": "short_answer_kept",
+      "stt_audio": true,
+      "turns": [
+        {"say": "ask me how many days ahead I want to see, then read my calendar for that many days", "expect": {"answer_has": ["[?]"]}},
+        {"say": "Five.", "expect": {"calls": ["day/read_calendar"], "answer_not": ["(?i)catch"]}}
+      ],
+      "why": "Proves a spoken one-word number that answers his assistant's question is heard as speech (never dropped as noise or a miss) and acted on as the answer, with no write (2026-11-18: reworked from a bare Five. with no question before it)"
+    },
+    {
+      "id": "lone_word_no_context",
       "say": "Five.",
       "stt_audio": true,
-      "why": "Voice review 2026-11-17: a one-word or number answer is speech, never dropped as too short",
+      "known_limit": "lone_word_write",
+      "why": "Recorded known limit, never fails the gate (2026-11-18, Kevin's ruling A: ship 1a with it; the installed build has it too). A bare one-word turn with no context reaches the model, which may run a write (one run switched the active car) and not say so. Each run records KNOWN LIMIT lone_word_write: <tool/action> when a write succeeded. Follow-up, next phone update: a completed write the reply does not confirm is spoken by code (CascadeSession.answerTurn + ScriptedLines.doneLine, a phrase for the car switch)",
       "expect": {
         "answer_not": ["(?i)catch"]
       }
