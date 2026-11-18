@@ -40,7 +40,7 @@ class AppMonochromeTest {
     }
 
     @Test
-    fun `a mark reads as a shape: neither empty nor a filled tile`() {
+    fun `a mark reads as a shape, neither empty nor a filled tile`() {
         assertTrue(AppMonochrome.readable(pixels(opaque = 30)))
         // A legacy icon's square background, or a full-bleed foreground: a blob in one ink.
         assertFalse(AppMonochrome.readable(pixels(opaque = 75)))

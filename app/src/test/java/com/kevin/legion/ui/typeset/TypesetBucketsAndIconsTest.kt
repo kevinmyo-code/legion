@@ -119,7 +119,7 @@ class TypesetBucketsAndIconsTest {
     }
 
     @Test
-    fun `contents keep a 48dp cell: seven across 360dp, six across 320dp, five stay five`() {
+    fun `contents keep a 48dp cell, seven across 360dp, six across 320dp, five stay five`() {
         assertEquals(7, contentsColumns(7, 360.dp))
         assertEquals(6, contentsColumns(7, 320.dp))
         assertEquals(5, contentsColumns(5, 320.dp))
