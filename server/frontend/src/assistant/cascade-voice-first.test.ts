@@ -245,6 +245,40 @@ describe('the models in the conversation', () => {
     expect(t.audio.paused).toBe(false)
   })
 
+  it('the reply ends while paused, then its echo verdict: the conversation listens again (not stuck idle)', async () => {
+    const t = build([spoken('Hello.'), spoken('A long answer.')])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    t.detector.fire()
+    // The answer runs out while paused (its stream already ended: it re-listens), then the verdict.
+    t.audio.handlers?.onPlaying(false)
+    t.detector.verdict(true)
+    expect(t.client.getState().mic).toBe('on')
+    expect(t.client.getState().activity).toBe('listening')
+  })
+
+  it('a barge-in turn posts barge_in; the next ordinary turn does not; a busy re-post keeps it', async () => {
+    const busy: TurnStart = { ok: false, status: 409, detail: 'busy', code: 'busy', retryMs: 0 }
+    const t = build([spoken('Hello.'), { ok: true, events: hanging([{ type: 'turn', data: { conversation_id: 'c-1', turn: 1 } }, AUDIO]) }, busy, spoken('Sure.'), spoken('Fine.')])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    t.detector.fire()
+    t.detector.verdict(false)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    await settle()
+    expect(t.requests[2].bargeIn).toBe(true)
+    expect(t.requests[3]).toBe(t.requests[2])
+    t.audio.handlers?.onPlaying(false)
+    await settle()
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.requests[4].bargeIn).toBeUndefined()
+    expect(t.requests[1].bargeIn).toBeUndefined()
+  })
+
   it('half-duplex lasts one conversation: the next one has barge-in again', async () => {
     const t = build([spoken('Hello.')])
     await open(t)

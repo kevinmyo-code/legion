@@ -207,6 +207,7 @@ export function turnForm(request: TurnRequest): FormData {
   form.append('client_now_ms', String(Date.now()))
   if (request.preface) form.append('preface', request.preface)
   if (request.turnId) form.append('turn_id', request.turnId)
+  if (request.bargeIn) form.append('barge_in', '1')
   return form
 }
 

@@ -75,6 +75,8 @@ export interface TurnRequest {
   preface?: string
   /** This turn's id, for `cancelTurn`. */
   turnId?: string
+  /** Its audio began over a reply (a barge-in judged a person): the engine checks it for echo. */
+  bargeIn?: boolean
 }
 
 export interface GreetingHistory {
@@ -155,7 +157,7 @@ const PREROLL_CHUNKS = 15
 
 export { CONVERSATION_CLOSED, closingTone }
 
-type TurnInput = { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number }
+type TurnInput = { audio?: Int16Array; text?: string; greet?: boolean; spoken?: boolean; tour?: number; bargeIn?: boolean }
 /** The demo entry in flight (`CascadeClient.enter`). */
 type Entry = { done: Promise<boolean>; abort: AbortController; timer: ReturnType<typeof setTimeout> }
 type Draft<T> = T extends unknown ? Omit<T, 'id'> : never
@@ -220,6 +222,8 @@ export class CascadeClient {
   private bargePending: { held: Int16Array | null; afterReply: 'listen' | 'close' | 'tour' | null } | null = null
   /** Audio right after the reply ended that is not yet listened to (ECHO_TAIL_MS). */
   private tailLeftMs = 0
+  /** The turn being listened to began over a reply (`barge_in=1` on its post). */
+  private bargeTurn = false
   /** The closing tone is what is playing. */
   private toning = false
   private enteringSince = 0
@@ -258,6 +262,8 @@ export class CascadeClient {
     () => {
       if (this.voiceOpen) this.close(true)
     },
+    () => this.voiceOpen && !this.listening && !this.playing && !this.awaiting && !this.entering,
+    () => this.listen(),
   )
 
   constructor(deps: CascadeDeps, options: CascadeOptions) {
@@ -638,6 +644,7 @@ export class CascadeClient {
       this.speechStarted = false
       this.detector?.reset()
       this.tailLeftMs = ECHO_TAIL_MS
+      this.bargeTurn = false
     }
     this.set({ mic: 'on', phase: this.state.phase === 'idle' ? 'live' : this.state.phase })
   }
@@ -708,11 +715,18 @@ export class CascadeClient {
       const text = await spec.result
       if (generation !== this.turnGeneration || this.listening || !this.voiceOpen) return
       if (text && text.trim()) {
-        void this.turn({ text: text.trim(), spoken: true }, true)
+        void this.turn({ text: text.trim(), spoken: true, ...this.takeBargeIn() }, true)
         return
       }
     }
-    void this.turn({ audio }, true)
+    void this.turn({ audio, ...this.takeBargeIn() }, true)
+  }
+
+  /** This turn began over a reply (a person, by the gate's verdict): the engine checks it for echo. */
+  private takeBargeIn(): { bargeIn?: true } {
+    const was = this.bargeTurn
+    this.bargeTurn = false
+    return was ? { bargeIn: true } : {}
   }
 
   /**
@@ -736,6 +750,7 @@ export class CascadeClient {
     this.bargedOver = this.lastReply
     this.bargeIns += 1
     this.cutReply('barge_in')
+    this.bargeTurn = true
   }
 
   private onVerdict(selfInterrupt: boolean, nowDisabled: boolean) {
@@ -749,6 +764,11 @@ export class CascadeClient {
       this.stopListening()
       this.detector?.reset()
       this.audioIO?.resume?.()
+      // Nothing left to play (the reply ended while paused): listen now, or nothing ever will.
+      if (!this.playing && !this.awaiting) {
+        if (this.afterReply) this.replyDrained()
+        else this.listen()
+      }
       return
     }
     this.cutForBargeIn()
@@ -802,7 +822,7 @@ export class CascadeClient {
   private sendUtterance() {
     const chunks = this.chunks
     this.stopListening()
-    void this.turn({ audio: chunks }, true)
+    void this.turn({ audio: chunks, ...this.takeBargeIn() }, true)
   }
 
   private micLost() {
