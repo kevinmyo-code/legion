@@ -715,20 +715,38 @@ def test_an_empty_answer_after_a_tool_is_asked_once_more(member, engine):
     assert engine.model.requests[-1].contents[-1]["parts"][0]["text"] == cascade.FILLER_NOTE
 
 
-def test_a_visitor_greeting_keeps_its_speech_reservation(visitor, engine, settings):
-    from assistant import fillers
+@pytest.mark.parametrize(
+    "opening",
+    [
+        None,  # the opening as shipped: short enough to go to speech as one request
+        # A longer, two-sentence greeting: its first clause goes alone, the rest in one more.
+        "I'm {who}, and I can walk you through the work, the tour, and whatever else you like. "
+        "Chats are recorded to improve me.",
+    ],
+    ids=["shipped", "two-sentence"],
+)
+def test_a_visitor_greeting_keeps_its_speech_reservation(
+    visitor, engine, settings, monkeypatch, opening
+):
+    from assistant import fillers, web_greeting
     from demo import budget
 
+    if opening is not None:
+        monkeypatch.setattr(web_greeting, "RECRUITER_OPENING", opening.replace("{whom}", ""))
     _events(_post(visitor, greet="true"))
     day = DemoBudgetDay.objects.get()
-    # The text calls reserved go back unused (the demo hello is scripted); speech is kept: the
-    # turn's share, its one speech request, and the filler and failure lines it set out to make
-    # (round 2 turn review 8: those were paid and never reserved).
+    # The rule (round 2 turn review 8, round 3 finding 8): every paid speech request is reserved
+    # once and stays reserved; what was reserved and not used goes back. The text calls go back
+    # unused (the demo hello is scripted). What stays: the turn's speech share, the opening's own
+    # requests, the filler and failure lines it set out to make, and the opening's clip fetched
+    # for next time.
     lines = len(set(fillers.all_lines()) | set(cascade.SPOKEN_FAILURES))
-    # The opening's own speech requests (its first clause goes alone, the rest in one more).
     requests = len(engine.speech.spoken)
-    assert requests == 2
-    assert day.reserved_cents == 1 + budget.speech_requests_cents(requests + lines)
+    assert requests == (1 if opening is None else 2)
+    used = requests + lines + 1
+    reserved = cascade.MAX_TTS_REQUESTS + lines + 1
+    assert used <= reserved
+    assert day.reserved_cents == 1 + budget.speech_requests_cents(used)
 
 
 def test_a_claimed_change_after_a_refused_write_is_not_said(member, engine):

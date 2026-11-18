@@ -2402,6 +2402,12 @@ def _household_or_none(request):
         return None
 
 
+# A demo search charged by the caller BEFORE its transaction opened (`assistant.cascade.WebDoor`,
+# round 4 R1): the reservation, and whether the caller should give it back.
+PREPAID_SEARCH = "_legion_prepaid_web_search"
+PREPAID_RELEASE = "_legion_prepaid_web_search_release"
+
+
 def _web_search(request, args) -> ToolResult:
     from demo import budget
     from engine_mcp import web_search
@@ -2416,8 +2422,9 @@ def _web_search(request, args) -> ToolResult:
 
     if member_cap.over_cap(user):
         return refused(member_cap.SEARCH_USED_UP)
-    reservation = None
-    if budget.counts(user):
+    reservation = getattr(request, PREPAID_SEARCH, None)
+    prepaid = reservation is not None
+    if not prepaid and budget.counts(user):
         # Reserved before Google is asked (`demo/budget.py`).
         reservation = budget.charge_web_search(user=user)
         if reservation is None:
@@ -2426,7 +2433,11 @@ def _web_search(request, args) -> ToolResult:
         found = web_search.search(query)
     except web_search.SearchFailed as exc:
         if reservation is not None and exc.refused:
-            budget.release(reservation)
+            if prepaid:
+                # The caller gives it back outside this transaction (round 4 R1).
+                setattr(request, PREPAID_RELEASE, True)
+            else:
+                budget.release(reservation)
         return failed(exc.message)
     if member_cap.applies_to(user):
         # Members only: a recruiter's search is counted by the demo budget, and a visit's

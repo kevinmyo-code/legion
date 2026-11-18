@@ -795,6 +795,37 @@ def _run_by_deadline(work, deadline_s: float):
     return None if guard.expired else result
 
 
+def _prepay(request, name: str):
+    """A demo visit's web search is charged on its own committed transaction BEFORE the tool's
+    deadline transaction opens (round 4 R1: charged inside it, the budget row stayed locked for
+    the whole search, up to 8 s, and every other demo reservation queued behind it; and a rollback
+    at the deadline took a billed search's charge with it). The reservation, a refusal, or None."""
+    from demo import budget
+    from engine_mcp.tools import PREPAID_SEARCH, refused
+
+    if name != "web_search" or not budget.counts(request.user):
+        return None
+    reservation = budget.charge_web_search(user=request.user)
+    if reservation is None:
+        return refused(f"Nothing was searched. {budget.used_up_message(request.user, 'search')}")
+    setattr(request, PREPAID_SEARCH, reservation)
+    return reservation
+
+
+def _settle_prepaid(request, reservation) -> None:
+    """Gives back a prepaid search Google refused (nothing billed); otherwise it stays counted."""
+    from demo import budget
+    from engine_mcp.tools import PREPAID_RELEASE, PREPAID_SEARCH
+
+    if reservation is None:
+        return
+    if getattr(request, PREPAID_RELEASE, False):
+        budget.release(reservation)
+    for attr in (PREPAID_SEARCH, PREPAID_RELEASE):
+        if hasattr(request, attr):
+            delattr(request, attr)
+
+
 class WebDoor:
     """`agents.runtime.tools.ToolGateway` over the web assistant's tool door: the same checks, in
     the same order, as `AssistantToolView.post`, plus the `end_conversation` control."""
@@ -911,7 +942,14 @@ class WebDoor:
                     work = functools.partial(run_engine_tool, self.request, only_here, args)
                 else:
                     work = functools.partial(run_tool, self.request, name, args)
-                result = _run_by_deadline(work, deadline_s)
+                prepaid = _prepay(self.request, name)
+                if isinstance(prepaid, ToolResult):
+                    result = prepaid
+                else:
+                    try:
+                        result = _run_by_deadline(work, deadline_s)
+                    finally:
+                        _settle_prepaid(self.request, prepaid)
                 if result is None:
                     result = ToolResult(
                         text=TOOL_TIMED_OUT.format(name=name), is_error=True, outcome=Outcome.FAILED
