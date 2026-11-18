@@ -23,15 +23,15 @@ from dataclasses import dataclass
 
 from agents.runtime.tools import ToolCall
 
-LIVE_LINE = (
-    "That card is a live lookup on this made-up household's car records, through the same "
-    "engine tools the assistant uses on Kevin's phone."
-)
-RESUME_LINE = "And that's his one-page resume. To talk to him, his contact details are on it."
+# Each line claims only what the demo as built shows (round 2 speech review T): the card is a live
+# read of the made-up household's records, the resume is the one loaded for this visit, and the
+# contact links are the stage's own (`components/demo/voice-stage.tsx`, from the loaded content).
+LIVE_LINE = "That card is a live lookup on this made-up household's car records."
+RESUME_LINE = "And that's his one-page resume."
 # The tour's lighter lines carry an expression tag (`assistant/speech_tags.py`): spoken as a sound,
 # never shown, stored or checked.
 END_LINE = (
-    "That's the tour. <short pause> Ask me anything else, or open the resume to get in touch."
+    "That's the tour. <short pause> Ask me anything else, or use the links below to get in touch."
 )
 STOPPED_LINE = "Okay, tour stopped. Ask me anything."
 # The tour's own code lines: the only tour sentences that may carry a tag.
