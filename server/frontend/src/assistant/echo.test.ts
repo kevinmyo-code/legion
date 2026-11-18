@@ -60,9 +60,8 @@ class Room extends FakeAudio {
   private at = 0
   private readonly late: Int16Array[] = []
   playedSamples = 0
-  constructor(private readonly delayMs = 240) {
-    super()
-  }
+  /** Output latency: what plays reaches the mic this much later. */
+  private readonly delayMs = 240
   play(pcm: Int16Array, rate: number) {
     super.play(pcm, rate)
     this.queue.push(pcm)
