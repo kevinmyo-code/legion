@@ -957,3 +957,65 @@ def test_a_stop_phrase_closes_even_when_the_model_only_signs_off(member, engine)
     engine.model = FakeModel([say("Catch you later.")])
     events = _events(_post(member, text="That will be all, thanks."))
     assert _of(events, "done")[0]["end"] is True
+
+
+# ---- which sentences count as declining a change after a web read (ship 2026-11-18, narrowed) ---
+# Only a FIRST-PERSON decline of a change verb, or a sentence that sends them elsewhere to do it.
+# Extend the table when a new case turns up: True = dropped and replaced by the true reason.
+
+DECLINE_TABLE = [
+    # dropped
+    ("I can't add things to your grocery list; you'll want the phone app for that.", True),
+    ("I can't put that on your groceries list, Sam.", True),
+    ("I couldn't add it to your list just yet.", True),
+    ("I'm unable to save that right now.", True),
+    ("I am not able to update your calendar from here.", True),
+    ("I won't be able to schedule it.", True),
+    ("I don't have a way to add items to your list.", True),
+    ("There's no way for me to change that here.", True),
+    ("I can't actually add that.", True),
+    ("You'll want the phone app to add it.", True),
+    ("Please use the LEGION app for that.", True),
+    ("You'd have to open your phone to change that.", True),
+    ("You can do that in the phone app instead.", True),
+    ("I cannot put it in your calendar.", True),
+    # kept
+    ("The app was released in 2019.", False),
+    ("According to the app's website it is free.", False),
+    ("It syncs to another device over Bluetooth.", False),
+    ("I couldn't find any update on that.", False),
+    ("I couldn't find a change in the schedule.", False),
+    ("I couldn't find a log of today's scores.", False),
+    ("NASA was unable to schedule the launch.", False),
+    ("They cannot book flights until March.", False),
+    ("I can't put a number on it.", False),
+    ("You'll want to bring an umbrella.", False),
+    ("Try the official site for tickets.", False),
+    ("I can't find a date for the fair.", False),
+]
+
+
+@pytest.mark.parametrize(("sentence", "dropped"), DECLINE_TABLE)
+def test_what_counts_as_declining_a_change(sentence, dropped):
+    assert cascade.declines_a_change(sentence) is dropped
+
+
+@pytest.mark.parametrize("sentence", [s for s, dropped in DECLINE_TABLE if not dropped])
+def test_a_kept_sentence_after_a_web_read_is_said_as_written(member, engine, sentence):
+    engine.model = FakeModel([call("web_search", {"query": "anything"}), say(sentence)])
+    events = _events(_post(member, text="Look that up for me."))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert said == [sentence]
+    assert cascade.READ_THROUGH_WAIT not in said
+
+
+def test_a_plain_lookup_mentioning_the_app_and_an_update_has_no_wait_line(member, engine):
+    reply = (
+        "The app got a big update in March. You can download it from the store, and it syncs to "
+        "another device over Bluetooth."
+    )
+    engine.model = FakeModel([call("web_search", {"query": "app update"}), say(reply)])
+    events = _events(_post(member, text="What changed in the latest version of that app?"))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert cascade.READ_THROUGH_WAIT not in said
+    assert said[0] == "The app got a big update in March."
