@@ -203,7 +203,7 @@ class CascadeWiringTest {
         val run = bodyOf(s, "runTurn")
         val take = run.indexOf("takeDraft(u, heard)")
         assertTrue(take >= 0)
-        for (check in listOf("CrisisDetector.detect(heard)", "WakePhrases.isSleepPhrase(heard)", "heard.isBlank()")) {
+        for (check in listOf("CrisisDetector.detect(heard)", "WakePhrases.isSleepPhrase(heard, name)", "heard.isBlank()")) {
             assertTrue("$check must come before a draft is taken", run.indexOf(check) in 0 until take)
         }
         assertTrue(bodyOf(s, "answerTurn").contains("drafted?.adopt(executorFor(record, seq), listenerFor(record, reply))"))
