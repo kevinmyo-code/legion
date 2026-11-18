@@ -138,7 +138,8 @@ class ClearReadInsteadTest {
         val r = clearCodes("read the codes")
         assertFalse(r.toString(), r.optBoolean("success"))
         assertEquals(LiveToolbox.ENGINE_CODES_NOT_READ, r.getString("message"))
-        assertEquals(LiveToolbox.ENGINE_CODES_NOT_READ, com.kevin.legion.ai.VerbatimSpeech.of(r))
+        // Heard without the "(OBD mode 03)" parenthesis; the same claim (2026-11-17).
+        assertEquals(LiveToolbox.ENGINE_CODES_NOT_READ_SPOKEN, com.kevin.legion.ai.VerbatimSpeech.of(r))
     }
 
     @Test

@@ -20,6 +20,20 @@ object FollowUpWindow {
     const val WINDOW_MS = 8_000L
 
     /**
+     * After a line that asked him something (2026-11-17, cascade): 8 s ran out on "Want me to pull up
+     * the diagnostics specialist?" and he came back by wake word 18 s later to say yes; his own starts
+     * after a statement ran to 7.2 s. A question waits longer; a statement keeps the ruling's 8 s.
+     */
+    const val QUESTION_WINDOW_MS = 12_000L
+
+    /** The window after [lastLine], the last thing the assistant said (null: none). */
+    fun windowAfter(lastLine: String?): Long = if (isQuestion(lastLine)) QUESTION_WINDOW_MS else WINDOW_MS
+
+    /** [line] asks something: it ends in `?` or `？`, a closing quote or bracket after it aside. */
+    fun isQuestion(line: String?): Boolean =
+        line?.trimEnd { it.isWhitespace() || it in "\"')]”’»" }?.lastOrNull()?.let { it == '?' || it == '？' } == true
+
+    /**
      * 2026-10-27, Kevin: "the conversation sometimes ends randomly while im still talking". The
      * only cancel is [Event.UserSpeech], the first input transcript, and the transcript trails
      * speech onset by up to seconds (more with startOfSpeechSensitivity LOW). Speech that starts

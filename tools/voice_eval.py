@@ -150,6 +150,11 @@ class Turn:
     calls: list[ToolCall] = field(default_factory=list)
     answer_parts: list[str] = field(default_factory=list)
     timings: dict[str, int] = field(default_factory=dict)
+    fillers: list[str] = field(default_factory=list)  # the holding lines the laptop harness logged
+    to_voice: str = ""  # what the cloud voice would be handed, tags included (laptop harness)
+    read_windows: list[str] = field(default_factory=list)  # days a calendar read covered (laptop harness)
+    ended: bool = False  # the stop/goodbye rule ended the conversation on this turn (laptop harness)
+    missed: str = ""  # the transcript guard's drop reason when the turn got the spoken miss (laptop harness)
 
     @property
     def answer(self) -> str:
@@ -167,6 +172,7 @@ class CaseRun:
     model: str = ""
     ms: int | None = None
     ended: bool = False
+    voiced_ms: list[int] = field(default_factory=list)  # each spoken turn's voiced audio (laptop harness)
 
 
 def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
@@ -197,6 +203,30 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
                 # The laptop harness's spoken answer (made-up data), which the record may redact.
                 try:
                     cur.turns[-1].answer_parts = [json.loads(msg.split("text=", 1)[1])]
+                except (IndexError, ValueError):
+                    pass
+            elif word == "ended" and cur is not None and cur.turns:
+                cur.turns[-1].ended = True
+            elif word == "stt_audio" and cur is not None:
+                v = fields.get("voiced_ms", "")
+                if v.isdigit():
+                    cur.voiced_ms.append(int(v))
+            elif word == "missed" and cur is not None and cur.turns:
+                cur.turns[-1].missed = fields.get("reason", "") or "yes"
+            elif word == "read" and cur is not None and cur.turns:
+                try:
+                    cur.turns[-1].read_windows.append(json.loads(msg.split("window=", 1)[1].rsplit(" date_note=", 1)[0]))
+                except (IndexError, ValueError):
+                    pass
+            elif word == "tts" and cur is not None and cur.turns:
+                try:
+                    cur.turns[-1].to_voice = json.loads(msg.split("text=", 1)[1])
+                except (IndexError, ValueError):
+                    pass
+            elif word == "filler" and cur is not None and cur.turns:
+                # The tool-aware holding line the phone would say as a tool starts (laptop harness).
+                try:
+                    cur.turns[-1].fillers.append(json.loads(msg.split("text=", 1)[1]))
                 except (IndexError, ValueError):
                     pass
             elif word == "note" and cur is not None:
@@ -312,6 +342,7 @@ class Verdict:
     failures: list[str]
     warnings: list[str]
     llm: str | None = None  # "PASS"/"FAIL: why"/None
+    known_limit: str | None = None  # "<limit>: <tool/action, ...>" when a recorded known limit showed
 
 
 def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, write: bool,
@@ -344,6 +375,40 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
     for rx in expect.get("answer_not", []):
         if re.search(rx, answer, re.I):
             fails.append(f"answer has /{rx}/")
+    # The holding line said as the tool started (laptop harness only; the phone logs no words for it).
+    if not phone:
+        heard_fillers = " | ".join(turn.fillers)
+        for rx in expect.get("filler_has", []):
+            if not any(re.search(rx, f, re.I) for f in turn.fillers):
+                fails.append(f"no holding line matches /{rx}/; heard {heard_fillers or 'none'}")
+        if expect.get("no_filler") and turn.fillers:
+            fails.append(f"a holding line was said: {heard_fillers}")
+    # The day a calendar read covered (2026-11-17): on the laptop, graded on what was READ, so a wrong
+    # date the model sent and the phone corrected to the day he said is right. The phone logs no read
+    # window, so there every calendar call's own from/to ARGUMENT must cover the day (2026-11-18 review:
+    # the phone layer graded no date at all).
+    for day in expect.get("read_day", []):
+        want = expand(day, today)
+        if phone:
+            reads = [c for c in turn.calls if matches(c, "day/read_calendar")]
+            if not reads:
+                fails.append(f"no calendar call; wanted {want}")
+            for c in reads:
+                span = [_arg_day(c.args.get(k), today) for k in ("from", "to")]
+                if not (span[0] and span[1] and span[0] <= want <= span[1]):
+                    fails.append(f"a calendar call asked for {json.dumps(c.args, sort_keys=True)}, not {want}")
+            continue
+        if not turn.read_windows:
+            fails.append(f"no calendar read; wanted {want}")
+        elif not all(_window_covers(w, want) for w in turn.read_windows):
+            fails.append(f"a calendar read missed {want}: read {', '.join(turn.read_windows)}")
+    # Expression tags (2026-11-17): never in what he reads or what is kept, never read aloud as words.
+    if re.search(r"<\s*[a-z]|\bchuckles?\b|\bsighs\b", answer, re.I):
+        fails.append("the answer text carries an expression tag or its word")
+    if not phone:
+        for rx in expect.get("tts_not", []):
+            if re.search(rx, turn.to_voice, re.I):
+                fails.append(f"the voice was handed /{rx}/: {turn.to_voice[:120]}")
     if expect.get("no_empty_claim"):
         # An open task in the result: a task row not done, or a non-empty `due` block (fix/greet-and-due).
         # The `due` block leads with its counts, so `"open":N` survives the audit line's 400-character cut.
@@ -351,7 +416,21 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
                         for c in turn.calls)
         if open_task and EMPTY_CLAIM.search(answer):
             fails.append("said nothing is due while a tool result shows an open task")
-    if not answer:
+    # The spoken miss came from the transcript guard, not from the model's own words (2026-11-18 review:
+    # `answer_has catch` passed on the model saying it did not catch something).
+    if expect.get("missed") and not phone and not turn.missed:
+        fails.append("the transcript reached the model; wanted the spoken miss")
+    if expect.get("ends") and not phone and not turn.ended:
+        fails.append("the conversation did not end on a stop or goodbye")
+    if expect.get("ends") is False and turn.ended:
+        fails.append("the conversation ended on words that are not a stop or goodbye")
+    if expect.get("silent") or expect.get("ends"):
+        # Nothing was heard, so nothing is said and nothing runs (2026-11-17: no-voice audio is silence).
+        if answer:
+            fails.append(f"said something on silence: {answer[:80]}")
+        if turn.calls:
+            fails.append("called a tool on silence")
+    elif not answer:
         fails.append("no answer text")
     # Outcome checks (2026-11-15): the change landed, whichever tool the model reached it by. Not
     # on a phone write that test mode refuses (nothing can land there).
@@ -380,6 +459,21 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
     return fails, warns
 
 
+def _arg_day(value, today: datetime.date) -> str | None:
+    """A date argument as the phone resolves it: yyyy-MM-dd, or today / tomorrow / yesterday."""
+    v = str(value or "").strip().lower()
+    words = {"today": 0, "tomorrow": 1, "yesterday": -1}
+    if v in words:
+        return str(today + datetime.timedelta(days=words[v]))
+    return v if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v) else None
+
+
+def _window_covers(window: str, day: str) -> bool:
+    """A harness `read window` ("Wednesday 2026-11-18" or "... to Friday 2026-11-20") covers `day`."""
+    dates = re.findall(r"\d{4}-\d{2}-\d{2}", window)
+    return bool(dates) and dates[0] <= day <= dates[-1]
+
+
 WRITE_ACTIONS = {"add", "remove", "tick", "untick", "schedule", "skip", "create", "clear_ticked", "set", "log",
                  "complete_task", "watch_set", "watch_pause", "watch_resume", "watch_remove", "remember", "forget",
                  "start_voice_note", "stop_voice_note", "place_call", "answer_call", "decline_call", "install"}
@@ -402,6 +496,10 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
         fails.append("case did not finish (timed out or aborted)")
     if len(run.turns) < len(turns):
         fails.append(f"{len(run.turns)} of {len(turns)} turns answered")
+    # A spoken case whose voice made no audio proves nothing: an empty clip is heard as silence and
+    # would pass a `silent` case (2026-11-18 review).
+    if case.get("stt_audio") and not phone and (not run.voiced_ms or 0 in run.voiced_ms):
+        fails.append("the voice made no audio for a spoken turn; nothing was tested")
     for i, (spec, got) in enumerate(zip(turns, run.turns)):
         expect = dict(spec.get("expect", {}))
         if not phone:
@@ -414,6 +512,17 @@ def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
         prefix = f"turn {i + 1}: " if len(turns) > 1 else ""
         fails += [prefix + x for x in f]
         warns += [prefix + x for x in w]
+    layer = "phone" if phone else "laptop"
+    if str(case.get("proves_nothing_on", "")).startswith(layer):
+        warns.append(f"proves nothing on the {layer}: {case['proves_nothing_on'].split(':', 1)[-1].strip()}")
+    # A recorded known limit (2026-11-18, Kevin "A"): the case never fails; a successful write in it is
+    # recorded as `KNOWN LIMIT <name>: <tool/action>` so every run shows how often the limit shows.
+    limit = case.get("known_limit")
+    if limit:
+        writes = [c.key for t in run.turns for c in t.calls if c.success and _looks_write(c)]
+        hit = f"{limit}: {', '.join(writes)}" if writes else None
+        notes = [f"recorded only: {f}" for f in fails] + ([f"KNOWN LIMIT {hit}"] if hit else [])
+        return Verdict(True, [], warns + notes, known_limit=hit)
     return Verdict(not fails, fails, warns)
 
 
@@ -476,6 +585,8 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
     lines, rows = [], []
     total = Decimal(0)
     passed = failed = missing = 0
+    na_ids: list[str] = []
+    known_rows: list[str] = []
     notes_all: set[str] = set()
     model = next((r.model for r in runs if r.model), run_facts.get("model", "?"))
     for case in cases:
@@ -489,22 +600,31 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
         cost, notes, tok = price(run)
         notes_all.update(notes)
         total += cost
-        passed += v.passed
-        failed += not v.passed
+        # A case that proves nothing on this layer is reported apart when it passes (2026-11-18 review r2
+        # B); when it fails it is a failure like any other, since its checks are real (r3).
+        na = v.passed and str(case.get("proves_nothing_on", "")).startswith("phone" if phone else "laptop")
+        known = bool(case.get("known_limit"))
+        if known:
+            known_rows.append(f"{case['id']} " + (f"KNOWN LIMIT {v.known_limit}" if v.known_limit else "no write"))
+        elif na:
+            na_ids.append(case["id"])
+        else:
+            passed += v.passed
+            failed += not v.passed
         tools = " ".join(c.key + ("[refused]" if c.refused_for_test else "") for t in run.turns for c in t.calls) or "-"
         turn_ms = [t.timings.get("test_turn_ms") or t.timings.get("eot_reply_ms") for t in run.turns]
         ms = "/".join(str(x) for x in turn_ms if x is not None) or (str(run.ms) if run.ms else "-")
-        row = {"id": case["id"], "pass": v.passed, "llm": v.llm, "tools": tools, "ms": ms,
+        row = {"id": case["id"], "pass": v.passed, "proves_nothing": na, "known_limit": v.known_limit, "llm": v.llm, "tools": tools, "ms": ms,
                "tokens": tok, "usd": str(cost), "priced": not any("no price" in n for n in notes), "failures": v.failures, "warnings": v.warnings,
                "answer": " | ".join(t.answer for t in run.turns), "notes": run.notes,
                "timings": run.timings}
         rows.append(row)
-        flag = "PASS" if v.passed else "FAIL"
+        flag = "KNWN" if known else "N/A " if na else "PASS" if v.passed else "FAIL"
         llm = f"  LLM {v.llm}" if v.llm else ""
         money = usd(cost) if row["priced"] else "no price"
         lines.append(f"{flag}  {case['id']:<22} {tools[:48]:<48} {ms:>11}  "
                      f"in {tok['prompt']:>6} cached {tok['cached']:>6} out {tok['out']:>4}  {money:>8}{llm}")
-        if verbose or not v.passed:
+        if verbose or not v.passed or v.known_limit:
             for f in v.failures:
                 lines.append(f"      x {f}")
             for w in v.warnings:
@@ -526,14 +646,20 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
             + ("  cost INCOMPLETE: some calls have no price on file" if any(not r["priced"] for r in rows) else "")
             + f"  cost {usd(total)} (ESTIMATE"
             + (f", incl. {usd(overhead)} for the context cache" if overhead else "") + ")")
+    na_line = ([f"passed, not counted, proves nothing on this layer ({len(na_ids)}): {', '.join(na_ids)}"]
+               if na_ids else [])
+    hits = sum("KNOWN LIMIT" in r for r in known_rows)
+    if known_rows:
+        na_line.append(f"known limits, recorded, not counted ({hits} of {len(known_rows)} showed): {'; '.join(known_rows)}")
     tail = [f"note: {n}" for n in sorted(notes_all)]
     tail.append(voice_cost.ESTIMATE)
     if grader:
         tail.append("LLM = an LLM grader's opinion on the case's rubric; it does not change PASS/FAIL.")
     facts = {k: v for k, v in run_facts.items() if not k.startswith("_")}
     summary = {"model": model, "phone": phone, "passed": passed, "failed": failed, "missing": missing,
+               "not_counted": na_ids, "known_limits": known_rows,
                "usd": str(total), "overhead_usd": str(overhead), "cases": rows, "run": facts}
-    return [head, ""] + lines + [""] + tail, summary
+    return [head] + na_line + [""] + lines + [""] + tail, summary
 
 
 def compare(summaries: list[dict]) -> list[str]:

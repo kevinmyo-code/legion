@@ -4,6 +4,7 @@ import com.kevin.legion.ai.AgentProtocol
 import com.kevin.legion.ai.GeminiKeyProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -207,17 +208,28 @@ class OkHttpGemini(
     private val client: OkHttpClient = CLIENT,
     /** The user's key; a by-hand live check passes its own, read from a file and never printed. */
     private val key: () -> String = GeminiKeyProvider::key,
+    /** The API root; a test points it at a local socket. */
+    private val api: String = API,
 ) : GeminiStreamTransport, CacheApi {
 
     override suspend fun stream(model: String, body: JSONObject, onEvent: (JSONObject) -> Unit): StreamOutcome =
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
-                .url("$API/models/$model:streamGenerateContent?alt=sse")
+                .url("$api/models/$model:streamGenerateContent?alt=sse")
                 .header("x-goog-api-key", key())
                 .post(body.toString().toRequestBody(JSON))
                 .build()
             val call = client.newCall(request)
-            val handle = coroutineContext.job.invokeOnCompletion { if (it != null) call.cancel() }
+            // A plain invokeOnCompletion runs only once the blocked execute() returns (10 to 30 s on a
+            // hung request), so a timeout above could not take effect (2026-11-17 review). A child that
+            // is cancelled the moment this scope is cancels the call, and execute() throws at once.
+            val watcher = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                try {
+                    kotlinx.coroutines.awaitCancellation()
+                } finally {
+                    call.cancel()
+                }
+            }
             try {
                 call.execute().use { response ->
                     if (!response.isSuccessful) {
@@ -234,13 +246,13 @@ class OkHttpGemini(
                 if (!coroutineContext.job.isActive) throw kotlinx.coroutines.CancellationException("cancelled")
                 StreamOutcome.Network(e.javaClass.simpleName)
             } finally {
-                handle.dispose()
+                watcher.cancel()
             }
         }
 
     override suspend fun create(body: JSONObject): CacheCreateOutcome = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("$API/cachedContents")
+            .url("$api/cachedContents")
             .header("x-goog-api-key", key())
             .post(body.toString().toRequestBody(JSON))
             .build()

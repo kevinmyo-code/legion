@@ -36,8 +36,10 @@ object CascadeTimings {
      * The cloud fallback's own deadlines ([CloudSpeech]). NOT measured yet (2026-11-15: no live call
      * from this code): sized for a whole utterance uploaded on mobile data and one model call, so an
      * unmeasured path does not quietly fall to Live on every turn. A miss still goes to Live.
+     * 2026-11-18: a backstop above two tries at [GeminiStt.ATTEMPT_CAP_MS]; each try's own deadline
+     * ([GeminiStt.attemptTimeoutFor]) decides, so a short turn still fails in about 7 s.
      */
-    const val CLOUD_STT_FINAL_TIMEOUT_MS = 8_000L
+    const val CLOUD_STT_FINAL_TIMEOUT_MS = 2 * GeminiStt.ATTEMPT_CAP_MS + 1_000L
 
     /**
      * How long the first model call waits for the conversation's live context (clock, place,
@@ -45,5 +47,9 @@ object CascadeTimings {
      * Reasoned, not measured: the 11-15 phone logs show the whole prompt build at ~6.5 s cold.
      */
     const val LIVE_CONTEXT_WAIT_MS = 2_000L
-    const val CLOUD_TTS_FIRST_AUDIO_TIMEOUT_MS = 6_000L
+    /**
+     * The reply's backstop: above the clip's own two tries ([GeminiTts.FIRST_AUDIO_MS] each), so the
+     * retry always gets to run before the speaker gives up on the clip.
+     */
+    const val CLOUD_TTS_FIRST_AUDIO_TIMEOUT_MS = 2 * GeminiTts.FIRST_AUDIO_MS + 1_500L
 }

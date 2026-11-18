@@ -73,13 +73,13 @@ internal class KeptLineAudio(
 
     companion object {
         /**
-         * Nineteen lines per voice since stage 6 (8 acks, 5 fillers, 6 check-in closers): 57 in three
-         * voices, so a closer never evicts an ack.
+         * About 65 lines per voice since 2026-11-17 (8 acks, 5 fillers, ~44 tool lines, the missed
+         * line, the check-in closers): two voices' worth, so a voice switch does not evict the other.
          */
-        const val MAX_FILES = 64
+        const val MAX_FILES = 160
 
-        /** About 80 s of 24 kHz PCM16: more than every kept line takes in three voices. */
-        const val MAX_BYTES = 4L * 1024 * 1024
+        /** About 200 s of 24 kHz PCM16: every kept line in two voices, at ~1.3 s a line. */
+        const val MAX_BYTES = 10L * 1024 * 1024
         private const val SUFFIX = ".pcm"
 
         fun name(key: String): String {

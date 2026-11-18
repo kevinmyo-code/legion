@@ -177,6 +177,50 @@ def test_scorecard_and_compare():
     assert cmp[0] == "COMPARISON" and "due_today" in cmp[2]
 
 
+def test_a_case_that_proves_nothing_here_is_reported_apart_and_not_counted():
+    cases = [CASES[0], {"id": "cannot_fail", "say": "x", "proves_nothing_on": "laptop: why", "expect": {}}]
+    lines = case_lines("due_today", "what's due today",
+                       [("day", {"action": "read_calendar", "from": "2026-11-15", "to": "2026-11-15"}, CAL_OPEN)],
+                       "Your HIST 101 reading quiz is due tonight.") + case_lines("cannot_fail", "x", [], "ok")
+    facts, runs = parse(lines)
+    out, summary = ve.scorecard(cases, runs, facts, phone=False)
+    assert "pass 1/1" in out[0]
+    assert out[1].startswith("passed, not counted, proves nothing on this layer (1): cannot_fail")
+    assert any(l.startswith("N/A   cannot_fail") for l in out)
+    assert summary["passed"] == 1 and summary["not_counted"] == ["cannot_fail"]
+    # On the phone the same case counts.
+    _, phone = ve.scorecard(cases, runs, facts, phone=True)
+    assert phone["not_counted"] == []
+
+
+def test_a_marked_case_that_fails_is_shown_and_counted_as_a_failure():
+    cases = [{"id": "cannot_fail", "say": "x", "proves_nothing_on": "laptop: why", "expect": {"ends": True}}]
+    facts, runs = parse(case_lines("cannot_fail", "x", [], "ok"))
+    out, summary = ve.scorecard(cases, runs, facts, phone=False)
+    assert "pass 0/1" in out[0]
+    assert any(l.startswith("FAIL  cannot_fail") for l in out)
+    assert summary["failed"] == 1 and summary["not_counted"] == []
+
+
+def test_a_known_limit_never_fails_and_records_a_write():
+    case = {"id": "lone", "say": "Five.", "known_limit": "lone_word_write", "expect": {"answer_not": ["(?i)catch"]}}
+    switched = case_lines("lone", "Five.", [("car", {"action": "switch_vehicle", "vehicle": "Invented Fit"},
+                                             '{"success":true,"message":"You are on the Invented Fit now."}')], "Five.")
+    facts, runs = parse(switched)
+    v = ve.score_case(case, runs[0], phone=False)
+    assert v.passed and v.known_limit == "lone_word_write: car/switch_vehicle"
+    assert any(w.startswith("KNOWN LIMIT lone_word_write: car/switch_vehicle") for w in v.warnings)
+    out, summary = ve.scorecard([case], runs, facts, phone=False)
+    assert "pass 0/0" in out[0]
+    assert any("known limits, recorded, not counted (1 of 1 showed): lone KNOWN LIMIT lone_word_write: car/switch_vehicle" in l for l in out)
+    assert any(l.startswith("KNWN  lone") for l in out)
+    assert summary["known_limits"] == ["lone KNOWN LIMIT lone_word_write: car/switch_vehicle"]
+    # No write: still recorded, nothing flagged.
+    facts, runs = parse(case_lines("lone", "Five.", [], "Five what?"))
+    v = ve.score_case(case, runs[0], phone=False)
+    assert v.passed and v.known_limit is None
+
+
 def test_committed_cases_load_and_have_unique_ids():
     cases = ve.load_cases([ve.CASES])
     assert len(cases) >= 10
@@ -265,3 +309,101 @@ def test_heard_line_replaces_a_redacted_answer():
     lines.append(L("LIVE_TEST", "case_end id=guard ms=1500"))
     _, runs = parse(lines)
     assert runs[0].turns[0].answer == "Nothing was saved; ask me again."
+
+
+def test_the_holding_line_is_checked_against_the_tool_that_started():
+    case = {"id": "filler_fleet", "say": "how is the truck doing",
+            "expect": {"calls": ["ask/ask_fleet"], "filler_has": ["car specialist"]}}
+    lines = case_lines("filler_fleet", "how is the truck doing",
+                       [("ask", {"domain": "ask_fleet", "question": "how is the truck"}, '{"success":true}')],
+                       "Battery is fine.")
+    with_line = lines[:4] + [L("LIVE_TEST", 'filler at=start text="Asking the car specialist."')] + lines[4:]
+    _, runs = parse(with_line)
+    assert runs[0].turns[0].fillers == ["Asking the car specialist."]
+    assert ve.score_case(case, runs[0], phone=False).passed
+    _, bare = parse(lines)
+    v = ve.score_case(case, bare[0], phone=False)
+    assert any("holding line" in f for f in v.failures)
+    # The phone logs no words for it, so the check is laptop only.
+    assert not any("holding line" in f for f in ve.score_case(case, bare[0], phone=True).failures)
+    quiet = {"id": "filler_fleet", "say": "x", "expect": {"no_filler": True}}
+    assert any("holding line was said" in f for f in ve.score_case(quiet, runs[0], phone=False).failures)
+
+
+def test_a_tag_in_the_answer_or_on_a_money_line_fails():
+    case = {"id": "tags_never_on_money", "say": "balance", "expect": {"tts_not": ["<"]}}
+    lines = case_lines("tags_never_on_money", "balance", [], "You have forty dollars.")
+    tagged = lines[:-4] + [L("LIVE_TEST", 'tts text="You have forty dollars. <chuckle>"')] + lines[-4:]
+    _, runs = parse(tagged)
+    assert any("handed" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+    spoken = case_lines("tags_never_on_money", "balance", [], "You have forty dollars <chuckle>.")
+    _, runs = parse(spoken)
+    assert any("expression tag" in f for f in ve.score_case(case, runs[0], phone=True).failures)
+
+
+def test_a_silent_case_passes_only_when_nothing_is_said_or_run():
+    case = {"id": "quiet", "say": "x", "expect": {"silent": True}}
+    said = case_lines("quiet", "", [], "Hello there.")
+    _, runs = parse(said)
+    assert any("on silence" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+    quiet = [l for l in case_lines("quiet", "", [], "") if "assistant text" not in l]
+    _, runs = parse(quiet)
+    assert ve.score_case(case, runs[0], phone=False).passed
+
+
+def test_the_day_read_is_graded_not_the_dates_the_model_sent():
+    case = {"id": "then_tomorrow", "turns": [{"say": "and tomorrow?", "expect": {"read_day": ["{today+1}"]}}]}
+    base = case_lines("then_tomorrow", "and tomorrow?",
+                      [("day", {"action": "read_calendar", "from": "2026-11-17", "to": "2026-11-17"}, '{"success":true}')],
+                      "The career fair.")
+    right = base[:6] + [L("LIVE_TEST", 'read window="Monday 2026-11-16" date_note=true')] + base[6:]
+    _, runs = parse(right)
+    assert ve.score_case(case, runs[0], phone=False).passed
+    wrong = base[:6] + [L("LIVE_TEST", 'read window="Tuesday 2026-11-17" date_note=false')] + base[6:]
+    _, runs = parse(wrong)
+    assert any("missed" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+
+
+def test_on_the_phone_the_calendar_call_argument_is_graded():
+    case = {"id": "then_tomorrow", "turns": [{"say": "and tomorrow?", "expect": {"read_day": ["{today+1}"]}}]}
+    wrong = case_lines("then_tomorrow", "and tomorrow?",
+                       [("day", {"action": "read_calendar", "from": "2026-11-17", "to": "2026-11-17"}, '{"success":true}')],
+                       "The career fair.")
+    _, runs = parse(wrong)
+    assert any("asked for" in f for f in ve.score_case(case, runs[0], phone=True).failures)
+    for args in ({"from": "2026-11-16", "to": "2026-11-16"}, {"from": "tomorrow", "to": "tomorrow"}):
+        right = case_lines("then_tomorrow", "and tomorrow?", [("day", {"action": "read_calendar", **args}, '{"success":true}')],
+                           "The career fair.")
+        _, runs = parse(right)
+        assert ve.score_case(case, runs[0], phone=True).passed, args
+
+
+def test_a_missed_case_passes_only_on_the_guard_made_miss_not_the_model_saying_catch():
+    case = {"id": "shape", "say": "x", "expect": {"missed": True}}
+    model = case_lines("shape", "x", [], "Sorry, I didn't catch the truck's name.")
+    _, runs = parse(model)
+    assert any("reached the model" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+    guard = model[:3] + [L("LIVE_TEST", "missed reason=not_english")] + model[3:]
+    _, runs = parse(guard)
+    assert ve.score_case(case, runs[0], phone=False).passed
+
+
+def test_a_spoken_case_whose_voice_made_no_audio_fails():
+    case = {"id": "spoken", "say": "x", "stt_audio": True, "expect": {"silent": True}}
+    quiet = [l for l in case_lines("spoken", "", [], "") if "assistant text" not in l]
+    empty = quiet[:1] + [L("LIVE_TEST", "stt_audio audio_ms=900 voiced_ms=0 result=text")] + quiet[1:]
+    _, runs = parse(empty)
+    assert any("no audio" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+    heard = quiet[:1] + [L("LIVE_TEST", "stt_audio audio_ms=2900 voiced_ms=1200 result=text")] + quiet[1:]
+    _, runs = parse(heard)
+    assert ve.score_case(case, runs[0], phone=False).passed
+
+
+def test_a_goodbye_case_passes_only_when_the_conversation_ended():
+    case = {"id": "bye", "say": "Goodbye, Alfred.", "expect": {"ends": True}}
+    lines = [l for l in case_lines("bye", "Goodbye, Alfred.", [], "") if "assistant text" not in l]
+    ended = lines[:3] + [L("LIVE_TEST", "ended reason=sleep_phrase")] + lines[3:]
+    _, runs = parse(ended)
+    assert ve.score_case(case, runs[0], phone=False).passed
+    _, runs = parse(lines)
+    assert any("did not end" in f for f in ve.score_case(case, runs[0], phone=False).failures)

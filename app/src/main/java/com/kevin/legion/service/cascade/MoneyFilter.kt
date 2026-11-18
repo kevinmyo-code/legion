@@ -40,7 +40,7 @@ internal class MoneyFilter : SentenceFilter {
     }
 
     companion object {
-        private const val ENDS = ".!?…"
+        private const val ENDS = ".!?…။。！？"
         private val SYMBOL = Regex(
             """[$€£]\s?\d|\d+\.\d{2}\b|\d[\d,]*\s*(dollars?|bucks?|cents?)\b""",
             RegexOption.IGNORE_CASE,

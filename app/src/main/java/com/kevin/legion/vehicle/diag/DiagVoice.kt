@@ -103,7 +103,8 @@ object DiagVoice {
         if (confirmed) confirm(context, userText) else ask(context, modules, userText)
 
     private suspend fun confirm(context: Context, userText: String?): JSONObject {
-        val refusal = gate.checkConfirmed(userText)
+        val heard = kotlin.coroutines.coroutineContext[ClearCodesVoiceGate.HeardVoice]?.voicedMs
+        val refusal = gate.checkConfirmed(userText, heard)
         val p = pending
         if (refusal != null || p == null) {
             return fail(refusal ?: ClearCodesVoiceGate.NO_QUESTION).put("needsConfirmation", refusal != null)
