@@ -47,7 +47,11 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   useEffect(() => {
     const el = orbRef.current
     if (!el || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver((entries) => setOrbSeen(entries.some((e) => e.isIntersecting)))
+    // The LAST entry is the orb's current state: a fast scroll can deliver [in, out] in one batch.
+    const observer = new IntersectionObserver((entries) => {
+      const latest = entries[entries.length - 1]
+      if (latest) setOrbSeen(latest.isIntersecting)
+    })
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
