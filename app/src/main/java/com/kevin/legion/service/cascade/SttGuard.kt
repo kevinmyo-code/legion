@@ -117,11 +117,12 @@ internal object SttGuard {
     /** A single word over less than this much voice is noise (2026-11-18 r2: kept low, to be tuned on car audio). */
     const val MIN_VOICED_MS = 60L
 
-    /** A stop phrase ends the conversation only over at least this much voice (or with none measured). */
-    const val STOP_MIN_VOICED_MS = 150L
-
-    /** A stop may end the conversation: its audio carried a voice, or nothing was measured. */
-    fun stopVoiced(voicedMs: Long?): Boolean = voicedMs == null || voicedMs >= STOP_MIN_VOICED_MS
+    /**
+     * A stop may end the conversation: its audio carried a voice by the same measure as any speech
+     * ([MIN_VOICED_MS]; 2026-11-18 r3: a quiet "Stop." in road noise must still stop), or nothing was
+     * measured.
+     */
+    fun stopVoiced(voicedMs: Long?): Boolean = voicedMs == null || voicedMs >= MIN_VOICED_MS
     const val VOICE_OVER_FLOOR_DB = 12.0
     private const val WINDOW_MS = 30L
     private const val SAMPLE_RATE = 16_000

@@ -89,11 +89,11 @@ class SttGuardTest {
     }
 
     @Test
-    fun `a stop needs a voice under it, or nothing measured`() {
+    fun `a stop needs the same voice as any speech, or nothing measured`() {
         assertTrue(SttGuard.stopVoiced(null))
-        assertTrue(SttGuard.stopVoiced(150))
+        assertTrue("a quiet stop in road noise", SttGuard.stopVoiced(60))
         assertTrue(!SttGuard.stopVoiced(0))
-        assertTrue(!SttGuard.stopVoiced(149))
+        assertTrue(!SttGuard.stopVoiced(59))
     }
 
     @Test
