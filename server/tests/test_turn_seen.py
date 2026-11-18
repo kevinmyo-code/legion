@@ -13,6 +13,7 @@ import pytest
 from agents.runtime.model import FakeModel, call, say
 from assistant import turn_slots
 from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
+    _clean,
     _events,
     _of,
     _post,

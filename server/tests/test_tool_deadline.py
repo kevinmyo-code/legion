@@ -21,6 +21,7 @@ from django.db import connection, transaction
 
 from engine_mcp.tools import failed, ok
 from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
+    _clean,
     _events,
     _of,
     _post,
@@ -29,6 +30,11 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+# The real web search transport, taken at import: `conftest._no_web_search` replaces it per test.
+from engine_mcp import web_search as _web_search  # noqa: E402
+
+REAL_WEB_TRANSPORT = _web_search._transport
 
 DEADLINE_S = 0.5
 
@@ -285,7 +291,7 @@ def test_the_capped_timeout_reaches_the_transport(monkeypatch):
     monkeypatch.setattr(web_search._OPENER, "open", open_)
     with deadline.within(0.3):
         try:
-            web_search._transport("POST", "https://example.invalid/", {}, b"{}")
+            REAL_WEB_TRANSPORT("POST", "https://example.invalid/", {}, b"{}")
         except Exception:  # noqa: BLE001 - only the timeout handed over matters here
             pass
     assert handed and handed[0] <= 0.3

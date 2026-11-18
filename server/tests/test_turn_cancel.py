@@ -200,7 +200,7 @@ def test_the_cancel_route_is_also_limited_per_address(member, visitor, monkeypat
     from django.core.cache import cache
 
     cache.clear()
-    monkeypatch.setattr(views.AssistantTurnCancelIpThrottle, "rate", "2/min")
+    monkeypatch.setattr(views.AssistantTurnCancelIpThrottle, "rate", "2/min", raising=False)
     body = {"turn_id": str(uuid.uuid4())}
     assert member.post("/api/assistant/turn/cancel", body, format="json").status_code == 204
     assert visitor.post("/api/assistant/turn/cancel", body, format="json").status_code == 204

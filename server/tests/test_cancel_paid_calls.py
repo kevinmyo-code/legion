@@ -88,9 +88,10 @@ def test_a_cancel_while_waiting_on_speech_ends_the_turn_within_a_second(
     stalled = threading.Event()
 
     def speak(text, voice, spoken):
-        # The speech service stops sending mid-answer; the browser cancels meanwhile.
+        # The speech service stops sending mid-answer; the browser cancels 300 ms later, while
+        # the turn is already waiting for the first chunk.
         stalled.set()
-        cancel.hit = True
+        threading.Timer(0.3, lambda: setattr(cancel, "hit", True)).start()
         time.sleep(5)
         yield b"\x01\x00" * 480
 
@@ -100,4 +101,4 @@ def test_a_cancel_while_waiting_on_speech_ends_the_turn_within_a_second(
     events = _events(_post(member, text="What's on?", spoken="true", turn_id=str(uuid.uuid4())))
     assert stalled.is_set()
     assert time.monotonic() - started < 1.0
-    assert _status(events) in ("cancelled", None)
+    assert _status(events) == "cancelled"

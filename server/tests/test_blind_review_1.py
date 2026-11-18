@@ -233,18 +233,39 @@ def test_every_started_model_call_counts():
     assert counted.calls == 2
 
 
-def test_speech_requests_per_turn_are_capped():
+def test_speech_requests_per_turn_are_capped_with_one_kept_for_the_closing_line():
+    """Round 3 S4: the answer may use what can be reserved, up to `TTS_REQUEST_CEILING`, less one
+    request kept back; the closing line may use that one. Here nothing more can be reserved."""
     from tests.test_assistant_cascade import FakeSpeech
 
     speech_ = FakeSpeech()
     speaker = cascade.Speaker(speech_, "Puck", enabled=True)
     speaker.grouping = "sentence"
+    speaker.more = lambda n: False
     for i in range(cascade.MAX_TTS_REQUESTS + 4):
+        speaker.add(f"Sentence {i}.")
+    speaker.closing = True
+    speaker.add("Nothing was changed.")
+    events = list(speaker.drain())
+    speaker.close()
+    said = [text for text, _voice in speech_.spoken]
+    assert len(said) == cascade.MAX_TTS_REQUESTS
+    assert "Nothing was changed." in said  # speech runs on two threads: order not fixed
+    assert speaker.skipped == 5
+    assert [e.type for e in events].count("speech_stopped") == 1
+
+
+def test_a_members_long_answer_reserves_more_speech_up_to_the_ceiling():
+    from tests.test_assistant_cascade import FakeSpeech
+
+    speech_ = FakeSpeech()
+    speaker = cascade.Speaker(speech_, "Puck", enabled=True)
+    speaker.grouping = "sentence"
+    for i in range(cascade.TTS_REQUEST_CEILING + 3):
         speaker.add(f"Sentence {i}.")
     list(speaker.drain())
     speaker.close()
-    assert len(speech_.spoken) == cascade.MAX_TTS_REQUESTS
-    assert speaker.skipped == 4
+    assert len(speech_.spoken) == cascade.TTS_REQUEST_CEILING - 1  # one kept back
 
 
 def test_a_filler_line_whose_speech_failed_is_not_asked_for_every_turn():

@@ -161,8 +161,11 @@ def _two_tools_then(answer: str):
 
 
 @pytest.mark.django_db
-def test_a_long_answer_after_two_tools_is_spoken_to_its_end(member, engine):
+def test_a_long_answer_after_two_tools_is_spoken_to_its_end(member, engine, monkeypatch):
     from tests.test_assistant_cascade import _events, _post
+
+    # One request per sentence: 2 leads and 9 answer sentences, past the old cap of 6.
+    monkeypatch.setattr(cascade, "SPEECH_GROUPING", "sentence")
 
     engine.model = _two_tools_then(LONG_ANSWER + " That is the lot.")
     events = _events(_post(member, text="Walk me through the week.", spoken="true"))
@@ -179,6 +182,7 @@ def test_when_speech_stops_early_the_closing_line_is_said_and_the_page_is_told(
     from tests.test_assistant_cascade import _events, _post
 
     monkeypatch.setattr(demo_budget, "reserve_speech_requests", lambda *a, **k: None)
+    monkeypatch.setattr(cascade, "SPEECH_GROUPING", "sentence")
     # A claimed change with no write: the closing honesty line must still be heard.
     engine.model = _two_tools_then(LONG_ANSWER + " I've added it to your list.")
     events = _events(_post(visitor, text="Walk me through the week.", spoken="true"))
