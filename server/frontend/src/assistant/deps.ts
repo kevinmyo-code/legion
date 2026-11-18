@@ -251,6 +251,15 @@ async function loadTurnModels(): Promise<TurnDetector | null> {
   }
 }
 
+/**
+ * Early transcripts (the phone's speculation, spec 33 adapted): OFF for the demo's first ship
+ * (blind review 2026-11-17). Each 300 ms pause re-uploaded the whole turn so far (N pauses, N paid
+ * calls, about N squared over two of audio), and the text replaced the final audio without checking
+ * the audio had not grown, so a soft last word was lost. Off: `/transcribe` is never called and the
+ * turn's audio goes to `/turn` once. The client's speculation code and its tests stay, behind this.
+ */
+export const EARLY_TRANSCRIPT = false
+
 /** What has been said so far, transcribed early; null when it could not be had. */
 async function transcribe(audio: Int16Array, signal: AbortSignal): Promise<string | null> {
   const form = new FormData()
@@ -293,7 +302,7 @@ export function createCascadeDeps(options: { funnelRef?: string } = {}): Cascade
     startTurn,
     robotic,
     turnDetector: loadTurnModels,
-    transcribe,
+    ...(EARLY_TRANSCRIPT ? { transcribe } : {}),
     ...(options.funnelRef !== undefined ? { funnel: (event) => postFunnel(event, options.funnelRef) } : {}),
     audio: (): AudioIO => {
       if (audioFactory) return audioFactory()

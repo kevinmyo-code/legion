@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { CascadeClient, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
+import { EARLY_TRANSCRIPT, createCascadeDeps } from './deps'
 import { pcm16ToBase64 } from './pcm'
 import type { SseEvent } from './sse'
 import { BargeInGate } from './turn/barge-in-gate'
@@ -76,13 +77,20 @@ class StubDetector implements TurnDetector {
   }
 }
 
-function build(answers: TurnStart[], options: { prepare?: () => Promise<boolean>; transcript?: string | null } = {}) {
+function build(
+  answers: TurnStart[],
+  options: { prepare?: () => Promise<boolean>; transcript?: string | null; early?: boolean } = {},
+) {
   const audio = new FakeAudio()
   const requests: TurnRequest[] = []
   const signals: AbortSignal[] = []
   const funnel: FunnelEvent[] = []
   const transcribeSignals: AbortSignal[] = []
   const detector = new StubDetector()
+  const transcribe = vi.fn(async (_audio: Int16Array, signal: AbortSignal) => {
+    transcribeSignals.push(signal)
+    return options.transcript === undefined ? 'How is it built' : options.transcript
+  })
   const deps: CascadeDeps = {
     startTurn: vi.fn(async (request: TurnRequest, signal: AbortSignal) => {
       requests.push(request)
@@ -93,10 +101,9 @@ function build(answers: TurnStart[], options: { prepare?: () => Promise<boolean>
     now: () => Date.now(),
     utcOffsetMinutes: () => 0,
     turnDetector: async () => detector,
-    transcribe: vi.fn(async (_audio: Int16Array, signal: AbortSignal) => {
-      transcribeSignals.push(signal)
-      return options.transcript === undefined ? 'How is it built' : options.transcript
-    }),
+    // Early transcripts are off on the page (`deps.ts` EARLY_TRANSCRIPT); the tests of the code
+    // behind the switch turn it on here.
+    ...(options.early ? { transcribe } : {}),
     funnel: (event) => funnel.push(event),
   }
   const client = new CascadeClient(deps, {
@@ -106,7 +113,7 @@ function build(answers: TurnStart[], options: { prepare?: () => Promise<boolean>
     ...(options.prepare ? { prepare: options.prepare } : {}),
   })
   client.attach()
-  return { client, audio, requests, signals, funnel, detector, transcribeSignals, deps }
+  return { client, audio, requests, signals, funnel, detector, transcribeSignals, transcribe, deps }
 }
 
 /** Open: tap, greeting played and drained, listening with the models loaded. */
@@ -201,9 +208,29 @@ describe('the models in the conversation', () => {
   })
 })
 
-describe('speculation (early transcript at 300 ms of silence)', () => {
-  it('sends the early words as a spoken turn when nothing was said after them', async () => {
+describe('early transcripts, off for this ship (deps.ts EARLY_TRANSCRIPT)', () => {
+  it("the page's deps carry no early transcript", () => {
+    expect(EARLY_TRANSCRIPT).toBe(false)
+    expect(createCascadeDeps().transcribe).toBeUndefined()
+  })
+
+  it('off: a pause transcribes nothing and the turn goes to the engine once, as audio', async () => {
     const t = build([spoken('Hello.')])
+    await open(t)
+    t.detector.handlers?.onStart()
+    t.detector.handlers?.onEarly(UTTERANCE)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.transcribe).not.toHaveBeenCalled()
+    expect(t.requests).toHaveLength(2)
+    expect(t.requests[1].audio).toBe(UTTERANCE)
+    expect(t.requests[1].text).toBeUndefined()
+  })
+})
+
+describe('speculation (early transcript at 300 ms of silence), behind the switch', () => {
+  it('sends the early words as a spoken turn when nothing was said after them', async () => {
+    const t = build([spoken('Hello.')], { early: true })
     await open(t)
     t.detector.handlers?.onStart()
     t.detector.handlers?.onEarly(UTTERANCE)
@@ -215,7 +242,7 @@ describe('speculation (early transcript at 300 ms of silence)', () => {
   })
 
   it('throws the early words away when speech resumes, and sends the audio', async () => {
-    const t = build([spoken('Hello.')])
+    const t = build([spoken('Hello.')], { early: true })
     await open(t)
     t.detector.handlers?.onEarly(UTTERANCE)
     t.detector.handlers?.onResumed()
@@ -227,7 +254,7 @@ describe('speculation (early transcript at 300 ms of silence)', () => {
   })
 
   it('falls back to the audio when the early transcript failed', async () => {
-    const t = build([spoken('Hello.')], { transcript: null })
+    const t = build([spoken('Hello.')], { transcript: null, early: true })
     await open(t)
     t.detector.handlers?.onEarly(UTTERANCE)
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
