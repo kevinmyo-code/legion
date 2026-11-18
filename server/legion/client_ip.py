@@ -56,6 +56,14 @@ def from_cloudflare(address) -> bool:
     return address is not None and any(address in net for net in CLOUDFLARE_RANGES)
 
 
+def _keyed(address) -> str:
+    """An IPv6 address counts as its /64 (round 2 finding 12): one host holds a whole /64 and
+    could rotate through it for fresh keys. IPv4 is the address itself."""
+    if address.version == 6:
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return str(address)
+
+
 def client_ip(request) -> str:
     """The address a per-address throttle counts."""
     meta = request.META
@@ -64,9 +72,9 @@ def client_ip(request) -> str:
     if from_cloudflare(peer):
         forwarded = _ip(meta.get("HTTP_CF_CONNECTING_IP"))
         if forwarded is not None:
-            return str(forwarded)
+            return _keyed(forwarded)
     if peer is not None:
-        return str(peer)
+        return _keyed(peer)
     return meta.get("REMOTE_ADDR") or "unknown"
 
 

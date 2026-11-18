@@ -340,3 +340,17 @@ def test_a_rolled_over_record_keeps_the_conversations_time_window(visitor, engin
     rolled = DeviceLog.objects.get(batch_id=second["conversation_id"])
     assert rolled.batch_id != row.batch_id
     assert rolled.window_start == row.window_start
+
+
+# ---- finding 12: an IPv6 caller counts as its /64 ----------------------------------------------
+
+
+def test_an_ipv6_caller_is_keyed_on_its_slash_64(rf):
+    from legion.client_ip import client_ip
+
+    a = rf.get("/", HTTP_X_FORWARDED_FOR="2001:db8:1:2::10")
+    b = rf.get("/", HTTP_X_FORWARDED_FOR="2001:db8:1:2:ffff::99")
+    c = rf.get("/", HTTP_X_FORWARDED_FOR="2001:db8:1:3::10")
+    assert client_ip(a) == client_ip(b) == "2001:db8:1:2::/64"
+    assert client_ip(c) != client_ip(a)
+    assert client_ip(rf.get("/", REMOTE_ADDR="192.0.2.4")) == "192.0.2.4"
