@@ -24,18 +24,43 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
 pytestmark = pytest.mark.django_db
 
 
-def test_side_talk_is_ignored_and_keeps_nothing_but_a_count(member, engine):
+def _warm(monkeypatch, engine, user):
+    from assistant import fillers, voice_engine
+
+    audio = cascade.FillerAudio(spawn=lambda work: work())
+    audio.warm(engine.speech, voice_engine.voice_for(user))
+    monkeypatch.setattr(cascade, "FILLER_AUDIO", audio)
+    monkeypatch.setattr(cascade, "LINES", fillers.LinePicker())
+
+
+def test_side_talk_is_ignored_and_keeps_nothing_but_a_count(
+    member, engine, monkeypatch, household_user
+):
+    _warm(monkeypatch, engine, household_user)
+    engine.model = FakeModel([say("Hi.")])
+    first = _of(_events(_post(member, text="Hi.")), "turn")[0]["conversation_id"]
     engine.speech.heard = "Wow, the voice on this thing is wild."
     engine.model = FakeModel([call(cascade.NOT_FOR_ME_TOOL, {})])
-    events = _events(_post(member, audio=PCM))
+    events = _events(_post(member, audio=PCM, conversation_id=first))
+    # Silence: not even an acknowledgement (round 2 speech review 5).
     assert _of(events, "sentence") == []
-    assert _of(events, "audio") == [] or all(e.get("filler") for e in _of(events, "audio"))
+    assert _of(events, "audio") == [] and _of(events, "filler") == []
     done = _of(events, "done")[0]
     assert done["ignored"] == "not_addressed" and "words" not in done
     record = _record(_of(events, "turn")[0]["conversation_id"])
     assert "voice on this thing" not in record
     assert "addressed decision=not_addressed" in record
     assert len(engine.model.requests) == 1  # the same model call, no extra round
+
+
+def test_the_first_utterance_after_the_tap_may_get_an_acknowledgement(
+    member, engine, monkeypatch, household_user
+):
+    _warm(monkeypatch, engine, household_user)
+    engine.speech.heard = "What did we spend on groceries last month?"
+    engine.model = FakeModel([say("About four hundred.")])
+    events = _events(_post(member, audio=PCM))
+    assert [f["tool"] for f in _of(events, "filler")] == [""]
 
 
 def test_a_direct_question_is_answered(member, engine):

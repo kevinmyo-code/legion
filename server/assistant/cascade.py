@@ -1151,9 +1151,11 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("robotic", ROBOTIC_ACK, False)
         return
-    if speak and needs_work(words):
+    if speak and door.turn == 0 and needs_work(words):
         # First sound within about a second (section 8.2): a short acknowledgement from memory
-        # while the model's first round runs. Never the same one twice running.
+        # while the model's first round runs. Only on the first utterance after the tap, which is
+        # for the assistant by construction (round 2 speech review 5): on any later turn nothing
+        # is said until the model has started an answer or a tool has started.
         picked = filler_audio.pick(voice, ACK_TOOL)
         if picked is not None:
             line, audio = picked
