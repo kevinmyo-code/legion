@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { DEMO_FULL, STILL_BUSY } from './cascade-words'
-import { CONVERSATION_CLOSED, CascadeClient, type CascadeDeps, type TurnRequest, type TurnStart } from './cascade-client'
+import { CONVERSATION_CLOSED, CascadeClient, ECHO_TAIL_MS, type CascadeDeps, type TurnRequest, type TurnStart } from './cascade-client'
 import type { AssistantClient } from './client'
 import type { RecordEvent, RecordTransport } from './conversation-record'
 import { MAX_UTTERANCE_MS, SILENCE_MS, WINDOW_MS } from './endpointer'
@@ -106,6 +106,8 @@ async function open(client: CascadeClient, audio: FakeAudio) {
   await settle()
   drained(audio)
   await settle()
+  // The greeting's tail in the room, which the page does not listen to.
+  feed(audio, QUIET, ECHO_TAIL_MS)
 }
 
 describe('CascadeClient', () => {

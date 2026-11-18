@@ -148,6 +148,8 @@ export interface CascadeOptions {
   onEngineLive?: () => void
 }
 
+/** After the reply ends, this much audio is not listened to: its tail is still in the room. */
+export const ECHO_TAIL_MS = 300
 /** Pre-roll kept ahead of the first voiced chunk (20 ms chunks), so the first word is not clipped. */
 const PREROLL_CHUNKS = 15
 
@@ -212,6 +214,10 @@ export class CascadeClient {
   private prepared = false
   /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
   private entering = false
+  /** The gate fired over the reply, which is paused until its verdict; a turn that ended meanwhile. */
+  private bargePending: { held: Int16Array | null } | null = null
+  /** Audio right after the reply ended that is not yet listened to (ECHO_TAIL_MS). */
+  private tailLeftMs = 0
   /** The closing tone is what is playing. */
   private toning = false
   private enteringSince = 0
@@ -444,9 +450,7 @@ export class CascadeClient {
           onResumed: () => this.dropSpec(),
           onEnd: (audio, _reason, silenceMs) => this.onTurnEnd(audio, silenceMs),
           onBargeIn: () => this.onBargeIn(),
-          onVerdict: (v) => {
-            if (v.nowDisabled) this.halfDuplex = true
-          },
+          onVerdict: (v) => this.onVerdict(v.selfInterrupt, v.nowDisabled),
         })
       },
       () => {},
@@ -611,6 +615,7 @@ export class CascadeClient {
     if (!keepTurn) {
       this.speechStarted = false
       this.detector?.reset()
+      this.tailLeftMs = ECHO_TAIL_MS
     }
     this.set({ mic: 'on', phase: this.state.phase === 'idle' ? 'live' : this.state.phase })
   }
@@ -670,7 +675,9 @@ export class CascadeClient {
     this.chunks = []
     this.speechStarted = false
     if (this.state.mic === 'on') this.set({ mic: 'off' })
-    void this.sendTurn(audio, spec)
+    // Ended before the gate's verdict: sent only if it was a person.
+    if (this.bargePending) this.bargePending.held = audio
+    else void this.sendTurn(audio, spec)
   }
 
   private async sendTurn(audio: Int16Array, spec: { result: Promise<string | null> } | null) {
@@ -686,14 +693,42 @@ export class CascadeClient {
     void this.turn({ audio }, true)
   }
 
-  /** Talked over: the reply stops at once, the engine's turn is cancelled, and this is a turn. */
+  /**
+   * Talked over. The reply is paused, not cut, until the gate's verdict (about 1.2 s): its own
+   * echo then plays on with nothing posted (review 2026-11-17: an echo cut the answer and was sent
+   * as a paid turn); a person cuts it, and what they said is the turn. Without `pause` here, it
+   * cuts at once.
+   */
   private onBargeIn() {
     if (!this.voiceOpen || (!this.playing && !this.awaiting) || !this.fullDuplex) return
+    if (this.audioIO?.pause) {
+      this.audioIO.pause()
+      this.bargePending = { held: null }
+    } else this.cutForBargeIn()
+    this.listen(true)
+    this.speechStarted = true
+  }
+
+  private cutForBargeIn() {
     this.bargedOver = this.lastReply
     this.bargeIns += 1
     this.cutReply('barge_in')
-    this.listen(true)
-    this.speechStarted = true
+  }
+
+  private onVerdict(selfInterrupt: boolean, nowDisabled: boolean) {
+    if (nowDisabled) this.halfDuplex = true
+    const pending = this.bargePending
+    if (!pending) return
+    this.bargePending = null
+    if (selfInterrupt) {
+      // Its own voice: what was heard goes, and the answer plays on from where it paused.
+      this.stopListening()
+      this.detector?.reset()
+      this.audioIO?.resume?.()
+      return
+    }
+    this.cutForBargeIn()
+    if (pending.held) void this.sendTurn(pending.held, null)
   }
 
   /** The reply has played to its end: listen again, or close if it was the sign-off. */
@@ -711,11 +746,14 @@ export class CascadeClient {
   private onChunk(pcm: Int16Array, generation: number) {
     if (generation !== this.micGeneration) return
     this.backstop.chunk()
+    // The reply's tail is still in the room (output latency, the room): not yet a turn.
+    const tail = this.listening && this.tailLeftMs > 0
+    if (tail) this.tailLeftMs -= (pcm.length / 16_000) * 1000
     if (this.detector) {
       // The models hear everything; while the reply plays only the barge-in gate listens, and only
       // in full duplex. Half-duplex: nothing heard while the assistant speaks is kept (spec 19).
-      this.detector.push(pcm, this.listening, this.playing && this.fullDuplex)
-      if (!this.listening || !this.endpointer) return
+      this.detector.push(pcm, this.listening && !tail, this.playing && this.fullDuplex)
+      if (!this.listening || !this.endpointer || tail) return
       // The endpointer runs the follow-up window (spec 14, 15) on the clock and the length cap from
       // the models' speech; noise alone never holds it open or reaches the cap.
       const verdict = this.endpointer.push(pcm, this.speechStarted)
@@ -729,7 +767,7 @@ export class CascadeClient {
       return
     }
     // Half-duplex: audio heard while the assistant thinks or speaks is never kept (spec 19).
-    if (!this.listening || !this.endpointer) return
+    if (!this.listening || !this.endpointer || tail) return
     const verdict = this.endpointer.push(pcm)
     this.chunks.push(pcm)
     if (!this.endpointer.heardSpeech && this.chunks.length > PREROLL_CHUNKS) this.chunks.shift()
@@ -1137,6 +1175,7 @@ export class CascadeClient {
 
   private cutReply(source: 'barge_in' | null) {
     const wasActive = this.playing || this.awaiting
+    this.bargePending = null
     this.deadline?.clear()
     this.dropTurn()
     this.turnGeneration += 1

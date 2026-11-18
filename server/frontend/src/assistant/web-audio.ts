@@ -217,6 +217,15 @@ export function createWebAudio(): AudioIO {
       if (idleTimer) clearTimeout(idleTimer)
       idleTimer = null
       setSounding(false)
+      if (playback?.state === 'suspended') void playback.resume()
+    },
+
+    pause() {
+      if (playback?.state === 'running') void playback.suspend()
+    },
+
+    resume() {
+      if (playback?.state === 'suspended') void playback.resume()
     },
 
     dispose() {
