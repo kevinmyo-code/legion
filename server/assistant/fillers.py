@@ -131,12 +131,18 @@ ACK = ("Yeah, one sec.", "Sure, one sec.", "Okay, one sec.", "Mm, one sec.")
 
 
 def all_lines() -> tuple[str, ...]:
-    seen: dict[str, None] = {}
+    """Every line, in the order they are fetched (`cascade.FillerAudio.warm`, during the greeting):
+    the acknowledgement first, then one line for each slow tool, then the fallback, then the rest,
+    so a turn right after the greeting already has what it needs (2026-11-18: it once had none)."""
+    seen: dict[str, None] = dict.fromkeys(ACK)
+    for slow, lines in FILLERS.values():
+        if slow and lines:
+            seen.setdefault(lines[0])
+    for line in FALLBACK:
+        seen.setdefault(line)
     for _slow, lines in FILLERS.values():
         for line in lines:
-            seen[line] = None
-    for line in (*FALLBACK, *ACK):
-        seen[line] = None
+            seen.setdefault(line)
     return tuple(seen)
 
 
