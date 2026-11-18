@@ -1634,8 +1634,11 @@ def _answer(
                 yield ev.Event("tool", payload)
                 # No filler once its tool has returned (round 2 speech review 7): the result is in
                 # hand, so a line would only delay what comes next, a code-written sentence first.
-                if done.verbatim and not verbatim_said:
-                    verbatim_said = True
+                # His profile (ends_turn) is always said; the money sentence once per turn, and
+                # only it holds back the model's later money sentences (`verbatim_said`).
+                if done.verbatim and (done.ends_turn or not verbatim_said):
+                    if not done.ends_turn:
+                        verbatim_said = True
                     if done.exact:
                         # Code's own sentences (his profile): no figure in them is rounded.
                         speaker.exact = True
@@ -1755,6 +1758,10 @@ def _answer(
             yield say(READ_THROUGH_WAIT)
         else:
             yield say(CHANGE_NOT_MADE)
+    elif wrote and any(c.ends_turn for c in door.calls):
+        # The turn ended on code's own answer (his profile) in the round that also made a change:
+        # the model never got to confirm it, so code does, in its own words.
+        yield say(CHANGE_MADE)
     timings["wait_reason"] = int(guard_refused)
     timings["unbacked"] = unbacked
     if failure is not None:
