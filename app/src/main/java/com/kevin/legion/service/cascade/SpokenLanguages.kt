@@ -8,9 +8,12 @@ import android.content.Context
  * - Settings > Voice engine > "Languages I speak": English always, plus any of [OFFERED]. Default:
  *   English only, which is the pin of 2026-11-17 (other languages are a sentence not caught).
  * - The transcriber is told he speaks ONLY those languages, each in its own script ([sttInstruction]).
- * - Every conversation starts in English. It switches when he asks in words for a language in his
- *   setting ("speak Burmese", or the language's own name for itself), or when he speaks a whole
- *   sentence in it; back on "English" / "speak English"; and at the end of the conversation.
+ * - Every conversation starts in English. It switches when his whole turn asks for a language in his
+ *   setting ("speak Burmese", "switch to Thai", or the language's own name for itself), or when he
+ *   speaks a whole sentence in one written in its own non-Latin script (a Spanish sentence does not
+ *   switch: its letters are English's); back on "English" / "speak English"; and at the end of the
+ *   conversation. A language named inside a longer request ("find a tutor who can speak Spanish")
+ *   is part of that request, never a switch.
  *   A language he asks for that is not in his setting gets [notInSettingsLine] and stays English.
  * - Code-written lines (amounts said by the phone, car lines, fillers, refusals, "didn't catch that")
  *   stay English in any language: figures are never translated by code, and the money and diagnostics
@@ -79,26 +82,51 @@ internal object SpokenLanguages {
         data class NotInSettings(val name: String) : Switch
     }
 
+    /**
+     * A whole turn that asks for a language: the ask, then the language, and nothing else but his
+     * companion's name, "please", "now" or a hey/ok around it (2026-11-18 review: "remind me to ask if
+     * the tutor can speak Spanish" was taken as a switch).
+     */
     private val ASK = Regex(
-        // Verbs of speaking only: "change it to Thai" is about food, not the conversation (review).
-        "(?i)\\b((speak|talk|reply|answer)( to me)?( in)?|switch( over)?( to| into)?|" +
-            "let'?s (talk|speak|do this|continue) in)\\s+" +
-            "(english|burmese|myanmar|spanish|mandarin|chinese|thai|malay)\\b",
+        "^((?:(?:can|could|will|would) you )?(?:speak|talk|reply|answer)(?: to me)?(?: in)?|switch(?: over)?(?: to| into)?|" +
+            "let s (?:talk|speak|do this|continue) in)? ?(\\S+(?: chinese)?)$",
     )
+    private val AROUND = setOf("hey", "ok", "okay", "please", "now", "thanks")
     private val ALIASES = mapOf(
         "myanmar" to "Burmese", "mandarin" to "Mandarin Chinese", "chinese" to "Mandarin Chinese",
+        "mandarin chinese" to "Mandarin Chinese",
     )
 
-    /** A spoken request for a language, or null. [spoken] is his setting. */
-    fun request(heard: String, spoken: List<Language>): Switch? {
-        val asked = ASK.find(heard)?.groupValues?.last()?.lowercase()
-            ?: spoken.firstOrNull { it != ENGLISH && heard.contains(it.selfName, ignoreCase = true) }?.name?.lowercase()
-            ?: if (heard.trim().trimEnd('.', '!', '?').equals("english", ignoreCase = true)) "english" else null
-        asked ?: return null
-        val name = ALIASES[asked] ?: asked.replaceFirstChar { it.uppercase() }
-        val lang = spoken.firstOrNull { it.name.equals(name, ignoreCase = true) }
-        return if (lang != null) Switch.To(lang) else Switch.NotInSettings(name)
+    /**
+     * A spoken request for a language, or null: [heard] must be the request whole ([ASK]). [spoken] is
+     * his setting; [companionName] may stand at either end.
+     */
+    @Suppress("ReturnCount") // not a request, or a request for which language
+    fun request(heard: String, spoken: List<Language>, companionName: String = ""): Switch? {
+        val name = companionName.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+        var words = heard.lowercase().split(Regex("[^\\p{L}\\p{M}\\p{N}]+")).filter { it.isNotEmpty() }
+        var trimmed = true
+        while (trimmed && words.isNotEmpty()) {
+            trimmed = false
+            if (words.first() in AROUND) words = words.drop(1).also { trimmed = true }
+            if (words.isNotEmpty() && words.last() in AROUND) words = words.dropLast(1).also { trimmed = true }
+            if (name.isNotEmpty() && words.take(name.size) == name) words = words.drop(name.size).also { trimmed = true }
+            if (name.isNotEmpty() && words.takeLast(name.size) == name) words = words.dropLast(name.size).also { trimmed = true }
+        }
+        val m = ASK.matchEntire(words.joinToString(" ")) ?: return null
+        val asked = m.groupValues[2]
+        val self = (spoken + OFFERED).firstOrNull { it.selfName.equals(asked, ignoreCase = true) }
+        // A bare language word is a request only for English or a language's own name for itself:
+        // "Thai." alone may answer "what food?".
+        if (m.groupValues[1].isEmpty() && self == null && asked != "english") return null
+        val lang = self?.name ?: ALIASES[asked] ?: asked.replaceFirstChar { it.uppercase() }
+        if (lang.lowercase() !in KNOWN) return null
+        val mine = spoken.firstOrNull { it.name.equals(lang, ignoreCase = true) }
+        return if (mine != null) Switch.To(mine) else Switch.NotInSettings(lang)
     }
+
+    /** Every language name a request may name: English and [OFFERED]. */
+    private val KNOWN: Set<String> = (listOf(ENGLISH) + OFFERED).map { it.name.lowercase() }.toSet()
 
     /** What a turn does to the conversation's language ([decide]). */
     sealed interface Decision {
@@ -109,13 +137,19 @@ internal object SpokenLanguages {
     }
 
     /**
-     * The one rule the session and the voice eval share: a request for one of his languages, or a
-     * sentence spoken in one, switches; one he has not added gets [notInSettingsLine]; on the laptop
+     * The one rule the session and the voice eval share: a whole-turn request for one of his languages,
+     * or a sentence spoken in one written in a non-Latin script, switches; one he has not added gets [notInSettingsLine]; on the laptop
      * voice ([cloud] false) anything but English gets [LAPTOP_ENGLISH_ONLY].
      */
     @Suppress("ReturnCount") // refused, nothing asked, or the switch
-    fun decide(heard: String, spoken: List<Language>, current: Language, cloud: Boolean): Decision {
-        val asked = request(heard, spoken)
+    fun decide(
+        heard: String,
+        spoken: List<Language>,
+        current: Language,
+        cloud: Boolean,
+        companionName: String = "",
+    ): Decision {
+        val asked = request(heard, spoken, companionName)
         if (asked is Switch.NotInSettings) return Decision.Refuse(notInSettingsLine(asked.name), "not_in_settings")
         val next = (asked as? Switch.To)?.language ?: writtenIn(heard, spoken) ?: return Decision.Stay
         return when {

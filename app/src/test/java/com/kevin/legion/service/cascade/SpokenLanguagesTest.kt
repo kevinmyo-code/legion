@@ -43,7 +43,7 @@ class SpokenLanguagesTest {
     fun `a spoken request switches, English switches back, an unknown language stays English`() {
         assertEquals(SpokenLanguages.Switch.To(burmese), SpokenLanguages.request("can you speak Burmese please", withBurmese))
         assertEquals(SpokenLanguages.Switch.To(burmese), SpokenLanguages.request("let's talk in Myanmar", withBurmese))
-        assertEquals(SpokenLanguages.Switch.To(burmese), SpokenLanguages.request("မြန်မာလို ပြောပါ", withBurmese))
+        assertEquals(SpokenLanguages.Decision.To(burmese), SpokenLanguages.decide("မြန်မာလို ပြောပါ", withBurmese, SpokenLanguages.ENGLISH, cloud = true))
         assertEquals(SpokenLanguages.Switch.To(SpokenLanguages.ENGLISH), SpokenLanguages.request("speak English", withBurmese))
         assertEquals(SpokenLanguages.Switch.To(SpokenLanguages.ENGLISH), SpokenLanguages.request("English.", withBurmese))
         assertEquals(SpokenLanguages.Switch.NotInSettings("Burmese"), SpokenLanguages.request("speak Burmese", englishOnly))
@@ -55,6 +55,21 @@ class SpokenLanguagesTest {
         assertEquals(SpokenLanguages.Decision.Stay, SpokenLanguages.decide("speak Burmese", withBurmese, burmese, cloud = true))
         assertNull(SpokenLanguages.request("how do you say hello in Spanish", withBurmese))
         assertNull(SpokenLanguages.request("what's on my calendar", withBurmese))
+    }
+
+    @Test
+    fun `only a whole turn asks for a language, a language inside a longer request is part of it`() {
+        val withSpanish = listOf(SpokenLanguages.ENGLISH) + SpokenLanguages.OFFERED
+        for (t in listOf("speak Spanish", "Switch to Thai.", "answer in Burmese", "Alfred, speak Spanish please.", "Please switch to Thai, Alfred.", "Hey Alfred, answer in Burmese.", "let's speak in Malay")) {
+            assertTrue(t, SpokenLanguages.request(t, withSpanish, "Alfred") is SpokenLanguages.Switch.To)
+        }
+        for (t in listOf(
+            "remind me to ask if the tutor can speak Spanish", "let's switch to Thai food tonight", "find a doctor who can speak Chinese",
+            "answer in Burmese and then read my calendar", "Thai.", "Chinese.",
+        )) {
+            assertNull(t, SpokenLanguages.request(t, withSpanish, "Alfred"))
+            assertEquals(t, SpokenLanguages.Decision.Stay, SpokenLanguages.decide(t, englishOnly, SpokenLanguages.ENGLISH, cloud = true, companionName = "Alfred"))
+        }
         assertTrue(SpokenLanguages.notInSettingsLine("French").contains("Settings"))
         assertEquals("", SpokenLanguages.turnNote(SpokenLanguages.ENGLISH))
         assertTrue(SpokenLanguages.turnNote(burmese).contains("reply in Burmese"))
