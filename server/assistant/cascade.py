@@ -135,11 +135,13 @@ TTS_WAIT_S = 20.0
 # (12 s), the rounds (`LIMITS`), and what is left of the speech is cut here.
 TURN_WALL_S = 60.0
 
-# The phone's `CascadePrompt.VOICE_CLAUSE` (spec 11), verbatim: added to the cached prefix.
+# The phone's `CascadePrompt.VOICE_CLAUSE` (spec 11), added to the cached prefix, with its figure
+# rule changed for the web (round 2 speech review B): the model writes every figure exactly, in
+# digits, and code alone decides how it is said (`spoken_figures`). One rule, never two.
 VOICE_CLAUSE = (
     "Spoken output: what you write is read aloud by a separate voice, as you write it. Write plain "
-    "spoken sentences only: no markdown, lists, headings, emoji, links or symbols. Write numbers, "
-    "money, times and units the way you would say them. Keep replies short unless asked for "
+    "spoken sentences only: no markdown, lists, headings, emoji, links or symbols. Write every "
+    "number, amount, time and unit exactly, in digits. Keep replies short unless asked for "
     "detail. When a tool will take a moment, a few words first are fine."
 )
 
@@ -911,8 +913,8 @@ PERSONA_NOTE = (
     "Talk like a friendly, quick, slightly dry colleague: one sentence unless asked for more, "
     'contractions, now and then a lead-in like "So," or "Right," (never the same one twice '
     "running). A short warm remark or a joke back is fine; it never delays or pads the answer. "
-    "For a list, say three, then how many more. Write every figure exactly as the tools gave it, "
-    "to the cent: the voice rounds it for speech and the exact one stays on screen."
+    "For a list, say three, then how many more. The voice rounds figures for speech; the exact "
+    "one stays on screen."
 )
 
 
@@ -1260,6 +1262,10 @@ def _answer(
             record_user()
             if event.type == "tool":
                 done = door.calls[-1]
+                if done.ok and door._writes(done.name):
+                    # A change was made: from here every figure is said exactly, as a
+                    # confirmation is (round 2 speech review 9).
+                    speaker.exact = True
                 payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome}
                 payload["text"] = done.text
                 payload["ms"] = done.ms

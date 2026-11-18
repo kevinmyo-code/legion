@@ -47,8 +47,40 @@ def test_the_rounding_table(amount, said):
     assert spoken_money(Decimal(amount)) == said
 
 
-def test_the_sign_is_kept():
-    assert speakable("You're overdrawn by -$2,333.61.") == "You're overdrawn by minus about $2,330."
+def test_the_sign_is_said_once():
+    # Round 2 speech review: "overdrawn by minus about" said the negative twice.
+    assert speakable("You're overdrawn by -$2,333.61.") == "You're overdrawn by about $2,330."
+    assert speakable("Balance: -$2,333.61.") == "Balance: minus about $2,330."
+
+
+@pytest.mark.parametrize(
+    ("amount", "said"),
+    [
+        ("19.99", "$19.99"),
+        ("20", "$20"),
+        ("20.00", "$20"),
+        ("999.50", "about $1,000"),
+        ("999950", "about $1,000,000"),
+        ("1000000", "$1 million"),
+        ("0", "$0"),
+    ],
+)
+def test_the_band_edges(amount, said):
+    assert spoken_money(Decimal(amount)) == said
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Rent ran $1,450-$1,500.",
+        "It was $1,450 - $1,500 a month.",
+        "Somewhere between $10 and $20.",
+        "From $10 to $20, roughly.",
+        "Either $45.10 or $52.80.",
+    ],
+)
+def test_a_range_is_said_exactly_never_as_a_negative(sentence):
+    assert speakable(sentence) == sentence
 
 
 def test_percentages_are_whole_and_keep_one_decimal_under_ten():
@@ -73,6 +105,17 @@ def test_ids_dates_times_codes_and_quantities_are_never_rounded(sentence):
 def test_a_confirmation_of_a_change_says_the_exact_amount():
     line = "Log $318.40 at the pharmacy?"
     assert speakable(line) == line
+
+
+def test_in_a_turn_that_made_a_change_figures_are_said_exactly(member, engine):
+    # Round 2 speech review 9: "Logged $318.40 at the pharmacy." was heard as "about $318".
+    from agents.runtime.model import call
+
+    engine.model = FakeModel(
+        [call("create_checklist", {"name": "Pharmacy"}), say("Logged $318.40 at the pharmacy.")]
+    )
+    _events(_post(member, audio=PCM))
+    assert "Logged $318.40 at the pharmacy." in [t for t, _v in engine.speech.spoken]
 
 
 def test_exact_on_request():

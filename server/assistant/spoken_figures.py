@@ -26,7 +26,10 @@ from decimal import ROUND_HALF_UP, Decimal
 
 # "$2,333.61", "-$45", "$ 12.5", "$13.7 million"
 _MONEY = re.compile(
-    r"(?P<sign>[-−])?\$\s?(?P<num>\d{1,3}(?:,\d{3})+|\d+)(?P<dec>\.\d+)?"
+    # A minus counts as the amount's sign only at the start or after a space or "(": between two
+    # amounts it is a range ("$1,450-$1,500"), never a negative (round 2 speech review 3).
+    r"(?P<sign>(?<![^\s(])[-\u2212])?"
+    r"\$\s?(?P<num>\d{1,3}(?:,\d{3})+|\d+)(?P<dec>\.\d+)?"
     r"(?:\s?(?P<unit>thousand|million|billion|k\b|m\b|bn\b))?",
     re.I,
 )
@@ -87,15 +90,32 @@ def _value(match: re.Match) -> Decimal:
     return value * _UNITS.get(unit, 1)
 
 
+# Between two amounts: a range ("$10-$20", "$10 to $20", "$10 and $20"), said exactly.
+_RANGE_AFTER = re.compile(r"\s*(?:[-\u2013\u2014]|to|and|or)\s*[-\u2212]?\$", re.I)
+_RANGE_BEFORE = re.compile(r"(?:[-\u2013\u2014]|\bto|\band|\bor)\s*$", re.I)
+# Words that already say the amount is negative: the sign is not said a second time.
+_NEGATIVE_WORDS = re.compile(
+    r"\b(overdrawn|owe|owed|owing|debt|short|negative|minus|deficit|in the red|down|behind|"
+    r"over budget|overspent)\b",
+    re.I,
+)
+
+
 def speakable(sentence: str, *, exact: bool = False) -> str:
-    """`sentence` as it is said: its dollar amounts and percentages rounded, unless the person
-    asked for exact figures or the sentence asks to confirm a change."""
+    """`sentence` as it is said. Rounds only a plain, standalone dollar amount it fully
+    understands; anything else is said exactly as written (round 2 speech review B: the failure
+    mode is "spoken exactly", never "spoken wrong"). Nothing is rounded when the person asked for
+    exact figures, in a sentence that asks to confirm a change, or (the caller's `exact`) in a turn
+    in which a change was made."""
     if exact or sentence.rstrip().endswith("?"):
         return sentence
 
     def money(match: re.Match) -> str:
+        before, after = sentence[: match.start()], sentence[match.end() :]
+        if _RANGE_AFTER.match(after) or (_RANGE_BEFORE.search(before) and "$" in before):
+            return match.group(0)
         said = spoken_money(_value(match))
-        if match.group("sign"):
+        if match.group("sign") and not _NEGATIVE_WORDS.search(before):
             said = f"minus {said}"
         return said
 
