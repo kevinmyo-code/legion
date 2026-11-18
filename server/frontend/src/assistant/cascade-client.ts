@@ -268,7 +268,8 @@ export class CascadeClient {
   // ---- suggestion chips (the demo) ----
   /** The chips on screen: the examples after the greeting, then each answer's follow-ups. */
   chips: readonly SuggestChip[] = []
-  /** The greeting (which holds the recording notice) has played to its end, uncut, on this page. */
+  /** The greeting (which holds the recording notice) has played to its end, uncut, in this visit
+   *  (this page): never reset by a close, so a later chip may speak without a second greeting. */
   private noticeHeard = false
   /** The turn playing now is the greeting. */
   private greetPlaying = false
@@ -520,15 +521,16 @@ export class CascadeClient {
   }
 
   /**
-   * A tapped suggestion chip. With a conversation open and the recording notice heard to its end,
-   * it is like talking over him: playback stops, the turn in flight is cancelled, and the chip's
-   * question is asked and answered aloud. Otherwise it is a typed turn, answered in text: no voice
-   * starts before the notice has been heard (the engine's chip check is the same either way).
+   * A tapped suggestion chip. Once the recording notice has been heard to its end in this visit
+   * (the greeting, on this page), it is like talking over him: playback stops, the turn in flight
+   * is cancelled, and the chip's question is asked and answered aloud, in a new conversation if
+   * the last one closed (no second greeting: the notice was heard and is on the page). Before
+   * that it is a typed turn, answered in text: no voice starts before the notice.
    */
   tapChip(chip: SuggestChip): boolean {
     const text = chip.question.trim()
     if (!text || this.state.phase === 'ended' || this.disposed) return false
-    const aloud = this.voiceOpen && this.noticeHeard
+    const aloud = this.noticeHeard
     if (aloud) this.unlockPlayback()
     this.cutReply('tap')
     this.stopListening()
