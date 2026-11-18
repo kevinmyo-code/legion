@@ -146,3 +146,35 @@ def test_no_write_runs_after_not_for_me(member, engine):
     events = _events(_post(member, text="Ha, make a list of that, he said."))
     assert _of(events, "done")[0]["ignored"] == "not_addressed"
     assert not Checklist.objects.filter(name="Side talk").exists()
+
+
+# ---- finding 3: a failure between the slot and the stream gives both slot and budget back --------
+
+
+def test_a_failure_before_the_stream_releases_the_slot_and_the_reservation(
+    visitor, visitor_user, engine, monkeypatch
+):
+    from django.db import connections
+
+    from assistant import turn_slots
+    from demo.models import DemoBudgetDay
+    from devicelogs import web_conversation
+
+    def broken(*a, **k):
+        raise RuntimeError("the record could not be opened")
+
+    monkeypatch.setattr(web_conversation, "start", broken)
+    with pytest.raises(RuntimeError):
+        _post(visitor, text="Hi.")
+    assert DemoBudgetDay.objects.get().reserved_cents == 0
+    other = connections.create_connection("default")
+    try:
+        with other.cursor() as cur:
+            key = turn_slots._key(f"user:{visitor_user.pk}")
+            cur.execute("SELECT pg_try_advisory_lock(%s, %s)", [turn_slots._NS_USER, key])
+            assert cur.fetchone()[0] is True
+            for slot in range(turn_slots.demo_slots()):
+                cur.execute("SELECT pg_try_advisory_lock(%s, %s)", [turn_slots._NS_DEMO, slot])
+                assert cur.fetchone()[0] is True
+    finally:
+        other.close()

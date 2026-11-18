@@ -1119,81 +1119,94 @@ class AssistantTurnView(_AssistantView):
         if held is None:
             return _refuse(request, busy, busy_status)
         reservation = None
-        # The loop's rounds plus the one tool-free ask again (spec 23); a greeting is one call.
-        reserved_rounds = (
-            1 if greet else 0 if tour_beat is not None and audio is None else cascade.MAX_ROUNDS + 1
-        )
-        if demo_budget.counts(request.user):
-            reservation = demo_budget.reserve_cascade_turn(
-                rounds=reserved_rounds,
-                spoken=greet
-                or audio is not None
-                or bool(data.get("spoken"))
-                or tour_beat is not None,
-                user=request.user,
+        try:
+            # The loop's rounds plus the one tool-free ask again (spec 23); a greeting is one call.
+            reserved_rounds = (
+                1
+                if greet
+                else 0
+                if tour_beat is not None and audio is None
+                else cascade.MAX_ROUNDS + 1
             )
-            if reservation is None:
-                held.release()
-                return _refuse(
-                    request,
-                    demo_budget.used_up_message(request.user, "text"),
-                    status.HTTP_429_TOO_MANY_REQUESTS,
+            if demo_budget.counts(request.user):
+                reservation = demo_budget.reserve_cascade_turn(
+                    rounds=reserved_rounds,
+                    spoken=greet
+                    or audio is not None
+                    or bool(data.get("spoken"))
+                    or tour_beat is not None,
+                    user=request.user,
                 )
+                if reservation is None:
+                    held.release()
+                    return _refuse(
+                        request,
+                        demo_budget.used_up_message(request.user, "text"),
+                        status.HTTP_429_TOO_MANY_REQUESTS,
+                    )
 
-        if row is not None and row.raw_bytes > RECORD_ROLLOVER_BYTES:
-            # A full record would freeze the turn number (finding 9): the conversation goes on in a
-            # new record, and the page learns its id from the first event.
-            row = None
-        if row is None:
-            row = web_conversation.start(
-                request,
-                model=f"cascade/{voice_engine.text_model()}",
-                client_now_ms=data.get("client_now_ms"),
+            if row is not None and row.raw_bytes > RECORD_ROLLOVER_BYTES:
+                # A full record would freeze the turn number (finding 9): the conversation goes
+                # on in a new record, and the page learns its id from the first event.
+                row = None
+            if row is None:
+                row = web_conversation.start(
+                    request,
+                    model=f"cascade/{voice_engine.text_model()}",
+                    client_now_ms=data.get("client_now_ms"),
+                )
+            history, turn_no = web_conversation.history(
+                row,
+                max_turns=cascade.HISTORY_TURNS,
+                opened_line=RECRUITER_OPENER if is_recruiter(request.user) else OPENED_LINE,
+                writes=WRITE_TOOLS,
             )
-        history, turn_no = web_conversation.history(
-            row,
-            max_turns=cascade.HISTORY_TURNS,
-            opened_line=RECRUITER_OPENER if is_recruiter(request.user) else OPENED_LINE,
-            writes=WRITE_TOOLS,
-        )
-        system, context, companion = system_prompt_parts_for(
-            request.user,
-            now=datetime.now(UTC),
-            utc_offset_minutes=data.get("utc_offset_minutes"),
-        )
-        _audit(request, AssistantCall.SESSION, Outcome.OK)
-        turn_input = cascade.TurnInput(
-            audio=audio,
-            text=text or None,
-            preface=(data.get("preface") or "").strip() or None,
-            greet=greet,
-            greeting_history=_greeting_history(data.get("greeting_history")),
-            spoken=bool(data.get("spoken")) and bool(text),
-            tour_beat=tour_beat,
-        )
-        response = StreamingHttpResponse(
-            _turn_sse(
-                request,
-                turn_input,
-                row.batch_id,
-                history,
-                turn_no,
-                system,
-                context,
-                # Per role, not the companion's stored voice (that one is Live's): ADR 0103.
-                voice_engine.voice_for(request.user),
-                reservation,
-                reserved_rounds,
-                companion.name,
-                held,
-            ),
-            content_type="text/event-stream",
-        )
-        # The slot goes back however the stream ends, even when it never started.
-        response._resource_closers.append(held.release)
-        response["Cache-Control"] = "no-cache, no-store"
-        response["X-Accel-Buffering"] = "no"
-        return response
+            system, context, companion = system_prompt_parts_for(
+                request.user,
+                now=datetime.now(UTC),
+                utc_offset_minutes=data.get("utc_offset_minutes"),
+            )
+            _audit(request, AssistantCall.SESSION, Outcome.OK)
+            turn_input = cascade.TurnInput(
+                audio=audio,
+                text=text or None,
+                preface=(data.get("preface") or "").strip() or None,
+                greet=greet,
+                greeting_history=_greeting_history(data.get("greeting_history")),
+                spoken=bool(data.get("spoken")) and bool(text),
+                tour_beat=tour_beat,
+            )
+            response = StreamingHttpResponse(
+                _turn_sse(
+                    request,
+                    turn_input,
+                    row.batch_id,
+                    history,
+                    turn_no,
+                    system,
+                    context,
+                    # Per role, not the companion's stored voice (that one is Live's): ADR 0103.
+                    voice_engine.voice_for(request.user),
+                    reservation,
+                    reserved_rounds,
+                    companion.name,
+                    held,
+                ),
+                content_type="text/event-stream",
+            )
+            # The slot goes back however the stream ends, even when it never started.
+            response._resource_closers.append(held.release)
+            response["Cache-Control"] = "no-cache, no-store"
+            response["X-Accel-Buffering"] = "no"
+            return response
+        except BaseException:
+            # Anything that fails before the stream owns the slot and the reservation gives both
+            # back here (round 2 finding 3): a leaked advisory lock would stay on this thread's
+            # pooled connection, and a re-entrant one would never come free.
+            held.release()
+            if reservation is not None:
+                demo_budget.release(reservation)
+            raise
 
 
 # =============================================================================
