@@ -275,7 +275,82 @@ class CloudSpeechTest {
     }
 
     @Test
+    fun `a hung request on the real transport is abandoned at the attempt timeout and asked again`() = runBlocking<Unit> {
+        // A local socket that accepts and never answers: OkHttp blocks in execute(), as on a hung call.
+        val server = java.net.ServerSocket(0)
+        val accepted = AtomicInteger(0)
+        val held = Collections.synchronizedList(mutableListOf<java.net.Socket>())
+        val acceptor = Thread {
+            runCatching { while (true) { held.add(server.accept()); accepted.incrementAndGet() } }
+        }.apply { isDaemon = true; start() }
+        try {
+            val transport = OkHttpGemini(key = { "invented-key" }, api = "http://127.0.0.1:${server.localPort}/v1beta")
+            val stt = GeminiStt(transport, scope, attemptTimeoutMs = 400)
+            val t0 = System.currentTimeMillis()
+            assertEquals(SttResult.Failed("timeout"), withTimeout(5_000) { stt.transcribe(pcm(400)) })
+            assertTrue("took ${System.currentTimeMillis() - t0} ms", System.currentTimeMillis() - t0 < 2_500)
+            withTimeout(2_000) { while (accepted.get() < 2) delay(20) }
+            assertEquals("a fresh call for the retry", 2, accepted.get())
+        } finally {
+            server.close()
+            held.forEach { runCatching { it.close() } }
+            acceptor.interrupt()
+        }
+    }
+
+    @Test
+    fun `a reply's clip never waits behind warm-up fetches`() = runBlocking<Unit> {
+        val release = CompletableDeferred<Unit>()
+        val fake = FakeGemini { _, body, onEvent ->
+            val text = body.getJSONArray("contents").getJSONObject(0).getJSONArray("parts").getJSONObject(0).getString("text")
+            if (text.startsWith("Warm")) release.await()
+            onEvent(audioEv(byteArrayOf(7, 7)))
+            StreamOutcome.Ok
+        }
+        val lines = (1..40).map { "Warm line $it." }.toSet()
+        val tts = GeminiTts(fake, scope, keepLines = lines, kept = ConcurrentHashMap(), voice = "Puck")
+        assertEquals(40, tts.warm(lines))
+        // Warming again sends nothing new while the first are in flight.
+        assertEquals(0, tts.warm(lines))
+        val reply = tts.speak("Invented answer.")
+        assertArrayEquals(byteArrayOf(7, 7), withTimeout(1_500) { collect(reply) })
+        release.complete(Unit)
+    }
+
+    @Test
+    fun `a clip sent in the refused voice is retried in Puck even when another clip flipped first`() = runBlocking<Unit> {
+        GeminiTts.forgetRefusedVoiceForTest()
+        val gate = CompletableDeferred<Unit>()
+        val fake = FakeGemini { _, body, onEvent ->
+            val v = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig").optString("voice")
+            if (v == "en-xx-invented") {
+                gate.await()
+                StreamOutcome.HttpError(400, "invalid argument")
+            } else {
+                onEvent(audioEv(byteArrayOf(3, 4)))
+                StreamOutcome.Ok
+            }
+        }
+        val tts = GeminiTts(fake, scope, voice = "en-xx-invented")
+        val a = tts.speak("Invented one.")
+        val b = tts.speak("Invented two.")
+        gate.complete(Unit)
+        assertArrayEquals(byteArrayOf(3, 4), withTimeout(2_000) { collect(a) })
+        assertArrayEquals(byteArrayOf(3, 4), withTimeout(2_000) { collect(b) })
+        // A later conversation starts in Puck: the refused voice is not asked again for a while.
+        val later = FakeGemini { _, body, onEvent ->
+            val v = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig").optString("voice")
+            assertEquals("Puck", v)
+            onEvent(audioEv(byteArrayOf(5)))
+            StreamOutcome.Ok
+        }
+        collect(GeminiTts(later, scope, voice = "en-xx-invented").speak("Invented three."))
+        GeminiTts.forgetRefusedVoiceForTest()
+    }
+
+    @Test
     fun `a voice Google refuses by name falls back to Puck, never silence, and its clips are keyed by voice`() = runBlocking<Unit> {
+        GeminiTts.forgetRefusedVoiceForTest()
         val voices = Collections.synchronizedList(mutableListOf<String>())
         val fake = FakeGemini { _, body, onEvent ->
             val vc = body.getJSONObject("generationConfig").getJSONObject("speechConfig").getJSONObject("voiceConfig")
@@ -299,6 +374,7 @@ class CloudSpeechTest {
         // A second line goes straight to Puck; the fallback is logged once.
         collect(tts.speak("Invented second line."))
         assertEquals(1, logs.count { it.startsWith("tts_voice_fallback") })
+        GeminiTts.forgetRefusedVoiceForTest()
     }
 
     @Test

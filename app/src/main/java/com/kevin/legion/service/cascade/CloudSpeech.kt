@@ -217,7 +217,7 @@ internal object CloudSpeechWire {
         var t = raw.trim()
         if (t.length >= 2 && t.first() in QUOTES && t.last() in QUOTES) t = t.substring(1, t.length - 1).trim()
         // No voice in the audio: silence, never words.
-        if (t.trimEnd('.').equals(NO_SPEECH, ignoreCase = true) || t.equals("none", ignoreCase = true)) return ""
+        if (t.trimEnd('.').equals(NO_SPEECH, ignoreCase = true)) return ""
         return t
     }
 
@@ -457,18 +457,31 @@ internal class GeminiTts(
     override val sampleRate = CloudSpeechWire.OUTPUT_RATE
     override val streamsText = false
     private val gate = Semaphore(maxParallel)
+
+    /**
+     * Warm-up fetches go one at a time on their own gate, never through [gate]: a reply's clips are
+     * never queued behind them (2026-11-17 review: ~46 warm requests ahead of the first answer timed it
+     * out and closed the conversation).
+     */
+    private val warmGate = Semaphore(1)
+
+    /** Lines being warmed now, so a second warm of the same line is not sent twice. */
+    private val warming = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private val ids = AtomicInteger(0)
 
     /** Flipped once if Google refuses the 3.8 voice shape; the rest of the conversation uses the other. */
     @Volatile private var legacyVoice = false
 
-    /** Flipped once if Google refuses the voice by name: the rest of the conversation is in Puck. */
-    @Volatile private var fallbackVoice = false
+    /**
+     * Flipped once if Google refuses the voice by name: the rest of the conversation is in Puck, and
+     * conversations for a while after start in Puck too ([refusedVoice]), so the 400 is not paid again.
+     */
+    @Volatile private var fallbackVoice = allowFallback && refusedRecently(voice, now())
 
     private val voiceNow: String get() = if (fallbackVoice) CloudSpeechWire.FALLBACK_VOICE else voice
 
-    /** Not yet fallen back, allowed to, and not already Puck. */
-    private fun mayFallBack(): Boolean = allowFallback && !fallbackVoice && voice != CloudSpeechWire.FALLBACK_VOICE
+    private fun isVoiceRefusal(o: StreamOutcome): Boolean =
+        o is StreamOutcome.HttpError && o.code == HTTP_BAD_REQUEST && !CloudSpeechWire.isVoiceShapeRejected(o)
 
     override val performsTags = true
 
@@ -499,7 +512,8 @@ internal class GeminiTts(
         var asked = 0
         for (text in lines.distinct()) {
             if (text.isBlank() || text !in keepLines || kept[keyOf(text)] != null) continue
-            Clip(ids.addAndGet(2), text).start()
+            if (!warming.add(keyOf(text))) continue
+            Clip(ids.addAndGet(2), text, warmUp = true).start()
             asked++
         }
         if (asked > 0) log("tts_warm lines=$asked")
@@ -511,7 +525,12 @@ internal class GeminiTts(
         it.finish(TtsOutcome.Failed("bad_request"))
     }
 
-    private inner class Clip(override val id: Int, override val text: String) : StreamingSpeechClip {
+    private inner class Clip(
+        override val id: Int,
+        override val text: String,
+        /** A warm-up fetch: its own gate, behind every reply ([warmGate]). */
+        private val warmUp: Boolean = false,
+    ) : StreamingSpeechClip {
         override val frames = Channel<ByteArray>(Channel.UNLIMITED)
         private val outcome = CompletableDeferred<TtsOutcome>()
         private var job: Job? = null
@@ -521,12 +540,13 @@ internal class GeminiTts(
         private var firstAudioMs: Long? = null
         private val whole = ByteArrayOutputStream()
 
-        @Suppress("CyclomaticComplexMethod") // shape retry, voice fallback, one network retry: each once
+        @Suppress("CyclomaticComplexMethod") // voice fallback, shape retry, one network retry: each once
         fun start() {
             job = scope.launch {
-                gate.withPermit {
+                (if (warmUp) warmGate else gate).withPermit {
                     if (outcome.isCompleted) return@withPermit
                     val asked = now()
+                    val sentIn = voiceNow
                     var o = request(asked)
                     val shapeRefused = o is StreamOutcome.HttpError && CloudSpeechWire.isVoiceShapeRejected(o)
                     if (shapeRefused && !legacyVoice && bytes == 0L) {
@@ -534,12 +554,14 @@ internal class GeminiTts(
                         log("tts_voice_shape legacy=true")
                         o = request(asked)
                     }
-                    // A voice name Google does not know (a 400 in either shape): Puck, not silence.
-                    val refused = o is StreamOutcome.HttpError && o.code == HTTP_BAD_REQUEST
-                    if (refused && bytes == 0L && mayFallBack()) {
-                        fallbackVoice = true
-                        // Once per conversation: the flag stays set, so this is never logged twice.
-                        log("tts_voice_fallback from=$voice to=${CloudSpeechWire.FALLBACK_VOICE}")
+                    // A voice Google refuses by name (a 400 that is not about the shape): this clip again in
+                    // Puck, whatever another clip already flipped; a voice refusal never flips the shape.
+                    if (isVoiceRefusal(o) && bytes == 0L && allowFallback && sentIn != CloudSpeechWire.FALLBACK_VOICE) {
+                        if (!fallbackVoice) {
+                            fallbackVoice = true
+                            refusedVoice = voice to now()
+                            log("tts_voice_fallback from=$voice to=${CloudSpeechWire.FALLBACK_VOICE}")
+                        }
                         o = request(asked)
                     }
                     // One retry for a dropped request or a server error, only before any audio
@@ -565,7 +587,12 @@ internal class GeminiTts(
                         },
                     )
                 }
-            }.also { j -> j.invokeOnCompletion { finish(TtsOutcome.Cancelled) } }
+            }.also { j ->
+                j.invokeOnCompletion {
+                    if (warmUp) warming.remove(keyOf(text))
+                    finish(TtsOutcome.Cancelled)
+                }
+            }
         }
 
         private suspend fun request(asked: Long): StreamOutcome {
@@ -660,6 +687,18 @@ internal class GeminiTts(
         const val MAX_PARALLEL = 2
 
         private const val HTTP_BAD_REQUEST = 400
+
+        /** A voice Google refused, and when: later conversations start in Puck for [REFUSED_FOR_MS]. */
+        @Volatile private var refusedVoice: Pair<String, Long>? = null
+        private const val REFUSED_FOR_MS = 6L * 60 * 60 * 1000
+
+        private fun refusedRecently(voice: String, now: Long): Boolean =
+            refusedVoice?.let { (v, at) -> v == voice && now - at in 0 until REFUSED_FOR_MS } == true
+
+        /** Test seam. */
+        internal fun forgetRefusedVoiceForTest() {
+            refusedVoice = null
+        }
 
         /** The scripted lines' audio: in memory, and on disk across app starts ([KeptLineAudio]). */
         private val KEPT: MutableMap<String, ByteArray> get() = KeptLineAudio.SHARED
