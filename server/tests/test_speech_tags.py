@@ -1,6 +1,6 @@
 # ruff: noqa: F811 - fixtures imported from the cascade tests
 """Expression tags and the per-role voice in the web cascade (Kevin, 2026-11-17: "with tags where
-possible", and "can we go back to puck?" for both roles).
+possible"; members en-gb-advisor-3, the demo Puck).
 
 Google is never called: the cascade tests' fakes stand in for the model and speech; a fake
 transport stands in for Google's speech endpoint. Every word here is invented.
@@ -224,10 +224,12 @@ def test_the_opening_is_shown_plain_and_spoken_with_its_tag(visitor, engine):
 # =============================================================================
 
 
-def test_both_roles_speak_in_puck_by_default(member, visitor, engine):
+def test_the_voice_map_members_advisor_visitors_puck(member, visitor, engine):
+    # Kevin, 2026-11-17: "this is my choice Authoritative Advisor 3 / en-gb-advisor-3" for
+    # Alfred; the demo stays Puck.
     engine.model = FakeModel([say("Hello.")])
     _events(_post(member, audio=PCM))
-    assert {v for _t, v in engine.speech.spoken} == {"Puck"}
+    assert {v for _t, v in engine.speech.spoken} == {"en-gb-advisor-3"}
     engine.speech.spoken.clear()
     engine.model = FakeModel([say("Hello.")])
     _events(_post(visitor, audio=PCM))
@@ -312,3 +314,14 @@ def test_scripted_greetings_never_repeat_running():
 def test_markup_and_stage_directions_are_removed_and_real_text_is_kept(raw, shown):
     assert speech_tags.untagged(raw) == shown
     assert speech_tags.for_speech(raw) == shown
+
+
+def test_a_clip_made_in_one_roles_voice_is_never_played_to_the_other():
+    class Speech:
+        def speak(self, text, voice, spoken):
+            yield voice.encode()
+
+    audio = cascade.FillerAudio(spawn=lambda work: work())
+    audio.warm(Speech(), "en-gb-advisor-3", ["Checking the calendar."])
+    assert audio.pick("Puck", "list_events") is None
+    assert audio.get("en-gb-advisor-3", "Checking the calendar.") == b"en-gb-advisor-3"

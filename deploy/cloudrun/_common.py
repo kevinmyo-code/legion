@@ -108,8 +108,8 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 #   is one of these in `.env` and a deploy.
 # The cascade's production knobs (blind review 2026-11-17), each optional; unset is the code
 #   default: LEGION_WEB_TEXT_MODEL (the text model), LEGION_WEB_TTS_VOICE and
-#   LEGION_WEB_TTS_VOICE_RECRUITER (both Puck), LEGION_DEMO_TURN_SLOTS (demo turns at once across
-#   the engine; half one instance's threads), LEGION_DEMO_COST_PER_SPEECH_TURN_USD and
+#   LEGION_WEB_TTS_VOICE_RECRUITER (en-gb-advisor-3; Puck), LEGION_DEMO_TURN_SLOTS (demo turns
+#   across the engine; half one instance's threads), LEGION_DEMO_COST_PER_SPEECH_TURN_USD and
 #   LEGION_DEMO_COST_PER_TEXT_CALL_USD (the demo budget's per-turn reserve),
 #   LEGION_ASSISTANT_TURN_RATE and LEGION_ASSISTANT_TURN_IP_RATE (turn rates), and
 #   LEGION_WEB_EARLY_TRANSCRIPTS=on (opens POST /api/assistant/transcribe; off by default, ADR 0103).
