@@ -65,3 +65,19 @@ def test_a_transcription_cut_off_mid_response_is_retried_then_a_speech_failure(m
     with pytest.raises(SpeechFailure):
         real.transcribe(_pcm(_speechlike()))
     assert len(calls) == 2  # tried once more, then said as a miss
+
+
+# ---- finding 10: the robotic tap works outside a test transaction --------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_robotic_tap_works_in_autocommit_as_in_production(visitor, engine):
+    from agents.runtime.model import FakeModel, say
+
+    engine.model = FakeModel([say("Hello.")])
+    conversation = _of(_events(_post(visitor, text="Hi.")), "turn")[0]["conversation_id"]
+    response = visitor.post(
+        "/api/assistant/robotic", {"conversation_id": conversation, "turn": 0}, format="json"
+    )
+    assert response.status_code == 204
+    assert "robotic turn=0 source=tap" in _record(conversation)
