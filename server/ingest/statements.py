@@ -80,6 +80,7 @@ from ingest.drive import (
     urllib_transport,
 )
 from ingest.models import IngestRun, SessionSource, Source
+from legion import deadline
 from llm.client import retrying
 
 GEMINI_KEY_ENV = "LEGION_GEMINI_KEY"
@@ -226,7 +227,7 @@ def gemini_transport(
     method: str, url: str, headers: dict[str, str], body: bytes | None
 ) -> Response:
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with _OPENER.open(request, timeout=GEMINI_TIMEOUT_SECONDS) as reply:
+    with _OPENER.open(request, timeout=deadline.cap(GEMINI_TIMEOUT_SECONDS)) as reply:
         return Response(reply.status, dict(reply.headers.items()), reply.read())
 
 

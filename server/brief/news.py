@@ -45,6 +45,7 @@ from urllib.parse import urlparse
 from brief.compose import line, section
 from ingest import statements
 from ingest.drive import Response, Transport
+from legion import deadline
 from llm.client import retrying
 
 logger = logging.getLogger(__name__)
@@ -137,7 +138,7 @@ def _transport(method: str, url: str, headers: dict[str, str], body: bytes | Non
     from ingest.drive import _OPENER
 
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with _OPENER.open(request, timeout=TIMEOUT_SECONDS) as reply:
+    with _OPENER.open(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as reply:
         return Response(reply.status, dict(reply.headers.items()), reply.read())
 
 

@@ -62,6 +62,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from ingest.drive import _OPENER, Response
+from legion import deadline
 
 MODEL = "models/gemini-3.8-live"
 AUTH_TOKENS_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens"
@@ -217,7 +218,7 @@ Transport = Callable[[str, str, dict[str, str], bytes | None], Response]
 
 def urllib_transport(method: str, url: str, headers: dict[str, str], body: bytes | None):
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with _OPENER.open(request, timeout=MINT_TIMEOUT_SECONDS) as reply:
+    with _OPENER.open(request, timeout=deadline.cap(MINT_TIMEOUT_SECONDS)) as reply:
         return Response(reply.status, dict(reply.headers.items()), reply.read())
 
 

@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from brief.news import usage_of
 from ingest import statements
 from ingest.drive import _OPENER, Response, Transport
+from legion import deadline
 
 # Ruling 04's budget is 4 s for a whole run with a decide step; the call gets most of it.
 TIMEOUT_SECONDS = 3
@@ -91,7 +92,7 @@ def request_body(question: str, context, branches: list[str]) -> bytes:
 
 def _transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> Response:
     request = urllib.request.Request(url, data=body, method=method, headers=headers)
-    with _OPENER.open(request, timeout=TIMEOUT_SECONDS) as reply:
+    with _OPENER.open(request, timeout=deadline.cap(TIMEOUT_SECONDS)) as reply:
         return Response(reply.status, dict(reply.headers.items()), reply.read())
 
 
