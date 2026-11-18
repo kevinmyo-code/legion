@@ -88,7 +88,8 @@ internal object SpokenLanguages {
      * the tutor can speak Spanish" was taken as a switch).
      */
     private val ASK = Regex(
-        "^((?:(?:can|could|will|would) you )?(?:speak|talk|reply|answer)(?: to me)?(?: in)?|switch(?: over)?(?: to| into)?|" +
+        "^((?:(?:can|could|will|would) you )?(?:speak|talk|reply|answer)(?: to me)?(?: in)?|" +
+            "switch(?: over)?(?: to| into)?|" +
             "let s (?:talk|speak|do this|continue) in)? ?(\\S+(?: chinese)?)$",
     )
     private val AROUND = setOf("hey", "ok", "okay", "please", "now", "thanks")
@@ -101,7 +102,7 @@ internal object SpokenLanguages {
      * A spoken request for a language, or null: [heard] must be the request whole ([ASK]). [spoken] is
      * his setting; [companionName] may stand at either end.
      */
-    @Suppress("ReturnCount") // not a request, or a request for which language
+    @Suppress("ReturnCount", "CyclomaticComplexMethod") // trim the edges, then one exit per answer
     fun request(heard: String, spoken: List<Language>, companionName: String = ""): Switch? {
         val name = companionName.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
         var words = heard.lowercase().split(Regex("[^\\p{L}\\p{M}\\p{N}]+")).filter { it.isNotEmpty() }
@@ -110,8 +111,14 @@ internal object SpokenLanguages {
             trimmed = false
             if (words.first() in AROUND) words = words.drop(1).also { trimmed = true }
             if (words.isNotEmpty() && words.last() in AROUND) words = words.dropLast(1).also { trimmed = true }
-            if (name.isNotEmpty() && words.take(name.size) == name) words = words.drop(name.size).also { trimmed = true }
-            if (name.isNotEmpty() && words.takeLast(name.size) == name) words = words.dropLast(name.size).also { trimmed = true }
+            if (name.isNotEmpty() && words.take(name.size) == name) {
+                words = words.drop(name.size)
+                trimmed = true
+            }
+            if (name.isNotEmpty() && words.takeLast(name.size) == name) {
+                words = words.dropLast(name.size)
+                trimmed = true
+            }
         }
         val m = ASK.matchEntire(words.joinToString(" ")) ?: return null
         val asked = m.groupValues[2]
@@ -138,7 +145,8 @@ internal object SpokenLanguages {
 
     /**
      * The one rule the session and the voice eval share: a whole-turn request for one of his languages,
-     * or a sentence spoken in one written in a non-Latin script, switches; one he has not added gets [notInSettingsLine]; on the laptop
+     * or a sentence spoken in one written in a non-Latin script, switches; one he has not added gets
+     * [notInSettingsLine]; on the laptop
      * voice ([cloud] false) anything but English gets [LAPTOP_ENGLISH_ONLY].
      */
     @Suppress("ReturnCount") // refused, nothing asked, or the switch

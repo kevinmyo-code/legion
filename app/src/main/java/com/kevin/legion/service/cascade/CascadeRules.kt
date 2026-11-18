@@ -343,10 +343,12 @@ internal object ScriptedLines {
      * Null when nothing was written; "Done." when a write left no message.
      */
     fun doneLine(messages: List<String>): String? {
-        if (messages.isEmpty()) return null
         val parts = messages.map { it.trim().trimEnd('.', '!') }.filter { it.isNotEmpty() }.distinct()
-        if (parts.isEmpty()) return "Done."
-        return "Done: " + parts.joinToString("; ") { it.replaceFirstChar { c -> c.lowercase() } } + "."
+        return when {
+            messages.isEmpty() -> null
+            parts.isEmpty() -> "Done."
+            else -> "Done: " + parts.joinToString("; ") { it.replaceFirstChar { c -> c.lowercase() } } + "."
+        }
     }
 
     /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */

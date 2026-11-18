@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures and phrase lists read best on one line
+
 package com.kevin.legion.vehicle
 
 import com.kevin.legion.vehicle.diag.DiagVoice

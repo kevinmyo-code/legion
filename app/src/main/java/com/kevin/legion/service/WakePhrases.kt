@@ -91,10 +91,12 @@ object WakePhrases {
      */
     fun isSleepPhrase(transcript: String, companionName: String = "", afterQuestion: Boolean = false): Boolean {
         val t = normalise(transcript)
-        if (t.isEmpty()) return false
         val name = normalise(companionName)
-        if (afterQuestion) return isStopPhrase(t, name, HARD_STOPS)
-        return t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || isStopPhrase(t, name, STOP_PHRASES)
+        return when {
+            t.isEmpty() -> false
+            afterQuestion -> isStopPhrase(t, name, HARD_STOPS)
+            else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || isStopPhrase(t, name, STOP_PHRASES)
+        }
     }
 
     /**

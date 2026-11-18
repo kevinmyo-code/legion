@@ -4029,6 +4029,7 @@ object LiveToolbox {
             )
         }
 
+    @Suppress("ReturnCount") // refused, the link dropped during the read, or the outcome
     private suspend fun clearCodes(context: Context, args: JSONObject, userText: String?): JSONObject {
         val confirmed = args.optBoolean("confirmed", false)
         val connected = ObdBluetoothManager.isConnected

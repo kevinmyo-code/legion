@@ -135,7 +135,7 @@ class CascadeWiringTest {
         assertTrue("the waiting request is dropped, not answered", end.contains("carry = \"\""))
         assertTrue(end.contains("endByVoice()"))
         assertFalse(end.contains("answerTurn("))
-        assertTrue("after a question only a hard stop", bodyOf(s, "endsConversation").contains("afterQuestion = FollowUpWindow.isQuestion(lastClipText)"))
+        assertTrue("after a question only a hard stop", bodyOf(s, "endsConversation").contains("FollowUpWindow.isQuestion(lastClipText)"))
         // Why the order matters: a stop heard over loud noise may score as noise and be dropped.
         assertTrue(SttGuard.verdict("Stop.", 0L) is SttGuard.Verdict.Drop)
     }

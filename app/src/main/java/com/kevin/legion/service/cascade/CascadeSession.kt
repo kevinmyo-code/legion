@@ -1395,8 +1395,10 @@ internal class CascadeSession(
      * His latest words are a stop ([WakePhrases.isSleepPhrase]); after a question only a hard stop,
      * so "that's it" as an answer goes to the model.
      */
-    private fun endsConversation(words: String): Boolean =
-        WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = FollowUpWindow.isQuestion(lastClipText))
+    private fun endsConversation(words: String): Boolean {
+        val afterQuestion = FollowUpWindow.isQuestion(lastClipText)
+        return WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = afterQuestion)
+    }
 
     /**
      * A stop: nothing waiting is answered, the conversation ends with the tone. A write the stopped turn
@@ -1443,9 +1445,10 @@ internal class CascadeSession(
             // Nothing real was said (noise, an echo): silence. No line, no filler; the follow-up
             // window starts over in full, as after a statement. Steady noise that keeps opening turns
             // closes the conversation rather than keep the mic open and the transcriber billed.
-            if (closedOnNoise()) return false
-            lastClipText = null
-            backToListening()
+            if (!closedOnNoise()) {
+                lastClipText = null
+                backToListening()
+            }
         } else {
             missedWords(Handover.Moment.LostWords, reason, u.backend.kind, spokenFallback = true)
         }
@@ -1454,13 +1457,14 @@ internal class CascadeSession(
 
     /**
      * The conversation's language after [heard] ([SpokenLanguages]): a whole-turn request for one of his
-     * languages, or a sentence spoken in one in its own non-Latin script, switches it; a request for one not in his setting gets the
-     * scripted line and the turn ends there (false). The laptop voice speaks English only: it says so
-     * and stays English, and the turn is answered in English.
+     * languages, or a sentence spoken in one in its own non-Latin script, switches it; a request for one
+     * not in his setting gets the scripted line and the turn ends there (false). The laptop voice
+     * speaks English only: it says so and stays English, and the turn is answered in English.
      */
     private suspend fun followLanguage(heard: String): Boolean {
         val cloud = backend?.kind == SpeechBackend.Kind.CLOUD
-        return when (val d = SpokenLanguages.decide(heard, languages, conversationLanguage, cloud, CompanionProfile.name(ctx))) {
+        val name = CompanionProfile.name(ctx)
+        return when (val d = SpokenLanguages.decide(heard, languages, conversationLanguage, cloud, name)) {
             SpokenLanguages.Decision.Stay -> true
             is SpokenLanguages.Decision.Refuse -> {
                 LiveLatency.log(LiveLatency.TAG, "language_refused ${d.why}")

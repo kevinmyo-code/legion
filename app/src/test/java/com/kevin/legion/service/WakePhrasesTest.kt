@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures and phrase lists read best on one line
+
 package com.kevin.legion.service
 
 import org.junit.Assert.assertEquals

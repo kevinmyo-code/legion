@@ -1,5 +1,6 @@
 package com.kevin.legion.service.tools.day
 
+import org.json.JSONObject
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.TextStyle
@@ -47,15 +48,17 @@ internal object RelativeDay {
      * move, only when exactly one day off, and a range (`from` before `to`) never moves: every tool
      * that takes a date, reads and writes alike, goes through this once, at dispatch.
      */
-    fun corrected(args: org.json.JSONObject, words: String?, today: LocalDate): Pair<org.json.JSONObject, String>? {
+    @Suppress("ReturnCount") // nothing said, a range, or nothing one day off: each keeps the args
+    fun corrected(args: JSONObject, words: String?, today: LocalDate): Pair<JSONObject, String>? {
         val said = saidDay(words, today) ?: return null
-        val dates = DATE_KEYS.filter { args.has(it) }.associateWith { runCatching { LocalDate.parse(args.optString(it).trim()) }.getOrNull() }
+        val dates = DATE_KEYS.filter { args.has(it) }
+            .associateWith { runCatching { LocalDate.parse(args.optString(it).trim()) }.getOrNull() }
         val from = dates["from"]
         val to = dates["to"]
         if (from != null && to != null && from != to) return null
-        val off = dates.filterValues { it != null && it != said && kotlin.math.abs(it.toEpochDay() - said.toEpochDay()) == 1L }
+        val off = dates.filterValues { it != null && kotlin.math.abs(it.toEpochDay() - said.toEpochDay()) == 1L }
         if (off.isEmpty()) return null
-        val fixed = org.json.JSONObject(args.toString())
+        val fixed = JSONObject(args.toString())
         for (k in off.keys) fixed.put(k, said.toString())
         return fixed to "Used ${label(said)}, the day he said, not the date asked for."
     }
