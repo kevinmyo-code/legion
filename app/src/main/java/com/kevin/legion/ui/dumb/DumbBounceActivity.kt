@@ -56,7 +56,7 @@ class DumbBounceActivity : ComponentActivity() {
                         finish()
                     },
                 )
-            } else {
+            } else com.kevin.legion.ui.theme.soft.ProvideTypesetEdition(systemBars = false) { FeedBlockedPage {
                 FeedBlockedScreen(
                     appLabel = label,
                     pass = graph.feedPass,
@@ -78,7 +78,7 @@ class DumbBounceActivity : ComponentActivity() {
                         opened
                     },
                 )
-            }
+            } }
         }
     }
 
