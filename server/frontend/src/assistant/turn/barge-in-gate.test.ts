@@ -282,8 +282,9 @@ describe('the verdict after a paused reply (review 2026-11-17: echo still in fli
   it("the reply's echo still arriving in the first 320 ms after a fire is not a person", () => {
     const g = gate()
     feed(g, windows, 0.95, loud)
-    const grace = Math.floor(VERDICT_GRACE_MS / WINDOW_MS)
-    const v = verdicts([...feed(g, grace, 0.95, loud), ...feed(g, 60, 0.05, 300)])[0]
+    // 288 ms of echo: well over SELF_SPEECH_MS, so without the grace it reads as a person.
+    expect(9 * WINDOW_MS).toBeLessThan(VERDICT_GRACE_MS)
+    const v = verdicts([...feed(g, 9, 0.95, loud), ...feed(g, 60, 0.05, 300)])[0]
     expect(v.selfInterrupt).toBe(true)
   })
 

@@ -93,6 +93,8 @@ export class BargeInGate {
   private armed = false
   private verdictWindowsLeft = 0
   private speechAfterMs = 0
+  /** The part of it after `VERDICT_GRACE_MS`, which is what the verdict goes on. */
+  private speechAfterGraceMs = 0
   private fireLevel = 0
   private fireThreshold = 0
   private replyOpen = false
@@ -226,6 +228,7 @@ export class BargeInGate {
     this.resetRun()
     this.verdictWindowsLeft = Math.floor(VERDICT_MS / WINDOW_MS)
     this.speechAfterMs = 0
+    this.speechAfterGraceMs = 0
     this.userGuardLeft = USER_GUARD_WINDOWS
     return fire
   }
@@ -242,12 +245,13 @@ export class BargeInGate {
   private watch(prob: number): GateEvent | null {
     const watchedMs = (Math.floor(VERDICT_MS / WINDOW_MS) - this.verdictWindowsLeft) * WINDOW_MS
     if (prob >= SPEECH_PROB) {
-      if (watchedMs >= VERDICT_GRACE_MS) this.speechAfterMs += WINDOW_MS
+      this.speechAfterMs += WINDOW_MS
+      if (watchedMs >= VERDICT_GRACE_MS) this.speechAfterGraceMs += WINDOW_MS
       this.userGuardLeft = USER_GUARD_WINDOWS
     }
     if (--this.verdictWindowsLeft > 0) return null
     const clearlyUser = this.fireLevel >= this.fireThreshold * CLEARLY_USER_FACTOR
-    const self = this.speechAfterMs < SELF_SPEECH_MS && !clearlyUser
+    const self = this.speechAfterGraceMs < SELF_SPEECH_MS && !clearlyUser
     if (self && !this.fireCounted) {
       this.fireCounted = true
       this.selfInterrupts++
