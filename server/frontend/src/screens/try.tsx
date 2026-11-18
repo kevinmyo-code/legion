@@ -123,9 +123,10 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   const me = useMe()
   const recruiter = session.data?.role === 'recruiter'
   // A visit's own session is signed in too: a member is someone signed in who is not a visitor.
-  // Never decided while the visit is being asked again: entering refetches both, and `me` landing
-  // first briefly read the new visitor as a member, which unmounted the orb mid-tap (review item 2).
-  const member = me.data?.signedIn === true && !recruiter && !session.isFetching
+  // Never decided while the tap is entering: entering refetches both, and `me` landing first
+  // briefly read the new visitor as a member, which unmounted the orb mid-tap (review item 2).
+  const [entering, setEntering] = useState(false)
+  const member = me.data?.signedIn === true && !recruiter && !entering
   // The engine's switch (ADR 0102): a visit whose engine is Live gets the Live dock page, so a
   // server-side rollback needs no new web build. Asked once a visit exists (it is the visit's own
   // answer); before that, the tap's entry asks it before any greeting (`enter` below).
@@ -153,15 +154,20 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
         entered={recruiter}
         expiresAt={expiresAt}
         enter={async () => {
-          const result = await enterDemo(linkCode ?? '', refTag)
-          if (!result.ok) {
-            setLinkError(result.message)
-            return false
+          setEntering(true)
+          try {
+            const result = await enterDemo(linkCode ?? '', refTag)
+            if (!result.ok) {
+              setLinkError(result.message)
+              return false
+            }
+            // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
+            const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
+            await queryClient.invalidateQueries()
+            return chosen?.engine !== 'live'
+          } finally {
+            setEntering(false)
           }
-          // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
-          const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
-          await queryClient.invalidateQueries()
-          return chosen?.engine !== 'live'
         }}
       />
     )

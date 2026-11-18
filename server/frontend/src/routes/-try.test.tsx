@@ -1,3 +1,4 @@
+import { focusManager } from '@tanstack/react-query'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -192,6 +193,37 @@ describe('/try', () => {
     expect(audio.disposed).toBe(false)
     expect(audio.micOpen).toBe(true)
     expect(engine.demo.enterBodies).toHaveLength(1)
+  })
+
+  test("a member's preview stays put while the visit question is asked again", async () => {
+    const engine = createEngine()
+    renderApp('/try', engine, 'family')
+    expect(await screen.findByText(/^Preview\./)).toBeInTheDocument()
+    const answer = globalThis.fetch
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    let asked = 0
+    vi.stubGlobal('fetch', async (input: Request) => {
+      if (new URL(input.url).pathname === '/api/demo/session') {
+        asked += 1
+        await held
+      }
+      return answer(input)
+    })
+    // Coming back to the tab asks again (refetch on focus).
+    await act(async () => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+      await settle()
+    })
+    expect(asked).toBe(1)
+    expect(screen.getByText(/^Preview\./)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
+    await act(async () => {
+      release()
+      await settle()
+    })
+    focusManager.setFocused(undefined)
   })
 
   test('a visit reloaded without its link gets the voice stage too', async () => {
