@@ -41,7 +41,7 @@ function greeting(text = 'Essay still waiting, huh?', kind = 'due'): TurnStart {
   }
 }
 
-function build(answers: TurnStart[] = [], options: { visitor?: boolean } = {}) {
+function build(answers: TurnStart[] = [], options: { visitor?: boolean; speakTyped?: boolean } = {}) {
   const audio = new FakeAudio()
   const requests: TurnRequest[] = []
   const signals: AbortSignal[] = []
@@ -71,6 +71,7 @@ function build(answers: TurnStart[] = [], options: { visitor?: boolean } = {}) {
     companionName: 'Alfred',
     sessionMinutes: null,
     endOnHidden: () => true,
+    ...(options.speakTyped ? { speakTyped: true } : {}),
     ...(options.visitor
       ? {
           openingTurn: () => '(The visitor just joined the demo.)',
@@ -281,11 +282,50 @@ describe('CascadeClient', () => {
     client.send('What is on today?')
     await settle()
     expect(requests[0].text).toBe('What is on today?')
+    expect(requests[0].spoken).toBeUndefined()
     expect(requests[0].preface).toBe('(The visitor just joined the demo.)')
     const lines = client.getState().lines
     expect(lines[1]).toMatchObject({ text: 'Nothing is on. Anything else?', via: 'typed', open: false })
     expect(audio.played).toEqual([])
     expect(client.getState().mic).toBe('off')
+  })
+
+  it('a turn typed into an open voice conversation is answered aloud, and listening carries on', async () => {
+    const said: SseEvent[] = [
+      { type: 'turn', data: { conversation_id: 'c-1', turn: 1 } },
+      { type: 'heard', data: { text: 'What is on today?' } },
+      { type: 'sentence', data: { text: 'Nothing is on.' } },
+      { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([5])), rate: 24000 } },
+      { type: 'done', data: { status: 'done' } },
+    ]
+    const { client, audio, requests } = build([greeting(), { ok: true, events: stream(said) }])
+    await open(client, audio)
+    client.send('What is on today?')
+    await settle()
+    expect(requests[1]).toMatchObject({ text: 'What is on today?', spoken: true })
+    expect(audio.played).toHaveLength(2)
+    // The typed line once: the engine's `heard` of it draws no second one.
+    const mine = client.getState().lines.filter((l) => l.kind === 'me')
+    expect(mine).toEqual([expect.objectContaining({ text: 'What is on today?', via: 'typed' })])
+    drained(audio)
+    expect(client.getState().mic).toBe('on')
+    expect(client.getState().activity).toBe('listening')
+  })
+
+  it('on the voice stage (speakTyped) a typed turn is answered aloud with no conversation open', async () => {
+    const said: SseEvent[] = [
+      { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } },
+      { type: 'sentence', data: { text: 'He builds things.' } },
+      { type: 'audio', data: { pcm: pcm16ToBase64(new Int16Array([5])), rate: 24000 } },
+      { type: 'done', data: { status: 'done' } },
+    ]
+    const { client, audio, requests } = build([{ ok: true, events: stream(said) }], { speakTyped: true })
+    client.send('Who is he?')
+    await settle()
+    expect(requests[0]).toMatchObject({ text: 'Who is he?', spoken: true })
+    expect(audio.played).toHaveLength(1)
+    // The microphone was never opened by typing.
+    expect(audio.micOpen).toBe(false)
   })
 
   it("a visitor's later conversation greets with the continue line", async () => {

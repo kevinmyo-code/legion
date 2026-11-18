@@ -174,6 +174,7 @@ export function AssistantProvider({
           continueTurn: () => continueRef.current ?? null,
           sessionLimit: () => limitRef.current ?? null,
           prepare: () => voiceFirstRef.current!.prepare(),
+          speakTyped: true,
         })
       : new LiveClient(deps ?? createLiveDeps(), {
         endOnHidden: () => surfaceRef.current === 'family',

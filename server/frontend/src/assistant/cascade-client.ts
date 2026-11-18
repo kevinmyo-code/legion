@@ -46,7 +46,9 @@ import type { SseEvent } from './sse'
  *   thinks or speaks interrupts it and listens again (spec 20).
  * - **Nothing heard / not understood** (spec 32): a caption, no speech, and listening resumes.
  *
- * A typed message is answered in text only, as on Live. What it will not do, as `LiveClient`:
+ * A typed message is answered in text only, as on Live, unless a voice conversation is open or the
+ * page asks for it aloud (`speakTyped`, the demo's stage): then it is spoken and the conversation
+ * carries on as after any turn. What it will not do, as `LiveClient`:
  * assert an outcome the engine did not report (`Done:` only after `ok: true`), or keep anything
  * of the conversation in the browser. The engine writes the conversation record's words and tool
  * calls itself; this sends only what the browser alone knows (mic changes, interruptions, the
@@ -131,6 +133,8 @@ export interface CascadeOptions {
    * the demo enters its visit here, so the tap that unlocks the audio is the tap that enters.
    */
   prepare?: () => Promise<boolean>
+  /** Typed messages are answered aloud even with no voice conversation open (the demo's stage). */
+  speakTyped?: boolean
 }
 
 /** Pre-roll kept ahead of the first voiced chunk (20 ms chunks), so the first word is not clipped. */
@@ -178,6 +182,8 @@ export class CascadeClient {
   /** The reply that was playing when the person talked over it, for the echo check. */
   private bargedOver: string | null = null
   private lastReply = ''
+  /** This turn's typed words, which the engine says back as `heard` when it answers aloud. */
+  private typedEcho: string | null = null
   /** Turns in a row the engine heard no speech in (noise sent as an utterance). */
   private noSpeechRun = 0
   private spec: { abort: AbortController; result: Promise<string | null>; samples: number } | null = null
@@ -298,13 +304,27 @@ export class CascadeClient {
   send(raw: string): boolean {
     const text = raw.trim()
     if (!text || this.state.phase === 'ended' || this.disposed) return false
+    // Typed into an open voice conversation, or on the voice stage: answered aloud, and the
+    // conversation carries on as after any turn. Otherwise in text only, as on Live.
+    const aloud = this.voiceOpen || this.options.speakTyped === true
+    if (aloud) this.unlockPlayback()
     const wasSpeaking = this.playing
     this.cutReply('barge_in')
     this.stopListening()
     this.push({ kind: 'me', text, via: 'typed', open: false })
     if (wasSpeaking) this.push({ kind: 'sys', text: 'Stopped speaking because you typed.' })
-    void this.afterPrepare(() => this.turn({ text }, false))
+    void this.afterPrepare(() => this.turn(aloud ? { text, spoken: true } : { text }, aloud, true))
     return true
+  }
+
+  /** Open the playback side inside a tap (Safari), without the microphone. */
+  private unlockPlayback() {
+    try {
+      const audio = (this.audioIO ??= this.deps.audio())
+      audio.unlock?.((playing) => this.onPlaying(playing))
+    } catch {
+      // No audio here: the answer still comes as text.
+    }
   }
 
   /**
@@ -403,12 +423,7 @@ export class CascadeClient {
   startTour(beat = 0) {
     if (this.state.phase === 'ended' || this.disposed) return
     if (beat === 0) this.deps.funnel?.('tour_started')
-    try {
-      const audio = (this.audioIO ??= this.deps.audio())
-      audio.unlock?.((playing) => this.onPlaying(playing))
-    } catch {
-      // No audio here: the tour still shows and captions.
-    }
+    this.unlockPlayback()
     this.cutReply('barge_in')
     this.stopListening()
     void this.afterPrepare(() => this.turn({ tour: beat }, true))
@@ -421,12 +436,7 @@ export class CascadeClient {
   ask(raw: string): boolean {
     const text = raw.trim()
     if (!text || this.state.phase === 'ended' || this.disposed) return false
-    try {
-      const audio = (this.audioIO ??= this.deps.audio())
-      audio.unlock?.((playing) => this.onPlaying(playing))
-    } catch {
-      // No audio here: the answer still comes as text.
-    }
+    this.unlockPlayback()
     this.cutReply('barge_in')
     this.stopListening()
     // The engine says it back as `heard`, which draws the line.
@@ -712,8 +722,10 @@ export class CascadeClient {
   private async turn(
     given: Omit<TurnInput, 'audio'> & { audio?: Int16Array | Int16Array[] },
     spoken: boolean,
+    typed = false,
   ) {
     if (this.disposed) return
+    this.typedEcho = typed ? given.text ?? null : null
     // Every upload passes here, so none is ever over the engine's cap.
     const { audio: raw, ...rest } = given
     let input: TurnInput = raw ? { ...rest, audio: utterance(raw) } : rest
@@ -836,8 +848,10 @@ export class CascadeClient {
       }
       case 'heard': {
         const text = typeof data.text === 'string' ? data.text.trim() : ''
-        if (text) {
-          this.noSpeechRun = 0
+        // A typed turn sent to be spoken comes back as `heard`: its line is already on screen.
+        const typed = text !== '' && text === this.typedEcho
+        if (text) this.noSpeechRun = 0
+        if (text && !typed) {
           this.push({ kind: 'me', text, via: 'spoken', open: false })
           this.heardLineId = this.state.lines[this.state.lines.length - 1].id
         }
