@@ -128,6 +128,9 @@ function build(
     audio: () => audio,
     now: () => Date.now(),
     utcOffsetMinutes: () => 0,
+    // Voice barge-in is off on the page (`deps.ts` VOICE_BARGE_IN); this file tests the code behind
+    // the switch, so it is on here.
+    bargeIn: true,
     turnDetector: options.loadModels ?? (async () => detector),
     // Early transcripts are off on the page (`deps.ts` EARLY_TRANSCRIPT); the tests of the code
     // behind the switch turn it on here.

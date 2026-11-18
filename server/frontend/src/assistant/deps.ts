@@ -286,6 +286,15 @@ async function loadTurnModels(): Promise<TurnDetector | null> {
  */
 export const EARLY_TRANSCRIPT = false
 
+/**
+ * Barge-in by voice: OFF for the demo's first ship (2026-11-17). Three rounds of pause-then-decide
+ * passed the unit tests and failed the real headless-Chrome echo runs (the reply heard back cut the
+ * answer and was posted as a turn; `turn/barge-in-gate.ts` has what the code says about why). Off,
+ * the conversation is half-duplex from the start and a tap (the orb, the dialog's Interrupt) is
+ * the way to interrupt. The code and its tests stay, behind this.
+ */
+export const VOICE_BARGE_IN = false
+
 /** What has been said so far, transcribed early; null when it could not be had. */
 async function transcribe(audio: Int16Array, signal: AbortSignal): Promise<string | null> {
   const form = new FormData()
@@ -330,6 +339,7 @@ export function createCascadeDeps(options: { funnelRef?: string } = {}): Cascade
     robotic,
     turnDetector: loadTurnModels,
     ...(EARLY_TRANSCRIPT ? { transcribe } : {}),
+    bargeIn: VOICE_BARGE_IN,
     ...(options.funnelRef !== undefined ? { funnel: (event) => postFunnel(event, options.funnelRef) } : {}),
     audio: (): AudioIO => {
       if (audioFactory) return audioFactory()

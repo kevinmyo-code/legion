@@ -15,6 +15,28 @@
  * Levels are peak absolute sample values of the window (of 32,767), as on the phone. The browser's
  * echo cancellation sits in front, so the learned floor is usually far below the phone's call-mode
  * DEFAULT_ECHO_FLOOR; the default is the phone's, and a reply learns its own within 320 ms.
+ *
+ * **OFF on the web for the first ship (`deps.ts` VOICE_BARGE_IN, 2026-11-17).** Read this before
+ * turning it back on. Pause-then-decide passed its unit tests three times and failed the real
+ * headless-Chrome echo runs each time (`vf-echo`: the opening heard back at 25% posted a turn, 52
+ * audio stops; `vf-echo-long`: the gate judged a long answer's own echo a person, cut it after 139
+ * stops, and the echo was posted without `barge_in=1` and answered). What the code, not a browser,
+ * says about why (suspects, unconfirmed):
+ * - Every "stop" in those counts is an `AudioBufferSourceNode.stop()` in `web-audio.ts` flush(): one
+ *   cut stops every queued sentence chunk, so 52 or 139 stops can be one or two cuts.
+ * - The tail after a reply (`ECHO_TAIL_MS`, 300 ms) is counted in mic chunks from `onPlaying(false)`,
+ *   and web-audio reports that from its idle timer 80 ms after the last buffer's SCHEDULED end. Real
+ *   output latency plus the device and echo-canceller buffers are not in that figure, so an echo
+ *   arriving later than about 300 ms starts an ordinary turn: posted with no `barge_in`, since it
+ *   was never a barge-in. That fits the opening's echo becoming a turn.
+ * - `VERDICT_GRACE_MS` (320 ms) assumes playback goes quiet soon after `pause()`. `suspend()` is
+ *   asynchronous and the output buffer still drains, so a long answer's echo can run past the grace,
+ *   read as a person still talking, and cut the answer.
+ * - The flag rides `bargeTurn`, which any `listen()` without keepTurn clears. Anything that calls
+ *   `listen()` between the verdict and that turn's end (the backstop's re-listen, `replyDrained`
+ *   after the cut's flush, the echo-verdict re-listen added in r4) posts the turn without it.
+ * - The unit rooms (`echo.test.ts`) model latency as a fixed 240 ms delay and an instant pause; the
+ *   browser has neither. A test that reproduces the browser runs belongs before any fix.
  */
 
 export const WINDOW_MS = 32
