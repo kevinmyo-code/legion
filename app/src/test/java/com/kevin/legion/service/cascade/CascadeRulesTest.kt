@@ -4,6 +4,7 @@ package com.kevin.legion.service.cascade
 
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.EndOfTurnPolicy
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -312,5 +313,44 @@ class CascadeRulesTest {
         assertFalse(c.toString().contains("s3cret"))
         assertFalse(LaptopVoiceConfig("laptop:8765", "t").isComplete)
         assertFalse(LaptopVoiceConfig("http://laptop:8765", "").isComplete)
+    }
+
+    @Test
+    fun `a write finished under a stop is said from its facts, short, never a question`() {
+        fun fact(name: String, action: String, result: String, ok: Boolean = true) =
+            ScriptedLines.writeFact(name, action, JSONObject(result), ok)
+        val milk = fact("manage_item", "add", """{"success":true,"message":"Added. It was a list, not a reminder. Anything else?","item":"milk","list":"Groceries"}""")
+        assertEquals("Done: added milk to Groceries.", ScriptedLines.doneLine(listOf(milk)))
+        // Two writes, two short clauses; the title comes from a nested result field.
+        val tick = fact("manage_item", "tick", """{"success":true,"items":[{"title":"stamps","done":true}]}""")
+        assertEquals("Done: added milk to Groceries; ticked off stamps.", ScriptedLines.doneLine(listOf(milk, tick)))
+        // A failed write is said as failed.
+        val failed = fact("complete_task", "", """{"success":false,"message":"Which one?","title":"essay"}""", ok = false)
+        assertEquals("Essay didn't go through.", ScriptedLines.doneLine(listOf(failed)))
+        // Already said aloud before the interrupt: not repeated.
+        assertNull(ScriptedLines.doneLine(listOf(milk), alreadySaid = "Added milk to your groceries"))
+        // No title in the result: the phrase alone; never the message, never a "?".
+        val bare = fact("complete_task", "", """{"success":true,"message":"Marked. Want another?"}""")
+        assertEquals("Done: marked it done.", ScriptedLines.doneLine(listOf(bare)))
+        // Long titles and many writes stay within 80 characters.
+        val many = (1..6).map { fact("manage_item", "add", """{"item":"invented item number $it with a long name","list":"Groceries"}""") }
+        val line = ScriptedLines.doneLine(many)!!
+        assertTrue(line, line.length <= ScriptedLines.MAX_DONE_CHARS && !line.contains("?"))
+        assertNull(ScriptedLines.doneLine(emptyList()))
+    }
+
+    @Test
+    fun `the stop path says the stopped turn's writes from their facts, then the tone`() {
+        val s = java.io.File(sourceRootForRules(), "service/cascade/CascadeSession.kt").readText()
+        val end = s.substring(s.indexOf("private suspend fun endByStop("), s.indexOf("private fun verdictOf("))
+        assertTrue(end.contains("ScriptedLines.doneLine(unheardWrites, unheardSaid)"))
+        assertTrue("said before the tone", end.indexOf("reply.say(done)") in 0 until end.indexOf("endByVoice()"))
+        assertTrue("facts, never the message", s.contains("ScriptedLines.writeFact(r.name, r.args.optString(\"action\"), response, ok = writeDone)"))
+        assertTrue("what he heard is kept", s.contains("unheardSaid = reply.spoken()"))
+    }
+
+    private fun sourceRootForRules(): java.io.File {
+        val candidates = listOf("src/main/java/com/kevin/legion", "app/src/main/java/com/kevin/legion")
+        return candidates.map { java.io.File(it) }.first { it.isDirectory }
     }
 }

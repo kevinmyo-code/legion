@@ -259,6 +259,8 @@ internal class SpeculativeAnswer(
 
         override fun onToolCalls(names: List<String>) = deliver { it.onToolCalls(names) }
 
+        override fun onToolsStarting(calls: List<Pair<String, JSONObject>>) = deliver { it.onToolsStarting(calls) }
+
         override fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) =
             deliver { it.onToolResult(name, args, response, ms, writeDone) }
 
