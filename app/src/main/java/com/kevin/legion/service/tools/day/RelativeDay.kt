@@ -40,11 +40,10 @@ internal object RelativeDay {
      */
     fun saidDay(words: String?, today: LocalDate, at: LocalTime? = null): LocalDate? {
         val w = words?.lowercase(Locale.US)?.split(Regex("[^a-z0-9]+"))?.filter { it.isNotEmpty() }.orEmpty()
-        if (w.isEmpty() || w.any { it in BLOCKERS || it.any(Char::isDigit) }) return null
-        // "tonight" in the small hours may mean the night in progress, which began on yesterday's date.
-        if (at != null && at.hour < SMALL_HOURS_END && "tonight" in w) return null
-        val days = w.mapNotNull { DAY_WORDS[it] }
-        return days.singleOrNull()?.let { today.plusDays(it) }
+        val blocked = w.isEmpty() || w.any { it in BLOCKERS || it.any(Char::isDigit) } ||
+            // "tonight" in the small hours may mean the night in progress, which began on yesterday's date.
+            (at != null && at.hour < SMALL_HOURS_END && "tonight" in w)
+        return if (blocked) null else w.mapNotNull { DAY_WORDS[it] }.singleOrNull()?.let { today.plusDays(it) }
     }
 
     /**
