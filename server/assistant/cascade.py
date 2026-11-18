@@ -318,24 +318,6 @@ READ_THROUGH_WAIT = (
     "I haven't changed anything: this turn read text from the web, so changes wait for your next "
     "message. Ask me again and I'll do it."
 )
-# A model sentence that says it cannot make a change here, or sends them elsewhere to make it
-# (ship 2026-11-18, the live gate: after a web search it said "I can't add things to your grocery
-# list; you'll want the phone app for that", which is false on the web). After outside text was read
-# and no write went through, such a sentence is dropped and READ_THROUGH_WAIT is said in its place.
-# Anywhere else it stands (a true phone-only refusal: alarms, music).
-_CANNOT_CHANGE = re.compile(
-    r"\b(?:can't|cannot|can not|couldn't|could not|unable to|not able to|won't be able to|"
-    r"don't have (?:a|the|any) (?:tool|way|ability)|no (?:tool|way) to)\b[^.;!?]{0,40}?"
-    r"\b(?:add|change|save|update|create|delete|remove|edit|tick|schedule|book|write|log)\b",
-    re.I,
-)
-_ELSEWHERE = re.compile(r"\b(?:phone app|mobile app|the app|another device)\b", re.I)
-
-
-def declines_a_change(text: str) -> bool:
-    return bool(_CANNOT_CHANGE.search(text) or _ELSEWHERE.search(text))
-
-
 # Said after a claimed change that no write backed and none went through by the end of the turn.
 CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
 # The same, when a write did go through in this turn (a claim made before its own call).
@@ -1487,8 +1469,6 @@ def _answer(
         return line
 
     unbacked = 0
-    # Sentences dropped for an invented reason after a web read (`declines_a_change`).
-    declined = 0
     # Claims of a change not yet backed when said: held until the turn ends, then said if a write
     # backed them by then, else dropped (finding 3: a claim streamed before its own call).
     held_claims: list[tuple[str, str]] = []
@@ -1593,10 +1573,6 @@ def _answer(
                 if not honest(text):
                     held_claims.append((text, tagged))
                     continue
-                if tainted() and not door.wrote() and declines_a_change(text):
-                    # The true reason is ADR 0090's, said once at the end in code.
-                    declined += 1
-                    continue
                 yield say(text, tagged)
                 continue
             yield event
@@ -1685,9 +1661,6 @@ def _answer(
             yield say(READ_THROUGH_WAIT)
         else:
             yield say(CHANGE_NOT_MADE)
-    elif declined and not wrote:
-        yield say(READ_THROUGH_WAIT)
-    timings["declined"] = declined
     timings["wait_reason"] = int(guard_refused)
     timings["unbacked"] = unbacked
     if failure is not None:
