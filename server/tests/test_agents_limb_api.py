@@ -247,3 +247,26 @@ def test_another_member_of_the_same_household_never_sees_my_limb(
     assert not visible(Limb, member_request(other)).exists()
     assert visible(Limb, member_request(household_user)).count() == 1
 
+
+# ---- HEAD /api/agents/warm ----------------------------------------------------------------------
+
+
+def test_warm_answers_a_member_with_an_empty_204_and_touches_nothing(
+    auth_client, switched_on, django_assert_max_num_queries
+):
+    # Authentication only: the token and its user, its last_seen_at, the household fence.
+    with django_assert_max_num_queries(4):
+        response = auth_client.head("/api/agents/warm")
+    assert response.status_code == 204 and not response.content
+    assert not Limb.objects.exists()
+
+
+def test_warm_is_off_with_the_turn(auth_client, monkeypatch):
+    monkeypatch.delenv(TURN_ENV, raising=False)
+    assert auth_client.head("/api/agents/warm").status_code == 404
+
+
+def test_warm_needs_a_member_and_is_head_only(auth_client, switched_on):
+    assert APIClient().head("/api/agents/warm").status_code in (401, 403)
+    assert auth_client.get("/api/agents/warm").status_code == 405
+    assert auth_client.post("/api/agents/warm").status_code == 405

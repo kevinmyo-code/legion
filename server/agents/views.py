@@ -14,6 +14,9 @@
   `agents/legion/limbs.py`): its manifest is upserted on the row keyed by its device token, and the
   answer names the brain that answers its member's turns. Same switch as the turn: 404 while off,
   nothing stored. A browser session is not a limb (403). A recruiter is denied the route.
+- `HEAD /api/agents/warm`: an empty 204, sent by a limb at wake so a cold instance starts while
+  he is still speaking (plan 1116 section 4.5). Reads and writes nothing past authentication. Same
+  switch: 404 while off.
 - `GET /api/agents/probe/sse`: five events 200 ms apart, each with the server's clock, for
   measuring whether Cloud Run delivers a stream unbuffered (ticket 01). Reads and writes nothing.
 
@@ -209,6 +212,13 @@ class AgentLimbView(_SwitchedAgentsView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(limbs.attach(request, body.validated_data))
+
+
+class AgentWarmView(_SwitchedAgentsView):
+    # HEAD only, and drf-spectacular leaves HEAD out of `openapi.yaml`; the route is described in
+    # this module's docstring instead.
+    def head(self, request):
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def _probe():
