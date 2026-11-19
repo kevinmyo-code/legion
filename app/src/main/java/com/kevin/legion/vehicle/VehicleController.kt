@@ -1346,7 +1346,7 @@ object VehicleController {
         fun where() = ActiveVehicle.selected(context) to DongleCarController.state.value?.recordingId
         val before = where()
         val outcome = switchOrRefuse(context, vehicleId)
-        return outcome.copy(changed = outcome.success && where() != before)
+        return outcome.copy(changed = outcome.changed ?: (outcome.success && where() != before))
     }
 
     private suspend fun switchOrRefuse(context: Context, vehicleId: String): WriteOutcome {
@@ -1426,10 +1426,12 @@ object VehicleController {
             live.carId != vehicle.obdMac
         if (outcome.ok || vinProvedOther) ActiveVehicle.select(context, vehicle.obdMac)
         return if (vinProvedOther) {
+            // The adapter stays on the VIN's car: nothing was rebound, so no change is claimed (review A3).
             WriteOutcome(
                 true,
                 "${outcome.message} Questions about stored data go to the ${label(vehicle)} when nothing " +
                     "is connected.",
+                changed = false,
             )
         } else {
             WriteOutcome(outcome.ok, outcome.message)

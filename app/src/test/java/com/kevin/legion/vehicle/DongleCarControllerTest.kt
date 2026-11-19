@@ -103,6 +103,18 @@ class DongleCarControllerTest {
         assertTrue(out.message.contains("live readings stay on the"))
         assertEquals("car:suv", ActiveVehicle.recordingId(context))
         assertEquals("car:truck", ActiveVehicle.selected(context)) // still the default when unplugged
+        // Nothing was rebound: never changed=true over a message that says nothing changed (review A3).
+        assertEquals(false, out.changed)
+        assertTrue(out.message, out.message.contains("Nothing changed"))
+    }
+
+    @Test
+    fun `a plain switch with nothing connected is a change`() = runBlocking {
+        seed()
+        ActiveVehicle.select(context, "car:suv")
+        val out = VehicleController.switchToOutcome(context, "car:truck")
+        assertTrue(out.success)
+        assertEquals(true, out.changed)
     }
 
     // ---- unknown VIN --------------------------------------------------------------------------
