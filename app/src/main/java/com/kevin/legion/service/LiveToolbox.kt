@@ -4228,7 +4228,7 @@ object LiveToolbox {
             return result(
                 true,
                 ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Reminder, added.text, whenPhrase),
-            )
+            ).put("item", added.text) // what the phone's done line names (2026-11-19)
         }
 
         if (itemArg.isBlank()) return result(false, "Which item?")
