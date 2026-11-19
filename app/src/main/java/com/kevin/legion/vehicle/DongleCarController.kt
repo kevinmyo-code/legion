@@ -61,6 +61,7 @@ object DongleCarController {
     private const val KEY_OVERRIDE_SAID = "override_said"
     private const val KEY_SESSION_ANSWERED = "session_answered"
     private const val KEY_SESSION_FP = "session_fp"
+    private const val KEY_CHAIN_ASKED = "chain_asked"
 
     /** Whole VIN read, retry included: two 5 s command timeouts plus slack. */
     internal const val VIN_READ_BUDGET_MS = 12_000L
@@ -204,6 +205,8 @@ object DongleCarController {
         val p = prefs(context)
         val previousId = p.getString(KEY_SESSION_ID, null)
         val blip = recentlyDisconnected(p.getLong(KEY_DISCONNECTED_AT, 0L), now)
+        // A quiet gap ends the drop chain: the next held car may be asked aloud again (review R3-2).
+        if (!blip) p.edit().putBoolean(KEY_CHAIN_ASKED, false).apply()
         // A short drop is the same drive only with positive evidence it is the same car: the same
         // non-null print, or a VIN naming the same car (review A5, R2-1). Two print-less cars swapped
         // inside the window are two connections: the second is asked about, holds its readings, and
@@ -436,9 +439,13 @@ object DongleCarController {
         val p = prefs(context)
         // One spoken ask per held id; a reconnect does not ask again. The notification stays up.
         if (p.getString(KEY_ASKED, null) == decision.recordingId) return
+        // One spoken ask per chain of short drops (each reconnect within SESSION_CONTINUES_MS of the
+        // last disconnect): a flaky print-less adapter gets new held ids, cards and notifications,
+        // never the question aloud again mid-drive (review R3-2).
+        if (p.getBoolean(KEY_CHAIN_ASKED, false)) return
         val facts = question(decision, labels)
         val choices = (labels.values + "a new car").joinToString(", ")
-        val outcome = ProactiveBus.speakIfAllowed(
+        val outcome = raiseAsk(
             context,
             ProactiveRaise(
                 ruleId = RULE_ID,
@@ -452,7 +459,9 @@ object DongleCarController {
             ),
         )
         // "Not now" (mid-conversation, a call) is not an ask: the next connect may try again.
-        if (outcome != ProactiveBus.RaiseOutcome.NotNow) p.edit().putString(KEY_ASKED, decision.recordingId).apply()
+        if (outcome != ProactiveBus.RaiseOutcome.NotNow) {
+            p.edit().putString(KEY_ASKED, decision.recordingId).putBoolean(KEY_CHAIN_ASKED, true).apply()
+        }
         // The one question per connection is used up only when he heard it: a notice posted in quiet
         // hours or with the voice silenced leaves it for his next car question (review A8).
         if (outcome is ProactiveBus.RaiseOutcome.Raised) connectionKey()?.let { AdapterBinding.markAsked(it) }
@@ -778,6 +787,12 @@ object DongleCarController {
 
     private fun count(n: Int, noun: String): String = "$n $noun${if (n == 1) "" else "s"}"
 
+    private val DEFAULT_RAISE: suspend (Context, ProactiveRaise) -> ProactiveBus.RaiseOutcome =
+        { c, r -> ProactiveBus.speakIfAllowed(c, r) }
+
+    /** How the connect-time ask is raised; a test seam (the real one is [ProactiveBus.speakIfAllowed]). */
+    internal var raiseAsk: suspend (Context, ProactiveRaise) -> ProactiveBus.RaiseOutcome = DEFAULT_RAISE
+
     /** Test seam: forget this process's state. */
     internal fun resetForTest() {
         connectionPrint = null
@@ -789,6 +804,7 @@ object DongleCarController {
         lastReplaceAsk = null
         sessionFrom = 0L
         vinRetried = false
+        raiseAsk = DEFAULT_RAISE
     }
 
     /** Test seam: age the last replace ask, as if he said it again a moment later. */

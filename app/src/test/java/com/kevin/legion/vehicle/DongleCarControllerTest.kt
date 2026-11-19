@@ -711,6 +711,31 @@ class DongleCarControllerTest {
     }
 
     @Test
+    fun `a flaky print-less adapter - three drops 30 s apart are one spoken ask and three held ids`() = runBlocking {
+        seed()
+        var spoken = 0
+        DongleCarController.raiseAsk = { _, _ ->
+            spoken++
+            com.kevin.legion.service.ProactiveBus.RaiseOutcome.Raised(1L)
+        }
+        val ids = mutableListOf<String>()
+        repeat(3) { i ->
+            if (i > 0) {
+                DongleCarController.onDisconnected(context, at = System.currentTimeMillis() - 30_000L)
+                Thread.sleep(5)
+            }
+            ids += (connect(VinResponse.Result.NoData, null) as DongleCar.Held).recordingId
+        }
+        assertEquals(1, spoken)
+        assertEquals(3, ids.toSet().size)
+
+        // A quiet gap longer than the drop window: the next held car may be asked aloud again.
+        DongleCarController.onDisconnected(context, at = System.currentTimeMillis() - 5 * 60_000L)
+        connect(VinResponse.Result.NoData, null)
+        assertEquals(2, spoken)
+    }
+
+    @Test
     fun `each connection has its own key, even to the same car`() = runBlocking {
         seed()
         assertNull(DongleCarController.connectionKey())
