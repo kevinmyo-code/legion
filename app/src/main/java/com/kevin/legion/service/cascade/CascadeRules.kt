@@ -323,7 +323,7 @@ class AckLines(private val lines: List<String> = DEFAULT, private val pick: (Int
  * Every scripted line a voice may keep in memory once it has said it (voice-fast, 2026-11-15): the
  * same short line is neither paid for nor waited for twice.
  */
-internal object ScriptedLines {
+object ScriptedLines {
     /**
      * What is said the moment a confirmed turn goes to a slow tool, so the wait is not silent
      * (voice-fast step 3, 2026-11-15; Live's NON_BLOCKING lookups had a "still checking" line, the
@@ -378,6 +378,10 @@ internal object ScriptedLines {
             silent = name in SILENT || "$name/$action" in SILENT,
         )
     }
+
+    /** [writeFact] for a call as the model sent it, judged on the tool it stands for. */
+    fun factOf(name: String, args: JSONObject, response: JSONObject, ok: Boolean): WriteFact =
+        LiveSurface.resolve(name, args).let { writeFact(it.name, it.args.optString("action"), response, ok) }
 
     /**
      * What code says for [facts] (2026-11-19: every completed write is said by code, from its
