@@ -546,6 +546,8 @@
         width: 100%;
         max-width: var(--rc-measure);
         height: auto;
+        /* A portrait screen recording stays within one screen; the ink letterboxes it. */
+        max-height: 85vh;
         background: var(--rc-ink);
     }
     /* A 3D model (`model-viewer.tsx`): the poster, then the canvas over it on the same paper. */

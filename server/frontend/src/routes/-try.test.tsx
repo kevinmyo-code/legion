@@ -867,6 +867,27 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     expect(video?.querySelector('track')).toHaveAttribute('src', '/static/demo/fake.vtt')
   })
 
+  test('a section clip shows its poster, plays inline on a phone, never by itself, captions on', async () => {
+    const engine = visitor()
+    engine.demo.content = withProjects({
+      video: '/static/demo/fake.webm',
+      poster: '/static/demo/fake.jpg',
+      captions: '/static/demo/fake.vtt',
+      note: 'Recorded on fake data.',
+    })
+    renderApp('/try', engine, 'family')
+    const section = await screen.findByRole('region', { name: 'Fake two' })
+    const video = section.querySelector('video')!
+    expect(video).toHaveAttribute('poster', '/static/demo/fake.jpg')
+    expect(video).toHaveAttribute('playsinline')
+    expect(video).toHaveAttribute('preload', 'none')
+    expect(video).toHaveAttribute('aria-label', 'Fake two')
+    expect(video).not.toHaveAttribute('autoplay')
+    expect(video).not.toHaveAttribute('muted')
+    expect(video.querySelector('track')).toHaveAttribute('default')
+    expect(within(section).getByText('Recorded on fake data.')).toBeInTheDocument()
+  })
+
   test('a section with 3D models draws one viewer each, poster first, after its clip slot', async () => {
     const engine = visitor()
     engine.demo.content = withProjects({
