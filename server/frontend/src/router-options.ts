@@ -19,8 +19,9 @@ import { closedModalEntry, isModalEntry } from './lib/modal-entry'
  * Everything else scrolls exactly as before (review 2026-11-19, F2): every navigation, Back and
  * Forward included, starts at the top and no box inside a page is ever put back. TanStack's only
  * hook for skipping a navigation's scroll is this function, and giving one switches its restoring
- * on; `scrollRestorationKey` hands it a key no location ever has twice, so it never finds anything
- * to restore and falls through to its plain scroll to the top.
+ * on; `scrollRestorationKey` hands it a key no location ever has twice (in this load or any other:
+ * a per-load prefix, and `lib/forget-scroll-cache.ts` drops what a past load stored), so it never
+ * finds anything to restore and falls through to its plain scroll to the top.
  */
 export function scrollRestorationFor({ location }: { location: ParsedLocation }): boolean {
   // Read on every navigation, so the way-out mark can never outlive the one it was set for.
@@ -28,10 +29,13 @@ export function scrollRestorationFor({ location }: { location: ParsedLocation })
   return !leavingModal && !isModalEntry(location.state)
 }
 
+// A per-load prefix: TanStack keeps its cache in sessionStorage across reloads (and the service
+// worker's reload), so a plain counter would meet its own keys from the last load again.
+const LOAD = Math.random().toString(36).slice(2, 10)
 let keys = 0
 export function scrollRestorationKey(): string {
   keys += 1
-  return `legion-no-restore-${keys}`
+  return `legion-no-restore-${LOAD}-${keys}`
 }
 
 export const appRouterOptions = {

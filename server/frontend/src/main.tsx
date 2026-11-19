@@ -1,3 +1,5 @@
+// First, before the router's module reads it: the router's stale scroll cache goes (see the file).
+import './lib/forget-scroll-cache'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { StrictMode } from 'react'

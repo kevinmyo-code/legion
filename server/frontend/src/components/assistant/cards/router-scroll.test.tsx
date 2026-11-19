@@ -217,3 +217,36 @@ describe('F1: the modal-closing mark never outlives its close', () => {
     expect(calls.filter(toTop)).toHaveLength(1)
   })
 })
+
+describe('R2-1: a past load never decides where a page opens', () => {
+  test("TanStack's stored scroll cache from a previous load (a reload) is dropped and never used", async () => {
+    const calls = spyScroll()
+    // What a past load left: entries under the keys a fresh counter would hand out again.
+    const stale: Record<string, unknown> = {}
+    for (let n = 1; n <= 20; n++) stale[`legion-no-restore-${n}`] = { window: { scrollX: 0, scrollY: 777 } }
+    window.sessionStorage.setItem('tsr-scroll-restoration-v1_3', JSON.stringify(stale))
+    // A fresh page load: modules evaluated again, in main.tsx's order (the cache drop first).
+    vi.resetModules()
+    await import('@/lib/forget-scroll-cache')
+    const rr = await import('@tanstack/react-router')
+    const { appRouterOptions: options } = await import('@/router-options')
+    expect(window.sessionStorage.getItem('tsr-scroll-restoration-v1_3')).toBeNull()
+    window.history.replaceState(window.history.state, '', '/')
+    const root = rr.createRootRoute({ component: () => <rr.Outlet /> })
+    const tree = root.addChildren([
+      rr.createRoute({ getParentRoute: () => root, path: '/', component: () => <rr.Link to="/notes">Away</rr.Link> }),
+      rr.createRoute({ getParentRoute: () => root, path: '/notes', component: () => <p>Notes</p> }),
+    ])
+    const router = rr.createRouter({ ...options, routeTree: tree, history: rr.createBrowserHistory() })
+    render(<rr.RouterProvider router={router} />)
+    await screen.findByText('Away')
+    await tick()
+    fireEvent.click(screen.getByText('Away'))
+    await screen.findByText('Notes')
+    await tick()
+    await back()
+    await screen.findByText('Away')
+    expect(calls.filter((c) => (c as { top?: number }).top === 777)).toEqual([])
+    expect(calls.filter(toTop).length).toBeGreaterThanOrEqual(2)
+  })
+})
