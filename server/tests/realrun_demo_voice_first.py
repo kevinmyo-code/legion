@@ -125,7 +125,12 @@ def test_realrun_demo_voice_first(real, tmp_path, monkeypatch):
     # Filler lines made once, as the process does after its first spoken turn.
     from demo.models import DemoVisit
 
-    user = DemoVisit.objects.order_by("-id").first().user
+    visit = DemoVisit.objects.order_by("-id").first()
+    # The run's spend is the turns' own `cost_usd`, which the engine sends to the tester visit only
+    # (2026-11-19, `tests/test_demo_strip_tester_only.py`): this visit is the tester's.
+    visit.code.unmetered = True
+    visit.code.save(update_fields=["unmetered"])
+    user = visit.user
     voice = voice_engine.voice_for(user)
     audio = cascade.FillerAudio(spawn=lambda work: work())
     audio.warm(real.speech, voice)

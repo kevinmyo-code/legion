@@ -308,12 +308,14 @@ if (A.scenario === 'vf-chips') {
   await shot('chips-follow-ups')
   // While he is still speaking: the orb scrolled away, the docked orb and the chips row
   // must both be on screen and must not cover each other (review round 7, could-not-check).
+  // Docked, the chips ride in the dock above its orb (2026-11-19): the dock's own row.
   const orbBox = await page.locator('[data-stage="orb"]').boundingBox()
   if (orbBox) await page.evaluate((y) => window.scrollTo(0, y), Math.round(orbBox.y + orbBox.height * 0.8))
-  const stopShown = await waitFor(async () => (await page.locator('[data-stage="dock"]').count()) > 0, 5000)
+  const stopShown = await waitFor(async () => (await page.locator('[data-stage="dock"][data-docked="true"]').count()) > 0, 5000)
+  await sleep(500)
   const boxes = await page.evaluate(() => {
     const r = (el) => (el ? (({ x, y, width, height }) => ({ x, y, width, height }))(el.getBoundingClientRect()) : null)
-    return { stop: r(document.querySelector('[data-stage="dock"]')), row: r(document.querySelector('[data-stage="chips"]')), vh: window.innerHeight, vw: window.innerWidth }
+    return { stop: r(document.querySelector('[data-stage="dock-orb"]')), row: r(document.querySelector('[data-stage="dock-chips"]')), vh: window.innerHeight, vw: window.innerWidth }
   })
   const inView = (b) => b && b.y >= 0 && b.y + b.height <= boxes.vh && b.x >= 0 && b.x + b.width <= boxes.vw
   const overlap = (a, b) => a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height

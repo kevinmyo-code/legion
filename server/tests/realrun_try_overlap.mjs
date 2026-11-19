@@ -86,7 +86,8 @@ await shot('scrolled')
 // at the page's foot and with the typed box focused: no page-width overflow, nothing under it.
 const dockCheck = () =>
   page.evaluate(() => {
-    const dock = document.querySelector('[data-stage="dock"]')
+    // The dock stays mounted; shown is `data-docked` (2026-11-19).
+    const dock = document.querySelector('[data-stage="dock"][data-docked="true"]')
     const r = dock ? dock.getBoundingClientRect() : null
     const covered = new Set()
     if (r) {
