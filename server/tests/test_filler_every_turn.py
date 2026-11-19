@@ -202,3 +202,45 @@ def test_a_slow_answer_after_the_docs_gets_its_line_after_the_tool(
     kinds = [k for k, _ in events]
     assert _fillers(events) == ["legion_docs"]
     assert kinds.index("tool") < kinds.index("filler") < kinds.index("sentence")
+
+
+def test_a_cancel_during_a_silent_round_sends_no_line(member, engine, monkeypatch, household_user):
+    # F6: the stop lands while the answer round is silent; at 0.7 s nothing is said.
+    from tests.test_cancel_paid_calls import _Flag
+
+    conversation = _later(member, engine, monkeypatch, household_user)
+    flag = _Flag()
+    monkeypatch.setattr(cascade, "CancelCheck", lambda *a, **k: flag)
+
+    class CancelledWhileSilent(SlowModel):
+        def stream(self, req):
+            if len(self.requests) == 1:
+                flag.hit = True
+            yield from super().stream(req)
+
+    model = CancelledWhileSilent([call("monthly_spend", {}), say("Some.")], [0.0, 1.0])
+    events = _turn(member, engine, conversation, model)
+    assert _fillers(events) == []
+
+
+def test_a_closed_round_stops_reading_the_model_at_its_next_item():
+    # F5: the reader thread stops at the next item after the turn lets go, and closes the stream.
+    closed = []
+
+    class Slow:
+        def stream(self, req):
+            try:
+                for n in range(50):
+                    time.sleep(0.02)
+                    yield m.TextDelta(str(n))
+            finally:
+                closed.append(True)
+
+    stream = cascade.Ticking(Slow(), every=0.01).stream(None)
+    first = next(item for item in stream if isinstance(item, m.TextDelta))
+    assert first.text == "0"
+    stream.close()
+    deadline = time.monotonic() + 1.0
+    while not closed and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert closed == [True]

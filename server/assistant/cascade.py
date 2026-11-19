@@ -1748,7 +1748,8 @@ def _answer(
         never once an answer sentence is ready, never a second line in the turn."""
         if lookup is None or filler_said or sentences or not speak:
             return None
-        if clock() - lookup[1] < FILLER_WAIT_S:
+        if clock() - lookup[1] < FILLER_WAIT_S or door.cancelled():
+            # Never after a cancel (asked only once the line is due: it reads the database).
             return None
         return (yield from filler(lookup[0]))
 
@@ -1842,6 +1843,7 @@ def _answer(
                     and fillers.is_slow(tool)
                     and sentences == 0
                     and not filler_said
+                    and not door.cancelled()
                     and door.would_accept(tool)
                 ):
                     # Never for a call the door is about to refuse (round 2 speech review 7).
