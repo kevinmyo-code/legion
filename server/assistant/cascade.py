@@ -546,13 +546,26 @@ class FillerAudio:
         with self._lock:
             return self._audio.get((voice, line))
 
-    def pick(self, voice: str, tool: str, shortest: bool = False) -> tuple[str, bytes] | None:
+    def pick(
+        self, voice: str, tool: str, shortest: bool = False, ceiling_ms: int | None = None
+    ) -> tuple[str, bytes] | None:
         """One of `tool`'s lines that is in memory, never the last line said; None when the tool
         is silent or none of its lines is in hand yet. `shortest`: the shortest clip in hand (the
         delayed kind, which plays while an answer may already be on its way: a shorter clip holds
-        it up less), else the next shortest when that one was the last said."""
+        it up less), else the next shortest when that one was the last said. `ceiling_ms`: no clip
+        longer than this; when none of the tool's own is short enough, the shortest generic line
+        (`fillers.FALLBACK`) that is, else nothing."""
+        limit = None if ceiling_ms is None else ceiling_ms * OUTPUT_RATE * 2 // 1000
         with self._lock:
             ready = [line for line in fillers.lines_for(tool) if (voice, line) in self._audio]
+            if limit is not None:
+                ready = [line for line in ready if len(self._audio[(voice, line)]) <= limit]
+                if not ready and fillers.lines_for(tool):
+                    ready = [
+                        line
+                        for line in fillers.FALLBACK
+                        if (voice, line) in self._audio and len(self._audio[(voice, line)]) <= limit
+                    ]
             if shortest:
                 ready.sort(key=lambda line: len(self._audio[(voice, line)]))
         if shortest:
@@ -1332,6 +1345,10 @@ class CountingModel:
 # started (the phone's `ToolFillers.FAST_DELAY_MS`, 700 ms). Measured on /try: a quick lookup's
 # answer round takes about 0.9 to 1.1 s, a code-spoken one (his profile) a few milliseconds.
 FILLER_WAIT_S = 0.7
+# The longest clip a delayed line may be (review round 2): an answer ready just after it starts
+# waits at most this long. Measured clips (Puck): the generic lines 1.04 s, most tools' shortest
+# 1.12 to 2.20 s.
+DELAYED_LINE_MAX_MS = 1500
 # How often a round that has said nothing yet is reported as `waiting` (`Ticking`).
 TICK_S = 0.1
 
@@ -1765,10 +1782,10 @@ def _answer(
         if clock() - lookup[1] < FILLER_WAIT_S or door.cancelled():
             # Never after a cancel (asked only once the line is due: it reads the database).
             return None
-        return (yield from filler(lookup[0], shortest=True))
+        return (yield from filler(lookup[0], shortest=True, ceiling_ms=DELAYED_LINE_MAX_MS))
 
-    def filler(tool: str, shortest: bool = False):
-        picked = filler_audio.pick(voice, tool, shortest=shortest)
+    def filler(tool: str, shortest: bool = False, ceiling_ms: int | None = None):
+        picked = filler_audio.pick(voice, tool, shortest=shortest, ceiling_ms=ceiling_ms)
         if picked is None:
             return None
         line, audio = picked

@@ -280,3 +280,33 @@ def test_the_answers_first_audio_is_not_the_lines(member, engine, monkeypatch, h
     t = {k: int(v) for k, v in re.findall(r"(\w+)=(-?\d+)", line)}
     assert 0 <= t["filler_ms"] <= t["first_sound_ms"] + 5
     assert t["tts_first_audio_ms"] >= t["first_sentence_ms"] > t["filler_ms"]
+
+
+# ---- review round 2 -------------------------------------------------------------------------------
+
+
+def _clip(ms: int) -> bytes:
+    return b"\x00" * (ms * 48)  # 24 kHz, 16-bit
+
+
+@pytest.mark.parametrize("family_ms", [900, 1400, 1700, 2600, 4800])
+@pytest.mark.parametrize("generic_ms", [1040, 1600])
+def test_no_delayed_line_is_longer_than_the_ceiling_for_any_family(family_ms, generic_ms):
+    ceiling = cascade.DELAYED_LINE_MAX_MS
+    for tool, (_slow, lines) in fillers.FILLERS.items():
+        audio = cascade.FillerAudio(spawn=lambda work: None)
+        audio._audio = {("v", line): _clip(family_ms + 10 * i) for i, line in enumerate(lines)}
+        audio._audio.update({("v", line): _clip(generic_ms) for line in fillers.FALLBACK})
+        saved, cascade.LINES = cascade.LINES, fillers.LinePicker()
+        try:
+            picked = audio.pick("v", tool, shortest=True, ceiling_ms=ceiling)
+        finally:
+            cascade.LINES = saved
+        if family_ms <= ceiling:
+            assert picked is not None and picked[0] in lines, tool
+        elif generic_ms <= ceiling:
+            assert picked is not None and picked[0] in fillers.FALLBACK, tool
+        else:
+            assert picked is None, tool
+        if picked is not None:
+            assert len(picked[1]) // 48 <= ceiling, tool
