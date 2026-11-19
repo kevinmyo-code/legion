@@ -5,43 +5,6 @@
     "ask": "What's on the list?",
     "thats_all": "That's all."
   },
-  "nodes": [
-    {
-      "id": "you",
-      "label": "You",
-      "where": "the asker"
-    },
-    {
-      "id": "phone",
-      "label": "Wake word, end of turn",
-      "where": "on the phone"
-    },
-    {
-      "id": "stt",
-      "label": "Speech to text",
-      "where": "Gemini, cloud"
-    },
-    {
-      "id": "model",
-      "label": "The model",
-      "where": "Gemini Flash-Lite, cloud"
-    },
-    {
-      "id": "checks",
-      "label": "Checks",
-      "where": "code, on the phone"
-    },
-    {
-      "id": "tools",
-      "label": "Tools",
-      "where": "code, on the phone"
-    },
-    {
-      "id": "voice",
-      "label": "The voice",
-      "where": "Gemini TTS, cloud"
-    }
-  ],
   "money_overlay": {
     "font": "app/src/main/res/font/source_serif_4_semibold.ttf",
     "background": "0x14120F",
@@ -149,27 +112,59 @@
       "kicker": "Part two · 1 of 2",
       "title": "Example step",
       "line": "The path lights up.",
-      "path": [
-        "you",
-        "phone"
-      ],
       "slot": "h-example",
       "in": 0,
-      "dur": 5
+      "dur": 5,
+      "active": [
+        "p.loop",
+        "m.llm"
+      ],
+      "flows": [
+        {
+          "from": "p.loop",
+          "to": "m.llm",
+          "label": "example call",
+          "at": 0.3,
+          "dur": 0.8
+        },
+        {
+          "from": "m.llm",
+          "to": "p.loop",
+          "label": "example reply",
+          "at": 1.4,
+          "dur": 0.8
+        }
+      ],
+      "hold": true
     },
     {
       "kind": "step",
       "kicker": "Part two · 2 of 2",
       "title": "Another step",
       "line": "A bow between nodes.",
-      "path": [
-        "model",
-        "checks",
-        "tools"
-      ],
       "slot": "h-example",
       "in": 5,
-      "dur": 5
+      "dur": 5,
+      "active": [
+        "p.loop",
+        "m.llm"
+      ],
+      "flows": [
+        {
+          "from": "p.loop",
+          "to": "m.llm",
+          "label": "example call",
+          "at": 0.3,
+          "dur": 0.8
+        },
+        {
+          "from": "m.llm",
+          "to": "p.loop",
+          "label": "example reply",
+          "at": 1.4,
+          "dur": 0.8
+        }
+      ]
     },
     {
       "kind": "end",
@@ -181,5 +176,76 @@
         "Example note two."
       ]
     }
-  ]
+  ],
+  "map": {
+    "places": [
+      {
+        "id": "model",
+        "label": "Model service",
+        "sub": "Gemini, in the cloud",
+        "items": [
+          {
+            "id": "m.stt",
+            "label": "Speech to text"
+          },
+          {
+            "id": "m.llm",
+            "label": "The model (Flash-Lite)"
+          },
+          {
+            "id": "m.tts",
+            "label": "The voice"
+          }
+        ]
+      },
+      {
+        "id": "phone",
+        "label": "On the phone",
+        "sub": "the LEGION app",
+        "items": [
+          {
+            "id": "p.wake",
+            "label": "Wake word"
+          },
+          {
+            "id": "p.turn",
+            "label": "End of turn"
+          },
+          {
+            "id": "p.loop",
+            "label": "The loop"
+          },
+          {
+            "id": "p.tools",
+            "label": "Tools"
+          },
+          {
+            "id": "p.checks",
+            "label": "Checks"
+          }
+        ]
+      },
+      {
+        "id": "engine",
+        "label": "The engine",
+        "sub": "Cloud Run + Postgres",
+        "items": [
+          {
+            "id": "e.data",
+            "label": "Household data"
+          }
+        ]
+      }
+    ],
+    "lines": [
+      [
+        "phone",
+        "model"
+      ],
+      [
+        "phone",
+        "engine"
+      ]
+    ]
+  }
 }

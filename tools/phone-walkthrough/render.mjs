@@ -282,6 +282,8 @@ function captionCues(timeline) {
 
 /** Where a scene's footage ends: its in point plus the scene's length on screen, at its speed. */
 function footageOut(scene, item) {
+  // A held scene shows one frame of the take (at `in`) for its whole length: no footage passes.
+  if (scene.hold) return scene.in
   return scene.in + (item.end - item.start) * (scene.speed || 1)
 }
 
@@ -311,7 +313,7 @@ async function renderFrames(layout, bgFile) {
     const timeline = await setup([])
     const cues = captionCues(timeline)
     await setup(cues)
-    const rect = await page.evaluate(() => window.screenRect())
+    const rects = await page.evaluate(() => window.screenRects())
     const from = Number(opt.from || 0), to = Math.min(Number(opt.to || timeline.total), timeline.total)
     const ff = spawn(bin('ffmpeg'), [
       '-v', 'error', '-y', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(FPS), '-i', '-',
@@ -327,7 +329,7 @@ async function renderFrames(layout, bgFile) {
     }
     ff.stdin.end()
     await done
-    return { timeline, rect, from, to, cues }
+    return { timeline, rects, from, to, cues }
   } finally {
     await browser.close()
   }
@@ -340,7 +342,7 @@ function graphFile(layout, graph) {
 }
 
 /** Footage into the screen rectangle, and the sound, over the drawn frames. */
-function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
+function composite(layout, bgFile, { timeline, rects, from, to }, outFile) {
   const inputs = ['-i', bgFile]
   const vf = []
   const af = []
@@ -358,14 +360,25 @@ function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
     const file = path.join(clipsDir, `${scene.slot}.mp4`)
     const speed = scene.speed || 1
     const out = footageOut(scene, item)
+    const rect = rects[k]
+    // A scene that carries straight on from the one before (same take, in = that one's out, same
+    // place on screen) joins it with no fade, picture or sound: one continuous shot.
+    const joins = (a, ia, b, ib) => a && b && a.slot === b.slot && (a.speed || 1) === 1 && (b.speed || 1) === 1 &&
+      Math.abs(footageOut(a, timeline.scenes[ia]) - b.in) < 0.05 && JSON.stringify(rects[ia]) === JSON.stringify(rects[ib])
+    const fromPrev = joins(spec.scenes[k - 1], k - 1, scene, k)
+    const intoNext = joins(scene, k, spec.scenes[k + 1], k + 1)
     inputs.push('-i', file)
     const v = n++
     const fadeOut = Math.max(end - start - 0.3, 0)
+    const fades = (fromPrev ? '' : 'fade=t=in:st=0:d=0.3:alpha=1,') + (intoNext ? '' : `fade=t=out:st=${fadeOut.toFixed(3)}:d=0.3:alpha=1,`)
     const money = overlayChain(scene.slot)
     vf.push(
-      `[${v}:v]fps=${FPS},${money ? money + ',' : ''}trim=${scene.in}:${out.toFixed(3)},setpts=(PTS-STARTPTS)/${speed},fps=${FPS},` +
+      `[${v}:v]fps=${FPS},${money ? money + ',' : ''}` +
+        (scene.hold
+          ? `trim=start=${scene.in}:duration=${(1.5 / FPS).toFixed(4)},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${(end - start).toFixed(3)},trim=duration=${(end - start).toFixed(3)},`
+          : `trim=${scene.in}:${out.toFixed(3)},setpts=(PTS-STARTPTS)/${speed},fps=${FPS},`) +
         `scale=${rect.w}:${rect.h}:force_original_aspect_ratio=decrease,pad=${rect.w}:${rect.h}:(ow-iw)/2:(oh-ih)/2:color=0x0b0a09,` +
-        `format=yuva420p,fade=t=in:st=0:d=0.3:alpha=1,fade=t=out:st=${fadeOut.toFixed(3)}:d=0.3:alpha=1,` +
+        `format=yuva420p,${fades}` +
         `setpts=PTS+${start.toFixed(3)}/TB[c${v}]`,
       `${last}[c${v}]overlay=${rect.x}:${rect.y}:eof_action=pass:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'[o${v}]`,
     )
@@ -374,7 +387,8 @@ function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
   // Sound: Alfred from the take's own audio (the room recording, or the mp4's track) at 1x
     // only, and each asker line's clean WAV laid at its time. Nothing is muted unless an ask says
     // `mute` (a track that also carries the asker): muting by default would silence a barge-in.
-    const source = speed === 1 ? audioSource(scene.slot) : null
+    // A held frame is silent (the take's sound does not pause; it is simply not used).
+    const source = speed === 1 && !scene.hold ? audioSource(scene.slot) : null
     if (!source) return
     const asks = speechAsks(scene.slot).filter((a) => a.at >= scene.in && a.at < out)
     const mute = asks.filter((a) => a.mute).map((a) => {
@@ -391,15 +405,17 @@ function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
     const lead = from0 < 0 ? `adelay=${Math.round(-from0 * 1000)}|${Math.round(-from0 * 1000)},` : ''
     af.push(
       `[${r}:a]${lead}atrim=${Math.max(from0, 0).toFixed(3)}:${(to0 - Math.min(from0, 0)).toFixed(3)},asetpts=PTS-STARTPTS,` +
-        `aresample=48000,aformat=channel_layouts=stereo${volume},afade=t=in:d=0.15,` +
-        `afade=t=out:st=${Math.max(end - start - 0.3, 0).toFixed(3)}:d=0.3,adelay=${delay}|${delay}[a${r}]`,
+        `aresample=48000,aformat=channel_layouts=stereo${volume},` +
+        (fromPrev ? '' : 'afade=t=in:d=0.15,') +
+        (intoNext ? '' : `afade=t=out:st=${Math.max(end - start - 0.3, 0).toFixed(3)}:d=0.3,`) +
+        `adelay=${delay}|${delay}[a${r}]`,
     )
     audioParts.push(`[a${r}]`)
     for (const a of asks) {
       inputs.push('-i', levelled(askerWav(a.line)))
       const w = n++
       const d = Math.round((start + (a.at - scene.in)) * 1000)
-      af.push(`[${w}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${d}|${d}[s${w}]`)
+      af.push(`[${w}:a]aresample=48000,aformat=channel_layouts=stereo,afade=t=in:d=0.02,areverse,afade=t=in:d=0.04,areverse,adelay=${d}|${d}[s${w}]`)
       audioParts.push(`[s${w}]`)
     }
   })
@@ -446,7 +462,7 @@ function exportClip(slot) {
   for (const ask of speechAsks(slot)) {
     inputs.push('-i', levelled(askerWav(ask.line)))
     const d = Math.round(ask.at * 1000)
-    graph.push(`[${n}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${d}|${d}[s${n}]`)
+    graph.push(`[${n}:a]aresample=48000,aformat=channel_layouts=stereo,afade=t=in:d=0.02,areverse,afade=t=in:d=0.04,areverse,adelay=${d}|${d}[s${n}]`)
     parts.push(`[s${n}]`)
     cues.push({ start: ask.at, end: ask.at + duration(askerWav(ask.line)), text: `Asker: ${spec.lines[ask.line]}` })
     n++

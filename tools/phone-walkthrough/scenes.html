@@ -12,7 +12,11 @@
   Colours and type are the /try page's (`server/frontend/src/index.css`, `.recruiter`): paper,
   ink, one accent, Source Serif 4, square corners except the phone, which depicts a phone.
   The phone screen is left empty: ffmpeg lays the recorded footage into the rectangle
-  `window.screenRect()` reports. A slot with no footage yet gets a labelled placeholder here.
+  `window.screenRects()` reports for each scene. A slot with no footage yet gets a placeholder.
+
+  Layers, so that what stays put does not reset between scenes: the text (title and line) fades
+  and rises a little at each chapter change; the phone frame fades only where the scene before
+  or after has no phone; the system map (part two) fades only where its neighbour is not a step.
 -->
 <style>
   :root {
@@ -28,32 +32,32 @@
     position: relative;
   }
   #stage { position: absolute; inset: 0; }
+  .layer { position: absolute; inset: 0; }
   .caps {
-    font-size: calc(var(--u) * 0.62); font-weight: 600; letter-spacing: 0.09em;
+    font-size: calc(var(--u) * 0.6); font-weight: 600; letter-spacing: 0.1em;
     text-transform: uppercase; color: var(--meta);
   }
   .text { position: absolute; }
-  .title { font-size: calc(var(--u) * 2.3); line-height: 1.12; font-weight: 600; letter-spacing: -0.01em; }
-  .line { font-size: calc(var(--u) * 1.05); line-height: 1.4; color: var(--ink); margin-top: calc(var(--u) * 0.6); }
+  .title { font-size: calc(var(--u) * 2.45); line-height: 1.08; font-weight: 600; letter-spacing: -0.015em; }
+  .line { font-size: calc(var(--u) * 1.12); line-height: 1.38; color: var(--ink); margin-top: calc(var(--u) * 0.55); }
+  .event { font-size: calc(var(--u) * 0.8); line-height: 1.35; color: var(--accent); font-style: italic; margin-top: calc(var(--u) * 0.5); }
+  .tally { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: calc(var(--u) * 0.56);
+    color: var(--meta); margin-top: calc(var(--u) * 0.5); letter-spacing: 0.02em; }
   .rule { height: 1px; background: var(--rule); margin: calc(var(--u) * 0.7) 0; }
-  .phone {
-    position: absolute; background: var(--ink); border-radius: 34px;
-  }
+  .phone { position: absolute; background: var(--ink); border-radius: 38px; }
   .screen {
     position: absolute; background: #0b0a09; color: #cfc8bb; display: flex; flex-direction: column;
     align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 18px;
   }
   .screen .caps { color: #a39b8c; }
   .ph-title { font-size: calc(var(--u) * 0.8); color: #efe9de; }
-  .ticks { position: absolute; display: flex; gap: 6px; }
-  .tick { height: 4px; background: var(--rule); flex: 1; }
-  .tick.on { background: var(--ink); }
-  .tick.now { background: var(--accent); }
+  .progress { position: absolute; height: 3px; background: var(--rule); }
+  .progress > div { position: absolute; top: 0; height: 3px; }
   svg text { font-family: inherit; }
   .caption {
-    position: absolute; left: 50%; transform: translateX(-50%); max-width: 90%;
-    background: rgba(29, 26, 22, 0.86); color: var(--paper); padding: 10px 18px;
-    font-size: calc(var(--u) * 0.9); line-height: 1.35; text-align: center;
+    position: absolute; left: 50%; transform: translateX(-50%); max-width: 94%;
+    background: rgba(29, 26, 22, 0.88); color: var(--paper); padding: 8px 16px;
+    font-size: calc(var(--u) * 0.82); line-height: 1.3; text-align: center;
   }
   .end-link { font-size: calc(var(--u) * 1.6); font-weight: 600; color: var(--accent); }
   .note { font-size: calc(var(--u) * 0.72); color: var(--meta); }
@@ -64,24 +68,33 @@
 <script>
 'use strict'
 // Layout per format, in CSS pixels at the output size (the page is rendered at scale 1).
+// `phone` is where the phone stands in part two (beside the map), `phoneBeat` in part one.
 const LAYOUTS = {
-  wide: { w: 1920, h: 1080, u: 34,
-    text: { x: 120, y: 150, w: 760 },
-    diagram: { x: 900, y: 120, w: 450, h: 840 },
-    phone: { x: 1430, y: 90, h: 900 },
-    ticks: { x: 120, y: 960, w: 760 },
+  wide: { w: 1920, h: 1080, u: 36,
+    text: { x: 130, y: 96, w: 1080 },
+    phone: { x: 1330, y: 66, h: 948 }, phoneBeat: { x: 1330, y: 66, h: 948 },
+    progress: { x: 130, y: 1030, w: 1080 },
+    map: {
+      model: { x: 130, y: 420, w: 470, h: 260 },
+      engine: { x: 130, y: 790, w: 470, h: 180 },
+      phone: { x: 760, y: 420, w: 440, h: 550 },
+    },
     caption: { bottom: 40 } },
   tall: { w: 1080, h: 1350, u: 30,
-    text: { x: 64, y: 70, w: 952 },
-    diagram: { x: 40, y: 400, w: 480, h: 760 },
-    phone: { x: 560, y: 380, h: 800 },
-    ticks: { x: 64, y: 1210, w: 952 },
-    caption: { bottom: 40 } },
+    text: { x: 56, y: 40, w: 968 },
+    phone: { x: 600, y: 312, h: 940 }, phoneBeat: { x: 315, y: 312, h: 940 },
+    progress: { x: 56, y: 296, w: 968 },
+    map: {
+      model: { x: 40, y: 342, w: 520, h: 250 },
+      phone: { x: 40, y: 650, w: 520, h: 400 },
+      engine: { x: 40, y: 1110, w: 520, h: 140 },
+    },
+    caption: { bottom: 10 } },
 }
 // The recorded phone screens are portrait; this is their width over height.
 const SCREEN_ASPECT = 9 / 19.5
 const BEZEL = 14
-const FADE = 0.25
+const FADE = 0.4
 
 let SPEC = null, L = null, OPTS = {}, TIMELINE = []
 
@@ -115,15 +128,19 @@ function sceneDuration(scene) {
   return 4
 }
 
-function screenRect() {
-  const p = phoneRect()
+function phoneRect(scene) {
+  const P = scene && scene.kind === 'beat' ? L.phoneBeat : L.phone
+  const w = Math.round((P.h - 2 * BEZEL) * SCREEN_ASPECT + 2 * BEZEL)
+  // Even sizes keep ffmpeg's yuv420p scaling exact.
+  return { x: P.x, y: P.y, w: w - (w % 2), h: P.h - (P.h % 2) }
+}
+function screenRect(scene) {
+  const p = phoneRect(scene)
   return { x: p.x + BEZEL, y: p.y + BEZEL, w: p.w - 2 * BEZEL, h: p.h - 2 * BEZEL }
 }
-function phoneRect() {
-  const h = L.phone.h
-  const w = Math.round((h - 2 * BEZEL) * SCREEN_ASPECT + 2 * BEZEL)
-  // Even sizes keep ffmpeg's yuv420p scaling exact.
-  return { x: L.phone.x, y: L.phone.y, w: w - (w % 2), h: h - (h % 2) }
+/** The footage rectangle of every scene, in timeline order (null where a scene has no phone). */
+function screenRects() {
+  return TIMELINE.map(({ scene }) => (scene.slot ? screenRect(scene) : null))
 }
 
 function el(tag, attrs, children) {
@@ -138,27 +155,45 @@ function el(tag, attrs, children) {
 }
 function px(n) { return n + 'px' }
 function ease(x) { return x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x) }
+function easeInOut(x) { return x < 0 ? 0 : x > 1 ? 1 : x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2 }
+
+/** How visible a layer is at `local`: it fades only toward a neighbour that does not share it. */
+function layerAlpha(index, local, dur, shares) {
+  const prev = TIMELINE[index - 1], next = TIMELINE[index + 1]
+  const fadeIn = prev && shares(prev.scene) ? 1 : ease(local / FADE)
+  const fadeOut = next && shares(next.scene) ? 1 : ease((dur - local) / FADE)
+  return Math.min(fadeIn, fadeOut)
+}
 
 function frame(t) {
   const stage = document.getElementById('stage')
   stage.textContent = ''
   const item = TIMELINE.find((s) => t >= s.start && t < s.end) || TIMELINE[TIMELINE.length - 1]
+  const index = TIMELINE.indexOf(item)
   const local = t - item.start
   const dur = item.end - item.start
-  // Cuts inside one chapter (`chapter: false`) keep the text steady; only the footage crossfades.
-  const index = TIMELINE.indexOf(item)
-  const continues = (s) => s && s.scene.chapter === false
-  const fadeIn = continues(item) ? 1 : ease(local / FADE)
-  const fadeOut = continues(TIMELINE[index + 1]) ? 1 : ease((dur - local) / FADE)
-  const alpha = Math.min(fadeIn, fadeOut, 1)
-  const content = el('div', { style: { position: 'absolute', inset: '0', opacity: String(alpha) } })
   const scene = item.scene
-  if (scene.kind === 'title' || scene.kind === 'part' || scene.kind === 'end') drawCard(content, scene)
-  else drawPhoneScene(content, scene, local, dur)
-  stage.appendChild(content)
-  // The phone and its screen do not fade: the footage sits on top and fades itself.
-  if (scene.slot) stage.appendChild(drawPhone(scene))
-  drawTicks(stage, item)
+  const cur = scene
+  // Text: steady across the cuts of one chapter (`chapter: false`), a fade and a small rise between.
+  const sameText = (s) => s.chapter === false && s.title === cur.title
+  const nextScene = TIMELINE[index + 1] && TIMELINE[index + 1].scene
+  const textIn = cur.chapter === false && TIMELINE[index - 1] && TIMELINE[index - 1].scene.title === cur.title ? 1 : ease(local / FADE)
+  const textOut = nextScene && sameText(nextScene) ? 1 : ease((dur - local) / FADE)
+  const textAlpha = Math.min(textIn, textOut)
+  const text = el('div', { class: 'layer', style: { opacity: String(textAlpha), transform: `translateY(${px(Math.round((1 - textIn) * 14))})` } })
+  if (scene.kind === 'title' || scene.kind === 'part' || scene.kind === 'end') drawCard(text, scene)
+  else drawText(text, scene, local, dur)
+  stage.appendChild(text)
+  if (scene.kind === 'step' && SPEC.map) {
+    const mapAlpha = layerAlpha(index, local, dur, (s) => s.kind === 'step')
+    stage.appendChild(drawMap(scene, local, mapAlpha))
+  }
+  if (scene.slot) {
+    const samePhone = (s) => !!s.slot && (s.kind === 'beat') === (scene.kind === 'beat')
+    const phoneAlpha = layerAlpha(index, local, dur, samePhone)
+    stage.appendChild(drawPhone(scene, phoneAlpha))
+  }
+  drawProgress(stage, t)
   if (OPTS.burnCaptions) drawCaption(stage, t)
 }
 
@@ -177,18 +212,28 @@ function drawCard(root, scene) {
   root.appendChild(box)
 }
 
-function drawPhoneScene(root, scene, local, dur) {
-  const box = el('div', { class: 'text', style: { left: px(L.text.x), top: px(L.text.y), width: px(L.text.w) } })
+function drawText(root, scene, local, dur) {
+  // Beside the phone (wide) the text stops short of it; above the phone (tall) it runs full width.
+  const P = scene.kind === 'beat' ? L.phoneBeat : L.phone
+  const width = P.y > L.h * 0.15 ? L.text.w : Math.min(L.text.w, P.x - L.text.x - 60)
+  const box = el('div', { class: 'text', style: { left: px(L.text.x), top: px(L.text.y), width: px(width) } })
   box.appendChild(el('div', { class: 'caps', text: scene.kicker || '' }))
-  box.appendChild(el('div', { class: 'title', style: { marginTop: px(L.u * 0.4) }, text: scene.title }))
+  box.appendChild(el('div', { class: 'title', style: { marginTop: px(L.u * 0.35) }, text: scene.title }))
   if (scene.line) box.appendChild(el('div', { class: 'line', text: scene.line }))
+  // A small event under the line while it happens (the filler, the card), timed in the scene.
+  for (const ev of scene.events || []) {
+    const a = ease((local - ev.at) / 0.35) * ease((ev.at + ev.dur - local) / 0.35)
+    if (a > 0) box.appendChild(el('div', { class: 'event', style: { opacity: String(a) }, text: ev.text }))
+  }
+  if (scene.tally && local > (scene.tally_at ?? dur * 0.55)) {
+    box.appendChild(el('div', { class: 'tally', style: { opacity: String(ease((local - (scene.tally_at ?? dur * 0.55)) / 0.5)) }, text: scene.tally }))
+  }
   root.appendChild(box)
-  if (scene.kind === 'step') root.appendChild(drawDiagram(scene, local, dur))
 }
 
-function drawPhone(scene) {
-  const p = phoneRect(), s = screenRect()
-  const wrap = el('div')
+function drawPhone(scene, alpha) {
+  const p = phoneRect(scene), s = screenRect(scene)
+  const wrap = el('div', { class: 'layer', style: { opacity: String(alpha) } })
   wrap.appendChild(el('div', { class: 'phone', style: { left: px(p.x), top: px(p.y), width: px(p.w), height: px(p.h) } }))
   const screen = el('div', { class: 'screen', style: { left: px(s.x), top: px(s.y), width: px(s.w), height: px(s.h) } })
   if (!(OPTS.slots || []).includes(scene.slot)) {
@@ -201,99 +246,131 @@ function drawPhone(scene) {
   return wrap
 }
 
-// The diagram: the same nodes every step, in one column; the step's path lights up and a dot
-// travels along it, one edge after another, over the first two thirds of the step.
-function drawDiagram(scene, local, dur) {
-  const nodes = SPEC.nodes
-  const D = L.diagram
+/**
+ * Part two's system map: three places (`SPEC.map.places`, each with its items) at the layout's
+ * rectangles, quiet lines between them, and the step's own motion: `active` items brighten and
+ * every place not involved dims; each of `flows` ({from, to, label, at, dur}, seconds into the
+ * scene) is a labelled packet that travels its line, eased, with a soft pulse where it lands;
+ * `links` are quiet standing lines (a synced copy, never a call).
+ */
+function drawMap(scene, local, alpha) {
   const ns = 'http://www.w3.org/2000/svg'
-  const svg = document.createElementNS(ns, 'svg')
-  svg.setAttribute('width', D.w); svg.setAttribute('height', D.h)
-  Object.assign(svg.style, { position: 'absolute', left: px(D.x), top: px(D.y) })
-  const gap = D.h / nodes.length
-  const boxW = D.w - 90, boxH = Math.min(gap - 22, 84)
-  const pos = {}
-  nodes.forEach((n, i) => { pos[n.id] = { x: 0, y: Math.round(i * gap + (gap - boxH) / 2), w: boxW, h: boxH } })
-  const path = scene.path || []
-  const lit = new Set(path)
   const mk = (tag, attrs) => { const e = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e }
-  // Spine: faint links between neighbours.
-  for (let i = 0; i + 1 < nodes.length; i++) {
-    const a = pos[nodes[i].id], b = pos[nodes[i + 1].id]
-    svg.appendChild(mk('line', { x1: a.w / 2, y1: a.y + a.h, x2: b.w / 2, y2: b.y, stroke: '#dcd6ca', 'stroke-width': 2 }))
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('width', L.w); svg.setAttribute('height', L.h)
+  Object.assign(svg.style, { position: 'absolute', left: '0', top: '0', opacity: String(alpha) })
+  const u = L.u
+  const items = {}
+  const places = {}
+  for (const place of SPEC.map.places) {
+    const r = L.map[place.id]
+    const head = u * 1.9
+    const rowH = (r.h - head - u * 0.4) / place.items.length
+    places[place.id] = r
+    place.items.forEach((it, i) => {
+      items[it.id] = { x: r.x + u * 0.5, y: r.y + head + i * rowH, w: r.w - u, h: rowH - u * 0.25, place: place.id, label: it.label }
+    })
   }
-  // The step's own edges: straight down between neighbours, a bow on the right otherwise.
-  const edges = []
-  for (let i = 0; i + 1 < path.length; i++) {
-    const a = pos[path[i]], b = pos[path[i + 1]]
-    if (!a || !b) continue
-    const down = b.y > a.y
-    const adjacent = Math.abs(nodes.findIndex((n) => n.id === path[i]) - nodes.findIndex((n) => n.id === path[i + 1])) === 1
-    let d
-    if (adjacent) {
-      const x = a.w / 2
-      d = down ? `M ${x} ${a.y + a.h} L ${x} ${b.y}` : `M ${x} ${a.y} L ${x} ${b.y + b.h}`
-    } else {
-      const ya = a.y + a.h / 2, yb = b.y + b.h / 2, bow = a.w + 70
-      d = `M ${a.w} ${ya} C ${bow} ${ya}, ${bow} ${yb}, ${b.w} ${yb}`
-    }
-    const p = mk('path', { d, fill: 'none', stroke: '#8a2d1e', 'stroke-width': 3 })
-    svg.appendChild(p)
-    edges.push(p)
+  const active = new Set(scene.active || [])
+  const involved = new Set([...active].map((id) => items[id] && items[id].place))
+  for (const f of scene.flows || []) for (const id of [f.from, f.to]) if (items[id]) involved.add(items[id].place)
+  const center = (b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 })
+  // The anchor on `a`'s side that faces `b`.
+  const anchor = (a, b) => {
+    const ca = center(a), cb = center(b)
+    if (Math.abs(cb.x - ca.x) > Math.abs(cb.y - ca.y)) return { x: cb.x > ca.x ? a.x + a.w : a.x, y: ca.y, horiz: true }
+    return { x: ca.x, y: cb.y > ca.y ? a.y + a.h : a.y, horiz: false }
   }
-  nodes.forEach((n) => {
-    const r = pos[n.id], on = lit.has(n.id)
-    svg.appendChild(mk('rect', { x: r.x + 1, y: r.y + 1, width: r.w - 2, height: r.h - 2,
-      fill: on ? '#1d1a16' : '#faf8f3', stroke: on ? '#1d1a16' : '#a39b8c', 'stroke-width': 2 }))
-    const label = mk('text', { x: r.x + 18, y: r.y + r.h / 2 - 2, fill: on ? '#faf8f3' : '#1d1a16',
-      'font-size': L.u * 0.72, 'font-weight': 600 })
-    label.textContent = n.label
-    svg.appendChild(label)
-    if (n.where) {
-      const where = mk('text', { x: r.x + 18, y: r.y + r.h / 2 + L.u * 0.62, fill: on ? '#dcd6ca' : '#6b655b',
-        'font-size': L.u * 0.5, 'letter-spacing': '0.06em' })
-      where.textContent = n.where.toUpperCase()
-      svg.appendChild(where)
+  const curve = (a, b) => {
+    const p = anchor(a, b), q = anchor(b, a)
+    const k = 0.45
+    return p.horiz
+      ? `M ${p.x} ${p.y} C ${p.x + (q.x - p.x) * k} ${p.y}, ${q.x - (q.x - p.x) * k} ${q.y}, ${q.x} ${q.y}`
+      : `M ${p.x} ${p.y} C ${p.x} ${p.y + (q.y - p.y) * k}, ${q.x} ${q.y - (q.y - p.y) * k}, ${q.x} ${q.y}`
+  }
+  // Standing lines between the places: the call path, and quiet links (dashed, labelled).
+  for (const [a, b] of SPEC.map.lines || []) {
+    svg.appendChild(mk('path', { d: curve(places[a], places[b]), fill: 'none', stroke: '#dcd6ca', 'stroke-width': 2 }))
+  }
+  for (const link of scene.links || []) {
+    const A = items[link.from], B = items[link.to]
+    if (!A || !B) continue
+    const d = curve(A, B)
+    svg.appendChild(mk('path', { d, fill: 'none', stroke: '#a39b8c', 'stroke-width': 2, 'stroke-dasharray': '6 7' }))
+    const p = anchor(A, B), q = anchor(B, A)
+    const lbl = mk('text', { x: (p.x + q.x) / 2 + 10, y: (p.y + q.y) / 2, fill: '#6b655b', 'font-size': u * 0.5, 'font-style': 'italic' })
+    lbl.textContent = link.label
+    svg.appendChild(lbl)
+  }
+  // Places and their items.
+  for (const place of SPEC.map.places) {
+    const r = places[place.id]
+    const dim = involved.size && !involved.has(place.id)
+    const g = mk('g', { opacity: dim ? 0.45 : 1 })
+    g.appendChild(mk('rect', { x: r.x + 1, y: r.y + 1, width: r.w - 2, height: r.h - 2, fill: '#f1ede4', stroke: dim ? '#dcd6ca' : '#a39b8c', 'stroke-width': 1.5 }))
+    const name = mk('text', { x: r.x + u * 0.5, y: r.y + u * 0.95, fill: '#1d1a16', 'font-size': u * 0.72, 'font-weight': 600 })
+    name.textContent = place.label
+    g.appendChild(name)
+    if (place.sub) {
+      const sub = mk('text', { x: r.x + u * 0.5, y: r.y + u * 1.5, fill: '#6b655b', 'font-size': u * 0.46, 'letter-spacing': '0.08em' })
+      sub.textContent = place.sub.toUpperCase()
+      g.appendChild(sub)
     }
-  })
-  // The travelling dot: deterministic in `local`, so a still frame of the video shows where it is.
-  if (edges.length && !OPTS.still) {
-    const span = Math.max(dur * 0.66, 0.6)
-    const progress = Math.min(local / span, 1) * edges.length
-    const index = Math.min(Math.floor(progress), edges.length - 1)
-    const edge = edges[index]
-    const len = edge.getTotalLength()
-    const at = edge.getPointAtLength(len * ease(progress - index))
-    if (progress < edges.length) svg.appendChild(mk('circle', { cx: at.x, cy: at.y, r: 9, fill: '#8a2d1e' }))
+    for (const it of place.items) {
+      const b = items[it.id], on = active.has(it.id)
+      g.appendChild(mk('rect', { x: b.x, y: b.y, width: b.w, height: b.h, fill: on ? '#1d1a16' : '#faf8f3', stroke: on ? '#1d1a16' : '#dcd6ca', 'stroke-width': 1.5 }))
+      const t = mk('text', { x: b.x + u * 0.4, y: b.y + b.h / 2 + u * 0.22, fill: on ? '#faf8f3' : '#1d1a16', 'font-size': u * 0.62, 'font-weight': on ? 600 : 400 })
+      t.textContent = it.label
+      g.appendChild(t)
+    }
+    svg.appendChild(g)
+  }
+  // Flows: the line lights while its packet travels, then a pulse where it lands.
+  for (const f of scene.flows || []) {
+    const A = items[f.from], B = items[f.to]
+    if (!A || !B) continue
+    const p = (local - f.at) / f.dur
+    if (p < -0.15 || p > 1.6) continue
+    const path = mk('path', { d: curve(A, B), fill: 'none', stroke: '#8a2d1e', 'stroke-width': 2.5, opacity: String(Math.min(ease((p + 0.15) / 0.15), ease((1.6 - p) / 0.4))) })
+    svg.appendChild(path)
+    if (p >= 0 && p <= 1) {
+      const len = path.getTotalLength()
+      const at = path.getPointAtLength(len * easeInOut(p))
+      const label = f.label || ''
+      const tw = Math.max(label.length * u * 0.31 + u * 0.8, u * 1.2)
+      const th = u * 0.95
+      svg.appendChild(mk('rect', { x: at.x - tw / 2, y: at.y - th / 2, width: tw, height: th, rx: th / 2, fill: '#8a2d1e' }))
+      const lt = mk('text', { x: at.x, y: at.y + u * 0.18, fill: '#faf8f3', 'font-size': u * 0.5, 'text-anchor': 'middle',
+        'font-family': "ui-monospace, 'Cascadia Mono', Consolas, monospace" })
+      lt.textContent = label
+      svg.appendChild(lt)
+    } else if (p > 1) {
+      // The arrival pulse: a ring that widens and fades over a few tenths of a second.
+      const q = (p - 1) / 0.6
+      const end = anchor(B, A)
+      svg.appendChild(mk('circle', { cx: end.x, cy: end.y, r: 6 + q * u * 0.9, fill: 'none', stroke: '#8a2d1e', 'stroke-width': 2, opacity: String(1 - ease(q)) }))
+    }
   }
   return svg
 }
 
-function drawTicks(root, item) {
-  // One tick per chapter; a scene with `chapter: false` continues the chapter before it.
-  const chapters = []
-  for (const s of TIMELINE) {
-    if (s.scene.kind !== 'beat' && s.scene.kind !== 'step') continue
-    if (s.scene.chapter === false && chapters.length) chapters[chapters.length - 1].end = s.end
-    else chapters.push({ start: s.start, end: s.end })
-  }
-  if (!chapters.length) return
-  const row = el('div', { class: 'ticks', style: { left: px(L.ticks.x), top: px(L.ticks.y), width: px(L.ticks.w) } })
-  for (const c of chapters) {
-    const cls = item.start >= c.start && item.start < c.end ? 'tick now' : c.end <= item.start ? 'tick on' : 'tick'
-    row.appendChild(el('div', { class: cls }))
-  }
-  root.appendChild(row)
+function drawProgress(root, t) {
+  const total = TIMELINE[TIMELINE.length - 1].end
+  const P = L.progress
+  const bar = el('div', { class: 'progress', style: { left: px(P.x), top: px(P.y), width: px(P.w) } })
+  bar.appendChild(el('div', { style: { left: '0', width: px(Math.round(P.w * Math.min(t / total, 1))), background: 'var(--accent)' } }))
+  root.appendChild(bar)
 }
 
 function drawCaption(root, t) {
   const cue = (OPTS.cues || []).find((c) => t >= c.start && t < c.end)
   if (!cue) return
-  root.appendChild(el('div', { class: 'caption', style: { bottom: px(L.caption.bottom) }, text: cue.text }))
+  const a = Math.min(ease((t - cue.start) / 0.15), ease((cue.end - t) / 0.15))
+  root.appendChild(el('div', { class: 'caption', style: { bottom: px(L.caption.bottom), opacity: String(a) }, text: cue.text }))
 }
 
-// setup, frame and screenRect are top-level function declarations, so already on window: render.mjs
-// calls them there. (Re-assigning window.screenRect to a wrapper made it call itself.)
+// setup, frame and screenRects are top-level function declarations, so already on window:
+// render.mjs calls them there. (Re-assigning one on window to a wrapper made it call itself.)
 </script>
 </body>
 </html>
