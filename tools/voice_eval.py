@@ -160,6 +160,7 @@ class Turn:
     read_windows: list[str] = field(default_factory=list)  # days a calendar read covered (laptop harness)
     ended: bool = False  # the stop/goodbye rule ended the conversation on this turn (laptop harness)
     missed: str = ""  # the transcript guard's drop reason when the turn got the spoken miss (laptop harness)
+    said_dropped: int = 0  # model sentences not spoken: they named what code had just confirmed
 
     @property
     def answer(self) -> str:
@@ -275,6 +276,9 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
             if msg.startswith("gemini_usage "):
                 cur.usage.append(_usage_call(fields))
                 continue
+            # Model sentences the phone did not speak because they named what code had confirmed (ruling A).
+            if msg.startswith("reply_said_dropped ") and cur.turns and str(fields.get("n", "")).isdigit():
+                cur.turns[-1].said_dropped += int(fields["n"])
             if msg.startswith("greeting scripted"):
                 cur.notes.append(f"greeting fell back to the scripted line ({fields.get('reason', '?')})")
             for k, v in fields.items():
@@ -522,11 +526,12 @@ def doubled_confirmation(answer: str) -> bool | None:
     return bool(CLAIM.search(rest)) and not NOT_DONE.search(rest)
 
 
-def doubling(runs: list[CaseRun]) -> tuple[int, int]:
-    """(turns with a code confirmation, of those the ones the model confirmed again)."""
+def doubling(runs: list[CaseRun]) -> tuple[int, int, int]:
+    """(turns with a code confirmation, of those the ones the model confirmed again in what was
+    heard, model sentences the phone dropped for naming it)."""
     seen = [doubled_confirmation(t.answer) for r in runs for t in r.turns]
     said = [d for d in seen if d is not None]
-    return len(said), sum(said)
+    return len(said), sum(said), sum(t.said_dropped for r in runs for t in r.turns)
 
 
 def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
@@ -688,10 +693,10 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
             + (f", incl. {usd(overhead)} for the context cache" if overhead else "") + ")")
     na_line = ([f"passed, not counted, proves nothing on this layer ({len(na_ids)}): {', '.join(na_ids)}"]
                if na_ids else [])
-    confirmed, doubled = doubling([r for r in runs if r.id in {c["id"] for c in cases}])
+    confirmed, doubled, dropped = doubling([r for r in runs if r.id in {c["id"] for c in cases}])
     if confirmed:
         na_line.append(f"code confirmations: {confirmed} turn(s), model repeated it in {doubled} "
-                       f"({100 * doubled // confirmed}%)")
+                       f"({100 * doubled // confirmed}%); model sentences dropped for naming it: {dropped}")
     hits = sum("KNOWN LIMIT" in r for r in known_rows)
     if known_rows:
         na_line.append(f"known limits, recorded, not counted ({hits} of {len(known_rows)} showed): {'; '.join(known_rows)}")
@@ -702,7 +707,7 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
     facts = {k: v for k, v in run_facts.items() if not k.startswith("_")}
     summary = {"model": model, "phone": phone, "passed": passed, "failed": failed, "missing": missing,
                "not_counted": na_ids, "known_limits": known_rows,
-               "confirmations": {"turns": confirmed, "doubled": doubled},
+               "confirmations": {"turns": confirmed, "doubled": doubled, "dropped": dropped},
                "usd": str(total), "overhead_usd": str(overhead), "cases": rows, "run": facts}
     return [head] + na_line + [""] + lines + [""] + tail, summary
 

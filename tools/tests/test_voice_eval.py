@@ -258,8 +258,17 @@ def test_doubled_confirmation_is_counted_only_in_the_eval():
         case_lines("b", "y", [], "Done: added eggs to Groceries.")
     facts, runs = parse(lines)
     out, summary = ve.scorecard(cases, runs, facts, phone=False)
-    assert summary["confirmations"] == {"turns": 2, "doubled": 1}
+    assert summary["confirmations"] == {"turns": 2, "doubled": 1, "dropped": 0}
     assert any("code confirmations: 2 turn(s), model repeated it in 1 (50%)" in l for l in out)
+
+
+def test_dropped_model_sentences_are_counted_from_the_phone_line():
+    cases = [{"id": "a", "say": "x", "expect": {}}]
+    lines = case_lines("a", "x", [], "Done: added milk to Groceries.")
+    lines.insert(-2, L("LIVE_LATENCY", "reply_said_dropped n=2"))
+    facts, runs = parse(lines)
+    _, summary = ve.scorecard(cases, runs, facts, phone=False)
+    assert summary["confirmations"] == {"turns": 1, "doubled": 0, "dropped": 2}
 
 
 def test_committed_cases_load_and_have_unique_ids():
