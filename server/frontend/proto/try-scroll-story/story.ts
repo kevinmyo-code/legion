@@ -43,7 +43,7 @@ orbButton.addEventListener('click', () => {
 // ---- where the orb is: the stage, or the side of the section in view --------------------------
 const dock = document.getElementById('orb-dock')!
 const BOX = 240
-type Place = { where: 'stage' | 'side'; side: 'left' | 'right' | 'center' }
+type Place = { where: 'stage' | 'side'; side: 'left' | 'right' | 'center'; pinned?: boolean }
 let place: Place = { where: 'stage', side: 'center' }
 
 function apply() {
@@ -59,7 +59,7 @@ function apply() {
     scale = Math.min(1, (space.height - 8.5 * 19) / BOX)
     cy = space.top + (BOX * scale) / 2
   } else if (wide) {
-    scale = 0.5
+    scale = 0.42
     const half = (BOX * scale) / 2
     cx = place.side === 'left' ? 32 + half : place.side === 'right' ? vw - 32 - half : vw / 2
     cy = place.side === 'center' ? vh - 32 - half : vh / 2
@@ -69,6 +69,7 @@ function apply() {
     cy = 16 + (BOX * scale) / 2
   }
   dock.dataset.place = place.where
+  dock.dataset.pinned = String(Boolean(place.pinned))
   dock.style.setProperty('--place', `translate(${Math.round(cx - BOX / 2)}px, ${Math.round(cy - BOX / 2)}px)`)
   dock.style.setProperty('--orb-scale', String(scale))
   // The status line and chips ride beside the orb: under it on the stage, at its open side beside.
@@ -101,7 +102,7 @@ if (!reduced) {
       for (const e of entries) {
         if (!e.isIntersecting || onStage) continue
         const side = (e.target.getAttribute('data-side') ?? 'right') as Place['side']
-        place = { where: 'side', side: e.target.classList.contains('hero') ? 'right' : side }
+        place = { where: 'side', side: e.target.classList.contains('hero') ? 'right' : side, pinned: e.target.classList.contains('pin-scene') }
         apply()
       }
     },

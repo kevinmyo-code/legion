@@ -74,6 +74,8 @@ h2 { font-size: clamp(1.7rem, 4vw, 2.8rem); }
 .chips { max-width: 100%; display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(to right, #000 85%, transparent); }
 .chip { flex: none; min-height: 44px; padding: 0 0.8rem; border: 1px solid var(--rule); border-radius: 999px; background: var(--paper); color: var(--ink); font: inherit; font-size: 0.82rem; white-space: nowrap; cursor: pointer; }
 .chip:hover { border-color: var(--accent); color: var(--accent); }
+/* Beside a pinned scene the orb rides alone: its words would cover the scene. */
+.orb-dock[data-pinned='true'] .orb-side { opacity: 0; pointer-events: none; }
 /* On the stage: status and chips centred under the orb. */
 .orb-dock[data-place='stage'] .orb-side { align-items: center; text-align: center; width: 30rem; max-width: calc(100vw - 32px); }
 
@@ -82,7 +84,8 @@ h2 { font-size: clamp(1.7rem, 4vw, 2.8rem); }
 @media (min-width: 900px) {
   .pin-scene { grid-template-columns: 1fr 1fr; align-items: start; }
   .pin-scene > * { max-width: none; margin: 0; }
-  .pin-scene[data-side='left'] .pin-text { order: 2; }
+  /* The picture sits on the side away from the orb; the text takes the orb's side. */
+  .pin-scene[data-side='right'] .pin-text { order: 2; }
 }
 .pin-stage { position: sticky; top: 15vh; height: 70vh; display: grid; place-items: center; }
 /* Phone: one column, so the pinned picture comes first and stays at the top while its steps scroll
