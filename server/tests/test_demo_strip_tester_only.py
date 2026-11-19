@@ -39,9 +39,13 @@ def make_visit(user, unmetered: bool) -> None:
 def test_an_ordinary_visit_turn_carries_no_cost_and_no_tool_times(visitor, visitor_user, engine):
     make_visit(visitor_user, unmetered=False)
     engine.model = FakeModel([call("next_service", {}), say("Due in May.")])
-    done = _of(_events(_post(visitor, text="When is the car due?")), "done")[0]
+    events = _events(_post(visitor, text="When is the car due?"))
+    done = _of(events, "done")[0]
     assert "cost_usd" not in done
     assert "tools_ms" not in done
+    # Nor each tool's own time: the tool event still says what ran (its card), not how long.
+    tools = _of(events, "tool")
+    assert [t["name"] for t in tools] == ["next_service"] and "ms" not in tools[0]
 
 
 def test_a_visit_with_no_visit_row_is_ordinary_too(visitor, engine):
@@ -54,9 +58,11 @@ def test_a_visit_with_no_visit_row_is_ordinary_too(visitor, engine):
 def test_the_tester_visit_turn_carries_both(visitor, visitor_user, engine):
     make_visit(visitor_user, unmetered=True)
     engine.model = FakeModel([call("next_service", {}), say("Due in May.")])
-    done = _of(_events(_post(visitor, text="When is the car due?")), "done")[0]
+    events = _events(_post(visitor, text="When is the car due?"))
+    done = _of(events, "done")[0]
     assert isinstance(done["cost_usd"], float) and done["cost_usd"] >= 0
     assert [name for name, _ms in done["tools_ms"]] == ["next_service"]
+    assert isinstance(_of(events, "tool")[0]["ms"], int)
 
 
 @pytest.mark.parametrize("unmetered", [False, True])
