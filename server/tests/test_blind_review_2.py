@@ -35,7 +35,10 @@ REAL_LINES = runtime_model.UrllibTransport.lines
 
 
 class _CutOff:
-    """What `urlopen` hands back when the connection drops while the body streams."""
+    """The response a connection hands back when it drops while the body streams."""
+
+    status = 200
+    will_close = False
 
     def __init__(self, exc):
         self.exc = exc
@@ -43,6 +46,21 @@ class _CutOff:
     def __iter__(self):
         yield b'data: {"candidates": []}\n'
         raise self.exc
+
+
+class _Conn:
+    sock = None
+    timeout = None
+
+    def __init__(self, calls, exc):
+        self.calls = calls
+        self.exc = exc
+
+    def request(self, method, path, body=None, headers=None):
+        self.calls.append(path)
+
+    def getresponse(self):
+        return _CutOff(self.exc)
 
     def close(self):
         pass
@@ -59,12 +77,9 @@ class _CutOff:
 def test_a_transcription_cut_off_mid_response_is_retried_then_a_speech_failure(monkeypatch, exc):
     calls = []
 
-    def urlopen(req, timeout):
-        calls.append(req.full_url)
-        return _CutOff(exc)
-
     monkeypatch.setattr(runtime_model.UrllibTransport, "lines", REAL_LINES)
-    monkeypatch.setattr(runtime_model.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(runtime_model, "POOL", runtime_model._Pool())
+    monkeypatch.setattr(runtime_model, "_connect", lambda host, timeout: _Conn(calls, exc))
     real = GeminiSpeech(lambda: "key", stt_model="stt")
     with pytest.raises(SpeechFailure):
         real.transcribe(_pcm(_speechlike()))
