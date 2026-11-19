@@ -16,7 +16,7 @@ from rest_framework.test import APIClient
 
 from demo import content_views
 from demo.content import PNG_MAGIC, problems
-from demo.models import RecruiterMediaFile
+from demo.models import RecruiterContent, RecruiterMediaFile
 from tests.test_recruiter_content import (  # noqa: F401 - fixtures
     _fresh_throttle,
     fake_content,
@@ -253,3 +253,75 @@ def test_no_session_and_a_plain_member_get_no_byte(plain_member, tmp_path):
         got = client.get(URL, HTTP_RANGE="bytes=0-9")
         assert got.status_code == 403
         assert FAKE_MP4[:10] not in got.content
+
+
+# =============================================================================
+# Size discipline (review R2-1): the files live in the engine's small Postgres
+# =============================================================================
+
+
+def test_the_caps_are_the_databases_not_the_pages():
+    from demo.content import MAX_VIDEO_FILES, MEDIA_TOTAL_MAX_BYTES, media_cap
+
+    mb = 1024 * 1024
+    assert media_cap("video/mp4") == media_cap("video/webm") == 16 * mb
+    assert media_cap("model/gltf-binary") == 4 * mb
+    assert media_cap("image/png") == 1 * mb
+    assert media_cap("text/vtt; charset=utf-8") == 256 * 1024
+    assert MEDIA_TOTAL_MAX_BYTES == 40 * mb
+    assert MAX_VIDEO_FILES == 12
+
+
+def test_a_version_over_the_total_loads_nothing_and_names_the_file(tmp_path, monkeypatch):
+    from demo import content
+
+    monkeypatch.setattr(content, "MEDIA_TOTAL_MAX_BYTES", len(FAKE_MP4) + 10)
+    with pytest.raises(CommandError, match=r"'demo-take.png' takes the media files to \d+ bytes"):
+        load(tmp_path, with_clips(dict(SECTION_FILES)), ALL_FILES)
+    assert RecruiterContent.objects.count() == 0
+    assert RecruiterMediaFile.objects.count() == 0
+
+
+def test_too_many_videos_load_nothing(tmp_path, monkeypatch):
+    from demo import content
+
+    monkeypatch.setattr(content, "MAX_VIDEO_FILES", 1)
+    with pytest.raises(CommandError, match=r"names 2 video files; at most 1"):
+        load(tmp_path, with_clips(dict(SECTION_FILES), dict(PHONE_FILES)), ALL_FILES)
+    assert RecruiterMediaFile.objects.count() == 0
+
+
+def test_the_phone_section_holds_at_most_twelve_clips():
+    content = with_clips(None, {"video": "https://example.com/fake.webm"})
+    content["phone"]["clips"] = content["phone"]["clips"] * 13
+    found = problems(content)
+    assert found and found[0].startswith("phone/clips:")
+
+
+def test_one_row_per_insert_and_a_reload_rewrites_only_what_changed(tmp_path):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    content = with_clips(dict(SECTION_FILES), dict(PHONE_FILES))
+    with CaptureQueriesContext(connection) as queries:
+        said = load(tmp_path / "a", content, ALL_FILES)
+    inserts = [q for q in queries if q["sql"].startswith('INSERT INTO "demo_recruitermediafile"')]
+    assert len(inserts) == 6
+    total = sum(len(ALL_FILES[name]) for name in ALL_FILES)
+    assert f"{total} bytes stored in all; 6 written this time" in said
+    before = dict(RecruiterMediaFile.objects.values_list("name", "pk"))
+
+    said = load(tmp_path / "b", content, ALL_FILES)  # a text-only reload
+    assert f"{total} bytes stored in all; 0 written this time (0 bytes)" in said
+    assert dict(RecruiterMediaFile.objects.values_list("name", "pk")) == before
+
+    changed = dict(ALL_FILES) | {"demo-take.mp4": FAKE_MP4 + b"recut"}
+    said = load(tmp_path / "c", content, changed)
+    assert f"1 written this time ({len(FAKE_MP4) + 5} bytes)" in said
+    after = dict(RecruiterMediaFile.objects.values_list("name", "pk"))
+    assert after["demo-take.mp4"] != before["demo-take.mp4"]
+    assert {k: v for k, v in after.items() if k != "demo-take.mp4"} == {
+        k: v for k, v in before.items() if k != "demo-take.mp4"
+    }
+    stored = RecruiterMediaFile.objects.get(name="demo-take.mp4")
+    assert bytes(stored.data) == FAKE_MP4 + b"recut"

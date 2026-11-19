@@ -90,6 +90,8 @@ def is_file_name(value: str) -> bool:
 # from one recording. A clip with no `video` yet is drawn as a placeholder;
 # `poster` and `captions` (a WebVTT file) go with the video, each a link or a file
 # name (`_link_or_file`). `full_take` is the whole recording, linked under the section.
+# The phone section's clips: the page shows one per capability; a dozen is already a long scroll.
+MAX_PHONE_CLIPS = 12
 _PHONE_CLIP = _obj(
     {"title": _STR, "body": _STR, **_CLIP_FILES},
     optional=("video", "poster", "captions"),
@@ -98,7 +100,7 @@ _PHONE = _obj(
     {
         "title": _STR,
         "intro": _STR,
-        "clips": {"type": "array", "items": _PHONE_CLIP},
+        "clips": {"type": "array", "items": _PHONE_CLIP, "maxItems": MAX_PHONE_CLIPS},
         "full_take": _STR,
     },
     optional=("full_take",),
@@ -242,21 +244,22 @@ MEDIA_TYPES = {
         lambda b: b.removeprefix(bytes([0xEF, 0xBB, 0xBF])).startswith(b"WEBVTT"),
     ),
 }
-# Per file, by kind. A model's own target is under 3 MB (a phone on a cell link); 8 MB is the
-# ceiling past which a row in Postgres and one response stop being sensible. A still (a poster) is
-# shown at most 700 px wide on the page: 1 MB is generous for that, and four of them per section
-# must not outweigh the models. A video: 64 MB, about two minutes of a 1080p screen recording at
-# 4 Mbit/s. The bound is the loader (it holds the whole file in memory and writes it as one
-# Postgres row), not serving: the route reads at most `content_views.RANGE_CHUNK` of the row per
-# read, so a request never holds more than that. Captions: 256 KB of text is hours of cues.
+# Size discipline (review R2-1, 2026-11-19). The files live in the engine's Postgres, a small
+# hosted plan that turns the WHOLE engine read-only when it fills, so the caps are about the
+# database, not the page. Per file, by kind: a model 4 MB (the page's own target is under 3 MB);
+# a still 1 MB (shown at most about 700 px wide); a video 16 MB (about 30 s of a 1080p screen
+# recording at 4 Mbit/s: cut a longer take into clips); captions 256 KB. Per content version: all
+# its files together at most `MEDIA_TOTAL_MAX_BYTES`, and at most `MAX_VIDEO_FILES` videos. Serving
+# is bounded separately: the route reads at most `content_views.RANGE_CHUNK` of a row at a time.
 MEDIA_MAX_BYTES = {
-    "model/gltf-binary": 8 * 1024 * 1024,
-    "video/mp4": 64 * 1024 * 1024,
-    "video/webm": 64 * 1024 * 1024,
+    "model/gltf-binary": 4 * 1024 * 1024,
+    "video/mp4": 16 * 1024 * 1024,
+    "video/webm": 16 * 1024 * 1024,
     "text/vtt; charset=utf-8": 256 * 1024,
 }
 IMAGE_MAX_BYTES = 1024 * 1024
-
+MEDIA_TOTAL_MAX_BYTES = 40 * 1024 * 1024
+MAX_VIDEO_FILES = 12
 
 MEDIA_URL = "/api/demo/media/"
 
@@ -359,24 +362,44 @@ def media_names(content: dict) -> list[tuple[str, str]]:
 
 
 def _read_media(folder: Path, content: dict) -> dict[str, tuple[bytes, str]]:
-    """name -> (bytes, content type) for every file the content names. Refuses a file that is
-    missing, too big or not what its name says. Names were checked by the schema already."""
-    media: dict[str, tuple[bytes, str]] = {}
+    """name -> (bytes, content type) for every file the content names. Refuses, before reading
+    any file and before anything is written, a file that is missing or over its kind's cap, more
+    than `MAX_VIDEO_FILES` videos, or a total over `MEDIA_TOTAL_MAX_BYTES`; then a file that is not
+    what its name says. Names were checked by the schema already."""
+    named: dict[str, tuple[str, Path, str, str, int]] = {}
     for where, name in media_names(content):
-        if name in media:
+        if name in named:
             continue
         path = folder / name
         if not path.is_file():
             raise ContentInvalid(f"Nothing was loaded. {where}: {name!r} is not in the folder.")
-        content_type, called, looks_right = MEDIA_TYPES[name.rsplit(".", 1)[1].lower()]
+        content_type, called, _looks_right = MEDIA_TYPES[name.rsplit(".", 1)[1].lower()]
         size, cap = path.stat().st_size, media_cap(content_type)
         if size > cap:
             raise ContentInvalid(
                 f"Nothing was loaded. {where}: {name!r} is {size} bytes, over the "
                 f"{cap} byte limit for {called}."
             )
+        named[name] = (where, path, content_type, called, size)
+    videos = [name for name, item in named.items() if item[2].startswith("video/")]
+    if len(videos) > MAX_VIDEO_FILES:
+        raise ContentInvalid(
+            f"Nothing was loaded. The content names {len(videos)} video files; at most "
+            f"{MAX_VIDEO_FILES} are stored (the first one over is {videos[MAX_VIDEO_FILES]!r})."
+        )
+    total = 0
+    for name, (where, _path, _type, _called, size) in named.items():
+        total += size
+        if total > MEDIA_TOTAL_MAX_BYTES:
+            raise ContentInvalid(
+                f"Nothing was loaded. {where}: {name!r} takes the media files to {total} bytes, "
+                f"over the {MEDIA_TOTAL_MAX_BYTES} byte limit for one content version (the "
+                "engine's database is small; shorten or drop a video)."
+            )
+    media: dict[str, tuple[bytes, str]] = {}
+    for name, (where, path, content_type, called, _size) in named.items():
         data = path.read_bytes()
-        if not looks_right(data):
+        if not MEDIA_TYPES[name.rsplit(".", 1)[1].lower()][2](data):
             raise ContentInvalid(
                 f"Nothing was loaded. {where}: {name!r} does not start like {called}."
             )
@@ -385,6 +408,37 @@ def _read_media(folder: Path, content: dict) -> dict[str, tuple[bytes, str]]:
             raise ContentInvalid(f"Nothing was loaded. {where}: {name!r} {problem}.")
         media[name] = (data, content_type)
     return media
+
+
+def _store_media(row: RecruiterContent, media: dict[str, tuple[bytes, str]]) -> tuple[int, int]:
+    """Make the row's files exactly `media`: drop the ones no longer named or changed, insert the
+    new and changed ones ONE ROW PER INSERT, and leave a file whose sha256 is unchanged alone (a
+    text-only reload moves no megabytes). Returns (files written, bytes written)."""
+    wanted = {name: hashlib.sha256(data).hexdigest() for name, (data, _type) in media.items()}
+    have = dict(RecruiterMediaFile.objects.filter(content=row).values_list("name", "sha256"))
+    stale = [name for name, sha in have.items() if wanted.get(name) != sha]
+    RecruiterMediaFile.objects.filter(content=row, name__in=stale).delete()
+    fresh = [name for name in media if have.get(name) != wanted[name]]
+    RecruiterMediaFile.objects.bulk_create(
+        (
+            RecruiterMediaFile(
+                content=row,
+                name=name,
+                data=media[name][0],
+                content_type=media[name][1],
+                sha256=wanted[name],
+            )
+            for name in fresh
+        ),
+        batch_size=1,
+    )
+    return len(fresh), sum(len(media[name][0]) for name in fresh)
+
+
+def file_named_videos(content: dict) -> list[str]:
+    """Schema paths of clip videos named by FILE (not by link). The engine before demo 0010 serves
+    such a value as a raw relative URL, so after a traffic rollback these clips break at once."""
+    return [where for where, _name in media_names(content) if where.endswith("/video")]
 
 
 _GLB_JSON_CHUNK = 0x4E4F534A
@@ -418,6 +472,10 @@ class Loaded:
     files: dict[str, int]  # kind -> bytes loaded
     profile_sections: tuple[str, ...]
     media_files: int = 0
+    media_bytes: int = 0  # all the version's media files, stored
+    media_written: int = 0  # files this load inserted (new or changed)
+    media_bytes_written: int = 0
+    file_named_videos: tuple[str, ...] = ()
 
 
 def read_folder(folder: Path) -> tuple[dict, dict[str, bytes]]:
@@ -476,21 +534,15 @@ def load(folder: Path, key: str = RecruiterContent.CURRENT_KEY) -> Loaded:
         row, created = RecruiterContent.objects.update_or_create(key=key, defaults=defaults)
         # The row's files are exactly the ones this content names: a file a reload no longer
         # names is no longer served.
-        RecruiterMediaFile.objects.filter(content=row).delete()
-        RecruiterMediaFile.objects.bulk_create(
-            RecruiterMediaFile(
-                content=row,
-                name=name,
-                data=data,
-                content_type=content_type,
-                sha256=hashlib.sha256(data).hexdigest(),
-            )
-            for name, (data, content_type) in media.items()
-        )
+        written, bytes_written = _store_media(row, media)
     return Loaded(
         row=row,
         created=created,
         files={kind: len(data) for kind, data in files.items()},
         profile_sections=tuple(content["profile"]),
         media_files=len(media),
+        media_bytes=sum(len(data) for data, _type in media.values()),
+        media_written=written,
+        media_bytes_written=bytes_written,
+        file_named_videos=tuple(file_named_videos(content)),
     )
