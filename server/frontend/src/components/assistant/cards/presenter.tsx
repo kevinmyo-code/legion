@@ -8,7 +8,8 @@ import { pushModalEntry } from '@/lib/modal-entry'
 import { DiagramBody } from './diagram'
 import { PresenterContext } from './presenter-context'
 import { DownloadPdf, ResumeBody } from './resume'
-import { isModalCard, type ModalCard } from './types'
+import { ToolCard } from './card'
+import { isModalCard, type Card, type ModalCard } from './types'
 
 /**
  * The cards that open over the whole page: a diagram and the resume (demo-modals, Kevin
@@ -44,19 +45,23 @@ export function ScreenModalProvider({
   onOpenChange?: (open: boolean) => void
   children: ReactNode
 }) {
-  const [shown, setShown] = useState<ModalCard | null>(null)
+  const [shown, setShown] = useState<Card | null>(null)
   // Cards already in the conversation when this mounted do not pop up; newer ones do.
-  const seen = useRef(lastModalLineId(lines))
+  const seen = useRef(lastCardLineId(lines))
   useEffect(() => {
     if (!lines) return
-    let newest: { id: number; card: ModalCard } | null = null
+    let newest: { id: number; card: Card } | null = null
     for (const line of lines) {
-      if (line.kind === 'tool' && line.id > seen.current && isModalCard(line.card)) newest = { id: line.id, card: line.card }
+      if (line.kind === 'tool' && line.id > seen.current && line.card) newest = { id: line.id, card: line.card }
     }
-    if (newest) {
-      seen.current = newest.id
-      setShown(newest.card)
-    }
+    if (!newest) return
+    seen.current = newest.id
+    const card = newest.card
+    // A diagram or the resume opens the modal. Any other card replaces what an OPEN modal shows:
+    // the conversation has moved on to it, and the modal covers the page it would be drawn on
+    // (the tour's live beat said "That card is a live lookup" over the last diagram, 2026-11-19).
+    // With the modal closed, such a card stays where the conversation draws it.
+    setShown((open) => (isModalCard(card) || open !== null ? card : open))
   }, [lines])
 
   const open = shown !== null
@@ -98,13 +103,13 @@ export function ScreenModalProvider({
   )
 }
 
-function lastModalLineId(lines?: readonly Line[]): number {
+function lastCardLineId(lines?: readonly Line[]): number {
   let last = -1
-  for (const line of lines ?? []) if (line.kind === 'tool' && isModalCard(line.card)) last = line.id
+  for (const line of lines ?? []) if (line.kind === 'tool' && line.card) last = line.id
   return last
 }
 
-function ScreenModal({ card, footer, onClose }: { card: ModalCard | null; footer?: ReactNode; onClose: () => void }) {
+function ScreenModal({ card, footer, onClose }: { card: Card | null; footer?: ReactNode; onClose: () => void }) {
   return (
     <DialogPrimitive.Root open={card !== null} onOpenChange={(next) => !next && onClose()}>
       <DialogPrimitive.Portal>
@@ -140,7 +145,16 @@ function ScreenModal({ card, footer, onClose }: { card: ModalCard | null; footer
                   <X className="size-5" aria-hidden="true" />
                 </DialogPrimitive.Close>
               </header>
-              {card.card === 'diagram' ? <DiagramBody card={card} /> : <ResumeBody card={card} />}
+              {card.card === 'diagram' ? (
+                <DiagramBody card={card} />
+              ) : card.card === 'resume' ? (
+                <ResumeBody card={card} />
+              ) : (
+                // Any other card, drawn as the conversation draws it, while the modal is open.
+                <div data-modal="card" className="min-h-0 flex-1 overflow-auto">
+                  <ToolCard card={card} className="max-w-none" />
+                </div>
+              )}
               {footer && <div className="flex-none">{footer}</div>}
             </>
           )}

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import type { Line } from '@/assistant/live-client'
-import { DIAGRAM_CARD } from '@/test/cards-seed'
+import { CAR_CARD, DIAGRAM_CARD, SPEND_CARD } from '@/test/cards-seed'
 
 import { ToolCard } from './card'
 import { svgSize } from './diagram'
@@ -76,6 +76,25 @@ describe('the page modal', () => {
     expect(dialogs[0]).toBe(first)
     expect(within(first).getByRole('heading', { name: 'Another view' })).toBeInTheDocument()
     expect(first.querySelector('[data-modal="highlighted"]')).toHaveTextContent('Highlighted: household.tenancy')
+  })
+
+  /**
+   * The one-minute tour, 2026-11-19: its live beat shows a car card and says "That card is a live
+   * lookup on this made-up household's car records." over the diagram still open from the beat
+   * before; the car card was nowhere in sight. A newer card of any kind replaces what an OPEN modal
+   * shows; with the modal closed, only a diagram or the resume opens it.
+   */
+  test('a newer card of another kind replaces what the open modal shows, and opens nothing when it is closed', () => {
+    const { rerender } = render(<Harness lines={[]} />)
+    rerender(<Harness lines={[tool(1, DIAGRAM_CARD)]} />)
+    const dialog = screen.getByRole('dialog')
+    rerender(<Harness lines={[tool(1, DIAGRAM_CARD), tool(2, CAR_CARD)]} />)
+    expect(screen.getByRole('dialog')).toBe(dialog)
+    expect(within(dialog).getByRole('heading', { level: 2, name: CAR_CARD.title })).toBeInTheDocument()
+    expect(dialog.querySelector('[data-modal="card"] [data-kind="car"]')).not.toBeNull()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    rerender(<Harness lines={[tool(1, DIAGRAM_CARD), tool(2, CAR_CARD), tool(3, SPEND_CARD)]} />)
+    expect(modal()).toBeNull()
   })
 
   test('the X closes it and the thumbnail in the chat opens it again', () => {
