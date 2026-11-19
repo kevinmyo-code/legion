@@ -461,7 +461,10 @@ class GeminiTextLoop(
         if (state.text.isNotEmpty() && !state.text.last().isWhitespace()) state.text.append(' ')
         state.text.append(line).append(' ')
         state.writesSaid += said.map { it.result.name }
-        state.saidNames += ScriptedLines.namesIn(said.mapNotNull { it.fact }, line)
+        // A result that asks him something (the adapter's which-car ask) arms no names: the model's
+        // question may name the very car code just said, and it must be heard.
+        val namesFrom = said.filterNot { LoneWordWriteGuard.asksField(it.result.response) }
+        state.saidNames += ScriptedLines.namesIn(namesFrom.mapNotNull { it.fact }, line)
         state.codeLines++
         listener.onCodeLine(line, said.mapNotNull { it.fact })
     }

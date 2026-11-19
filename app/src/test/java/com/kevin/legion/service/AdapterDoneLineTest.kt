@@ -234,6 +234,42 @@ class AdapterDoneLineTest {
             assertNull(LoneWordWriteGuard.refusal("car", answer, "Comet.", "", previousAsked = asked))
         }
 
+    @Test
+    fun `the which-car ask - a model question naming the car code just said is still spoken`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
+        setLink(mac, withLink = true)
+        // The model names the cars by the labels it was given: the one code just said, in full.
+        val label = com.kevin.legion.vehicle.VehicleController.label(FleetEngineStore.getByMac(context, "car:comet")!!)
+        val question = "Which car is the adapter in, the 2010 Acme Zephyr or the $label?"
+        val transport = Scripted(
+            calls(call("manage_vehicle", "action" to "switch", "vehicle" to "Comet")),
+            text(question),
+        )
+        val heard = StringBuilder()
+        val codeLines = mutableListOf<String>()
+        val listener = object : GeminiTextLoop.Listener {
+            override fun onText(delta: String) {
+                heard.append(delta)
+            }
+            override fun onCodeLine(text: String, facts: List<ScriptedLines.WriteFact>) {
+                codeLines.add(text)
+            }
+        }
+        val loop = GeminiTextLoop(
+            transport = transport,
+            cache = null,
+            classify = { _ -> AgentResult.Failed },
+            isMutating = { n, a -> CascadeRules.isWrite(n, a) },
+            isReadThrough = { _, _ -> false },
+            writeFact = ScriptedLines::factOf,
+        )
+        val tools =TextToolExecutor { name, args, _ -> withContext(heardDates()) { LiveToolbox.dispatch(context, name, args)!! } }
+        loop.answer(CascadePrefix("model-x", "Invented instruction.", JSONArray()), userTurn(), tools, listener)
+        assertEquals(listOf("Done: switched to the $label."), codeLines)
+        assertTrue("the which-car question was dropped: $heard", heard.contains(question))
+    }
+
     // --- wire --------------------------------------------------------------------------------------------
 
     private fun userTurn() = JSONArray().put(
