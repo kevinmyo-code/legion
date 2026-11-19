@@ -403,21 +403,18 @@ def _cents_in(data, out: set[int]) -> bool:
 
 
 def backed_cents(calls) -> set[int] | None:
-    """The amounts this turn's tools returned, in cents, or None when no money tool ran. A money
-    tool is one whose result holds a `*_cents` amount; its backed amounts are those values plus the
-    decimal figures its own text handed the model (code's words, e.g. a total the handler adds up
-    and states without storing)."""
+    """The amounts this turn's money tools returned, in cents, or None when none ran. A money tool
+    is one whose result holds a `*_cents` amount; its backed amounts are those values plus the
+    decimal figures ITS OWN text handed the model (code's words, e.g. a total the handler adds up
+    and states without storing). Another tool's text (a web page, a record dump) never backs a
+    figure (blind review, 2026-11-18)."""
     backed: set[int] = set()
     money = False
     for c in calls:
         if c.ok and _cents_in(c.data, backed):
             money = True
-    if not money:
-        return None
-    for c in calls:
-        if c.ok:
             backed |= decimal_cents(c.text)
-    return backed
+    return backed if money else None
 
 
 def states_unbacked_figure(sentence: str, backed: set[int] | None) -> bool:

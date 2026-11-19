@@ -18,6 +18,8 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     _post,
     engine,
     member,
+    visitor,
+    visitor_user,
 )
 
 pytestmark = pytest.mark.django_db
@@ -148,3 +150,24 @@ def test_a_money_answer_with_every_sentence_dropped_says_the_existing_line(
     events = _events(_post(member, text="What did we spend?"))
     said = [s["text"] for s in _of(events, "sentence")]
     assert said == [cascade.NO_TEXT + cascade.NOTHING_CHANGED]
+
+
+# ---- blind review, 2026-11-18 ----------------------------------------------------------------
+
+
+def test_a_figure_only_a_non_money_tool_stated_does_not_back_a_money_sentence(
+    member, engine, monkeypatch
+):
+    # Review finding 1: only a money tool's own text backs figures, never another tool's.
+    _spend(monkeypatch)
+    _fake(monkeypatch, E, "Fair tickets are 84.47 each.", {"events": []})
+    engine.model = FakeModel([call(M, {}), call(E, {}), say("Groceries were 84.47. Fine.")])
+    events = _events(_post(member, text="What did we spend?"))
+    assert [s["text"] for s in _of(events, "sentence")] == ["Fine."]
+
+
+def test_a_recruiters_money_answer_is_checked_too(visitor, engine, monkeypatch):
+    _spend(monkeypatch)
+    engine.model = FakeModel([call(M, {}), say("Groceries were 84.47. Housing was 1,450.00.")])
+    events = _events(_post(visitor, text="What did we spend?"))
+    assert [s["text"] for s in _of(events, "sentence")] == ["Housing was 1,450.00."]
