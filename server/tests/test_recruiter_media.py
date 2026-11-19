@@ -90,6 +90,8 @@ def test_a_section_with_models_fits():
         ({"title": "x", "model": "a.gltf", "poster": "a.png"}, "model"),
         ({"title": "x", "model": "a.glb", "poster": "a.svg"}, "poster"),
         ({"title": "x", "model": "a.glb", "poster": "..\\a.png"}, "poster"),
+        ({"title": "x", "model": "a.glb\n", "poster": "a.png"}, "model"),
+        ({"title": "x", "model": "a.glb", "poster": "a.png\n"}, "poster"),
     ],
 )
 def test_a_bad_file_name_is_refused_with_a_useful_message(entry, where):

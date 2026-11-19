@@ -72,8 +72,10 @@ _MEDIA = _obj(
 # shown until the 3D has loaded and kept if it cannot) are FILE NAMES in the private content
 # folder: the loader stores them beside the content and `GET /api/demo/media/<name>` serves them
 # to a visit or an owner only. A name is one plain segment, so it can never leave the folder.
-MODEL_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.glb$"
-POSTER_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.(png|jpg|jpeg|webp)$"
+# `\Z`, not `$`: jsonschema searches with `re.search`, where `$` also matches before a final
+# newline, and a name ending in a newline would pass the schema yet never be served.
+MODEL_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.glb\Z"
+POSTER_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.(png|jpg|jpeg|webp)\Z"
 _NAME_HINTS = {
     MODEL_NAME: "a file name in the content folder (letters, digits, - and _, then .glb)",
     POSTER_NAME: (
