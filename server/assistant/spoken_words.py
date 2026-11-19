@@ -11,6 +11,10 @@ line, a fixed line): the Speaker calls it for model sentences only.
 
 Nothing else is replaced: "React, Node.js and Vue.js", "Python/SQL/Django", "11/18/2026" and
 "github.com/pat/legion" outside backticks are said as written.
+
+How a word is SAID (`SAY_AS`, `pronounced`) is a separate, smaller rule: a respelling the voice
+reads right, for every spoken line, code's own included (a profile line is not reworded by it;
+only its sound changes). Speech only: the caption and the record keep the word as written.
 """
 
 from __future__ import annotations
@@ -50,3 +54,17 @@ def speakable_words(text: str) -> str:
     text = _URL.sub(LINK, text)
     text = _TICKS.sub(_tick, text).replace("`", "")
     return _ADR.sub(lambda m: f"{m.group(1)} {m.group(2)}", text)
+
+
+# Speech-only respellings, whole word, any case (Kevin, 2026-11-18: "Quanex" was heard as
+# "Quantex"). The respelling is Kevin's pick from the clips in his reports folder; until he picks,
+# the word is said as written.
+SAY_AS: dict[str, str] = {"Quanex": "Quanex"}
+
+
+def pronounced(text: str) -> str:
+    """`text` with every `SAY_AS` word respelled for the voice; nothing else changed."""
+    for word, said in SAY_AS.items():
+        if word != said:
+            text = re.sub(rf"\b{re.escape(word)}\b", said, text, flags=re.IGNORECASE)
+    return text

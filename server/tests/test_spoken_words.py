@@ -54,3 +54,52 @@ def test_the_speaker_rewords_a_model_sentence_and_never_a_code_line():
     # A line code wrote is spoken exactly as written, links, slashes, backticks and all.
     profile = "Portfolio: https://example.invalid/pat, Python/SQL/Django, ADR 0057 `x/y/z`."
     assert speaker.spoken_text(profile) == profile
+
+
+# ---- how a word is said (Kevin, 2026-11-18: "Quanex" was heard as "Quantex") ------------------
+
+
+@pytest.fixture
+def respelled(monkeypatch):
+    from assistant import spoken_words
+
+    monkeypatch.setattr(spoken_words, "SAY_AS", {"Quanex": "Kwah-nex"})
+
+
+@pytest.mark.parametrize(
+    ("written", "spoken"),
+    [
+        ("He worked at Quanex.", "He worked at Kwah-nex."),
+        ("QUANEX and quanex.", "Kwah-nex and Kwah-nex."),
+        ("Quanex's diagram.", "Kwah-nex's diagram."),
+        ("Quanexa is another word.", "Quanexa is another word."),
+    ],
+)
+def test_a_word_table_respells_whole_words_for_speech_only(respelled, written, spoken):
+    from assistant.spoken_words import pronounced
+
+    assert pronounced(written) == spoken
+
+
+def test_every_spoken_line_is_respelled_and_its_figures_are_untouched(respelled):
+    speaker = cascade.Speaker(None, "Puck", enabled=False)
+    # Code's own lines too (a profile line): how a word sounds is not a rewording.
+    assert speaker.spoken_text("Quanex paid $12.34 on 3 days.") == "Kwah-nex paid $12.34 on 3 days."
+    assert (
+        speaker.spoken_text("Quanex is in `docs/a/b.md`.", model=True) == f"Kwah-nex is in {FILE}."
+    )
+
+
+def test_a_filler_line_is_fetched_respelled(respelled):
+    said = []
+
+    class Speech:
+        def speak(self, text, voice, spoken):
+            said.append(text)
+            return [b"\x00\x00"]
+
+    audio = cascade.FillerAudio(spawn=lambda work: work())
+    audio.warm(Speech(), "Kore", ["Checking Quanex now."])
+    assert said == ["Checking Kwah-nex now."]
+    # Kept under its shown line, so the line is still found by its words.
+    assert audio.get("Kore", "Checking Quanex now.") is not None

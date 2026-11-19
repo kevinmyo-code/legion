@@ -926,3 +926,21 @@ def test_without_his_order_the_tour_skips_the_who_beat(tmp_path, visitor, engine
     beat = _events(_post(visitor, tour=0))
     said = [s["text"] for s in _of(beat, "sentence")]
     assert not any(s in " ".join(said) for s in LOCATION)
+
+
+def test_a_profile_word_is_respelled_for_speech_and_kept_on_screen(
+    tmp_path, visitor, engine, monkeypatch
+):
+    from assistant import spoken_words
+
+    monkeypatch.setattr(spoken_words, "SAY_AS", {"Quanex": "Kwah-nex"})
+    load_fake(
+        tmp_path, content=_content(profile={"Work": "Interned at Quanex for a pretend summer."})
+    )
+    engine.model = FakeModel([ak("work")])
+    events = _events(_post(visitor, text="Where did he work?", spoken="true"))
+    assert [s["text"] for s in _of(events, "sentence")] == [
+        "Interned at Quanex for a pretend summer."
+    ]
+    spoken = " ".join(item[0] for item in engine.speech.spoken)
+    assert "Kwah-nex" in spoken and "Quanex" not in spoken

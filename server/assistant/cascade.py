@@ -102,7 +102,7 @@ from agents.runtime.tools import ToolCall, ToolOutcome
 from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
 from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
-from assistant.spoken_words import speakable_words
+from assistant.spoken_words import pronounced, speakable_words
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
 from demo import suggestions
 from demo.tools import spoken_for as about_kevin_spoken_for
@@ -510,7 +510,7 @@ class FillerAudio:
                 stats = Spoken()
                 try:
                     # Through the same tag rules as an answer (round 2 speech review 6).
-                    said = speech_tags.for_speech(line, expressive=True)
+                    said = speech_tags.for_speech(pronounced(line), expressive=True)
                     audio = b"".join(speech.speak(said, voice, stats))
                 except (SpeechFailure, OSError):
                     audio = b""
@@ -671,7 +671,7 @@ class Speaker:
         stay in the caption), and its allowed tags only when `expressive` (a model sentence or a
         code line written with one)."""
         said = speakable_words(text) if model else text
-        said = spoken_figures.speakable(said, exact=self.exact)
+        said = spoken_figures.speakable(pronounced(said), exact=self.exact)
         return speech_tags.for_speech(said, expressive=expressive)
 
     def add(self, text: str, expressive: bool = False, model: bool = False) -> None:
