@@ -18,7 +18,8 @@ Nothing here relays a call yet (that is E2); the manifest is stored for it.
 
 **Which brain** (plan 1119 section 4, flag precedence), first that is set wins:
 1. `LEGION_AGENTS_BRAIN_FORCE` (phone or engine): every member, whatever the phone asks.
-2. `Limb.brain_choice`: the server's per-member override, set by an operator, never by an upload.
+2. `Limb.brain_choice`: the server's override, set by an operator, never by an upload. Stored on
+   this device's row, not yet per member (ticket 04, "E1 debts for E2" (g)).
 3. `brain_asked` in the upload: the member's own Settings choice. Not stored: the client sends it
    at every upload (and, from E2, with every turn), so the phone's setting is the one source.
 4. `LEGION_AGENTS_BRAIN_DEFAULT`, else `phone`.

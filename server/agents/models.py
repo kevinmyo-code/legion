@@ -234,8 +234,10 @@ class Limb(_Owned):
     token, upserted by the manifest upload (`agents/legion/limbs.py`). Private to its member like
     every agent table (`OWNER_PATHS`).
 
-    `brain_choice` is the SERVER's per-member override (phone or engine), set only by an operator;
-    a manifest upload never writes it. Null means no override.
+    `brain_choice` is the SERVER's override (phone or engine), set only by an operator; a manifest
+    upload never writes it. Null means no override. It is stored per device here, though the plan's
+    override is per member: moving it to one per-member place is an E2 debt (ticket 04, "E1 debts
+    for E2" (g)).
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
