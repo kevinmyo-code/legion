@@ -412,7 +412,11 @@ object DongleCarController {
             ),
         )
         // "Not now" (mid-conversation, a call) is not an ask: the next connect may try again.
-        if (outcome != ProactiveBus.RaiseOutcome.NotNow) p.edit().putString(KEY_ASKED, decision.recordingId).apply()
+        if (outcome != ProactiveBus.RaiseOutcome.NotNow) {
+            p.edit().putString(KEY_ASKED, decision.recordingId).apply()
+            // One question per connection, spoken or in a tool result ([AdapterBinding]).
+            connectionKey()?.let { AdapterBinding.markAsked(it) }
+        }
     }
 
     // ---------------------------------------------------------------------------- the answer

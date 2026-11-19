@@ -875,6 +875,15 @@ object LiveToolbox {
         turnDates?.let { RelativeDay.corrected(name, args, userText, it) }?.let { (fixed, note) ->
             return dispatch(context, name, fixed, touchedReadThroughToolThisTurn, userText)?.put("date_note", note)
         }
+        // The adapter's car is unknown or only recognised: a live read still runs (its readings are held,
+        // not filed), and its result carries the ask or the "looks like" once a connection (AdapterBinding).
+        if (name in CATEGORY_A_TOOLS && name != "clear_codes" &&
+            kotlin.coroutines.coroutineContext[com.kevin.legion.vehicle.AdapterBinding.Annotating] == null
+        ) {
+            return kotlinx.coroutines.withContext(com.kevin.legion.vehicle.AdapterBinding.Annotating()) {
+                dispatch(context, name, args, touchedReadThroughToolThisTurn, userText)
+            }?.let { com.kevin.legion.vehicle.AdapterBinding.annotate(context, it) }
+        }
         MidnightEvents.toolDispatched(name)
         // Category A guard (ticket 01 §0): if a live-hardware tool got handed a
         // `vehicle` argument anyway (the model shouldn't, since these declare no
@@ -1529,6 +1538,13 @@ object LiveToolbox {
             // contradictory refusal here would just be confusing.
             return null
         }
+        // The adapter's car is unknown (held under a pending id): never a dead end, the refusal says how
+        // to name it (2026-11-17).
+        if (com.kevin.legion.vehicle.DongleCar.isPending(connectedId)) {
+            return JSONObject().put("success", false)
+                .put("error", com.kevin.legion.vehicle.AdapterBinding.UNKNOWN_CAR_ERROR)
+                .put("message", com.kevin.legion.vehicle.AdapterBinding.unknownCarRefusal(requested))
+        }
         val connectedVehicle = VehicleController.vehicleFor(context, connectedId)
         // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's own
         // doc. This used to hand-roll the same name-then-spec-then-placeholder precedence
@@ -1546,7 +1562,8 @@ object LiveToolbox {
             .put(
                 "message",
                 "The OBD adapter's plugged into the $connectedLabel right now, not that one - I can " +
-                    "only read live data for the car it's actually in.",
+                    "only read live data for the car it's actually in. If he says the adapter is in the " +
+                    "$requested now, that is car switch_vehicle vehicle=$requested.",
             )
     }
 
