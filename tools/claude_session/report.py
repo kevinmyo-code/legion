@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import STATUSES, Paths, is_under, write_json_atomic  # noqa: E402
+from common import STATUSES, TEXT_FILE_CAP_BYTES, Paths, task_file, write_json_atomic  # noqa: E402
 
 
 def _file_entry(raw: str) -> dict:
@@ -52,9 +52,11 @@ def build(argv: list[str]) -> dict:
         if getattr(a, field):
             ap.error(f"give --{field} or --{field}-file, not both")
         own = Paths().task_work(a.task)
-        if not is_under(path, own) or not Path(path).is_file():
-            ap.error(f"--{field}-file must be a file in this task's own work folder ({own})")
-        setattr(a, field, Path(path).read_text(encoding="utf-8"))
+        try:
+            f = task_file(path, [own], TEXT_FILE_CAP_BYTES)
+        except ValueError as e:
+            ap.error(f"--{field}-file: {e} ({own})")
+        setattr(a, field, f.read_text(encoding="utf-8"))
 
     if a.status == "needs_confirmation" and not a.question.strip():
         ap.error("needs_confirmation needs --question \"<one question for Kevin>\" "

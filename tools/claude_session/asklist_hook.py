@@ -122,7 +122,6 @@ SKILL_WRITE_RE = re.compile(
     r"(?<![\w./\\-])(?:cp|copy|cpi|xcopy|robocopy|ni|mkdir|md|tee|touch|unzip|tar)(?:\.exe)?\s"
     r"|Copy-Item|New-Item|Tee-Object|\bsed\b[^|;&]*\s-i|Expand-Archive"
     r"|\bgit\b[^|;&]*\b(checkout|restore|clone|worktree|apply|am)\b|\bpython\S*\s", re.I)
-PYTHON_EXE_RE = re.compile(r"^(?:.*[\\/])?python[0-9.]*w?(?:\.exe)?$", re.I)
 REPORT_RE = re.compile(r"report\.py\b", re.I)
 
 # Things that look like a path inside a command.
@@ -145,27 +144,49 @@ LISTED_SHELL_OK = re.compile(
 
 
 PATH_CHAR_RE = re.compile(r"[A-Za-z0-9._ /:-]")
-SHELL_SPECIAL = set(";&|<>(){}*?[]$`\n\r")
+SHELL_SPECIAL = set(";&|<>(){}*?[]$`")
 
 
-def _plain_argv(command: str) -> list[str] | None:
-    """The argv of a command that is ONE python program with literal arguments, or None.
+def _trusted_pythons() -> set[str]:
+    """The worker's own python, by resolved absolute path: the interpreter this hook runs under
+    (the worker starts it with `helper_python()`), and python.exe beside a pythonw.exe."""
+    exe = Path(sys.executable)
+    found = {norm(exe)}
+    if exe.name.lower() == "pythonw.exe":
+        found.add(norm(exe.parent / "python.exe"))
+    return found
+
+
+TRUSTED_PYTHONS = _trusted_pythons()
+
+
+def _plain_argv(command: str, tool: str = "PowerShell") -> list[str] | None:
+    """The argv of a command that is the worker's own python running ONE script with literal
+    arguments, or None.
 
     The worker's own scripts are trusted by name (report.py, ship.py, ...), so their call must be
     nothing else (review 11-19, R2-1: a double-quoted `$(...)` in a summary ran a command, tainted
-    task or not). Judged for Bash and PowerShell at once, so anything either shell would expand,
-    chain or redirect is refused: outside single quotes no `$` and no backtick; outside any quotes
-    no `; & | < > ( ) { } * ? [ ]` and no newline, no `#` or `@` starting a word, and a backslash
-    only before a path character or a newline (a line continuation); inside double quotes no
-    backslash before a quote, a backslash, `$` or a backtick (the two shells read those
-    differently). Single-quoted text is literal in both. A leading `&` (PowerShell's call
-    operator) is allowed. Unbalanced quotes: None."""
-    s = (command or "").strip()
+    task or not). Judged so that neither shell can read it as more than one literal call:
+    - printable ASCII only (R3-1: PowerShell reads curly quotes as quotes and en/em dashes as `-`;
+      tabs, CR and LF are refused too). Other text goes through --summary-file / --body-file.
+    - outside single quotes no `$` and no backtick; outside any quotes no `; & | < > ( ) { } * ?
+      [ ]`, no `#` or `@` starting a word, and a backslash only before a path character
+    - inside double quotes no backslash before a quote, a backslash, `$` or a backtick; on the
+      PowerShell tool no double quotes at all (they expand there): single quotes only
+    - balanced quotes; argv[0] is the worker's own python by absolute path (TRUSTED_PYTHONS), so
+      a python.exe a helper planted, or a bare `python`, is not trusted.
+    A leading `&` (PowerShell's call operator) is allowed. `tool` defaults to the stricter rules."""
+    s = command or ""
+    if any(not (" " <= c <= "~") for c in s):
+        return None
+    s = s.strip(" ")
     if s.startswith("&"):
         s = s[1:].lstrip()
-    quote, word_start, i = None, True, 0
-    while i < len(s):
-        ch, nxt = s[i], s[i + 1:i + 2]
+    if tool != "Bash" and '"' in s:
+        return None
+    quote, word_start = None, True
+    for i, ch in enumerate(s):
+        nxt = s[i + 1:i + 2]
         if quote == "'":
             if ch == "'":
                 quote = None
@@ -177,41 +198,37 @@ def _plain_argv(command: str) -> list[str] | None:
         elif ch in "'\"":
             quote = ch
         elif ch == "\\":
-            if nxt == "\n":
-                i += 2
-                word_start = True
-                continue
             if not PATH_CHAR_RE.match(nxt or "!"):
                 return None
         elif ch in SHELL_SPECIAL or (word_start and ch in "#@"):
             return None
-        word_start = quote is None and ch in " \t"
-        i += 1
+        word_start = quote is None and ch == " "
     if quote is not None:
         return None
     try:
-        argv = shlex.split(s.replace("\\\n", " "), posix=True)
+        argv = shlex.split(s, posix=True)
     except ValueError:
         return None
-    if len(argv) < 2 or not PYTHON_EXE_RE.match(argv[0]):
+    if len(argv) < 2 or norm(_to_os_path(argv[0])) not in TRUSTED_PYTHONS:
         return None
     return argv
 
 
-def _is_lone_script(command: str, script: str) -> bool:
-    """`python .../<script> <literal args>` and nothing else (`_plain_argv`)."""
-    argv = _plain_argv(command)
+def _is_lone_script(command: str, script: str, tool: str = "PowerShell") -> bool:
+    """`<worker python> .../<script> <literal args>` and nothing else (`_plain_argv`)."""
+    argv = _plain_argv(command, tool)
     return bool(argv) and re.split(r"[\\/]", argv[1])[-1].lower() == script.lower()
 
 
-def _is_lone_report(command: str) -> bool:
-    return _is_lone_script(command, "report.py")
+def _is_lone_report(command: str, tool: str = "PowerShell") -> bool:
+    return _is_lone_script(command, "report.py", tool)
 
 
-def _is_our_lone_script(command: str, script: str) -> bool:
-    """`python <this folder>/<script> <literal args>` alone: the script must be THIS folder's copy
-    (a helper could write its own ship.py), and the call must be plain (`_plain_argv`)."""
-    argv = _plain_argv(command)
+def _is_our_lone_script(command: str, script: str, tool: str = "PowerShell") -> bool:
+    """`<worker python> <this folder>/<script> <literal args>` alone: the script must be THIS
+    folder's copy (a helper could write its own ship.py), and the call must be plain
+    (`_plain_argv`)."""
+    argv = _plain_argv(command, tool)
     return bool(argv) and norm(_to_os_path(argv[1])) == norm(HERE / script)
 
 
@@ -424,9 +441,9 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
         return None
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_lone_report(command):
+        if _is_lone_report(command, tool):
             return None
-        if _is_lone_script(command, "send_mail.py"):
+        if _is_lone_script(command, "send_mail.py", tool):
             return None  # ruling 18: send_mail.py itself allows only text to Kevin from here
         for seg in re.split(r"&&|\|\||;|\|", command):
             if not seg.strip():
@@ -498,7 +515,7 @@ def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict) -> st
             return "untrusted_file"
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_our_lone_script(command, "fetch_file.py"):
+        if _is_our_lone_script(command, "fetch_file.py", tool):
             return "fetch_file"
         if C.fetches(command):
             return "shell_fetch"
@@ -517,7 +534,7 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
     own_work = paths.task_work(task) if task is not None else None
     is_tainted = C.tainted(paths, task, agent, tasks)
     command = (inp.get("command", "") or "") if tool in SHELL_TOOLS else ""
-    ours = bool(command) and any(_is_our_lone_script(command, s) for s in CONTAINED_SCRIPTS)
+    ours = bool(command) and any(_is_our_lone_script(command, s, tool) for s in CONTAINED_SCRIPTS)
 
     if not agent and (tool in WRITE_TOOLS or (tool in SHELL_TOOLS and not ours)):
         # The main window only dispatches, and it reads every helper's final message (derived
@@ -613,9 +630,9 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
 
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_lone_report(command):
+        if _is_lone_report(command, tool):
             return None, ""
-        if any(_is_our_lone_script(command, s) for s in SHIP_SCRIPTS):
+        if any(_is_our_lone_script(command, s, tool) for s in SHIP_SCRIPTS):
             return None, "ship"  # ship.py / undo.py check Kevin's yes token themselves
         if _pushes(command) or SHIP_TOOLS.search(command):
             return _deny(_ship_reason()), "ship only"
