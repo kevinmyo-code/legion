@@ -19,6 +19,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** A write's facts from its call (name, args) and result: `ok` it went through, `confirmed` a result came back. */
+typealias WriteFacts = (name: String, args: JSONObject, response: JSONObject, ok: Boolean, confirmed: Boolean) ->
+    ScriptedLines.WriteFact
+
 /**
  * The cascade's middle: one spoken turn on a Gemini TEXT model with function calling, streamed.
  *
@@ -63,9 +67,7 @@ class GeminiTextLoop(
      * A write's facts from its result ([ScriptedLines.factOf]). Given, every write that went
      * through is said by code after its round ([Listener.onCodeLine], 2026-11-19); null, none is.
      */
-    private val writeFact: (
-        (name: String, args: JSONObject, response: JSONObject, ok: Boolean, confirmed: Boolean) -> ScriptedLines.WriteFact
-    )? = null,
+    private val writeFact: WriteFacts? = null,
 ) {
     interface Listener {
         /** Spoken text, as it streams. */
@@ -382,9 +384,23 @@ class GeminiTextLoop(
             }
         }
         listener.onToolResult(call.name, call.args, response, now() - started, writeDone)
-        val fact = if (write) writeFact?.invoke(call.name, call.args, response, writeDone, confirmed) else null
-        fact?.let { listener.onWriteFact(it) }
+        val fact = factOf(call, response, write, writeDone, confirmed, listener)
         Ran(AgentProtocol.ToolResult(call.name, call.id, response), fact)
+    }
+
+    /** The write's facts, told to [listener]; null for a read or when the loop says no writes. */
+    @Suppress("LongParameterList")
+    private fun factOf(
+        call: AgentProtocol.FunctionCall,
+        response: JSONObject,
+        write: Boolean,
+        writeDone: Boolean,
+        confirmed: Boolean,
+        listener: Listener,
+    ): ScriptedLines.WriteFact? {
+        if (!write) return null
+        val fact = writeFact?.invoke(call.name, call.args, response, writeDone, confirmed)
+        return fact?.also { listener.onWriteFact(it) }
     }
 
     /**
@@ -477,12 +493,13 @@ class GeminiTextLoop(
      * "Nothing was changed" is never said after one (the line said it was).
      */
     private fun failureWords(failure: TextFailure, state: TurnState): String {
-        if (state.writesSaid.isEmpty()) {
-            return TextChatEngine.failureWords(failure, state.writesDone, state.writesUnconfirmed)
-        }
         val unsaid = state.writesDone.toMutableList().apply { state.writesSaid.forEach { remove(it) } }
-        if (unsaid.isEmpty() && state.writesUnconfirmed.isEmpty()) return failure.lead
-        return TextChatEngine.failureWords(failure, unsaid, state.writesUnconfirmed)
+        return when {
+            state.writesSaid.isEmpty() ->
+                TextChatEngine.failureWords(failure, state.writesDone, state.writesUnconfirmed)
+            unsaid.isEmpty() && state.writesUnconfirmed.isEmpty() -> failure.lead
+            else -> TextChatEngine.failureWords(failure, unsaid, state.writesUnconfirmed)
+        }
     }
 
     companion object {

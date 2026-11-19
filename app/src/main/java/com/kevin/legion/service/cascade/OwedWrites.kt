@@ -88,5 +88,6 @@ internal class TurnWrites {
     }
 
     @Synchronized
-    fun snapshot(): Pair<List<ScriptedLines.WriteFact>, List<ScriptedLines.WriteFact>> = facts.toList() to played.toList()
+    fun snapshot(): Pair<List<ScriptedLines.WriteFact>, List<ScriptedLines.WriteFact>> =
+        facts.toList() to played.toList()
 }
