@@ -65,8 +65,12 @@ object DongleCarController {
     /** Whole VIN read, retry included: two 5 s command timeouts plus slack. */
     internal const val VIN_READ_BUDGET_MS = 12_000L
 
-    /** A reconnect inside this gap continues the same session (a Bluetooth blip, not a new drive). */
-    internal const val SESSION_CONTINUES_MS = 30L * 60 * 1000
+    /**
+     * A reconnect inside this gap, with the same print (or none on either side), continues the same
+     * connection: a Bluetooth drop, not a new drive (review A5). Short, because one adapter is moved
+     * between cars: past it, a reconnect is a new connection, decided afresh.
+     */
+    internal const val SESSION_CONTINUES_MS = 2L * 60 * 1000
 
     /**
      * A second identical answer counts as the explicit "yes, replace the VIN" only inside this
@@ -174,7 +178,7 @@ object DongleCarController {
         vinRetried = false
         val decision = mutex.withLock {
             // Set with the decision, under the lock: an answer for an earlier connection never sees it.
-            connectionSeq++
+            // The connection count moves in decideAndApply, unless the reconnect continues this one.
             connectionPrint = fingerprint
             decideAndApply(context, mac, vinResult)
         }
@@ -196,19 +200,20 @@ object DongleCarController {
     @Suppress("CyclomaticComplexMethod") // blip, same car, answered, carried: each a rule of its own
     private suspend fun decideAndApply(context: Context, mac: String, vinResult: VinResponse.Result): DongleCar {
         val cars = carVins(context)
-        val decision = decideFor(context, mac, vinResult, cars)
         val now = System.currentTimeMillis()
         val p = prefs(context)
         val previousId = p.getString(KEY_SESSION_ID, null)
         val blip = recentlyDisconnected(p.getLong(KEY_DISCONNECTED_AT, 0L), now)
-        // A reconnect is the same drive only when both connects gave a print and it is the same one:
-        // two print-less cars must never pool under one held id (2026-11-17 review).
+        // A short drop is the same drive when the print is the same, or neither connect gave one
+        // (review A5): his answer, the one ask and the session carry on. Otherwise it is a new connection.
         val previousPrint = p.getString(KEY_SESSION_FP, null)
         val samePrint = previousPrint != null && previousPrint == connectionPrint
-        val continues = blip && samePrint && previousId != null &&
-            DongleCar.sessionKey(previousId) == DongleCar.sessionKey(decision.recordingId)
-        // A print match stays a recognition, never his answer, even after a blip: a twin car with the
-        // same print must not inherit the right to clear codes (2026-11-17 review).
+        val sameDrive = blip && previousPrint == connectionPrint && previousId != null
+        // A VIN read now is a fact and decides; with none, his answer on this drive stands.
+        val kept = if (vinResult is VinResponse.Result.Vin) null else keptAnswer(p, mac, previousId, sameDrive, cars)
+        val decision = kept ?: decideFor(context, mac, vinResult, cars)
+        val continues = sameDrive && previousId?.let(DongleCar::sessionKey) == DongleCar.sessionKey(decision.recordingId)
+        if (!continues) connectionSeq++
         // A blip inside one drive whose first connect read no VIN and whose reconnect reads one:
         // the drive's data so far goes where the VIN says, but ONLY with positive evidence that it is
         // the same car: both connects gave the same print. Moved to another car (another print, or
@@ -221,6 +226,22 @@ object DongleCarController {
             else -> now
         }
         return commit(context, decision, newSession = !continues && carry == null, carry = carry, vinResult = vinResult)
+    }
+
+    /**
+     * His answer on this drive, kept over a short drop with no VIN read ([sameDrive]): the car he
+     * named, as his answer (not a recognition). Null: decide afresh.
+     */
+    private fun keptAnswer(
+        p: android.content.SharedPreferences,
+        mac: String,
+        previousId: String?,
+        sameDrive: Boolean,
+        cars: List<DongleCar.CarVin>,
+    ): DongleCar? {
+        val answered = sameDrive && p.getBoolean(KEY_SESSION_ANSWERED, false)
+        val carId = previousId?.takeIf { answered && !DongleCar.isPending(it) && cars.any { c -> c.carId == it } }
+        return carId?.let { OnCar(mac, it, null, Basis.ANSWER) }
     }
 
     /** What the previous session left to carry: a no-VIN hold (all of it) or an assumed window. */
