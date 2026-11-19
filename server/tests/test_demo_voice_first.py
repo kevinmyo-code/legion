@@ -343,7 +343,9 @@ def _walk_tour(client, engine):
 def test_the_tour_plays_from_loaded_content_and_ends_with_the_ask(visitor, engine, tmp_path):
     load_fake(tmp_path)
     said, tools, dones = _walk_tour(visitor, engine)
-    assert said[0] == "Lorem ipsum lead."  # the content's own words, none written in code
+    # His profile's first section, his words as written, none written in code (2026-11-18: the
+    # page lead is first person, so the tour no longer says it).
+    assert said[0] == "Fake experience: three years of pretend work at Example Corp."
     assert said[-1] == strip(tour.END_LINE)
     assert "show_resume" in tools
     assert 2 <= len(dones) <= 6
@@ -354,6 +356,7 @@ def test_the_tour_plays_from_loaded_content_and_ends_with_the_ask(visitor, engin
 def test_a_tour_with_no_content_skips_the_beats_with_nothing_to_show(visitor, engine):
     said, _tools, _dones = _walk_tour(visitor, engine)
     assert "Lorem ipsum lead." not in said
+    assert not any("Fake experience" in s for s in said)
     assert said[-1] == strip(tour.END_LINE)
 
 

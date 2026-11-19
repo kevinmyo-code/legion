@@ -2051,13 +2051,16 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
     if index >= len(beats):
         said, nxt = tour.END_LINE, None
     # Only the tour's own code lines may carry a tag; words from the content never do.
-    shown = speech_tags.untagged(said)
-    # A beat that states facts about him (his own lead): history replays which beat was read, never
+    about_him = index < len(beats) and beats[index].about_him
+    # His profile's own sentences are shown and said exactly as written (no tag stripper, no figure
+    # rounding), as `about_kevin` says them.
+    shown = said if about_him else speech_tags.untagged(said)
+    if about_him:
+        speaker.exact = True
+    # A beat that states facts about him (his profile): history replays which beat was read, never
     # its words, so no later turn can reword them (2026-11-18). A diagram's caption is about the
     # project and stays, so a follow-up about the diagram still has it.
-    marker = None
-    if index < len(beats) and beats[index].about_him:
-        marker = f"(Tour line read aloud: {beats[index].key}.)"
+    marker = f"(Tour line read aloud: {beats[index].key}.)" if about_him else None
     report.say(shown, marker)
     report.timings["sentences"] = 1
     speaker.add(said, expressive=said in tour.CODE_LINES)

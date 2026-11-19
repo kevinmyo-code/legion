@@ -4,9 +4,11 @@ the assistant drives, each one visual picked by code and one or two sentences sp
 Every beat runs its tool through the web tool door (`assistant.cascade.WebDoor`): the recruiter's
 fence, the audit row and the conversation record are the door's own, as for any tool call. The
 words are written by code, never by a model:
-- facts about Kevin come from the content the engine already holds for the visit's code (the
-  `hero` lead in `demo.models.RecruiterContent`), loaded from his private folder; none is written
-  here, in a public repo;
+- facts about Kevin are his profile's first section in his own order (`demo.profile`, the same
+  third-person sentences `about_kevin` reads aloud), from the content the engine holds for the
+  visit's code, loaded from his private folder; none is written here, in a public repo. Not the
+  page's `hero` lead: that is written in the first person for the page, and spoken by the tour it
+  said "I" for Kevin (Kevin, 2026-11-18). No pronoun is ever swapped;
 - a diagram beat says the first sentence of the diagram's own caption (`diagrams/catalogue.json`);
 - the rest are fixed sentences about what is on the screen, which claim nothing about Kevin.
 
@@ -87,13 +89,23 @@ def _diagram(user, project: str, prefer: tuple[str, ...]) -> tuple[str, str] | N
     return (project, views[0]) if views else None
 
 
+def _who(content: dict) -> str:
+    """His profile's first section, at most two sentences, as written; "" without his order (then
+    nothing leads by accident, as `demo.profile.speak` asks which one)."""
+    from demo.profile import PROFILE_ORDER, sections_of
+
+    order = content.get(PROFILE_ORDER)
+    sections = sections_of(content.get("profile"), order) if order else []
+    return " ".join(sections[0].sentences[:2]) if sections else ""
+
+
 def beats_for(user) -> list[Beat]:
     """The tour for this visitor, in order, with every beat that has nothing to show left out."""
     content = _content(user)
     beats: list[Beat] = []
-    lead = _first_sentences((content.get("hero") or {}).get("lead", ""), 2)
-    if lead:
-        beats.append(Beat("who", lead, about_him=True))
+    who = _who(content)
+    if who:
+        beats.append(Beat("who", who, about_him=True))
     found = _diagram(user, "legion", ("components", "context", "containers"))
     if found:
         beats.append(

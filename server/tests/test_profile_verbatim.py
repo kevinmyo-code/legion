@@ -835,7 +835,7 @@ def test_no_model_request_in_a_conversation_ever_holds_his_sentences(loaded, vis
     _events(_post(visitor, text="And his experience?", conversation_id=conversation))
     _events(_post(visitor, text="Did he graduate?", conversation_id=conversation))
     beat = _events(_post(visitor, tour=0, conversation_id=conversation))
-    assert [s["text"] for s in _of(beat, "sentence")][0] == LEAD
+    assert [s["text"] for s in _of(beat, "sentence")][0] == " ".join(LOCATION)
     diagram = _events(_post(visitor, tour=1, conversation_id=conversation))
     caption = [s["text"] for s in _of(diagram, "sentence")][0]
     assert _of(diagram, "tool")[0]["name"] == "show_diagram"
@@ -891,3 +891,38 @@ def test_a_profile_line_with_a_link_and_a_slash_list_is_spoken_exactly(tmp_path,
     assert "Python/SQL/Django and React, Node.js, Next.js and Vue.js." in spoken
     assert "https://example.invalid/pat/work" in spoken
     assert "on screen" not in spoken
+
+
+_FIRST_PERSON = ("I", "I'm", "I've", "me", "my", "mine", "myself")
+
+
+def test_the_tours_who_beat_is_his_profile_in_the_third_person_never_the_page_lead(
+    tmp_path, visitor, engine
+):
+    # Kevin, 2026-11-18: "the 1 minute tour the ai says 'I' when it should be kevin". The page's
+    # lead is written in the first person for the page; the tour speaks his profile's first
+    # section (his order, as written) instead. No pronoun is ever swapped.
+    load_fake(
+        tmp_path,
+        content=_content(
+            hero={**_content()["hero"], "lead": "I build pretend things. My work is fake."}
+        ),
+    )
+    beat = _events(_post(visitor, tour=0))
+    said = [s["text"] for s in _of(beat, "sentence")][0]
+    assert said == " ".join(LOCATION)
+    words = said.replace(".", " ").replace(",", " ").split()
+    assert not any(w in _FIRST_PERSON or w.lower() in ("my", "me", "mine", "myself") for w in words)
+    assert "I build" not in said
+
+
+def test_without_his_order_the_tour_skips_the_who_beat(tmp_path, visitor, engine):
+    load_fake(tmp_path, content=_content())
+    from demo.models import RecruiterContent
+
+    row = RecruiterContent.current()
+    row.content = {k: v for k, v in row.content.items() if k != profile.PROFILE_ORDER}
+    row.save(update_fields=["content"])
+    beat = _events(_post(visitor, tour=0))
+    said = [s["text"] for s in _of(beat, "sentence")]
+    assert not any(s in " ".join(said) for s in LOCATION)
