@@ -126,7 +126,8 @@ internal class VoiceEvalHarness(
         val loop = GeminiTextLoop(
             transport = transport,
             cache = cache,
-            isMutating = LiveToolbox::isMutatingCall,
+            // As the session judges writes: on the tool a call stands for, so an action tool's write counts.
+            isMutating = CascadeRules::isWrite,
             isReadThrough = CascadeRules::isReadThrough,
             toolTimeoutMs = { CascadeSession.TOOL_BACKSTOP_MS },
             meter = { model, usage -> out(LiveLatency.TAG, CallUsage.of(CallUsage.LLM, model, usage).line()) },

@@ -197,6 +197,20 @@ class VoiceEvalOfflineTest {
         assertTrue(r, r.contains("success=false") && r.contains("Nothing was switched") && r.contains("ask_fleet"))
     }
 
+    @Test
+    fun `an action tool's write counts as done in the eval, as on the phone`() = runBlocking {
+        // 2026-11-19: the harness judged writes on the called name, so `day` complete_task never
+        // counted, and a turn that then ended empty was heard as "Nothing was changed."
+        VoiceEvalFixture.seed(context, today)
+        val lines = runScripted(
+            "t", "invented",
+            call("day", JSONObject().put("action", "complete_task").put("title", "printer ink")),
+            listOf(usage()),
+        )
+        val heard = lines.single { it.startsWith("LIVE_TEST heard text=") }
+        assertTrue(heard, !heard.contains("Nothing was changed"))
+    }
+
     private suspend fun toolResult(name: String, args: JSONObject): String =
         runScripted("t", "invented", call(name, args), text("ok.")).single { it.startsWith("LIVE_AUDIT tool_result") }
 
