@@ -201,9 +201,16 @@ MEDIA_TYPES = {
     "jpeg": ("image/jpeg", "a JPEG", lambda b: b.startswith(b"\xff\xd8\xff")),
     "webp": ("image/webp", "a WebP", lambda b: b[:4] == b"RIFF" and b[8:12] == b"WEBP"),
 }
-# Per file. The page's own target is under 3 MB a model (a phone on a cell link); this is the
-# ceiling past which a row in Postgres and one response stop being sensible.
-MEDIA_MAX_BYTES = 8 * 1024 * 1024
+# Per file, by kind. A model's own target is under 3 MB (a phone on a cell link); 8 MB is the
+# ceiling past which a row in Postgres and one response stop being sensible. A still (a poster) is
+# shown at most 700 px wide on the page: 1 MB is generous for that, and four of them per section
+# must not outweigh the models.
+MEDIA_MAX_BYTES = {"model/gltf-binary": 8 * 1024 * 1024}
+IMAGE_MAX_BYTES = 1024 * 1024
+
+
+def media_cap(content_type: str) -> int:
+    return MEDIA_MAX_BYTES.get(content_type, IMAGE_MAX_BYTES)
 MEDIA_URL = "/api/demo/media/"
 
 
@@ -287,14 +294,14 @@ def _read_media(folder: Path, content: dict) -> dict[str, tuple[bytes, str]]:
         path = folder / name
         if not path.is_file():
             raise ContentInvalid(f"Nothing was loaded. {where}: {name!r} is not in the folder.")
-        size = path.stat().st_size
-        if size > MEDIA_MAX_BYTES:
+        content_type, called, looks_right = MEDIA_TYPES[name.rsplit(".", 1)[1].lower()]
+        size, cap = path.stat().st_size, media_cap(content_type)
+        if size > cap:
             raise ContentInvalid(
                 f"Nothing was loaded. {where}: {name!r} is {size} bytes, over the "
-                f"{MEDIA_MAX_BYTES} byte limit."
+                f"{cap} byte limit for {called}."
             )
         data = path.read_bytes()
-        content_type, called, looks_right = MEDIA_TYPES[name.rsplit(".", 1)[1].lower()]
         if not looks_right(data):
             raise ContentInvalid(
                 f"Nothing was loaded. {where}: {name!r} does not start like {called}."

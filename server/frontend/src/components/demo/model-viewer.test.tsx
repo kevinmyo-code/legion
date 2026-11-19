@@ -51,6 +51,8 @@ describe('ModelViewer', () => {
   test('draws the poster first and loads nothing until the section nears the screen', () => {
     render(<ModelViewer model={MODEL} />)
     expect(screen.getByRole('img', { name: 'Fake gadget' })).toHaveAttribute('src', MODEL.poster)
+    // Posters load only as the page nears them, not all at page open.
+    expect(screen.getByRole('img', { name: 'Fake gadget' })).toHaveAttribute('loading', 'lazy')
     expect(screen.getByRole('group', { name: /^3D model: Fake gadget\. .*arrow keys/ })).toBeInTheDocument()
     expect(mountStage).not.toHaveBeenCalled()
     expect(observers[0].options?.rootMargin).toBe('100% 0px')

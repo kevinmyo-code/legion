@@ -17,7 +17,7 @@ import pytest
 from django.core.management import CommandError, call_command
 from rest_framework.test import APIClient
 
-from demo.content import MEDIA_MAX_BYTES, PNG_MAGIC, problems
+from demo.content import PNG_MAGIC, media_cap, problems
 from demo.models import RecruiterContent, RecruiterMediaFile
 from tests.test_recruiter_content import (  # noqa: F401 - fixtures
     _fresh_throttle,
@@ -160,9 +160,19 @@ def test_a_model_with_embedded_textures_is_refused(tmp_path):
 
 
 def test_an_oversized_file_loads_nothing(tmp_path):
-    big = FAKE_GLB + b"\x00" * MEDIA_MAX_BYTES
-    with pytest.raises(CommandError, match=r"'gadget.glb' is .* over the .* limit"):
+    big = FAKE_GLB + b"\x00" * media_cap("model/gltf-binary")
+    with pytest.raises(CommandError, match=r"'gadget.glb' is .* over the .* limit for a GLB"):
         load_with_files(tmp_path, with_models(GADGET), {"gadget.glb": big, "gadget.png": FAKE_PNG})
+
+
+def test_a_poster_has_its_own_smaller_cap(tmp_path):
+    assert media_cap("image/png") < media_cap("model/gltf-binary")
+    big = FAKE_PNG + b"\x00" * media_cap("image/png")
+    with pytest.raises(CommandError, match=r"'gadget.png' is .* over the .* limit for a PNG"):
+        load_with_files(
+            tmp_path / "a", with_models(GADGET), {"gadget.glb": FAKE_GLB, "gadget.png": big}
+        )
+    assert RecruiterMediaFile.objects.count() == 0
 
 
 def test_a_reload_replaces_the_files_and_drops_ones_no_longer_named(tmp_path):

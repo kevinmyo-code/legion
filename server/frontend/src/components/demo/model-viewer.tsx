@@ -153,7 +153,7 @@ export function ModelViewer({ model }: { model: DemoModel3D }) {
         onClick={() => ready && setActive(true)}
         onPointerLeave={(event) => event.pointerType === 'mouse' && setActive(false)}
       >
-        <img className="rc-model-poster" src={model.poster} alt={model.title} decoding="async" />
+        <img className="rc-model-poster" src={model.poster} alt={model.title} loading="lazy" decoding="async" />
       </div>
       {ready && (
         <div className="rc-model-bar">
