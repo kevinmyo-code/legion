@@ -4,18 +4,21 @@
  *
  *   node tools/phone-walkthrough/render.mjs --spec <spec.json> --clips <dir> --out <dir>
  *        [--layout wide|tall|both] [--ffmpeg <dir with ffmpeg and ffprobe>] [--from 0 --to 12]
+ *        [--asker <dir of asker WAVs, default <clips>/asker>]
  *        [--check overlay]   (only the money-overlay check frames, no browser)
  *
- * `<clips>/<slot>.json` (all optional): `asks` [{at, line, mute?}], `home_spans` [[a, b]],
- * `no_overlay_spans` [[a, b]], `overlay: false`. Times are seconds into that slot's file.
+ * `<clips>/<slot>.json` (all optional): `asks` [{at, line, mute?}] (a `line` the spec does not
+ * name, such as "tap", is the recorder's action and makes no sound), `room_wav` and
+ * `room_starts_before_video_s`, `home_spans` [[a, b]], `no_overlay_spans` [[a, b]],
+ * `overlay: false`. Times are seconds into that slot's mp4.
  *
  * Pipeline, deterministic end to end:
  *  1. `scenes.html` draws every frame from a time value in headless Chromium (Playwright from
  *     server/frontend/node_modules); each frame is screenshot and piped to ffmpeg at 30 fps.
- *  2. ffmpeg lays each slot's footage (`<clips>/<slot>.mp4`) into the phone screen rectangle the
- *     page reports, for the scene's in/out, and builds the sound: the footage's own audio (Alfred),
- *     muted over every asker line logged in `<clips>/<slot>.json` ({"asks":[{"at":s,"line":key}]}),
- *     with the stock-voice WAV `<clips>/asker/<key>.wav` laid over it. No narration, no music.
+ *  2. ffmpeg lays each slot's footage (`<clips>/<slot>.mp4`, made-up money figures painted over
+ *     first) into the phone screen rectangle the page reports, for the scene's in/out, and builds
+ *     the sound: Alfred from the take (its room recording, or the mp4's own track) and the
+ *     stock-voice asker WAV for each ask at its time. No narration, no music.
  *  3. Outputs per layout: `<name>.mp4` (H.264 + AAC, yuv420p, faststart); plus, once:
  *     `<name>.vtt` (asker lines and `<clips>/<slot>.vtt` cues shifted into place),
  *     `chapters.json` ([{title, line, at}] for every beat and step), `poster.png`, and contact
@@ -67,11 +70,46 @@ const slots = new Set(
   existsSync(clipsDir) ? readdirSync(clipsDir).filter((f) => f.endsWith('.mp4')).map((f) => f.slice(0, -4)) : [],
 )
 function asksOf(slot) {
-  const file = path.join(clipsDir, `${slot}.json`)
-  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).asks || [] : []
+  return slotMeta(slot).asks || []
 }
+const askerDir = path.resolve(opt.asker || path.join(clipsDir, 'asker'))
 function askerWav(key) {
-  return path.join(clipsDir, 'asker', `${key}.wav`)
+  return path.join(askerDir, `${key}.wav`)
+}
+/** The asks that are speech: a line the spec names with its WAV present. "tap", "home" and the
+ * like are the recorder's own actions, logged in the same list, and make no sound here. */
+function speechAsks(slot) {
+  return asksOf(slot).filter((a) => spec.lines?.[a.line] != null && existsSync(askerWav(a.line)))
+}
+
+// Every voice at one loudness (EBU R128, -18 LUFS): the asker WAVs and the room as recorded.
+const LEVEL = 'loudnorm=I=-18:TP=-2:LRA=11'
+const levelledCache = new Map()
+function levelled(file, extra = '') {
+  const key = file + extra
+  if (!levelledCache.has(key)) {
+    const target = path.join(outDir, '.tmp', `lev-${levelledCache.size}.wav`)
+    run('ffmpeg', ['-v', 'error', '-y', '-i', file, '-af', `${extra}${LEVEL}`, '-ar', '48000', target])
+    levelledCache.set(key, target)
+  }
+  return levelledCache.get(key)
+}
+
+/**
+ * Where a slot's Alfred audio comes from, and its offset (seconds to ADD to a video time to get
+ * the source time). A phone app on the assistant audio stream cannot be captured digitally, so a
+ * take is usually a silent mp4 plus `room_wav`, the room through the laptop mic, starting
+ * `room_starts_before_video_s` before the video. That is cleaned lightly: a high-pass for rumble,
+ * gentle FFT noise reduction, and the common loudness; nothing that changes the voice.
+ */
+function audioSource(slot) {
+  const meta = slotMeta(slot)
+  if (meta.room_wav && existsSync(path.join(clipsDir, meta.room_wav))) {
+    const file = levelled(path.join(clipsDir, meta.room_wav), 'highpass=f=90,afftdn=nr=10:nf=-40,')
+    return { file, offset: Number(meta.room_starts_before_video_s || 0) }
+  }
+  const mp4 = path.join(clipsDir, `${slot}.mp4`)
+  return hasAudio(mp4) ? { file: mp4, offset: 0 } : null
 }
 
 /** A path as an ffmpeg filter option wants it: forward slashes, the drive colon escaped. */
@@ -164,8 +202,8 @@ function captionCues(timeline) {
     const out = footageOut(scene, item)
     const map = (c) => item.start + (c - scene.in) / speed
     const inside = (c) => c >= scene.in && c < out
-    for (const ask of asksOf(scene.slot)) {
-      if (!inside(ask.at) || !existsSync(askerWav(ask.line))) continue
+    for (const ask of speechAsks(scene.slot)) {
+      if (!inside(ask.at)) continue
       const len = duration(askerWav(ask.line))
       cues.push({ start: map(ask.at), end: Math.min(map(ask.at + len), item.end), text: `Asker: ${spec.lines[ask.line]}` })
     }
@@ -263,22 +301,32 @@ function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
       `${last}[c${v}]overlay=${rect.x}:${rect.y}:eof_action=pass:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'[o${v}]`,
     )
     last = `[o${v}]`
-    // Sound: the footage's own audio at 1x only, with each asker line's WAV laid at its time. An
-    // internal-audio capture holds only Alfred, so nothing is muted unless an ask says `mute`
-    // (a capture that also heard the room): muting by default would silence a barge-in.
-    if (speed !== 1 || !hasAudio(file)) return
-    const asks = asksOf(scene.slot).filter((a) => a.at < out && existsSync(askerWav(a.line)))
+    // Sound: Alfred from the take's own audio (the room recording, or the mp4's track) at 1x
+    // only, and each asker line's clean WAV laid at its time. Nothing is muted unless an ask says
+    // `mute` (a track that also carries the asker): muting by default would silence a barge-in.
+    const source = speed === 1 ? audioSource(scene.slot) : null
+    if (!source) return
+    const asks = speechAsks(scene.slot).filter((a) => a.at >= scene.in && a.at < out)
     const mute = asks.filter((a) => a.mute).map((a) => {
       const len = duration(askerWav(a.line))
       return `between(t,${(a.at - scene.in - 0.25).toFixed(3)},${(a.at - scene.in + len + 0.25).toFixed(3)})`
     })
     const volume = mute.length ? `,volume='if(${mute.join('+')},0,1)':eval=frame` : ''
     const delay = Math.round(start * 1000)
-    af.push(`[${v}:a]atrim=${scene.in}:${out.toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000${volume},afade=t=in:d=0.15,afade=t=out:st=${Math.max(end - start - 0.3, 0).toFixed(3)}:d=0.3,adelay=${delay}|${delay}[a${v}]`)
-    audioParts.push(`[a${v}]`)
+    inputs.push('-i', source.file)
+    const r = n++
+    const from0 = scene.in + source.offset
+    const to0 = out + source.offset
+    // A room file that starts after the video (negative offset) is padded with silence first.
+    const lead = from0 < 0 ? `adelay=${Math.round(-from0 * 1000)}|${Math.round(-from0 * 1000)},` : ''
+    af.push(
+      `[${r}:a]${lead}atrim=${Math.max(from0, 0).toFixed(3)}:${(to0 - Math.min(from0, 0)).toFixed(3)},asetpts=PTS-STARTPTS,` +
+        `aresample=48000,aformat=channel_layouts=stereo${volume},afade=t=in:d=0.15,` +
+        `afade=t=out:st=${Math.max(end - start - 0.3, 0).toFixed(3)}:d=0.3,adelay=${delay}|${delay}[a${r}]`,
+    )
+    audioParts.push(`[a${r}]`)
     for (const a of asks) {
-      if (a.at < scene.in) continue
-      inputs.push('-i', askerWav(a.line))
+      inputs.push('-i', levelled(askerWav(a.line)))
       const w = n++
       const d = Math.round((start + (a.at - scene.in)) * 1000)
       af.push(`[${w}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${d}|${d}[s${w}]`)
