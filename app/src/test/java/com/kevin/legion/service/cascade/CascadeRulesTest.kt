@@ -376,9 +376,10 @@ class CascadeRulesTest {
     fun `the stop path says the stopped turn's writes from their facts, then the tone`() {
         val s = java.io.File(sourceRootForRules(), "service/cascade/CascadeSession.kt").readText()
         val end = s.substring(s.indexOf("private suspend fun endByStop("), s.indexOf("private fun verdictOf("))
-        assertTrue(end.contains("ScriptedLines.doneLine(unheardWrites)"))
-        assertTrue("said before the tone", end.indexOf("reply.say(done)") in 0 until end.indexOf("endByVoice()"))
-        assertTrue("facts, never the message", s.contains("ScriptedLines.writeFact(r.name, r.args.optString(\"action\"), response, ok = writeDone)"))
+        assertTrue("the record keeps what is said", end.contains("recordTurn(words, owed.due()?.line.orEmpty())"))
+        val voice = s.substring(s.indexOf("private suspend fun endByVoice("))
+        assertTrue("said before the tone", voice.indexOf("sayOwed()") in 0 until voice.indexOf("host.closingTone()"))
+        assertTrue("facts from the loop, never the message", s.contains("writeFact = ScriptedLines::factOf"))
         assertFalse("never reads what was said to decide", s.contains("unheardSaid"))
     }
 

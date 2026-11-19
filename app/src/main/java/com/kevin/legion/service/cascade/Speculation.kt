@@ -266,6 +266,12 @@ internal class SpeculativeAnswer(
 
         override fun onReadThrough(source: String) = deliver { it.onReadThrough(source) }
 
+        // A write's facts and code's line for it (2026-11-19): only after adoption (tools wait for it).
+        override fun onWriteFact(fact: ScriptedLines.WriteFact) = deliver { it.onWriteFact(fact) }
+
+        override fun onCodeLine(text: String, facts: List<ScriptedLines.WriteFact>) =
+            deliver { it.onCodeLine(text, facts) }
+
         override fun onFirstPart(round: Int, ms: Long) {
             val direct = synchronized(events) {
                 if (target == null && firstPartAtMs == null) {

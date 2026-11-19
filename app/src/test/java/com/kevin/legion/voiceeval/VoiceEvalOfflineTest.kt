@@ -211,6 +211,20 @@ class VoiceEvalOfflineTest {
         assertTrue(heard, !heard.contains("Nothing was changed"))
     }
 
+    @Test
+    fun `the eval hears code's line for a write, where the phone says it`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val lines = runScripted(
+            "t", "invented",
+            call("manage_checklist", JSONObject().put("action", "add").put("list", "to-do").put("text", "mail the form")),
+            text("Anything else?"),
+        )
+        val heard = lines.single { it.startsWith("LIVE_TEST heard text=") }
+        assertTrue(heard, heard.startsWith("LIVE_TEST heard text=\"Done: added ") && heard.endsWith(" Anything else?\""))
+        val voice = lines.single { it.startsWith("LIVE_TEST tts text=") }
+        assertTrue(voice, voice.contains("Done: added "))
+    }
+
     private suspend fun toolResult(name: String, args: JSONObject): String =
         runScripted("t", "invented", call(name, args), text("ok.")).single { it.startsWith("LIVE_AUDIT tool_result") }
 

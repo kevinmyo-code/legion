@@ -130,6 +130,8 @@ internal class VoiceEvalHarness(
             isMutating = CascadeRules::isWrite,
             isReadThrough = CascadeRules::isReadThrough,
             toolTimeoutMs = { CascadeSession.TOOL_BACKSTOP_MS },
+            // As the session: a write that went through is said by code from its result.
+            writeFact = ScriptedLines::factOf,
             meter = { model, usage -> out(LiveLatency.TAG, CallUsage.of(CallUsage.LLM, model, usage).line()) },
             discarded = { model, usage, chars ->
                 out(LiveLatency.TAG, CallUsage.of(CallUsage.LLM, model, usage, chars = chars, discarded = true).line())
@@ -211,6 +213,12 @@ internal class VoiceEvalHarness(
 
                     override fun onReadThrough(source: String) = audit.readThrough(source)
 
+                    // Code's line for a write: heard in its place, between the model's words.
+                    override fun onCodeLine(text: String, facts: List<ScriptedLines.WriteFact>) {
+                        if (raw.isNotEmpty() && !raw.last().isWhitespace()) raw.append(' ')
+                        raw.append(text).append(' ')
+                    }
+
                     // The holding line the phone would say as these tools start ([ToolFillers]).
                     override fun onToolsStarting(calls: List<Pair<String, JSONObject>>) {
                         dateCalls.addAndGet(
@@ -227,10 +235,12 @@ internal class VoiceEvalHarness(
                 },
             )
             out(LiveLatency.TAG, CascadeLines.usage(prefix.model, result.usage))
-            val said = if (result.failure != null && result.text.isBlank()) {
-                result.failureWords ?: result.failure.lead
-            } else {
-                result.text
+            // As the session says it: a failure after a write code said is said after that line.
+            val said = when {
+                result.failure == null -> result.text
+                result.text.isBlank() -> result.failureWords ?: result.failure.lead
+                result.codeLines > 0 -> "${result.text} ${result.failureWords ?: result.failure.lead}"
+                else -> result.text
             }
             audit.assistant(said, readThrough = result.readThrough)
             // What would be heard, even when the record redacts it (made-up data only): the scorer
