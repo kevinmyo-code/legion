@@ -475,11 +475,11 @@ def test_a_yes_held_again_fails_not_held():
     assert ve.score_case(case, runs[0], phone=False).passed
 
 
-def test_a_turn_that_ended_on_the_code_line_is_counted():
+def test_a_closing_text_not_spoken_is_counted():
     cases = [{"id": "a", "say": "x", "expect": {}}]
     lines = case_lines("a", "x", [], "Done: added milk to Groceries.")
-    lines.insert(-2, L("LIVE_LATENCY", "reply_closing_skipped n=1"))
+    lines.insert(-2, L("LIVE_LATENCY", "reply_closing_dropped n=1"))
     facts, runs = parse(lines)
     out, _ = ve.scorecard(cases, runs, facts, phone=False)
-    assert runs[0].turns[0].closing_skipped
-    assert any("turns ended on the code line: 1" in l for l in out)
+    assert runs[0].turns[0].closing_dropped
+    assert any("closing text not spoken after confirmed writes: 1" in l for l in out)

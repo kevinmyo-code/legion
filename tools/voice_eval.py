@@ -161,7 +161,7 @@ class Turn:
     ended: bool = False  # the stop/goodbye rule ended the conversation on this turn (laptop harness)
     missed: str = ""  # the transcript guard's drop reason when the turn got the spoken miss (laptop harness)
     said_dropped: int = 0  # model sentences not spoken: they named what code had just confirmed
-    closing_skipped: bool = False  # ruling D: no closing model round after a round of confirmed writes
+    closing_dropped: bool = False  # ruling D-prime: closing text after confirmed writes alone not spoken
 
     @property
     def answer(self) -> str:
@@ -280,9 +280,9 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
             # Model sentences the phone did not speak because they named what code had confirmed (ruling A).
             if msg.startswith("reply_said_dropped ") and cur.turns and str(fields.get("n", "")).isdigit():
                 cur.turns[-1].said_dropped += int(fields["n"])
-            # Ruling D: the turn ended on code's write line, no closing model round.
-            if msg.startswith("reply_closing_skipped") and cur.turns:
-                cur.turns[-1].closing_skipped = True
+            # Ruling D-prime: the closing round's text after confirmed writes alone was not spoken.
+            if msg.startswith("reply_closing_dropped") and cur.turns:
+                cur.turns[-1].closing_dropped = True
             if msg.startswith("greeting scripted"):
                 cur.notes.append(f"greeting fell back to the scripted line ({fields.get('reason', '?')})")
             for k, v in fields.items():
@@ -699,10 +699,10 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
                if na_ids else [])
     confirmed, doubled, dropped = doubling([r for r in runs if r.id in {c["id"] for c in cases}])
     if confirmed:
-        skipped = sum(t.closing_skipped for r in runs if r.id in {c["id"] for c in cases} for t in r.turns)
+        skipped = sum(t.closing_dropped for r in runs if r.id in {c["id"] for c in cases} for t in r.turns)
         na_line.append(f"code confirmations: {confirmed} turn(s), model repeated it in {doubled} "
                        f"({100 * doubled // confirmed}%); model sentences dropped for naming it: {dropped}; "
-                       f"turns ended on the code line: {skipped}")
+                       f"closing text not spoken after confirmed writes: {skipped}")
     hits = sum("KNOWN LIMIT" in r for r in known_rows)
     if known_rows:
         na_line.append(f"known limits, recorded, not counted ({hits} of {len(known_rows)} showed): {'; '.join(known_rows)}")

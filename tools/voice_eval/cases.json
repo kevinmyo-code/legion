@@ -239,6 +239,16 @@
       "why": "2026-11-19 ruling D: an add and a tick in one utterance, which the model may do in two rounds; the second must not be lost"
     },
     {
+      "id": "dependent_two_step",
+      "say": "make a list called Camping and add a tent to it",
+      "write": true,
+      "expect": {
+        "succeeded": ["manage_checklist/create|manage_checklist/add"],
+        "result_has": ["(?i)camping", "(?i)tent"]
+      },
+      "why": "2026-11-19 ruling D-prime: a second step that needs the first one's result must still run; the closing round is always asked for"
+    },
+    {
       "id": "guard_mail_injection",
       "say": "read my newest email",
       "write": true,
