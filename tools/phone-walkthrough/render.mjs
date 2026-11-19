@@ -127,39 +127,93 @@ function slotMeta(slot) {
  * The made-up money figures (Kevin, 2026-11-19: "keep the whole phone in view, either make up a
  * money number or hide it first"): `spec.money_overlay` paints opaque patches in the screen's own
  * ground colour over the real figures and sets invented ones on top in the app's own face, size
- * and ink, on the footage at its native size, before it is cut or scaled. Drawn while the slot's
- * `home_spans` say home is on screen (default: the whole take) and never inside its
- * `no_overlay_spans` (a sheet or card over that region). `outline` adds the debug outlines: lime
- * where the patch is drawn, red where it is held off.
+ * and ink, on the footage at its native size, before it is cut or scaled.
+ *
+ * When: while the slot's `home_spans` say home is on screen (default: the whole take), never
+ * inside its `no_overlay_spans` (a card replaces home there), and one patch (with its text) is
+ * held off inside `patch_off_spans` {"<patch index>": [[a, b]]} (an opaque sheet covers that row).
+ * A sheet's scrim dims home: the dimming is MEASURED per frame (`dim_probe`, a patch of plain
+ * ground beside the figures) and each level gets patches and text in the dimmed colours, so a
+ * patch never shows as a bright box on a dimmed screen. `outline` adds the debug outlines: lime
+ * where a patch is drawn, red where it is held off.
  */
 function overlayChain(slot, { outline = false } = {}) {
   const cfg = spec.money_overlay
   const meta = slotMeta(slot)
   if (!cfg || meta.overlay === false) return ''
   const spans = (list) => list.map(([a, b]) => `between(t,${a},${b})`).join('+')
-  const home = meta.home_spans?.length ? `gt(${spans(meta.home_spans)},0)` : '1'
-  const held = meta.no_overlay_spans?.length ? `gt(${spans(meta.no_overlay_spans)},0)` : '0'
-  const on = `'${home}*not(${held})'`
-  const off = `'not(${home}*not(${held}))'`
+  const any = (list) => (list?.length ? `gt(${spans(list)},0)` : '0')
+  const home = meta.home_spans?.length ? any(meta.home_spans) : '1'
+  const shown = `${home}*not(${any(meta.no_overlay_spans)})`
   const font = ffPath(path.resolve(REPO, cfg.font))
   const filters = []
-  for (const [x, y, w, h] of cfg.patches) filters.push(`drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${cfg.background}:t=fill:enable=${on}`)
-  for (const [k, text] of cfg.texts.entries()) {
-    const textfile = path.join(outDir, '.tmp', `overlay-${k}.txt`)
-    writeFileSync(textfile, text.text)
-    const x = text.right != null ? `${text.right}-text_w` : String(text.x)
-    filters.push(
-      `drawtext=fontfile='${font}':textfile='${ffPath(textfile)}':fontsize=${text.size}:fontcolor=${text.color}:` +
-        `x=${x}:y=${text.baseline}-ascent:enable=${on}`,
-    )
+  const patchOn = (k) => `${shown}*not(${any(meta.patch_off_spans?.[k])})`
+  const textfiles = cfg.texts.map((text, k) => {
+    const file = path.join(outDir, '.tmp', `overlay-${k}.txt`)
+    writeFileSync(file, text.text)
+    return file
+  })
+  for (const { factor, when } of dimLevels(slot)) {
+    for (const [k, [x, y, w, h]] of cfg.patches.entries()) {
+      filters.push(`drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${scale(cfg.background, factor)}:t=fill:enable='${patchOn(k)}*(${when})'`)
+    }
+    for (const [k, text] of cfg.texts.entries()) {
+      const x = text.right != null ? `${text.right}-text_w` : String(text.x)
+      const on = text.patch != null ? patchOn(text.patch) : shown
+      filters.push(
+        `drawtext=fontfile='${font}':textfile='${ffPath(textfiles[k])}':fontsize=${text.size}:fontcolor=${scale(text.color, factor)}:` +
+          `x=${x}:y=${text.baseline}-ascent:enable='${on}*(${when})'`,
+      )
+    }
   }
   if (outline) {
-    for (const [x, y, w, h] of cfg.patches) {
-      filters.push(`drawbox=x=${x - 3}:y=${y - 3}:w=${w + 6}:h=${h + 6}:color=lime:t=3:enable=${on}`)
-      filters.push(`drawbox=x=${x - 3}:y=${y - 3}:w=${w + 6}:h=${h + 6}:color=red:t=3:enable=${off}`)
+    for (const [k, [x, y, w, h]] of cfg.patches.entries()) {
+      filters.push(`drawbox=x=${x - 3}:y=${y - 3}:w=${w + 6}:h=${h + 6}:color=lime:t=3:enable='${patchOn(k)}'`)
+      filters.push(`drawbox=x=${x - 3}:y=${y - 3}:w=${w + 6}:h=${h + 6}:color=red:t=3:enable='not(${patchOn(k)})'`)
     }
   }
   return filters.join(',')
+}
+
+/** "0x14120F" with each channel times `factor`. */
+function scale(hex, factor) {
+  const n = parseInt(hex.replace(/^0x/i, ''), 16)
+  const ch = [16, 8, 0].map((shift) => Math.round(((n >> shift) & 255) * factor))
+  return '0x' + ch.map((c) => c.toString(16).padStart(2, '0')).join('').toUpperCase()
+}
+
+/**
+ * The screen's brightness over time, as runs of one level each: [{factor, when}], `when` an
+ * ffmpeg expression over t. Measured from `money_overlay.dim_probe` (plain ground) at 30 fps
+ * against the ground colour's red channel, in steps of 0.05; one level of 1 without a probe.
+ */
+const dimCache = new Map()
+function dimLevels(slot) {
+  const probe = spec.money_overlay.dim_probe
+  if (!probe) return [{ factor: 1, when: '1' }]
+  if (dimCache.has(slot)) return dimCache.get(slot)
+  const [x, y, w, h] = probe
+  const ground = parseInt(spec.money_overlay.background.slice(2, 4), 16)
+  const raw = spawnSync(bin('ffmpeg'), [
+    '-v', 'error', '-i', path.join(clipsDir, `${slot}.mp4`), '-vf', `fps=${FPS},crop=${w}:${h}:${x}:${y},scale=1:1:flags=area`,
+    '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
+  ], { maxBuffer: 1 << 26 }).stdout
+  const runs = []
+  for (let f = 0; f * 3 < raw.length; f++) {
+    const factor = Math.min(1, Math.round((raw[f * 3] / ground) * 20) / 20)
+    const last = runs[runs.length - 1]
+    if (last && last.factor === factor) last.end = f
+    else runs.push({ factor, start: f, end: f })
+  }
+  const levels = new Map()
+  for (const r of runs) {
+    // Frame f covers [f/FPS, (f+1)/FPS); half-frame margins so each frame lands in one level.
+    const span = `between(t,${((r.start - 0.5) / FPS).toFixed(4)},${((r.end + 0.5) / FPS).toFixed(4)})`
+    levels.set(r.factor, [...(levels.get(r.factor) || []), span])
+  }
+  const out = [...levels].map(([factor, list]) => ({ factor, when: `gt(${list.join('+')},0)` }))
+  dimCache.set(slot, out)
+  return out
 }
 
 /** One frame a second of every slot's footage with the patch outlines, to catch a peeking digit. */
@@ -341,7 +395,7 @@ function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
   run('ffmpeg', [
     '-v', 'error', '-y', ...inputs, '-filter_complex', [...vf, ...af].join(';'),
     '-map', '[vout]', '-map', '[aout]', '-r', String(FPS),
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', crf, '-pix_fmt', 'yuv420p', '-profile:v', 'high',
+    '-c:v', 'libx264', '-preset', 'medium', '-crf', crf, '-pix_fmt', 'yuv420p', '-profile:v', 'high',
     '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', '-t', total.toFixed(3), outFile,
   ])
 }

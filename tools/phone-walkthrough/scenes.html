@@ -265,11 +265,17 @@ function drawDiagram(scene, local, dur) {
 }
 
 function drawTicks(root, item) {
-  const chapters = TIMELINE.filter((s) => s.scene.kind === 'beat' || s.scene.kind === 'step')
+  // One tick per chapter; a scene with `chapter: false` continues the chapter before it.
+  const chapters = []
+  for (const s of TIMELINE) {
+    if (s.scene.kind !== 'beat' && s.scene.kind !== 'step') continue
+    if (s.scene.chapter === false && chapters.length) chapters[chapters.length - 1].end = s.end
+    else chapters.push({ start: s.start, end: s.end })
+  }
   if (!chapters.length) return
   const row = el('div', { class: 'ticks', style: { left: px(L.ticks.x), top: px(L.ticks.y), width: px(L.ticks.w) } })
   for (const c of chapters) {
-    const cls = c === item ? 'tick now' : c.end <= item.start ? 'tick on' : 'tick'
+    const cls = item.start >= c.start && item.start < c.end ? 'tick now' : c.end <= item.start ? 'tick on' : 'tick'
     row.appendChild(el('div', { class: cls }))
   }
   root.appendChild(row)

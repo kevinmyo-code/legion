@@ -83,22 +83,31 @@
         "size": 96,
         "color": "0xF1ECE2",
         "x": 52,
-        "baseline": 472
+        "baseline": 472,
+        "patch": 0
       },
       {
         "text": "net cash",
         "size": 48,
         "color": "0xF1ECE2",
         "right": 1027,
-        "baseline": 477
+        "baseline": 477,
+        "patch": 1
       },
       {
         "text": "$10.00",
         "size": 60,
         "color": "0xF1ECE2",
         "right": 410,
-        "baseline": 1112
+        "baseline": 1112,
+        "patch": 3
       }
+    ],
+    "dim_probe": [
+      0,
+      420,
+      40,
+      40
     ]
   },
   "scenes": [
@@ -123,6 +132,17 @@
       "in": 0,
       "dur": 4,
       "shot": "Example shot"
+    },
+    {
+      "kind": "beat",
+      "kicker": "Part one",
+      "title": "Example beat",
+      "line": "An example line.",
+      "slot": "m-example",
+      "in": 8,
+      "dur": 3,
+      "chapter": false,
+      "shot": "Second cut of the same beat"
     },
     {
       "kind": "step",
