@@ -98,6 +98,20 @@ describe('the phone walkthrough', () => {
     expect(buttons[1]).toHaveAttribute('aria-current', 'step')
   })
 
+  test('a press before anything has loaded still lands on the chapter once the length is known', async () => {
+    renderApp('/try', visitWith(phone()), 'family')
+    const region = await section()
+    const video = walkVideo(region)
+    expect(video.readyState).toBe(HTMLMediaElement.HAVE_NOTHING)
+    fireEvent.click(within(within(region).getByRole('list', { name: 'Chapters' })).getAllByRole('button')[2])
+    // The browser drops a seek made before the metadata: the load starts at 0.
+    video.currentTime = 0
+    act(() => {
+      video.dispatchEvent(new Event('loadedmetadata'))
+    })
+    expect(video.currentTime).toBe(20)
+  })
+
   test('the chapter that is playing is marked as the video moves', async () => {
     renderApp('/try', visitWith(phone()), 'family')
     const region = await section()

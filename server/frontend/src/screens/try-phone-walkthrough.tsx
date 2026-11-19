@@ -65,7 +65,13 @@ export function PhoneWalkthrough({ phone, walk }: { phone: DemoPhone; walk: Demo
   function seek(index: number) {
     const element = video.current
     if (!element) return
-    element.currentTime = chapters[index].at
+    const at = chapters[index].at
+    if (element.readyState < HTMLMediaElement.HAVE_METADATA) {
+      // Nothing is loaded before a press (preload="none"), and a seek before the metadata is lost:
+      // the press starts the load, and the seek lands once the length is known.
+      element.addEventListener('loadedmetadata', () => (element.currentTime = at), { once: true })
+    }
+    element.currentTime = at
     setCurrent(index)
     // A press on a chapter is the visitor asking to watch from there.
     element.play()?.catch(() => {})
