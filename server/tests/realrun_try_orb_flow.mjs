@@ -37,6 +37,8 @@ const context = await browser.newContext({
   hasTouch: mobile,
   deviceScaleFactor: mobile ? 2 : 1,
   serviceWorkers: 'block',
+  // `reduced`: the visitor asked for less motion (the orb then cross-fades, never travels).
+  reducedMotion: A.reduced ? 'reduce' : 'no-preference',
 })
 await context.grantPermissions(['microphone'], { origin: A.base })
 const page = await context.newPage()
@@ -286,14 +288,34 @@ function framesAround(P, label, from, to) {
 }
 
 // ---- open the link ----------------------------------------------------------------------------
+// `only: 'travel'`: the visit is entered by the public route (no model, no speech, no cost) and
+// only the orb's travel runs.
+const travelOnly = A.only === 'travel'
+if (travelOnly) {
+  await page.goto(`${A.base}/try`)
+  await page.evaluate(async (code) => {
+    await fetch('/api/auth/csrf', { credentials: 'same-origin' })
+    const token = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''
+    await fetch('/api/demo/enter', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
+      body: JSON.stringify({ code, ref: 'orbflow' }),
+    })
+  }, A.code)
+}
 await page.goto(`${A.base}/try?code=${encodeURIComponent(A.code)}&ref=orbflow`)
 await page.locator('[data-stage="orb"]').waitFor({ timeout: 30000 })
 await page.evaluate(() => document.fonts.ready)
 await sleep(1500)
 await shot('1-top')
 
+let t0
+let t1
+let P
+if (!travelOnly) {
 // ---- the one-minute tour: started from the stage, then the visitor scrolls on to read ---------
-let t0 = await wall()
+t0 = await wall()
 await page.locator('[data-stage="tour"]').click()
 const tourEnd = Date.now() + 150000
 let finished = false
@@ -321,8 +343,8 @@ while (Date.now() < tourEnd) {
   await sleep(300)
 }
 await sleep(4000)
-let t1 = await wall()
-let P = await probe()
+t1 = await wall()
+P = await probe()
 R.phases.tour = { finished, ...summary(P, t0, t1), frames: framesAround(P, 'tour', t0, t1) }
 await shot('3-tour-end')
 
@@ -367,11 +389,13 @@ t1 = await wall()
 P = await probe()
 R.phases.askClose = summary(P, t0, t1)
 // The captions still show the newest words of the answer that streamed on under the modal.
-R.phases.captionsAtNewest = await page.evaluate(() => {
+// The captions box never scrolls (it would take the visitor's swipes from the page).
+R.phases.captions = await page.evaluate(() => {
   const box = document.querySelector('[data-stage="captions"]')
-  return box ? { top: Math.round(box.scrollTop), room: box.clientHeight, height: box.scrollHeight } : null
+  return box ? { overflowY: getComputedStyle(box).overflowY, top: Math.round(box.scrollTop) } : null
 })
 await shot('6-ask-closed')
+}
 
 // ---- the orb's travel: scrolled by wheel past the stage, then back ----------------------------
 await page.evaluate(() => window.scrollTo(0, 0))
@@ -403,6 +427,14 @@ R.phases.travel = {
   path: P.samples.filter((x) => x.t >= t0 && x.t <= t1).map((x) => ({ t: Math.round(x.t - t0), y: x.y, orb: x.orb, orbOpacity: x.orbOpacity, dock: x.dock, dockOrb: x.dockOrb, dockOpacity: x.dockOpacity })).slice(0, 400),
 }
 
+// `chips` (travel-only): tap the orb once so the greeting brings the example chips (a scripted
+// line, its speech the only cost), then look at them.
+if (travelOnly && A.chips) {
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.locator('[data-stage="orb"]').click()
+  await page.locator('[data-stage="chips"] button').first().waitFor({ timeout: 30000 }).catch(() => {})
+  await sleep(1200)
+}
 // ---- the chips: where they sit, and the row's bounds at this width ------------------------------
 R.chips = await page.evaluate(() => {
   const row = document.querySelector('[data-stage="chips"]')
@@ -414,7 +446,8 @@ R.chips = await page.evaluate(() => {
     const x = b.getBoundingClientRect()
     return { h: Math.round(x.height), w: Math.round(x.width) }
   })
-  return { top: Math.round(r.top), orbBottom: Math.round(o.bottom), left: Math.round(r.left), right: Math.round(r.right), buttons, overflow: document.documentElement.scrollWidth > innerWidth }
+  const first = row.querySelector('button')
+  return { top: Math.round(r.top), orbBottom: Math.round(o.bottom), left: Math.round(r.left), right: Math.round(r.right), buttons, overflow: document.documentElement.scrollWidth > innerWidth, radius: first ? getComputedStyle(first).borderTopLeftRadius : null }
 })
 await shot('10-chips')
 
@@ -426,7 +459,17 @@ const jumps = (p) =>
   (p.calls || []).filter(
     (c) => (c.call === 'scroll-jump' && !mine(p, c)) || (c.call === 'window.scrollTo' && /"top":0/.test(c.args || '') && !/evaluate/.test(c.from || '')),
   )
-R.checks = {
+const travelled = (ph.travel.path || []).map((x) => x.dock)
+const travelChecks = {
+  // Scrolled past, the orb docks; scrolled back to the top, it is back on the stage.
+  docksAndComesBack: travelled.includes(true) && travelled[travelled.length - 1] === false,
+  // Reduced motion: the docked orb never sits anywhere but its own place (no travel).
+  ...(A.reduced
+    ? { noTravelUnderReducedMotion: (ph.travel.path || []).filter((x) => x.dock && x.dockOrb).every((x) => x.dockOrb[2] <= 64) }
+    : {}),
+}
+R.checks = travelOnly ? { ...travelChecks, noDockStorm: ph.travel.dockStorm <= 1 } : {
+  ...travelChecks,
   // The page under a diagram stays where the visitor put it, opening and closing.
   noScrollJumpWithDiagram: ['tour', 'tourClose', 'ask', 'askClose'].every((k) => jumps(ph[k]).length === 0),
   // The dock never flips back and forth (at most one change in any second, in every phase).
@@ -439,7 +482,7 @@ R.checks = {
   // The voice stage is one element for the visit, the tap that enters it included.
   stageNeverRemounted: ph.tour.stage.add === 0 && ph.tour.stage.remove === 0,
   tourFinished: ph.tour.finished === true,
-  captionsAtNewest: !ph.captionsAtNewest || ph.captionsAtNewest.top + ph.captionsAtNewest.room >= ph.captionsAtNewest.height - 2,
+  captionsNeverScroll: !ph.captions || (ph.captions.overflowY === 'hidden' && ph.captions.top === 0),
 }
 R.turns = await turns()
 R.spendUsd = Math.round(R.turns.reduce((n, x) => n + (x.cost ?? 0), 0) * 100000) / 100000

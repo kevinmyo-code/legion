@@ -7,7 +7,8 @@ the suite: run by name, with a key, Node + Playwright, and the SPA built into `s
     LEGION_GEMINI_KEY_FILE=<path> ORBFLOW_OUT=<dir> PLAYWRIGHT_DIR=<node_modules dir> \\
         ORBFLOW_TAG=before|after pt.sh <worktree> <port> <db> tests/realrun_try_orb_flow.py -s
 
-For each width (390 x 700, 1280 x 800) a fresh visit runs the whole one-minute tour from the top,
+`ORBFLOW_ONLY=travel` runs only the orb's travel (no model, no cost); `ORBFLOW_REDUCED=1` runs with
+reduced motion. For each width (390 x 700, 1280 x 800) a fresh visit runs the whole one-minute tour,
 closes its card, asks for a diagram by a typed question with the orb docked, closes it, then scrolls
 past the stage and back by wheel. `realrun_try_orb_flow.mjs` records the dock and the diagram's
 mounts and unmounts, the page's state per animation frame, layout shifts and the compositor's frames
@@ -75,6 +76,11 @@ def test_try_orb_flow(real, live_server, tmp_path):
             "tag": tag,
             "wav": str(wav),
             "question": QUESTION,
+            # ORBFLOW_ONLY=travel: the orb's travel alone, on a visit entered by the public route
+            # (no model, no speech, nothing spent); ORBFLOW_REDUCED=1: with reduced motion.
+            "only": os.environ.get("ORBFLOW_ONLY", ""),
+            "reduced": os.environ.get("ORBFLOW_REDUCED") == "1",
+            "chips": os.environ.get("ORBFLOW_CHIPS") == "1",
         }
         done = subprocess.run(
             ["node", str(HERE / "realrun_try_orb_flow.mjs"), json.dumps(args)],
