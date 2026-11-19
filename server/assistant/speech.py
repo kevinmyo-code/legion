@@ -154,6 +154,14 @@ def voiced_speech(pcm: bytes) -> bool:
     return lag_spread >= 1.0 or power_cv >= 0.25
 
 
+def worth_sending(pcm: bytes) -> bool:
+    """The local gate before any model hears the audio: long and loud enough, and a voice in it.
+    Loud enough but no voice: never sent, so never invented into words."""
+    if len(pcm) < MIN_AUDIO_BYTES or loudest_100ms(pcm) < LOUDNESS_GATE_RMS:
+        return False
+    return voiced_speech(pcm)
+
+
 def _worth_retry(said: str) -> bool:
     """A dropped request or a server error (the phone's `worthRetry`); a 4xx is not."""
     if "could not be reached" in said or "stopped answering" in said:
@@ -364,10 +372,7 @@ class GeminiSpeech:
 
     def _transcribe_once(self, pcm: bytes) -> Heard:
         audio_ms = len(pcm) // 32
-        if len(pcm) < MIN_AUDIO_BYTES or loudest_100ms(pcm) < LOUDNESS_GATE_RMS:
-            return Heard("", audio_ms, 0)
-        if not voiced_speech(pcm):
-            # Loud enough but no voice in it: never sent, so never invented into words.
+        if not worth_sending(pcm):
             return Heard("", audio_ms, 0)
         started = self._clock()
         text, usage = [], {}
