@@ -6,8 +6,9 @@ by name, with Node + Playwright and the SPA built into `server/static/app`:
         pt.sh <worktree> <port> <db> tests/realrun_try_overlap.py -s
 
 A demo visit is entered through the public route with a fresh code (no model, no speech, no cost),
-the page is scrolled, and for each width (390, 820, 1280) it records where the voice stage sits and
-which readable elements lie under it, with screenshots `overlap-<tag>-<width>-<top|scrolled>.png`.
+the page is scrolled, and for each width (390 x 700, 1280 x 800) it records where the voice stage
+sits and which readable elements lie under it, then the docked orb at the page's foot, with the
+typed box focused and while he speaks (screenshots `overlap-<tag>-<width>-<name>.png`).
 Invented content only (`tests/test_recruiter_content.fake_content`).
 """
 
@@ -43,7 +44,7 @@ def test_try_overlap(live_server, tmp_path, monkeypatch, real):  # noqa: F811
     seed()
     call_command("load_recruiter_content", str(write_folder(tmp_path / "content")))
     results = []
-    for width, height in ((390, 844), (820, 900), (1280, 800)):
+    for width, height in ((390, 700), (1280, 800)):
         _row, code = DemoCode.rotate()
         args = {
             "base": live_server.url,

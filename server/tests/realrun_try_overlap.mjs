@@ -82,23 +82,60 @@ await page.waitForTimeout(600)
 const scrolled = await measure()
 await shot('scrolled')
 
-// With a reply playing and the page scrolled: the Stop control (phone width only).
-let stop = null
-if (A.width < 600) {
-  await page.evaluate(() => window.scrollTo(0, 0))
-  const orb = page.locator('[data-stage="orb"]')
-  await orb.click()
-  const speaking = await orb.evaluate(
-    (el) => new Promise((resolve) => {
-      const end = Date.now() + 30000
-      const tick = () => (/^Interrupt/.test(el.getAttribute('aria-label') || '') ? resolve(true) : Date.now() > end ? resolve(false) : setTimeout(tick, 100))
-      tick()
-    }),
-  )
-  await page.evaluate(() => window.scrollBy(0, Math.round(window.innerHeight * 0.9)))
-  const shown = await page.locator('[data-stage="stop"]').waitFor({ timeout: 5000 }).then(() => true, () => false)
-  await shot('stop')
-  stop = { speaking, shown }
-}
+// The docked orb (Kevin, 2026-11-18): once the orb is scrolled away it follows as a footer. Checked
+// at the page's foot and with the typed box focused: no page-width overflow, nothing under it.
+const dockCheck = () =>
+  page.evaluate(() => {
+    const dock = document.querySelector('[data-stage="dock"]')
+    const r = dock ? dock.getBoundingClientRect() : null
+    const covered = new Set()
+    if (r) {
+      for (let y = r.top + 4; y < r.bottom - 2; y += 8) {
+        for (let x = r.left + 8; x < r.right - 4; x += 24) {
+          for (const el of document.elementsFromPoint(x, y)) {
+            if (dock.contains(el) || el.contains(dock)) continue
+            const text = (el.innerText || '').trim()
+            if (text && el.children.length === 0) covered.add(`${el.tagName.toLowerCase()}: ${text.slice(0, 40)}`)
+          }
+        }
+      }
+    }
+    const box = document.querySelector('[data-stage="form"]')
+    const b = box ? box.getBoundingClientRect() : null
+    return {
+      shown: Boolean(dock),
+      background: dock ? getComputedStyle(dock).backgroundColor : null,
+      dock: r && { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) },
+      bodyPad: getComputedStyle(document.body).paddingBottom,
+      overflow: document.documentElement.scrollWidth > window.innerWidth,
+      covered: [...covered].slice(0, 12),
+      boxUnderDock: Boolean(r && b && b.bottom > r.top && b.top < r.bottom),
+    }
+  })
+await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+await page.waitForTimeout(600)
+const atFoot = await dockCheck()
+await shot('dock-foot')
+await page.locator('[data-stage="form"] input').focus()
+await page.waitForTimeout(600)
+const typing = await dockCheck()
+await shot('dock-typing')
+// While he speaks, the docked orb interrupts (the orb's own tap).
+await page.evaluate(() => window.scrollTo(0, 0))
+const orb = page.locator('[data-stage="orb"]')
+await orb.click()
+const speaking = await orb.evaluate(
+  (el) => new Promise((resolve) => {
+    const end = Date.now() + 30000
+    const tick = () => (/^Interrupt/.test(el.getAttribute('aria-label') || '') ? resolve(true) : Date.now() > end ? resolve(false) : setTimeout(tick, 100))
+    tick()
+  }),
+)
+await page.evaluate(() => window.scrollBy(0, Math.round(window.innerHeight * 0.9)))
+await page.waitForTimeout(600)
+const dockOrb = page.locator('[data-stage="dock-orb"]')
+const label = await dockOrb.getAttribute('aria-label').catch(() => null)
+await shot('dock-speaking')
+const dockSpeaking = { speaking, label, ...(await dockCheck()) }
 await browser.close()
-console.log(JSON.stringify({ width: A.width, height: A.height, entered, before, scrolled, stop }))
+console.log(JSON.stringify({ width: A.width, height: A.height, entered, before, scrolled, atFoot, typing, dockSpeaking }))

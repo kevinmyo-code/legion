@@ -36,14 +36,19 @@ function money(usd: number | null): string {
 
 // A sliver of orb is not a reachable orb: it counts as on screen only when half of it shows.
 const ORB_SEEN: IntersectionObserverInit = { threshold: 0.5 }
+// The dock's height before it has been measured (a 48 px orb and its padding).
+const DOCK_ROOM_PX = 72
 
 export function VoiceStage({ content, error }: { content?: DemoContent | null; error?: string | null }) {
   const { client, state, name } = useAssistant()
   const [draft, setDraft] = useState('')
   const [marked, setMarked] = useState(false)
-  // Whether the orb is on screen (blind review, 2026-11-18): once the stage scrolls away on a
-  // phone, a small fixed control is the way to interrupt him while he thinks or speaks.
+  // Whether the orb is on screen. Once the stage scrolls away, the orb docks at the bottom of the
+  // page with the status line (Kevin, 2026-11-18: "make the orb follow along at the bottom of the
+  // page as a footer"); the dock's tap is the orb's tap, in every state.
   const orbRef = useRef<HTMLButtonElement>(null)
+  const dockOrbRef = useRef<HTMLButtonElement>(null)
+  const dockRef = useRef<HTMLDivElement>(null)
   const [orbSeen, setOrbSeen] = useState(true)
   useEffect(() => {
     const el = orbRef.current
@@ -56,11 +61,26 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
+  // While docked, the page gets the dock's height as room at its foot, so nothing ends under it.
+  const docked = !orbSeen
+  useEffect(() => {
+    if (!docked) return
+    const el = dockRef.current
+    const room = () => {
+      document.body.style.paddingBottom = `${el?.offsetHeight || DOCK_ROOM_PX}px`
+    }
+    room()
+    window.addEventListener('resize', room)
+    return () => {
+      window.removeEventListener('resize', room)
+      document.body.style.paddingBottom = ''
+    }
+  }, [docked])
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
   const mode = orbMode(state)
   const speaking = state.activity === 'speaking'
-  // What the orb's tap interrupts; the off-screen control shows for exactly these states.
+  // What the orb's tap interrupts.
   const interruptible = speaking || state.activity === 'thinking'
   const voiceOn = state.mic === 'on'
 
@@ -96,6 +116,8 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
           ? ASK_MORE
           : STAGE_LINE
 
+  const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`
+
   // Its own class name: it once borrowed `rc-stage`, the phone section's sticky class, and stayed
   // pinned with no background over everything scrolling under it (live demo, 2026-11-18).
   return (
@@ -104,27 +126,38 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         ref={orbRef}
         type="button"
         onClick={onOrb}
-        aria-label={speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`}
+        aria-label={orbLabel}
         data-stage="orb"
         data-mode={mode}
         className="aspect-square w-[min(64vw,15rem)] rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
       >
         <VoiceOrb mode={mode} levels={() => client.levels()} className="block size-full" />
       </button>
-      {interruptible && !orbSeen && (
-        <button
-          type="button"
-          onClick={() => {
-            client.interrupt()
-            // The control unmounts with the reply; keep the keyboard on the orb, not the page body.
-            orbRef.current?.focus({ preventScroll: true })
-          }}
-          aria-label={`Interrupt ${who}`}
-          data-stage="stop"
-          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50 min-h-11 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-lg"
+      {docked && (
+        // Its own class and an opaque background (the stage once borrowed a sticky class and
+        // stayed pinned, see-through, over the page); the safe area keeps it off a phone's bar.
+        <div
+          ref={dockRef}
+          data-stage="dock"
+          className="rc-voice-dock fixed inset-x-0 bottom-0 z-50 flex items-center gap-3 border-t bg-background px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-lg"
         >
-          Interrupt
-        </button>
+          <button
+            ref={dockOrbRef}
+            type="button"
+            onClick={() => {
+              onOrb()
+              // The keyboard stays on the orb the visitor can see.
+              dockOrbRef.current?.focus({ preventScroll: true })
+            }}
+            aria-label={orbLabel}
+            data-stage="dock-orb"
+            data-mode={mode}
+            className="size-12 flex-none rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <VoiceOrb mode={mode} levels={() => client.levels()} points={260} dot={0.7} className="block size-full" />
+          </button>
+          <p className="min-w-0 flex-1 truncate text-left text-sm font-medium">{status}</p>
+        </div>
       )}
       <p role="status" data-stage="line" className="rc-h3 min-h-[1.5em] text-lg font-semibold">
         {status}

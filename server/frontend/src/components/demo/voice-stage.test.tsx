@@ -109,18 +109,20 @@ describe('the voice stage on the page', () => {
 })
 
 /**
- * Blind review of the overlap fix (2026-11-18): once the stage scrolls away on a phone there is no
- * way to stop him while he speaks. A small fixed control appears while he is thinking or speaking
- * and the orb is (mostly) off screen, and does what the orb's tap does. Its name says "Interrupt",
- * like the orb's, never "Stop" (the dialog's mic-off control and the orb's "Stop listening").
+ * Kevin, 2026-11-18: "when users scroll down past the orb, make the orb follow along at the bottom
+ * of the page as a footer". Once the orb is (mostly) off screen, a docked bar at the bottom carries
+ * a small orb and the status line, in every state. It replaces the small Interrupt control and keeps
+ * its job: its tap is the orb's tap (start, interrupt, stop listening), never a path of its own. The
+ * page gets room at the bottom while it shows, so it never covers the content.
  */
-describe('the interrupt control when the orb is off screen', () => {
+describe('the docked orb when the orb is off screen', () => {
   type Callback = (entries: { isIntersecting: boolean }[]) => void
   const observers: { cb: Callback; options?: IntersectionObserverInit }[] = []
   const realIO = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver
   afterEach(() => {
     ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = realIO
     observers.length = 0
+    document.body.style.paddingBottom = ''
   })
   function fakeIO() {
     ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = class {
@@ -134,8 +136,8 @@ describe('the interrupt control when the orb is off screen', () => {
   }
   const deliver = (...seen: boolean[]) =>
     act(() => observers.forEach(({ cb }) => cb(seen.map((isIntersecting) => ({ isIntersecting })))))
-  // Found by its own marker, so the query can never match the orb (whose label also says Interrupt).
-  const control = () => document.querySelector<HTMLButtonElement>('[data-stage="stop"]')
+  const dock = () => document.querySelector<HTMLElement>('[data-stage="dock"]')
+  const dockOrb = () => document.querySelector<HTMLButtonElement>('[data-stage="dock-orb"]')
   const orb = () => document.querySelector<HTMLButtonElement>('[data-stage="orb"]')!
 
   async function tapOrbAndCloseCard() {
@@ -148,68 +150,72 @@ describe('the interrupt control when the orb is off screen', () => {
     await act(async () => settle())
   }
 
-  test('appears while he speaks with the orb scrolled away, stops him in one tap and hands focus to the orb', async () => {
+  test('docks in every state while the orb is off screen, with the status line, and leaves when it is back', async () => {
+    fakeIO()
+    stage(false, true)
+    expect(dock()).toBeNull()
+    deliver(false)
+    // Idle too: the docked orb is how a visitor far down the page starts talking.
+    expect(dock()).not.toBeNull()
+    expect(dock()).toHaveTextContent('Tap and ask me about Kevin')
+    expect(dock()!.className).toContain('rc-voice-dock')
+    deliver(true)
+    expect(dock()).toBeNull()
+  })
+
+  test('its tap is the orb tap: idle it starts the conversation', async () => {
+    fakeIO()
+    const { audio } = stage(false, true)
+    deliver(false)
+    await act(async () => {
+      fireEvent.click(dockOrb()!)
+      await settle()
+    })
+    // The greeting was asked for, through the same start path (the notice plays in it).
+    expect(audio.played.length + Number(audio.micOpen)).toBeGreaterThan(0)
+  })
+
+  test('while he speaks its tap interrupts and cancels the turn, and the keyboard lands on the docked orb', async () => {
     fakeIO()
     const { audio, cancels } = stage(true)
     await tapOrbAndCloseCard()
-    expect(control()).toBeNull()
     deliver(false)
-    const stop = control()!
-    expect(stop).not.toBeNull()
-    expect(stop).toHaveAccessibleName('Interrupt the assistant')
+    expect(dockOrb()).toHaveAccessibleName('Interrupt the assistant')
     const flushes = audio.flushes
     await act(async () => {
-      fireEvent.click(stop)
+      fireEvent.click(dockOrb()!)
       await settle()
     })
-    // The same as the orb's tap: the reply stops and the engine's turn is cancelled.
     expect(cancels).toHaveLength(1)
     expect(audio.flushes).toBe(flushes + 1)
-    // The control unmounts; the keyboard lands on the orb, not on the page body.
-    expect(control()).toBeNull()
-    expect(document.activeElement).toBe(orb())
+    expect(document.activeElement).toBe(dockOrb())
   })
 
-  test("appears while he is thinking too: the orb's tap interrupts that as well", async () => {
+  test('the old Interrupt control is gone (the dock replaces it)', async () => {
     fakeIO()
-    const { cancels } = stage(false)
+    stage(true)
     await tapOrbAndCloseCard()
     deliver(false)
-    expect(control()).not.toBeNull()
-    await act(async () => {
-      fireEvent.click(control()!)
-      await settle()
-    })
-    expect(cancels).toHaveLength(1)
+    expect(document.querySelector('[data-stage="stop"]')).toBeNull()
   })
 
-  test('is never there while idle or listening, even with the orb scrolled away', async () => {
+  test('the page gets room at the bottom while it shows, so it covers nothing', async () => {
     fakeIO()
     stage(false, true)
     deliver(false)
-    expect(control()).toBeNull() // idle: nothing to interrupt
-    await tapOrbAndCloseCard()
-    deliver(false)
-    expect(screen.getByRole('status')).toHaveTextContent('Listening')
-    expect(control()).toBeNull()
-  })
-
-  test('is not there while the orb is on screen', async () => {
-    fakeIO()
-    stage(true)
-    await tapOrbAndCloseCard()
+    expect(document.body.style.paddingBottom).not.toBe('')
     deliver(true)
-    expect(control()).toBeNull()
+    expect(document.body.style.paddingBottom).toBe('')
   })
 
-  test('a batch that ends with the orb leaving the screen shows it: the last entry wins', async () => {
+  test('a batch that ends with the orb leaving the screen docks it: the last entry wins', async () => {
     fakeIO()
     stage(true)
-    await tapOrbAndCloseCard()
     deliver(true, false)
-    expect(control()).not.toBeNull()
+    expect(dock()).not.toBeNull()
     deliver(false, true)
-    expect(control()).toBeNull()
+    expect(dock()).toBeNull()
+    expect(orb()).not.toBeNull()
   })
 
   test('a sliver of orb is not a reachable orb: it counts as seen only at half visible', () => {
