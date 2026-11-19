@@ -59,6 +59,8 @@ class LoneWordWriteGuardTest {
     fun `what counts as a tool asking him, from tool data only`() {
         fun asks(name: String, a: JSONObject, r: String) = LoneWordWriteGuard.asks(name, a, JSONObject(r))
         assertTrue("the guard's own hold", asks(switch.first, switch.second, held(switch, "Five.").toString()))
+        assertTrue("its hold carries the one question field", held(switch, "Five.")!!.getBoolean(LoneWordWriteGuard.NEEDS_ANSWER))
+        assertTrue("a tool's question (the adapter's which-car)", asks("car", args("action" to "switch_vehicle"), """{"success":true,"needs_answer":true,"message":"Which car is this?"}"""))
         // Review F6: a plain failure asks nothing, so a failed read never opens a one-word write.
         assertFalse("a clarifying refusal with no ask field", asks("car", args("action" to "switch_vehicle"), """{"success":false,"message":"Which car?"}"""))
         assertFalse("a read that failed offline", asks(read.first, read.second, """{"success":false,"message":"No network."}"""))

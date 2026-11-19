@@ -385,7 +385,10 @@ object ScriptedLines {
         val titleKeys = TITLE_KEYS_FOR[key] ?: TITLE_KEYS
         val title = field(response, titleKeys).take(MAX_TITLE)
         // A phrase whose own field is missing (an older result shape) falls to the generic line.
-        val phrase = key?.let { PHRASES.getValue(it) }?.takeUnless { key in TITLE_KEYS_FOR && title.isEmpty() }
+        // A switch that moved this drive's live readings to the car says so (`rebound`, the adapter's field).
+        val rebound = key == "switch" && response.optBoolean("rebound", false)
+        val own = if (rebound) REBOUND else key?.let { PHRASES.getValue(it) }
+        val phrase = own?.takeUnless { key in TITLE_KEYS_FOR && title.isEmpty() }
         val router = name.startsWith(ROUTER_PREFIX)
         return WriteFact(
             phrase = phrase,
@@ -506,6 +509,9 @@ object ScriptedLines {
         "start_voice_note" to "started a voice note", "stop_voice_note" to "stopped the voice note",
         "tag_place" to "saved %s", "undo_last_log" to "undid %s",
     )
+
+    /** A switch that rebound the live connection: this drive's readings now go under the car. */
+    private const val REBOUND = "this drive now goes under %s"
 
     /** A phrase that may only be said with its own result field; without it, the generic line. */
     private val TITLE_KEYS_FOR: Map<String, List<String>> = mapOf(

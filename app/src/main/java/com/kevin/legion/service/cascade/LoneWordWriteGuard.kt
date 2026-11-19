@@ -30,24 +30,36 @@ object LoneWordWriteGuard {
         "anything. Ask him in one short question whether to do it; his yes lets it run."
 
     /** The refusal for the write [name]/[args] in a turn of [heard], else null (it may run). */
-    fun refusal(name: String, args: JSONObject, heard: String, companionName: String, previousAsked: Boolean): JSONObject? {
+    fun refusal(
+        name: String,
+        args: JSONObject,
+        heard: String,
+        companionName: String,
+        previousAsked: Boolean,
+    ): JSONObject? {
         if (previousAsked || !isLoneWord(heard, companionName) || !CascadeRules.isWrite(name, args)) return null
-        return JSONObject().put("success", false).put("needs_yes", true).put("message", REFUSAL)
+        // `needs_answer`: this result asks him, so his next one word may answer it ([asks]).
+        return JSONObject().put("success", false).put("needs_yes", true).put(NEEDS_ANSWER, true)
+            .put("message", REFUSAL)
     }
 
+    /** On a tool result that asks him a question (the adapter's "which car is this?", this guard's hold). */
+    const val NEEDS_ANSWER = "needs_answer"
+
     /**
-     * A tool result that explicitly asked him something, so that one word next is his answer: a
-     * confirmation ask (`needs_yes`, which [refusal]'s own hold carries, or `needs_confirmation`),
-     * a mail draft waiting for its send (`draft_id`), or the first step of a two-step write (a
-     * writing tool called so that it did not write, e.g. an unconfirmed clear_codes, which returns
-     * the warning to read back). Never a plain `success: false`.
+     * A tool result that explicitly asked him something, so that one word next is his answer:
+     * [NEEDS_ANSWER] (the one field for a question, 2026-11-19; [refusal]'s own hold carries it), a
+     * confirmation ask that existed before it (`needs_confirmation`), a mail draft waiting for its
+     * send (`draft_id`), or the first step of a two-step write (a writing tool called so that it did
+     * not write, e.g. an unconfirmed clear_codes, which returns the warning to read back). Never a
+     * plain `success: false`.
      */
     fun asks(name: String, args: JSONObject, response: JSONObject): Boolean {
-        if (response.optBoolean("needs_yes", false) || response.optBoolean("needs_confirmation", false)) return true
-        if (response.has("draft_id")) return true
         val (resolved, resolvedArgs) = LiveSurface.resolve(name, args)
-        return LiveToolbox.isMutatingTool(resolved) && !CascadeRules.isWrite(name, args) &&
+        val firstStep = LiveToolbox.isMutatingTool(resolved) && !CascadeRules.isWrite(name, args) &&
             !ToolReads.isRead(resolved, resolvedArgs)
+        return response.optBoolean(NEEDS_ANSWER, false) || response.optBoolean("needs_confirmation", false) ||
+            response.has("draft_id") || firstStep
     }
 
     /**

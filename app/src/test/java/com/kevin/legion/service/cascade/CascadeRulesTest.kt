@@ -344,6 +344,9 @@ class CascadeRulesTest {
         // The car switch names the car the result names (fields the adapter branch adds), or says the generic line.
         val switched = fact("manage_vehicle", "switch", """{"success":true,"changed":true,"vehicle":"Invented Fit","message":"x"}""")
         assertEquals("Done: switched to Invented Fit.", ScriptedLines.doneLine(listOf(switched)))
+        // A rebind of the live connection says this drive's readings moved (the adapter's `rebound`).
+        val rebound = fact("manage_vehicle", "switch", """{"success":true,"changed":true,"rebound":true,"vehicle":"Invented Ranger"}""")
+        assertEquals("Done: this drive now goes under Invented Ranger.", ScriptedLines.doneLine(listOf(rebound)))
         val oldShape = fact("manage_vehicle", "switch", """{"success":true,"message":"You are on the Invented Fit now."}""")
         assertEquals(ScriptedLines.GENERIC_DONE, ScriptedLines.doneLine(listOf(oldShape)))
         // Already the selected car / already the goal: nothing changed, nothing is said.
