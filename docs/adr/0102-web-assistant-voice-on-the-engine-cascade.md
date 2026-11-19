@@ -53,3 +53,7 @@ Kevin, 2026-11-17: *"recruiter demo > can it [go] to our current cloud pipeline 
   - A swapped label or a flipped sign passes: utilities' 99.12 said as groceries, a refund of 99.12 said as a spend (membership only).
   - Any model sentence said before the turn's first money tool has returned is not checked, whether it came in the same round as the money call or in an earlier round; a held claim is checked when it is said at the end. Closing it means holding every sentence that carries a two-decimal figure until the turn's money tools have run, which moves such sentences later in the answer.
   - In a money turn, a figure the person said themselves, or a correct figure from an earlier turn that no tool returned in this turn, is dropped: "you said 84.50" or "up from last month's 1,962.48".
+- Lookup lines (2026-11-19, perf/try-faster-first-word): a network lookup's line is said when it starts; any other lookup's line only if no answer is in hand 0.7 s after it started, and never once one is. Stated limits, each with an invented example:
+  - The line follows the turn's first successful tool only. If that tool is a silent write ("add milk", then a list read), the later read gets no line.
+  - A delayed line that has started plays to its end, so an answer ready just after it starts waits up to the clip's length (the shortest clip is used).
+  - A local tool that blocks gets its line only when it returns: nothing can be said during a tool call.

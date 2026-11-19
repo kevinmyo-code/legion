@@ -681,6 +681,21 @@ describe('the demo', () => {
     expect(t.client.strip.costUsd).toBe(0.0021)
   })
 
+  it('a lookup line that comes after its tool joins that entry, never a second one stuck running', async () => {
+    // perf/try-faster-first-word review F4: a delayed line arrives after the tool's own event.
+    const t = build([
+      spoken('Hi.'),
+      spoken('Some.', {}, [
+        { type: 'tool', data: { name: 'monthly_spend', ok: true, ms: 12 } },
+        { type: 'filler', data: { tool: 'monthly_spend', text: 'Checking the accounts.' } },
+      ]),
+    ])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.client.strip.tools).toEqual([{ tool: 'monthly_spend', ms: 12, filler: 'Checking the accounts.' }])
+  })
+
   it('a sentence that was not for it leaves the screen and the page listens again', async () => {
     const t = build([
       spoken('Hi.'),

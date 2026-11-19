@@ -96,6 +96,7 @@ from agents.runtime.model import (
     TextDelta,
     ToolCallEvent,
     Usage,
+    Waiting,
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
@@ -546,12 +547,32 @@ class FillerAudio:
         with self._lock:
             return self._audio.get((voice, line))
 
-    def pick(self, voice: str, tool: str) -> tuple[str, bytes] | None:
+    def pick(
+        self, voice: str, tool: str, shortest: bool = False, ceiling_ms: int | None = None
+    ) -> tuple[str, bytes] | None:
         """One of `tool`'s lines that is in memory, never the last line said; None when the tool
-        is silent or none of its lines is in hand yet."""
+        is silent or none of its lines is in hand yet. `shortest`: the shortest clip in hand (the
+        delayed kind, which plays while an answer may already be on its way: a shorter clip holds
+        it up less), else the next shortest when that one was the last said. `ceiling_ms`: no clip
+        longer than this; when none of the tool's own is short enough, the shortest generic line
+        (`fillers.FALLBACK`) that is, else nothing."""
+        limit = None if ceiling_ms is None else ceiling_ms * OUTPUT_RATE * 2 // 1000
         with self._lock:
             ready = [line for line in fillers.lines_for(tool) if (voice, line) in self._audio]
-        line = LINES.pick(ready)
+            if limit is not None:
+                ready = [line for line in ready if len(self._audio[(voice, line)]) <= limit]
+                if not ready and fillers.lines_for(tool):
+                    ready = [
+                        line
+                        for line in fillers.FALLBACK
+                        if (voice, line) in self._audio and len(self._audio[(voice, line)]) <= limit
+                    ]
+            if shortest:
+                ready.sort(key=lambda line: len(self._audio[(voice, line)]))
+        if shortest:
+            line = next((one for one in ready if LINES.pick([one]) is not None), None)
+        else:
+            line = LINES.pick(ready)
         if line is None:
             return None
         return line, self._audio[(voice, line)]
@@ -640,7 +661,10 @@ class Speaker:
         self.jobs: deque[_Job] = deque()
         self.done: list[Spoken] = []
         self.started_at = clock()
+        # The ANSWER's first audio (no acknowledgement or lookup line), and the first sound of any
+        # kind, which is what the page's own `first_audio` line measures from its side.
         self.first_audio_ms: int | None = None
+        self.first_sound_ms: int | None = None
         self.total_ms = 0
         # The whole turn, speech included, ends by this time (finding 1).
         self.deadline = self.started_at + TURN_WALL_S
@@ -747,8 +771,11 @@ class Speaker:
             job.chunks.put(_END)
 
     def audio_event(self, chunk: bytes, filler: bool = False) -> ev.Event:
-        if self.first_audio_ms is None:
-            self.first_audio_ms = int((self.clock() - self.started_at) * 1000)
+        at = int((self.clock() - self.started_at) * 1000)
+        if self.first_sound_ms is None:
+            self.first_sound_ms = at
+        if self.first_audio_ms is None and not filler:
+            self.first_audio_ms = at
         data = {"pcm": base64.b64encode(chunk).decode("ascii"), "rate": OUTPUT_RATE}
         if filler:
             # The page may drop a filler that has not started once the answer's audio is ready.
@@ -1320,6 +1347,71 @@ class CountingModel:
         return getattr(self.inner, name)
 
 
+# A lookup's line is said only if the answer is still not in hand this long after the lookup
+# started (the phone's `ToolFillers.FAST_DELAY_MS`, 700 ms). Measured on /try: a quick lookup's
+# answer round takes about 0.9 to 1.1 s, a code-spoken one (his profile) a few milliseconds.
+FILLER_WAIT_S = 0.7
+# The longest clip a delayed line may be (review round 2): an answer ready just after it starts
+# waits at most this long. Measured clips (Puck): the generic lines 1.04 s, most tools' shortest
+# 1.12 to 2.20 s.
+DELAYED_LINE_MAX_MS = 1500
+# How often a round that has said nothing yet is reported as `waiting` (`Ticking`).
+TICK_S = 0.1
+
+
+class Ticking:
+    """Reads the model on a thread of its own and, until a round's first item arrives, yields
+    `Waiting` every `every` seconds: the turn's only moments to act while a round is silent (a
+    lookup's line on time). Only the HTTP read is on that thread; the loop, the door and the
+    database stay on the turn's own. Once the round has started, items pass straight through."""
+
+    _END = object()
+
+    def __init__(self, inner, every: float | None = None):
+        self.inner = inner
+        self.every = TICK_S if every is None else every
+
+    def stream(self, req):
+        items: queue.Queue = queue.Queue()
+        stop = threading.Event()
+
+        def read() -> None:
+            stream = self.inner.stream(req)
+            try:
+                for item in stream:
+                    items.put(item)
+                    if stop.is_set():
+                        break
+            except Exception as exc:  # noqa: BLE001 - raised again on the turn's own thread
+                items.put(exc)
+            finally:
+                close = getattr(stream, "close", None)
+                if close is not None:
+                    close()
+                items.put(Ticking._END)
+
+        threading.Thread(target=read, name="legion-model-read", daemon=True).start()
+        started = False
+        try:
+            while True:
+                try:
+                    item = items.get(timeout=None if started else self.every)
+                except queue.Empty:
+                    yield Waiting()
+                    continue
+                if item is Ticking._END:
+                    return
+                if isinstance(item, Exception):
+                    raise item
+                started = True
+                yield item
+        finally:
+            stop.set()
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
 def context_note(context: str) -> str:
     """The phone's `CascadePrompt.preamble` shape (spec 10)."""
     return f"(Current context, use naturally if relevant:\n{context.strip()})"
@@ -1504,7 +1596,7 @@ def run_turn(
             context,
             voice,
             model_name,
-            model,
+            Ticking(model),
             speech,
             clock,
             filler_audio,
@@ -1514,6 +1606,7 @@ def run_turn(
         speaker.close()
         timings.update(
             tts_first_audio_ms=speaker.first_audio_ms,
+            first_sound_ms=speaker.first_sound_ms,
             tts_ms=speaker.total_ms,
             tts_audio_ms=sum(s.audio_ms for s in speaker.done),
             tts_prompt_tokens=sum(s.prompt_tokens for s in speaker.done),
@@ -1632,15 +1725,18 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("robotic", ROBOTIC_ACK, False)
         return
+    acked = False
     if speak and turn_input.heard_before == 0 and needs_work(words):
         # First sound within about a second (section 8.2): a short acknowledgement from memory
         # while the model's first round runs. Only on the first utterance after the tap, which is
         # for the assistant by construction (round 2 speech review 5): on any later turn nothing
-        # is said until the model has started an answer or a tool has started.
+        # is said until the model has started an answer or a lookup has started.
         picked = filler_audio.pick(voice, ACK_TOOL)
         if picked is not None:
             line, audio = picked
+            acked = True
             timings["ack"] = 1
+            timings["filler_ms"] = int((clock() - t0) * 1000)
             yield ev.Event("filler", {"tool": "", "text": speech_tags.untagged(line)})
             yield speaker.audio_event(audio, filler=True)
     last_reply = next(
@@ -1675,18 +1771,35 @@ def _answer(
 
     first_sentence = None
     verbatim_said = False
-    filler_said = False
+    # The acknowledgement is this turn's one line: a lookup's line is never stacked on it.
+    filler_said = acked
     filler_dropped = 0
     no_answer = False
     money_dropped = 0
     sentences = 0
 
-    def filler(tool: str):
-        picked = filler_audio.pick(voice, tool)
+    # The first lookup of the turn and when it started; its line waits for FILLER_WAIT_S.
+    lookup: tuple[str, float] | None = None
+    cancelled_often = getattr(door.cancelled, "often", door.cancelled)
+
+    def lookup_line():
+        """The lookup's line, once FILLER_WAIT_S has passed since it started with nothing said;
+        never once an answer sentence is ready, never a second line in the turn."""
+        if lookup is None or filler_said or sentences or not speak:
+            return None
+        if clock() - lookup[1] < FILLER_WAIT_S or cancelled_often():
+            # Never after a cancel. Asked only once the line is due, through the door's rate-limited
+            # check: a due line with no clip in hand is asked again on every tick.
+            return None
+        return (yield from filler(lookup[0], shortest=True, ceiling_ms=DELAYED_LINE_MAX_MS))
+
+    def filler(tool: str, shortest: bool = False, ceiling_ms: int | None = None):
+        picked = filler_audio.pick(voice, tool, shortest=shortest, ceiling_ms=ceiling_ms)
         if picked is None:
             return None
         line, audio = picked
         timings["filler_line"] = line
+        timings["filler_ms"] = int((clock() - t0) * 1000)
         yield ev.Event("filler", {"tool": tool, "text": line})
         yield speaker.audio_event(audio, filler=True)
         return line
@@ -1751,6 +1864,11 @@ def _answer(
             except StopIteration as stop:
                 result = stop.value
                 break
+            if event.type == "waiting":
+                # A round has said nothing yet: the lookup's line, if it is due (`Ticking`).
+                line = yield from lookup_line()
+                filler_said = filler_said or line is not None
+                continue
             if event.type != "sentence":
                 # A round ended (a tool is next, or the turn): what it said goes to speech now.
                 speaker.flush()
@@ -1758,7 +1876,16 @@ def _answer(
                 # A slow tool has started: its own line, from memory, before it runs.
                 yield event
                 tool = event.data["tool"]
-                if speak and sentences == 0 and not filler_said and door.would_accept(tool):
+                # Only a network lookup is announced at its start (`fillers.is_slow`); the door's
+                # wider slow list (writes, SLOW_TOOLS) still makes the `working` event.
+                if (
+                    speak
+                    and fillers.is_slow(tool)
+                    and sentences == 0
+                    and not filler_said
+                    and not door.cancelled()
+                    and door.would_accept(tool)
+                ):
                     # Never for a call the door is about to refuse (round 2 speech review 7).
                     line = yield from filler(tool)
                     filler_said = line is not None
@@ -1797,6 +1924,12 @@ def _answer(
                         if done.replay is not None:
                             marker = done.replay if i == 0 else ""
                         yield say(line, replay=marker, exact_text=done.exact)
+                elif speak and done.ok and lookup is None:
+                    # A lookup returned and the answer is not in hand yet: its line is due if the
+                    # answer still is not, FILLER_WAIT_S after the lookup started.
+                    lookup = (done.name, clock() - done.ms / 1000)
+                line = yield from lookup_line()
+                filler_said = filler_said or line is not None
                 continue
             if event.type == "sentence":
                 tagged = event.data["text"]
@@ -1842,7 +1975,7 @@ def _answer(
             sentences=sentences,
             money_dropped=money_dropped,
             verbatim=int(verbatim_said),
-            filler=int(filler_said),
+            filler=int(filler_said and not acked),
         )
         _meter(request, model_name, rounds)
 
@@ -2405,6 +2538,9 @@ def timing_line(report: TurnReport, *, spoken: bool) -> str:
         "tts_output_tokens",
         "tts_failed",
         "turn_ms",
+        "ack",
+        "filler_ms",
+        "first_sound_ms",
     )
     values = " ".join(
         f"{k}={-1 if report.timings.get(k) is None else report.timings[k]}" for k in keys
