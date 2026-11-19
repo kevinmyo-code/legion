@@ -119,7 +119,8 @@ function ffPath(p) {
 
 function slotMeta(slot) {
   const file = path.join(clipsDir, `${slot}.json`)
-  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+  // PowerShell writes JSON with a byte-order mark, which JSON.parse refuses (trimStart drops it: U+FEFF is white space).
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8').trimStart()) : {}
 }
 
 /**
