@@ -2372,11 +2372,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * A project section's 3D model (GLB) or its poster image
-         * @description A file a project section's `media.models` names, from the caller's version of the content.
-         *     Private like the resume: a visit or an owner, never the public. Cached by validator only
-         *     (`private, no-cache` + the file's hash as ETag): a revisit costs a 304, and a reload of the
-         *     content is seen at once.
+         * A media file the recruiter page names: a 3D model, a still, a video or captions
+         * @description A media file the caller's version of the content names: a model, a poster, or a section's or
+         *     phone clip's video, poster or captions. Private like the resume: a visit or an owner, never the
+         *     public. Cached by validator only (`private, no-cache` + the file's hash as ETag): a revisit
+         *     costs a 304, and a reload of the content is seen at once. Byte ranges (one per request, at most
+         *     `RANGE_CHUNK`) let a video seek; a whole file over `RANGE_CHUNK` is streamed in such reads.
          */
         get: operations["api_demo_media_retrieve"];
         put?: never;
@@ -17318,7 +17319,10 @@ export interface operations {
     api_demo_media_retrieve: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description One `bytes=first-last`, `bytes=first-` or `bytes=-count` range. */
+                Range?: string;
+            };
             path: {
                 name: string;
             };
@@ -17333,6 +17337,26 @@ export interface operations {
                 content: {
                     "model/gltf-binary": string;
                     "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                    "video/mp4": string;
+                    "video/webm": string;
+                    "text/vtt": string;
+                };
+            };
+            /** @description The asked range, at most 2 MiB; Content-Range says which. */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "model/gltf-binary": string;
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                    "video/mp4": string;
+                    "video/webm": string;
+                    "text/vtt": string;
                 };
             };
             /** @description The copy the browser holds is current. */
@@ -17359,6 +17383,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Detail"];
                 };
+            };
+            /** @description The range starts past the end of the file. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
