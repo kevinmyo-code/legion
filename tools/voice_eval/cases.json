@@ -439,6 +439,51 @@
         "ends": false,
         "calls": ["control_music|play_music"]
       }
+    },
+    {
+      "id": "adapter_this_is",
+      "say": "this is the Ranger",
+      "write": true,
+      "why": "one adapter moved between cars (2026-11-17): naming the car it is in binds this connection",
+      "fixture": {"dongle": "unknown"},
+      "expect": {
+        "calls": ["car/switch_vehicle"],
+        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)ranger"}}},
+        "not_calls": ["car/clear_codes", "car/register_vehicle"]
+      }
+    },
+    {
+      "id": "adapter_is_in",
+      "say": "the OBD adapter is in the Fit now",
+      "write": true,
+      "fixture": {"dongle": "unknown"},
+      "expect": {
+        "calls": ["car/switch_vehicle"],
+        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)fit"}}},
+        "not_calls": ["car/clear_codes", "car/register_vehicle"]
+      }
+    },
+    {
+      "id": "adapter_reassign",
+      "say": "can you reassign that adapter to the Ranger",
+      "write": true,
+      "why": "2026-11-17 phone logs: this became clear_codes three times",
+      "fixture": {"dongle": "unknown"},
+      "expect": {
+        "calls": ["car/switch_vehicle"],
+        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)ranger"}}},
+        "not_calls": ["car/clear_codes", "car/register_vehicle"]
+      }
+    },
+    {
+      "id": "adapter_unknown_asks",
+      "say": "how's the car doing right now?",
+      "why": "the adapter's car is unknown: a live read is held and he is asked which car, once",
+      "fixture": {"dongle": "unknown"},
+      "expect": {
+        "answer_has": ["(?i)which (car|one|vehicle)"],
+        "not_calls": ["car/clear_codes", "car/switch_vehicle"]
+      }
     }
   ]
 }
