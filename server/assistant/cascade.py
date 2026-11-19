@@ -99,9 +99,19 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
-from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
+from assistant import (
+    echo,
+    fillers,
+    read_through,
+    speech_tags,
+    spoken_figures,
+    tour,
+    voice_engine,
+    web_greeting,
+)
+from assistant.audio_round import AudioFirst, audio_parts
 from assistant.models import AssistantCall
-from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
+from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken, worth_sending
 from assistant.spoken_words import pronounced, speakable_words
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
 from demo import suggestions
@@ -1539,6 +1549,103 @@ def _answer(
     filler_audio,
     companion_name="",
 ):
+    """The answer path. With the audio-first prototype on (`assistant.audio_round`), the first
+    model round is asked from the audio before the words are in; it is dropped unread on any path
+    that ends before the loop."""
+    early = _audio_first(turn_input, speaker, history, system, context, model_name, model, door)
+    try:
+        yield from _answer_words(
+            request,
+            turn_input,
+            door,
+            speaker,
+            report,
+            history,
+            system,
+            context,
+            voice,
+            model_name,
+            early or model,
+            speech,
+            clock,
+            filler_audio,
+            companion_name,
+            early,
+        )
+    finally:
+        if early is not None:
+            early.cancel()
+
+
+def _turn_spec(door, model_name) -> AgentSpec:
+    return AgentSpec(
+        name="web_cascade",
+        version=1,
+        model=model_name,
+        prompt="",
+        tools=(*door.tools(), END_TOOL, NOT_FOR_ME_TOOL),
+        limits=LIMITS,
+    )
+
+
+def _user_parts(context, preface, said: list[dict]) -> list[dict]:
+    parts = []
+    if context:
+        parts.append({"text": context_note(context)})
+    if preface:
+        parts.append({"text": preface})
+    return [*parts, *said]
+
+
+def _audio_first(turn_input, speaker, history, system, context, model_name, model, door):
+    """The prototype's early first round, started now, or None (off, typed, a chip, no voice)."""
+    pcm = turn_input.audio
+    if (
+        pcm is None
+        or not speaker.enabled
+        or turn_input.chip is not None
+        or not voice_engine.audio_first_round_on()
+        or not worth_sending(pcm)
+    ):
+        return None
+    spec = _turn_spec(door, model_name)
+    contents = [
+        *history,
+        {"role": "user", "parts": _user_parts(context, turn_input.preface, audio_parts(pcm))},
+    ]
+    early = AudioFirst(
+        model,
+        ModelRequest(
+            model=spec.model,
+            system=system,
+            contents=contents,
+            declarations=door.declarations(spec),
+            allow_tools=LIMITS.max_rounds > 1,
+            timeout_s=LIMITS.round_timeout_s,
+        ),
+    )
+    early.start()
+    return early
+
+
+def _answer_words(
+    request,
+    turn_input,
+    door,
+    speaker,
+    report,
+    history,
+    system,
+    context,
+    voice,
+    model_name,
+    model,
+    speech,
+    clock,
+    filler_audio,
+    companion_name="",
+    early=None,
+):
     timings = report.timings
     t0 = clock()
     speak = speaker.enabled
@@ -1643,22 +1750,13 @@ def _answer(
         (c["parts"][0].get("text", "") for c in reversed(history) if c.get("role") == "model"), ""
     )
     door.addressed = addressed_signals(words, companion_name, last_reply)
-    # 2. The loop.
-    parts = []
-    if context:
-        parts.append({"text": context_note(context)})
-    if turn_input.preface:
-        parts.append({"text": turn_input.preface})
-    parts.append({"text": words})
+    # 2. The loop. With the prototype on, this turn's model hears the audio, never the transcript.
+    said = audio_parts(turn_input.audio) if early is not None else [{"text": words}]
+    parts = _user_parts(context, turn_input.preface, said)
     state = _State(messages=[*history, {"role": "user", "parts": parts}])
-    spec = AgentSpec(
-        name="web_cascade",
-        version=1,
-        model=model_name,
-        prompt="",
-        tools=(*door.tools(), END_TOOL, NOT_FOR_ME_TOOL),
-        limits=LIMITS,
-    )
+    spec = _turn_spec(door, model_name)
+    if early is not None:
+        timings["audio_round"] = 1
     rounds: list[dict] = []
     chip_first = None
     if turn_input.chip is not None:
