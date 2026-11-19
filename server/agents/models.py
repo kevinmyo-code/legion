@@ -1,6 +1,6 @@
 """The agent turn's tables (engine-brain ticket 02, ADR 0095 and 0100; plan section 13.5).
 
-Five tables, all in `public`, all born tenanted (`household`, listed in
+Six tables, all in `public`, all born tenanted (`household`, listed in
 `household.tenancy.TENANT_TABLES`) and all **private to their member**: `owner_user` is never
 null, so `household.tenancy.visible()` hands a member only their own conversations and traces
 (ADR 0052), and the owner guard trigger (`household/visibility_sql.py`) refuses an owner from
@@ -13,6 +13,8 @@ than inheriting them through the turn, so each table is guarded by the same one-
 - `agents_checkpoint`: the turn state after every graph node (resume and replay).
 - `agents_model_call`: numbers only, one row per model round.
 - `agents_tool_call`: one row per tool call, arguments redacted, result trimmed.
+- `agents_limb` (ticket 04, E1, migration 0002): one row per device attached on the limb contract
+  (ADR 0098), keyed by its device token, with its manifest.
 
 **Retention** (ruling 6): turns, traces and tool calls 30 days, checkpoints 7 days, model-call
 numbers 90 days (`agents/legion/retention.py`, run at every turn and by the hourly
@@ -27,8 +29,8 @@ The plan names the member column `member`; it is `owner_user` here because that 
 `agents_eval_candidate`, is not built in this stage: ticket 02 lists five, and the candidate
 export belongs with the trace page (ticket 04).
 
-Additive: five new tables, nothing else touched. Unused by any live code path while the turn
-endpoint is off.
+Additive: 0001 made five tables; 0002 adds `agents_limb`, `agents_turn.pending_relay` and the
+`awaiting_limb` status. Unused by any live code path while the turn endpoint is off.
 """
 
 from __future__ import annotations
@@ -45,13 +47,22 @@ TURN_DONE = "done"
 TURN_CANCELLED = "cancelled"
 TURN_FAILED = "failed"
 TURN_REFUSED = "refused"
+# Ticket 04 (E1): a turn paused on a limb's tool (`pending_relay` holds what it waits for). Nothing
+# sets it until the relay ships (E2); the constraint is widened first so that ship is code only.
+TURN_AWAITING_LIMB = "awaiting_limb"
 TURN_STATUSES: tuple[str, ...] = (
     TURN_RUNNING,
     TURN_DONE,
     TURN_CANCELLED,
     TURN_FAILED,
     TURN_REFUSED,
+    TURN_AWAITING_LIMB,
 )
+
+# ADR 0098: the kinds of device that may attach as a limb, and the two brains a member's turns
+# may be answered by. The web app is not a limb yet: it signs in by session, with no device token.
+LIMB_KINDS: tuple[str, ...] = ("phone", "headunit")
+BRAINS: tuple[str, ...] = ("phone", "engine")
 
 TOOL_OUTCOMES: tuple[str, ...] = ("ok", "failed", "refused", "timed_out")
 # Which guard stopped a call, if one did (plan section 14).
@@ -124,6 +135,9 @@ class AgentTurn(_Owned):
     # model turns verbatim (thought signatures kept), tool results as the model saw them, a mail
     # tool's replaced by a stub (`redact.history_for_storage`). The per-call trace row is trimmed.
     history = models.JSONField(default=list)
+    # Ticket 04 (E1): the limb call a paused turn waits for (call id, tool, deadline). Null when
+    # none. Nullable with no Python default, so the revision before it inserts without naming it.
+    pending_relay = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = "agents_turn"
@@ -209,5 +223,48 @@ class AgentToolCall(_Owned):
             models.CheckConstraint(
                 condition=models.Q(guard__isnull=True) | models.Q(guard__in=GUARDS),
                 name="agents_tool_call_guard_valid",
+            ),
+        ]
+
+
+class Limb(_Owned):
+    """One device attached to the engine on the limb contract (ADR 0098; ticket 04, slice E1).
+
+    Keyed by the authenticated device token, never by anything in a request body: one row per
+    token, upserted by the manifest upload (`agents/legion/limbs.py`). Private to its member like
+    every agent table (`OWNER_PATHS`).
+
+    `brain_choice` is the SERVER's per-member override (phone or engine), set only by an operator;
+    a manifest upload never writes it. Null means no override.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey("household.DeviceToken", on_delete=models.CASCADE, related_name="+")
+    kind = models.TextField()
+    app_version = models.TextField()
+    contract_version = models.IntegerField()
+    # The validated manifest: the tools this limb runs for the agents and the streams it sends.
+    manifest = models.JSONField(default=dict)
+    brain_choice = models.TextField(null=True, blank=True)
+    last_seen_at = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        db_table = "agents_limb"
+        indexes = [
+            models.Index(
+                fields=["household", "owner_user", "last_seen_at"], name="agents_limb_owner_idx"
+            )
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "device"],
+                name=household_unique_name("agents_limb", ["device_id"]),
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind__in=LIMB_KINDS), name="agents_limb_kind_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(brain_choice__isnull=True) | models.Q(brain_choice__in=BRAINS),
+                name="agents_limb_brain_choice_valid",
             ),
         ]

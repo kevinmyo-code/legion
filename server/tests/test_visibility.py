@@ -890,6 +890,20 @@ def test_the_database_refuses_an_agent_row_owned_by_a_non_member(household_a, ke
         AgentConversation.objects.filter(pk=row.pk).update(owner_user=user_b)
 
 
+def test_the_database_refuses_a_limb_owned_by_a_non_member(household_a, kevin, user_b):
+    """engine-brain ticket 04 (E1): `agents_limb` carries the same owner guard. Invented device."""
+    from agents.models import Limb
+    from household.models import DeviceToken
+
+    token, _raw = DeviceToken.issue(kevin, "Invented phone")
+    fields = {"device": token, "kind": "phone", "app_version": "1", "contract_version": 1}
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Limb.objects.create(household=household_a, owner_user=user_b, **fields)
+    row = Limb.objects.create(household=household_a, owner_user=kevin, **fields)
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Limb.objects.filter(pk=row.pk).update(owner_user=user_b)
+
+
 # =============================================================================
 # Engine homes (engine-brain ticket 03): advice and raises are private to their member
 # =============================================================================
