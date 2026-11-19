@@ -19408,7 +19408,7 @@ components:
         description:
           type: string
           default: ''
-          maxLength: 2000
+          maxLength: 4000
         parameters:
           type: object
           additionalProperties: {}
