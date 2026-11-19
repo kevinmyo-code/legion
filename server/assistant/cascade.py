@@ -73,6 +73,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from django.db import DatabaseError, transaction
+from django.db import connections as db_connections
 
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
@@ -1388,6 +1389,9 @@ class Ticking:
                 close = getattr(stream, "close", None)
                 if close is not None:
                     close()
+                # Nothing on the model's path uses the database today; if anything ever does, its
+                # connection is this thread's own and must not outlive the read (a leaked session).
+                db_connections.close_all()
                 items.put(Ticking._END)
 
         threading.Thread(target=read, name="legion-model-read", daemon=True).start()
