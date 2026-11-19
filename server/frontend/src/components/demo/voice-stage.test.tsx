@@ -368,13 +368,60 @@ describe('the suggestion chips on the stage', () => {
       await settle()
     })
     const row = await screen.findByRole('group', { name: 'Suggested questions' })
-    expect(row.className).toContain('flex-nowrap')
-    expect(row.className).toContain('overflow-x-auto')
+    expect(row.className).toContain('rc-chips')
     expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual(['About Kevin', 'How LEGION is built'])
     await act(async () => {
       fireEvent.click(within(row).getByRole('button', { name: 'About Kevin' }))
       await settle()
     })
     expect(requests.at(-1)).toMatchObject({ text: 'Tell me about Kevin.', chip: 'chip-1' })
+  })
+
+  /**
+   * Kevin, 2026-11-19: "the suggestion cards can be better too. make them float at the bottom of the
+   * orb." Directly under the orb on the stage; docked, the same chips ride in the dock above its orb
+   * line, and only one row shows at a time. Pills, one line, a 44 px tap target, a soft edge where
+   * the row scrolls, a short entrance (none under reduced motion), in the page's own colours.
+   */
+  test('they sit directly under the orb, and ride in the dock with it, one row shown at a time', async () => {
+    const { requests } = chipStage()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    await screen.findByRole('group', { name: 'Suggested questions' })
+    const orb = document.querySelector('[data-stage="orb"]')!
+    const stageRow = document.querySelector<HTMLElement>('[data-stage="chips"]')!
+    expect(orb.nextElementSibling).toContainElement(stageRow)
+    const dockRow = document.querySelector<HTMLElement>('[data-stage="dock-chips"]')!
+    const dock = document.querySelector('[data-stage="dock"]')!
+    expect(dock).toContainElement(dockRow)
+    // The dock's row sits above its orb line.
+    expect(dockRow.compareDocumentPosition(document.querySelector('[data-stage="dock-orb"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Undocked: the stage's row is the one shown; the dock's is hidden and takes no tap.
+    expect(stageRow).toHaveAttribute('data-shown', 'true')
+    expect(dockRow).toHaveAttribute('data-shown', 'false')
+    expect(dockRow).toHaveAttribute('inert')
+    // Its chips are the same ones, and a tap there asks the same way.
+    expect(within(dockRow).getAllByRole('button', { hidden: true }).map((b) => b.textContent)).toEqual(['About Kevin', 'How LEGION is built'])
+    await act(async () => {
+      fireEvent.click(within(dockRow).getAllByRole('button', { hidden: true })[1])
+      await settle()
+    })
+    expect(requests.at(-1)).toMatchObject({ text: 'Show me how LEGION is built.', chip: 'chip-2' })
+  })
+
+  test('the pills: page colours only, a 44 px tap target, one line, an edge fade, an entrance', () => {
+    const chip = /\.recruiter \.rc-chip \{([^}]*)\}/.exec(indexCss)?.[1] ?? ''
+    expect(chip).toMatch(/min-height: 44px/)
+    expect(chip).toMatch(/border-radius: 9999px/)
+    expect(chip).toMatch(/white-space: nowrap/)
+    expect(chip).toMatch(/animation: rc-chip-in/)
+    // Colours are the page's own tokens, never a new literal.
+    expect(chip.match(/#[0-9a-f]{3,8}\b|rgb\(/gi) ?? []).toEqual([])
+    const row = /\.recruiter \.rc-chips \{([^}]*)\}/.exec(indexCss)?.[1] ?? ''
+    expect(row).toMatch(/flex-wrap: nowrap/)
+    expect(row).toMatch(/overflow-x: auto/)
+    expect(row).toMatch(/mask-image/)
   })
 })
