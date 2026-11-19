@@ -77,7 +77,8 @@ object CarFingerprint {
      * gives up [fp], so the print moves to the car he named rather than being copied (review A7).
      */
     fun takeFrom(context: Context, fromCarId: String, fp: String?) {
-        if (fp != null && prefs(context).getString(fromCarId, null) == fp) prefs(context).edit().remove(fromCarId).apply()
+        val p = prefs(context)
+        if (fp != null && p.getString(fromCarId, null) == fp) p.edit().remove(fromCarId).apply()
     }
 
     /** Forgets [carId]'s learned print (the car is archived: sold or gone). */

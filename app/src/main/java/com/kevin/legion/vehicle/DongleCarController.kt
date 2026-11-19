@@ -212,7 +212,8 @@ object DongleCarController {
         // A VIN read now is a fact and decides; with none, his answer on this drive stands.
         val kept = if (vinResult is VinResponse.Result.Vin) null else keptAnswer(p, mac, previousId, sameDrive, cars)
         val decision = kept ?: decideFor(context, mac, vinResult, cars)
-        val continues = sameDrive && previousId?.let(DongleCar::sessionKey) == DongleCar.sessionKey(decision.recordingId)
+        val continues = sameDrive &&
+            previousId?.let(DongleCar::sessionKey) == DongleCar.sessionKey(decision.recordingId)
         if (!continues) connectionSeq++
         // A blip inside one drive whose first connect read no VIN and whose reconnect reads one:
         // the drive's data so far goes where the VIN says, but ONLY with positive evidence that it is

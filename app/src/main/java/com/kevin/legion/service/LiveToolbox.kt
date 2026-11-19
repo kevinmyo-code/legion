@@ -1612,14 +1612,7 @@ object LiveToolbox {
         if (action != "add" && args.optString("vehicle").isBlank()) {
             // 2026-11-15 voice eval: "which cars do I have on file" called switch_vehicle with no car.
             // Nothing changes without a named car; the refusal says where a read goes instead.
-            return result(
-                false,
-                when (action) {
-                    "switch" -> SWITCH_NEEDS_A_CAR
-                    "adapter" -> "Nothing changed: say which car the adapter is in."
-                    else -> "Which car do you mean? Tell me and I'll $action it."
-                },
-            )
+            return result(false, needsACar(action))
         }
 
         return when (action) {
@@ -2097,6 +2090,13 @@ object LiveToolbox {
         }
         val outcome = VehicleController.switchToOutcome(context, car.obdMac)
         return result(outcome.success, outcome.message).put("changed", outcome.changed == true).put("vehicle", label)
+    }
+
+    /** The refusal for a `manage_vehicle` [action] called with no car named. */
+    private fun needsACar(action: String): String = when (action) {
+        "switch" -> SWITCH_NEEDS_A_CAR
+        "adapter" -> "Nothing changed: say which car the adapter is in."
+        else -> "Which car do you mean? Tell me and I'll $action it."
     }
 
     /** `manage_vehicle adapter`: [VehicleController.adapterIn], with what code needs to say it. */

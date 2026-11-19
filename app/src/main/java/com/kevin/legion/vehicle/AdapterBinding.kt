@@ -78,11 +78,14 @@ object AdapterBinding {
      * connection. A refusal that already says the car is unknown gets none.
      */
     suspend fun annotate(context: Context, response: JSONObject): JSONObject {
-        if (response.optString("error") == UNKNOWN_CAR_ERROR) return response
         val car = DongleCarController.state.value
-        val labels = if (car is DongleCar.OnCar) DongleCarController.labels(context) else emptyMap()
-        val note = noteFor(car, labels, DongleCarController.connectionKey()) ?: return response
-        response.put("adapter_car", note)
+        val note = if (response.optString("error") == UNKNOWN_CAR_ERROR) {
+            null
+        } else {
+            val labels = if (car is DongleCar.OnCar) DongleCarController.labels(context) else emptyMap()
+            noteFor(car, labels, DongleCarController.connectionKey())
+        }
+        note?.let { response.put("adapter_car", it) }
         // The which-car question asks him something: his one-word answer ("Ranger.") is an answer,
         // not a lone word to hold (fix/phone-write-always-said's `needs_answer`). Only the ask.
         if (note == ASK_ONCE) response.put(NEEDS_ANSWER, true)

@@ -255,7 +255,8 @@ class AdapterCarVoiceTest {
             assertTrue(r.getString("vehicle").contains("Comet"))
             val live = DongleCarController.state.value as DongleCar.OnCar
             assertEquals(DongleCar.OnCar(mac, "car:comet", null, DongleCar.Basis.ANSWER), live)
-            assertEquals(1, com.kevin.legion.data.local.CarDatabase.getDatabase(context).odbSampleDao().totalCount("car:comet"))
+            val db = com.kevin.legion.data.local.CarDatabase.getDatabase(context)
+            assertEquals(1, db.odbSampleDao().totalCount("car:comet"))
         }
 
     @Test
