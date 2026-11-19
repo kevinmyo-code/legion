@@ -46,8 +46,12 @@ FALLBACK_BRAIN = "phone"
 
 MAX_TOOLS = 128
 MAX_STREAMS = 32
-# The whole manifest as stored, so one device cannot park megabytes in a member's row.
-MAX_MANIFEST_BYTES = 64 * 1024
+# The whole manifest as stored, so one device cannot park megabytes in a member's row. Sized from
+# the phone's whole Live tool surface, ~74 KB of declarations (`LiveSetupPayloadSizeTest`, 11-19),
+# with room to grow: a relayed subset is smaller.
+MAX_MANIFEST_BYTES = 256 * 1024
+# The phone's longest declaration is ~2,300 chars (`manage_checklist`, same test).
+MAX_DESCRIPTION_CHARS = 4000
 NAME_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 NEEDS = ("screen", "unlock", "parked")
 CONFIRMS = ("engine", "limb")
@@ -56,7 +60,9 @@ BRAIN_REASONS = ("forced", "override", "asked", "default")
 
 class LimbToolSerializer(serializers.Serializer):
     name = serializers.RegexField(NAME_PATTERN)
-    description = serializers.CharField(max_length=2000, allow_blank=True, default="")
+    description = serializers.CharField(
+        max_length=MAX_DESCRIPTION_CHARS, allow_blank=True, default=""
+    )
     parameters = serializers.DictField(default=dict)
     writes = serializers.BooleanField()
     read_through = serializers.BooleanField()

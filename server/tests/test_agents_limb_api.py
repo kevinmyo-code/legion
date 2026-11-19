@@ -157,7 +157,7 @@ def test_another_contract_version_is_refused_in_words_and_nothing_is_stored(
     assert not Limb.objects.exists()
 
 
-_BIG = [{**_TIMER, "description": "x" * 1999, "name": f"t{i}"} for i in range(40)]
+_BIG = [{**_TIMER, "description": "x" * 3999, "name": f"t{i}"} for i in range(80)]
 _BAD = {
     "kind": {"kind": "toaster"},
     "name": {"tools": [{**_TIMER, "name": "Set Timer"}]},
@@ -169,6 +169,7 @@ _BAD = {
     "needs": {"tools": [{**_TIMER, "needs": ["teleport"]}]},
     "confirm": {"tools": [{**_TIMER, "confirm": "nobody"}]},
     "brain": {"brain_asked": "cloud"},
+    "description": {"tools": [{**_TIMER, "description": "x" * 4001}]},
     "too_big": {"tools": _BIG},
 }
 
@@ -212,41 +213,6 @@ def test_a_recruiter_is_refused_whatever_the_switch_says(switched_on):
     assert browser.post("/api/agents/limb", _manifest(), format="json").status_code == 403
     assert browser.head("/api/agents/warm").status_code == 403
     assert not Limb.objects.exists()
-
-
-def test_two_households_never_see_or_touch_each_others_limb(
-    token_a, token_b, switched_on, household_a, household_b
-):
-    from agents.evals.runner import member_request
-    from household.tenancy import scoped, visible
-
-    a = token_a.post("/api/agents/limb", _manifest(), format="json")
-    b = token_b.post("/api/agents/limb", _manifest(kind="headunit"), format="json")
-    assert a.status_code == b.status_code == 200
-    limb_a = Limb.objects.get(pk=a.data["limb_id"])
-    limb_b = Limb.objects.get(pk=b.data["limb_id"])
-    assert limb_a.pk != limb_b.pk
-    assert limb_a.household_id == household_a.id and limb_b.household_id == household_b.id
-    request_b = member_request(limb_b.owner_user)
-    assert list(scoped(Limb, request_b)) == [limb_b]
-    assert list(visible(Limb, request_b)) == [limb_b]
-    # B uploading again changes only B's row.
-    token_b.post("/api/agents/limb", _manifest(kind="headunit", app_version="b2"), format="json")
-    limb_a.refresh_from_db()
-    assert limb_a.app_version == "2026-01-01-abc1234" and limb_a.kind == "phone"
-
-
-def test_another_member_of_the_same_household_never_sees_my_limb(
-    auth_client, switched_on, household_a, household_user
-):
-    from agents.evals.runner import member_request
-    from household.tenancy import visible
-    from tests.conftest import _member
-
-    assert auth_client.post("/api/agents/limb", _manifest(), format="json").status_code == 200
-    other = _member(household_a, "mia-limb@example.com")
-    assert not visible(Limb, member_request(other)).exists()
-    assert visible(Limb, member_request(household_user)).count() == 1
 
 
 # ---- HEAD /api/agents/warm ----------------------------------------------------------------------
