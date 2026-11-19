@@ -317,6 +317,26 @@ class AdapterCarVoiceTest {
     }
 
     @Test
+    fun `his spoken answer through adapter_in binds the held drive`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
+        setLink(mac, withLink = true)
+        val held = ActiveVehicle.recordingId(context).orEmpty()
+        val db = com.kevin.legion.data.local.CarDatabase.getDatabase(context)
+        db.odbSampleDao().insert(
+            com.kevin.legion.data.local.OdbSample(
+                vehicleId = held, pid = "010C", value = 800.0, unit = "rpm", timestamp = System.currentTimeMillis(),
+            ),
+        )
+
+        val r = adapterIn("Comet")
+        assertTrue(r.toString(), r.getBoolean("success"))
+        assertEquals(DongleCar.OnCar(mac, "car:comet", null, DongleCar.Basis.ANSWER), DongleCarController.state.value)
+        assertEquals(1, db.odbSampleDao().totalCount("car:comet"))
+        assertEquals(0, db.odbSampleDao().totalCount(held))
+    }
+
+    @Test
     fun `adapter_in with no car named changes nothing`() = runBlocking {
         seed()
         DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }

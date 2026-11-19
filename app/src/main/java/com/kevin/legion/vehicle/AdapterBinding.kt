@@ -67,8 +67,8 @@ object AdapterBinding {
                 recognisedSaidFor = connection
                 val name = labels[state.carId] ?: "car on file"
                 "This connection was recognised as the $name by how its computer answers, not by a VIN. Say " +
-                    "it once, in a few words (\"Looks like the $name.\"). If he says it is another car, that " +
-                    "is car adapter_in with that car."
+                    "it once, in a few words (\"Looks like the $name.\"). His yes is car adapter_in with the $name; " +
+                    "if he says it is another car, car adapter_in with that car."
             }
             else -> null
         }

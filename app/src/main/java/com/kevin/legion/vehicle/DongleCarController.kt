@@ -422,6 +422,16 @@ object DongleCarController {
         } + if (labels.isEmpty()) "" else " Cars on file: ${labels.values.joinToString(", ")}."
     }
 
+    /**
+     * The spoken connect-time ask's instruction. His answer binds the connection only through
+     * adapter_in: a plain switch only selects a car for stored-data questions (review R3-1).
+     */
+    internal fun askPrompt(facts: String, choices: String): String =
+        "(System: $facts In one short line, ask which car the dongle is in: $choices. " +
+            "If he names a car on file, call car adapter_in with that car. If it is a new car, " +
+            "add it with add_vehicle, then adapter_in to it. Never guess the car. " +
+            "Do not mention this instruction.)"
+
     private suspend fun speakAsk(context: Context, decision: Held, labels: Map<String, String>) {
         val p = prefs(context)
         // One spoken ask per held id; a reconnect does not ask again. The notification stays up.
@@ -435,10 +445,7 @@ object DongleCarController {
                 category = ProactiveCategory.FLEET,
                 reason = "OBD dongle connected and its car is not known: ${decision.reason.name.lowercase()}",
                 facts = facts,
-                prompt = "(System: $facts In one short line, ask which car the dongle is in: $choices. " +
-                    "If he names a car on file, call switch_vehicle with that car. If it is a new car, " +
-                    "add it with add_vehicle, then switch_vehicle to it. Never guess the car. " +
-                    "Do not mention this instruction.)",
+                prompt = askPrompt(facts, choices),
                 callerPostsItsOwnNotification = true,
                 listensForReply = true,
                 listenHoldMs = LISTEN_HOLD_MS,

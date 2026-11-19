@@ -704,6 +704,13 @@ class DongleCarControllerTest {
     }
 
     @Test
+    fun `the spoken ask tells the model to answer with adapter_in, never a plain switch`() {
+        val prompt = DongleCarController.askPrompt("The adapter's car is not known.", "Truck, SUV, a new car")
+        assertTrue(prompt, prompt.contains("car adapter_in"))
+        assertFalse(prompt, prompt.contains("switch_vehicle"))
+    }
+
+    @Test
     fun `each connection has its own key, even to the same car`() = runBlocking {
         seed()
         assertNull(DongleCarController.connectionKey())

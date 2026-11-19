@@ -4,6 +4,7 @@ package com.kevin.legion.vehicle
 
 import com.kevin.legion.data.local.Vehicle
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -74,6 +75,17 @@ class AdapterBindingTest {
         assertNull(AdapterBinding.screenLine(DongleCar.OnCar("m", "c1", null, DongleCar.Basis.ANSWER)))
         assertNull(AdapterBinding.screenLine(DongleCar.OnCar("m", "c1", "VIN", DongleCar.Basis.VIN)))
         assertNull(AdapterBinding.screenLine(null))
+    }
+
+    @Test
+    fun `the recognition note says his yes is adapter_in for that car`() {
+        AdapterBinding.resetForTest()
+        val note = AdapterBinding.noteFor(
+            DongleCar.OnCar("m", "c1", null, DongleCar.Basis.ASSUMED), mapOf("c1" to "Zephyr"), "c9|c1",
+        )!!
+        assertTrue(note, note.contains("His yes is car adapter_in with the Zephyr"))
+        assertFalse(note, note.contains("switch_vehicle"))
+        AdapterBinding.resetForTest()
     }
 
     @Test
