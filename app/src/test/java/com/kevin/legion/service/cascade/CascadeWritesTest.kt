@@ -85,10 +85,8 @@ class CascadeWritesTest {
         assertEquals("SILENT", rows["app_update/check"])
         assertEquals("ROUTER", rows["ask_fleet"])
         assertEquals("ROUTER", rows["ask_engine"])
-        // The adapter branch's action (manage_vehicle adapter, surfaced as adapter_in) is phrased on its
-        // own fields even before that branch's declaration lands here.
-        val adapter = ScriptedLines.writeFact("manage_vehicle", "adapter", JSONObject().put("success", true).put("vehicle", "x"), ok = true)
-        assertTrue(adapter.phrase != null && !adapter.silent)
+        // The adapter's car (manage_vehicle adapter, surfaced as car adapter_in) is a declared action now.
+        assertEquals("PHRASED", rows["manage_vehicle/adapter"])
     }
 
     @Test
