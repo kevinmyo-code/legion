@@ -371,6 +371,62 @@ def has_money(sentence: str) -> bool:
     return any(_number_word(a) and _number_word(b) for a, b in zip(words, words[1:], strict=False))
 
 
+# ---- money figures a tool returned (2026-11-18, the chips ship's live gate) ------------------
+# A model reply said a category's spend a few cents off the tool's figure, as a bare decimal, and
+# nothing compared the two: the money guard above runs only after code has spoken a money line
+# itself. Now, in a turn where a money tool ran (one whose result holds an amount in cents: the
+# engine's `*_cents` convention, so no list of tools to keep), every decimal figure a model sentence
+# states must be one of the amounts the tools returned, or the sentence is not said. Membership
+# only: nothing computed, no guess at what the model meant.
+
+_DECIMAL = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(?![\d])")
+_CENTS_KEY = "_cents"
+
+
+def decimal_cents(text: str) -> set[int]:
+    """Every decimal figure with two places in `text` ("1,962.48", "$84.27", "84.27 USD"), in
+    cents, without its sign."""
+    return {
+        int(whole.replace(",", "")) * 100 + int(cents)
+        for whole, cents in _DECIMAL.findall(text or "")
+    }
+
+
+def _cents_in(data, out: set[int]) -> bool:
+    found = False
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key.endswith(_CENTS_KEY) and isinstance(value, int) and not isinstance(value, bool):
+                out.add(abs(value))
+                found = True
+            else:
+                found = _cents_in(value, out) or found
+    elif isinstance(data, list):
+        for item in data:
+            found = _cents_in(item, out) or found
+    return found
+
+
+def backed_cents(calls) -> set[int] | None:
+    """The amounts this turn's money tools returned, in cents, or None when none ran. A money tool
+    is one whose result holds a `*_cents` amount; its backed amounts are those values plus the
+    decimal figures ITS OWN text handed the model (code's words, e.g. a total the handler adds up
+    and states without storing). Another tool's text (a web page, a record dump) never backs a
+    figure (blind review, 2026-11-18)."""
+    backed: set[int] = set()
+    money = False
+    for c in calls:
+        if c.ok and _cents_in(c.data, backed):
+            money = True
+            backed |= decimal_cents(c.text)
+    return backed if money else None
+
+
+def states_unbacked_figure(sentence: str, backed: set[int] | None) -> bool:
+    """True when a money tool ran and `sentence` states a decimal figure none of them returned."""
+    return backed is not None and not decimal_cents(sentence) <= backed
+
+
 # The phone's `FillerTurn` (spec 23): a line of at most four words that opens with a filler opener
 # and, after it, only a word that keeps it filler ("Checking now.", "Looking into it.").
 FILLER_OPENERS = (
@@ -782,8 +838,9 @@ class DoorCall:
     exact: bool = False
     ends_turn: bool = False
     replay: str | None = None
-    # The call's arguments and its result's plain data, for the follow-up chips
-    # (`demo.suggestions`): never sent to the model or the page from here.
+    # The call's arguments (the follow-up chips, `demo.suggestions`) and its result's plain data
+    # (`ToolResult.structured`: the chips and the money-figure check, `backed_cents`); never sent
+    # to the model or the page from here.
     args: dict = field(default_factory=dict)
     data: dict | None = None
 
@@ -1747,7 +1804,9 @@ def _answer(
                 if sentences == 0 and is_filler(text):
                     filler_dropped += 1
                     continue
-                if verbatim_said and has_money(text):
+                if (verbatim_said and has_money(text)) or states_unbacked_figure(
+                    text, backed_cents(door.calls)
+                ):
                     money_dropped += 1
                     continue
                 if sentences >= MAX_SPOKEN_SENTENCES:
@@ -1807,6 +1866,9 @@ def _answer(
             text = speech_tags.untagged(tagged)
             if not text or is_filler(text) or (verbatim_said and has_money(text)):
                 continue
+            if states_unbacked_figure(text, backed_cents(door.calls)):
+                money_dropped += 1
+                continue
             if not honest(text):
                 held_claims.append((text, tagged))
                 continue
@@ -1829,10 +1891,18 @@ def _answer(
     speaker.closing = True
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
     for text, tagged in held_claims:
-        if honest(text):
+        if states_unbacked_figure(text, backed_cents(door.calls)):
+            # Held before the money tool ran; its figures are checked now, like every sentence's
+            # (blind review finding 3). It was still a claim of a change, so the closing line about
+            # the change is said in its place (round 2, N1): "went through" or "did not".
+            money_dropped += 1
+            unbacked += 1
+        elif honest(text):
             yield say(text, tagged)
         else:
             unbacked += 1
+    # The final count: the ask-again round's and the held claims' drops included (finding 2).
+    timings["money_dropped"] = money_dropped
     wrote = door.wrote()
     if guard_refused:
         yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)
