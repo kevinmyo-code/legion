@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { BASE_MS, CAP_MS, EARLY_MS, EndOfTurnPolicy, GATE_MS, WINDOW_MS, type Action } from './eot-policy'
+import { BASE_MS, CAP_MS, EARLY_MS, EndOfTurnPolicy, GATE_MS, WEB_BASE_MS, WINDOW_MS, type Action } from './eot-policy'
 
 // Fails fast, with its name, if anything hangs.
 vi.setConfig({ testTimeout: 10_000 })
@@ -164,5 +164,46 @@ describe('EndOfTurnPolicy (the phone policy)', () => {
     expect(early[0].silenceMs).toBeGreaterThanOrEqual(EARLY_MS)
     expect(p.onWindow(speech)[0].type).toBe('resumed')
     expect(of(actions(p, 400), 'early')).toHaveLength(1)
+  })
+})
+
+// The web's shorter base (Kevin, 2026-11-19: "700 -> 500", perf/try-faster-first-word fix 4). The
+// phone keeps BASE_MS; the web passes WEB_BASE_MS. Smart Turn is what keeps a mid-sentence pause
+// whole: its first verdict is asked at the 192 ms gate and must arrive before the base to hold.
+describe('EndOfTurnPolicy at the web base', () => {
+  function webSpeaking(): EndOfTurnPolicy {
+    const p = new EndOfTurnPolicy(true, WEB_BASE_MS)
+    for (let i = 0; i < 20; i++) p.onWindow(speech)
+    return p
+  }
+
+  it('the web base is 500 ms and the phone keeps 700', () => {
+    expect(WEB_BASE_MS).toBe(500)
+    expect(BASE_MS).toBe(700)
+    const end = of(actions(webSpeaking(), 600), 'end')[0]
+    expect(end.reason).toBe('base')
+    expect(end.silenceMs).toBeGreaterThanOrEqual(WEB_BASE_MS)
+    expect(end.silenceMs).toBeLessThan(WEB_BASE_MS + WINDOW_MS)
+  })
+
+  for (const pauseMs of [550, 600, 650]) {
+    it(`a ${pauseMs} ms mid-sentence pause with a "not done" verdict before the base stays one turn`, () => {
+      const p = webSpeaking()
+      // The verdict arrives about 250 ms after the gate (a slow phone-class CPU), before 500 ms.
+      const check = of(actions(p, 448), 'check')[0]
+      expect(of(actions(p, 0), 'end')).toHaveLength(0)
+      p.onCheckResult(check.checkId, 0.2)
+      const rest = actions(p, pauseMs - 448)
+      expect(of(rest, 'end')).toHaveLength(0)
+      expect(p.onWindow(speech).map((a) => a.type)).toContain('resumed')
+      expect(p.inActivity).toBe(true)
+    })
+  }
+
+  it('the same pause with no verdict before the base IS cut: two turns (the stated risk)', () => {
+    const p = webSpeaking()
+    const got = actions(p, 600)
+    expect(of(got, 'end')[0].reason).toBe('base')
+    expect(p.inActivity).toBe(false)
   })
 })

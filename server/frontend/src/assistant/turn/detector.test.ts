@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { BASE_MS, EARLY_MS } from './eot-policy'
+import { EARLY_MS, WEB_BASE_MS } from './eot-policy'
 import { MAX_TURN_SAMPLES, loadTurnDetector, type TurnDetector, type TurnHandlers } from './detector'
 import { chunks, concat, echo, over, silence, speech } from './fixtures'
 import type { FromWorker, ToWorker } from './turn.worker'
@@ -194,9 +194,9 @@ describe('the turn (speech, then silence)', () => {
     expect(seen.ends).toHaveLength(1)
     const end = seen.ends[0]
     expect(end.reason).toBe('base')
-    // The end of turn: BASE_MS of silence (to one window), against the old 1.2 s energy window.
-    expect(end.silenceMs).toBeGreaterThanOrEqual(BASE_MS)
-    expect(end.silenceMs).toBeLessThan(BASE_MS + 64)
+    // The end of turn: the web's base silence (to one window), against the old 1.2 s energy window.
+    expect(end.silenceMs).toBeGreaterThanOrEqual(WEB_BASE_MS)
+    expect(end.silenceMs).toBeLessThan(WEB_BASE_MS + 64)
     expect(end.silenceMs).toBeLessThan(SILENCE_MS)
     // The turn's audio carries its start (the pre-roll) and the whole utterance.
     expect(end.samples).toBeGreaterThan(1.2 * 16_000)

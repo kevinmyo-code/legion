@@ -24,6 +24,12 @@ export const END_PROB = 0.35
 export const CONFIRM_MS = 200
 export const GATE_MS = 192
 export const BASE_MS = 700
+/**
+ * The web's base (Kevin, 2026-11-19: "700 -> 500"): measured on /try, the end-of-speech wait was
+ * about 1.1 s of a 5 to 6 s first answer. The phone keeps BASE_MS. A pause longer than this ends the
+ * turn unless Smart Turn's first verdict ("not done") arrives before it.
+ */
+export const WEB_BASE_MS = 500
 export const CAP_MS = 2_500
 export const THRESHOLD = 0.5
 /** The phone's speculation point: transcribe what was said once this much silence has passed. */

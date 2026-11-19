@@ -19,7 +19,7 @@
  * silence-only end of turn at the phone's 700 ms base (`smartAvailable` false).
  */
 import { BargeInGate, peakLevel, type GateEvent } from './barge-in-gate'
-import { EndOfTurnPolicy, WINDOW_MS, type Action, type Reason } from './eot-policy'
+import { EndOfTurnPolicy, WEB_BASE_MS, WINDOW_MS, type Action, type Reason } from './eot-policy'
 import type { FromWorker, ToWorker } from './turn.worker'
 
 export const WINDOW = 512
@@ -134,7 +134,7 @@ class ModelDetector implements TurnDetector {
     this.loadMs = loadMs
     this.sileroMs = sileroMs
     this.smartMs = smartMs
-    this.policy = new EndOfTurnPolicy(smart !== null)
+    this.policy = new EndOfTurnPolicy(smart !== null, WEB_BASE_MS)
     vad.onmessage = (e) => {
       if (e.data.type === 'prob') this.onProb(e.data.seq, e.data.prob)
     }
