@@ -877,7 +877,9 @@ object LiveToolbox {
         }
         // The adapter's car is unknown or only recognised: a live read still runs (its readings are held,
         // not filed), and its result carries the ask or the "looks like" once a connection (AdapterBinding).
-        if (name in CATEGORY_A_TOOLS && name != "clear_codes" &&
+        // The fleet specialist's answer carries it too: "how's the car doing" goes there, and the
+        // specialist's own live reads run inside this mark, so only the answer he hears is noted.
+        if ((name in CATEGORY_A_TOOLS && name != "clear_codes" || name == "ask_fleet") &&
             kotlin.coroutines.coroutineContext[com.kevin.legion.vehicle.AdapterBinding.Annotating] == null
         ) {
             return kotlinx.coroutines.withContext(com.kevin.legion.vehicle.AdapterBinding.Annotating()) {

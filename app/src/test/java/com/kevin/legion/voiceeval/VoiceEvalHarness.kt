@@ -145,8 +145,21 @@ internal class VoiceEvalHarness(
         context.getSharedPreferences("dongle_car", Context.MODE_PRIVATE).edit().clear().commit()
     }
 
-    /** The adapter's address with no link behind it (the manager keeps it private; tests set it so). */
+    /**
+     * The adapter's address and a link with nothing behind it (every read answers nothing at once), so
+     * the tools see an adapter that is connected; the manager keeps both private, tests set them so.
+     */
     private fun setAdapterAddress(address: String?) {
+        val link = address?.let {
+            object : com.kevin.legion.vehicle.ObdTransport {
+                override val inputStream = java.io.ByteArrayInputStream(ByteArray(0))
+                override val outputStream = object : java.io.OutputStream() { override fun write(b: Int) {} }
+                override val label = it
+                override fun close() {}
+            }
+        }
+        ObdBluetoothManager::class.java.getDeclaredField("transport").apply { isAccessible = true }
+            .set(ObdBluetoothManager, link)
         ObdBluetoothManager::class.java.getDeclaredField("connectedDeviceAddress").apply { isAccessible = true }
             .set(ObdBluetoothManager, address)
     }
