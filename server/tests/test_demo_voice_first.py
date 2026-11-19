@@ -33,6 +33,7 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     visitor,
     visitor_user,
 )
+from tests.test_demo_strip_tester_only import make_visit
 from tests.test_recruiter_content import load_fake
 
 pytestmark = pytest.mark.django_db
@@ -206,9 +207,11 @@ def test_tool_events_carry_how_long_they_took(member, engine):
     assert isinstance(tool["ms"], int) and tool["ms"] >= 0
 
 
-def test_a_visitor_turn_ends_with_its_estimated_cost_and_a_member_turn_does_not(
-    visitor, member, engine
+def test_a_tester_visit_turn_ends_with_its_estimated_cost_and_a_member_turn_does_not(
+    visitor, visitor_user, member, engine
 ):
+    # The strip is Kevin's tester visit's only (`tests/test_demo_strip_tester_only.py`).
+    make_visit(visitor_user, unmetered=True)
     engine.model = FakeModel([say("Hello there.")])
     done = _of(_events(_post(visitor, text="Hi")), "done")[0]
     assert isinstance(done["cost_usd"], float) and done["cost_usd"] >= 0

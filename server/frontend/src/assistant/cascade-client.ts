@@ -263,6 +263,11 @@ export class CascadeClient {
   // ---- the demo ----
   private tourNext: number | null = null
   strip: StripState = { tools: [], costUsd: null }
+  /**
+   * The engine sent a turn's cost on this page: Kevin's tester visit, the only one the strip is for
+   * (Kevin, 2026-11-19: "B hide the whole strip"; `assistant/cascade.py` sends it to no one else).
+   */
+  stripShown = false
   /** The last reply's turn number, for the robotic marker. */
   private lastTurn: number | null = null
   // ---- suggestion chips (the demo) ----
@@ -1061,7 +1066,10 @@ export class CascadeClient {
         if (event.type === 'done') {
           const tour = event.data.tour as { next?: number | null } | undefined
           tourNext = typeof tour?.next === 'number' ? tour.next : null
-          if (typeof event.data.cost_usd === 'number') this.strip = { ...this.strip, costUsd: event.data.cost_usd }
+          if (typeof event.data.cost_usd === 'number') {
+            this.strip = { ...this.strip, costUsd: event.data.cost_usd }
+            this.stripShown = true
+          }
           if (typeof event.data.offer === 'string') offer = event.data.offer
           if (touring && tour && tourNext === null) this.deps.funnel?.('tour_finished')
         }

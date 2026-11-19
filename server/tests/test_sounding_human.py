@@ -24,6 +24,7 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     visitor,
     visitor_user,
 )
+from tests.test_demo_strip_tester_only import make_visit
 
 pytestmark = pytest.mark.django_db
 
@@ -181,8 +182,10 @@ def test_saying_it_sounded_robotic_marks_the_turn_and_asks_no_model(member, engi
 
 
 def test_the_thumbs_down_marks_the_turn_for_a_visitor_and_never_another_conversation(
-    visitor, member, engine
+    visitor, visitor_user, member, engine
 ):
+    # The marker is the tester visit's only (`tests/test_demo_strip_tester_only.py`).
+    make_visit(visitor_user, unmetered=True)
     engine.model = FakeModel([say("Hello.")])
     conversation = _of(_events(_post(visitor, text="Hi.")), "turn")[0]["conversation_id"]
     response = visitor.post(

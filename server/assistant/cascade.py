@@ -1932,9 +1932,14 @@ def _answer(
         timings["stop_phrase"] = 1
     extra = {}
     if door.recruiter:
-        # The demo's live strip (recruiter only): what this turn is estimated to have cost.
-        extra["cost_usd"] = round(turn_cost_usd(timings, speaker.done), 5)
-        extra["tools_ms"] = [[c.name, c.ms] for c in door.calls]
+        from demo import budget
+
+        # The demo's live strip (tools, their times, the turn's estimated cost): Kevin's tester
+        # visit only, never a recruiter's (Kevin, 2026-11-19: "B hide the whole strip"). The page
+        # shows the strip only once a turn has carried these.
+        if budget.tester_visit(door.user):
+            extra["cost_usd"] = round(turn_cost_usd(timings, speaker.done), 5)
+            extra["tools_ms"] = [[c.name, c.ms] for c in door.calls]
         # The follow-up chips: only what ran, signed for this visitor; the page asks for the
         # checked chips after the answer (`demo.suggestions`), never inside the turn.
         offer = (
