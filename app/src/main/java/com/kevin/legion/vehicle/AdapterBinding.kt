@@ -149,6 +149,17 @@ object AdapterBinding {
             "car this is for. Ask him which car, then do it with that car's name."
     }
 
+    /**
+     * The Cars screen's one plain line while the live connection's car is unknown or only recognised:
+     * how to say which car it is, and what waits until then. Null once the car is named or VIN-proven.
+     */
+    fun screenLine(state: DongleCar?): String? = when {
+        state is DongleCar.Held || (state is DongleCar.OnCar && state.basis == DongleCar.Basis.ASSUMED) ->
+            "This car is not known for sure yet: tap it below, or say \"the adapter is in the\" and its name. " +
+                "Until then readings still show, but nothing is saved to \"this car\" and no codes are cleared."
+        else -> null
+    }
+
     /** The error code of [unknownCarRefusal]'s result. */
     const val UNKNOWN_CAR_ERROR = "adapter_car_unknown"
 

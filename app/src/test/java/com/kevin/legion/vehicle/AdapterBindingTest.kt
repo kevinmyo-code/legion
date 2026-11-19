@@ -67,6 +67,16 @@ class AdapterBindingTest {
     }
 
     @Test
+    fun `the car screen line shows while the car is unknown or only recognised, never once it is known`() {
+        val line = AdapterBinding.screenLine(DongleCar.Held("m", null, DongleCar.HeldReason.NO_VIN))!!
+        assertTrue(line.contains("the adapter is in the") && line.contains("no codes are cleared"))
+        assertEquals(line, AdapterBinding.screenLine(DongleCar.OnCar("m", "c1", null, DongleCar.Basis.ASSUMED)))
+        assertNull(AdapterBinding.screenLine(DongleCar.OnCar("m", "c1", null, DongleCar.Basis.ANSWER)))
+        assertNull(AdapterBinding.screenLine(DongleCar.OnCar("m", "c1", "VIN", DongleCar.Basis.VIN)))
+        assertNull(AdapterBinding.screenLine(null))
+    }
+
+    @Test
     fun `a recognised car is said once per connection, an unknown one is asked`() {
         AdapterBinding.resetForTest()
         val recognised = DongleCar.OnCar("m", "c1", null, DongleCar.Basis.ASSUMED)
