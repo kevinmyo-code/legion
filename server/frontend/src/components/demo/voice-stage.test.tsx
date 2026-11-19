@@ -108,6 +108,8 @@ describe('the captions', () => {
     const box = document.querySelector<HTMLElement>('[data-stage="captions"]')!
     expect(box.className).toMatch(/\bh-\[/)
     expect(box.className).toContain('overflow-y-auto')
+    // At its ends the page scrolls on: a swipe over the captions must still move the page.
+    expect(box.className).not.toContain('overscroll-contain')
     Object.defineProperty(box, 'scrollHeight', { configurable: true, value: 480 })
     await act(async () => {
       fireEvent.change(screen.getByRole('textbox', { name: /^Type to / }), { target: { value: 'How is LEGION built?' } })

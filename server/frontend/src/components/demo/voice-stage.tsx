@@ -260,12 +260,14 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       {state.notice && <p role="alert">{state.notice.text}</p>}
       {/* A box of fixed height: captions growing and shrinking with every sentence moved the whole
           page under the stage (the browser run, 2026-11-19: layout shift 0.48 over one tour at
-          390 px). A long answer scrolls inside it, the newest words in view. */}
+          390 px). A long answer scrolls inside it, the newest words in view; at its ends the page
+          scrolls on (no overscroll containment: a swipe or a wheel over it must still move the
+          page, the browser run's wheel stopped dead on it). */}
       <div
         ref={captionsRef}
         data-stage="captions"
         aria-live="polite"
-        className="h-[8.75rem] w-full max-w-[34rem] overflow-y-auto overscroll-contain text-left text-[0.95rem]"
+        className="h-[8.75rem] w-full max-w-[34rem] overflow-y-auto text-left text-[0.95rem]"
       >
         {heard && heard.kind === 'me' && <p className="text-muted-foreground">You: {heard.text}</p>}
         {said && said.kind === 'ai' && (
