@@ -561,6 +561,8 @@ def test_a_slow_tool_gets_a_filler_from_memory_once(member, engine, monkeypatch,
     fillers.warm(engine.speech, voice_engine.voice_for(household_user))
     monkeypatch.setattr(cascade, "FILLER_AUDIO", fillers)
     engine.speech.spoken.clear()
+    # Too short for the first question's "one sec", which would be this turn's one line.
+    engine.speech.heard = "Docs, please."
     engine.model = FakeModel(
         [call("legion_docs", {"query": "how is it built"}), say("It is Django.")]
     )

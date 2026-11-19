@@ -1625,15 +1625,18 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("robotic", ROBOTIC_ACK, False)
         return
+    acked = False
     if speak and turn_input.heard_before == 0 and needs_work(words):
         # First sound within about a second (section 8.2): a short acknowledgement from memory
         # while the model's first round runs. Only on the first utterance after the tap, which is
         # for the assistant by construction (round 2 speech review 5): on any later turn nothing
-        # is said until the model has started an answer or a tool has started.
+        # is said until the model has started an answer or a lookup has started.
         picked = filler_audio.pick(voice, ACK_TOOL)
         if picked is not None:
             line, audio = picked
+            acked = True
             timings["ack"] = 1
+            timings["filler_ms"] = int((clock() - t0) * 1000)
             yield ev.Event("filler", {"tool": "", "text": speech_tags.untagged(line)})
             yield speaker.audio_event(audio, filler=True)
     last_reply = next(
@@ -1668,7 +1671,8 @@ def _answer(
 
     first_sentence = None
     verbatim_said = False
-    filler_said = False
+    # The acknowledgement is this turn's one line: a lookup's line is never stacked on it.
+    filler_said = acked
     filler_dropped = 0
     no_answer = False
     money_dropped = 0
@@ -1680,6 +1684,7 @@ def _answer(
             return None
         line, audio = picked
         timings["filler_line"] = line
+        timings["filler_ms"] = int((clock() - t0) * 1000)
         yield ev.Event("filler", {"tool": tool, "text": line})
         yield speaker.audio_event(audio, filler=True)
         return line
@@ -1834,7 +1839,7 @@ def _answer(
             sentences=sentences,
             money_dropped=money_dropped,
             verbatim=int(verbatim_said),
-            filler=int(filler_said),
+            filler=int(filler_said and not acked),
         )
         _meter(request, model_name, rounds)
 
@@ -2392,6 +2397,8 @@ def timing_line(report: TurnReport, *, spoken: bool) -> str:
         "tts_output_tokens",
         "tts_failed",
         "turn_ms",
+        "ack",
+        "filler_ms",
     )
     values = " ".join(
         f"{k}={-1 if report.timings.get(k) is None else report.timings[k]}" for k in keys

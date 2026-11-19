@@ -117,6 +117,8 @@ def test_the_picker_never_says_the_same_line_twice_running():
 
 def test_a_slow_tool_gets_its_line_when_it_starts(member, engine, monkeypatch, household_user):
     _warm(monkeypatch, engine, household_user)
+    # Too short for the first question's "one sec", which would be this turn's one line.
+    engine.speech.heard = "Router docs?"
     engine.model = FakeModel([call("legion_docs", {"query": "router"}), say("It routes.")])
     events = _events(_post(member, audio=PCM))
     order = [k if k != "filler" or d["tool"] else "ack" for k, d in events]
@@ -126,15 +128,20 @@ def test_a_slow_tool_gets_its_line_when_it_starts(member, engine, monkeypatch, h
     assert filler["text"] in fillers.lines_for("legion_docs")
 
 
-def test_a_tool_that_has_returned_gets_no_line(member, engine, monkeypatch, household_user):
-    # Round 2 speech review 7: a fast tool's line played after it returned, only adding delay.
-    # The old 700 ms wait set to nothing, as a slow turn would have it (the attribute is gone
-    # now; on 7d4664e5 this made the line play).
+def test_a_lookup_gets_its_line_when_it_starts_never_after_it_returned(
+    member, engine, monkeypatch, household_user
+):
+    # Round 2 speech review 7: a line played AFTER a tool returned only added delay; that path
+    # is gone. Kevin 2026-11-19 (perf/try-faster-first-word fix 1): every lookup is announced
+    # when it STARTS, so a quick one (the calendar) gets its line before it runs.
     monkeypatch.setattr(fillers, "FAST_AFTER_MS", 0, raising=False)
     _warm(monkeypatch, engine, household_user)
+    engine.speech.heard = "Calendar today?"  # too short for the first question's "one sec"
     engine.model = FakeModel([call("list_events", {}), say("Your day is clear.")])
     events = _events(_post(member, audio=PCM))
-    assert [f for f in _of(events, "filler") if f["tool"]] == []
+    assert [f["tool"] for f in _of(events, "filler") if f["tool"]] == ["list_events"]
+    kinds = [k for k, _ in events]
+    assert kinds.index("filler") < kinds.index("tool")
 
 
 def test_no_filler_in_front_of_a_code_written_sentence(member, engine, monkeypatch, household_user):
@@ -175,6 +182,7 @@ def test_two_slow_tools_get_one_line(member, engine, monkeypatch, household_user
             say("Here is how it works."),
         ]
     )
+    engine.speech.heard = "Router docs?"  # too short for the first question's "one sec"
     events = _events(_post(member, audio=PCM))
     assert [f["tool"] for f in _of(events, "filler") if f["tool"]] == ["legion_docs"]
 
