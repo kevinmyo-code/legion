@@ -546,7 +546,7 @@ object ScriptedLines {
         // The car switch and the adapter say the car the result names (`vehicle`), never the model's words.
         "switch" to "switched to the %s", ADAPTER to "the adapter is on the %s",
         "archive" to "archived %s", "unarchive" to "brought back %s", "correct" to "updated %s",
-        "rename" to "renamed %s",
+        "rename" to "renamed %s", "manage_checklist/create" to "created the %s list",
         "email/draft" to "drafted an email to %s", "email/send" to "sent the email to %s",
         "claude_session/send" to "sent that to Claude", "claude_session/workflow" to "started that workflow",
         "claude_session/answer" to "answered Claude", "claude_session/assign" to "moved that task",
@@ -578,7 +578,7 @@ object ScriptedLines {
 
     /** A phrase that may only be said with its own result field; without it, the generic line. */
     private val TITLE_KEYS_FOR: Map<String, List<String>> = mapOf(
-        "switch" to listOf("vehicle"), ADAPTER to listOf("vehicle"),
+        "switch" to listOf("vehicle"), ADAPTER to listOf("vehicle"), "manage_checklist/create" to listOf("list"),
         // The draft and the send name who it is to, from the result's own `to`.
         "email/draft" to listOf("to"), "email/send" to listOf("to"),
     )

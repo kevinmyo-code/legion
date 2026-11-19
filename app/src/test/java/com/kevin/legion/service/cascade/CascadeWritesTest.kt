@@ -67,7 +67,7 @@ class CascadeWritesTest {
             for (action in actions) {
                 val args = call("action" to action, "intent" to "record", "question" to "invented")
                 if (!CascadeRules.isWrite(name, args)) continue
-                val ok = JSONObject().put("success", true).put("vehicle", "x").put("title", "x").put("to", "x")
+                val ok = JSONObject().put("success", true).put("vehicle", "x").put("title", "x").put("to", "x").put("list", "x")
                 val f = ScriptedLines.writeFact(name, action, ok, ok = true)
                 val row = if (action.isEmpty()) name else "$name/$action"
                 rows[row] = when {

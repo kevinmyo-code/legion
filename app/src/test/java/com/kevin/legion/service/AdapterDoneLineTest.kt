@@ -270,6 +270,15 @@ class AdapterDoneLineTest {
         assertTrue("the which-car question was dropped: $heard", heard.contains(question))
     }
 
+    // --- e. a new list is said by its name ----------------------------------------------------------------
+
+    @Test
+    fun `a new list is said by its name`() = runBlocking {
+        val r = surfaced("manage_checklist", "action" to "create", "list" to "Camping")
+        assertTrue(r.toString(), r.getBoolean("success"))
+        assertEquals("Done: created the Camping list.", line("manage_checklist", r, "action" to "create", "list" to "Camping"))
+    }
+
     // --- wire --------------------------------------------------------------------------------------------
 
     private fun userTurn() = JSONArray().put(

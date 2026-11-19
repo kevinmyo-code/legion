@@ -4831,7 +4831,8 @@ object LiveToolbox {
                 scheduleEvery = scheduleEvery,
                 scheduleDaysOfWeek = scheduleDaysOfWeek,
             )
-            return result(true, "Created the \"$listArg\" checklist, $scheduleWords.")
+            // `list`: what the phone's done line names ("created the Camping list"), never the message.
+            return result(true, "Created the \"$listArg\" checklist, $scheduleWords.").put("list", listArg)
         }
 
         // Every action from here on addresses an EXISTING checklist by name. The Todo checklist is
