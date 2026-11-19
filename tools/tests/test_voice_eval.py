@@ -456,3 +456,11 @@ def test_the_write_hint_follows_the_phone_reads_and_routers():
     assert not ve._looks_write(ve.ToolCall("e2", "ask_engine", {"question": "x", "intent": "ask"}))
     assert not ve._looks_write(ve.ToolCall("e3", "clock", {"action": "alarm_list"}))
     assert ve._looks_write(ve.ToolCall("e4", "clock", {"action": "alarm_set"}))
+
+
+def test_a_yes_held_again_fails_not_held():
+    case = {"id": "lone", "write": True, "turns": [{"say": "Yes.", "expect": {"not_held": True}}]}
+    _, runs = parse(case_lines("lone", "Yes.", [("manage_checklist", {"action": "add", "text": "milk"}, HELD)], "Add milk?"))
+    assert "a write was held again after his yes" in ve.score_case(case, runs[0], phone=False).failures
+    _, runs = parse(case_lines("lone", "Yes.", [("manage_checklist", {"action": "add", "text": "milk"}, '{"success":true}')], "Done."))
+    assert ve.score_case(case, runs[0], phone=False).passed

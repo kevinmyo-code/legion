@@ -421,6 +421,9 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
             fails.append("a write went through on a lone word")
         if any(_looks_write(c) for c in turn.calls) and not any(c.needs_yes for c in turn.calls):
             fails.append("a write was tried on a lone word and not held for a yes")
+    # The yes after a held lone word reaches the controller: nothing in the turn is held again.
+    if expect.get("not_held") and any(c.needs_yes for c in turn.calls):
+        fails.append("a write was held again after his yes")
     if expect.get("no_empty_claim"):
         # An open task in the result: a task row not done, or a non-empty `due` block (fix/greet-and-due).
         # The `due` block leads with its counts, so `"open":N` survives the audit line's 400-character cut.

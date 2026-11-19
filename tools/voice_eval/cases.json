@@ -405,9 +405,9 @@
       "write": true,
       "turns": [
         {"say": "Milk.", "expect": {"asks_yes": true}},
-        {"say": "Yes.", "expect": {"succeeded": ["manage_checklist/add|manage_item/add"], "answer_not": ["(?i)catch"]}}
+        {"say": "Yes.", "expect": {"calls": ["manage_checklist/add|manage_item/add"], "not_held": true, "answer_not": ["(?i)catch"]}}
       ],
-      "why": "2026-11-19 bug-2 cost: a lone word that would write is held for a yes; the yes after a held call runs it (the held call's result asked him). If turn 1 asked without calling a tool, turn 2's yes is itself held once more and the add does not land: this case then FAILS, which is the measured cost (review 2026-11-19: it could not fail before)"
+      "why": "2026-11-19 bug-2 cost: a lone word that would write is held for a yes; the yes after a held call runs it (the held call's result asked him). If turn 1 asked without calling a tool, turn 2's yes is itself held once more and the add does not land: this case then FAILS, which is the measured cost (review 2026-11-19: it could not fail before). Graded on the yes reaching the controller (not_held), not on the add landing: the fixture's Groceries list is not synced, so the add itself fails there"
     },
     {
       "id": "spanish_word_in_english",
