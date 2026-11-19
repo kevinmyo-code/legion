@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // invented JSON results read best on one line
+
 package com.kevin.legion.service.cascade
 
 import org.json.JSONObject

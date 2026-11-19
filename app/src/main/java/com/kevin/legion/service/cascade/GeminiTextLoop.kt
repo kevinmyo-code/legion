@@ -46,6 +46,7 @@ typealias WriteFacts = (name: String, args: JSONObject, response: JSONObject, ok
  *
  * One instance per conversation (the search fallback is per conversation).
  */
+@Suppress("TooManyFunctions") // one turn's loop: rounds, one tool, its write's facts and line, verbatim, results
 class GeminiTextLoop(
     private val transport: GeminiStreamTransport,
     private val cache: ContextCacheStore?,
