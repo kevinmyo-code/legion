@@ -1820,8 +1820,10 @@ def _answer(
     for text, tagged in held_claims:
         if states_unbacked_figure(text, backed_cents(door.calls)):
             # Held before the money tool ran; its figures are checked now, like every sentence's
-            # (blind review finding 3).
+            # (blind review finding 3). It was still a claim of a change, so the closing line about
+            # the change is said in its place (round 2, N1): "went through" or "did not".
             money_dropped += 1
+            unbacked += 1
         elif honest(text):
             yield say(text, tagged)
         else:

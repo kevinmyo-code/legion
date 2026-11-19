@@ -11,6 +11,7 @@ import dataclasses
 import pytest
 
 from agents.runtime.model import FakeModel, call, say
+from assistant import cascade
 from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     _clean,
     _events,
@@ -206,6 +207,24 @@ def test_a_held_claim_with_an_unbacked_figure_is_not_said_at_the_end(member, eng
     said = [s["text"] for s in _of(events, "sentence")]
     assert not any("84.47" in s for s in said)
     assert "Done." in said
+    # A write did run: the true closing line is said (blind review round 2, N1 mirror case).
+    assert said[-1] == cascade.CHANGE_MADE
+
+
+def test_a_dropped_claim_with_no_write_still_says_nothing_was_changed(member, engine, monkeypatch):
+    # Blind review round 2, N1: a held claim dropped for its figure must still lead to the line
+    # about the change, or the person hears nothing about what they asked for.
+    _spend(monkeypatch)
+    claim = [
+        e
+        for e in say("I have set the groceries budget to 84.47.")
+        if type(e).__name__ in ("PartEvent", "TextDelta")
+    ]
+    engine.model = FakeModel([claim + call(M, {}), say("Spending is on screen.")])
+    events = _events(_post(member, text="Set the groceries budget to 84.47 and show the spend."))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert not any("84.47" in s for s in said)
+    assert said[-1] == cascade.CHANGE_NOT_MADE
 
 
 def test_a_recruiters_money_answer_is_checked_too(visitor, engine, monkeypatch):
