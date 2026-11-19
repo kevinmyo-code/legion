@@ -203,13 +203,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/LimbRefusal'
           description: ''
         '403':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/LimbRefusal'
           description: ''
         '404':
           content:
@@ -221,7 +221,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Detail'
+                $ref: '#/components/schemas/LimbRefusal'
           description: A contract version this engine does not serve.
   /api/agents/probe/sse:
     get:
@@ -19399,6 +19399,28 @@ components:
       - contract_version
       - kind
       - tools
+    LimbRefusal:
+      type: object
+      description: 'A refusal on the limb route: words for a person, a code for the
+        client.'
+      properties:
+        detail:
+          type: string
+        code:
+          $ref: '#/components/schemas/LimbRefusalCodeEnum'
+      required:
+      - code
+      - detail
+    LimbRefusalCodeEnum:
+      enum:
+      - manifest_invalid
+      - contract_unsupported
+      - not_a_device
+      type: string
+      description: |-
+        * `manifest_invalid` - manifest_invalid
+        * `contract_unsupported` - contract_unsupported
+        * `not_a_device` - not_a_device
     LimbTool:
       type: object
       properties:

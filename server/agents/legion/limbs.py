@@ -57,6 +57,22 @@ NAME_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 NEEDS = ("screen", "unlock", "parked")
 CONFIRMS = ("engine", "limb")
 BRAIN_REASONS = ("forced", "override", "asked", "default")
+# The `code` beside every refusal's `detail`, so a client can branch without parsing words.
+CODE_INVALID = "manifest_invalid"
+CODE_UNSUPPORTED = "contract_unsupported"
+CODE_NOT_A_DEVICE = "not_a_device"
+
+
+def _has_nul(value) -> bool:
+    """U+0000 anywhere in a key or a string. Postgres jsonb cannot store it, so it is refused here,
+    in words, rather than surfacing as a database error after validation."""
+    if isinstance(value, str):
+        return "\x00" in value
+    if isinstance(value, dict):
+        return any(_has_nul(k) or _has_nul(v) for k, v in value.items())
+    if isinstance(value, list):
+        return any(_has_nul(v) for v in value)
+    return False
 
 
 class LimbToolSerializer(serializers.Serializer):
@@ -92,6 +108,8 @@ class LimbManifestSerializer(serializers.Serializer):
         return tools
 
     def validate(self, attrs):
+        if _has_nul(_manifest(attrs)):
+            raise serializers.ValidationError("A NUL character (U+0000) cannot be stored.")
         size = len(json.dumps(_manifest(attrs)).encode())
         if size > MAX_MANIFEST_BYTES:
             raise serializers.ValidationError(
@@ -107,6 +125,13 @@ class LimbAnswerSerializer(serializers.Serializer):
     contract_version = serializers.IntegerField()
     brain = serializers.ChoiceField(choices=BRAINS)
     brain_reason = serializers.ChoiceField(choices=BRAIN_REASONS)
+
+
+class LimbRefusalSerializer(serializers.Serializer):
+    """A refusal on the limb route: words for a person, a code for the client."""
+
+    detail = serializers.CharField()
+    code = serializers.ChoiceField(choices=[CODE_INVALID, CODE_UNSUPPORTED, CODE_NOT_A_DEVICE])
 
 
 def _manifest(attrs) -> dict:

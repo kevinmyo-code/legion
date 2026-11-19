@@ -180,17 +180,21 @@ class AgentLimbView(_SwitchedAgentsView):
         request=limbs.LimbManifestSerializer,
         responses={
             200: limbs.LimbAnswerSerializer,
-            400: DetailSerializer,
-            403: DetailSerializer,
+            400: limbs.LimbRefusalSerializer,
+            403: limbs.LimbRefusalSerializer,
             404: OpenApiResponse(DetailSerializer, description="The agent turn is switched off."),
             409: OpenApiResponse(
-                DetailSerializer, description="A contract version this engine does not serve."
+                limbs.LimbRefusalSerializer,
+                description="A contract version this engine does not serve.",
             ),
         },
     )
     def post(self, request):
         if not isinstance(request.auth, DeviceToken):
-            return Response({"detail": NOT_A_DEVICE}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": NOT_A_DEVICE, "code": limbs.CODE_NOT_A_DEVICE},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         # The version is read first: another version's manifest may have another shape, and the
         # client needs "update the app", not a list of field errors.
         version = _contract_version(request.data)
@@ -201,6 +205,7 @@ class AgentLimbView(_SwitchedAgentsView):
                         f"Nothing was stored. This engine serves limb contract "
                         f"{limbs.CONTRACT_VERSION}; this app speaks {version}. Update the app."
                     ),
+                    "code": limbs.CODE_UNSUPPORTED,
                     "contract_version": limbs.CONTRACT_VERSION,
                 },
                 status=status.HTTP_409_CONFLICT,
@@ -208,7 +213,10 @@ class AgentLimbView(_SwitchedAgentsView):
         body = limbs.LimbManifestSerializer(data=request.data)
         if not body.is_valid():
             return Response(
-                {"detail": f"Nothing was stored. The manifest did not fit: {body.errors}"},
+                {
+                    "detail": f"Nothing was stored. The manifest did not fit: {body.errors}",
+                    "code": limbs.CODE_INVALID,
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(limbs.attach(request, body.validated_data))

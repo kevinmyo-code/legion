@@ -151,7 +151,7 @@ def test_another_contract_version_is_refused_in_words_and_nothing_is_stored(
     response = auth_client.post(
         "/api/agents/limb", _manifest(contract_version=CONTRACT_VERSION + 1), format="json"
     )
-    assert response.status_code == 409
+    assert response.status_code == 409 and response.data["code"] == "contract_unsupported"
     assert f"contract {CONTRACT_VERSION}" in response.data["detail"]
     assert response.data["contract_version"] == CONTRACT_VERSION
     assert not Limb.objects.exists()
@@ -180,6 +180,35 @@ def test_a_malformed_manifest_is_refused_and_nothing_is_stored(auth_client, swit
     response = auth_client.post("/api/agents/limb", _manifest(**_BAD[case]), format="json")
     assert response.status_code == 400, response.data
     assert response.data["detail"].startswith("Nothing was stored.")
+    assert response.data["code"] == "manifest_invalid"
+    assert not Limb.objects.exists()
+
+
+_NUL = "\u0000"
+
+
+@pytest.mark.parametrize(
+    "where",
+    ["parameters_key", "parameters_value", "parameters_deep", "app_version", "description"],
+)
+def test_a_nul_character_anywhere_is_a_400_in_words(auth_client, switched_on, where):
+    """Postgres jsonb refuses U+0000: without a check it surfaced as a 500 after validation."""
+    tool = dict(_TIMER)
+    over = {}
+    if where == "parameters_key":
+        tool["parameters"] = {"type": "object", "properties": {f"a{_NUL}b": {"type": "string"}}}
+    elif where == "parameters_value":
+        tool["parameters"] = {"type": "object", "description": f"x{_NUL}"}
+    elif where == "parameters_deep":
+        tool["parameters"] = {"type": "object", "properties": {"a": {"enum": ["ok", f"n{_NUL}"]}}}
+    elif where == "app_version":
+        over["app_version"] = f"1{_NUL}"
+    else:
+        tool["description"] = f"d{_NUL}"
+    response = auth_client.post("/api/agents/limb", _manifest(tools=[tool], **over), format="json")
+    assert response.status_code == 400, response.data
+    assert response.data["code"] == "manifest_invalid"
+    assert response.data["detail"].startswith("Nothing was stored.")
     assert not Limb.objects.exists()
 
 
@@ -188,6 +217,7 @@ def test_a_browser_session_is_not_a_limb(household_user, switched_on):
     browser.force_login(household_user)
     response = browser.post("/api/agents/limb", _manifest(), format="json")
     assert response.status_code == 403 and "device token" in response.data["detail"]
+    assert response.data["code"] == "not_a_device"
     assert not Limb.objects.exists()
 
 
