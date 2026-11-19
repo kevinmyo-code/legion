@@ -509,9 +509,13 @@ describe('the suggestion chips on the stage', () => {
   })
 
   test('the pills: page colours only, a 44 px tap target, one line, an edge fade, an entrance', () => {
-    const chip = /\.recruiter \.rc-chip \{([^}]*)\}/.exec(indexCss)?.[1] ?? ''
+    const chip = [...indexCss.matchAll(/\.recruiter \.rc-chip \{([^}]*)\}/g)].map((m) => m[1]).find((b) => b.includes('min-height')) ?? ''
     expect(chip).toMatch(/min-height: 44px/)
-    expect(chip).toMatch(/border-radius: 9999px/)
+    // A pill despite the page's square-corners rule (unlayered, so the exception is unlayered and after it).
+    const square = indexCss.search(/\.recruiter \*::after \{\s*border-radius: 0;/)
+    const pill = indexCss.search(/\.recruiter \.rc-chip \{\s*border-radius: 9999px;/)
+    expect(square).toBeGreaterThan(-1)
+    expect(pill).toBeGreaterThan(square)
     expect(chip).toMatch(/white-space: nowrap/)
     expect(chip).toMatch(/animation: rc-chip-in/)
     // Colours are the page's own tokens, never a new literal.
