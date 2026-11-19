@@ -427,7 +427,9 @@ R.checks = {
   noDockStorm: ['tour', 'tourClose', 'ask', 'askClose', 'travel'].every((k) => ph[k].dockStorm <= 1),
   // While a diagram is open its host is never mounted again, and each diagram shown is drawn once.
   noDiagramRemount: ph.ask.diagramHost.add === 1 && ph.ask.diagramHost.remove === 0 && ph.ask.diagramSvg.add === 1 && ph.ask.diagramSvg.remove === 0,
-  tourDrawsEachDiagramOnce: ph.tour.diagramSvg.add === 2 && ph.tour.diagramHost.add === 1,
+  // Two diagrams in the tour, each drawn once into its own host (a card between them replaces the
+  // first in the open modal, so the second gets a new host).
+  tourDrawsEachDiagramOnce: ph.tour.diagramSvg.add === 2 && ph.tour.diagramHost.add === ph.tour.diagramSvg.add,
   // The voice stage is one element for the visit, the tap that enters it included.
   stageNeverRemounted: ph.tour.stage.add === 0 && ph.tour.stage.remove === 0,
   tourFinished: ph.tour.finished === true,
