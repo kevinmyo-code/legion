@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { BASE_MS, EARLY_MS } from './eot-policy'
+import { EARLY_MS, WEB_FINISHED_MS } from './eot-policy'
 import { MAX_TURN_SAMPLES, loadTurnDetector, type TurnDetector, type TurnHandlers } from './detector'
 import { chunks, concat, echo, over, silence, speech } from './fixtures'
 import type { FromWorker, ToWorker } from './turn.worker'
@@ -185,7 +185,7 @@ describe('the turn (speech, then silence)', () => {
     expect(seen.ends[0].samples).toBe(expected.ends[0].samples)
   })
 
-  it('starts on speech, transcribes early at 300 ms, and ends at the base silence', async () => {
+  it('starts on speech, transcribes early at 300 ms, and ends early on a "finished" verdict', async () => {
     const { detector } = await load()
     const seen = watch(detector!)
     await play(detector!, concat(silence(300), speech(1200), silence(1000)), true, false)
@@ -193,10 +193,11 @@ describe('the turn (speech, then silence)', () => {
     expect(seen.early).toHaveLength(1)
     expect(seen.ends).toHaveLength(1)
     const end = seen.ends[0]
-    expect(end.reason).toBe('base')
-    // The end of turn: BASE_MS of silence (to one window), against the old 1.2 s energy window.
-    expect(end.silenceMs).toBeGreaterThanOrEqual(BASE_MS)
-    expect(end.silenceMs).toBeLessThan(BASE_MS + 64)
+    // The fake Smart Turn says "finished" (0.9): the web's early end (to one window), against the
+    // old 1.2 s energy window.
+    expect(end.reason).toBe('finished')
+    expect(end.silenceMs).toBeGreaterThanOrEqual(WEB_FINISHED_MS)
+    expect(end.silenceMs).toBeLessThan(WEB_FINISHED_MS + 64)
     expect(end.silenceMs).toBeLessThan(SILENCE_MS)
     // The turn's audio carries its start (the pre-roll) and the whole utterance.
     expect(end.samples).toBeGreaterThan(1.2 * 16_000)

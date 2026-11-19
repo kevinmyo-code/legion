@@ -37,6 +37,7 @@ from agents.runtime.model import (
     TextDelta,
     ToolCallEvent,
     Usage,
+    Waiting,
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolGateway
@@ -172,6 +173,8 @@ def run_loop(
                     calls.append(ToolCall(item.id, item.name, dict(item.args)))
                 elif isinstance(item, Usage):
                     usage = item
+                elif isinstance(item, Waiting):
+                    yield ev.waiting()
                 else:
                     finish = item.reason
         except ModelFailure as exc:

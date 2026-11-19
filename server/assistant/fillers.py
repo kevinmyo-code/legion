@@ -4,10 +4,13 @@ doing (Kevin, 2026-11-17: fillers should say what Alfred is doing, "checking wit
 Rules (applied in `assistant.cascade`):
 - **Only from a tool call that has started.** Never before the model picks a tool, never naming a
   result: every line says what is being looked at, none says what was found or done.
-- **When.** A tool marked slow here gets its line the moment it starts, and only once the door
-  would accept the call (a refused tool is never announced). A fast tool gets no line: once a tool
-  has returned its result is in hand, and a line would only delay what comes next (round 2 speech
-  review 7). Never once any answer has been said.
+- **When.** A network lookup (marked True here: the web, recalls, weather feeds, GitHub: outside
+  services, never quick) gets its line the moment it starts, once the door would accept the call
+  (a refused tool is never announced); web_search measured 1.4 to 2.3 s. Any other lookup gets
+  its line only if the answer is still not in hand `cascade.FILLER_WAIT_S` (0.7 s, the phone's
+  `ToolFillers.FAST_DELAY_MS`) after it started (Kevin, 2026-11-19, perf/try-faster-first-word): a quick answer, or one code speaks at
+  once (his profile), gets none, so a line never holds an answer up behind it. Never once an answer
+  sentence is ready, and never after the first question's acknowledgement (one line per turn).
 - **Never twice running, never two in a turn.** Two or three light variants each.
 - **From memory.** Each line's speech is made once per voice and kept in the process
   (`cascade.FillerAudio`), so it starts at once; a line not yet in memory is skipped and fetched.
@@ -30,7 +33,7 @@ _RECORDS = ("Checking the records.", "Looking through the records.")
 _BODY = ("Checking the training log.", "Looking at the body records.")
 _MEMORY = ("Checking what I remember.", "Looking through my notes.")
 
-# tool -> (slow, lines)
+# tool -> (said at its start: a network lookup, never quick; lines)
 FILLERS: dict[str, tuple[bool, tuple[str, ...]]] = {
     # money
     "monthly_spend": (False, _ACCOUNTS),
@@ -55,15 +58,15 @@ FILLERS: dict[str, tuple[bool, tuple[str, ...]]] = {
     "vehicle_recalls": (True, ("Checking the recall list.", "Looking up recalls for the car.")),
     # outside
     "web_search": (True, ("Looking that up online.", "Searching the web.", "Checking online.")),
-    "brief_latest": (True, ("Pulling up the brief.", "Checking the brief.")),
+    "brief_latest": (False, ("Pulling up the brief.", "Checking the brief.")),
     "check_conditions": (True, ("Checking the conditions.", "Looking at the weather feeds.")),
     "github_status": (True, ("Checking GitHub.", "Looking at the builds.")),
     # LEGION itself and the demo
-    "legion_docs": (True, ("Looking through the design docs.", "Checking the docs.")),
-    "show_diagram": (True, ("Bringing up the diagram.", "Pulling up the diagram.")),
-    "about_kevin": (True, ("Pulling up Kevin's profile.", "Checking Kevin's profile.")),
-    "show_resume": (True, ("Bringing up the resume.", "Pulling up the resume.")),
-    "run_procedure": (True, ("Working through the steps.", "Running that now.")),
+    "legion_docs": (False, ("Looking through the design docs.", "Checking the docs.")),
+    "show_diagram": (False, ("Bringing up the diagram.", "Pulling up the diagram.")),
+    "about_kevin": (False, ("Pulling up Kevin's profile.", "Checking Kevin's profile.")),
+    "show_resume": (False, ("Bringing up the resume.", "Pulling up the resume.")),
+    "run_procedure": (False, ("Working through the steps.", "Running that now.")),
     # school and body
     "canvas_grades": (False, ("Checking the grades.", "Looking at the grades.")),
     "what_i_need": (False, ("Checking the grades.", "Working out the numbers.")),
