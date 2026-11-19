@@ -90,7 +90,7 @@ object LoneWordWriteGuard {
     private val LEAD_INS = setOf("hey", "ok", "okay")
 
     /** Scripts written without spaces between words: "one word" cannot be counted there. */
-    private val UNSPACED = setOf(
+    internal val UNSPACED = setOf(
         Character.UnicodeScript.HAN, Character.UnicodeScript.HIRAGANA, Character.UnicodeScript.KATAKANA,
         Character.UnicodeScript.THAI, Character.UnicodeScript.LAO, Character.UnicodeScript.MYANMAR,
         Character.UnicodeScript.KHMER, Character.UnicodeScript.TIBETAN,

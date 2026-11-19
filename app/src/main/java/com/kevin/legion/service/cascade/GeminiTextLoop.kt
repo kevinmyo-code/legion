@@ -150,6 +150,8 @@ class GeminiTextLoop(
         val trailingFillerDropped: Int = 0,
         /** Code lines said this turn for writes that went through ([Listener.onCodeLine]). */
         val codeLines: Int = 0,
+        /** Model sentences not spoken because they named what a code line had just said ([SaidFilter]). */
+        val saidDropped: Int = 0,
     )
 
     @Volatile private var searchRejected = false
@@ -172,6 +174,10 @@ class GeminiTextLoop(
         /** The calls whose write code already said ([Listener.onCodeLine]), and how many lines. */
         val writesSaid = mutableListOf<String>()
         var codeLines = 0
+
+        /** What code's lines named this turn ([ScriptedLines.namesIn]), and model sentences dropped for it. */
+        val saidNames = mutableListOf<String>()
+        var saidDropped = 0
     }
 
     /** One call's result, and its write's facts when it was a write. */
@@ -249,7 +255,13 @@ class GeminiTextLoop(
             }
             // A filler-only sentence after real content is never spoken ([TrailingFiller]).
             val trail = TrailingFiller { hasContent(state) }
-            fun pass(t: String) = emit(trail.feed(money?.feed(t) ?: t), state, listener)
+            // After code said a write, a model sentence that names it is not spoken (ruling A, [SaidFilter]).
+            val said = if (state.saidNames.isEmpty()) null else SaidFilter(state.saidNames.toList())
+            fun filtered(t: String): String {
+                val m = money?.feed(t) ?: t
+                return said?.feed(m) ?: m
+            }
+            fun pass(t: String) = emit(trail.feed(filtered(t)), state, listener)
             val outcome = try {
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
@@ -288,8 +300,13 @@ class GeminiTextLoop(
             state.usage = state.usage.plus(turn.usage, cacheName != null)
             held?.end()?.let { pass(it) }
             money?.let {
-                emit(trail.feed(it.flush()), state, listener)
+                val m = it.flush()
+                emit(trail.feed(said?.feed(m) ?: m), state, listener)
                 if (it is DiagFilter) state.diagDropped += it.dropped else state.moneyDropped += it.dropped
+            }
+            said?.let {
+                emit(trail.feed(it.flush()), state, listener)
+                state.saidDropped += it.dropped
             }
             emit(trail.flush(), state, listener)
             state.trailingFillerDropped += trail.dropped
@@ -417,6 +434,7 @@ class GeminiTextLoop(
         if (state.text.isNotEmpty() && !state.text.last().isWhitespace()) state.text.append(' ')
         state.text.append(line).append(' ')
         state.writesSaid += said.map { it.result.name }
+        state.saidNames += ScriptedLines.namesIn(said.mapNotNull { it.fact }, line)
         state.codeLines++
         listener.onCodeLine(line, said.mapNotNull { it.fact })
     }
@@ -470,6 +488,7 @@ class GeminiTextLoop(
         diagDropped = state.diagDropped,
         trailingFillerDropped = state.trailingFillerDropped,
         codeLines = state.codeLines,
+        saidDropped = state.saidDropped,
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
@@ -487,6 +506,7 @@ class GeminiTextLoop(
         diagDropped = state.diagDropped,
         trailingFillerDropped = state.trailingFillerDropped,
         codeLines = state.codeLines,
+        saidDropped = state.saidDropped,
     )
 
     /**

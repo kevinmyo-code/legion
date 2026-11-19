@@ -1192,6 +1192,8 @@ internal class CascadeSession(
                 LiveLatency.log(LiveLatency.TAG, "reply_money_dropped n=${result.moneyDropped}")
             }
             if (result.diagDropped > 0) LiveLatency.log(LiveLatency.TAG, "reply_diag_dropped n=${result.diagDropped}")
+            // Model sentences that named what code had just confirmed (ruling A): counts only.
+            if (result.saidDropped > 0) LiveLatency.log(LiveLatency.TAG, "reply_said_dropped n=${result.saidDropped}")
             if (result.trailingFillerDropped > 0) {
                 LiveLatency.log(LiveLatency.TAG, "reply_filler_trailing_dropped n=${result.trailingFillerDropped}")
             }

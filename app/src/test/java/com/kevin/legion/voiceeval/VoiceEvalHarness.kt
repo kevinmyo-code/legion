@@ -245,6 +245,7 @@ internal class VoiceEvalHarness(
                 },
             )
             out(LiveLatency.TAG, CascadeLines.usage(prefix.model, result.usage))
+            if (result.saidDropped > 0) out(LiveLatency.TAG, "reply_said_dropped n=${result.saidDropped}")
             // As the session says it: a failure after a write code said is said after that line.
             val said = when {
                 result.failure == null -> result.text

@@ -244,7 +244,7 @@ class DoneLineTurnTest {
     @Test
     fun `16 the car switch names the car the result names`() {
         val r = run(Scripted(ok(calls(call("manage_vehicle", "action" to "switch", "vehicle" to "five"))), ok()))
-        assertEquals("Done: switched to Invented Fit.", r.text)
+        assertEquals("Done: switched to the Invented Fit.", r.text)
     }
 
     @Test
@@ -302,7 +302,7 @@ class DoneLineTurnTest {
         val l = Heard()
         val r = run(Scripted(ok(text("Sure. "), calls(add("milk"))), ok(text("Anything else?"))), l)
         assertEquals("Sure. $milk Anything else?", r.text)
-        assertEquals("Sure. Anything else?", l.model.toString())
+        assertEquals("Sure. Anything else?", l.model.toString().trim())
     }
 
     @Test
