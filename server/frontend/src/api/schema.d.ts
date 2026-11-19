@@ -73,6 +73,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/limb": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach this device as a limb: upload its manifest, learn which brain answers */
+        post: operations["api_agents_limb_attach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/probe/sse": {
         parameters: {
             query?: never;
@@ -5972,6 +5989,33 @@ export interface components {
             rows: components["schemas"]["AdvisorAdvice"][];
         };
         /**
+         * @description * `phone` - phone
+         *     * `engine` - engine
+         * @enum {string}
+         */
+        AgentBrainEnum: "phone" | "engine";
+        /**
+         * @description * `forced` - forced
+         *     * `override` - override
+         *     * `asked` - asked
+         *     * `default` - default
+         * @enum {string}
+         */
+        AgentBrainReasonEnum: "forced" | "override" | "asked" | "default";
+        /**
+         * @description * `engine` - engine
+         *     * `limb` - limb
+         * @enum {string}
+         */
+        AgentLimbConfirmEnum: "engine" | "limb";
+        /**
+         * @description * `screen` - screen
+         *     * `unlock` - unlock
+         *     * `parked` - parked
+         * @enum {string}
+         */
+        AgentLimbNeedEnum: "screen" | "unlock" | "parked";
+        /**
          * @description * `matches` - matches
          *     * `differs` - differs
          *     * `canvas_shows_no_total` - canvas_shows_no_total
@@ -8453,6 +8497,50 @@ export interface components {
              * @description The page the copy came from.
              */
             source_url: string;
+        };
+        /** @description What the upload answers (documented in `openapi.yaml`). */
+        LimbAnswer: {
+            /** Format: uuid */
+            limb_id: string;
+            contract_version: number;
+            brain: components["schemas"]["AgentBrainEnum"];
+            brain_reason: components["schemas"]["AgentBrainReasonEnum"];
+        };
+        LimbManifest: {
+            contract_version: number;
+            kind: components["schemas"]["AppEnum"];
+            app_version: string;
+            brain_asked?: (components["schemas"]["AgentBrainEnum"] | components["schemas"]["NullEnum"]) | null;
+            tools: components["schemas"]["LimbTool"][];
+            streams?: string[];
+        };
+        /** @description A refusal on the limb route: words for a person, a code for the client. */
+        LimbRefusal: {
+            detail: string;
+            code: components["schemas"]["LimbRefusalCodeEnum"];
+        };
+        /**
+         * @description * `manifest_invalid` - manifest_invalid
+         *     * `contract_unsupported` - contract_unsupported
+         *     * `not_a_device` - not_a_device
+         *     * `manifest_too_large` - manifest_too_large
+         *     * `length_required` - length_required
+         * @enum {string}
+         */
+        LimbRefusalCodeEnum: "manifest_invalid" | "contract_unsupported" | "not_a_device" | "manifest_too_large" | "length_required";
+        LimbTool: {
+            name: string;
+            /** @default  */
+            description: string;
+            parameters?: {
+                [key: string]: unknown;
+            };
+            writes: boolean;
+            read_through: boolean;
+            actuates: boolean;
+            needs?: components["schemas"]["AgentLimbNeedEnum"][];
+            /** @default engine */
+            confirm: components["schemas"]["AgentLimbConfirmEnum"];
         };
         LinkToken: {
             /** @description Short-lived; hand it to Plaid Link. */
@@ -12163,6 +12251,83 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    api_agents_limb_attach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LimbManifest"];
+                "application/x-www-form-urlencoded": components["schemas"]["LimbManifest"];
+                "multipart/form-data": components["schemas"]["LimbManifest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimbAnswer"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimbRefusal"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimbRefusal"];
+                };
+            };
+            /** @description The agent turn is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description A contract version this engine does not serve. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimbRefusal"];
+                };
+            };
+            /** @description No Content-Length. */
+            411: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimbRefusal"];
+                };
+            };
+            /** @description A body over the manifest cap. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimbRefusal"];
+                };
             };
         };
     };
