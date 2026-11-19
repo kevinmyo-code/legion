@@ -53,6 +53,14 @@ class AdapterCarVoiceTest {
         setLink(null, null)
     }
 
+    /** A tool call as a voice turn makes it: the turn's date facts ride in its context, as on the phone. */
+    private suspend fun heard(name: String, args: JSONObject = JSONObject(), userText: String? = null): JSONObject =
+        kotlinx.coroutines.withContext(
+            com.kevin.legion.service.tools.day.RelativeDay.TurnDates(
+                java.time.LocalDate.now(), java.time.LocalTime.now(), onlyDateCall = true,
+            ),
+        ) { LiveToolbox.dispatch(context, name, args, userText = userText)!! }
+
     private suspend fun seed() {
         for ((id, name) in listOf("car:zephyr" to "Zephyr", "car:comet" to "Comet")) {
             FleetEngineStore.createVehicle(
@@ -85,14 +93,40 @@ class AdapterCarVoiceTest {
     @Test
     fun `an unknown car - a live-car result asks once a connection, then says he was asked`() = runBlocking {
         seed()
+        // Nothing speaks here: the connect-time ask is only posted, so it does not use up the one ask (A8).
         assertTrue(DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData } is DongleCar.Held)
-        AdapterBinding.resetForTest() // the connect-time spoken ask did not happen (no proactive voice here)
         setLink(mac, withLink = false)
 
-        val first = LiveToolbox.dispatch(context, "get_codes", JSONObject())!!
+        val first = heard("get_codes")
         assertEquals(AdapterBinding.ASK_ONCE, first.getString("adapter_car"))
-        val second = LiveToolbox.dispatch(context, "get_codes", JSONObject())!!
+        assertTrue(first.getBoolean(AdapterBinding.NEEDS_ANSWER))
+        val second = heard("get_codes")
         assertEquals(AdapterBinding.ASKED, second.getString("adapter_car"))
+        assertFalse(second.has(AdapterBinding.NEEDS_ANSWER))
+    }
+
+    @Test
+    fun `a background read never uses up the ask, and gets no note`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
+        setLink(mac, withLink = false)
+
+        val background = LiveToolbox.dispatch(context, "get_codes", JSONObject())!!
+        assertFalse(background.has("adapter_car"))
+        assertEquals(AdapterBinding.ASK_ONCE, heard("get_codes").getString("adapter_car"))
+    }
+
+    @Test
+    fun `the fleet specialist's answer carries the ask, once`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
+        setLink(mac, withLink = false)
+
+        // No key in the test JVM: the specialist answers at once that it could not run.
+        val r = heard("ask_fleet", JSONObject().put("question", "how is the car doing right now?"))
+        assertEquals(r.toString(), AdapterBinding.ASK_ONCE, r.getString("adapter_car"))
+        assertTrue(r.getBoolean(AdapterBinding.NEEDS_ANSWER))
+        assertEquals(AdapterBinding.ASKED, heard("get_codes").getString("adapter_car"))
     }
 
     @Test
@@ -101,8 +135,9 @@ class AdapterCarVoiceTest {
         DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
         setLink(mac, withLink = true)
 
-        val r = LiveToolbox.dispatch(context, "get_health", JSONObject().put("vehicle", "Comet"))!!
+        val r = heard("get_health", JSONObject().put("vehicle", "Comet"))
         assertFalse(r.getBoolean("success"))
+        assertFalse(r.has(AdapterBinding.NEEDS_ANSWER))
         assertEquals(AdapterBinding.UNKNOWN_CAR_ERROR, r.getString("error"))
         assertTrue(r.getString("message").contains("car adapter_in vehicle=Comet"))
         assertFalse(r.has("adapter_car"))
@@ -117,10 +152,11 @@ class AdapterCarVoiceTest {
         assertEquals(DongleCar.Basis.ASSUMED, d.basis)
         setLink(mac, withLink = false)
 
-        val first = LiveToolbox.dispatch(context, "get_codes", JSONObject())!!
+        val first = heard("get_codes")
         val note = first.getString("adapter_car")
+        assertFalse(first.has(AdapterBinding.NEEDS_ANSWER))
         assertTrue(note, note.contains("Looks like the") && note.contains("Zephyr") && note.contains("not by a VIN"))
-        assertFalse(LiveToolbox.dispatch(context, "get_codes", JSONObject())!!.has("adapter_car"))
+        assertFalse(heard("get_codes").has("adapter_car"))
         assertEquals("car:zephyr", ActiveVehicle.recordingId(context))
     }
 
@@ -136,6 +172,7 @@ class AdapterCarVoiceTest {
                 context, "clear_codes", JSONObject().put("confirmed", false), userText = "clear the codes",
             )!!
             assertFalse(voice.getBoolean("success"))
+            assertFalse(voice.has(AdapterBinding.NEEDS_ANSWER))
             assertTrue(voice.getString("message"), voice.getString("message").startsWith("Nothing was cleared"))
             val zephyr = FleetEngineStore.getByMac(context, "car:zephyr")!!
             val screen = DtcClearController.dispatchAndRecord(context, zephyr, confirmed = true)
@@ -259,8 +296,9 @@ class AdapterCarVoiceTest {
         DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
         setLink(mac, withLink = true)
 
-        val r = LiveToolbox.dispatch(context, "set_odometer", JSONObject().put("miles", 12345))!!
+        val r = heard("set_odometer", JSONObject().put("miles", 12345))
         assertFalse(r.getBoolean("success"))
+        assertFalse(r.has(AdapterBinding.NEEDS_ANSWER))
         assertTrue(r.getString("message"), r.getString("message").startsWith("Nothing was saved"))
         // Named, it is not this refusal.
         val namedArgs = JSONObject().put("miles", 12345).put("vehicle", "Comet")
@@ -282,11 +320,26 @@ class AdapterCarVoiceTest {
     }
 
     @Test
+    fun `a yes from another connection is refused, and the refusal asks nothing`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+        DongleCarController.answer(context, "car:zephyr")
+        setLink(mac, withLink = true)
+        DtcClearController.voiceGate.asked("clear the codes", "c0|an earlier connection")
+
+        val r = heard("clear_codes", JSONObject().put("confirmed", true), userText = "yes")
+        assertFalse(r.getBoolean("success"))
+        assertEquals(com.kevin.legion.vehicle.ClearCodesVoiceGate.OTHER_CAR, r.getString("message"))
+        assertFalse(r.has(AdapterBinding.NEEDS_ANSWER))
+        DtcClearController.voiceGate.reset()
+    }
+
+    @Test
     fun `a car he named on this connection gets no note`() = runBlocking {
         seed()
         DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
         DongleCarController.answer(context, "car:comet")
         setLink(mac, withLink = false)
-        assertFalse(LiveToolbox.dispatch(context, "get_codes", JSONObject())!!.has("adapter_car"))
+        assertFalse(heard("get_codes").has("adapter_car"))
     }
 }

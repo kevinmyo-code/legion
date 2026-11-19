@@ -81,7 +81,11 @@ object AdapterBinding {
         if (response.optString("error") == UNKNOWN_CAR_ERROR) return response
         val car = DongleCarController.state.value
         val labels = if (car is DongleCar.OnCar) DongleCarController.labels(context) else emptyMap()
-        noteFor(car, labels, DongleCarController.connectionKey())?.let { response.put("adapter_car", it) }
+        val note = noteFor(car, labels, DongleCarController.connectionKey()) ?: return response
+        response.put("adapter_car", note)
+        // The which-car question asks him something: his one-word answer ("Ranger.") is an answer,
+        // not a lone word to hold (fix/phone-write-always-said's `needs_answer`). Only the ask.
+        if (note == ASK_ONCE) response.put(NEEDS_ANSWER, true)
         return response
     }
 
@@ -159,6 +163,9 @@ object AdapterBinding {
                 "Until then readings still show, but nothing is saved to \"this car\" and no codes are cleared."
         else -> null
     }
+
+    /** The result field that says the tool asked him a question and waits for his answer. */
+    const val NEEDS_ANSWER = "needs_answer"
 
     /** The error code of [unknownCarRefusal]'s result. */
     const val UNKNOWN_CAR_ERROR = "adapter_car_unknown"
