@@ -33,6 +33,8 @@ class LiveToolboxMutationGateTest {
         )
         assertTrue(out.getBoolean("success"))
         assertEquals("3 sets of squats at 135lbs, logged.", out.getString("message"))
+        // 2026-11-19: the phone says a router's write aloud only on this field.
+        assertTrue(out.getBoolean("changed"))
     }
 
     @Test
@@ -57,6 +59,7 @@ class LiveToolboxMutationGateTest {
         )
         assertTrue(out.getBoolean("success"))
         assertEquals("You did 12 sets across 3 exercises last week.", out.getString("message"))
+        assertFalse("a read is never confirmed aloud as a change", out.has("changed"))
     }
 
     @Test

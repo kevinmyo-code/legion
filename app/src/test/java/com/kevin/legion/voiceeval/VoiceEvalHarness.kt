@@ -24,6 +24,7 @@ import com.kevin.legion.service.cascade.GeminiStreamTransport
 import com.kevin.legion.service.cascade.GeminiTextLoop
 import com.kevin.legion.service.cascade.GeminiStt
 import com.kevin.legion.service.cascade.GeminiTts
+import com.kevin.legion.service.cascade.LoneWordWriteGuard
 import com.kevin.legion.service.cascade.ScriptedLines
 import com.kevin.legion.service.cascade.SttGuard
 import com.kevin.legion.service.cascade.SttResult
@@ -120,8 +121,15 @@ internal class VoiceEvalHarness(
     private var turnStartedAt: java.time.LocalTime = java.time.LocalTime.now()
     private val dateCalls = AtomicInteger(0)
 
+    /** As the session ([LoneWordWriteGuard]): the last answered turn's tools asked him something. */
+    @Volatile private var askedBefore = false
+    @Volatile private var asked = false
+
     suspend fun runCase(case: EvalCase) {
         out(TEST_TAG, "case_begin id=${LiveAudit.token(case.id)}")
+        // Each case is its own conversation: no ask carries over from the case before.
+        askedBefore = false
+        asked = false
         if (case.dongle == "unknown") plugUnknownDongle()
         try {
             runTurns(case)
@@ -174,9 +182,12 @@ internal class VoiceEvalHarness(
         val loop = GeminiTextLoop(
             transport = transport,
             cache = cache,
-            isMutating = LiveToolbox::isMutatingCall,
+            // As the session judges writes: on the tool a call stands for, so an action tool's write counts.
+            isMutating = CascadeRules::isWrite,
             isReadThrough = CascadeRules::isReadThrough,
             toolTimeoutMs = { CascadeSession.TOOL_BACKSTOP_MS },
+            // As the session: a write that went through is said by code from its result.
+            writeFact = ScriptedLines::factOf,
             meter = { model, usage -> out(LiveLatency.TAG, CallUsage.of(CallUsage.LLM, model, usage).line()) },
             discarded = { model, usage, chars ->
                 out(LiveLatency.TAG, CallUsage.of(CallUsage.LLM, model, usage, chars = chars, discarded = true).line())
@@ -240,6 +251,8 @@ internal class VoiceEvalHarness(
                 SpokenLanguages.Decision.Stay -> Unit
             }
             audit.user(heard, final = true)
+            askedBefore = asked
+            asked = false
             val t0 = now()
             turnStartedAt = java.time.LocalTime.now()
             dateCalls.set(0)
@@ -258,6 +271,12 @@ internal class VoiceEvalHarness(
 
                     override fun onReadThrough(source: String) = audit.readThrough(source)
 
+                    // Code's line for a write: heard in its place, between the model's words.
+                    override fun onCodeLine(text: String, facts: List<ScriptedLines.WriteFact>) {
+                        if (raw.isNotEmpty() && !raw.last().isWhitespace()) raw.append(' ')
+                        raw.append(text).append(' ')
+                    }
+
                     // The holding line the phone would say as these tools start ([ToolFillers]).
                     override fun onToolsStarting(calls: List<Pair<String, JSONObject>>) {
                         dateCalls.addAndGet(
@@ -274,10 +293,14 @@ internal class VoiceEvalHarness(
                 },
             )
             out(LiveLatency.TAG, CascadeLines.usage(prefix.model, result.usage))
-            val said = if (result.failure != null && result.text.isBlank()) {
-                result.failureWords ?: result.failure.lead
-            } else {
-                result.text
+            if (result.saidDropped > 0) out(LiveLatency.TAG, "reply_said_dropped n=${result.saidDropped}")
+            if (result.closingDropped) out(LiveLatency.TAG, "reply_closing_dropped n=1")
+            // As the session says it: a failure after a write code said is said after that line.
+            val said = when {
+                result.failure == null -> result.text
+                result.text.isBlank() -> result.failureWords ?: result.failure.lead
+                result.codeLines > 0 -> "${result.text} ${result.failureWords ?: result.failure.lead}"
+                else -> result.text
             }
             audit.assistant(said, readThrough = result.readThrough)
             // What would be heard, even when the record redacts it (made-up data only): the scorer
@@ -332,7 +355,10 @@ internal class VoiceEvalHarness(
         val id = "e${toolSeq.incrementAndGet()}"
         audit.toolCall(id, name, false, args.toString())
         val t = now()
-        val response = runTool(name, args, readThrough, heard)
+        // The session's lone-word rule, before the controller, as in its executor.
+        val response = LoneWordWriteGuard.refusal(name, args, heard, "Alfred", askedBefore)
+            ?: runTool(name, args, readThrough, heard)
+        if (LoneWordWriteGuard.asks(name, args, response)) asked = true
         // The day a calendar read covered, whole (the audit line cuts a result at 400 characters): the
         // date cases grade what was READ, not the model's arguments.
         if (name == "day" && response.has("window")) {

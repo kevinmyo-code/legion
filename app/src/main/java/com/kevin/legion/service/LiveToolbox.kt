@@ -2147,7 +2147,11 @@ object LiveToolbox {
         return result(
             committed.isNotEmpty(),
             TaskDoneMatcher.resultText(target, committed, failed, queued, r.alreadyThere, dateOf),
-        )
+        ).apply {
+            // What the phone's done line names (2026-11-19): the task, and which way it went.
+            put("done", target)
+            committed.singleOrNull()?.let { put("title", it.title) }
+        }
     }
 
     /**
@@ -3359,7 +3363,10 @@ object LiveToolbox {
                 true,
                 "Updated the ${aspectLabel(aspect)} goal: $statement. Previous: \"${outcome.previous.statement}\".",
             )
-            is GoalController.SetOutcome.Unchanged -> result(true, "That's already the current ${aspectLabel(aspect)} goal - nothing changed.")
+            // `changed: false`: nothing to confirm aloud (the phone's done line reads this field, 2026-11-19).
+            is GoalController.SetOutcome.Unchanged ->
+                result(true, "That's already the current ${aspectLabel(aspect)} goal - nothing changed.")
+                    .put("changed", false)
         }
     }
 
@@ -4270,7 +4277,7 @@ object LiveToolbox {
             return result(
                 true,
                 ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Reminder, added.text, whenPhrase),
-            )
+            ).put("item", added.text) // what the phone's done line names (2026-11-19)
         }
 
         if (itemArg.isBlank()) return result(false, "Which item?")
@@ -4884,7 +4891,9 @@ object LiveToolbox {
                     measureTarget = target,
                     measureDirection = direction,
                 )
+                // `item` and `list`: what the phone's done line names (2026-11-19), never the message.
                 return result(true, "Added \"${added.text}\" to \"${checklist.name}\".")
+                    .put("item", added.text).put("list", checklist.name)
             }
 
             "read" -> {
@@ -4978,6 +4987,7 @@ object LiveToolbox {
                                 is ChecklistController.TickOutcome.Refused -> result(false, outcome.message)
                                 ChecklistController.TickOutcome.Ticked ->
                                     result(true, "Ticked \"${match.item.text}\" on \"${checklist.name}\".")
+                                        .put("item", match.item.text).put("list", checklist.name)
                             }
                         }
                         "untick" -> {
@@ -7456,7 +7466,7 @@ object LiveToolbox {
             true,
             "Added \"${added.text}\" to his to-do list (the ${todo.name} checklist): no date or repeat, so " +
                 "it is a to-do, not a reminder.",
-        )
+        ).put("item", added.text).put("list", todo.name)
     }
 
     /** A tick for a Todo line by [phrase]; null when no single line there matches it. */
@@ -7473,6 +7483,7 @@ object LiveToolbox {
             is ChecklistController.TickOutcome.Refused -> result(false, o.message)
             ChecklistController.TickOutcome.Ticked ->
                 result(true, "Ticked \"${line.text}\" on the ${todo.name} checklist ($TODO_LINE).")
+                    .put("item", line.text).put("list", todo.name)
         }
     }
 
@@ -7550,7 +7561,9 @@ object LiveToolbox {
     ): JSONObject = if (requireMutation && mutatingToolsCalled.isEmpty()) {
         result(false, "That didn't get written down - nothing changed. Try again and I'll log it properly.")
     } else {
-        result(true, subAgentText)
+        // `changed`: a write the sub-agent made, so the phone may say it (2026-11-19); a router's
+        // answer without it (a read, a scan) is never confirmed aloud.
+        result(true, subAgentText).apply { if (requireMutation) put("changed", true) }
     }
 
     // --- JSON schema helpers --------------------------------------------

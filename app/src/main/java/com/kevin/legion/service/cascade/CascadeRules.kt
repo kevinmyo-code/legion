@@ -6,6 +6,7 @@ import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.tools.LiveSurface
+import com.kevin.legion.service.tools.ToolReads
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.TurnConfig
@@ -88,7 +89,11 @@ internal object CascadeRules {
      * action tool's write never reached `writesDone` (nor the "already done" note after an interrupt).
      */
     fun isWrite(name: String, args: JSONObject): Boolean =
-        LiveSurface.resolve(name, args).let { LiveToolbox.isMutatingCall(it.name, it.args) }
+        LiveSurface.resolve(name, args).let {
+            // 2026-11-19: a mixed tool's read action (manage_checklist read) is no write, so it is
+            // never counted done nor confirmed aloud ([ToolReads] is the one read list).
+            LiveToolbox.isMutatingCall(it.name, it.args) && !ToolReads.isRead(it.name, it.args)
+        }
 
     /**
      * A call that reads outside text (ADR 0090, CLAUDE.md §7), judged on the tool it stands for,
@@ -98,6 +103,15 @@ internal object CascadeRules {
      */
     fun isReadThrough(name: String, args: JSONObject): Boolean =
         ReadThroughWriteGuard.isReadThroughCall(name, args)
+
+    /**
+     * Whether a hand-over says a write he has not heard before its tone (review F5, round 2): only
+     * while the voice still works. Not when the voice is what failed (`tts`, or it never `open`ed),
+     * and not on a phone fault (a crash): speaking through a broken session would only spend its
+     * wait; the line goes to the record and the panel instead.
+     */
+    fun handOverSaysOwed(stage: String, phoneFault: Boolean): Boolean =
+        !phoneFault && stage != "tts" && stage != "open"
 
     /** What his new speech does to a turn still being answered ([newSpeech]). */
     enum class NewSpeech {
@@ -318,7 +332,7 @@ class AckLines(private val lines: List<String> = DEFAULT, private val pick: (Int
  * Every scripted line a voice may keep in memory once it has said it (voice-fast, 2026-11-15): the
  * same short line is neither paid for nor waited for twice.
  */
-internal object ScriptedLines {
+object ScriptedLines {
     /**
      * What is said the moment a confirmed turn goes to a slow tool, so the wait is not silent
      * (voice-fast step 3, 2026-11-15; Live's NON_BLOCKING lookups had a "still checking" line, the
@@ -339,52 +353,155 @@ internal object ScriptedLines {
 
     /**
      * One write a turn made, as facts (never the tool's message, which is written for the model):
-     * the fixed phrase for what was done, the item's title and list from the result's structured
-     * fields, and whether it went through.
+     * the fixed phrase for what was done (null: no phrase, the generic line is said), the item's
+     * title and list from the result's structured fields, whether it went through ([ok]), whether
+     * its result came back at all ([confirmed]: false for a timeout or a crash, where it may have
+     * landed or not), and whether it changed anything (a result's own `changed: false`, e.g. the car
+     * that was already selected; a router's write counts only on its own `changed: true`).
+     * A class, not a data class: two identical writes are two facts, owed and played one by one.
      */
-    data class WriteFact(val phrase: String, val title: String, val list: String, val ok: Boolean)
+    class WriteFact(
+        val phrase: String?,
+        val title: String,
+        val list: String,
+        val ok: Boolean,
+        val changed: Boolean = true,
+        /** A write that is said by nobody's line: a proposal, a read, a screen ([SILENT]). */
+        val silent: Boolean = false,
+        val confirmed: Boolean = true,
+        /** A router's write (`ask_*`): its own words may carry more than the change ([ClosingRound]). */
+        val router: Boolean = false,
+    ) {
+        /** What code says for it when it went through: a phrase, the generic line, or nothing. */
+        val said: Boolean get() = ok && changed && !silent
 
-    /** [response] of the write [name] / [action] as a [WriteFact]; [ok] is the loop's success flag. */
-    fun writeFact(name: String, action: String, response: org.json.JSONObject, ok: Boolean): WriteFact =
-        WriteFact(
-            phrase = DONE_PHRASES[action] ?: DONE_PHRASES[name] ?: "did %s",
-            title = field(response, TITLE_KEYS).take(MAX_TITLE),
-            list = field(response, listOf("list")).take(MAX_TITLE),
-            ok = ok,
-        )
+        /** No result came back: it may have landed. Said as not confirmed, never as failed. */
+        val unconfirmed: Boolean get() = !confirmed && !silent
+    }
 
     /**
-     * What he hears before the tone when a stop cut off a turn whose writes had already run
-     * (2026-11-18 review r2 N3): "Done: added milk to Groceries." Built here from [facts]; a clause per
-     * write, at most [MAX_DONE_CHARS] characters, never a question. A write that failed is "<thing>
-     * didn't go through."; one whose title the reply already said aloud ([alreadySaid]) is not repeated.
-     * Null when there is nothing to say.
+     * [response] of the write [name] / [action] (resolved) as a [WriteFact]; [ok] is the loop's
+     * success flag and [confirmed] whether a result came back at all. Decided per call: the
+     * tool/action's own entry first, then the action, then the tool; a router (`ask_*`) has no
+     * structured change of its own, so it counts only when its result says `changed: true`.
      */
-    fun doneLine(facts: List<WriteFact>, alreadySaid: String = ""): String? {
-        val said = alreadySaid.lowercase()
-        val fresh = facts.filterNot { it.ok && it.title.isNotEmpty() && said.contains(it.title.lowercase()) }
-        val done = fresh.filter { it.ok }.map { f ->
-            val to = if (f.list.isNotEmpty() && f.phrase.startsWith("added")) " to ${f.list}" else ""
-            f.phrase.format(f.title.ifEmpty { "it" }) + to
+    fun writeFact(
+        name: String,
+        action: String,
+        response: org.json.JSONObject,
+        ok: Boolean,
+        confirmed: Boolean = true,
+    ): WriteFact {
+        val key = listOf("$name/$action", action, name).firstOrNull { it.isNotEmpty() && it in PHRASES }
+        val titleKeys = TITLE_KEYS_FOR[key] ?: TITLE_KEYS
+        val title = field(response, titleKeys).take(MAX_TITLE)
+        // A phrase whose own field is missing (an older result shape) falls to the generic line.
+        // A switch that moved this drive's live readings to the car says so (`rebound`, the adapter's field).
+        // The adapter branch's live rebind: this drive's readings moved to the car (`readings_moved`).
+        val moved = key == ADAPTER && response.optBoolean("readings_moved", false)
+        val undone = key == "complete_task" && !response.optBoolean("done", true)
+        val own = when {
+            moved -> READINGS_MOVED
+            undone -> "marked %s not done"
+            else -> key?.let { PHRASES.getValue(it) }
         }
-        val failed = fresh.filterNot { it.ok }.map { f ->
-            f.title.ifEmpty { "That change" }.replaceFirstChar { it.uppercase() } + " didn't go through."
+        val phrase = own?.takeUnless { key in TITLE_KEYS_FOR && title.isEmpty() }
+        val router = name.startsWith(ROUTER_PREFIX)
+        return WriteFact(
+            phrase = phrase,
+            title = title,
+            list = field(response, listOf("list")).take(MAX_TITLE),
+            ok = ok,
+            changed = response.optBoolean("changed", !router),
+            silent = name in SILENT || "$name/$action" in SILENT,
+            confirmed = confirmed,
+            router = router,
+        )
+    }
+
+    /** [writeFact] for a call as the model sent it, judged on the tool it stands for. */
+    fun factOf(name: String, args: JSONObject, response: JSONObject, ok: Boolean, confirmed: Boolean): WriteFact =
+        LiveSurface.resolve(name, args).let { writeFact(it.name, it.args.optString("action"), response, ok, confirmed) }
+
+    /**
+     * What code says for [facts] (2026-11-19: every completed write is said by code, from its
+     * result, never by reading the model's words): "Done: added milk to Groceries." A clause per
+     * phrased write, the "Done:" part at most [MAX_DONE_CHARS] characters with the rest counted
+     * ("; and 2 more"); a write with no phrase adds "That change went through."; one whose result
+     * never came back adds "I couldn't confirm that <thing> went through." A write that failed or
+     * was refused is never said here: that is the model's (and it changed nothing). Never a
+     * question. Null when there is nothing to say.
+     */
+    fun doneLine(facts: List<WriteFact>): String? {
+        val said = facts.filter { it.said }
+        val done = said.filter { it.phrase != null }.map { f ->
+            val to = if (f.list.isNotEmpty() && f.phrase!!.startsWith("added")) " to ${f.list}" else ""
+            (if (f.title.isEmpty()) NO_TITLE[f.phrase] ?: f.phrase!!.format("it") else f.phrase!!.format(f.title)) + to
         }
-        // Clause by clause while it fits: a run of writes is cut at a clause; only a first clause too
-        // long on its own is trimmed.
-        var kept = done.take(1).map { it.take(MAX_DONE_CHARS - "Done: .".length) }
+        val generic = said.any { it.phrase == null }
+        val unsure = facts.filter { it.unconfirmed }
+        // Clause by clause while it fits; the rest is counted, never dropped unsaid. Only a first
+        // clause too long on its own is trimmed.
+        val room = MAX_DONE_CHARS - (if (done.size > 1) "Done: ; and 99 more." else "Done: .").length
+        var kept = done.take(1).map { it.take(room) }
         for (c in done.drop(1)) {
-            if (doneText(kept + c).length <= MAX_DONE_CHARS) kept = kept + c
+            val rest = done.size - kept.size - 1
+            val tail = if (rest > 0) listOf("and $rest more") else emptyList()
+            if (doneText(kept + c + tail).length <= MAX_DONE_CHARS) kept = kept + c else break
         }
-        var line = if (kept.isEmpty()) "" else doneText(kept)
-        for (f in failed) {
-            val next = if (line.isEmpty()) f else "$line $f"
-            if (next.length <= MAX_DONE_CHARS) line = next
+        val more = done.size - kept.size
+        val parts = mutableListOf<String>()
+        if (kept.isNotEmpty()) parts += doneText(kept + listOfNotNull("and $more more".takeIf { more > 0 }))
+        if (generic) parts += GENERIC_DONE
+        when {
+            unsure.size == 1 && unsure[0].title.isNotEmpty() ->
+                parts += "I couldn't confirm that ${unsure[0].title} went through."
+            unsure.size == 1 -> parts += UNCONFIRMED_ONE
+            unsure.size > 1 -> parts += "I couldn't confirm that ${unsure.size} changes went through."
         }
-        return line.replace("?", "").ifEmpty { null }
+        return parts.joinToString(" ").replace("?", "").ifEmpty { null }
     }
 
     private fun doneText(clauses: List<String>) = "Done: " + clauses.joinToString("; ") + "."
+
+    /**
+     * The identifying strings [line] (from [doneLine] over [facts]) actually says: each said
+     * write's title, and its list where the line names it ("added milk to Groceries"). Only what is
+     * in the line, so a sentence dropped for naming one ([SaidFilter]) can never disagree with it.
+     * Only a specific name ([specific]): never a short, everyday or bare value. The
+     * generic line names nothing.
+     */
+    fun namesIn(facts: List<WriteFact>, line: String): List<String> {
+        val said = SaidFilter.fold(line)
+        return facts.filter { it.said && it.phrase != null }
+            .flatMap { listOf(it.title, it.list) }
+            .map { it.trim() }
+            .filter { specific(it) }
+            .filter { SaidFilter.pattern(it).containsMatchIn(said) }
+            .distinct()
+    }
+
+    /**
+     * A name specific enough to drop a model sentence ([namesIn], review round 2 A1: "the", "tea",
+     * a list called "Home" silenced unrelated sentences): two words or more, or one word of at least
+     * [MIN_NAME_LETTERS] letters that is not in [EVERYDAY_NAMES] (a fixed table, matched against the
+     * tool's own string, never a reading of the reply). In a script written without spaces, where a
+     * word cannot be counted, two characters or more.
+     */
+    private fun specific(name: String): Boolean {
+        val unspaced = name.codePoints().anyMatch { Character.UnicodeScript.of(it) in LoneWordWriteGuard.UNSPACED }
+        if (unspaced) return name.length >= 2
+        val words = name.split(' ', '\t', '\n').filter { it.isNotEmpty() }
+        if (words.size >= 2) return words.any { w -> w.any { it.isLetter() } }
+        val word = words.singleOrNull() ?: return false
+        return word.count { it.isLetter() } >= MIN_NAME_LETTERS && word.lowercase() !in EVERYDAY_NAMES
+    }
+
+    const val MIN_NAME_LETTERS = 5
+
+    /** Everyday words that are common list or item names: never a name that drops a sentence. */
+    val EVERYDAY_NAMES: Set<String> =
+        setOf("home", "work", "shop", "store", "today", "later", "things", "stuff", "list", "notes")
 
     @Suppress("ReturnCount") // the top level, then one nested level, then nothing
     private fun field(o: org.json.JSONObject, keys: List<String>): String {
@@ -407,12 +524,71 @@ internal object ScriptedLines {
     private const val MAX_TITLE = 40
     const val MAX_DONE_CHARS = 80
 
-    /** A fixed phrase per write action or tool; `%s` is the item's title. */
-    private val DONE_PHRASES = mapOf(
+    /** The routers (`ask_engine`, `ask_fleet`...): a write through one counts only on `changed: true`. */
+    private const val ROUTER_PREFIX = "ask_"
+
+    /** Said for a write that went through and has no phrase of its own (the engine's CHANGE_MADE). */
+    const val GENERIC_DONE = "That change went through."
+
+    /** Said for a write whose result never came back (timed out): it may have landed. */
+    const val UNCONFIRMED_ONE = "I couldn't confirm that change went through."
+
+    /**
+     * A fixed phrase per `tool/action`, action or tool (resolved names, looked up in that order);
+     * `%s` is the item's title. A write not here gets [GENERIC_DONE]: `CascadeWritesTest` walks
+     * every tool and action the surface can call and lists those, so a new one is a decision.
+     */
+    val PHRASES: Map<String, String> = mapOf(
         "add" to "added %s", "remove" to "removed %s", "tick" to "ticked off %s", "untick" to "unticked %s",
         "schedule" to "scheduled %s", "skip" to "skipped %s", "create" to "created %s", "set" to "set %s",
         "log" to "logged %s", "remember" to "saved %s", "forget" to "forgot %s", "clear_ticked" to "cleared %s",
         "complete_task" to "marked %s done", "set_reminder" to "set a reminder for %s",
+        // The car switch and the adapter say the car the result names (`vehicle`), never the model's words.
+        "switch" to "switched to the %s", ADAPTER to "the adapter is on the %s",
+        "archive" to "archived %s", "unarchive" to "brought back %s", "correct" to "updated %s",
+        "rename" to "renamed %s",
+        "email/draft" to "drafted an email to %s", "email/send" to "sent the email to %s",
+        "claude_session/send" to "sent that to Claude", "claude_session/workflow" to "started that workflow",
+        "claude_session/answer" to "answered Claude", "claude_session/assign" to "moved that task",
+        "claude_session/send_file" to "sent the file", "claude_session/quiet" to "turned Claude's results off",
+        "claude_session/unquiet" to "turned Claude's results back on",
+        "app_update/install" to "started the update's install",
+        // Tools that are one write each, by name.
+        "accept_goal_plan" to "accepted the plan", "accept_proposal" to "accepted %s",
+        "activate_garage" to "pressed the garage button", "categorize_transactions" to "categorized the transactions",
+        "clear_pending_transaction" to "cleared %s", "close_goal" to "closed %s", "forget_place" to "forgot %s",
+        "log_bodyweight" to "logged your weight", "log_build_entry" to "logged %s", "log_meal" to "logged %s",
+        "log_past_service" to "logged %s", "log_pending_transaction" to "logged %s", "log_service" to "logged %s",
+        "log_sleep" to "logged your sleep", "log_workout_set" to "logged %s", "register_vehicle" to "saved %s",
+        "rename_place" to "renamed %s", "set_budget" to "set the budget", "set_category" to "categorized %s",
+        "set_goal" to "set %s", "set_maintenance_interval" to "set %s", "set_meal_target" to "set your meal target",
+        "set_odometer" to "set the odometer", "set_sleep_target" to "set your sleep target",
+        "start_voice_note" to "started a voice note", "stop_voice_note" to "stopped the voice note",
+        "tag_place" to "saved %s", "undo_last_log" to "undid %s",
+    )
+
+    /** A phrase whose result named nothing, where "<verb> it" would read wrong. */
+    private val NO_TITLE: Map<String, String> = mapOf("ticked off %s" to "ticked it off")
+
+    /** `manage_vehicle` action `adapter` (surfaced as `adapter_in`): the OBD adapter's car. */
+    private const val ADAPTER = "manage_vehicle/adapter"
+
+    /** The adapter rebind that moved this drive's live readings to the car. */
+    private const val READINGS_MOVED = "this drive now goes under the %s"
+
+    /** A phrase that may only be said with its own result field; without it, the generic line. */
+    private val TITLE_KEYS_FOR: Map<String, List<String>> = mapOf(
+        "switch" to listOf("vehicle"), ADAPTER to listOf("vehicle"),
+        // The draft and the send name who it is to, from the result's own `to`.
+        "email/draft" to listOf("to"), "email/send" to listOf("to"),
+    )
+
+    /**
+     * Writes no line is said for, by tool or tool/action: a proposal that changes nothing he would
+     * call done, a read on a writing tool (Claude's status, an update check), and a screen opened.
+     */
+    val SILENT: Set<String> = setOf(
+        "generate_goal_plan", "email/open", "claude_session/check", "claude_session/open_page", "app_update/check",
     )
 
     /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */

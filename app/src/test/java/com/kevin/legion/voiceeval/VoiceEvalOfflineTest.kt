@@ -197,8 +197,51 @@ class VoiceEvalOfflineTest {
         assertTrue(r, r.contains("success=false") && r.contains("Nothing was switched") && r.contains("ask_fleet"))
     }
 
+    @Test
+    fun `an action tool's write counts as done in the eval, as on the phone`() = runBlocking {
+        // 2026-11-19: the harness judged writes on the called name, so `day` complete_task never
+        // counted, and a turn that then ended empty was heard as "Nothing was changed."
+        VoiceEvalFixture.seed(context, today)
+        val lines = runScripted(
+            "t", "an invented request",
+            call("day", JSONObject().put("action", "complete_task").put("title", "printer ink")),
+            listOf(usage()),
+        )
+        val heard = lines.single { it.startsWith("LIVE_TEST heard text=") }
+        assertTrue(heard, !heard.contains("Nothing was changed"))
+    }
+
+    @Test
+    fun `the eval hears code's line for a write, where the phone says it`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val lines = runScripted(
+            "t", "an invented request",
+            call("manage_checklist", JSONObject().put("action", "add").put("list", "to-do").put("text", "mail the form")),
+            text("Anything else?"),
+        )
+        val heard = lines.single { it.startsWith("LIVE_TEST heard text=") }
+        // The item and its list come from the result's own fields (eval 2026-11-19 heard "Done: added it.").
+        // Ruling D-prime: after a round of confirmed writes alone, the closing text is not spoken.
+        assertTrue(heard, heard.startsWith("LIVE_TEST heard text=\"Done: added mail the form to ") && !heard.contains("Anything else"))
+        assertTrue(lines.any { it == "LIVE_LATENCY reply_closing_dropped n=1" })
+        val voice = lines.single { it.startsWith("LIVE_TEST tts text=") }
+        assertTrue(voice, voice.contains("Done: added "))
+    }
+
+    @Test
+    fun `a lone word's write is held for a yes in the eval, as on the phone`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val lines = runScripted(
+            "t", "Five.",
+            call("car", JSONObject().put("action", "switch_vehicle").put("vehicle", "five")),
+            text("Switch to car five?"),
+        )
+        val result = lines.single { it.startsWith("LIVE_AUDIT tool_result") }
+        assertTrue(result, result.contains("success=false") && result.contains("\"needs_yes\":true"))
+    }
+
     private suspend fun toolResult(name: String, args: JSONObject): String =
-        runScripted("t", "invented", call(name, args), text("ok.")).single { it.startsWith("LIVE_AUDIT tool_result") }
+        runScripted("t", "an invented request", call(name, args), text("ok.")).single { it.startsWith("LIVE_AUDIT tool_result") }
 
     private suspend fun runScripted(id: String, say: String, vararg rounds: List<JSONObject>): List<String> {
         val lines = mutableListOf<String>()
