@@ -15,7 +15,14 @@ import android.content.Context
  * - `0100`: each answering ECU's supported-PID bitmask for PIDs 01 to 20 (a fixed property of that
  *   ECU's software; several ECUs answer with one line each).
  * Together: `p<protocol>|<bitmask lines, sorted>`. Two cars of one model and year may share it; then
- * it matches more than one car and the car is unknown (he is asked). Live values never go in.
+ * it matches more than one car and the car is unknown (he is asked). Live values never go in. Adapter
+ * chatter before an answer on the same line ("SEARCHING...", "BUS INIT: ...OK") is skipped.
+ *
+ * Known limit, kept strict on purpose (review A6, 2026-11-19): the print is the exact SET of ECUs that
+ * answered. If a module answers on one connect and not the next (key on versus engine running, a
+ * module asleep, a clone adapter that returns only the first answer), the print differs: the car is
+ * not recognised that time and he is asked again (never a wrong car). Without headers (ATH1) the
+ * engine ECU's line cannot be told apart from the others, so a looser match was not cheap.
  *
  * Not read today, the follow-up for a stronger print: the further PID windows (read after the
  * decision), Mode 09 calibration IDs and ECU names (09 04 / 09 0A; many pre-2005 cars do not answer),
@@ -29,8 +36,10 @@ object CarFingerprint {
         if (proto.isEmpty() || proto == "0" || proto.any { !it.isLetterOrDigit() }) return null
         val lines = supported0100.orEmpty().uppercase().split('\r', '\n')
             .map { it.replace(" ", "").trim() }
-            .filter { it.startsWith("4100") && it.length >= BITMASK_LINE && it.all { c -> c.isLetterOrDigit() } }
+            .map { it.substring(it.indexOf("4100").coerceAtLeast(0)) }
+            .filter { it.startsWith("4100") && it.length >= BITMASK_LINE }
             .map { it.substring(0, BITMASK_LINE) }
+            .filter { line -> line.all { it in '0'..'9' || it in 'A'..'F' } }
             .distinct()
             .sorted()
         if (lines.isEmpty()) return null

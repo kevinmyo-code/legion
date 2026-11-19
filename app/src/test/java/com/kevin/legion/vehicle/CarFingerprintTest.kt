@@ -15,6 +15,13 @@ class CarFingerprintTest {
     }
 
     @Test
+    fun `adapter chatter before the first answer on the same line is skipped`() {
+        val clean = CarFingerprint.of("6", "41 00 12 34 56 78\r41 00 AB CD EF 01")
+        assertEquals(clean, CarFingerprint.of("A6", "SEARCHING...41 00 12 34 56 78\r41 00 AB CD EF 01\r>"))
+        assertEquals(clean, CarFingerprint.of("6", "BUS INIT: ...OK\r41 00 12 34 56 78\r41 00 AB CD EF 01"))
+    }
+
+    @Test
     fun `no protocol or no real answer is no print`() {
         assertNull(CarFingerprint.of("A0", "41 00 12 34 56 78"))
         assertNull(CarFingerprint.of("", "41 00 12 34 56 78"))
