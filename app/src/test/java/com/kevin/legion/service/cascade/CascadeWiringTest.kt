@@ -478,7 +478,7 @@ class CascadeWiringTest {
             executor.substring(0, guard).contains("val asked = record.askedBefore || answersSpokenAsk(") &&
                 executor.substring(guard).substringBefore("\n").contains("asked)"),
         )
-        assertTrue(bodyOf(session(), "answersSpokenAsk").contains("AdapterBinding.answersSpokenAsk("))
+        assertTrue(bodyOf(session(), "answersSpokenAsk").contains("SpokenWhichCarAsk.answers("))
     }
 
     private fun controller() = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())

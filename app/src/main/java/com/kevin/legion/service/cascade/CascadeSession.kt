@@ -1614,14 +1614,14 @@ internal class CascadeSession(
     private fun turnContentsFor(heard: String) = CascadePrompt.contents(history, heard, turnPreamble())
 
     /**
-     * His one word is the answer to the which-car question code spoke on connect ([AdapterBinding]):
+     * His one word is the answer to the which-car question code spoke on connect ([SpokenWhichCarAsk]):
      * only for adapter_in, and only as that function decides (this connection, in time, one car).
      */
     private suspend fun answersSpokenAsk(name: String, args: JSONObject, heard: String): Boolean {
         val r = LiveSurface.resolve(name, args)
-        if (r.name != "manage_vehicle" || r.args.optString("action") != "adapter") return false
-        val word = LoneWordWriteGuard.loneWord(heard, CompanionProfile.name(ctx)) ?: return false
-        return com.kevin.legion.vehicle.AdapterBinding.answersSpokenAsk(
+        val adapterIn = r.name == "manage_vehicle" && r.args.optString("action") == "adapter"
+        val word = LoneWordWriteGuard.loneWord(heard, CompanionProfile.name(ctx))
+        return adapterIn && word != null && com.kevin.legion.vehicle.SpokenWhichCarAsk.answers(
             com.kevin.legion.vehicle.DongleCarController.connectionKey(), word, r.args.optString("vehicle"),
             com.kevin.legion.vehicle.DongleCarController.labels(ctx).values, System.currentTimeMillis(),
         )
