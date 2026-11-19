@@ -69,6 +69,17 @@ class _AgentsView(APIView):
     scope_checked_per_call = True
 
 
+class _SwitchedAgentsView(_AgentsView):
+    """A route that answers only while `LEGION_AGENTS_TURN=on`."""
+
+    def initial(self, request, *args, **kwargs):
+        # Authentication and the household fence first (a recruiter gets the fence's own 403, a
+        # stranger 401/403, as every route does), then the switch: nothing below runs while off.
+        super().initial(request, *args, **kwargs)
+        if not flags.turn_enabled():
+            raise exceptions.NotFound(OFF_WORDS)
+
+
 class TurnRequestSerializer(serializers.Serializer):
     transcript = serializers.CharField(max_length=4000, trim_whitespace=True)
     conversation_id = serializers.UUIDField(required=False, allow_null=True)
@@ -93,15 +104,8 @@ def _sse(body) -> StreamingHttpResponse:
     return response
 
 
-class AgentTurnView(_AgentsView):
+class AgentTurnView(_SwitchedAgentsView):
     throttle_classes = [AgentTurnThrottle]
-
-    def initial(self, request, *args, **kwargs):
-        # Authentication and the household fence first (a recruiter gets the fence's own 403, a
-        # stranger 401/403, as every route does), then the switch: nothing below runs while off.
-        super().initial(request, *args, **kwargs)
-        if not flags.turn_enabled():
-            raise exceptions.NotFound(OFF_WORDS)
 
     @extend_schema(
         tags=AGENTS_TAGS,
@@ -127,14 +131,7 @@ class AgentTurnView(_AgentsView):
         return _sse(_stream(request, body.validated_data))
 
 
-class AgentCancelView(_AgentsView):
-    def initial(self, request, *args, **kwargs):
-        # Authentication and the household fence first (a recruiter gets the fence's own 403, a
-        # stranger 401/403, as every route does), then the switch: nothing below runs while off.
-        super().initial(request, *args, **kwargs)
-        if not flags.turn_enabled():
-            raise exceptions.NotFound(OFF_WORDS)
-
+class AgentCancelView(_SwitchedAgentsView):
     @extend_schema(
         tags=AGENTS_TAGS,
         operation_id="api_agents_turn_cancel",
