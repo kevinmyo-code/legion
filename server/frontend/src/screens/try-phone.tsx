@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type Ref } from 'react'
 
 import type { DemoPhone, DemoPhoneClip } from '@/api/demo'
+import { PhoneWalkthrough } from '@/screens/try-phone-walkthrough'
 
 /**
  * "LEGION on the phone" (prototype D "typeset", 2026-11-03): one clip per
@@ -44,7 +45,12 @@ export function safeHref(href: string | undefined): string | null {
   return /^https?:\/\//i.test(value) ? value : null
 }
 
+/** With a walkthrough the section is one video and its chapters; without, the clips as before. */
 export function PhoneSection({ phone }: { phone: DemoPhone }) {
+  return phone.walkthrough ? <PhoneWalkthrough phone={phone} walk={phone.walkthrough} /> : <PhoneClips phone={phone} />
+}
+
+function PhoneClips({ phone }: { phone: DemoPhone }) {
   const stage = useStage()
   const { clips } = phone
   const [active, setActive] = useState(0)

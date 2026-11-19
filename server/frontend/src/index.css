@@ -795,6 +795,97 @@
         display: none;
     }
 
+    /* The phone video (2026-11-19): one 16:9 video, its chapters as a ruled list beside it at
+       desk width and under it below 1100px; the full clips in a row under both. */
+    .rc-walk {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) calc(13 * var(--u));
+        column-gap: calc(1.6 * var(--u));
+        align-items: start;
+        margin-top: calc(1.2 * var(--u));
+    }
+    .rc-walk-video {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #15130f;
+        border: 1px solid var(--rc-ink);
+    }
+    .rc-prose .rc-chapters {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        max-height: calc(var(--u) * 21);
+        overflow-y: auto;
+        border-top: 1px solid var(--rc-ink);
+    }
+    .rc-chapter {
+        display: grid;
+        grid-template-columns: calc(2.4 * var(--u)) minmax(0, 1fr);
+        width: 100%;
+        min-height: 44px;
+        padding: calc(0.35 * var(--u)) 0;
+        font: inherit;
+        font-size: calc(0.82 * var(--u));
+        line-height: 1.35;
+        text-align: left;
+        color: var(--rc-ink);
+        background: none;
+        border: 0;
+        border-bottom: 1px solid var(--rc-rule);
+        box-shadow: inset 2px 0 0 0 transparent;
+        cursor: pointer;
+        transition: box-shadow 0.25s, color 0.25s;
+    }
+    .rc-chapter:hover .rc-chapter-title {
+        color: var(--rc-accent);
+    }
+    .rc-chapter[aria-current] {
+        box-shadow: inset 3px 0 0 0 var(--rc-accent);
+    }
+    .rc-chapter[aria-current] .rc-chapter-title {
+        color: var(--rc-accent);
+    }
+    .rc-chapters[data-motion="reduce"] .rc-chapter {
+        transition: none;
+    }
+    .rc-chapter-at {
+        grid-row: span 2;
+        padding-left: calc(0.5 * var(--u));
+        color: var(--rc-meta);
+        font-variant-numeric: tabular-nums;
+    }
+    .rc-chapter-title {
+        font-weight: 600;
+    }
+    .rc-chapter-line {
+        color: var(--rc-meta);
+    }
+    .rc-full-clips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: calc(1.6 * var(--u));
+        margin-top: calc(2 * var(--u));
+    }
+    .rc-full-clip {
+        flex: 1 1 calc(12 * var(--u));
+        min-width: 0;
+    }
+    .rc-prose .rc-full-clip p {
+        margin: 0;
+        font-size: calc(0.9 * var(--u));
+        color: var(--rc-meta);
+    }
+    @media (max-width: 1100px) {
+        .rc-walk {
+            display: block;
+        }
+        .rc-prose .rc-chapters {
+            max-height: none;
+            margin-top: calc(0.8 * var(--u));
+        }
+    }
+
     /*
      * Phone width (Kevin, 2026-11-04: "make the page look good for mobile").
      * The header on two lines at most, a smaller headline, the facts stacked,

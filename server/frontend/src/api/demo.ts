@@ -32,12 +32,29 @@ export interface DemoPhoneClip {
   captions?: string
 }
 
+/** One chapter of the phone video: a button that seeks to `at` seconds. */
+export interface DemoPhoneChapter {
+  title: string
+  line: string
+  at: number
+}
+
+/** The phone section's one video. With it, the clips (at most three) are offered whole below. */
+export interface DemoPhoneWalkthrough {
+  video: string
+  poster?: string
+  captions?: string
+  chapters: DemoPhoneChapter[]
+}
+
 export interface DemoPhone {
   title: string
   intro: string
   clips: DemoPhoneClip[]
   /** The whole recording the clips are cut from, linked under the section. */
   full_take?: string
+  /** Absent (older content): the section is the row of clips. */
+  walkthrough?: DemoPhoneWalkthrough
 }
 
 export interface DemoLegion {
