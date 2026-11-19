@@ -1569,7 +1569,7 @@ object LiveToolbox {
                 "message",
                 "The OBD adapter's plugged into the $connectedLabel right now, not that one - I can " +
                     "only read live data for the car it's actually in. If he says the adapter is in the " +
-                    "$requested now, that is car switch_vehicle vehicle=$requested.",
+                    "$requested now, that is car adapter_in vehicle=$requested.",
             )
     }
 
@@ -1610,7 +1610,11 @@ object LiveToolbox {
             // Nothing changes without a named car; the refusal says where a read goes instead.
             return result(
                 false,
-                if (action == "switch") SWITCH_NEEDS_A_CAR else "Which car do you mean? Tell me and I'll $action it.",
+                when (action) {
+                    "switch" -> SWITCH_NEEDS_A_CAR
+                    "adapter" -> "Nothing changed: say which car the adapter is in."
+                    else -> "Which car do you mean? Tell me and I'll $action it."
+                },
             )
         }
 
@@ -1636,6 +1640,7 @@ object LiveToolbox {
                 else result(true, VehicleController.correctVehicle(context, it.obdMac, name = name))
             }
             "switch" -> withResolvedVehicle(context, args) { switchTo(context, it) }
+            "adapter" -> withResolvedVehicle(context, args) { adapterIn(context, it) }
             "archive" -> withResolvedVehicle(context, args) {
                 VehicleController.archive(context, it.obdMac)
                 result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")
@@ -2088,6 +2093,13 @@ object LiveToolbox {
         }
         val outcome = VehicleController.switchToOutcome(context, car.obdMac)
         return result(outcome.success, outcome.message).put("changed", outcome.changed == true).put("vehicle", label)
+    }
+
+    /** `manage_vehicle adapter`: [VehicleController.adapterIn], with what code needs to say it. */
+    private suspend fun adapterIn(context: Context, car: Vehicle): JSONObject {
+        val r = VehicleController.adapterIn(context, car.obdMac)
+        return result(r.outcome.success, r.outcome.message).put("changed", r.outcome.changed == true)
+            .put("vehicle", VehicleController.label(car)).put("readings_moved", r.readingsMoved)
     }
 
     private const val SWITCH_NEEDS_A_CAR = "Nothing was switched: switch_vehicle changes which car is selected " +

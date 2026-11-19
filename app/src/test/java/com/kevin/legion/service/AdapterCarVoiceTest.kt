@@ -104,7 +104,7 @@ class AdapterCarVoiceTest {
         val r = LiveToolbox.dispatch(context, "get_health", JSONObject().put("vehicle", "Comet"))!!
         assertFalse(r.getBoolean("success"))
         assertEquals(AdapterBinding.UNKNOWN_CAR_ERROR, r.getString("error"))
-        assertTrue(r.getString("message").contains("car switch_vehicle vehicle=Comet"))
+        assertTrue(r.getString("message").contains("car adapter_in vehicle=Comet"))
         assertFalse(r.has("adapter_car"))
         assertFalse(r.has("batteryVolts"))
     }
@@ -171,21 +171,63 @@ class AdapterCarVoiceTest {
         assertEquals("car:comet", ActiveVehicle.selected(context))
     }
 
-    @Test
-    fun `switch - his own earlier answer is corrected by voice, rebinding the live connection`() = runBlocking {
+    private suspend fun adapterIn(name: String): JSONObject = LiveToolbox.dispatch(
+        context, "manage_vehicle", JSONObject().put("action", "adapter").put("vehicle", name),
+    )!!
+
+    private suspend fun zephyrDrive(): Long {
         seed()
         DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
         assertTrue(DongleCarController.answer(context, "car:zephyr").ok)
         setLink(mac, withLink = true)
+        val db = com.kevin.legion.data.local.CarDatabase.getDatabase(context)
+        db.odbSampleDao().insert(
+            com.kevin.legion.data.local.OdbSample(
+                vehicleId = "car:zephyr", pid = "010C", value = 800.0, unit = "rpm",
+                timestamp = System.currentTimeMillis() + 1,
+            ),
+        )
+        return db.odbSampleDao().totalCount("car:zephyr").toLong()
+    }
+
+    @Test
+    fun `switch to another car mid-drive after he named it - the pick changes, the drive stays`() = runBlocking {
+        assertEquals(1L, zephyrDrive())
 
         val r = switchTo("Comet")
         assertTrue(r.toString(), r.getBoolean("success"))
         assertTrue(r.getBoolean("changed"))
-        assertTrue(r.getString("vehicle").contains("Comet"))
+        assertTrue(r.getString("message"), r.getString("message").contains("stored data"))
+        assertEquals("car:comet", ActiveVehicle.selected(context))
         val live = DongleCarController.state.value as DongleCar.OnCar
-        assertEquals("car:comet", live.carId)
-        assertEquals(DongleCar.Basis.ANSWER, live.basis)
-        assertEquals("car:comet", ActiveVehicle.recordingId(context))
+        assertEquals("car:zephyr", live.carId)
+        val db = com.kevin.legion.data.local.CarDatabase.getDatabase(context)
+        assertEquals(1, db.odbSampleDao().totalCount("car:zephyr"))
+        assertEquals(0, db.odbSampleDao().totalCount("car:comet"))
+    }
+
+    @Test
+    fun `the adapter is in another car - his correction rebinds the drive and says its readings moved`() =
+        runBlocking {
+            zephyrDrive()
+
+            val r = adapterIn("Comet")
+            assertTrue(r.toString(), r.getBoolean("success"))
+            assertTrue(r.getBoolean("changed"))
+            assertTrue(r.getBoolean("readings_moved"))
+            assertTrue(r.getString("vehicle").contains("Comet"))
+            val live = DongleCarController.state.value as DongleCar.OnCar
+            assertEquals(DongleCar.OnCar(mac, "car:comet", null, DongleCar.Basis.ANSWER), live)
+            assertEquals(1, com.kevin.legion.data.local.CarDatabase.getDatabase(context).odbSampleDao().totalCount("car:comet"))
+        }
+
+    @Test
+    fun `the adapter is in the car it is already bound to - changed=false, nothing moved`() = runBlocking {
+        zephyrDrive()
+        val r = adapterIn("Zephyr")
+        assertTrue(r.toString(), r.getBoolean("success"))
+        assertFalse(r.getBoolean("changed"))
+        assertFalse(r.getBoolean("readings_moved"))
     }
 
     @Test

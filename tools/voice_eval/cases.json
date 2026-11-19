@@ -447,8 +447,8 @@
       "why": "one adapter moved between cars (2026-11-17): naming the car it is in binds this connection",
       "fixture": {"dongle": "unknown"},
       "expect": {
-        "calls": ["car/switch_vehicle"],
-        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)ranger"}}},
+        "calls": ["car/adapter_in"],
+        "args": {"car/adapter_in": {"vehicle": {"re": "(?i)ranger"}}},
         "not_calls": ["car/clear_codes", "car/register_vehicle"]
       }
     },
@@ -458,8 +458,8 @@
       "write": true,
       "fixture": {"dongle": "unknown"},
       "expect": {
-        "calls": ["car/switch_vehicle"],
-        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)fit"}}},
+        "calls": ["car/adapter_in"],
+        "args": {"car/adapter_in": {"vehicle": {"re": "(?i)fit"}}},
         "not_calls": ["car/clear_codes", "car/register_vehicle"]
       }
     },
@@ -470,8 +470,8 @@
       "why": "2026-11-17 phone logs: this became clear_codes three times",
       "fixture": {"dongle": "unknown"},
       "expect": {
-        "calls": ["car/switch_vehicle"],
-        "args": {"car/switch_vehicle": {"vehicle": {"re": "(?i)ranger"}}},
+        "calls": ["car/adapter_in"],
+        "args": {"car/adapter_in": {"vehicle": {"re": "(?i)ranger"}}},
         "not_calls": ["car/clear_codes", "car/register_vehicle"]
       }
     },
@@ -482,7 +482,7 @@
       "fixture": {"dongle": "unknown"},
       "expect": {
         "answer_has": ["(?i)which (car|one|vehicle)"],
-        "not_calls": ["car/clear_codes", "car/switch_vehicle"]
+        "not_calls": ["car/clear_codes", "car/switch_vehicle", "car/adapter_in"]
       }
     }
   ]

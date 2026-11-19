@@ -96,10 +96,14 @@ internal object LiveSurface {
                 Action("rename_vehicle", "manage_vehicle", "nickname a car (name)", mapOf("action" to "rename")),
                 // 2026-11-15: called for "which cars do I have"; a read is ask_fleet.
                 Action(
-                    "switch_vehicle", "manage_vehicle",
-                    "the car he names: selects it, and is the OBD adapter's car (this is the X, the adapter " +
-                        "is in the X, reassign the adapter to X); never to list cars",
+                    "switch_vehicle", "manage_vehicle", "select the car he names; never to list cars",
                     mapOf("action" to "switch"),
+                ),
+                // Review A2: a plain switch never moves a drive; saying where the adapter is does.
+                Action(
+                    "adapter_in", "manage_vehicle",
+                    "the OBD adapter is in the car he names (this is the X, it's in the X): this drive goes to it",
+                    mapOf("action" to "adapter"),
                 ),
                 Action("archive_vehicle", "manage_vehicle", "sold or gone", mapOf("action" to "archive")),
                 Action("unarchive_vehicle", "manage_vehicle", "bring one back", mapOf("action" to "unarchive")),

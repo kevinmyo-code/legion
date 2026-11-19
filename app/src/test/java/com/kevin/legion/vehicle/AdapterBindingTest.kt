@@ -33,7 +33,7 @@ class AdapterBindingTest {
     @Test
     fun `the refusal names the binding action and forbids clearing codes`() {
         val r = AdapterBinding.unknownCarRefusal("Zephyr")
-        assertTrue(r.contains("car switch_vehicle vehicle=Zephyr"))
+        assertTrue(r.contains("car adapter_in vehicle=Zephyr"))
         assertTrue(r.contains("Nothing was read or changed"))
         assertTrue(r.contains("Never clear codes"))
         assertTrue(!r.contains("the a car"))

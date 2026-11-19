@@ -95,7 +95,7 @@ object DongleCarController {
     data class Conflict(val subjectId: String, val carId: String, val message: String)
 
     /** The result of an answer, in words; [ok] is false when nothing changed. */
-    data class Outcome(val ok: Boolean, val message: String)
+    data class Outcome(val ok: Boolean, val message: String, val moved: Boolean = false)
 
     /** Data to carry to a new recording id: every row of [fromId], or its rows since [fromMs]. */
     private data class Carry(val fromId: String, val fromMs: Long?)
@@ -592,7 +592,7 @@ object DongleCarController {
                 _conflict.value = null
                 lastReplaceAsk = null
                 DongleCarNotifier.clear(context)
-                Outcome(true, movedWords(name, moved, plan))
+                Outcome(true, movedWords(name, moved, plan), moved = true)
             }
         }
     }

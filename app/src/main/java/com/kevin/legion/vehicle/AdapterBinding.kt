@@ -10,8 +10,8 @@ import org.json.JSONObject
  * three times, and "this car is a <car on file>" became `register_vehicle`, whose refusal said
  * "switch to it" and was never passed on).
  *
- * The one action stays `car switch_vehicle` ([DongleCarController.answer] through
- * [VehicleController.switchToOutcome]; the same controller as the Cars screen's question card and
+ * The one action is `car adapter_in` ([DongleCarController.answer] through
+ * [VehicleController.adapterIn]; the same controller as the Cars screen's question card and
  * the notification's buttons, ADR 0035). The binding is the CONNECTION's (Kevin: "i have one adapter
  * that i move between cars"): his answer binds this connection and teaches the car's fingerprint
  * ([CarFingerprint]); the next connect of that car is recognised by it, and a disconnect drops it.
@@ -22,11 +22,11 @@ object AdapterBinding {
     /** The adapter's car is unknown: what a live-car tool result tells the model to do, once. */
     const val ASK_ONCE = "The OBD adapter is plugged into a car he has not named yet, so these readings " +
         "are held, not filed. Ask him once, in a few words: which car is it in? His answer is car " +
-        "switch_vehicle with that car (it holds for this connection; the car is recognised next time)."
+        "adapter_in with that car (it holds for this connection; the car is recognised next time)."
 
     /** Already asked on this connection: the result says so, so the model does not ask again. */
     const val ASKED = "The OBD adapter's car is still unnamed; he was already asked which car it is in. " +
-        "If he names one, that is car switch_vehicle."
+        "If he names one, that is car adapter_in."
 
     /** The connection he was already asked on ([DongleCarController.connectionKey]), spoken or in a result. */
     @Volatile private var askedOn: String? = null
@@ -68,7 +68,7 @@ object AdapterBinding {
                 val name = labels[state.carId] ?: "car on file"
                 "This connection was recognised as the $name by how its computer answers, not by a VIN. Say " +
                     "it once, in a few words (\"Looks like the $name.\"). If he says it is another car, that " +
-                    "is car switch_vehicle with that car."
+                    "is car adapter_in with that car."
             }
             else -> null
         }
@@ -104,10 +104,10 @@ object AdapterBinding {
             "Nothing was cleared: the adapter is still working out which car it is in. Ask again in a moment."
         state is DongleCar.Held ->
             "Nothing was cleared: the OBD adapter is in a car he has not named yet. Ask him which car it is in " +
-                "(car switch_vehicle), then ask again."
+                "(car adapter_in), then ask again."
         state is DongleCar.OnCar && state.basis == DongleCar.Basis.ASSUMED ->
             "Nothing was cleared: this car was only recognised by how it answers, not named. Ask him to say " +
-                "which car the adapter is in (car switch_vehicle), then ask again."
+                "which car the adapter is in (car adapter_in), then ask again."
         else -> null
     }
 
@@ -171,6 +171,6 @@ object AdapterBinding {
         "Nothing was read or changed: the OBD adapter is plugged into a car he has not named yet, so I can't " +
             "tell whether it is the $requested. If he said it is in the $requested (\"this is the " +
             "$requested\", \"the adapter is in the $requested\", \"reassign the adapter\"), call car " +
-            "switch_vehicle vehicle=$requested first, then ask again. Otherwise ask him which car it is in. " +
+            "adapter_in vehicle=$requested first, then ask again. Otherwise ask him which car it is in. " +
             "Never clear codes for this."
 }
