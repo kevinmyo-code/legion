@@ -92,3 +92,13 @@ def early_transcripts_on() -> bool:
 
 def text_model() -> str:
     return os.environ.get(TEXT_MODEL_ENV, "").strip() or TEXT_MODEL_DEFAULT
+
+
+# PROTOTYPE (perf/try-faster-first-word fix 5), OFF unless this is "on": the utterance's audio goes
+# straight into the model's first round, asked while speech-to-text still runs for the caption,
+# the record and every check (`assistant/audio_round.py`). Ships only after its own review.
+AUDIO_ROUND_ENV = "LEGION_WEB_AUDIO_FIRST_ROUND"
+
+
+def audio_first_round_on() -> bool:
+    return os.environ.get(AUDIO_ROUND_ENV, "").strip().lower() == "on"
