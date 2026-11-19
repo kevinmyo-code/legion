@@ -113,4 +113,12 @@ class LoneWordWriteGuardTest {
         assertTrue(CascadeRules.isWrite(clear.name, JSONObject(clear.args)))
         assertFalse(LoneWordWriteGuard.isLoneWord("clear ticked groceries", "Alfred"))
     }
+
+    @Test
+    fun `the lone word itself, with the companion's name and a lead-in set aside`() {
+        assertEquals("comet", LoneWordWriteGuard.loneWord("Hey Alfred, Comet.", "Alfred"))
+        assertEquals("comet", LoneWordWriteGuard.loneWord("Comet.", "Alfred"))
+        assertNull(LoneWordWriteGuard.loneWord("the Comet", "Alfred"))
+        assertNull(LoneWordWriteGuard.loneWord("彗星", "Alfred"))
+    }
 }

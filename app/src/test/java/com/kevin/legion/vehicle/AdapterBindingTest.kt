@@ -101,4 +101,30 @@ class AdapterBindingTest {
         assertEquals(AdapterBinding.ASK_ONCE, AdapterBinding.noteFor(DongleCar.Held("m", null, DongleCar.HeldReason.NO_VIN), emptyMap(), "c3|p"))
         AdapterBinding.resetForTest()
     }
+
+    /**
+     * Seam d (2026-11-19 integration): his one word right after the which-car question code SPOKE on
+     * this connection is his answer, when it names exactly one car on file by membership and the
+     * model's adapter_in names that car too. Otherwise the lone-word guard still holds it.
+     */
+    @Test
+    fun `a one-word answer to the spoken which-car ask counts only on this connection, in time, naming one car`() {
+        AdapterBinding.resetForTest()
+        val labels = listOf("2010 Acme Zephyr", "2010 Acme Comet")
+        val t0 = 1_000_000L
+        assertFalse("never spoken", AdapterBinding.answersSpokenAsk("c1|p", "Comet", "Comet", labels, t0))
+        // A tool result's ask is not a spoken one (it has its own field, needs_answer).
+        AdapterBinding.note("c1|p")
+        assertFalse("asked in a result only", AdapterBinding.answersSpokenAsk("c1|p", "Comet", "Comet", labels, t0))
+        AdapterBinding.markAsked("c1|p", t0)
+        assertTrue(AdapterBinding.answersSpokenAsk("c1|p", "Comet", "the Comet", labels, t0 + 5_000))
+        assertTrue("case folded", AdapterBinding.answersSpokenAsk("c1|p", "comet", "2010 Acme Comet", labels, t0 + 5_000))
+        assertFalse("another connection", AdapterBinding.answersSpokenAsk("c2|p", "Comet", "Comet", labels, t0 + 5_000))
+        assertFalse("too late", AdapterBinding.answersSpokenAsk("c1|p", "Comet", "Comet", labels, t0 + AdapterBinding.SPOKEN_ASK_ANSWER_MS + 1))
+        assertFalse("names both cars", AdapterBinding.answersSpokenAsk("c1|p", "Acme", "Acme", labels, t0 + 5_000))
+        assertFalse("names no car", AdapterBinding.answersSpokenAsk("c1|p", "Five", "Comet", labels, t0 + 5_000))
+        assertFalse("the model picked another car", AdapterBinding.answersSpokenAsk("c1|p", "Comet", "Zephyr", labels, t0 + 5_000))
+        assertFalse("no connection", AdapterBinding.answersSpokenAsk(null, "Comet", "Comet", labels, t0 + 5_000))
+        AdapterBinding.resetForTest()
+    }
 }

@@ -1613,6 +1613,20 @@ internal class CascadeSession(
     // His turns (and their drafts) also carry today's agenda; the greeting does not.
     private fun turnContentsFor(heard: String) = CascadePrompt.contents(history, heard, turnPreamble())
 
+    /**
+     * His one word is the answer to the which-car question code spoke on connect ([AdapterBinding]):
+     * only for adapter_in, and only as that function decides (this connection, in time, one car).
+     */
+    private suspend fun answersSpokenAsk(name: String, args: JSONObject, heard: String): Boolean {
+        val r = LiveSurface.resolve(name, args)
+        if (r.name != "manage_vehicle" || r.args.optString("action") != "adapter") return false
+        val word = LoneWordWriteGuard.loneWord(heard, CompanionProfile.name(ctx)) ?: return false
+        return com.kevin.legion.vehicle.AdapterBinding.answersSpokenAsk(
+            com.kevin.legion.vehicle.DongleCarController.connectionKey(), word, r.args.optString("vehicle"),
+            com.kevin.legion.vehicle.DongleCarController.labels(ctx).values, System.currentTimeMillis(),
+        )
+    }
+
     private fun executorFor(record: TurnRecord, seq: Long) = TextToolExecutor { name, args, readThrough ->
         // A check-in line calls no tool (its prompt says so); one asked for never runs, and the line drops.
         if (record.holdLine) {
@@ -1623,7 +1637,8 @@ internal class CascadeSession(
         if (CascadeRules.isWrite(name, args)) record.writeCalled = true
         // One heard word changes nothing without his yes (2026-11-19, lone_word_write).
         val held = if (record.fromUser) {
-            LoneWordWriteGuard.refusal(name, args, record.heard, CompanionProfile.name(ctx), record.askedBefore)
+            val asked = record.askedBefore || answersSpokenAsk(name, args, record.heard)
+            LoneWordWriteGuard.refusal(name, args, record.heard, CompanionProfile.name(ctx), asked)
         } else {
             null
         }

@@ -468,6 +468,19 @@ class CascadeWiringTest {
 
     // --- source access ----------------------------------------------------------------------------
 
+    @Test
+    fun `a one-word answer to the spoken which-car ask reaches the lone-word guard as an answer`() {
+        val executor = bodyOf(session(), "executorFor")
+        val guard = executor.indexOf("LoneWordWriteGuard.refusal(")
+        assertTrue("the guard runs in the executor", guard >= 0)
+        assertTrue(
+            "the spoken which-car ask counts as asked (seam d)",
+            executor.substring(0, guard).contains("val asked = record.askedBefore || answersSpokenAsk(") &&
+                executor.substring(guard).substringBefore("\n").contains("asked)"),
+        )
+        assertTrue(bodyOf(session(), "answersSpokenAsk").contains("AdapterBinding.answersSpokenAsk("))
+    }
+
     private fun controller() = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())

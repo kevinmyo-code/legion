@@ -70,8 +70,11 @@ object LoneWordWriteGuard {
      * [heard] is one word once [companionName] (at either end) and a leading hey/ok/okay are set
      * aside. Never for text in a script written without spaces ([UNSPACED]).
      */
-    fun isLoneWord(heard: String, companionName: String): Boolean {
-        if (heard.codePoints().anyMatch { Character.UnicodeScript.of(it) in UNSPACED }) return false
+    fun isLoneWord(heard: String, companionName: String): Boolean = loneWord(heard, companionName) != null
+
+    /** [isLoneWord]'s word itself (lowercase), or null when [heard] is not one word. */
+    fun loneWord(heard: String, companionName: String): String? {
+        if (heard.codePoints().anyMatch { Character.UnicodeScript.of(it) in UNSPACED }) return null
         var words = words(heard)
         val name = words(companionName)
         fun dropName() {
@@ -84,7 +87,7 @@ object LoneWordWriteGuard {
             words = words.drop(1)
             dropName()
         }
-        return words.size == 1
+        return words.singleOrNull()
     }
 
     /** Lowercase words; an apostrophe inside a word keeps it one word ("don't"). */

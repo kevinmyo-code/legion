@@ -34,10 +34,36 @@ object AdapterBinding {
     /** The connection a "Looks like the X" was already said for. */
     @Volatile private var recognisedSaidFor: String? = null
 
-    /** The adapter's car was asked about on [connection] (the connect-time spoken ask counts too). */
-    fun markAsked(connection: String) {
+    /** The connection and the time code SPOKE the which-car question on ([markAsked]); a result's ask is not one. */
+    @Volatile private var spokenAsk: Pair<String, Long>? = null
+
+    /** The adapter's car was asked about aloud on [connection] (the connect-time spoken ask). */
+    fun markAsked(connection: String, atMs: Long = System.currentTimeMillis()) {
         askedOn = connection
+        spokenAsk = connection to atMs
     }
+
+    /**
+     * His one [word] answers the which-car question code spoke on [connection] (seam d, 2026-11-19: the
+     * ask is a spoken line, not a tool result, so the lone-word guard held "Comet." for a yes): only
+     * within [SPOKEN_ASK_ANSWER_MS] of the ask, only when the word is a word of exactly one car's label
+     * ([labels]) by membership, and only when the model's adapter_in [vehicleArg] has that word too.
+     */
+    fun answersSpokenAsk(connection: String?, word: String, vehicleArg: String, labels: Collection<String>, nowMs: Long): Boolean {
+        val (on, at) = spokenAsk ?: return false
+        if (connection == null || connection != on || nowMs - at !in 0..SPOKEN_ASK_ANSWER_MS) return false
+        val w = word.lowercase()
+        return labels.count { w in wordsOf(it) } == 1 && w in wordsOf(vehicleArg)
+    }
+
+    private fun wordsOf(text: String): Set<String> =
+        text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.toSet()
+
+    /**
+     * How long after the spoken ask one word may answer it: the line itself, the connect-time listen
+     * hold (15 s) and the follow-up window's extensions, with room to spare.
+     */
+    const val SPOKEN_ASK_ANSWER_MS = 45_000L
 
     /** The note for a live-car result while the adapter's car is unknown: [ASK_ONCE] once a connection. */
     @Synchronized
@@ -50,6 +76,7 @@ object AdapterBinding {
     /** Test seam. */
     internal fun resetForTest() {
         askedOn = null
+        spokenAsk = null
         recognisedSaidFor = null
     }
 
