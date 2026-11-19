@@ -50,3 +50,16 @@ class Command(BaseCommand):
                 self.stdout.write(f"{name}: not in the folder, so none is served.")
             else:
                 self.stdout.write(f"{name}: loaded, {size} bytes.")
+        self.stdout.write(
+            f"{loaded.media_files} media files loaded (models, stills, videos, captions): "
+            f"{loaded.media_bytes} bytes stored in all; {loaded.media_written} written this time "
+            f"({loaded.media_bytes_written} bytes), the rest unchanged."
+        )
+        if loaded.file_named_videos:
+            self.stdout.write(
+                "WARNING: clip videos named by file ("
+                + ", ".join(loaded.file_named_videos)
+                + "). An engine rolled back to before demo migration 0010 serves them as broken "
+                "relative links at once: right after switching traffic back, reload the content "
+                "with link-form clips or without them (the media ship's rollback note)."
+            )

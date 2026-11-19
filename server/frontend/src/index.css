@@ -657,7 +657,44 @@
         width: 100%;
         max-width: var(--rc-measure);
         height: auto;
+        /* A portrait screen recording stays within one screen; the ink letterboxes it. */
+        max-height: 85vh;
         background: var(--rc-ink);
+    }
+    /* A 3D model (`model-viewer.tsx`): the poster, then the canvas over it on the same paper. */
+    .rc-model-box {
+        position: relative;
+        width: 100%;
+        max-width: var(--rc-measure);
+        aspect-ratio: 4 / 3;
+        overflow: hidden;
+        border: 1px solid var(--rc-rule);
+        background: var(--rc-paper);
+        cursor: grab;
+    }
+    .rc-model-box[data-active='true'] {
+        outline: 2px solid var(--rc-ink);
+        outline-offset: -2px;
+    }
+    .rc-model-poster,
+    .rc-model-canvas {
+        position: absolute;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+    .rc-model-poster {
+        object-fit: contain;
+    }
+    .rc-model-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0 calc(1 * var(--u));
+        max-width: var(--rc-measure);
+        font-size: calc(0.92 * var(--u));
+        color: var(--rc-meta);
     }
 
     .rc-section {

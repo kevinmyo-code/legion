@@ -416,7 +416,9 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
     record, on the tester visit only (`tests/test_sounding_human.py`,
     `tests/test_demo_strip_tester_only.py`). The chips door (demo stage 2, 2026-11-18) checks the
     engine's own suggestions for a turn's signed offer with reads only (`demo/suggestions.py`,
-    `tests/test_demo_suggestions.py`)."""
+    `tests/test_demo_suggestions.py`). The media door (2026-11-19) serves the files a project
+    section's models name, from the visitor's own version of the content, like the asset door
+    (`tests/test_recruiter_media.py`)."""
     opened = {p for p, c in ROUTES if _guarded(c) and getattr(c, "allows_recruiter", False)}
     assert opened == {
         "/api/assistant/companion",
@@ -430,6 +432,7 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
         "/api/demo/asset/x",
         "/api/demo/chips",
         "/api/demo/content",
+        "/api/demo/media/x",
         "/api/demo/session",
     }
     assert "/api/device-logs/" not in opened
