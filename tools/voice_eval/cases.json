@@ -405,9 +405,9 @@
       "write": true,
       "turns": [
         {"say": "Milk.", "expect": {"asks_yes": true}},
-        {"say": "Yes.", "expect": {"answer_not": ["(?i)catch"]}}
+        {"say": "Yes.", "expect": {"succeeded": ["manage_checklist/add|manage_item/add"], "answer_not": ["(?i)catch"]}}
       ],
-      "why": "2026-11-19 bug-2 cost: a lone word that would write is held for a yes; the yes after a held call runs it (the held call's result asked him). If turn 1 asked without calling a tool, turn 2's yes is itself held once more: that is the measured cost, read from the tools column"
+      "why": "2026-11-19 bug-2 cost: a lone word that would write is held for a yes; the yes after a held call runs it (the held call's result asked him). If turn 1 asked without calling a tool, turn 2's yes is itself held once more and the add does not land: this case then FAILS, which is the measured cost (review 2026-11-19: it could not fail before)"
     },
     {
       "id": "spanish_word_in_english",

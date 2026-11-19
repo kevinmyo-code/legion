@@ -490,13 +490,18 @@ WRITE_ACTIONS = {"add", "remove", "tick", "untick", "schedule", "skip", "create"
                  "complete_task", "watch_set", "watch_pause", "watch_resume", "watch_remove", "remember", "forget",
                  "start_voice_note", "stop_voice_note", "place_call", "answer_call", "decline_call", "install"}
 WRITE_TOOLS = {"complete_task", "car", "body_log", "money", "place", "memory", "phone", "clock", "goal", "trip"}
-READ_ACTIONS = {"list", "read", "lists", "ticked", "list_budget_categories", "watch_list", "recall", "search"}
+READ_ACTIONS = {"list", "read", "lists", "ticked", "list_budget_categories", "watch_list", "recall", "search",
+                # 2026-11-19 review: the phone's own read actions on writing tools (ToolReads.READ_ACTIONS).
+                "alarm_list", "timer_left", "whats_new", "status", "last", "recent"}
 
 
 def _looks_write(c: ToolCall) -> bool:
     """Only a hint for the scorer; the phone's own gate is the guarantee (TestTurnPolicy.kt)."""
     if c.action in READ_ACTIONS:
         return False
+    # A router asked to record (ask_engine, ask_fleet...) is a write, as on the phone.
+    if str(c.args.get("intent", "")) == "record":
+        return True
     return (c.action in WRITE_ACTIONS or c.action.startswith(("log_", "set_", "switch_", "add_"))
             or c.name in WRITE_TOOLS)
 

@@ -448,3 +448,11 @@ def test_a_goodbye_case_passes_only_when_the_conversation_ended():
     assert ve.score_case(case, runs[0], phone=False).passed
     _, runs = parse(lines)
     assert any("did not end" in f for f in ve.score_case(case, runs[0], phone=False).failures)
+
+
+def test_the_write_hint_follows_the_phone_reads_and_routers():
+    # 2026-11-19 review: a router asked to record is a write; a clock list is a read.
+    assert ve._looks_write(ve.ToolCall("e1", "ask_engine", {"question": "x", "intent": "record"}))
+    assert not ve._looks_write(ve.ToolCall("e2", "ask_engine", {"question": "x", "intent": "ask"}))
+    assert not ve._looks_write(ve.ToolCall("e3", "clock", {"action": "alarm_list"}))
+    assert ve._looks_write(ve.ToolCall("e4", "clock", {"action": "alarm_set"}))
