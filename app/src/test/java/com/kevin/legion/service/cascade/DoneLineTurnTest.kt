@@ -128,7 +128,8 @@ class DoneLineTurnTest {
 
     @Test
     fun `2 one write, the model is told it was said and its own words follow the line`() {
-        val t = Scripted(ok(calls(add("milk"))), ok(text("Anything else?")))
+        // A read in the round, so the model is asked again (ruling D skips a round of writes alone).
+        val t = Scripted(ok(calls(add("milk"), call("get_weather"))), ok(text("Anything else?")))
         val r = run(t)
         assertEquals("$milk Anything else?", r.text)
         val sent = t.bodies[1].getJSONArray("contents").let { it.getJSONObject(it.length() - 1) }.toString()
@@ -146,7 +147,7 @@ class DoneLineTurnTest {
     @Test
     fun `4 two writes in two rounds are two lines, each after its round`() {
         val l = Heard()
-        val r = run(Scripted(ok(calls(add("milk"))), ok(text("And eggs? "), calls(add("eggs"))), ok()), l)
+        val r = run(Scripted(ok(calls(add("milk"), call("get_weather"))), ok(text("And eggs? "), calls(add("eggs"))), ok()), l)
         assertEquals("$milk And eggs? Done: added eggs to Groceries.", r.text)
         assertEquals(2, r.codeLines)
     }
@@ -170,7 +171,7 @@ class DoneLineTurnTest {
 
     @Test
     fun `7 a later round's HTTP error after the line, the failure is said without undoing it`() {
-        val r = run(Scripted(ok(calls(add("milk"))), broke(StreamOutcome.HttpError(500, "invented"))))
+        val r = run(Scripted(ok(calls(add("milk"), call("get_weather"))), broke(StreamOutcome.HttpError(500, "invented"))))
         assertEquals(milk, r.text)
         assertEquals(TextFailure.MODEL_ERROR, r.failure)
         assertEquals(TextFailure.MODEL_ERROR.lead, r.failureWords)
@@ -178,7 +179,7 @@ class DoneLineTurnTest {
 
     @Test
     fun `8 a later round offline after the line`() {
-        val r = run(Scripted(ok(calls(add("milk"))), broke(StreamOutcome.Network("invented"))))
+        val r = run(Scripted(ok(calls(add("milk"), call("get_weather"))), broke(StreamOutcome.Network("invented"))))
         assertEquals(milk, r.text)
         assertEquals(TextFailure.OFFLINE, r.failure)
         assertFalse(r.failureWords!!.contains("Nothing was changed"))
@@ -186,7 +187,7 @@ class DoneLineTurnTest {
 
     @Test
     fun `9 the turn's budget runs out after the line`() {
-        val r = run(Scripted(ok(calls(add("milk"))), null), budgetMs = 1_500)
+        val r = run(Scripted(ok(calls(add("milk"), call("get_weather"))), null), budgetMs = 1_500)
         assertEquals(milk, r.text)
         assertEquals(TextFailure.TIMED_OUT, r.failure)
         assertEquals(TextFailure.TIMED_OUT.lead, r.failureWords)
@@ -195,7 +196,7 @@ class DoneLineTurnTest {
     @Test
     fun `10 a later round blocked after the line`() {
         val blocked = JSONObject().put("promptFeedback", JSONObject().put("blockReason", "SAFETY"))
-        val r = run(Scripted(ok(calls(add("milk"))), ok(blocked)))
+        val r = run(Scripted(ok(calls(add("milk"), call("get_weather"))), ok(blocked)))
         assertEquals(milk, r.text)
         assertEquals(TextFailure.BLOCKED, r.failure)
     }
@@ -209,7 +210,7 @@ class DoneLineTurnTest {
 
     @Test
     fun `12 a filler-only reply after the line is not asked again`() {
-        val t = Scripted(ok(calls(add("milk"))), ok(text("One moment.")))
+        val t = Scripted(ok(calls(add("milk"), call("get_weather"))), ok(text("One moment.")))
         val r = run(t)
         assertEquals(2, t.bodies.size)
         assertNull(r.failure)
@@ -300,7 +301,7 @@ class DoneLineTurnTest {
     @Test
     fun `23 the model's text before the write stays before the line`() {
         val l = Heard()
-        val r = run(Scripted(ok(text("Sure. "), calls(add("milk"))), ok(text("Anything else?"))), l)
+        val r = run(Scripted(ok(text("Sure. "), calls(add("milk"), call("get_weather"))), ok(text("Anything else?"))), l)
         assertEquals("Sure. $milk Anything else?", r.text)
         assertEquals("Sure. Anything else?", l.model.toString().trim())
     }

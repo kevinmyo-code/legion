@@ -152,6 +152,8 @@ class GeminiTextLoop(
         val codeLines: Int = 0,
         /** Model sentences not spoken because they named what a code line had just said ([SaidFilter]). */
         val saidDropped: Int = 0,
+        /** The turn ended on code's write line: the closing model round was not asked for ([ClosingRound]). */
+        val closingSkipped: Boolean = false,
     )
 
     @Volatile private var searchRejected = false
@@ -178,6 +180,9 @@ class GeminiTextLoop(
         /** What code's lines named this turn ([ScriptedLines.namesIn]), and model sentences dropped for it. */
         val saidNames = mutableListOf<String>()
         var saidDropped = 0
+
+        /** The round after the tools was not asked for ([ClosingRound]). */
+        var closingSkipped = false
     }
 
     /** One call's result, and its write's facts when it was a write. */
@@ -347,6 +352,11 @@ class GeminiTextLoop(
                 calls.map { call -> async { runOne(call, executor, listener, state) } }.awaitAll()
             }
             sayWrites(ran, state, listener)
+            // Ruling D: a round of nothing but confirmed writes ends the turn on code's line.
+            if (ClosingRound.skip(ran.map { ClosingRound.Call(it.fact, it.result.response) })) {
+                state.closingSkipped = true
+                return reply(state)
+            }
             val results = ran.map { it.result }
             speakVerbatim(results, state, listener)
             val nudge = if (round + 1 >= maxRounds) "Answer now with what you have." else null
@@ -489,6 +499,7 @@ class GeminiTextLoop(
         trailingFillerDropped = state.trailingFillerDropped,
         codeLines = state.codeLines,
         saidDropped = state.saidDropped,
+        closingSkipped = state.closingSkipped,
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
@@ -507,6 +518,7 @@ class GeminiTextLoop(
         trailingFillerDropped = state.trailingFillerDropped,
         codeLines = state.codeLines,
         saidDropped = state.saidDropped,
+        closingSkipped = state.closingSkipped,
     )
 
     /**

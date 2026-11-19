@@ -159,7 +159,8 @@ class WriteSpeechTurnTest {
         reply.finishText()
         assertEquals(ReplySpeaker.Outcome.Played, play(reply))
         owed.endTurn(writes, cutOff = false)
-        assertEquals("$milk Anything else?", ear.heard())
+        // Ruling D: a round of writes alone ends on code's line; the model is not asked again.
+        assertEquals(milk, ear.heard())
         assertNull("nothing owed after it played", owed.due())
     }
 
