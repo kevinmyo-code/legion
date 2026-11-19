@@ -58,6 +58,12 @@ function content(): DemoContent {
 const TYPES: Record<string, string> = { '.webm': 'video/webm', '.mp4': 'video/mp4', '.png': 'image/png', '.vtt': 'text/vtt' }
 
 async function serve(page: Page, engine: Engine, fetched: string[]) {
+  // WALK_MEDIA_SERVED=1: the files sit in the preview's own folder (`local-media/`), served with
+  // range requests, so seeking works as it does from the bucket; only the requests are watched.
+  page.on('request', (request) => {
+    if (request.url().includes('/local-media/') && process.env.WALK_MEDIA_SERVED) fetched.push(path.basename(new URL(request.url()).pathname))
+  })
+  if (process.env.WALK_MEDIA_SERVED) return serveApi(page, engine)
   await page.route('**/local-media/**', async (route) => {
     const name = path.basename(new URL(route.request().url()).pathname)
     fetched.push(name)
@@ -65,6 +71,10 @@ async function serve(page: Page, engine: Engine, fetched: string[]) {
     if (!MEDIA || !fs.existsSync(file)) return route.fulfill({ status: 404 })
     await route.fulfill({ status: 200, contentType: TYPES[path.extname(name)] ?? 'application/octet-stream', body: fs.readFileSync(file) })
   })
+  await serveApi(page, engine)
+}
+
+async function serveApi(page: Page, engine: Engine) {
   await page.route('**/api/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -107,8 +117,9 @@ async function run(page: Page, tag: string) {
   expect(count).toBe(CHAPTERS.length)
   for (let i = 0; i < count; i++) {
     await buttons.nth(i).click()
-    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 5000 }).toBeGreaterThanOrEqual(CHAPTERS[i].at - 0.05)
+    // Held still at once: a short chapter would otherwise play on into the next before the shot.
     await video.evaluate((v: HTMLVideoElement) => v.pause())
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 5000 }).toBeGreaterThanOrEqual(CHAPTERS[i].at - 0.05)
     await expect(buttons.nth(i)).toHaveAttribute('aria-current', 'step')
     await page.evaluate(() => document.getElementById('phone')?.scrollIntoView({ block: 'start' }))
     await page.waitForTimeout(250)

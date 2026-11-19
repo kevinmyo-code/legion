@@ -38,6 +38,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..', '..')
 const FRONTEND = path.join(REPO, 'server', 'frontend')
 const FPS = 30
+// A chapter button lands just after its scene's text has faded in, not on the blank first frame.
+const CHAPTER_LEAD = 0.3
 const SIZES = { wide: [1920, 1080], tall: [1080, 1350] }
 
 function args() {
@@ -467,7 +469,7 @@ function chaptersOf(timeline) {
   return timeline.scenes
     .map((item, k) => ({ item, scene: spec.scenes[k] }))
     .filter(({ scene }) => (scene.kind === 'beat' || scene.kind === 'step') && scene.chapter !== false)
-    .map(({ item, scene }) => ({ title: scene.title, line: scene.line || '', at: Math.round(item.start * 10) / 10 }))
+    .map(({ item, scene }) => ({ title: scene.title, line: scene.line || '', at: Math.round((item.start + CHAPTER_LEAD) * 10) / 10 }))
 }
 
 async function main() {
