@@ -183,7 +183,7 @@ internal object Declarations {
         // than it looks on screen.
         add(fn(
             name = "get_monthly_spend",
-            description = "Report this month's categorised operating spend for the US ledger " +
+            description = "Report a month's categorised operating spend for the US ledger " +
                 "entity - the SAME figure the Money screen's SPEND pane shows. Money moved between " +
                 "the user's own accounts (a card payment, a savings transfer) is excluded from " +
                 "this total; ALWAYS say how many transactions and how much were excluded, exactly " +
@@ -198,8 +198,21 @@ internal object Declarations {
                 "month's spend: whenever early_housing_notes is non-empty, say each note out loud. " +
                 "If the response's verified field is false, say " +
                 "the figure is not fully confirmed (pending bank data, an unconfirmed AI-guessed " +
-                "category, or a month not fully covered by an imported statement).",
-            params = obj(),
+                "category, or a month not fully covered by an imported statement). " +
+                // 2026-11-19: the budget views read what HOME shows; the phone speaks their answer itself.
+                "view=left: how much budget is left (the home screen's figure). view=category with " +
+                "category: one category's spend, e.g. groceries or dining. view=top: the highest " +
+                "categories. For these three the phone has ALREADY said the answer (speak_verbatim): " +
+                "never restate a figure; when valid_categories comes back, ask him which one he means.",
+            params = obj(
+                "view" to schema(
+                    "string",
+                    "total (default): the whole month's spend. left, category or top: see above.",
+                    enum = listOf("total", "left", "category", "top"),
+                ),
+                "month" to schema("string", "this (default), last, or YYYY-MM, as he said it."),
+                "category" to schema("string", "For view=category: the category in his words."),
+            ),
             required = emptyList(),
         ))
     }

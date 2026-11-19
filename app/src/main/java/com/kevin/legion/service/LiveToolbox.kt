@@ -424,7 +424,7 @@ object LiveToolbox {
         fns.put(fn(
             name = "ask_pantry",
             description = "Grocery HISTORY and spending: items logged from past receipts with " +
-                "their estimated macros, and total grocery spend by currency. Read-only - it " +
+                "their estimated macros. A month's grocery spend is ask_money. Read-only - it " +
                 "records nothing and cannot touch the shopping list. Adding to, ticking off, or " +
                 "reading back the CURRENT shopping list is manage_checklist (list=Groceries), " +
                 "not this. Ask a plain-English question; raw results come back to relay.",
@@ -442,8 +442,8 @@ object LiveToolbox {
         // Architecture review 2026-11-10 item 7: money and area READS behind routers.
         fns.put(fn(
             name = "ask_money",
-            description = "READING money: account balances, spending this or another month " +
-                "against budget, recent transactions, and pending ones the user reported. " +
+            description = "READING money: account balances, budget left, spending this or another month " +
+                "in total or by category (groceries too), recent transactions, and pending ones the user reported. " +
                 "Read-only - logging or clearing a pending transaction, categorising and budgets " +
                 "are the money tool. Ask a plain-English question; raw results come back to relay.",
             params = DISPATCHER_PARAMS,
@@ -1253,7 +1253,10 @@ object LiveToolbox {
             }
             "set_budget" -> setBudget(context, args)
             "list_budget_categories" -> listBudgetCategories(context)
-            "get_monthly_spend" -> getMonthlySpend(context, args.optString("month"))
+            "get_monthly_spend" -> when (val view = args.optString("view").trim().lowercase()) {
+                "left", "category", "top" -> com.kevin.legion.service.tools.money.BudgetTool.answer(context, view, args)
+                else -> getMonthlySpend(context, args.optString("month"))
+            }
             "get_meal_gap" -> getMealGap(context)
             "list_recent_meals" -> listRecentMeals(context, args.optInt("count", 10))
             "log_sleep" -> logSleep(context, args)

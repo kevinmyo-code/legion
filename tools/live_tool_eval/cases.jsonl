@@ -77,7 +77,7 @@
 {"say": "what did I eat yesterday", "covers": "ask_body"}
 {"say": "what's today's workout", "covers": "ask_body"}
 {"say": "what are my goals right now", "covers": "ask_goals"}
-{"say": "how much have I spent on groceries this month", "covers": "ask_pantry", "also": ["look_up/ask_money"]}
+{"say": "how much have I spent on groceries this month", "covers": "ask_money"}
 {"say": "did I get an email from the landlord", "covers": "ask_mail"}
 {"say": "what's my checking balance", "covers": "ask_money"}
 {"say": "any severe weather alerts around here", "covers": "ask_area"}
@@ -102,3 +102,8 @@
 {"say": "wake me up at 6:30", "covers": "clock"}
 {"say": "tell me if the electric bill goes over a hundred", "covers": "watch", "action": "watch_set"}
 {"say": "look at this", "covers": "look"}
+{"say": "how much is left in the budget this month", "covers": "ask_money"}
+{"say": "what did we spend on dining out last month", "covers": "ask_money"}
+{"say": "what are our top spending categories this month", "covers": "ask_money"}
+{"say": "how much have we spent on hot air balloons this month", "covers": "ask_money"}
+{"say": "what was on my last grocery receipt", "covers": "ask_pantry"}
