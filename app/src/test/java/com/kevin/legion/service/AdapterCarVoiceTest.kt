@@ -172,6 +172,23 @@ class AdapterCarVoiceTest {
     }
 
     @Test
+    fun `switch - his own earlier answer is corrected by voice, rebinding the live connection`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+        assertTrue(DongleCarController.answer(context, "car:zephyr").ok)
+        setLink(mac, withLink = true)
+
+        val r = switchTo("Comet")
+        assertTrue(r.toString(), r.getBoolean("success"))
+        assertTrue(r.getBoolean("changed"))
+        assertTrue(r.getString("vehicle").contains("Comet"))
+        val live = DongleCarController.state.value as DongleCar.OnCar
+        assertEquals("car:comet", live.carId)
+        assertEquals(DongleCar.Basis.ANSWER, live.basis)
+        assertEquals("car:comet", ActiveVehicle.recordingId(context))
+    }
+
+    @Test
     fun `switch - a wrong recognition is corrected by voice`() = runBlocking {
         seed()
         CarFingerprint.save(context, "car:zephyr", print)
@@ -191,6 +208,34 @@ class AdapterCarVoiceTest {
         ActiveVehicle.select(context, "car:zephyr")
         setLink(mac, withLink = true)
         assertFalse(switchTo("Zephyr").getBoolean("changed"))
+    }
+
+    @Test
+    fun `a write to this car is refused while the adapter's car is unknown, never filed on a guess`() = runBlocking {
+        seed()
+        ActiveVehicle.select(context, "car:zephyr")
+        DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
+        setLink(mac, withLink = true)
+
+        val r = LiveToolbox.dispatch(context, "set_odometer", JSONObject().put("miles", 12345))!!
+        assertFalse(r.getBoolean("success"))
+        assertTrue(r.getString("message"), r.getString("message").startsWith("Nothing was saved"))
+        // Named, it is not this refusal.
+        val named = LiveToolbox.dispatch(context, "set_odometer", JSONObject().put("miles", 12345).put("vehicle", "Comet"))!!
+        assertFalse(named.getString("message"), named.getString("message").contains("has not named yet"))
+    }
+
+    @Test
+    fun `this car is a car already on file - names the adapter's car instead of adding one`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+        setLink(mac, withLink = true)
+
+        val out = com.kevin.legion.vehicle.VehicleController.registerDirect(context, 2010, "Acme", "Comet")
+        assertTrue(out.message, out.success)
+        assertTrue(out.message.startsWith("That car is already on file"))
+        assertEquals("car:comet", (DongleCarController.state.value as DongleCar.OnCar).carId)
+        assertEquals("car:comet", DongleCarController.recognised(context, print))
     }
 
     @Test

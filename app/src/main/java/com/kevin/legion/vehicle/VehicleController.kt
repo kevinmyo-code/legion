@@ -180,13 +180,25 @@ object VehicleController {
         // OBD VIN attribution (2026-11-15): with the dongle in a car nobody has named yet (or only
         // assumed), "this car" has no row to correct, and writing onto the picked car would
         // overwrite a different car.
+        // 2026-11-17: "this car is a <car already on file>" with the dongle's car unknown came here and
+        // was refused; the car he names IS the answer to "which car is the dongle in". One car on file
+        // matching what he said: that answer, through the same controller as switch_vehicle.
+        if (DongleCarController.hasLiveQuestion()) {
+            AdapterBinding.carOnFileNamed(FleetEngineStore.getAll(context), year, make, model)?.let { car ->
+                val bound = switchToOutcome(context, car.obdMac)
+                return WriteOutcome(
+                    bound.success,
+                    "That car is already on file, so nothing new was added. ${bound.message}",
+                )
+            }
+        }
         val refusal = when {
             year < 1900 || make.isBlank() || model.isBlank() ->
                 "I need a valid year, make, and model to register the car."
             DongleCarController.hasLiveQuestion() ->
                 "I don't know for sure which car the OBD dongle is in, so nothing was saved. If it's a car " +
-                    "on file, tell me which one (switch to it); if it's a new car, ask me to add it, then " +
-                    "switch to it; to fix a saved car's details, correct that car by name."
+                    "on file, call car switch_vehicle with that car's name; if it's a new car, ask him to add " +
+                    "it (car add_vehicle), then switch to it; to fix a saved car's details, correct that car by name."
             else -> null
         }
         if (refusal != null) return WriteOutcome(false, refusal)
@@ -1358,24 +1370,14 @@ object VehicleController {
     private suspend fun dongleSwitch(context: Context, vehicle: Vehicle): WriteOutcome? {
         val before = (DongleCarController.state.value as? DongleCar.OnCar)?.takeIf { it.carId != vehicle.obdMac }
         return when {
-            // He already said which car the dongle is in on this drive: a later switch is a pick for
-            // stored-data questions, not a silent move of the drive. Correcting the answer is the
-            // Cars screen's OBD dongle card.
-            before != null && before.basis == DongleCar.Basis.ANSWER -> keepAnswered(context, vehicle, before.carId)
+            // "The adapter is in X" after he named another car on this connection is his correction:
+            // the live binding moves (its readings, its print, the clear permission), the same
+            // controller as the Cars screen's OBD dongle card (Kevin, 2026-11-17: one adapter, moved).
+            before != null && before.basis == DongleCar.Basis.ANSWER -> answerSwitch(context, vehicle)
             DongleCarController.hasLiveQuestion() -> answerSwitch(context, vehicle)
             before != null && before.basis == DongleCar.Basis.VIN -> answerSwitch(context, vehicle)
             else -> null
         }
-    }
-
-    private suspend fun keepAnswered(context: Context, vehicle: Vehicle, inCarId: String): WriteOutcome {
-        ActiveVehicle.select(context, vehicle.obdMac)
-        val inCar = FleetEngineStore.getByMac(context, inCarId)?.let { label(it) } ?: "car you named"
-        return WriteOutcome(
-            true,
-            "You're on the ${label(vehicle)} for questions about stored data. Live readings stay on the " +
-                "$inCar, the car you said the dongle is in; if that was wrong, change it under Cars, OBD dongle.",
-        )
     }
 
     private suspend fun answerSwitch(context: Context, vehicle: Vehicle): WriteOutcome {

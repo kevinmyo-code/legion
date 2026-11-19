@@ -1,6 +1,7 @@
 package com.kevin.legion.vehicle
 
 import android.content.Context
+import com.kevin.legion.data.local.Vehicle
 import org.json.JSONObject
 
 /**
@@ -112,6 +113,41 @@ object AdapterBinding {
 
     /** [clearRefusal] for the live connection now. */
     fun clearRefusalNow(): String? = clearRefusal(DongleCarController.state.value, ObdBluetoothManager.isConnected)
+
+    /**
+     * "This car is a <year make model>" while the adapter's car is unknown: the one car on file it
+     * names, or null (none, or more than one: the refusal asks instead of guessing).
+     */
+    fun carOnFileNamed(cars: List<Vehicle>, year: Int, make: String, model: String): Vehicle? {
+        val m = make.trim()
+        val mo = model.trim()
+        if (mo.isEmpty()) return null
+        val hits = cars.filter { v ->
+            !v.archived &&
+                v.model.trim().equals(mo, ignoreCase = true) &&
+                (m.isEmpty() || v.make.trim().equals(m, ignoreCase = true)) &&
+                (year < MIN_YEAR || v.year < MIN_YEAR || v.year == year)
+        }
+        return hits.singleOrNull()
+    }
+
+    private const val MIN_YEAR = 1900
+
+    /** Car writes that default to "this car" when no car is named. */
+    private val THIS_CAR_WRITES = setOf(
+        "set_odometer", "log_service", "log_past_service", "set_maintenance_interval", "log_build_entry",
+    )
+
+    /**
+     * A write to "this car" ([THIS_CAR_WRITES], no `vehicle` named) while the adapter is connected to a
+     * car that is unknown or only recognised: refused, so nothing lands on a guessed car. Null: go ahead.
+     */
+    fun unnamedCarWriteRefusal(tool: String, namedVehicle: String): String? = when {
+        tool !in THIS_CAR_WRITES || namedVehicle.isNotBlank() -> null
+        !ObdBluetoothManager.isConnected || !DongleCarController.hasLiveQuestion() -> null
+        else -> "Nothing was saved: the OBD adapter is in a car he has not named yet, so I don't know which " +
+            "car this is for. Ask him which car, then do it with that car's name."
+    }
 
     /** The error code of [unknownCarRefusal]'s result. */
     const val UNKNOWN_CAR_ERROR = "adapter_car_unknown"

@@ -2,6 +2,7 @@
 
 package com.kevin.legion.vehicle
 
+import com.kevin.legion.data.local.Vehicle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -9,6 +10,26 @@ import org.junit.Test
 
 /** [AdapterBinding]: the words that route "this is the X" to the one binding action. Invented cars. */
 class AdapterBindingTest {
+    private fun car(id: String, year: Int, make: String, model: String, archived: Boolean = false) =
+        Vehicle(obdMac = id, name = "", make = make, model = model, year = year, personaPrompt = "", archived = archived)
+
+    private val fleet = listOf(
+        car("c1", 2004, "Acme", "Zephyr"),
+        car("c2", 2012, "Bolt", "Comet"),
+        car("c3", 2001, "Bolt", "Nova", archived = true),
+    )
+
+    @Test
+    fun `this car is a year make model on file names that one car`() {
+        assertEquals("c1", AdapterBinding.carOnFileNamed(fleet, 2004, "Acme", "Zephyr")?.obdMac)
+        assertEquals("c1", AdapterBinding.carOnFileNamed(fleet, 0, "", "zephyr")?.obdMac)
+        assertNull("wrong year", AdapterBinding.carOnFileNamed(fleet, 1999, "Acme", "Zephyr"))
+        assertNull("not on file", AdapterBinding.carOnFileNamed(fleet, 2010, "Mazda", "Miata"))
+        assertNull("archived", AdapterBinding.carOnFileNamed(fleet, 2001, "Bolt", "Nova"))
+        val twins = fleet + car("c4", 2004, "Acme", "Zephyr")
+        assertNull("two match: ask, never guess", AdapterBinding.carOnFileNamed(twins, 2004, "Acme", "Zephyr"))
+    }
+
     @Test
     fun `the refusal names the binding action and forbids clearing codes`() {
         val r = AdapterBinding.unknownCarRefusal("Zephyr")

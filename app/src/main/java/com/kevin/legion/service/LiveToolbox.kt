@@ -891,6 +891,8 @@ object LiveToolbox {
         // doesn't name the car the dongle is actually in, refuse before ever
         // touching the connected car's real readings. Category B tools are
         // exempt - they resolve their own `vehicle` argument below.
+        com.kevin.legion.vehicle.AdapterBinding.unnamedCarWriteRefusal(name, args.optString("vehicle"))
+            ?.let { return result(false, it) }
         if (name in CATEGORY_A_TOOLS) {
             refuseIfNotConnectedCar(context, args)?.let { return it }
         }
