@@ -40,6 +40,11 @@ Copy these rules into every helper prompt, with the task number filled in:
    - `<<PYTHON>> <<REPORT>> --task N --status failed --summary "<what went wrong, in words>"`
    - `<<PYTHON>> <<REPORT>> --task N --status needs_confirmation --question "<one short question>"`.
      The question goes in `--question`, never in `--summary`. report.py refuses otherwise.
+   If the summary or question has a `$`, a backtick, a double quote or a backslash in it (an
+   amount like $12.50), write it with the Write tool to `summary.txt` or `question.txt` in the
+   work folder and pass `--summary-file "<that path>"` or `--question-file "<that path>"` instead:
+   the hook refuses those characters inside a quoted argument, and the report would not be sent.
+   The call itself stays one plain line: nothing chained, piped or redirected.
 3. The summary is spoken to someone listening in a car: one or two short sentences, figures and
    file names in words ("AW4 wiring rev C, two megabytes, in Downloads"), no paths, no markdown,
    no lists. If Kevin's request asked to be told something, the summary carries it too (at most
@@ -62,7 +67,7 @@ Copy these rules into every helper prompt, with the task number filled in:
    book), `<<PYTHON>> <<FETCH>> --task N --url <https address> --name <file name>`, never curl or
    a script. Say in the summary which format it is, and list the file with `--found`.
 9. Sending mail: only with `<<PYTHON>> <<SEND_MAIL>> --task N --token <token> --to <address or kevin>
-   --subject "..." --body "..." [--attach "<file>"]`, and only when the task message gives a
+   --subject "..." --body-file "<a .txt you wrote in the work folder>" [--attach "<file>"]`, and only when the task message gives a
    confirmation token. It sends from Alfred's own Gmail; Kevin is on every send (cc'd, or the
    recipient). Put its
    one-line output (sent or not sent) in the summary in words.

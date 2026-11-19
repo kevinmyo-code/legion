@@ -561,8 +561,10 @@ def test_a_slow_tool_gets_a_filler_from_memory_once(member, engine, monkeypatch,
     fillers.warm(engine.speech, voice_engine.voice_for(household_user))
     monkeypatch.setattr(cascade, "FILLER_AUDIO", fillers)
     engine.speech.spoken.clear()
+    # Too short for the first question's "one sec", which would be this turn's one line.
+    engine.speech.heard = "Search, please."
     engine.model = FakeModel(
-        [call("legion_docs", {"query": "how is it built"}), say("It is Django.")]
+        [call("web_search", {"query": "how is it built"}), say("It is Django.")]
     )
     events = _events(_post(member, audio=PCM))
     kinds = _kinds(events)
@@ -571,10 +573,10 @@ def test_a_slow_tool_gets_a_filler_from_memory_once(member, engine, monkeypatch,
     # the answer (Kevin, 2026-11-17: fillers say what it is actually doing).
     assert kinds[working + 1 : working + 3] == ["filler", "audio"]  # the tool's own line
     filler = [f for f in _of(events, "filler") if f["tool"]][0]
-    assert filler["tool"] == "legion_docs"
+    assert filler["tool"] == "web_search"
     from assistant import fillers as filler_lines
 
-    assert filler["text"] in filler_lines.lines_for("legion_docs")
+    assert filler["text"] in filler_lines.lines_for("web_search")
     assert kinds.index("sentence") > working + 2
 
 

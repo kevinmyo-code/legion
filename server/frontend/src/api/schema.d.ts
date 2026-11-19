@@ -2364,6 +2364,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/media/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A media file the recruiter page names: a 3D model, a still, a video or captions
+         * @description A media file the caller's version of the content names: a model, a poster, or a section's or
+         *     phone clip's video, poster or captions. Private like the resume: a visit or an owner, never the
+         *     public. Cached by validator only (`private, no-cache` + the file's hash as ETag): a revisit
+         *     costs a 304, and a reload of the content is seen at once. Byte ranges (one per request, at most
+         *     `RANGE_CHUNK`) let a video seek; a video over `RANGE_CHUNK` asked for whole gets its first
+         *     window as a 206. Everything else is at most 4 MB (`demo.content.MEDIA_MAX_BYTES`) and goes
+         *     whole.
+         */
+        get: operations["api_demo_media_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/session": {
         parameters: {
             query?: never;
@@ -17298,6 +17324,83 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Detail"];
                 };
+            };
+        };
+    };
+    api_demo_media_retrieve: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description One `bytes=first-last`, `bytes=first-` or `bytes=-count` range. */
+                Range?: string;
+            };
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "model/gltf-binary": string;
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                    "video/mp4": string;
+                    "video/webm": string;
+                    "text/vtt": string;
+                };
+            };
+            /** @description The asked range, at most 2 MiB; Content-Range says which. */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "model/gltf-binary": string;
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                    "video/mp4": string;
+                    "video/webm": string;
+                    "text/vtt": string;
+                };
+            };
+            /** @description The copy the browser holds is current. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Neither a recruiter's visit nor a household owner. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoRefusal"];
+                };
+            };
+            /** @description No such file is loaded. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The range starts past the end of the file. */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

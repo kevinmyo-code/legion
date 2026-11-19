@@ -784,7 +784,8 @@ class Worker:
                 "from the helper's last result: --status done --summary only if that result clearly "
                 "says the work finished, --status needs_confirmation --question if it ended on a "
                 "question for Kevin, otherwise --status failed --summary with what it said, in "
-                "words. Then one line.")
+                "words. Put the text in single quotes with no apostrophe in it, and nothing else "
+                "on the line. Then one line.")
 
     def _stop_helper(self, t: dict, verb: str, text: str) -> None:
         unsent = [p for p in self.pending if p[0] == t["id"]]

@@ -210,6 +210,31 @@ class RecruiterContent(models.Model):
         return bytes(data), getattr(self, f"{kind}_content_type"), getattr(self, f"{kind}_filename")
 
 
+class RecruiterMediaFile(models.Model):
+    """One model or poster file a project section names (`media.models`, Kevin 2026-11-19), stored
+    beside its content row for the reasons the resume is: the image carries no private file and
+    the page's clip bucket is world-readable. Its own table, not columns on `RecruiterContent`,
+    because `for_user` loads that whole row on every page read and every `about_kevin` call.
+    Replaced whole by each load (`demo.content.load`); deleted with its row."""
+
+    content = models.ForeignKey(
+        RecruiterContent, on_delete=models.CASCADE, related_name="media_files"
+    )
+    name = models.CharField(max_length=80)
+    data = models.BinaryField()
+    content_type = models.CharField(max_length=100)
+    # The ETag: a revisit asks "still this?" and gets a 304 without the bytes leaving Postgres.
+    sha256 = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["content", "name"], name="demo_media_file_unique")
+        ]
+
+    def __str__(self) -> str:
+        return f"Recruiter media {self.name} ({self.content_type})"
+
+
 class DemoBudgetDay(models.Model):
     """One UTC day of recruiter Gemini spend, as RESERVED before acting
     (recruiter-demo ticket 04, `demo/budget.py`). Integer cents (CLAUDE.md

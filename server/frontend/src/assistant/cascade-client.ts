@@ -1159,7 +1159,13 @@ export class CascadeClient {
         const said = typeof data.text === 'string' ? data.text : ''
         // The acknowledgement (no tool) is speech only, not a step the engine took.
         if (!tool) return open
-        this.strip = { ...this.strip, tools: [...this.strip.tools, { tool, ms: null, filler: said }] }
+        // A delayed line (the 0.7 s kind) comes after its tool's own event: it joins that entry.
+        const done = this.strip.tools.map((t) => t.tool).lastIndexOf(tool)
+        if (done >= 0 && this.strip.tools[done].ms !== null) {
+          const tools = [...this.strip.tools]
+          tools[done] = { ...tools[done], filler: said }
+          this.strip = { ...this.strip, tools }
+        } else this.strip = { ...this.strip, tools: [...this.strip.tools, { tool, ms: null, filler: said }] }
         this.refresh()
         return open
       }

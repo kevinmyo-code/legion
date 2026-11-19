@@ -48,6 +48,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -131,9 +132,7 @@ SKILL_WRITE_RE = re.compile(
     r"(?<![\w./\\-])(?:cp|copy|cpi|xcopy|robocopy|ni|mkdir|md|tee|touch|unzip|tar)(?:\.exe)?\s"
     r"|Copy-Item|New-Item|Tee-Object|\bsed\b[^|;&]*\s-i|Expand-Archive"
     r"|\bgit\b[^|;&]*\b(checkout|restore|clone|worktree|apply|am)\b|\bpython\S*\s", re.I)
-_LEAD_RE = re.compile(
-    r'^\s*&?\s*(?:"[^"]*python[0-9.]*(?:\.exe)?"|\S*python[0-9.]*(?:\.exe)?)\s+'
-    r'(?:"(?P<q>[^"]+)"|(?P<s>\S+))(?P<rest>.*)$', re.I | re.S)
+PYTHON_EXE_RE = re.compile(r"^(?:.*[\\/])?python[0-9.]*w?(?:\.exe)?$", re.I)
 REPORT_RE = re.compile(r"report\.py\b", re.I)
 
 # Things that look like a path inside a command.
@@ -155,14 +154,64 @@ LISTED_SHELL_OK = re.compile(
 )
 
 
+PATH_CHAR_RE = re.compile(r"[A-Za-z0-9._ /:-]")
+SHELL_SPECIAL = set(";&|<>(){}*?[]$`\n\r")
+
+
+def _plain_argv(command: str) -> list[str] | None:
+    """The argv of a command that is ONE python program with literal arguments, or None.
+
+    The worker's own scripts are trusted by name (report.py, ship.py, ...), so their call must be
+    nothing else (review 11-19, R2-1: a double-quoted `$(...)` in a summary ran a command, tainted
+    task or not). Judged for Bash and PowerShell at once, so anything either shell would expand,
+    chain or redirect is refused: outside single quotes no `$` and no backtick; outside any quotes
+    no `; & | < > ( ) { } * ? [ ]` and no newline, no `#` or `@` starting a word, and a backslash
+    only before a path character or a newline (a line continuation); inside double quotes no
+    backslash before a quote, a backslash, `$` or a backtick (the two shells read those
+    differently). Single-quoted text is literal in both. A leading `&` (PowerShell's call
+    operator) is allowed. Unbalanced quotes: None."""
+    s = (command or "").strip()
+    if s.startswith("&"):
+        s = s[1:].lstrip()
+    quote, word_start, i = None, True, 0
+    while i < len(s):
+        ch, nxt = s[i], s[i + 1:i + 2]
+        if quote == "'":
+            if ch == "'":
+                quote = None
+        elif quote == '"':
+            if ch in "$`" or (ch == "\\" and nxt in ('"', "\\", "$", "`")):
+                return None
+            if ch == '"':
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "\\":
+            if nxt == "\n":
+                i += 2
+                word_start = True
+                continue
+            if not PATH_CHAR_RE.match(nxt or "!"):
+                return None
+        elif ch in SHELL_SPECIAL or (word_start and ch in "#@"):
+            return None
+        word_start = quote is None and ch in " \t"
+        i += 1
+    if quote is not None:
+        return None
+    try:
+        argv = shlex.split(s.replace("\\\n", " "), posix=True)
+    except ValueError:
+        return None
+    if len(argv) < 2 or not PYTHON_EXE_RE.match(argv[0]):
+        return None
+    return argv
+
+
 def _is_lone_script(command: str, script: str) -> bool:
-    """`python .../<script> ...` and nothing chained to it. Its free text (a summary, a mail body)
-    must not trip the ask list, so it is judged with quoted strings removed."""
-    bare = re.sub(r'"(?:\\.|[^"\\])*"' + r"|'[^']*'", '""', command)
-    pat = r"^\s*&?\s*\S*python(?:\.exe)?\S*\s+\S*" + re.escape(script) + r"\b"
-    if not re.match(pat, bare, re.I):
-        return False
-    return not re.search(r"[;&|`<>]|\$\(", bare.split(script, 1)[1])
+    """`python .../<script> <literal args>` and nothing else (`_plain_argv`)."""
+    argv = _plain_argv(command)
+    return bool(argv) and re.split(r"[\\/]", argv[1])[-1].lower() == script.lower()
 
 
 def _is_lone_report(command: str) -> bool:
@@ -170,16 +219,10 @@ def _is_lone_report(command: str) -> bool:
 
 
 def _is_our_lone_script(command: str, script: str) -> bool:
-    """`python <this folder>/<script> ...` alone: the script must be THIS folder's copy (a helper
-    could write its own ship.py), and nothing may be chained to it. Free text in its arguments
-    (the ship notes) is judged with quoted strings removed."""
-    m = _LEAD_RE.match(command or "")
-    if not m:
-        return False
-    p = m.group("q") or m.group("s")
-    if norm(_to_os_path(p)) != norm(HERE / script):
-        return False
-    return not re.search(r"[;&|`<>\n]|\$\(", _unquoted(m.group("rest")))
+    """`python <this folder>/<script> <literal args>` alone: the script must be THIS folder's copy
+    (a helper could write its own ship.py), and the call must be plain (`_plain_argv`)."""
+    argv = _plain_argv(command)
+    return bool(argv) and norm(_to_os_path(argv[1])) == norm(HERE / script)
 
 
 def _unquoted(command: str) -> str:

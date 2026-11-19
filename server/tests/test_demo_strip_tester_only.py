@@ -191,3 +191,61 @@ def test_a_revoked_tester_code_stops_showing_the_strip_on_a_visit_already_open(
     engine.model = FakeModel([say("Hello.")])
     done = _of(_events(_post(visitor, text="Hi.")), "done")[0]
     assert "cost_usd" not in done
+
+
+# ---- ship/try-speed-media-1119: the strip rule beside perf/try-first-word's lookup lines ---------
+# That branch added a delayed lookup line (a `filler` event after its tool's own event), the
+# `waiting` moments that time it, and `first_sound_ms` / `filler_ms` on the timing line. None of
+# them may carry a time or a cost to an ordinary visit.
+
+STRIP_KEYS = {"ms", "cost_usd", "tools_ms", "first_sound_ms", "filler_ms", "tts_first_audio_ms"}
+
+
+def _slow_lookup_turn(client, engine, monkeypatch, user):
+    """A later spoken turn (the first question's acknowledgement behind it) whose lookup returns
+    at once and whose answer round is silent for about a second: the delayed line falls due."""
+    from tests.test_addressed import _warm
+    from tests.test_assistant_cascade import PCM
+    from household.demo_seed import seed_household
+    from household.models import HouseholdMember
+    from tests.test_filler_every_turn import SlowModel
+
+    # A seeded visit household, so the lookup comes back ok (a failed lookup gets no line).
+    seed_household(HouseholdMember.objects.get(user=user).household, created=True)
+    _warm(monkeypatch, engine, user)
+    engine.speech.heard = "Hello there."
+    engine.model = FakeModel([say("Hello.")])
+    first = _events(_post(client, audio=PCM))
+    conversation = _of(first, "turn")[0]["conversation_id"]
+    engine.speech.heard = "When is the car due?"
+    engine.model = SlowModel([call("next_service", {}), say("Due in May.")], [0.0, 1.0])
+    return _events(_post(client, audio=PCM, conversation_id=conversation))
+
+
+def test_an_ordinary_visit_with_a_delayed_lookup_line_gets_no_time_or_cost_anywhere(
+    visitor, visitor_user, engine, monkeypatch
+):
+    make_visit(visitor_user, unmetered=False)
+    events = _slow_lookup_turn(visitor, engine, monkeypatch, visitor_user)
+    kinds = [k for k, _ in events]
+    # The line itself is still said (the speed fix is for every visitor) ...
+    assert [f["tool"] for f in _of(events, "filler")] == ["next_service"]
+    assert kinds.index("tool") < kinds.index("filler")
+    assert "waiting" not in kinds
+    # ... but no event of any kind carries a time or the turn's cost.
+    for kind, data in events:
+        leaked = STRIP_KEYS & set(data)
+        assert not leaked, (kind, leaked)
+
+
+def test_the_tester_visit_with_a_delayed_lookup_line_keeps_its_tool_time(
+    visitor, visitor_user, engine, monkeypatch
+):
+    make_visit(visitor_user, unmetered=True)
+    events = _slow_lookup_turn(visitor, engine, monkeypatch, visitor_user)
+    assert [f["tool"] for f in _of(events, "filler")] == ["next_service"]
+    assert isinstance(_of(events, "tool")[0]["ms"], int)
+    done = _of(events, "done")[0]
+    assert [name for name, _ms in done["tools_ms"]] == ["next_service"]
+    # The timing line's fields stay on the engine's own log, never on the page.
+    assert all("filler_ms" not in d and "first_sound_ms" not in d for _k, d in events)

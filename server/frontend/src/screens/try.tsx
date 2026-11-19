@@ -8,7 +8,6 @@ import {
   useDemoContent,
   useDemoSession,
   type DemoContent,
-  type DemoMedia,
   type DemoProject,
   type DemoProjectSection,
 } from '@/api/demo'
@@ -30,6 +29,7 @@ import { AccessCodeForm } from '@/components/demo/access-code-form'
 import { useSurface } from '@/lib/surface'
 import { postFunnel } from '@/assistant/deps'
 import { VoiceStage } from '@/components/demo/voice-stage'
+import { Media } from '@/screens/try-media'
 import { PhoneSection } from '@/screens/try-phone'
 
 /**
@@ -704,34 +704,6 @@ function ProjectSection({ section }: { section: DemoProjectSection }) {
       {section.media && <Media media={section.media} title={section.title} />}
     </Section>
   )
-}
-
-/**
- * A clip slot: the video when there is one (hosted off-site like the phone clips, so the captions
- * track needs CORS), else its note ("coming soon") as a quiet line, else nothing.
- */
-function Media({ media, title }: { media: DemoMedia; title: string }) {
-  if (media.video) {
-    return (
-      <figure className="rc-figure">
-        <video
-          className="rc-video"
-          src={media.video}
-          poster={media.poster}
-          aria-label={title}
-          crossOrigin="anonymous"
-          playsInline
-          controls
-          preload="none"
-        >
-          {media.captions && <track kind="captions" src={media.captions} srcLang="en" label="Captions" default />}
-        </video>
-        {media.note && <figcaption className="rc-figcaption">{media.note}</figcaption>}
-      </figure>
-    )
-  }
-  if (media.note) return <p className="rc-media-note">{media.note}</p>
-  return null
 }
 
 function FooterLink({ href, children }: { href: string; children: ReactNode }) {

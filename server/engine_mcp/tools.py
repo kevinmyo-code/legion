@@ -1820,6 +1820,26 @@ def _skip_event_occurrence(request, args) -> ToolResult:
 # =============================================================================
 
 
+# A month, or a full date that names it (perf/try-faster-first-word fix 2: recorded on /try, the
+# model sent "2026-10-01" first, was refused, and spent a whole second model round asking again).
+_MONTH = {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$"}
+
+
+def _month_arg(args) -> str | None:
+    """`month` as YYYY-MM; a real full date gives its month. A date that does not exist
+    ("2026-02-31") is passed on as written, so the month parser refuses it in words."""
+    import datetime as dt
+
+    raw = args.get("month")
+    if isinstance(raw, str) and len(raw) == 10:
+        try:
+            dt.date.fromisoformat(raw)
+        except ValueError:
+            return raw
+        return raw[:7]
+    return raw
+
+
 def _monthly_spend(request, args) -> ToolResult:
     from django.db import connection
 
@@ -1831,7 +1851,7 @@ def _monthly_spend(request, args) -> ToolResult:
         cursor.execute("SELECT statement_timestamp()")
         now = cursor.fetchone()[0]
     try:
-        month = resolve_month(args.get("month"), args.get("tz"), now)
+        month = resolve_month(_month_arg(args), args.get("tz"), now)
     except BadRequest as exc:
         return refused(f"Nothing was read. {exc}")
     body = spend_for(request, month, currency)
@@ -1989,7 +2009,7 @@ def _cash_flow(request, args) -> ToolResult:
 
     today, zone = _finance_today(request)
     try:
-        month = month_param(args.get("month"), today)
+        month = month_param(_month_arg(args), today)
     except ValueError as exc:
         return refused(str(exc))
     try:
@@ -2117,7 +2137,7 @@ def _budgets(request, args) -> ToolResult:
 
     today, _ = _finance_today(request)
     try:
-        month = month_param(args.get("month"), today)
+        month = month_param(_month_arg(args), today)
     except ValueError as exc:
         return refused(str(exc))
     body = budgets(request, _household(request), month, today)
@@ -2912,7 +2932,7 @@ TOOLS: tuple[EngineTool, ...] = (
         ),
         input_schema=_object(
             {
-                "month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"},
+                "month": _MONTH,
                 "tz": {"type": "string"},
                 "currency": {"type": "string", "pattern": "^[A-Za-z]{3}$"},
             }
@@ -2957,7 +2977,7 @@ TOOLS: tuple[EngineTool, ...] = (
             "mortgage, and the net; whether income covers spend and the mortgage. In USD. "
             "Optional `month` (YYYY-MM, default the current one)."
         ),
-        input_schema=_object({"month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"}}),
+        input_schema=_object({"month": _MONTH}),
         handler=_cash_flow,
         writes=False,
     ),
@@ -2984,7 +3004,7 @@ TOOLS: tuple[EngineTool, ...] = (
             "and said as pending. Also fixed bills not yet paid and new subscriptions. "
             "Optional `month` (YYYY-MM)."
         ),
-        input_schema=_object({"month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"}}),
+        input_schema=_object({"month": _MONTH}),
         handler=_budgets,
         writes=False,
     ),
