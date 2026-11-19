@@ -2377,7 +2377,9 @@ export interface paths {
          *     phone clip's video, poster or captions. Private like the resume: a visit or an owner, never the
          *     public. Cached by validator only (`private, no-cache` + the file's hash as ETag): a revisit
          *     costs a 304, and a reload of the content is seen at once. Byte ranges (one per request, at most
-         *     `RANGE_CHUNK`) let a video seek; a whole file over `RANGE_CHUNK` is streamed in such reads.
+         *     `RANGE_CHUNK`) let a video seek; a video over `RANGE_CHUNK` asked for whole gets its first
+         *     window as a 206. Everything else is at most 4 MB (`demo.content.MEDIA_MAX_BYTES`) and goes
+         *     whole.
          */
         get: operations["api_demo_media_retrieve"];
         put?: never;
