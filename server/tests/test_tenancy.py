@@ -1032,6 +1032,39 @@ def test_agent_traces_are_scoped_by_household(household_a, household_b, househol
     assert "alpha-agent" not in json.dumps(model_b.requests[0].contents)
 
 
+
+_LIMB = {
+    "contract_version": 1,
+    "kind": "phone",
+    "app_version": "alpha-version",
+    "tools": [{"name": "set_timer", "writes": True, "read_through": False, "actuates": False}],
+}
+
+
+def test_agent_limbs_are_scoped_by_household(
+    token_a, token_b, household_a, household_b, monkeypatch
+):
+    """engine-brain ticket 04 (E1): each household's device attaches its own `agents_limb` row,
+    keyed by its own token; B's request scopes to B's row only, and B uploading again never moves
+    A's. Invented devices."""
+    from agents.evals.runner import member_request
+    from agents.legion.flags import TURN_ENV
+    from agents.models import Limb
+    from household.tenancy import scoped
+
+    monkeypatch.setenv(TURN_ENV, "on")
+    a = token_a.post("/api/agents/limb", _LIMB, format="json")
+    b = token_b.post("/api/agents/limb", {**_LIMB, "kind": "headunit"}, format="json")
+    assert a.status_code == b.status_code == 200, (a.data, b.data)
+    limb_a = Limb.objects.get(pk=a.data["limb_id"])
+    limb_b = Limb.objects.get(pk=b.data["limb_id"])
+    assert limb_a.household_id == household_a.id and limb_b.household_id == household_b.id
+    assert list(scoped(Limb, member_request(limb_b.owner_user))) == [limb_b]
+    again = {**_LIMB, "kind": "headunit", "app_version": "beta-version"}
+    assert token_b.post("/api/agents/limb", again, format="json").status_code == 200
+    limb_a.refresh_from_db()
+    assert (limb_a.app_version, limb_a.kind) == ("alpha-version", "phone")
+
 _HOME_ROWS = {
     "/api/body/goals/": {
         "lineage_id": 7,

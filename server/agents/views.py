@@ -10,6 +10,13 @@
   Device token or session, as the member: every tool runs under their `visible()`.
 - `POST /api/agents/turn/<id>/cancel`: marks the member's own turn cancelled; the loop checks it
   between rounds and before every tool call (plan section 4.2).
+- `POST /api/agents/limb`: a device attaches on the limb contract (ADR 0098,
+  `agents/legion/limbs.py`): its manifest is upserted on the row keyed by its device token, and the
+  answer names the brain that answers its member's turns. Same switch as the turn: 404 while off,
+  nothing stored. A browser session is not a limb (403). A recruiter is denied the route.
+- `HEAD /api/agents/warm`: an empty 204, sent by a limb at wake so a cold instance starts while
+  he is still speaking (plan 1116 section 4.5). Reads and writes nothing past authentication. Same
+  switch: 404 while off.
 - `GET /api/agents/probe/sse`: five events 200 ms apart, each with the server's clock, for
   measuring whether Cloud Run delivers a stream unbuffered (ticket 01). Reads and writes nothing.
 
@@ -30,12 +37,13 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
-from agents.legion import flags
+from agents.legion import flags, limbs
 from agents.legion.turn import cancel, open_conversation, run_turn
 from agents.runtime import events as ev
 from agents.runtime.model import GeminiClient
 from api.schema import DetailSerializer
 from household.authentication import DeviceTokenAuthentication
+from household.models import DeviceToken
 from household.permissions import IsHouseholdMember
 from ingest.statements import gemini_key
 
@@ -45,6 +53,10 @@ AGENTS_TAGS = ["agents"]
 OFF_WORDS = (
     "Nothing was answered: the engine's agent turn is switched off on this server "
     "(LEGION_AGENTS_TURN is not on)."
+)
+NOT_A_DEVICE = (
+    "Nothing was stored. A limb is a device: it attaches with its own device token, not a browser "
+    "session."
 )
 KEY_ABSENT = "Nothing was answered: the engine has no Gemini key (LEGION_GEMINI_KEY is not set)."
 FAILED_WORDS = "The engine hit an error answering that, so the turn stopped."
@@ -67,6 +79,18 @@ class _AgentsView(APIView):
     permission_classes = [IsHouseholdMember]
     # Every tool's write fence is applied per call (`run_engine_tool`), as on `/mcp`.
     scope_checked_per_call = True
+
+
+class _SwitchedAgentsView(_AgentsView):
+    # A route that answers only while `LEGION_AGENTS_TURN=on`. (A comment, not a docstring: the
+    # schema generator would publish a docstring as every subclass's description.)
+
+    def initial(self, request, *args, **kwargs):
+        # Authentication and the household fence first (a recruiter gets the fence's own 403, a
+        # stranger 401/403, as every route does), then the switch: nothing below runs while off.
+        super().initial(request, *args, **kwargs)
+        if not flags.turn_enabled():
+            raise exceptions.NotFound(OFF_WORDS)
 
 
 class TurnRequestSerializer(serializers.Serializer):
@@ -93,15 +117,8 @@ def _sse(body) -> StreamingHttpResponse:
     return response
 
 
-class AgentTurnView(_AgentsView):
+class AgentTurnView(_SwitchedAgentsView):
     throttle_classes = [AgentTurnThrottle]
-
-    def initial(self, request, *args, **kwargs):
-        # Authentication and the household fence first (a recruiter gets the fence's own 403, a
-        # stranger 401/403, as every route does), then the switch: nothing below runs while off.
-        super().initial(request, *args, **kwargs)
-        if not flags.turn_enabled():
-            raise exceptions.NotFound(OFF_WORDS)
 
     @extend_schema(
         tags=AGENTS_TAGS,
@@ -127,14 +144,7 @@ class AgentTurnView(_AgentsView):
         return _sse(_stream(request, body.validated_data))
 
 
-class AgentCancelView(_AgentsView):
-    def initial(self, request, *args, **kwargs):
-        # Authentication and the household fence first (a recruiter gets the fence's own 403, a
-        # stranger 401/403, as every route does), then the switch: nothing below runs while off.
-        super().initial(request, *args, **kwargs)
-        if not flags.turn_enabled():
-            raise exceptions.NotFound(OFF_WORDS)
-
+class AgentCancelView(_SwitchedAgentsView):
     @extend_schema(
         tags=AGENTS_TAGS,
         operation_id="api_agents_turn_cancel",
@@ -149,6 +159,118 @@ class AgentCancelView(_AgentsView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response({"detail": "Cancelled: no further round or tool call will start."})
+
+
+def _body_refusal(request) -> Response | None:
+    """The body's size, from its declared length, before anything parses it. Django does not bound
+    a body DRF's parser reads from the stream, so this is the cap."""
+    try:
+        length = int(request.META.get("CONTENT_LENGTH") or "")
+    except ValueError:
+        return Response(
+            {
+                "detail": "Nothing was stored. Send the manifest with its Content-Length.",
+                "code": limbs.CODE_LENGTH_REQUIRED,
+            },
+            status=status.HTTP_411_LENGTH_REQUIRED,
+        )
+    if length > limbs.MAX_MANIFEST_BYTES:
+        return Response(
+            {
+                "detail": (
+                    f"Nothing was stored. The manifest is {length} bytes; the limit is "
+                    f"{limbs.MAX_MANIFEST_BYTES}."
+                ),
+                "code": limbs.CODE_TOO_LARGE,
+            },
+            status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    return None
+
+
+def _contract_version(data) -> int | None:
+    try:
+        return serializers.IntegerField().run_validation(data.get("contract_version"))
+    except (AttributeError, serializers.ValidationError):
+        return None  # missing or not a number: the manifest's own validation says so
+
+
+class AgentLimbView(_SwitchedAgentsView):
+    # The manifest upload is one plain write: a read-scoped token is refused at the household
+    # fence like any REST write (the base opts out only because the turn checks per tool call).
+    scope_checked_per_call = False
+
+    @extend_schema(
+        tags=AGENTS_TAGS,
+        operation_id="api_agents_limb_attach",
+        summary="Attach this device as a limb: upload its manifest, learn which brain answers",
+        request=limbs.LimbManifestSerializer,
+        responses={
+            200: limbs.LimbAnswerSerializer,
+            400: limbs.LimbRefusalSerializer,
+            403: limbs.LimbRefusalSerializer,
+            404: OpenApiResponse(DetailSerializer, description="The agent turn is switched off."),
+            409: OpenApiResponse(
+                limbs.LimbRefusalSerializer,
+                description="A contract version this engine does not serve.",
+            ),
+            411: OpenApiResponse(limbs.LimbRefusalSerializer, description="No Content-Length."),
+            413: OpenApiResponse(
+                limbs.LimbRefusalSerializer, description="A body over the manifest cap."
+            ),
+        },
+    )
+    def post(self, request):
+        if not isinstance(request.auth, DeviceToken):
+            return Response(
+                {"detail": NOT_A_DEVICE, "code": limbs.CODE_NOT_A_DEVICE},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        refusal = _body_refusal(request)
+        if refusal is not None:
+            return refusal
+        try:
+            data = request.data
+        except RecursionError:  # JSON nested past Python's limit: the parser does not catch it
+            return Response(
+                {
+                    "detail": "Nothing was stored. The manifest is nested too deep to read.",
+                    "code": limbs.CODE_INVALID,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # The version is read first: another version's manifest may have another shape, and the
+        # client needs "update the app", not a list of field errors.
+        version = _contract_version(data)
+        if version is not None and version != limbs.CONTRACT_VERSION:
+            return Response(
+                {
+                    "detail": (
+                        f"Nothing was stored. This engine serves limb contract "
+                        f"{limbs.CONTRACT_VERSION}; this app speaks {version}. Update the app."
+                    ),
+                    "code": limbs.CODE_UNSUPPORTED,
+                    "contract_version": limbs.CONTRACT_VERSION,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        body = limbs.LimbManifestSerializer(data=data)
+        if not body.is_valid():
+            return Response(
+                {
+                    "detail": f"Nothing was stored. The manifest did not fit: {body.errors}",
+                    "code": limbs.CODE_INVALID,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(limbs.attach(request, body.validated_data))
+
+
+class AgentWarmView(_SwitchedAgentsView):
+    # HEAD only, and drf-spectacular leaves HEAD out of `openapi.yaml`; the route is described in
+    # this module's docstring instead.
+    def head(self, request):
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def _probe():
