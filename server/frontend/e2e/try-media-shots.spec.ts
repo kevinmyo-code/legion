@@ -220,7 +220,8 @@ test.use({
 test.describe.configure({ timeout: 180_000 })
 
 test.describe('desk (1280 x 800)', () => {
-  test.use({ viewport: { width: 1280, height: 800 } })
+  // No slow turn: a before/after shot must change only because of what the test did.
+  test.use({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' })
 
   test('poster first; the 3D chunk and model load only near the section; drag, keys and reset', async ({ page }) => {
     const chunks: string[] = []
@@ -297,7 +298,7 @@ test.describe('desk (1280 x 800)', () => {
 })
 
 test.describe('phone (390 x 700)', () => {
-  test.use({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
+  test.use({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, reducedMotion: 'reduce' })
 
   test('nothing overflows; a swipe over an untapped model scrolls the page; tapped, it is the model\'s', async ({ page }) => {
     await open(page)

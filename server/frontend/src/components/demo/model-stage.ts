@@ -206,6 +206,8 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
   return {
     setActive(next) {
       active = next
+      // A tap that hands the model the gestures is its first touch: stop the slow turn.
+      if (next) firstTouch()
       applyActive()
     },
     setVisible(next) {
