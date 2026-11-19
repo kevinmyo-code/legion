@@ -146,8 +146,7 @@ describe('/try', () => {
     setAudioFactory(() => audio)
     const { router } = renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
     const orb = await screen.findByRole('button', { name: /^Talk to / })
-    // The stage's line (the hidden dock, always mounted, carries the same words).
-    expect(screen.getByRole('status')).toHaveTextContent(STAGE_LINE)
+    expect(screen.getByText(STAGE_LINE)).toBeInTheDocument()
     expect(screen.getByText(RECORDING_NOTICE)).toBeInTheDocument()
     expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
     // Nothing is entered until the tap (Kevin, 2026-11-17: entering happens on that tap).

@@ -284,7 +284,7 @@ export interface paths {
         put?: never;
         /**
          * One assistant turn on the engine's voice pipeline, answered as Server-Sent Events
-         * @description text/event-stream, one event per thing that happened: `turn` {conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `greeting` {kind, text} (a greeting turn); `working` {tool}; `filler` {tool, text} (the line said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, outcome, text, ms, card?}; `sentence` {text} (exact figures, no tags); `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); `speech_failed` {reason}; `speech_stopped` {reason} (the rest of the answer is shown, not spoken); `done` {status, final_text, writes_ran, words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (a demo visit's estimated turn cost and each tool's time)}; `error` {words}. A typed turn gets no `audio`. Every refusal body is {detail, code}: `bad_request` (400), `no_conversation` (404), `live_engine`, `time_limit`, `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`, `demo_full`, `budget` and `throttled` (429), `no_key` (503). `turn_id` names the turn for `POST /api/assistant/turn/cancel`.
+         * @description text/event-stream, one event per thing that happened: `turn` {conversation_id, turn}; `heard` {text} (a spoken turn's transcript); `greeting` {kind, text} (a greeting turn); `working` {tool}; `filler` {tool, text} (the line said while a tool runs; `tool` is empty for the acknowledgement); `tool` {name, ok, outcome, text, ms?, card?} (`ms`, the tool's time: a member or the demo's tester visit only); `sentence` {text} (exact figures, no tags); `audio` {pcm (base64 16-bit mono PCM), rate, filler?} (`filler` true on a filler's audio); `speech_failed` {reason}; `speech_stopped` {reason} (the rest of the answer is shown, not spoken); `done` {status, final_text, writes_ran, words?, end? (the conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (the demo tester visit's estimated turn cost and each tool's time; no other caller gets them)}; `error` {words}. A typed turn gets no `audio`. Every refusal body is {detail, code}: `bad_request` (400), `no_conversation` (404), `live_engine`, `time_limit`, `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`, `demo_full`, `budget` and `throttled` (429), `no_key` (503). `turn_id` names the turn for `POST /api/assistant/turn/cancel`.
          */
         post: operations["api_assistant_turn_create"];
         delete?: never;
@@ -6187,8 +6187,8 @@ export interface components {
         AssistantTranscript: {
             /** @description The words; empty for none. */
             text: string;
-            /** @description How long the transcription took. */
-            ms: number;
+            /** @description How long the transcription took (a member or the demo's tester visit only). */
+            ms?: number;
         };
         AssistantTurnCancelRequest: {
             /**
