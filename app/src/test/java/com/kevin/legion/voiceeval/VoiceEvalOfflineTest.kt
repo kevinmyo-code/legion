@@ -203,7 +203,7 @@ class VoiceEvalOfflineTest {
         // counted, and a turn that then ended empty was heard as "Nothing was changed."
         VoiceEvalFixture.seed(context, today)
         val lines = runScripted(
-            "t", "invented",
+            "t", "an invented request",
             call("day", JSONObject().put("action", "complete_task").put("title", "printer ink")),
             listOf(usage()),
         )
@@ -215,7 +215,7 @@ class VoiceEvalOfflineTest {
     fun `the eval hears code's line for a write, where the phone says it`() = runBlocking {
         VoiceEvalFixture.seed(context, today)
         val lines = runScripted(
-            "t", "invented",
+            "t", "an invented request",
             call("manage_checklist", JSONObject().put("action", "add").put("list", "to-do").put("text", "mail the form")),
             text("Anything else?"),
         )
@@ -225,8 +225,20 @@ class VoiceEvalOfflineTest {
         assertTrue(voice, voice.contains("Done: added "))
     }
 
+    @Test
+    fun `a lone word's write is held for a yes in the eval, as on the phone`() = runBlocking {
+        VoiceEvalFixture.seed(context, today)
+        val lines = runScripted(
+            "t", "Five.",
+            call("car", JSONObject().put("action", "switch_vehicle").put("vehicle", "five")),
+            text("Switch to car five?"),
+        )
+        val result = lines.single { it.startsWith("LIVE_AUDIT tool_result") }
+        assertTrue(result, result.contains("success=false") && result.contains("\"needs_yes\":true"))
+    }
+
     private suspend fun toolResult(name: String, args: JSONObject): String =
-        runScripted("t", "invented", call(name, args), text("ok.")).single { it.startsWith("LIVE_AUDIT tool_result") }
+        runScripted("t", "an invented request", call(name, args), text("ok.")).single { it.startsWith("LIVE_AUDIT tool_result") }
 
     private suspend fun runScripted(id: String, say: String, vararg rounds: List<JSONObject>): List<String> {
         val lines = mutableListOf<String>()

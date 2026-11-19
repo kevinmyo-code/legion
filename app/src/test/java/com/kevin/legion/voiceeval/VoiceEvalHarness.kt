@@ -24,6 +24,7 @@ import com.kevin.legion.service.cascade.GeminiStreamTransport
 import com.kevin.legion.service.cascade.GeminiTextLoop
 import com.kevin.legion.service.cascade.GeminiStt
 import com.kevin.legion.service.cascade.GeminiTts
+import com.kevin.legion.service.cascade.LoneWordWriteGuard
 import com.kevin.legion.service.cascade.ScriptedLines
 import com.kevin.legion.service.cascade.SttGuard
 import com.kevin.legion.service.cascade.SttResult
@@ -113,6 +114,10 @@ internal class VoiceEvalHarness(
     private var turnStartedAt: java.time.LocalTime = java.time.LocalTime.now()
     private val dateCalls = AtomicInteger(0)
 
+    /** As the session ([LoneWordWriteGuard]): the last answered turn's tools asked him something. */
+    @Volatile private var askedBefore = false
+    @Volatile private var asked = false
+
     suspend fun runCase(case: EvalCase) {
         out(TEST_TAG, "case_begin id=${LiveAudit.token(case.id)}")
         runTurns(case)
@@ -195,6 +200,8 @@ internal class VoiceEvalHarness(
                 SpokenLanguages.Decision.Stay -> Unit
             }
             audit.user(heard, final = true)
+            askedBefore = asked
+            asked = false
             val t0 = now()
             turnStartedAt = java.time.LocalTime.now()
             dateCalls.set(0)
@@ -295,7 +302,10 @@ internal class VoiceEvalHarness(
         val id = "e${toolSeq.incrementAndGet()}"
         audit.toolCall(id, name, false, args.toString())
         val t = now()
-        val response = runTool(name, args, readThrough, heard)
+        // The session's lone-word rule, before the controller, as in its executor.
+        val response = LoneWordWriteGuard.refusal(name, args, heard, "Alfred", askedBefore)
+            ?: runTool(name, args, readThrough, heard)
+        if (LoneWordWriteGuard.asks(name, args, response)) asked = true
         // The day a calendar read covered, whole (the audit line cuts a result at 400 characters): the
         // date cases grade what was READ, not the model's arguments.
         if (name == "day" && response.has("window")) {

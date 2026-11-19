@@ -293,6 +293,9 @@ internal class CascadeSession(
     /** Writes that went through and that he has not heard said yet ([OwedWrites]). */
     private val owed = OwedWrites()
 
+    /** His last turn's tools asked him something ([LoneWordWriteGuard.asks]): one word may answer it. */
+    @Volatile private var lastTurnAsked = false
+
     /** Transcripts of noise in a row ([SttGuard.NOISE]): silent, but capped ([MAX_NOISE_IN_A_ROW]). */
     private var noiseInARow = 0
 
@@ -330,6 +333,10 @@ internal class CascadeSession(
 
         /** A write tool was called this turn (set as it starts, before it can run). */
         @Volatile var writeCalled = false
+
+        /** The turn before asked him something ([LoneWordWriteGuard]); this turn's tools did. */
+        @Volatile var askedBefore = false
+        @Volatile var asked = false
 
         /** Dropped for his next words, which carry these: not recorded on its own. */
         @Volatile var merged = false
@@ -1141,6 +1148,7 @@ internal class CascadeSession(
         drafted: SpeculativeAnswer? = null,
     ) {
         turn = record
+        if (record.fromUser) record.askedBefore = lastTurnAsked
         // ADR 0090 gap 5: the turn after a read-through opener starts marked, as on Live.
         if (readThroughCarry.startTurn(record.fromUser, record.startMarked)) {
             record.startMarked = true
@@ -1266,6 +1274,7 @@ internal class CascadeSession(
             throw e
         } finally {
             if (turn === record) turn = null
+            if (record.fromUser && !record.merged) lastTurnAsked = record.asked
         }
         if (outcome != ReplySpeaker.Outcome.Played) return
         if (checkInStep == CheckInStep.LINE && !record.fromUser) {
@@ -1594,6 +1603,12 @@ internal class CascadeSession(
         }
         // Before anything can run: his next words must never carry a write into a second run.
         if (CascadeRules.isWrite(name, args)) record.writeCalled = true
+        // One heard word changes nothing without his yes (2026-11-19, lone_word_write).
+        val held = if (record.fromUser) {
+            LoneWordWriteGuard.refusal(name, args, record.heard, CompanionProfile.name(ctx), record.askedBefore)
+        } else {
+            null
+        }
         val id = "c${toolSeq.incrementAndGet()}"
         // Logged under the called name (the eval scorer reads `day/read_calendar`); LiveAudit judges
         // redaction on the tool it stands for, so a folded mail or brief result is redacted.
@@ -1614,7 +1629,8 @@ internal class CascadeSession(
                     JSONObject().put("success", false).put("message", "That only works on the Live voice engine.")
                 // A read-through opener (ADR 0090) marks the turn before the loop's own flag can.
                 // The turn's date facts ride in the call's context to the date fix ([RelativeDay.corrected]).
-                else -> withContext(
+                // A lone word's write is held before it reaches the controller ([LoneWordWriteGuard]).
+                else -> held ?: withContext(
                     RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1) +
                         ClearCodesVoiceGate.HeardVoice(record.voicedMs),
                 ) {
@@ -1690,6 +1706,7 @@ internal class CascadeSession(
                 val r = LiveSurface.resolve(name, args)
             }
             if (writeDone) synchronized(record) { record.writesDone.add(name) }
+            if (LoneWordWriteGuard.asks(name, args, response)) record.asked = true
             LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$name sent=true async=false")
         }
 
