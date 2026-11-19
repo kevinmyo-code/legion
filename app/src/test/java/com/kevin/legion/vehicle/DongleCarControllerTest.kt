@@ -564,6 +564,18 @@ class DongleCarControllerTest {
     }
 
     @Test
+    fun `a clear question asked on one connection cannot be answered on the next`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.Vin(suvVin), printA)
+        val k1 = DongleCarController.connectionKey()!!
+        DongleCarController.onDisconnected(context, at = longAgo())
+        connect(VinResponse.Result.Vin(truckVin), printB)
+        val gate = ClearCodesVoiceGate()
+        gate.asked("clear the codes", k1)
+        assertEquals(ClearCodesVoiceGate.OTHER_CAR, gate.checkConfirmed("yes", subject = DongleCarController.connectionKey()))
+    }
+
+    @Test
     fun `an old per-adapter binding is never read, and the rows it filed are untouched`() = runBlocking {
         seed()
         // What the phone stored before 1b: the adapter bound to the truck for good.

@@ -32,6 +32,20 @@ class AdapterBindingTest {
     }
 
     @Test
+    fun `clearing codes needs a car he named or a VIN proved`() {
+        val held = DongleCar.Held("m", null, DongleCar.HeldReason.NO_VIN)
+        val recognised = DongleCar.OnCar("m", "c1", null, DongleCar.Basis.ASSUMED)
+        assertTrue(AdapterBinding.clearRefusal(held, connected = true)!!.startsWith("Nothing was cleared"))
+        assertTrue(AdapterBinding.clearRefusal(recognised, connected = true)!!.startsWith("Nothing was cleared"))
+        assertNull(AdapterBinding.clearRefusal(DongleCar.OnCar("m", "c1", null, DongleCar.Basis.ANSWER), connected = true))
+        assertNull(AdapterBinding.clearRefusal(DongleCar.OnCar("m", "c1", "VIN", DongleCar.Basis.VIN), connected = true))
+        // Connected while the car is still being decided (the VIN read): refused, never the hand pick.
+        assertTrue(AdapterBinding.clearRefusal(null, connected = true)!!.startsWith("Nothing was cleared"))
+        // Not connected at all: the caller's own "not connected" answer stands.
+        assertNull(AdapterBinding.clearRefusal(null, connected = false))
+    }
+
+    @Test
     fun `a recognised car is said once per connection, an unknown one is asked`() {
         AdapterBinding.resetForTest()
         val recognised = DongleCar.OnCar("m", "c1", null, DongleCar.Basis.ASSUMED)

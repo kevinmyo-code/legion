@@ -7,6 +7,7 @@ import com.kevin.legion.vehicle.AdapterBinding
 import com.kevin.legion.vehicle.CarFingerprint
 import com.kevin.legion.vehicle.DongleCar
 import com.kevin.legion.vehicle.DongleCarController
+import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.FleetEngineStore
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.ObdTransport
@@ -16,6 +17,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -121,6 +123,28 @@ class AdapterCarVoiceTest {
         assertFalse(LiveToolbox.dispatch(context, "get_codes", JSONObject())!!.has("adapter_car"))
         assertEquals("car:zephyr", ActiveVehicle.recordingId(context))
     }
+
+    @Test
+    fun `clearing codes is refused for a recognised car, by voice and on the Faults screen, until he names it`() =
+        runBlocking {
+            seed()
+            CarFingerprint.save(context, "car:zephyr", print)
+            DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+            setLink(mac, withLink = true)
+
+            val voice = LiveToolbox.dispatch(
+                context, "clear_codes", JSONObject().put("confirmed", false), userText = "clear the codes",
+            )!!
+            assertFalse(voice.getBoolean("success"))
+            assertTrue(voice.getString("message"), voice.getString("message").startsWith("Nothing was cleared"))
+            val zephyr = FleetEngineStore.getByMac(context, "car:zephyr")!!
+            val screen = DtcClearController.dispatchAndRecord(context, zephyr, confirmed = true)
+            assertEquals(DtcClearController.ClearOutcome.REFUSED, screen.outcome)
+            assertTrue(screen.message, screen.message.startsWith("Nothing was cleared"))
+
+            assertTrue(DongleCarController.answer(context, "car:zephyr").ok)
+            assertNull(AdapterBinding.clearRefusalNow())
+        }
 
     @Test
     fun `a car he named on this connection gets no note`() = runBlocking {

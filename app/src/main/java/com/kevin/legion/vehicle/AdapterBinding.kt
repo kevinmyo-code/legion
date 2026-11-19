@@ -92,6 +92,27 @@ object AdapterBinding {
         companion object Key : kotlin.coroutines.CoroutineContext.Key<Annotating>
     }
 
+    /**
+     * Clearing codes needs a car he named or a VIN proved, never an unknown or only recognised one
+     * (Kevin, 2026-11-17), on voice and on the Faults screen alike. Null when it may go ahead (or
+     * nothing is connected: the caller says so in its own words).
+     */
+    fun clearRefusal(state: DongleCar?, connected: Boolean): String? = when {
+        // Connected but the car not decided yet (the VIN read takes up to 12 s): never a clear.
+        connected && state == null ->
+            "Nothing was cleared: the adapter is still working out which car it is in. Ask again in a moment."
+        state is DongleCar.Held ->
+            "Nothing was cleared: the OBD adapter is in a car he has not named yet. Ask him which car it is in " +
+                "(car switch_vehicle), then ask again."
+        state is DongleCar.OnCar && state.basis == DongleCar.Basis.ASSUMED ->
+            "Nothing was cleared: this car was only recognised by how it answers, not named. Ask him to say " +
+                "which car the adapter is in (car switch_vehicle), then ask again."
+        else -> null
+    }
+
+    /** [clearRefusal] for the live connection now. */
+    fun clearRefusalNow(): String? = clearRefusal(DongleCarController.state.value, ObdBluetoothManager.isConnected)
+
     /** The error code of [unknownCarRefusal]'s result. */
     const val UNKNOWN_CAR_ERROR = "adapter_car_unknown"
 

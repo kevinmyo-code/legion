@@ -3,6 +3,8 @@ package com.kevin.legion.vehicle.diag
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.testutil.RoomTestReset
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.DongleCar
+import com.kevin.legion.vehicle.DongleCarController
 import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.ObdResponseParser
@@ -61,6 +63,11 @@ class ClearReadInsteadTest {
         field("connectedDeviceAddress").set(null, if (t == null) null else CAR_ID)
         field("busKind").set(null, if (t == null) BusKind.UNKNOWN else BusKind.CAN_11)
         ObdResponseParser.canLink = t != null
+        // The connection's car is decided (a VIN proved it): a clear is never allowed on an undecided car.
+        @Suppress("UNCHECKED_CAST")
+        val state = DongleCarController::class.java.getDeclaredField("_state").apply { isAccessible = true }
+            .get(DongleCarController) as MutableStateFlow<DongleCar?>
+        state.value = if (t == null) null else DongleCar.OnCar(CAR_ID, CAR_ID, null, DongleCar.Basis.VIN)
     }
 
     @Suppress("UNCHECKED_CAST")

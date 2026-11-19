@@ -1092,6 +1092,9 @@ object LiveToolbox {
                     .notAskedToClear(args.optBoolean("confirmed", false), userText) != null
             ) {
                 readInsteadOfClear(context, userText.orEmpty())
+            } else if (com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow() != null) {
+                // Engine or module clear: never while the adapter's car is unknown or only recognised.
+                result(false, com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow().orEmpty())
             } else if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
                     args.optString("modules"),
                     args.optBoolean("confirmed", false),
@@ -4060,9 +4063,11 @@ object LiveToolbox {
         // a yes to the question the unconfirmed call put (ClearCodesVoiceGate). Refused before
         // anything is read from or sent to the car.
         val gate = DtcClearController.voiceGate
+        // The question and its yes belong to this connection and the car it records under.
+        val subject = com.kevin.legion.vehicle.DongleCarController.connectionKey()
         val refusal = when {
             !connected -> "The OBD adapter isn't connected, so I can't clear anything."
-            confirmed -> gate.checkConfirmed(userText, heardVoicedMs())
+            confirmed -> gate.checkConfirmed(userText, heardVoicedMs(), subject)
             else -> null
         }
         if (refusal != null) {
@@ -4080,7 +4085,9 @@ object LiveToolbox {
             // The confirm question: remember it was asked, and tell the model to ask and wait.
             // A module-clear question left waiting is void now (one question at a time).
             com.kevin.legion.vehicle.diag.DiagVoice.forget()
-            gate.asked(userText)
+            gate.asked(userText, subject)
+            // The question names the car, so his yes is a yes to that car.
+            out.put("message", "This is for the ${VehicleController.label(vehicle)}. ${r.message}")
             // The adapter may have dropped during the read: armed first, then checked, so a disconnect
             // on either side of this line leaves no question waiting (2026-11-18 review).
             if (!ObdBluetoothManager.isConnected) {
