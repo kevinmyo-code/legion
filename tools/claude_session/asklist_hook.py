@@ -627,13 +627,15 @@ def _project_verdict(event: dict, paths: Paths, task: int | None) -> "PP.Verdict
     nothing here runs git or changes any rule."""
     if task is None or event.get("tool_name") not in SHELL_TOOLS:
         return None
+    command = (event.get("tool_input") or {}).get("command", "") or ""
+    if any(_is_our_lone_script(command, s) for s in CONTAINED_SCRIPTS):
+        return None  # report.py and friends: their free text may name a push; judged as themselves
     trec = ((read_json(paths.state, {}) or {}).get("tasks") or {}).get(str(task))
     bound = trec.get("project") if isinstance(trec, dict) else None
     if not bound:
         return None
     project = PP.by_repo(PP.load(paths.projects), bound)
-    return PP.judge((event.get("tool_input") or {}).get("command", "") or "",
-                    tool=event.get("tool_name", ""), own_work=paths.task_work(task),
+    return PP.judge(command, tool=event.get("tool_name", ""), own_work=paths.task_work(task),
                     project=project, facts_for=PP.gather)
 
 

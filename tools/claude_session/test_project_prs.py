@@ -431,6 +431,19 @@ class TestHook(GitRepo):
                 clean_taint()
                 self.assertEqual(self.decide(cmd)[0], "pass", (bound, cmd))
 
+    def test_report_and_our_scripts_are_judged_as_themselves_not_as_a_push(self):
+        """F12 (review 11-19): a bound task's report.py was denied when its summary named a push."""
+        report = (H.HERE / "report.py").as_posix()
+        for summary in ("git push was refused, nothing sent",
+                        "Pushed with git push origin HEAD:refs/heads/claude/flag; gh pr create opened PR 3",
+                        "PR open at https://github.com/acme-dev/widgets/pull/3, checks passed",
+                        "Ran 'git -C C:/w push -u origin HEAD:refs/heads/main' and it was denied"):
+            for status in ("done", "failed"):
+                cmd = f'python {report} --task 41 --status {status} --summary "{summary}"'
+                self.assertEqual(self.decide(cmd)[0], "pass", cmd)
+        ship = (H.HERE / "ship.py").as_posix()
+        self.assertEqual(self.decide(f'python {ship} ask --task 41 --notes "after git push"')[0], "pass")
+
     def test_pushurl_set_in_the_clone_denies(self):
         git("config", "remote.origin.pushurl", "https://github.com/evil/widgets.git", cwd=self.clone)
         self.assertEqual(self.decide(self.push)[0], "deny")
