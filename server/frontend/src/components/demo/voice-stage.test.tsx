@@ -100,24 +100,25 @@ function pinnedClasses(css: string): Set<string> {
 describe('the captions', () => {
   /**
    * The browser run, 2026-11-19: captions growing and shrinking with every sentence moved the whole
-   * page under the stage (layout shift 0.48 over one tour at 390 px). A box of fixed height; a long
-   * answer scrolls inside it with the newest words in view.
+   * page under the stage (layout shift 0.48 over one tour at 390 px); then a scroll box for them
+   * took the visitor's swipes and wheel turns from the page. Live captions in a box of fixed height:
+   * the newest words at its foot, a long answer's start clipped at its top, nothing that scrolls.
    */
-  test('sit in a box of fixed height that scrolls to the newest words', async () => {
+  test('sit in a box of fixed height that never scrolls, newest words at its foot once they overflow', async () => {
     stage(false, true)
     const box = document.querySelector<HTMLElement>('[data-stage="captions"]')!
     expect(box.className).toMatch(/\bh-\[/)
-    expect(box.className).toContain('overflow-y-auto')
-    // At its ends the page scrolls on: a swipe over the captions must still move the page.
-    expect(box.className).not.toContain('overscroll-contain')
-    Object.defineProperty(box, 'scrollHeight', { configurable: true, value: 480 })
+    expect(box.className).toContain('overflow-hidden')
+    expect(box.className).not.toMatch(/overflow-(y-)?(auto|scroll)/)
     await act(async () => {
       fireEvent.change(screen.getByRole('textbox', { name: /^Type to / }), { target: { value: 'How is LEGION built?' } })
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
       await settle()
     })
     expect(box).toHaveTextContent('Here is how it fits together.')
-    expect(box.scrollTop).toBe(480)
+    // jsdom lays nothing out, so the words fit: they sit at the top.
+    expect(box).toHaveAttribute('data-overflow', 'false')
+    expect(indexCss).toMatch(/\.recruiter \.rc-captions\[data-overflow="true"\] \{[^}]*justify-content: flex-end[^}]*mask-image/)
   })
 })
 

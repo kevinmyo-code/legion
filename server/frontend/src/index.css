@@ -616,6 +616,12 @@
         }
     }
 
+    /* Live captions: words that fit sit at the top; once they no longer fit, the newest words
+       stay at the foot and the answer's start fades out at the top. */
+    .recruiter .rc-captions[data-overflow="true"] {
+        justify-content: flex-end;
+        mask-image: linear-gradient(to bottom, transparent 0, #000 1.6rem);
+    }
     .recruiter .rc-stage-orb {
         transition: opacity 120ms ease-out 180ms;
     }

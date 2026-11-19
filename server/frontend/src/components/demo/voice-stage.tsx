@@ -182,13 +182,15 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
 
   const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`
 
-  // The captions box keeps the newest words in view as a long answer streams in.
+  // The captions box: newest words at its foot once they no longer fit (`.rc-captions`).
   const captionsRef = useRef<HTMLDivElement>(null)
-  const captionKey = `${heard?.id}:${said?.id}:${said?.kind === 'ai' ? said.text.length : 0}:${sys?.id}`
+  const captionText = `${heard?.id}:${said?.id}:${said?.kind === 'ai' ? said.text.length : 0}:${sys?.id}`
   useLayoutEffect(() => {
-    const el = captionsRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [captionKey])
+    const box = captionsRef.current
+    if (!box) return
+    const used = Array.from(box.children).reduce((sum, child) => sum + (child as HTMLElement).offsetHeight, 0)
+    box.dataset.overflow = String(used > box.clientHeight)
+  }, [captionText])
 
   // Its own class name: it once borrowed `rc-stage`, the phone section's sticky class, and stayed
   // pinned with no background over everything scrolling under it (live demo, 2026-11-18).
@@ -258,16 +260,16 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         </p>
       )}
       {state.notice && <p role="alert">{state.notice.text}</p>}
-      {/* A box of fixed height: captions growing and shrinking with every sentence moved the whole
-          page under the stage (the browser run, 2026-11-19: layout shift 0.48 over one tour at
-          390 px). A long answer scrolls inside it, the newest words in view; at its ends the page
-          scrolls on (no overscroll containment: a swipe or a wheel over it must still move the
-          page, the browser run's wheel stopped dead on it). */}
+      {/* Live captions in a box of fixed height: growing and shrinking with every sentence they
+          moved the whole page under the stage (the browser run, 2026-11-19: layout shift 0.48
+          over one tour at 390 px). Words that fit sit at its top; a longer answer keeps its newest
+          words at its foot and its start fades out at the top, as live captions do. Nothing in it scrolls: a scroll box here took
+          the visitor's swipes and wheel turns from the page (the browser run). */}
       <div
-        ref={captionsRef}
         data-stage="captions"
         aria-live="polite"
-        className="h-[8.75rem] w-full max-w-[34rem] overflow-y-auto text-left text-[0.95rem]"
+        ref={captionsRef}
+        className="rc-captions flex h-[9.5rem] w-full max-w-[34rem] flex-col overflow-hidden text-left text-[0.95rem]"
       >
         {heard && heard.kind === 'me' && <p className="text-muted-foreground">You: {heard.text}</p>}
         {said && said.kind === 'ai' && (
