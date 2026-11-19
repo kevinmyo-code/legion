@@ -204,22 +204,23 @@ object DongleCarController {
         val p = prefs(context)
         val previousId = p.getString(KEY_SESSION_ID, null)
         val blip = recentlyDisconnected(p.getLong(KEY_DISCONNECTED_AT, 0L), now)
-        // A short drop is the same drive when the print is the same, or neither connect gave one
-        // (review A5): his answer, the one ask and the session carry on. Otherwise it is a new connection.
+        // A short drop is the same drive only with positive evidence it is the same car: the same
+        // non-null print, or a VIN naming the same car (review A5, R2-1). Two print-less cars swapped
+        // inside the window are two connections: the second is asked about, holds its readings, and
+        // gets a new connection count, so nothing asked or confirmed on the first carries over.
         val previousPrint = p.getString(KEY_SESSION_FP, null)
         val samePrint = previousPrint != null && previousPrint == connectionPrint
-        val sameDrive = blip && previousPrint == connectionPrint && previousId != null
-        // A VIN read now is a fact and decides; with none, his answer on this drive stands.
-        val kept = if (vinResult is VinResponse.Result.Vin) null else keptAnswer(p, mac, previousId, sameDrive, cars)
+        val readVin = vinResult is VinResponse.Result.Vin
+        // With no VIN read, his answer on this drive stands when the print says it is the same car.
+        val kept = if (readVin) null else keptAnswer(p, mac, previousId, blip && samePrint, cars)
         val decision = kept ?: decideFor(context, mac, vinResult, cars)
-        val continues = sameDrive &&
-            previousId?.let(DongleCar::sessionKey) == DongleCar.sessionKey(decision.recordingId)
+        val sameSession = previousId?.let(DongleCar::sessionKey) == DongleCar.sessionKey(decision.recordingId)
+        val continues = blip && sameSession && (samePrint || readVin)
         if (!continues) connectionSeq++
         // A blip inside one drive whose first connect read no VIN and whose reconnect reads one:
         // the drive's data so far goes where the VIN says, but ONLY with positive evidence that it is
         // the same car: both connects gave the same print. Moved to another car (another print, or
         // no print to compare) and the earlier drive stays held, asked about on its own (review A1).
-        val readVin = vinResult is VinResponse.Result.Vin
         val sameCarLateVin = blip && !continues && readVin && samePrint
         val carry = if (sameCarLateVin) previousId?.let { carryFrom(context, it) } else null
         sessionFrom = when {
@@ -230,8 +231,8 @@ object DongleCarController {
     }
 
     /**
-     * His answer on this drive, kept over a short drop with no VIN read ([sameDrive]): the car he
-     * named, as his answer (not a recognition). Null: decide afresh.
+     * His answer on this drive, kept over a short drop with no VIN read and the same print
+     * ([sameDrive]): the car he named, as his answer (not a recognition). Null: decide afresh.
      */
     private fun keptAnswer(
         p: android.content.SharedPreferences,
