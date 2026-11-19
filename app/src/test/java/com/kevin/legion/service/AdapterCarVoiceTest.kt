@@ -208,6 +208,9 @@ class AdapterCarVoiceTest {
         assertEquals("car:comet", ActiveVehicle.selected(context))
     }
 
+    private suspend fun heardSwitch(name: String): JSONObject =
+        heard("manage_vehicle", JSONObject().put("action", "switch").put("vehicle", name))
+
     private suspend fun adapterIn(name: String): JSONObject = LiveToolbox.dispatch(
         context, "manage_vehicle", JSONObject().put("action", "adapter").put("vehicle", name),
     )!!
@@ -269,15 +272,61 @@ class AdapterCarVoiceTest {
     }
 
     @Test
-    fun `switch - a wrong recognition is corrected by voice`() = runBlocking {
+    fun `a wrong recognition is corrected by saying where the adapter is`() = runBlocking {
         seed()
         CarFingerprint.save(context, "car:zephyr", print)
         DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
         setLink(mac, withLink = true)
 
-        val r = switchTo("Comet")
+        val r = adapterIn("Comet")
         assertTrue(r.toString(), r.getBoolean("changed"))
         assertEquals("car:comet", (DongleCarController.state.value as DongleCar.OnCar).carId)
+    }
+
+    @Test
+    fun `a plain switch while the car is unknown only picks, keeps the drive held and still carries the ask`() =
+        runBlocking {
+            seed()
+            DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+            setLink(mac, withLink = true)
+            val held = ActiveVehicle.recordingId(context).orEmpty()
+
+            val r = heardSwitch("Comet")
+            assertTrue(r.toString(), r.getBoolean("success"))
+            assertEquals("car:comet", ActiveVehicle.selected(context))
+            assertTrue(DongleCarController.state.value is DongleCar.Held)
+            assertEquals(held, ActiveVehicle.recordingId(context))
+            assertEquals(AdapterBinding.ASK_ONCE, r.getString("adapter_car"))
+            assertTrue(r.getBoolean(AdapterBinding.NEEDS_ANSWER))
+            assertEquals(emptyMap<String, String>(), CarFingerprint.all(context))
+        }
+
+    @Test
+    fun `a plain switch on a recognised car only picks - the drive and the print stay`() = runBlocking {
+        seed()
+        CarFingerprint.save(context, "car:zephyr", print)
+        DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+        setLink(mac, withLink = true)
+
+        val r = heardSwitch("Comet")
+        assertTrue(r.toString(), r.getBoolean("success"))
+        val live = DongleCarController.state.value as DongleCar.OnCar
+        assertEquals(DongleCar.OnCar(mac, "car:zephyr", null, DongleCar.Basis.ASSUMED), live)
+        assertEquals(mapOf("car:zephyr" to print), CarFingerprint.all(context))
+        assertTrue(r.getString("adapter_car"), r.getString("adapter_car").contains("Looks like the"))
+    }
+
+    @Test
+    fun `adapter_in with no car named changes nothing`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
+        setLink(mac, withLink = true)
+        val held = ActiveVehicle.recordingId(context)
+
+        val r = heard("manage_vehicle", JSONObject().put("action", "adapter"))
+        assertFalse(r.getBoolean("success"))
+        assertTrue(DongleCarController.state.value is DongleCar.Held)
+        assertEquals(held, ActiveVehicle.recordingId(context))
     }
 
     @Test

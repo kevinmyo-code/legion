@@ -2089,7 +2089,10 @@ object LiveToolbox {
                 .put("changed", false).put("vehicle", label)
         }
         val outcome = VehicleController.switchToOutcome(context, car.obdMac)
-        return result(outcome.success, outcome.message).put("changed", outcome.changed == true).put("vehicle", label)
+        val out = result(outcome.success, outcome.message).put("changed", outcome.changed == true).put("vehicle", label)
+        // A pick never answers the which-car question; while it is open, his turn still carries it (R2-2).
+        val heard = kotlin.coroutines.coroutineContext[RelativeDay.TurnDates] != null
+        return if (heard) com.kevin.legion.vehicle.AdapterBinding.annotate(context, out) else out
     }
 
     /** The refusal for a `manage_vehicle` [action] called with no car named. */

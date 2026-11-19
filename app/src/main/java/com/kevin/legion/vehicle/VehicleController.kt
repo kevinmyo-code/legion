@@ -1318,7 +1318,7 @@ object VehicleController {
      * 2026-11-17: "this car is a <car already on file>" with the dongle's car unknown came to
      * [registerDirect] and was refused; the car he names IS the answer to "which car is the dongle in".
      * One car on file matching what he said: that answer, through the same controller as
-     * switch_vehicle. Null when there is no live question or no single car matches.
+     * adapter_in. Null when there is no live question or no single car matches.
      */
     private suspend fun bindCarOnFile(context: Context, year: Int, make: String, model: String): WriteOutcome? {
         val car = if (DongleCarController.hasLiveQuestion()) {
@@ -1327,7 +1327,7 @@ object VehicleController {
             null
         }
         return car?.let {
-            val bound = switchToOutcome(context, it.obdMac)
+            val bound = adapterIn(context, it.obdMac).outcome
             WriteOutcome(bound.success, "That car is already on file, so nothing new was added. ${bound.message}")
         }
     }
@@ -1336,12 +1336,9 @@ object VehicleController {
     suspend fun switchTo(context: Context, vehicleId: String): String = switchToOutcome(context, vehicleId).message
 
     /**
-     * [switchTo] with an honest success flag. **With the OBD dongle connected, a switch is also the
-     * answer to "which car is the dongle in"** (OBD VIN attribution, 2026-11-15): "this is the
-     * F-150" lands here through the `manage_vehicle` switch action, and goes to the same
-     * [DongleCarController.answer] the notification's buttons and the Cars screen call. The pick is
-     * still stored for questions about stored data; when the dongle read another car's VIN, live
-     * readings stay on that car and the reply says so.
+     * [switchTo] with an honest success flag: the car stored-data questions are about. With the OBD
+     * dongle connected it never says which car the dongle is in (that is [adapterIn]); the reply says
+     * where live readings stay.
      */
     suspend fun switchToOutcome(context: Context, vehicleId: String): WriteOutcome {
         // [WriteOutcome.changed]: the selected car or the live connection's car really moved.
@@ -1376,29 +1373,35 @@ object VehicleController {
         }
     }
 
-    /** [switchToOutcome] while the OBD dongle is connected, or null when it is a plain pick. */
+    /**
+     * [switchToOutcome] while the OBD dongle is connected to another car than [vehicle], or null when
+     * it is a plain pick. In every state a plain switch only selects the car for stored-data
+     * questions: it never answers which car the adapter is in and never moves a drive or a print
+     * (review A2, R2-2). That is [adapterIn], the Cars card or the notification.
+     */
     private suspend fun dongleSwitch(context: Context, vehicle: Vehicle): WriteOutcome? {
-        val before = (DongleCarController.state.value as? DongleCar.OnCar)?.takeIf { it.carId != vehicle.obdMac }
-        return when {
-            // He already said which car the dongle is in on this drive: a plain switch is a pick for
-            // stored-data questions, never a move of the drive (review A2). Saying the adapter IS
-            // another car is [adapterIn].
-            before != null && before.basis == DongleCar.Basis.ANSWER -> keepAnswered(context, vehicle, before.carId)
-            DongleCarController.hasLiveQuestion() -> answerSwitch(context, vehicle)
-            before != null && before.basis == DongleCar.Basis.VIN -> answerSwitch(context, vehicle)
-            else -> null
-        }
-    }
-
-    private suspend fun keepAnswered(context: Context, vehicle: Vehicle, inCarId: String): WriteOutcome {
+        val live = DongleCarController.state.value ?: return null
+        if (live is DongleCar.OnCar && live.carId == vehicle.obdMac) return null
         ActiveVehicle.select(context, vehicle.obdMac)
-        val inCar = FleetEngineStore.getByMac(context, inCarId)?.let { label(it) } ?: "car you named"
-        return WriteOutcome(
-            true,
-            "You're on the ${label(vehicle)} for questions about stored data. Live readings stay on the " +
-                "$inCar, the car you said the adapter is in; if the adapter is really in the ${label(vehicle)}, " +
-                "that is car adapter_in.",
-        )
+        val name = label(vehicle)
+        val inCar = (live as? DongleCar.OnCar)?.let { FleetEngineStore.getByMac(context, it.carId) }?.let { label(it) }
+            ?: "car the adapter is in"
+        val pick = "You're on the $name for questions about stored data."
+        val ifHere = "If the adapter is really in the $name, that is car adapter_in."
+        return when {
+            live is DongleCar.Held -> WriteOutcome(
+                true,
+                "$pick The adapter's car is not known yet, so its live readings stay held. $ifHere",
+            )
+            live is DongleCar.OnCar && live.basis == DongleCar.Basis.VIN -> WriteOutcome(
+                true,
+                "Nothing changed for the live readings: the adapter read the $inCar's VIN, so live readings " +
+                    "stay on the $inCar. $pick",
+                // The adapter stays on the VIN's car: nothing was rebound, so no change is claimed (A3).
+                changed = false,
+            )
+            else -> WriteOutcome(true, "$pick Live readings stay on the $inCar. $ifHere")
+        }
     }
 
     /** What [adapterIn] did: [readingsMoved] when this drive's readings moved to the car. */
@@ -1419,25 +1422,6 @@ object VehicleController {
         if (answer.ok) ActiveVehicle.select(context, vehicle.obdMac)
         val changed = answer.ok && (answer.moved || DongleCarController.state.value?.recordingId != before)
         return AdapterOutcome(WriteOutcome(answer.ok, answer.message, changed), answer.moved)
-    }
-
-    private suspend fun answerSwitch(context: Context, vehicle: Vehicle): WriteOutcome {
-        val outcome = DongleCarController.answer(context, vehicle.obdMac)
-        val live = DongleCarController.state.value
-        val vinProvedOther = live is DongleCar.OnCar && live.basis == DongleCar.Basis.VIN &&
-            live.carId != vehicle.obdMac
-        if (outcome.ok || vinProvedOther) ActiveVehicle.select(context, vehicle.obdMac)
-        return if (vinProvedOther) {
-            // The adapter stays on the VIN's car: nothing was rebound, so no change is claimed (review A3).
-            WriteOutcome(
-                true,
-                "${outcome.message} Questions about stored data go to the ${label(vehicle)} when nothing " +
-                    "is connected.",
-                changed = false,
-            )
-        } else {
-            WriteOutcome(outcome.ok, outcome.message)
-        }
     }
 
     /**
