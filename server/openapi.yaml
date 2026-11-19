@@ -5424,12 +5424,19 @@ paths:
     get:
       operationId: api_demo_media_retrieve
       description: |-
-        A file a project section's `media.models` names, from the caller's version of the content.
-        Private like the resume: a visit or an owner, never the public. Cached by validator only
-        (`private, no-cache` + the file's hash as ETag): a revisit costs a 304, and a reload of the
-        content is seen at once.
-      summary: A project section's 3D model (GLB) or its poster image
+        A media file the caller's version of the content names: a model, a poster, or a section's or
+        phone clip's video, poster or captions. Private like the resume: a visit or an owner, never the
+        public. Cached by validator only (`private, no-cache` + the file's hash as ETag): a revisit
+        costs a 304, and a reload of the content is seen at once. Byte ranges (one per request, at most
+        `RANGE_CHUNK`) let a video seek; a whole file over `RANGE_CHUNK` is streamed in such reads.
+      summary: 'A media file the recruiter page names: a 3D model, a still, a video
+        or captions'
       parameters:
+      - in: header
+        name: Range
+        schema:
+          type: string
+        description: One `bytes=first-last`, `bytes=first-` or `bytes=-count` range.
       - in: path
         name: name
         schema:
@@ -5451,7 +5458,58 @@ paths:
               schema:
                 type: string
                 format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+            video/webm:
+              schema:
+                type: string
+                format: binary
+            text/vtt:
+              schema:
+                type: string
+                format: binary
           description: ''
+        '206':
+          content:
+            model/gltf-binary:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+            video/webm:
+              schema:
+                type: string
+                format: binary
+            text/vtt:
+              schema:
+                type: string
+                format: binary
+          description: The asked range, at most 2 MiB; Content-Range says which.
         '304':
           description: The copy the browser holds is current.
         '403':
@@ -5466,6 +5524,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No such file is loaded.
+        '416':
+          description: The range starts past the end of the file.
   /api/demo/session:
     get:
       operationId: api_demo_session_retrieve
