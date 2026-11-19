@@ -45,7 +45,9 @@ internal class LeadingFiller(private val cores: List<String> = CORES) {
      * anything else goes.
      */
     fun settle(): String {
-        if (decided) return ""
+        // Nothing held yet (an owed line opening the reply): the model's first sentence is still
+        // to be judged when it comes (review: an empty settle turned the filler drop off).
+        if (decided || buf.isBlank()) return ""
         val held = buf.toString()
         return when (val v = verdict(held, cores)) {
             Verdict.Keep -> release(held)

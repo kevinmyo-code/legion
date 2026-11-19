@@ -310,7 +310,8 @@ class CascadeWiringTest {
         assertTrue(bodyOf(s, "newSpeaker").contains("onFillerDropped = { LiveLatency.log(LiveLatency.TAG, \"reply_filler_dropped n=1\") }"))
         val answer = bodyOf(s, "answerTurn")
         assertTrue(answer.contains("reply.spoken().ifBlank { LeadingFiller.strip(result.text) }"))
-        assertTrue(answer.contains("text ?: LeadingFiller.strip(result.text)"))
+        // Review F1: the re-voice says the model's words only; code's write line is owed and said first.
+        assertTrue(answer.contains("text ?: LeadingFiller.strip(modelText(record))"))
     }
 
     @Test

@@ -317,11 +317,8 @@ internal class CascadeSession(
         val toolsRan = mutableListOf<String>()
         val writesDone = mutableListOf<String>()
 
-        /** Each write's facts, done or failed ([ScriptedLines.writeFact]), never its message. */
-        val writeFacts = mutableListOf<ScriptedLines.WriteFact>()
-
-        /** The facts whose code line played to its end ([ReplySpeaker.line]). */
-        val played = mutableListOf<ScriptedLines.WriteFact>()
+        /** Each write's facts as its result came in, and those whose code line played whole ([OwedWrites]). */
+        val writes = TurnWrites()
         @Volatile var readThrough = false
         @Volatile var fillerPlayed = false
 
@@ -1233,20 +1230,25 @@ internal class CascadeSession(
                 // reply goes again, whole, on the cloud voice; nothing is asked of the model twice.
                 // A cloud voice that fails (two tries, no audio): the answer and what was done reach
                 // the panel and the record, he hears [sayVoiceLost], and the window opens again.
-                val words = text ?: LeadingFiller.strip(result.text)
-                val unsaid = { recordTurn(heard, withWrites(words, record), record.readThrough, seq, record.fromUser) }
+                // What played is heard; a write line that did not play is owed, so the re-voice says it
+                // first ([OwedWrites.open]) and the words below never repeat it (review F1).
+                owe(record, cutOff = false)
+                val words = text ?: LeadingFiller.strip(modelText(record))
+                val unsaid = {
+                    // Nothing more can be said: the owed line goes to the record and the panel.
+                    val line = owed.writeDown()?.also { host.notice(it) }
+                    val kept = listOfNotNull(line, words.ifBlank { null }).joinToString(" ")
+                    recordTurn(heard, withWrites(kept, record), record.readThrough, seq, record.fromUser)
+                }
                 val again = if (voice.kind == SpeechBackend.Kind.CLOUD) {
                     null
                 } else {
                     revoice(voice, failed.reason, heardMoment(heard, record), words, unsaid) ?: return
                 }
                 outcome = again?.also { reply = it }?.await() ?: failed
-                if (outcome == ReplySpeaker.Outcome.Played) {
-                    synchronized(record) { record.played.addAll(record.writeFacts.filter { it.said }) }
-                }
                 if (outcome is ReplySpeaker.Outcome.Failed) {
                     // Known limit (accepted 2026-11-19): the voice is lost, so a write's line is on the
-                    // panel and in the record, not spoken, and is not owed.
+                    // panel and in the record, not spoken.
                     unsaid()
                     answeredOnce = true
                     turnsAnswered.incrementAndGet()
@@ -1465,10 +1467,20 @@ internal class CascadeSession(
         endByVoice()
     }
 
-    /** [record]'s writes that went through and were not heard are owed; a cut-off turn's failures too. */
-    private fun owe(record: TurnRecord, cutOff: Boolean) {
-        val (facts, played) = synchronized(record) { record.writeFacts.toList() to record.played.toList() }
-        owed.owe(facts, played, cutOff)
+    /** [record]'s writes that went through and were not heard are owed; a cut-off turn's unconfirmed ones too. */
+    private fun owe(record: TurnRecord, cutOff: Boolean) = owed.endTurn(record.writes, cutOff)
+
+    /** The model's own words of [record]'s reply, without code's lines (those are owed, not words). */
+    private fun modelText(record: TurnRecord): String = TtsTags.strip(record.reply.toString()).trim()
+
+    /**
+     * Nothing more will be said (a close, a hand-over): what is owed goes to the record and the
+     * panel ([OwedWrites.writeDown]), never silently nowhere (review F5).
+     */
+    private fun writeDownOwed() {
+        val line = owed.writeDown() ?: return
+        host.notice(line)
+        recordTurn("", line, fromUser = false)
     }
 
     /**
@@ -1701,10 +1713,7 @@ internal class CascadeSession(
 
         override fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) {
             val write = CascadeRules.isWrite(name, args)
-            if (write) {
-                noteChange(response)
-                val r = LiveSurface.resolve(name, args)
-            }
+            if (write) noteChange(response)
             if (writeDone) synchronized(record) { record.writesDone.add(name) }
             if (LoneWordWriteGuard.asks(name, args, response)) record.asked = true
             LiveLatency.log(LiveLatency.TAG, "tool_ms=$ms tool=$name sent=true async=false")
@@ -1716,12 +1725,12 @@ internal class CascadeSession(
         }
 
         override fun onWriteFact(fact: ScriptedLines.WriteFact) {
-            synchronized(record) { record.writeFacts.add(fact) }
+            record.writes.add(fact)
         }
 
         // Code's line for a write that went through (2026-11-19): heard only once it played whole.
         override fun onCodeLine(text: String, facts: List<ScriptedLines.WriteFact>) {
-            if (!record.holdLine) reply.line(text) { synchronized(record) { record.played.addAll(facts) } }
+            if (!record.holdLine) owed.line(record.writes, reply, text, facts)
         }
 
         override fun onFirstPart(round: Int, ms: Long) {
@@ -1813,7 +1822,7 @@ internal class CascadeSession(
             speaker = it
             // The one place every spoken thing starts: a write he has not heard said goes first
             // ([owed]), and stays owed until its line played to the end.
-            owed.due()?.let { d -> it.line(d.line) { owed.paid(d.facts) } }
+            owed.open(it)
         }
     }
 
@@ -2543,7 +2552,12 @@ internal class CascadeSession(
         phoneFault: Boolean = false,
         words: String? = null,
     ) {
+        if (closing.get()) return
+        // Review F5: the voice still works unless the voice itself failed (stage tts, or it never
+        // opened); a write he has not heard is said before the tone, and written down if it cannot be.
+        if (stage != "tts" && stage != "open") withTimeoutOrNull(OWED_SAY_MAX_MS) { sayOwed() }
         if (!closing.compareAndSet(false, true)) return
+        writeDownOwed()
         try {
             val source = if (phoneFault) "phone" else from?.token ?: "phone"
             val to = if (VoiceEngineSettings.LIVE_RETIRED) "none" else "live"
@@ -2595,6 +2609,8 @@ internal class CascadeSession(
     /** Idempotent full release. */
     private suspend fun shutdown(reason: String) {
         if (!closing.compareAndSet(false, true)) return
+        // A close that said nothing more (a tap, preemption, destroy): written down, never dropped.
+        writeDownOwed()
         release(reason)
     }
 
@@ -2773,6 +2789,9 @@ internal class CascadeSession(
 
         /** The longest a check-in's closer may take to say before the conversation just ends. */
         private const val CLOSER_MAX_MS = 6_000L
+
+        /** How long a hand-over waits to say a write he has not heard before its tone (review F5). */
+        private const val OWED_SAY_MAX_MS = 6_000L
 
         private const val OPENED_NOTE = "(He opened the conversation and you greeted him.)"
 
