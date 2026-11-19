@@ -598,6 +598,12 @@
         outline: 2px solid var(--rc-accent);
         outline-offset: -2px;
     }
+    /* Reduced motion: the chips are simply there (no rise, and no staggered wait while hidden). */
+    @media (prefers-reduced-motion: reduce) {
+        .recruiter .rc-chip {
+            animation: none;
+        }
+    }
     @keyframes rc-chip-in {
         from {
             opacity: 0;
