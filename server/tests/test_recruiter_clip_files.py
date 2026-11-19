@@ -220,17 +220,34 @@ def test_a_stale_if_range_gets_the_whole_file(clip):
     assert got.content == FAKE_MP4
 
 
-def test_one_answer_never_holds_more_than_a_chunk(clip, monkeypatch):
+def test_a_browser_plays_a_video_in_windows_and_gets_it_all(clip, monkeypatch):
     monkeypatch.setattr(content_views, "RANGE_CHUNK", 100)
-    part = clip.get(URL, HTTP_RANGE="bytes=0-")
-    assert part.status_code == 206
-    assert part["Content-Range"] == f"bytes 0-99/{len(FAKE_MP4)}"
-    assert part.content == FAKE_MP4[:100]
-    whole = clip.get(URL)
-    assert whole.status_code == 200
-    assert whole.streaming
-    assert whole["Content-Length"] == str(len(FAKE_MP4))
-    assert b"".join(whole.streaming_content) == FAKE_MP4
+    got, start = b"", 0
+    while start < len(FAKE_MP4):  # what <video> does: ask from where the last answer ended
+        part = clip.get(URL, HTTP_RANGE=f"bytes={start}-")
+        assert part.status_code == 206
+        last = min(start + 99, len(FAKE_MP4) - 1)
+        assert part["Content-Range"] == f"bytes {start}-{last}/{len(FAKE_MP4)}"
+        got += part.content
+        start = last + 1
+    assert got == FAKE_MP4
+
+
+def test_a_plain_get_of_a_big_video_gets_its_first_window_not_the_whole_file(clip, monkeypatch):
+    monkeypatch.setattr(content_views, "RANGE_CHUNK", 100)
+    got = clip.get(URL)
+    assert got.status_code == 206
+    assert not got.streaming
+    assert got["Content-Range"] == f"bytes 0-99/{len(FAKE_MP4)}"
+    assert got["Accept-Ranges"] == "bytes"
+    assert got.content == FAKE_MP4[:100]
+
+
+def test_a_plain_get_of_anything_else_is_whole_whatever_its_size(clip, monkeypatch):
+    monkeypatch.setattr(content_views, "RANGE_CHUNK", 10)
+    got = clip.get("/api/demo/media/demo-take.vtt")
+    assert got.status_code == 200
+    assert got.content == FAKE_VTT
 
 
 def test_captions_are_served_as_webvtt(clip):

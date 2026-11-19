@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 
 from django.db.models import BinaryField, F, Func, IntegerField, Value
-from django.http import HttpResponse, StreamingHttpResponse
+from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import exceptions, serializers
@@ -312,8 +312,8 @@ class DemoAssetView(APIView):
 # =============================================================================
 
 _MEDIA_NAME = re.compile("|".join((MODEL_NAME, POSTER_NAME, VIDEO_NAME, CAPTIONS_NAME)))
-# The most one response (or one read of a streamed file) takes from the row: bounds the memory a
-# request holds, whatever the file's size. A browser seeking a video asks again from where it is.
+# The most one answer takes from a video's row: bounds the memory and the time a request holds,
+# whatever the file's size. A browser playing or seeking a video asks again from where it is.
 RANGE_CHUNK = 2 * 1024 * 1024
 # At most 15 digits a side (petabytes; a file here is at most 16 MB): a longer number is answered
 # 416, never handed to int(), which refuses more than 4300 digits with a ValueError (a 500).
@@ -371,17 +371,14 @@ def _read_part(pk: int, start: int, length: int) -> bytes:
     return bytes(part or b"")
 
 
-def _streamed(pk: int, size: int):
-    for start in range(0, size, RANGE_CHUNK):
-        yield _read_part(pk, start, min(RANGE_CHUNK, size - start))
-
-
 class DemoMediaView(APIView):
     """A media file the caller's version of the content names: a model, a poster, or a section's or
     phone clip's video, poster or captions. Private like the resume: a visit or an owner, never the
     public. Cached by validator only (`private, no-cache` + the file's hash as ETag): a revisit
     costs a 304, and a reload of the content is seen at once. Byte ranges (one per request, at most
-    `RANGE_CHUNK`) let a video seek; a whole file over `RANGE_CHUNK` is streamed in such reads."""
+    `RANGE_CHUNK`) let a video seek; a video over `RANGE_CHUNK` asked for whole gets its first
+    window as a 206. Everything else is at most 4 MB (`demo.content.MEDIA_MAX_BYTES`) and goes
+    whole."""
 
     permission_classes = [RecruiterOrOwner]
     allows_recruiter = True
@@ -434,6 +431,11 @@ class DemoMediaView(APIView):
         wanted = None
         if request.headers.get("If-Range", etag) == etag:
             wanted = _byte_range(request.headers.get("Range"), size)
+        if wanted is None and kind.startswith("video/") and size > RANGE_CHUNK:
+            # A video asked for whole (no usable Range) gets its first window as a 206, never a
+            # minutes-long whole-file answer on one thread: <video> asks for ranges anyway and
+            # carries on from Content-Range. Models, stills and captions (4 MB at most) go whole.
+            wanted = (0, size - 1)
         if etag in [tag.strip() for tag in request.headers.get("If-None-Match", "").split(",")]:
             response = HttpResponse(status=304)
         elif wanted == _UNSATISFIABLE:
@@ -446,9 +448,6 @@ class DemoMediaView(APIView):
                 _read_part(meta["pk"], start, end - start + 1), status=206, content_type=kind
             )
             response["Content-Range"] = f"bytes {start}-{end}/{size}"
-        elif size > RANGE_CHUNK:
-            response = StreamingHttpResponse(_streamed(meta["pk"], size), content_type=kind)
-            response["Content-Length"] = str(size)
         else:
             response = HttpResponse(_read_part(meta["pk"], 0, size), content_type=kind)
         response["X-Content-Type-Options"] = "nosniff"
