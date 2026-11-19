@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { DemoContent } from '@/api/demo'
 import { UNNAMED, useAssistant } from '@/assistant/assistant-context'
@@ -119,6 +119,16 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
 
   const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`
 
+  // The captions box: newest words at its foot once they no longer fit (`.rc-captions`).
+  const captionsRef = useRef<HTMLDivElement>(null)
+  const captionText = `${heard?.id}:${said?.id}:${said?.kind === 'ai' ? said.text.length : 0}:${sys?.id}`
+  useLayoutEffect(() => {
+    const box = captionsRef.current
+    if (!box) return
+    const used = Array.from(box.children).reduce((sum, child) => sum + (child as HTMLElement).offsetHeight, 0)
+    box.dataset.overflow = String(used > box.clientHeight)
+  }, [captionText])
+
   // Its own class name: it once borrowed `rc-stage`, the phone section's sticky class, and stayed
   // pinned with no background over everything scrolling under it (live demo, 2026-11-18).
   return (
@@ -174,7 +184,17 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         </p>
       )}
       {state.notice && <p role="alert">{state.notice.text}</p>}
-      <div data-stage="captions" aria-live="polite" className="w-full max-w-[34rem] text-left text-[0.95rem]">
+      {/* Live captions in a box of fixed height: growing and shrinking with every sentence they
+          moved the whole page under the stage (the browser run, 2026-11-19: layout shift 0.48
+          over one tour at 390 px). Words that fit sit at its top; a longer answer keeps its newest
+          words at its foot and its start fades out at the top, as live captions do. Nothing in it
+          scrolls: a scroll box here took the visitor's swipes and wheel turns from the page. */}
+      <div
+        data-stage="captions"
+        aria-live="polite"
+        ref={captionsRef}
+        className="rc-captions flex h-[9.5rem] w-full max-w-[34rem] flex-col overflow-hidden text-left text-[0.95rem]"
+      >
         {heard && heard.kind === 'me' && <p className="text-muted-foreground">You: {heard.text}</p>}
         {said && said.kind === 'ai' && (
           <p>

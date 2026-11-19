@@ -97,6 +97,31 @@ function pinnedClasses(css: string): Set<string> {
   return pinned
 }
 
+describe('the captions', () => {
+  /**
+   * The browser run, 2026-11-19: captions growing and shrinking with every sentence moved the whole
+   * page under the stage (layout shift 0.48 over one tour at 390 px); then a scroll box for them
+   * took the visitor's swipes and wheel turns from the page. Live captions in a box of fixed height:
+   * the newest words at its foot, a long answer's start clipped at its top, nothing that scrolls.
+   */
+  test('sit in a box of fixed height that never scrolls, newest words at its foot once they overflow', async () => {
+    stage(false, true)
+    const box = document.querySelector<HTMLElement>('[data-stage="captions"]')!
+    expect(box.className).toMatch(/\bh-\[/)
+    expect(box.className).toContain('overflow-hidden')
+    expect(box.className).not.toMatch(/overflow-(y-)?(auto|scroll)/)
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox', { name: /^Type to / }), { target: { value: 'How is LEGION built?' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      await settle()
+    })
+    expect(box).toHaveTextContent('Here is how it fits together.')
+    // jsdom lays nothing out, so the words fit: they sit at the top.
+    expect(box).toHaveAttribute('data-overflow', 'false')
+    expect(indexCss).toMatch(/\.recruiter \.rc-captions\[data-overflow="true"\] \{[^}]*justify-content: flex-end[^}]*mask-image/)
+  })
+})
+
 describe('the voice stage on the page', () => {
   test('is not pinned by the stylesheet, so it never covers the content scrolling below it', () => {
     stage(false)
