@@ -3,6 +3,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { Line } from '@/assistant/live-client'
+import { pushModalEntry } from '@/lib/modal-entry'
 
 import { DiagramBody } from './diagram'
 import { PresenterContext } from './presenter-context'
@@ -21,23 +22,13 @@ import { isModalCard, type ModalCard } from './types'
  * shows in place. The chat's thumbnail calls `show` to open it again.
  *
  * Closes on the X, Esc, a tap on the backdrop, and the phone's back gesture: opening pushes one
- * history entry (through `history.pushState`, which TanStack Router's history wraps, with the
- * next `__TSR_index` so the router reads the back as a BACK), and the back pops it. Closing any
- * other way goes back over that entry, so it never piles up.
+ * history entry (`lib/modal-entry.ts`), and the back pops it. Closing any other way goes back over
+ * that entry, so it never piles up.
  *
  * The conversation keeps running underneath: nothing here touches the client. A modal dialog
  * makes the rest of the page inert, so the controls that stop or interrupt voice would be dead
  * under it; `footer` puts them inside the modal (`ModalVoiceBar`).
  */
-
-type HistoryState = Record<string, unknown> & { __TSR_index?: number }
-
-function pushModalEntry() {
-  const state = (window.history.state ?? {}) as HistoryState
-  const key = Math.random().toString(36).slice(2, 10)
-  const index = typeof state.__TSR_index === 'number' ? state.__TSR_index + 1 : 1
-  window.history.pushState({ ...state, __TSR_index: index, key, __TSR_key: key, legionModal: true }, '')
-}
 
 export function ScreenModalProvider({
   lines,
