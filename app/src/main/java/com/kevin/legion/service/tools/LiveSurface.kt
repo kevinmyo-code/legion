@@ -102,7 +102,8 @@ internal object LiveSurface {
                 // Review A2: a plain switch never moves a drive; saying where the adapter is does.
                 Action(
                     "adapter_in", "manage_vehicle",
-                    "this car or the OBD adapter IS the car he names (this is the X, it's in the X): this drive goes to it",
+                    "he says which car the OBD adapter is in (this is the X, it's in the X): " +
+                        "this drive goes to it",
                     mapOf("action" to "adapter"),
                 ),
                 Action("archive_vehicle", "manage_vehicle", "sold or gone", mapOf("action" to "archive")),
