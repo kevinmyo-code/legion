@@ -5,6 +5,7 @@
  *   node tools/phone-walkthrough/render.mjs --spec <spec.json> --clips <dir> --out <dir>
  *        [--layout wide|tall|both] [--ffmpeg <dir with ffmpeg and ffprobe>] [--from 0 --to 12]
  *        [--asker <dir of asker WAVs, default <clips>/asker>]
+ *        [--narration-dir <dir of narration WAVs>] [--narration 0] (leave the narration out)
  *        [--check overlay]   (only the money-overlay check frames, no browser)
  *        [--export-clips m-wake,h-request] (those takes whole, money painted over, for the page)
  *        [--reuse-frames 1] (composite again over frames an earlier --keep 1 run drew: footage
@@ -79,6 +80,7 @@ function asksOf(slot) {
   return slotMeta(slot).asks || []
 }
 const askerDir = path.resolve(opt.asker || path.join(clipsDir, 'asker'))
+const narrationDir = path.resolve(opt['narration-dir'] || path.join(clipsDir, 'narration'))
 function askerWav(key) {
   return path.join(askerDir, `${key}.wav`)
 }
@@ -223,6 +225,29 @@ function dimLevels(slot) {
   return out
 }
 
+/**
+ * Takes where an asker line starts while Alfred is still speaking (seen in the room recording):
+ * the take is bad at that moment, so it is reported, never muted over. A stretch of sound that
+ * began before the ask and runs past its start is the overlap.
+ */
+function overlapCheck() {
+  const found = []
+  for (const slot of slots) {
+    const meta = slotMeta(slot)
+    if (!meta.room_wav) continue
+    const off = Number(meta.room_starts_before_video_s || 0)
+    const err = spawnSync(bin('ffmpeg'), ['-hide_banner', '-i', path.join(clipsDir, meta.room_wav), '-af', 'highpass=f=90,silencedetect=noise=-38dB:d=0.3', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 1 << 26 }).stderr
+    const starts = [...err.matchAll(/silence_start: ([0-9.]+)/g)].map((m) => Number(m[1]) - off)
+    const ends = [...err.matchAll(/silence_end: ([0-9.]+)/g)].map((m) => Number(m[1]) - off)
+    // Sound runs from each silence end to the next silence start.
+    const sound = ends.map((e, i) => [e, starts[i + 1] ?? Infinity])
+    for (const ask of speechAsks(slot)) {
+      for (const [a, b] of sound) if (a < ask.at - 0.05 && b > ask.at + 0.05) found.push(`${slot}: ${ask.line} at ${ask.at}s starts while Alfred speaks (${a.toFixed(2)}-${b.toFixed(2)}s)`)
+    }
+  }
+  return found
+}
+
 /** One frame a second of every slot's footage with the patch outlines, to catch a peeking digit. */
 function overlayDebug() {
   if (!spec.money_overlay) return
@@ -278,7 +303,33 @@ function captionCues(timeline) {
       }
     }
   }
-  return cues.sort((a, b) => a.start - b.start)
+  return splitLong(cues.sort((a, b) => a.start - b.start))
+}
+
+/** A cue longer than about three caption lines becomes several, cut at a comma or a full stop,
+ * each shown for its share of the time (the 4:5 burns captions in and allows three lines). */
+const CUE_CHARS = 96
+function splitLong(cues) {
+  const out = []
+  for (const c of cues) {
+    if (c.text.length <= CUE_CHARS) { out.push(c); continue }
+    const label = (c.text.match(/^(w+: )/) || ['', ''])[1]
+    const body = c.text.slice(label.length)
+    const parts = []
+    let cur = ''
+    for (const piece of body.split(/(?<=[,.;:?!]) /)) {
+      if (cur && (cur + ' ' + piece).length > CUE_CHARS - label.length) { parts.push(cur); cur = piece } else cur = cur ? cur + ' ' + piece : piece
+    }
+    if (cur) parts.push(cur)
+    const total = parts.reduce((n, p) => n + p.length, 0)
+    let t = c.start
+    for (const p of parts) {
+      const d = (c.end - c.start) * (p.length / total)
+      out.push({ start: t, end: t + d, text: label + p })
+      t += d
+    }
+  }
+  return out
 }
 
 /** Where a scene's footage ends: its in point plus the scene's length on screen, at its speed. */
@@ -394,7 +445,8 @@ function composite(layout, bgFile, { timeline, rects, from, to }, outFile) {
     const asks = speechAsks(scene.slot).filter((a) => a.at >= scene.in && a.at < out)
     const mute = asks.filter((a) => a.mute).map((a) => {
       const len = duration(askerWav(a.line))
-      return `between(t,${(a.at - scene.in - 0.25).toFixed(3)},${(a.at - scene.in + len + 0.25).toFixed(3)})`
+      // Muted from the ask's own start (no lead-in), so the end of Alfred's line before it is never cut.
+      return `between(t,${(a.at - scene.in).toFixed(3)},${(a.at - scene.in + len + 0.15).toFixed(3)})`
     })
     const volume = mute.length ? `,volume='if(${mute.join('+')},0,1)':eval=frame` : ''
     const delay = Math.round(start * 1000)
@@ -420,6 +472,22 @@ function composite(layout, bgFile, { timeline, rects, from, to }, outFile) {
       audioParts.push(`[s${w}]`)
     }
   })
+  // Narration: each scene's opening line in the narrator's stock voice, laid from the scene's
+  // start (the intro is a held frame, so no take audio is under it). `--narration 0` leaves it out.
+  if (opt.narration !== '0') {
+    timeline.scenes.forEach((item, k) => {
+      const key = spec.scenes[k].narration
+      const wav = key && path.join(narrationDir, `${key}.wav`)
+      if (!wav || !existsSync(wav)) return
+      const at = item.start - from + 0.25
+      if (at < 0 || at >= total) return
+      inputs.push('-i', levelled(wav))
+      const w = n++
+      const d = Math.round(at * 1000)
+      af.push(`[${w}:a]aresample=48000,aformat=channel_layouts=stereo,afade=t=in:d=0.02,areverse,afade=t=in:d=0.04,areverse,adelay=${d}|${d}[n${w}]`)
+      audioParts.push(`[n${w}]`)
+    })
+  }
   af.push(`anullsrc=r=48000:cl=stereo,atrim=0:${total.toFixed(3)}[silence]`)
   af.push(`[silence]${audioParts.join('')}amix=inputs=${audioParts.length + 1}:normalize=0:duration=first[aout]`)
   vf.push(`${last}format=yuv420p[vout]`)
@@ -453,7 +521,7 @@ function exportClip(slot) {
   if (source) {
     inputs.push('-i', source.file)
     const lead = source.offset < 0 ? `adelay=${Math.round(-source.offset * 1000)}|${Math.round(-source.offset * 1000)},` : ''
-    const mute = speechAsks(slot).filter((a) => a.mute).map((a) => `between(t,${(a.at - 0.25).toFixed(3)},${(a.at + duration(askerWav(a.line)) + 0.25).toFixed(3)})`)
+    const mute = speechAsks(slot).filter((a) => a.mute).map((a) => `between(t,${a.at.toFixed(3)},${(a.at + duration(askerWav(a.line)) + 0.15).toFixed(3)})`)
     const volume = mute.length ? `,volume='if(${mute.join('+')},0,1)':eval=frame` : ''
     graph.push(`[${n}:a]${lead}atrim=${Math.max(source.offset, 0).toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo${volume}[r]`)
     parts.push('[r]')
@@ -498,6 +566,7 @@ async function main() {
   const tmp = path.join(outDir, '.tmp')
   mkdirSync(tmp, { recursive: true })
   overlayDebug()
+  for (const line of overlapCheck()) console.log(`OVERLAP ${line}`)
   if (opt.check === 'overlay') return
   if (opt['export-clips']) {
     for (const slot of opt['export-clips'].split(',')) exportClip(slot)

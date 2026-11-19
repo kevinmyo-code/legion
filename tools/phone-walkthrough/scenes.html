@@ -40,6 +40,7 @@
   .text { position: absolute; }
   .title { font-size: calc(var(--u) * 2.45); line-height: 1.08; font-weight: 600; letter-spacing: -0.015em; }
   .line { font-size: calc(var(--u) * 1.12); line-height: 1.38; color: var(--ink); margin-top: calc(var(--u) * 0.55); }
+  .line.intro { font-size: calc(var(--u) * 1.0); }
   .event { font-size: calc(var(--u) * 0.8); line-height: 1.35; color: var(--accent); font-style: italic; margin-top: calc(var(--u) * 0.5); }
   .tally { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: calc(var(--u) * 0.56);
     color: var(--meta); margin-top: calc(var(--u) * 0.5); letter-spacing: 0.02em; }
@@ -74,23 +75,15 @@ const LAYOUTS = {
     text: { x: 130, y: 96, w: 1080 },
     phone: { x: 1330, y: 66, h: 948 }, phoneBeat: { x: 1330, y: 66, h: 948 },
     progress: { x: 130, y: 1030, w: 1080 },
-    map: {
-      model: { x: 130, y: 420, w: 470, h: 260 },
-      engine: { x: 130, y: 790, w: 470, h: 180 },
-      phone: { x: 760, y: 420, w: 440, h: 550 },
-    },
+    mapRegion: { x: 130, y: 400, w: 1110, h: 600 },
     caption: { bottom: 40 } },
   tall: { w: 1080, h: 1350, u: 30,
     text: { x: 56, y: 40, w: 968 },
     // The phone stops at 1172 so the burned-in captions (up to three lines) sit below it and never
     // cover its status line or a card.
-    phone: { x: 620, y: 312, h: 860 }, phoneBeat: { x: 342, y: 312, h: 860 },
+    phone: { x: 620, y: 312, h: 860 }, phoneBeat: { x: 620, y: 312, h: 860 },
     progress: { x: 56, y: 296, w: 968 },
-    map: {
-      model: { x: 40, y: 342, w: 540, h: 250 },
-      phone: { x: 40, y: 640, w: 540, h: 380 },
-      engine: { x: 40, y: 1060, w: 540, h: 112 },
-    },
+    mapRegion: { x: 40, y: 330, w: 550, h: 842 },
     caption: { bottom: 10 } },
 }
 // The recorded phone screens are portrait; this is their width over height.
@@ -177,17 +170,19 @@ function frame(t) {
   const scene = item.scene
   const cur = scene
   // Text: steady across the cuts of one chapter (`chapter: false`), a fade and a small rise between.
-  const sameText = (s) => s.chapter === false && s.title === cur.title
+  // An intro (the beat's opening explanation) swaps to the short line with a fade, never a jump.
+  const sameText = (s) => s.chapter === false && s.title === cur.title && !s.intro && !cur.intro
   const nextScene = TIMELINE[index + 1] && TIMELINE[index + 1].scene
-  const textIn = cur.chapter === false && TIMELINE[index - 1] && TIMELINE[index - 1].scene.title === cur.title ? 1 : ease(local / FADE)
+  const prevScene = TIMELINE[index - 1] && TIMELINE[index - 1].scene
+  const textIn = cur.chapter === false && prevScene && prevScene.title === cur.title && !prevScene.intro && !cur.intro ? 1 : ease(local / FADE)
   const textOut = nextScene && sameText(nextScene) ? 1 : ease((dur - local) / FADE)
   const textAlpha = Math.min(textIn, textOut)
   const text = el('div', { class: 'layer', style: { opacity: String(textAlpha), transform: `translateY(${px(Math.round((1 - textIn) * 14))})` } })
   if (scene.kind === 'title' || scene.kind === 'part' || scene.kind === 'end') drawCard(text, scene)
   else drawText(text, scene, local, dur)
   stage.appendChild(text)
-  if (scene.kind === 'step' && SPEC.map) {
-    const mapAlpha = layerAlpha(index, local, dur, (s) => s.kind === 'step')
+  if (scene.map && SPEC.maps && SPEC.maps[scene.map]) {
+    const mapAlpha = layerAlpha(index, local, dur, (s) => s.map === scene.map)
     stage.appendChild(drawMap(scene, local, mapAlpha))
   }
   if (scene.slot) {
@@ -221,7 +216,8 @@ function drawText(root, scene, local, dur) {
   const box = el('div', { class: 'text', style: { left: px(L.text.x), top: px(L.text.y), width: px(width) } })
   box.appendChild(el('div', { class: 'caps', text: scene.kicker || '' }))
   box.appendChild(el('div', { class: 'title', style: { marginTop: px(L.u * 0.35) }, text: scene.title }))
-  if (scene.line) box.appendChild(el('div', { class: 'line', text: scene.line }))
+  if (scene.intro) for (const p of scene.intro) box.appendChild(el('div', { class: 'line intro', text: p }))
+  else if (scene.line) box.appendChild(el('div', { class: 'line', text: scene.line }))
   // A small event under the line while it happens (the filler, the card), timed in the scene.
   for (const ev of scene.events || []) {
     const a = ease((local - ev.at) / 0.35) * ease((ev.at + ev.dur - local) / 0.35)
@@ -249,8 +245,8 @@ function drawPhone(scene, alpha) {
 }
 
 /**
- * Part two's system map: three places (`SPEC.map.places`, each with its items) at the layout's
- * rectangles, quiet lines between them, and the step's own motion: `active` items brighten and
+ * A feature's system map (`SPEC.maps[scene.map]`): its places, each with its items, on the
+ * format's grid, quiet lines between them, and the step's own motion: `active` items brighten and
  * every place not involved dims; each of `flows` ({from, to, label, at, dur}, seconds into the
  * scene) is a labelled packet that travels its line, eased, with a soft pulse where it lands;
  * `links` are quiet standing lines (a synced copy, never a call).
@@ -262,12 +258,18 @@ function drawMap(scene, local, alpha) {
   svg.setAttribute('width', L.w); svg.setAttribute('height', L.h)
   Object.assign(svg.style, { position: 'absolute', left: '0', top: '0', opacity: String(alpha) })
   const u = L.u
+  const MAP = SPEC.maps[scene.map]
+  const R = L.mapRegion
+  const cols = MAP.cols || 2, rows = MAP.rows || 2, gap = u * 0.9
+  const cellW = (R.w - gap * (cols - 1)) / cols, cellH = (R.h - gap * (rows - 1)) / rows
   const items = {}
   const places = {}
-  for (const place of SPEC.map.places) {
-    const r = L.map[place.id]
+  for (const place of MAP.places) {
+    // Each place takes a cell (or a span of cells) of the format's grid: [col, row, colSpan, rowSpan].
+    const [c, rw, cs, rs] = (L === LAYOUTS.tall ? place.tall : place.wide) || place.grid
+    const r = { x: R.x + c * (cellW + gap), y: R.y + rw * (cellH + gap), w: cellW * (cs || 1) + gap * ((cs || 1) - 1), h: cellH * (rs || 1) + gap * ((rs || 1) - 1) }
     const head = u * 1.9
-    const rowH = (r.h - head - u * 0.4) / place.items.length
+    const rowH = Math.min((r.h - head - u * 0.4) / Math.max(place.items.length, 1), u * 1.7)
     places[place.id] = r
     place.items.forEach((it, i) => {
       items[it.id] = { x: r.x + u * 0.5, y: r.y + head + i * rowH, w: r.w - u, h: rowH - u * 0.25, place: place.id, label: it.label }
@@ -291,7 +293,7 @@ function drawMap(scene, local, alpha) {
       : `M ${p.x} ${p.y} C ${p.x} ${p.y + (q.y - p.y) * k}, ${q.x} ${q.y - (q.y - p.y) * k}, ${q.x} ${q.y}`
   }
   // Standing lines between the places: the call path, and quiet links (dashed, labelled).
-  for (const [a, b] of SPEC.map.lines || []) {
+  for (const [a, b] of MAP.lines || []) {
     svg.appendChild(mk('path', { d: curve(places[a], places[b]), fill: 'none', stroke: '#dcd6ca', 'stroke-width': 2 }))
   }
   for (const link of scene.links || []) {
@@ -305,7 +307,7 @@ function drawMap(scene, local, alpha) {
     svg.appendChild(lbl)
   }
   // Places and their items.
-  for (const place of SPEC.map.places) {
+  for (const place of MAP.places) {
     const r = places[place.id]
     const dim = involved.size && !involved.has(place.id)
     const g = mk('g', { opacity: dim ? 0.45 : 1 })
