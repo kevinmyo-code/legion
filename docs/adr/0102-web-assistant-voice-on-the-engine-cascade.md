@@ -45,3 +45,10 @@ Kevin, 2026-11-17: *"recruiter demo > can it [go] to our current cloud pipeline 
 - A step toward [[0095-alfreds-brain-runs-on-the-engine]] for the web: the web's turn already runs on the engine with the runtime's loop. Ticket 13 (web onto the engine's turn endpoint) still owns moving members onto the agent graph; recruiters keep this door.
 - The Live path stays whole behind the switch until Kevin retires it.
 - Not yet measured: latency, cost per turn, a real browser (Safari included), and how the reply sounds. Those are the checks owed before the switch is relied on.
+- Money figures (2026-11-18, `assistant/cascade.py` `backed_cents`): in a turn where a money tool ran (a result holding a `*_cents` amount), a model sentence whose two-decimal figure that tool did not return is not said. Stated limits, each with an invented example:
+  - Whole-dollar figures are not checked: "Housing took 1451" passes when the tool said 1,450.00 (a bare whole number cannot be told from a count, a year or an id).
+  - Any other two-decimal number in a money turn is dropped as unbacked: "version 3.12", "74.88%", "2.50 lb", a figure the model added up itself.
+  - A failed, timed-out or EMPTY money result (no `*_cents` key, e.g. `{"currencies": []}`) does not make a money turn, so an invented figure then is spoken. Smallest structural fix (not built): count any call whose result holds a `*_cents` key of any value as money; a truly empty list shape still needs the tool to say it is a money tool (a flag on `EngineTool`).
+  - A follow-up answered from history with no tool call is not checked ("and groceries?" answered from the last reply).
+  - A swapped label or a flipped sign passes: utilities' 99.12 said as groceries, a refund of 99.12 said as a spend (membership only).
+  - A sentence spoken in the same model round as the money call, before the tool has run, is not checked; a held claim is checked when it is said at the end. Closing it means holding every sentence that carries a two-decimal figure until its round's tools have run, which moves such sentences later in the answer.
