@@ -81,7 +81,7 @@ describe('the phone walkthrough', () => {
     expect(video.querySelector('track')).toHaveAttribute('src', '/static/demo/walk.vtt')
     expect(video.querySelector('track')).toHaveAttribute('default')
     // The full clips under it load nothing either, and nobody was asked to play.
-    for (const clip of region.querySelectorAll('video')) expect(clip).toHaveAttribute('preload', 'none')
+    for (const clip of Array.from(region.querySelectorAll('video'))) expect(clip).toHaveAttribute('preload', 'none')
     expect(played).toEqual([])
   })
 

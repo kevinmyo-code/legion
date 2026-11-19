@@ -87,7 +87,7 @@ export function PhoneWalkthrough({ phone, walk }: { phone: DemoPhone; walk: Demo
       className="rc-section"
       // One sound at a time: a video that starts pauses the others in the section.
       onPlayCapture={(event) => {
-        for (const other of event.currentTarget.querySelectorAll('video')) if (other !== event.target) other.pause()
+        for (const other of Array.from(event.currentTarget.querySelectorAll('video'))) if (other !== event.target) other.pause()
       }}
     >
       <h2 id="phone-title" className="rc-h2">

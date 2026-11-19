@@ -14,11 +14,16 @@ import { sampleContent } from '../src/test/engine-demo'
  * walk.webm, walk.png, walk.vtt, chapters.json and clip-1..3.webm: WebM because Playwright's
  * Chromium has no H.264). Fake engine; nothing leaves the machine.
  *
- *     WALK_MEDIA=<dir> TRY_SHOTS=<out dir> npx playwright test e2e/try-phone-walkthrough-shots.spec.ts
+ *     WALK_MEDIA=<dir> TRY_SHOTS=<out dir> [WALK_BASE_URL=http://127.0.0.1:<port>] \
+ *       npx playwright test e2e/try-phone-walkthrough-shots.spec.ts
  *
  * Also checks, in numbers: no page-width overflow at 390 px, nothing loads a video before a
  * press, and a chapter press seeks the video to that chapter.
  */
+
+// Another worktree's preview may already hold the config's port (it is reused): WALK_BASE_URL
+// points at this tree's own preview instead.
+if (process.env.WALK_BASE_URL) test.use({ baseURL: process.env.WALK_BASE_URL })
 
 const OUT = process.env.TRY_SHOTS ?? path.join(process.cwd(), 'test-results', 'try-phone-walk')
 const MEDIA = process.env.WALK_MEDIA ?? ''
@@ -98,6 +103,8 @@ async function run(page: Page, tag: string) {
   const buttons = section.getByRole('list', { name: 'Chapters' }).getByRole('button')
   const video = section.locator('video.rc-walk-video')
   const count = await buttons.count()
+  // A build without the walkthrough draws no chapters: say so rather than pass on posters alone.
+  expect(count).toBe(CHAPTERS.length)
   for (let i = 0; i < count; i++) {
     await buttons.nth(i).click()
     await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 5000 }).toBeGreaterThanOrEqual(CHAPTERS[i].at - 0.05)
