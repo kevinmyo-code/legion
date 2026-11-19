@@ -369,6 +369,8 @@ object ScriptedLines {
         /** A write that is said by nobody's line: a proposal, a read, a screen ([SILENT]). */
         val silent: Boolean = false,
         val confirmed: Boolean = true,
+        /** A router's write (`ask_*`): its own words may carry more than the change ([ClosingRound]). */
+        val router: Boolean = false,
     ) {
         /** What code says for it when it went through: a phrase, the generic line, or nothing. */
         val said: Boolean get() = ok && changed && !silent
@@ -413,6 +415,7 @@ object ScriptedLines {
             changed = response.optBoolean("changed", !router),
             silent = name in SILENT || "$name/$action" in SILENT,
             confirmed = confirmed,
+            router = router,
         )
     }
 

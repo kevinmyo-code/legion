@@ -58,9 +58,13 @@ object LoneWordWriteGuard {
         val (resolved, resolvedArgs) = LiveSurface.resolve(name, args)
         val firstStep = LiveToolbox.isMutatingTool(resolved) && !CascadeRules.isWrite(name, args) &&
             !ToolReads.isRead(resolved, resolvedArgs)
-        return response.optBoolean(NEEDS_ANSWER, false) || response.optBoolean("needs_confirmation", false) ||
-            response.has("draft_id") || firstStep
+        return asksField(response) || firstStep
     }
+
+    /** The result's own fields that ask him something; the one list, shared with [ClosingRound]. */
+    fun asksField(response: JSONObject): Boolean =
+        response.optBoolean(NEEDS_ANSWER, false) || response.optBoolean("needs_confirmation", false) ||
+            response.has("draft_id")
 
     /**
      * [heard] is one word once [companionName] (at either end) and a leading hey/ok/okay are set

@@ -37,8 +37,11 @@ class ClosingRoundTest {
         // Ends on code's line.
         assertTrue("1 one write", skips(milk))
         assertTrue("2 two writes", skips(milk, eggs))
-        assertTrue("3 a router that committed", skips(write("ask_body", "", """{"success":true,"changed":true}""")))
-        assertTrue("4 a write with only the generic line", skips(write("ask_engine", "", """{"success":true,"changed":true,"message":"x"}""")))
+        assertTrue("3 a write with only the generic line", skips(write("invented_write", "", """{"success":true}""")))
+        // Review round 2 D2: a router or specialist, even one that committed, is always asked again.
+        assertFalse("4 a router that committed", skips(write("ask_body", "", """{"success":true,"changed":true,"message":"Logged. What weight for bench?"}""")))
+        assertFalse("4b the engine bridge, part of it failed", skips(write("ask_engine", "", """{"success":true,"changed":true,"message":"Added. Part of it did not go through."}""")))
+        assertFalse("4c a router next to a plain write", skips(milk, write("ask_engine", "", """{"success":true,"changed":true}""")))
         assertTrue("5 the adapter moved this drive", skips(write("manage_vehicle", "adapter", """{"success":true,"changed":true,"readings_moved":true,"vehicle":"Invented Ranger"}""")))
         assertTrue("6 the adapter on a car", skips(write("manage_vehicle", "adapter", """{"success":true,"changed":true,"vehicle":"Invented Ranger"}""")))
         // The model is asked again, as before.

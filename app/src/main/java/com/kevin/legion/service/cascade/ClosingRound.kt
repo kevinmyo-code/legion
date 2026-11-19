@@ -10,7 +10,8 @@ import org.json.JSONObject
  * words, in this one function so the engine brain can take the same rule.
  *
  * Not such a round, so the model answers as before (and [SaidFilter] still applies): any read or
- * screen call, a router without `changed: true`, a write that failed, was refused, timed out, did
+ * screen call, any router or specialist (`ask_*`, even one that committed: its own words may carry
+ * a part that failed or a question, review round 2 D2), a write that failed, was refused, timed out, did
  * not change anything (`changed: false`), or whose result asks him something (`needs_answer`,
  * `needs_confirmation`, a mail draft's `draft_id`), or the first step of a two-step write (not a
  * write, so it has no facts).
@@ -22,9 +23,6 @@ object ClosingRound {
     /** True when the round after these calls is not asked for. */
     fun skip(calls: List<Call>): Boolean = calls.isNotEmpty() && calls.all { confirmedWrite(it) }
 
-    private fun confirmedWrite(c: Call): Boolean = c.fact?.said == true && !asks(c.response)
-
-    private fun asks(r: JSONObject): Boolean =
-        r.optBoolean(LoneWordWriteGuard.NEEDS_ANSWER, false) || r.optBoolean("needs_confirmation", false) ||
-            r.has("draft_id")
+    private fun confirmedWrite(c: Call): Boolean =
+        c.fact?.said == true && !c.fact.router && !LoneWordWriteGuard.asksField(c.response)
 }
