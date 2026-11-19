@@ -366,6 +366,11 @@ await sleep(2500)
 t1 = await wall()
 P = await probe()
 R.phases.askClose = summary(P, t0, t1)
+// The captions still show the newest words of the answer that streamed on under the modal.
+R.phases.captionsAtNewest = await page.evaluate(() => {
+  const box = document.querySelector('[data-stage="captions"]')
+  return box ? { top: Math.round(box.scrollTop), room: box.clientHeight, height: box.scrollHeight } : null
+})
 await shot('6-ask-closed')
 
 // ---- the orb's travel: scrolled by wheel past the stage, then back ----------------------------
@@ -385,7 +390,8 @@ for (let i = 0; i < steps; i++) {
   await page.mouse.wheel(0, -Math.round(A.height * 0.06))
   await sleep(45)
 }
-await sleep(900)
+// Wheel scrolls land after the call returns: let the page arrive back at the top.
+await sleep(1600)
 t1 = await wall()
 await shot('9-travel-back')
 P = await probe()
@@ -433,6 +439,7 @@ R.checks = {
   // The voice stage is one element for the visit, the tap that enters it included.
   stageNeverRemounted: ph.tour.stage.add === 0 && ph.tour.stage.remove === 0,
   tourFinished: ph.tour.finished === true,
+  captionsAtNewest: !ph.captionsAtNewest || ph.captionsAtNewest.top + ph.captionsAtNewest.room >= ph.captionsAtNewest.height - 2,
 }
 R.turns = await turns()
 R.spendUsd = Math.round(R.turns.reduce((n, x) => n + (x.cost ?? 0), 0) * 100000) / 100000
