@@ -947,9 +947,11 @@ class WebDoor:
         self.conversation_id = conversation_id
         self.turn = turn
         self.recruiter = is_recruiter(self.user)
-        # The demo's live strip numbers (each tool's time, the turn's cost) go to members and to
-        # Kevin's tester visit, never to a recruiter (Kevin, 2026-11-19: "B hide the whole strip").
-        self.timings_shown = not self.recruiter or tester_visit(self.user)
+        # The demo's live strip (each tool's time, the turn's cost, the robotic marker) is Kevin's
+        # tester visit's, never an ordinary recruiter's (Kevin, 2026-11-19: "B hide the whole
+        # strip"). A member keeps each tool's time and the marker, as before; a turn's cost goes
+        # to the tester visit only (`_answer`).
+        self.strip = not self.recruiter or tester_visit(self.user)
         self.calls: list[DoorCall] = []
         self.end_requested = False
         # The browser's cancel (`CancelCheck`), asked before each tool.
@@ -1617,7 +1619,8 @@ def _answer(
             [web_conversation.engine_user_line(heard_at, words, typed=not speak)],
         )
 
-    if is_robotic_remark(words):
+    # An ordinary visitor's "that sounded robotic" is just words (the marker is the strip's).
+    if door.strip and is_robotic_remark(words):
         record_user()
         # "That sounded robotic": the turn before is marked for rework, by its number only
         # (voice-persona section 8). Nothing else is kept and no model is asked.
@@ -1774,7 +1777,7 @@ def _answer(
                     speaker.exact = True
                 payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome}
                 payload["text"] = done.text
-                if door.timings_shown:
+                if door.strip:
                     payload["ms"] = done.ms
                 if done.card is not None:
                     payload["card"] = done.card
@@ -1940,7 +1943,7 @@ def _answer(
         # The demo's live strip (tools, their times, the turn's estimated cost): Kevin's tester
         # visit only, never a recruiter's (Kevin, 2026-11-19: "B hide the whole strip"). The page
         # shows the strip only once a turn has carried these.
-        if door.timings_shown:
+        if door.strip:
             extra["cost_usd"] = round(turn_cost_usd(timings, speaker.done), 5)
             extra["tools_ms"] = [[c.name, c.ms] for c in door.calls]
         # The follow-up chips: only what ran, signed for this visitor; the page asks for the
@@ -2048,7 +2051,7 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
         done = door.calls[-1] if beats[index].tool and door.calls else None
         if done is not None and ran:
             payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome}
-            if door.timings_shown:
+            if door.strip:
                 payload["ms"] = done.ms
             payload["text"] = done.text
             if done.card is not None:

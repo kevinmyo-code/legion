@@ -134,13 +134,17 @@ def counts(user) -> bool:
 
 
 def tester_visit(user) -> bool:
-    """Whether this caller's visit came in on Kevin's tester code (`DemoCode.unmetered`). A visit
-    with no `DemoVisit` row is not the tester's: whatever this unlocks fails closed."""
+    """Whether this caller's visit came in on Kevin's tester code (`DemoCode.unmetered`) and that
+    code is still live: revoking it ends what it unlocks on a visit already open, from the next
+    request. A visit with no `DemoVisit` row is not the tester's: whatever this unlocks fails
+    closed."""
     from demo.models import DemoVisit
 
     if user is None or not getattr(user, "pk", None):
         return False
-    return DemoVisit.objects.filter(user=user, code__unmetered=True).exists()
+    return DemoVisit.objects.filter(
+        user=user, code__unmetered=True, code__revoked_at__isnull=True
+    ).exists()
 
 
 def capped_code(user) -> DemoCode | None:

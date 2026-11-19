@@ -1468,7 +1468,10 @@ TranscribeResponse = inline_serializer(
     name="AssistantTranscript",
     fields={
         "text": serializers.CharField(allow_blank=True, help_text="The words; empty for none."),
-        "ms": serializers.IntegerField(help_text="How long the transcription took."),
+        "ms": serializers.IntegerField(
+            required=False,
+            help_text="How long the transcription took (a member or the demo's tester visit only).",
+        ),
     },
 )
 
@@ -1550,7 +1553,11 @@ class AssistantTranscribeView(_AssistantView):
             heard.prompt_tokens,
             heard.output_tokens,
         )
-        return Response({"text": heard.text, "ms": heard.ms}, headers={"Cache-Control": "no-store"})
+        # The time it took is the live strip's (Kevin's tester visit, never an ordinary visit).
+        body = {"text": heard.text}
+        if not is_recruiter(request.user) or demo_budget.tester_visit(request.user):
+            body["ms"] = heard.ms
+        return Response(body, headers={"Cache-Control": "no-store"})
 
 
 class AssistantRoboticRequestSerializer(serializers.Serializer):
