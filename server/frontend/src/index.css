@@ -605,11 +605,41 @@
         }
     }
 
-    /* Live captions: words that fit sit at the top; once they no longer fit, the newest words
-       stay at the foot and the answer's start fades out at the top. */
+    /* Live captions: a box of fixed height (the page under it never moves). Words that fit sit at
+       the top; once they no longer fit, the newest words stay at the foot and the answer's start
+       fades out at the top, under "Read it all", which opens the box to the whole answer. */
+    .recruiter .rc-captions {
+        height: 9.5rem;
+    }
     .recruiter .rc-captions[data-overflow="true"] {
         justify-content: flex-end;
-        mask-image: linear-gradient(to bottom, transparent 0, #000 1.6rem);
+    }
+    /* The fade: paper over the top of the clipped words, under "Read it all". */
+    .recruiter .rc-captions[data-overflow="true"]::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 2.8rem;
+        background: linear-gradient(to bottom, var(--rc-paper), transparent);
+        pointer-events: none;
+    }
+    .recruiter .rc-captions[data-open="true"] {
+        height: auto;
+    }
+    .recruiter .rc-captions-open {
+        position: absolute;
+        top: 0;
+        right: 0;
+        min-height: 44px;
+        padding: 0 calc(0.6 * var(--u));
+        border: 0;
+        background: var(--rc-paper);
+        color: var(--rc-ink);
+        font: inherit;
+        font-size: calc(0.8 * var(--u));
+        text-decoration: underline;
+        text-underline-offset: 0.18em;
+        cursor: pointer;
     }
     .rc-prose .rc-media-note {
         font-size: calc(0.92 * var(--u));

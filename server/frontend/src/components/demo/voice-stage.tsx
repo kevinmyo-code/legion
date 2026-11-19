@@ -119,14 +119,30 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
 
   const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`
 
-  // The captions box: newest words at its foot once they no longer fit (`.rc-captions`).
+  // The captions box: newest words at its foot once they no longer fit (`.rc-captions`), measured
+  // again whenever the box or its words change size (a resize, a rotation, a late font), so the
+  // newest words are never the ones cut off. The whole answer is one tap away ("Read it all").
   const captionsRef = useRef<HTMLDivElement>(null)
+  const captionWordsRef = useRef<HTMLDivElement>(null)
+  const [captionsOverflow, setCaptionsOverflow] = useState(false)
+  const [captionsOpen, setCaptionsOpen] = useState(false)
   const captionText = `${heard?.id}:${said?.id}:${said?.kind === 'ai' ? said.text.length : 0}:${sys?.id}`
+  const answerId = said?.id
+  useEffect(() => {
+    // A new answer starts with the box closed again.
+    setCaptionsOpen(false)
+  }, [answerId])
   useLayoutEffect(() => {
     const box = captionsRef.current
-    if (!box) return
-    const used = Array.from(box.children).reduce((sum, child) => sum + (child as HTMLElement).offsetHeight, 0)
-    box.dataset.overflow = String(used > box.clientHeight)
+    const words = captionWordsRef.current
+    if (!box || !words) return
+    const measure = () => setCaptionsOverflow(words.offsetHeight > box.clientHeight + 1)
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(box)
+    observer?.observe(words)
+    void document.fonts?.ready.then(measure)
+    return () => observer?.disconnect()
   }, [captionText])
 
   // Its own class name: it once borrowed `rc-stage`, the phone section's sticky class, and stayed
@@ -187,21 +203,33 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       {/* Live captions in a box of fixed height: growing and shrinking with every sentence they
           moved the whole page under the stage (the browser run, 2026-11-19: layout shift 0.48
           over one tour at 390 px). Words that fit sit at its top; a longer answer keeps its newest
-          words at its foot and its start fades out at the top, as live captions do. Nothing in it
-          scrolls: a scroll box here took the visitor's swipes and wheel turns from the page. */}
+          words at its foot and its start fades out at the top, as live captions do; "Read it all"
+          opens the whole answer. Nothing in it scrolls: a scroll box here took the visitor's swipes
+          and wheel turns from the page. */}
       <div
         data-stage="captions"
+        data-overflow={captionsOverflow && !captionsOpen}
+        data-open={captionsOpen}
         aria-live="polite"
         ref={captionsRef}
-        className="rc-captions flex h-[9.5rem] w-full max-w-[34rem] flex-col overflow-hidden text-left text-[0.95rem]"
+        className="rc-captions relative flex w-full max-w-[34rem] flex-col overflow-hidden text-left text-[0.95rem]"
       >
-        {heard && heard.kind === 'me' && <p className="text-muted-foreground">You: {heard.text}</p>}
-        {said && said.kind === 'ai' && (
-          <p>
-            {who === 'the assistant' ? 'Assistant' : who}: {said.text}
-          </p>
+        <div ref={captionWordsRef}>
+          {heard && heard.kind === 'me' && <p className="text-muted-foreground">You: {heard.text}</p>}
+          {said && said.kind === 'ai' && (
+            <p>
+              {who === 'the assistant' ? 'Assistant' : who}: {said.text}
+            </p>
+          )}
+          {sys && sys.kind === 'sys' && <p className="text-muted-foreground italic">{sys.text}</p>}
+        </div>
+        {/* For someone who cannot hear: the start of a long answer is one tap away. It sits over the
+            faded start, so it moves nothing; the box grows only when the visitor taps it. */}
+        {captionsOverflow && !captionsOpen && (
+          <button type="button" data-stage="captions-open" className="rc-captions-open" onClick={() => setCaptionsOpen(true)}>
+            Read it all
+          </button>
         )}
-        {sys && sys.kind === 'sys' && <p className="text-muted-foreground italic">{sys.text}</p>}
       </div>
       {/* Kevin's tester visit only: the engine sends a turn's cost to no one else. */}
       {cascade && cascade.stripShown && (cascade.strip.tools.length > 0 || cascade.strip.costUsd !== null) && (

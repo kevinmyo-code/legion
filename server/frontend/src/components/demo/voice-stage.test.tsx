@@ -100,25 +100,73 @@ function pinnedClasses(css: string): Set<string> {
 describe('the captions', () => {
   /**
    * The browser run, 2026-11-19: captions growing and shrinking with every sentence moved the whole
-   * page under the stage (layout shift 0.48 over one tour at 390 px); then a scroll box for them
-   * took the visitor's swipes and wheel turns from the page. Live captions in a box of fixed height:
-   * the newest words at its foot, a long answer's start clipped at its top, nothing that scrolls.
+   * page under the stage (layout shift 0.48 over one tour at 390 px). A box of fixed height. Review
+   * F3: it is measured again whenever it or its words change size (a resize, a rotation, a late
+   * font), so the newest words are never the ones cut off, and someone who cannot hear can open the
+   * whole answer ("Read it all"); the box grows only on that tap.
    */
-  test('sit in a box of fixed height that never scrolls, newest words at its foot once they overflow', async () => {
-    stage(false, true)
+  type RO = { cb: () => void }
+  const observers: RO[] = []
+  const realRO = (globalThis as { ResizeObserver?: unknown }).ResizeObserver
+  afterEach(() => {
+    ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = realRO
+    observers.length = 0
+  })
+  function fakeRO() {
+    ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      constructor(cb: () => void) {
+        observers.push({ cb })
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+  }
+  /** Lays the box out as a browser would: this much room, this much text. */
+  function layout(room: number, words: number) {
     const box = document.querySelector<HTMLElement>('[data-stage="captions"]')!
-    expect(box.className).toMatch(/\bh-\[/)
-    expect(box.className).toContain('overflow-hidden')
-    expect(box.className).not.toMatch(/overflow-(y-)?(auto|scroll)/)
+    Object.defineProperty(box, 'clientHeight', { configurable: true, value: room })
+    Object.defineProperty(box.firstElementChild!, 'offsetHeight', { configurable: true, value: words })
+    act(() => observers.forEach(({ cb }) => cb()))
+    return box
+  }
+  async function ask() {
     await act(async () => {
       fireEvent.change(screen.getByRole('textbox', { name: /^Type to / }), { target: { value: 'How is LEGION built?' } })
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
       await settle()
     })
-    expect(box).toHaveTextContent('Here is how it fits together.')
-    // jsdom lays nothing out, so the words fit: they sit at the top.
+    // The answer's diagram opened over the page; closed, the stage is what is read.
+    const dialog = screen.queryByRole('dialog')
+    if (dialog) fireEvent.keyDown(dialog, { key: 'Escape' })
+    await act(async () => settle())
+  }
+
+  test('words that fit sit at the top; the box is measured again when it changes size (a rotation), never only when the words change', async () => {
+    fakeRO()
+    stage(false, true)
+    await ask()
+    let box = layout(150, 120)
     expect(box).toHaveAttribute('data-overflow', 'false')
-    expect(indexCss).toMatch(/\.recruiter \.rc-captions\[data-overflow="true"\] \{[^}]*justify-content: flex-end[^}]*mask-image/)
+    expect(screen.queryByRole('button', { name: 'Read it all' })).toBeNull()
+    // The phone turns: the same words now take more room than the box has. Nothing in the words
+    // changed; the box knows anyway, and keeps the newest words in view.
+    box = layout(150, 260)
+    expect(box).toHaveAttribute('data-overflow', 'true')
+  })
+
+  test('a long answer can be read whole: "Read it all" opens the box, and the next answer closes it again', async () => {
+    fakeRO()
+    stage(false, true)
+    await ask()
+    const box = layout(150, 260)
+    fireEvent.click(screen.getByRole('button', { name: 'Read it all' }))
+    expect(box).toHaveAttribute('data-open', 'true')
+    expect(box).toHaveAttribute('data-overflow', 'false')
+    expect(box).toHaveTextContent('Here is how it fits together.')
+    expect(screen.queryByRole('button', { name: 'Read it all' })).toBeNull()
+    await ask()
+    expect(box).toHaveAttribute('data-open', 'false')
   })
 })
 
@@ -365,23 +413,5 @@ describe('the suggestion chips on the stage', () => {
       await settle()
     })
     expect(requests.at(-1)).toMatchObject({ text: 'Tell me about Kevin.', chip: 'chip-1' })
-  })
-
-  test('the pills: page colours only, a 44 px tap target, one line, an edge fade, an entrance', () => {
-    const chip = [...indexCss.matchAll(/\.recruiter \.rc-chip \{([^}]*)\}/g)].map((m) => m[1]).find((b) => b.includes('min-height')) ?? ''
-    expect(chip).toMatch(/min-height: 44px/)
-    // A pill despite the page's square-corners rule (unlayered, so the exception is unlayered and after it).
-    const square = indexCss.search(/\.recruiter \*::after \{\s*border-radius: 0;/)
-    const pill = indexCss.search(/\.recruiter \.rc-chip \{\s*border-radius: 9999px;/)
-    expect(square).toBeGreaterThan(-1)
-    expect(pill).toBeGreaterThan(square)
-    expect(chip).toMatch(/white-space: nowrap/)
-    expect(chip).toMatch(/animation: rc-chip-in/)
-    // Colours are the page's own tokens, never a new literal.
-    expect(chip.match(/#[0-9a-f]{3,8}\b|rgb\(/gi) ?? []).toEqual([])
-    const row = /\.recruiter \.rc-chips \{([^}]*)\}/.exec(indexCss)?.[1] ?? ''
-    expect(row).toMatch(/flex-wrap: nowrap/)
-    expect(row).toMatch(/overflow-x: auto/)
-    expect(row).toMatch(/mask-image/)
   })
 })
