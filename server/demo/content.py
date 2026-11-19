@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,12 +43,55 @@ def _obj(properties: dict, optional: tuple[str, ...] = ()) -> dict:
 
 _TITLE_BODY = _obj({"title": _STR, "body": _STR})
 
+# Media FILE NAMES (Kevin, 2026-11-19). A model, its poster, and (instead of a public link) a
+# section's or a phone clip's video, poster and captions may name a file in the private content
+# folder: the loader stores it beside the content and `GET /api/demo/media/<name>` serves it to a
+# visit or an owner only. A name is one plain segment, so it can never leave the folder.
+# `\Z`, not `$`: jsonschema searches with `re.search`, where `$` also matches before a final
+# newline, and a name ending in a newline would pass the schema yet never be served.
+_STEM = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}"
+MODEL_NAME = _STEM + r"\.glb\Z"
+POSTER_NAME = _STEM + r"\.(png|jpg|jpeg|webp)\Z"
+VIDEO_NAME = _STEM + r"\.(mp4|webm)\Z"
+CAPTIONS_NAME = _STEM + r"\.vtt\Z"
+# A link the page fetches as written: off-site (https://) or on this site (/...). Never a name.
+_LINK = r"^(https?://|/)\S*\Z"
+_FOLDER = "a file name in the content folder (letters, digits, - and _, then "
+_NAME_HINTS = {
+    MODEL_NAME: _FOLDER + ".glb)",
+    POSTER_NAME: _FOLDER + ".png, .jpg or .webp)",
+    VIDEO_NAME: _FOLDER + ".mp4 or .webm)",
+    CAPTIONS_NAME: _FOLDER + ".vtt)",
+}
+
+
+def _link_or_file(name_pattern: str) -> dict:
+    """A clip's video, poster or captions: a link, as before, or a file name served privately."""
+    return {
+        "type": "string",
+        "anyOf": [{"pattern": _LINK}, {"pattern": name_pattern}],
+        "x-hint": f"a link (https://... or /...) or {_NAME_HINTS[name_pattern]}",
+    }
+
+
+_CLIP_FILES = {
+    "video": _link_or_file(VIDEO_NAME),
+    "poster": _link_or_file(POSTER_NAME),
+    "captions": _link_or_file(CAPTIONS_NAME),
+}
+
+
+def is_file_name(value: str) -> bool:
+    """A media value that names a file in the folder (not a link)."""
+    return re.match(_LINK, value) is None
+
+
 # "LEGION on the phone" (prototype D, 2026-11-03): one clip per capability, cut
 # from one recording. A clip with no `video` yet is drawn as a placeholder;
-# `poster` and `captions` (a WebVTT file) go with the video. `full_take` is the
-# whole recording, linked under the section.
+# `poster` and `captions` (a WebVTT file) go with the video, each a link or a file
+# name (`_link_or_file`). `full_take` is the whole recording, linked under the section.
 _PHONE_CLIP = _obj(
-    {"title": _STR, "body": _STR, "video": _STR, "poster": _STR, "captions": _STR},
+    {"title": _STR, "body": _STR, **_CLIP_FILES},
     optional=("video", "poster", "captions"),
 )
 _PHONE = _obj(
@@ -68,20 +112,6 @@ _MEDIA = _obj(
     optional=("video", "poster", "captions", "note"),
 )
 
-# A 3D model a visitor can turn (Kevin, 2026-11-19). `model` (a GLB) and `poster` (its still,
-# shown until the 3D has loaded and kept if it cannot) are FILE NAMES in the private content
-# folder: the loader stores them beside the content and `GET /api/demo/media/<name>` serves them
-# to a visit or an owner only. A name is one plain segment, so it can never leave the folder.
-# `\Z`, not `$`: jsonschema searches with `re.search`, where `$` also matches before a final
-# newline, and a name ending in a newline would pass the schema yet never be served.
-MODEL_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.glb\Z"
-POSTER_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.(png|jpg|jpeg|webp)\Z"
-_NAME_HINTS = {
-    MODEL_NAME: "a file name in the content folder (letters, digits, - and _, then .glb)",
-    POSTER_NAME: (
-        "a file name in the content folder (letters, digits, - and _, then .png, .jpg or .webp)"
-    ),
-}
 _MODEL_3D = _obj(
     {
         "title": _STR,
@@ -93,11 +123,13 @@ _MODEL_3D = _obj(
 )
 MAX_MODELS = 4
 
-# A project section's media: the clip slot plus up to `MAX_MODELS` models. The strip's line keeps
-# the plain clip slot: a model belongs in a section with room for it.
+# A project section's media: the clip slot (its video, poster and captions each a link or a file
+# name) plus up to `MAX_MODELS` models. The strip's line keeps the plain slot of links: a model
+# belongs in a section with room for it.
 _SECTION_MEDIA = _obj(
     {
-        **_MEDIA["properties"],
+        **_CLIP_FILES,
+        "note": _STR,
         "models": {"type": "array", "items": _MODEL_3D, "maxItems": MAX_MODELS},
     },
     optional=("video", "poster", "captions", "note", "models"),
@@ -202,18 +234,35 @@ MEDIA_TYPES = {
     "jpg": ("image/jpeg", "a JPEG", lambda b: b.startswith(b"\xff\xd8\xff")),
     "jpeg": ("image/jpeg", "a JPEG", lambda b: b.startswith(b"\xff\xd8\xff")),
     "webp": ("image/webp", "a WebP", lambda b: b[:4] == b"RIFF" and b[8:12] == b"WEBP"),
+    "mp4": ("video/mp4", "an MP4", lambda b: b[4:8] == b"ftyp"),
+    "webm": ("video/webm", "a WebM", lambda b: b.startswith(bytes([0x1A, 0x45, 0xDF, 0xA3]))),
+    "vtt": (
+        "text/vtt; charset=utf-8",
+        "a WebVTT file",
+        lambda b: b.removeprefix(bytes([0xEF, 0xBB, 0xBF])).startswith(b"WEBVTT"),
+    ),
 }
 # Per file, by kind. A model's own target is under 3 MB (a phone on a cell link); 8 MB is the
 # ceiling past which a row in Postgres and one response stop being sensible. A still (a poster) is
 # shown at most 700 px wide on the page: 1 MB is generous for that, and four of them per section
-# must not outweigh the models.
-MEDIA_MAX_BYTES = {"model/gltf-binary": 8 * 1024 * 1024}
+# must not outweigh the models. A video: 64 MB, about two minutes of a 1080p screen recording at
+# 4 Mbit/s. The bound is the loader (it holds the whole file in memory and writes it as one
+# Postgres row), not serving: the route reads at most `content_views.RANGE_CHUNK` of the row per
+# read, so a request never holds more than that. Captions: 256 KB of text is hours of cues.
+MEDIA_MAX_BYTES = {
+    "model/gltf-binary": 8 * 1024 * 1024,
+    "video/mp4": 64 * 1024 * 1024,
+    "video/webm": 64 * 1024 * 1024,
+    "text/vtt; charset=utf-8": 256 * 1024,
+}
 IMAGE_MAX_BYTES = 1024 * 1024
+
+
+MEDIA_URL = "/api/demo/media/"
 
 
 def media_cap(content_type: str) -> int:
     return MEDIA_MAX_BYTES.get(content_type, IMAGE_MAX_BYTES)
-MEDIA_URL = "/api/demo/media/"
 
 
 class ContentInvalid(ValueError):
@@ -228,6 +277,8 @@ def problems(content) -> list[str]:
         message = error.message
         if error.validator == "pattern" and error.validator_value in _NAME_HINTS:
             message = f"{error.instance!r} is not {_NAME_HINTS[error.validator_value]}"
+        elif error.validator == "anyOf" and "x-hint" in error.schema:
+            message = f"{error.instance!r} is not {error.schema['x-hint']}"
         found.append(f"{where}: {message}")
     if not found and isinstance(content, dict):
         found.extend(_anchor_problems(content))
@@ -265,35 +316,46 @@ def _anchor_problems(content: dict) -> list[str]:
 
 
 def public_content(content: dict) -> dict:
-    """What the page is served: everything but `profile` (and its order), with each model's
-    `model` and `poster` file names turned into the private route that serves them."""
+    """What the page is served: everything but `profile` (and its order), with every media file
+    name (`media_slots`) turned into the private route that serves it. Links stay as written."""
     public = {
         key: value for key, value in content.items() if key not in ("profile", PROFILE_ORDER)
     }
-    sections_in = public.get("project_sections", [])
-    if not any(section.get("media", {}).get("models") for section in sections_in):
+    if not media_names(public):
         return public
-    sections = []
-    for section in public["project_sections"]:
-        media = section.get("media")
-        if media and media.get("models"):
-            models = [
-                {**m, "model": MEDIA_URL + m["model"], "poster": MEDIA_URL + m["poster"]}
-                for m in media["models"]
-            ]
-            section = {**section, "media": {**media, "models": models}}
-        sections.append(section)
-    return {**public, "project_sections": sections}
+    public = json.loads(json.dumps(public))  # a deep copy: the stored content is never touched
+    for _where, holder, key in media_slots(public):
+        if is_file_name(holder[key]):
+            holder[key] = MEDIA_URL + holder[key]
+    return public
+
+
+def media_slots(content: dict) -> list[tuple[str, dict, str]]:
+    """(schema path, the dict holding it, its key) of every value that may name a media file: a
+    project section's clip files and models, and the phone clips' files."""
+    slots = []
+    for s, section in enumerate(content.get("project_sections", [])):
+        media = section.get("media", {})
+        for key in ("video", "poster", "captions"):
+            if key in media:
+                slots.append((f"project_sections/{s}/media/{key}", media, key))
+        for m, model in enumerate(media.get("models", [])):
+            for key in ("model", "poster"):
+                slots.append((f"project_sections/{s}/media/models/{m}/{key}", model, key))
+    for c, clip in enumerate(content.get("phone", {}).get("clips", [])):
+        for key in ("video", "poster", "captions"):
+            if key in clip:
+                slots.append((f"phone/clips/{c}/{key}", clip, key))
+    return slots
 
 
 def media_names(content: dict) -> list[tuple[str, str]]:
-    """(schema path, file name) of every model and poster the content names, in order."""
-    named = []
-    for s, section in enumerate(content.get("project_sections", [])):
-        for m, model in enumerate(section.get("media", {}).get("models", [])):
-            for key in ("model", "poster"):
-                named.append((f"project_sections/{s}/media/models/{m}/{key}", model[key]))
-    return named
+    """(schema path, file name) of every media file the content names, in order (links skipped)."""
+    return [
+        (where, holder[key])
+        for where, holder, key in media_slots(content)
+        if is_file_name(holder[key])
+    ]
 
 
 def _read_media(folder: Path, content: dict) -> dict[str, tuple[bytes, str]]:
