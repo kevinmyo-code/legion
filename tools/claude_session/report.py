@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import STATUSES, Paths, write_json_atomic  # noqa: E402
+from common import STATUSES, Paths, is_under, write_json_atomic  # noqa: E402
 
 
 def _file_entry(raw: str) -> dict:
@@ -38,9 +38,23 @@ def build(argv: list[str]) -> dict:
     ap.add_argument("--status", required=True, choices=STATUSES)
     ap.add_argument("--summary", default="")
     ap.add_argument("--question", default="")
+    # Free text with a `$`, a quote or a backtick goes in a file the helper wrote in its own task
+    # folder: the hook trusts this script only with literal arguments (asklist_hook._plain_argv).
+    ap.add_argument("--summary-file", metavar="PATH")
+    ap.add_argument("--question-file", metavar="PATH")
     ap.add_argument("--found", action="append", default=[], metavar="PATH",
                     help="a file you found or made; listed for Kevin, never uploaded unless he asks")
     a = ap.parse_args(argv)
+    for field in ("summary", "question"):
+        path = getattr(a, f"{field}_file")
+        if path is None:
+            continue
+        if getattr(a, field):
+            ap.error(f"give --{field} or --{field}-file, not both")
+        own = Paths().task_work(a.task)
+        if not is_under(path, own) or not Path(path).is_file():
+            ap.error(f"--{field}-file must be a file in this task's own work folder ({own})")
+        setattr(a, field, Path(path).read_text(encoding="utf-8"))
 
     if a.status == "needs_confirmation" and not a.question.strip():
         ap.error("needs_confirmation needs --question \"<one question for Kevin>\" "
