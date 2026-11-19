@@ -244,3 +244,22 @@ def test_a_closed_round_stops_reading_the_model_at_its_next_item():
     while not closed and time.monotonic() < deadline:
         time.sleep(0.01)
     assert closed == [True]
+
+
+def test_a_delayed_line_is_the_shortest_clip_in_hand():
+    # F3: a delayed line may still be playing when the answer is ready: the shortest one.
+    audio = cascade.FillerAudio(spawn=lambda work: None)
+    long_line, short_line, mid_line = fillers.lines_for("monthly_spend")
+    audio._audio = {
+        ("v", long_line): b"\x00" * 9000,
+        ("v", short_line): b"\x00" * 3000,
+        ("v", mid_line): b"\x00" * 6000,
+    }
+    picker = fillers.LinePicker()
+    cascade.LINES, saved = picker, cascade.LINES
+    try:
+        assert audio.pick("v", "monthly_spend", shortest=True)[0] == short_line
+        # Never the same line twice running: the next shortest.
+        assert audio.pick("v", "monthly_spend", shortest=True)[0] == mid_line
+    finally:
+        cascade.LINES = saved

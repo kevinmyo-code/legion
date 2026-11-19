@@ -546,12 +546,19 @@ class FillerAudio:
         with self._lock:
             return self._audio.get((voice, line))
 
-    def pick(self, voice: str, tool: str) -> tuple[str, bytes] | None:
+    def pick(self, voice: str, tool: str, shortest: bool = False) -> tuple[str, bytes] | None:
         """One of `tool`'s lines that is in memory, never the last line said; None when the tool
-        is silent or none of its lines is in hand yet."""
+        is silent or none of its lines is in hand yet. `shortest`: the shortest clip in hand (the
+        delayed kind, which plays while an answer may already be on its way: a shorter clip holds
+        it up less), else the next shortest when that one was the last said."""
         with self._lock:
             ready = [line for line in fillers.lines_for(tool) if (voice, line) in self._audio]
-        line = LINES.pick(ready)
+            if shortest:
+                ready.sort(key=lambda line: len(self._audio[(voice, line)]))
+        if shortest:
+            line = next((one for one in ready if LINES.pick([one]) is not None), None)
+        else:
+            line = LINES.pick(ready)
         if line is None:
             return None
         return line, self._audio[(voice, line)]
@@ -1751,10 +1758,10 @@ def _answer(
         if clock() - lookup[1] < FILLER_WAIT_S or door.cancelled():
             # Never after a cancel (asked only once the line is due: it reads the database).
             return None
-        return (yield from filler(lookup[0]))
+        return (yield from filler(lookup[0], shortest=True))
 
-    def filler(tool: str):
-        picked = filler_audio.pick(voice, tool)
+    def filler(tool: str, shortest: bool = False):
+        picked = filler_audio.pick(voice, tool, shortest=shortest)
         if picked is None:
             return None
         line, audio = picked
