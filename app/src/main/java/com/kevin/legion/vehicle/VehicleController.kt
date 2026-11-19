@@ -1380,8 +1380,8 @@ object VehicleController {
      * (review A2, R2-2). That is [adapterIn], the Cars card or the notification.
      */
     private suspend fun dongleSwitch(context: Context, vehicle: Vehicle): WriteOutcome? {
-        val live = DongleCarController.state.value ?: return null
-        if (live is DongleCar.OnCar && live.carId == vehicle.obdMac) return null
+        val live = DongleCarController.state.value
+        if (live == null || (live is DongleCar.OnCar && live.carId == vehicle.obdMac)) return null
         ActiveVehicle.select(context, vehicle.obdMac)
         val name = label(vehicle)
         val inCar = (live as? DongleCar.OnCar)?.let { FleetEngineStore.getByMac(context, it.carId) }?.let { label(it) }
