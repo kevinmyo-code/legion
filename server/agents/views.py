@@ -70,7 +70,8 @@ class _AgentsView(APIView):
 
 
 class _SwitchedAgentsView(_AgentsView):
-    """A route that answers only while `LEGION_AGENTS_TURN=on`."""
+    # A route that answers only while `LEGION_AGENTS_TURN=on`. (A comment, not a docstring: the
+    # schema generator would publish a docstring as every subclass's description.)
 
     def initial(self, request, *args, **kwargs):
         # Authentication and the household fence first (a recruiter gets the fence's own 403, a
