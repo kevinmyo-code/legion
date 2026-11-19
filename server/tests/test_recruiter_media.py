@@ -109,6 +109,13 @@ def test_a_model_entry_is_closed_and_needs_its_poster():
     assert problems(with_models(extra))[0].startswith("project_sections/0/media/models/0:")
 
 
+def test_one_model_shown_twice_in_a_section_is_refused():
+    again = {"title": "Fake gadget again", "model": "gadget.glb", "poster": "gadget.png"}
+    assert problems(with_models(GADGET, again)) == [
+        "project_sections/0/media/models/1/model: 'gadget.glb' is shown twice in this section"
+    ]
+
+
 def test_models_belong_to_a_section_not_to_a_strip_line():
     content = fake_content() | fake_projects()
     content["projects"][0]["media"] = {"models": [GADGET]}

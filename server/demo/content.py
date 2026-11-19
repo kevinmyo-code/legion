@@ -235,13 +235,23 @@ def problems(content) -> list[str]:
 
 
 def _anchor_problems(content: dict) -> list[str]:
-    """What the schema cannot say: two project sections with one id, or a strip line whose
-    `#anchor` names a section this content does not draw (a dead link on the page)."""
+    """What the schema cannot say: two project sections with one id, one model shown twice in a
+    section, or a strip line whose `#anchor` names a section this content does not draw (a dead
+    link on the page)."""
     found = []
     ids = [section["id"] for section in content.get("project_sections", [])]
     for index, section_id in enumerate(ids):
         if section_id in ids[:index]:
             found.append(f"project_sections/{index}/id: {section_id!r} is used twice")
+    for s, section in enumerate(content.get("project_sections", [])):
+        seen: list[str] = []
+        for m, model in enumerate(section.get("media", {}).get("models", [])):
+            if model["model"] in seen:
+                found.append(
+                    f"project_sections/{s}/media/models/{m}/model: {model['model']!r} is shown "
+                    "twice in this section"
+                )
+            seen.append(model["model"])
     drawn = set(ids) | {"experience"}
     drawn |= {key for key in ("legion", "phone", "work") if key in content}
     for index, project in enumerate(content.get("projects", [])):
