@@ -331,13 +331,32 @@ describe('the suggestion chips on the stage', () => {
       await settle()
     })
     const row = await screen.findByRole('group', { name: 'Suggested questions' })
-    expect(row.className).toContain('flex-nowrap')
-    expect(row.className).toContain('overflow-x-auto')
+    expect(row.className).toContain('rc-chips')
+    // Directly under the orb.
+    expect(document.querySelector('[data-stage="orb"]')!.nextElementSibling).toContainElement(row)
     expect(within(row).getAllByRole('button').map((b) => b.textContent)).toEqual(['About Kevin', 'How LEGION is built'])
     await act(async () => {
       fireEvent.click(within(row).getByRole('button', { name: 'About Kevin' }))
       await settle()
     })
     expect(requests.at(-1)).toMatchObject({ text: 'Tell me about Kevin.', chip: 'chip-1' })
+  })
+
+  test('the pills: page colours only, a 44 px tap target, one line, an edge fade, an entrance', () => {
+    const chip = [...indexCss.matchAll(/\.recruiter \.rc-chip \{([^}]*)\}/g)].map((m) => m[1]).find((b) => b.includes('min-height')) ?? ''
+    expect(chip).toMatch(/min-height: 44px/)
+    // A pill despite the page's square-corners rule (unlayered, so the exception is unlayered and after it).
+    const square = indexCss.search(/\.recruiter \*::after \{\s*border-radius: 0;/)
+    const pill = indexCss.search(/\.recruiter \.rc-chip \{\s*border-radius: 9999px;/)
+    expect(square).toBeGreaterThan(-1)
+    expect(pill).toBeGreaterThan(square)
+    expect(chip).toMatch(/white-space: nowrap/)
+    expect(chip).toMatch(/animation: rc-chip-in/)
+    // Colours are the page's own tokens, never a new literal.
+    expect(chip.match(/#[0-9a-f]{3,8}\b|rgb\(/gi) ?? []).toEqual([])
+    const row = /\.recruiter \.rc-chips \{([^}]*)\}/.exec(indexCss)?.[1] ?? ''
+    expect(row).toMatch(/flex-wrap: nowrap/)
+    expect(row).toMatch(/overflow-x: auto/)
+    expect(row).toMatch(/mask-image/)
   })
 })

@@ -6,6 +6,7 @@ import { CascadeClient, type SuggestChip } from '@/assistant/cascade-client'
 import type { Line } from '@/assistant/live-client'
 import { orbMode } from '@/components/assistant/orb'
 import { VoiceOrb } from '@/components/assistant/voice-orb'
+import { ChipRow } from '@/components/demo/chip-row'
 
 /**
  * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"). A long
@@ -133,6 +134,11 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       >
         <VoiceOrb mode={mode} levels={() => client.levels()} className="block size-full" />
       </button>
+      {/* The chips sit right under the orb (Kevin, 2026-11-19: "make them float at the bottom of the
+          orb"); the row's height is kept while there are none, so chips arriving never push the page. */}
+      <div data-stage="chips-room" className="flex min-h-12 w-full max-w-[34rem] justify-center">
+        {cascade && cascade.chips.length > 0 && <ChipRow chips={cascade.chips} onTap={tapChip} />}
+      </div>
       {docked && (
         // Its own class and an opaque background (the stage once borrowed a sticky class and
         // stayed pinned, see-through, over the page); the safe area keeps it off a phone's bar.
@@ -200,28 +206,6 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         <button type="button" className="rc-ask-q" data-stage="tour" onClick={() => cascade.startTour(0)}>
           Take the one-minute tour
         </button>
-      )}
-      {/* The engine's chips, checked for this visit (`demo/suggestions.py`): one row that scrolls
-          sideways, so a phone's page never grows wider than the screen. */}
-      {cascade && cascade.chips.length > 0 && (
-        <div
-          data-stage="chips"
-          role="group"
-          aria-label="Suggested questions"
-          className="flex w-full max-w-[34rem] flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1"
-        >
-          {cascade.chips.map((chip) => (
-            <button
-              key={chip.token}
-              type="button"
-              className="rc-ask-q flex-none whitespace-nowrap"
-              title={chip.question}
-              onClick={() => tapChip(chip)}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
       )}
       <form onSubmit={submit} data-stage="form" className="flex w-full max-w-[34rem] gap-2">
         <input
