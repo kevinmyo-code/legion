@@ -36,10 +36,12 @@ Stdlib only.
 from __future__ import annotations
 
 import fnmatch
+import glob
 import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -381,9 +383,39 @@ def _git_subcommand(argv: list[str]) -> str:
 
 # --------------------------------------------------------------------------- the facts
 
+# R2-2 (review 11-19): never a bare program name. Windows looks in the current folder before
+# PATH, and a helper can write the work folder the hook may start in. git and gh come from their
+# install folders only, found once; every call runs in a folder of the system's own.
+def _install_dirs() -> list[str]:
+    if os.name != "nt":
+        return ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]
+    pf = os.environ.get("ProgramFiles") or r"C:\Program Files"
+    local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+    winget = sorted(glob.glob(os.path.join(local, "Microsoft", "WinGet", "Packages", "GitHub.cli_*", "bin")))
+    return [os.path.join(pf, "Git", "cmd"), os.path.join(pf, "Git", "mingw64", "bin"),
+            os.path.join(pf, "GitHub CLI"), *winget, os.path.join(local, "Microsoft", "WinGet", "Links")]
+
+
+def trusted_exe(name: str) -> str | None:
+    found = shutil.which(name, path=os.pathsep.join(_install_dirs()))
+    return str(Path(found).resolve()) if found else None
+
+
+SAFE_CWD = os.environ.get("SystemRoot") or ("C:\\Windows" if os.name == "nt" else "/")
+_EXE: dict[str, str | None] = {}
+
+
+def _exe(name: str) -> str:
+    if name not in _EXE:
+        _EXE[name] = trusted_exe(name)
+    if not _EXE[name]:
+        raise OSError(f"{name} is not installed in a known folder")
+    return _EXE[name]
+
+
 def _git(d: str, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-c", "core.fsmonitor=false", "-C", d, *args],
-                          capture_output=True, text=True, timeout=GIT_TIMEOUT_S,
+    return subprocess.run([_exe("git"), "-c", "core.fsmonitor=false", "-C", d, *args],
+                          capture_output=True, text=True, timeout=GIT_TIMEOUT_S, cwd=SAFE_CWD,
                           creationflags=0x08000000 if os.name == "nt" else 0)
 
 
@@ -447,8 +479,9 @@ def _gh_remote_tip(repo: str, branch: str) -> str | None:
     """GitHub's own answer for the branch tip, over gh's API (no git config, so no insteadOf
     or pushurl can redirect it). None on any failure; the caller denies."""
     try:
-        r = subprocess.run(["gh", "api", f"repos/{repo}/git/ref/heads/{branch}", "--jq", ".object.sha"],
-                           capture_output=True, text=True, timeout=GH_TIMEOUT_S,
+        r = subprocess.run([_exe("gh"), "api", f"repos/{repo}/git/ref/heads/{branch}", "--jq",
+                            ".object.sha"], capture_output=True, text=True, timeout=GH_TIMEOUT_S,
+                           cwd=SAFE_CWD,
                            creationflags=0x08000000 if os.name == "nt" else 0)
     except (OSError, subprocess.SubprocessError):
         return None

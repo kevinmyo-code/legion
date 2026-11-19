@@ -545,6 +545,45 @@ class TestHook(GitRepo):
         self.assertEqual(self.decide(self.push)[0], "deny")
 
 
+class TestProgramsTheHookStarts(unittest.TestCase):
+    """R2-2 (review 11-19): the hook starts git and gh by absolute path from fixed install
+    folders, never by bare name (Windows searches the current folder first), and with a working
+    folder the helper does not choose."""
+
+    def test_git_and_gh_resolve_outside_the_current_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            for name in ("git.exe", "gh.exe", "git", "gh"):
+                (Path(d) / name).write_text("planted", encoding="utf-8")
+            old = os.getcwd()
+            os.chdir(d)
+            try:
+                for name in ("git", "gh"):
+                    exe = P.trusted_exe(name)
+                    self.assertIsNotNone(exe, name)
+                    self.assertTrue(Path(exe).is_absolute(), exe)
+                    self.assertFalse(P.is_under(exe, d), exe)
+            finally:
+                os.chdir(old)
+
+    def test_calls_use_the_absolute_program_and_a_fixed_cwd(self):
+        seen = []
+        real = P.subprocess.run
+
+        def spy(argv, **kw):
+            seen.append((argv[0], kw.get("cwd")))
+            return real(argv, **kw)
+        P.subprocess.run = spy
+        try:
+            P._git(str(HERE), "rev-parse", "--show-toplevel")
+            P._gh_remote_tip("acme-dev/widgets", "main")
+        finally:
+            P.subprocess.run = real
+        self.assertEqual(len(seen), 2)
+        for exe, cwd in seen:
+            self.assertTrue(Path(exe).is_absolute(), exe)
+            self.assertEqual(cwd, P.SAFE_CWD)
+
+
 class TestWorkerBinding(unittest.TestCase):
     def test_project_for_a_task(self):
         ps = P.parse_projects(PROJECTS)
