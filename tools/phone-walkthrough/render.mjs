@@ -7,7 +7,8 @@
  *        [--asker <dir of asker WAVs, default <clips>/asker>]
  *        [--check overlay]   (only the money-overlay check frames, no browser)
  *        [--export-clips m-wake,h-request] (those takes whole, money painted over, for the page)
- *        [--reuse-frames 1] (composite again over the frames an earlier --keep 1 run drew)
+ *        [--reuse-frames 1] (composite again over frames an earlier --keep 1 run drew: footage
+ *                     in-points only; any change to text, timing or 4:5 captions needs new frames)
  *
  * `<clips>/<slot>.json` (all optional): `asks` [{at, line, mute?}] (a `line` the spec does not
  * name, such as "tap", is the recorder's action and makes no sound), `room_wav` and
@@ -362,14 +363,15 @@ function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
     const fadeOut = Math.max(end - start - 0.3, 0)
     const money = overlayChain(scene.slot)
     vf.push(
-      `[${v}:v]${money ? money + ',' : ''}trim=${scene.in}:${out.toFixed(3)},setpts=(PTS-STARTPTS)/${speed},fps=${FPS},` +
+      `[${v}:v]fps=${FPS},${money ? money + ',' : ''}trim=${scene.in}:${out.toFixed(3)},setpts=(PTS-STARTPTS)/${speed},fps=${FPS},` +
         `scale=${rect.w}:${rect.h}:force_original_aspect_ratio=decrease,pad=${rect.w}:${rect.h}:(ow-iw)/2:(oh-ih)/2:color=0x0b0a09,` +
         `format=yuva420p,fade=t=in:st=0:d=0.3:alpha=1,fade=t=out:st=${fadeOut.toFixed(3)}:d=0.3:alpha=1,` +
         `setpts=PTS+${start.toFixed(3)}/TB[c${v}]`,
       `${last}[c${v}]overlay=${rect.x}:${rect.y}:eof_action=pass:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'[o${v}]`,
     )
     last = `[o${v}]`
-    // Sound: Alfred from the take's own audio (the room recording, or the mp4's track) at 1x
+    // fps before the money patches: their time spans were measured on the 30 fps grid.
+  // Sound: Alfred from the take's own audio (the room recording, or the mp4's track) at 1x
     // only, and each asker line's clean WAV laid at its time. Nothing is muted unless an ask says
     // `mute` (a track that also carries the asker): muting by default would silence a barge-in.
     const source = speed === 1 ? audioSource(scene.slot) : null
@@ -427,14 +429,16 @@ function exportClip(slot) {
   const total = duration(src)
   const inputs = ['-i', src]
   const money = overlayChain(slot)
-  const graph = [`[0:v]${money ? money + ',' : ''}fps=${FPS},scale=540:-2,format=yuv420p[vout]`]
+  const graph = [`[0:v]fps=${FPS},${money ? money + ',' : ''}scale=540:-2,format=yuv420p[vout]`]
   const parts = []
   let n = 1
   const source = audioSource(slot)
   if (source) {
     inputs.push('-i', source.file)
     const lead = source.offset < 0 ? `adelay=${Math.round(-source.offset * 1000)}|${Math.round(-source.offset * 1000)},` : ''
-    graph.push(`[${n}:a]${lead}atrim=${Math.max(source.offset, 0).toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[r]`)
+    const mute = speechAsks(slot).filter((a) => a.mute).map((a) => `between(t,${(a.at - 0.25).toFixed(3)},${(a.at + duration(askerWav(a.line)) + 0.25).toFixed(3)})`)
+    const volume = mute.length ? `,volume='if(${mute.join('+')},0,1)':eval=frame` : ''
+    graph.push(`[${n}:a]${lead}atrim=${Math.max(source.offset, 0).toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo${volume}[r]`)
     parts.push('[r]')
     n++
   }
@@ -489,7 +493,9 @@ async function main() {
     const info = opt['reuse-frames'] && existsSync(`${bgFile}.json`)
       ? JSON.parse(readFileSync(`${bgFile}.json`, 'utf8'))
       : await renderFrames(layout, bgFile)
-    if (!info.cues) info.cues = captionCues(info.timeline)
+    // Captions follow the footage's in points, which may have moved since the frames were drawn.
+    // The 4:5 draws them INTO its frames, so a caption change there needs the frames redrawn.
+    info.cues = captionCues(info.timeline)
     writeFileSync(`${bgFile}.json`, JSON.stringify(info))
     const outFile = path.join(outDir, `${opt.name}-${layout === 'wide' ? '16x9' : '4x5'}.mp4`)
     composite(layout, bgFile, info, outFile)
