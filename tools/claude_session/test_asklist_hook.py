@@ -17,6 +17,7 @@ from contextlib import redirect_stderr
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+PY = sys.executable.replace("\\", "/")  # the worker's own python: the only one the hook trusts
 sys.path.insert(0, str(HERE))
 
 import asklist_hook as H  # noqa: E402
@@ -158,13 +159,13 @@ class TestAskList(Base):
 
     def test_report_py_summary_text_never_trips_the_list(self):
         rp = str(HERE / "report.py").replace("\\", "/")
-        self.assertPassed("Bash", {"command": f'python {rp} --task 41 --status done --summary '
+        self.assertPassed("Bash", {"command": f'{PY} {rp} --task 41 --status done --summary '
                                               f'"Deleted nothing; I would rm the old copy > later"'})
-        self.assertDenied("Bash", {"command": f'python {rp} --task 41 --status done --summary x; '
+        self.assertDenied("Bash", {"command": f'{PY} {rp} --task 41 --status done --summary x; '
                                               f'rm -f {self.kevin_file.as_posix()}'})
 
     def test_send_mail_script_passes_hook_and_checks_itself(self):
-        self.assertPassed("Bash", {"command": "python C:/x/send_mail.py --task 41 --token t --to kevin "
+        self.assertPassed("Bash", {"command": f"{PY} C:/x/send_mail.py --task 41 --token t --to kevin "
                                               "--subject s --body b"})
 
     def test_confirmed_task_passes_unconfirmed_and_main_session_ask(self):
@@ -229,12 +230,12 @@ class TestShipStep(Base):
                 self.assertIn("SHIP STEP", out["hookSpecificOutput"]["permissionDecisionReason"])
 
     def test_our_ship_and_undo_run_alone_and_check_the_token_themselves(self):
-        self.assertPassed("Bash", {"command": f'python {self.ship} ask --task 41 --kind engine '
+        self.assertPassed("Bash", {"command": f'{PY} {self.ship} ask --task 41 --kind engine '
                                               f'--branch fix/x --worktree C:/w/wt --notes "git push; deploy.py"'},
                           agent=None)
-        self.assertPassed("PowerShell", {"command": f'& "C:/Program Files/Python/python.exe" '
+        self.assertPassed("PowerShell", {"command": f'& {PY} '
                                                     f'{self.ship} run --task 42 --token t'})
-        self.assertPassed("Bash", {"command": f"python {self.undo} run --task 42 --token t"})
+        self.assertPassed("Bash", {"command": f"{PY} {self.undo} run --task 42 --token t"})
 
     def test_a_ship_py_that_is_not_ours_gets_no_carve_out(self):
         fake = (self.work / "ship.py").as_posix()
@@ -321,13 +322,13 @@ class TestListedScope(Base):
         self.assertDenied("Bash", {"command": f"cd {r}/app && git commit -m x"})
         self.assertDenied("Bash", {"command": f"cat {self.kevin_file.as_posix()}"})
         self.assertDenied("Bash", {"command": "python -c \"print(open('C:/secret').read())\""})
-        self.assertPassed("Bash", {"command": f'python {HERE.as_posix()}/report.py --task 1 '
+        self.assertPassed("Bash", {"command": f'{PY} {HERE.as_posix()}/report.py --task 1 '
                                               f'--status done --summary "two commits; fine"'})
 
     def test_send_mail_runs_send_mail_checks_kevin_only(self):
-        self.assertPassed("Bash", {"command": f'python {HERE.as_posix()}/send_mail.py --task 1 '
+        self.assertPassed("Bash", {"command": f'{PY} {HERE.as_posix()}/send_mail.py --task 1 '
                                               f'--token t --to kevin --subject s --body "a; b"'})
-        self.assertDenied("Bash", {"command": f'python {HERE.as_posix()}/send_mail.py --task 1 '
+        self.assertDenied("Bash", {"command": f'{PY} {HERE.as_posix()}/send_mail.py --task 1 '
                                               f'--token t --to kevin --subject s --body b; cat C:/x'})
 
     def test_no_web(self):

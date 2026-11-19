@@ -535,10 +535,10 @@ class TestHook(GitRepo):
                         "PR open at https://github.com/acme-dev/widgets/pull/3, checks passed",
                         "Ran 'git -C C:/w push -u origin HEAD:refs/heads/main' and it was denied"):
             for status in ("done", "failed"):
-                cmd = f'python {report} --task 41 --status {status} --summary "{summary}"'
+                cmd = f'{Path(sys.executable).as_posix()} {report} --task 41 --status {status} --summary "{summary}"'
                 self.assertEqual(self.decide(cmd)[0], "pass", cmd)
         ship = (H.HERE / "ship.py").as_posix()
-        self.assertEqual(self.decide(f'python {ship} ask --task 41 --notes "after git push"')[0], "pass")
+        self.assertEqual(self.decide(f'{Path(sys.executable).as_posix()} {ship} ask --task 41 --notes "after git push"')[0], "pass")
 
     def test_pushurl_set_in_the_clone_denies(self):
         git("config", "remote.origin.pushurl", "https://github.com/evil/widgets.git", cwd=self.clone)

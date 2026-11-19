@@ -114,6 +114,24 @@ def is_under(path, root) -> bool:
     return p.startswith(r.rstrip("\\/") + os.sep)
 
 
+TEXT_FILE_CAP_BYTES = 64 * 1024
+
+
+def task_file(path, folders, cap: int | None = None) -> Path:
+    """`path` as a real file inside one of `folders` (a task's own work folder, resolved), at
+    most `cap` bytes; else ValueError saying which rule it broke. The worker's scripts take
+    free text and attachments only from there (review 11-19: a hostile helper could otherwise
+    name ~/.ssh/... as a body or an attachment)."""
+    p = Path(norm(path))
+    if not any(is_under(p, f) for f in folders):
+        raise ValueError("the file must be in this task's own work folder")
+    if not p.is_file():
+        raise ValueError(f"no such file: {p.name}")
+    if cap is not None and p.stat().st_size > cap:
+        raise ValueError(f"{p.name} is over {cap // 1024} KB")
+    return p
+
+
 class TokenRefused(Exception):
     """No usable confirmation for this step. The message says why, in words."""
 
