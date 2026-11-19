@@ -3,7 +3,9 @@
 recruiter-demo tickets 07 and 10. Kevin writes `content.json` (and optionally
 `report.html`, `resume.pdf` and its page as `resume.png`) in a private folder outside the repo;
 `manage.py load_recruiter_content <dir>` checks it against `CONTENT_SCHEMA`
-and upserts `demo.models.RecruiterContent`. Nothing here holds real content.
+and upserts `demo.models.RecruiterContent`, with the model and poster files a
+project section names as `demo.models.RecruiterMediaFile` rows. Nothing here
+holds real content.
 
 `profile` is the one part no page is served: it is the text `about_kevin`
 answers from (ticket 10), one string per section ("Experience", "Location",
@@ -12,6 +14,7 @@ answers from (ticket 10), one string per section ("Experience", "Location",
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +22,7 @@ from pathlib import Path
 from django.db import transaction
 from jsonschema import Draft202012Validator
 
-from demo.models import RecruiterContent
+from demo.models import RecruiterContent, RecruiterMediaFile
 from demo.profile import PROFILE_ORDER
 
 _STR = {"type": "string"}
@@ -64,6 +67,39 @@ _MEDIA = _obj(
     optional=("video", "poster", "captions", "note"),
 )
 
+# A 3D model a visitor can turn (Kevin, 2026-11-19). `model` (a GLB) and `poster` (its still,
+# shown until the 3D has loaded and kept if it cannot) are FILE NAMES in the private content
+# folder: the loader stores them beside the content and `GET /api/demo/media/<name>` serves them
+# to a visit or an owner only. A name is one plain segment, so it can never leave the folder.
+MODEL_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.glb$"
+POSTER_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.(png|jpg|jpeg|webp)$"
+_NAME_HINTS = {
+    MODEL_NAME: "a file name in the content folder (letters, digits, - and _, then .glb)",
+    POSTER_NAME: (
+        "a file name in the content folder (letters, digits, - and _, then .png, .jpg or .webp)"
+    ),
+}
+_MODEL_3D = _obj(
+    {
+        "title": _STR,
+        "model": {"type": "string", "pattern": MODEL_NAME},
+        "poster": {"type": "string", "pattern": POSTER_NAME},
+        "note": _STR,
+    },
+    optional=("note",),
+)
+MAX_MODELS = 4
+
+# A project section's media: the clip slot plus up to `MAX_MODELS` models. The strip's line keeps
+# the plain clip slot: a model belongs in a section with room for it.
+_SECTION_MEDIA = _obj(
+    {
+        **_MEDIA["properties"],
+        "models": {"type": "array", "items": _MODEL_3D, "maxItems": MAX_MODELS},
+    },
+    optional=("video", "poster", "captions", "note", "models"),
+)
+
 # The "Projects" strip near the top (Kevin, 2026-11-05): one line each. `href` is an anchor on
 # this page ("#legion") or a link out; without it the line stands on its own (a private repo).
 _PROJECT = _obj(
@@ -90,7 +126,7 @@ _PROJECT_SECTION = _obj(
         "diagram_svg": _STR,
         "diagram_caption": _STR,
         "parts": {"type": "array", "items": _TITLE_BODY},
-        "media": _MEDIA,
+        "media": _SECTION_MEDIA,
     },
     optional=("diagram_svg", "diagram_caption", "media"),
 )
@@ -156,6 +192,19 @@ ASSET_FILES = {
 
 PNG_MAGIC = bytes([0x89]) + b"PNG" + bytes([0x0D, 0x0A, 0x1A, 0x0A])
 
+# A model or poster file: (content type, what it is called in a refusal, its first bytes test).
+MEDIA_TYPES = {
+    "glb": ("model/gltf-binary", "a GLB", lambda b: b.startswith(b"glTF")),
+    "png": ("image/png", "a PNG", lambda b: b.startswith(PNG_MAGIC)),
+    "jpg": ("image/jpeg", "a JPEG", lambda b: b.startswith(b"\xff\xd8\xff")),
+    "jpeg": ("image/jpeg", "a JPEG", lambda b: b.startswith(b"\xff\xd8\xff")),
+    "webp": ("image/webp", "a WebP", lambda b: b[:4] == b"RIFF" and b[8:12] == b"WEBP"),
+}
+# Per file. The page's own target is under 3 MB a model (a phone on a cell link); this is the
+# ceiling past which a row in Postgres and one response stop being sensible.
+MEDIA_MAX_BYTES = 8 * 1024 * 1024
+MEDIA_URL = "/api/demo/media/"
+
 
 class ContentInvalid(ValueError):
     """content.json is missing, unreadable or does not fit. Said in words."""
@@ -166,7 +215,10 @@ def problems(content) -> list[str]:
     found = []
     for error in sorted(_VALIDATOR.iter_errors(content), key=lambda e: list(e.absolute_path)):
         where = "/".join(str(p) for p in error.absolute_path) or "(top level)"
-        found.append(f"{where}: {error.message}")
+        message = error.message
+        if error.validator == "pattern" and error.validator_value in _NAME_HINTS:
+            message = f"{error.instance!r} is not {_NAME_HINTS[error.validator_value]}"
+        found.append(f"{where}: {message}")
     if not found and isinstance(content, dict):
         found.extend(_anchor_problems(content))
     return found
@@ -193,10 +245,61 @@ def _anchor_problems(content: dict) -> list[str]:
 
 
 def public_content(content: dict) -> dict:
-    """What the page is served: everything but `profile` (and its order)."""
-    return {
+    """What the page is served: everything but `profile` (and its order), with each model's
+    `model` and `poster` file names turned into the private route that serves them."""
+    public = {
         key: value for key, value in content.items() if key not in ("profile", PROFILE_ORDER)
     }
+    sections_in = public.get("project_sections", [])
+    if not any(section.get("media", {}).get("models") for section in sections_in):
+        return public
+    sections = []
+    for section in public["project_sections"]:
+        media = section.get("media")
+        if media and media.get("models"):
+            models = [
+                {**m, "model": MEDIA_URL + m["model"], "poster": MEDIA_URL + m["poster"]}
+                for m in media["models"]
+            ]
+            section = {**section, "media": {**media, "models": models}}
+        sections.append(section)
+    return {**public, "project_sections": sections}
+
+
+def media_names(content: dict) -> list[tuple[str, str]]:
+    """(schema path, file name) of every model and poster the content names, in order."""
+    named = []
+    for s, section in enumerate(content.get("project_sections", [])):
+        for m, model in enumerate(section.get("media", {}).get("models", [])):
+            for key in ("model", "poster"):
+                named.append((f"project_sections/{s}/media/models/{m}/{key}", model[key]))
+    return named
+
+
+def _read_media(folder: Path, content: dict) -> dict[str, tuple[bytes, str]]:
+    """name -> (bytes, content type) for every file the content names. Refuses a file that is
+    missing, too big or not what its name says. Names were checked by the schema already."""
+    media: dict[str, tuple[bytes, str]] = {}
+    for where, name in media_names(content):
+        if name in media:
+            continue
+        path = folder / name
+        if not path.is_file():
+            raise ContentInvalid(f"Nothing was loaded. {where}: {name!r} is not in the folder.")
+        size = path.stat().st_size
+        if size > MEDIA_MAX_BYTES:
+            raise ContentInvalid(
+                f"Nothing was loaded. {where}: {name!r} is {size} bytes, over the "
+                f"{MEDIA_MAX_BYTES} byte limit."
+            )
+        data = path.read_bytes()
+        content_type, called, looks_right = MEDIA_TYPES[name.rsplit(".", 1)[1].lower()]
+        if not looks_right(data):
+            raise ContentInvalid(
+                f"Nothing was loaded. {where}: {name!r} does not start like {called}."
+            )
+        media[name] = (data, content_type)
+    return media
 
 
 @dataclass(frozen=True)
@@ -205,6 +308,7 @@ class Loaded:
     created: bool
     files: dict[str, int]  # kind -> bytes loaded
     profile_sections: tuple[str, ...]
+    media_files: int = 0
 
 
 def read_folder(folder: Path) -> tuple[dict, dict[str, bytes]]:
@@ -249,6 +353,7 @@ def load(folder: Path, key: str = RecruiterContent.CURRENT_KEY) -> Loaded:
     never offers a file the folder no longer holds. `key` is a code's label
     for that code's own version (`RecruiterContent.for_user`)."""
     content, files = read_folder(folder)
+    media = _read_media(Path(folder), content)
     # Postgres keeps a JSON object's keys in its own order, and the cascade speaks the profile's
     # sections in the order he wrote them (`demo.profile.sections_of`): the order is kept beside it.
     content = {**content, PROFILE_ORDER: list(content["profile"])}
@@ -260,9 +365,23 @@ def load(folder: Path, key: str = RecruiterContent.CURRENT_KEY) -> Loaded:
         defaults[f"{kind}_filename"] = name if data is not None else ""
     with transaction.atomic():
         row, created = RecruiterContent.objects.update_or_create(key=key, defaults=defaults)
+        # The row's files are exactly the ones this content names: a file a reload no longer
+        # names is no longer served.
+        RecruiterMediaFile.objects.filter(content=row).delete()
+        RecruiterMediaFile.objects.bulk_create(
+            RecruiterMediaFile(
+                content=row,
+                name=name,
+                data=data,
+                content_type=content_type,
+                sha256=hashlib.sha256(data).hexdigest(),
+            )
+            for name, (data, content_type) in media.items()
+        )
     return Loaded(
         row=row,
         created=created,
         files={kind: len(data) for kind, data in files.items()},
         profile_sections=tuple(content["profile"]),
+        media_files=len(media),
     )

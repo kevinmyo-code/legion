@@ -5355,6 +5355,52 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/demo/media/{name}:
+    get:
+      operationId: api_demo_media_retrieve
+      description: |-
+        A file a project section's `media.models` names, from the caller's version of the content.
+        Private like the resume: a visit or an owner, never the public. Cached by validator only
+        (`private, no-cache` + the file's hash as ETag): a revisit costs a 304, and a reload of the
+        content is seen at once.
+      summary: A project section's 3D model (GLB) or its poster image
+      parameters:
+      - in: path
+        name: name
+        schema:
+          type: string
+        required: true
+      tags:
+      - demo
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            model/gltf-binary:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '304':
+          description: The copy the browser holds is current.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoRefusal'
+          description: Neither a recruiter's visit nor a household owner.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: No such file is loaded.
   /api/demo/session:
     get:
       operationId: api_demo_session_retrieve

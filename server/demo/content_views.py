@@ -7,6 +7,7 @@ recruiter-demo tickets 07 and 10 (ADR 0068).
 - `GET /api/demo/content`: the page, from `demo.models.RecruiterContent`,
   without `profile` (that is `about_kevin`'s alone).
 - `GET /api/demo/asset/<report|resume|resume_image>`: the stored bytes.
+- `GET /api/demo/media/<name>`: a project section's 3D model or its poster.
 
 The last two are read by a recruiter's visit AND by a household owner, so
 Kevin can preview the page signed in as himself. A plain member is refused:
@@ -18,6 +19,8 @@ visit is over.
 
 from __future__ import annotations
 
+import re
+
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -27,8 +30,8 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from demo.content import ASSET_KINDS, public_content
-from demo.models import DemoVisit, RecruiterContent
+from demo.content import ASSET_KINDS, MODEL_NAME, POSTER_NAME, public_content
+from demo.models import DemoVisit, RecruiterContent, RecruiterMediaFile
 from household.models import HouseholdMember, is_recruiter
 from household.permissions import RECRUITER_VISIT_OVER_CODE, IsHouseholdMember
 from legion.client_ip import ClientIpThrottleMixin
@@ -292,6 +295,58 @@ class DemoAssetView(APIView):
         elif kind == "resume":
             response["Content-Disposition"] = f'attachment; filename="{RESUME_DOWNLOAD_NAME}"'
         # `resume_image` is drawn inline by the resume modal: no disposition.
+        return response
+
+
+# =============================================================================
+# GET /api/demo/media/<name>: a project section's model or poster (`demo.content.MEDIA_TYPES`)
+# =============================================================================
+
+_MEDIA_NAME = re.compile(f"{MODEL_NAME}|{POSTER_NAME}")
+
+
+class DemoMediaView(APIView):
+    """A file a project section's `media.models` names, from the caller's version of the content.
+    Private like the resume: a visit or an owner, never the public. Cached by validator only
+    (`private, no-cache` + the file's hash as ETag): a revisit costs a 304, and a reload of the
+    content is seen at once."""
+
+    permission_classes = [RecruiterOrOwner]
+    allows_recruiter = True
+
+    @extend_schema(
+        tags=DEMO_TAGS,
+        operation_id="api_demo_media_retrieve",
+        summary="A project section's 3D model (GLB) or its poster image",
+        parameters=[OpenApiParameter("name", OpenApiTypes.STR, OpenApiParameter.PATH)],
+        responses={
+            (200, "model/gltf-binary"): OpenApiResponse(OpenApiTypes.BINARY),
+            (200, "image/png"): OpenApiResponse(OpenApiTypes.BINARY),
+            304: OpenApiResponse(description="The copy the browser holds is current."),
+            403: OpenApiResponse(
+                DemoRefusalSerializer,
+                description="Neither a recruiter's visit nor a household owner.",
+            ),
+            404: OpenApiResponse(DetailSerializer, description="No such file is loaded."),
+        },
+    )
+    def get(self, request, name: str):
+        row = RecruiterContent.for_user(request.user)
+        if row is None or not _MEDIA_NAME.fullmatch(name):
+            return Response({"detail": _no_such_asset("such file")}, status=404)
+        files = RecruiterMediaFile.objects.filter(content=row, name=name)
+        sha = files.values_list("sha256", flat=True).first()
+        if sha is None:
+            return Response({"detail": _no_such_asset(name)}, status=404)
+        etag = f'"{sha}"'
+        if etag in [tag.strip() for tag in request.headers.get("If-None-Match", "").split(",")]:
+            response = HttpResponse(status=304)
+        else:
+            stored = files.only("data", "content_type").get()
+            response = HttpResponse(bytes(stored.data), content_type=stored.content_type)
+            response["X-Content-Type-Options"] = "nosniff"
+        response["ETag"] = etag
+        response["Cache-Control"] = "private, no-cache"
         return response
 
 

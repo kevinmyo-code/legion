@@ -2347,6 +2347,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/media/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A project section's 3D model (GLB) or its poster image
+         * @description A file a project section's `media.models` names, from the caller's version of the content.
+         *     Private like the resume: a visit or an owner, never the public. Cached by validator only
+         *     (`private, no-cache` + the file's hash as ETag): a revisit costs a 304, and a reload of the
+         *     content is seen at once.
+         */
+        get: operations["api_demo_media_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/demo/session": {
         parameters: {
             query?: never;
@@ -17118,6 +17141,53 @@ export interface operations {
                 };
             };
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_media_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "model/gltf-binary": string;
+                    "image/png": string;
+                };
+            };
+            /** @description The copy the browser holds is current. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Neither a recruiter's visit nor a household owner. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoRefusal"];
+                };
+            };
+            /** @description No such file is loaded. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

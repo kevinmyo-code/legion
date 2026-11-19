@@ -50,3 +50,4 @@ class Command(BaseCommand):
                 self.stdout.write(f"{name}: not in the folder, so none is served.")
             else:
                 self.stdout.write(f"{name}: loaded, {size} bytes.")
+        self.stdout.write(f"{loaded.media_files} media files loaded (models and their posters).")
