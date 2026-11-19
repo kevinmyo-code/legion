@@ -65,6 +65,39 @@ export function webglAvailable(): boolean {
   }
 }
 
+/** The viewer's box is 4:3 (`.rc-model-box`); the starting distance is fitted to it. */
+const STAGE_ASPECT = 4 / 3
+/** How much of the frame the model may fill at the start. */
+const FILL = 0.9
+
+/**
+ * How far back along `VIEW_DIRECTION` the camera must stand for every corner of `box` (centred
+ * on the origin) to be inside the frame. A bounding sphere is too loose for a flat board and too
+ * tight for a tall lever; the corners fit both.
+ */
+function fitDistance(box: Box3, aspect: number): number {
+  const forward = VIEW_DIRECTION
+  const right = new Vector3().crossVectors(new Vector3(0, 1, 0), forward).normalize()
+  const up = new Vector3().crossVectors(forward, right)
+  const tanV = Math.tan(((FOV / 2) * Math.PI) / 180) * FILL
+  const tanH = tanV * aspect
+  let distance = 1e-3
+  for (const x of [box.min.x, box.max.x]) {
+    for (const y of [box.min.y, box.max.y]) {
+      for (const z of [box.min.z, box.max.z]) {
+        const corner = new Vector3(x, y, z)
+        const depth = corner.dot(forward)
+        distance = Math.max(
+          distance,
+          depth + Math.abs(corner.dot(right)) / tanH,
+          depth + Math.abs(corner.dot(up)) / tanV,
+        )
+      }
+    }
+  }
+  return distance
+}
+
 function disposeTree(root: Object3D) {
   root.traverse((node) => {
     if (!(node instanceof Mesh)) return
@@ -114,10 +147,9 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
   const centre = box.getCenter(new Vector3())
   model.position.sub(centre)
   scene.add(model)
-  const radius = Math.max(box.getSize(new Vector3()).length() / 2, 1e-3)
-  const distance = (radius / Math.sin(((FOV / 2) * Math.PI) / 180)) * 1.05
+  const distance = fitDistance(box.translate(centre.clone().negate()), STAGE_ASPECT)
 
-  const camera = new PerspectiveCamera(FOV, 4 / 3, distance / 100, distance * 10)
+  const camera = new PerspectiveCamera(FOV, STAGE_ASPECT, distance / 100, distance * 10)
   camera.position.copy(VIEW_DIRECTION).multiplyScalar(distance)
   camera.lookAt(0, 0, 0)
 

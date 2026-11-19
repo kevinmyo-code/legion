@@ -120,7 +120,11 @@ function content(files: Map<string, Buffer>): DemoContent {
         id: SECTION,
         title: 'Fake hardware',
         intro: 'A fake project with a fake board and a fake lever.',
-        parts: [{ title: 'Fake part', body: 'Lorem ipsum.' }],
+        // Long enough that the viewers start more than a screen below the fold, as on the real page.
+        parts: Array.from({ length: 24 }, (_, i) => ({
+          title: `Fake part ${i + 1}`,
+          body: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.',
+        })),
         media: {
           ...(CLIP ? { video: '/fake-media/clip.webm', captions: '/fake-media/clip.vtt' } : {}),
           note: 'Recorded on fake data.',
@@ -177,18 +181,29 @@ function viewers(page: Page) {
   return page.locator(`#${SECTION} .rc-model-box`)
 }
 
+/**
+ * Scroll an element to the middle of the window. Not `scrollIntoViewIfNeeded`: that waits for two
+ * steady animation frames, and software WebGL (headless) draws a big model slowly enough to time out.
+ */
+async function centre(locator: ReturnType<Page['locator']>) {
+  await locator.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  await locator.page().waitForTimeout(300)
+}
+
 /** Bring the section's first viewer on screen and wait for its 3D (never the poster fallback). */
 async function ready(page: Page, index = 0) {
   const box = viewers(page).nth(index)
-  await box.scrollIntoViewIfNeeded()
+  await centre(box)
   await expect(box).not.toHaveAttribute('data-state', 'poster', { timeout: 15_000 })
   await expect(box).toHaveAttribute('data-state', /ready|failed/, { timeout: 30_000 })
   expect(await box.getAttribute('data-state'), 'the 3D view loaded (not the poster fallback)').toBe('ready')
   return box
 }
 
+/** The viewer's pixels, by a page clip (an element shot waits for steady frames; see `centre`). */
 async function canvasShot(page: Page, index = 0): Promise<Buffer> {
-  return viewers(page).nth(index).locator('canvas').screenshot()
+  const r = (await viewers(page).nth(index).boundingBox())!
+  return page.screenshot({ clip: { x: r.x + 2, y: r.y + 2, width: r.width - 4, height: r.height - 4 } })
 }
 
 async function shot(page: Page, name: string) {
@@ -200,6 +215,9 @@ test.use({
   // Headless Chromium draws WebGL in software (SwiftShader) only when asked.
   launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] },
 })
+
+// Software WebGL (headless) draws a 100k-triangle board at a few frames a second: room to finish.
+test.describe.configure({ timeout: 180_000 })
 
 test.describe('desk (1280 x 800)', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
@@ -217,7 +235,7 @@ test.describe('desk (1280 x 800)', () => {
 
     const box = await ready(page)
     expect(chunks.length).toBe(1)
-    await page.locator(`#${SECTION}`).scrollIntoViewIfNeeded()
+    await centre(box)
     await page.waitForTimeout(600)
     await shot(page, 'desk-2-section')
 
@@ -232,15 +250,15 @@ test.describe('desk (1280 x 800)', () => {
     expect((await canvasShot(page)).equals(before), 'a drag turned the model').toBe(false)
     await page.mouse.move(rect.x + rect.width / 2, rect.y - 40) // leave: hands the wheel back
 
-    // Untapped, the wheel over the model scrolls the page.
+    // Untapped, the wheel over the model scrolls the page (upward: there is always page above).
     await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2)
     const y0 = await page.evaluate(() => window.scrollY)
-    await page.mouse.wheel(0, 300)
+    await page.mouse.wheel(0, -300)
     await page.waitForTimeout(400)
-    expect(await page.evaluate(() => window.scrollY), 'the wheel scrolled the page').toBeGreaterThan(y0)
+    expect(await page.evaluate(() => window.scrollY), 'the wheel scrolled the page').toBeLessThan(y0)
 
     // Clicked, the wheel zooms the model and the page stays put.
-    await box.scrollIntoViewIfNeeded()
+    await centre(box)
     const r2 = (await box.boundingBox())!
     await page.mouse.click(r2.x + r2.width / 2, r2.y + r2.height / 2)
     await expect(box).toHaveAttribute('data-active', 'true')
@@ -253,14 +271,14 @@ test.describe('desk (1280 x 800)', () => {
     await shot(page, 'desk-3-active')
 
     // Keys turn it; Reset puts it back.
-    await page.getByRole('button', { name: 'Done' }).click()
+    await page.getByRole('button', { name: 'Done' }).dispatchEvent('click')
     await box.focus()
     const keysBefore = await canvasShot(page)
     await page.keyboard.press('ArrowLeft')
     await page.keyboard.press('ArrowLeft')
     await page.waitForTimeout(300)
     expect((await canvasShot(page)).equals(keysBefore), 'arrow keys turned the model').toBe(false)
-    await page.getByRole('button', { name: 'Reset view' }).first().click()
+    await page.getByRole('button', { name: 'Reset view' }).first().dispatchEvent('click')
     await page.waitForTimeout(600)
     await shot(page, 'desk-4-reset')
   })
@@ -285,37 +303,43 @@ test.describe('phone (390 x 700)', () => {
     await open(page)
     const box = await ready(page)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
-    await page.locator(`#${SECTION}`).scrollIntoViewIfNeeded()
     await page.waitForTimeout(600)
     await shot(page, 'phone-1-section')
-    await box.scrollIntoViewIfNeeded()
 
     const cdp = await page.context().newCDPSession(page)
-    const swipe = async () => {
-      const r = (await box.boundingBox())!
-      await cdp.send('Input.synthesizeScrollGesture', {
-        x: Math.round(r.x + r.width / 2),
-        y: Math.round(r.y + r.height / 2),
-        yDistance: -200,
-        gestureSourceType: 'touch',
-        speed: 800,
-      })
-      await page.waitForTimeout(400)
+    /** A finger dragged down the screen over `target`, as raw touch events through the browser's own
+     * input pipeline (so `touch-action` and the page's listeners decide what it does). */
+    const swipeOver = async (target: ReturnType<Page['locator']>) => {
+      const r = (await target.boundingBox())!
+      const x = Math.round(r.x + r.width / 2)
+      const y = Math.round(r.y + Math.min(r.height / 2, 60))
+      const before = await page.evaluate(() => window.scrollY)
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+      for (let step = 1; step <= 10; step++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + step * 20 }] })
+        await page.waitForTimeout(16)
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await page.waitForTimeout(600)
+      return before - (await page.evaluate(() => window.scrollY))
     }
-    const y0 = await page.evaluate(() => window.scrollY)
-    await swipe()
-    expect(await page.evaluate(() => window.scrollY), 'a swipe over the model scrolled the page').toBeGreaterThan(y0)
+    // Control: the same gesture over the section's text scrolls the page, so the harness can scroll.
+    const intro = page.locator(`#${SECTION} > p`).first()
+    await centre(intro)
+    expect(await swipeOver(intro), 'control: a swipe over text scrolled the page').toBeGreaterThan(0)
+    await centre(box)
+    expect(await swipeOver(box), 'a swipe over the untapped model scrolled the page').toBeGreaterThan(0)
+    const swipe = () => swipeOver(box)
 
-    await box.scrollIntoViewIfNeeded()
-    await box.tap()
+    await centre(box)
+    const t = (await box.boundingBox())!
+    await page.touchscreen.tap(t.x + t.width / 2, t.y + t.height / 2)
     await expect(box).toHaveAttribute('data-active', 'true')
-    const y1 = await page.evaluate(() => window.scrollY)
     const before = await canvasShot(page)
-    await swipe()
-    expect(await page.evaluate(() => window.scrollY), 'tapped, a swipe did not move the page').toBe(y1)
+    expect(await swipe(), 'tapped, a swipe did not move the page').toBe(0)
     expect((await canvasShot(page)).equals(before), 'tapped, a swipe turned the model').toBe(false)
     await shot(page, 'phone-2-active')
-    await page.getByRole('button', { name: 'Done' }).tap()
+    await page.getByRole('button', { name: 'Done' }).dispatchEvent('click')
     await expect(box).toHaveAttribute('data-active', 'false')
   })
 
@@ -323,7 +347,7 @@ test.describe('phone (390 x 700)', () => {
     test.skip(!CLIP, 'TRY_MEDIA_CLIP not set')
     await open(page)
     const video = page.locator(`#${SECTION} video`)
-    await video.scrollIntoViewIfNeeded()
+    await centre(video)
     expect(await video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true)
     await page.waitForTimeout(800)
     expect(await video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBe(0)
