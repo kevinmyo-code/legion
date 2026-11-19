@@ -146,7 +146,8 @@ describe('/try', () => {
     setAudioFactory(() => audio)
     const { router } = renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
     const orb = await screen.findByRole('button', { name: /^Talk to / })
-    expect(screen.getByText(STAGE_LINE)).toBeInTheDocument()
+    // The stage's line (the hidden dock, always mounted, carries the same words).
+    expect(screen.getByRole('status')).toHaveTextContent(STAGE_LINE)
     expect(screen.getByText(RECORDING_NOTICE)).toBeInTheDocument()
     expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
     // Nothing is entered until the tap (Kevin, 2026-11-17: entering happens on that tap).
@@ -165,6 +166,26 @@ describe('/try', () => {
     expect(screen.getByRole('button', { name: 'Take the one-minute tour' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /^Type to / })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'His resume (PDF)' })).toBeInTheDocument()
+  })
+
+  /**
+   * The browser run, 2026-11-19 (`server/tests/realrun_try_orb_flow.mjs`): the tour button's tap,
+   * which enters the visit, unmounted the whole voice stage and mounted a new one (the orb restarted,
+   * the page modal's provider with it). Entering adds the page under the stage; the stage stays.
+   */
+  test('the tap that enters keeps the same stage: nothing above the page is mounted again', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    const stage = screen.getByRole('region', { name: 'Talk to the demo assistant' })
+    await act(async () => {
+      fireEvent.click(orb)
+      await settle()
+    })
+    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Talk to the demo assistant' })).toBe(stage)
+    expect(document.querySelector('[data-stage="orb"]')).toBe(orb)
   })
 
   test('the tap is not undone when the sign-in answer lands before the visit (one orb, one tap)', async () => {

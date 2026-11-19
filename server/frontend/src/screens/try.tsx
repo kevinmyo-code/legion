@@ -324,23 +324,24 @@ function VoiceFirstVisit({
       sessionLimit={VISITOR_SESSION_ENDED}
       copy={VISITOR_COPY}
     >
-      {entered ? <VisitorBody expiresAt={expiresAt} /> : (
-        <Shell assistant dock={false}>
-          <VoiceStage />
-        </Shell>
-      )}
+      <VisitorBody entered={entered} expiresAt={expiresAt} />
     </AssistantProvider>
   )
 }
 
-function VisitorBody({ expiresAt }: { expiresAt?: string }) {
-  const content = useDemoContent(true)
+/**
+ * Before the tap: the stage alone. After it: the same stage, with the page under it. One tree for
+ * both, so entering never mounts the stage again (the browser run, 2026-11-19: the tour's tap
+ * remounted it, the orb and the page modal's provider with it).
+ */
+function VisitorBody({ entered, expiresAt }: { entered: boolean; expiresAt?: string }) {
+  const content = useDemoContent(entered)
   const access = <AccessNote expiry={expiryWords(expiresAt)} />
-  const loaded = content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
+  const loaded = entered && content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
   return (
     <Shell assistant dock={false}>
       <VoiceStage content={loaded} />
-      {loaded ? <Sections content={loaded} access={access} ask={false} /> : access}
+      {entered && (loaded ? <Sections content={loaded} access={access} ask={false} /> : access)}
     </Shell>
   )
 }
