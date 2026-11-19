@@ -67,6 +67,10 @@ export default defineConfig({
         // Same precache as the generated worker had (index.html, the bundle, the
         // manifest and its icons); the build prints the entry count to compare.
         globPatterns: ['**/*.{js,css,html}'],
+        // The /try 3D viewer's three.js chunk (`components/demo/model-stage.ts`) is fetched only when
+        // a project section with a model nears the screen; precaching it would make every visitor,
+        // and every member's installed app, download it on install.
+        globIgnores: ['**/model-stage-*.js'],
       },
     }),
   ],

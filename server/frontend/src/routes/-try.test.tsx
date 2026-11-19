@@ -9,7 +9,7 @@ import { SEED_FAILED, SAMPLE_SVG, TOO_MANY, WRONG_CODE, sampleContent } from '@/
 import { FakeAudio, FakeLiveSocket, settle } from '@/test/fake-live'
 import { DAY_CARD, SPEND_CARD } from '@/test/cards-seed'
 import { renderApp } from '@/test/render-app'
-import type { DemoContent, DemoMedia } from '@/api/demo'
+import type { DemoContent, DemoSectionMedia } from '@/api/demo'
 import { FIRST_QUESTIONS, OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
 import { RECORDING_NOTICE, STAGE_LINE } from '@/components/demo/voice-stage'
 import { ENTRY_TAP_MS } from '@/assistant/turn-deadline'
@@ -723,7 +723,7 @@ describe('/try', () => {
 })
 
 /** A page with the Projects strip (anchor, anchor, no link) and one project section. Fake words. */
-function withProjects(media: DemoMedia = { note: 'Video coming soon.' }): DemoContent {
+function withProjects(media: DemoSectionMedia = { note: 'Video coming soon.' }): DemoContent {
   return {
     ...sampleContent(),
     legion: { title: 'How LEGION is built', intro: 'A fake intro.', parts: [{ title: 'The engine', body: 'Fake.' }] },
@@ -865,6 +865,23 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     expect(video).toHaveAttribute('controls')
     expect(video).not.toHaveAttribute('autoplay')
     expect(video?.querySelector('track')).toHaveAttribute('src', '/static/demo/fake.vtt')
+  })
+
+  test('a section with 3D models draws one viewer each, poster first, after its clip slot', async () => {
+    const engine = visitor()
+    engine.demo.content = withProjects({
+      note: 'Video coming soon.',
+      models: [
+        { title: 'Fake board', model: '/api/demo/media/board.glb', poster: '/api/demo/media/board.png' },
+        { title: 'Fake lever', model: '/api/demo/media/lever.glb', poster: '/api/demo/media/lever.png' },
+      ],
+    })
+    renderApp('/try', engine, 'family')
+    const section = await screen.findByRole('region', { name: 'Fake two' })
+    const viewers = within(section).getAllByRole('group', { name: /^3D model: / })
+    expect(viewers).toHaveLength(2)
+    expect(within(viewers[0]).getByRole('img', { name: 'Fake board' })).toHaveAttribute('src', '/api/demo/media/board.png')
+    expect(follows(within(section).getByText('Video coming soon.'), viewers[0])).toBe(true)
   })
 
   test('an empty media slot draws nothing', async () => {
