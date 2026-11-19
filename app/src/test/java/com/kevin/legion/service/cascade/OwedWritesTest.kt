@@ -2,19 +2,15 @@ package com.kevin.legion.service.cascade
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.io.File
 
 /**
- * A write that went through and was not heard is owed until its line plays (2026-11-19), and the
- * session has one door that says it: [CascadeSession]'s newSpeaker, plus [sayOwed] before each
- * close. The session needs a live Context to construct, so its wiring is read from source, as
- * `CascadeWiringTest` does. Robolectric only for `org.json`.
+ * A write that went through and was not heard is owed until its line plays (2026-11-19). What is
+ * heard turn by turn is in [WriteSpeechTurnTest]. Robolectric only for `org.json`.
  */
 @RunWith(RobolectricTestRunner::class)
 class OwedWritesTest {
@@ -50,14 +46,29 @@ class OwedWritesTest {
     }
 
     @Test
-    fun `a failed write is owed only when the turn was cut off, nothing unchanged ever is`() {
+    fun `a failed or refused write is never owed, an unconfirmed one only after a cut-off (review F4, F9)`() {
         val failed = fact("essay", ok = false, result = """{"title":"essay"}""")
         val same = fact("x", result = """{"changed":false,"item":"x"}""")
+        val timedOut = ScriptedLines.writeFact("manage_item", "add", JSONObject("""{"item":"stamps"}"""), ok = false, confirmed = false)
         val owed = OwedWrites()
-        owed.owe(listOf(failed, same), emptyList(), cutOff = false)
+        owed.owe(listOf(failed, same, timedOut), emptyList(), cutOff = false)
         assertNull(owed.due())
-        owed.owe(listOf(failed, same), emptyList(), cutOff = true)
-        assertEquals("Essay didn't go through.", owed.due()!!.line)
+        owed.owe(listOf(failed, same, timedOut), emptyList(), cutOff = true)
+        assertEquals("I couldn't confirm that stamps went through.", owed.due()!!.line)
+    }
+
+    @Test
+    fun `a fact once heard is never owed again, and a close writes the rest down once`() {
+        val milk = fact("milk")
+        val owed = OwedWrites()
+        owed.owe(listOf(milk), emptyList(), cutOff = true)
+        owed.paid(owed.due()!!.facts)
+        owed.owe(listOf(milk), emptyList(), cutOff = true)
+        assertNull(owed.due())
+        val eggs = fact("eggs")
+        owed.owe(listOf(eggs), emptyList(), cutOff = true)
+        assertEquals("Done: added eggs to Groceries.", owed.writeDown())
+        assertNull(owed.writeDown())
     }
 
     @Test
@@ -71,62 +82,4 @@ class OwedWritesTest {
         owed.paid(due.facts)
         assertEquals("Done: added eggs to Groceries.", owed.due()!!.line)
     }
-
-    // --- the session's wiring, from source ------------------------------------------------------
-
-    private val session by lazy { File(root(), "service/cascade/CascadeSession.kt").readText() }
-
-    @Test
-    fun `every spoken thing starts with what is owed, paid only when its line played`() {
-        val speaker = bodyOf(session, "newSpeaker")
-        assertTrue(speaker.contains("owed.due()?.let { d -> it.line(d.line) { owed.paid(d.facts) } }"))
-        val listener = bodyOf(session, "listenerFor")
-        assertTrue(listener.contains("reply.line(text) { synchronized(record) { record.played.addAll(facts) } }"))
-        assertTrue("the session's loop says writes", session.contains("writeFact = ScriptedLines::factOf"))
-    }
-
-    @Test
-    fun `every turn's end owes what was not heard, a cut-off turn its failures too`() {
-        val answer = bodyOf(session, "answerTurn")
-        assertTrue(answer.contains("owe(record, cutOff = outcome != ReplySpeaker.Outcome.Played)"))
-        assertTrue(answer.contains("owe(record, cutOff = true)"))
-        assertTrue("a failure after a said write is said", answer.contains("result.codeLines > 0"))
-        assertFalse("one owed list, nothing else", session.contains("unheardWrites"))
-    }
-
-    @Test
-    fun `no close plays its tone before what is owed was said, except a voice that failed`() {
-        // Every function that plays the closing tone either says what is owed first or has already
-        // spoken through newSpeaker (which says it). The hand-over is the voice failing: the accepted
-        // known limit (the line is on the panel and in the record).
-        val exempt = setOf("handOver")
-        val names = Regex("""(?m)^\s*(?:private |internal )?(?:suspend )?fun (\w+)\(""").findAll(session).map { it.groupValues[1] }.toSet()
-        var checked = 0
-        for (name in names) {
-            val body = bodyOf(session, name)
-            val tone = body.indexOf("host.closingTone()")
-            if (tone < 0 || name in exempt) continue
-            val before = body.substring(0, tone)
-            assertTrue("$name plays the tone before saying what is owed", before.contains("sayOwed()") || before.contains("newSpeaker("))
-            checked++
-        }
-        assertTrue("found the closes ($checked)", checked >= 6)
-        assertTrue(bodyOf(session, "endByStop").contains("endByVoice()"))
-    }
-
-    private fun bodyOf(src: String, fn: String): String {
-        val start = Regex("""fun $fn\(""").find(src)?.range?.first ?: error("no fun $fn")
-        val open = src.indexOf('{', src.indexOf(')', start))
-        var depth = 0
-        for (i in open until src.length) {
-            when (src[i]) {
-                '{' -> depth++
-                '}' -> if (--depth == 0) return src.substring(start, i + 1)
-            }
-        }
-        error("unbalanced $fn")
-    }
-
-    private fun root(): File =
-        listOf("src/main/java/com/kevin/legion", "app/src/main/java/com/kevin/legion").map { File(it) }.first { it.isDirectory }
 }

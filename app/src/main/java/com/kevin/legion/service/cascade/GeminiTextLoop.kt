@@ -63,7 +63,9 @@ class GeminiTextLoop(
      * A write's facts from its result ([ScriptedLines.factOf]). Given, every write that went
      * through is said by code after its round ([Listener.onCodeLine], 2026-11-19); null, none is.
      */
-    private val writeFact: ((name: String, args: JSONObject, response: JSONObject, ok: Boolean) -> ScriptedLines.WriteFact)? = null,
+    private val writeFact: (
+        (name: String, args: JSONObject, response: JSONObject, ok: Boolean, confirmed: Boolean) -> ScriptedLines.WriteFact
+    )? = null,
 ) {
     interface Listener {
         /** Spoken text, as it streams. */
@@ -380,7 +382,7 @@ class GeminiTextLoop(
             }
         }
         listener.onToolResult(call.name, call.args, response, now() - started, writeDone)
-        val fact = if (write) writeFact?.invoke(call.name, call.args, response, writeDone) else null
+        val fact = if (write) writeFact?.invoke(call.name, call.args, response, writeDone, confirmed) else null
         fact?.let { listener.onWriteFact(it) }
         Ran(AgentProtocol.ToolResult(call.name, call.id, response), fact)
     }

@@ -345,8 +345,10 @@ object ScriptedLines {
     /**
      * One write a turn made, as facts (never the tool's message, which is written for the model):
      * the fixed phrase for what was done (null: no phrase, the generic line is said), the item's
-     * title and list from the result's structured fields, whether it went through, and whether it
-     * changed anything (a result's own `changed: false`, e.g. the car that was already selected).
+     * title and list from the result's structured fields, whether it went through ([ok]), whether
+     * its result came back at all ([confirmed]: false for a timeout or a crash, where it may have
+     * landed or not), and whether it changed anything (a result's own `changed: false`, e.g. the car
+     * that was already selected; a router's write counts only on its own `changed: true`).
      * A class, not a data class: two identical writes are two facts, owed and played one by one.
      */
     class WriteFact(
@@ -355,40 +357,59 @@ object ScriptedLines {
         val list: String,
         val ok: Boolean,
         val changed: Boolean = true,
-        /** A write that is said by nobody's line: a proposal ([SILENT]). */
+        /** A write that is said by nobody's line: a proposal, a read, a screen ([SILENT]). */
         val silent: Boolean = false,
+        val confirmed: Boolean = true,
     ) {
         /** What code says for it when it went through: a phrase, the generic line, or nothing. */
         val said: Boolean get() = ok && changed && !silent
+
+        /** No result came back: it may have landed. Said as not confirmed, never as failed. */
+        val unconfirmed: Boolean get() = !confirmed && !silent
     }
 
-    /** [response] of the write [name] / [action] (resolved) as a [WriteFact]; [ok] is the loop's success flag. */
-    fun writeFact(name: String, action: String, response: org.json.JSONObject, ok: Boolean): WriteFact {
-        val key = action.takeIf { it in PHRASES } ?: name.takeIf { it in PHRASES }
+    /**
+     * [response] of the write [name] / [action] (resolved) as a [WriteFact]; [ok] is the loop's
+     * success flag and [confirmed] whether a result came back at all. Decided per call: the
+     * tool/action's own entry first, then the action, then the tool; a router (`ask_*`) has no
+     * structured change of its own, so it counts only when its result says `changed: true`.
+     */
+    fun writeFact(
+        name: String,
+        action: String,
+        response: org.json.JSONObject,
+        ok: Boolean,
+        confirmed: Boolean = true,
+    ): WriteFact {
+        val key = listOf("$name/$action", action, name).firstOrNull { it.isNotEmpty() && it in PHRASES }
         val titleKeys = TITLE_KEYS_FOR[key] ?: TITLE_KEYS
         val title = field(response, titleKeys).take(MAX_TITLE)
         // A phrase whose own field is missing (an older result shape) falls to the generic line.
         val phrase = key?.let { PHRASES.getValue(it) }?.takeUnless { key in TITLE_KEYS_FOR && title.isEmpty() }
+        val router = name.startsWith(ROUTER_PREFIX)
         return WriteFact(
             phrase = phrase,
             title = title,
             list = field(response, listOf("list")).take(MAX_TITLE),
             ok = ok,
-            changed = response.optBoolean("changed", true),
+            changed = response.optBoolean("changed", !router),
             silent = name in SILENT || "$name/$action" in SILENT,
+            confirmed = confirmed,
         )
     }
 
     /** [writeFact] for a call as the model sent it, judged on the tool it stands for. */
-    fun factOf(name: String, args: JSONObject, response: JSONObject, ok: Boolean): WriteFact =
-        LiveSurface.resolve(name, args).let { writeFact(it.name, it.args.optString("action"), response, ok) }
+    fun factOf(name: String, args: JSONObject, response: JSONObject, ok: Boolean, confirmed: Boolean): WriteFact =
+        LiveSurface.resolve(name, args).let { writeFact(it.name, it.args.optString("action"), response, ok, confirmed) }
 
     /**
      * What code says for [facts] (2026-11-19: every completed write is said by code, from its
      * result, never by reading the model's words): "Done: added milk to Groceries." A clause per
-     * phrased write, at most [MAX_DONE_CHARS] characters, the rest counted ("; and 2 more"); a write
-     * with no phrase is "That change went through."; one that failed is "<thing> didn't go through."
-     * Never a question. Null when there is nothing to say.
+     * phrased write, the "Done:" part at most [MAX_DONE_CHARS] characters with the rest counted
+     * ("; and 2 more"); a write with no phrase adds "That change went through."; one whose result
+     * never came back adds "I couldn't confirm that <thing> went through." A write that failed or
+     * was refused is never said here: that is the model's (and it changed nothing). Never a
+     * question. Null when there is nothing to say.
      */
     fun doneLine(facts: List<WriteFact>): String? {
         val said = facts.filter { it.said }
@@ -397,9 +418,7 @@ object ScriptedLines {
             f.phrase!!.format(f.title.ifEmpty { "it" }) + to
         }
         val generic = said.any { it.phrase == null }
-        val failed = facts.filterNot { it.ok }.map { f ->
-            f.title.ifEmpty { "That change" }.replaceFirstChar { it.uppercase() } + " didn't go through."
-        }
+        val unsure = facts.filter { it.unconfirmed }
         // Clause by clause while it fits; the rest is counted, never dropped unsaid. Only a first
         // clause too long on its own is trimmed.
         val room = MAX_DONE_CHARS - (if (done.size > 1) "Done: ; and 99 more." else "Done: .").length
@@ -413,9 +432,11 @@ object ScriptedLines {
         val parts = mutableListOf<String>()
         if (kept.isNotEmpty()) parts += doneText(kept + listOfNotNull("and $more more".takeIf { more > 0 }))
         if (generic) parts += GENERIC_DONE
-        // A failure is the model's to say in a turn that ran on; here (a stop) only while it fits.
-        for (f in failed) {
-            if ((parts + f).joinToString(" ").length <= MAX_DONE_CHARS) parts += f
+        when {
+            unsure.size == 1 && unsure[0].title.isNotEmpty() ->
+                parts += "I couldn't confirm that ${unsure[0].title} went through."
+            unsure.size == 1 -> parts += UNCONFIRMED_ONE
+            unsure.size > 1 -> parts += "I couldn't confirm that ${unsure.size} changes went through."
         }
         return parts.joinToString(" ").replace("?", "").ifEmpty { null }
     }
@@ -443,13 +464,19 @@ object ScriptedLines {
     private const val MAX_TITLE = 40
     const val MAX_DONE_CHARS = 80
 
+    /** The routers (`ask_engine`, `ask_fleet`...): a write through one counts only on `changed: true`. */
+    private const val ROUTER_PREFIX = "ask_"
+
     /** Said for a write that went through and has no phrase of its own (the engine's CHANGE_MADE). */
     const val GENERIC_DONE = "That change went through."
 
+    /** Said for a write whose result never came back (timed out): it may have landed. */
+    const val UNCONFIRMED_ONE = "I couldn't confirm that change went through."
+
     /**
-     * A fixed phrase per write action or tool (resolved names); `%s` is the item's title. A write
-     * not here gets [GENERIC_DONE] (`CascadeWritesTest` lists every write the surface offers, so a
-     * new one is a decision, not a silent fallback).
+     * A fixed phrase per `tool/action`, action or tool (resolved names, looked up in that order);
+     * `%s` is the item's title. A write not here gets [GENERIC_DONE]: `CascadeWritesTest` walks
+     * every tool and action the surface can call and lists those, so a new one is a decision.
      */
     val PHRASES: Map<String, String> = mapOf(
         "add" to "added %s", "remove" to "removed %s", "tick" to "ticked off %s", "untick" to "unticked %s",
@@ -459,7 +486,13 @@ object ScriptedLines {
         // The car switch says the car the result names (`vehicle`), never the model's words for it.
         "switch" to "switched to %s",
         "archive" to "archived %s", "unarchive" to "brought back %s", "correct" to "updated %s",
-        "rename" to "renamed %s", "draft" to "drafted an email to %s", "send" to "sent the email to %s",
+        "rename" to "renamed %s",
+        "email/draft" to "drafted an email to %s", "email/send" to "sent the email to %s",
+        "claude_session/send" to "sent that to Claude", "claude_session/workflow" to "started that workflow",
+        "claude_session/answer" to "answered Claude", "claude_session/assign" to "moved that task",
+        "claude_session/send_file" to "sent the file", "claude_session/quiet" to "turned Claude's results off",
+        "claude_session/unquiet" to "turned Claude's results back on",
+        "app_update/install" to "started the update's install",
         // Tools that are one write each, by name.
         "accept_goal_plan" to "accepted the plan", "accept_proposal" to "accepted %s",
         "activate_garage" to "pressed the garage button", "categorize_transactions" to "categorized the transactions",
@@ -478,14 +511,16 @@ object ScriptedLines {
     private val TITLE_KEYS_FOR: Map<String, List<String>> = mapOf(
         "switch" to listOf("vehicle"),
         // The draft and the send name who it is to, from the result's own `to`.
-        "draft" to listOf("to"), "send" to listOf("to"),
+        "email/draft" to listOf("to"), "email/send" to listOf("to"),
     )
 
     /**
      * Writes no line is said for, by tool or tool/action: a proposal that changes nothing he would
-     * call done, and opening a draft on screen.
+     * call done, a read on a writing tool (Claude's status, an update check), and a screen opened.
      */
-    val SILENT: Set<String> = setOf("generate_goal_plan", "email/open")
+    val SILENT: Set<String> = setOf(
+        "generate_goal_plan", "email/open", "claude_session/check", "claude_session/open_page", "app_update/check",
+    )
 
     /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
     val KEEP: Set<String> =

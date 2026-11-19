@@ -7503,7 +7503,9 @@ object LiveToolbox {
     ): JSONObject = if (requireMutation && mutatingToolsCalled.isEmpty()) {
         result(false, "That didn't get written down - nothing changed. Try again and I'll log it properly.")
     } else {
-        result(true, subAgentText)
+        // `changed`: a write the sub-agent made, so the phone may say it (2026-11-19); a router's
+        // answer without it (a read, a scan) is never confirmed aloud.
+        result(true, subAgentText).apply { if (requireMutation) put("changed", true) }
     }
 
     // --- JSON schema helpers --------------------------------------------

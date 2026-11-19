@@ -46,27 +46,52 @@ class CascadeWritesTest {
     }
 
     /**
-     * 2026-11-19: every write the surface offers says something a person would call done, by a
-     * phrase, by the generic line, or by nothing on purpose ([ScriptedLines.SILENT]). This lists the
-     * writes that fall to the generic line, so a new write is a decision, never "did it".
+     * 2026-11-19 (review F3): a row per tool and action the surface can call (every declaration as
+     * written, before folding: the toolboxes `allDeclarations` leaves out too, and each router with
+     * `intent: record`). Every write is PHRASED, GENERIC (listed below on purpose), SILENT (no change
+     * he would call done: a read on a writing tool, a screen, a proposal) or a ROUTER (said only on
+     * its result's `changed: true`). So a new write is a decision, never a false "done".
      */
     @Test
-    fun `every write on the surface has a phrase, the generic line, or is silent on purpose`() {
-        val all = LiveToolbox.allDeclarations()
-        val generic = sortedSetOf<String>()
+    fun `every tool and action the surface can call is classified for the done line`() {
+        val all = LiveToolbox.sourceDeclarationsForTest()
+        val rows = sortedMapOf<String, String>()
         for (i in 0 until all.length()) {
             val d = all.getJSONObject(i)
             val name = d.getString("name")
-            val actions = d.optJSONObject("parameters")?.optJSONObject("properties")?.optJSONObject("action")
-                ?.optJSONArray("enum")?.let { e -> (0 until e.length()).map { e.getString(it) } } ?: listOf("")
+            val props = d.optJSONObject("parameters")?.optJSONObject("properties")
+            val actions = props?.optJSONObject("action")?.optJSONArray("enum")
+                ?.let { e -> (0 until e.length()).map { e.getString(it) } } ?: listOf("")
             for (action in actions) {
-                if (!CascadeRules.isWrite(name, call("action" to action))) continue
-                val f = ScriptedLines.writeFact(name, action, JSONObject().put("success", true).put("vehicle", "x").put("title", "x").put("to", "x"), ok = true)
-                if (f.silent) continue
-                if (f.phrase == null) generic += if (action.isEmpty()) name else "$name/$action"
+                val args = call("action" to action, "intent" to "record", "question" to "invented")
+                if (!CascadeRules.isWrite(name, args)) continue
+                val ok = JSONObject().put("success", true).put("vehicle", "x").put("title", "x").put("to", "x")
+                val f = ScriptedLines.writeFact(name, action, ok, ok = true)
+                val row = if (action.isEmpty()) name else "$name/$action"
+                rows[row] = when {
+                    f.silent -> "SILENT"
+                    !f.changed -> "ROUTER"
+                    f.phrase != null -> "PHRASED"
+                    else -> "GENERIC"
+                }
             }
         }
-        assertEquals(GENERIC_WRITES, generic.toList())
+        assertTrue("walked the whole surface (${rows.size} writes)", rows.size > 40)
+        assertEquals(GENERIC_WRITES, rows.filterValues { it == "GENERIC" }.keys.toList())
+        // The two reads the review found spoken as changes, and a router.
+        assertEquals("SILENT", rows["claude_session/check"])
+        assertEquals("SILENT", rows["app_update/check"])
+        assertEquals("ROUTER", rows["ask_fleet"])
+        assertEquals("ROUTER", rows["ask_engine"])
+    }
+
+    @Test
+    fun `a router's write is said only when its result says something changed`() {
+        val scan = ScriptedLines.writeFact("ask_fleet", "", JSONObject().put("success", true).put("say", "Scanning."), ok = true)
+        assertFalse(scan.said)
+        val logged = ScriptedLines.writeFact("ask_body", "", JSONObject().put("success", true).put("changed", true), ok = true)
+        assertTrue(logged.said)
+        assertEquals(ScriptedLines.GENERIC_DONE, ScriptedLines.doneLine(listOf(scan, logged)))
     }
 
     private companion object {

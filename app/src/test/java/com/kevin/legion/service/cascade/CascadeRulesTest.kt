@@ -324,9 +324,9 @@ class CascadeRulesTest {
         // Two writes, two short clauses; the title comes from a nested result field.
         val tick = fact("manage_item", "tick", """{"success":true,"items":[{"title":"stamps","done":true}]}""")
         assertEquals("Done: added milk to Groceries; ticked off stamps.", ScriptedLines.doneLine(listOf(milk, tick)))
-        // A failed write is said as failed.
+        // A failed or refused write is never said by code (review F4, F9): it changed nothing.
         val failed = fact("complete_task", "", """{"success":false,"message":"Which one?","title":"essay"}""", ok = false)
-        assertEquals("Essay didn't go through.", ScriptedLines.doneLine(listOf(failed)))
+        assertNull(ScriptedLines.doneLine(listOf(failed)))
         // No title in the result: the phrase alone; never the message, never a "?".
         val bare = fact("complete_task", "", """{"success":true,"message":"Marked. Want another?"}""")
         assertEquals("Done: marked it done.", ScriptedLines.doneLine(listOf(bare)))
@@ -354,7 +354,7 @@ class CascadeRulesTest {
         // A proposal is not a change he would call done.
         assertNull(ScriptedLines.doneLine(listOf(fact("generate_goal_plan", "", """{"success":true}"""))))
         // A write with no phrase (the engine bridge: success and a message only) gets the generic line.
-        val bridged = fact("ask_engine", "", """{"success":true,"message":"Logged it on the engine."}""")
+        val bridged = fact("ask_engine", "", """{"success":true,"changed":true,"message":"Logged it on the engine."}""")
         assertEquals(ScriptedLines.GENERIC_DONE, ScriptedLines.doneLine(listOf(bridged)))
         val milk = fact("manage_item", "add", """{"item":"milk","list":"Groceries"}""")
         assertEquals("Done: added milk to Groceries. That change went through.", ScriptedLines.doneLine(listOf(milk, bridged)))
@@ -370,21 +370,5 @@ class CascadeRulesTest {
         // Long titles with several writes still fit.
         val long = (1..3).map { fact("manage_item", "add", """{"item":"invented item number $it with a very long name indeed","list":"Groceries"}""") }
         assertTrue(ScriptedLines.doneLine(long)!!.length <= ScriptedLines.MAX_DONE_CHARS)
-    }
-
-    @Test
-    fun `the stop path says the stopped turn's writes from their facts, then the tone`() {
-        val s = java.io.File(sourceRootForRules(), "service/cascade/CascadeSession.kt").readText()
-        val end = s.substring(s.indexOf("private suspend fun endByStop("), s.indexOf("private fun verdictOf("))
-        assertTrue("the record keeps what is said", end.contains("recordTurn(words, owed.due()?.line.orEmpty())"))
-        val voice = s.substring(s.indexOf("private suspend fun endByVoice("))
-        assertTrue("said before the tone", voice.indexOf("sayOwed()") in 0 until voice.indexOf("host.closingTone()"))
-        assertTrue("facts from the loop, never the message", s.contains("writeFact = ScriptedLines::factOf"))
-        assertFalse("never reads what was said to decide", s.contains("unheardSaid"))
-    }
-
-    private fun sourceRootForRules(): java.io.File {
-        val candidates = listOf("src/main/java/com/kevin/legion", "app/src/main/java/com/kevin/legion")
-        return candidates.map { java.io.File(it) }.first { it.isDirectory }
     }
 }

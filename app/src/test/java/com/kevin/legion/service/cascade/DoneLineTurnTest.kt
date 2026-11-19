@@ -98,7 +98,9 @@ class DoneLineTurnTest {
                 "old" -> JSONObject().put("success", true).put("message", "You are on the Invented Fit now.")
                 else -> JSONObject().put("success", true).put("changed", true).put("vehicle", "Invented Fit")
             }
-            "ask_engine" -> JSONObject().put("success", true).put("message", "Logged on the engine.")
+            "ask_engine" -> JSONObject().put("success", true).put("message", "Logged on the engine.").put("changed", true)
+            // A module scan the model tagged as a record: a router answer with nothing committed.
+            "ask_fleet" -> JSONObject().put("success", true).put("say", "Scanning the modules.")
             "email" -> JSONObject().put("success", true).put("message", "Opened.")
             "fails" -> JSONObject().put("success", false).put("message", "Nothing was changed: invented.")
             "unconfirmed" -> JSONObject().put("message", "no success key")
@@ -263,6 +265,14 @@ class DoneLineTurnTest {
     fun `19 an engine bridge write has no title, so the generic line`() {
         val r = run(Scripted(ok(calls(call("ask_engine", "question" to "invented", "intent" to "record"))), ok()))
         assertEquals(ScriptedLines.GENERIC_DONE, r.text)
+    }
+
+    @Test
+    fun `19b a router answer that committed nothing is never said as a change (review F3)`() {
+        val l = Heard()
+        val r = run(Scripted(ok(calls(call("ask_fleet", "question" to "scan the modules", "intent" to "record"))), ok(text("Scanning."))), l)
+        assertEquals("Scanning.", r.text)
+        assertTrue(l.lines.isEmpty())
     }
 
     @Test
