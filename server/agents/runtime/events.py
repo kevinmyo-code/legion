@@ -37,6 +37,11 @@ def working(tool: str) -> Event:
     return Event("working", {"tool": tool})
 
 
+def waiting() -> Event:
+    """A round has said nothing yet (`model.Waiting`): a moment the caller may act on time."""
+    return Event("waiting", {})
+
+
 def tool_ended(name: str, ok: bool, outcome: str, guard: str | None) -> Event:
     return Event("tool", {"name": name, "ok": ok, "outcome": outcome, "guard": guard})
 
