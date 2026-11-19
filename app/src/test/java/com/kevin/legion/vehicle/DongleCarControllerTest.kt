@@ -441,6 +441,49 @@ class DongleCarControllerTest {
     }
 
     @Test
+    fun `adapter moved from a car with no VIN to a VIN car minutes later - the held drive stays held`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData, printA)
+        val held = ActiveVehicle.recordingId(context)
+        sample(held, 1_000L)
+        DongleCarController.onDisconnected(context, at = System.currentTimeMillis() - 60_000L)
+
+        val d = connect(VinResponse.Result.Vin(truckVin), printB) as DongleCar.OnCar
+
+        assertEquals("car:truck", d.carId)
+        assertEquals(0, db.odbSampleDao().totalCount("car:truck"))
+        assertEquals(listOf(held), DongleCarController.openQuestions(context))
+    }
+
+    @Test
+    fun `a print-less car then a VIN car right after - no evidence it is the same car, nothing carried`() =
+        runBlocking {
+            seed()
+            connect(VinResponse.Result.NoData, null)
+            val held = ActiveVehicle.recordingId(context)
+            sample(held, 1_000L)
+            DongleCarController.onDisconnected(context)
+
+            connect(VinResponse.Result.Vin(truckVin), null)
+
+            assertEquals(0, db.odbSampleDao().totalCount("car:truck"))
+            assertEquals(listOf(held), DongleCarController.openQuestions(context))
+        }
+
+    @Test
+    fun `twins - the same print with a late VIN read inside a blip is carried (indistinguishable, a stated limit)`() =
+        runBlocking {
+            seed()
+            connect(VinResponse.Result.NoData, printA)
+            sample(ActiveVehicle.recordingId(context), 1_000L)
+            DongleCarController.onDisconnected(context)
+
+            connect(VinResponse.Result.Vin(truckVin), printA)
+
+            assertEquals(1, db.odbSampleDao().totalCount("car:truck"))
+        }
+
+    @Test
     fun `two unanswered no-VIN drives never pool under one id`() = runBlocking {
         seed()
         connect(VinResponse.Result.NoData)

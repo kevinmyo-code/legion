@@ -210,9 +210,12 @@ object DongleCarController {
         // A print match stays a recognition, never his answer, even after a blip: a twin car with the
         // same print must not inherit the right to clear codes (2026-11-17 review).
         // A blip inside one drive whose first connect read no VIN and whose reconnect reads one:
-        // the drive's data so far goes where the VIN says.
+        // the drive's data so far goes where the VIN says, but ONLY with positive evidence that it is
+        // the same car: both connects gave the same print. Moved to another car (another print, or
+        // no print to compare) and the earlier drive stays held, asked about on its own (review A1).
         val readVin = vinResult is VinResponse.Result.Vin
-        val carry = if (blip && !continues && readVin) previousId?.let { carryFrom(context, it) } else null
+        val sameCarLateVin = blip && !continues && readVin && samePrint
+        val carry = if (sameCarLateVin) previousId?.let { carryFrom(context, it) } else null
         sessionFrom = when {
             continues || carry != null -> p.getLong(KEY_SESSION_FROM, now)
             else -> now
