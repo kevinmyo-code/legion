@@ -66,6 +66,13 @@ class Finish:
     reason: str
 
 
+@dataclass(frozen=True)
+class Waiting:
+    """Not from the model: a client that reads the model on another thread says "still nothing"
+    every so often, so the turn can act on time while a round has not started answering
+    (`assistant.cascade.Ticking`). The loop passes it up as a `waiting` event; nothing else."""
+
+
 ModelEvent = TextDelta | ToolCallEvent | PartEvent | Usage | Finish
 
 

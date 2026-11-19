@@ -4,12 +4,13 @@ doing (Kevin, 2026-11-17: fillers should say what Alfred is doing, "checking wit
 Rules (applied in `assistant.cascade`):
 - **Only from a tool call that has started.** Never before the model picks a tool, never naming a
   result: every line says what is being looked at, none says what was found or done.
-- **When.** A tool marked slow here gets its line the moment it starts, and only once the door
-  would accept the call (a refused tool is never announced). Every lookup is marked slow (Kevin,
-  2026-11-19, perf/try-faster-first-word fix 1): a fast tool's result is in hand at once, but the
-  model's next round still takes about a second before any answer, and later questions were
-  silent until then. Never once any answer has been said, and never after the first question's
-  acknowledgement (one line per turn at most).
+- **When.** A network lookup (marked True here: the web, recalls, weather feeds, GitHub: outside
+  services, never quick) gets its line the moment it starts, once the door would accept the call
+  (a refused tool is never announced); web_search measured 1.4 to 2.3 s. Any other lookup gets
+  its line only if the answer is still not in hand `cascade.FILLER_WAIT_S` (0.7 s, the phone's
+  `ToolFillers.FAST_DELAY_MS`) after it started (Kevin, 2026-11-19, perf/try-faster-first-word): a quick answer, or one code speaks at
+  once (his profile), gets none, so a line never holds an answer up behind it. Never once an answer
+  sentence is ready, and never after the first question's acknowledgement (one line per turn).
 - **Never twice running, never two in a turn.** Two or three light variants each.
 - **From memory.** Each line's speech is made once per voice and kept in the process
   (`cascade.FillerAudio`), so it starts at once; a line not yet in memory is skipped and fetched.
@@ -32,53 +33,53 @@ _RECORDS = ("Checking the records.", "Looking through the records.")
 _BODY = ("Checking the training log.", "Looking at the body records.")
 _MEMORY = ("Checking what I remember.", "Looking through my notes.")
 
-# tool -> (slow, lines)
+# tool -> (said at its start: a network lookup, never quick; lines)
 FILLERS: dict[str, tuple[bool, tuple[str, ...]]] = {
     # money
-    "monthly_spend": (True, _ACCOUNTS),
-    "safe_to_spend": (True, _ACCOUNTS),
-    "net_worth": (True, _ACCOUNTS),
-    "cash_flow": (True, _ACCOUNTS),
-    "runway": (True, _ACCOUNTS),
-    "budgets": (True, _ACCOUNTS),
-    "account_balances": (True, _ACCOUNTS),
-    "grocery_spend": (True, _ACCOUNTS),
+    "monthly_spend": (False, _ACCOUNTS),
+    "safe_to_spend": (False, _ACCOUNTS),
+    "net_worth": (False, _ACCOUNTS),
+    "cash_flow": (False, _ACCOUNTS),
+    "runway": (False, _ACCOUNTS),
+    "budgets": (False, _ACCOUNTS),
+    "account_balances": (False, _ACCOUNTS),
+    "grocery_spend": (False, _ACCOUNTS),
     # calendar and lists
-    "list_events": (True, _CALENDAR),
-    "greeting_facts": (True, ("Checking your day.", "Looking at today.")),
-    "list_checklists": (True, _LISTS),
-    "last_ticked": (True, _LISTS),
-    "last_bought": (True, _PURCHASES),
-    "list_purchases": (True, _PURCHASES),
-    "read_records": (True, _RECORDS),
-    "list_tables": (True, _RECORDS),
+    "list_events": (False, _CALENDAR),
+    "greeting_facts": (False, ("Checking your day.", "Looking at today.")),
+    "list_checklists": (False, _LISTS),
+    "last_ticked": (False, _LISTS),
+    "last_bought": (False, _PURCHASES),
+    "list_purchases": (False, _PURCHASES),
+    "read_records": (False, _RECORDS),
+    "list_tables": (False, _RECORDS),
     # car
-    "next_service": (True, _CAR),
+    "next_service": (False, _CAR),
     "vehicle_recalls": (True, ("Checking the recall list.", "Looking up recalls for the car.")),
     # outside
     "web_search": (True, ("Looking that up online.", "Searching the web.", "Checking online.")),
-    "brief_latest": (True, ("Pulling up the brief.", "Checking the brief.")),
+    "brief_latest": (False, ("Pulling up the brief.", "Checking the brief.")),
     "check_conditions": (True, ("Checking the conditions.", "Looking at the weather feeds.")),
     "github_status": (True, ("Checking GitHub.", "Looking at the builds.")),
     # LEGION itself and the demo
-    "legion_docs": (True, ("Looking through the design docs.", "Checking the docs.")),
-    "show_diagram": (True, ("Bringing up the diagram.", "Pulling up the diagram.")),
-    "about_kevin": (True, ("Pulling up Kevin's profile.", "Checking Kevin's profile.")),
-    "show_resume": (True, ("Bringing up the resume.", "Pulling up the resume.")),
-    "run_procedure": (True, ("Working through the steps.", "Running that now.")),
+    "legion_docs": (False, ("Looking through the design docs.", "Checking the docs.")),
+    "show_diagram": (False, ("Bringing up the diagram.", "Pulling up the diagram.")),
+    "about_kevin": (False, ("Pulling up Kevin's profile.", "Checking Kevin's profile.")),
+    "show_resume": (False, ("Bringing up the resume.", "Pulling up the resume.")),
+    "run_procedure": (False, ("Working through the steps.", "Running that now.")),
     # school and body
-    "canvas_grades": (True, ("Checking the grades.", "Looking at the grades.")),
-    "what_i_need": (True, ("Checking the grades.", "Working out the numbers.")),
-    "get_energy_estimate": (True, _BODY),
-    "get_weight_trend": (True, _BODY),
-    "list_saved_meals": (True, _BODY),
-    "get_todays_workout": (True, _BODY),
-    "get_exercise_alternatives": (True, _BODY),
-    "get_body_plan": (True, _BODY),
-    "suggest_meal": (True, ("Thinking about meals.", "Looking at meal options.")),
+    "canvas_grades": (False, ("Checking the grades.", "Looking at the grades.")),
+    "what_i_need": (False, ("Checking the grades.", "Working out the numbers.")),
+    "get_energy_estimate": (False, _BODY),
+    "get_weight_trend": (False, _BODY),
+    "list_saved_meals": (False, _BODY),
+    "get_todays_workout": (False, _BODY),
+    "get_exercise_alternatives": (False, _BODY),
+    "get_body_plan": (False, _BODY),
+    "suggest_meal": (False, ("Thinking about meals.", "Looking at meal options.")),
     # memory
-    "recall_memory": (True, _MEMORY),
-    "list_memories": (True, _MEMORY),
+    "recall_memory": (False, _MEMORY),
+    "list_memories": (False, _MEMORY),
 }
 
 # Deliberately silent: writes (quick, and a line before the result would read as a claim) and the

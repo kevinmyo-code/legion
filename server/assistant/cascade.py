@@ -96,6 +96,7 @@ from agents.runtime.model import (
     TextDelta,
     ToolCallEvent,
     Usage,
+    Waiting,
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
@@ -1314,6 +1315,67 @@ class CountingModel:
         return getattr(self.inner, name)
 
 
+# A lookup's line is said only if the answer is still not in hand this long after the lookup
+# started (the phone's `ToolFillers.FAST_DELAY_MS`, 700 ms). Measured on /try: a quick lookup's
+# answer round takes about 0.9 to 1.1 s, a code-spoken one (his profile) a few milliseconds.
+FILLER_WAIT_S = 0.7
+# How often a round that has said nothing yet is reported as `waiting` (`Ticking`).
+TICK_S = 0.1
+
+
+class Ticking:
+    """Reads the model on a thread of its own and, until a round's first item arrives, yields
+    `Waiting` every `every` seconds: the turn's only moments to act while a round is silent (a
+    lookup's line on time). Only the HTTP read is on that thread; the loop, the door and the
+    database stay on the turn's own. Once the round has started, items pass straight through."""
+
+    _END = object()
+
+    def __init__(self, inner, every: float | None = None):
+        self.inner = inner
+        self.every = TICK_S if every is None else every
+
+    def stream(self, req):
+        items: queue.Queue = queue.Queue()
+        stop = threading.Event()
+
+        def read() -> None:
+            stream = self.inner.stream(req)
+            try:
+                for item in stream:
+                    items.put(item)
+                    if stop.is_set():
+                        break
+            except Exception as exc:  # noqa: BLE001 - raised again on the turn's own thread
+                items.put(exc)
+            finally:
+                close = getattr(stream, "close", None)
+                if close is not None:
+                    close()
+                items.put(Ticking._END)
+
+        threading.Thread(target=read, name="legion-model-read", daemon=True).start()
+        started = False
+        try:
+            while True:
+                try:
+                    item = items.get(timeout=None if started else self.every)
+                except queue.Empty:
+                    yield Waiting()
+                    continue
+                if item is Ticking._END:
+                    return
+                if isinstance(item, Exception):
+                    raise item
+                started = True
+                yield item
+        finally:
+            stop.set()
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
 def context_note(context: str) -> str:
     """The phone's `CascadePrompt.preamble` shape (spec 10)."""
     return f"(Current context, use naturally if relevant:\n{context.strip()})"
@@ -1498,7 +1560,7 @@ def run_turn(
             context,
             voice,
             model_name,
-            model,
+            Ticking(model),
             speech,
             clock,
             filler_audio,
@@ -1678,6 +1740,18 @@ def _answer(
     money_dropped = 0
     sentences = 0
 
+    # The first lookup of the turn and when it started; its line waits for FILLER_WAIT_S.
+    lookup: tuple[str, float] | None = None
+
+    def lookup_line():
+        """The lookup's line, once FILLER_WAIT_S has passed since it started with nothing said;
+        never once an answer sentence is ready, never a second line in the turn."""
+        if lookup is None or filler_said or sentences or not speak:
+            return None
+        if clock() - lookup[1] < FILLER_WAIT_S:
+            return None
+        return (yield from filler(lookup[0]))
+
     def filler(tool: str):
         picked = filler_audio.pick(voice, tool)
         if picked is None:
@@ -1749,6 +1823,11 @@ def _answer(
             except StopIteration as stop:
                 result = stop.value
                 break
+            if event.type == "waiting":
+                # A round has said nothing yet: the lookup's line, if it is due (`Ticking`).
+                line = yield from lookup_line()
+                filler_said = filler_said or line is not None
+                continue
             if event.type != "sentence":
                 # A round ended (a tool is next, or the turn): what it said goes to speech now.
                 speaker.flush()
@@ -1794,6 +1873,12 @@ def _answer(
                         if done.replay is not None:
                             marker = done.replay if i == 0 else ""
                         yield say(line, replay=marker, exact_text=done.exact)
+                elif speak and done.ok and lookup is None:
+                    # A lookup returned and the answer is not in hand yet: its line is due if the
+                    # answer still is not, FILLER_WAIT_S after the lookup started.
+                    lookup = (done.name, clock() - done.ms / 1000)
+                line = yield from lookup_line()
+                filler_said = filler_said or line is not None
                 continue
             if event.type == "sentence":
                 tagged = event.data["text"]
