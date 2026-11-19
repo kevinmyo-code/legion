@@ -104,6 +104,15 @@ internal object CascadeRules {
     fun isReadThrough(name: String, args: JSONObject): Boolean =
         ReadThroughWriteGuard.isReadThroughCall(name, args)
 
+    /**
+     * Whether a hand-over says a write he has not heard before its tone (review F5, round 2): only
+     * while the voice still works. Not when the voice is what failed (`tts`, or it never `open`ed),
+     * and not on a phone fault (a crash): speaking through a broken session would only spend its
+     * wait; the line goes to the record and the panel instead.
+     */
+    fun handOverSaysOwed(stage: String, phoneFault: Boolean): Boolean =
+        !phoneFault && stage != "tts" && stage != "open"
+
     /** What his new speech does to a turn still being answered ([newSpeech]). */
     enum class NewSpeech {
         /** Nothing: no turn in hand, or its reply is audible (that is the barge-in gate's call). */

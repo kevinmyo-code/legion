@@ -382,4 +382,13 @@ class CascadeRulesTest {
         val long = (1..3).map { fact("manage_item", "add", """{"item":"invented item number $it with a very long name indeed","list":"Groceries"}""") }
         assertTrue(ScriptedLines.doneLine(long)!!.length <= ScriptedLines.MAX_DONE_CHARS)
     }
+
+    @Test
+    fun `a hand-over says an owed write only while the voice works, never on a crash`() {
+        assertTrue(CascadeRules.handOverSaysOwed("prompt", phoneFault = false))
+        assertTrue(CascadeRules.handOverSaysOwed("stt", phoneFault = false))
+        assertFalse(CascadeRules.handOverSaysOwed("tts", phoneFault = false))
+        assertFalse(CascadeRules.handOverSaysOwed("open", phoneFault = false))
+        assertFalse("a crash goes straight to the record and the tone", CascadeRules.handOverSaysOwed("crash", phoneFault = true))
+    }
 }

@@ -293,6 +293,9 @@ internal class CascadeSession(
     /** Writes that went through and that he has not heard said yet ([OwedWrites]). */
     private val owed = OwedWrites()
 
+    /** A hand-over has begun: a second one (a crash during it) returns at once. */
+    private val handingOver = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /** His last turn's tools asked him something ([LoneWordWriteGuard.asks]): one word may answer it. */
     @Volatile private var lastTurnAsked = false
 
@@ -2555,10 +2558,10 @@ internal class CascadeSession(
         phoneFault: Boolean = false,
         words: String? = null,
     ) {
-        if (closing.get()) return
-        // Review F5: the voice still works unless the voice itself failed (stage tts, or it never
-        // opened); a write he has not heard is said before the tone, and written down if it cannot be.
-        if (stage != "tts" && stage != "open") withTimeoutOrNull(OWED_SAY_MAX_MS) { sayOwed() }
+        // One hand-over at a time (review round 2: a crash during a hand-over could say the owed line twice).
+        if (closing.get() || !handingOver.compareAndSet(false, true)) return
+        // A write he has not heard is said before the tone while the voice works, else written down.
+        if (CascadeRules.handOverSaysOwed(stage, phoneFault)) withTimeoutOrNull(OWED_SAY_MAX_MS) { sayOwed() }
         if (!closing.compareAndSet(false, true)) return
         writeDownOwed()
         try {
