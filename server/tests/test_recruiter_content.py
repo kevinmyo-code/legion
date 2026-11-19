@@ -223,6 +223,64 @@ def test_a_phone_section_refuses_unknown_and_missing_keys():
     assert problems(fake_content() | {"name": 7})
 
 
+def fake_walkthrough() -> dict:
+    return {
+        "video": "/static/demo/fake-walk.mp4",
+        "poster": "/static/demo/fake-walk.png",
+        "captions": "/static/demo/fake-walk.vtt",
+        "chapters": [
+            {"title": "Fake beat", "line": "Lorem ipsum beat.", "at": 0},
+            {"title": "Fake step", "line": "Lorem ipsum step.", "at": 4.5},
+        ],
+    }
+
+
+def test_a_phone_walkthrough_is_optional_and_fits():
+    # Content written before the walkthrough existed still loads.
+    assert problems(fake_content() | {"phone": fake_phone()}) == []
+    with_walk = fake_phone() | {"walkthrough": fake_walkthrough()}
+    assert problems(fake_content() | {"phone": with_walk}) == []
+    bare = fake_walkthrough()
+    del bare["poster"], bare["captions"]
+    assert problems(fake_content() | {"phone": fake_phone() | {"walkthrough": bare}}) == []
+
+
+def test_a_bad_walkthrough_chapter_is_refused_with_its_path():
+    walk = fake_walkthrough()
+    del walk["chapters"][1]["title"]
+    found = problems(fake_content() | {"phone": fake_phone() | {"walkthrough": walk}})
+    assert len(found) == 1 and found[0].startswith("phone/walkthrough/chapters/1:")
+    assert "'title' is a required property" in found[0]
+
+    walk = fake_walkthrough()
+    walk["chapters"][0]["at"] = -1
+    found = problems(fake_content() | {"phone": fake_phone() | {"walkthrough": walk}})
+    assert found and found[0].startswith("phone/walkthrough/chapters/0/at:")
+
+    walk = fake_walkthrough()
+    walk["chapters"][1]["at"] = 0
+    found = problems(fake_content() | {"phone": fake_phone() | {"walkthrough": walk}})
+    assert found == [
+        "phone/walkthrough/chapters/1/at: 0 s is not after the chapter before it (0 s); "
+        "chapters run in the video's order"
+    ]
+
+    no_video = fake_walkthrough()
+    del no_video["video"]
+    assert problems(fake_content() | {"phone": fake_phone() | {"walkthrough": no_video}})
+
+
+def test_with_a_walkthrough_at_most_three_full_clips():
+    four = fake_phone() | {"walkthrough": fake_walkthrough()}
+    four["clips"] = [{"title": f"Clip {n}", "body": "Lorem ipsum."} for n in range(4)]
+    assert problems(fake_content() | {"phone": four}) == [
+        "phone/clips: with a walkthrough the page shows at most 3 full clips; this has 4"
+    ]
+    # Without one, the old section keeps every clip it had.
+    del four["walkthrough"]
+    assert problems(fake_content() | {"phone": four}) == []
+
+
 # =============================================================================
 # GET /api/demo/session
 # =============================================================================

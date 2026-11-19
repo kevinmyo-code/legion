@@ -46,14 +46,32 @@ _PHONE_CLIP = _obj(
     {"title": _STR, "body": _STR, "video": _STR, "poster": _STR, "captions": _STR},
     optional=("video", "poster", "captions"),
 )
+# One video for the whole section (Kevin, 2026-11-19: "one video showcasing what the legion phone
+# can do. and how it works in the back"): its chapters are the page's buttons that seek it, `at`
+# in seconds from the start. With it, the clips below it are at most MAX_WALKTHROUGH_CLIPS.
+_WALKTHROUGH = _obj(
+    {
+        "video": _STR,
+        "poster": _STR,
+        "captions": _STR,
+        "chapters": {
+            "type": "array",
+            "minItems": 1,
+            "items": _obj({"title": _STR, "line": _STR, "at": {"type": "number", "minimum": 0}}),
+        },
+    },
+    optional=("poster", "captions"),
+)
+MAX_WALKTHROUGH_CLIPS = 3
 _PHONE = _obj(
     {
         "title": _STR,
         "intro": _STR,
         "clips": {"type": "array", "items": _PHONE_CLIP},
         "full_take": _STR,
+        "walkthrough": _WALKTHROUGH,
     },
-    optional=("full_take",),
+    optional=("full_take", "walkthrough"),
 )
 
 # A clip that may not exist yet (Kevin, 2026-11-05: "Media: coming soon"). With `video` the page
@@ -169,6 +187,30 @@ def problems(content) -> list[str]:
         found.append(f"{where}: {error.message}")
     if not found and isinstance(content, dict):
         found.extend(_anchor_problems(content))
+        found.extend(_walkthrough_problems(content.get("phone")))
+    return found
+
+
+def _walkthrough_problems(phone: dict | None) -> list[str]:
+    """What the schema cannot say about the phone video: chapters out of the video's order, and
+    more full clips under it than the section shows."""
+    walk = (phone or {}).get("walkthrough")
+    if not walk:
+        return []
+    found = []
+    chapters = walk["chapters"]
+    for index in range(1, len(chapters)):
+        at, before = chapters[index]["at"], chapters[index - 1]["at"]
+        if at <= before:
+            found.append(
+                f"phone/walkthrough/chapters/{index}/at: {at:g} s is not after the chapter before "
+                f"it ({before:g} s); chapters run in the video's order"
+            )
+    if len(phone["clips"]) > MAX_WALKTHROUGH_CLIPS:
+        found.append(
+            f"phone/clips: with a walkthrough the page shows at most {MAX_WALKTHROUGH_CLIPS} full "
+            f"clips; this has {len(phone['clips'])}"
+        )
     return found
 
 
