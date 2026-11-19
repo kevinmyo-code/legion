@@ -473,3 +473,13 @@ def test_a_yes_held_again_fails_not_held():
     assert "a write was held again after his yes" in ve.score_case(case, runs[0], phone=False).failures
     _, runs = parse(case_lines("lone", "Yes.", [("manage_checklist", {"action": "add", "text": "milk"}, '{"success":true}')], "Done."))
     assert ve.score_case(case, runs[0], phone=False).passed
+
+
+def test_a_turn_that_ended_on_the_code_line_is_counted():
+    cases = [{"id": "a", "say": "x", "expect": {}}]
+    lines = case_lines("a", "x", [], "Done: added milk to Groceries.")
+    lines.insert(-2, L("LIVE_LATENCY", "reply_closing_skipped n=1"))
+    facts, runs = parse(lines)
+    out, _ = ve.scorecard(cases, runs, facts, phone=False)
+    assert runs[0].turns[0].closing_skipped
+    assert any("turns ended on the code line: 1" in l for l in out)

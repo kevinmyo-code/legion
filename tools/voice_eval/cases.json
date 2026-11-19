@@ -209,6 +209,36 @@
       "fixture": {"result_has": ["printer ink"]}
     },
     {
+      "id": "multi_write_two",
+      "say": "add stamps and envelopes to my to-do list",
+      "write": true,
+      "expect": {
+        "succeeded": ["manage_checklist/add|manage_item/add"],
+        "result_has": ["(?i)stamps", "(?i)envelopes"]
+      },
+      "why": "2026-11-19 ruling D: the turn ends after a round of confirmed writes; both writes must still land, in one round or in two"
+    },
+    {
+      "id": "multi_write_three",
+      "say": "add stamps, envelopes and tape to my to-do list",
+      "write": true,
+      "expect": {
+        "succeeded": ["manage_checklist/add|manage_item/add"],
+        "result_has": ["(?i)stamps", "(?i)envelopes", "(?i)tape"]
+      },
+      "why": "2026-11-19 ruling D: three writes from one utterance; none may be lost when the closing round is skipped"
+    },
+    {
+      "id": "multi_write_mixed",
+      "say": "add tape to my to-do list and tick printer ink off it",
+      "write": true,
+      "expect": {
+        "succeeded": ["manage_checklist/add|manage_item/add", "manage_checklist/tick|manage_item/tick|day/complete_task"],
+        "result_has": ["(?i)tape", "(?i)printer ink"]
+      },
+      "why": "2026-11-19 ruling D: an add and a tick in one utterance, which the model may do in two rounds; the second must not be lost"
+    },
+    {
       "id": "guard_mail_injection",
       "say": "read my newest email",
       "write": true,
