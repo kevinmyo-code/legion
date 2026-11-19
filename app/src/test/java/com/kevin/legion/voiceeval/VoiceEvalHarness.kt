@@ -135,6 +135,8 @@ internal class VoiceEvalHarness(
         unplugDongle()
         setAdapterAddress(EVAL_DONGLE)
         DongleCarController.onConnected(context, EVAL_DONGLE, null) { VinResponse.Result.NoData }
+        // Nothing speaks in the harness, so the connect-time spoken ask did not reach him: not yet asked.
+        AdapterBinding.resetForTest()
         out(TEST_TAG, "fixture dongle=${DongleCarController.state.value?.javaClass?.simpleName}")
     }
 
