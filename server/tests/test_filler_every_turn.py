@@ -189,6 +189,13 @@ def test_the_timing_line_says_no_line_was_heard(member, engine, monkeypatch, hou
     ("tool", "args"),
     [("legion_docs", {"query": "how is it built"}), ("brief_latest", {}), ("run_procedure", {"name": "xx"})],
 )
+def test_a_quick_local_lookup_on_the_doors_slow_list_is_not_announced_at_its_start(
+    member, engine, monkeypatch, household_user, tool, args
+):
+    # F1: the door's wider slow list (SLOW_TOOLS) still makes `working`; the line waits for 0.7 s.
+    conversation = _later(member, engine, monkeypatch, household_user)
+    events = _turn(member, engine, conversation, FakeModel([call(tool, args), say("Here it is.")]))
+    assert _fillers(events) == []
 
 
 def test_a_slow_answer_after_the_docs_gets_its_line_after_the_tool(
@@ -202,6 +209,25 @@ def test_a_slow_answer_after_the_docs_gets_its_line_after_the_tool(
     kinds = [k for k, _ in events]
     assert _fillers(events) == ["legion_docs"]
     assert kinds.index("tool") < kinds.index("filler") < kinds.index("sentence")
+
+
+def test_a_delayed_line_is_the_shortest_clip_in_hand():
+    # F3: a delayed line may still be playing when the answer is ready: the shortest one.
+    audio = cascade.FillerAudio(spawn=lambda work: None)
+    long_line, short_line, mid_line = fillers.lines_for("monthly_spend")
+    audio._audio = {
+        ("v", long_line): b"\x00" * 9000,
+        ("v", short_line): b"\x00" * 3000,
+        ("v", mid_line): b"\x00" * 6000,
+    }
+    picker = fillers.LinePicker()
+    cascade.LINES, saved = picker, cascade.LINES
+    try:
+        assert audio.pick("v", "monthly_spend", shortest=True)[0] == short_line
+        # Never the same line twice running: the next shortest.
+        assert audio.pick("v", "monthly_spend", shortest=True)[0] == mid_line
+    finally:
+        cascade.LINES = saved
 
 
 def test_a_cancel_during_a_silent_round_sends_no_line(member, engine, monkeypatch, household_user):
@@ -246,20 +272,11 @@ def test_a_closed_round_stops_reading_the_model_at_its_next_item():
     assert closed == [True]
 
 
-def test_a_delayed_line_is_the_shortest_clip_in_hand():
-    # F3: a delayed line may still be playing when the answer is ready: the shortest one.
-    audio = cascade.FillerAudio(spawn=lambda work: None)
-    long_line, short_line, mid_line = fillers.lines_for("monthly_spend")
-    audio._audio = {
-        ("v", long_line): b"\x00" * 9000,
-        ("v", short_line): b"\x00" * 3000,
-        ("v", mid_line): b"\x00" * 6000,
-    }
-    picker = fillers.LinePicker()
-    cascade.LINES, saved = picker, cascade.LINES
-    try:
-        assert audio.pick("v", "monthly_spend", shortest=True)[0] == short_line
-        # Never the same line twice running: the next shortest.
-        assert audio.pick("v", "monthly_spend", shortest=True)[0] == mid_line
-    finally:
-        cascade.LINES = saved
+def test_the_answers_first_audio_is_not_the_lines(member, engine, monkeypatch, household_user):
+    # F8: `tts_first_audio_ms` stays the ANSWER's first audio; `first_sound_ms` is any first sound.
+    conversation = _later(member, engine, monkeypatch, household_user)
+    _turn(member, engine, conversation, _slow_answer())
+    line = [ln for ln in _record(conversation).splitlines() if "cascade_turn status=done" in ln][-1]
+    t = {k: int(v) for k, v in re.findall(r"(\w+)=(-?\d+)", line)}
+    assert 0 <= t["filler_ms"] <= t["first_sound_ms"] + 5
+    assert t["tts_first_audio_ms"] >= t["first_sentence_ms"] > t["filler_ms"]

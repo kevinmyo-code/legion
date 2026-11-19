@@ -647,7 +647,10 @@ class Speaker:
         self.jobs: deque[_Job] = deque()
         self.done: list[Spoken] = []
         self.started_at = clock()
+        # The ANSWER's first audio (no acknowledgement or lookup line), and the first sound of any
+        # kind, which is what the page's own `first_audio` line measures from its side.
         self.first_audio_ms: int | None = None
+        self.first_sound_ms: int | None = None
         self.total_ms = 0
         # The whole turn, speech included, ends by this time (finding 1).
         self.deadline = self.started_at + TURN_WALL_S
@@ -754,8 +757,11 @@ class Speaker:
             job.chunks.put(_END)
 
     def audio_event(self, chunk: bytes, filler: bool = False) -> ev.Event:
-        if self.first_audio_ms is None:
-            self.first_audio_ms = int((self.clock() - self.started_at) * 1000)
+        at = int((self.clock() - self.started_at) * 1000)
+        if self.first_sound_ms is None:
+            self.first_sound_ms = at
+        if self.first_audio_ms is None and not filler:
+            self.first_audio_ms = at
         data = {"pcm": base64.b64encode(chunk).decode("ascii"), "rate": OUTPUT_RATE}
         if filler:
             # The page may drop a filler that has not started once the answer's audio is ready.
@@ -1577,6 +1583,7 @@ def run_turn(
         speaker.close()
         timings.update(
             tts_first_audio_ms=speaker.first_audio_ms,
+            first_sound_ms=speaker.first_sound_ms,
             tts_ms=speaker.total_ms,
             tts_audio_ms=sum(s.audio_ms for s in speaker.done),
             tts_prompt_tokens=sum(s.prompt_tokens for s in speaker.done),
@@ -2501,6 +2508,7 @@ def timing_line(report: TurnReport, *, spoken: bool) -> str:
         "turn_ms",
         "ack",
         "filler_ms",
+        "first_sound_ms",
     )
     values = " ".join(
         f"{k}={-1 if report.timings.get(k) is None else report.timings[k]}" for k in keys
