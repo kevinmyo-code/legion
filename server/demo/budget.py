@@ -126,12 +126,21 @@ MAX_SESSION_MINUTES_CEILING = 30  # a member's token lifetime (`live.TOKEN_LIFET
 def counts(user) -> bool:
     """Whether this caller's Gemini use is charged to the demo budget: a
     recruiter visitor, unless their visit came in on the tester code."""
-    from demo.models import DemoVisit
     from household.models import is_recruiter
 
     if user is None or not is_recruiter(user):
         return False
-    return not DemoVisit.objects.filter(user=user, code__unmetered=True).exists()
+    return not tester_visit(user)
+
+
+def tester_visit(user) -> bool:
+    """Whether this caller's visit came in on Kevin's tester code (`DemoCode.unmetered`). A visit
+    with no `DemoVisit` row is not the tester's: whatever this unlocks fails closed."""
+    from demo.models import DemoVisit
+
+    if user is None or not getattr(user, "pk", None):
+        return False
+    return DemoVisit.objects.filter(user=user, code__unmetered=True).exists()
 
 
 def capped_code(user) -> DemoCode | None:

@@ -12429,6 +12429,15 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
+            /** @description A demo visit that did not come in on the tester code (`tester_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
             /** @description Not this caller's conversation. */
             404: {
                 headers: {

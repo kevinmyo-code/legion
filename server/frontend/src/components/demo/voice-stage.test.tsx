@@ -227,6 +227,57 @@ describe('the docked orb when the orb is off screen', () => {
 })
 
 /**
+ * Kevin, 2026-11-19 ("B hide the whole strip"): the live strip (tools with their times, the turn's
+ * cost, "Sounded robotic") is his tester visit's only. The engine decides: only that visit's turns
+ * end with `cost_usd`, so a recruiter's page never shows the strip, even while tools run.
+ */
+describe('the live strip', () => {
+  function stripStage(done: Record<string, unknown>) {
+    async function* answer(): AsyncGenerator<SseEvent> {
+      yield { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } }
+      yield { type: 'filler', data: { tool: 'next_service', text: 'Checking the records.' } }
+      yield { type: 'tool', data: { name: 'next_service', ok: true, text: 'Due in May.', ms: 120 } }
+      yield { type: 'sentence', data: { text: 'Due in May.' } }
+      yield { type: 'done', data: { status: 'done', final_text: 'Due in May.', ...done } }
+    }
+    const deps: CascadeDeps = {
+      startTurn: async (): Promise<TurnStart> => ({ ok: true, events: answer() }),
+      audio: () => new FakeAudio(),
+      now: () => Date.now(),
+      utcOffsetMinutes: () => 0,
+    }
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <AssistantProvider voiceFirst={{ prepare: async () => true }} cascadeDeps={deps}>
+          <VoiceStage />
+        </AssistantProvider>
+      </QueryClientProvider>,
+    )
+  }
+  async function ask() {
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox', { name: /^Type to / }), { target: { value: 'When is the car due?' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      await settle()
+    })
+  }
+
+  test('a recruiter visit (no cost from the engine) never shows it, though a tool ran', async () => {
+    stripStage({})
+    await ask()
+    expect(document.querySelector('[data-stage="strip"]')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Sounded robotic' })).toBeNull()
+  })
+
+  test("the tester visit (the engine sent the turn's cost) shows it with the button", async () => {
+    stripStage({ cost_usd: 0.0021, tools_ms: [['next_service', 120]] })
+    await ask()
+    expect(document.querySelector('[data-stage="strip"]')).toHaveTextContent('next_service 120 ms')
+    expect(screen.getByRole('button', { name: 'Sounded robotic' })).toBeInTheDocument()
+  })
+})
+
+/**
  * Demo stage 2 (item 1): the chips are the engine's, checked for this visit and sent after the
  * greeting; the page writes none. One row that scrolls sideways (the 390 px width is asserted in
  * the real-browser check, `tests/realrun_browser_voice_first.mjs` vf-chips).

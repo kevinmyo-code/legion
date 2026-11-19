@@ -177,7 +177,8 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         )}
         {sys && sys.kind === 'sys' && <p className="text-muted-foreground italic">{sys.text}</p>}
       </div>
-      {cascade && (cascade.strip.tools.length > 0 || cascade.strip.costUsd !== null) && (
+      {/* Kevin's tester visit only: the engine sends a turn's cost to no one else. */}
+      {cascade && cascade.stripShown && (cascade.strip.tools.length > 0 || cascade.strip.costUsd !== null) && (
         <p data-stage="strip" className="font-mono text-xs text-muted-foreground">
           {cascade.strip.tools
             .map((t) => `${t.tool}${t.ms !== null ? ` ${t.ms} ms` : ''}`)

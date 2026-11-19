@@ -413,6 +413,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The body did not fit.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A demo visit that did not come in on the tester code (`tester_only`).
         '404':
           content:
             application/json:

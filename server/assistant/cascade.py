@@ -105,6 +105,7 @@ from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
 from assistant.spoken_words import pronounced, speakable_words
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
 from demo import suggestions
+from demo.budget import tester_visit
 from demo.tools import spoken_for as about_kevin_spoken_for
 from devicelogs import web_conversation
 from engine_mcp import cards
@@ -946,6 +947,9 @@ class WebDoor:
         self.conversation_id = conversation_id
         self.turn = turn
         self.recruiter = is_recruiter(self.user)
+        # The demo's live strip numbers (each tool's time, the turn's cost) go to members and to
+        # Kevin's tester visit, never to a recruiter (Kevin, 2026-11-19: "B hide the whole strip").
+        self.timings_shown = not self.recruiter or tester_visit(self.user)
         self.calls: list[DoorCall] = []
         self.end_requested = False
         # The browser's cancel (`CancelCheck`), asked before each tool.
@@ -1770,7 +1774,8 @@ def _answer(
                     speaker.exact = True
                 payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome}
                 payload["text"] = done.text
-                payload["ms"] = done.ms
+                if door.timings_shown:
+                    payload["ms"] = done.ms
                 if done.card is not None:
                     payload["card"] = done.card
                 yield ev.Event("tool", payload)
@@ -1932,9 +1937,12 @@ def _answer(
         timings["stop_phrase"] = 1
     extra = {}
     if door.recruiter:
-        # The demo's live strip (recruiter only): what this turn is estimated to have cost.
-        extra["cost_usd"] = round(turn_cost_usd(timings, speaker.done), 5)
-        extra["tools_ms"] = [[c.name, c.ms] for c in door.calls]
+        # The demo's live strip (tools, their times, the turn's estimated cost): Kevin's tester
+        # visit only, never a recruiter's (Kevin, 2026-11-19: "B hide the whole strip"). The page
+        # shows the strip only once a turn has carried these.
+        if door.timings_shown:
+            extra["cost_usd"] = round(turn_cost_usd(timings, speaker.done), 5)
+            extra["tools_ms"] = [[c.name, c.ms] for c in door.calls]
         # The follow-up chips: only what ran, signed for this visitor; the page asks for the
         # checked chips after the answer (`demo.suggestions`), never inside the turn.
         offer = (
@@ -2039,7 +2047,9 @@ def _tour(request, door, speaker, report, beat: int, words: str | None):
         said, ran = tour.run_beat(door, beats[index])
         done = door.calls[-1] if beats[index].tool and door.calls else None
         if done is not None and ran:
-            payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome, "ms": done.ms}
+            payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome}
+            if door.timings_shown:
+                payload["ms"] = done.ms
             payload["text"] = done.text
             if done.card is not None:
                 payload["card"] = done.card

@@ -1574,10 +1574,23 @@ class AssistantRoboticView(_AssistantView):
         responses={
             204: None,
             400: OpenApiResponse(DetailSerializer, description="The body did not fit."),
+            403: OpenApiResponse(
+                DetailSerializer,
+                description="A demo visit that did not come in on the tester code (`tester_only`).",
+            ),
             404: OpenApiResponse(DetailSerializer, description="Not this caller's conversation."),
         },
     )
     def post(self, request):
+        # The marker is the demo strip's button, and the strip is Kevin's tester visit's only
+        # (Kevin, 2026-11-19: "B hide the whole strip"): an ordinary visit cannot drive it by hand.
+        if is_recruiter(request.user) and not demo_budget.tester_visit(request.user):
+            return _refuse(
+                request,
+                "Nothing was marked: this demo visit has no robotic marker.",
+                status.HTTP_403_FORBIDDEN,
+                "tester_only",
+            )
         body = AssistantRoboticRequestSerializer(data=request.data)
         if not body.is_valid():
             return _refuse(
