@@ -210,6 +210,16 @@
       transition-duration: 0.01ms !important;
       animation-duration: 0.01ms !important;
     }
+    /* The one exception: the /try orb's dock cross-fades (an opacity change, not motion) rather
+       than cutting (`.rc-voice-dock` below). Here, because an important rule in this layer outranks
+       any outside it. */
+    .recruiter .rc-stage-orb,
+    .recruiter .rc-voice-dock-panel,
+    .recruiter .rc-voice-dock .rc-dock-orb,
+    .recruiter .rc-voice-dock .rc-dock-line,
+    .recruiter .rc-voice-dock .rc-chips {
+      transition-duration: 200ms !important;
+    }
   }
 }
 
@@ -535,6 +545,75 @@
     .recruiter .rc-ask-q:hover {
         color: var(--rc-accent);
         text-decoration-color: var(--rc-accent);
+    }
+
+    /*
+     * The voice stage's dock (`components/demo/voice-stage.tsx`, Kevin 2026-11-19: "the orb should
+     * like move ... to the bottom"). The dock's panel slides up from the foot as the orb travels into
+     * it and back down as it travels home: transform and opacity only, so a phone composites it
+     * without layout.
+     */
+    .recruiter .rc-stage-orb {
+        transition: opacity 120ms ease-out 180ms;
+    }
+    .recruiter .rc-stage-orb[data-docked="true"] {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease-out;
+    }
+    .recruiter .rc-voice-dock {
+        visibility: hidden;
+        /* Hidden only once the orb has travelled home. */
+        transition: visibility 0s linear 320ms;
+    }
+    .recruiter .rc-voice-dock[data-docked="true"] {
+        visibility: visible;
+        transition: visibility 0s;
+    }
+    .recruiter .rc-voice-dock-panel {
+        position: absolute;
+        inset: 0;
+        background: var(--rc-paper);
+        border-top: 1px solid var(--rc-rule);
+        box-shadow: 0 -6px 18px -12px rgb(29 26 22 / 0.35);
+        transform: translateY(100%);
+        transition: transform 300ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .recruiter .rc-voice-dock[data-docked="true"] .rc-voice-dock-panel {
+        transform: none;
+    }
+    .recruiter .rc-voice-dock .rc-dock-line,
+    .recruiter .rc-voice-dock .rc-chips {
+        opacity: 0;
+        transition: opacity 160ms ease-out;
+    }
+    .recruiter .rc-voice-dock[data-docked="true"] .rc-dock-line,
+    .recruiter .rc-voice-dock[data-docked="true"] .rc-chips {
+        opacity: 1;
+        transition: opacity 200ms ease-out 120ms;
+    }
+    .recruiter [data-stage="dock-orb"] {
+        color: var(--rc-ink);
+        --orb-accent: var(--rc-accent);
+    }
+    .recruiter .rc-voice-dock .rc-dock-orb {
+        opacity: 0;
+        transition: opacity 200ms ease-out;
+    }
+    .recruiter .rc-voice-dock[data-docked="true"] .rc-dock-orb {
+        opacity: 1;
+    }
+    /* Reduced motion: no travel and no slide, a plain cross-fade (the base layer's blanket rule
+       would make it a cut; an opacity fade is not motion). */
+    @media (prefers-reduced-motion: reduce) {
+        .recruiter .rc-voice-dock-panel {
+            transform: none;
+            opacity: 0;
+            transition: opacity 200ms ease-out;
+        }
+        .recruiter .rc-voice-dock[data-docked="true"] .rc-voice-dock-panel {
+            opacity: 1;
+        }
     }
     .rc-prose .rc-media-note {
         font-size: calc(0.92 * var(--u));

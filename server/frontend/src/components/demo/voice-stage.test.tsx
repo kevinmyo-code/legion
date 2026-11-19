@@ -12,7 +12,7 @@ import { FakeAudio, settle } from '@/test/fake-live'
 
 import indexCss from '../../index.css?raw'
 
-import { VoiceStage } from './voice-stage'
+import { DOCK_AT, TRAVEL_MS, UNDOCK_AT, VoiceStage } from './voice-stage'
 
 /**
  * The browser run (2026-11-17): an answer that opened a diagram covered the orb, so a tap to stop
@@ -110,17 +110,23 @@ describe('the voice stage on the page', () => {
 
 /**
  * Kevin, 2026-11-18: "when users scroll down past the orb, make the orb follow along at the bottom
- * of the page as a footer". Once the orb is (mostly) off screen, a docked bar at the bottom carries
- * a small orb and the status line, in every state. It replaces the small Interrupt control and keeps
- * its job: its tap is the orb's tap (start, interrupt, stop listening), never a path of its own. The
- * page gets room at the bottom while it shows, so it never covers the content.
+ * of the page as a footer"; 2026-11-19: "the orb should like move from the location in the centre to
+ * the bottom ... it should also be a little larger". Once the orb is mostly off screen it travels into
+ * a dock at the foot, which carries it (60 px), the status line and the chips, in every state. Its
+ * tap is the orb's tap (start, interrupt, stop listening), never a path of its own. The dock stays
+ * mounted (shown by `data-docked`); the page keeps room for it at its foot whether docked or not.
  */
 describe('the docked orb when the orb is off screen', () => {
-  type Callback = (entries: { isIntersecting: boolean }[]) => void
+  type Entry = { isIntersecting: boolean; intersectionRatio?: number }
+  type Callback = (entries: Entry[]) => void
   const observers: { cb: Callback; options?: IntersectionObserverInit }[] = []
   const realIO = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver
+  const realAnimate = (HTMLElement.prototype as { animate?: unknown }).animate
+  const realMatchMedia = window.matchMedia
   afterEach(() => {
     ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = realIO
+    ;(HTMLElement.prototype as { animate?: unknown }).animate = realAnimate
+    window.matchMedia = realMatchMedia
     observers.length = 0
     document.body.style.paddingBottom = ''
   })
@@ -136,7 +142,11 @@ describe('the docked orb when the orb is off screen', () => {
   }
   const deliver = (...seen: boolean[]) =>
     act(() => observers.forEach(({ cb }) => cb(seen.map((isIntersecting) => ({ isIntersecting })))))
-  const dock = () => document.querySelector<HTMLElement>('[data-stage="dock"]')
+  /** The orb's visible share, as the browser reports it. */
+  const shown = (ratio: number) =>
+    act(() => observers.forEach(({ cb }) => cb([{ isIntersecting: ratio > 0, intersectionRatio: ratio }])))
+  const dock = () => document.querySelector<HTMLElement>('[data-stage="dock"]')!
+  const isDocked = () => dock().getAttribute('data-docked') === 'true'
   const dockOrb = () => document.querySelector<HTMLButtonElement>('[data-stage="dock-orb"]')
   const orb = () => document.querySelector<HTMLButtonElement>('[data-stage="orb"]')!
 
@@ -153,14 +163,95 @@ describe('the docked orb when the orb is off screen', () => {
   test('docks in every state while the orb is off screen, with the status line, and leaves when it is back', async () => {
     fakeIO()
     stage(false, true)
-    expect(dock()).toBeNull()
+    expect(isDocked()).toBe(false)
+    expect(dock()).toHaveAttribute('aria-hidden', 'true')
     deliver(false)
     // Idle too: the docked orb is how a visitor far down the page starts talking.
-    expect(dock()).not.toBeNull()
+    expect(isDocked()).toBe(true)
     expect(dock()).toHaveTextContent('Tap and ask me about Kevin')
-    expect(dock()!.className).toContain('rc-voice-dock')
+    expect(dock().className).toContain('rc-voice-dock')
+    // The stage's orb has handed over: no second tap target, no tab stop.
+    expect(orb()).toHaveAttribute('data-docked', 'true')
+    expect(orb()).toHaveAttribute('tabindex', '-1')
     deliver(true)
-    expect(dock()).toBeNull()
+    expect(isDocked()).toBe(false)
+  })
+
+  test('the dock is one element for the whole visit: scrolling never mounts or unmounts it', () => {
+    fakeIO()
+    stage(false, true)
+    const first = dock()
+    deliver(false)
+    deliver(true)
+    deliver(false)
+    expect(dock()).toBe(first)
+  })
+
+  test('hysteresis: it docks at a third shown and comes back at two thirds, so it can never flip back and forth', () => {
+    fakeIO()
+    stage(false, true)
+    shown(0.5)
+    expect(isDocked()).toBe(false)
+    shown(0.34)
+    expect(isDocked()).toBe(true)
+    // Between the two marks nothing changes, whichever way the page moves.
+    for (const ratio of [0.4, 0.6, 0.45, 0.55, 0.36, 0.64]) {
+      shown(ratio)
+      expect(isDocked()).toBe(true)
+    }
+    shown(0.66)
+    expect(isDocked()).toBe(false)
+    for (const ratio of [0.6, 0.4, 0.5, 0.36]) {
+      shown(ratio)
+      expect(isDocked()).toBe(false)
+    }
+    const marks = observers.map(({ options }) => options?.threshold)
+    expect(marks.every((t) => Array.isArray(t) && t.includes(DOCK_AT) && t.includes(UNDOCK_AT))).toBe(true)
+  })
+
+  test('the docked orb is larger than before (60 px) and travels from the stage orb into place', () => {
+    fakeIO()
+    const calls: { keyframes: Keyframe[]; options: KeyframeAnimationOptions }[] = []
+    ;(HTMLElement.prototype as { animate?: unknown }).animate = function (keyframes: Keyframe[], options: KeyframeAnimationOptions) {
+      calls.push({ keyframes, options })
+      return { cancel() {} }
+    }
+    // jsdom lays nothing out: the two orbs get boxes so the travel has somewhere to go.
+    const box = (el: Element, x: number, y: number, size: number) =>
+      (el.getBoundingClientRect = () => ({ left: x, top: y, width: size, height: size, right: x + size, bottom: y + size, x, y, toJSON() {} }) as DOMRect)
+    stage(false, true)
+    box(orb(), 75, -150, 240)
+    box(dockOrb()!, 16, 620, 60)
+    expect(dockOrb()!.className).toContain('size-15')
+    deliver(false)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].options.duration).toBe(TRAVEL_MS)
+    expect(calls[0].keyframes[0].transform).toBe('translate(149px, -680px) scale(4.000)')
+    expect(calls[0].keyframes.at(-1)!.transform).toBe('none')
+    deliver(true)
+    expect(calls).toHaveLength(2)
+    // Home again: it ends where the stage orb is, faded, and stays so until the dock hides.
+    expect(calls[1].keyframes.at(-1)!.transform).toBe('translate(149px, -680px) scale(4.000)')
+    expect(calls[1].options.fill).toBe('forwards')
+  })
+
+  test('reduced motion: no travel (the stylesheet cross-fades)', () => {
+    fakeIO()
+    const calls: unknown[] = []
+    ;(HTMLElement.prototype as { animate?: unknown }).animate = function () {
+      calls.push(1)
+      return { cancel() {} }
+    }
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('reduce'),
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia
+    stage(false, true)
+    deliver(false)
+    expect(isDocked()).toBe(true)
+    expect(calls).toHaveLength(0)
+    expect(indexCss).toMatch(/\.recruiter \.rc-voice-dock-panel,[\s\S]*?transition-duration: 200ms !important/)
   })
 
   test('its tap is the orb tap: idle it starts the conversation', async () => {
@@ -199,30 +290,27 @@ describe('the docked orb when the orb is off screen', () => {
     expect(document.querySelector('[data-stage="stop"]')).toBeNull()
   })
 
-  test('the page gets room at the bottom while it shows, so it covers nothing', async () => {
+  test('the page keeps room for the dock at its foot whether docked or not, so docking never moves it', async () => {
     fakeIO()
     stage(false, true)
+    const room = document.body.style.paddingBottom
+    expect(room).not.toBe('')
     deliver(false)
-    expect(document.body.style.paddingBottom).not.toBe('')
+    expect(document.body.style.paddingBottom).toBe(room)
     deliver(true)
-    expect(document.body.style.paddingBottom).toBe('')
+    expect(document.body.style.paddingBottom).toBe(room)
+    // A focused field scrolls clear of it.
+    expect(document.documentElement.style.scrollPaddingBottom).toBe(room)
   })
 
   test('a batch that ends with the orb leaving the screen docks it: the last entry wins', async () => {
     fakeIO()
     stage(true)
     deliver(true, false)
-    expect(dock()).not.toBeNull()
+    expect(isDocked()).toBe(true)
     deliver(false, true)
-    expect(dock()).toBeNull()
+    expect(isDocked()).toBe(false)
     expect(orb()).not.toBeNull()
-  })
-
-  test('a sliver of orb is not a reachable orb: it counts as seen only at half visible', () => {
-    fakeIO()
-    stage(true)
-    expect(observers.length).toBeGreaterThan(0)
-    expect(observers.every(({ options }) => options?.threshold === 0.5)).toBe(true)
   })
 })
 

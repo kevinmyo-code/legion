@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { DemoContent } from '@/api/demo'
 import { UNNAMED, useAssistant } from '@/assistant/assistant-context'
@@ -34,48 +34,109 @@ function money(usd: number | null): string {
   return usd < 0.01 ? `${(usd * 100).toFixed(2)}¢` : `$${usd.toFixed(3)}`
 }
 
-// A sliver of orb is not a reachable orb: it counts as on screen only when half of it shows.
-const ORB_SEEN: IntersectionObserverInit = { threshold: 0.5 }
-// The dock's height before it has been measured (a 48 px orb and its padding).
-const DOCK_ROOM_PX = 72
+/**
+ * When the orb docks, with a gap between the two (hysteresis): it docks once at most `DOCK_AT` of
+ * it shows and comes back once at least `UNDOCK_AT` shows, so no scroll position, and nothing the
+ * dock itself does to the page, can flip it back and forth (a toggle storm is impossible).
+ */
+export const DOCK_AT = 0.35
+export const UNDOCK_AT = 0.65
+const ORB_SEEN: IntersectionObserverInit = { threshold: [0, DOCK_AT, UNDOCK_AT, 1] }
+/** The orb's travel between the stage and the dock (transform and opacity only). */
+export const TRAVEL_MS = 300
+// The dock's height before it has been measured (a 60 px orb and its padding).
+const DOCK_ROOM_PX = 84
+
+function nextDocked(docked: boolean, shown: number): boolean {
+  return docked ? shown < UNDOCK_AT : shown <= DOCK_AT
+}
+
+/** How much of the orb shows, from an observer entry (a test's entry may carry only `isIntersecting`). */
+function shownRatio(entry: { isIntersecting: boolean; intersectionRatio?: number }): number {
+  if (!entry.isIntersecting) return 0
+  return typeof entry.intersectionRatio === 'number' ? entry.intersectionRatio : 1
+}
+
+/**
+ * The orb travels (Kevin, 2026-11-19: "the orb should like move from the location in the centre to
+ * the bottom, like flow on the screen down"): the docked orb starts where the stage orb is and
+ * settles into the dock, shrinking, while the stage orb fades out under it; back up, the reverse.
+ * Time-based (`TRAVEL_MS`), not tied to scroll progress: a transform-and-opacity animation runs on
+ * the compositor, so a mid-range phone keeps it smooth while the page scrolls, where a per-scroll
+ * JavaScript position would run on the busy main thread. Under reduced motion there is no travel:
+ * the stylesheet cross-fades the two.
+ */
+function travel(stageOrb: HTMLElement | null, dockOrb: HTMLElement | null, docking: boolean) {
+  if (!stageOrb || !dockOrb || typeof dockOrb.animate !== 'function') return
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  const from = stageOrb.getBoundingClientRect()
+  const to = dockOrb.getBoundingClientRect()
+  if (!from.width || !to.width) return
+  const dx = from.left + from.width / 2 - (to.left + to.width / 2)
+  const dy = from.top + from.height / 2 - (to.top + to.height / 2)
+  const away = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${(from.width / to.width).toFixed(3)})`
+  for (const running of dockOrb.getAnimations?.() ?? []) running.cancel()
+  dockOrb.animate(
+    docking
+      ? [{ transform: away, opacity: 0 }, { opacity: 1, offset: 0.3 }, { transform: 'none', opacity: 1 }]
+      : [{ transform: 'none', opacity: 1 }, { opacity: 1, offset: 0.7 }, { transform: away, opacity: 0 }],
+    // Back to the stage it stays faded at the end: the dock hides a moment later.
+    { duration: TRAVEL_MS, easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: docking ? 'none' : 'forwards' },
+  )
+}
 
 export function VoiceStage({ content, error }: { content?: DemoContent | null; error?: string | null }) {
   const { client, state, name } = useAssistant()
   const [draft, setDraft] = useState('')
   const [marked, setMarked] = useState(false)
-  // Whether the orb is on screen. Once the stage scrolls away, the orb docks at the bottom of the
-  // page with the status line (Kevin, 2026-11-18: "make the orb follow along at the bottom of the
-  // page as a footer"); the dock's tap is the orb's tap, in every state.
+  // Whether the orb is docked. Once the stage scrolls away, the orb travels to the foot of the page
+  // and docks there with the status line and the chips (Kevin, 2026-11-18: "make the orb follow
+  // along at the bottom of the page as a footer"); the dock's tap is the orb's tap, in every state.
   const orbRef = useRef<HTMLButtonElement>(null)
   const dockOrbRef = useRef<HTMLButtonElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
-  const [orbSeen, setOrbSeen] = useState(true)
+  const [docked, setDocked] = useState(false)
   useEffect(() => {
     const el = orbRef.current
     if (!el || typeof IntersectionObserver === 'undefined') return
     // The LAST entry is the orb's current state: a fast scroll can deliver [in, out] in one batch.
     const observer = new IntersectionObserver((entries) => {
       const latest = entries[entries.length - 1]
-      if (latest) setOrbSeen(latest.isIntersecting)
+      if (latest) setDocked((was) => nextDocked(was, shownRatio(latest)))
     }, ORB_SEEN)
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
-  // While docked, the page gets the dock's height as room at its foot, so nothing ends under it.
-  const docked = !orbSeen
+  const travelled = useRef(false)
+  useLayoutEffect(() => {
+    // Not on the first render: the page opens with the orb where it is.
+    if (!travelled.current) {
+      travelled.current = true
+      return
+    }
+    travel(orbRef.current, dockOrbRef.current, docked)
+  }, [docked])
+  // The page keeps the dock's height as room at its foot for as long as the stage is on it, docked
+  // or not: room that came and went with the dock moved the page under the visitor (the browser run,
+  // 2026-11-19). The focus scroll keeps a focused field (the typed box) above the dock too.
   useEffect(() => {
-    if (!docked) return
     const el = dockRef.current
     const room = () => {
-      document.body.style.paddingBottom = `${el?.offsetHeight || DOCK_ROOM_PX}px`
+      const px = `${el?.offsetHeight || DOCK_ROOM_PX}px`
+      document.body.style.paddingBottom = px
+      document.documentElement.style.scrollPaddingBottom = px
     }
     room()
+    const observer = typeof ResizeObserver === 'undefined' || !el ? null : new ResizeObserver(room)
+    if (el) observer?.observe(el)
     window.addEventListener('resize', room)
     return () => {
+      observer?.disconnect()
       window.removeEventListener('resize', room)
       document.body.style.paddingBottom = ''
+      document.documentElement.style.scrollPaddingBottom = ''
     }
-  }, [docked])
+  }, [])
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
   const mode = orbMode(state)
@@ -129,36 +190,46 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         aria-label={orbLabel}
         data-stage="orb"
         data-mode={mode}
-        className="aspect-square w-[min(64vw,15rem)] rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+        data-docked={docked}
+        // Docked, the orb is the dock's: this one has faded and takes no tap or tab stop.
+        tabIndex={docked ? -1 : undefined}
+        className="rc-stage-orb aspect-square w-[min(64vw,15rem)] rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
       >
         <VoiceOrb mode={mode} levels={() => client.levels()} className="block size-full" />
       </button>
-      {docked && (
-        // Its own class and an opaque background (the stage once borrowed a sticky class and
-        // stayed pinned, see-through, over the page); the safe area keeps it off a phone's bar.
-        <div
-          ref={dockRef}
-          data-stage="dock"
-          className="rc-voice-dock fixed inset-x-0 bottom-0 z-50 flex items-center gap-3 border-t bg-background px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-lg"
-        >
-          <button
-            ref={dockOrbRef}
-            type="button"
-            onClick={() => {
-              onOrb()
-              // The keyboard stays on the orb the visitor can see.
-              dockOrbRef.current?.focus({ preventScroll: true })
-            }}
-            aria-label={orbLabel}
-            data-stage="dock-orb"
-            data-mode={mode}
-            className="size-12 flex-none rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            <VoiceOrb mode={mode} levels={() => client.levels()} points={260} dot={0.7} className="block size-full" />
-          </button>
-          <p className="min-w-0 flex-1 truncate text-left text-sm font-medium">{status}</p>
+      {/* Always mounted, shown by `data-docked` (no mount or unmount as the visitor scrolls). Its
+          own class and an opaque panel (the stage once borrowed a sticky class and stayed pinned,
+          see-through, over the page); the safe area keeps it off a phone's bar. */}
+      <div
+        ref={dockRef}
+        data-stage="dock"
+        data-docked={docked}
+        aria-hidden={!docked}
+        inert={!docked}
+        className="rc-voice-dock fixed inset-x-0 bottom-0 z-50"
+      >
+        <div className="rc-voice-dock-panel" aria-hidden="true" />
+        <div className="relative mx-auto flex w-full max-w-[34rem] flex-col gap-1.5 px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+          <div className="flex items-center gap-3">
+            <button
+              ref={dockOrbRef}
+              type="button"
+              onClick={() => {
+                onOrb()
+                // The keyboard stays on the orb the visitor can see.
+                dockOrbRef.current?.focus({ preventScroll: true })
+              }}
+              aria-label={orbLabel}
+              data-stage="dock-orb"
+              data-mode={mode}
+              className="rc-dock-orb size-15 flex-none rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <VoiceOrb mode={mode} levels={() => client.levels()} points={320} dot={0.75} className="block size-full" />
+            </button>
+            <p className="rc-dock-line min-w-0 flex-1 truncate text-left text-sm font-medium">{status}</p>
+          </div>
         </div>
-      )}
+      </div>
       <p role="status" data-stage="line" className="rc-h3 min-h-[1.5em] text-lg font-semibold">
         {status}
       </p>
