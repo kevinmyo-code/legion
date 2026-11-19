@@ -41,6 +41,8 @@ export const KEY_TURN = Math.PI / 16
 export interface StageOptions {
   /** Turn slowly until the first touch. False under `prefers-reduced-motion`. */
   autoTurn: boolean
+  /** The browser took the WebGL context away (too many on the page, a GPU reset). */
+  onLost?: () => void
 }
 
 export interface Stage {
@@ -55,11 +57,17 @@ export interface Stage {
   dispose(): void
 }
 
-/** True when this browser can draw WebGL at all; asked before the chunk's work starts. */
+/**
+ * True when this browser can draw WebGL at all; asked before the chunk's work starts. The probe's
+ * context is released at once: browsers cap live contexts (about 16) and drop the oldest, which
+ * could be a viewer on screen.
+ */
 export function webglAvailable(): boolean {
   try {
     const canvas = document.createElement('canvas')
-    return Boolean(canvas.getContext('webgl2') ?? canvas.getContext('webgl'))
+    const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl')
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
+    return Boolean(gl)
   } catch {
     return false
   }
@@ -121,7 +129,20 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
   if (!webglAvailable()) throw new Error('WebGL is not available')
   const gltf = await new GLTFLoader().loadAsync(url)
 
+  const model = gltf.scene
   const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'low-power' })
+  try {
+    return build(host, renderer, model, options)
+  } catch (error) {
+    // Half-built: free what exists (the context first) before the caller shows its poster.
+    disposeTree(model)
+    renderer.forceContextLoss()
+    renderer.dispose()
+    throw error
+  }
+}
+
+function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, options: StageOptions): Stage {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderer.outputColorSpace = SRGBColorSpace
   renderer.toneMapping = ACESFilmicToneMapping
@@ -133,8 +154,10 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
   const scene = new Scene()
   scene.background = new Color(STAGE_BACKGROUND)
   const pmrem = new PMREMGenerator(renderer)
-  const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+  const room = new RoomEnvironment()
+  const environment = pmrem.fromScene(room, 0.04).texture
   pmrem.dispose()
+  disposeTree(room)
   scene.environment = environment
   scene.add(new HemisphereLight(0xffffff, 0x8a8170, 0.6))
   const key = new DirectionalLight(0xffffff, 1.2)
@@ -142,7 +165,6 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
   scene.add(key)
 
   // Centre the model on the origin and stand the camera far enough back to see all of it.
-  const model = gltf.scene
   const box = new Box3().setFromObject(model)
   const centre = box.getCenter(new Vector3())
   model.position.sub(centre)
@@ -198,6 +220,11 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
     controls.update()
     renderer.render(scene, camera)
   }
+  const lost = (event: Event) => {
+    event.preventDefault()
+    options.onLost?.()
+  }
+  canvas.addEventListener('webglcontextlost', lost)
   host.appendChild(canvas)
   frame()
   let visible = true
@@ -233,6 +260,7 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
       if (!visible) frame()
     },
     dispose() {
+      canvas.removeEventListener('webglcontextlost', lost)
       renderer.setAnimationLoop(null)
       observer?.disconnect()
       host.removeEventListener('pointerdown', holdTouch, { capture: true })
@@ -240,6 +268,8 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
       controls.dispose()
       disposeTree(model)
       environment.dispose()
+      // Hand the context back now rather than at garbage collection (the browser's cap).
+      renderer.forceContextLoss()
       renderer.dispose()
       canvas.remove()
     },

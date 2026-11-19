@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { Stage, StageOptions } from '@/components/demo/model-stage'
-import { HINT_POINTER, MODEL_FAILED, ModelViewer } from '@/components/demo/model-viewer'
+import { FAR_MARGIN, HINT_POINTER, MODEL_FAILED, ModelViewer, NEAR_MARGIN } from '@/components/demo/model-viewer'
 
 /**
  * The /try 3D model viewer, with the three.js half (`model-stage.ts`) replaced: jsdom has no
@@ -68,7 +68,7 @@ describe('ModelViewer', () => {
     const [host, url, options] = mountStage.mock.calls[0]
     expect(host).toHaveAttribute('data-state', 'ready')
     expect(url).toBe(MODEL.model)
-    expect(options).toEqual({ autoTurn: true })
+    expect(options).toMatchObject({ autoTurn: true })
     // The poster stays under the canvas: the swap never shows a blank box.
     expect(screen.getByRole('img', { name: 'Fake gadget' })).toBeInTheDocument()
     expect(screen.getByText(HINT_POINTER)).toBeInTheDocument()
@@ -84,7 +84,7 @@ describe('ModelViewer', () => {
     render(<ModelViewer model={MODEL} />)
     await comeNear()
     await screen.findByRole('button', { name: 'Reset view' })
-    expect(mountStage.mock.calls[0][2]).toEqual({ autoTurn: false })
+    expect(mountStage.mock.calls[0][2]).toMatchObject({ autoTurn: false })
   })
 
   test('no WebGL or a failed load keeps the poster, with one plain line', async () => {
@@ -151,6 +151,34 @@ describe('ModelViewer', () => {
     fireEvent.pointerDown(second, { pointerType: 'touch' })
     await waitFor(() => expect(first).toHaveAttribute('data-active', 'false'))
     expect(stages.get(MODEL.model)?.setActive).toHaveBeenLastCalledWith(false)
+  })
+
+  test('more than three screens away the 3D is freed (poster again), and it loads again when near', async () => {
+    const stage = fakeStage()
+    mountStage.mockResolvedValue(stage)
+    render(<ModelViewer model={MODEL} />)
+    await comeNear()
+    const box = screen.getByRole('group', { name: /^3D model: Fake gadget/ })
+    await waitFor(() => expect(box).toHaveAttribute('data-state', 'ready'))
+    const far = observers.find((o) => o.options?.rootMargin === FAR_MARGIN)!
+    await act(async () => far.cb([{ isIntersecting: false }]))
+    expect(stage.dispose).toHaveBeenCalledTimes(1)
+    expect(box).toHaveAttribute('data-state', 'poster')
+    const near = observers.filter((o) => o.options?.rootMargin === NEAR_MARGIN).pop()!
+    await act(async () => near.cb([{ isIntersecting: true }]))
+    await waitFor(() => expect(mountStage).toHaveBeenCalledTimes(2))
+  })
+
+  test('a lost WebGL context frees the stage and keeps the poster with its line', async () => {
+    const stage = fakeStage()
+    mountStage.mockResolvedValue(stage)
+    render(<ModelViewer model={MODEL} />)
+    await comeNear()
+    await screen.findByRole('button', { name: 'Reset view' })
+    await act(async () => mountStage.mock.calls[0][2].onLost?.())
+    expect(stage.dispose).toHaveBeenCalledTimes(1)
+    expect(screen.getByText(MODEL_FAILED)).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Fake gadget' })).toBeInTheDocument()
   })
 
   test('scrolling away hands the page back and stops drawing; unmounting frees the stage', async () => {

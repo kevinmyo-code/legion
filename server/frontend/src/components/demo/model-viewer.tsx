@@ -25,6 +25,10 @@ export const HINT_POINTER = 'Drag to turn it. Click it, then scroll to zoom.'
 
 type State = 'poster' | 'loading' | 'ready' | 'failed'
 
+/** Load when within a screen of view; unload when more than three screens away. */
+export const NEAR_MARGIN = '100% 0px'
+export const FAR_MARGIN = '300% 0px'
+
 const ARROWS: Record<string, [number, number]> = {
   ArrowLeft: [-1, 0],
   ArrowRight: [1, 0],
@@ -43,16 +47,18 @@ export function ModelViewer({ model }: { model: DemoModel3D }) {
   const [active, setActive] = useState(false)
   const [near, setNear] = useState(false)
 
-  // Near the screen (a screen's height ahead): start loading. Once.
+  // Within a screen of view: load. More than three screens away: unload (the GPU memory and the
+  // WebGL context go back; browsers cap live contexts), back to the poster until it nears again.
   useEffect(() => {
     const element = box.current
-    if (!element || near || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) setNear(true)
-      },
-      { rootMargin: '100% 0px' },
-    )
+    if (!element || typeof IntersectionObserver === 'undefined') return
+    const observer = near
+      ? new IntersectionObserver((entries) => entries.every((e) => !e.isIntersecting) && setNear(false), {
+          rootMargin: FAR_MARGIN,
+        })
+      : new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setNear(true), {
+          rootMargin: NEAR_MARGIN,
+        })
     observer.observe(element)
     return () => observer.disconnect()
   }, [near])
@@ -62,9 +68,16 @@ export function ModelViewer({ model }: { model: DemoModel3D }) {
     if (!near || !element) return
     let cancelled = false
     setState('loading')
+    const onLost = () => {
+      if (cancelled) return
+      stage.current?.dispose()
+      stage.current = null
+      setActive(false)
+      setState('failed')
+    }
     import('@/components/demo/model-stage')
       .then(({ mountStage }) =>
-        mountStage(element, model.model, { autoTurn: !matches('(prefers-reduced-motion: reduce)') }),
+        mountStage(element, model.model, { autoTurn: !matches('(prefers-reduced-motion: reduce)'), onLost }),
       )
       .then((mounted) => {
         if (cancelled) {
@@ -81,6 +94,8 @@ export function ModelViewer({ model }: { model: DemoModel3D }) {
       cancelled = true
       stage.current?.dispose()
       stage.current = null
+      setActive(false)
+      setState((was) => (was === 'failed' ? was : 'poster'))
     }
   }, [near, model.model])
 
