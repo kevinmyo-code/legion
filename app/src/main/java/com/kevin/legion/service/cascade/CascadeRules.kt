@@ -387,7 +387,12 @@ object ScriptedLines {
         // A phrase whose own field is missing (an older result shape) falls to the generic line.
         // A switch that moved this drive's live readings to the car says so (`rebound`, the adapter's field).
         val rebound = key == "switch" && response.optBoolean("rebound", false)
-        val own = if (rebound) REBOUND else key?.let { PHRASES.getValue(it) }
+        val undone = key == "complete_task" && !response.optBoolean("done", true)
+        val own = when {
+            rebound -> REBOUND
+            undone -> "marked %s not done"
+            else -> key?.let { PHRASES.getValue(it) }
+        }
         val phrase = own?.takeUnless { key in TITLE_KEYS_FOR && title.isEmpty() }
         val router = name.startsWith(ROUTER_PREFIX)
         return WriteFact(
@@ -418,7 +423,7 @@ object ScriptedLines {
         val said = facts.filter { it.said }
         val done = said.filter { it.phrase != null }.map { f ->
             val to = if (f.list.isNotEmpty() && f.phrase!!.startsWith("added")) " to ${f.list}" else ""
-            f.phrase!!.format(f.title.ifEmpty { "it" }) + to
+            (if (f.title.isEmpty()) NO_TITLE[f.phrase] ?: f.phrase!!.format("it") else f.phrase!!.format(f.title)) + to
         }
         val generic = said.any { it.phrase == null }
         val unsure = facts.filter { it.unconfirmed }
@@ -509,6 +514,9 @@ object ScriptedLines {
         "start_voice_note" to "started a voice note", "stop_voice_note" to "stopped the voice note",
         "tag_place" to "saved %s", "undo_last_log" to "undid %s",
     )
+
+    /** A phrase whose result named nothing, where "<verb> it" would read wrong. */
+    private val NO_TITLE: Map<String, String> = mapOf("ticked off %s" to "ticked it off")
 
     /** A switch that rebound the live connection: this drive's readings now go under the car. */
     private const val REBOUND = "this drive now goes under %s"

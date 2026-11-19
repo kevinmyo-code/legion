@@ -220,7 +220,8 @@ class VoiceEvalOfflineTest {
             text("Anything else?"),
         )
         val heard = lines.single { it.startsWith("LIVE_TEST heard text=") }
-        assertTrue(heard, heard.startsWith("LIVE_TEST heard text=\"Done: added ") && heard.endsWith(" Anything else?\""))
+        // The item and its list come from the result's own fields (eval 2026-11-19 heard "Done: added it.").
+        assertTrue(heard, heard.startsWith("LIVE_TEST heard text=\"Done: added mail the form to ") && heard.endsWith(" Anything else?\""))
         val voice = lines.single { it.startsWith("LIVE_TEST tts text=") }
         assertTrue(voice, voice.contains("Done: added "))
     }
