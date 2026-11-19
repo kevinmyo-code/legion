@@ -22,6 +22,16 @@ _PUBLIC_FIRST = migrations.RunSQL(
     reverse_sql="SET search_path TO django, public;",
 )
 
+# The new keys lock household_devicetoken, household_user and household_household (SHARE ROW
+# EXCLUSIVE) and the widened CHECK locks agents_turn (ACCESS EXCLUSIVE) until commit. If another
+# session holds one of them, give up after 5 s instead of queueing every token request behind this
+# migration. SET LOCAL lasts until the migration's own transaction ends; a timeout rolls the whole
+# migration back (Postgres DDL is transactional) and the boot step exits non-zero.
+_LOCK_TIMEOUT = migrations.RunSQL(
+    sql="SET LOCAL lock_timeout = '5s';",
+    reverse_sql="SET LOCAL lock_timeout = '5s';",
+)
+
 _DJANGO_FIRST = migrations.RunSQL(
     sql="SET search_path TO django, public;",
     reverse_sql="SET search_path TO public, django;",
@@ -52,6 +62,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        _LOCK_TIMEOUT,
         _PUBLIC_FIRST,
         migrations.CreateModel(
             name="Limb",
