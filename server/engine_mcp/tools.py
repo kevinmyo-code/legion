@@ -1826,10 +1826,18 @@ _MONTH = {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$"}
 
 
 def _month_arg(args) -> str | None:
-    """`month` as YYYY-MM; a full date gives its month. The schema has already refused any other
-    shape."""
+    """`month` as YYYY-MM; a real full date gives its month. A date that does not exist
+    ("2026-02-31") is passed on as written, so the month parser refuses it in words."""
+    import datetime as dt
+
     raw = args.get("month")
-    return raw[:7] if isinstance(raw, str) and len(raw) == 10 else raw
+    if isinstance(raw, str) and len(raw) == 10:
+        try:
+            dt.date.fromisoformat(raw)
+        except ValueError:
+            return raw
+        return raw[:7]
+    return raw
 
 
 def _monthly_spend(request, args) -> ToolResult:

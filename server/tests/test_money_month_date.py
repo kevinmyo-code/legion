@@ -50,3 +50,11 @@ def test_the_recorded_turn_takes_one_lookup(member, engine):
     events = _events(_post(member, text="What did we spend last month?"))
     tools = _of(events, "tool")
     assert [(t["name"], t["ok"]) for t in tools] == [("monthly_spend", True)]
+
+
+@pytest.mark.parametrize("tool", MONTH_TOOLS)
+@pytest.mark.parametrize("impossible", ["2026-02-31", "2026-10-99", "2026-13-01"])
+def test_a_date_that_does_not_exist_is_refused_in_words(household_user, tool, impossible):
+    response = _tool(browser(household_user), tool, {"month": impossible})
+    assert response.data["is_error"] is True
+    assert impossible in response.data["text"]
