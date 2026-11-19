@@ -1,6 +1,8 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.service.LiveToolbox
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,6 +30,9 @@ class CascadeWritesTest {
     fun `a base tool keeps its own verdict, and its added read action is a read`() {
         assertTrue(CascadeRules.isWrite("manage_item", call("action" to "add", "text" to "invented")))
         assertFalse(CascadeRules.isWrite("manage_item", call("action" to "read_list")))
+        // 2026-11-19: a mixed tool's read action is no write (it was counted done before).
+        assertFalse(CascadeRules.isWrite("manage_checklist", call("action" to "read", "list" to "invented")))
+        assertTrue(CascadeRules.isWrite("manage_checklist", call("action" to "add", "list" to "invented")))
     }
 
     @Test
@@ -38,5 +43,34 @@ class CascadeWritesTest {
         assertTrue(CascadeRules.isWrite("ask", record))
         assertFalse(CascadeRules.isWrite("look_up", call("domain" to "ask_money", "question" to "invented")))
         assertFalse(CascadeRules.isWrite("end_conversation", call()))
+    }
+
+    /**
+     * 2026-11-19: every write the surface offers says something a person would call done, by a
+     * phrase, by the generic line, or by nothing on purpose ([ScriptedLines.SILENT]). This lists the
+     * writes that fall to the generic line, so a new write is a decision, never "did it".
+     */
+    @Test
+    fun `every write on the surface has a phrase, the generic line, or is silent on purpose`() {
+        val all = LiveToolbox.allDeclarations()
+        val generic = sortedSetOf<String>()
+        for (i in 0 until all.length()) {
+            val d = all.getJSONObject(i)
+            val name = d.getString("name")
+            val actions = d.optJSONObject("parameters")?.optJSONObject("properties")?.optJSONObject("action")
+                ?.optJSONArray("enum")?.let { e -> (0 until e.length()).map { e.getString(it) } } ?: listOf("")
+            for (action in actions) {
+                if (!CascadeRules.isWrite(name, call("action" to action))) continue
+                val f = ScriptedLines.writeFact(name, action, JSONObject().put("success", true).put("vehicle", "x").put("title", "x").put("to", "x"), ok = true)
+                if (f.silent) continue
+                if (f.phrase == null) generic += if (action.isEmpty()) name else "$name/$action"
+            }
+        }
+        assertEquals(GENERIC_WRITES, generic.toList())
+    }
+
+    private companion object {
+        /** Writes said as "That change went through.": no phrase fits them yet (reviewed 2026-11-19). */
+        val GENERIC_WRITES = listOf<String>()
     }
 }

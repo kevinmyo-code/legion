@@ -327,8 +327,6 @@ class CascadeRulesTest {
         // A failed write is said as failed.
         val failed = fact("complete_task", "", """{"success":false,"message":"Which one?","title":"essay"}""", ok = false)
         assertEquals("Essay didn't go through.", ScriptedLines.doneLine(listOf(failed)))
-        // Already said aloud before the interrupt: not repeated.
-        assertNull(ScriptedLines.doneLine(listOf(milk), alreadySaid = "Added milk to your groceries"))
         // No title in the result: the phrase alone; never the message, never a "?".
         val bare = fact("complete_task", "", """{"success":true,"message":"Marked. Want another?"}""")
         assertEquals("Done: marked it done.", ScriptedLines.doneLine(listOf(bare)))
@@ -340,13 +338,48 @@ class CascadeRulesTest {
     }
 
     @Test
+    fun `every completed write is said from its result, never dropped unsaid, never a false done`() {
+        fun fact(name: String, action: String, result: String, ok: Boolean = true) =
+            ScriptedLines.writeFact(name, action, JSONObject(result), ok)
+        // The car switch names the car the result names (fields the adapter branch adds), or says the generic line.
+        val switched = fact("manage_vehicle", "switch", """{"success":true,"changed":true,"vehicle":"Invented Fit","message":"x"}""")
+        assertEquals("Done: switched to Invented Fit.", ScriptedLines.doneLine(listOf(switched)))
+        val oldShape = fact("manage_vehicle", "switch", """{"success":true,"message":"You are on the Invented Fit now."}""")
+        assertEquals(ScriptedLines.GENERIC_DONE, ScriptedLines.doneLine(listOf(oldShape)))
+        // Already the selected car / already the goal: nothing changed, nothing is said.
+        val same = fact("manage_vehicle", "switch", """{"success":true,"changed":false,"vehicle":"Invented Fit"}""")
+        assertNull(ScriptedLines.doneLine(listOf(same)))
+        val goal = fact("set_goal", "", """{"success":true,"changed":false,"message":"already"}""")
+        assertNull(ScriptedLines.doneLine(listOf(goal)))
+        // A proposal is not a change he would call done.
+        assertNull(ScriptedLines.doneLine(listOf(fact("generate_goal_plan", "", """{"success":true}"""))))
+        // A write with no phrase (the engine bridge: success and a message only) gets the generic line.
+        val bridged = fact("ask_engine", "", """{"success":true,"message":"Logged it on the engine."}""")
+        assertEquals(ScriptedLines.GENERIC_DONE, ScriptedLines.doneLine(listOf(bridged)))
+        val milk = fact("manage_item", "add", """{"item":"milk","list":"Groceries"}""")
+        assertEquals("Done: added milk to Groceries. That change went through.", ScriptedLines.doneLine(listOf(milk, bridged)))
+        // Two identical writes are two facts.
+        assertEquals("Done: added milk to Groceries; added milk to Groceries.", ScriptedLines.doneLine(listOf(milk, fact("manage_item", "add", """{"item":"milk","list":"Groceries"}"""))))
+        // Past 80 characters the rest is counted, not dropped.
+        val many = (1..6).map { fact("manage_item", "add", """{"item":"thing $it"}""") }
+        val line = ScriptedLines.doneLine(many)!!
+        assertTrue(line, line.length <= ScriptedLines.MAX_DONE_CHARS)
+        val clauses = line.removePrefix("Done: ").removeSuffix(".").split("; ")
+        val counted = clauses.last().let { Regex("and ([0-9]+) more").find(it)?.groupValues?.get(1)?.toInt() } ?: 0
+        assertEquals(6, clauses.count { it.startsWith("added") } + counted)
+        // Long titles with several writes still fit.
+        val long = (1..3).map { fact("manage_item", "add", """{"item":"invented item number $it with a very long name indeed","list":"Groceries"}""") }
+        assertTrue(ScriptedLines.doneLine(long)!!.length <= ScriptedLines.MAX_DONE_CHARS)
+    }
+
+    @Test
     fun `the stop path says the stopped turn's writes from their facts, then the tone`() {
         val s = java.io.File(sourceRootForRules(), "service/cascade/CascadeSession.kt").readText()
         val end = s.substring(s.indexOf("private suspend fun endByStop("), s.indexOf("private fun verdictOf("))
-        assertTrue(end.contains("ScriptedLines.doneLine(unheardWrites, unheardSaid)"))
+        assertTrue(end.contains("ScriptedLines.doneLine(unheardWrites)"))
         assertTrue("said before the tone", end.indexOf("reply.say(done)") in 0 until end.indexOf("endByVoice()"))
         assertTrue("facts, never the message", s.contains("ScriptedLines.writeFact(r.name, r.args.optString(\"action\"), response, ok = writeDone)"))
-        assertTrue("what he heard is kept", s.contains("unheardSaid = reply.spoken()"))
+        assertFalse("never reads what was said to decide", s.contains("unheardSaid"))
     }
 
     private fun sourceRootForRules(): java.io.File {

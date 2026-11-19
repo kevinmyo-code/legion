@@ -293,9 +293,6 @@ internal class CascadeSession(
     /** The writes a stopped turn finished before he could hear them ([ScriptedLines.doneLine]). */
     @Volatile private var unheardWrites: List<ScriptedLines.WriteFact> = emptyList()
 
-    /** What of that stopped turn's reply he did hear (a write it confirmed is not said twice). */
-    @Volatile private var unheardSaid: String = ""
-
     /** Transcripts of noise in a row ([SttGuard.NOISE]): silent, but capped ([MAX_NOISE_IN_A_ROW]). */
     private var noiseInARow = 0
 
@@ -1252,10 +1249,7 @@ internal class CascadeSession(
             withContext(NonCancellable) {
                 reply.interrupt()
                 // A write that finished under a stop is said before the tone ([endByStop]).
-                if (record.fromUser) {
-                    unheardWrites = synchronized(record) { record.writeFacts.toList() }
-                    unheardSaid = reply.spoken()
-                }
+                if (record.fromUser) unheardWrites = synchronized(record) { record.writeFacts.toList() }
                 if (!record.merged && (carry.isBlank() || record.toolsRan.isNotEmpty())) {
                     recordTurn(heard, withWrites(reply.spoken(), record), record.readThrough, seq, record.fromUser)
                 }
@@ -1448,9 +1442,8 @@ internal class CascadeSession(
     private suspend fun endByStop(u: TurnUtterance, words: String) {
         discardDraftOf(u, "not_answered")
         carry = ""
-        val done = ScriptedLines.doneLine(unheardWrites, unheardSaid)
+        val done = ScriptedLines.doneLine(unheardWrites)
         unheardWrites = emptyList()
-        unheardSaid = ""
         recordTurn(words, done.orEmpty())
         if (done != null && backend != null && player != null) {
             val reply = newSpeaker(null)

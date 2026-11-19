@@ -3314,7 +3314,9 @@ object LiveToolbox {
                 true,
                 "Updated the ${aspectLabel(aspect)} goal: $statement. Previous: \"${outcome.previous.statement}\".",
             )
-            is GoalController.SetOutcome.Unchanged -> result(true, "That's already the current ${aspectLabel(aspect)} goal - nothing changed.")
+            // `changed: false`: nothing to confirm aloud (the phone's done line reads this field, 2026-11-19).
+            is GoalController.SetOutcome.Unchanged ->
+                result(true, "That's already the current ${aspectLabel(aspect)} goal - nothing changed.").put("changed", false)
         }
     }
 

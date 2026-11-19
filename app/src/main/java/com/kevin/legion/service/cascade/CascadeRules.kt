@@ -6,6 +6,7 @@ import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextChatEngine
 import com.kevin.legion.service.checkin.ClosingLines
 import com.kevin.legion.service.tools.LiveSurface
+import com.kevin.legion.service.tools.ToolReads
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.TurnConfig
@@ -88,7 +89,11 @@ internal object CascadeRules {
      * action tool's write never reached `writesDone` (nor the "already done" note after an interrupt).
      */
     fun isWrite(name: String, args: JSONObject): Boolean =
-        LiveSurface.resolve(name, args).let { LiveToolbox.isMutatingCall(it.name, it.args) }
+        LiveSurface.resolve(name, args).let {
+            // 2026-11-19: a mixed tool's read action (manage_checklist read) is no write, so it is
+            // never counted done nor confirmed aloud ([ToolReads] is the one read list).
+            LiveToolbox.isMutatingCall(it.name, it.args) && !ToolReads.isRead(it.name, it.args)
+        }
 
     /**
      * A call that reads outside text (ADR 0090, CLAUDE.md §7), judged on the tool it stands for,
@@ -339,49 +344,76 @@ internal object ScriptedLines {
 
     /**
      * One write a turn made, as facts (never the tool's message, which is written for the model):
-     * the fixed phrase for what was done, the item's title and list from the result's structured
-     * fields, and whether it went through.
+     * the fixed phrase for what was done (null: no phrase, the generic line is said), the item's
+     * title and list from the result's structured fields, whether it went through, and whether it
+     * changed anything (a result's own `changed: false`, e.g. the car that was already selected).
+     * A class, not a data class: two identical writes are two facts, owed and played one by one.
      */
-    data class WriteFact(val phrase: String, val title: String, val list: String, val ok: Boolean)
+    class WriteFact(
+        val phrase: String?,
+        val title: String,
+        val list: String,
+        val ok: Boolean,
+        val changed: Boolean = true,
+        /** A write that is said by nobody's line: a proposal ([SILENT]). */
+        val silent: Boolean = false,
+    ) {
+        /** What code says for it when it went through: a phrase, the generic line, or nothing. */
+        val said: Boolean get() = ok && changed && !silent
+    }
 
-    /** [response] of the write [name] / [action] as a [WriteFact]; [ok] is the loop's success flag. */
-    fun writeFact(name: String, action: String, response: org.json.JSONObject, ok: Boolean): WriteFact =
-        WriteFact(
-            phrase = DONE_PHRASES[action] ?: DONE_PHRASES[name] ?: "did %s",
-            title = field(response, TITLE_KEYS).take(MAX_TITLE),
+    /** [response] of the write [name] / [action] (resolved) as a [WriteFact]; [ok] is the loop's success flag. */
+    fun writeFact(name: String, action: String, response: org.json.JSONObject, ok: Boolean): WriteFact {
+        val key = action.takeIf { it in PHRASES } ?: name.takeIf { it in PHRASES }
+        val titleKeys = TITLE_KEYS_FOR[key] ?: TITLE_KEYS
+        val title = field(response, titleKeys).take(MAX_TITLE)
+        // A phrase whose own field is missing (an older result shape) falls to the generic line.
+        val phrase = key?.let { PHRASES.getValue(it) }?.takeUnless { key in TITLE_KEYS_FOR && title.isEmpty() }
+        return WriteFact(
+            phrase = phrase,
+            title = title,
             list = field(response, listOf("list")).take(MAX_TITLE),
             ok = ok,
+            changed = response.optBoolean("changed", true),
+            silent = name in SILENT || "$name/$action" in SILENT,
         )
+    }
 
     /**
-     * What he hears before the tone when a stop cut off a turn whose writes had already run
-     * (2026-11-18 review r2 N3): "Done: added milk to Groceries." Built here from [facts]; a clause per
-     * write, at most [MAX_DONE_CHARS] characters, never a question. A write that failed is "<thing>
-     * didn't go through."; one whose title the reply already said aloud ([alreadySaid]) is not repeated.
-     * Null when there is nothing to say.
+     * What code says for [facts] (2026-11-19: every completed write is said by code, from its
+     * result, never by reading the model's words): "Done: added milk to Groceries." A clause per
+     * phrased write, at most [MAX_DONE_CHARS] characters, the rest counted ("; and 2 more"); a write
+     * with no phrase is "That change went through."; one that failed is "<thing> didn't go through."
+     * Never a question. Null when there is nothing to say.
      */
-    fun doneLine(facts: List<WriteFact>, alreadySaid: String = ""): String? {
-        val said = alreadySaid.lowercase()
-        val fresh = facts.filterNot { it.ok && it.title.isNotEmpty() && said.contains(it.title.lowercase()) }
-        val done = fresh.filter { it.ok }.map { f ->
-            val to = if (f.list.isNotEmpty() && f.phrase.startsWith("added")) " to ${f.list}" else ""
-            f.phrase.format(f.title.ifEmpty { "it" }) + to
+    fun doneLine(facts: List<WriteFact>): String? {
+        val said = facts.filter { it.said }
+        val done = said.filter { it.phrase != null }.map { f ->
+            val to = if (f.list.isNotEmpty() && f.phrase!!.startsWith("added")) " to ${f.list}" else ""
+            f.phrase!!.format(f.title.ifEmpty { "it" }) + to
         }
-        val failed = fresh.filterNot { it.ok }.map { f ->
+        val generic = said.any { it.phrase == null }
+        val failed = facts.filterNot { it.ok }.map { f ->
             f.title.ifEmpty { "That change" }.replaceFirstChar { it.uppercase() } + " didn't go through."
         }
-        // Clause by clause while it fits: a run of writes is cut at a clause; only a first clause too
-        // long on its own is trimmed.
-        var kept = done.take(1).map { it.take(MAX_DONE_CHARS - "Done: .".length) }
+        // Clause by clause while it fits; the rest is counted, never dropped unsaid. Only a first
+        // clause too long on its own is trimmed.
+        val room = MAX_DONE_CHARS - (if (done.size > 1) "Done: ; and 99 more." else "Done: .").length
+        var kept = done.take(1).map { it.take(room) }
         for (c in done.drop(1)) {
-            if (doneText(kept + c).length <= MAX_DONE_CHARS) kept = kept + c
+            val rest = done.size - kept.size - 1
+            val tail = if (rest > 0) listOf("and $rest more") else emptyList()
+            if (doneText(kept + c + tail).length <= MAX_DONE_CHARS) kept = kept + c else break
         }
-        var line = if (kept.isEmpty()) "" else doneText(kept)
+        val more = done.size - kept.size
+        val parts = mutableListOf<String>()
+        if (kept.isNotEmpty()) parts += doneText(kept + listOfNotNull("and $more more".takeIf { more > 0 }))
+        if (generic) parts += GENERIC_DONE
+        // A failure is the model's to say in a turn that ran on; here (a stop) only while it fits.
         for (f in failed) {
-            val next = if (line.isEmpty()) f else "$line $f"
-            if (next.length <= MAX_DONE_CHARS) line = next
+            if ((parts + f).joinToString(" ").length <= MAX_DONE_CHARS) parts += f
         }
-        return line.replace("?", "").ifEmpty { null }
+        return parts.joinToString(" ").replace("?", "").ifEmpty { null }
     }
 
     private fun doneText(clauses: List<String>) = "Done: " + clauses.joinToString("; ") + "."
@@ -407,13 +439,49 @@ internal object ScriptedLines {
     private const val MAX_TITLE = 40
     const val MAX_DONE_CHARS = 80
 
-    /** A fixed phrase per write action or tool; `%s` is the item's title. */
-    private val DONE_PHRASES = mapOf(
+    /** Said for a write that went through and has no phrase of its own (the engine's CHANGE_MADE). */
+    const val GENERIC_DONE = "That change went through."
+
+    /**
+     * A fixed phrase per write action or tool (resolved names); `%s` is the item's title. A write
+     * not here gets [GENERIC_DONE] (`CascadeWritesTest` lists every write the surface offers, so a
+     * new one is a decision, not a silent fallback).
+     */
+    val PHRASES: Map<String, String> = mapOf(
         "add" to "added %s", "remove" to "removed %s", "tick" to "ticked off %s", "untick" to "unticked %s",
         "schedule" to "scheduled %s", "skip" to "skipped %s", "create" to "created %s", "set" to "set %s",
         "log" to "logged %s", "remember" to "saved %s", "forget" to "forgot %s", "clear_ticked" to "cleared %s",
         "complete_task" to "marked %s done", "set_reminder" to "set a reminder for %s",
+        // The car switch says the car the result names (`vehicle`), never the model's words for it.
+        "switch" to "switched to %s",
+        "archive" to "archived %s", "unarchive" to "brought back %s", "correct" to "updated %s",
+        "rename" to "renamed %s", "draft" to "drafted an email to %s", "send" to "sent the email to %s",
+        // Tools that are one write each, by name.
+        "accept_goal_plan" to "accepted the plan", "accept_proposal" to "accepted %s",
+        "activate_garage" to "pressed the garage button", "categorize_transactions" to "categorized the transactions",
+        "clear_pending_transaction" to "cleared %s", "close_goal" to "closed %s", "forget_place" to "forgot %s",
+        "log_bodyweight" to "logged your weight", "log_build_entry" to "logged %s", "log_meal" to "logged %s",
+        "log_past_service" to "logged %s", "log_pending_transaction" to "logged %s", "log_service" to "logged %s",
+        "log_sleep" to "logged your sleep", "log_workout_set" to "logged %s", "register_vehicle" to "saved %s",
+        "rename_place" to "renamed %s", "set_budget" to "set the budget", "set_category" to "categorized %s",
+        "set_goal" to "set %s", "set_maintenance_interval" to "set %s", "set_meal_target" to "set your meal target",
+        "set_odometer" to "set the odometer", "set_sleep_target" to "set your sleep target",
+        "start_voice_note" to "started a voice note", "stop_voice_note" to "stopped the voice note",
+        "tag_place" to "saved %s", "undo_last_log" to "undid %s",
     )
+
+    /** A phrase that may only be said with its own result field; without it, the generic line. */
+    private val TITLE_KEYS_FOR: Map<String, List<String>> = mapOf(
+        "switch" to listOf("vehicle"),
+        // The draft and the send name who it is to, from the result's own `to`.
+        "draft" to listOf("to"), "send" to listOf("to"),
+    )
+
+    /**
+     * Writes no line is said for, by tool or tool/action: a proposal that changes nothing he would
+     * call done, and opening a draft on screen.
+     */
+    val SILENT: Set<String> = setOf("generate_goal_plan", "email/open")
 
     /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
     val KEEP: Set<String> =
