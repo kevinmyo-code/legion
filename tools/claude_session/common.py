@@ -57,6 +57,9 @@ class Paths:
         self.settings = self.root / "worker-settings.json"
         self.pid = self.root / "session.pid"
         self.lock = self.root / "worker.lock"
+        # Kevin's list of projects a helper may push a side branch to and open a PR on
+        # (project_prs.py). Outside the work folder: a helper can never add to it.
+        self.projects = self.root / "projects.json"
         # Ship history (alfred-builds tickets 03 and 05): one JSON line per ship or undo.
         self.ships = self.work / "ships.jsonl"
         # Kevin's private worker skills: his files, not scratch (the ask-list hook asks).

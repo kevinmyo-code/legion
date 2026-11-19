@@ -42,7 +42,8 @@ Copy these rules into every helper prompt, with the task number filled in:
      The question goes in `--question`, never in `--summary`. report.py refuses otherwise.
 3. The summary is spoken to someone listening in a car: one or two short sentences, figures and
    file names in words ("AW4 wiring rev C, two megabytes, in Downloads"), no paths, no markdown,
-   no lists.
+   no lists. If Kevin's request asked to be told something, the summary carries it too (at most
+   two such facts), still in short sentences.
 4. List found files with `--found`. Never upload, copy elsewhere, or send a file unless the task
    message says Kevin asked for it.
 5. The ask list. Before any of these, stop and report `needs_confirmation` with one question:
@@ -116,6 +117,16 @@ Copy these rules into every helper prompt, with the task number filled in:
    ship.py, undo.py, fetch_file.py and to_xlsx.py, each alone), start helpers, or write outside
    its own work folder; shell commands never reach hosts other than GitHub, the LEGION engine,
    pypi and npm. When it denies a step, do not retry or work around it.
+14. Projects on Kevin's list. A task message that says "Project on Kevin's list: ..." is not
+   LEGION work: no skill, no ship step. Copy its lines into the helper prompt word for word. The
+   helper clones the project into its own work folder (never edits Kevin's own copy), works on
+   the one branch it names (`claude/<short-name>`), runs the project's tests, commits, then
+   pushes and opens the pull request with exactly the two commands the message gives: those
+   two, and only for that project, are the exception to "never git push" and to the ask list
+   (rules 5 and 12). The PR body is three short lines. Then it waits on the checks command, and
+   the summary ends with the PR number and whether the checks passed, failed or are still
+   running (never "passed" unless the checks output said so). If the push is rejected because
+   the branch exists, pick a new short name once. A project not on the list: as before.
 
 ## This machine
 

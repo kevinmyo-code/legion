@@ -53,6 +53,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
 import containment as C  # noqa: E402
+import project_prs as PP  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -443,8 +444,10 @@ def _in_checkout(target: str, own_work: Path) -> bool:
     return False
 
 
-def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict) -> str | None:
-    """The read-through source this call is, or None."""
+def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict,
+            project_pr: bool = False) -> str | None:
+    """The read-through source this call is, or None. An allowed project `gh pr create` is not
+    one: it sends, and what it prints back is the new PR's address."""
     if tool.startswith(C.GMAIL_PREFIX):
         return "gmail"
     if tool in C.WEB_TOOLS:
@@ -457,13 +460,13 @@ def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict) -> st
         command = inp.get("command", "") or ""
         if _is_our_lone_script(command, "fetch_file.py"):
             return "fetch_file"
-        if C.fetches(command):
+        if C.fetches(command) and not project_pr:
             return "shell_fetch"
     return None
 
 
 def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
-                 now: float) -> tuple[dict | None, str, bool]:
+                 now: float, project_pr: bool = False) -> tuple[dict | None, str, bool]:
     """(hook output, rule, final). `final` skips the other rules (a read source that passed)."""
     tool = event.get("tool_name", "")
     inp = event.get("tool_input") or {}
@@ -519,7 +522,7 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
                 except OSError:
                     return _deny(C.MARK_FAILED_REASON), "net script", True
 
-    source = _source(tool, inp, cwd, paths, trec, cfg)
+    source = _source(tool, inp, cwd, paths, trec, cfg, project_pr)
     if source:
         if not agent:
             return _deny(C.MAIN_SOURCE_REASON), "main window", True
@@ -550,7 +553,9 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
         if out:
             return out, "scope"
 
-    out, rule, final = _containment(event, paths, cfg, task, now)
+    project = _project_verdict(event, paths, task)
+    out, rule, final = _containment(event, paths, cfg, task, now, project_pr=bool(
+        project and project.decision == "allow" and project.kind == "pr"))
     if out or final:
         return out, rule
 
@@ -570,6 +575,10 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
 
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
+        if project:  # a push or PR for a task tied to a project on Kevin's list (project_prs.py)
+            if project.decision == "allow":
+                return None, f"project {project.kind}"
+            return _deny(project.reason), "project"
         if _is_lone_report(command):
             return None, ""
         if any(_is_our_lone_script(command, s) for s in SHIP_SCRIPTS):
@@ -603,6 +612,21 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
                 return None, "confirmed"
             return _deny(_ask_reason(label)), label
     return None, ""
+
+
+def _project_verdict(event: dict, paths: Paths, task: int | None) -> "PP.Verdict | None":
+    """Only for a task the worker tied to a project still on the list; None otherwise, and then
+    nothing here runs git or changes any rule."""
+    if task is None or event.get("tool_name") not in SHELL_TOOLS:
+        return None
+    trec = ((read_json(paths.state, {}) or {}).get("tasks") or {}).get(str(task))
+    bound = trec.get("project") if isinstance(trec, dict) else None
+    if not bound:
+        return None
+    project = PP.by_repo(PP.load(paths.projects), bound)
+    return PP.judge((event.get("tool_input") or {}).get("command", "") or "",
+                    tool=event.get("tool_name", ""), own_work=paths.task_work(task),
+                    project=project, facts_for=PP.gather)
 
 
 def _log(paths: Paths, tool: str, decision: str, rule: str, agent: str | None) -> None:

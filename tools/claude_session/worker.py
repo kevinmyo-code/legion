@@ -53,6 +53,7 @@ from common import (DELIVER_EMAIL_SELF, DELIVER_FILES, DELIVER_PHONE, FILES_MAX_
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
 import containment  # noqa: E402
+import project_prs  # noqa: E402
 import health as hl  # noqa: E402
 import warm_worktree  # noqa: E402
 import workflows as wfl  # noqa: E402
@@ -1039,6 +1040,7 @@ class Worker:
              "params": task.get("params"),
              # Containment: files or folders this task marks untrusted (reading one taints it).
              "untrusted": [str(x) for x in (task.get("untrusted") or []) if isinstance(x, str)][:50]}
+        t["project"] = self.project_for(t)
         self.state["tasks"][str(tid)] = t
         self.dirty = True
         if (t.get("origin") == ORIGIN_SCHEDULE and not parent
@@ -1056,6 +1058,15 @@ class Worker:
                 return
         self.pending.append((tid, self.task_message(t, work)))
         log.info("task %s claimed%s", tid, f" (follow-up to {parent})" if parent else "")
+
+    def project_for(self, t: dict) -> str | None:
+        """The project on Kevin's list this task works on (project_prs.py): the ask-list hook lets
+        its helper push a side branch and open a PR there, and nowhere else."""
+        if self.scope != "full" or t["kind"] in (KIND_WORKFLOW, KIND_MEMORY_REVIEW):
+            return None
+        parent = self._task(t["parent"]) if t.get("parent") else None
+        return project_prs.project_for(t["request"], (parent or {}).get("project"),
+                                       project_prs.load(self.paths.projects))
 
     def workflow_lines(self, t: dict, work: Path) -> list[str]:
         """Ticket 05: what a workflow task's message adds. The skill is always the workflow's own;
@@ -1191,6 +1202,9 @@ class Worker:
             else:  # the engine refuses this; held here too (ruling 5)
                 lines.append("Kevin asked for files on his phone, but this laptop returns "
                              "summaries only. Say so in the summary.")
+        project = project_prs.by_repo(project_prs.load(self.paths.projects), t.get("project"))
+        if project:
+            lines.extend(project_prs.task_lines(project, work))
         lines.append(f"Work folder: {work}")
         return "\n".join(lines)
 

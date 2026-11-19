@@ -340,6 +340,29 @@ class TestTasks(WorkerCase):
         self.assertIn("returns summaries only", msg)
         self.assertNotIn("--found", msg)
 
+    def test_a_task_naming_a_listed_project_is_tied_to_it(self):
+        """Project PRs (project_prs.py): made-up project; no list, no tie and no extra lines."""
+        w = W.Worker(self.paths, {**self.cfg, "scope": "full"},
+                     engine=EngineClient(self.engine.url, TOKEN), power=NoPower(), base_env=self.env)
+        t = {"id": 71, "request": "have Claude add a flag to the widget repo", "kind": "ask"}
+        self.assertIsNone(w.project_for(t))
+        write_json_atomic(self.paths.projects, {"widgets": {
+            "spoken": ["widget repo"], "repo": "acme-dev/widgets", "allow_pr": True}})
+        t["project"] = w.project_for(t)
+        self.assertEqual(t["project"], "acme-dev/widgets")
+        msg = w.task_message(t, self.paths.task_work(71))
+        self.assertIn("Project on Kevin's list: widgets", msg)
+        self.assertIn("gh pr create --repo acme-dev/widgets", msg)
+        w.state["tasks"]["71"] = t
+        self.assertEqual(w.project_for({"id": 72, "parent": 71, "request": "yes", "kind": "ask"}),
+                         "acme-dev/widgets")
+        self.assertIsNone(w.project_for({"id": 73, "request": "fix the LEGION tests", "kind": "ask"}))
+        self.assertIsNone(w.project_for({**t, "id": 74, "kind": "workflow"}))
+        listed = W.Worker(self.paths, {**self.cfg, "scope": "listed", "repos_root": "C:/repos"},
+                          engine=EngineClient(self.engine.url, TOKEN), power=NoPower(),
+                          base_env=self.env)
+        self.assertIsNone(listed.project_for(t))
+
     def test_cancel_stops_only_that_helper(self):
         self.engine.queue(id=60, request=f"long {fake(sleep=8)}")
         self.engine.queue(id=61, request=f"short {fake(sleep=1.0, summary='short done')}")
