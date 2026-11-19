@@ -223,6 +223,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/LimbRefusal'
           description: A contract version this engine does not serve.
+        '411':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LimbRefusal'
+          description: No Content-Length.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LimbRefusal'
+          description: A body over the manifest cap.
   /api/agents/probe/sse:
     get:
       operationId: api_agents_probe_sse
@@ -19416,11 +19428,15 @@ components:
       - manifest_invalid
       - contract_unsupported
       - not_a_device
+      - manifest_too_large
+      - length_required
       type: string
       description: |-
         * `manifest_invalid` - manifest_invalid
         * `contract_unsupported` - contract_unsupported
         * `not_a_device` - not_a_device
+        * `manifest_too_large` - manifest_too_large
+        * `length_required` - length_required
     LimbTool:
       type: object
       properties:

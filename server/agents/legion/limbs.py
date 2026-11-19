@@ -53,6 +53,9 @@ MAX_STREAMS = 32
 MAX_MANIFEST_BYTES = 256 * 1024
 # The phone's longest declaration is ~2,300 chars (`manage_checklist`, same test).
 MAX_DESCRIPTION_CHARS = 4000
+# A tool's `parameters` object, counting itself as 1. Function declarations are shallow; this
+# also keeps the walk below far from Python's recursion limit.
+MAX_PARAMETER_DEPTH = 16
 NAME_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 NEEDS = ("screen", "unlock", "parked")
 CONFIRMS = ("engine", "limb")
@@ -61,18 +64,32 @@ BRAIN_REASONS = ("forced", "override", "asked", "default")
 CODE_INVALID = "manifest_invalid"
 CODE_UNSUPPORTED = "contract_unsupported"
 CODE_NOT_A_DEVICE = "not_a_device"
+CODE_TOO_LARGE = "manifest_too_large"
+CODE_LENGTH_REQUIRED = "length_required"
 
 
-def _has_nul(value) -> bool:
-    """U+0000 anywhere in a key or a string. Postgres jsonb cannot store it, so it is refused here,
-    in words, rather than surfacing as a database error after validation."""
-    if isinstance(value, str):
-        return "\x00" in value
-    if isinstance(value, dict):
-        return any(_has_nul(k) or _has_nul(v) for k, v in value.items())
-    if isinstance(value, list):
-        return any(_has_nul(v) for v in value)
-    return False
+def _problem(value, max_depth: int) -> str | None:
+    """What makes `value` unstorable, or None. Walked with a stack, not recursion, so a deep value
+    is measured rather than crashing the walk.
+
+    - U+0000 in any key or string: Postgres jsonb cannot store it, so it is refused here in words
+      rather than surfacing as a database error after validation.
+    - Containers nested deeper than `max_depth` (the value itself is depth 1).
+    """
+    stack = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        if isinstance(item, str):
+            if "\x00" in item:
+                return "A NUL character (U+0000) cannot be stored."
+        elif isinstance(item, dict | list):
+            if depth > max_depth:
+                return f"Nested deeper than {max_depth} levels."
+            children = list(item.items()) if isinstance(item, dict) else [(None, v) for v in item]
+            for key, child in children:
+                stack.append((key, depth))
+                stack.append((child, depth + 1))
+    return None
 
 
 class LimbToolSerializer(serializers.Serializer):
@@ -108,8 +125,14 @@ class LimbManifestSerializer(serializers.Serializer):
         return tools
 
     def validate(self, attrs):
-        if _has_nul(_manifest(attrs)):
-            raise serializers.ValidationError("A NUL character (U+0000) cannot be stored.")
+        for tool in attrs["tools"]:
+            problem = _problem(tool["parameters"], MAX_PARAMETER_DEPTH)
+            if problem:
+                raise serializers.ValidationError(f"Tool {tool['name']}'s parameters: {problem}")
+        # Everything else is at most three levels deep; the walk is for U+0000.
+        problem = _problem(_manifest(attrs), MAX_PARAMETER_DEPTH + 4)
+        if problem:
+            raise serializers.ValidationError(problem)
         size = len(json.dumps(_manifest(attrs)).encode())
         if size > MAX_MANIFEST_BYTES:
             raise serializers.ValidationError(
@@ -131,7 +154,15 @@ class LimbRefusalSerializer(serializers.Serializer):
     """A refusal on the limb route: words for a person, a code for the client."""
 
     detail = serializers.CharField()
-    code = serializers.ChoiceField(choices=[CODE_INVALID, CODE_UNSUPPORTED, CODE_NOT_A_DEVICE])
+    code = serializers.ChoiceField(
+        choices=[
+            CODE_INVALID,
+            CODE_UNSUPPORTED,
+            CODE_NOT_A_DEVICE,
+            CODE_TOO_LARGE,
+            CODE_LENGTH_REQUIRED,
+        ]
+    )
 
 
 def _manifest(attrs) -> dict:

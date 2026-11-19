@@ -16,6 +16,9 @@ from agents.legion.limbs import (
     BRAIN_FORCE_ENV,
     CONTRACT_VERSION,
     MAX_MANIFEST_BYTES,
+    MAX_PARAMETER_DEPTH,
+    MAX_STREAMS,
+    MAX_TOOLS,
 )
 from agents.models import Limb
 from agents.views import OFF_WORDS
@@ -157,7 +160,6 @@ def test_another_contract_version_is_refused_in_words_and_nothing_is_stored(
     assert not Limb.objects.exists()
 
 
-_BIG = [{**_TIMER, "description": "x" * 3999, "name": f"t{i}"} for i in range(80)]
 _BAD = {
     "kind": {"kind": "toaster"},
     "name": {"tools": [{**_TIMER, "name": "Set Timer"}]},
@@ -170,13 +172,11 @@ _BAD = {
     "confirm": {"tools": [{**_TIMER, "confirm": "nobody"}]},
     "brain": {"brain_asked": "cloud"},
     "description": {"tools": [{**_TIMER, "description": "x" * 4001}]},
-    "too_big": {"tools": _BIG},
 }
 
 
 @pytest.mark.parametrize("case", list(_BAD))
 def test_a_malformed_manifest_is_refused_and_nothing_is_stored(auth_client, switched_on, case):
-    assert len(str(_BIG)) > MAX_MANIFEST_BYTES
     response = auth_client.post("/api/agents/limb", _manifest(**_BAD[case]), format="json")
     assert response.status_code == 400, response.data
     assert response.data["detail"].startswith("Nothing was stored.")
@@ -210,6 +210,83 @@ def test_a_nul_character_anywhere_is_a_400_in_words(auth_client, switched_on, wh
     assert response.data["code"] == "manifest_invalid"
     assert response.data["detail"].startswith("Nothing was stored.")
     assert not Limb.objects.exists()
+
+
+def _refused(response, status_code: int, code: str) -> None:
+    assert response.status_code == status_code, response.data
+    assert response.data["code"] == code
+    assert response.data["detail"].startswith("Nothing was stored.")
+    assert not Limb.objects.exists()
+
+
+def test_more_tools_than_the_cap_is_refused(auth_client, switched_on):
+    tools = [{**_TIMER, "name": f"t{i}"} for i in range(MAX_TOOLS + 1)]
+    response = auth_client.post("/api/agents/limb", _manifest(tools=tools), format="json")
+    _refused(response, 400, "manifest_invalid")
+    at_cap = [{**_TIMER, "name": f"t{i}"} for i in range(MAX_TOOLS)]
+    assert (
+        auth_client.post("/api/agents/limb", _manifest(tools=at_cap), format="json").status_code
+        == 200
+    )
+
+
+def test_more_streams_than_the_cap_is_refused(auth_client, switched_on):
+    streams = [f"s{i}" for i in range(MAX_STREAMS + 1)]
+    response = auth_client.post("/api/agents/limb", _manifest(streams=streams), format="json")
+    _refused(response, 400, "manifest_invalid")
+
+
+def test_a_body_over_the_cap_is_refused_before_it_is_parsed(auth_client, switched_on, monkeypatch):
+    from rest_framework.parsers import JSONParser
+
+    def never(*args, **kwargs):
+        raise AssertionError("the body was parsed")
+
+    monkeypatch.setattr(JSONParser, "parse", never)
+    big = [{**_TIMER, "description": "x" * 3999, "name": f"t{i}"} for i in range(80)]
+    assert len(str(big)) > MAX_MANIFEST_BYTES
+    response = auth_client.post("/api/agents/limb", _manifest(tools=big), format="json")
+    _refused(response, 413, "manifest_too_large")
+
+
+def test_a_body_with_no_length_is_refused_before_it_is_parsed(
+    auth_client, switched_on, monkeypatch
+):
+    from rest_framework.parsers import JSONParser
+
+    def never(*args, **kwargs):
+        raise AssertionError("the body was parsed")
+
+    monkeypatch.setattr(JSONParser, "parse", never)
+    response = auth_client.post("/api/agents/limb", _manifest(), format="json", CONTENT_LENGTH="")
+    _refused(response, 411, "length_required")
+
+
+def _nested_body(depth: int) -> str:
+    """The manifest as raw JSON text whose one tool's `parameters` is `depth` objects deep (itself
+    counting as 1). Written as text: encoding thousands of levels with `json.dumps` would itself
+    exhaust Python's recursion in the test."""
+    import json
+
+    tool = {**_TIMER, "parameters": "PARAMS"}
+    nested = '{"a":' * (depth - 1) + '{"type":"string"}' + "}" * (depth - 1)
+    return json.dumps(_manifest(tools=[tool])).replace('"PARAMS"', nested)
+
+
+@pytest.mark.parametrize("depth", [MAX_PARAMETER_DEPTH + 1, 900, 5000])
+def test_deeply_nested_parameters_are_a_400_not_a_500(auth_client, switched_on, depth):
+    """Past the depth cap: refused in words. Deep enough to exhaust Python's recursion while the
+    JSON is read (5000) or near it (900): still a 400, never a 500."""
+    body = _nested_body(depth)
+    response = auth_client.post("/api/agents/limb", body, content_type="application/json")
+    _refused(response, 400, "manifest_invalid")
+
+
+def test_parameters_at_the_depth_cap_are_kept(auth_client, switched_on):
+    body = _nested_body(MAX_PARAMETER_DEPTH)
+    response = auth_client.post("/api/agents/limb", body, content_type="application/json")
+    assert response.status_code == 200, response.data
+    assert Limb.objects.get().manifest["tools"][0]["parameters"]["a"]
 
 
 def test_a_browser_session_is_not_a_limb(household_user, switched_on):

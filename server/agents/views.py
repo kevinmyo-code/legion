@@ -161,6 +161,33 @@ class AgentCancelView(_SwitchedAgentsView):
         return Response({"detail": "Cancelled: no further round or tool call will start."})
 
 
+def _body_refusal(request) -> Response | None:
+    """The body's size, from its declared length, before anything parses it. Django does not bound
+    a body DRF's parser reads from the stream, so this is the cap."""
+    try:
+        length = int(request.META.get("CONTENT_LENGTH") or "")
+    except ValueError:
+        return Response(
+            {
+                "detail": "Nothing was stored. Send the manifest with its Content-Length.",
+                "code": limbs.CODE_LENGTH_REQUIRED,
+            },
+            status=status.HTTP_411_LENGTH_REQUIRED,
+        )
+    if length > limbs.MAX_MANIFEST_BYTES:
+        return Response(
+            {
+                "detail": (
+                    f"Nothing was stored. The manifest is {length} bytes; the limit is "
+                    f"{limbs.MAX_MANIFEST_BYTES}."
+                ),
+                "code": limbs.CODE_TOO_LARGE,
+            },
+            status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    return None
+
+
 def _contract_version(data) -> int | None:
     try:
         return serializers.IntegerField().run_validation(data.get("contract_version"))
@@ -187,6 +214,10 @@ class AgentLimbView(_SwitchedAgentsView):
                 limbs.LimbRefusalSerializer,
                 description="A contract version this engine does not serve.",
             ),
+            411: OpenApiResponse(limbs.LimbRefusalSerializer, description="No Content-Length."),
+            413: OpenApiResponse(
+                limbs.LimbRefusalSerializer, description="A body over the manifest cap."
+            ),
         },
     )
     def post(self, request):
@@ -195,9 +226,22 @@ class AgentLimbView(_SwitchedAgentsView):
                 {"detail": NOT_A_DEVICE, "code": limbs.CODE_NOT_A_DEVICE},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        refusal = _body_refusal(request)
+        if refusal is not None:
+            return refusal
+        try:
+            data = request.data
+        except RecursionError:  # JSON nested past Python's limit: the parser does not catch it
+            return Response(
+                {
+                    "detail": "Nothing was stored. The manifest is nested too deep to read.",
+                    "code": limbs.CODE_INVALID,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # The version is read first: another version's manifest may have another shape, and the
         # client needs "update the app", not a list of field errors.
-        version = _contract_version(request.data)
+        version = _contract_version(data)
         if version is not None and version != limbs.CONTRACT_VERSION:
             return Response(
                 {
@@ -210,7 +254,7 @@ class AgentLimbView(_SwitchedAgentsView):
                 },
                 status=status.HTTP_409_CONFLICT,
             )
-        body = limbs.LimbManifestSerializer(data=request.data)
+        body = limbs.LimbManifestSerializer(data=data)
         if not body.is_valid():
             return Response(
                 {
