@@ -160,8 +160,13 @@ describe('the captions', () => {
     stage(false, true)
     await ask()
     const box = layout(150, 260)
-    fireEvent.click(screen.getByRole('button', { name: 'Read it all' }))
+    const open = screen.getByRole('button', { name: 'Read it all' })
+    // Not part of the live region: it is not read out with every caption.
+    expect(open.closest('[aria-live]')).toBeNull()
+    fireEvent.click(open)
     expect(box).toHaveAttribute('data-open', 'true')
+    // The keyboard is on the words it opened, not lost with the control that went.
+    expect(document.activeElement).toBe(box.querySelector('[data-stage="captions-words"]'))
     expect(box).toHaveAttribute('data-overflow', 'false')
     expect(box).toHaveTextContent('Here is how it fits together.')
     expect(screen.queryByRole('button', { name: 'Read it all' })).toBeNull()

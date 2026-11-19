@@ -210,11 +210,11 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         data-stage="captions"
         data-overflow={captionsOverflow && !captionsOpen}
         data-open={captionsOpen}
-        aria-live="polite"
         ref={captionsRef}
         className="rc-captions relative flex w-full max-w-[34rem] flex-col overflow-hidden text-left text-[0.95rem]"
       >
-        <div ref={captionWordsRef}>
+        {/* The live region is the words alone: "Read it all" is not announced with every caption. */}
+        <div ref={captionWordsRef} aria-live="polite" tabIndex={-1} data-stage="captions-words" className="outline-none">
           {heard && heard.kind === 'me' && <p className="text-muted-foreground">You: {heard.text}</p>}
           {said && said.kind === 'ai' && (
             <p>
@@ -226,7 +226,16 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         {/* For someone who cannot hear: the start of a long answer is one tap away. It sits over the
             faded start, so it moves nothing; the box grows only when the visitor taps it. */}
         {captionsOverflow && !captionsOpen && (
-          <button type="button" data-stage="captions-open" className="rc-captions-open" onClick={() => setCaptionsOpen(true)}>
+          <button
+            type="button"
+            data-stage="captions-open"
+            className="rc-captions-open"
+            onClick={() => {
+              setCaptionsOpen(true)
+              // The control goes once the box opens: the keyboard moves to the words it opened.
+              captionWordsRef.current?.focus({ preventScroll: true })
+            }}
+          >
             Read it all
           </button>
         )}
