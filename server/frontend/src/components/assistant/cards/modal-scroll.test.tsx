@@ -87,6 +87,38 @@ describe('a page modal and the page scroll', () => {
     expect(scrolls.filter(toTop)).toEqual([])
   })
 
+  test("the phone's back gesture closes it, and the page under it stays where it was", async () => {
+    const scrolls: unknown[] = []
+    vi.spyOn(window, 'scrollTo').mockImplementation((...args: unknown[]) => {
+      scrolls.push(args[0])
+    })
+    window.history.replaceState({}, '', '/try')
+    const root = createRootRoute()
+    const tryRoute = createRoute({ getParentRoute: () => root, path: '/try', component: Page })
+    const router = createRouter({
+      ...appRouterOptions,
+      routeTree: root.addChildren([tryRoute]),
+      history: createBrowserHistory(),
+    })
+    render(<RouterProvider router={router} />)
+    await screen.findByRole('button', { name: 'Ask' })
+    await tick(20)
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 640 })
+    document.dispatchEvent(new Event('scroll'))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask' }))
+    await screen.findByRole('dialog')
+    await tick(20)
+    scrolls.length = 0
+    // The back gesture: the browser pops the modal's entry (no X, no Esc).
+    await act(async () => {
+      window.history.back()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(scrolls).toEqual([])
+    expect(router.state.location.pathname).toBe('/try')
+  })
+
   test('closing a modal leaves every box inside the page where it is (the captions kept up with the answer)', async () => {
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
     window.history.replaceState({}, '', '/try')
