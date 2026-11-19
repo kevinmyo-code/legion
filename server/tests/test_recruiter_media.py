@@ -15,11 +15,15 @@ from io import StringIO
 
 import pytest
 from django.core.management import CommandError, call_command
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from demo.content import PNG_MAGIC, media_cap, problems
-from demo.models import RecruiterContent, RecruiterMediaFile
+from demo.models import DemoCode, RecruiterContent, RecruiterMediaFile
+from household.models import DeviceToken, Household
+from household.permissions import RECRUITER_VISIT_OVER
 from tests.test_recruiter_content import (  # noqa: F401 - fixtures
+    _enter,
     _fresh_throttle,
     fake_content,
     fake_projects,
@@ -30,7 +34,6 @@ from tests.test_recruiter_content import (  # noqa: F401 - fixtures
 )
 
 pytestmark = pytest.mark.django_db
-
 
 
 def fake_glb(gltf: dict | None = None) -> bytes:
@@ -257,3 +260,40 @@ def test_no_session_and_a_plain_member_are_refused(plain_member, tmp_path):
 def test_a_name_that_is_not_a_loaded_file_is_a_404(recruiter, tmp_path, path):
     _loaded(tmp_path)
     assert recruiter.get(path).status_code == 404
+
+
+def _load_version(tmp_path, content, files: dict[str, bytes], for_code: str = "") -> None:
+    folder = write_folder(tmp_path, content)
+    for name, data in files.items():
+        (folder / name).write_bytes(data)
+    args = ["load_recruiter_content", str(folder)] + (["--for-code", for_code] if for_code else [])
+    call_command(*args, stdout=StringIO())
+
+
+def test_a_visit_reads_only_its_own_versions_files(db, tmp_path):
+    Household.objects.create(name="Demo")
+    _r, resume_code = DemoCode.rotate()
+    _l, linkedin_code = DemoCode.rotate(label="linkedin")
+    full = {"gadget.glb": FAKE_GLB, "gadget.png": FAKE_PNG}
+    _load_version(tmp_path / "full", with_models(GADGET), full)
+    stripped = {"widget_v2.glb": FAKE_GLB + b"v2", "widget.jpg": FAKE_JPEG}
+    _load_version(tmp_path / "li", with_models(WIDGET), stripped, for_code="linkedin")
+
+    resume_visit = _enter(resume_code)
+    assert resume_visit.get("/api/demo/media/gadget.glb").status_code == 200
+    assert resume_visit.get("/api/demo/media/widget_v2.glb").status_code == 404
+
+    linkedin_visit = _enter(linkedin_code)
+    assert linkedin_visit.get("/api/demo/media/widget_v2.glb").status_code == 200
+    assert linkedin_visit.get("/api/demo/media/gadget.glb").status_code == 404
+
+
+def test_a_visit_that_ended_is_refused_the_media(recruiter, tmp_path):
+    _loaded(tmp_path)
+    assert recruiter.get("/api/demo/media/gadget.glb").status_code == 200
+    DeviceToken.objects.filter(user__email__endswith="@demo.invalid").update(
+        revoked_at=timezone.now()
+    )
+    ended = recruiter.get("/api/demo/media/gadget.glb")
+    assert ended.status_code == 403
+    assert ended.json() == {"detail": RECRUITER_VISIT_OVER, "code": "demo_visit_ended"}
