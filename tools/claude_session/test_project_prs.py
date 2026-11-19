@@ -249,7 +249,13 @@ class TestJudgeTable(unittest.TestCase):
 
 
 def git(*args, cwd):
-    subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=str(cwd), check=True, capture_output=True,
+                          text=True).stdout.strip()
+
+
+def commit(cwd, msg):
+    git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", msg, cwd=cwd)
+    return git("rev-parse", "HEAD", cwd=cwd)
 
 
 class GitRepo(unittest.TestCase):
@@ -263,12 +269,25 @@ class GitRepo(unittest.TestCase):
         git("remote", "add", "origin", "https://github.com/acme-dev/widgets.git", cwd=self.dir)
         (self.dir / "app.py").write_text("x = 1\n", encoding="utf-8")
         git("add", "app.py", cwd=self.dir)
-        git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "seed",
-            cwd=self.dir)
+        self.tip = commit(self.dir, "seed")  # GitHub's real main, as the fake API says
         git("update-ref", "refs/remotes/origin/main", "HEAD", cwd=self.dir)  # as a clone has it
+        self.asked = []
+        real = P.remote_tip
+
+        def fake_tip(repo, branch):
+            self.asked.append((repo, branch))
+            return self.tip if (repo, branch) == ("acme-dev/widgets", "main") else None
+        P.remote_tip = fake_tip
+        self.addCleanup(setattr, P, "remote_tip", real)
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def add(self, rel, text="x"):
+        f = self.dir / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text, encoding="utf-8")
+        git("add", rel, cwd=self.dir)
 
     def gathered(self) -> P.Facts:
         f = P.gather(str(self.dir), "origin")
@@ -333,7 +352,55 @@ class TestGatherRealGit(GitRepo):
         git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "ci",
             cwd=self.dir)
         self.assertTrue(self.gathered().ci_change)
-        self.assertTrue(P.gather(str(self.dir), "origin", "no-such-branch").ci_change)
+        self.assertTrue(P.gather(str(self.dir), "origin", "no-such-branch").ci_change)  # no tip
+
+    def test_base_is_githubs_real_tip_not_the_local_ref(self):
+        """F1 (review 11-19): `update-ref refs/remotes/origin/main HEAD` hid a CI change."""
+        self.add(".github/workflows/x.yml", "permissions: write-all")
+        commit(self.dir, "ci")
+        git("update-ref", "refs/remotes/origin/main", "HEAD", cwd=self.dir)
+        f = self.gathered()
+        self.assertTrue(f.ci_change)
+        self.assertIn(("acme-dev/widgets", "main"), self.asked)
+
+    def test_a_stale_local_ref_does_not_matter(self):
+        # GitHub's main moved on (it added a workflow); the clone's origin/main is the old seed.
+        self.add(".github/workflows/t.yml", "on: pull_request")
+        self.tip = commit(self.dir, "ci on main")
+        git("checkout", "-q", "-b", "claude/x", cwd=self.dir)
+        self.add("app.py", "x = 2")
+        commit(self.dir, "work")
+        git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD~2", cwd=self.dir), cwd=self.dir)
+        self.assertFalse(self.gathered().ci_change)
+
+    def test_tip_unknown_or_not_in_the_clone_denies(self):
+        self.tip = "a" * 40  # GitHub names a commit the clone does not have
+        f = self.gathered()
+        self.assertTrue(f.ci_change)
+        self.assertTrue(f.base_missing)
+        self.tip = None
+        self.assertTrue(self.gathered().ci_change)
+
+    def test_other_protected_paths(self):
+        for rel in (".gitattributes", "sub/.gitattributes", ".gitmodules", "CODEOWNERS",
+                    "docs/CODEOWNERS", "tools/ci/action.yml", ".lfsconfig"):
+            with self.subTest(rel=rel):
+                git("checkout", "-q", "-B", "claude/p", self.tip, cwd=self.dir)
+                self.add(rel)
+                commit(self.dir, rel)
+                self.assertTrue(self.gathered().ci_change, rel)
+        git("checkout", "-q", "-B", "claude/p", self.tip, cwd=self.dir)
+        self.add("README.md")
+        commit(self.dir, "readme")
+        self.assertFalse(self.gathered().ci_change)
+
+    def test_a_fork_remote_is_refused_before_any_tip(self):
+        git("remote", "set-url", "origin", "https://github.com/someone-else/widgets.git", cwd=self.dir)
+        own = Path(self.tmp.name)
+        got = P.judge(f"git -C {self.dir.as_posix()} push origin HEAD:refs/heads/claude/x", tool="Bash",
+                      own_work=own, project=project(), facts_for=P.gather)
+        self.assertEqual(got.decision, "deny")
+        self.assertIn("does not push to acme-dev/widgets", got.reason)
 
     def test_not_a_repo_or_no_such_remote(self):
         self.assertIsNone(P.gather(str(Path(self.tmp.name)), "origin"))

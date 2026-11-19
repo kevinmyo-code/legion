@@ -26,8 +26,7 @@ Three halves:
 - `gather`: the facts, from git itself (`remote get-url --push --all` applies pushurl and
   insteadOf), with commands that never refresh the index (so no fsmonitor runs).
 
-Honest limits (a regex hook is not a sandbox, containment.py says the same): the `.github/`
-check trusts the clone's own remote-tracking ref, which the helper could move; the check runs
+Honest limits (a regex hook is not a sandbox, containment.py says the same): the check runs
 before the command, so a background process that rewrites `.git/config` between the check and the
 push is not seen; a git alias for push (`git p`) is not seen by today's rules either. A `pr.py`
 that runs the push itself with pinned arguments (ship.py's shape) would close both.
@@ -56,6 +55,11 @@ GITHUB_URL_RE = re.compile(
     r"^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
     r"(?P<repo>[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+?)(?:\.git)?/?$")
 GIT_TIMEOUT_S = 5
+GH_TIMEOUT_S = 15
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+PROTECTED_RE = re.compile(
+    r"^(?:\.github/|\.gitmodules$|\.lfsconfig$)|(?:^|/)(?:\.gitattributes|CODEOWNERS|action\.ya?ml)$",
+    re.I)
 # What `git clone`, `checkout -b`, `push -u` and `commit` write into a clone's own config. Any other
 # key there (credential.helper, core.sshCommand, include.path, url.*, alias.*, hooksPath, pushurl,
 # ...) could run a program or redirect the push, so the push is refused.
@@ -97,10 +101,13 @@ class Facts:
     gitmodules: bool
     hooks: bool
     foreign_config: tuple[str, ...] = ()  # keys in the clone's own config outside LOCAL_KEYS_RE
-    # HEAD changes `.github/` against the remote's default branch as the clone last fetched it, or
-    # that could not be told. A pushed branch's workflow runs with the repo's token on its PR and
-    # may ask for write access, which would reach the default branch: so never pushed from here.
+    # HEAD changes a protected path (PROTECTED_RE: CI workflows, .gitattributes, .gitmodules,
+    # CODEOWNERS, local actions, .lfsconfig) against GitHub's REAL default-branch tip (asked of the
+    # API, never the clone's own movable origin ref), or that could not be told. A pushed branch's
+    # workflow runs on its PR with the repo's token and may ask for write access to the default
+    # branch, so a branch that changes one is never pushed from here.
     ci_change: bool = False
+    base_missing: bool = False  # GitHub's tip is not in the clone: fetch first
 
 
 @dataclass(frozen=True)
@@ -256,7 +263,7 @@ def _deny(kind: str, why: str, p: Project) -> Verdict:
 
 
 def _judge_push(argv: list[str], own_work: Path, p: Project,
-                facts_for: Callable[[str, str], Facts | None]) -> Verdict:
+                facts_for: Callable[[str, str, str], Facts | None]) -> Verdict:
     deny = lambda why: _deny("push", why, p)  # noqa: E731
     if argv[:2] != ["git", "-C"] or len(argv) < 4 or argv[3] != "push":
         return deny("git push runs as `git -C <clone> push`, no other git options")
@@ -288,9 +295,13 @@ def _judge_push(argv: list[str], own_work: Path, p: Project,
         return deny("the clone's config would push more than the one branch")
     if f.hooks:
         return deny("the clone has git hooks; push from a clean clone")
+    if f.base_missing:
+        return deny("GitHub's default branch tip is not in the clone; run git -C <clone> fetch "
+                    "origin first")
     if f.ci_change:
-        return deny("the branch changes .github/ (CI) or its base could not be read; leave "
-                    "workflows alone")
+        return deny("the branch changes CI or repo-control files (.github/, .gitattributes, "
+                    ".gitmodules, CODEOWNERS, action.yml, .lfsconfig) against GitHub's default "
+                    "branch, or that could not be checked; leave those files alone")
     if f.foreign_config:
         return deny("the clone's own git config has settings a fresh clone does not "
                     f"({', '.join(f.foreign_config[:3])}); push from a clean clone")
@@ -330,7 +341,7 @@ def _judge_pr(argv: list[str], p: Project) -> Verdict:
 
 
 def judge(command: str, *, tool: str, own_work: Path | None, project: Project | None,
-          facts_for: Callable[[str, str], Facts | None]) -> Verdict | None:
+          facts_for: Callable[[str, str, str], Facts | None]) -> Verdict | None:
     """None: not a project push or PR (today's rules decide). Else allow or deny."""
     if tool != "Bash" or project is None or own_work is None:
         return None
@@ -377,7 +388,8 @@ def _git(d: str, *args: str) -> subprocess.CompletedProcess:
 
 
 def gather(d: str, remote: str, default_branch: str = "main") -> Facts | None:
-    """The clone's facts, or None when they cannot be read (the caller denies)."""
+    """The clone's facts, or None when they cannot be read (the caller denies). Asks GitHub for
+    the default branch's tip (one API call, about a second)."""
     try:
         top = _git(d, "rev-parse", "--show-toplevel")
         if top.returncode != 0:
@@ -400,10 +412,16 @@ def gather(d: str, remote: str, default_branch: str = "main") -> Facts | None:
         foreign = tuple(sorted({k for k in (i.partition("\n")[0].lower()
                                             for i in local.stdout.split("\0") if i)
                                 if not LOCAL_KEYS_RE.match(k)}))
-        base = _git(d, "diff-tree", "-r", "--name-only", "--no-renames",
-                    f"refs/remotes/{remote}/{default_branch}", "HEAD")
-        ci_change = base.returncode != 0 or any(
-            n.strip().lower().startswith(".github/") for n in base.stdout.splitlines())
+        repo = github_repo(push_urls[0]) if push_urls else None
+        tip = remote_tip(repo, default_branch) if repo else None
+        base_missing, ci_change = False, True
+        if tip and SHA_RE.match(tip):
+            have = _git(d, "cat-file", "-e", f"{tip}^{{commit}}")
+            base_missing = have.returncode != 0
+            if not base_missing:
+                diff = _git(d, "diff-tree", "-r", "--name-only", "--no-renames", tip, "HEAD")
+                ci_change = diff.returncode != 0 or any(
+                    PROTECTED_RE.search(n.strip()) for n in diff.stdout.splitlines())
         hooks_dir = _git(d, "rev-parse", "--git-path", "hooks")
         if hooks_dir.returncode != 0:
             return None
@@ -422,4 +440,21 @@ def gather(d: str, remote: str, default_branch: str = "main") -> Facts | None:
             v not in ("no", "false", "0", "off") for v in conf.get("push.recursesubmodules", [])),
         gitmodules=(Path(toplevel) / ".gitmodules").exists(),
         hooks=bool(conf.get("core.hookspath")) or live_hooks, foreign_config=foreign,
-        ci_change=ci_change)
+        ci_change=ci_change, base_missing=base_missing)
+
+
+def _gh_remote_tip(repo: str, branch: str) -> str | None:
+    """GitHub's own answer for the branch tip, over gh's API (no git config, so no insteadOf
+    or pushurl can redirect it). None on any failure; the caller denies."""
+    try:
+        r = subprocess.run(["gh", "api", f"repos/{repo}/git/ref/heads/{branch}", "--jq", ".object.sha"],
+                           capture_output=True, text=True, timeout=GH_TIMEOUT_S,
+                           creationflags=0x08000000 if os.name == "nt" else 0)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    sha = r.stdout.strip().lower()
+    return sha if r.returncode == 0 and SHA_RE.match(sha) else None
+
+
+# Module-level so a test can stand in for GitHub.
+remote_tip: Callable[[str, str], str | None] = _gh_remote_tip
