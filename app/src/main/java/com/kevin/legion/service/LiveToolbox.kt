@@ -2076,12 +2076,15 @@ object LiveToolbox {
      * to change, and the result says so.
      */
     private suspend fun switchTo(context: Context, car: Vehicle): JSONObject {
+        // `changed` and `vehicle` (the app's label) let code say the outcome in words (2026-11-19).
+        val label = VehicleController.label(car)
         val noDongle = com.kevin.legion.vehicle.DongleCarController.state.value == null
         if (ActiveVehicle.selected(context) == car.obdMac && noDongle) {
-            return result(true, "The ${VehicleController.label(car)} was already the selected car; nothing changed.")
+            return result(true, "The $label was already the selected car; nothing changed.")
+                .put("changed", false).put("vehicle", label)
         }
         val outcome = VehicleController.switchToOutcome(context, car.obdMac)
-        return result(outcome.success, outcome.message)
+        return result(outcome.success, outcome.message).put("changed", outcome.changed == true).put("vehicle", label)
     }
 
     private const val SWITCH_NEEDS_A_CAR = "Nothing was switched: switch_vehicle changes which car is selected " +

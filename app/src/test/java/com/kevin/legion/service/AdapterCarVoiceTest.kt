@@ -146,6 +146,53 @@ class AdapterCarVoiceTest {
             assertNull(AdapterBinding.clearRefusalNow())
         }
 
+    private suspend fun switchTo(name: String): JSONObject = LiveToolbox.dispatch(
+        context, "manage_vehicle", JSONObject().put("action", "switch").put("vehicle", name),
+    )!!
+
+    @Test
+    fun `switch - the car already selected with nothing connected is changed=false, with its label`() = runBlocking {
+        seed()
+        ActiveVehicle.select(context, "car:zephyr")
+        val r = switchTo("Zephyr")
+        assertTrue(r.getBoolean("success"))
+        assertFalse(r.getBoolean("changed"))
+        assertTrue(r.getString("vehicle"), r.getString("vehicle").contains("Zephyr"))
+    }
+
+    @Test
+    fun `switch - another car with nothing connected is changed=true`() = runBlocking {
+        seed()
+        ActiveVehicle.select(context, "car:zephyr")
+        val r = switchTo("Comet")
+        assertTrue(r.getBoolean("success"))
+        assertTrue(r.getBoolean("changed"))
+        assertTrue(r.getString("vehicle").contains("Comet"))
+        assertEquals("car:comet", ActiveVehicle.selected(context))
+    }
+
+    @Test
+    fun `switch - a wrong recognition is corrected by voice`() = runBlocking {
+        seed()
+        CarFingerprint.save(context, "car:zephyr", print)
+        DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+        setLink(mac, withLink = true)
+
+        val r = switchTo("Comet")
+        assertTrue(r.toString(), r.getBoolean("changed"))
+        assertEquals("car:comet", (DongleCarController.state.value as DongleCar.OnCar).carId)
+    }
+
+    @Test
+    fun `switch - the car the adapter is already bound to is changed=false`() = runBlocking {
+        seed()
+        DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+        DongleCarController.answer(context, "car:zephyr")
+        ActiveVehicle.select(context, "car:zephyr")
+        setLink(mac, withLink = true)
+        assertFalse(switchTo("Zephyr").getBoolean("changed"))
+    }
+
     @Test
     fun `a car he named on this connection gets no note`() = runBlocking {
         seed()

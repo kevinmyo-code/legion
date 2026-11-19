@@ -49,7 +49,7 @@ object VehicleController {
      * of these calls, so the JSON envelope handed to Gemini said the call succeeded even when
      * [message] was a refusal - a false success one layer up from the database write it wraps.
      */
-    data class WriteOutcome(val success: Boolean, val message: String)
+    data class WriteOutcome(val success: Boolean, val message: String, val changed: Boolean? = null)
 
     /**
      * Default assistant personality (ported from Midnight AI's Zero persona, which was
@@ -1322,6 +1322,14 @@ object VehicleController {
      * readings stay on that car and the reply says so.
      */
     suspend fun switchToOutcome(context: Context, vehicleId: String): WriteOutcome {
+        // [WriteOutcome.changed]: the selected car or the live connection's car really moved.
+        fun where() = ActiveVehicle.selected(context) to DongleCarController.state.value?.recordingId
+        val before = where()
+        val outcome = switchOrRefuse(context, vehicleId)
+        return outcome.copy(changed = outcome.success && where() != before)
+    }
+
+    private suspend fun switchOrRefuse(context: Context, vehicleId: String): WriteOutcome {
         val vehicle = FleetEngineStore.getByMac(context, vehicleId)
         val refusal = when {
             vehicle == null -> "I couldn't find that car on file."
