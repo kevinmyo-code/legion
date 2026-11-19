@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -298,8 +299,35 @@ def _read_media(folder: Path, content: dict) -> dict[str, tuple[bytes, str]]:
             raise ContentInvalid(
                 f"Nothing was loaded. {where}: {name!r} does not start like {called}."
             )
+        problem = _glb_problem(data) if content_type == "model/gltf-binary" else None
+        if problem:
+            raise ContentInvalid(f"Nothing was loaded. {where}: {name!r} {problem}.")
         media[name] = (data, content_type)
     return media
+
+
+_GLB_JSON_CHUNK = 0x4E4F534A
+
+
+def _glb_problem(data: bytes) -> str | None:
+    """Why a GLB may not be served to the page, or None. A model with embedded texture images is
+    refused: three.js decodes them through `blob:` URLs, which the engine's CSP (`legion/csp.py`,
+    connect-src) does not allow, so it would load untextured or fail once CSP is enforced."""
+    if len(data) < 20:
+        return "is too short to be a GLB"
+    length, kind = struct.unpack_from("<II", data, 12)
+    if kind != _GLB_JSON_CHUNK:
+        return "has no JSON chunk where a GLB keeps it"
+    try:
+        gltf = json.loads(data[20 : 20 + length])
+    except (UnicodeDecodeError, ValueError):
+        return "has a JSON chunk that does not parse"
+    if gltf.get("images"):
+        return (
+            f"embeds {len(gltf['images'])} texture image(s); the page's CSP has no blob: in "
+            "connect-src, so textures are not allowed (bake colours into materials instead)"
+        )
+    return None
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,8 @@ Every name and byte below is invented.
 
 from __future__ import annotations
 
+import json
+import struct
 from io import StringIO
 
 import pytest
@@ -29,7 +31,21 @@ from tests.test_recruiter_content import (  # noqa: F401 - fixtures
 
 pytestmark = pytest.mark.django_db
 
-FAKE_GLB = b"glTF" + bytes([2, 0, 0, 0]) + b"\x00" * 64
+
+
+def fake_glb(gltf: dict | None = None) -> bytes:
+    """A GLB header and JSON chunk, nothing drawable: enough for the loader's checks."""
+    text = json.dumps(gltf or {"asset": {"version": "2.0"}}).encode()
+    text += b" " * (-len(text) % 4)
+    return (
+        b"glTF"
+        + struct.pack("<II", 2, 12 + 8 + len(text))
+        + struct.pack("<II", len(text), 0x4E4F534A)
+        + text
+    )
+
+
+FAKE_GLB = fake_glb()
 FAKE_PNG = PNG_MAGIC + b"fake poster"
 FAKE_JPEG = b"\xff\xd8\xff\xe0fake poster"
 
@@ -131,6 +147,15 @@ def test_a_missing_or_mislabelled_file_loads_nothing(tmp_path):
     with pytest.raises(CommandError, match=r"'gadget.png' does not start like a PNG"):
         load_with_files(tmp_path / "c", content, {"gadget.glb": FAKE_GLB, "gadget.png": FAKE_JPEG})
     assert RecruiterContent.objects.count() == 0
+    assert RecruiterMediaFile.objects.count() == 0
+
+
+def test_a_model_with_embedded_textures_is_refused(tmp_path):
+    textured = fake_glb({"asset": {"version": "2.0"}, "images": [{"bufferView": 0}]})
+    with pytest.raises(CommandError, match=r"'gadget.glb' embeds 1 texture image.*blob:"):
+        load_with_files(
+            tmp_path, with_models(GADGET), {"gadget.glb": textured, "gadget.png": FAKE_PNG}
+        )
     assert RecruiterMediaFile.objects.count() == 0
 
 
