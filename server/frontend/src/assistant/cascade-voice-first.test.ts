@@ -696,6 +696,48 @@ describe('the demo', () => {
     expect(t.client.strip.tools).toEqual([{ tool: 'monthly_spend', ms: 12, filler: 'Checking the accounts.' }])
   })
 
+  it('an ordinary visit (no tool time, no cost) never shows the strip, delayed lookup line or not', async () => {
+    // ship/try-speed-media-1119: dev's tester-only strip beside the delayed lookup line. The engine
+    // sends an ordinary visit no `ms` and no `cost_usd`, so the strip stays hidden every turn.
+    const ordinary = () =>
+      spoken('Some.', {}, [
+        { type: 'tool', data: { name: 'monthly_spend', ok: true } },
+        { type: 'filler', data: { tool: 'monthly_spend', text: 'Checking the accounts.' } },
+      ])
+    const t = build([spoken('Hi.'), ordinary(), ordinary()])
+    await open(t)
+    for (let i = 0; i < 2; i++) {
+      t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+      await settle()
+      t.audio.handlers?.onPlaying(false)
+      await settle()
+    }
+    expect(t.client.stripShown).toBe(false)
+    expect(t.client.strip.costUsd).toBeNull()
+    expect(t.client.strip.tools.every((e) => e.ms === null)).toBe(true)
+  })
+
+  it('the tester visit: tool, delayed line, answer, cost: one strip entry, and the captions get one answer', async () => {
+    // ship/try-speed-media-1119: the strip is shown (cost on the done) with exactly one entry for the
+    // tool; the delayed line adds no caption line, so the answer is the only `ai` line after the tool.
+    const t = build([
+      spoken('Hi.'),
+      spoken('Some.', { cost_usd: 0.0012 }, [
+        { type: 'tool', data: { name: 'monthly_spend', ok: true, ms: 12 } },
+        { type: 'filler', data: { tool: 'monthly_spend', text: 'Checking the accounts.' } },
+      ]),
+    ])
+    await open(t)
+    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
+    await settle()
+    expect(t.client.stripShown).toBe(true)
+    expect(t.client.strip.tools).toEqual([{ tool: 'monthly_spend', ms: 12, filler: 'Checking the accounts.' }])
+    const lines = t.client.getState().lines
+    const afterTool = lines.slice(lines.findIndex((l) => l.kind === 'tool') + 1)
+    expect(afterTool.filter((l) => l.kind === 'ai').map((l) => l.text)).toEqual(['Some.'])
+    expect(lines.some((l) => l.text === 'Checking the accounts.')).toBe(false)
+  })
+
   it('a sentence that was not for it leaves the screen and the page listens again', async () => {
     const t = build([
       spoken('Hi.'),

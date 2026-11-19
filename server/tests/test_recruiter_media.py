@@ -297,3 +297,19 @@ def test_a_visit_that_ended_is_refused_the_media(recruiter, tmp_path):
     ended = recruiter.get("/api/demo/media/gadget.glb")
     assert ended.status_code == 403
     assert ended.json() == {"detail": RECRUITER_VISIT_OVER, "code": "demo_visit_ended"}
+
+
+def test_the_tester_visit_reads_the_media_like_any_visit(db, tmp_path):
+    """ship/try-speed-media-1119: the tester code (`DemoCode.unmetered`, dev's strip rule) is a
+    visit like any other for the media route (the route serves bytes and spends nothing)."""
+    from demo import budget
+    from demo.models import DemoVisit
+
+    Household.objects.create(name="Demo")
+    _row, code = DemoCode.rotate(unmetered=True)
+    _load_version(tmp_path, with_models(GADGET), {"gadget.glb": FAKE_GLB, "gadget.png": FAKE_PNG})
+    tester = _enter(code)
+    got = tester.get("/api/demo/media/gadget.glb")
+    assert got.status_code == 200 and got.content == FAKE_GLB
+    visit = DemoVisit.objects.get(code__unmetered=True)
+    assert budget.tester_visit(visit.user) and not budget.counts(visit.user)
