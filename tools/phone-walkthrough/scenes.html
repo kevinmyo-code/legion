@@ -82,12 +82,14 @@ const LAYOUTS = {
     caption: { bottom: 40 } },
   tall: { w: 1080, h: 1350, u: 30,
     text: { x: 56, y: 40, w: 968 },
-    phone: { x: 600, y: 312, h: 940 }, phoneBeat: { x: 315, y: 312, h: 940 },
+    // The phone stops at 1172 so the burned-in captions (up to three lines) sit below it and never
+    // cover its status line or a card.
+    phone: { x: 620, y: 312, h: 860 }, phoneBeat: { x: 342, y: 312, h: 860 },
     progress: { x: 56, y: 296, w: 968 },
     map: {
-      model: { x: 40, y: 342, w: 520, h: 250 },
-      phone: { x: 40, y: 650, w: 520, h: 400 },
-      engine: { x: 40, y: 1110, w: 520, h: 140 },
+      model: { x: 40, y: 342, w: 540, h: 250 },
+      phone: { x: 40, y: 640, w: 540, h: 380 },
+      engine: { x: 40, y: 1060, w: 540, h: 112 },
     },
     caption: { bottom: 10 } },
 }
