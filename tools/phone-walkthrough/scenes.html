@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LEGION phone video scenes</title>
+<!--
+  The video's scenes, drawn from a spec and a time value: `render.mjs` loads this page in a
+  headless browser, calls `window.setup(spec, layout, options)` once, then `window.frame(t)` for
+  every frame and screenshots it. Nothing here moves on its own clock (no CSS animation, no
+  timers), so frame N is the same picture on every render.
+
+  Colours and type are the /try page's (`server/frontend/src/index.css`, `.recruiter`): paper,
+  ink, one accent, Source Serif 4, square corners except the phone, which depicts a phone.
+  The phone screen is left empty: ffmpeg lays the recorded footage into the rectangle
+  `window.screenRect()` reports. A slot with no footage yet gets a labelled placeholder here.
+-->
+<style>
+  :root {
+    --paper: #faf8f3; --ink: #1d1a16; --meta: #6b655b; --rule: #dcd6ca; --accent: #8a2d1e;
+    --surface: #f1ede4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; background: var(--paper); overflow: hidden; }
+  body {
+    color: var(--ink);
+    font-family: 'Source Serif 4 Variable', Georgia, serif;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+  }
+  #stage { position: absolute; inset: 0; }
+  .caps {
+    font-size: calc(var(--u) * 0.62); font-weight: 600; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--meta);
+  }
+  .text { position: absolute; }
+  .title { font-size: calc(var(--u) * 2.3); line-height: 1.12; font-weight: 600; letter-spacing: -0.01em; }
+  .line { font-size: calc(var(--u) * 1.05); line-height: 1.4; color: var(--ink); margin-top: calc(var(--u) * 0.6); }
+  .rule { height: 1px; background: var(--rule); margin: calc(var(--u) * 0.7) 0; }
+  .phone {
+    position: absolute; background: var(--ink); border-radius: 34px;
+  }
+  .screen {
+    position: absolute; background: #0b0a09; color: #cfc8bb; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 18px;
+  }
+  .screen .caps { color: #a39b8c; }
+  .ph-title { font-size: calc(var(--u) * 0.8); color: #efe9de; }
+  .ticks { position: absolute; display: flex; gap: 6px; }
+  .tick { height: 4px; background: var(--rule); flex: 1; }
+  .tick.on { background: var(--ink); }
+  .tick.now { background: var(--accent); }
+  svg text { font-family: inherit; }
+  .caption {
+    position: absolute; left: 50%; transform: translateX(-50%); max-width: 90%;
+    background: rgba(29, 26, 22, 0.86); color: var(--paper); padding: 10px 18px;
+    font-size: calc(var(--u) * 0.9); line-height: 1.35; text-align: center;
+  }
+  .end-link { font-size: calc(var(--u) * 1.6); font-weight: 600; color: var(--accent); }
+  .note { font-size: calc(var(--u) * 0.72); color: var(--meta); }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+'use strict'
+// Layout per format, in CSS pixels at the output size (the page is rendered at scale 1).
+const LAYOUTS = {
+  wide: { w: 1920, h: 1080, u: 34,
+    text: { x: 120, y: 150, w: 760 },
+    diagram: { x: 930, y: 120, w: 380, h: 840 },
+    phone: { x: 1430, y: 90, h: 900 },
+    ticks: { x: 120, y: 960, w: 760 },
+    caption: { bottom: 40 } },
+  tall: { w: 1080, h: 1350, u: 30,
+    text: { x: 64, y: 70, w: 952 },
+    diagram: { x: 40, y: 400, w: 420, h: 760 },
+    phone: { x: 560, y: 380, h: 800 },
+    ticks: { x: 64, y: 1210, w: 952 },
+    caption: { bottom: 40 } },
+}
+// The recorded phone screens are portrait; this is their width over height.
+const SCREEN_ASPECT = 9 / 19.5
+const BEZEL = 14
+const FADE = 0.35
+
+let SPEC = null, L = null, OPTS = {}, TIMELINE = []
+
+function setup(spec, layoutName, options) {
+  SPEC = spec; L = LAYOUTS[layoutName]; OPTS = options || {}
+  document.documentElement.style.setProperty('--u', L.u + 'px')
+  document.body.style.width = L.w + 'px'; document.body.style.height = L.h + 'px'
+  if (OPTS.fontUrl) {
+    const face = new FontFace('Source Serif 4 Variable', `url(${OPTS.fontUrl})`, { weight: '200 900' })
+    document.fonts.add(face)
+    return face.load().then(() => timeline())
+  }
+  return Promise.resolve(timeline())
+}
+
+/** Scenes laid end to end: [{scene, start, end}], plus the total. */
+function timeline() {
+  let t = 0
+  TIMELINE = SPEC.scenes.map((scene) => {
+    const dur = sceneDuration(scene)
+    const item = { scene, start: t, end: t + dur }
+    t += dur
+    return item
+  })
+  return { total: t, scenes: TIMELINE.map(({ scene, start, end }) => ({ id: scene.id || null, kind: scene.kind, slot: scene.slot || null, start, end })) }
+}
+
+function sceneDuration(scene) {
+  if (scene.dur) return scene.dur
+  if (scene.slot && scene.out != null) return (scene.out - scene.in) / (scene.speed || 1)
+  return 4
+}
+
+function screenRect() {
+  const p = phoneRect()
+  return { x: p.x + BEZEL, y: p.y + BEZEL, w: p.w - 2 * BEZEL, h: p.h - 2 * BEZEL }
+}
+function phoneRect() {
+  const h = L.phone.h
+  const w = Math.round((h - 2 * BEZEL) * SCREEN_ASPECT + 2 * BEZEL)
+  // Even sizes keep ffmpeg's yuv420p scaling exact.
+  return { x: L.phone.x, y: L.phone.y, w: w - (w % 2), h: h - (h % 2) }
+}
+
+function el(tag, attrs, children) {
+  const node = document.createElement(tag)
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'style') Object.assign(node.style, v)
+    else if (k === 'text') node.textContent = v
+    else node.setAttribute(k, v)
+  }
+  for (const child of children || []) if (child) node.appendChild(child)
+  return node
+}
+function px(n) { return n + 'px' }
+function ease(x) { return x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x) }
+
+function frame(t) {
+  const stage = document.getElementById('stage')
+  stage.textContent = ''
+  const item = TIMELINE.find((s) => t >= s.start && t < s.end) || TIMELINE[TIMELINE.length - 1]
+  const local = t - item.start
+  const dur = item.end - item.start
+  const alpha = Math.min(ease(local / FADE), ease((dur - local) / FADE), 1)
+  const content = el('div', { style: { position: 'absolute', inset: '0', opacity: String(alpha) } })
+  const scene = item.scene
+  if (scene.kind === 'title' || scene.kind === 'part' || scene.kind === 'end') drawCard(content, scene)
+  else drawPhoneScene(content, scene, local, dur)
+  stage.appendChild(content)
+  // The phone and its screen do not fade: the footage sits on top and fades itself.
+  if (scene.slot) stage.appendChild(drawPhone(scene))
+  drawTicks(stage, item)
+  if (OPTS.burnCaptions) drawCaption(stage, t)
+}
+
+function drawCard(root, scene) {
+  const box = el('div', { class: 'text', style: {
+    left: px(L.text.x), top: px(Math.round(L.h * 0.34)), width: px(L.w - 2 * L.text.x) } })
+  if (scene.kicker) box.appendChild(el('div', { class: 'caps', text: scene.kicker }))
+  box.appendChild(el('div', { class: 'title', text: scene.text }))
+  if (scene.sub) box.appendChild(el('div', { class: 'line', text: scene.sub }))
+  if (scene.kind === 'end') {
+    box.appendChild(el('div', { class: 'rule' }))
+    if (scene.link) box.appendChild(el('div', { class: 'end-link', text: scene.link }))
+    const notes = Array.isArray(scene.note) ? scene.note : scene.note ? [scene.note] : []
+    notes.forEach((note, i) => box.appendChild(el('div', { class: 'note', style: { marginTop: px(i ? L.u * 0.2 : L.u) }, text: note })))
+  }
+  root.appendChild(box)
+}
+
+function drawPhoneScene(root, scene, local, dur) {
+  const box = el('div', { class: 'text', style: { left: px(L.text.x), top: px(L.text.y), width: px(L.text.w) } })
+  box.appendChild(el('div', { class: 'caps', text: scene.kicker || '' }))
+  box.appendChild(el('div', { class: 'title', style: { marginTop: px(L.u * 0.4) }, text: scene.title }))
+  if (scene.line) box.appendChild(el('div', { class: 'line', text: scene.line }))
+  root.appendChild(box)
+  if (scene.kind === 'step') root.appendChild(drawDiagram(scene, local, dur))
+}
+
+function drawPhone(scene) {
+  const p = phoneRect(), s = screenRect()
+  const wrap = el('div')
+  wrap.appendChild(el('div', { class: 'phone', style: { left: px(p.x), top: px(p.y), width: px(p.w), height: px(p.h) } }))
+  const screen = el('div', { class: 'screen', style: { left: px(s.x), top: px(s.y), width: px(s.w), height: px(s.h) } })
+  if (!(OPTS.slots || []).includes(scene.slot)) {
+    // No footage for this slot yet: say which one, so a pacing render is still readable.
+    screen.appendChild(el('div', { class: 'caps', text: 'Footage to come' }))
+    screen.appendChild(el('div', { class: 'ph-title', text: scene.slot }))
+    if (scene.shot) screen.appendChild(el('div', { class: 'note', style: { color: '#a39b8c' }, text: scene.shot }))
+  }
+  wrap.appendChild(screen)
+  return wrap
+}
+
+// The diagram: the same nodes every step, in one column; the step's path lights up and a dot
+// travels along it, one edge after another, over the first two thirds of the step.
+function drawDiagram(scene, local, dur) {
+  const nodes = SPEC.nodes
+  const D = L.diagram
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('width', D.w); svg.setAttribute('height', D.h)
+  Object.assign(svg.style, { position: 'absolute', left: px(D.x), top: px(D.y) })
+  const gap = D.h / nodes.length
+  const boxW = D.w - 90, boxH = Math.min(gap - 22, 84)
+  const pos = {}
+  nodes.forEach((n, i) => { pos[n.id] = { x: 0, y: Math.round(i * gap + (gap - boxH) / 2), w: boxW, h: boxH } })
+  const path = scene.path || []
+  const lit = new Set(path)
+  const mk = (tag, attrs) => { const e = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e }
+  // Spine: faint links between neighbours.
+  for (let i = 0; i + 1 < nodes.length; i++) {
+    const a = pos[nodes[i].id], b = pos[nodes[i + 1].id]
+    svg.appendChild(mk('line', { x1: a.w / 2, y1: a.y + a.h, x2: b.w / 2, y2: b.y, stroke: '#dcd6ca', 'stroke-width': 2 }))
+  }
+  // The step's own edges: straight down between neighbours, a bow on the right otherwise.
+  const edges = []
+  for (let i = 0; i + 1 < path.length; i++) {
+    const a = pos[path[i]], b = pos[path[i + 1]]
+    if (!a || !b) continue
+    const down = b.y > a.y
+    const adjacent = Math.abs(nodes.findIndex((n) => n.id === path[i]) - nodes.findIndex((n) => n.id === path[i + 1])) === 1
+    let d
+    if (adjacent) {
+      const x = a.w / 2
+      d = down ? `M ${x} ${a.y + a.h} L ${x} ${b.y}` : `M ${x} ${a.y} L ${x} ${b.y + b.h}`
+    } else {
+      const ya = a.y + a.h / 2, yb = b.y + b.h / 2, bow = a.w + 70
+      d = `M ${a.w} ${ya} C ${bow} ${ya}, ${bow} ${yb}, ${b.w} ${yb}`
+    }
+    const p = mk('path', { d, fill: 'none', stroke: '#8a2d1e', 'stroke-width': 3 })
+    svg.appendChild(p)
+    edges.push(p)
+  }
+  nodes.forEach((n) => {
+    const r = pos[n.id], on = lit.has(n.id)
+    svg.appendChild(mk('rect', { x: r.x + 1, y: r.y + 1, width: r.w - 2, height: r.h - 2,
+      fill: on ? '#1d1a16' : '#faf8f3', stroke: on ? '#1d1a16' : '#a39b8c', 'stroke-width': 2 }))
+    const label = mk('text', { x: r.x + 18, y: r.y + r.h / 2 - 2, fill: on ? '#faf8f3' : '#1d1a16',
+      'font-size': L.u * 0.72, 'font-weight': 600 })
+    label.textContent = n.label
+    svg.appendChild(label)
+    if (n.where) {
+      const where = mk('text', { x: r.x + 18, y: r.y + r.h / 2 + L.u * 0.62, fill: on ? '#dcd6ca' : '#6b655b',
+        'font-size': L.u * 0.5, 'letter-spacing': '0.06em' })
+      where.textContent = n.where.toUpperCase()
+      svg.appendChild(where)
+    }
+  })
+  // The travelling dot: deterministic in `local`, so a still frame of the video shows where it is.
+  if (edges.length && !OPTS.still) {
+    const span = Math.max(dur * 0.66, 0.6)
+    const progress = Math.min(local / span, 1) * edges.length
+    const index = Math.min(Math.floor(progress), edges.length - 1)
+    const edge = edges[index]
+    const len = edge.getTotalLength()
+    const at = edge.getPointAtLength(len * ease(progress - index))
+    if (progress < edges.length) svg.appendChild(mk('circle', { cx: at.x, cy: at.y, r: 9, fill: '#8a2d1e' }))
+  }
+  return svg
+}
+
+function drawTicks(root, item) {
+  const chapters = TIMELINE.filter((s) => s.scene.kind === 'beat' || s.scene.kind === 'step')
+  if (!chapters.length) return
+  const row = el('div', { class: 'ticks', style: { left: px(L.ticks.x), top: px(L.ticks.y), width: px(L.ticks.w) } })
+  for (const c of chapters) {
+    const cls = c === item ? 'tick now' : c.end <= item.start ? 'tick on' : 'tick'
+    row.appendChild(el('div', { class: cls }))
+  }
+  root.appendChild(row)
+}
+
+function drawCaption(root, t) {
+  const cue = (OPTS.cues || []).find((c) => t >= c.start && t < c.end)
+  if (!cue) return
+  root.appendChild(el('div', { class: 'caption', style: { bottom: px(L.caption.bottom) }, text: cue.text }))
+}
+
+window.setup = setup
+window.frame = frame
+window.screenRect = () => screenRect()
+window.phoneRect = () => phoneRect()
+window.timelineInfo = () => timeline()
+</script>
+</body>
+</html>

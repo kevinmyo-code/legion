@@ -1,0 +1,165 @@
+{
+  "poster_at": 1.5,
+  "lines": {
+    "hey": "Hey Alfred.",
+    "ask": "What's on the list?",
+    "thats_all": "That's all."
+  },
+  "nodes": [
+    {
+      "id": "you",
+      "label": "You",
+      "where": "the asker"
+    },
+    {
+      "id": "phone",
+      "label": "Wake word, end of turn",
+      "where": "on the phone"
+    },
+    {
+      "id": "stt",
+      "label": "Speech to text",
+      "where": "Gemini, cloud"
+    },
+    {
+      "id": "model",
+      "label": "The model",
+      "where": "Gemini Flash-Lite, cloud"
+    },
+    {
+      "id": "checks",
+      "label": "Checks",
+      "where": "code, on the phone"
+    },
+    {
+      "id": "tools",
+      "label": "Tools",
+      "where": "code, on the phone"
+    },
+    {
+      "id": "voice",
+      "label": "The voice",
+      "where": "Gemini TTS, cloud"
+    }
+  ],
+  "money_overlay": {
+    "font": "app/src/main/res/font/source_serif_4_semibold.ttf",
+    "background": "0x14120F",
+    "check_crop": [
+      0,
+      330,
+      1080,
+      860
+    ],
+    "patches": [
+      [
+        40,
+        378,
+        440,
+        122
+      ],
+      [
+        840,
+        425,
+        195,
+        70
+      ],
+      [
+        45,
+        503,
+        215,
+        58
+      ],
+      [
+        185,
+        1050,
+        240,
+        80
+      ]
+    ],
+    "texts": [
+      {
+        "text": "$100.00",
+        "size": 96,
+        "color": "0xF1ECE2",
+        "x": 52,
+        "baseline": 472
+      },
+      {
+        "text": "net cash",
+        "size": 48,
+        "color": "0xF1ECE2",
+        "right": 1027,
+        "baseline": 477
+      },
+      {
+        "text": "$10.00",
+        "size": 60,
+        "color": "0xF1ECE2",
+        "right": 410,
+        "baseline": 1112
+      }
+    ]
+  },
+  "scenes": [
+    {
+      "kind": "title",
+      "dur": 3,
+      "text": "Example title",
+      "sub": "An example subtitle."
+    },
+    {
+      "kind": "part",
+      "dur": 2,
+      "kicker": "Part one",
+      "text": "Example part"
+    },
+    {
+      "kind": "beat",
+      "kicker": "Part one",
+      "title": "Example beat",
+      "line": "An example line.",
+      "slot": "m-example",
+      "in": 0,
+      "dur": 4,
+      "shot": "Example shot"
+    },
+    {
+      "kind": "step",
+      "kicker": "Part two · 1 of 2",
+      "title": "Example step",
+      "line": "The path lights up.",
+      "path": [
+        "you",
+        "phone"
+      ],
+      "slot": "h-example",
+      "in": 0,
+      "dur": 5
+    },
+    {
+      "kind": "step",
+      "kicker": "Part two · 2 of 2",
+      "title": "Another step",
+      "line": "A bow between nodes.",
+      "path": [
+        "model",
+        "checks",
+        "tools"
+      ],
+      "slot": "h-example",
+      "in": 5,
+      "dur": 5
+    },
+    {
+      "kind": "end",
+      "dur": 3,
+      "text": "Example end",
+      "link": "example.com",
+      "note": [
+        "Example note one.",
+        "Example note two."
+      ]
+    }
+  ]
+}
