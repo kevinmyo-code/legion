@@ -1773,14 +1773,16 @@ def _answer(
 
     # The first lookup of the turn and when it started; its line waits for FILLER_WAIT_S.
     lookup: tuple[str, float] | None = None
+    cancelled_often = getattr(door.cancelled, "often", door.cancelled)
 
     def lookup_line():
         """The lookup's line, once FILLER_WAIT_S has passed since it started with nothing said;
         never once an answer sentence is ready, never a second line in the turn."""
         if lookup is None or filler_said or sentences or not speak:
             return None
-        if clock() - lookup[1] < FILLER_WAIT_S or door.cancelled():
-            # Never after a cancel (asked only once the line is due: it reads the database).
+        if clock() - lookup[1] < FILLER_WAIT_S or cancelled_often():
+            # Never after a cancel. Asked only once the line is due, through the door's rate-limited
+            # check: a due line with no clip in hand is asked again on every tick.
             return None
         return (yield from filler(lookup[0], shortest=True, ceiling_ms=DELAYED_LINE_MAX_MS))
 

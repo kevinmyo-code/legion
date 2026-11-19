@@ -310,3 +310,34 @@ def test_no_delayed_line_is_longer_than_the_ceiling_for_any_family(family_ms, ge
             assert picked is None, tool
         if picked is not None:
             assert len(picked[1]) // 48 <= ceiling, tool
+
+
+def test_a_due_line_with_no_clip_asks_about_a_cancel_at_the_doors_rate(
+    member, engine, monkeypatch, household_user
+):
+    # N1: a line due but not said (no clip in hand) must not ask the database on every tick.
+    conversation = _later(member, engine, monkeypatch, household_user)
+    monkeypatch.setattr(cascade, "FILLER_AUDIO", cascade.FillerAudio(spawn=lambda work: None))
+
+    class Counting:
+        direct = 0
+        throttled = 0
+
+        def __call__(self):
+            Counting.direct += 1
+            return False
+
+        def often(self):
+            Counting.throttled += 1
+            return False
+
+    monkeypatch.setattr(cascade, "CancelCheck", lambda *a, **k: Counting())
+    # The same turn with no silent wait: how often the turn itself asks directly.
+    _turn(member, engine, conversation, FakeModel([call("monthly_spend", {}), say("Some.")]))
+    quick = Counting.direct
+    Counting.direct = 0
+    model = SlowModel([call("monthly_spend", {}), say("Some.")], [0.0, 1.5])
+    events = _turn(member, engine, conversation, model)
+    assert _fillers(events) == []
+    # About 8 ticks past the 0.7 s wait, none of them a direct (database) question.
+    assert Counting.direct <= quick
