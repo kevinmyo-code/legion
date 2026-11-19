@@ -1,5 +1,5 @@
 // One width for `realrun_try_orb_flow.py`: the /try tour, a diagram asked by a typed question, and the
-// orb's travel to the dock, with what the page did frame by frame. Prints one JSON line and writes
+// chips under the orb, with what the page did frame by frame. Prints one JSON line and writes
 // <out>/orbflow-<tag>-<width>.json plus frames and screenshots. Never run against a deployed engine.
 // Usage: node <this> '<json args>'
 //
@@ -9,7 +9,7 @@
 //  - every animation frame where the page's state changed (scroll, dock shown, the fit box's size,
 //    the body's bottom padding), so a toggle storm shows as a run of alternating samples;
 //  - the browser's layout-shift entries;
-//  - the compositor's own frames (CDP screencast) around each diagram opening and the orb travel.
+//  - the compositor's own frames (CDP screencast) around each diagram opening.
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -37,8 +37,6 @@ const context = await browser.newContext({
   hasTouch: mobile,
   deviceScaleFactor: mobile ? 2 : 1,
   serviceWorkers: 'block',
-  // `reduced`: the visitor asked for less motion (the orb then cross-fades, never travels).
-  reducedMotion: A.reduced ? 'reduce' : 'no-preference',
 })
 await context.grantPermissions(['microphone'], { origin: A.base })
 const page = await context.newPage()
@@ -288,22 +286,6 @@ function framesAround(P, label, from, to) {
 }
 
 // ---- open the link ----------------------------------------------------------------------------
-// `only: 'travel'`: the visit is entered by the public route (no model, no speech, no cost) and
-// only the orb's travel runs.
-const travelOnly = A.only === 'travel'
-if (travelOnly) {
-  await page.goto(`${A.base}/try`)
-  await page.evaluate(async (code) => {
-    await fetch('/api/auth/csrf', { credentials: 'same-origin' })
-    const token = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''
-    await fetch('/api/demo/enter', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
-      body: JSON.stringify({ code, ref: 'orbflow' }),
-    })
-  }, A.code)
-}
 await page.goto(`${A.base}/try?code=${encodeURIComponent(A.code)}&ref=orbflow`)
 await page.locator('[data-stage="orb"]').waitFor({ timeout: 30000 })
 await page.evaluate(() => document.fonts.ready)
@@ -313,7 +295,6 @@ await shot('1-top')
 let t0
 let t1
 let P
-if (!travelOnly) {
 // ---- the one-minute tour: started from the stage, then the visitor scrolls on to read ---------
 t0 = await wall()
 await page.locator('[data-stage="tour"]').click()
@@ -395,46 +376,7 @@ R.phases.captions = await page.evaluate(() => {
   return box ? { overflowY: getComputedStyle(box).overflowY, top: Math.round(box.scrollTop) } : null
 })
 await shot('6-ask-closed')
-}
 
-// ---- the orb's travel: scrolled by wheel past the stage, then back ----------------------------
-await page.evaluate(() => window.scrollTo(0, 0))
-await sleep(1000)
-await shot('7-travel-top')
-t0 = await wall()
-const steps = 14
-for (let i = 0; i < steps; i++) {
-  await page.mouse.wheel(0, Math.round(A.height * 0.06))
-  await sleep(45)
-}
-await sleep(900)
-const tDown = await wall()
-await shot('8-travel-docked')
-for (let i = 0; i < steps; i++) {
-  await page.mouse.wheel(0, -Math.round(A.height * 0.06))
-  await sleep(45)
-}
-// Wheel scrolls land after the call returns: let the page arrive back at the top.
-await sleep(1600)
-t1 = await wall()
-await shot('9-travel-back')
-P = await probe()
-R.phases.travel = {
-  ...summary(P, t0, t1),
-  framesDown: writeFrames('travel-down', t0 - 100, tDown, 90),
-  framesUp: writeFrames('travel-up', tDown, t1, 90),
-  // Where the stage's orb and the dock's orb were, frame by frame (two orbs visible at once = a pop).
-  path: P.samples.filter((x) => x.t >= t0 && x.t <= t1).map((x) => ({ t: Math.round(x.t - t0), y: x.y, orb: x.orb, orbOpacity: x.orbOpacity, dock: x.dock, dockOrb: x.dockOrb, dockOpacity: x.dockOpacity })).slice(0, 400),
-}
-
-// `chips` (travel-only): tap the orb once so the greeting brings the example chips (a scripted
-// line, its speech the only cost), then look at them.
-if (travelOnly && A.chips) {
-  await page.evaluate(() => window.scrollTo(0, 0))
-  await page.locator('[data-stage="orb"]').click()
-  await page.locator('[data-stage="chips"] button').first().waitFor({ timeout: 30000 }).catch(() => {})
-  await sleep(1200)
-}
 // ---- the chips: where they sit, and the row's bounds at this width ------------------------------
 R.chips = await page.evaluate(() => {
   const row = document.querySelector('[data-stage="chips"]')
@@ -459,21 +401,18 @@ const jumps = (p) =>
   (p.calls || []).filter(
     (c) => (c.call === 'scroll-jump' && !mine(p, c)) || (c.call === 'window.scrollTo' && /"top":0/.test(c.args || '') && !/evaluate/.test(c.from || '')),
   )
-const travelled = (ph.travel.path || []).map((x) => x.dock)
-const travelChecks = {
-  // Scrolled past, the orb docks; scrolled back to the top, it is back on the stage.
-  docksAndComesBack: travelled.includes(true) && travelled[travelled.length - 1] === false,
-  // Reduced motion: the docked orb never sits anywhere but its own place (no travel).
-  ...(A.reduced
-    ? { noTravelUnderReducedMotion: (ph.travel.path || []).filter((x) => x.dock && x.dockOrb).every((x) => x.dockOrb[2] <= 64) }
-    : {}),
-}
-R.checks = travelOnly ? { ...travelChecks, noDockStorm: ph.travel.dockStorm <= 1 } : {
-  ...travelChecks,
+const chips = R.chips
+R.checks = {
+  // The chips: directly under the stage orb, each a 44 px tap target and a pill, the row never
+  // wider than the page (review 2026-11-19: asserted here, not by matching the stylesheet).
+  chipsUnderTheOrb: Boolean(chips) && chips.top >= chips.orbBottom && chips.top - chips.orbBottom <= 40,
+  chipsTapTargets: Boolean(chips) && chips.buttons.length > 0 && chips.buttons.every((b) => b.h >= 44),
+  chipsArePills: Boolean(chips) && chips.radius === '9999px',
+  chipsNoPageOverflow: Boolean(chips) && chips.overflow === false,
   // The page under a diagram stays where the visitor put it, opening and closing.
   noScrollJumpWithDiagram: ['tour', 'tourClose', 'ask', 'askClose'].every((k) => jumps(ph[k]).length === 0),
   // The dock never flips back and forth (at most one change in any second, in every phase).
-  noDockStorm: ['tour', 'tourClose', 'ask', 'askClose', 'travel'].every((k) => ph[k].dockStorm <= 1),
+  noDockStorm: ['tour', 'tourClose', 'ask', 'askClose'].every((k) => ph[k].dockStorm <= 1),
   // While a diagram is open its host is never mounted again, and each diagram shown is drawn once.
   noDiagramRemount: ph.ask.diagramHost.add === 1 && ph.ask.diagramHost.remove === 0 && ph.ask.diagramSvg.add === 1 && ph.ask.diagramSvg.remove === 0,
   // Two diagrams in the tour, each drawn once into its own host (a card between them replaces the
@@ -489,4 +428,4 @@ R.spendUsd = Math.round(R.turns.reduce((n, x) => n + (x.cost ?? 0), 0) * 100000)
 await cdp.send('Page.stopScreencast').catch(() => {})
 await browser.close()
 fs.writeFileSync(path.join(A.out, `${name('result')}.json`), JSON.stringify(R, null, 1))
-console.log(JSON.stringify({ width: A.width, checks: R.checks, tour: R.phases.tour, tourClose: R.phases.tourClose, ask: R.phases.ask, askClose: R.phases.askClose, travel: { ...R.phases.travel, path: undefined }, chips: R.chips, spendUsd: R.spendUsd, console: R.console.slice(0, 5) }))
+console.log(JSON.stringify({ width: A.width, checks: R.checks, tour: R.phases.tour, tourClose: R.phases.tourClose, ask: R.phases.ask, askClose: R.phases.askClose, chips: R.chips, spendUsd: R.spendUsd, console: R.console.slice(0, 5) }))

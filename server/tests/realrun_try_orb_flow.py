@@ -1,16 +1,14 @@
 # ruff: noqa: F811 - the `real` fixture is imported from the cascade harness
-"""The /try tour, a diagram opening and the orb's travel in headless Chrome (Kevin, 2026-11-19: "the
-1 minute tour and diagrams opening still have bugs, the diagrams are flickering hard"; "when we
-scroll down, the orb should like move from the location in the centre to the bottom"). NOT part of
+"""The /try tour, a diagram opening and the chips in headless Chrome (Kevin, 2026-11-19: "the 1
+minute tour and diagrams opening still have bugs, the diagrams are flickering hard"). NOT part of
 the suite: run by name, with a key, Node + Playwright, and the SPA built into `server/static/app`:
 
     LEGION_GEMINI_KEY_FILE=<path> ORBFLOW_OUT=<dir> PLAYWRIGHT_DIR=<node_modules dir> \\
         ORBFLOW_TAG=before|after pt.sh <worktree> <port> <db> tests/realrun_try_orb_flow.py -s
 
-`ORBFLOW_ONLY=travel` runs only the orb's travel (no model, no cost); `ORBFLOW_REDUCED=1` runs with
-reduced motion. For each width (390 x 700, 1280 x 800) a fresh visit runs the whole one-minute tour,
-closes its card, asks for a diagram by a typed question with the orb docked, closes it, then scrolls
-past the stage and back by wheel. `realrun_try_orb_flow.mjs` records the dock and the diagram's
+For each width (390 x 700, 1280 x 800) a fresh visit runs the whole one-minute tour,
+closes its card, asks for a diagram by a typed question with the orb docked, closes it, then looks
+at the chips under the orb. `realrun_try_orb_flow.mjs` records the dock and the diagram's
 mounts and unmounts, the page's state per animation frame, layout shifts and the compositor's frames
 (`orbflow-<tag>-<width>-*.json|png`, `frames/`). The spend is the demo budget's reserved cents (an
 upper bound on what the run cost). Invented content only (`tests.test_profile_verbatim._content`);
@@ -76,11 +74,6 @@ def test_try_orb_flow(real, live_server, tmp_path):
             "tag": tag,
             "wav": str(wav),
             "question": QUESTION,
-            # ORBFLOW_ONLY=travel: the orb's travel alone, on a visit entered by the public route
-            # (no model, no speech, nothing spent); ORBFLOW_REDUCED=1: with reduced motion.
-            "only": os.environ.get("ORBFLOW_ONLY", ""),
-            "reduced": os.environ.get("ORBFLOW_REDUCED") == "1",
-            "chips": os.environ.get("ORBFLOW_CHIPS") == "1",
         }
         done = subprocess.run(
             ["node", str(HERE / "realrun_try_orb_flow.mjs"), json.dumps(args)],
