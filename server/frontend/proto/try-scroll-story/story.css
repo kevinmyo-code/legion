@@ -1,0 +1,141 @@
+/* PROTOTYPE (proto/try-scroll-story). The /try typeset palette, standalone. Every scroll-time change
+   is transform or opacity; layout never changes while scrolling. */
+:root {
+  --paper: #faf8f3;
+  --ink: #1d1a16;
+  --meta: #6b655b;
+  --rule: #dcd6ca;
+  --accent: #8a2d1e;
+  --u: 19px;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+@media (max-width: 1100px) {
+  :root { --u: 18px; }
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: 'Source Serif 4', 'Source Serif Pro', Georgia, serif;
+  font-size: var(--u);
+  line-height: 1.5;
+}
+a { color: inherit; text-decoration-color: var(--meta); text-underline-offset: 0.18em; }
+.caps { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--meta); }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 18px 24px; border-bottom: 1px solid var(--rule); }
+.top nav { display: flex; gap: 1.2rem; }
+
+/* Sections: a measure, offset to the side away from the orb on wide screens. */
+.sec, .hero { position: relative; padding: 18vh 24px; max-width: 1200px; margin: 0 auto; }
+.sec > *, .hero > * { max-width: 34rem; }
+@media (min-width: 900px) {
+  .sec[data-side='left'] > * { margin-left: auto; margin-right: 6%; }
+  .sec[data-side='right'] > * { margin-right: auto; margin-left: 6%; }
+  .sec[data-side='center'] > *, .hero > * { margin-left: auto; margin-right: auto; text-align: center; }
+}
+h1, h2, h3 { font-weight: 600; line-height: 1.12; margin: 0 0 0.5em; }
+.hero-title { font-size: clamp(2.2rem, 6vw, 4.4rem); letter-spacing: -0.01em; }
+h2 { font-size: clamp(1.7rem, 4vw, 2.8rem); }
+/* The stage's room: the orb, then its status line and chips under it (the fixed orb sits here). */
+.hero-space { height: calc(min(64vw, 15rem) + 8.5rem); margin: 0 auto 3rem; }
+.hero-lead { font-size: 1.15rem; color: var(--ink); }
+.dateline { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; color: var(--meta); font-size: 0.85rem; }
+.cards { display: grid; gap: 1rem; }
+.card { border-top: 1px solid var(--rule); padding-top: 0.8rem; }
+.figures { display: flex; gap: 2rem; flex-wrap: wrap; margin: 2rem 0 0; }
+.figures dt { font-size: 2.2rem; font-weight: 600; }
+.figures dd { margin: 0; color: var(--meta); font-size: 0.85rem; }
+.job { display: grid; grid-template-columns: 6rem 1fr; gap: 1rem; border-top: 1px solid var(--rule); padding: 0.8rem 0; }
+.when { color: var(--meta); font-size: 0.85rem; }
+.links { display: flex; gap: 1.4rem; justify-content: center; }
+
+/* Reveals: in place (no layout), a short rise and fade, staggered by --i. */
+.reveal { opacity: 0; transform: translateY(28px); transition: opacity 700ms var(--ease), transform 900ms var(--ease); transition-delay: calc(var(--i, 0) * 90ms); }
+.reveal.in { opacity: 1; transform: none; }
+.hero-title.reveal { transform: translateY(40px) scale(0.98); }
+.hero-title.reveal.in { transform: none; }
+
+/* The orb: fixed, one element, gliding between places with transform only. */
+.orb-dock {
+  position: fixed; left: 0; top: 0; z-index: 20;
+  width: 240px; height: 240px;
+  transform: var(--place, translate(-50%, -50%));
+  transition: transform 800ms var(--ease), opacity 400ms;
+  will-change: transform;
+  pointer-events: none;
+}
+.orb-dock > * { pointer-events: auto; }
+.orb { width: 240px; height: 240px; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; transform: scale(var(--orb-scale, 1)); transform-origin: center; transition: transform 800ms var(--ease); color: var(--ink); --orb-accent: var(--accent); }
+.orb canvas { width: 100%; height: 100%; display: block; }
+.orb-side { position: absolute; left: 0; top: 0; width: 18rem; display: flex; flex-direction: column; gap: 8px; transition: transform 800ms var(--ease), opacity 400ms; }
+.orb-line { margin: 0; font-weight: 600; font-size: 0.95rem; }
+.chips { max-width: 100%; display: flex; gap: 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(to right, #000 85%, transparent); }
+.chip { flex: none; min-height: 44px; padding: 0 0.8rem; border: 1px solid var(--rule); border-radius: 999px; background: var(--paper); color: var(--ink); font: inherit; font-size: 0.82rem; white-space: nowrap; cursor: pointer; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+/* On the stage: status and chips centred under the orb. */
+.orb-dock[data-place='stage'] .orb-side { align-items: center; text-align: center; width: 30rem; max-width: calc(100vw - 32px); }
+
+/* Pinned scenes: a sticky stage beside the steps; content changes by class, never by scroll position. */
+.pin-scene { display: grid; gap: 2rem; }
+@media (min-width: 900px) {
+  .pin-scene { grid-template-columns: 1fr 1fr; align-items: start; }
+  .pin-scene > * { max-width: none; margin: 0; }
+  .pin-scene[data-side='left'] .pin-text { order: 2; }
+}
+.pin-stage { position: sticky; top: 15vh; height: 70vh; display: grid; place-items: center; }
+/* Phone: one column, so the pinned picture comes first and stays at the top while its steps scroll
+   up under it (an opaque band, never a layout change). */
+@media (max-width: 899px) {
+  .pin-stage { order: -1; top: 0; height: 46vh; z-index: 1; background: var(--paper); border-bottom: 1px solid var(--rule); }
+  .phone-frame { transform: scale(0.8); }
+  .step { min-height: 45vh; }
+}
+.step { min-height: 60vh; display: flex; flex-direction: column; justify-content: center; opacity: 0.25; transition: opacity 500ms; }
+.step.on { opacity: 1; }
+.diagram { width: min(100%, 520px); }
+.diagram rect, .diagram circle { fill: #fff; stroke: var(--rule); stroke-width: 2; transition: stroke 400ms, fill 400ms; }
+.diagram .wire { fill: none; stroke: var(--rule); stroke-width: 2; }
+.diagram .layer.on rect, .diagram .layer.on circle { stroke: var(--accent); fill: #fdf0d5; }
+.phone-frame { width: 230px; height: 470px; border: 2px solid var(--ink); border-radius: 34px; padding: 10px; background: var(--ink); }
+.phone-screen { position: relative; height: 100%; border-radius: 25px; overflow: hidden; background: linear-gradient(160deg, #f1ede4, #dcd6ca); }
+.scrub { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 18px, rgba(29, 26, 22, 0.06) 18px 19px); transform: translateX(var(--scrub, 0px)); transition: transform 600ms var(--ease); }
+.chapter { position: absolute; left: 0; right: 0; bottom: 24px; text-align: center; font-weight: 600; }
+
+/* The 3D placeholder: a cube turning (CSS scroll timeline where supported, else steps by class). */
+.model-wrap { perspective: 900px; height: 260px; display: grid; place-items: center; }
+.model { width: 140px; height: 140px; position: relative; transform-style: preserve-3d; transform: rotateX(-20deg) rotateY(var(--turn, 20deg)); transition: transform 900ms var(--ease); }
+.model i { position: absolute; inset: 0; border: 2px solid var(--ink); background: rgba(250, 248, 243, 0.85); }
+.model i:nth-child(1) { transform: translateZ(70px); }
+.model i:nth-child(2) { transform: rotateY(180deg) translateZ(70px); }
+.model i:nth-child(3) { transform: rotateY(90deg) translateZ(70px); }
+.model i:nth-child(4) { transform: rotateY(-90deg) translateZ(70px); }
+.model i:nth-child(5) { transform: rotateX(90deg) translateZ(70px); }
+.model i:nth-child(6) { transform: rotateX(-90deg) translateZ(70px); background: var(--accent); }
+
+/* Variant B: scrubbed scenes ride the scroll on the compositor (scroll-driven animations). */
+@supports (animation-timeline: view()) {
+  .v-b .model { transition: none; animation: turn linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+  .v-b .hero-title.in { animation: shrink linear both; animation-timeline: scroll(root); animation-range: 0 60vh; }
+  .v-b .scrub { transition: none; animation: scrub linear both; animation-timeline: view(); }
+}
+@keyframes turn { from { transform: rotateX(-20deg) rotateY(-60deg); } to { transform: rotateX(-20deg) rotateY(300deg); } }
+@keyframes shrink { to { transform: scale(0.82); opacity: 0.35; } }
+@keyframes scrub { from { transform: translateX(0); } to { transform: translateX(-160px); } }
+/* Variant A: one pinned scene only (the diagram); the phone section reads as a plain section. */
+.v-a .video-scene .pin-stage { position: static; height: auto; }
+.v-a .video-scene .step { min-height: 0; opacity: 1; padding: 0.4rem 0; }
+
+/* Phone: no side to glide to; the orb rides the top-right corner, its words hidden, chips under it. */
+@media (max-width: 899px) {
+  .orb-dock[data-place='side'] .orb-side { opacity: 0; pointer-events: none; }
+}
+
+/* Reduced motion: a plain page. The orb stays on the stage and scrolls with it; everything shows. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .orb-dock { position: absolute; transition: none; }
+  .step { opacity: 1; transition: none; }
+  .v-b .model, .v-b .hero-title.in, .v-b .scrub { animation: none; }
+}

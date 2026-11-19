@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>/try scroll story (prototype)</title>
+    <link rel="stylesheet" href="./story.css" />
+  </head>
+  <!--
+    PROTOTYPE for Kevin's eye, not production (proto/try-scroll-story, 2026-11-19). The /try page's
+    real section structure with INVENTED placeholder text. ?v=a restrained (Apple-like), ?v=b bolder.
+    Run: cd server/frontend && npx vite --port 5199  then open http://localhost:5199/proto/try-scroll-story/?v=a
+  -->
+  <body>
+    <div class="story">
+      <!-- The persistent character: one orb, fixed, gliding between places (transform and opacity only). -->
+      <div class="orb-dock" id="orb-dock" data-place="stage">
+        <button type="button" class="orb" id="orb" aria-label="Talk to the assistant">
+          <canvas id="orb-canvas" aria-hidden="true"></canvas>
+        </button>
+        <div class="orb-side">
+          <p class="orb-line" id="orb-line" role="status">Tap and ask me anything</p>
+          <div class="chips" role="group" aria-label="Suggested questions">
+            <button type="button" class="chip">About the builder</button>
+            <button type="button" class="chip">How this is built</button>
+            <button type="button" class="chip">The one-minute tour</button>
+          </div>
+        </div>
+      </div>
+
+      <header class="top">
+        <span class="caps">Sample Name</span>
+        <nav class="caps"><a href="#projects">Projects</a><a href="#system">System</a><a href="#phone">Phone</a><a href="#work">Work</a></nav>
+      </header>
+
+      <section class="hero" id="stage" data-side="center">
+        <div class="hero-space" aria-hidden="true"></div>
+        <h1 class="hero-title reveal">A placeholder person builds placeholder things</h1>
+        <p class="hero-lead reveal">An invented lead of about the right length: two sentences on what this page shows, written for the layout only. The real words come from the content folder.</p>
+        <p class="dateline reveal"><span>Example City</span><span>Graduating, some term</span><span>Open to roles</span></p>
+      </section>
+
+      <section class="sec" id="projects" data-side="right">
+        <h2 class="reveal">Projects</h2>
+        <div class="cards">
+          <article class="card reveal"><b>The system.</b> A made-up line about a household assistant with a voice, an engine and a phone.</article>
+          <article class="card reveal"><b>A dashboard.</b> A made-up line about a team dashboard that refreshes every few minutes.</article>
+          <article class="card reveal"><b>A shifter.</b> A made-up line about a hardware controller, in progress.</article>
+        </div>
+      </section>
+
+      <!-- Pinned scene 1 (both variants): the diagram stays while its steps scroll past. -->
+      <section class="sec pin-scene" id="system" data-side="left">
+        <div class="pin-text">
+          <h2 class="reveal">How the system is built</h2>
+          <div class="step" data-step="0"><h3>Clients</h3><p>Placeholder: three clients reach one engine through one door, each fenced by role.</p></div>
+          <div class="step" data-step="1"><h3>The engine</h3><p>Placeholder: requests pass through checks and reach the domain apps that own the data.</p></div>
+          <div class="step" data-step="2"><h3>The data</h3><p>Placeholder: everything narrows to one database, scoped to one household at one choke point.</p></div>
+          <div class="step" data-step="3"><h3>The voice</h3><p>Placeholder: speech in, a text model with tools, speech out; the page shows what ran.</p></div>
+        </div>
+        <div class="pin-stage">
+          <svg class="diagram" viewBox="0 0 400 300" aria-label="Placeholder diagram">
+            <g class="layer" data-layer="0"><rect x="30" y="20" width="100" height="40" /><rect x="150" y="20" width="100" height="40" /><rect x="270" y="20" width="100" height="40" /></g>
+            <g class="layer" data-layer="1"><rect x="80" y="100" width="240" height="50" /></g>
+            <g class="layer" data-layer="2"><rect x="140" y="190" width="120" height="50" /></g>
+            <g class="layer" data-layer="3"><circle cx="350" cy="215" r="28" /></g>
+            <path class="wire" d="M80 60 V100 M200 60 V100 M320 60 V100 M200 150 V190" />
+          </svg>
+        </div>
+      </section>
+
+      <!-- Variant B pins this too: chapters step a placeholder video that scrubs with scroll. -->
+      <section class="sec pin-scene video-scene" id="phone" data-side="right">
+        <div class="pin-text">
+          <h2 class="reveal">The phone</h2>
+          <div class="step" data-step="0"><h3>Wake</h3><p>Placeholder chapter: the phone hears its word and opens the conversation.</p></div>
+          <div class="step" data-step="1"><h3>Ask</h3><p>Placeholder chapter: a question about the made-up household, answered aloud.</p></div>
+          <div class="step" data-step="2"><h3>Act</h3><p>Placeholder chapter: a change made, read back, confirmed.</p></div>
+        </div>
+        <div class="pin-stage">
+          <div class="phone-frame"><div class="phone-screen"><div class="scrub"></div><span class="chapter" id="chapter">Wake</span></div></div>
+        </div>
+      </section>
+
+      <section class="sec" id="work" data-side="left">
+        <h2 class="reveal">Mid-sized company work</h2>
+        <p class="reveal">Placeholder: an invented paragraph about an operations dashboard for a made-up company, of the length the real one has, two or three sentences.</p>
+        <dl class="figures"><div class="reveal"><dt>12</dt><dd>placeholder views</dd></div><div class="reveal"><dt>5 min</dt><dd>placeholder refresh</dd></div><div class="reveal"><dt>3</dt><dd>placeholder teams</dd></div></dl>
+      </section>
+
+      <section class="sec shifter" id="shifter" data-side="right">
+        <h2 class="reveal">The shifter</h2>
+        <p class="reveal">Placeholder: a hardware controller for an old gearbox, in progress. The 3D model goes here.</p>
+        <div class="model-wrap reveal"><div class="model"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+      </section>
+
+      <section class="sec" id="experience" data-side="left">
+        <h2 class="reveal">Experience</h2>
+        <div class="job reveal"><span class="when">Some year</span><p><b>Placeholder role.</b> Invented bullets run on as one line of about the real length.</p></div>
+        <div class="job reveal"><span class="when">Some year</span><p><b>Another placeholder role.</b> Invented bullets run on as one line of about the real length.</p></div>
+        <div class="job reveal"><span class="when">Some year</span><p><b>A third placeholder role.</b> Invented bullets run on as one line.</p></div>
+      </section>
+
+      <section class="sec contact" id="contact" data-side="center">
+        <h2 class="reveal">Want to talk?</h2>
+        <p class="reveal links"><a href="#contact">Resume (PDF)</a><a href="#contact">Email</a><a href="#contact">LinkedIn</a></p>
+      </section>
+    </div>
+    <script type="module" src="./story.ts"></script>
+  </body>
+</html>
