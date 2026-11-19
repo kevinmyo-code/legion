@@ -456,7 +456,7 @@ object ScriptedLines {
      * The identifying strings [line] (from [doneLine] over [facts]) actually says: each said
      * write's title, and its list where the line names it ("added milk to Groceries"). Only what is
      * in the line, so a sentence dropped for naming one ([SaidFilter]) can never disagree with it.
-     * Never a short or bare value: under the floor ([minChars]), only digits, or "it". The
+     * Only a specific name ([specific]): never a short, everyday or bare value. The
      * generic line names nothing.
      */
     fun namesIn(facts: List<WriteFact>, line: String): List<String> {
@@ -464,20 +464,32 @@ object ScriptedLines {
         return facts.filter { it.said && it.phrase != null }
             .flatMap { listOf(it.title, it.list) }
             .map { it.trim() }
-            .filter { n -> n.length >= minChars(n) && !n.all { it.isDigit() || it.isWhitespace() } }
-            .filter { it.lowercase() != "it" }
+            .filter { specific(it) }
             .filter { SaidFilter.pattern(it).containsMatchIn(said) }
             .distinct()
     }
 
     /**
-     * The floor for a name that may drop a model sentence ([namesIn]): three characters, two in a
-     * script written without spaces (where two characters are often a whole word, "牛奶").
+     * A name specific enough to drop a model sentence ([namesIn], review round 2 A1: "the", "tea",
+     * a list called "Home" silenced unrelated sentences): two words or more, or one word of at least
+     * [MIN_NAME_LETTERS] letters that is not in [EVERYDAY_NAMES] (a fixed table, matched against the
+     * tool's own string, never a reading of the reply). In a script written without spaces, where a
+     * word cannot be counted, two characters or more.
      */
-    const val MIN_NAME_CHARS = 3
+    private fun specific(name: String): Boolean {
+        val unspaced = name.codePoints().anyMatch { Character.UnicodeScript.of(it) in LoneWordWriteGuard.UNSPACED }
+        if (unspaced) return name.length >= 2
+        val words = name.split(' ', '\t', '\n').filter { it.isNotEmpty() }
+        if (words.size >= 2) return words.any { w -> w.any { it.isLetter() } }
+        val word = words.singleOrNull() ?: return false
+        return word.count { it.isLetter() } >= MIN_NAME_LETTERS && word.lowercase() !in EVERYDAY_NAMES
+    }
 
-    private fun minChars(name: String): Int =
-        if (name.codePoints().anyMatch { Character.UnicodeScript.of(it) in LoneWordWriteGuard.UNSPACED }) 2 else MIN_NAME_CHARS
+    const val MIN_NAME_LETTERS = 5
+
+    /** Everyday words that are common list or item names: never a name that drops a sentence. */
+    val EVERYDAY_NAMES: Set<String> =
+        setOf("home", "work", "shop", "store", "today", "later", "things", "stuff", "list", "notes")
 
     @Suppress("ReturnCount") // the top level, then one nested level, then nothing
     private fun field(o: org.json.JSONObject, keys: List<String>): String {

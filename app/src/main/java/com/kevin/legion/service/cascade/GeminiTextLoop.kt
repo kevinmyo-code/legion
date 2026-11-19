@@ -177,7 +177,7 @@ class GeminiTextLoop(
         val writesSaid = mutableListOf<String>()
         var codeLines = 0
 
-        /** What code's lines named this turn ([ScriptedLines.namesIn]), and model sentences dropped for it. */
+        /** What the last code line named ([ScriptedLines.namesIn]), for the next round only; sentences dropped. */
         val saidNames = mutableListOf<String>()
         var saidDropped = 0
 
@@ -261,7 +261,9 @@ class GeminiTextLoop(
             // A filler-only sentence after real content is never spoken ([TrailingFiller]).
             val trail = TrailingFiller { hasContent(state) }
             // After code said a write, a model sentence that names it is not spoken (ruling A, [SaidFilter]).
+            // Only the round right after a code line (review round 2 A1), then the names are spent.
             val said = if (state.saidNames.isEmpty()) null else SaidFilter(state.saidNames.toList())
+            state.saidNames.clear()
             fun filtered(t: String): String {
                 val m = money?.feed(t) ?: t
                 return said?.feed(m) ?: m

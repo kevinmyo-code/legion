@@ -71,11 +71,11 @@ class SaidFilterTest {
         loop.answer(prefix, contents, tools, heard) to heard.model.toString().trim()
     }
 
-    private val milk = "Done: added milk to Groceries."
+    private val milk = "Done: added oat milk to Groceries."
 
     @Test
     fun `1 the model repeating the confirmation is not spoken`() {
-        val (r, model) = run(listOf(parts(weather(), add("milk"))), listOf(text("Added milk to your groceries.")))
+        val (r, model) = run(listOf(parts(weather(), add("oat milk"))), listOf(text("Added it to your groceries.")))
         assertEquals(milk, r.text)
         assertEquals("", model)
         assertEquals(1, r.saidDropped)
@@ -83,13 +83,13 @@ class SaidFilterTest {
 
     @Test
     fun `2 the same thing in other words is not spoken either`() {
-        val (r, _) = run(listOf(parts(weather(), add("milk"))), listOf(text("Milk is on there now.")))
+        val (r, _) = run(listOf(parts(weather(), add("oat milk"))), listOf(text("Oat milk is on there now.")))
         assertEquals(milk, r.text)
     }
 
     @Test
     fun `3 a second sentence about something else is kept`() {
-        val (r, model) = run(listOf(parts(weather(), add("milk"))), listOf(text("Got the milk. It will rain later.")))
+        val (r, model) = run(listOf(parts(weather(), add("oat milk"))), listOf(text("Got the oat milk. It will rain later.")))
         assertEquals("$milk It will rain later.", r.text)
         assertEquals("It will rain later.", model)
         assertEquals(1, r.saidDropped)
@@ -97,7 +97,7 @@ class SaidFilterTest {
 
     @Test
     fun `4 a follow-up question is kept`() {
-        val (r, _) = run(listOf(parts(weather(), add("milk"))), listOf(text("Anything else?")))
+        val (r, _) = run(listOf(parts(weather(), add("oat milk"))), listOf(text("Anything else?")))
         assertEquals("$milk Anything else?", r.text)
         assertEquals(0, r.saidDropped)
     }
@@ -110,8 +110,8 @@ class SaidFilterTest {
 
     @Test
     fun `6 two writes in one turn, either name drops a sentence`() {
-        val (r, _) = run(listOf(parts(weather(), add("milk"), add("eggs"))), listOf(text("Eggs and milk are added. Shall I order bread?")))
-        assertEquals("Done: added milk to Groceries; added eggs to Groceries. Shall I order bread?", r.text)
+        val (r, _) = run(listOf(parts(weather(), add("oat milk"), add("eggs"))), listOf(text("Eggs and oat milk are added. Shall I order bread?")))
+        assertEquals("Done: added oat milk to Groceries; added eggs to Groceries. Shall I order bread?", r.text)
     }
 
     @Test
@@ -131,8 +131,8 @@ class SaidFilterTest {
 
     @Test
     fun `9 a whole word only, in a script with spaces`() {
-        val (r, _) = run(listOf(parts(weather(), add("ink", "Todo"))), listOf(text("Thinking of you. The ink is in.")))
-        assertEquals("Done: added ink to Todo. Thinking of you.", r.text)
+        val (r, _) = run(listOf(parts(weather(), add("printer ink", "Todo"))), listOf(text("Thinking of you. The printer ink is in.")))
+        assertEquals("Done: added printer ink to Todo. Thinking of you.", r.text)
     }
 
     @Test
@@ -145,7 +145,7 @@ class SaidFilterTest {
 
     @Test
     fun `11 when every model sentence names it, the turn ends on the code line`() {
-        val (r, _) = run(listOf(parts(weather(), add("milk"))), listOf(text("Milk added. Milk is on Groceries.")))
+        val (r, _) = run(listOf(parts(weather(), add("oat milk"))), listOf(text("Oat milk added. It is on Groceries.")))
         assertEquals(milk, r.text)
         assertNull(r.failure)
         assertEquals(2, r.saidDropped)
@@ -153,20 +153,61 @@ class SaidFilterTest {
 
     @Test
     fun `12 what the model said before the write stays (it was already spoken)`() {
-        val (r, _) = run(listOf(text("Adding milk now. "), parts(weather(), add("milk"))), listOf(text("Milk is in.")))
-        assertEquals("Adding milk now. $milk", r.text)
+        val (r, _) = run(listOf(text("Adding oat milk now. "), parts(weather(), add("oat milk"))), listOf(text("Oat milk is in.")))
+        assertEquals("Adding oat milk now. $milk", r.text)
     }
 
     @Test
     fun `13 known limit, the list's name drops an unrelated sentence in that turn`() {
-        val (r, _) = run(listOf(parts(weather(), add("milk"))), listOf(text("Your Groceries list has five things.")))
+        val (r, _) = run(listOf(parts(weather(), add("oat milk"))), listOf(text("Your Groceries list has five things.")))
         assertEquals(milk, r.text)
     }
 
     @Test
     fun `14 the names are exactly what the line said`() {
-        val facts = listOf(ScriptedLines.writeFact("manage_item", "add", JSONObject().put("item", "milk").put("list", "Groceries"), ok = true))
-        assertEquals(listOf("milk", "Groceries"), ScriptedLines.namesIn(facts, ScriptedLines.doneLine(facts)!!))
+        val facts = listOf(ScriptedLines.writeFact("manage_item", "add", JSONObject().put("item", "oat milk").put("list", "Groceries"), ok = true))
+        assertEquals(listOf("oat milk", "Groceries"), ScriptedLines.namesIn(facts, ScriptedLines.doneLine(facts)!!))
         assertEquals(emptyList<String>(), ScriptedLines.namesIn(facts, ScriptedLines.GENERIC_DONE))
+    }
+
+    // --- review round 2, A1: a name must be specific enough, and only the next round is judged ---
+
+    @Test
+    fun `15 a short or everyday item or list name never drops an unrelated sentence`() {
+        for (item in listOf("the", "tea", "gym", "car")) {
+            val (r, _) = run(listOf(parts(weather(), add(item, "Todo"))), listOf(text("Rain later, so take the $item in.")))
+            assertEquals("Done: added $item to Todo. Rain later, so take the $item in.", r.text)
+        }
+        val (home, _) = run(listOf(parts(weather(), add("umbrella", "Home"))), listOf(text("Want a reminder when you get home?")))
+        assertEquals("Done: added umbrella to Home. Want a reminder when you get home?", home.text)
+    }
+
+    @Test
+    fun `16 a long single word or two words still count`() {
+        val (one, _) = run(listOf(parts(weather(), add("umbrella", "Todo"))), listOf(text("The umbrella is on there.")))
+        assertEquals("Done: added umbrella to Todo.", one.text)
+        val (two, _) = run(listOf(parts(weather(), add("oat milk", "Todo"))), listOf(text("Oat milk is in.")))
+        assertEquals("Done: added oat milk to Todo.", two.text)
+    }
+
+    @Test
+    fun `17 only the round right after the code line is judged`() {
+        val (r, _) = run(
+            listOf(parts(weather(), add("umbrella", "Todo"))),
+            listOf(text("One more check. "), parts(weather())),
+            listOf(text("Rain at five, and the umbrella is packed.")),
+        )
+        assertEquals("Done: added umbrella to Todo. One more check. Rain at five, and the umbrella is packed.", r.text)
+    }
+
+    @Test
+    fun `18 the floor is a fixed table of everyday names, by membership`() {
+        val facts = { item: String, list: String -> listOf(ScriptedLines.writeFact("manage_item", "add", JSONObject().put("item", item).put("list", list), ok = true)) }
+        for (stop in listOf("home", "work", "shop", "store", "today", "later", "things", "stuff", "list", "notes")) {
+            val f = facts("x", stop.replaceFirstChar { it.uppercase() })
+            assertEquals(stop, emptyList<String>(), ScriptedLines.namesIn(f, ScriptedLines.doneLine(f)!!))
+        }
+        val f = facts("milk", "Groceries")
+        assertEquals(listOf("Groceries"), ScriptedLines.namesIn(f, ScriptedLines.doneLine(f)!!))
     }
 }
