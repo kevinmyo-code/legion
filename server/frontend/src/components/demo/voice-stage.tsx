@@ -70,13 +70,15 @@ function shownRatio(entry: { isIntersecting: boolean; intersectionRatio?: number
 function travel(stageOrb: HTMLElement | null, dockOrb: HTMLElement | null, docking: boolean) {
   if (!stageOrb || !dockOrb || typeof dockOrb.animate !== 'function') return
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  // The last travel first: its transform still holds the docked orb where it ended (the stage),
+  // and measured through it the next travel started from the wrong place (the browser run).
+  for (const running of dockOrb.getAnimations?.() ?? []) running.cancel()
   const from = stageOrb.getBoundingClientRect()
   const to = dockOrb.getBoundingClientRect()
   if (!from.width || !to.width) return
   const dx = from.left + from.width / 2 - (to.left + to.width / 2)
   const dy = from.top + from.height / 2 - (to.top + to.height / 2)
   const away = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${(from.width / to.width).toFixed(3)})`
-  for (const running of dockOrb.getAnimations?.() ?? []) running.cancel()
   dockOrb.animate(
     docking
       ? [{ transform: away, opacity: 0 }, { opacity: 1, offset: 0.3 }, { transform: 'none', opacity: 1 }]

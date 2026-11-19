@@ -257,6 +257,27 @@ describe('the docked orb when the orb is off screen', () => {
     expect(calls[1].options.fill).toBe('forwards')
   })
 
+  test('each travel starts from where the stage orb is, never from where the last one left the docked orb', () => {
+    fakeIO()
+    // The browser run, 2026-11-19: the way back home ends with the docked orb held, by its fill, at
+    // the stage orb; measured through that, the next travel went from there to almost nowhere.
+    let held = true
+    const calls: { keyframes: Keyframe[] }[] = []
+    ;(HTMLElement.prototype as { animate?: unknown }).animate = function (keyframes: Keyframe[]) {
+      calls.push({ keyframes })
+      return { cancel() {} }
+    }
+    stage(false, true)
+    const box = (x: number, y: number, size: number) =>
+      ({ left: x, top: y, width: size, height: size, right: x + size, bottom: y + size, x, y, toJSON() {} }) as DOMRect
+    orb().getBoundingClientRect = () => box(75, -150, 240)
+    const docked = dockOrb()!
+    docked.getAnimations = () => [{ cancel: () => (held = false) } as unknown as Animation]
+    docked.getBoundingClientRect = () => (held ? box(75, -150, 240) : box(16, 620, 60))
+    deliver(false)
+    expect(calls[0].keyframes[0].transform).toBe('translate(149px, -680px) scale(4.000)')
+  })
+
   test('reduced motion: no travel (the stylesheet cross-fades)', () => {
     fakeIO()
     const calls: unknown[] = []
