@@ -221,9 +221,9 @@ class VoiceEvalOfflineTest {
         )
         val heard = lines.single { it.startsWith("LIVE_TEST heard text=") }
         // The item and its list come from the result's own fields (eval 2026-11-19 heard "Done: added it.").
-        // Ruling D: the write round ends the turn on code's line; "Anything else?" is never asked for.
+        // Ruling D-prime: after a round of confirmed writes alone, the closing text is not spoken.
         assertTrue(heard, heard.startsWith("LIVE_TEST heard text=\"Done: added mail the form to ") && !heard.contains("Anything else"))
-        assertTrue(lines.any { it == "LIVE_LATENCY reply_closing_skipped n=1" })
+        assertTrue(lines.any { it == "LIVE_LATENCY reply_closing_dropped n=1" })
         val voice = lines.single { it.startsWith("LIVE_TEST tts text=") }
         assertTrue(voice, voice.contains("Done: added "))
     }

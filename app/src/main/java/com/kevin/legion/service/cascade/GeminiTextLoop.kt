@@ -152,8 +152,8 @@ class GeminiTextLoop(
         val codeLines: Int = 0,
         /** Model sentences not spoken because they named what a code line had just said ([SaidFilter]). */
         val saidDropped: Int = 0,
-        /** The turn ended on code's write line: the closing model round was not asked for ([ClosingRound]). */
-        val closingSkipped: Boolean = false,
+        /** The closing round's text was not spoken: it followed confirmed writes alone ([ClosingRound]). */
+        val closingDropped: Boolean = false,
     )
 
     @Volatile private var searchRejected = false
@@ -181,8 +181,11 @@ class GeminiTextLoop(
         val saidNames = mutableListOf<String>()
         var saidDropped = 0
 
-        /** The round after the tools was not asked for ([ClosingRound]). */
-        var closingSkipped = false
+        /** The next round's text is held: the round before was confirmed writes alone ([ClosingRound]). */
+        var closingMayDrop = false
+
+        /** A closing round's text was not spoken: it followed confirmed writes alone ([ClosingRound]). */
+        var closingDropped = false
     }
 
     /** One call's result, and its write's facts when it was a write. */
@@ -268,7 +271,15 @@ class GeminiTextLoop(
                 val m = money?.feed(t) ?: t
                 return said?.feed(m) ?: m
             }
-            fun pass(t: String) = emit(trail.feed(filtered(t)), state, listener)
+            // Ruling D-prime: after a round of confirmed writes alone, this round's text is held to its
+            // end and spoken only if the round also calls a tool ([ClosingRound]).
+            val holdClosing = state.closingMayDrop
+            state.closingMayDrop = false
+            val closing = StringBuilder()
+            fun out(t: String) {
+                if (holdClosing) closing.append(t) else emit(t, state, listener)
+            }
+            fun pass(t: String) = out(trail.feed(filtered(t)))
             val outcome = try {
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
@@ -308,15 +319,23 @@ class GeminiTextLoop(
             held?.end()?.let { pass(it) }
             money?.let {
                 val m = it.flush()
-                emit(trail.feed(said?.feed(m) ?: m), state, listener)
+                out(trail.feed(said?.feed(m) ?: m))
                 if (it is DiagFilter) state.diagDropped += it.dropped else state.moneyDropped += it.dropped
             }
             said?.let {
-                emit(trail.feed(it.flush()), state, listener)
+                out(trail.feed(it.flush()))
                 state.saidDropped += it.dropped
             }
-            emit(trail.flush(), state, listener)
+            out(trail.flush())
             state.trailingFillerDropped += trail.dropped
+            if (holdClosing) {
+                // Text alone after confirmed writes could only repeat them; with a tool call it is kept.
+                if (turn.calls.isEmpty() || force) {
+                    if (closing.isNotBlank()) state.closingDropped = true
+                } else {
+                    emit(closing.toString(), state, listener)
+                }
+            }
             if (turn.blockReason != null) return fail(TextFailure.BLOCKED, state)
             if (turn.error != null && !turn.hasParts()) return fail(TextFailure.MODEL_ERROR, state)
             if (turn.grounded && !state.readThrough) {
@@ -354,11 +373,7 @@ class GeminiTextLoop(
                 calls.map { call -> async { runOne(call, executor, listener, state) } }.awaitAll()
             }
             sayWrites(ran, state, listener)
-            // Ruling D: a round of nothing but confirmed writes ends the turn on code's line.
-            if (ClosingRound.skip(ran.map { ClosingRound.Call(it.fact, it.result.response) })) {
-                state.closingSkipped = true
-                return reply(state)
-            }
+            state.closingMayDrop = ClosingRound.dropsText(ran.map { ClosingRound.Call(it.fact, it.result.response) })
             val results = ran.map { it.result }
             speakVerbatim(results, state, listener)
             val nudge = if (round + 1 >= maxRounds) "Answer now with what you have." else null
@@ -501,7 +516,7 @@ class GeminiTextLoop(
         trailingFillerDropped = state.trailingFillerDropped,
         codeLines = state.codeLines,
         saidDropped = state.saidDropped,
-        closingSkipped = state.closingSkipped,
+        closingDropped = state.closingDropped,
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
@@ -520,7 +535,7 @@ class GeminiTextLoop(
         trailingFillerDropped = state.trailingFillerDropped,
         codeLines = state.codeLines,
         saidDropped = state.saidDropped,
-        closingSkipped = state.closingSkipped,
+        closingDropped = state.closingDropped,
     )
 
     /**
