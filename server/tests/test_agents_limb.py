@@ -86,13 +86,21 @@ def _token(user, name="Invented phone"):
 def test_one_limb_row_per_device(household_a, household_user):
     token = _token(household_user)
     Limb.objects.create(
-        household=household_a, owner_user=household_user, device=token, kind="phone",
-        app_version="2026-01-01-abc1234", contract_version=1,
+        household=household_a,
+        owner_user=household_user,
+        device=token,
+        kind="phone",
+        app_version="2026-01-01-abc1234",
+        contract_version=1,
     )
     with pytest.raises(IntegrityError), transaction.atomic():
         Limb.objects.create(
-            household=household_a, owner_user=household_user, device=token, kind="phone",
-            app_version="2026-01-02-abc1234", contract_version=1,
+            household=household_a,
+            owner_user=household_user,
+            device=token,
+            kind="phone",
+            app_version="2026-01-02-abc1234",
+            contract_version=1,
         )
 
 
@@ -100,11 +108,20 @@ def test_a_limb_kind_or_brain_choice_outside_the_list_is_refused(household_a, ho
     token = _token(household_user)
     with pytest.raises(IntegrityError), transaction.atomic():
         Limb.objects.create(
-            household=household_a, owner_user=household_user, device=token, kind="toaster",
-            app_version="1", contract_version=1,
+            household=household_a,
+            owner_user=household_user,
+            device=token,
+            kind="toaster",
+            app_version="1",
+            contract_version=1,
         )
     with pytest.raises(IntegrityError), transaction.atomic():
         Limb.objects.create(
-            household=household_a, owner_user=household_user, device=token, kind="phone",
-            app_version="1", contract_version=1, brain_choice="cloud",
+            household=household_a,
+            owner_user=household_user,
+            device=token,
+            kind="phone",
+            app_version="1",
+            contract_version=1,
+            brain_choice="cloud",
         )

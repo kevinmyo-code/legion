@@ -244,6 +244,7 @@ RECRUITER_DENIED: dict[str, str] = {
     # engine-brain ticket 02 (ADR 0095): dark, and never a recruiter's in v1 (plan section 5).
     "agents.views.AgentTurnView": _AGENTS,
     "agents.views.AgentCancelView": _AGENTS,
+    "agents.views.AgentLimbView": _AGENTS,
     "agents.views.AgentProbeSseView": _AGENTS,
     # ingestion: uploads, feed logins, the bank link, the files ledger
     "api.ingest_files.IngestedFileViewSet": (

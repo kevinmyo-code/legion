@@ -170,6 +170,59 @@ paths:
           description: ''
         '400':
           description: Nothing was written; the reason in words.
+  /api/agents/limb:
+    post:
+      operationId: api_agents_limb_attach
+      summary: 'Attach this device as a limb: upload its manifest, learn which brain
+        answers'
+      tags:
+      - agents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LimbManifest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LimbManifest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LimbManifest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LimbAnswer'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The agent turn is switched off.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A contract version this engine does not serve.
   /api/agents/probe/sse:
     get:
       operationId: api_agents_probe_sse
@@ -13947,6 +14000,44 @@ components:
             $ref: '#/components/schemas/AdvisorAdvice'
       required:
       - rows
+    AgentBrainEnum:
+      enum:
+      - phone
+      - engine
+      type: string
+      description: |-
+        * `phone` - phone
+        * `engine` - engine
+    AgentBrainReasonEnum:
+      enum:
+      - forced
+      - override
+      - asked
+      - default
+      type: string
+      description: |-
+        * `forced` - forced
+        * `override` - override
+        * `asked` - asked
+        * `default` - default
+    AgentLimbConfirmEnum:
+      enum:
+      - engine
+      - limb
+      type: string
+      description: |-
+        * `engine` - engine
+        * `limb` - limb
+    AgentLimbNeedEnum:
+      enum:
+      - screen
+      - unlock
+      - parked
+      type: string
+      description: |-
+        * `screen` - screen
+        * `unlock` - unlock
+        * `parked` - parked
     AnchorEnum:
       enum:
       - matches
@@ -19260,6 +19351,87 @@ components:
       - licence_note
       - source_url
       - title
+    LimbAnswer:
+      type: object
+      description: What the upload answers (documented in `openapi.yaml`).
+      properties:
+        limb_id:
+          type: string
+          format: uuid
+        contract_version:
+          type: integer
+        brain:
+          $ref: '#/components/schemas/AgentBrainEnum'
+        brain_reason:
+          $ref: '#/components/schemas/AgentBrainReasonEnum'
+      required:
+      - brain
+      - brain_reason
+      - contract_version
+      - limb_id
+    LimbManifest:
+      type: object
+      properties:
+        contract_version:
+          type: integer
+        kind:
+          $ref: '#/components/schemas/AppEnum'
+        app_version:
+          type: string
+          maxLength: 64
+        brain_asked:
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/AgentBrainEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        tools:
+          type: array
+          items:
+            $ref: '#/components/schemas/LimbTool'
+        streams:
+          type: array
+          items:
+            type: string
+            pattern: ^[a-z][a-z0-9_]{0,63}$
+          maxItems: 32
+      required:
+      - app_version
+      - contract_version
+      - kind
+      - tools
+    LimbTool:
+      type: object
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+        description:
+          type: string
+          default: ''
+          maxLength: 2000
+        parameters:
+          type: object
+          additionalProperties: {}
+        writes:
+          type: boolean
+        read_through:
+          type: boolean
+        actuates:
+          type: boolean
+        needs:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentLimbNeedEnum'
+          maxItems: 3
+        confirm:
+          allOf:
+          - $ref: '#/components/schemas/AgentLimbConfirmEnum'
+          default: engine
+      required:
+      - actuates
+      - name
+      - read_through
+      - writes
     LinkToken:
       type: object
       properties:

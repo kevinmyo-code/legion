@@ -10,6 +10,10 @@
   Device token or session, as the member: every tool runs under their `visible()`.
 - `POST /api/agents/turn/<id>/cancel`: marks the member's own turn cancelled; the loop checks it
   between rounds and before every tool call (plan section 4.2).
+- `POST /api/agents/limb`: a device attaches on the limb contract (ADR 0098,
+  `agents/legion/limbs.py`): its manifest is upserted on the row keyed by its device token, and the
+  answer names the brain that answers its member's turns. Same switch as the turn: 404 while off,
+  nothing stored. A browser session is not a limb (403). A recruiter is denied the route.
 - `GET /api/agents/probe/sse`: five events 200 ms apart, each with the server's clock, for
   measuring whether Cloud Run delivers a stream unbuffered (ticket 01). Reads and writes nothing.
 
@@ -30,12 +34,13 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
-from agents.legion import flags
+from agents.legion import flags, limbs
 from agents.legion.turn import cancel, open_conversation, run_turn
 from agents.runtime import events as ev
 from agents.runtime.model import GeminiClient
 from api.schema import DetailSerializer
 from household.authentication import DeviceTokenAuthentication
+from household.models import DeviceToken
 from household.permissions import IsHouseholdMember
 from ingest.statements import gemini_key
 
@@ -45,6 +50,10 @@ AGENTS_TAGS = ["agents"]
 OFF_WORDS = (
     "Nothing was answered: the engine's agent turn is switched off on this server "
     "(LEGION_AGENTS_TURN is not on)."
+)
+NOT_A_DEVICE = (
+    "Nothing was stored. A limb is a device: it attaches with its own device token, not a browser "
+    "session."
 )
 KEY_ABSENT = "Nothing was answered: the engine has no Gemini key (LEGION_GEMINI_KEY is not set)."
 FAILED_WORDS = "The engine hit an error answering that, so the turn stopped."
@@ -147,6 +156,59 @@ class AgentCancelView(_SwitchedAgentsView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response({"detail": "Cancelled: no further round or tool call will start."})
+
+
+def _contract_version(data) -> int | None:
+    try:
+        return serializers.IntegerField().run_validation(data.get("contract_version"))
+    except (AttributeError, serializers.ValidationError):
+        return None  # missing or not a number: the manifest's own validation says so
+
+
+class AgentLimbView(_SwitchedAgentsView):
+    # The manifest upload is one plain write: a read-scoped token is refused at the household
+    # fence like any REST write (the base opts out only because the turn checks per tool call).
+    scope_checked_per_call = False
+
+    @extend_schema(
+        tags=AGENTS_TAGS,
+        operation_id="api_agents_limb_attach",
+        summary="Attach this device as a limb: upload its manifest, learn which brain answers",
+        request=limbs.LimbManifestSerializer,
+        responses={
+            200: limbs.LimbAnswerSerializer,
+            400: DetailSerializer,
+            403: DetailSerializer,
+            404: OpenApiResponse(DetailSerializer, description="The agent turn is switched off."),
+            409: OpenApiResponse(
+                DetailSerializer, description="A contract version this engine does not serve."
+            ),
+        },
+    )
+    def post(self, request):
+        if not isinstance(request.auth, DeviceToken):
+            return Response({"detail": NOT_A_DEVICE}, status=status.HTTP_403_FORBIDDEN)
+        # The version is read first: another version's manifest may have another shape, and the
+        # client needs "update the app", not a list of field errors.
+        version = _contract_version(request.data)
+        if version is not None and version != limbs.CONTRACT_VERSION:
+            return Response(
+                {
+                    "detail": (
+                        f"Nothing was stored. This engine serves limb contract "
+                        f"{limbs.CONTRACT_VERSION}; this app speaks {version}. Update the app."
+                    ),
+                    "contract_version": limbs.CONTRACT_VERSION,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        body = limbs.LimbManifestSerializer(data=request.data)
+        if not body.is_valid():
+            return Response(
+                {"detail": f"Nothing was stored. The manifest did not fit: {body.errors}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(limbs.attach(request, body.validated_data))
 
 
 def _probe():

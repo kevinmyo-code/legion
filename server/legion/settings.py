@@ -758,6 +758,14 @@ SPECTACULAR_SETTINGS = {
         "ClaudeTaskDeliverEnum": "claude_session.models.DELIVERIES",
         "ClaudeMachineScopeEnum": "claude_session.models.SCOPES",
         "ClaudeReportedStateEnum": "claude_session.models.REPORTED_MACHINE_STATES",
+        # engine-brain ticket 04 (E1): the limb manifest's choice sets, named before a bare name
+        # collides. A limb's `kind` is the same two apps a release names, so it shares `AppEnum`,
+        # pinned here so the web client's existing name never moves.
+        "AppEnum": "releases.models.APPS",
+        "AgentBrainEnum": "agents.models.BRAINS",
+        "AgentBrainReasonEnum": "agents.legion.limbs.BRAIN_REASONS",
+        "AgentLimbNeedEnum": "agents.legion.limbs.NEEDS",
+        "AgentLimbConfirmEnum": "agents.legion.limbs.CONFIRMS",
         "ClaudeMachineStateEnum": "claude_session.models.SHOWN_MACHINE_STATES",
         # memory-and-vault map: memory v2's and the ID vault's `kind` and `source`, named for
         # what they are rather than left to collide with the bare names.
