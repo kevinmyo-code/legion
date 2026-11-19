@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type Ref } from 'react'
+import { flushSync } from 'react-dom'
 
 import type { DemoPhone, DemoPhoneClip } from '@/api/demo'
+import type { OrbSide } from '@/components/demo/scroll-story'
 
 /**
  * "LEGION on the phone" (prototype D "typeset", 2026-11-03): one clip per
  * capability, cut from one recording. At a wide screen the capability texts
- * scroll past a phone frame that stays put, and the text in the middle of the
- * screen picks the clip the frame shows. Under 1300px, or with reduced motion,
- * there is no frame: each clip sits under its own text.
+ * scroll past a phone frame that stays put (`position: sticky`), and the text in
+ * the middle of the screen picks the clip the frame shows. Since the scroll story
+ * (Kevin, 2026-11-19: "each section should be a separate video, like the old
+ * clips") the frame holds ONE player, from 900 px: scrolling swaps only its clip
+ * (poster and title, nothing loads or plays); a row's Play button puts that clip
+ * in it and plays it. Narrower, or with reduced motion, there is no frame: each
+ * clip sits under its own text, as before.
  *
  * Nothing plays by itself. A clip with a `video` is a `<video>` with controls
  * that loads nothing until asked (`preload="none"`). It plays with sound when
@@ -18,7 +24,7 @@ import type { DemoPhone, DemoPhoneClip } from '@/api/demo'
  */
 
 /** The stage needs room and motion. Asked positively, so "no answer" is the inline layout. */
-const STAGE_QUERY = '(min-width: 1300px) and (prefers-reduced-motion: no-preference)'
+const STAGE_QUERY = '(min-width: 900px) and (prefers-reduced-motion: no-preference)'
 
 function subscribe(onChange: () => void) {
   if (typeof window.matchMedia !== 'function') return () => {}
@@ -44,12 +50,12 @@ export function safeHref(href: string | undefined): string | null {
   return /^https?:\/\//i.test(value) ? value : null
 }
 
-export function PhoneSection({ phone }: { phone: DemoPhone }) {
+export function PhoneSection({ phone, side }: { phone: DemoPhone; side?: OrbSide }) {
   const stage = useStage()
   const { clips } = phone
   const [active, setActive] = useState(0)
   const steps = useRef<(HTMLDivElement | null)[]>([])
-  const videos = useRef<(HTMLVideoElement | null)[]>([])
+  const player = useRef<HTMLVideoElement>(null)
 
   // The step whose text crosses the middle tenth of the screen is the one on stage.
   useEffect(() => {
@@ -68,20 +74,26 @@ export function PhoneSection({ phone }: { phone: DemoPhone }) {
     return () => observer.disconnect()
   }, [stage, clips.length])
 
-  // A clip the stage moved away from stops playing.
-  useEffect(() => {
-    if (!stage) return
-    videos.current.forEach((video, index) => {
-      if (video && index !== active && !video.paused) video.pause()
-    })
-  }, [stage, active])
-
   if (clips.length === 0) return null
   const shown = Math.min(active, clips.length - 1)
   const fullTake = safeHref(phone.full_take)
 
+  // A tap is the visitor asking: the clip goes into the player now (flushSync, so its source is
+  // set while the tap still counts as one, which a phone's browser needs to play with sound).
+  const play = (index: number) => {
+    flushSync(() => setActive(index))
+    void player.current?.play().catch(() => {})
+  }
+
   return (
-    <section id="phone" aria-labelledby="phone-title" className="rc-section">
+    <section
+      id="phone"
+      aria-labelledby="phone-title"
+      className="rc-section"
+      data-orb-side={side}
+      // The scroll story's pinned scene: the player stays while the rows scroll past.
+      data-pinned={stage ? 'true' : undefined}
+    >
       <h2 id="phone-title" className="rc-h2">
         {phone.title}
       </h2>
@@ -99,6 +111,17 @@ export function PhoneSection({ phone }: { phone: DemoPhone }) {
             >
               <h3 className="rc-h3">{clip.title}</h3>
               <p>{clip.body}</p>
+              {stage && clip.video && (
+                <button
+                  type="button"
+                  className="rc-step-play"
+                  aria-label={`Play: ${clip.title}`}
+                  aria-current={index === shown ? 'true' : undefined}
+                  onClick={() => play(index)}
+                >
+                  Play
+                </button>
+              )}
               {!stage && (
                 <div className="rc-inline">
                   <div className="rc-pscreen">
@@ -119,17 +142,8 @@ export function PhoneSection({ phone }: { phone: DemoPhone }) {
           <div className="rc-stage">
             <div className="rc-phone">
               <div className="rc-pscreen">
-                {clips.map((clip, index) => (
-                  <Clip
-                    key={`${index}-${clip.title}`}
-                    clip={clip}
-                    index={index}
-                    on={index === shown}
-                    videoRef={(element) => {
-                      videos.current[index] = element
-                    }}
-                  />
-                ))}
+                {/* One player: a new source stops the last clip and loads nothing until asked. */}
+                <Clip clip={clips[shown]} index={shown} on videoRef={player} />
               </div>
             </div>
             <p className="rc-stage-caption">
@@ -173,7 +187,9 @@ function Clip({
           controls
           preload="none"
         >
-          {clip.captions && <track kind="captions" src={clip.captions} srcLang="en" label="Captions" default />}
+          {clip.captions && (
+            <track key={clip.captions} kind="captions" src={clip.captions} srcLang="en" label="Captions" default />
+          )}
         </video>
       ) : (
         <>

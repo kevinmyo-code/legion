@@ -41,6 +41,12 @@ export const KEY_TURN = Math.PI / 16
 export interface StageOptions {
   /** Turn slowly until the first touch. False under `prefers-reduced-motion`. */
   autoTurn: boolean
+  /**
+   * The /try scroll story: turn with the page's scroll instead (one and a half turns from entering
+   * the screen to leaving it), until the first touch. Read once a frame from where the viewer
+   * sits on screen, in the draw loop that runs only while it is seen: no scroll listener.
+   */
+  scrollTurn?: boolean
   /** The browser took the WebGL context away (too many on the page, a GPU reset). */
   onLost?: () => void
 }
@@ -180,9 +186,11 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
   controls.enablePan = false
   controls.minDistance = distance * 0.35
   controls.maxDistance = distance * 2.5
-  controls.autoRotate = options.autoTurn
+  controls.autoRotate = options.autoTurn && !options.scrollTurn
   controls.autoRotateSpeed = 1.2
   controls.saveState()
+  const startOffset = camera.position.clone().sub(controls.target)
+  const UP = new Vector3(0, 1, 0)
 
   let touched = false
   const firstTouch = () => {
@@ -217,6 +225,14 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
   resize()
 
   const frame = () => {
+    if (options.scrollTurn && !touched) {
+      // How far through the screen the viewer is: 0 as it enters at the foot, 1 as it leaves.
+      const box = host.getBoundingClientRect()
+      const span = window.innerHeight + box.height
+      const through = span > 0 ? Math.min(1, Math.max(0, (window.innerHeight - box.top) / span)) : 0
+      camera.position.copy(controls.target).add(startOffset.clone().applyAxisAngle(UP, through * Math.PI * 3))
+      camera.lookAt(controls.target)
+    }
     controls.update()
     renderer.render(scene, camera)
   }

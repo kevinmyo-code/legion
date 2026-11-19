@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { AssistantProvider } from '@/assistant/assistant-context'
 import type { CascadeDeps, TurnStart } from '@/assistant/cascade-client'
@@ -12,6 +12,7 @@ import { FakeAudio, settle } from '@/test/fake-live'
 
 import indexCss from '../../index.css?raw'
 
+import { setOrbPlace } from './scroll-story'
 import { VoiceStage } from './voice-stage'
 
 /**
@@ -294,6 +295,85 @@ describe('the docked orb when the orb is off screen', () => {
     deliver(false, true)
     expect(dock()).toBeNull()
     expect(orb()).not.toBeNull()
+  })
+
+  /**
+   * The scroll story (Kevin, 2026-11-19, "B bolder"): with room beside the sections (900 px and up,
+   * motion allowed) the orb rides beside the section in view instead of docking at the foot. The
+   * same control: the orb's tap, its name and state, its keyboard landing.
+   */
+  describe('beside the sections, where there is room', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+      setOrbPlace({ side: 'right', pinned: false })
+    })
+    const wide = () =>
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      }))
+    const side = () => document.querySelector<HTMLElement>('[data-stage="side"]')
+
+    test('rides beside the page once the orb is off screen; no foot bar, no room taken at the foot', () => {
+      wide()
+      fakeIO()
+      stage(false, true)
+      expect(side()).toHaveAttribute('data-shown', 'false')
+      expect(side()).toHaveAttribute('inert')
+      deliver(false)
+      expect(side()).toHaveAttribute('data-shown', 'true')
+      expect(side()).not.toHaveAttribute('inert')
+      expect(side()).toHaveTextContent('Tap and ask me about Kevin')
+      expect(dock()).toBeNull()
+      expect(document.body.style.paddingBottom).toBe('')
+      deliver(true)
+      expect(side()).toHaveAttribute('data-shown', 'false')
+    })
+
+    test('follows the section in view to its side, and rides alone beside a pinned scene', () => {
+      wide()
+      fakeIO()
+      stage(false, true)
+      deliver(false)
+      expect(side()).toHaveAttribute('data-side', 'right')
+      act(() => setOrbPlace({ side: 'left', pinned: true }))
+      expect(side()).toHaveAttribute('data-side', 'left')
+      expect(side()).toHaveAttribute('data-pinned', 'true')
+    })
+
+    test('its tap is the orb tap: while he speaks it interrupts, and the keyboard stays on it', async () => {
+      wide()
+      fakeIO()
+      const { audio, cancels } = stage(true)
+      await tapOrbAndCloseCard()
+      deliver(false)
+      expect(dockOrb()).toHaveAccessibleName('Interrupt the assistant')
+      expect(side()).toContainElement(dockOrb())
+      const flushes = audio.flushes
+      await act(async () => {
+        fireEvent.click(dockOrb()!)
+        await settle()
+      })
+      expect(cancels).toHaveLength(1)
+      expect(audio.flushes).toBe(flushes + 1)
+      expect(document.activeElement).toBe(dockOrb())
+    })
+
+    test('narrower, or with reduced motion, it docks at the foot as before', () => {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: !query.includes('min-width'),
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      }))
+      fakeIO()
+      stage(false, true)
+      deliver(false)
+      expect(side()).toBeNull()
+      expect(dock()).not.toBeNull()
+    })
   })
 
   test('a sliver of orb is not a reachable orb: it counts as seen only at half visible', () => {

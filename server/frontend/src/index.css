@@ -611,6 +611,177 @@
         }
     }
 
+    /*
+     * The scroll story (Kevin, 2026-11-19, "B bolder"; `components/demo/scroll-story.ts`). Every
+     * rule here is keyed to `[data-story="on"]`, which the page sets only when the visitor allows
+     * motion: under `prefers-reduced-motion` none of it applies and the page is the plain one.
+     * Only `transform` and `opacity` change while scrolling; pinning is `position: sticky`; the
+     * room each section keeps for the orb is fixed per section, so nothing moves the layout.
+     */
+    .recruiter [data-story="on"] [data-reveal] {
+        transition:
+            opacity 700ms cubic-bezier(0.2, 0, 0, 1),
+            transform 900ms cubic-bezier(0.2, 0, 0, 1);
+        transition-delay: calc(var(--reveal-i, 0) * 70ms);
+    }
+    .recruiter [data-story="on"] [data-reveal="pending"] {
+        opacity: 0;
+        transform: translateY(28px);
+    }
+    /* Room for the orb beside each section: only what the page's own margin lacks (none at a
+       wide desk, where the orb rides in the margin). Fixed per section and width, so no shift. */
+    @media (min-width: 900px) {
+        .recruiter [data-story="on"] {
+            --orb-room: max(0px, calc(14rem - max(3.5 * var(--u), (100vw - 46 * var(--u)) / 2)));
+        }
+        .recruiter [data-story="on"] [data-orb-side="left"] {
+            padding-left: var(--orb-room);
+        }
+        .recruiter [data-story="on"] [data-orb-side="right"] {
+            padding-right: var(--orb-room);
+        }
+    }
+    /* The hero's title eases out as it leaves, on the scroll itself where the browser can run that
+       on the compositor (scroll-driven animations); elsewhere it simply stays. */
+    @supports (animation-timeline: view()) {
+        .recruiter [data-story="on"] .rc-hero .rc-h1 {
+            animation: rc-title-out linear both;
+            animation-timeline: view();
+            animation-range: exit 0% exit 100%;
+        }
+    }
+    @keyframes rc-title-out {
+        to {
+            opacity: 0.2;
+            transform: translateY(-24px) scale(0.94);
+        }
+    }
+
+    /* The orb beside the sections (>= 900 px): one fixed element moved between the sides by a
+       transform; hidden (and inert) while the stage's own orb is on screen. */
+    .recruiter .rc-voice-side {
+        --side-x: calc(100vw - 14rem);
+        position: fixed;
+        top: 50%;
+        left: 0;
+        z-index: 50;
+        display: flex;
+        width: 12rem;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        opacity: 0;
+        visibility: hidden;
+        transform: translate(var(--side-x), -50%);
+        transition:
+            transform 800ms cubic-bezier(0.2, 0, 0, 1),
+            opacity 300ms ease-out,
+            visibility 0s linear 300ms;
+    }
+    .recruiter .rc-voice-side[data-side="left"] {
+        --side-x: 1.5rem;
+    }
+    .recruiter .rc-voice-side[data-shown="true"] {
+        opacity: 1;
+        visibility: visible;
+        transition:
+            transform 800ms cubic-bezier(0.2, 0, 0, 1),
+            opacity 300ms ease-out,
+            visibility 0s;
+    }
+    .recruiter .rc-side-orb {
+        width: 5rem;
+        height: 5rem;
+        color: var(--rc-ink);
+        --orb-accent: var(--rc-accent);
+    }
+    .recruiter .rc-side-words {
+        display: flex;
+        width: 100%;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        transition: opacity 300ms ease-out;
+    }
+    .recruiter .rc-voice-side[data-pinned="true"] .rc-side-words {
+        opacity: 0;
+        pointer-events: none;
+    }
+    .recruiter .rc-side-line {
+        margin: 0;
+        font-size: calc(0.78 * var(--u));
+        font-weight: 600;
+        line-height: 1.3;
+        text-align: center;
+    }
+    .recruiter .rc-voice-side .rc-chips {
+        flex-direction: column;
+        align-items: center;
+        overflow: visible;
+        mask-image: none;
+    }
+
+    /* The LEGION scene: the diagram pinned at the top while its parts scroll up under it, the
+       layer the part at the reading line is about lit. Opaque, so the parts pass under it. */
+    .recruiter .rc-scene-pin {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        margin: 0 0 calc(1.2 * var(--u));
+        padding: calc(0.6 * var(--u)) 0 calc(0.4 * var(--u));
+        background: var(--rc-paper);
+    }
+    .recruiter .rc-scene-pin .rc-figcaption {
+        margin-top: calc(0.4 * var(--u));
+    }
+    .recruiter .rc-scene-frame {
+        position: relative;
+    }
+    .recruiter .rc-scene-band {
+        position: absolute;
+        left: 0;
+        right: 0;
+        outline: 2px solid var(--rc-accent);
+        outline-offset: 3px;
+        opacity: 0;
+        transition: opacity 400ms ease-out;
+        pointer-events: none;
+    }
+    .recruiter .rc-scene-band[data-on="true"] {
+        opacity: 1;
+    }
+    .recruiter .rc-prose .rc-scene-steps p {
+        min-height: 34vh;
+        margin: 0;
+        padding: calc(0.6 * var(--u)) 0;
+        opacity: 0.4;
+        transition: opacity 400ms ease-out;
+    }
+    .recruiter .rc-prose .rc-scene-steps p[data-on="true"] {
+        opacity: 1;
+    }
+
+    /* The phone scene (900 px and up, motion allowed; `try-phone.tsx`): each row's Play
+       puts its clip in the one pinned player. */
+    .recruiter .rc-step-play {
+        align-self: flex-start;
+        min-height: 44px;
+        margin-top: calc(0.5 * var(--u));
+        padding: 0 calc(0.9 * var(--u));
+        font: inherit;
+        font-size: calc(0.82 * var(--u));
+        font-weight: 600;
+        color: var(--rc-ink);
+        background: none;
+        border: 1px solid var(--rc-ink);
+        cursor: pointer;
+    }
+    .recruiter .rc-step-play:hover,
+    .recruiter .rc-step-play[aria-current] {
+        color: var(--rc-paper);
+        background: var(--rc-ink);
+    }
+
     /* Live captions: a box of fixed height (the page under it never moves). Words that fit sit at
        the top; once they no longer fit, the newest words stay at the foot and the answer's start
        fades out at the top, under "Read it all", which opens the box to the whole answer. */
@@ -925,7 +1096,7 @@
         height: 100%;
         opacity: 1;
     }
-    /* Under 1300px, or with reduced motion: no stage, each clip under its text. */
+    /* Under 900px, or with reduced motion: no stage, each clip under its text. */
     .rc-scrolly[data-mode="inline"] {
         display: block;
     }

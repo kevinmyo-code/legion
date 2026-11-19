@@ -115,7 +115,14 @@ describe('the phone section', () => {
     expect(within(section).queryByRole('link', { name: 'watch it end to end' })).not.toBeInTheDocument()
   })
 
-  test('at a wide screen the stage follows the step in the middle of the screen', async () => {
+  /**
+   * The scroll story (Kevin, 2026-11-19: "each section should be a separate video, like the old
+   * clips"): from 900 px with motion allowed, the clips are listed beside ONE pinned player. The row
+   * crossing the middle of the screen, or the row tapped, is the clip in it. Scrolling only swaps the
+   * poster and title (the player is told nothing to play); a tap on a row plays that clip, sound
+   * on, because the visitor asked.
+   */
+  function wideStage() {
     let notify: IntersectionObserverCallback = () => {}
     const observed: Element[] = []
     const options: IntersectionObserverInit[] = []
@@ -130,36 +137,82 @@ describe('the phone section', () => {
           observed.push(element)
         }
         disconnect() {}
+        unobserve() {}
       },
     )
+    const played: string[] = []
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+      played.push(this.getAttribute('src') ?? '')
+      return Promise.resolve()
+    })
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
     renderApp('/try', visitWith(phone()), 'family')
     // After renderApp, which installs the surface stub; the page mounts the
     // section only once its session and content have answered.
     const original = window.matchMedia
     window.matchMedia = ((query: string) =>
-      query === '(min-width: 1300px) and (prefers-reduced-motion: no-preference)'
+      query === '(min-width: 900px) and (prefers-reduced-motion: no-preference)'
         ? ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} } as unknown as MediaQueryList)
         : original(query)) as typeof window.matchMedia
+    const cross = (index: number) =>
+      act(() => notify([{ isIntersecting: true, target: observed[index] } as unknown as IntersectionObserverEntry], {} as IntersectionObserver))
+    return { observed, options, played, cross, restore: () => (window.matchMedia = original) }
+  }
+
+  test('at a wide screen one pinned player follows the row in the middle; scrolling never plays it', async () => {
+    const { observed, options, played, cross, restore } = wideStage()
     try {
       const section = await phoneSection()
       expect(section.querySelector('[data-mode]')).toHaveAttribute('data-mode', 'stage')
       await waitFor(() => expect(observed).toHaveLength(3))
       expect(options[0].rootMargin).toBe('-45% 0px -45% 0px')
-      expect(observed).toHaveLength(3)
       expect(within(section).getByText('1 of 3: Wake word and barge-in')).toBeInTheDocument()
-      // Still one video per clip that has one: the stage holds them, the steps do not.
-      expect(section.querySelectorAll('video')).toHaveLength(2)
+      // One player, the active clip's, with its captions and the browser's own controls.
+      const videos = () => section.querySelectorAll('video')
+      expect(videos()).toHaveLength(1)
+      expect(videos()[0]).toHaveAttribute('src', '/static/demo/wake.mp4')
+      expect(videos()[0]).toHaveAttribute('poster', '/static/demo/wake.jpg')
+      expect(videos()[0]).toHaveAttribute('controls')
+      expect(videos()[0]).toHaveAttribute('preload', 'none')
+      expect(videos()[0].querySelector('track')).toHaveAttribute('src', '/static/demo/wake.vtt')
 
-      act(() => notify([{ isIntersecting: true, target: observed[2] } as unknown as IntersectionObserverEntry], {} as IntersectionObserver))
+      cross(2)
       expect(within(section).getByText('3 of 3: Car check over OBD')).toBeInTheDocument()
+      expect(videos()).toHaveLength(1)
+      expect(videos()[0]).toHaveAttribute('src', '/static/demo/obd.mp4')
       expect(observed[2]).toHaveAttribute('data-active')
       expect(observed[0]).not.toHaveAttribute('data-active')
-      // The clip off stage is out of the reading and tab order.
-      const wake = section.querySelector('video[src="/static/demo/wake.mp4"]')!.parentElement!
-      expect(wake).toHaveAttribute('aria-hidden', 'true')
-      expect(wake).toHaveAttribute('inert')
+      // A clip with no recording yet: the player says so, nothing to play.
+      cross(1)
+      expect(videos()).toHaveLength(0)
+      expect(within(section).getByText('Recording to come')).toBeInTheDocument()
+      expect(played).toEqual([])
     } finally {
-      window.matchMedia = original
+      restore()
     }
+  })
+
+  test('a tap on a row puts that clip in the player and plays it', async () => {
+    const { played, restore } = wideStage()
+    try {
+      const section = await phoneSection()
+      const row = await within(section).findByRole('button', { name: 'Play: Car check over OBD' })
+      act(() => row.click())
+      expect(played).toEqual(['/static/demo/obd.mp4'])
+      expect(within(section).getByText('3 of 3: Car check over OBD')).toBeInTheDocument()
+      expect(row).toHaveAttribute('aria-current', 'true')
+      // A clip with no recording has no Play to press.
+      expect(within(section).queryByRole('button', { name: 'Play: Morning briefing' })).toBeNull()
+    } finally {
+      restore()
+    }
+  })
+
+  test('narrow, the clips are the plain list with a player under each, as before', async () => {
+    renderApp('/try', visitWith(phone()), 'family')
+    const section = await phoneSection()
+    expect(section.querySelector('[data-mode]')).toHaveAttribute('data-mode', 'inline')
+    expect(section.querySelectorAll('video')).toHaveLength(2)
+    expect(within(section).queryByRole('button', { name: /^Play: / })).toBeNull()
   })
 })

@@ -30,7 +30,9 @@ import { useSurface } from '@/lib/surface'
 import { postFunnel } from '@/assistant/deps'
 import { VoiceStage } from '@/components/demo/voice-stage'
 import { Media } from '@/screens/try-media'
+import { LegionScene } from '@/screens/try-legion-scene'
 import { PhoneSection } from '@/screens/try-phone'
+import { useStoryMotion, useStorySections, type OrbSide } from '@/components/demo/scroll-story'
 
 /**
  * The recruiter section (recruiter-demo ticket 07). The look is prototype D
@@ -436,6 +438,13 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
   const hasPhone = phone !== undefined && phone.clips.length > 0
   const projects = content.projects ?? []
   const projectSections = content.project_sections ?? []
+  // The scroll story (components/demo/scroll-story.ts): sections rise in, and the orb rides beside whichever is in
+  // view, on alternating sides in reading order. Off under reduced motion: the plain page.
+  const motion = useStoryMotion()
+  const main = useRef<HTMLElement>(null)
+  useStorySections(main, motion, content)
+  let sideIndex = 0
+  const nextSide = (): OrbSide => (sideIndex++ % 2 === 0 ? 'right' : 'left')
   return (
     <>
       <header className="rc-top">
@@ -453,7 +462,7 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
         </nav>
       </header>
 
-      <main>
+      <main ref={main} data-story={motion ? 'on' : undefined}>
         <section aria-labelledby="hero-title" className="rc-hero">
           <h1 id="hero-title" className="rc-h1">
             {hero.title}
@@ -475,10 +484,10 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
           {access}
         </section>
 
-        {projects.length > 0 && <ProjectsStrip projects={projects} />}
+        {projects.length > 0 && <ProjectsStrip projects={projects} side={nextSide()} />}
 
         {lookFor.length > 0 && (
-          <Section id="look-for" title="What to look for">
+          <Section id="look-for" title="What to look for" side={nextSide()}>
             <div className="rc-runin">
               {lookFor.map((item) => (
                 <p key={item.title}>
@@ -490,10 +499,15 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
         )}
 
         {legion && (
-          <Section id="legion" title={legion.title}>
+          <Section id="legion" title={legion.title} side={nextSide()} pinned={motion && Boolean(legion.diagram_svg)}>
             <p>{legion.intro}</p>
-            {legion.diagram_svg && <Diagram svg={legion.diagram_svg} caption={legion.diagram_caption ?? ''} />}
-            {legion.parts.length > 0 && (
+            {motion && legion.diagram_svg ? (
+              // The pinned scene: the diagram stays while its parts scroll past, its layers lit.
+              <LegionScene svg={legion.diagram_svg} caption={legion.diagram_caption ?? ''} parts={legion.parts} lead={runIn} />
+            ) : (
+              legion.diagram_svg && <Diagram svg={legion.diagram_svg} caption={legion.diagram_caption ?? ''} />
+            )}
+            {!(motion && legion.diagram_svg) && legion.parts.length > 0 && (
               <div className="rc-runin">
                 {legion.parts.map((part) => (
                   <p key={part.title}>
@@ -505,14 +519,14 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
           </Section>
         )}
 
-        {hasPhone && <PhoneSection phone={phone} />}
+        {hasPhone && <PhoneSection phone={phone} side={nextSide()} />}
 
         {projectSections.map((section) => (
-          <ProjectSection key={section.id} section={section} />
+          <ProjectSection key={section.id} section={section} side={nextSide()} />
         ))}
 
         {work && (
-          <Section id="work" title={work.title}>
+          <Section id="work" title={work.title} side={nextSide()}>
             <p>{work.intro}</p>
             {work.stats.length > 0 && (
               <dl className="rc-figures">
@@ -553,7 +567,7 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
           </Section>
         )}
 
-        <Section id="experience" title="Experience">
+        <Section id="experience" title="Experience" side={nextSide()}>
           {assets.resume && <ResumeLinks pdf={assets.resume} image={assets.resume_image ?? null} />}
           <div className="rc-exp">
             {experience.map((job) => (
@@ -595,9 +609,29 @@ function Job({ when, title, bullets }: { when: string; title: string; bullets: s
   )
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+function Section({
+  id,
+  title,
+  side,
+  pinned = false,
+  children,
+}: {
+  id: string
+  title: string
+  /** The side the orb rides on while this section is in view (the scroll story). */
+  side?: OrbSide
+  /** A pinned scene: the orb rides alone beside it. */
+  pinned?: boolean
+  children: ReactNode
+}) {
   return (
-    <section id={id} aria-labelledby={`${id}-title`} className="rc-section">
+    <section
+      id={id}
+      aria-labelledby={`${id}-title`}
+      className="rc-section"
+      data-orb-side={side}
+      data-pinned={pinned ? 'true' : undefined}
+    >
       <h2 id={`${id}-title`} className="rc-h2">
         {title}
       </h2>
@@ -654,9 +688,9 @@ function AskPrompt() {
 }
 
 /** The Projects strip (Kevin, 2026-11-05): one run-in line each, the title linking where it can. */
-function ProjectsStrip({ projects }: { projects: DemoProject[] }) {
+function ProjectsStrip({ projects, side }: { projects: DemoProject[]; side?: OrbSide }) {
   return (
-    <Section id="projects" title="Projects">
+    <Section id="projects" title="Projects" side={side}>
       <div className="rc-runin">
         {projects.map((project) => (
           <p key={project.title}>
@@ -687,9 +721,9 @@ function ProjectsStrip({ projects }: { projects: DemoProject[] }) {
 }
 
 /** A project after LEGION's: the same parts as the LEGION section, plus its media slot. */
-function ProjectSection({ section }: { section: DemoProjectSection }) {
+function ProjectSection({ section, side }: { section: DemoProjectSection; side?: OrbSide }) {
   return (
-    <Section id={section.id} title={section.title}>
+    <Section id={section.id} title={section.title} side={side}>
       <p>{section.intro}</p>
       {section.diagram_svg && <Diagram svg={section.diagram_svg} caption={section.diagram_caption ?? ''} />}
       {section.parts.length > 0 && (
