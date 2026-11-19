@@ -343,14 +343,18 @@ class CascadeRulesTest {
             ScriptedLines.writeFact(name, action, JSONObject(result), ok)
         // The car switch names the car the result names (fields the adapter branch adds), or says the generic line.
         val switched = fact("manage_vehicle", "switch", """{"success":true,"changed":true,"vehicle":"Invented Fit","message":"x"}""")
-        assertEquals("Done: switched to Invented Fit.", ScriptedLines.doneLine(listOf(switched)))
+        assertEquals("Done: switched to the Invented Fit.", ScriptedLines.doneLine(listOf(switched)))
         // A result that names nothing still reads as English; an untick says which way it went.
         assertEquals("Done: ticked it off.", ScriptedLines.doneLine(listOf(fact("manage_checklist", "tick", """{"success":true}"""))))
         val undone = fact("complete_task", "", """{"success":true,"done":false,"title":"essay"}""")
         assertEquals("Done: marked essay not done.", ScriptedLines.doneLine(listOf(undone)))
-        // A rebind of the live connection says this drive's readings moved (the adapter's `rebound`).
-        val rebound = fact("manage_vehicle", "switch", """{"success":true,"changed":true,"rebound":true,"vehicle":"Invented Ranger"}""")
-        assertEquals("Done: this drive now goes under Invented Ranger.", ScriptedLines.doneLine(listOf(rebound)))
+        // The adapter branch's shapes (feat/obd-adapter-per-connection, final field names 2026-11-19).
+        val moved = fact("manage_vehicle", "adapter", """{"success":true,"changed":true,"readings_moved":true,"vehicle":"Invented Ranger"}""")
+        assertEquals("Done: this drive now goes under the Invented Ranger.", ScriptedLines.doneLine(listOf(moved)))
+        val onIt = fact("manage_vehicle", "adapter", """{"success":true,"changed":true,"vehicle":"Invented Ranger"}""")
+        assertEquals("Done: the adapter is on the Invented Ranger.", ScriptedLines.doneLine(listOf(onIt)))
+        assertNull(ScriptedLines.doneLine(listOf(fact("manage_vehicle", "adapter", """{"success":true,"changed":false,"vehicle":"Invented Ranger"}"""))))
+        assertEquals(ScriptedLines.GENERIC_DONE, ScriptedLines.doneLine(listOf(fact("manage_vehicle", "adapter", """{"success":true}"""))))
         val oldShape = fact("manage_vehicle", "switch", """{"success":true,"message":"You are on the Invented Fit now."}""")
         assertEquals(ScriptedLines.GENERIC_DONE, ScriptedLines.doneLine(listOf(oldShape)))
         // Already the selected car / already the goal: nothing changed, nothing is said.

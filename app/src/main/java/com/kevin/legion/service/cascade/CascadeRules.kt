@@ -386,10 +386,11 @@ object ScriptedLines {
         val title = field(response, titleKeys).take(MAX_TITLE)
         // A phrase whose own field is missing (an older result shape) falls to the generic line.
         // A switch that moved this drive's live readings to the car says so (`rebound`, the adapter's field).
-        val rebound = key == "switch" && response.optBoolean("rebound", false)
+        // The adapter branch's live rebind: this drive's readings moved to the car (`readings_moved`).
+        val moved = key == ADAPTER && response.optBoolean("readings_moved", false)
         val undone = key == "complete_task" && !response.optBoolean("done", true)
         val own = when {
-            rebound -> REBOUND
+            moved -> READINGS_MOVED
             undone -> "marked %s not done"
             else -> key?.let { PHRASES.getValue(it) }
         }
@@ -451,6 +452,33 @@ object ScriptedLines {
 
     private fun doneText(clauses: List<String>) = "Done: " + clauses.joinToString("; ") + "."
 
+    /**
+     * The identifying strings [line] (from [doneLine] over [facts]) actually says: each said
+     * write's title, and its list where the line names it ("added milk to Groceries"). Only what is
+     * in the line, so a sentence dropped for naming one ([SaidFilter]) can never disagree with it.
+     * Never a short or bare value: under the floor ([minChars]), only digits, or "it". The
+     * generic line names nothing.
+     */
+    fun namesIn(facts: List<WriteFact>, line: String): List<String> {
+        val said = SaidFilter.fold(line)
+        return facts.filter { it.said && it.phrase != null }
+            .flatMap { listOf(it.title, it.list) }
+            .map { it.trim() }
+            .filter { n -> n.length >= minChars(n) && !n.all { it.isDigit() || it.isWhitespace() } }
+            .filter { it.lowercase() != "it" }
+            .filter { SaidFilter.pattern(it).containsMatchIn(said) }
+            .distinct()
+    }
+
+    /**
+     * The floor for a name that may drop a model sentence ([namesIn]): three characters, two in a
+     * script written without spaces (where two characters are often a whole word, "牛奶").
+     */
+    const val MIN_NAME_CHARS = 3
+
+    private fun minChars(name: String): Int =
+        if (name.codePoints().anyMatch { Character.UnicodeScript.of(it) in LoneWordWriteGuard.UNSPACED }) 2 else MIN_NAME_CHARS
+
     @Suppress("ReturnCount") // the top level, then one nested level, then nothing
     private fun field(o: org.json.JSONObject, keys: List<String>): String {
         keys.firstNotNullOfOrNull { k -> o.optString(k).trim().takeIf { it.isNotEmpty() && o.opt(k) is String } }
@@ -491,8 +519,8 @@ object ScriptedLines {
         "schedule" to "scheduled %s", "skip" to "skipped %s", "create" to "created %s", "set" to "set %s",
         "log" to "logged %s", "remember" to "saved %s", "forget" to "forgot %s", "clear_ticked" to "cleared %s",
         "complete_task" to "marked %s done", "set_reminder" to "set a reminder for %s",
-        // The car switch says the car the result names (`vehicle`), never the model's words for it.
-        "switch" to "switched to %s",
+        // The car switch and the adapter say the car the result names (`vehicle`), never the model's words.
+        "switch" to "switched to the %s", ADAPTER to "the adapter is on the %s",
         "archive" to "archived %s", "unarchive" to "brought back %s", "correct" to "updated %s",
         "rename" to "renamed %s",
         "email/draft" to "drafted an email to %s", "email/send" to "sent the email to %s",
@@ -518,12 +546,15 @@ object ScriptedLines {
     /** A phrase whose result named nothing, where "<verb> it" would read wrong. */
     private val NO_TITLE: Map<String, String> = mapOf("ticked off %s" to "ticked it off")
 
-    /** A switch that rebound the live connection: this drive's readings now go under the car. */
-    private const val REBOUND = "this drive now goes under %s"
+    /** `manage_vehicle` action `adapter` (surfaced as `adapter_in`): the OBD adapter's car. */
+    private const val ADAPTER = "manage_vehicle/adapter"
+
+    /** The adapter rebind that moved this drive's live readings to the car. */
+    private const val READINGS_MOVED = "this drive now goes under the %s"
 
     /** A phrase that may only be said with its own result field; without it, the generic line. */
     private val TITLE_KEYS_FOR: Map<String, List<String>> = mapOf(
-        "switch" to listOf("vehicle"),
+        "switch" to listOf("vehicle"), ADAPTER to listOf("vehicle"),
         // The draft and the send name who it is to, from the result's own `to`.
         "email/draft" to listOf("to"), "email/send" to listOf("to"),
     )
