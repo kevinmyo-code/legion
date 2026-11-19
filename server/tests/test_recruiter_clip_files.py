@@ -336,3 +336,10 @@ def test_file_named_videos_carry_a_rollback_warning_and_links_do_not(tmp_path):
     assert "reload the content with link-form clips or without them" in said
     said = load(tmp_path / "b", with_clips({"video": "https://example.com/fake.mp4"}), {})
     assert "WARNING" not in said
+
+
+@pytest.mark.parametrize("header", ["bytes=" + "9" * 5000 + "-", "bytes=0-" + "9" * 5000])
+def test_a_range_with_absurd_digits_is_416_not_a_500(clip, header):
+    got = clip.get(URL, HTTP_RANGE=header)
+    assert got.status_code == 416
+    assert got["Content-Range"] == f"bytes */{len(FAKE_MP4)}"

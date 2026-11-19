@@ -315,7 +315,10 @@ _MEDIA_NAME = re.compile("|".join((MODEL_NAME, POSTER_NAME, VIDEO_NAME, CAPTIONS
 # The most one response (or one read of a streamed file) takes from the row: bounds the memory a
 # request holds, whatever the file's size. A browser seeking a video asks again from where it is.
 RANGE_CHUNK = 2 * 1024 * 1024
-_RANGE = re.compile(r"bytes=(\d*)-(\d*)\Z")
+# At most 15 digits a side (petabytes; a file here is at most 16 MB): a longer number is answered
+# 416, never handed to int(), which refuses more than 4300 digits with a ValueError (a 500).
+_RANGE = re.compile(r"bytes=(\d{0,15})-(\d{0,15})\Z")
+_RANGE_ANY_DIGITS = re.compile(r"bytes=\d*-\d*\Z")
 _UNSATISFIABLE = "unsatisfiable"
 _MEDIA_TYPES_DOC = (
     "model/gltf-binary",
@@ -331,9 +334,10 @@ _MEDIA_TYPES_DOC = (
 def _byte_range(header: str | None, size: int) -> tuple[int, int] | str | None:
     """(first, last) byte of a single `Range: bytes=...` header, `_UNSATISFIABLE`, or None to
     send the whole file (no header, several ranges, or one this route does not read)."""
-    match = _RANGE.match(header.strip()) if header else None
+    value = header.strip() if header else ""
+    match = _RANGE.match(value)
     if match is None:
-        return None
+        return _UNSATISFIABLE if _RANGE_ANY_DIGITS.match(value) else None
     first, last = match.groups()
     if not first and not last:
         return None
