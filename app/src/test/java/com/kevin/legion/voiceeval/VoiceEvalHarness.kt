@@ -120,6 +120,9 @@ internal class VoiceEvalHarness(
 
     suspend fun runCase(case: EvalCase) {
         out(TEST_TAG, "case_begin id=${LiveAudit.token(case.id)}")
+        // Each case is its own conversation: no ask carries over from the case before.
+        askedBefore = false
+        asked = false
         runTurns(case)
     }
 
