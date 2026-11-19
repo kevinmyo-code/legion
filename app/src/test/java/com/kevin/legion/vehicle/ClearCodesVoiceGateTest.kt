@@ -36,6 +36,17 @@ class ClearCodesVoiceGateTest {
     }
 
     @Test
+    fun `a yes after the adapter moved to another connection or car is no yes, and the question is gone`() {
+        gate.asked("clear the codes", "c1|car:a")
+        now += 5_000
+        assertEquals(ClearCodesVoiceGate.OTHER_CAR, gate.checkConfirmed("yes", subject = "c2|car:a"))
+        assertEquals(ClearCodesVoiceGate.NO_QUESTION, gate.checkConfirmed("yes", subject = "c1|car:a"))
+        gate.asked("clear the codes", "c3|car:b")
+        now += 5_000
+        assertNull(gate.checkConfirmed("yes", subject = "c3|car:b"))
+    }
+
+    @Test
     fun `one yes buys one clear`() {
         gate.asked("clear the codes")
         assertNull(gate.checkConfirmed("yes"))

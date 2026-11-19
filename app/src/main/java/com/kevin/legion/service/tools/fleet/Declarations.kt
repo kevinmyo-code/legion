@@ -507,10 +507,11 @@ internal object Declarations {
                 "('add my F-150'); a car merely mentioned gets an offer first. This is the ONLY way " +
                 "to create a second car, and it does NOT change which car is active. Use 'correct' " +
                 "when a car has the wrong year/make/model saved; its drives and service history stay " +
-                "with it. Call list_vehicles first if you're not sure which car they mean.",
+                "with it. 'adapter' only when he says the OBD adapter is in that car. Call list_vehicles first if " +
+                "you're not sure which car they mean.",
             params = obj(
                 "action" to schema("string", "What to do.",
-                    enum = listOf("add", "correct", "rename", "switch", "archive", "unarchive")),
+                    enum = listOf("add", "correct", "rename", "switch", "adapter", "archive", "unarchive")),
                 "vehicle" to schema("string", "Which car, as the user says it, e.g. 'the Outlander'. " +
                     "Required for everything EXCEPT add; for add, leave blank."),
                 "year" to schema("integer", "Model year, e.g. 2020. For add and correct."),

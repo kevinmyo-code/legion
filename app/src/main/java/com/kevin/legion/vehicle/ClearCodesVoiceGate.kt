@@ -28,13 +28,16 @@ package com.kevin.legion.vehicle
  */
 class ClearCodesVoiceGate(private val clock: () -> Long = System::currentTimeMillis) {
 
-    private data class Ask(val atMs: Long, val askTurnWords: String)
+    private data class Ask(val atMs: Long, val askTurnWords: String, val subject: String?)
 
     @Volatile private var pending: Ask? = null
 
-    /** The unconfirmed call just put the confirm question to the user, in the turn whose words were [userText]. */
-    fun asked(userText: String?) {
-        pending = Ask(clock(), normalise(userText))
+    /**
+     * The unconfirmed call just put the confirm question to the user, in the turn whose words were
+     * [userText], about [subject] (the adapter's connection and the car it records under).
+     */
+    fun asked(userText: String?, subject: String? = null) {
+        pending = Ask(clock(), normalise(userText), subject)
     }
 
     /** A clear can no longer be pending: nothing to clear, the car did not answer, or the user moved on. */
@@ -46,18 +49,20 @@ class ClearCodesVoiceGate(private val clock: () -> Long = System::currentTimeMil
      * Decides a `confirmed=true` call. Null means it may go ahead (and the ask is consumed); a
      * string is the refusal to return, in words that say nothing was sent and what to do instead.
      */
-    fun checkConfirmed(userText: String?, voicedMs: Long? = null): String? {
+    fun checkConfirmed(userText: String?, voicedMs: Long? = null, subject: String? = null): String? {
         val ask = pending
         val words = normalise(userText)
         val refusal = when {
             ask == null || clock() - ask.atMs > TTL_MS -> NO_QUESTION
+            // A yes for another car, or after the adapter moved, is no yes (2026-11-17 review).
+            ask.subject != subject -> OTHER_CAR
             words.isEmpty() -> UNHEARD
             voicedMs != null && voicedMs < YES_MIN_VOICED_MS -> UNHEARD
             words == ask.askTurnWords -> NOT_ANSWERED_YET
             !isExplicitYes(userText.orEmpty()) -> notAYes(userText.orEmpty().trim())
             else -> null
         }
-        if (refusal == null || refusal == NO_QUESTION) pending = null
+        if (refusal == null || refusal == NO_QUESTION || refusal == OTHER_CAR) pending = null
         return refusal
     }
 
@@ -84,6 +89,10 @@ class ClearCodesVoiceGate(private val clock: () -> Long = System::currentTimeMil
         const val NO_QUESTION =
             "Nothing was cleared: no clear question is waiting for an answer. Call clear_codes with " +
                 "confirmed=false first, say its warning, and wait for a yes."
+
+        const val OTHER_CAR =
+            "Nothing was cleared: the question was about another car or another connection of the adapter. " +
+                "Call clear_codes with confirmed=false again, say its warning, and wait for a yes."
 
         const val UNHEARD =
             "Nothing was cleared: I could not hear the user's answer. Ask again whether to clear the " +

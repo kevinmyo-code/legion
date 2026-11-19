@@ -34,6 +34,10 @@ import com.kevin.legion.service.cascade.ToolFillers
 import com.kevin.legion.service.cascade.TtsTags
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.tools.day.RelativeDay
+import com.kevin.legion.vehicle.AdapterBinding
+import com.kevin.legion.vehicle.DongleCarController
+import com.kevin.legion.vehicle.ObdBluetoothManager
+import com.kevin.legion.vehicle.VinResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -56,6 +60,8 @@ internal data class EvalCase(
     val sttAudio: Boolean = false,
     /** The languages besides English he has in Settings for this case ([SpokenLanguages]). */
     val languages: List<String> = emptyList(),
+    /** "unknown": a made-up OBD adapter is plugged into a car nobody has named (no VIN, no print). */
+    val dongle: String? = null,
 )
 
 /** Reads the shared case files (`tools/voice_eval/cases.json` and any private ones). */
@@ -75,6 +81,7 @@ internal object VoiceEvalCases {
                     (0 until a.length()).map { a.getString(it) }
                 }.orEmpty(),
                 sttAudio = c.optBoolean("stt_audio", false),
+                dongle = c.optJSONObject("fixture")?.optString("dongle")?.takeIf { it.isNotBlank() },
             )
         }
     }
@@ -115,7 +122,48 @@ internal class VoiceEvalHarness(
 
     suspend fun runCase(case: EvalCase) {
         out(TEST_TAG, "case_begin id=${LiveAudit.token(case.id)}")
-        runTurns(case)
+        if (case.dongle == "unknown") plugUnknownDongle()
+        try {
+            runTurns(case)
+        } finally {
+            if (case.dongle != null) unplugDongle()
+        }
+    }
+
+    /** A made-up adapter plugged in with no VIN and no print, in the two-car household: its car is unknown. */
+    private suspend fun plugUnknownDongle() {
+        unplugDongle()
+        setAdapterAddress(EVAL_DONGLE)
+        DongleCarController.onConnected(context, EVAL_DONGLE, null) { VinResponse.Result.NoData }
+        // Nothing speaks in the harness, so the connect-time spoken ask did not reach him: not yet asked.
+        AdapterBinding.resetForTest()
+        out(TEST_TAG, "fixture dongle=${DongleCarController.state.value?.javaClass?.simpleName}")
+    }
+
+    private fun unplugDongle() {
+        DongleCarController.resetForTest()
+        AdapterBinding.resetForTest()
+        setAdapterAddress(null)
+        context.getSharedPreferences("dongle_car", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    /**
+     * The adapter's address and a link with nothing behind it (every read answers nothing at once), so
+     * the tools see an adapter that is connected; the manager keeps both private, tests set them so.
+     */
+    private fun setAdapterAddress(address: String?) {
+        val link = address?.let {
+            object : com.kevin.legion.vehicle.ObdTransport {
+                override val inputStream = java.io.ByteArrayInputStream(ByteArray(0))
+                override val outputStream = object : java.io.OutputStream() { override fun write(b: Int) = Unit }
+                override val label = it
+                override fun close() = Unit
+            }
+        }
+        ObdBluetoothManager::class.java.getDeclaredField("transport").apply { isAccessible = true }
+            .set(ObdBluetoothManager, link)
+        ObdBluetoothManager::class.java.getDeclaredField("connectedDeviceAddress").apply { isAccessible = true }
+            .set(ObdBluetoothManager, address)
     }
 
     @Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements") // the session's turn order, in one place
@@ -338,6 +386,7 @@ internal class VoiceEvalHarness(
 
     companion object {
         const val TEST_TAG = "LIVE_TEST"
+        const val EVAL_DONGLE = "EVAL:DONGLE:00:01"
         private const val STT_AUDIO_TIMEOUT_MS = 20_000L
         private const val PRE_ROLL_PAD_MS = 300
         private const val END_PAD_MS = 600

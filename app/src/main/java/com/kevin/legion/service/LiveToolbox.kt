@@ -875,6 +875,20 @@ object LiveToolbox {
         turnDates?.let { RelativeDay.corrected(name, args, userText, it) }?.let { (fixed, note) ->
             return dispatch(context, name, fixed, touchedReadThroughToolThisTurn, userText)?.put("date_note", note)
         }
+        // The adapter's car is unknown or only recognised: a live read still runs (its readings are held,
+        // not filed), and its result carries the ask or the "looks like" once a connection (AdapterBinding).
+        // The fleet specialist's answer carries it too: "how's the car doing" goes there, and the
+        // specialist's own live reads run inside this mark, so only the answer he hears is noted. Only
+        // a voice turn (it carries TurnDates) gets it: a background read never uses up the ask (A9).
+        val carNoted = name in CATEGORY_A_TOOLS && name != "clear_codes" || name == "ask_fleet"
+        val heard = turnDates != null
+        if (carNoted && heard &&
+            kotlin.coroutines.coroutineContext[com.kevin.legion.vehicle.AdapterBinding.Annotating] == null
+        ) {
+            return kotlinx.coroutines.withContext(com.kevin.legion.vehicle.AdapterBinding.Annotating()) {
+                dispatch(context, name, args, touchedReadThroughToolThisTurn, userText)
+            }?.let { com.kevin.legion.vehicle.AdapterBinding.annotate(context, it) }
+        }
         MidnightEvents.toolDispatched(name)
         // Category A guard (ticket 01 §0): if a live-hardware tool got handed a
         // `vehicle` argument anyway (the model shouldn't, since these declare no
@@ -882,6 +896,8 @@ object LiveToolbox {
         // doesn't name the car the dongle is actually in, refuse before ever
         // touching the connected car's real readings. Category B tools are
         // exempt - they resolve their own `vehicle` argument below.
+        com.kevin.legion.vehicle.AdapterBinding.unnamedCarWriteRefusal(name, args.optString("vehicle"))
+            ?.let { return result(false, it) }
         if (name in CATEGORY_A_TOOLS) {
             refuseIfNotConnectedCar(context, args)?.let { return it }
         }
@@ -1083,6 +1099,9 @@ object LiveToolbox {
                     .notAskedToClear(args.optBoolean("confirmed", false), userText) != null
             ) {
                 readInsteadOfClear(context, userText.orEmpty())
+            } else if (com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow() != null) {
+                // Engine or module clear: never while the adapter's car is unknown or only recognised.
+                result(false, com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow().orEmpty())
             } else if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
                     args.optString("modules"),
                     args.optBoolean("confirmed", false),
@@ -1529,6 +1548,13 @@ object LiveToolbox {
             // contradictory refusal here would just be confusing.
             return null
         }
+        // The adapter's car is unknown (held under a pending id): never a dead end, the refusal says how
+        // to name it (2026-11-17).
+        if (com.kevin.legion.vehicle.DongleCar.isPending(connectedId)) {
+            return JSONObject().put("success", false)
+                .put("error", com.kevin.legion.vehicle.AdapterBinding.UNKNOWN_CAR_ERROR)
+                .put("message", com.kevin.legion.vehicle.AdapterBinding.unknownCarRefusal(requested))
+        }
         val connectedVehicle = VehicleController.vehicleFor(context, connectedId)
         // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's own
         // doc. This used to hand-roll the same name-then-spec-then-placeholder precedence
@@ -1546,7 +1572,8 @@ object LiveToolbox {
             .put(
                 "message",
                 "The OBD adapter's plugged into the $connectedLabel right now, not that one - I can " +
-                    "only read live data for the car it's actually in.",
+                    "only read live data for the car it's actually in. If he says the adapter is in the " +
+                    "$requested now, that is car adapter_in vehicle=$requested.",
             )
     }
 
@@ -1585,10 +1612,7 @@ object LiveToolbox {
         if (action != "add" && args.optString("vehicle").isBlank()) {
             // 2026-11-15 voice eval: "which cars do I have on file" called switch_vehicle with no car.
             // Nothing changes without a named car; the refusal says where a read goes instead.
-            return result(
-                false,
-                if (action == "switch") SWITCH_NEEDS_A_CAR else "Which car do you mean? Tell me and I'll $action it.",
-            )
+            return result(false, needsACar(action))
         }
 
         return when (action) {
@@ -1613,6 +1637,7 @@ object LiveToolbox {
                 else result(true, VehicleController.correctVehicle(context, it.obdMac, name = name))
             }
             "switch" -> withResolvedVehicle(context, args) { switchTo(context, it) }
+            "adapter" -> withResolvedVehicle(context, args) { adapterIn(context, it) }
             "archive" -> withResolvedVehicle(context, args) {
                 VehicleController.archive(context, it.obdMac)
                 result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")
@@ -2056,12 +2081,32 @@ object LiveToolbox {
      * to change, and the result says so.
      */
     private suspend fun switchTo(context: Context, car: Vehicle): JSONObject {
+        // `changed` and `vehicle` (the app's label) let code say the outcome in words (2026-11-19).
+        val label = VehicleController.label(car)
         val noDongle = com.kevin.legion.vehicle.DongleCarController.state.value == null
         if (ActiveVehicle.selected(context) == car.obdMac && noDongle) {
-            return result(true, "The ${VehicleController.label(car)} was already the selected car; nothing changed.")
+            return result(true, "The $label was already the selected car; nothing changed.")
+                .put("changed", false).put("vehicle", label)
         }
         val outcome = VehicleController.switchToOutcome(context, car.obdMac)
-        return result(outcome.success, outcome.message)
+        val out = result(outcome.success, outcome.message).put("changed", outcome.changed == true).put("vehicle", label)
+        // A pick never answers the which-car question; while it is open, his turn still carries it (R2-2).
+        val heard = kotlin.coroutines.coroutineContext[RelativeDay.TurnDates] != null
+        return if (heard) com.kevin.legion.vehicle.AdapterBinding.annotate(context, out) else out
+    }
+
+    /** The refusal for a `manage_vehicle` [action] called with no car named. */
+    private fun needsACar(action: String): String = when (action) {
+        "switch" -> SWITCH_NEEDS_A_CAR
+        "adapter" -> "Nothing changed: say which car the adapter is in."
+        else -> "Which car do you mean? Tell me and I'll $action it."
+    }
+
+    /** `manage_vehicle adapter`: [VehicleController.adapterIn], with what code needs to say it. */
+    private suspend fun adapterIn(context: Context, car: Vehicle): JSONObject {
+        val r = VehicleController.adapterIn(context, car.obdMac)
+        return result(r.outcome.success, r.outcome.message).put("changed", r.outcome.changed == true)
+            .put("vehicle", VehicleController.label(car)).put("readings_moved", r.readingsMoved)
     }
 
     private const val SWITCH_NEEDS_A_CAR = "Nothing was switched: switch_vehicle changes which car is selected " +
@@ -4043,9 +4088,11 @@ object LiveToolbox {
         // a yes to the question the unconfirmed call put (ClearCodesVoiceGate). Refused before
         // anything is read from or sent to the car.
         val gate = DtcClearController.voiceGate
+        // The question and its yes belong to this connection and the car it records under.
+        val subject = com.kevin.legion.vehicle.DongleCarController.connectionKey()
         val refusal = when {
             !connected -> "The OBD adapter isn't connected, so I can't clear anything."
-            confirmed -> gate.checkConfirmed(userText, heardVoicedMs())
+            confirmed -> gate.checkConfirmed(userText, heardVoicedMs(), subject)
             else -> null
         }
         if (refusal != null) {
@@ -4063,7 +4110,9 @@ object LiveToolbox {
             // The confirm question: remember it was asked, and tell the model to ask and wait.
             // A module-clear question left waiting is void now (one question at a time).
             com.kevin.legion.vehicle.diag.DiagVoice.forget()
-            gate.asked(userText)
+            gate.asked(userText, subject)
+            // The question names the car, so his yes is a yes to that car.
+            out.put("message", "This is for the ${VehicleController.label(vehicle)}. ${r.message}")
             // The adapter may have dropped during the read: armed first, then checked, so a disconnect
             // on either side of this line leaves no question waiting (2026-11-18 review).
             if (!ObdBluetoothManager.isConnected) {
