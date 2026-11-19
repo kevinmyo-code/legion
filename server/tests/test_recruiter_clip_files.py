@@ -325,3 +325,14 @@ def test_one_row_per_insert_and_a_reload_rewrites_only_what_changed(tmp_path):
     }
     stored = RecruiterMediaFile.objects.get(name="demo-take.mp4")
     assert bytes(stored.data) == FAKE_MP4 + b"recut"
+
+
+def test_file_named_videos_carry_a_rollback_warning_and_links_do_not(tmp_path):
+    said = load(tmp_path / "a", with_clips(dict(SECTION_FILES), dict(PHONE_FILES)), ALL_FILES)
+    assert (
+        "WARNING: clip videos named by file (project_sections/0/media/video, "
+        "phone/clips/0/video)" in said
+    )
+    assert "reload the content with link-form clips or without them" in said
+    said = load(tmp_path / "b", with_clips({"video": "https://example.com/fake.mp4"}), {})
+    assert "WARNING" not in said
