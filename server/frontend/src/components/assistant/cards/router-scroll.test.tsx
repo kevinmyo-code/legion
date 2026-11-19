@@ -121,6 +121,44 @@ afterEach(() => {
   window.history.replaceState({}, '', '/')
 })
 
+describe('F2: the rest of the app scrolls as before', () => {
+  test('a member navigation starts at the top, and so does Back', async () => {
+    const calls = spyScroll()
+    app('/')
+    await screen.findByText('To the demo')
+    await tick()
+    scrolled(500)
+    calls.length = 0
+    fireEvent.click(screen.getByText('Other page'))
+    await screen.findByText('Other')
+    await tick()
+    expect(calls.filter(toTop)).toHaveLength(1)
+    calls.length = 0
+    await back()
+    await screen.findByText('To the demo')
+    // As on dev: Back starts at the top too (no restored offset, no other scroll call).
+    expect(calls).toEqual([expect.objectContaining({ top: 0 })])
+  })
+
+  test('the router never puts a chat list back: it stays at its newest line across a navigation and Back', async () => {
+    spyScroll()
+    app('/')
+    const chat = await screen.findByTestId('chat')
+    await tick()
+    chat.scrollTop = 120
+    chat.dispatchEvent(new Event('scroll'))
+    fireEvent.click(screen.getByText('Other page'))
+    await screen.findByText('Other')
+    await tick()
+    await back()
+    const again = await screen.findByTestId('chat')
+    // Newer lines arrived and the list pinned itself to them; nothing sets it back to 120.
+    again.scrollTop = 360
+    await tick(60)
+    expect(again.scrollTop).toBe(360)
+  })
+})
+
 describe('F1: the modal-closing mark never outlives its close', () => {
   test('a reload with a modal entry on top, then a navigation: the new page starts at the top', async () => {
     const calls = spyScroll()
