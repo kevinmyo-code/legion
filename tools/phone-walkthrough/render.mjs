@@ -146,7 +146,8 @@ function slotMeta(slot) {
 function overlayChain(slot, { outline = false } = {}) {
   const cfg = spec.money_overlay
   const meta = slotMeta(slot)
-  if (!cfg || meta.overlay === false) return ''
+  // `money_overlay.enabled: false` turns the patches off everywhere (one switch, Kevin's call).
+  if (!cfg || cfg.enabled === false || meta.overlay === false) return ''
   const spans = (list) => list.map(([a, b]) => `between(t,${a},${b})`).join('+')
   const any = (list) => (list?.length ? `gt(${spans(list)},0)` : '0')
   const home = meta.home_spans?.length ? any(meta.home_spans) : '1'
