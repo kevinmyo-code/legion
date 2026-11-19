@@ -3,10 +3,11 @@ import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { AppErrorBoundary, RouteErrorScreen } from './components/error-screen'
+import { AppErrorBoundary } from './components/error-screen'
 import './index.css'
 import { installReloadOnUpdate } from './lib/sw-reload'
 import { applyTheme, watchSystemTheme } from './lib/theme'
+import { appRouterOptions } from './router-options'
 import { routeTree } from './routeTree.gen'
 
 // `index.html` already set the `dark` class before first paint; this finishes the
@@ -19,9 +20,7 @@ watchSystemTheme()
 // bundle, never over unsaved input (`lib/sw-reload.ts`).
 installReloadOnUpdate()
 
-// A route that throws shows a sentence and a retry, never a blank page or a stack
-// (architecture review 2026-11-10, item 5; `components/error-screen.tsx`).
-const router = createRouter({ routeTree, defaultErrorComponent: RouteErrorScreen })
+const router = createRouter({ routeTree, ...appRouterOptions })
 
 // Makes `<Link to="...">` and `useParams()` typed against the generated route
 // tree. Without it every route path is a bare string again, which is most of
