@@ -338,7 +338,10 @@ class TestGatherRealGit(GitRepo):
         self.assertEqual(self.gathered().foreign_config, ())
         for key, val in (("credential.helper", "!evil"), ("core.sshCommand", "evil"),
                          ("include.path", "../x.cfg"), ("alias.p", "push"),
-                         ("http.proxy", "http://evil.example")):
+                         ("http.proxy", "http://evil.example"),
+                         # review 11-19 unreviewed list: includeIf and LFS keys are foreign too
+                         ("includeIf.gitdir:C:/x/.path", "../x.cfg"), ("lfs.url", "https://evil.example"),
+                         ("filter.lfs.process", "evil"), ("filter.x.clean", "evil")):
             git("config", key, val, cwd=self.dir)
             self.assertIn(key.lower(), self.gathered().foreign_config, key)
             git("config", "--unset", key, cwd=self.dir)
@@ -401,6 +404,24 @@ class TestGatherRealGit(GitRepo):
                       own_work=own, project=project(), facts_for=P.gather)
         self.assertEqual(got.decision, "deny")
         self.assertIn("does not push to acme-dev/widgets", got.reason)
+
+    @unittest.skipUnless(os.name == "nt", "8.3 short names are a Windows thing")
+    def test_short_83_names_resolve_before_the_folder_check(self):
+        import ctypes
+        inside = Path(self.tmp.name) / "work-folder-long-name" / "task-41" / "clone-with-a-long-name"
+        outside = Path(self.tmp.name) / "someone-elses-long-folder"
+        inside.mkdir(parents=True)
+        outside.mkdir()
+
+        def short(p):
+            buf = ctypes.create_unicode_buffer(1024)
+            n = ctypes.windll.kernel32.GetShortPathNameW(str(p), buf, 1024)
+            return buf.value if n else str(p)
+        if short(inside) == str(inside):
+            self.skipTest("8.3 names are off on this volume")
+        own = inside.parent
+        self.assertTrue(P.is_under(short(inside), own))
+        self.assertFalse(P.is_under(short(outside), own))
 
     def test_not_a_repo_or_no_such_remote(self):
         self.assertIsNone(P.gather(str(Path(self.tmp.name)), "origin"))
@@ -482,7 +503,15 @@ class TestHook(GitRepo):
                   "gh pr review 1 --approve --repo acme-dev/widgets",
                   "gh pr merge 1 --repo acme-dev/widgets",
                   "gh run rerun 5 --repo acme-dev/widgets",
-                  "echo x && gh repo delete acme-dev/widgets --yes")
+                  "echo x && gh repo delete acme-dev/widgets --yes",
+                  # review 11-19: the command word dressed up (env, a path, quotes, an env prefix)
+                  "env gh repo delete acme-dev/widgets --yes",
+                  "/usr/bin/gh secret set X --body y",
+                  "command gh workflow run t",
+                  '"gh" repo edit acme-dev/widgets --visibility public',
+                  "GH_TOKEN=x gh repo edit acme-dev/widgets",
+                  '"C:/Program Files/GitHub CLI/gh.exe" repo delete acme-dev/widgets --yes',
+                  r"C:\tools\gh.exe repo delete acme-dev/widgets --yes")
         reads = ("gh pr checks claude/flag --repo acme-dev/widgets --watch",
                  "gh pr view 1 --repo acme-dev/widgets", "gh run list --repo acme-dev/widgets",
                  "gh repo clone acme-dev/widgets", "gh auth status")

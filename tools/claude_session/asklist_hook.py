@@ -100,7 +100,8 @@ RULES = [
      # Any other gh subcommand that writes to GitHub (repo delete/edit, secret, variable,
      # workflow run, pr review/new, ...): only the reads below pass without a yes. `gh api` is
      # containment's (GH_WRITE_RE); a project PR returns before this list (project_prs.py).
-     r"|(?:^|[;&|(`\"']|\$\()\s*gh(?:\.exe)?\s+(?!(?:api|search|auth\s+status|repo\s+(?:view|list|clone)"
+     # The command word may come after env, `command`, an env prefix, a path or a quote.
+     r"|(?:^|[\s;&|(`\"'/\\]|\$\()gh(?:\.exe)?[\"']?\s+(?!(?:api|search|auth\s+status|repo\s+(?:view|list|clone)"
      r"|(?:pr|issue|run|workflow|release|gist|label|cache|ruleset|secret|variable)\s+"
      r"(?:view|list|status|checks|diff|watch|download|checkout))\b)[a-z]"
      r"|\bcurl\b.*(-X\s*(POST|PUT|PATCH|DELETE)|\s-d\s|--data|-F\s|--form)"
