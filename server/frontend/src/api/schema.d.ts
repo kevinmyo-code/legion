@@ -8514,6 +8514,20 @@ export interface components {
             tools: components["schemas"]["LimbTool"][];
             streams?: string[];
         };
+        /** @description A refusal on the limb route: words for a person, a code for the client. */
+        LimbRefusal: {
+            detail: string;
+            code: components["schemas"]["LimbRefusalCodeEnum"];
+        };
+        /**
+         * @description * `manifest_invalid` - manifest_invalid
+         *     * `contract_unsupported` - contract_unsupported
+         *     * `not_a_device` - not_a_device
+         *     * `manifest_too_large` - manifest_too_large
+         *     * `length_required` - length_required
+         * @enum {string}
+         */
+        LimbRefusalCodeEnum: "manifest_invalid" | "contract_unsupported" | "not_a_device" | "manifest_too_large" | "length_required";
         LimbTool: {
             name: string;
             /** @default  */
@@ -12268,7 +12282,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["LimbRefusal"];
                 };
             };
             403: {
@@ -12276,7 +12290,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["LimbRefusal"];
                 };
             };
             /** @description The agent turn is switched off. */
@@ -12294,7 +12308,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Detail"];
+                    "application/json": components["schemas"]["LimbRefusal"];
+                };
+            };
+            /** @description No Content-Length. */
+            411: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimbRefusal"];
+                };
+            };
+            /** @description A body over the manifest cap. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimbRefusal"];
                 };
             };
         };
