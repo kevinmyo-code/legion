@@ -70,9 +70,9 @@ class AdapterCarVoiceTest {
             if (withLink == true) {
                 object : ObdTransport {
                     override val inputStream = ByteArrayInputStream(ByteArray(0))
-                    override val outputStream = object : OutputStream() { override fun write(b: Int) {} }
+                    override val outputStream = object : OutputStream() { override fun write(b: Int) = Unit }
                     override val label = mac
-                    override fun close() {}
+                    override fun close() = Unit
                 }
             } else {
                 null
@@ -221,7 +221,8 @@ class AdapterCarVoiceTest {
         assertFalse(r.getBoolean("success"))
         assertTrue(r.getString("message"), r.getString("message").startsWith("Nothing was saved"))
         // Named, it is not this refusal.
-        val named = LiveToolbox.dispatch(context, "set_odometer", JSONObject().put("miles", 12345).put("vehicle", "Comet"))!!
+        val namedArgs = JSONObject().put("miles", 12345).put("vehicle", "Comet")
+        val named = LiveToolbox.dispatch(context, "set_odometer", namedArgs)!!
         assertFalse(named.getString("message"), named.getString("message").contains("has not named yet"))
     }
 

@@ -155,9 +155,9 @@ internal class VoiceEvalHarness(
         val link = address?.let {
             object : com.kevin.legion.vehicle.ObdTransport {
                 override val inputStream = java.io.ByteArrayInputStream(ByteArray(0))
-                override val outputStream = object : java.io.OutputStream() { override fun write(b: Int) {} }
+                override val outputStream = object : java.io.OutputStream() { override fun write(b: Int) = Unit }
                 override val label = it
-                override fun close() {}
+                override fun close() = Unit
             }
         }
         ObdBluetoothManager::class.java.getDeclaredField("transport").apply { isAccessible = true }

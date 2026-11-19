@@ -879,9 +879,8 @@ object LiveToolbox {
         // not filed), and its result carries the ask or the "looks like" once a connection (AdapterBinding).
         // The fleet specialist's answer carries it too: "how's the car doing" goes there, and the
         // specialist's own live reads run inside this mark, so only the answer he hears is noted.
-        if ((name in CATEGORY_A_TOOLS && name != "clear_codes" || name == "ask_fleet") &&
-            kotlin.coroutines.coroutineContext[com.kevin.legion.vehicle.AdapterBinding.Annotating] == null
-        ) {
+        val carNoted = name in CATEGORY_A_TOOLS && name != "clear_codes" || name == "ask_fleet"
+        if (carNoted && kotlin.coroutines.coroutineContext[com.kevin.legion.vehicle.AdapterBinding.Annotating] == null) {
             return kotlinx.coroutines.withContext(com.kevin.legion.vehicle.AdapterBinding.Annotating()) {
                 dispatch(context, name, args, touchedReadThroughToolThisTurn, userText)
             }?.let { com.kevin.legion.vehicle.AdapterBinding.annotate(context, it) }

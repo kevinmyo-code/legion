@@ -572,7 +572,8 @@ class DongleCarControllerTest {
         connect(VinResponse.Result.Vin(truckVin), printB)
         val gate = ClearCodesVoiceGate()
         gate.asked("clear the codes", k1)
-        assertEquals(ClearCodesVoiceGate.OTHER_CAR, gate.checkConfirmed("yes", subject = DongleCarController.connectionKey()))
+        val now = DongleCarController.connectionKey()
+        assertEquals(ClearCodesVoiceGate.OTHER_CAR, gate.checkConfirmed("yes", subject = now))
     }
 
     @Test

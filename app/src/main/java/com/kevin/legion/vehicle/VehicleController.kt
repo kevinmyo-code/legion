@@ -170,6 +170,7 @@ object VehicleController {
      * stored value alone (same "blank means don't touch" convention [correctVehicle] uses) rather
      * than clobbering it back to empty.
      */
+    @Suppress("ReturnCount") // the car already on file, a refusal, or the write
     suspend fun registerDirect(context: Context, year: Int, make: String, model: String, trim: String = "", engine: String = ""): WriteOutcome {
         // **This returned a bare `String` and `LiveToolbox`'s `register_vehicle` dispatch hardcoded
         // `success = true` over it**, so this refusal - which writes nothing at all - reached the
@@ -180,18 +181,7 @@ object VehicleController {
         // OBD VIN attribution (2026-11-15): with the dongle in a car nobody has named yet (or only
         // assumed), "this car" has no row to correct, and writing onto the picked car would
         // overwrite a different car.
-        // 2026-11-17: "this car is a <car already on file>" with the dongle's car unknown came here and
-        // was refused; the car he names IS the answer to "which car is the dongle in". One car on file
-        // matching what he said: that answer, through the same controller as switch_vehicle.
-        if (DongleCarController.hasLiveQuestion()) {
-            AdapterBinding.carOnFileNamed(FleetEngineStore.getAll(context), year, make, model)?.let { car ->
-                val bound = switchToOutcome(context, car.obdMac)
-                return WriteOutcome(
-                    bound.success,
-                    "That car is already on file, so nothing new was added. ${bound.message}",
-                )
-            }
-        }
+        bindCarOnFile(context, year, make, model)?.let { return it }
         val refusal = when {
             year < 1900 || make.isBlank() || model.isBlank() ->
                 "I need a valid year, make, and model to register the car."
@@ -1320,6 +1310,24 @@ object VehicleController {
         // Applied for a write that changed nothing (VehicleDao.applyDecodedIdentity's own doc).
         if (written == 0) return IdentityWriteResult.NoSuchVehicle
         return IdentityWriteResult.Applied(changed)
+    }
+
+    /**
+     * 2026-11-17: "this car is a <car already on file>" with the dongle's car unknown came to
+     * [registerDirect] and was refused; the car he names IS the answer to "which car is the dongle in".
+     * One car on file matching what he said: that answer, through the same controller as
+     * switch_vehicle. Null when there is no live question or no single car matches.
+     */
+    private suspend fun bindCarOnFile(context: Context, year: Int, make: String, model: String): WriteOutcome? {
+        val car = if (DongleCarController.hasLiveQuestion()) {
+            AdapterBinding.carOnFileNamed(FleetEngineStore.getAll(context), year, make, model)
+        } else {
+            null
+        }
+        return car?.let {
+            val bound = switchToOutcome(context, it.obdMac)
+            WriteOutcome(bound.success, "That car is already on file, so nothing new was added. ${bound.message}")
+        }
     }
 
     /** Makes [vehicleId] the car every stored-data tool answers about. */

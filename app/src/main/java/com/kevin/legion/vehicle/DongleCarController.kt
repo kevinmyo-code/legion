@@ -260,13 +260,7 @@ object DongleCarController {
         }
         edit.apply()
         if (decision is OnCar && decision.basis == Basis.VIN) {
-            // The VIN is a fact and wins over a print learned for another car. That car keeps the print
-            // too, so the print alone is ambiguous from now on (asked, never guessed). Logged, not said.
-            val printCar = recognised(context, connectionPrint)
-            if (printCar != null && printCar != decision.carId) {
-                Log.i(TAG, "VIN names ${decision.carId}; this print was learned for $printCar; learned for both")
-            }
-            rememberCar(context, decision.carId, connectionPrint)
+            learnFromVin(context, decision.carId)
         } else if (decision is OnCar) {
             ActiveVehicle.rememberConnected(context, decision.carId)
         }
@@ -275,6 +269,19 @@ object DongleCarController {
         carry?.let { moveData(context, it.fromId, decision.recordingId, it.fromMs, System.currentTimeMillis()) }
         MidnightEvents.obdAttributed(decision.mac, decision.recordingId, describe(vinResult, decision, carry))
         return decision
+    }
+
+    /**
+     * A VIN proved this connection is [carId]: the VIN is a fact and wins over a print learned for
+     * another car. That car keeps the print too, so the print alone is ambiguous from now on (asked,
+     * never guessed). Logged, not said.
+     */
+    private fun learnFromVin(context: Context, carId: String) {
+        val printCar = recognised(context, connectionPrint)
+        if (printCar != null && printCar != carId) {
+            Log.i(TAG, "VIN names $carId; this print was learned for $printCar; learned for both")
+        }
+        rememberCar(context, carId, connectionPrint)
     }
 
     internal fun recentlyDisconnected(disconnectedAt: Long, now: Long): Boolean =
