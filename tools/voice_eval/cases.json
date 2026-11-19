@@ -394,11 +394,20 @@
       "id": "lone_word_no_context",
       "say": "Five.",
       "stt_audio": true,
-      "known_limit": "lone_word_write",
-      "why": "Recorded known limit, never fails the gate (2026-11-18, Kevin's ruling A: ship 1a with it; the installed build has it too). A bare one-word turn with no context reaches the model, which may run a write (one run switched the active car) and not say so. Each run records KNOWN LIMIT lone_word_write: <tool/action> when a write succeeded. Follow-up, next phone update: a completed write the reply does not confirm is spoken by code (CascadeSession.answerTurn + ScriptedLines.doneLine, a phrase for the car switch)",
+      "why": "lone_word_write, fixed 2026-11-19 (was a recorded known limit, Kevin's ruling A 11-18): one context-free word may not change anything. The phone refuses a write in a turn whose heard words are one word (LoneWordWriteGuard, needs_yes) unless the previous turn's tool result asked him something; the model then asks. A write that did go through anywhere is said by code (ScriptedLines.doneLine).",
       "expect": {
+        "asks_yes": true,
         "answer_not": ["(?i)catch"]
       }
+    },
+    {
+      "id": "lone_word_then_yes",
+      "write": true,
+      "turns": [
+        {"say": "Milk.", "expect": {"asks_yes": true}},
+        {"say": "Yes.", "expect": {"answer_not": ["(?i)catch"]}}
+      ],
+      "why": "2026-11-19 bug-2 cost: a lone word that would write is held for a yes; the yes after a held call runs it (the held call's result asked him). If turn 1 asked without calling a tool, turn 2's yes is itself held once more: that is the measured cost, read from the tools column"
     },
     {
       "id": "spanish_word_in_english",

@@ -221,6 +221,47 @@ def test_a_known_limit_never_fails_and_records_a_write():
     assert v.passed and v.known_limit is None
 
 
+LONE = {"id": "lone", "say": "Five.", "expect": {"asks_yes": True, "answer_not": ["(?i)catch"]}}
+HELD = '{"success":false,"needs_yes":true,"message":"Nothing was done."}'
+
+
+def test_a_lone_word_write_held_for_a_yes_passes_and_one_that_ran_fails():
+    held = case_lines("lone", "Five.", [("car", {"action": "switch_vehicle", "vehicle": "Invented Fit"}, HELD)],
+                      "Switch to the Invented Fit?")
+    _, runs = parse(held)
+    assert ve.score_case(LONE, runs[0], phone=False).passed
+    ran = case_lines("lone", "Five.", [("car", {"action": "switch_vehicle", "vehicle": "Invented Fit"},
+                                        '{"success":true,"message":"You are on the Invented Fit now."}')], "Okay.")
+    _, runs = parse(ran)
+    v = ve.score_case(LONE, runs[0], phone=False)
+    assert not v.passed and "a write went through on a lone word" in v.failures
+    # A write tried and refused some other way is not the yes check.
+    other = case_lines("lone", "Five.", [("car", {"action": "switch_vehicle"}, '{"success":false,"message":"No."}')], "Hm?")
+    _, runs = parse(other)
+    assert "a write was tried on a lone word and not held for a yes" in ve.score_case(LONE, runs[0], phone=False).failures
+
+
+def test_a_held_write_is_not_a_change_on_a_question_that_only_reads():
+    case = {"id": "lone", "say": "Five.", "expect": {}}
+    _, runs = parse(case_lines("lone", "Five.", [("car", {"action": "switch_vehicle", "vehicle": "x"}, HELD)], "Which?"))
+    assert ve.score_case(case, runs[0], phone=False).passed
+
+
+def test_doubled_confirmation_is_counted_only_in_the_eval():
+    assert ve.doubled_confirmation("Two things are due.") is None
+    assert ve.doubled_confirmation("Done: added milk to Groceries.") is False
+    assert ve.doubled_confirmation("Done: added milk to Groceries. Anything else?") is False
+    assert ve.doubled_confirmation("Done: added milk to Groceries. I've added milk.") is True
+    assert ve.doubled_confirmation("That change went through. Done and dusted, it's saved.") is True
+    cases = [{"id": "a", "say": "x", "expect": {}}, {"id": "b", "say": "y", "expect": {}}]
+    lines = case_lines("a", "x", [], "Done: added milk to Groceries. Added it.") + \
+        case_lines("b", "y", [], "Done: added eggs to Groceries.")
+    facts, runs = parse(lines)
+    out, summary = ve.scorecard(cases, runs, facts, phone=False)
+    assert summary["confirmations"] == {"turns": 2, "doubled": 1}
+    assert any("code confirmations: 2 turn(s), model repeated it in 1 (50%)" in l for l in out)
+
+
 def test_committed_cases_load_and_have_unique_ids():
     cases = ve.load_cases([ve.CASES])
     assert len(cases) >= 10

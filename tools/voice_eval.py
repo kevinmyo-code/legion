@@ -143,6 +143,11 @@ class ToolCall:
     def refused_for_test(self) -> bool:
         return TEST_REFUSAL in self.response
 
+    @property
+    def needs_yes(self) -> bool:
+        """The phone's lone-word guard refused this write and asked for a yes (2026-11-19): nothing ran."""
+        return re.search(r'"needs_yes"\s*:\s*true', self.response) is not None
+
 
 @dataclass
 class Turn:
@@ -409,6 +414,13 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
         for rx in expect.get("tts_not", []):
             if re.search(rx, turn.to_voice, re.I):
                 fails.append(f"the voice was handed /{rx}/: {turn.to_voice[:120]}")
+    # A lone word may not change anything without his yes (2026-11-19, lone_word_write): the write
+    # is refused in code and the answer asks.
+    if expect.get("asks_yes"):
+        if any(c.success and _looks_write(c) for c in turn.calls):
+            fails.append("a write went through on a lone word")
+        if any(_looks_write(c) for c in turn.calls) and not any(c.needs_yes for c in turn.calls):
+            fails.append("a write was tried on a lone word and not held for a yes")
     if expect.get("no_empty_claim"):
         # An open task in the result: a task row not done, or a non-empty `due` block (fix/greet-and-due).
         # The `due` block leads with its counts, so `"open":N` survives the audit line's 400-character cut.
@@ -445,7 +457,7 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
     # called car/switch_vehicle on the laptop eval).
     if not write:
         for c in turn.calls:
-            if _looks_write(c):
+            if _looks_write(c) and not c.needs_yes:
                 fails.append(f"changed something on a question that only reads: {c.key}")
     # Writes on the phone: refused unless the case allows them, and never claimed.
     for c in turn.calls:
@@ -487,6 +499,26 @@ def _looks_write(c: ToolCall) -> bool:
         return False
     return (c.action in WRITE_ACTIONS or c.action.startswith(("log_", "set_", "switch_", "add_"))
             or c.name in WRITE_TOOLS)
+
+
+# The phone's own confirmation of a write, spoken by code from the tool's result (2026-11-19,
+# ScriptedLines.doneLine). Measured here only: the product never reads the model's words.
+CODE_LINE = re.compile(r"Done: [^.]*\.|That change went through\.")
+
+
+def doubled_confirmation(answer: str) -> bool | None:
+    """None when no code confirmation was said; else whether the model's own words claimed it again."""
+    if not CODE_LINE.search(answer):
+        return None
+    rest = CODE_LINE.sub(" ", answer)
+    return bool(CLAIM.search(rest)) and not NOT_DONE.search(rest)
+
+
+def doubling(runs: list[CaseRun]) -> tuple[int, int]:
+    """(turns with a code confirmation, of those the ones the model confirmed again)."""
+    seen = [doubled_confirmation(t.answer) for r in runs for t in r.turns]
+    said = [d for d in seen if d is not None]
+    return len(said), sum(said)
 
 
 def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
@@ -648,6 +680,10 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
             + (f", incl. {usd(overhead)} for the context cache" if overhead else "") + ")")
     na_line = ([f"passed, not counted, proves nothing on this layer ({len(na_ids)}): {', '.join(na_ids)}"]
                if na_ids else [])
+    confirmed, doubled = doubling([r for r in runs if r.id in {c["id"] for c in cases}])
+    if confirmed:
+        na_line.append(f"code confirmations: {confirmed} turn(s), model repeated it in {doubled} "
+                       f"({100 * doubled // confirmed}%)")
     hits = sum("KNOWN LIMIT" in r for r in known_rows)
     if known_rows:
         na_line.append(f"known limits, recorded, not counted ({hits} of {len(known_rows)} showed): {'; '.join(known_rows)}")
@@ -658,6 +694,7 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
     facts = {k: v for k, v in run_facts.items() if not k.startswith("_")}
     summary = {"model": model, "phone": phone, "passed": passed, "failed": failed, "missing": missing,
                "not_counted": na_ids, "known_limits": known_rows,
+               "confirmations": {"turns": confirmed, "doubled": doubled},
                "usd": str(total), "overhead_usd": str(overhead), "cases": rows, "run": facts}
     return [head] + na_line + [""] + lines + [""] + tail, summary
 
