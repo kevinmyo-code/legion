@@ -72,15 +72,6 @@ object CarFingerprint {
         prefs(context).edit().putString(carId, fp).apply()
     }
 
-    /**
-     * His correction ("no, it's the B") of a connection recognised or named as [fromCarId]: that car
-     * gives up [fp], so the print moves to the car he named rather than being copied (review A7).
-     */
-    fun takeFrom(context: Context, fromCarId: String, fp: String?) {
-        val p = prefs(context)
-        if (fp != null && p.getString(fromCarId, null) == fp) p.edit().remove(fromCarId).apply()
-    }
-
     /** Forgets [carId]'s learned print (the car is archived: sold or gone). */
     fun forget(context: Context, carId: String) {
         prefs(context).edit().remove(carId).apply()

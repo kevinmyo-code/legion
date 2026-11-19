@@ -581,10 +581,10 @@ object DongleCarController {
                 val moved = moveData(context, plan.fromId, carId, fromMs, System.currentTimeMillis())
                 // Only the print of the connection these readings came from: an answer about an earlier,
                 // held connection must not teach the print of whatever car the adapter is in now. A
-                // correction of a car moves the print off it (review A7).
-                val print = printOf(context, subject, isLive)
-                if (plan.asCorrection && subject is OnCar) CarFingerprint.takeFrom(context, subject.carId, print)
-                rememberCar(context, carId, print)
+                // correction leaves the print on both cars (review R2-3): true twins are then asked every
+                // connect instead of flip-flopping into a confident wrong guess. A car that later
+                // connects with a different print, or is proven by its VIN, replaces its own print.
+                rememberCar(context, carId, printOf(context, subject, isLive))
                 if (isLive || settlesWindow) {
                     prefs(context).edit().remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC).apply()
                 }
