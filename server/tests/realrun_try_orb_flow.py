@@ -80,6 +80,7 @@ def test_try_orb_flow(real, live_server, tmp_path):
             # (no model, no speech, nothing spent); ORBFLOW_REDUCED=1: with reduced motion.
             "only": os.environ.get("ORBFLOW_ONLY", ""),
             "reduced": os.environ.get("ORBFLOW_REDUCED") == "1",
+            "chips": os.environ.get("ORBFLOW_CHIPS") == "1",
         }
         done = subprocess.run(
             ["node", str(HERE / "realrun_try_orb_flow.mjs"), json.dumps(args)],

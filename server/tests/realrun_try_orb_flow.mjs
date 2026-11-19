@@ -427,6 +427,14 @@ R.phases.travel = {
   path: P.samples.filter((x) => x.t >= t0 && x.t <= t1).map((x) => ({ t: Math.round(x.t - t0), y: x.y, orb: x.orb, orbOpacity: x.orbOpacity, dock: x.dock, dockOrb: x.dockOrb, dockOpacity: x.dockOpacity })).slice(0, 400),
 }
 
+// `chips` (travel-only): tap the orb once so the greeting brings the example chips (a scripted
+// line, its speech the only cost), then look at them.
+if (travelOnly && A.chips) {
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.locator('[data-stage="orb"]').click()
+  await page.locator('[data-stage="chips"] button').first().waitFor({ timeout: 30000 }).catch(() => {})
+  await sleep(1200)
+}
 // ---- the chips: where they sit, and the row's bounds at this width ------------------------------
 R.chips = await page.evaluate(() => {
   const row = document.querySelector('[data-stage="chips"]')
@@ -438,7 +446,8 @@ R.chips = await page.evaluate(() => {
     const x = b.getBoundingClientRect()
     return { h: Math.round(x.height), w: Math.round(x.width) }
   })
-  return { top: Math.round(r.top), orbBottom: Math.round(o.bottom), left: Math.round(r.left), right: Math.round(r.right), buttons, overflow: document.documentElement.scrollWidth > innerWidth }
+  const first = row.querySelector('button')
+  return { top: Math.round(r.top), orbBottom: Math.round(o.bottom), left: Math.round(r.left), right: Math.round(r.right), buttons, overflow: document.documentElement.scrollWidth > innerWidth, radius: first ? getComputedStyle(first).borderTopLeftRadius : null }
 })
 await shot('10-chips')
 
