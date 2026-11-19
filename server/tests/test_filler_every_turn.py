@@ -14,6 +14,7 @@ import time
 
 import pytest
 
+from agents.runtime import model as m
 from agents.runtime.model import FakeModel, call, say
 from assistant import cascade, fillers
 from engine_mcp.tools import SPEAK_VERBATIM, ToolResult
@@ -179,3 +180,25 @@ def test_the_timing_line_says_no_line_was_heard(member, engine, monkeypatch, hou
     _turn(member, engine, conversation, FakeModel([call("monthly_spend", {}), say("Some.")]))
     line = [ln for ln in _record(conversation).splitlines() if "cascade_turn status=done" in ln][-1]
     assert dict(re.findall(r"(\w+)=(-?\d+)", line))["filler_ms"] == "-1"
+
+
+# ---- review 2026-11-19 (review-try-first-word-1119.md) --------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("tool", "args"),
+    [("legion_docs", {"query": "how is it built"}), ("brief_latest", {}), ("run_procedure", {"name": "xx"})],
+)
+
+
+def test_a_slow_answer_after_the_docs_gets_its_line_after_the_tool(
+    member, engine, monkeypatch, household_user
+):
+    conversation = _later(member, engine, monkeypatch, household_user)
+    # The docs' own answer, so the lookup succeeds whatever corpus this test database holds.
+    monkeypatch.setattr(cascade, "run_tool", lambda request, name, args: ToolResult(text="ADR 0102."))
+    model = SlowModel([call("legion_docs", {"query": "how"}), say("It is Django.")], [0.0, 1.0])
+    events = _turn(member, engine, conversation, model)
+    kinds = [k for k, _ in events]
+    assert _fillers(events) == ["legion_docs"]
+    assert kinds.index("tool") < kinds.index("filler") < kinds.index("sentence")

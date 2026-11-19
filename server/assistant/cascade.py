@@ -1835,7 +1835,15 @@ def _answer(
                 # A slow tool has started: its own line, from memory, before it runs.
                 yield event
                 tool = event.data["tool"]
-                if speak and sentences == 0 and not filler_said and door.would_accept(tool):
+                # Only a network lookup is announced at its start (`fillers.is_slow`); the door's
+                # wider slow list (writes, SLOW_TOOLS) still makes the `working` event.
+                if (
+                    speak
+                    and fillers.is_slow(tool)
+                    and sentences == 0
+                    and not filler_said
+                    and door.would_accept(tool)
+                ):
                     # Never for a call the door is about to refuse (round 2 speech review 7).
                     line = yield from filler(tool)
                     filler_said = line is not None
