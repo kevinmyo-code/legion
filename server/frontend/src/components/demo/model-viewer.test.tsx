@@ -124,6 +124,35 @@ describe('ModelViewer', () => {
     expect(stage.reset).toHaveBeenCalledTimes(1)
   })
 
+  test('two models: touching the second hands the first one back, though the second stops the event', async () => {
+    const stages = new Map<string, Stage>()
+    mountStage.mockImplementation(async (host, url) => {
+      // The real stage stops an inactive model's touch at its box, in the capture phase.
+      host.addEventListener('pointerdown', (event) => event.stopPropagation(), { capture: true })
+      const stage = fakeStage()
+      stages.set(url, stage)
+      return stage
+    })
+    const other = { ...MODEL, title: 'Fake widget', model: '/api/demo/media/widget.glb' }
+    render(
+      <>
+        <ModelViewer model={MODEL} />
+        <ModelViewer model={other} />
+      </>,
+    )
+    const nearObservers = observers.slice(0, 2)
+    for (const observer of nearObservers) await act(async () => observer.cb([{ isIntersecting: true }]))
+    const first = screen.getByRole('group', { name: /^3D model: Fake gadget/ })
+    const second = screen.getByRole('group', { name: /^3D model: Fake widget/ })
+    await waitFor(() => expect(first).toHaveAttribute('data-state', 'ready'))
+    await waitFor(() => expect(second).toHaveAttribute('data-state', 'ready'))
+    fireEvent.click(first)
+    await waitFor(() => expect(first).toHaveAttribute('data-active', 'true'))
+    fireEvent.pointerDown(second, { pointerType: 'touch' })
+    await waitFor(() => expect(first).toHaveAttribute('data-active', 'false'))
+    expect(stages.get(MODEL.model)?.setActive).toHaveBeenLastCalledWith(false)
+  })
+
   test('scrolling away hands the page back and stops drawing; unmounting frees the stage', async () => {
     const stage = fakeStage()
     mountStage.mockResolvedValue(stage)

@@ -103,8 +103,10 @@ export function ModelViewer({ model }: { model: DemoModel3D }) {
     const outside = (event: PointerEvent) => {
       if (!box.current?.parentElement?.contains(event.target as Node)) setActive(false)
     }
-    document.addEventListener('pointerdown', outside)
-    return () => document.removeEventListener('pointerdown', outside)
+    // Capture phase: another model's box stops its touches before they bubble (`model-stage.ts`),
+    // and a touch on it must still hand this one back.
+    document.addEventListener('pointerdown', outside, { capture: true })
+    return () => document.removeEventListener('pointerdown', outside, { capture: true })
   }, [active])
 
   const ready = state === 'ready'
