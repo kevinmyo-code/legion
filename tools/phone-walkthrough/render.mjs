@@ -435,6 +435,16 @@ function composite(layout, bgFile, { timeline, rects, from, to }, outFile) {
       `${last}[c${v}]overlay=${rect.x}:${rect.y}:eof_action=pass:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'[o${v}]`,
     )
     last = `[o${v}]`
+    // A ring on the part of the screen that changes, as it changes (`highlights`: [{at, dur, box:
+    // [x, y, w, h] as fractions of the screen}], times in the scene), drawn over the footage.
+    for (const [j, h] of (scene.highlights || []).entries()) {
+      const [fx, fy, fw, fh] = h.box
+      const hx = Math.round(rect.x + fx * rect.w), hy = Math.round(rect.y + fy * rect.h)
+      const hw = Math.round(fw * rect.w), hh = Math.round(fh * rect.h)
+      const a0 = (start + h.at).toFixed(3), a1 = (start + h.at + h.dur).toFixed(3)
+      vf.push(`${last}drawbox=x=${hx}:y=${hy}:w=${hw}:h=${hh}:color=0x8a2d1e@0.85:t=5:enable='between(t,${a0},${a1})'[h${v}_${j}]`)
+      last = `[h${v}_${j}]`
+    }
     // fps before the money patches: their time spans were measured on the 30 fps grid.
   // Sound: Alfred from the take's own audio (the room recording, or the mp4's track) at 1x
     // only, and each asker line's clean WAV laid at its time. Nothing is muted unless an ask says

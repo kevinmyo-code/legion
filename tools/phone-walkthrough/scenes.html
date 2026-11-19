@@ -76,6 +76,9 @@ const LAYOUTS = {
     phone: { x: 1330, y: 66, h: 948 }, phoneBeat: { x: 1330, y: 66, h: 948 },
     progress: { x: 130, y: 1030, w: 1080 },
     mapRegion: { x: 130, y: 400, w: 1110, h: 600 },
+    lanesRegion: { x: 96, y: 372, w: 1170, h: 590 },
+    // Under a lanes map, the small events (a filler, a card drawn) sit below the map, clear of it.
+    eventsBelow: { x: 96, y: 978, w: 1170 },
     caption: { bottom: 40 } },
   tall: { w: 1080, h: 1350, u: 30,
     text: { x: 56, y: 40, w: 968 },
@@ -84,6 +87,7 @@ const LAYOUTS = {
     phone: { x: 620, y: 312, h: 860 }, phoneBeat: { x: 620, y: 312, h: 860 },
     progress: { x: 56, y: 296, w: 968 },
     mapRegion: { x: 40, y: 330, w: 550, h: 842 },
+    lanesRegion: { x: 30, y: 330, w: 570, h: 842 },
     caption: { bottom: 10 } },
 }
 // The recorded phone screens are portrait; this is their width over height.
@@ -183,7 +187,8 @@ function frame(t) {
   stage.appendChild(text)
   if (scene.map && SPEC.maps && SPEC.maps[scene.map]) {
     const mapAlpha = layerAlpha(index, local, dur, (s) => s.map === scene.map)
-    stage.appendChild(drawMap(scene, local, mapAlpha))
+    const kind = SPEC.maps[scene.map].type === 'lanes' ? drawLanes : drawMap
+    stage.appendChild(kind(scene, local, mapAlpha))
   }
   if (scene.slot) {
     const samePhone = (s) => !!s.slot && (s.kind === 'beat') === (scene.kind === 'beat')
@@ -219,10 +224,13 @@ function drawText(root, scene, local, dur) {
   if (scene.intro) for (const p of scene.intro) box.appendChild(el('div', { class: 'line intro', text: p }))
   else if (scene.line) box.appendChild(el('div', { class: 'line', text: scene.line }))
   // A small event under the line while it happens (the filler, the card), timed in the scene.
+  const lanes = scene.map && SPEC.maps && SPEC.maps[scene.map] && SPEC.maps[scene.map].type === 'lanes' && L.eventsBelow
+  const evBox = lanes ? el('div', { class: 'text', style: { left: px(L.eventsBelow.x), top: px(L.eventsBelow.y), width: px(L.eventsBelow.w) } }) : box
   for (const ev of scene.events || []) {
     const a = ease((local - ev.at) / 0.35) * ease((ev.at + ev.dur - local) / 0.35)
-    if (a > 0) box.appendChild(el('div', { class: 'event', style: { opacity: String(a) }, text: ev.text }))
+    if (a > 0) evBox.appendChild(el('div', { class: 'event', style: { opacity: String(a), marginTop: lanes ? '0' : undefined }, text: ev.text }))
   }
+  if (lanes) root.appendChild(evBox)
   if (scene.tally && local > (scene.tally_at ?? dur * 0.55)) {
     box.appendChild(el('div', { class: 'tally', style: { opacity: String(ease((local - (scene.tally_at ?? dur * 0.55)) / 0.5)) }, text: scene.tally }))
   }
@@ -353,6 +361,142 @@ function drawMap(scene, local, alpha) {
       const q = (p - 1) / 0.6
       const end = anchor(B, A)
       svg.appendChild(mk('circle', { cx: end.x, cy: end.y, r: 6 + q * u * 0.9, fill: 'none', stroke: '#8a2d1e', 'stroke-width': 2, opacity: String(1 - ease(q)) }))
+    }
+  }
+  return svg
+}
+
+// Glyphs for the lanes map: 24x24 line drawings, stroked in the node's ink.
+const GLYPHS = {
+  car: 'M3 14l2-6h14l2 6v4h-2v-2H5v2H3z M7 16.5h.01 M17 16.5h.01',
+  plug: 'M9 3v5 M15 3v5 M7 8h10v3a5 5 0 0 1-10 0z M12 16v5',
+  mic: 'M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z M5 11a7 7 0 0 0 14 0 M12 18v3',
+  loop: 'M20 12a8 8 0 1 1-3-6.2 M20 4v5h-5',
+  wrench: 'M15 4a4 4 0 0 0-4 5L4 16a2 2 0 0 0 3 3l7-7a4 4 0 0 0 5-4l-3 1-2-2z',
+  speaker: 'M4 9h4l5-4v14l-5-4H4z M16 9a4 4 0 0 1 0 6 M19 6a8 8 0 0 1 0 12',
+  wave: 'M3 12h2 M7 8v8 M11 5v14 M15 8v8 M19 11v2',
+  spark: 'M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z',
+  bubble: 'M4 5h16v10H10l-5 4v-4H4z',
+  db: 'M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3v12c0 1.7-3.1 3-7 3s-7-1.3-7-3z M5 6c0 1.7 3.1 3 7 3s7-1.3 7-3 M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3',
+  laptop: 'M5 5h14v10H5z M3 19h18',
+}
+
+/**
+ * The lanes map (one per clip): columns for the places a request crosses (the car, the phone,
+ * the cloud model service; the engine only where it is really involved), each node a labelled
+ * card with a glyph. `scene.flows` are packets: a dot with a label of what travels at that hop,
+ * eased along a drawn wire with a fading trail, and a pulse on the node it reaches.
+ * `scene.work` lights a node while it works, with a ring that fills over the real measured time.
+ * All times are seconds into the scene, taken from the take's own events.
+ */
+function drawLanes(scene, local, alpha) {
+  const ns = 'http://www.w3.org/2000/svg'
+  const mk = (tag, attrs) => { const e = document.createElementNS(ns, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e }
+  const MAP = SPEC.maps[scene.map]
+  const R = L.lanesRegion, u = L.u
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('width', L.w); svg.setAttribute('height', L.h)
+  Object.assign(svg.style, { position: 'absolute', left: '0', top: '0', opacity: String(alpha) })
+  const lanes = MAP.lanes
+  const gap = u * 0.9
+  const laneW = (R.w - gap * (lanes.length - 1)) / lanes.length
+  const nodes = {}
+  lanes.forEach((lane, li) => {
+    const x = R.x + li * (laneW + gap)
+    svg.appendChild(mk('rect', { x, y: R.y, width: laneW, height: R.h, fill: '#f1ede4', stroke: 'none' }))
+    const head = mk('text', { x: x + u * 0.55, y: R.y + u * 1.0, fill: '#1d1a16', 'font-size': u * 0.7, 'font-weight': 700 })
+    head.textContent = lane.label
+    svg.appendChild(head)
+    if (lane.sub) {
+      const sub = mk('text', { x: x + u * 0.55, y: R.y + u * 1.6, fill: '#6b655b', 'font-size': u * 0.46, 'letter-spacing': '0.08em' })
+      sub.textContent = lane.sub.toUpperCase()
+      svg.appendChild(sub)
+    }
+    const top = R.y + u * 2.4, avail = R.h - u * 2.9
+    const nh = Math.min(u * 2.6, (avail - u * 0.5 * (lane.nodes.length - 1)) / lane.nodes.length)
+    const span = lane.nodes.length * nh + (lane.nodes.length - 1) * u * 0.5
+    let y = top + (avail - span) / 2
+    for (const n of lane.nodes) {
+      nodes[n.id] = { x: x + u * 0.5, y, w: laneW - u, h: nh, n }
+      y += nh + u * 0.5
+    }
+  })
+  const center = (b) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 })
+  const anchor = (a, b) => {
+    const ca = center(a), cb = center(b)
+    if (Math.abs(cb.x - ca.x) > a.w * 0.6) return { x: cb.x > ca.x ? a.x + a.w : a.x, y: ca.y, horiz: true }
+    return { x: ca.x + (cb.x > ca.x ? 12 : cb.x < ca.x ? -12 : 0), y: cb.y > ca.y ? a.y + a.h : a.y, horiz: false }
+  }
+  const wire = (a, b) => {
+    const p = anchor(a, b), q = anchor(b, a), k = 0.5
+    return p.horiz
+      ? `M ${p.x} ${p.y} C ${p.x + (q.x - p.x) * k} ${p.y}, ${q.x - (q.x - p.x) * k} ${q.y}, ${q.x} ${q.y}`
+      : `M ${p.x} ${p.y} C ${p.x} ${p.y + (q.y - p.y) * k}, ${q.x} ${q.y - (q.y - p.y) * k}, ${q.x} ${q.y}`
+  }
+  // Standing wires: the routes this clip's requests can take ('stored' = a copy made earlier).
+  for (const [a, b, style] of MAP.wires || []) {
+    if (!nodes[a] || !nodes[b]) continue
+    svg.appendChild(mk('path', { d: wire(nodes[a], nodes[b]), fill: 'none', stroke: style === 'stored' ? '#a39b8c' : '#cfc8b9', 'stroke-width': 2.5,
+      'stroke-dasharray': style === 'stored' ? '7 7' : 'none' }))
+  }
+  // Nodes: a white card with an ink border; lit (accent border, warm fill) while working.
+  const working = (id) => (scene.work || []).find((w) => w.node === id && local >= w.at - 0.15 && local <= w.at + w.dur + 0.2)
+  for (const [id, b] of Object.entries(nodes)) {
+    const w = working(id)
+    const lit = w ? Math.min(ease((local - w.at + 0.15) / 0.3), ease((w.at + w.dur + 0.2 - local) / 0.3)) : 0
+    svg.appendChild(mk('rect', { x: b.x, y: b.y, width: b.w, height: b.h, fill: lit > 0.05 ? '#fbefe9' : '#ffffff',
+      stroke: lit > 0.05 ? '#8a2d1e' : '#1d1a16', 'stroke-width': 1.5 + lit * 1.5 }))
+    const g = mk('g', { transform: `translate(${b.x + u * 0.45} ${b.y + b.h / 2 - u * 0.55}) scale(${(u * 1.1) / 24})` })
+    g.appendChild(mk('path', { d: GLYPHS[b.n.glyph] || GLYPHS.spark, fill: 'none', stroke: lit > 0.05 ? '#8a2d1e' : '#1d1a16', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+    svg.appendChild(g)
+    const t = mk('text', { x: b.x + u * 1.95, y: b.y + b.h / 2 + (b.n.sub ? -u * 0.06 : u * 0.24), fill: '#1d1a16', 'font-size': u * 0.66, 'font-weight': 600 })
+    t.textContent = b.n.label
+    svg.appendChild(t)
+    if (b.n.sub) {
+      const st = mk('text', { x: b.x + u * 1.95, y: b.y + b.h / 2 + u * 0.55, fill: '#6b655b', 'font-size': u * 0.48 })
+      st.textContent = b.n.sub
+      svg.appendChild(st)
+    }
+    if (w && local >= w.at && local <= w.at + w.dur) {
+      // The progress ring: fills over the real time this node took in the take.
+      const f = (local - w.at) / w.dur, r = u * 0.42, cx = b.x + b.w - u * 0.7, cy = b.y + b.h / 2
+      svg.appendChild(mk('circle', { cx, cy, r, fill: 'none', stroke: '#e6dcd6', 'stroke-width': 3.5 }))
+      const a = 2 * Math.PI * f - Math.PI / 2
+      const large = f > 0.5 ? 1 : 0
+      if (f > 0.01) svg.appendChild(mk('path', { d: `M ${cx} ${cy - r} A ${r} ${r} 0 ${large} 1 ${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`,
+        fill: 'none', stroke: '#8a2d1e', 'stroke-width': 3.5, 'stroke-linecap': 'round' }))
+    }
+  }
+  // Packets.
+  for (const f of scene.flows || []) {
+    const A = nodes[f.from], B = nodes[f.to]
+    if (!A || !B) continue
+    const p = (local - f.at) / f.dur
+    if (p < 0 || p > 1.5) continue
+    const path = mk('path', { d: wire(A, B), fill: 'none', stroke: 'none' })
+    svg.appendChild(path)
+    const len = path.getTotalLength()
+    if (p <= 1) {
+      const e = easeInOut(p)
+      // The trail: the last stretch of the wire it has covered, fading behind the packet.
+      for (let i = 10; i >= 1; i--) {
+        const pt = path.getPointAtLength(len * Math.max(0, e - i * 0.03))
+        svg.appendChild(mk('circle', { cx: pt.x, cy: pt.y, r: 7 - i * 0.45, fill: '#8a2d1e', opacity: String(0.5 * (1 - i / 11)) }))
+      }
+      const at = path.getPointAtLength(len * e)
+      svg.appendChild(mk('circle', { cx: at.x, cy: at.y, r: 10, fill: '#8a2d1e' }))
+      const label = f.label || ''
+      const fs = u * 0.5, tw = label.length * fs * 0.62 + u * 0.8, th = u * 0.95
+      const ly = at.y - u * 1.0
+      svg.appendChild(mk('rect', { x: at.x - tw / 2, y: ly - th / 2, width: tw, height: th, rx: 6, fill: '#1d1a16' }))
+      const lt = mk('text', { x: at.x, y: ly + fs * 0.36, fill: '#faf8f3', 'font-size': fs, 'text-anchor': 'middle',
+        'font-family': "ui-monospace, 'Cascadia Mono', Consolas, monospace" })
+      lt.textContent = label
+      svg.appendChild(lt)
+    } else {
+      const q = (p - 1) / 0.5
+      const end = anchor(B, A)
+      svg.appendChild(mk('circle', { cx: end.x, cy: end.y, r: 8 + q * u * 1.1, fill: 'none', stroke: '#8a2d1e', 'stroke-width': 2.5, opacity: String(1 - ease(q)) }))
     }
   }
   return svg
