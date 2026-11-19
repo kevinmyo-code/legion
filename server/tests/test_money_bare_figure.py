@@ -155,6 +155,13 @@ def test_a_money_answer_with_every_sentence_dropped_says_the_existing_line(
 # ---- blind review, 2026-11-18 ----------------------------------------------------------------
 
 
+def _logged_money_dropped(caplog) -> int:
+    import re
+
+    lines = [r.getMessage() for r in caplog.records if "cascade_turn" in r.getMessage()]
+    return int(re.search(r"money_dropped=(\d+)", lines[-1]).group(1))
+
+
 def test_a_figure_only_a_non_money_tool_stated_does_not_back_a_money_sentence(
     member, engine, monkeypatch
 ):
@@ -164,6 +171,24 @@ def test_a_figure_only_a_non_money_tool_stated_does_not_back_a_money_sentence(
     engine.model = FakeModel([call(M, {}), call(E, {}), say("Groceries were 84.47. Fine.")])
     events = _events(_post(member, text="What did we spend?"))
     assert [s["text"] for s in _of(events, "sentence")] == ["Fine."]
+
+
+def test_a_drop_in_the_ask_again_round_is_counted_in_the_log(member, engine, monkeypatch, caplog):
+    # Review finding 2: the ask-again round's drops reached the log as 0.
+    _spend(monkeypatch)
+    empty = [*say("")[2:]]
+    engine.model = FakeModel([call(M, {}), empty, say("Groceries were 84.47.")])
+    _events(_post(member, text="What did we spend?"))
+    assert _logged_money_dropped(caplog) == 1
+
+
+def test_the_drop_count_reaches_the_log(member, engine, monkeypatch, caplog):
+    _spend(monkeypatch)
+    engine.model = FakeModel(
+        [call(M, {}), say("Groceries were 84.47. Utilities were 99.13. Fine.")]
+    )
+    _events(_post(member, text="What did we spend?"))
+    assert _logged_money_dropped(caplog) == 2
 
 
 def test_a_recruiters_money_answer_is_checked_too(visitor, engine, monkeypatch):
