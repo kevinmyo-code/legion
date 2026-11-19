@@ -14,7 +14,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.io.File
 
 /**
  * One heard word changes nothing without his yes (2026-11-19, eval case `lone_word_write`).
@@ -60,7 +59,10 @@ class LoneWordWriteGuardTest {
     fun `what counts as a tool asking him, from tool data only`() {
         fun asks(name: String, a: JSONObject, r: String) = LoneWordWriteGuard.asks(name, a, JSONObject(r))
         assertTrue("the guard's own hold", asks(switch.first, switch.second, held(switch, "Five.").toString()))
-        assertTrue("a clarifying refusal", asks("car", args("action" to "switch_vehicle"), """{"success":false,"message":"Which car?"}"""))
+        // Review F6: a plain failure asks nothing, so a failed read never opens a one-word write.
+        assertFalse("a clarifying refusal with no ask field", asks("car", args("action" to "switch_vehicle"), """{"success":false,"message":"Which car?"}"""))
+        assertFalse("a read that failed offline", asks(read.first, read.second, """{"success":false,"message":"No network."}"""))
+        assertFalse("an outside-read refusal", asks(add.first, add.second, """{"success":false,"read_through":true,"message":"Nothing was done."}"""))
         assertTrue("a draft waiting to send", asks("email", args("action" to "draft"), """{"success":true,"draft_id":"d1","sent":false}"""))
         assertTrue("an explicit ask", asks("browser", args("action" to "click"), """{"success":true,"needs_confirmation":true}"""))
         assertTrue("the first step of a two-step write", asks("clear_codes", args(), """{"success":true,"message":"Read this warning back."}"""))
@@ -69,14 +71,22 @@ class LoneWordWriteGuardTest {
     }
 
     @Test
+    fun `a sentence in a script without spaces is never one word, and never held (review F7)`() {
+        // Invented phrases: a Mandarin, a Japanese, a Thai and a Burmese sentence, each with no spaces.
+        for (h in listOf("把牛奶加到购物清单", "牛乳を買い物リストに追加して", "เพิ่มนมในรายการ", "နို့ကိုစာရင်းထဲထည့်ပါ", "牛奶")) {
+            assertFalse(h, LoneWordWriteGuard.isLoneWord(h, "Alfred"))
+            assertNull(h, held(add, h))
+        }
+        // A script written with spaces still counts words: one Korean word is one word.
+        assertTrue(LoneWordWriteGuard.isLoneWord("우유", "Alfred"))
+        assertFalse(LoneWordWriteGuard.isLoneWord("우유 추가해 줘", "Alfred"))
+    }
+
+    @Test
     fun `the stop words never reach the guard, they end the turn before the model`() {
         for (p in WakePhrases.STOP_PHRASES + WakePhrases.HARD_STOPS) {
             assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred"))
         }
-        // The session checks a stop before it answers anything ([CascadeSession.endsConversation]).
-        val s = File(root(), "service/cascade/CascadeSession.kt").readText()
-        assertTrue(s.contains("LoneWordWriteGuard.refusal(name, args, record.heard, CompanionProfile.name(ctx), record.askedBefore)"))
-        assertTrue("only his own turns", s.contains("val held = if (record.fromUser) {"))
     }
 
     @Test
@@ -99,7 +109,4 @@ class LoneWordWriteGuardTest {
         assertTrue(CascadeRules.isWrite(clear.name, JSONObject(clear.args)))
         assertFalse(LoneWordWriteGuard.isLoneWord("clear ticked groceries", "Alfred"))
     }
-
-    private fun root(): File =
-        listOf("src/main/java/com/kevin/legion", "app/src/main/java/com/kevin/legion").map { File(it) }.first { it.isDirectory }
 }

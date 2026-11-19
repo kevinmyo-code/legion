@@ -11,10 +11,16 @@ import org.json.JSONObject
  * (his companion's name and a leading hey/ok/okay aside), every write is refused with `needs_yes`
  * and nothing runs: the model asks him in one question, and his next word can let it run.
  *
- * Unless the previous turn's TOOL RESULT asked him something ([asks]): then one word is his answer
- * ("Yes." after a held write, "Groceries." after "Which list?" from a tool). Only tool data decides,
- * never the model's words; a question the model asked on its own (no tool) does not count, so a
- * yes to it is held once more (the stated cost).
+ * Unless the previous turn's TOOL RESULT explicitly asked him something ([asks]): then one word is
+ * his answer ("Yes." after a held write or a mail draft). Only a field in the result decides, never
+ * the model's words and never a plain failure (review F6: a read that failed offline must not open
+ * the next one-word write). A question the model asked on its own, or a tool's clarifying refusal
+ * with no such field ("Which car?"), does not count, so a one-word answer to it is held once more
+ * (the stated cost, Kevin told 2026-11-19).
+ *
+ * Only for words in a script written with spaces between words (review F7): a Chinese, Japanese,
+ * Thai, Lao, Burmese, Khmer or Tibetan sentence has no spaces, so a whole sentence would count as
+ * "one word". Those are never held (a known limit: a lone word in them is not guarded).
  *
  * Voice only: the cascade's executor and the voice eval call it; typed chat and Live never do.
  */
@@ -30,14 +36,13 @@ object LoneWordWriteGuard {
     }
 
     /**
-     * A tool result that asked him something, so that one word next is his answer: a refusal or a
-     * question (`success: false`, which includes [refusal]'s own), an explicit confirmation ask
-     * (`needs_yes`, `needs_confirmation`), a mail draft waiting for its send (`draft_id`), or the
-     * first step of a two-step write (a writing tool called so that it did not write, e.g. an
-     * unconfirmed clear_codes, which returns the warning to read back).
+     * A tool result that explicitly asked him something, so that one word next is his answer: a
+     * confirmation ask (`needs_yes`, which [refusal]'s own hold carries, or `needs_confirmation`),
+     * a mail draft waiting for its send (`draft_id`), or the first step of a two-step write (a
+     * writing tool called so that it did not write, e.g. an unconfirmed clear_codes, which returns
+     * the warning to read back). Never a plain `success: false`.
      */
     fun asks(name: String, args: JSONObject, response: JSONObject): Boolean {
-        if (response.has("success") && !response.optBoolean("success", true)) return true
         if (response.optBoolean("needs_yes", false) || response.optBoolean("needs_confirmation", false)) return true
         if (response.has("draft_id")) return true
         val (resolved, resolvedArgs) = LiveSurface.resolve(name, args)
@@ -45,8 +50,12 @@ object LoneWordWriteGuard {
             !ToolReads.isRead(resolved, resolvedArgs)
     }
 
-    /** [heard] is one word once [companionName] (at either end) and a leading hey/ok/okay are set aside. */
+    /**
+     * [heard] is one word once [companionName] (at either end) and a leading hey/ok/okay are set
+     * aside. Never for text in a script written without spaces ([UNSPACED]).
+     */
     fun isLoneWord(heard: String, companionName: String): Boolean {
+        if (heard.codePoints().anyMatch { Character.UnicodeScript.of(it) in UNSPACED }) return false
         var words = words(heard)
         val name = words(companionName)
         fun dropName() {
@@ -67,4 +76,11 @@ object LoneWordWriteGuard {
         text.lowercase().split(Regex("[^\\p{L}\\p{N}']+")).map { it.trim('\'') }.filter { it.isNotEmpty() }
 
     private val LEAD_INS = setOf("hey", "ok", "okay")
+
+    /** Scripts written without spaces between words: "one word" cannot be counted there. */
+    private val UNSPACED = setOf(
+        Character.UnicodeScript.HAN, Character.UnicodeScript.HIRAGANA, Character.UnicodeScript.KATAKANA,
+        Character.UnicodeScript.THAI, Character.UnicodeScript.LAO, Character.UnicodeScript.MYANMAR,
+        Character.UnicodeScript.KHMER, Character.UnicodeScript.TIBETAN,
+    )
 }
