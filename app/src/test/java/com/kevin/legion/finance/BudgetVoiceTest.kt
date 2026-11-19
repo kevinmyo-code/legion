@@ -71,14 +71,16 @@ class BudgetVoiceTest {
         assertEquals("305.03", voice.amount)
         assertEquals("USD", voice.currency)
         assertTrue(voice.speech!!, voice.speech!!.contains(SpokenMoney.amount(30_503)))
-        assertTrue(voice.speech!!, voice.speech!!.contains("left of the " + SpokenMoney.amount(100_000) + " budget for November"))
+        val ofBudget = "left of your budget of " + SpokenMoney.amount(100_000) + " for November"
+        assertTrue(voice.speech!!, voice.speech!!.contains(ofBudget))
         assertTrue(voice.speech!!, voice.speech!!.contains("11 days to go"))
     }
 
     @Test
     fun `budget left says pending charges in it and that fixed bills are not`() {
         val voice = BudgetVoice.left(FinanceRead.Fresh(body()), at)
-        assertTrue(voice.speech!!, voice.speech!!.contains("includes " + SpokenMoney.amount(1_250) + " of pending charges"))
+        val pending = "includes " + SpokenMoney.amount(1_250) + " of pending charges"
+        assertTrue(voice.speech!!, voice.speech!!.contains(pending))
         assertTrue(voice.speech!!, voice.speech!!.contains("Fixed bills are not in it"))
     }
 
@@ -87,7 +89,7 @@ class BudgetVoiceTest {
         val over = body(lines = listOf(line("Dining", 30_000, cap = 25_000)), fixed = emptyList())
         val voice = BudgetVoice.left(FinanceRead.Fresh(over), at)
         assertEquals(-5_000L, voice.leftCents)
-        assertTrue(voice.speech!!, voice.speech!!.contains(SpokenMoney.amount(5_000) + " over the"))
+        assertTrue(voice.speech!!, voice.speech!!.contains(SpokenMoney.amount(5_000) + " over your budget"))
         assertFalse(voice.speech!!, voice.speech!!.contains("minus"))
     }
 
@@ -183,13 +185,33 @@ class BudgetVoiceTest {
         assertEquals(18_793L, voice.leftCents)
         val s = voice.speech!!
         assertTrue(s, s.startsWith("Groceries so far in November: " + SpokenMoney.amount(41_207) + "."))
-        assertTrue(s, s.contains(SpokenMoney.amount(18_793) + " left of its " + SpokenMoney.amount(60_000) + " budget"))
+        assertTrue(s, s.contains(SpokenMoney.amount(18_793) + " left of its budget of " + SpokenMoney.amount(60_000)))
         assertTrue(s, s.contains("includes " + SpokenMoney.amount(1_250) + " pending"))
     }
 
     @Test
+    fun `a category with more refunded than spent says so, never minus dollars`() {
+        val refunds = body(lines = listOf(line("Hobbies", -2_500)), fixed = emptyList())
+        val voice = BudgetVoice.category(FinanceRead.Fresh(refunds), "hobbies", known, emptySet(), at)
+        assertEquals(-2_500L, voice.amountCents)
+        assertEquals("-25.00", voice.amount)
+        assertEquals(
+            "Hobbies so far in November: " + SpokenMoney.amount(2_500) +
+                " more refunded than spent. It has no budget set.",
+            voice.speech,
+        )
+    }
+
+    @Test
+    fun `refunds never make a top category`() {
+        val refunds = body(lines = listOf(line("Hobbies", -2_500), line("Fuel", 900)), fixed = emptyList())
+        assertEquals(listOf("Fuel"), BudgetVoice.top(FinanceRead.Fresh(refunds), at).top.map { it.category })
+    }
+
+    @Test
     fun `last month's category says the month and no days to go`() {
-        val voice = BudgetVoice.category(FinanceRead.Fresh(body(month = october)), "Dining", known, emptySet(), at.copy(month = october))
+        val read = FinanceRead.Fresh(body(month = october))
+        val voice = BudgetVoice.category(read, "Dining", known, emptySet(), at.copy(month = october))
         assertTrue(voice.speech!!, voice.speech!!.startsWith("Dining in October: " + SpokenMoney.amount(18_950) + "."))
     }
 
@@ -198,7 +220,8 @@ class BudgetVoiceTest {
         val voice = BudgetVoice.category(FinanceRead.Fresh(body()), "hobbies", known, emptySet(), at)
         assertEquals(4_400L, voice.amountCents)
         assertNull(voice.leftCents)
-        assertEquals("Hobbies so far in November: " + SpokenMoney.amount(4_400) + ". It has no budget set.", voice.speech)
+        val expected = "Hobbies so far in November: " + SpokenMoney.amount(4_400) + ". It has no budget set."
+        assertEquals(expected, voice.speech)
     }
 
     @Test
@@ -242,7 +265,8 @@ class BudgetVoiceTest {
         assertEquals(listOf("Groceries", "Dining", "Fuel"), voice.top.map { it.category })
         assertEquals(listOf("412.07", "189.50", "93.40"), voice.top.map { it.amount })
         val s = voice.speech!!
-        assertTrue(s, s.startsWith("Top day-to-day spending for November so far: Groceries, " + SpokenMoney.amount(41_207)))
+        val lead = "Top day-to-day spending for November so far: Groceries, " + SpokenMoney.amount(41_207)
+        assertTrue(s, s.startsWith(lead))
         assertTrue(s, s.contains("and Fuel, " + SpokenMoney.amount(9_340) + "."))
         assertTrue(s, s.contains(SpokenMoney.amount(2_000) + " is not categorised yet"))
     }

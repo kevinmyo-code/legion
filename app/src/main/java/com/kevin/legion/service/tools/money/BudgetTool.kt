@@ -19,6 +19,19 @@ import org.json.JSONObject
  */
 internal object BudgetTool {
 
+    /**
+     * The budget view [args] asks for, or null for the `total` view. A category named with no view is
+     * the category view: the whole month's total would answer a different question with a wrong figure.
+     */
+    fun viewOf(args: JSONObject): String? {
+        val view = args.optString("view").trim().lowercase()
+        return when {
+            view in setOf("left", "category", "top") -> view
+            view.isEmpty() && args.optString("category").isNotBlank() -> "category"
+            else -> null
+        }
+    }
+
     suspend fun answer(context: Context, view: String, args: JSONObject): JSONObject {
         val now = System.currentTimeMillis()
         val current = BudgetVoice.currentMonth(now, ZoneId.systemDefault())
@@ -30,7 +43,8 @@ internal object BudgetTool {
             "top" -> BudgetVoice.top(read, at)
             else -> {
                 val dao = CarDatabase.getDatabase(context).categoryDao()
-                BudgetVoice.category(read, args.optString("category"), dao.allNames(), dao.notSpendingNames().toSet(), at)
+                val notSpending = dao.notSpendingNames().toSet()
+                BudgetVoice.category(read, args.optString("category"), dao.allNames(), notSpending, at)
             }
         }
         return json(answer).apply { monthNote?.let { put("month_note", it) } }
@@ -55,7 +69,9 @@ internal object BudgetTool {
         if (a.top.isNotEmpty()) {
             out.put("top", JSONArray(a.top.map { JSONObject().put("category", it.category).put("amount", it.amount) }))
         }
-        if (a.validCategories.isNotEmpty() && a.speech == null) out.put("valid_categories", JSONArray(a.validCategories))
+        if (a.validCategories.isNotEmpty() && a.speech == null) {
+            out.put("valid_categories", JSONArray(a.validCategories))
+        }
         if (a.matches.isNotEmpty()) out.put("matches", JSONArray(a.matches))
         a.note?.let { out.put("note", it) }
         a.speech?.let {

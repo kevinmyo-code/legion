@@ -815,8 +815,9 @@ object LiveToolbox {
     // own full descriptions (the excluded-movements and uncategorised rules on get_monthly_spend,
     // the "never answers is it safe" rule on crime history), so the rules travel with the tool.
     private fun moneyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
-        " You are reading the user's money using the tools you're given: balances, monthly spend " +
-        "against budget, recent transactions and pending ones. Every amount carries its own " +
+        " You are reading the user's money using the tools you're given: balances, budget left, " +
+        "a month's spend in total or by category, recent transactions and pending ones. Budget " +
+        "left, one category or the top categories is get_monthly_spend with its view. Every amount carries its own " +
         "currency; keep it, never convert. Keep every exclusion and unverified note a tool " +
         "returns. Pull only what would change your answer, then answer in plain spoken text, no " +
         "markdown." +
@@ -1253,10 +1254,9 @@ object LiveToolbox {
             }
             "set_budget" -> setBudget(context, args)
             "list_budget_categories" -> listBudgetCategories(context)
-            "get_monthly_spend" -> when (val view = args.optString("view").trim().lowercase()) {
-                "left", "category", "top" -> com.kevin.legion.service.tools.money.BudgetTool.answer(context, view, args)
-                else -> getMonthlySpend(context, args.optString("month"))
-            }
+            "get_monthly_spend" -> com.kevin.legion.service.tools.money.BudgetTool.viewOf(args)
+                ?.let { com.kevin.legion.service.tools.money.BudgetTool.answer(context, it, args) }
+                ?: getMonthlySpend(context, args.optString("month"))
             "get_meal_gap" -> getMealGap(context)
             "list_recent_meals" -> listRecentMeals(context, args.optInt("count", 10))
             "log_sleep" -> logSleep(context, args)

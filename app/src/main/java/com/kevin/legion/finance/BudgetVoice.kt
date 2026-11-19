@@ -17,6 +17,8 @@ import java.util.Locale
  * A category is matched by membership only ([match]); a miss hands the valid names back for the model
  * to ask him, never a guess. Pure: the clock comes in.
  */
+// One public function per view plus the pieces they share; splitting would scatter one answer's rules.
+@Suppress("TooManyFunctions")
 object BudgetVoice {
     /** The month asked about, the phone's current month, and now. */
     data class At(val month: YearMonth, val current: YearMonth, val nowMs: Long)
@@ -88,30 +90,36 @@ object BudgetVoice {
 
     private fun fold(s: String) = s.lowercase(Locale.US).filterNot { it.isWhitespace() }
 
+    @Suppress("ReturnCount") // no read, no cap, an answer
     fun left(read: FinanceRead<BudgetsWire>?, at: At): Answer {
         val b = read?.valueOrNull ?: return noRead(VIEW_LEFT, read, at)
         val name = monthName(at)
         val left = BudgetLeft.cents(b)
-            ?: return base(VIEW_LEFT, read, at, b).copy(speech = "No budget is set for $name, so there is no amount left to say.")
+            ?: return base(VIEW_LEFT, read, at, b)
+                .copy(speech = "No budget is set for $name, so there is no amount left to say.")
         val cap = b.total.capCents
         val fixedNames = b.fixed.map { it.category }.toSet()
-        val pending = b.categories.filter { it.category !in fixedNames && (it.capCents ?: 0L) > 0L }.sumOf { it.pendingCents }
+        val pending = b.categories
+            .filter { it.category !in fixedNames && (it.capCents ?: 0L) > 0L }
+            .sumOf { it.pendingCents }
         val first = when {
-            at.month < at.current && left >= 0 -> "$name ended ${say(left)} under its ${say(cap)} budget."
-            at.month < at.current -> "$name ended ${say(-left)} over its ${say(cap)} budget."
-            left >= 0 -> "You have ${say(left)} left of the ${say(cap)} budget for $name" + daysToGo(b) + "."
-            else -> "You are ${say(-left)} over the ${say(cap)} budget for $name."
+            at.month < at.current && left >= 0 -> "$name ended ${say(left)} under its budget of ${say(cap)}."
+            at.month < at.current -> "$name ended ${say(-left)} over its budget of ${say(cap)}."
+            left >= 0 -> "You have ${say(left)} left of your budget of ${say(cap)} for $name" + daysToGo(b) + "."
+            else -> "You are ${say(-left)} over your budget of ${say(cap)} for $name."
         }
         val words = listOfNotNull(
             first,
             "That includes ${say(pending)} of pending charges.".takeIf { pending > 0 },
             "Fixed bills are not in it.".takeIf { b.fixed.isNotEmpty() },
         )
-        val answer = base(VIEW_LEFT, read, at, b).copy(amountCents = left, capCents = cap, leftCents = left, pendingCents = pending)
+        val answer = base(VIEW_LEFT, read, at, b)
+            .copy(amountCents = left, capCents = cap, leftCents = left, pendingCents = pending)
         return answer.copy(speech = withAge(words, answer, read, at))
     }
 
     /** One category's spend for the month. [known] is the household's category list on this phone. */
+    @Suppress("ReturnCount") // several, none, no read, an answer: flatter than a nest
     fun category(
         read: FinanceRead<BudgetsWire>?,
         spoken: String,
@@ -126,7 +134,8 @@ object BudgetVoice {
             is Match.One -> m.name
             is Match.Several -> return Answer(
                 VIEW_CATEGORY, ok = false, month = at.month, validCategories = valid, matches = m.names, speech = null,
-                note = "\"${spoken.trim()}\" matches more than one category: ${m.names.joinToString(", ")}. Ask him which.",
+                note = "\"${spoken.trim()}\" matches more than one category: " +
+                    "${m.names.joinToString(", ")}. Ask him which.",
             )
             Match.None -> return Answer(
                 VIEW_CATEGORY, ok = false, month = at.month, validCategories = valid, speech = null,
@@ -141,7 +150,8 @@ object BudgetVoice {
         val line = b.categories.firstOrNull { fold(it.category) == fold(name) }
         val fixed = b.fixed.firstOrNull { fold(it.category) == fold(name) }
         val answer = when {
-            name in notSpending -> base.copy(speech = "$name is not counted as spending, so there is no spend figure for it.")
+            name in notSpending ->
+                base.copy(speech = "$name is not counted as spending, so there is no spend figure for it.")
             line != null -> lineAnswer(base, line, if (ended) "$name in $month" else "$name so far in $month", ended)
             fixed != null && fixed.paid -> base.copy(
                 amountCents = fixed.paidCents,
@@ -159,12 +169,15 @@ object BudgetVoice {
         val left = cap?.let { it - line.spentCents }
         val capWords = when {
             cap == null || left == null -> "It has no budget set."
-            left < 0 -> "That is ${say(-left)} over its ${say(cap)} budget."
-            ended -> "That is ${say(left)} under its ${say(cap)} budget."
-            else -> "That is ${say(left)} left of its ${say(cap)} budget."
+            left < 0 -> "That is ${say(-left)} over its budget of ${say(cap)}."
+            ended -> "That is ${say(left)} under its budget of ${say(cap)}."
+            else -> "That is ${say(left)} left of its budget of ${say(cap)}."
         }
+        // Refunds larger than the charges leave a negative line (the engine nets them): said as a refund.
+        val figure =
+            if (line.spentCents < 0) "${say(-line.spentCents)} more refunded than spent" else say(line.spentCents)
         val words = listOfNotNull(
-            "$lead: ${say(line.spentCents)}.",
+            "$lead: $figure.",
             capWords,
             "It includes ${say(line.pendingCents)} pending.".takeIf { line.pendingCents > 0 },
             "Some of it is not yet confirmed.".takeIf { line.unverified },
@@ -179,6 +192,7 @@ object BudgetVoice {
     }
 
     /** The highest day-to-day categories for the month, from the engine's lines (fixed bills are apart). */
+    @Suppress("ReturnCount") // no read, nothing spent, an answer
     fun top(read: FinanceRead<BudgetsWire>?, at: At): Answer {
         val b = read?.valueOrNull ?: return noRead(VIEW_TOP, read, at)
         val month = monthName(at)
@@ -219,7 +233,8 @@ object BudgetVoice {
 
     private fun noRead(view: String, read: FinanceRead<BudgetsWire>?, at: At): Answer {
         val why = read?.noteOrNull ?: "it could not be read just now."
-        return Answer(view, ok = false, month = at.month, speech = "There is no budget figure for ${monthName(at)}: $why")
+        val speech = "There is no budget figure for ${monthName(at)}: $why"
+        return Answer(view, ok = false, month = at.month, speech = speech)
     }
 
     /** The answer's words, then how old the figure is when it is the saved copy or over a day old. */

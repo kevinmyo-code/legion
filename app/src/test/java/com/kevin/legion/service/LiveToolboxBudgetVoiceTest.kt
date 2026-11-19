@@ -83,6 +83,14 @@ class LiveToolboxBudgetVoiceTest {
     }
 
     @Test
+    fun `a category named with no view is the category view, never the month total`() {
+        val r = call("category" to "Dining")
+        assertEquals("category", r.getString("view"))
+        assertEquals(18_950L, r.getLong("amount_cents"))
+        assertFalse(r.has("total_spent_cents"))
+    }
+
+    @Test
     fun `a category that does not exist hands back the valid names and is not spoken`() {
         val r = call("view" to "category", "category" to "yacht upkeep")
         assertFalse(r.getBoolean("success"))

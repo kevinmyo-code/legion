@@ -18,6 +18,7 @@ internal object SpendMonth {
     private val LAST = setOf("last", "last month", "previous", "previous month")
 
     /** The month to read and, for an unreadable [raw], a sentence saying the current one was used. */
+    @Suppress("ReturnCount") // this, last, then a YYYY-MM or the fallback
     fun resolve(raw: String, current: YearMonth): Pair<YearMonth, String?> {
         val text = raw.trim()
         val said = text.lowercase(Locale.US)
