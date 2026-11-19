@@ -6,7 +6,7 @@
  * `__TSR_index` so the router reads the back as a BACK. The router therefore sees a navigation each
  * way, and its scroll handling must leave the page alone both ways (`router-options.ts`): the way
  * in is told by the entry itself (`isModalEntry`), the way out by `closedModalEntry`, set here when
- * the modal's entry is popped and taken once by the router.
+ * the modal's entry is popped and read (and cleared) by the router on every navigation.
  */
 
 export const MODAL_ENTRY = 'legionModal'
@@ -38,6 +38,17 @@ export function closedModalEntry(): boolean {
   const was = closing
   closing = false
   return was
+}
+
+/**
+ * At startup: a reload, or the service worker's reload into a new bundle, can land on a modal's
+ * entry with no modal open. It stays in the history, as an ordinary entry of the same page.
+ */
+export function clearStaleModalEntry() {
+  const state = window.history.state as Record<string, unknown> | null
+  if (!isModalEntry(state)) return
+  const { [MODAL_ENTRY]: _marker, ...rest } = state as Record<string, unknown>
+  window.history.replaceState(rest, '')
 }
 
 export function isModalEntry(state: unknown): boolean {

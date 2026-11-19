@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 
 import { AppErrorBoundary } from './components/error-screen'
 import './index.css'
+import { clearStaleModalEntry } from './lib/modal-entry'
 import { installReloadOnUpdate } from './lib/sw-reload'
 import { applyTheme, watchSystemTheme } from './lib/theme'
 import { appRouterOptions } from './router-options'
@@ -20,6 +21,8 @@ watchSystemTheme()
 // bundle, never over unsaved input (`lib/sw-reload.ts`).
 installReloadOnUpdate()
 
+// A modal's history entry left on top by a reload is an ordinary entry again (`lib/modal-entry.ts`).
+clearStaleModalEntry()
 const router = createRouter({ routeTree, ...appRouterOptions })
 
 // Makes `<Link to="...">` and `useParams()` typed against the generated route

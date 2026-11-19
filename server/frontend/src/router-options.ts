@@ -20,7 +20,9 @@ import { closedModalEntry, isModalEntry } from './lib/modal-entry'
  * A new page still starts at the top; going back to an earlier page restores where it was.
  */
 export function scrollRestorationFor({ location }: { location: ParsedLocation }): boolean {
-  return !isModalEntry(location.state) && !closedModalEntry()
+  // Read on every navigation, so the way-out mark can never outlive the one it was set for.
+  const leavingModal = closedModalEntry()
+  return !leavingModal && !isModalEntry(location.state)
 }
 
 export const appRouterOptions = {
