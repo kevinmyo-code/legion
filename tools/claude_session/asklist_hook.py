@@ -17,7 +17,9 @@ Decisions:
   (writes); shell only for read-only git, simple listing/reading commands, and report.py. Those are
   hard denials, not questions.
 - **The ship step** (map alfred-builds, ticket 03): `git push`, the engine deploy scripts,
-  `release_apk.py` and `gcloud` are denied to every helper, a confirmed one included. They run
+  `release_apk.py` and `gcloud` are denied to every helper, a confirmed one included. One
+  exception, `project_prs.py`: a task the worker tied to a project on Kevin's local list may push
+  one `claude/*`-style branch of that project and open its PR, in exactly two command shapes. They run
   only inside `ship.py` / `undo.py` (this folder's own copies, invoked alone), which check Kevin's
   yes token themselves, the way `send_mail.py` does.
 - **Kevin's worker skills** (`work/.claude`) are his files, not scratch: writing one, new or
@@ -95,6 +97,12 @@ RULES = [
     ("send something", "always",
      r"smtplib|Send-MailMessage|System\.Net\.Mail|Outlook\.Application|\bgit\s+push\b"
      r"|\bgh\s+(pr|issue|release|gist)\s+(create|comment|merge|edit)"
+     # Any other gh subcommand that writes to GitHub (repo delete/edit, secret, variable,
+     # workflow run, pr review/new, ...): only the reads below pass without a yes. `gh api` is
+     # containment's (GH_WRITE_RE); a project PR returns before this list (project_prs.py).
+     r"|(?:^|[;&|(`\"']|\$\()\s*gh(?:\.exe)?\s+(?!(?:api|search|auth\s+status|repo\s+(?:view|list|clone)"
+     r"|(?:pr|issue|run|workflow|release|gist|label|cache|ruleset|secret|variable)\s+"
+     r"(?:view|list|status|checks|diff|watch|download|checkout))\b)[a-z]"
      r"|\bcurl\b.*(-X\s*(POST|PUT|PATCH|DELETE)|\s-d\s|--data|-F\s|--form)"
      r"|Invoke-(WebRequest|RestMethod)\b.*-Method\s+(Post|Put|Patch|Delete)"
      r"|requests\.(post|put|patch|delete)|urlopen\(.*data="),

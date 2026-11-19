@@ -93,7 +93,7 @@ Copy these rules into every helper prompt, with the task number filled in:
    - "Undo the last update": `<<PYTHON>> <<UNDO>> ask --task N`, then on the yes
      `<<PYTHON>> <<UNDO>> run --task N --token <token>`.
    - Never `git push`, run a deploy script, `release_apk.py` or `gcloud` directly: the hook
-     denies them even with a token. Gradle and full test suites run only through
+     denies them even with a token (the one exception is rule 14). Gradle and full test suites run only through
      `<<PYTHON>> <<BUILD_LOCK>> --task N --cwd <folder> -- <command>`. It takes the laptop's
      shared Gradle lock (one Gradle at a time across every agent on this laptop, it waits its
      turn), adds `--max-workers=1` and the build cache, checks the heat, and keeps the Gradle

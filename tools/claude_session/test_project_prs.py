@@ -207,6 +207,7 @@ ROWS = [
     (PUSH, facts(gitmodules=True), "deny"),
     (PUSH, facts(hooks=True), "deny"),
     (PUSH, facts(foreign_config=("credential.helper",)), "deny"),
+    (PUSH, facts(ci_change=True), "deny"),
     # unrelated commands are not this rule's business
     ("git status", None, None),
     (f"git -C {CLONE} commit -m 'push the fix'", None, None),
@@ -220,11 +221,11 @@ class TestJudgeTable(unittest.TestCase):
         for command, f, want in ROWS:
             with self.subTest(command=command):
                 got = P.judge(command, tool="Bash", own_work=Path(WORK), project=project(),
-                              facts_for=lambda d, r, f=f: f if f is not None else facts())
+                              facts_for=lambda d, r, b, f=f: f if f is not None else facts())
                 self.assertEqual(got.decision if got else None, want, got and got.reason)
 
     def test_only_bash_only_with_a_project_only_with_a_task(self):
-        ff = lambda d, r: facts()  # noqa: E731
+        ff = lambda d, r, b: facts()  # noqa: E731
         self.assertIsNone(P.judge(PUSH, tool="PowerShell", own_work=Path(WORK), project=project(),
                                   facts_for=ff))
         self.assertIsNone(P.judge(PUSH, tool="Bash", own_work=Path(WORK), project=None, facts_for=ff))
@@ -232,18 +233,18 @@ class TestJudgeTable(unittest.TestCase):
 
     def test_pr_needs_allow_pr(self):
         no_pr = P.parse_projects({"w": dict(ENTRY, allow_pr=False)})[0]
-        got = P.judge(PR, tool="Bash", own_work=Path(WORK), project=no_pr, facts_for=lambda d, r: facts())
+        got = P.judge(PR, tool="Bash", own_work=Path(WORK), project=no_pr, facts_for=lambda d, r, b: facts())
         self.assertEqual(got.decision, "deny")
-        got = P.judge(PUSH, tool="Bash", own_work=Path(WORK), project=no_pr, facts_for=lambda d, r: facts())
+        got = P.judge(PUSH, tool="Bash", own_work=Path(WORK), project=no_pr, facts_for=lambda d, r, b: facts())
         self.assertEqual(got.decision, "allow")
 
     def test_unreadable_facts_deny(self):
-        got = P.judge(PUSH, tool="Bash", own_work=Path(WORK), project=project(), facts_for=lambda d, r: None)
+        got = P.judge(PUSH, tool="Bash", own_work=Path(WORK), project=project(), facts_for=lambda d, r, b: None)
         self.assertEqual(got.decision, "deny")
 
     def test_a_near_miss_says_the_accepted_form(self):
         got = P.judge(f"git -C {CLONE} push origin claude/x", tool="Bash", own_work=Path(WORK),
-                      project=project(), facts_for=lambda d, r: facts())
+                      project=project(), facts_for=lambda d, r, b: facts())
         self.assertIn("HEAD:refs/heads/claude/", got.reason)
 
 
@@ -260,6 +261,11 @@ class GitRepo(unittest.TestCase):
         self.dir.mkdir()
         git("init", "-q", "-b", "main", cwd=self.dir)
         git("remote", "add", "origin", "https://github.com/acme-dev/widgets.git", cwd=self.dir)
+        (self.dir / "app.py").write_text("x = 1\n", encoding="utf-8")
+        git("add", "app.py", cwd=self.dir)
+        git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "seed",
+            cwd=self.dir)
+        git("update-ref", "refs/remotes/origin/main", "HEAD", cwd=self.dir)  # as a clone has it
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -317,6 +323,17 @@ class TestGatherRealGit(GitRepo):
             git("config", key, val, cwd=self.dir)
             self.assertIn(key.lower(), self.gathered().foreign_config, key)
             git("config", "--unset", key, cwd=self.dir)
+
+    def test_a_branch_changing_ci_is_seen(self):
+        self.assertFalse(self.gathered().ci_change)
+        wf = self.dir / ".github" / "workflows" / "t.yml"
+        wf.parent.mkdir(parents=True)
+        wf.write_text("on: pull_request\n", encoding="utf-8")
+        git("add", ".github", cwd=self.dir)
+        git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "ci",
+            cwd=self.dir)
+        self.assertTrue(self.gathered().ci_change)
+        self.assertTrue(P.gather(str(self.dir), "origin", "no-such-branch").ci_change)
 
     def test_not_a_repo_or_no_such_remote(self):
         self.assertIsNone(P.gather(str(Path(self.tmp.name)), "origin"))
@@ -382,6 +399,37 @@ class TestHook(GitRepo):
         C.mark(self.paths, 41, "agentA", "WebFetch", 0.0)  # read the web: no shell after
         self.assertEqual(self.decide(self.push)[0], "deny")
         self.assertEqual(self.decide(self.pr)[0], "deny")
+
+    def test_gh_writes_other_than_the_pr_ask_bound_or_not(self):
+        """Before this change `gh repo delete/edit`, `gh secret set`, `gh workflow run` passed the
+        hook for any task. Now any gh subcommand outside a short read list asks."""
+        def clean_taint():
+            for f in sorted(self.paths.taint.rglob("*"), reverse=True) if self.paths.taint.exists() else []:
+                f.unlink() if f.is_file() else f.rmdir()
+        writes = ("gh repo delete acme-dev/widgets --yes",
+                  "gh repo edit acme-dev/widgets --visibility public",
+                  "gh secret set X --body y --repo acme-dev/widgets",
+                  "gh variable set X --body y --repo acme-dev/widgets",
+                  "gh workflow run tests --repo acme-dev/widgets",
+                  "gh pr new --repo acme-dev/widgets --base main --head claude/x -t T -b B",
+                  "gh pr review 1 --approve --repo acme-dev/widgets",
+                  "gh pr merge 1 --repo acme-dev/widgets",
+                  "gh run rerun 5 --repo acme-dev/widgets",
+                  "echo x && gh repo delete acme-dev/widgets --yes")
+        reads = ("gh pr checks claude/flag --repo acme-dev/widgets --watch",
+                 "gh pr view 1 --repo acme-dev/widgets", "gh run list --repo acme-dev/widgets",
+                 "gh repo clone acme-dev/widgets", "gh auth status")
+        # Like the older gh rule, a quoted gh write asks too (`bash -c "gh repo delete ..."`), so a
+        # commit message naming one asks: a false ask, never a false pass.
+        for bound in ("acme-dev/widgets", None):
+            self.tasks["41"]["project"] = bound
+            write_json_atomic(self.paths.state, {"tasks": self.tasks})
+            for cmd in writes:
+                clean_taint()
+                self.assertEqual(self.decide(cmd), ("deny", "send something"), (bound, cmd))
+            for cmd in reads:
+                clean_taint()
+                self.assertEqual(self.decide(cmd)[0], "pass", (bound, cmd))
 
     def test_pushurl_set_in_the_clone_denies(self):
         git("config", "remote.origin.pushurl", "https://github.com/evil/widgets.git", cwd=self.clone)

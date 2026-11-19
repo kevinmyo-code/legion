@@ -26,7 +26,8 @@ Three halves:
 - `gather`: the facts, from git itself (`remote get-url --push --all` applies pushurl and
   insteadOf), with commands that never refresh the index (so no fsmonitor runs).
 
-Honest limits (a regex hook is not a sandbox, containment.py says the same): the check runs
+Honest limits (a regex hook is not a sandbox, containment.py says the same): the `.github/`
+check trusts the clone's own remote-tracking ref, which the helper could move; the check runs
 before the command, so a background process that rewrites `.git/config` between the check and the
 push is not seen; a git alias for push (`git p`) is not seen by today's rules either. A `pr.py`
 that runs the push itself with pinned arguments (ship.py's shape) would close both.
@@ -96,6 +97,10 @@ class Facts:
     gitmodules: bool
     hooks: bool
     foreign_config: tuple[str, ...] = ()  # keys in the clone's own config outside LOCAL_KEYS_RE
+    # HEAD changes `.github/` against the remote's default branch as the clone last fetched it, or
+    # that could not be told. A pushed branch's workflow runs with the repo's token on its PR and
+    # may ask for write access, which would reach the default branch: so never pushed from here.
+    ci_change: bool = False
 
 
 @dataclass(frozen=True)
@@ -272,7 +277,7 @@ def _judge_push(argv: list[str], own_work: Path, p: Project,
     if not m or not _branch_ok(m.group(1), p):
         return deny(f"the refspec must be HEAD:refs/heads/{p.prefix}<short-name>, never "
                     f"{p.default_branch}")
-    f = facts_for(_os_path(d), remote)
+    f = facts_for(_os_path(d), remote, p.default_branch)
     if f is None:
         return deny("the clone's git config could not be read")
     if not is_under(f.toplevel, own_work):
@@ -283,6 +288,9 @@ def _judge_push(argv: list[str], own_work: Path, p: Project,
         return deny("the clone's config would push more than the one branch")
     if f.hooks:
         return deny("the clone has git hooks; push from a clean clone")
+    if f.ci_change:
+        return deny("the branch changes .github/ (CI) or its base could not be read; leave "
+                    "workflows alone")
     if f.foreign_config:
         return deny("the clone's own git config has settings a fresh clone does not "
                     f"({', '.join(f.foreign_config[:3])}); push from a clean clone")
@@ -368,7 +376,7 @@ def _git(d: str, *args: str) -> subprocess.CompletedProcess:
                           creationflags=0x08000000 if os.name == "nt" else 0)
 
 
-def gather(d: str, remote: str) -> Facts | None:
+def gather(d: str, remote: str, default_branch: str = "main") -> Facts | None:
     """The clone's facts, or None when they cannot be read (the caller denies)."""
     try:
         top = _git(d, "rev-parse", "--show-toplevel")
@@ -392,6 +400,10 @@ def gather(d: str, remote: str) -> Facts | None:
         foreign = tuple(sorted({k for k in (i.partition("\n")[0].lower()
                                             for i in local.stdout.split("\0") if i)
                                 if not LOCAL_KEYS_RE.match(k)}))
+        base = _git(d, "diff-tree", "-r", "--name-only", "--no-renames",
+                    f"refs/remotes/{remote}/{default_branch}", "HEAD")
+        ci_change = base.returncode != 0 or any(
+            n.strip().lower().startswith(".github/") for n in base.stdout.splitlines())
         hooks_dir = _git(d, "rev-parse", "--git-path", "hooks")
         if hooks_dir.returncode != 0:
             return None
@@ -409,4 +421,5 @@ def gather(d: str, remote: str) -> Facts | None:
         recurse_submodules=on("submodule.recurse") or any(
             v not in ("no", "false", "0", "off") for v in conf.get("push.recursesubmodules", [])),
         gitmodules=(Path(toplevel) / ".gitmodules").exists(),
-        hooks=bool(conf.get("core.hookspath")) or live_hooks, foreign_config=foreign)
+        hooks=bool(conf.get("core.hookspath")) or live_hooks, foreign_config=foreign,
+        ci_change=ci_change)

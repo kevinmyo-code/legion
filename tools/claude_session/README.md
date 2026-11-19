@@ -32,7 +32,8 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `engine_client.py` | `/api/claude/` worker endpoints (heartbeat, claim, finish, files). |
 | `report.py` | How a helper finishes a task. Refuses `needs_confirmation` without `--question`. |
 | `send_mail.py` | Alfred's Gmail over SMTP. Refuses without the worker's confirmation token; Kevin cc'd. |
-| `asklist_hook.py` | Ruling 6 ask list and ruling 5 work-laptop scope; push, deploy, publish and gcloud only through `ship.py` / `undo.py`; `work\.claude` is Kevin's; the worker's own files are never a helper's. Fails closed. |
+| `asklist_hook.py` | Ruling 6 ask list and ruling 5 work-laptop scope; push, deploy, publish and gcloud only through `ship.py` / `undo.py` (except a project PR, `project_prs.py`); gh writes other than a project PR ask; `work\.claude` is Kevin's; the worker's own files are never a helper's. Fails closed. |
+| `project_prs.py` | Kevin's local list of projects (`projects.json` in the worker home, never in the repo): a task naming one is tied to it, and its helper may push one side branch from its own clone and open a PR there, in two exact command shapes. No file: nothing changes. |
 | `ship.py` | The ship step (map alfred-builds, ticket 03): `ask` prints "Ready: ... Ship it?", `run --token` rebases, tests, merges and pushes dev and main, deploys the engine, publishes the phone (`tools/release_apk.py`), adds a book. History in `work\ships.jsonl`. |
 | `undo.py` | Undo the last ship (ticket 05): traffic back a revision plus a revert on dev, the previous phone build republished, a book removed. |
 | `build_lock.py` | One build at a time with a heat check from laptopctl's agent (ticket 08). Each Gradle step also takes the laptop's shared mkdir lock (config `gradle_lock`), runs with `--max-workers=1 --build-cache` and a stable private daemon registry, and leaves the daemon warm: never `--stop` (2026-11-09). |
