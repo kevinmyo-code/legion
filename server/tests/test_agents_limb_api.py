@@ -210,6 +210,7 @@ def test_a_recruiter_is_refused_whatever_the_switch_says(switched_on):
     assert entered.status_code == 201, entered.data
     browser.credentials(HTTP_X_CSRFTOKEN=browser.cookies["csrftoken"].value)
     assert browser.post("/api/agents/limb", _manifest(), format="json").status_code == 403
+    assert browser.head("/api/agents/warm").status_code == 403
     assert not Limb.objects.exists()
 
 
