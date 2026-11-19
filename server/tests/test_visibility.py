@@ -890,6 +890,25 @@ def test_the_database_refuses_an_agent_row_owned_by_a_non_member(household_a, ke
         AgentConversation.objects.filter(pk=row.pk).update(owner_user=user_b)
 
 
+def test_a_limb_is_private_to_its_member(kevin, kevin_client, mia, monkeypatch):
+    """engine-brain ticket 04 (E1): `agents_limb` carries `owner_user`, never null (`OWNER_PATHS`):
+    `visible()` hands Mia none of Kevin's devices. Invented device."""
+    from agents.evals.runner import member_request
+    from agents.legion.flags import TURN_ENV
+    from agents.models import Limb
+    from household.tenancy import visible
+
+    monkeypatch.setenv(TURN_ENV, "on")
+    body = {
+        "contract_version": 1,
+        "kind": "phone",
+        "app_version": "secret-version",
+        "tools": [{"name": "set_timer", "writes": True, "read_through": False, "actuates": False}],
+    }
+    assert kevin_client.post("/api/agents/limb", body, format="json").status_code == 200
+    assert visible(Limb, member_request(kevin)).count() == 1
+    assert not visible(Limb, member_request(mia)).exists()
+
 def test_the_database_refuses_a_limb_owned_by_a_non_member(household_a, kevin, user_b):
     """engine-brain ticket 04 (E1): `agents_limb` carries the same owner guard. Invented device."""
     from agents.models import Limb
