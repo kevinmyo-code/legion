@@ -1802,8 +1802,6 @@ def _answer(
             yield say(text, tagged)
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
-        # Drops in this round count too (blind review finding 2: they never reached the log).
-        timings["money_dropped"] = money_dropped
         _meter(request, model_name, rounds[-1:])
     # A change ADR 0090 held back: a write refused by the outside-text rule, or `remember`'s own
     # refusal (round 2 finding 5: that one was missed, so "Noted." passed with nothing saved).
@@ -1820,10 +1818,16 @@ def _answer(
     speaker.closing = True
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
     for text, tagged in held_claims:
-        if honest(text):
+        if states_unbacked_figure(text, backed_cents(door.calls)):
+            # Held before the money tool ran; its figures are checked now, like every sentence's
+            # (blind review finding 3).
+            money_dropped += 1
+        elif honest(text):
             yield say(text, tagged)
         else:
             unbacked += 1
+    # The final count: the ask-again round's and the held claims' drops included (finding 2).
+    timings["money_dropped"] = money_dropped
     wrote = door.wrote()
     if guard_refused:
         yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)

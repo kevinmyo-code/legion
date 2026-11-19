@@ -191,6 +191,23 @@ def test_the_drop_count_reaches_the_log(member, engine, monkeypatch, caplog):
     assert _logged_money_dropped(caplog) == 2
 
 
+def test_a_held_claim_with_an_unbacked_figure_is_not_said_at_the_end(member, engine, monkeypatch):
+    # Review finding 3 (second half): a claim held until a write backs it is said at the end of
+    # the turn; its figures are checked there too.
+    _spend(monkeypatch)
+    claim = [
+        e
+        for e in say("I have created the list for the 84.47 groceries.")
+        if type(e).__name__ in ("PartEvent", "TextDelta")
+    ]
+    round0 = claim + call("create_checklist", {"name": "Groceries"})[:2] + call(M, {})
+    engine.model = FakeModel([round0, say("Done.")])
+    events = _events(_post(member, text="Make a list and tell me the spend."))
+    said = [s["text"] for s in _of(events, "sentence")]
+    assert not any("84.47" in s for s in said)
+    assert "Done." in said
+
+
 def test_a_recruiters_money_answer_is_checked_too(visitor, engine, monkeypatch):
     _spend(monkeypatch)
     engine.model = FakeModel([call(M, {}), say("Groceries were 84.47. Housing was 1,450.00.")])
