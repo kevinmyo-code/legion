@@ -43,16 +43,6 @@ object CarFingerprint {
         return prints.filter { (car, p) -> p == fp && car in onFile }.keys.singleOrNull()
     }
 
-    /**
-     * [prints] after he says this connection is [carId]: the print becomes [carId]'s (replacing its
-     * own older one). Another car that already has the same print keeps it: the print is then
-     * AMBIGUOUS ([match] finds two cars and returns null), so twins are always asked, never stolen
-     * from one another (2026-11-17 review).
-     */
-    fun learn(prints: Map<String, String>, carId: String, fp: String?): Map<String, String> {
-        if (fp == null) return prints
-        return prints + (carId to fp)
-    }
 
     /** "4100" + four data bytes. */
     private const val BITMASK_LINE = 12
@@ -65,11 +55,24 @@ object CarFingerprint {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).all
             .mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
 
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** [carId] learned [fp] (replacing its own older print; another car keeps its own): one key written. */
     fun save(context: Context, carId: String, fp: String?) {
         if (fp == null) return
-        val next = learn(all(context), carId, fp)
-        val edit = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear()
-        next.forEach { (k, v) -> edit.putString(k, v) }
-        edit.apply()
+        prefs(context).edit().putString(carId, fp).apply()
+    }
+
+    /**
+     * His correction ("no, it's the B") of a connection recognised or named as [fromCarId]: that car
+     * gives up [fp], so the print moves to the car he named rather than being copied (review A7).
+     */
+    fun takeFrom(context: Context, fromCarId: String, fp: String?) {
+        if (fp != null && prefs(context).getString(fromCarId, null) == fp) prefs(context).edit().remove(fromCarId).apply()
+    }
+
+    /** Forgets [carId]'s learned print (the car is archived: sold or gone). */
+    fun forget(context: Context, carId: String) {
+        prefs(context).edit().remove(carId).apply()
     }
 }

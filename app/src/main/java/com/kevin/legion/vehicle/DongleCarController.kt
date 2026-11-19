@@ -579,8 +579,11 @@ object DongleCarController {
                 val fromMs = if (plan.asCorrection) windowStart ?: sessionFrom else null
                 val moved = moveData(context, plan.fromId, carId, fromMs, System.currentTimeMillis())
                 // Only the print of the connection these readings came from: an answer about an earlier,
-                // held connection must not teach the print of whatever car the adapter is in now.
-                rememberCar(context, carId, printOf(context, subject, isLive))
+                // held connection must not teach the print of whatever car the adapter is in now. A
+                // correction of a car moves the print off it (review A7).
+                val print = printOf(context, subject, isLive)
+                if (plan.asCorrection && subject is OnCar) CarFingerprint.takeFrom(context, subject.carId, print)
+                rememberCar(context, carId, print)
                 if (isLive || settlesWindow) {
                     prefs(context).edit().remove(KEY_HELD_CAR).remove(KEY_HELD_FROM).remove(KEY_HELD_MAC).apply()
                 }

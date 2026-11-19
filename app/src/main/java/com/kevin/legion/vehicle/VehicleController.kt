@@ -1105,6 +1105,8 @@ object VehicleController {
         if (archived && ActiveVehicle.selected(context) == vehicleId) {
             ActiveVehicle.select(context, null)
         }
+        // A sold or gone car is never recognised again by how its computer answered (review A7).
+        if (archived) CarFingerprint.forget(context, vehicleId)
     }
 
     /**

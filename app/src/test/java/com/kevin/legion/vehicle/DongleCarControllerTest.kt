@@ -262,9 +262,9 @@ class DongleCarControllerTest {
         assertEquals(1, db.odbSampleDao().totalCount("car:truck"))
         assertEquals(1, db.driveReassignmentDao().getAll().size)
         assertNull(DongleCarController.heldWindow(context))
-        // Both cars now hold the print (twins, or an earlier wrong answer): next time he is asked.
-        assertEquals(mapOf("car:truck" to printA, "car:suv" to printA), CarFingerprint.all(context))
-        assertNull(DongleCarController.recognised(context, printA))
+        // His correction moves the print off the truck (review A7): next time it is the SUV.
+        assertEquals(mapOf("car:suv" to printA), CarFingerprint.all(context))
+        assertEquals("car:suv", DongleCarController.recognised(context, printA))
     }
 
     @Test
@@ -394,9 +394,9 @@ class DongleCarControllerTest {
         assertTrue(out.message, out.ok)
         assertEquals(1, db.odbSampleDao().totalCount("car:suv"))
         assertNull(DongleCarController.heldWindow(context))
-        // Both cars now hold the print (twins, or an earlier wrong answer): next time he is asked.
-        assertEquals(mapOf("car:truck" to printA, "car:suv" to printA), CarFingerprint.all(context))
-        assertNull(DongleCarController.recognised(context, printA))
+        // His correction moves the print off the truck (review A7): next time it is the SUV.
+        assertEquals(mapOf("car:suv" to printA), CarFingerprint.all(context))
+        assertEquals("car:suv", DongleCarController.recognised(context, printA))
     }
 
     @Test
@@ -559,7 +559,7 @@ class DongleCarControllerTest {
     }
 
     @Test
-    fun `fingerprint - his correction wins this connection and makes the print ambiguous, so next time he is asked`() =
+    fun `fingerprint - his correction moves the print, so next time the car he named is recognised`() =
         runBlocking {
             seed()
             connect(VinResponse.Result.NoData, printA)
@@ -568,10 +568,20 @@ class DongleCarControllerTest {
             assertEquals("car:truck", (connect(VinResponse.Result.NoData, printA) as DongleCar.OnCar).carId)
             assertTrue(DongleCarController.answer(context, "car:suv").ok)
             assertEquals("car:suv", (DongleCarController.state.value as DongleCar.OnCar).carId)
-            assertEquals(null, DongleCarController.recognised(context, printA))
+            assertEquals(mapOf("car:suv" to printA), CarFingerprint.all(context))
             DongleCarController.onDisconnected(context, at = longAgo())
-            assertTrue(connect(VinResponse.Result.NoData, printA) is DongleCar.Held)
+            assertEquals("car:suv", (connect(VinResponse.Result.NoData, printA) as DongleCar.OnCar).carId)
         }
+
+    @Test
+    fun `archiving a car forgets its print`() = runBlocking {
+        seed()
+        connect(VinResponse.Result.NoData, printA)
+        DongleCarController.answer(context, "car:truck")
+        assertEquals("car:truck", DongleCarController.recognised(context, printA))
+        VehicleController.archive(context, "car:truck")
+        assertEquals(emptyMap<String, String>(), CarFingerprint.all(context))
+    }
 
     @Test
     fun `fingerprint - an answer about an earlier held connection teaches nothing about the car plugged in now`() =
@@ -720,16 +730,13 @@ class DongleCarControllerTest {
     }
 
     @Test
-    fun `twins - two cars that learned one print are never guessed`() = runBlocking {
+    fun `twins - two cars a VIN showed to share one print are never guessed`() = runBlocking {
         seed()
         connect(VinResponse.Result.NoData, printA)
-        DongleCarController.answer(context, "car:truck")
+        DongleCarController.answer(context, "car:hybrid")
         DongleCarController.onDisconnected(context, at = longAgo())
-        // The twin: another car that answers exactly the same, named by him on its own connection.
-        DongleCarController.resetForTest()
-        val twin = connect(VinResponse.Result.NoData, printA) as DongleCar.OnCar
-        assertEquals("car:truck", twin.carId) // recognised (wrongly, he says)
-        assertTrue(DongleCarController.answer(context, "car:hybrid").ok)
+        // The twin reads its VIN and answers exactly the same: both keep the print.
+        connect(VinResponse.Result.Vin(truckVin), printA)
         DongleCarController.onDisconnected(context, at = longAgo())
         assertTrue(connect(VinResponse.Result.NoData, printA) is DongleCar.Held)
     }

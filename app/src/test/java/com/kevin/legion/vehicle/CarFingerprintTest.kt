@@ -24,20 +24,13 @@ class CarFingerprintTest {
     }
 
     @Test
-    fun `a print matching one car names it, two cars that learned one print are unknown`() {
-        val prints = CarFingerprint.learn(CarFingerprint.learn(emptyMap(), "car:a", "p6|x"), "car:b", "p2|y")
+    fun `a print matching one car names it, two cars holding one print are unknown`() {
+        val prints = mapOf("car:a" to "p6|x", "car:b" to "p2|y")
         assertEquals("car:a", CarFingerprint.match(prints, "p6|x", setOf("car:a", "car:b")))
         assertNull(CarFingerprint.match(prints, "p6|x", setOf("car:b")))
-        // Twins: car c is named on a connection with car a's print. Built by learn, as the phone does.
-        val twins = CarFingerprint.learn(prints, "car:c", "p6|x")
+        // Twins: a VIN taught car c the print car a already had; both keep it, so it names neither.
+        val twins = prints + ("car:c" to "p6|x")
         assertNull(CarFingerprint.match(twins, "p6|x", setOf("car:a", "car:b", "car:c")))
         assertNull(CarFingerprint.match(prints, null, setOf("car:a")))
-    }
-
-    @Test
-    fun `learning gives the named car the print and never takes it from another`() {
-        val prints = mapOf("car:a" to "p6|x", "car:b" to "p2|y")
-        assertEquals(mapOf("car:a" to "p6|x", "car:b" to "p6|x"), CarFingerprint.learn(prints, "car:b", "p6|x"))
-        assertEquals(prints, CarFingerprint.learn(prints, "car:b", null))
     }
 }
