@@ -3,7 +3,7 @@ import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import type { Line } from '@/assistant/live-client'
-import { pushModalEntry } from '@/lib/modal-entry'
+import { notePoppedModalEntry, popModalEntry, pushModalEntry } from '@/lib/modal-entry'
 
 import { DiagramBody } from './diagram'
 import { PresenterContext } from './presenter-context'
@@ -79,6 +79,7 @@ export function ScreenModalProvider({
       pushed.current = true
     }, 0)
     const onPop = () => {
+      if (pushed.current) notePoppedModalEntry()
       pushed.current = false
       setShown(null)
     }
@@ -88,7 +89,7 @@ export function ScreenModalProvider({
       window.removeEventListener('popstate', onPop)
       if (pushed.current) {
         pushed.current = false
-        window.history.back()
+        popModalEntry()
       }
     }
   }, [open])

@@ -33,6 +33,10 @@ function Page() {
       <button type="button" onClick={() => setLines([{ id: 1, kind: 'tool', ok: true, text: '', card: DIAGRAM_CARD }])}>
         Ask
       </button>
+      {/* A box that scrolls inside the page, as the captions do while an answer streams. */}
+      <div data-testid="captions" style={{ height: 40, overflowY: 'auto' }}>
+        <p style={{ height: 400 }}>Words.</p>
+      </div>
     </ScreenModalProvider>
   )
 }
@@ -81,5 +85,33 @@ describe('a page modal and the page scroll', () => {
     await tick(50)
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(scrolls.filter(toTop)).toEqual([])
+  })
+
+  test('closing a modal leaves every box inside the page where it is (the captions kept up with the answer)', async () => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    window.history.replaceState({}, '', '/try')
+    const root = createRootRoute()
+    const tryRoute = createRoute({ getParentRoute: () => root, path: '/try', component: Page })
+    const router = createRouter({
+      ...appRouterOptions,
+      routeTree: root.addChildren([tryRoute]),
+      history: createBrowserHistory(),
+    })
+    render(<RouterProvider router={router} />)
+    await screen.findByRole('button', { name: 'Ask' })
+    await tick(20)
+    const captions = screen.getByTestId('captions')
+    captions.scrollTop = 0
+    captions.dispatchEvent(new Event('scroll'))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask' }))
+    await screen.findByRole('dialog')
+    await tick(20)
+    // The answer streamed on under the modal; the captions followed it.
+    captions.scrollTop = 300
+    captions.dispatchEvent(new Event('scroll'))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await tick(50)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(captions.scrollTop).toBe(300)
   })
 })
