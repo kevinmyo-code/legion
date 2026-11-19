@@ -6,6 +6,8 @@
  *        [--layout wide|tall|both] [--ffmpeg <dir with ffmpeg and ffprobe>] [--from 0 --to 12]
  *        [--asker <dir of asker WAVs, default <clips>/asker>]
  *        [--check overlay]   (only the money-overlay check frames, no browser)
+ *        [--export-clips m-wake,h-request] (those takes whole, money painted over, for the page)
+ *        [--reuse-frames 1] (composite again over the frames an earlier --keep 1 run drew)
  *
  * `<clips>/<slot>.json` (all optional): `asks` [{at, line, mute?}] (a `line` the spec does not
  * name, such as "tap", is the recorder's action and makes no sound), `room_wav` and
@@ -55,7 +57,8 @@ mkdirSync(outDir, { recursive: true })
 
 function run(cmd, argv) {
   const r = spawnSync(bin(cmd), argv, { encoding: 'utf8', maxBuffer: 1 << 26 })
-  if (r.status !== 0) throw new Error(`${cmd} failed: ${r.stderr.slice(-2000)}`)
+  if (r.error) throw r.error
+  if (r.status !== 0) throw new Error(`${cmd} failed: ${(r.stderr || '').slice(-2000)}`)
   return r.stdout
 }
 function duration(file) {
@@ -327,12 +330,20 @@ async function renderFrames(layout, bgFile) {
   }
 }
 
+function graphFile(layout, graph) {
+  const file = path.join(outDir, '.tmp', `graph-${layout}.txt`)
+  writeFileSync(file, graph)
+  return file
+}
+
 /** Footage into the screen rectangle, and the sound, over the drawn frames. */
 function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
   const inputs = ['-i', bgFile]
   const vf = []
   const af = []
-  let last = '[0:v]'
+  // The drawn frames arrive as full-range JPEG; video players expect limited range (yuv420p).
+  vf.push('[0:v]scale=out_range=tv,format=yuv420p[bg]')
+  let last = '[bg]'
   let n = 1
   const audioParts = []
   const total = to - from
@@ -393,11 +404,63 @@ function composite(layout, bgFile, { timeline, rect, from, to }, outFile) {
   vf.push(`${last}format=yuv420p[vout]`)
   const crf = layout === 'tall' ? '22' : '21'
   run('ffmpeg', [
-    '-v', 'error', '-y', ...inputs, '-filter_complex', [...vf, ...af].join(';'),
+    // The graph runs to tens of kilobytes (the money patches' time spans): a file, not an argument,
+    // so it never meets Windows' command-line limit.
+    '-v', 'error', '-y', ...inputs, '-/filter_complex', graphFile(layout, [...vf, ...af].join(';')),
     '-map', '[vout]', '-map', '[aout]', '-r', String(FPS),
     '-c:v', 'libx264', '-preset', 'medium', '-crf', crf, '-pix_fmt', 'yuv420p', '-profile:v', 'high',
     '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', '-t', total.toFixed(3), outFile,
   ])
+}
+
+/**
+ * One take whole, for the page's "full clips": the made-up money figures painted over, Alfred
+ * from the room, the asker's WAVs at their times; half size (540 wide), H.264 + AAC, faststart,
+ * with a poster at 1 s and its captions (asker lines plus the slot's own .vtt).
+ */
+function exportClip(slot) {
+  const dir = path.join(outDir, 'clips')
+  mkdirSync(dir, { recursive: true })
+  const src = path.join(clipsDir, `${slot}.mp4`)
+  const total = duration(src)
+  const inputs = ['-i', src]
+  const money = overlayChain(slot)
+  const graph = [`[0:v]${money ? money + ',' : ''}fps=${FPS},scale=540:-2,format=yuv420p[vout]`]
+  const parts = []
+  let n = 1
+  const source = audioSource(slot)
+  if (source) {
+    inputs.push('-i', source.file)
+    const lead = source.offset < 0 ? `adelay=${Math.round(-source.offset * 1000)}|${Math.round(-source.offset * 1000)},` : ''
+    graph.push(`[${n}:a]${lead}atrim=${Math.max(source.offset, 0).toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo[r]`)
+    parts.push('[r]')
+    n++
+  }
+  const cues = []
+  for (const ask of speechAsks(slot)) {
+    inputs.push('-i', levelled(askerWav(ask.line)))
+    const d = Math.round(ask.at * 1000)
+    graph.push(`[${n}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${d}|${d}[s${n}]`)
+    parts.push(`[s${n}]`)
+    cues.push({ start: ask.at, end: ask.at + duration(askerWav(ask.line)), text: `Asker: ${spec.lines[ask.line]}` })
+    n++
+  }
+  graph.push(`anullsrc=r=48000:cl=stereo,atrim=0:${total.toFixed(3)}[silence]`)
+  graph.push(`[silence]${parts.join('')}amix=inputs=${parts.length + 1}:normalize=0:duration=first[aout]`)
+  const out = path.join(dir, `${slot}.mp4`)
+  run('ffmpeg', [
+    '-v', 'error', '-y', ...inputs, '-/filter_complex', graphFile(`clip-${slot}`, graph.join(';')),
+    '-map', '[vout]', '-map', '[aout]', '-c:v', 'libx264', '-preset', 'medium', '-crf', '24',
+    '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-t', total.toFixed(3), out,
+  ])
+  run('ffmpeg', ['-v', 'error', '-y', '-ss', '1', '-i', out, '-frames:v', '1', '-q:v', '3', path.join(dir, `${slot}.jpg`)])
+  const own = path.join(clipsDir, `${slot}.vtt`)
+  if (existsSync(own)) cues.push(...parseVtt(readFileSync(own, 'utf8')).filter((c) => !/^(you|asker)\s*:/i.test(c.text)))
+  cues.sort((a, b) => a.start - b.start)
+  const lines = ['WEBVTT', '']
+  for (const c of cues) lines.push(`${vttStamp(c.start)} --> ${vttStamp(c.end)}`, c.text, '')
+  writeFileSync(path.join(dir, `${slot}.vtt`), lines.join('\n'))
+  console.log(`${out}: ${total.toFixed(2)} s`)
 }
 
 function chaptersOf(timeline) {
@@ -413,9 +476,19 @@ async function main() {
   mkdirSync(tmp, { recursive: true })
   overlayDebug()
   if (opt.check === 'overlay') return
+  if (opt['export-clips']) {
+    for (const slot of opt['export-clips'].split(',')) exportClip(slot)
+    if (!opt.keep) rmSync(tmp, { recursive: true, force: true })
+    return
+  }
   for (const layout of layouts) {
     const bgFile = path.join(tmp, `bg-${layout}.mp4`)
-    const info = await renderFrames(layout, bgFile)
+    // --reuse-frames: composite again over frames drawn by an earlier run (no browser).
+    const info = opt['reuse-frames'] && existsSync(`${bgFile}.json`)
+      ? JSON.parse(readFileSync(`${bgFile}.json`, 'utf8'))
+      : await renderFrames(layout, bgFile)
+    if (!info.cues) info.cues = captionCues(info.timeline)
+    writeFileSync(`${bgFile}.json`, JSON.stringify(info))
     const outFile = path.join(outDir, `${opt.name}-${layout === 'wide' ? '16x9' : '4x5'}.mp4`)
     composite(layout, bgFile, info, outFile)
     console.log(`${outFile}: ${duration(outFile).toFixed(2)} s`)
@@ -435,7 +508,7 @@ async function main() {
       ])
     }
   }
-  rmSync(tmp, { recursive: true, force: true })
+  if (!opt.keep) rmSync(tmp, { recursive: true, force: true })
 }
 
 main().catch((error) => {

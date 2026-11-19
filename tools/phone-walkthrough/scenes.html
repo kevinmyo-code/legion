@@ -67,13 +67,13 @@
 const LAYOUTS = {
   wide: { w: 1920, h: 1080, u: 34,
     text: { x: 120, y: 150, w: 760 },
-    diagram: { x: 930, y: 120, w: 380, h: 840 },
+    diagram: { x: 900, y: 120, w: 450, h: 840 },
     phone: { x: 1430, y: 90, h: 900 },
     ticks: { x: 120, y: 960, w: 760 },
     caption: { bottom: 40 } },
   tall: { w: 1080, h: 1350, u: 30,
     text: { x: 64, y: 70, w: 952 },
-    diagram: { x: 40, y: 400, w: 420, h: 760 },
+    diagram: { x: 40, y: 400, w: 480, h: 760 },
     phone: { x: 560, y: 380, h: 800 },
     ticks: { x: 64, y: 1210, w: 952 },
     caption: { bottom: 40 } },
@@ -81,7 +81,7 @@ const LAYOUTS = {
 // The recorded phone screens are portrait; this is their width over height.
 const SCREEN_ASPECT = 9 / 19.5
 const BEZEL = 14
-const FADE = 0.35
+const FADE = 0.25
 
 let SPEC = null, L = null, OPTS = {}, TIMELINE = []
 
@@ -145,7 +145,12 @@ function frame(t) {
   const item = TIMELINE.find((s) => t >= s.start && t < s.end) || TIMELINE[TIMELINE.length - 1]
   const local = t - item.start
   const dur = item.end - item.start
-  const alpha = Math.min(ease(local / FADE), ease((dur - local) / FADE), 1)
+  // Cuts inside one chapter (`chapter: false`) keep the text steady; only the footage crossfades.
+  const index = TIMELINE.indexOf(item)
+  const continues = (s) => s && s.scene.chapter === false
+  const fadeIn = continues(item) ? 1 : ease(local / FADE)
+  const fadeOut = continues(TIMELINE[index + 1]) ? 1 : ease((dur - local) / FADE)
+  const alpha = Math.min(fadeIn, fadeOut, 1)
   const content = el('div', { style: { position: 'absolute', inset: '0', opacity: String(alpha) } })
   const scene = item.scene
   if (scene.kind === 'title' || scene.kind === 'part' || scene.kind === 'end') drawCard(content, scene)
@@ -287,11 +292,8 @@ function drawCaption(root, t) {
   root.appendChild(el('div', { class: 'caption', style: { bottom: px(L.caption.bottom) }, text: cue.text }))
 }
 
-window.setup = setup
-window.frame = frame
-window.screenRect = () => screenRect()
-window.phoneRect = () => phoneRect()
-window.timelineInfo = () => timeline()
+// setup, frame and screenRect are top-level function declarations, so already on window: render.mjs
+// calls them there. (Re-assigning window.screenRect to a wrapper made it call itself.)
 </script>
 </body>
 </html>
