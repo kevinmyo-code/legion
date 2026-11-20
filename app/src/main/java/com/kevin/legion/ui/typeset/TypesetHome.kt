@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevin.legion.R
+import com.kevin.legion.service.turn.OutputToggle
 import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.finance.NetCashText
 import com.kevin.legion.ui.assistant.CardStage
@@ -81,9 +82,11 @@ fun TypesetHomeContent(
     groups: (@Composable () -> Unit)? = null,
     /** The last line of what Alfred is saying; shown at the foot while his cards are up. */
     caption: String? = null,
+    /** The SPEAKER / CALL toggle beside the orb; null draws none (no earpiece, or the tests' pages). */
+    output: OutputToggle? = null,
 ) {
     if (cards.isNotEmpty()) {
-        Answering(cards, phase, status, caption, night, actions, modifier)
+        Answering(cards, phase, status, caption, night, output, actions, modifier)
         return
     }
     FitTiers(modifier.fillMaxSize().padding(horizontal = Gutter)) { tier, orb, measuring ->
@@ -94,7 +97,7 @@ fun TypesetHomeContent(
             // center and about 2.5x"): it sits where the contents line was, and the contents line
             // moves under it.
             Glance(glance, tier, measuring, actions)
-            Voice(phase, status, tier, orb, measuring, actions)
+            Voice(phase, status, tier, orb, measuring, output, actions)
             Contents(tier.contentsPerRow, actions)
             groups?.let {
                 it()
@@ -311,6 +314,7 @@ private fun Answering(
     status: String,
     caption: String?,
     night: Boolean,
+    output: OutputToggle?,
     actions: TypesetHomeActions,
     modifier: Modifier,
 ) {
@@ -319,11 +323,13 @@ private fun Answering(
         Column(Modifier.fillMaxSize()) {
             Masthead(answering = true, night, actions)
             Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier.size(orb).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
-                        .semantics { contentDescription = "Talk to Alfred" },
-                ) {
-                    TypesetOrb(phase, Modifier.size(orb))
+                OrbWithOutput(output, actions.onFlipOutput) {
+                    Box(
+                        Modifier.size(orb).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
+                            .semantics { contentDescription = "Talk to Alfred" },
+                    ) {
+                        TypesetOrb(phase, Modifier.size(orb))
+                    }
                 }
                 Text(
                     status,
@@ -367,15 +373,18 @@ private fun Voice(
     tier: FitTier,
     orb: Dp,
     measuring: Boolean,
+    output: OutputToggle?,
     actions: TypesetHomeActions,
 ) {
     Column(Modifier.fillMaxWidth().padding(top = tier.gap), horizontalAlignment = Alignment.CenterHorizontally) {
         val size: Dp = orb
-        Box(
-            Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
-                .semantics { contentDescription = "Talk to Alfred" },
-        ) {
-            if (!measuring) TypesetOrb(phase, Modifier.size(size))
+        OrbWithOutput(output, actions.onFlipOutput) {
+            Box(
+                Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
+                    .semantics { contentDescription = "Talk to Alfred" },
+            ) {
+                if (!measuring) TypesetOrb(phase, Modifier.size(size))
+            }
         }
         if (tier.statusOwnLine) {
             Text(
