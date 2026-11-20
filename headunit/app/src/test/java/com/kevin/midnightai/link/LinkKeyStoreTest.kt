@@ -38,9 +38,11 @@ class LinkKeyStoreTest {
         var failSave = false
         override fun snapshot() = values.toMap()
         override fun restore(snapshot: Map<String, String?>): Boolean { values = snapshot.toMutableMap(); return true }
-        override fun saveStrict(baseUrl: String, token: String, userId: String): Boolean {
+        var vehicleId: String? = null
+        override fun saveStrict(baseUrl: String, token: String, userId: String, vehicleId: String?): Boolean {
             if (failSave) return false
             values = mutableMapOf("base_url" to baseUrl, "device_token" to fakeEnc(token), "user_id" to userId)
+            this.vehicleId = vehicleId
             return true
         }
         override fun rawToken() = values["device_token"]
@@ -92,6 +94,16 @@ class LinkKeyStoreTest {
         assertEquals(fakeEnc("test-token"), engine.rawToken())
         assertEquals("https://engine.example", engine.values["base_url"])
         assertEquals(fakeEnc("AIza-test"), gemini.enc)
+    }
+
+    /** 2026-11-20: the car's own sign-in uploads for ONE engine vehicle, named in the hand-over. */
+    @Test fun theBoundVehicleFromTheHandOverReachesTheEngineSignIn() {
+        val parsed = Handover.parse(
+            org.json.JSONObject().put("v", 1).put("engine_token", "hu1_made-up").put("engine_vehicle_id", "veh-9"),
+        )!!
+        assertEquals("veh-9", parsed.engineVehicleId)
+        pair(keyA, parsed)
+        assertEquals("veh-9", engine.vehicleId)
     }
 
     @Test fun nothingIsStoredInTheClear() {

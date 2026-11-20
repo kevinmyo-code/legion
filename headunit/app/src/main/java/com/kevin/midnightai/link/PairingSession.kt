@@ -17,6 +17,8 @@ class Handover(
     val geminiKey: String?,
     val mapboxToken: String?,
     val phoneName: String?,
+    /** The ONE engine vehicle the car's own sign-in may upload OBD samples for (spec 3.5 change, 2026-11-20). */
+    val engineVehicleId: String? = null,
 ) {
     fun present(): List<String> = buildList {
         if (engineToken != null) add("engine sign-in")
@@ -40,6 +42,7 @@ class Handover(
                 geminiKey = s("gemini_key"),
                 mapboxToken = s("mapbox_token"),
                 phoneName = s("phone_name")?.take(40),
+                engineVehicleId = s("engine_vehicle_id")?.take(64),
             )
         }
     }

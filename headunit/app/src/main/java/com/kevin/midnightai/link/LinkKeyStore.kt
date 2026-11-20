@@ -17,7 +17,7 @@ interface EngineAccess {
     fun snapshot(): Map<String, String?>
     fun restore(snapshot: Map<String, String?>): Boolean
     /** Encrypts and writes with commit(); false (nothing written) if the Keystore or disk fails. */
-    fun saveStrict(baseUrl: String, token: String, userId: String): Boolean
+    fun saveStrict(baseUrl: String, token: String, userId: String, vehicleId: String?): Boolean
     /** The stored token's ciphertext, to recognise "still the one the link handed over". */
     fun rawToken(): String?
     fun clear(): Boolean
@@ -119,6 +119,7 @@ class LinkKeyStore(
             .put("link", Base64.Default.encode(linkKey))
             .put("engine_token", if (url != null) handover.engineToken else null)
             .put("engine_user_id", handover.engineUserId)
+            .put("engine_vehicle_id", handover.engineVehicleId)
             .put("gemini_key", handover.geminiKey)
             .put("mapbox_token", handover.mapboxToken)
             .put("phone_name", handover.phoneName)
@@ -146,7 +147,8 @@ class LinkKeyStore(
         val token = p.optString("engine_token").takeIf { it.isNotBlank() }
         val url = EnginePolicy.handoverEngineUrl(engineConstant)
         if (token != null && url != null) {
-            if (!engine.saveStrict(url, token, p.optString("engine_user_id"))) return undo(KEYSTORE)
+            val vehicle = p.optString("engine_vehicle_id").takeIf { it.isNotBlank() }
+            if (!engine.saveStrict(url, token, p.optString("engine_user_id"), vehicle)) return undo(KEYSTORE)
         } else if (fromLink.optString("engine").let { it.isNotBlank() && it == engine.rawToken() }) {
             // The previous pairing's token, not replaced by this one: it goes with the old pairing.
             if (!engine.clear()) return undo(DISK)
@@ -232,8 +234,9 @@ class LinkKeyStore(
                 engine = object : EngineAccess {
                     override fun snapshot() = engineConfig.snapshot()
                     override fun restore(snapshot: Map<String, String?>) = engineConfig.restore(snapshot)
-                    override fun saveStrict(baseUrl: String, token: String, userId: String) =
-                        engineConfig.saveSessionStrict(baseUrl, token, userId)
+                    // A token that came over the link is the car's own sign-in (CarLinkScope).
+                    override fun saveStrict(baseUrl: String, token: String, userId: String, vehicleId: String?) =
+                        engineConfig.saveSessionStrict(baseUrl, token, userId, carLink = true, vehicleId = vehicleId)
                     override fun rawToken() = engineConfig.rawToken()
                     override fun clear() = engineConfig.restore(engineConfig.snapshot().mapValues { (k, v) -> if (k == "base_url") v else null })
                 },
