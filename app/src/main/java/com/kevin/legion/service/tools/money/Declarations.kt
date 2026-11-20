@@ -23,7 +23,8 @@ internal object Declarations {
             name = "get_balance",
             description = "Report the latest known balance for a ledger account, LEADING WITH THE " +
                 "AVAILABLE FIGURE the way the user's own bank app does. A bare \"what's left\" or " +
-                "\"how much do I have left\" is this tool with no account: net cash. If the user doesn't " +
+                "\"how much do I have left\" is this tool with no account: net cash (not when he says " +
+                "spend or this month: that is budget left). If the user doesn't " +
                 "name one and only one account is on file, use that one; if several exist, ask " +
                 "which, or report all of them. The available figure can include TWO different " +
                 "kinds of unconfirmed activity, and both must be said out loud, not just reported " +
@@ -201,8 +202,9 @@ internal object Declarations {
                 "the figure is not fully confirmed (pending bank data, an unconfirmed AI-guessed " +
                 "category, or a month not fully covered by an imported statement). " +
                 // 2026-11-19: the budget views read what HOME shows; the phone speaks their answer itself.
-                "view=left only when he names a budget ('left in the budget'): budget remaining; " +
-                "a bare \"what's left\" is net cash: get_balance. view=category with " +
+                "view=left only when he names a budget or he says spend or this month ('left to " +
+                "spend', 'what's left this month'): budget remaining, month as said; a bare " +
+                "\"what's left\" is net cash: get_balance. view=category with " +
                 "category: one category's spend, e.g. groceries or dining. view=top: the highest " +
                 "categories. For these three the phone has ALREADY said the answer (speak_verbatim): " +
                 "never restate a figure; when valid_categories comes back, ask him which one he means.",

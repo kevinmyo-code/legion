@@ -109,3 +109,6 @@
 {"say": "what was on my last grocery receipt", "covers": "ask_pantry"}
 {"say": "how much do I have left", "covers": "ask_money"}
 {"say": "how much is left in my grocery budget", "covers": "ask_money"}
+{"say": "how much do I have left to spend this month", "covers": "ask_money"}
+{"say": "what's left this month", "covers": "ask_money"}
+{"say": "how much can I still spend", "covers": "ask_money"}

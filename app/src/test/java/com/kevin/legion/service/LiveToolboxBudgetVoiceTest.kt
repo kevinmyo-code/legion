@@ -93,6 +93,9 @@ class LiveToolboxBudgetVoiceTest {
         assertTrue(spend, spend.contains("view=left only when he names a budget"))
         assertTrue(spend, spend.contains("a bare \"what's left\" is net cash: get_balance"))
         assertTrue(balance, balance.contains("\"what's left\""))
+        // Kevin, 2026-11-20 ("2 yes"): "spend" or "this month" in it makes it budget left.
+        assertTrue(spend, spend.contains("or he says spend or this month"))
+        assertTrue(balance, balance.contains("not when he says spend or this month"))
     }
 
     // flash-lite probe 2026-11-19: "how much is left in my grocery budget" came as view=left with
