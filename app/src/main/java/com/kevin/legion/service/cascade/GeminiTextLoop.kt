@@ -253,7 +253,9 @@ class GeminiTextLoop(
             val sentAt = now()
             var firstSeen = false
             // After a tool ran, a line that may be filler is held back until it is known not to be.
+            // Before any tool, only exact filler lines are held ([FillerTurn.FirstHold], 2026-11-19).
             val held = if (state.toolsRan.isNotEmpty()) FillerTurn.Hold() else null
+            val first = if (held == null) FillerTurn.FirstHold() else null
             // After the phone spoke a balance itself, no money sentence of the model's is spoken; after a
             // diagnostics answer, no sentence restating its codes, counts or a verdict.
             val money: SentenceFilter? = when {
@@ -284,7 +286,7 @@ class GeminiTextLoop(
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
                     turn.onEvent(ev) { delta ->
-                        pass(held?.feed(delta) ?: delta)
+                        pass(held?.feed(delta) ?: first?.feed(delta) ?: delta)
                     }
                     if (!firstSeen && turn.text.length + turn.calls.size > before) {
                         firstSeen = true
@@ -317,6 +319,7 @@ class GeminiTextLoop(
             meter(prefix.model, turn.usage)
             state.usage = state.usage.plus(turn.usage, cacheName != null)
             held?.end()?.let { pass(it) }
+            first?.end(calls = turn.calls.isNotEmpty() && !force)?.let { pass(it) }
             money?.let {
                 val m = it.flush()
                 out(trail.feed(said?.feed(m) ?: m))
@@ -344,6 +347,18 @@ class GeminiTextLoop(
             }
             val calls = turn.calls
             if (calls.isEmpty() || force) {
+                // No tool yet and the whole reply was a holding line (trace item e, the dead end): never
+                // the answer; asked once more, tools kept. A second one ends on the failure line.
+                if (first?.filler == true) {
+                    if (state.fillerContinued == 0 && !force) {
+                        state.fillerContinued = 1
+                        contents.put(turn.modelContent())
+                        contents.put(FillerTurn.firstNoteContent())
+                        continue
+                    }
+                    state.fillerAgain = true
+                    return fail(TextFailure.NO_TEXT, state)
+                }
                 // A tool turn that ended on filler: never said as the answer; asked once more, tool-free.
                 // Not after a verbatim answer: that turn already said what was asked, so it just ends.
                 // Nor after a write code said: that line is the answer, and the model has nothing to add.

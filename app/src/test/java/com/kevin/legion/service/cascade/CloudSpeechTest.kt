@@ -258,6 +258,39 @@ class CloudSpeechTest {
     }
 
     @Test
+    fun `a slow request gets an identical second one beside it, and the first answer back is the transcript`() = runBlocking<Unit> {
+        var n = 0
+        val fake = FakeGemini { _, _, onEvent ->
+            if (n++ == 0) awaitCancellation()
+            onEvent(textEv("Invented hedged words."))
+            StreamOutcome.Ok
+        }
+        val logs = Collections.synchronizedList(mutableListOf<String>())
+        val stt = GeminiStt(fake, scope, log = { logs.add(it) }, attemptTimeoutMs = { 5_000L }, hedgeAfterMs = { 100L })
+        val t0 = System.currentTimeMillis()
+        val r = withTimeout(3_000) { stt.transcribe(pcm(400)) }
+        assertEquals("Invented hedged words.", (r as SttResult.Text).text)
+        assertTrue("took ${System.currentTimeMillis() - t0} ms", System.currentTimeMillis() - t0 < 2_000)
+        assertEquals(2, fake.calls.size)
+        assertEquals(fake.calls[0].second.toString(), fake.calls[1].second.toString())
+        assertTrue(logs.any { it == "stt_cloud_hedge after_ms=100" })
+        assertTrue(logs.any { it == "stt_cloud_hedge_won second" })
+    }
+
+    @Test
+    fun `a speculative draft is not hedged, a slow first request is waited for`() = runBlocking<Unit> {
+        val fake = FakeGemini { _, _, onEvent ->
+            delay(300)
+            onEvent(textEv("Invented draft words."))
+            StreamOutcome.Ok
+        }
+        val stt = GeminiStt(fake, scope, attemptTimeoutMs = { 5_000L }, hedgeAfterMs = { 50L })
+        val r = withTimeout(3_000) { stt.transcribe(pcm(400), hedged = false) }
+        assertEquals("Invented draft words.", (r as SttResult.Text).text)
+        assertEquals(1, fake.calls.size)
+    }
+
+    @Test
     fun `two hung requests end as a timeout well inside the final deadline`() = runBlocking<Unit> {
         val fake = FakeGemini { _, _, _ -> awaitCancellation() }
         val stt = GeminiStt(fake, scope, attemptTimeoutMs = { 150L })

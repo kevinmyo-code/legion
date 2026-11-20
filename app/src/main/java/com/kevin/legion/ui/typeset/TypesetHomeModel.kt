@@ -3,6 +3,7 @@ package com.kevin.legion.ui.typeset
 import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.assistant.cards.PhoneCards
 import com.kevin.legion.calendar.DueSummary
+import com.kevin.legion.finance.BudgetLeft
 import com.kevin.legion.finance.BudgetsWire
 import com.kevin.legion.finance.FinanceRead
 import com.kevin.legion.finance.NetCashText
@@ -197,15 +198,13 @@ object TypesetHomeDerive {
 
     private fun leftOf(b: BudgetsWire, monthName: String, note: String?): TypesetFigure {
         val unit = b.currency.lowercase()
-        if (b.total.capCents <= 0L) {
-            return TypesetFigure(
-                number = "No cap",
-                label = "set for $monthName",
-                lines = listOfNotNull("${PhoneCards.money(b.total.spentCents, unit)} spent so far", note),
-            )
-        }
-        val left = b.total.capCents - b.total.spentCents
-        val daysLeft = (b.daysInMonth - b.daysElapsed).coerceAtLeast(0)
+        // The one sum Alfred's budget answer says too (BudgetLeft).
+        val left = BudgetLeft.cents(b) ?: return TypesetFigure(
+            number = "No cap",
+            label = "set for $monthName",
+            lines = listOfNotNull("${PhoneCards.money(b.total.spentCents, unit)} spent so far", note),
+        )
+        val daysLeft = BudgetLeft.daysLeft(b)
         val days = if (daysLeft == 1) "1 day left" else "$daysLeft days left"
         val figure = if (left < 0) "-" + PhoneCards.money(-left, unit) else PhoneCards.money(left, unit)
         val label = if (left < 0) "over for $monthName" else "left for $monthName"

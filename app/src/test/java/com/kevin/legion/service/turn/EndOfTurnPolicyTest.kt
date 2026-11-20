@@ -196,4 +196,56 @@ class EndOfTurnPolicyTest {
         assertEquals(Reason.BASE, end.reason)
         assertEquals(704, end.longestSilenceMs)
     }
+
+    // --- the cascade's "finished" end (Kevin, 2026-11-19, the web's rule) ---------------------------
+
+    private fun cascadeSpeaking(): EndOfTurnPolicy {
+        val p = EndOfTurnPolicy(true, finishedMs = EndOfTurnPolicy.FINISHED_MS)
+        repeat(20) { p.onWindow(speech) }
+        return p
+    }
+
+    @Test
+    fun `with the finished end on, a done verdict before 500 ms ends the turn at 500 ms`() {
+        val p = cascadeSpeaking()
+        val check = actions(p, 256).filterIsInstance<Action.RequestCheck>().single()
+        assertTrue(p.onCheckResult(check.checkId, 0.9f).isEmpty())
+        val end = silence(p, 400).map { it.second }.filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.FINISHED, end.reason)
+        assertEquals(512, end.silenceMs)
+    }
+
+    @Test
+    fun `a done verdict landing between 500 ms and the base ends the turn on the verdict`() {
+        val p = cascadeSpeaking()
+        val check = actions(p, 544).filterIsInstance<Action.RequestCheck>().single()
+        val end = p.onCheckResult(check.checkId, 0.9f).single() as Action.EndActivity
+        assertEquals(Reason.FINISHED, end.reason)
+        assertEquals(544, end.silenceMs)
+    }
+
+    @Test
+    fun `with the finished end on, no verdict or a not-done one still ends at the base or later`() {
+        val none = cascadeSpeaking()
+        assertEquals(704, actions(none, 800).filterIsInstance<Action.EndActivity>().single().silenceMs)
+        // Not done, then done before the base: the hold is released and the turn ends at 500 ms.
+        val held = cascadeSpeaking()
+        val first = actions(held, 224).filterIsInstance<Action.RequestCheck>().single()
+        val second = held.onCheckResult(first.checkId, 0.2f).single() as Action.RequestCheck
+        assertTrue(actions(held, 160).none { it is Action.EndActivity })
+        assertTrue(held.onCheckResult(second.checkId, 0.9f).isEmpty())
+        val end = actions(held, 300).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.FINISHED, end.reason)
+        assertEquals(512, end.silenceMs)
+    }
+
+    @Test
+    fun `speech resuming clears a finished verdict`() {
+        val p = cascadeSpeaking()
+        val check = actions(p, 256).filterIsInstance<Action.RequestCheck>().single()
+        p.onCheckResult(check.checkId, 0.9f)
+        assertTrue(p.onWindow(speech).single() is Action.SpeechResumed)
+        val end = actions(p, 800).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.BASE, end.reason)
+    }
 }

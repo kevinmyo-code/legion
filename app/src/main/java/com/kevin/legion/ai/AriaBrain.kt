@@ -852,17 +852,18 @@ internal const val CLAUDE_SESSION_CLAUSE =
  * answer itself still gets the answer.
  */
 internal const val LOOKUP_HOLD_CLAUSE =
-    "Before ask_advisor, ask_engine or any other ask_ tool, which take several seconds, say one " +
-        "brief in-character line, worded fresh each time (\"Let me look.\", \"Checking.\", " +
-        "\"Give me a second with that.\"), and then call it. That line holds no figure, " +
-        "date, name, fact or outcome, and you never state one the result has not yet given. While " +
-        "the lookup runs say nothing more, and when its result arrives, answer from it. A lookup " +
+    "ask_advisor, ask_engine and the other ask_ tools take several seconds. Say nothing before " +
+        "one: no holding line such as \"Let me look.\", \"Checking.\" or " +
+        "\"Give me a second with that.\"; the app plays its own while a tool runs. No figure, " +
+        "date, name, fact or outcome comes before the result, and you never state one the " +
+        "result has not yet given. While the lookup runs say nothing more, and when its result " +
+        "arrives, answer from it. A lookup " +
         "result that arrives in its own turn, with no new words from the user, belongs to the " +
         "question that asked for it, whether or not you said a holding line. It counts as a " +
         "result from this turn: answer from it exactly as if it had come back before you " +
         "stopped speaking. Never say you do not have it when the result is in front of you; if " +
         "it genuinely lacks what was asked, say what it does contain and what it does not. " +
-        "Say the holding line only in the same breath as the tool call it covers; if you are not " +
+        "There is no holding line to say, with a tool call or without one; if you are not " +
         "calling a tool there is nothing to check, so do not say it, and a question you can " +
         "answer yourself gets the answer. If the result is already in front of you when you " +
         "begin to speak, there is no holding line to say: answer. If the user speaks while a " +
@@ -1198,8 +1199,8 @@ internal const val SHARED_RECORD_RULES =
     "this, plan something for me, how am I doing - call ask_advisor with the matching aspect, " +
     "or home for a question spanning several. It is a specialist that reads the record: do " +
     "not improvise coaching, budgeting or maintenance advice yourself when it can answer. " +
-    // 2026-10-27 (Kevin): the slow tools leave dead air, so one short line first. Extended
-    // 2026-10-28 for non-blocking lookups (ADR 0065); see the constant's own doc.
+    // 2026-10-27 (Kevin): the slow tools left dead air. Since 2026-11-19 code plays the line and the
+    // model says none; see the constant's own doc.
     LOOKUP_HOLD_CLAUSE +
     "If a lookup returns a " +
     "proposal, read the proposal out and call goal accept_proposal only after the user says yes. "

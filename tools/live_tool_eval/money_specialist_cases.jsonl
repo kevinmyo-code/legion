@@ -1,0 +1,7 @@
+{"say": "how much do I have left", "tool": "get_balance"}
+{"say": "what's left", "tool": "get_balance"}
+{"say": "how much do I have left to spend this month", "tool": "get_monthly_spend", "view": ["left"], "category": false}
+{"say": "what's left this month", "tool": "get_monthly_spend", "view": ["left"], "category": false}
+{"say": "how much can I still spend", "tool": "get_monthly_spend", "view": ["left"], "category": false}
+{"say": "how much did I spend on groceries this month", "tool": "get_monthly_spend", "category": true}
+{"say": "how much have I spent this month", "tool": "get_monthly_spend", "view": ["total", ""], "category": false}

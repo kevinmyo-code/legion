@@ -50,6 +50,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
+from agents.voice.speech import MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS
 from api.schema import DetailSerializer
 from assistant import cascade, live, read_through, turn_slots, voice_engine
 from assistant.companions import companion_for
@@ -775,11 +776,6 @@ class AssistantCompanionView(APIView):
 # POST /api/assistant/turn (ADR 0102)
 # =============================================================================
 
-# The longest utterance a turn takes, and so the most audio bytes (16 kHz, 16-bit mono). The
-# browser stops recording at this too (`frontend/src/assistant/endpointer.ts`).
-# Spec 13: the phone's utterance cap.
-MAX_UTTERANCE_SECONDS = 28
-MAX_AUDIO_BYTES = MAX_UTTERANCE_SECONDS * 16_000 * 2
 MAX_TYPED_CHARS = 2_000
 MAX_PREFACE_CHARS = 400
 
@@ -930,7 +926,7 @@ def _cascade_clients():
     """The text model and the speech client, on the engine's key. Tests replace this."""
     from agents.runtime.model import GeminiClient
     from assistant.prompt_cache import CachingModel
-    from assistant.speech import GeminiSpeech
+    from agents.voice.speech import GeminiSpeech
 
     return (
         CachingModel(GeminiClient(key=gemini_key)),

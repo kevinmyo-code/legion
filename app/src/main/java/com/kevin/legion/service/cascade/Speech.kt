@@ -79,6 +79,16 @@ interface TextToSpeech {
     fun warm(lines: Collection<String>): Int = 0
 
     /**
+     * Another render ([take] > 0) of a kept line, kept apart from the first ([Backchannel.TAKES]). A
+     * voice that keeps one render answers with its only one.
+     */
+    fun speakTake(text: String, take: Int): SpeechClip = speak(text)
+
+    fun inHandTake(text: String, take: Int): Boolean = inHand(text)
+
+    fun warmTakes(lines: Collection<String>, take: Int): Int = if (take == 0) warm(lines) else 0
+
+    /**
      * True when the voice performs expression tags ([TtsTags]) instead of reading them aloud: Gemini
      * TTS does; any other voice gets every tag stripped.
      */

@@ -40,7 +40,9 @@ import java.time.format.DateTimeFormatter
  *
  * Optional: `LEGION_VOICE_EVAL_MODEL` (default the cascade's own model),
  * `LEGION_VOICE_EVAL_OUT` (log file; default `app/build/voice-eval/eval-<model>.log`),
- * `LEGION_VOICE_EVAL_ONLY` (comma list of case ids), `LEGION_VOICE_EVAL_NO_CACHE=1` (inline only).
+ * `LEGION_VOICE_EVAL_ONLY` (comma list of case ids), `LEGION_VOICE_EVAL_NO_CACHE=1` (inline only),
+ * `LEGION_VOICE_EVAL_VOICE_CLAUSE_FILE` (a file whose text replaces [CascadePrompt.VOICE_CLAUSE], to run
+ * the same cases against an older wording: the before half of a prompt change).
  *
  * Seeds [VoiceEvalFixture] (made-up data) into a fresh Room database and runs every case through
  * [VoiceEvalHarness]. Refuses to start if an engine is configured in this JVM, so a tool the model
@@ -94,7 +96,7 @@ class VoiceEvalRun {
 
         val brain = AriaBrain.get(context)
         val split = CascadePrompt.split(brain.buildBaseInstruction())
-        val prefix = CascadePrefix(model, split.cacheable, CascadeRules.declarations(LiveToolbox.declarations()))
+        val prefix = CascadePrefix(model, withVoiceClause(split.cacheable), CascadeRules.declarations(LiveToolbox.declarations()))
         val preamble = CascadePrompt.preamble(split.volatile, brain.buildLiveContext())
         val transport = OkHttpGemini(key = { key })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -114,8 +116,8 @@ class VoiceEvalRun {
             // What the prompt was built from, so a laptop run can be compared with a phone's `pack=`.
             out(
                 VoiceEvalHarness.TEST_TAG,
-                "prompt pack=${brain.basePackToken} instruction_chars=${split.cacheable.length} " +
-                    "declarations=${prefix.functionDeclarations.length()}",
+                "prompt pack=${brain.basePackToken} instruction_chars=${prefix.systemInstruction.length} " +
+                    "voice_clause=${if (prefix.systemInstruction == split.cacheable) "current" else "replaced"} declarations=${prefix.functionDeclarations.length()}",
             )
             preamble.lines().filter { it.isNotBlank() }.forEach { out(VoiceEvalHarness.TEST_TAG, "preamble ${it.take(300)}") }
             val harness = VoiceEvalHarness(context, transport, cache, prefix, preamble, out)
@@ -132,6 +134,14 @@ class VoiceEvalRun {
     }
 
     private fun env(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+
+    /** The instruction with an older voice clause swapped in (`LEGION_VOICE_EVAL_VOICE_CLAUSE_FILE`), else as built. */
+    private fun withVoiceClause(cacheable: String): String {
+        val clause = env("LEGION_VOICE_EVAL_VOICE_CLAUSE_FILE")?.let { File(it).readText().trim() } ?: return cacheable
+        val swapped = cacheable.replace(CascadePrompt.VOICE_CLAUSE, clause)
+        check(swapped != cacheable) { "the voice clause was not found to replace" }
+        return swapped
+    }
 
     private companion object {
         val STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS")

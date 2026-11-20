@@ -115,6 +115,20 @@ internal object ToolFillers {
     /** [say] now (null: nothing in memory), [fetch] for next time (null: nothing to fetch). */
     data class Choice(val say: String?, val fetch: String?)
 
+    /**
+     * Whether the planned line still plays once its wait is over. A slow tool's line is said as the
+     * call starts, so "still running" is not asked of it: its call may not have reached the executor
+     * yet when this runs (the same single-thread loop queues both). A late line plays only while a
+     * tool is still running. Never after the answer's text, never twice a turn, never for an old turn.
+     */
+    fun stillDue(
+        slow: Boolean,
+        sameTurn: Boolean,
+        toolsRunning: Boolean,
+        answerStarted: Boolean,
+        played: Boolean,
+    ): Boolean = sameTurn && !answerStarted && !played && (slow || toolsRunning)
+
     /** One of [lines], never [last] when there is another. */
     fun pick(lines: List<String>, last: String?, index: Int): String {
         val options = lines.filter { it != last }.ifEmpty { lines }

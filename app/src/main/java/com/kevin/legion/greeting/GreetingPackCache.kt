@@ -317,7 +317,7 @@ class GreetingPackCache(
         private const val MAX_LEADS_KEPT = 50
 
         /** The last hellos handed back as wording not to reuse. */
-        private const val HELLOS_KEPT = 2
+        private const val HELLOS_KEPT = 5
 
         /** The screen-on timer's period (`CascadeWarmup`): a pack at most this old plus a fetch. */
         const val TIMER_MS = 10 * 60_000L

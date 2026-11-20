@@ -391,4 +391,28 @@ class CascadeRulesTest {
         assertFalse(CascadeRules.handOverSaysOwed("open", phoneFault = false))
         assertFalse("a crash goes straight to the record and the tone", CascadeRules.handOverSaysOwed("crash", phoneFault = true))
     }
+
+    @Test
+    fun `the 500 ms finished end is on only where Smart Turn runs on the phone`() {
+        fun plan(serviceEnds: Boolean, smart: Boolean) = CascadeRules.turnPlan(
+            serviceEndsTurns = serviceEnds, smartSetting = smart, smartTurnReady = true,
+            bargeSetting = false, route = AudioRoute.PHONE_SPEAKER, inCall = false,
+        )
+        assertEquals(EndOfTurnPolicy.FINISHED_MS, plan(serviceEnds = false, smart = true).endFinishedMs)
+        assertEquals(EndOfTurnPolicy.BASE_MS, plan(serviceEnds = false, smart = false).endFinishedMs)
+        assertEquals(EndOfTurnPolicy.CAP_MS, plan(serviceEnds = true, smart = true).endFinishedMs)
+    }
+
+    @Test
+    fun `code's write lines with no title are kept like the fillers`() {
+        val fixed = ScriptedLines.FIXED_DONE_LINES
+        assertTrue(ScriptedLines.GENERIC_DONE in fixed)
+        assertTrue(ScriptedLines.UNCONFIRMED_ONE in fixed)
+        assertTrue(fixed.size > 2)
+        for (line in fixed) {
+            assertFalse(line, line.contains("%s"))
+            assertTrue(line, line in ScriptedLines.KEEP)
+        }
+        assertTrue(fixed.filter { it.startsWith("Done: ") }.all { it.endsWith(".") })
+    }
 }

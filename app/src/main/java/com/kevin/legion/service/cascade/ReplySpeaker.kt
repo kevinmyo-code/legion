@@ -56,6 +56,8 @@ internal class ReplySpeaker(
      * yet. Half-duplex reopens the mic from here until the answer starts (2026-11-17).
      */
     private val onFillerPlayed: () -> Unit = {},
+    /** A scripted filler's first audio (its words, for the audit's own filler line; never captions or history). */
+    private val onFillerStarted: (clipText: String) -> Unit = {},
 ) {
     sealed interface Outcome {
         data object Played : Outcome
@@ -301,7 +303,7 @@ internal class ReplySpeaker(
             }
             synchronized(started) { started.add(clip) }
             // Captions, the audit and history see the words only, never a tag.
-            if (!isFiller) onClipStarted(TtsTags.strip(clip.text))
+            if (isFiller) onFillerStarted(TtsTags.strip(clip.text)) else onClipStarted(TtsTags.strip(clip.text))
             if (isFiller && !anyFillerAudio && !anyAudio) {
                 anyFillerAudio = true
                 onFirstAudio(clip.text, true)

@@ -32,6 +32,8 @@ internal class TurnTaker(
     private val sink: Sink,
     /** [EndOfTurnPolicy]'s silence end; Live never passes it (see that parameter's doc). */
     endBaseMs: Int = EndOfTurnPolicy.BASE_MS,
+    /** [EndOfTurnPolicy]'s end after a Smart Turn "done"; the base (off) unless the caller asks. */
+    endFinishedMs: Int = endBaseMs,
 ) {
     interface Sink {
         fun sendActivityStart()
@@ -53,7 +55,11 @@ internal class TurnTaker(
     val manual = config.manualActivity
     @Volatile var bargeIn = config.bargeIn
         private set
-    private val policy = EndOfTurnPolicy(smartAvailable = config.smartTurn && smartTurn != null, baseMs = endBaseMs)
+    private val policy = EndOfTurnPolicy(
+        smartAvailable = config.smartTurn && smartTurn != null,
+        baseMs = endBaseMs,
+        finishedMs = endFinishedMs,
+    )
     private val gate = BargeInGate()
 
     private val ring = ByteArray(maxOf(PRE_ROLL_MS, BARGE_PRE_ROLL_MS) * BYTES_PER_MS)

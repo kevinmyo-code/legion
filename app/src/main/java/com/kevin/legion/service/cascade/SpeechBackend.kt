@@ -60,6 +60,9 @@ internal class TurnUtterance(
 ) : SttUtterance by inner {
     private val kept = ByteArrayOutputStream()
 
+    /** This utterance continues [resumedFrom], heard through a half-duplex backchannel ([ClipListen]). */
+    @Volatile var resumedFrom: TurnUtterance? = null
+
     /** Cloud drafts started for this utterance (each is a paid transcription and model call). */
     private val cloudDrafts = java.util.concurrent.atomic.AtomicInteger(0)
 

@@ -186,7 +186,10 @@ class CascadeWiringTest {
     @Test
     fun `the mic feeds turns under the swap lock, and a turn in progress keeps its plan`() {
         val s = session()
-        assertTrue(bodyOf(s, "startMic").contains("synchronized(turnLock) { turnTaker?.feed("))
+        assertTrue(bodyOf(s, "startMic").contains("onMicBuffer(buf, n)"))
+        val feed = bodyOf(s, "onMicBuffer")
+        assertTrue(feed.contains("synchronized(turnLock)"))
+        assertTrue(feed.contains("taker.feed(buf, n, playbackActive)"))
         val replan = bodyOf(s, "replan")
         assertTrue(replan.contains("synchronized(turnLock)"))
         assertTrue(replan.contains("if (currentUtt != null)"))

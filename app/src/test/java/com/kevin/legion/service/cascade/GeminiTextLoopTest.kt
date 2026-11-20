@@ -480,10 +480,10 @@ class GeminiTextLoopTest {
 
     @Test
     fun `filler with no tool, content after a tool, or filler before more content goes as it is`() = runBlocking<Unit> {
-        // No tool called: "On it." is the whole reply and is said.
-        val a = Scripted(ok(textEv("On it.")))
+        // No tool called, a line that is not exactly a filler: said as it is, one round.
+        val a = Scripted(ok(textEv("On it, timer set.")))
         val ra = loop(a).answer(prefix, contents, okTool, Collect())
-        assertEquals("On it.", ra.text)
+        assertEquals("On it, timer set.", ra.text)
         assertEquals(0, ra.fillerContinued)
         assertEquals(1, a.bodies.size)
         // After a tool, a line with content is said, streamed, no extra round.
@@ -494,6 +494,62 @@ class GeminiTextLoopTest {
             assertEquals(line, 0, r.fillerContinued)
             assertEquals(line, 2, t.bodies.size)
             assertEquals(line, line, l.text.toString())
+        }
+    }
+
+    // --- a holding line with no tool is never the answer (2026-11-19, trace item e) ----------------
+
+    @Test
+    fun `a reply that is only a holding line, no tool, is withheld and asked once more with tools`() = runBlocking<Unit> {
+        val t = Scripted(ok(textEv("Let "), textEv("me look.")), ok(textEv("It closes at nine.")))
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, okTool, l)
+        assertNull(r.failure)
+        assertEquals(1, r.fillerContinued)
+        assertEquals(2, t.bodies.size)
+        assertEquals("It closes at nine.", l.text.toString())
+        val again = t.bodies[1]
+        assertTrue("tools stay available", mode(again) != "NONE")
+        val c = again.getJSONArray("contents")
+        assertEquals("model", c.getJSONObject(c.length() - 2).getString("role"))
+        assertEquals(FillerTurn.FIRST_NOTE, c.getJSONObject(c.length() - 1).getJSONArray("parts").getJSONObject(0).getString("text"))
+    }
+
+    @Test
+    fun `asked again, the model may still call the tool it meant to`() = runBlocking<Unit> {
+        val t = Scripted(ok(textEv("Checking.")), ok(callEv("get_weather")), ok(textEv("It is mild.")))
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, okTool, l)
+        assertNull(r.failure)
+        assertEquals(listOf(listOf("get_weather")), l.calls)
+        assertEquals("It is mild.", l.text.toString())
+    }
+
+    @Test
+    fun `a holding line twice with no tool ends on the failure line, two rounds, nothing of it spoken`() = runBlocking<Unit> {
+        val t = Scripted(ok(textEv("Checking. Let me look.")), ok(textEv("One moment.")))
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, okTool, l)
+        assertEquals(TextFailure.NO_TEXT, r.failure)
+        assertTrue(r.fillerAgain)
+        assertEquals(2, t.bodies.size)
+        assertEquals("", l.text.toString())
+    }
+
+    @Test
+    fun `filler lines before content are dropped, joined or not, and the content streams in one round`() = runBlocking<Unit> {
+        for ((said, heard) in listOf(
+            "Checking.It is mild." to "It is mild.",
+            "Checking. Let me look. It is mild." to "It is mild.",
+            "Only two left." to "Only two left.",
+            "One moment, please hold the line steady." to "One moment, please hold the line steady.",
+        )) {
+            val t = Scripted(ok(*said.chunked(4).map { textEv(it) }.toTypedArray()))
+            val l = Collect()
+            val r = loop(t).answer(prefix, contents, okTool, l)
+            assertEquals(said, 1, t.bodies.size)
+            assertEquals(said, 0, r.fillerContinued)
+            assertEquals(said, heard, l.text.toString())
         }
     }
 

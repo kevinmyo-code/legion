@@ -135,7 +135,8 @@ class AriaBrainHonestyClauseTest {
     @Test
     fun `the lookup holding-line clause is wired in and forbids an early fact`() {
         assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
-        // The example is three varied lines since 2026-10-28 (ticket 06); the rules below are not.
+        // Named since 2026-11-19 as lines the model must NOT say (the app plays its own); the rules below stand.
+        assertTrue(LOOKUP_HOLD_CLAUSE.contains("Say nothing before one: no holding line such as"))
         for (line in listOf("Let me look.", "Checking.", "Give me a second with that.")) {
             assertTrue(LOOKUP_HOLD_CLAUSE.contains(line))
         }
@@ -229,7 +230,8 @@ class AriaBrainHonestyClauseTest {
     fun `a holding line covers a tool call, never a result already in hand`() {
         assertTrue(SHARED_INSTRUCTIONS.contains(LOOKUP_HOLD_CLAUSE))
         for (phrase in listOf(
-            "Say the holding line only in the same breath as the tool call it covers",
+            // 2026-11-19 (Kevin, speed plan item 3): code owns the holding line now, the model says none.
+            "There is no holding line to say, with a tool call or without one",
             "if you are not calling a tool there is nothing to check, so do not say it",
             "a question you can answer yourself gets the answer",
             "If the result is already in front of you when you begin to speak, there is no holding " +

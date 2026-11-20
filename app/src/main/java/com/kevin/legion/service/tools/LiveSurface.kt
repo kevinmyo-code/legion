@@ -344,7 +344,7 @@ internal object LiveSurface {
                 Action("ask_goals", "ask_goals", "the goals he set and an advisor's coaching"),
                 Action(
                     "ask_pantry", "ask_pantry",
-                    "groceries bought, from receipts: items, macros, grocery spend; not the shopping list",
+                    "old grocery receipts: items, macros; not the list, not a month's spend",
                 ),
             ),
             paramNotes = ROUTER_NOTES,
@@ -358,7 +358,7 @@ internal object LiveSurface {
                 Action("ask_mail", "ask_mail", "his Gmail: find or read a message"),
                 Action(
                     "ask_money", "ask_money",
-                    "balances, spending by budget category, recent and pending transactions",
+                    "balances, budget left, a month's spend in total or by category (groceries too), transactions",
                 ),
                 Action(
                     "ask_area", "ask_area",

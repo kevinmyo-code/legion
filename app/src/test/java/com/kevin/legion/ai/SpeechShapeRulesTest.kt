@@ -16,8 +16,10 @@ class SpeechShapeRulesTest {
         assertTrue(d.contains("no markdown"))
         assertTrue(d.contains("digit by digit"))
         assertTrue(d.contains("one short word of acknowledgement at most"))
-        // 2026-10-28: the holding line is varied now, not the one fixed "One moment." (ticket 06).
-        assertTrue(d.contains("the short holding line before a slow tool still stands"))
+        // 2026-11-19: code owns the holding line; length is brief but varied (Kevin: "varied wins").
+        assertTrue(d.contains("no holding line before a tool"))
+        assertTrue(d.contains("vary sentence length"))
+        assertFalse(d.contains("short sentences"))
     }
 
     @Test

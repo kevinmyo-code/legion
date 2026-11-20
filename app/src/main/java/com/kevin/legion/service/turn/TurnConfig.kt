@@ -60,6 +60,7 @@ object VoiceTurnSettings {
     private const val PREFS = "voice_turn_settings"
     private const val KEY_SMART_END = "smart_end_of_turn"
     private const val KEY_BARGE_IN = "barge_in"
+    private const val KEY_BACKCHANNEL_HALF_DUPLEX = "backchannel_half_duplex"
     private const val KEY_ASYNC_LOOKUPS = "async_lookups"
     private const val KEY_AUDIT_LOG = "conversation_audit_log"
     private const val KEY_KEEP_CONVERSATION_LOG = "conversation_log_keep_and_send"
@@ -88,6 +89,15 @@ object VoiceTurnSettings {
     /** Default ON (Kevin, 2026-10-27: "straight to on", no shadow mode). */
     fun smartEndOfTurn(context: Context): Boolean = prefs(context).getBoolean(KEY_SMART_END, true)
     fun setSmartEndOfTurn(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SMART_END, on).apply()
+
+    /**
+     * A backchannel ("Mm.") on a half-duplex conversation (Bluetooth, a call), with his audio kept
+     * through the clip and handed on ([com.kevin.legion.service.cascade.ClipListen]). Default OFF
+     * (blind review M1, 2026-11-19): on until Kevin has tried it in the car.
+     */
+    fun backchannelHalfDuplex(context: Context): Boolean = prefs(context).getBoolean(KEY_BACKCHANNEL_HALF_DUPLEX, false)
+    fun setBackchannelHalfDuplex(context: Context, on: Boolean) =
+        prefs(context).edit().putBoolean(KEY_BACKCHANNEL_HALF_DUPLEX, on).apply()
 
     /** Default ON; never applies over Bluetooth ([TurnConfig.decide]). */
     fun bargeIn(context: Context): Boolean = prefs(context).getBoolean(KEY_BARGE_IN, true)

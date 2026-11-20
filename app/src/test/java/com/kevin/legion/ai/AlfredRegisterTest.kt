@@ -105,11 +105,11 @@ class AlfredRegisterTest {
         assertFalse("the old flat instruction is gone", s.contains("Answer and stop"))
     }
 
-    /** The holding line is varied; the fixed one the audit heard every time stays gone. */
+    /** The fixed holding line stays gone; since 2026-11-19 the model says none (code plays its own). */
     @Test
     fun `the fixed holding line is gone from the voice delivery`() {
         assertFalse(ALFRED.delivery.contains("\"One moment.\""))
-        assertTrue(ALFRED.delivery.contains("worded fresh each time"))
+        assertTrue(ALFRED.delivery.contains("no holding line before a tool"))
         assertFalse(clause.contains("then you stop"))
     }
 

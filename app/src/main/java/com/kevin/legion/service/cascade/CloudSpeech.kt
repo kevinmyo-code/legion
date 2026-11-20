@@ -299,6 +299,8 @@ internal class GeminiStt(
     private val instruction: () -> String = { CloudSpeechWire.STT_INSTRUCTION },
     /** A request with no answer by then is abandoned and asked again, once ([attemptTimeoutFor]). */
     private val attemptTimeoutMs: (audioMs: Long) -> Long = { attemptTimeoutFor(it) },
+    /** A request still out by then gets a second, identical one beside it ([SttHedge.hedgeAfterFor]). */
+    private val hedgeAfterMs: (audioMs: Long) -> Long = { SttHedge.hedgeAfterFor(it) },
 ) : SpeechToText {
     override val endsTurns = false
     private val ids = AtomicInteger(-1)
@@ -310,7 +312,12 @@ internal class GeminiStt(
      * each request's counts (a speculative draft holds them until it is kept or dropped).
      */
     @Suppress("ReturnCount", "CyclomaticComplexMethod") // one exit per outcome; the hung-request retry
-    suspend fun transcribe(pcm: ByteArray, report: (CallUsage) -> Unit = usage): SttResult {
+    suspend fun transcribe(
+        pcm: ByteArray,
+        report: (CallUsage) -> Unit = usage,
+        /** False for a speculative draft: its final is transcribed anyway, so a slow draft is not hedged. */
+        hedged: Boolean = true,
+    ): SttResult {
         val audioMs = pcm.size / BYTES_PER_MS
         if (pcm.size < minAudioBytes) return SttResult.Text("", null, audioMs.toLong(), 0)
         val body = CloudSpeechWire.transcribe(
@@ -321,17 +328,30 @@ internal class GeminiStt(
         val started = now()
         // 2026-11-17: three of 34 requests hung 10 to 17 s (every good one took 2.4 s or less) and the
         // turn waited out the 8 s timeout. A request that has not answered in its deadline (longer for
-        // longer audio) is abandoned and the same audio asked again on a fresh call, once.
+        // longer audio) is abandoned and the same audio asked again on a fresh call, once. Since
+        // 2026-11-19 the second request also starts beside a first that is merely slow ([SttHedge]).
         val deadline = attemptTimeoutMs(audioMs.toLong())
-        val first = withTimeoutOrNull(deadline) { attempt(body, audioMs.toLong(), report) }
-        var (outcome, turn) = first ?: (StreamOutcome.Network("hung") to StreamedTurn())
-        if (first == null || CloudSpeechWire.worthRetry(outcome)) {
-            val why = if (first == null) "hung_$deadline" else CloudSpeechWire.token(outcome)
-            log("stt_cloud_retry after=$why")
-            val again = withTimeoutOrNull(deadline) { attempt(body, audioMs.toLong(), report) }
-                ?: return SttResult.Failed("timeout")
-            outcome = again.first
-            turn = again.second
+        val hedge = if (hedged) hedgeAfterMs(audioMs.toLong()) else NO_HEDGE_MS
+        val race = SttHedge.race(
+            hedgeAfterMs = hedge,
+            attemptTimeoutMs = deadline,
+            attempt = { attempt(body, audioMs.toLong(), report) },
+            good = { it.first == StreamOutcome.Ok },
+            worthRetry = { CloudSpeechWire.worthRetry(it.first) },
+            onSecond = { why, got ->
+                when (why) {
+                    SttHedge.Why.SLOW -> log("stt_cloud_hedge after_ms=$hedge")
+                    SttHedge.Why.HUNG -> log("stt_cloud_retry after=hung_$deadline")
+                    SttHedge.Why.FAILED -> log("stt_cloud_retry after=${got?.let { CloudSpeechWire.token(it.first) }}")
+                }
+            },
+        )
+        val (outcome, turn) = when (race) {
+            is SttHedge.Result.Won -> {
+                if (race.request == 1) log("stt_cloud_hedge_won second")
+                race.value
+            }
+            is SttHedge.Result.Lost -> race.last ?: return SttResult.Failed("timeout")
         }
         val ms = now() - started
         when (outcome) {
@@ -440,6 +460,9 @@ internal class GeminiStt(
             return (ATTEMPT_TIMEOUT_MS + extraSeconds * ATTEMPT_PER_SECOND_MS).coerceAtMost(ATTEMPT_CAP_MS)
         }
 
+        /** Longer than any attempt: the second request starts only on a failure or a hang. */
+        private const val NO_HEDGE_MS = Long.MAX_VALUE
+
         const val ATTEMPT_TIMEOUT_MS = 3_500L
         const val ATTEMPT_CAP_MS = 8_000L
         private const val ATTEMPT_BASE_AUDIO_MS = 4_000L
@@ -503,9 +526,11 @@ internal class GeminiTts(
 
     override val performsTags = true
 
-    override fun speak(text: String): SpeechClip {
-        val clip = Clip(ids.addAndGet(2), text)
-        val key = keyOf(text)
+    override fun speak(text: String): SpeechClip = speakTake(text, 0)
+
+    override fun speakTake(text: String, take: Int): SpeechClip {
+        val clip = Clip(ids.addAndGet(2), text, take = take)
+        val key = keyOf(text, take)
         val cached = if (text in keepLines) kept[key] else null
         when {
             text.isBlank() -> clip.finish(TtsOutcome.Done(0, null))
@@ -519,19 +544,23 @@ internal class GeminiTts(
     }
 
     /** A kept line: its audio is in memory, or on disk and now loaded into memory ([KeptLineAudio]). */
-    override fun inHand(text: String): Boolean = text in keepLines && kept[keyOf(text)] != null
+    override fun inHand(text: String): Boolean = inHandTake(text, 0)
+
+    override fun inHandTake(text: String, take: Int): Boolean = text in keepLines && kept[keyOf(text, take)] != null
 
     /**
      * Renders each kept line in [lines] that has no audio yet, so its first use plays from memory
      * (2026-11-16: the first filler cost a TTS round trip, 805 ms measured). Nobody listens to these
      * clips; a finished one stores its audio in [kept] as a spoken one would.
      */
-    override fun warm(lines: Collection<String>): Int {
+    override fun warm(lines: Collection<String>): Int = warmTakes(lines, 0)
+
+    override fun warmTakes(lines: Collection<String>, take: Int): Int {
         var asked = 0
         for (text in lines.distinct()) {
-            val due = text.isNotBlank() && text in keepLines && kept[keyOf(text)] == null
-            if (!due || !warming.add(keyOf(text))) continue
-            Clip(ids.addAndGet(2), text, warmUp = true).start()
+            val due = text.isNotBlank() && text in keepLines && kept[keyOf(text, take)] == null
+            if (!due || !warming.add(keyOf(text, take))) continue
+            Clip(ids.addAndGet(2), text, warmUp = true, take = take).start()
             asked++
         }
         if (asked > 0) log("tts_warm lines=$asked")
@@ -548,6 +577,8 @@ internal class GeminiTts(
         override val text: String,
         /** A warm-up fetch: its own gate, behind every reply ([warmGate]). */
         private val warmUp: Boolean = false,
+        /** Which render of a kept line this is ([speakTake]); 0 is the line's own. */
+        private val take: Int = 0,
     ) : StreamingSpeechClip {
         override val frames = Channel<ByteArray>(Channel.UNLIMITED)
         private val outcome = CompletableDeferred<TtsOutcome>()
@@ -592,7 +623,7 @@ internal class GeminiTts(
                                 } else {
                                     // Filed under the voice that actually spoke it (a fallback may have changed it).
                                     if (text in keepLines) {
-                                        kept[keyOf(text)] = synchronized(whole) { whole.toByteArray() }
+                                        kept[keyOf(text, take)] = synchronized(whole) { whole.toByteArray() }
                                     }
                                     TtsOutcome.Done(bytes / BYTES_PER_MS, firstAudioMs)
                                 }
@@ -601,7 +632,7 @@ internal class GeminiTts(
                 }
             }.also { j ->
                 j.invokeOnCompletion {
-                    if (warmUp) warming.remove(keyOf(text))
+                    if (warmUp) warming.remove(keyOf(text, take))
                     finish(TtsOutcome.Cancelled)
                 }
             }
@@ -714,7 +745,8 @@ internal class GeminiTts(
     }
 
     // The voice actually speaking is in the key: a Puck clip is never replayed as another voice, or the reverse.
-    private fun keyOf(text: String) = "cloud|${CloudSpeechWire.TTS_MODEL}|$voiceNow|$sampleRate|$text"
+    private fun keyOf(text: String, take: Int = 0) =
+        "cloud|${CloudSpeechWire.TTS_MODEL}|$voiceNow|$sampleRate|$text" + if (take > 0) "#take$take" else ""
 
     companion object {
         /** 24 kHz PCM16 mono. */
