@@ -12,9 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
-import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.SocketException
 import java.util.Collections

@@ -10,9 +10,7 @@ import com.kevin.legion.carlink.protocol.PhoneFix
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
-import java.net.Inet4Address
 import java.net.InetAddress
 
 /** The location sender's loop with a fake clock, a fake UDP port and a fake location source. */

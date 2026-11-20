@@ -120,9 +120,9 @@ private const val DIGIT_GROUP = 3
 @Composable
 private fun PairButtons(state: CarLinkUiState, actions: CarLinkActions) {
     Row(Modifier.fillMaxWidth()) {
-        if (state.canPair) {
+        if (state.canPair && state.showScan) {
             val label = if (state.phase == CarLinkPhase.PAIRED) "Pair again" else "Scan the code"
-            DeckButton(text = label, onClick = actions.scan, enabled = state.scannerAvailable)
+            DeckButton(text = label, onClick = actions.scan)
         }
         if (state.canCancel) {
             Spacer(Modifier.width(8.dp))
@@ -133,13 +133,11 @@ private fun PairButtons(state: CarLinkUiState, actions: CarLinkActions) {
             DeckButton(text = "OK", onClick = actions.dismiss)
         }
     }
-    if (state.canPair && !state.scannerAvailable) {
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "No code scanner is built in yet, so pairing waits on that choice.",
-            style = LegionType.stamp,
-            color = LocalLegionSemantics.current.faint,
-        )
+    if (state.canPair) {
+        state.scanNote?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(it, style = LegionType.stamp, color = LocalLegionSemantics.current.faint)
+        }
     }
 }
 

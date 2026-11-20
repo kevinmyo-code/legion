@@ -30,6 +30,9 @@ interface QrScanner {
     fun scan(onResult: (String?) -> Unit)
 }
 
+/** What a build with no scanner and no paste field says instead of a scan button. */
+const val SCAN_LATER = "Scanning arrives in a later update."
+
 class NoQrScannerChosen : QrScanner {
     override val available = false
     override fun scan(onResult: (String?) -> Unit) = onResult(null)
@@ -118,6 +121,13 @@ class CarLinkViewModel(
             sendLocation = s.sendLocation,
             carKeySet = s.carKeySet,
             scannerAvailable = scanner.available,
+            // No dead button: with no scanner the scan button is not drawn, and the words say why.
+            showScan = scanner.available,
+            scanNote = when {
+                scanner.available -> null
+                debugPaste -> "No code scanner yet: this debug build pairs from pasted code text below."
+                else -> SCAN_LATER
+            },
             debugPaste = debugPaste,
             note = s.note?.let(CarLinkWords::note),
             canForget = s.link == LinkState.PAIRED || s.link == LinkState.BROKEN,

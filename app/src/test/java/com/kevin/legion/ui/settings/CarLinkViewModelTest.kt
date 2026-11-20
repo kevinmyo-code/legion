@@ -26,7 +26,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 
 /** The Car link screen's ViewModel over the real controller, with a scripted head unit on a fake connection. */
@@ -182,7 +181,7 @@ class CarLinkViewModelTest {
         assertEquals(CarLinkPhase.NOT_PAIRED, release.state.value.phase)
     }
 
-    @Ignore("red until fix scan note") @Test fun `a build with no scanner and no paste field says scanning comes later, with no dead button`() {
+    @Test fun `a build with no scanner and no paste field says scanning comes later, with no dead button`() {
         val release = CarLinkViewModel(controller, NoQrScannerChosen(), debugPaste = false, scope = scope)
         assertEquals("Scanning arrives in a later update.", release.state.value.scanNote)
         assertFalse(release.state.value.showScan)
