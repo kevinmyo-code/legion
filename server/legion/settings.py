@@ -218,6 +218,10 @@ INSTALLED_APPS = [
     # REST door, advisor advice and proactive raises (private to their member) and voice-logged
     # pending transactions (`public.advisor_advice`, `pending_transactions`, `proactive_raises`).
     "homes",
+    # T3b: a head unit's own engine sign-in, minted by the member's phone while it pairs
+    # (`public.headunit_credentials`, private to that member, hashes only). DARK: every route
+    # refuses unless LEGION_HEADUNIT_SIGNIN=on.
+    "headunit_signin",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
