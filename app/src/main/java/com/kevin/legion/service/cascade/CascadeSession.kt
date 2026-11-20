@@ -1137,8 +1137,8 @@ internal class CascadeSession(
         val listen = clipListen ?: return
         clipListen = null
         val first = backchannelUtt ?: return
-        val firstRunning = turnJob?.isActive == true && turn?.writeCalled != true
-        if (!listen.resumes() || !firstRunning || first === u) return
+        val takesOver = ClipListen.takesOver(turnJob?.isActive == true, turn?.writeCalled == true)
+        if (!listen.resumes() || !takesOver || first === u) return
         val prefix = listen.prefix(TurnTaker.PRE_ROLL_MS * PCM_BYTES_PER_MS)
         u.audio(prefix, 0, prefix.size)
         u.resumedFrom = first
@@ -1146,8 +1146,15 @@ internal class CascadeSession(
     }
 
     /** A start that resumed through a backchannel ([resumeThroughClip]): the turn goes on, true. */
+    @Suppress("ReturnCount") // not resumed, a write already called, taken over
     private fun continuesFirstHalf(): Boolean {
         val first = currentUtt?.resumedFrom ?: return false
+        // Asked again here: a write that started after the mic thread's check must not run twice.
+        if (!ClipListen.takesOver(turnJob?.isActive == true, turn?.writeCalled == true)) {
+            currentUtt?.resumedFrom = null
+            LiveLatency.log("LIVE_TURN", "resume_declined reason=write_called")
+            return false
+        }
         takeOverFirstHalf(first)
         uttOverReply = true
         followUpEvent(FollowUpWindow.Event.UserSpeech)

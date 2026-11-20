@@ -191,7 +191,9 @@ class VoiceSpeedWiringTest {
         val start = s.substring(s.indexOf("override fun sendActivityStart()"))
         assertTrue(start.indexOf("resumeThroughClip(u)") in start.indexOf("currentUtt = u") until start.indexOf("override fun sendAudio("))
         val resume = bodyOf(s, "resumeThroughClip")
-        assertTrue(resume.contains("turn?.writeCalled != true"))
+        assertTrue(resume.contains("ClipListen.takesOver(turnJob?.isActive == true, turn?.writeCalled == true)"))
+        // Asked again at the takeover on the main loop (review of aed1c786, #3).
+        assertTrue(bodyOf(s, "continuesFirstHalf").contains("ClipListen.takesOver("))
         assertTrue(resume.contains("listen.prefix(TurnTaker.PRE_ROLL_MS"))
         val take = bodyOf(s, "takeOverFirstHalf")
         for (step in listOf("merged = true", "first.cancel()", "turnJob?.cancel()")) assertTrue(step, take.contains(step))

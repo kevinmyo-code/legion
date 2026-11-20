@@ -70,6 +70,14 @@ internal class ClipListen(
     companion object {
         private const val PCM_BYTES_PER_MS = 32
 
+        /**
+         * Whether a resume may take over the first half's turn: only while it still runs and no write
+         * of it was called. Asked on the mic thread when the resume is noticed and again on the main
+         * loop at the takeover (review of aed1c786: a write that started in between ran, and the merged
+         * turn could call it again). A doubled prefix is a smaller harm than a doubled write.
+         */
+        fun takesOver(firstRunning: Boolean, writeCalled: Boolean): Boolean = firstRunning && !writeCalled
+
         /** A start this soon after the clip's settle continues his sentence. */
         const val RESUME_WINDOW_MS = 1_500L
         const val RESUME_WINDOW_BYTES = RESUME_WINDOW_MS * PCM_BYTES_PER_MS
