@@ -845,12 +845,16 @@ def test_the_command_records_the_tick(household_user, late_on, monkeypatch):
 def _stub_search(monkeypatch):
     from types import SimpleNamespace
 
+    from llm import client as llm_client
+
     ran = []
 
     def fake_search(query):
         ran.append(query)
+        # Priced as `llm.client.usage_of` prices one grounded search with no tokens.
+        usage = {"cost_estimate_micro_usd": llm_client.SEARCH_MICRO_USD}
         return SimpleNamespace(
-            answer="Made-up answer.", sources=[], search_queries=[query], model="fake", usage={}
+            answer="Made-up answer.", sources=[], search_queries=[query], model="fake", usage=usage
         )
 
     monkeypatch.setattr("engine_mcp.web_search.search", fake_search)
@@ -876,7 +880,35 @@ def test_a_task_runs_at_most_two_searches_and_each_counts_as_spend(
     assert task.searches == 2
     third = AgentTurn.objects.get().tool_calls.order_by("created_at", "id").last()
     assert (third.outcome, third.guard) == ("refused", "budget")
-    assert late.spent_today_micro_usd(household_user) >= 2 * late.SEARCH_FEE_MICRO_USD
+
+
+
+def test_one_search_is_metered_once(household_user, late_on, monkeypatch):
+    """Recheck item 2: the search tool's own row (priced with the repo's search price) is the only
+    row for a search, and the late caps count it."""
+    from llm import client as llm_client
+    from llm.models import LlmUsage
+
+    _stub_search(monkeypatch)
+    _task(household_user)
+    model = m.FakeModel(
+        [
+            m.call("web_search", {"query": "one"}),
+            m.call("web_search", {"query": "two"}),
+            m.say("Done looking."),
+        ]
+    )
+    late.run_due(lambda: model)
+    rows = LlmUsage.objects.filter(user=household_user)
+    searches = rows.exclude(feature=late.FEATURE)
+    assert searches.count() == 2
+    assert set(searches.values_list("feature", flat=True)) == {late.SEARCH_FEATURE}
+    model_cost = sum(
+        rows.filter(feature=late.FEATURE).values_list("cost_estimate_micro_usd", flat=True)
+    )
+    assert late.spent_today_micro_usd(household_user) == model_cost + (
+        2 * llm_client.SEARCH_MICRO_USD
+    )
 
 
 def test_a_round_runs_at_most_two_calls(household_user, late_on, monkeypatch):
