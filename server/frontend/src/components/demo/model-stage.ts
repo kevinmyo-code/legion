@@ -149,8 +149,7 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
 }
 
 function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, options: StageOptions): Stage {
-  // 1.5 at most: a 2x laptop screen otherwise draws each model at four times the pixels.
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderer.outputColorSpace = SRGBColorSpace
   renderer.toneMapping = ACESFilmicToneMapping
   renderer.setClearColor(STAGE_BACKGROUND, 1)
