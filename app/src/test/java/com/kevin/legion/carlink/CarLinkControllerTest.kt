@@ -284,7 +284,7 @@ class CarLinkControllerTest {
     }
 
     // ---- C3: the own-hotspot test runs again at heal time.
-    @Ignore("red until fix C3") @Test fun `a changed network whose interface is no longer the phone's hotspot is never healed`() {
+    @Test fun `a changed network whose interface is no longer the phone's hotspot is never healed`() {
         assertTrue(store.write(key, null))
         assertTrue(store.setPairingNetwork(PairingNetwork("ap-test0", "10.0.0.0", 24, ownHotspot = true)))
         hotspotNow = false

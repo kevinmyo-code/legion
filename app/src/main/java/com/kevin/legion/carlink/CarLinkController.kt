@@ -81,7 +81,7 @@ class CarLinkController(
     private val wallClock: () -> Long = System::currentTimeMillis,
     /** R1: a revoke-only record is wiped after this long with no HELLO under its key. */
     private val revokeSilenceMs: Long = 30_000L,
-    /** STUB (red step). */
+    /** Whether an interface is the phone's own hotspot NOW; asked again at heal time (C3). */
     private val ownHotspotNow: (String) -> Boolean = { false },
 ) {
     private val _status = MutableStateFlow(CarLinkStatus())
@@ -202,7 +202,9 @@ class CarLinkController(
             }
             return null
         }
-        val own = store.pairingNetwork()?.ownHotspot == true
+        // Recorded at pairing AND true now: where hotspot and Wi-Fi client share an interface name,
+        // a cafe Wi-Fi on that name must never look like a changed hotspot (C3).
+        val own = store.pairingNetwork()?.ownHotspot == true && ownHotspotNow(look.iface.name)
         val note = if (own) CarLinkNote.NETWORK_CHANGED_HEALING else CarLinkNote.NETWORK_CHANGED_REPAIR
         if (_status.value.note != note) _status.update { it.copy(networkChanged = true, note = note) }
         return if (own) PairingNetwork.of(look.iface, ownHotspot = true) else null

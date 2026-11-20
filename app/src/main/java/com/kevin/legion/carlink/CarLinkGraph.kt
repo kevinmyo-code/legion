@@ -82,6 +82,7 @@ class CarLinkGraph(private val app: Application) {
             jitterMs = { PairingRunner.jitter(kotlin.random.Random.Default) },
             sleep = { delay(it) },
             network = { store.pairingNetwork()?.look(PairingNetwork.systemInterfaces()) ?: NetworkLook.Absent },
+            ownHotspotNow = ::isTethered,
             recordNetwork = { host ->
                 val net = PairingNetwork.recordFor(host, PairingNetwork.systemInterfaces(), ::isTethered)
                 store.setPairingNetwork(net) && net != null
