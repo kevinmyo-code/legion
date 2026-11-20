@@ -167,10 +167,16 @@ class EngineConfig(
          * RFC 1918 IPv4 literals (10/8, 172.16/12, 192.168/16) and this device's own loopback;
          * any other name never counts.
          */
+        private val CANONICAL_OCTET = Regex("0|[1-9][0-9]{0,2}")
+
         fun isPrivateLanHost(host: String): Boolean {
             if (host == "localhost") return true
-            val o = host.split('.').map { it.toIntOrNull() ?: return false }
-            if (o.size != 4 || o.any { it !in 0..255 }) return false
+            // Review P3: canonical dotted decimal only. "0172" or "01" would read as octal to any
+            // resolver with inet_aton rules, i.e. a different (public) address than the one checked.
+            val parts = host.split('.')
+            if (parts.size != 4 || parts.any { !CANONICAL_OCTET.matches(it) }) return false
+            val o = parts.map { it.toInt() }
+            if (o.any { it !in 0..255 }) return false
             return o[0] == 10 || o[0] == 127 || (o[0] == 172 && o[1] in 16..31) || (o[0] == 192 && o[1] == 168)
         }
     }

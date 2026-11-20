@@ -15,6 +15,16 @@ class EngineUrlPolicyTest {
         assertFalse(EngineConfig.isValidBaseUrl("http://8.8.8.8:8000"))
     }
 
+    /** Review P3: only canonical dotted-decimal octets count (a resolver with inet_aton rules reads 0172 as octal). */
+    @Test fun nonCanonicalOctetsAreRefused() {
+        assertFalse(EngineConfig.isValidBaseUrl("http://0172.16.0.1"))
+        assertFalse(EngineConfig.isValidBaseUrl("http://10.0.0.01"))
+        assertFalse(EngineConfig.isValidBaseUrl("http://192.168.001.5"))
+        assertFalse(EngineConfig.isValidBaseUrl("http://010.0.0.1"))
+        assertTrue(EngineConfig.isValidBaseUrl("http://10.0.0.0"))
+        assertTrue(EngineConfig.isValidBaseUrl("http://192.168.100.250:8000"))
+    }
+
     @Test fun lookalikeHostsAreRefused() {
         assertFalse(EngineConfig.isValidBaseUrl("http://192.168.1.5.example.com"))
         assertFalse(EngineConfig.isValidBaseUrl("http://10.0.0.2@example.com/"))
