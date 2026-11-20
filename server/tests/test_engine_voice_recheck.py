@@ -110,7 +110,15 @@ def _tts_cost(user) -> int:
     return int(rows.aggregate(n=Sum("cost_estimate_micro_usd"))["n"] or 0)
 
 
-def test_speech_cancelled_in_flight_is_still_metered(auth_client, engine, household_user):
+def test_speech_cancelled_in_flight_is_still_metered(
+    auth_client, engine, household_user, monkeypatch
+):
+    # Every filler line already in memory, so the only speech this turn pays for is the answer's
+    # (review v1b: with an empty cache the filler lines alone made the cost above zero).
+    full = FillerAudio(spawn=lambda work: None)
+    for line in full.default_lines():
+        full._audio[(_voice(household_user), line)] = b"\x00\x00"
+    monkeypatch.setattr(pipeline, "FILLER_AUDIO", full)
     gate = threading.Event()
 
     class NoUsageSpeech(FakeSpeech):
@@ -135,7 +143,9 @@ def test_speech_cancelled_in_flight_is_still_metered(auth_client, engine, househ
     finally:
         gate.set()
     assert cancelled
-    assert _tts_cost(household_user) > 0
+    rows = LlmUsage.objects.filter(user=household_user, feature="agent_turn", model="tts")
+    # The answer's own speech, cut short with no usage reported: metered from the audio it made.
+    assert sum(r.output_tokens or 0 for r in rows) > 0
 
 
 def test_filler_warm_up_is_metered_to_the_turn_that_started_it(
