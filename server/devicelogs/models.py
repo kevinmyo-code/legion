@@ -157,14 +157,21 @@ class DeviceLog(models.Model):
     # NAV_AUDIT_RETENTION_DAYS; past its reason's retention its body is cut to these lines (then
     # line_count == nav_audit_lines, so it is cut once).
     nav_audit_lines = models.IntegerField(default=0)
-    uploader_kind = models.CharField(max_length=16, default=UPLOADER_MEMBER)
-    # The head unit whose token uploaded it; SET_NULL keeps the kind when the unit is deleted.
+    # `db_default`, not only `default`: an instance still running the previous revision inserts rows
+    # without naming this column while the migration has already run, and must still succeed.
+    uploader_kind = models.CharField(
+        max_length=16, default=UPLOADER_MEMBER, db_default=UPLOADER_MEMBER
+    )
+    # The head unit whose token uploaded it; SET_NULL keeps the kind when the unit is deleted. No
+    # index: nothing reads by it but the rare unit deletion, and building one would hold writes on a
+    # table phones upload to all day.
     headunit = models.ForeignKey(
         "headunit_signin.HeadUnitCredential",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
         related_name="+",
+        db_index=False,
     )
 
     class Meta:

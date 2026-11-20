@@ -612,6 +612,23 @@ def test_a_unit_bound_to_no_vehicle_writes_no_obd_samples(phone, on):
     assert not ObdSample.objects.exists()
 
 
+def test_the_previous_revision_can_still_insert_a_device_log(household_a, household_user):
+    """The deploy migrates while old instances still serve: an INSERT that names neither new
+    column (what the previous revision's model sends) still succeeds and reads as a member's."""
+    from devicelogs.models import DeviceLog
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "insert into public.device_logs (id, household_id, user_id, batch_id, device_label, "
+            "app_version_name, reason, line_count, raw_bytes, body_gz, demo_visitor, visit_ref, "
+            "run_id, nav_audit_lines) values (%s, %s, %s, %s, 'phone', '', 'manual', 0, 0, "
+            "'\\\\x00', false, '', '', 0)",
+            [uuid.uuid4(), household_a.id, household_user.pk, uuid.uuid4()],
+        )
+    [row] = DeviceLog.objects.all()
+    assert (row.uploader_kind, row.headunit_id) == ("member", None)
+
+
 def test_a_unit_upload_lands_in_its_members_household(phone, on, household_user, household_a):
     from devicelogs.models import DeviceLog
 
