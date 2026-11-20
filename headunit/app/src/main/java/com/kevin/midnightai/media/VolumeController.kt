@@ -100,10 +100,16 @@ object VolumeController {
         ),
     }
 
-    /** Runs one [Reapply] strategy on the current index; recorded as our own write so VolumeSync ignores its echo. */
-    fun reapply(context: Context, strategy: Reapply): Int {
+    /**
+     * Runs one [Reapply] strategy on the current index; recorded as our own write so VolumeSync
+     * ignores its echo. Returns the resulting percentage, or null when the stream is muted: then
+     * nothing is sent, because a raise/lower step would unmute it (review L3, 2026-11-20).
+     */
+    fun reapply(context: Context, strategy: Reapply): Int? {
         val am = am(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && am.isStreamMute(AudioManager.STREAM_MUSIC)) return null
         val index = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val show = AudioManager.FLAG_SHOW_UI
         when (strategy) {
             Reapply.STEP_AWAY_AND_BACK -> {
@@ -114,7 +120,12 @@ object VolumeController {
             Reapply.ADJUST_SAME -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, show)
             Reapply.SET_SAME_SHOW_UI -> am.setStreamVolume(AudioManager.STREAM_MUSIC, index, show)
             Reapply.SET_SAME_NO_FLAG -> am.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0)
-            Reapply.RAISE_THEN_LOWER -> {
+            // At the top a raise does nothing and the lower would leave it one notch down: go the
+            // other way round there, so it ends where it started.
+            Reapply.RAISE_THEN_LOWER -> if (index >= max) {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, show)
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, show)
+            } else {
                 am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, show)
                 am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, show)
             }

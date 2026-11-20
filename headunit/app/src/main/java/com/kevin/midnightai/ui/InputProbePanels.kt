@@ -61,13 +61,23 @@ internal fun VolumeCheckPanel(context: Context) {
         style = RowSubtitle,
         color = AriaColors.TextDim,
     )
+    var said by remember { mutableStateOf<String?>(null) }
+    said?.let {
+        Spacer(Modifier.height(AriaDimens.s2))
+        Text(it, style = RowSubtitle, color = AriaColors.TextPrimary)
+    }
     VolumeController.Reapply.entries.forEach { strategy ->
         Spacer(Modifier.height(AriaDimens.s2))
         SettingsRowCard(SettingsRowSpec(
             strategy.label,
             strategy.what,
             RowAction.Button("TRY", ButtonWeight.PRIMARY) {
-                runCatching { VolumeController.reapply(context, strategy) }
+                val pct = runCatching { VolumeController.reapply(context, strategy) }
+                said = when {
+                    pct.isFailure -> "Android refused the call."
+                    pct.getOrNull() == null -> "Music is muted, so nothing was sent: a TRY never unmutes."
+                    else -> null
+                }
                 readout = runCatching { VolumeController.readout(context) }.getOrDefault(readout)
             },
         ))
