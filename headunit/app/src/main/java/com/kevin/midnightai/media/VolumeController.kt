@@ -33,6 +33,10 @@ object VolumeController {
 
     internal fun maxIndex(context: Context): Int = am(context).getStreamMaxVolume(AudioManager.STREAM_MUSIC)
 
+    /** STREAM_MUSIC is muted (API 23+; always false below). */
+    fun isMuted(context: Context): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && am(context).isStreamMute(AudioManager.STREAM_MUSIC)
+
     /**
      * Re-applies the CURRENT index after an external change (hardware / steering keys).
      *

@@ -1714,13 +1714,23 @@ object LiveToolbox {
      */
     private fun controlVolume(context: Context, args: JSONObject): JSONObject {
         val pct = when (val action = args.optString("action")) {
-            "up" -> VolumeController.raise(context, by = "voice")
+            "up" -> {
+                // Recheck 2026-11-20: "louder" by voice stops at the same 80% ceiling as "set".
+                if (!VolumeRules.voiceUpAllowed(VolumeController.index(context), VolumeController.maxIndex(context))) {
+                    return result(success = false, message = VolumeRules.UP_REFUSED)
+                        .put("volumePercent", VolumeController.current(context))
+                }
+                VolumeController.raise(context, by = "voice")
+            }
             "down" -> VolumeController.lower(context, by = "voice")
             "set" -> {
                 val level = args.optInt("level", -1)
                 if (level < 0) return result(success = false, message = "What level should I set it to?")
                 // Review L4: by voice, never above 80% and never more than 30 points up in one call.
-                val plan = VolumeRules.voiceSet(VolumeController.current(context), level)
+                val current = VolumeController.current(context)
+                val plan = VolumeRules.voiceSet(
+                    current, level, mutedAtPercent = if (VolumeController.isMuted(context)) current else null,
+                )
                 val pct = VolumeController.setPercent(context, plan.target, by = "voice")
                 if (plan.capped) {
                     return result(success = true, message = VolumeRules.cappedMessage(pct, level)).put("volumePercent", pct)
