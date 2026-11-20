@@ -74,6 +74,15 @@ class MiddlePanelStateTest {
     }
 
     @Test fun t1ShipsThePlaceholderNavHost() {
-        assertEquals(NoTripNavHost, MiddlePanel.host)
+        assertEquals(NoTripNavHost, MiddlePanel.host.value)
+    }
+
+    @Test fun anInstalledHostIsPublished() {
+        val host = object : NavPanelHost {
+            @androidx.compose.runtime.Composable
+            override fun Content(modifier: androidx.compose.ui.Modifier) = Unit
+        }
+        MiddlePanel.install(host)
+        assertEquals(host, MiddlePanel.host.value)
     }
 }

@@ -66,13 +66,23 @@ internal fun CruiseMiddlePanel(
     u: Dp,
     m: DeckMetrics,
     location: Location?,
-    speedMph: Int?,
     gauges: List<GaugeReading>,
     storedCodes: String?,
     modifier: Modifier = Modifier,
     prompts: @Composable ColumnScope.() -> Unit = {},
 ) {
     val state by MiddlePanel.state.collectAsState()
+    val host by MiddlePanel.host.collectAsState()
+    // One 1 s tick on the monotonic clock drives the fix age and the speed's freshness.
+    var nowNanos by remember { mutableLongStateOf(SystemClock.elapsedRealtimeNanos()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            nowNanos = SystemClock.elapsedRealtimeNanos()
+        }
+    }
+    val ageMs = location?.let { (nowNanos - it.elapsedRealtimeNanos) / 1_000_000L }
+    val speedMph = MiddlePanelText.speedMph(location?.takeIf { it.hasSpeed() }?.speed, ageMs)
     Column(modifier.deckCard(m)) {
         Row(
             Modifier.fillMaxWidth().padding(u),
@@ -88,7 +98,7 @@ internal fun CruiseMiddlePanel(
                 keyMinWidth = u * 10.5f,
             )
             Spacer(Modifier.weight(1f))
-            GpsReadout(u, location)
+            GpsReadout(u, location?.provider, ageMs)
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(deckLineColor()))
         Column(
@@ -104,24 +114,16 @@ internal fun CruiseMiddlePanel(
                     storedCodes = storedCodes,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
-                MiddleFace.NAV -> MiddlePanel.host.Content(Modifier.weight(1f).fillMaxWidth())
+                MiddleFace.NAV -> host.Content(Modifier.weight(1f).fillMaxWidth())
             }
         }
     }
 }
 
-/** "GPS from phone / fix 1 s ago": source over age, ticking once a second on the monotonic clock. */
+/** "GPS from phone / fix 1 s ago": source over age. */
 @Composable
-private fun GpsReadout(u: Dp, location: Location?) {
-    var nowNanos by remember { mutableLongStateOf(SystemClock.elapsedRealtimeNanos()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            nowNanos = SystemClock.elapsedRealtimeNanos()
-        }
-    }
-    val ageMs = location?.let { (nowNanos - it.elapsedRealtimeNanos) / 1_000_000L }
-    val gps = MiddlePanelText.gps(location?.provider, ageMs, LocationController.BEACON_PROVIDER)
+private fun GpsReadout(u: Dp, provider: String?, ageMs: Long?) {
+    val gps = MiddlePanelText.gps(provider, ageMs, LocationController.BEACON_PROVIDER)
     val size = uSp(u, 1.5f, 11.sp)
     Column(horizontalAlignment = Alignment.End) {
         Text(

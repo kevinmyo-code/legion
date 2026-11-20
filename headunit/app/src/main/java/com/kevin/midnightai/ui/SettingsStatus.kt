@@ -85,7 +85,10 @@ internal fun updateStatusLine(state: UpdateState, installedCode: Long): Category
     is UpdateState.Ready -> CategoryStatus("Update ready · tap to install", SettingsDot.WARN)
     is UpdateState.Waiting -> CategoryStatus("Update installs after this chat")
     is UpdateState.Installing -> CategoryStatus("Installing update")
-    is UpdateState.Failed -> CategoryStatus("Update check failed", SettingsDot.WARN)
+    // Offline at start lands here too ("Could not check..."), as do a refused download and an
+    // install Android refused: one neutral line, no dot, so a start without the hotspot never nags.
+    // The Updates leaf says which one in full.
+    is UpdateState.Failed -> CategoryStatus("Last update attempt failed")
 }
 
 /**

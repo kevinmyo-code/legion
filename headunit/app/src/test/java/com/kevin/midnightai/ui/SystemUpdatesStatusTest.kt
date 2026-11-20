@@ -52,8 +52,10 @@ class SystemUpdatesStatusTest {
         assertEquals(CategoryStatus("Debug build · no updates"), updateStatusLine(UpdateState.DebugBuild, 1L))
     }
 
-    @Test fun failureIsAWarningNotAnError() {
-        assertEquals(CategoryStatus("Update check failed", SettingsDot.WARN), updateStatusLine(UpdateState.Failed("x"), 1L))
+    @Test fun aFailedAttemptIsNeutralSoAnOfflineStartDoesNotNag() {
+        val s = updateStatusLine(UpdateState.Failed("Could not check for an update: offline"), 1L)
+        assertEquals(CategoryStatus("Last update attempt failed"), s)
+        assertEquals(permissionsCategoryStatus(0), systemCategoryStatus(permissionsCategoryStatus(0), s))
     }
 
     @Test fun aMissingPermissionStillWinsTheSystemRail() {

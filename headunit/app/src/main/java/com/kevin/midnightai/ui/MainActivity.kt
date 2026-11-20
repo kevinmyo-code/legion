@@ -330,6 +330,13 @@ class MainActivity : ComponentActivity() {
             val by = if (event.repeatCount == 0) "key" else com.kevin.midnightai.diag.ProbeFormat.QUIET_WRITER
             if (up) com.kevin.midnightai.media.VolumeController.raise(this, by = by)
             else com.kevin.midnightai.media.VolumeController.lower(this, by = by)
+        } else if (event.action == KeyEvent.ACTION_UP) {
+            runCatching {
+                val vc = com.kevin.midnightai.media.VolumeController
+                com.kevin.midnightai.diag.InputProbe.volume(
+                    com.kevin.midnightai.diag.ProbeFormat.levelLine(vc.index(this), vc.maxIndex(this)),
+                )
+            }
         }
         return true
     }

@@ -86,7 +86,7 @@ internal fun MusicHeroCard(
                 keyMinWidth = AriaDimens.driveTouchMin,
                 labelSize = uSp(u, 1.3f, 11.sp),
             )
-            Spacer(Modifier.width(u))
+            Spacer(Modifier.width(4.dp))
         }
         Column(Modifier.weight(1f).fillMaxWidth()) {
             when (face) {

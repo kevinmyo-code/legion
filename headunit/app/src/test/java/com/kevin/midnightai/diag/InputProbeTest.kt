@@ -49,6 +49,8 @@ class InputProbeTest {
     @Test fun unchangedObservationsAreNotLogged() {
         // The Settings.System observer fires on every settings write; an unchanged index is noise.
         assertFalse(ProbeFormat.shouldLogObservation("UNCHANGED"))
+        // Our own write echoing back inside its quiet window: a held key would flood the log.
+        assertFalse(ProbeFormat.shouldLogObservation("OWN_WRITE_WINDOW"))
         assertTrue(ProbeFormat.shouldLogObservation("EXTERNAL_CHANGE"))
         assertTrue(ProbeFormat.shouldLogObservation("VOICE_HOLD"))
         assertTrue(ProbeFormat.shouldLogObservation("FIRST_SIGHTING"))
@@ -57,6 +59,10 @@ class InputProbeTest {
     @Test fun aHeldKeysRepeatWritesAreQuietButEveryOtherWriterIsLogged() {
         assertFalse(ProbeFormat.shouldLogWrite(ProbeFormat.QUIET_WRITER))
         listOf("key", "screen", "voice", "panel", "sync", "app").forEach { assertTrue(it, ProbeFormat.shouldLogWrite(it)) }
+    }
+
+    @Test fun keyUpLevelLine() {
+        assertEquals("level after key up index=12/30", ProbeFormat.levelLine(12, 30))
     }
 
     @Test fun writeLineSaysWhoMovedItAndFromWhereToWhere() {

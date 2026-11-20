@@ -64,13 +64,14 @@ object MiddlePanel {
     private val _state = MutableStateFlow(MiddlePanelState())
     val state: StateFlow<MiddlePanelState> = _state.asStateFlow()
 
-    @Volatile
-    var host: NavPanelHost = NoTripNavHost
-        private set
+    private val _host = MutableStateFlow<NavPanelHost>(NoTripNavHost)
+
+    /** What the NAV face draws; a flow so a host installed after Cruise composed still shows. */
+    val host: StateFlow<NavPanelHost> = _host.asStateFlow()
 
     /** T5: the navigation surface. */
     fun install(host: NavPanelHost) {
-        this.host = host
+        _host.value = host
     }
 
     /** T5: a trip with a route started. */
@@ -87,6 +88,6 @@ object MiddlePanel {
     /** Tests only: back to a fresh start. */
     internal fun resetForTest() {
         _state.value = MiddlePanelState()
-        host = NoTripNavHost
+        _host.value = NoTripNavHost
     }
 }

@@ -583,7 +583,6 @@ fun CruiseScreen(
                         u = u,
                         m = m,
                         location = location,
-                        speedMph = speedMph,
                         gauges = MiddlePanelText.carGauges(obdGauges, cruiseKeys),
                         storedCodes = MiddlePanelText.storedCodes(dtcCodes, dtcNames),
                         modifier = Modifier.weight(1f).fillMaxHeight(),

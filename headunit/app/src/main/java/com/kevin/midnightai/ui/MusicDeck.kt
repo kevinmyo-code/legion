@@ -697,6 +697,8 @@ private fun SwitchLabel(
             label,
             style = AriaType.neonLabel.copy(fontSize = m.label, letterSpacing = 1.sp),
             color = if (active) AriaColors.Panel else AriaColors.TextDim,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }

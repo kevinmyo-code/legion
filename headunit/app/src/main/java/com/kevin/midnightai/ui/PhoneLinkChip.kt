@@ -46,6 +46,8 @@ fun PhoneLinkChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
             "  $label",
             style = AriaType.readout.copy(fontSize = 12.sp),
             color = AriaColors.TextPrimary,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }

@@ -70,6 +70,15 @@ internal object MiddlePanelText {
         return Gps(source, words, stale = age > STALE_MS)
     }
 
+    /** A fix older than this shows no speed: a number frozen at its last value reads as live. */
+    const val SPEED_FRESH_MS = 15_000L
+
+    /** GPS speed in mph, or null without a speed or once the fix is older than [SPEED_FRESH_MS]. */
+    fun speedMph(speedMps: Float?, ageMs: Long?): Int? {
+        if (speedMps == null || ageMs == null || ageMs > SPEED_FRESH_MS) return null
+        return Math.round(speedMps * 2.23694f)
+    }
+
     /**
      * The CAR face's gauge cards: the driver's Cruise picks (Settings gauge picker), in the order the
      * poll produced them, at most [max]. No new PIDs: RPM and other fast ones stay out because

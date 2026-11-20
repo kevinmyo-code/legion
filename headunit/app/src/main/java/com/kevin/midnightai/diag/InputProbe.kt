@@ -66,8 +66,15 @@ object ProbeFormat {
         append(if (handled) " handled" else " passed-on")
     }
 
-    /** An unchanged index is noise: the Settings.System observer fires on every settings write. */
-    fun shouldLogObservation(reason: String): Boolean = reason != "UNCHANGED"
+    /**
+     * An unchanged index is noise (the Settings.System observer fires on every settings write), and
+     * so is the echo of our own write inside its quiet window (a held key would log 20+ a second);
+     * the recheck after the window still logs a real change.
+     */
+    fun shouldLogObservation(reason: String): Boolean = reason != "UNCHANGED" && reason != "OWN_WRITE_WINDOW"
+
+    /** After a volume key is released: where the stream ended up (the hold's repeats are not logged). */
+    fun levelLine(index: Int, max: Int): String = "level after key up index=$index/$max"
 
     fun observedLine(via: String, index: Int, max: Int, decision: String, reason: String): String =
         "observed via=$via index=$index/$max -> $decision ($reason)"
