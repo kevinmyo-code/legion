@@ -1,3 +1,7 @@
+// Guard clauses: the document says "refuse otherwise" at each check, and one early return per
+// refusal reads closest to it.
+@file:Suppress("ReturnCount")
+
 package com.kevin.legion.carlink.protocol
 
 import com.kevin.legion.carlink.protocol.LinkCrypto.ascii
@@ -108,13 +112,15 @@ object Mnai2 {
     private fun open(dirKey: ByteArray, dir: String, bytes: ByteArray, length: Int): Mnai2Datagram? {
         if (length < HEADER_LEN + TAG_LEN || length > MAX_DATAGRAM) return null
         val header = bytes.copyOfRange(0, HEADER_LEN)
-        if (!header.copyOfRange(0, MAGIC.length).contentEquals(ascii(MAGIC)) || header[MAGIC.length] != VERSION) return null
+        val magicOk = header.copyOfRange(0, MAGIC.length).contentEquals(ascii(MAGIC))
+        if (!magicOk || header[MAGIC.length] != VERSION) return null
         val session = header.copyOfRange(OFF_SESSION, OFF_COUNTER)
         val counter = ByteBuffer.wrap(header, OFF_COUNTER, Long.SIZE_BYTES).long
         if (counter < 1) return null // u64 >= 1; the top bit set reads negative here and is refused
         val key = sessionKey(dirKey, session)
         try {
-            val body = LinkCrypto.open(key, LinkCrypto.nonce(dir, counter), header, bytes.copyOfRange(HEADER_LEN, length))
+            val sealed = bytes.copyOfRange(HEADER_LEN, length)
+            val body = LinkCrypto.open(key, LinkCrypto.nonce(dir, counter), header, sealed)
                 ?: return null
             return Mnai2Datagram(header[OFF_TYPE].toInt().toChar(), session, counter, body)
         } finally {

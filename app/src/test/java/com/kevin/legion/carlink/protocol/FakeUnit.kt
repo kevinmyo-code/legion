@@ -10,7 +10,11 @@ class FakeUnit(linkKey: ByteArray, val session: ByteArray = ByteArray(16) { (0xA
     val keys = DirectionKeys(linkKey)
     var counter = 0L
 
-    fun hello(intervalMs: Int = 1000, challenge: ByteArray = nextChallenge(), counterOverride: Long? = null): ByteArray {
+    fun hello(
+        intervalMs: Int = 1000,
+        challenge: ByteArray = nextChallenge(),
+        counterOverride: Long? = null,
+    ): ByteArray {
         val c = counterOverride ?: ++counter
         val header = ByteBuffer.allocate(31).put("MNAI2".toByteArray()).put(1).put('H'.code.toByte())
             .put(session).putLong(c).array()

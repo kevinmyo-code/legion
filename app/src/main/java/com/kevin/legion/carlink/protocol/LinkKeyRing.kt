@@ -1,3 +1,7 @@
+// Guard clauses: the document says "refuse otherwise" at each check, and one early return per
+// refusal reads closest to it.
+@file:Suppress("ReturnCount")
+
 package com.kevin.legion.carlink.protocol
 
 /** Writes the phone's link keys as one unit: both slots or neither. False = nothing changed on disk. */

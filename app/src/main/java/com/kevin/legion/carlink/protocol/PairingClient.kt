@@ -1,3 +1,7 @@
+// Guard clauses: the document says "refuse otherwise" at each check, and one early return per
+// refusal reads closest to it. One handler per message and event of 3.4.
+@file:Suppress("ReturnCount", "TooManyFunctions")
+
 package com.kevin.legion.carlink.protocol
 
 import com.kevin.legion.carlink.protocol.LinkCrypto.ascii
@@ -94,7 +98,9 @@ class PairingClient(
         if (msg !is UnitMessage.Sealed || msg.type != PairingWire.CODE_OK) {
             return abort("bad_message", PairingFailure.UNEXPECTED_MESSAGE)
         }
-        if (!opensOk(msg.c, "CDOK", "MNAI-PAIR code ok v1")) return abort("bad_message", PairingFailure.UNEXPECTED_MESSAGE)
+        if (!opensOk(msg.c, "CDOK", "MNAI-PAIR code ok v1")) {
+            return abort("bad_message", PairingFailure.UNEXPECTED_MESSAGE)
+        }
         val body = handover().toJson().toByteArray(Charsets.UTF_8)
         val sealed = LinkCrypto.seal(keys.handKey, LinkCrypto.nonce("HAND", 1), ascii("MNAI-PAIR handover v1"), body)
         body.fill(0)

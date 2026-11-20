@@ -28,7 +28,10 @@ object CarLinkVectors {
 
     /** The pairing QR the unit would show for the vectors' key and secret, at an invented LAN address. */
     fun qrText(host: String = "10.0.0.1", port: Int = 17300): String =
-        "mnai-pair:1:${LinkCrypto.b64url(pairing.hex("unit_pk"))}:${LinkCrypto.b64url(pairing.hex("secret"))}:$host:$port"
+        listOf(
+            "mnai-pair", "1", LinkCrypto.b64url(pairing.hex("unit_pk")), LinkCrypto.b64url(pairing.hex("secret")),
+            host, port.toString(),
+        ).joinToString(":")
 
     fun phoneKey(): PhoneKeyPair = P256.fromScalar(pairing.str("phone_private_scalar"), pairing.hex("phone_pk"))
 

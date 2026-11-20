@@ -1,3 +1,6 @@
+// Section 2's primitive table, one function per row.
+@file:Suppress("TooManyFunctions")
+
 package com.kevin.legion.carlink.protocol
 
 import java.nio.ByteBuffer

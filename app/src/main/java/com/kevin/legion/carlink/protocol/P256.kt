@@ -1,3 +1,7 @@
+// Guard clauses: the document says "refuse otherwise" at each check, and one early return per
+// refusal reads closest to it.
+@file:Suppress("ReturnCount")
+
 package com.kevin.legion.carlink.protocol
 
 import java.math.BigInteger
@@ -27,6 +31,8 @@ object P256 {
     const val PUBLIC_LEN = 65
     private const val COORD_LEN = 32
     private const val UNCOMPRESSED: Byte = 0x04
+    private const val HEX_RADIX = 16
+    private const val CUBE = 3
 
     /**
      * Curve parameters taken from a generated key pair, not from `AlgorithmParameters("EC")`, which
@@ -47,7 +53,7 @@ object P256 {
 
     /** Test seam for the known-answer vectors: a key pair from a fixed scalar and its known public bytes. */
     internal fun fromScalar(scalarHex: String, publicBytes: ByteArray): PhoneKeyPair {
-        val spec = ECPrivateKeySpec(BigInteger(scalarHex, 16), params)
+        val spec = ECPrivateKeySpec(BigInteger(scalarHex, HEX_RADIX), params)
         return PhoneKeyPair(KeyFactory.getInstance("EC").generatePrivate(spec), publicBytes.copyOf())
     }
 
@@ -72,7 +78,7 @@ object P256 {
         val p = (curve.field as ECFieldFp).p
         if (x >= p || y >= p) return null
         val lhs = y.multiply(y).mod(p)
-        val rhs = x.pow(3).add(curve.a.multiply(x)).add(curve.b).mod(p)
+        val rhs = x.pow(CUBE).add(curve.a.multiply(x)).add(curve.b).mod(p)
         if (lhs != rhs) return null
         return try {
             KeyFactory.getInstance("EC").generatePublic(ECPublicKeySpec(ECPoint(x, y), params))

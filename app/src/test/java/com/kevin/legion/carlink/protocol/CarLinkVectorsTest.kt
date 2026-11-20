@@ -70,9 +70,12 @@ class CarLinkVectorsTest {
     @Test fun `the unit's code_ok and done open, and stored seals to the vectors' bytes`() {
         val hk = keys().handKey
         val ok = """{"ok":true}"""
-        assertEquals(ok, String(LinkCrypto.open(hk, LinkCrypto.nonce("CDOK", 1), LinkCrypto.ascii("MNAI-PAIR code ok v1"), p.hex("code_ok"))!!))
-        assertEquals(ok, String(LinkCrypto.open(hk, LinkCrypto.nonce("DONE", 1), LinkCrypto.ascii("MNAI-PAIR done v1"), p.hex("done"))!!))
-        val stored = LinkCrypto.seal(hk, LinkCrypto.nonce("STOR", 1), LinkCrypto.ascii("MNAI-PAIR stored v1"), ok.toByteArray())
+        fun open(dir: String, label: String, key: String) =
+            String(LinkCrypto.open(hk, LinkCrypto.nonce(dir, 1), LinkCrypto.ascii(label), p.hex(key))!!)
+        assertEquals(ok, open("CDOK", "MNAI-PAIR code ok v1", "code_ok"))
+        assertEquals(ok, open("DONE", "MNAI-PAIR done v1", "done"))
+        val label = LinkCrypto.ascii("MNAI-PAIR stored v1")
+        val stored = LinkCrypto.seal(hk, LinkCrypto.nonce("STOR", 1), label, ok.toByteArray())
         assertEquals(p.str("stored"), CarLinkVectors.hex(stored))
     }
 

@@ -165,7 +165,8 @@ class PairingClientTest {
         val (c, ring) = client()
         c.onMessage(ack); c.onMessage(codeOk)
         val bad = p.hex("done").also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
-        assertEquals(listOf("""{"t":"abort","why":"bad_message"}"""), sent(c.onMessage(PairingWire.sealedMessage("done", bad))))
+        val out = c.onMessage(PairingWire.sealedMessage("done", bad))
+        assertEquals(listOf("""{"t":"abort","why":"bad_message"}"""), sent(out))
         assertArrayEquals(oldKey, ring.sendKey())
     }
 
