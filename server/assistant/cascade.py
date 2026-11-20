@@ -1187,7 +1187,7 @@ def _answer(
     # LEGION_LATE_ANSWERS=on, and never for a recruiter. Code answers "look into X and tell me
     # later", "anything pending?" and "cancel that" with no model round; otherwise the one line
     # owed from earlier is said first, kept out of this turn's model context.
-    late_words = late.intercept(
+    late_reply = late.intercept(
         request,
         words,
         "web",
@@ -1196,26 +1196,22 @@ def _answer(
             "",
         ),
     )
-    if late_words is not None:
+    if late_reply is not None:
         record_user()
-        report.said.append(late_words)
-        speaker.add(late_words)
-        yield ev.Event("sentence", {"text": late_words})
+        if late_reply.owed is not None:
+            _late_read_through(request, door, late_reply.owed)
+        # An owed line's text is said and shown but never replayed as the model's own words.
+        report.say(late_reply.text, replay=None if late_reply.history else "")
+        speaker.add(late_reply.text)
+        yield ev.Event("sentence", {"text": late_reply.text})
         yield from speaker.drain()
-        yield ev.done("done", late_words, False)
+        yield ev.done("done", late_reply.text, False)
         return
     owed, more = late.claim(request, "web")
     if owed is not None:
-        if late.read_third_party(owed):
-            # Built on a web search: marked as read-through, so memory keeps none of it. Written
-            # now, ahead of this turn's own lines, so it errs to dropping more, never less.
-            web_conversation.record_lines(
-                request,
-                conversation_id_of(door),
-                [web_conversation.engine_read_through_line(datetime.now(UTC), "carry")],
-            )
+        _late_read_through(request, door, owed)
         owed_line = late.late_event(owed, more)
-        report.said.append(owed_line.data["text"])
+        report.say(owed_line.data["text"], replay="")
         speaker.add(owed_line.data["text"], model=True)
         speaker.flush()
         yield owed_line
@@ -1590,6 +1586,21 @@ def _answer(
         door.wrote(),
         end=door.end_requested,
         **extra,
+    )
+
+
+def _late_read_through(request, door, owed) -> None:
+    """An owed line built on web pages (`late.read_third_party`): this turn and the next may not
+    write (`read_through.mark_turns`), and memory keeps no assistant line from here on (the
+    record's `read_through source=carry`)."""
+    if not late.read_third_party(owed):
+        return
+    conversation_id = conversation_id_of(door)
+    read_through.mark_turns(request, conversation_id, (door.turn, door.turn + 1))
+    web_conversation.record_lines(
+        request,
+        conversation_id,
+        [web_conversation.engine_read_through_line(datetime.now(UTC), "carry")],
     )
 
 

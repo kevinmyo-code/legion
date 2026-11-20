@@ -199,14 +199,22 @@ def run_turn(
         # Code's own answer to "look into X and tell me later", "anything pending?" or "cancel
         # that", with no model round; else the one line owed from earlier, said first and kept
         # out of this turn's model context.
+        if late.enabled() and late.CARRY in _taint_of_turn(conversation, seq - 1):
+            # The last turn said a line built on web pages: no write in this one either.
+            state.add_taint(late.AFTER_CARRY)
         handled = late.intercept(
             request, transcript, conversation.client, last_reply=_last_model_text(history)
         )
         if handled is not None:
-            yield from _code_answer(state, store, handled, started)
+            if handled.owed is not None and late.read_third_party(handled.owed):
+                state.add_taint(late.CARRY)
+            yield from _code_answer(state, store, handled.text, started, handled.history)
             return state
         line, more = late.claim(request, conversation.client)
         if line is not None:
+            if late.read_third_party(line):
+                state.add_taint(late.CARRY)
+                store.mark_taint(state)
             yield late.late_event(line, more)
 
     def on_model_call(row: dict) -> None:
@@ -262,13 +270,22 @@ def _last_model_text(history: list[dict]) -> str:
     return ""
 
 
-def _code_answer(state: TurnState, store: TurnStore, words: str, started: float):
+def _taint_of_turn(conversation: AgentConversation, seq: int) -> list:
+    row = conversation.turns.filter(seq=seq).values_list("taint_sources", flat=True).first()
+    return list(row or [])
+
+
+def _code_answer(
+    state: TurnState, store: TurnStore, words: str, started: float, history: bool = True
+):
     """A turn answered by code alone: one sentence, `done`, the turn row finished. The words join
-    the conversation's history as the model's, so the next turn's model knows what was said."""
+    the conversation's history as the model's, so the next turn's model knows what was said;
+    never when they carry an owed line (`history=False`): that text was not the model's."""
     state.route = {"agents": [], "reason": "late_answer"}
     state.status = "done"
     state.final_text = words
-    state.messages = [*state.messages, {"role": "model", "parts": [{"text": words}]}]
+    if history:
+        state.messages = [*state.messages, {"role": "model", "parts": [{"text": words}]}]
     yield ev.sentence(words)
     yield ev.done("done", words, False, honesty_flag=False, pending_confirm=False)
     store.finish(state, latency_ms=int((time.monotonic() - started) * 1000), first_sentence_ms=0)

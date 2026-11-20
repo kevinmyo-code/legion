@@ -566,7 +566,7 @@ def test_a_head_unit_starts_nothing_and_hears_nothing(household_user, late_on):
     request = member_request(household_user)
     assert request.user == household_user  # authenticates first; the unit's token then rides
     request.auth = unit
-    assert late.intercept(request, ASK, "headunit") == late.NOT_FROM_UNIT
+    assert late.intercept(request, ASK, "headunit").text == late.NOT_FROM_UNIT
     assert late.claim(request, "headunit") == (None, "")
     assert not LateTask.objects.exists()
     # Nothing of his read back or cancelled from the unit either.

@@ -173,7 +173,27 @@ def _mine(model, request):
     return model.objects.filter(household=household_of(request), owner_user=request.user)
 
 
-def intercept(request, words: str, client: str, last_reply: str = "") -> str | None:
+@dataclass(frozen=True)
+class Reply:
+    """Code's answer to a late-answer phrase. `owed` is set when the words carry an owed line's
+    text: the door then keeps them out of the model's history (`history=False`) and, when that
+    line was built on web pages (`read_third_party`), taints the turn and the next one."""
+
+    text: str
+    owed: OwedLine | None = None
+
+    @property
+    def history(self) -> bool:
+        return self.owed is None
+
+
+# The taint the agents door gives a turn that said a line built on web pages, and the one it gives
+# the turn after it (which does not carry on further). ADR 0090: no write follows outside text.
+CARRY = "late_carry"
+AFTER_CARRY = "late_after_carry"
+
+
+def intercept(request, words: str, client: str, last_reply: str = "") -> Reply | None:
     """Code's whole answer to his utterance when it is a late-answer phrase, else None. Called by
     a door before any model call; a None leaves the turn exactly as it was. `last_reply` is the
     last thing the assistant said in this conversation."""
@@ -181,7 +201,7 @@ def intercept(request, words: str, client: str, last_reply: str = "") -> str | N
         return None
     question = ask_of(words)
     if question is not None:
-        return _start(request, question, client)
+        return Reply(_start(request, question, client))
     if headunit_scope.is_headunit(request):
         # Whoever holds the unit may not be him: no topic, answer or cancel of his from there.
         return None
@@ -190,7 +210,8 @@ def intercept(request, words: str, client: str, last_reply: str = "") -> str | N
     if _CANCEL.match(words or "") or (
         _CANCEL_BARE.match(words or "") and (last_reply or "").strip() == ACK
     ):
-        return _cancel(request)
+        words = _cancel(request)
+        return Reply(words) if words is not None else None
     return None
 
 
@@ -216,12 +237,12 @@ def _start(request, question: str, client: str) -> str:
     return ACK
 
 
-def _pending(request, client: str) -> str | None:
+def _pending(request, client: str) -> Reply | None:
     """Code's answer to "anything pending?" while the late-answer path has something to say;
     None (the model's turn, as before) when it has nothing: no task, no line in 24 hours."""
     line, more = claim(request, client)
     if line is not None:
-        return f"{line.text} {more}".strip()
+        return Reply(f"{line.text} {more}".strip(), owed=line)
     running = list(
         _mine(LateTask, request)
         .filter(status__in=(LATE_QUEUED, LATE_RUNNING))
@@ -229,7 +250,7 @@ def _pending(request, client: str) -> str | None:
         .values_list("question", flat=True)
     )
     if running:
-        return STILL_WORKING.format(topics=" and ".join(_topic(q) for q in running))
+        return Reply(STILL_WORKING.format(topics=" and ".join(_topic(q) for q in running)))
     last = (
         _mine(OwedLine, request)
         .filter(delivered_at__gte=dj_timezone.now() - OWED_TTL)
@@ -237,7 +258,7 @@ def _pending(request, client: str) -> str | None:
         .first()
     )
     if last is not None:
-        return LAST_ONE.format(text=last.text)
+        return Reply(LAST_ONE.format(text=last.text), owed=last)
     return None
 
 
