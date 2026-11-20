@@ -453,13 +453,16 @@ object ScriptedLines {
         val parts = mutableListOf<String>()
         if (kept.isNotEmpty()) parts += doneText(kept + listOfNotNull("and $more more".takeIf { more > 0 }))
         if (generic) parts += GENERIC_DONE
-        when {
-            unsure.size == 1 && unsure[0].title.isNotEmpty() ->
-                parts += "I couldn't confirm that ${unsure[0].title} went through."
-            unsure.size == 1 -> parts += UNCONFIRMED_ONE
-            unsure.size > 1 -> parts += "I couldn't confirm that ${unsure.size} changes went through."
-        }
+        unconfirmedLine(unsure)?.let { parts += it }
         return parts.joinToString(" ").replace("?", "").ifEmpty { null }
+    }
+
+    /** [doneLine]'s part for writes whose result never came back, or null when there are none. */
+    private fun unconfirmedLine(unsure: List<WriteFact>): String? = when {
+        unsure.size == 1 && unsure[0].title.isNotEmpty() -> "I couldn't confirm that ${unsure[0].title} went through."
+        unsure.size == 1 -> UNCONFIRMED_ONE
+        unsure.size > 1 -> "I couldn't confirm that ${unsure.size} changes went through."
+        else -> null
     }
 
     private fun doneText(clauses: List<String>) = "Done: " + clauses.joinToString("; ") + "."
@@ -490,11 +493,14 @@ object ScriptedLines {
      */
     private fun specific(name: String): Boolean {
         val unspaced = name.codePoints().anyMatch { Character.UnicodeScript.of(it) in LoneWordWriteGuard.UNSPACED }
-        if (unspaced) return name.length >= 2
         val words = name.split(' ', '\t', '\n').filter { it.isNotEmpty() }
-        if (words.size >= 2) return words.any { w -> w.any { it.isLetter() } }
-        val word = words.singleOrNull() ?: return false
-        return word.count { it.isLetter() } >= MIN_NAME_LETTERS && word.lowercase() !in EVERYDAY_NAMES
+        val word = words.singleOrNull()
+        return when {
+            unspaced -> name.length >= 2
+            words.size >= 2 -> words.any { w -> w.any { it.isLetter() } }
+            word == null -> false
+            else -> word.count { it.isLetter() } >= MIN_NAME_LETTERS && word.lowercase() !in EVERYDAY_NAMES
+        }
     }
 
     const val MIN_NAME_LETTERS = 5
