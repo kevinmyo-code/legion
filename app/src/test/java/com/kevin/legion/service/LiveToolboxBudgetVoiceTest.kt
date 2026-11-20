@@ -95,6 +95,16 @@ class LiveToolboxBudgetVoiceTest {
         assertTrue(balance, balance.contains("\"what's left\""))
     }
 
+    // flash-lite probe 2026-11-19: "how much is left in my grocery budget" came as view=left with
+    // category=groceries. The whole budget's left would be a wrong figure for that question.
+    @Test
+    fun `left with a category named is that category's left, never the whole budget's`() {
+        val r = call("view" to "left", "category" to "groceries")
+        assertEquals("category", r.getString("view"))
+        assertEquals("Groceries", r.getString("category"))
+        assertEquals(18_793L, r.getLong("left_cents"))
+    }
+
     @Test
     fun `a category named with no view is the category view, never the month total`() {
         val r = call("category" to "Dining")
