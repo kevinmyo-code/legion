@@ -1,8 +1,8 @@
 package com.kevin.legion.service.cascade
 
 /**
- * His audio through a half-duplex backchannel (blind review M1, 2026-11-19; behind
- * [com.kevin.legion.service.turn.VoiceTurnSettings.backchannelHalfDuplex], OFF). With barge-in off the
+ * His audio through a half-duplex filler clip (blind review M1, 2026-11-19; always on since Kevin's
+ * 2026-11-20 ruling, fillers on Bluetooth: the backchannel and the wait lines). With barge-in off the
  * turn detector ignores the mic while a clip, its drain and the route's settle play, so words he
  * resumed with there were lost. Now nothing captured is discarded:
  *
@@ -29,6 +29,9 @@ internal class ClipListen(
     private val capBytes: Int = CAP_BYTES,
 ) {
     private val during = java.io.ByteArrayOutputStream()
+
+    /** His audio kept while the clip and its settle played, in ms. */
+    val keptMs: Long get() = during.size().toLong() / PCM_BYTES_PER_MS
 
     /** Bytes captured since the clip and its settle ended (nothing plays). */
     var bytesAfter = 0L
@@ -69,6 +72,22 @@ internal class ClipListen(
 
     companion object {
         private const val PCM_BYTES_PER_MS = 32
+
+        /**
+         * The audit line when kept clip audio joins a new utterance (review of aed1c786: whether the
+         * car's echo cancelling lets the clip itself into the transcript is not known; this marks the
+         * turns to inspect). Numbers and the clip's kind only.
+         */
+        fun joinedLine(keptMs: Long, kind: String, idx: Int): String =
+            "clip_listen joined kept_ms=$keptMs clip=$kind idx=$idx"
+
+        /**
+         * Whether a resume may take over the first half's turn: only while it still runs and no write
+         * of it was called. Asked on the mic thread when the resume is noticed and again on the main
+         * loop at the takeover (review of aed1c786: a write that started in between ran, and the merged
+         * turn could call it again). A doubled prefix is a smaller harm than a doubled write.
+         */
+        fun takesOver(firstRunning: Boolean, writeCalled: Boolean): Boolean = firstRunning && !writeCalled
 
         /** A start this soon after the clip's settle continues his sentence. */
         const val RESUME_WINDOW_MS = 1_500L

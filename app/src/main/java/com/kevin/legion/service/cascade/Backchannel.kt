@@ -16,20 +16,23 @@ package com.kevin.legion.service.cascade
  * then, one backchannel plays. The task line keeps its own rule, and never starts within
  * [SPACING_MS] of a backchannel's end ([spacingWaitMs]). At most one of each a turn.
  *
- * **When not** ([decide], all from signals code already has; never his words or the model's):
- * - his speech was short (under [MIN_SPEECH_MS]: "yes", "stop", "no"): the answer is quick and an
- *   "Mm." before it is noise;
- * - the turn before asked him something through its tool fields (`needs_answer`,
- *   `needs_confirmation`, a draft): his answer is followed by the action, not an "Mm.";
- * - he started over a reply or a turn still in flight (a barge-in, a merge): he is correcting, not
- *   waiting;
- * - a backchannel played on the last turn and this one started within [TIC_GAP_MS] of it (a tic);
- * - Quiet mode;
- * - not a turn of his (a proactive line, the greeting);
- * - half-duplex (barge-in off: Bluetooth, a call): the mic is deaf while a clip plays, so a clip
- *   about a second after his last word would swallow the rest of a sentence he was still saying
- *   (blind review M1, 2026-11-19). Allowed there only behind [halfDuplexAllowed] (off), which keeps
- *   his audio through the clip and hands it on ([ClipListen]).
+ * **Every turn of his gets one** (Kevin, 2026-11-20: "the scripted fillers should fire every time, no
+ * restrictions"): one-word answers, follow-ups, an answer to an ask, two turns close together. The
+ * rotation below keeps every-turn from sounding like a tic.
+ *
+ * **When not** ([decide]): only what is physically or safely necessary, never taste:
+ * - he started over a reply or a turn still in flight (a barge-in, a merge): a clip would play over
+ *   Alfred's own audio, or over the answer to the turn he is correcting. The open's tap chime or
+ *   listen cue is NOT a reply ([overReply]; 2026-11-20: the first turn after a tap was skipped as
+ *   over_reply because of it): a clip still due while one plays waits for its end, if it can still
+ *   start within [MAX_START_AFTER_EOT_MS] of his end of speech ([cueWaitMs]), else it is skipped;
+ * - a phone call ([Turn.onCall]): a clip would go down the call to the other person;
+ * - Quiet mode: he asked for silence (he can turn Quiet off);
+ * - not a turn of his (a proactive line, the greeting): there is no one waiting;
+ * Half-duplex routes (Bluetooth) get one too (Kevin, 2026-11-20: "fillers on Bluetooth yes, fillers
+ * everywhere"). The mic is not judged while a clip plays there (no echo reference), so his audio
+ * through the clip and its settle is kept and handed on ([ClipListen]): words he goes on with after
+ * it are not lost. Words said wholly inside the clip with nothing after are (ClipListen's stated limit).
  * Which clip ([pick]): none of the last [ROTATION] words (a [RecentLines] window, seeded with the last
  * word of the last conversation so it is not the first of the next), and of that word one of its
  * [TAKES] renders (the cloud voice renders the same word differently each time; measured 2026-11-19).
@@ -42,15 +45,14 @@ package com.kevin.legion.service.cascade
  *
  * Pure: no clock, no Android.
  */
+// One object for every backchannel rule (when, which clip, the gates, its log lines); split, they drift.
+@Suppress("TooManyFunctions")
 internal object Backchannel {
     /** After his speech ends: the end-of-speech wait (~0.7 s) is already behind him, so ~1.3 s after his last word. */
     const val DELAY_MS = 600L
 
-    /** Shorter speech gets none ("yes", "no", "stop"). */
-    const val MIN_SPEECH_MS = 1_200L
-
-    /** A backchannel on the last turn and this one starting within this: none (it would be a tic). */
-    const val TIC_GAP_MS = 20_000L
+    /** The latest a clip may start after his end of speech when it waits for the open's chime or cue. */
+    const val MAX_START_AFTER_EOT_MS = 900L
 
     /** The task line waits this long after a backchannel's end: never two clips back to back. */
     const val SPACING_MS = 400L
@@ -84,27 +86,16 @@ internal object Backchannel {
     /** What the session knows about his turn at the end of his speech. */
     data class Turn(
         val fromUser: Boolean,
-        /** From his first voiced window to his last ([com.kevin.legion.service.turn.TurnTaker]'s local speech). */
-        val speechMs: Long,
-        /** The turn before asked him something through its tool fields ([LoneWordWriteGuard.asks]). */
-        val askedBefore: Boolean,
         /** He started over an audible reply or a turn still running. */
         val overReplyOrTurn: Boolean,
         val quiet: Boolean,
-        /** When this turn's speech started, and when the last backchannel played (0: none yet). */
-        val startedAtMs: Long,
-        val lastBackchannelAtMs: Long,
-        /** The turn just before this one played a backchannel. */
-        val lastTurnHadOne: Boolean,
-        /** Barge-in is off for this conversation (Bluetooth route, call audio): the mic is deaf during a clip. */
-        val halfDuplex: Boolean = false,
-        /** The setting that lets a half-duplex conversation have one, with [ClipListen] keeping his audio (off). */
-        val halfDuplexAllowed: Boolean = false,
+        /** A phone call is on the line (TelephonyController.isInCall): never, whatever the route. */
+        val onCall: Boolean = false,
     )
 
     enum class Skip(val token: String) {
-        NOT_HIS("not_his"), SHORT("short"), ASKED("answer_to_ask"), OVER_REPLY("over_reply"), TIC("tic"),
-        QUIET("quiet"), HALF_DUPLEX("half_duplex"), ANSWER_TEXT("answer_text"),
+        NOT_HIS("not_his"), ON_CALL("on_call"), OVER_REPLY("over_reply"), QUIET("quiet"),
+        ANSWER_TEXT("answer_text"),
     }
 
     /** Null: play one (if one is in memory and the answer has not started). Otherwise why not. */
@@ -112,13 +103,8 @@ internal object Backchannel {
     fun decide(t: Turn): Skip? {
         if (!t.fromUser) return Skip.NOT_HIS
         if (t.quiet) return Skip.QUIET
-        if (t.halfDuplex && !t.halfDuplexAllowed) return Skip.HALF_DUPLEX
+        if (t.onCall) return Skip.ON_CALL
         if (t.overReplyOrTurn) return Skip.OVER_REPLY
-        if (t.askedBefore) return Skip.ASKED
-        if (t.speechMs < MIN_SPEECH_MS) return Skip.SHORT
-        if (t.lastTurnHadOne && t.lastBackchannelAtMs > 0 && t.startedAtMs - t.lastBackchannelAtMs < TIC_GAP_MS) {
-            return Skip.TIC
-        }
         return null
     }
 
@@ -134,6 +120,29 @@ internal object Backchannel {
         val word = options[Math.floorMod(index, options.size)]
         val own = takes.getValue(word)
         return word to own[Math.floorMod(index, own.size)]
+    }
+
+    /** A clip that passed the length gate: its word, take and measured length, and how many words failed first. */
+    data class Chosen(val word: String, val take: Int, val ms: Long, val rejected: Int)
+
+    /**
+     * The clip to play: [pick]'s word, and when its clip fails the length gate ([clipFits]) another
+     * word that passes (2026-11-20: a failed clip used to leave the turn silent). [measure] gives a
+     * word and take's trimmed length in ms. Null only when no clip in memory fits at all.
+     */
+    suspend fun choose(
+        recent: RecentLines,
+        index: Int,
+        inHand: (String, Int) -> Boolean,
+        measure: suspend (String, Int) -> Long,
+    ): Chosen? {
+        val tried = mutableSetOf<String>()
+        while (true) {
+            val (word, take) = pick(recent, index) { w, t -> w !in tried && inHand(w, t) } ?: return null
+            val ms = measure(word, take)
+            if (clipFits(ms)) return Chosen(word, take, ms, tried.size)
+            tried += word
+        }
     }
 
     /** [pcm] (16-bit mono at [sampleRate]) cut to its voice plus [EDGE_PAD_MS] each side; empty when silent. */
@@ -172,6 +181,41 @@ internal object Backchannel {
     private const val BYTE_MASK = 0xff
     private const val BITS = 8
     private const val MS_PER_S = 1_000L
+
+    /**
+     * His speech started over Alfred's own audio or a turn still in flight. The open's chime or listen
+     * cue ([openingCue]: the only thing playing or running is the open's own) is neither.
+     */
+    fun overReply(replyAudible: Boolean, turnInFlight: Boolean, openingCue: Boolean): Boolean =
+        !openingCue && (replyAudible || turnInFlight)
+
+    /**
+     * How long a due clip waits for the open's chime or cue to end (0: nothing playing). Null: it
+     * would start later than [MAX_START_AFTER_EOT_MS] after his end of speech, so it is skipped.
+     */
+    fun cueWaitMs(nowMs: Long, eotAtMs: Long, cueEndsAtMs: Long?): Long? {
+        val end = cueEndsAtMs?.takeIf { it > nowMs } ?: return 0L
+        return if (end - eotAtMs <= MAX_START_AFTER_EOT_MS) end - nowMs else null
+    }
+
+    /**
+     * The answer_text skip measured (2026-11-20): the answer's text was in by the clip's time, so no
+     * clip played, and its first audio came [gap] later. Numbers only: how long he waited in silence.
+     */
+    fun answerTextGapLine(skipAtMs: Long, answerAudioAtMs: Long): String =
+        "backchannel skip=answer_text gap_ms=${(answerAudioAtMs - skipAtMs).coerceAtLeast(0)}"
+
+    /**
+     * A call is on the line for a filler (review of aed1c786): the phone's call state, or the audio
+     * mode a call sets, which needs no permission and also covers a VoIP call. MODE_IN_CALL is never
+     * LEGION's; MODE_IN_COMMUNICATION is LEGION's own while [ownComm]
+     * ([com.kevin.legion.service.turn.CallAudioMode.ownCommActive], dumb mode's same test). If a VoIP
+     * call takes that mode while LEGION holds it too, the two cannot be told apart: that one is missed.
+     */
+    fun callOnLine(telephonyInCall: Boolean, audioMode: Int, ownComm: Boolean): Boolean =
+        telephonyInCall ||
+            audioMode == android.media.AudioManager.MODE_IN_CALL ||
+            (audioMode == android.media.AudioManager.MODE_IN_COMMUNICATION && !ownComm)
 
     /** Whether a clip of [ms] measured audio may play. */
     fun clipFits(ms: Long): Boolean = ms in MIN_CLIP_MS..MAX_CLIP_MS

@@ -2563,17 +2563,8 @@ class GeminiLiveSession(
         }
 
         override fun onEndOfTurn(end: EndOfTurnPolicy.Action.EndActivity) {
-            // Only the last few checks: a long hold runs a dozen and logcat truncates the line. Each
-            // check's own st_score line carries the full detail.
-            val scores = end.scores.takeLast(EOT_SCORES_LOGGED).joinToString(",") {
-                "%.2f@%d>%d".format(java.util.Locale.US, it.score, it.askedAtMs, it.arrivedAtMs)
-            }
-            LiveLatency.log(
-                LiveLatency.TAG,
-                "eot_ms=${end.silenceMs} eot_reason=${end.reason.wire} " +
-                    "eot_longest_silence_ms=${end.longestSilenceMs} st_checks=${end.scores.size} " +
-                    "st_scores=${scores.ifEmpty { "none" }}",
-            )
+            // Each check's own st_score line carries the full detail; this one the last few.
+            LiveLatency.log(LiveLatency.TAG, com.kevin.legion.service.turn.EndOfTurnLine.of(end))
         }
 
         override fun onBargeIn(fire: com.kevin.legion.service.turn.BargeInGate.Event.Fire) {
@@ -4094,7 +4085,6 @@ class GeminiLiveSession(
         private const val PRIME_FRAMES = 4_800
         private const val PRIME_MAX_WAIT_MS = 250L
         /** Smart Turn scores kept on the end-of-turn line (the latest; st_checks counts all). */
-        private const val EOT_SCORES_LOGGED = 4
         // How often [startNudgeTicker] asks [StillCheckingNudge.due]; a nudge lands within this of 4 s.
         private const val NUDGE_TICK_MS = 250L
         /** Turn-taking notices already said in words this process ([announceOnce]). */

@@ -11,6 +11,24 @@ import org.junit.Test
  * backchannel is kept, and only audio after the clip decides a resume. Frames are 100 ms (3,200 bytes).
  */
 class ClipListenTest {
+
+    // Review of aed1c786 (#1): which turns took clip audio, in numbers, for the drive log.
+    @Test
+    fun `a joined listen logs the kept clip audio, the clip's kind and index, numbers only`() {
+        val listen = ClipListen(ByteArray(0))
+        listen.onFrame(ByteArray(3_200), 3_200, playing = true)
+        assertEquals(100L, listen.keptMs)
+        assertEquals("clip_listen joined kept_ms=100 clip=wait idx=2", ClipListen.joinedLine(listen.keptMs, "wait", 2))
+    }
+
+    // Review of aed1c786 (#3): the first turn's write can start between the mic thread's check and the
+    // takeover on the main loop. Both points ask this; a write already called is never taken over.
+    @Test
+    fun `a first half whose write was called is never taken over`() {
+        assertTrue(ClipListen.takesOver(firstRunning = true, writeCalled = false))
+        assertFalse(ClipListen.takesOver(firstRunning = true, writeCalled = true))
+        assertFalse(ClipListen.takesOver(firstRunning = false, writeCalled = false))
+    }
     private val frame = 3_200
     private fun f(v: Int) = ByteArray(frame) { v.toByte() }
     private val first = ByteArray(6_400) { 9 }

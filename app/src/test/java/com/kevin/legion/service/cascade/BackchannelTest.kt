@@ -15,38 +15,50 @@ import org.junit.Test
 class BackchannelTest {
 
     private fun turn(
-        speechMs: Long = 2_500,
-        askedBefore: Boolean = false,
         over: Boolean = false,
         quiet: Boolean = false,
         fromUser: Boolean = true,
-        startedAt: Long = 100_000,
-        lastAt: Long = 0,
-        lastTurnHadOne: Boolean = false,
-    ) = Backchannel.Turn(fromUser, speechMs, askedBefore, over, quiet, startedAt, lastAt, lastTurnHadOne)
+    ) = Backchannel.Turn(fromUser, over, quiet)
 
     @Test
     fun `an ordinary turn of his gets one`() {
         assertNull(Backchannel.decide(turn()))
     }
 
+    // Kevin, 2026-11-20: "the scripted fillers should fire every time, no restrictions". Short speech,
+    // an answer to an ask and a quick next turn were taste, not necessity: each gets one now.
+    // The Turn no longer carries his speech length, the last turn's ask fields or the last clip's
+    // time: no rule can read them, so none of the three can skip a turn again.
     @Test
-    fun `short speech, an answer to an ask, a barge-in, Quiet and a turn not his get none`() {
-        assertEquals(Backchannel.Skip.SHORT, Backchannel.decide(turn(speechMs = Backchannel.MIN_SPEECH_MS - 1)))
-        assertNull(Backchannel.decide(turn(speechMs = Backchannel.MIN_SPEECH_MS)))
-        assertEquals(Backchannel.Skip.ASKED, Backchannel.decide(turn(askedBefore = true)))
+    fun `short speech, an answer to an ask and a quick next turn each get one`() {
+        assertNull(Backchannel.decide(turn()))
+        assertEquals(
+            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET", "ANSWER_TEXT"),
+            Backchannel.Skip.entries.map { it.name },
+        )
+    }
+
+    @Test
+    fun `a barge-in, Quiet and a turn not his still get none`() {
         assertEquals(Backchannel.Skip.OVER_REPLY, Backchannel.decide(turn(over = true)))
         assertEquals(Backchannel.Skip.QUIET, Backchannel.decide(turn(quiet = true)))
         assertEquals(Backchannel.Skip.NOT_HIS, Backchannel.decide(turn(fromUser = false)))
     }
 
     @Test
-    fun `one on the last turn and a quick next turn is a tic, a later turn is not`() {
-        val tic = turn(startedAt = 110_000, lastAt = 110_000 - Backchannel.TIC_GAP_MS + 1, lastTurnHadOne = true)
-        assertEquals(Backchannel.Skip.TIC, Backchannel.decide(tic))
-        assertNull(Backchannel.decide(turn(startedAt = 200_000, lastAt = 200_000 - Backchannel.TIC_GAP_MS, lastTurnHadOne = true)))
-        // The turn before had none: the one before that does not count.
-        assertNull(Backchannel.decide(turn(startedAt = 110_000, lastAt = 105_000, lastTurnHadOne = false)))
+    fun `five turns in a row of mixed lengths get five clips, never the same twice running`() {
+        val recent = RecentLines(Backchannel.ROTATION)
+        val said = mutableListOf<String>()
+        // "Yes." (0.4 s), a question (3 s), "No." (0.25 s), a follow-up (1.1 s), a long one (6 s): the
+        // length is no input any more, so each is the same ordinary turn of his.
+        for (i in 0 until 5) {
+            assertNull("turn $i", Backchannel.decide(turn()))
+            val line = Backchannel.pick(recent, i) { _, _ -> true }!!.first
+            assertFalse("repeat at $i", line in said)
+            recent.add(line)
+            said += line
+        }
+        assertEquals(5, said.size)
     }
 
     @Test
@@ -65,6 +77,36 @@ class BackchannelTest {
         // Only one in memory and it was just said: nothing, rather than a repeat.
         val one = RecentLines(Backchannel.ROTATION).apply { add("Mm.") }
         assertNull(Backchannel.pick(one, 0) { w, _ -> w == "Mm." })
+    }
+
+    @Test
+    fun `a clip that fails the length gate is swapped for another word, silent only if none fits`() = kotlinx.coroutines.runBlocking {
+        val recent = RecentLines(Backchannel.ROTATION)
+        val first = Backchannel.pick(recent, 0) { _, _ -> true }!!.first
+        // The first word's clip renders as a sigh (too long): the next word plays instead.
+        val chosen = Backchannel.choose(recent, 0, { _, _ -> true }) { w, _ -> if (w == first) 1_500L else 300L }!!
+        assertFalse(chosen.word == first)
+        assertEquals(300L, chosen.ms)
+        assertEquals(1, chosen.rejected)
+        // Every clip fails: nothing, rather than a clip outside the gate.
+        assertNull(Backchannel.choose(recent, 0, { _, _ -> true }) { _, _ -> 0L })
+        // Nothing in memory: nothing.
+        assertNull(Backchannel.choose(recent, 0, { _, _ -> false }) { _, _ -> 300L })
+    }
+
+    @Test
+    fun `the open's chime is not a reply, and a clip queues after it while it can start in time`() {
+        assertFalse(Backchannel.overReply(replyAudible = true, turnInFlight = true, openingCue = true))
+        assertTrue(Backchannel.overReply(replyAudible = true, turnInFlight = false, openingCue = false))
+        assertTrue(Backchannel.overReply(replyAudible = false, turnInFlight = true, openingCue = false))
+        // His speech ended at 10,000; the clip is due at 10,600.
+        assertEquals(0L, Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = null))
+        assertEquals(0L, Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = 10_400))
+        // The chime ends at 10,800: the clip waits 200 ms and starts 800 ms after his last word.
+        assertEquals(200L, Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = 10_800))
+        assertEquals(300L, Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = 10_000 + Backchannel.MAX_START_AFTER_EOT_MS))
+        // It would start later than that: skipped.
+        assertNull(Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = 10_000 + Backchannel.MAX_START_AFTER_EOT_MS + 1))
     }
 
     @Test
@@ -144,10 +186,36 @@ class BackchannelTest {
     }
 
     @Test
-    fun `half-duplex gets none unless its setting allows it (the mic is deaf during a clip)`() {
-        val half = turn().copy(halfDuplex = true)
-        assertEquals(Backchannel.Skip.HALF_DUPLEX, Backchannel.decide(half))
-        assertNull(Backchannel.decide(half.copy(halfDuplexAllowed = true)))
-        assertNull(Backchannel.decide(turn().copy(halfDuplex = false)))
+    fun `an answer_text skip is logged with how long the answer's audio took after it`() {
+        assertEquals("backchannel skip=answer_text gap_ms=850", Backchannel.answerTextGapLine(10_600, 11_450))
+        assertEquals("backchannel skip=answer_text gap_ms=0", Backchannel.answerTextGapLine(10_600, 10_500))
+    }
+
+    // Review of aed1c786 (#5): a VoIP call or a denied phone-state permission was missed. The audio
+    // mode says a call too, unless the mode is LEGION's own (CallAudioMode.ownCommActive).
+    @Test
+    fun `a call is seen by the phone state or by a call audio mode that is not LEGION's own`() {
+        val inCall = android.media.AudioManager.MODE_IN_CALL
+        val comm = android.media.AudioManager.MODE_IN_COMMUNICATION
+        val normal = android.media.AudioManager.MODE_NORMAL
+        assertTrue(Backchannel.callOnLine(telephonyInCall = true, audioMode = normal, ownComm = false))
+        assertTrue("a VoIP call", Backchannel.callOnLine(telephonyInCall = false, audioMode = comm, ownComm = false))
+        assertFalse("LEGION's own call-style audio", Backchannel.callOnLine(telephonyInCall = false, audioMode = comm, ownComm = true))
+        assertTrue("phone state denied", Backchannel.callOnLine(telephonyInCall = false, audioMode = inCall, ownComm = true))
+        assertFalse(Backchannel.callOnLine(telephonyInCall = false, audioMode = normal, ownComm = false))
+    }
+
+    @Test
+    fun `a phone call gets none, on any route`() {
+        assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(turn().copy(onCall = true)))
+    }
+
+    // Kevin, 2026-11-20: fillers on Bluetooth too ("fillers everywhere"). His audio through the clip is
+    // kept and handed on (ClipListen), as the old setting did; the setting is gone.
+    @Test
+    fun `half-duplex (Bluetooth) gets one like any route`() {
+        // The Turn no longer carries the route: no rule can skip on it.
+        assertNull(Backchannel.decide(turn()))
+        assertFalse(Backchannel.Skip.entries.any { it.token == "half_duplex" })
     }
 }
