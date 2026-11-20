@@ -56,6 +56,18 @@ fun EngineEntry(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val config = remember { EngineConfig(context) }
     val auth = remember { EngineAuth(config) }
+    // Owner PIN (2026-11-20): once set, the engine sign-in is shown or changed only after it.
+    val ownerPin = remember { com.kevin.midnightai.link.OwnerPin(context) }
+    var unlocked by remember { mutableStateOf(!ownerPin.isSet()) }
+    if (!unlocked) {
+        val gate = com.kevin.midnightai.link.OwnerPinGate.gate(pinSet = true, driving = com.kevin.midnightai.update.DrivingState.isDriving())
+        if (gate == com.kevin.midnightai.link.OwnerPinGate.Gate.PARK_FIRST) {
+            Text(com.kevin.midnightai.link.OwnerPinGate.PARK_FIRST, style = MaterialTheme.typography.bodyMedium, color = AriaColors.TextPrimary)
+        } else {
+            OwnerPinPrompt(ownerPin, prompt = "Owner PIN to see or change the engine sign-in.", onOk = { unlocked = true }, onCancel = null)
+        }
+        return
+    }
 
     var urlText by remember { mutableStateOf(config.baseUrl()) }
     var urlStatus by remember { mutableStateOf<String?>(null) }

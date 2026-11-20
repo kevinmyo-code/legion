@@ -55,6 +55,8 @@ import com.kevin.midnightai.link.CarLink
 import com.kevin.midnightai.link.CarLinkRules
 import com.kevin.midnightai.link.LinkKeyStore
 import com.kevin.midnightai.link.LinkStatus
+import com.kevin.midnightai.link.OwnerPin
+import com.kevin.midnightai.link.OwnerPinGate
 import com.kevin.midnightai.link.PairingCrypto
 import com.kevin.midnightai.link.PairingServer
 import com.kevin.midnightai.link.PairingSession
@@ -91,35 +93,96 @@ internal object PairingPad {
 @Composable
 internal fun CarLinkSection(context: Context, onBack: () -> Unit) {
     val store = remember { CarLink.store as? LinkKeyStore ?: LinkKeyStore.forApp(context) }
+    val ownerPin = remember { OwnerPin(context) }
     val status by CarLink.status.collectAsState()
     var pairing by remember { mutableStateOf(false) }
     var attempt by remember { mutableIntStateOf(0) }
+    // Owner PIN (2026-11-20): which guarded action waits for the PIN, the setup pad, a message.
+    var asking by remember { mutableStateOf<GuardedAction?>(null) }
+    var settingPin by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var pinSet by remember { mutableStateOf(false) }
+    var holdsToken by remember { mutableStateOf(false) }
+    var facts by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(Unit) { withContext(Dispatchers.IO) { CarLink.refresh() } }
+    LaunchedEffect(facts, status) {
+        withContext(Dispatchers.IO) {
+            CarLink.refresh()
+            pinSet = ownerPin.isSet()
+            holdsToken = runCatching { store.holdsLinkEngineToken() }.getOrDefault(false)
+        }
+    }
+    fun perform(action: GuardedAction) {
+        when (action) {
+            GuardedAction.PAIR_AGAIN -> { attempt++; pairing = true }
+            GuardedAction.FORGET, GuardedAction.RESET -> scope.launch(Dispatchers.IO) {
+                store.forget() // the pairing, every handed-over value and the owner PIN, together
+                DriveLog.breadcrumb(if (action == GuardedAction.RESET) "car link reset" else "car link forgotten")
+                CarLink.changed(context)
+                facts++
+            }
+        }
+    }
+    fun request(action: GuardedAction) {
+        note = null
+        when (OwnerPinGate.gate(pinSet, DrivingState.isDriving())) {
+            OwnerPinGate.Gate.ALLOWED -> perform(action)
+            OwnerPinGate.Gate.PARK_FIRST -> note = OwnerPinGate.PARK_FIRST
+            OwnerPinGate.Gate.NEEDS_PIN -> asking = action
+        }
+    }
     SectionScaffold("Car link", onBack) {
-        if (!pairing && status != LinkStatus.NOT_PAIRED) {
-            Text(CarLinkRules.statusLine(status, store.phoneName()), style = RowTitle, color = AriaColors.TextPrimary)
-            Spacer(Modifier.height(AriaDimens.s3))
-            Row(horizontalArrangement = Arrangement.spacedBy(AriaDimens.s2)) {
-                HoldButton("HOLD TO PAIR AGAIN") { attempt++; pairing = true }
-                HoldButton("HOLD TO FORGET") {
-                    scope.launch(Dispatchers.IO) {
-                        store.forget()
-                        DriveLog.breadcrumb("car link forgotten")
-                        CarLink.changed(context)
-                    }
+        val waiting = asking
+        when {
+            pairing || status == LinkStatus.NOT_PAIRED -> PairingPane(context, store, attempt) { pairing = false; facts++ }
+            settingPin -> OwnerPinSetup(ownerPin, onDone = { settingPin = false; facts++; note = "Owner PIN set." }, onCancel = { settingPin = false })
+            waiting != null -> OwnerPinPrompt(
+                ownerPin,
+                prompt = if (waiting == GuardedAction.FORGET) "Owner PIN to forget the phone." else "Owner PIN to pair again.",
+                onOk = { asking = null; perform(waiting) },
+                onCancel = { asking = null },
+            )
+            else -> {
+                Text(CarLinkRules.statusLine(status, store.phoneName()), style = RowTitle, color = AriaColors.TextPrimary)
+                Spacer(Modifier.height(AriaDimens.s3))
+                Row(horizontalArrangement = Arrangement.spacedBy(AriaDimens.s2)) {
+                    HoldButton("HOLD TO PAIR AGAIN") { request(GuardedAction.PAIR_AGAIN) }
+                    HoldButton("HOLD TO FORGET") { request(GuardedAction.FORGET) }
+                }
+                Text(
+                    "Forget removes the link and everything the phone sent over it (sign-in, keys), and the owner " +
+                        "PIN. Anything you typed into this unit by hand stays.",
+                    style = RowSubtitle, color = AriaColors.TextDim,
+                )
+                note?.let { Text(it, style = RowSubtitle, color = AriaColors.accentText(AriaColors.Amber)) }
+                if (holdsToken && !pinSet) {
+                    Spacer(Modifier.height(AriaDimens.s2))
+                    Text(
+                        "This unit holds an engine sign-in from your phone. Set an owner PIN so nobody else in the car " +
+                            "can forget, re-pair or change it.",
+                        style = RowSubtitle, color = AriaColors.TextPrimary,
+                    )
+                    OutlinedButton(
+                        onClick = { if (DrivingState.isDriving()) note = OwnerPinGate.PARK_FIRST else settingPin = true },
+                        modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin),
+                    ) { Text("SET OWNER PIN") }
+                }
+                if (pinSet) {
+                    Spacer(Modifier.height(AriaDimens.s2))
+                    Text(
+                        "Forgot the PIN? Reset removes the pairing, the engine sign-in from the phone and the PIN " +
+                            "together; pair your phone again afterwards.",
+                        style = RowSubtitle, color = AriaColors.TextDim,
+                    )
+                    HoldButton("HOLD TO RESET THE CAR LINK") { perform(GuardedAction.RESET) }
                 }
             }
-            Text(
-                "Forget removes the link and everything the phone sent over it (sign-in, keys). " +
-                    "Anything you typed into this unit by hand stays.",
-                style = RowSubtitle, color = AriaColors.TextDim,
-            )
-        } else {
-            PairingPane(context, store, attempt) { pairing = false }
         }
     }
 }
+
+/** What the owner PIN guards on this screen; RESET is the no-PIN way out that wipes everything. */
+internal enum class GuardedAction { PAIR_AGAIN, FORGET, RESET }
 
 /** A drive-size button that acts only on a long press (review M6: no one-tap destructive action). */
 @OptIn(ExperimentalFoundationApi::class)
@@ -255,19 +318,47 @@ internal fun CodePad(
     onSubmit: (String) -> Unit,
     onKeyPlaced: (String, androidx.compose.ui.geometry.Rect) -> Unit = { _, _ -> },
 ) {
-    var digits by remember(triesLeft) { mutableStateOf("") }
+    DigitPad(
+        prompt = "Type the six numbers your phone shows.",
+        minDigits = 6,
+        maxDigits = 6,
+        masked = false,
+        feedback = if (triesLeft < PairingSession.MAX_CODE_TRIES) "That did not match. Tries left: $triesLeft." else null,
+        resetKey = triesLeft,
+        onSubmit = onSubmit,
+        onKeyPlaced = onKeyPlaced,
+    )
+}
+
+/**
+ * A number pad on the unit's own screen (nothing through the keyboard or the key log): the pairing
+ * digits and the owner PIN. [masked] shows dots, never the digits. [extra] sits under the prompt.
+ */
+@Composable
+internal fun DigitPad(
+    prompt: String,
+    minDigits: Int,
+    maxDigits: Int,
+    masked: Boolean,
+    feedback: String?,
+    resetKey: Any?,
+    onSubmit: (String) -> Unit,
+    onKeyPlaced: (String, androidx.compose.ui.geometry.Rect) -> Unit = { _, _ -> },
+    extra: @Composable () -> Unit = {},
+) {
+    var digits by remember(resetKey) { mutableStateOf("") }
     Row(horizontalArrangement = Arrangement.spacedBy(AriaDimens.s4)) {
         Column(Modifier.width(260.dp)) {
-            Text("Type the six numbers your phone shows.", style = RowTitle, color = AriaColors.TextPrimary)
+            Text(prompt, style = RowTitle, color = AriaColors.TextPrimary)
             Spacer(Modifier.height(AriaDimens.s2))
+            val shown = if (masked) "\u2022".repeat(digits.length).padEnd(maxDigits, '_') else digits.padEnd(maxDigits, '_')
             Text(
-                digits.padEnd(6, '_').chunked(3).joinToString(" "),
+                if (maxDigits == 6 && !masked) shown.chunked(3).joinToString(" ") else shown,
                 style = AriaType.readout.copy(fontSize = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp),
                 color = AriaColors.TextPrimary,
             )
-            if (triesLeft < PairingSession.MAX_CODE_TRIES) {
-                Text("That did not match. Tries left: $triesLeft.", style = RowSubtitle, color = AriaColors.accentText(AriaColors.Amber))
-            }
+            feedback?.let { Text(it, style = RowSubtitle, color = AriaColors.accentText(AriaColors.Amber)) }
+            extra()
         }
         // Sized from the pane's visible height, not the scroll column's unbounded one: the OK key
         // must be on screen without scrolling (recheck render test at 800x456).
@@ -280,8 +371,8 @@ internal fun CodePad(
                             PadKey(k, edge, onKeyPlaced) {
                                 when (k) {
                                     "DEL" -> digits = digits.dropLast(1)
-                                    "OK" -> if (digits.length == 6) onSubmit(digits)
-                                    else -> if (digits.length < 6) digits += k
+                                    "OK" -> if (digits.length in minDigits..maxDigits) onSubmit(digits).also { if (masked) digits = "" }
+                                    else -> if (digits.length < maxDigits) digits += k
                                 }
                             }
                         }
@@ -290,6 +381,80 @@ internal fun CodePad(
             }
         }
     }
+}
+
+/**
+ * Asks for the owner PIN (2026-11-20) before a guarded action. Never while driving: the caller
+ * checks [OwnerPinGate] first. The check (PBKDF2) runs off the main thread.
+ */
+@Composable
+internal fun OwnerPinPrompt(pin: OwnerPin, prompt: String, onOk: () -> Unit, onCancel: (() -> Unit)?) {
+    val scope = rememberCoroutineScope()
+    var feedback by remember { mutableStateOf<String?>(null) }
+    var tries by remember { mutableIntStateOf(0) }
+    DigitPad(
+        prompt = prompt,
+        minDigits = OwnerPin.MIN_DIGITS,
+        maxDigits = OwnerPin.MAX_DIGITS,
+        masked = true,
+        feedback = feedback,
+        resetKey = tries,
+        onSubmit = { typed ->
+            scope.launch {
+                val result = withContext(Dispatchers.IO) { pin.check(typed) }
+                if (result == OwnerPin.Check.Ok) onOk() else {
+                    feedback = OwnerPin.words(result, System.currentTimeMillis())
+                    tries++
+                }
+            }
+        },
+        extra = {
+            onCancel?.let {
+                Spacer(Modifier.height(AriaDimens.s2))
+                OutlinedButton(onClick = it, modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin)) { Text("CANCEL") }
+            }
+        },
+    )
+}
+
+/** Sets the owner PIN: typed twice on the pad. Keystore failure is said in words; nothing is set. */
+@Composable
+internal fun OwnerPinSetup(pin: OwnerPin, onDone: () -> Unit, onCancel: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var first by remember { mutableStateOf<String?>(null) }
+    var feedback by remember { mutableStateOf<String?>(null) }
+    var round by remember { mutableIntStateOf(0) }
+    DigitPad(
+        prompt = if (first == null) "Choose an owner PIN, 4 to 6 numbers." else "Type the same PIN again.",
+        minDigits = OwnerPin.MIN_DIGITS,
+        maxDigits = OwnerPin.MAX_DIGITS,
+        masked = true,
+        feedback = feedback,
+        resetKey = round,
+        onSubmit = { typed ->
+            val chosen = first
+            if (chosen == null) {
+                first = typed
+                feedback = null
+            } else if (chosen != typed) {
+                first = null
+                feedback = "The two PINs did not match. Start again."
+            } else {
+                scope.launch {
+                    val ok = withContext(Dispatchers.IO) { pin.set(typed) }
+                    if (ok) onDone() else {
+                        first = null
+                        feedback = "This unit's keystore is not working, so no PIN was set."
+                    }
+                }
+            }
+            round++
+        },
+        extra = {
+            Spacer(Modifier.height(AriaDimens.s2))
+            OutlinedButton(onClick = onCancel, modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin)) { Text("NOT NOW") }
+        },
+    )
 }
 
 @Composable
