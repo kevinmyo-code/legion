@@ -37,7 +37,10 @@ internal object AudioFirstRound {
 
     private const val INPUT_RATE = 16_000
 
-    /** [history] then his turn as [pcm16k] (16 kHz PCM16 mono) with [AUDIO_NOTE], the preamble as a text turn gets it. */
+    /**
+     * [history], then his turn as [pcm16k] (16 kHz PCM16 mono) with [AUDIO_NOTE]; the preamble rides
+     * as a text turn's does.
+     */
     fun contents(history: List<ChatTurn>, pcm16k: ByteArray, preamble: String): JSONArray {
         val contents = CascadePrompt.contents(history, AUDIO_NOTE, preamble)
         val last = contents.getJSONObject(contents.length() - 1)

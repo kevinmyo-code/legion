@@ -73,7 +73,10 @@ class FillerTurnTest {
         assertTrue(FillerTurn.isExactFillerOnly("Checking. Let me look."))
         assertTrue(FillerTurn.isExactFillerOnly("Checking.Let me look!"))
         // The opener rule after a tool is not used here: these are not the scripted lines.
-        for (notFiller in listOf("Checking the modules.", "Looking into it.", "On it, timer set.", "Checking. Two codes.", "", "Check")) {
+        val notFillers = listOf(
+            "Checking the modules.", "Looking into it.", "On it, timer set.", "Checking. Two codes.", "", "Check",
+        )
+        for (notFiller in notFillers) {
             assertFalse(notFiller, FillerTurn.isExactFillerOnly(notFiller))
         }
         assertEquals("Two codes.", FillerTurn.stripExactFillers("Checking. One moment.Two codes."))

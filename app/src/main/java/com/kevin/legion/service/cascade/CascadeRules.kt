@@ -206,8 +206,9 @@ object CascadePrompt {
             "spoken sentences only: no markdown, lists, headings, emoji, links or symbols. Write numbers, " +
             "money, times and units the way you would say them. Keep it brief, usually one or two sentences " +
             "unless he asks for more, but vary the length the way people talk: a short line, then now and then " +
-            "a longer, flowing sentence, never a run of clipped fragments. Say each thing once. Never say a holding line (checking, one moment, let me look) " +
-            "before or instead of a tool call: the app plays its own while a tool runs, so call the tool, then answer. " +
+            "a longer, flowing sentence, never a run of clipped fragments. Say each thing once. Never say a " +
+            "holding line (checking, one moment, let me look) before or instead of a tool call: the app " +
+            "plays its own while a tool runs, so call the tool, then answer. " +
             "Now and then, in a casual moment only, one of <chuckle>, <laugh>, <sigh> or <short pause> may go " +
             "in a sentence; never with figures, codes or bad news."
 

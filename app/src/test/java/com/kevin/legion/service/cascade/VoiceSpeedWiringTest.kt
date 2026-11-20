@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength", "ReturnCount") // source pins read best on one line; one exit per lookup
+
 package com.kevin.legion.service.cascade
 
 import org.junit.Assert.assertFalse

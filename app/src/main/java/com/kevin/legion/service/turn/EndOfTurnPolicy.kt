@@ -29,6 +29,7 @@ package com.kevin.legion.service.turn
  *   silence (or at once if that is already past), [Reason.FINISHED]. Without that verdict nothing
  *   changes. Live passes nothing and keeps the rule above.
  */
+@Suppress("TooManyFunctions") // the fold, plus one small step per rule (the finished end added three)
 internal class EndOfTurnPolicy(
     var smartAvailable: Boolean,
     /**
@@ -144,6 +145,7 @@ internal class EndOfTurnPolicy(
     }
 
     /** A Smart Turn answer. Stale ids (speech resumed, turn ended) are ignored. */
+    @Suppress("ReturnCount") // stale, finished, then the extend-only rule
     fun onCheckResult(id: Int, score: Float): List<Action> {
         if (id != inFlight || phase != Phase.SILENCE) return emptyList()
         inFlight = null
@@ -151,11 +153,7 @@ internal class EndOfTurnPolicy(
         val first = !anyResult
         anyResult = true
         val done = score >= THRESHOLD
-        if (done && silenceMs < baseMs && finishedMs < baseMs && (first || hold)) {
-            hold = false
-            finished = true
-            return if (silenceMs >= finishedMs) end(Reason.FINISHED) else emptyList()
-        }
+        if (done && finishedApplies(first)) return finish()
         return when {
             // The verdict that matters for the base: only a "not done" before baseMs holds.
             first && !done && silenceMs < baseMs -> {
@@ -212,18 +210,29 @@ internal class EndOfTurnPolicy(
         if (hold && before < baseMs && silenceMs >= baseMs) extendedThisTurn = true
         val out = mutableListOf<Action>()
         if (crossedGate(before)) out += request()
-        when {
-            silenceMs >= CAP_MS -> out += end(Reason.CAP)
-            finished && !hold && silenceMs >= finishedMs -> out += end(Reason.FINISHED)
-            silenceMs >= baseMs && !hold -> out += end(
-                when {
-                    extendedThisTurn -> Reason.EXTENDED
-                    smartAvailable -> Reason.BASE
-                    else -> Reason.FALLBACK
-                },
-            )
-        }
+        silenceEnd()?.let { out += end(it) }
         return out
+    }
+
+    /** A "done" now ends the turn at [finishedMs]: on, before the base, and the verdict that counts. */
+    private fun finishedApplies(first: Boolean): Boolean =
+        finishedMs < baseMs && silenceMs < baseMs && (first || hold)
+
+    private fun finish(): List<Action> {
+        hold = false
+        finished = true
+        return if (silenceMs >= finishedMs) end(Reason.FINISHED) else emptyList()
+    }
+
+    /** The silence end that applies now, or null while the turn goes on. */
+    private fun silenceEnd(): Reason? = when {
+        silenceMs >= CAP_MS -> Reason.CAP
+        hold -> null
+        finished && silenceMs >= finishedMs -> Reason.FINISHED
+        silenceMs < baseMs -> null
+        extendedThisTurn -> Reason.EXTENDED
+        smartAvailable -> Reason.BASE
+        else -> Reason.FALLBACK
     }
 
     /** This window crossed [GATE_MS] and the one check of this silence has not run yet. */

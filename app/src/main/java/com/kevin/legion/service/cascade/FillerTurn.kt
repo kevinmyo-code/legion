@@ -68,12 +68,11 @@ internal object FillerTurn {
      * look."). Membership only: no opener prefix, no guess about meaning. Blank is not filler.
      */
     fun isExactFillerOnly(text: String): Boolean {
-        var rest = text.trim()
-        while (rest.isNotEmpty()) {
-            if (LeadingFiller.core(rest) in LeadingFiller.CORES) return true
-            rest = (LeadingFiller.verdict(rest) as? LeadingFiller.Verdict.Drop)?.rest?.trim() ?: return false
+        var rest: String? = text.trim()
+        while (rest != null && rest.isNotEmpty() && LeadingFiller.core(rest) !in LeadingFiller.CORES) {
+            rest = (LeadingFiller.verdict(rest) as? LeadingFiller.Verdict.Drop)?.rest?.trim()
         }
-        return false
+        return !rest.isNullOrEmpty()
     }
 
     /** [text] without every leading exact filler sentence ("Checking.Two codes." is "Two codes."). */
@@ -150,11 +149,8 @@ internal object FillerTurn {
             decided = true
             val held = buf.toString()
             buf.setLength(0)
-            if (!calls && isExactFillerOnly(held)) {
-                filler = true
-                return ""
-            }
-            return held
+            filler = !calls && isExactFillerOnly(held)
+            return if (filler) "" else held
         }
     }
 

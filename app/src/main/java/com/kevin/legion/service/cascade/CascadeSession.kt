@@ -1173,15 +1173,9 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=not_in_memory")
             return
         }
-        val clip = b.tts.speak(SpokenText.forSpeech(line))
-        val pcm = withTimeoutOrNull(BACKCHANNEL_FETCH_MS) {
-            val out = java.io.ByteArrayOutputStream()
-            for (frame in clip.frames) out.write(frame)
-            out.toByteArray()
-        }
-        if (pcm == null) clip.cancel()
-        val ms = (pcm?.size ?: 0).toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
-        if (pcm == null || !Backchannel.clipFits(ms)) {
+        val pcm = clipFromMemory(b.tts, line)
+        val ms = pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
+        if (!Backchannel.clipFits(ms)) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=clip_ms_$ms")
             return
         }
@@ -1203,6 +1197,16 @@ internal class CascadeSession(
         delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
         if (!speaking && !turnAudioStarted) playbackActive = false
         backchannelEndAtMs = System.currentTimeMillis()
+    }
+
+    /** [line]'s whole audio if it comes within [BACKCHANNEL_FETCH_MS] (it is from memory), else empty. */
+    private suspend fun clipFromMemory(tts: TextToSpeech, line: String): ByteArray {
+        val clip = tts.speak(SpokenText.forSpeech(line))
+        return withTimeoutOrNull(BACKCHANNEL_FETCH_MS) {
+            val out = java.io.ByteArrayOutputStream()
+            for (frame in clip.frames) out.write(frame)
+            out.toByteArray()
+        } ?: ByteArray(0).also { clip.cancel() }
     }
 
     /** A task line never starts within [Backchannel.SPACING_MS] of a backchannel's end (no stacking). */
@@ -1580,6 +1584,7 @@ internal class CascadeSession(
      * The cloud transcript did not come back ([MissedLine], 2026-11-19): silence closes quietly, voiced
      * audio is transcribed once more, and only then is the missed line said. Null when the turn ends here.
      */
+    @Suppress("ReturnCount") // one exit per way the turn ends: silent, said, retried
     private suspend fun cloudMissed(u: TurnUtterance, reason: String, moment: Handover.Moment): String? {
         val audio = u.keptAudio()?.takeIf { it.isNotEmpty() }
         val voiced = audio?.let { SttGuard.voicedMs(it) }
@@ -1628,6 +1633,7 @@ internal class CascadeSession(
      * again: it is said on screen and the floor is his. The follow-up window still closes a
      * conversation nobody speaks in. Before 2026-11-15 (or after a rollback) this went to Live.
      */
+    @Suppress("ReturnCount") // one exit per way the line is not said
     private suspend fun missedWords(
         moment: Handover.Moment,
         reason: String,

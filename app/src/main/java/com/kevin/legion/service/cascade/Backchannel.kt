@@ -70,7 +70,8 @@ internal object Backchannel {
     )
 
     enum class Skip(val token: String) {
-        NOT_HIS("not_his"), SHORT("short"), ASKED("answer_to_ask"), OVER_REPLY("over_reply"), TIC("tic"), QUIET("quiet"),
+        NOT_HIS("not_his"), SHORT("short"), ASKED("answer_to_ask"), OVER_REPLY("over_reply"), TIC("tic"),
+        QUIET("quiet"),
     }
 
     /** Null: play one (if one is in memory and the answer has not started). Otherwise why not. */
@@ -90,10 +91,8 @@ internal object Backchannel {
     /** The clip: one of [LINES] not in [recent] (falling back to anything but the last), only if [inHand]. */
     fun pick(recent: RecentLines, index: Int, inHand: (String) -> Boolean): String? {
         val ready = LINES.filter(inHand)
-        if (ready.isEmpty()) return null
-        val fresh = ready.filterNot { recent.contains(it) }
-        val options = fresh.ifEmpty { ready.filter { it != recent.last() }.ifEmpty { return null } }
-        return options[Math.floorMod(index, options.size)]
+        val options = ready.filterNot { recent.contains(it) }.ifEmpty { ready.filter { it != recent.last() } }
+        return if (options.isEmpty()) null else options[Math.floorMod(index, options.size)]
     }
 
     /** Whether a clip of [ms] measured audio may play. */
