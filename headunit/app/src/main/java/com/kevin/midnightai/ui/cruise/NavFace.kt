@@ -70,7 +70,8 @@ object NavFaceHost : NavPanelHost {
 internal fun NavFace(state: NavState, controller: NavController, modifier: Modifier) {
     // Review NAV-1: the same 3 s rule as the CAR face, on the fixes the navigator gets.
     val fix by com.kevin.midnightai.location.LocationController.navFixes.collectAsState()
-    val lines = com.kevin.midnightai.navigation.NavGuidance.lines(state, rememberFixAgeMs(fix))
+    val fixAge = rememberFixAgeMs(fix)
+    val lines = com.kevin.midnightai.navigation.NavGuidance.lines(state, fixAge)
     var driving by remember { mutableStateOf(com.kevin.midnightai.update.DrivingState.isDriving()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -78,6 +79,11 @@ internal fun NavFace(state: NavState, controller: NavController, modifier: Modif
             driving = com.kevin.midnightai.update.DrivingState.isDriving()
         }
     }
+    val locked = com.kevin.midnightai.navigation.NavInput.locked(
+        drivingNow = driving,
+        lastSpeedMps = fix?.takeIf { it.hasSpeed() }?.speed,
+        fixFresh = fixAge != null && fixAge in 0..com.kevin.midnightai.navigation.NavFix.FRESH_MS,
+    )
     Column(modifier) {
         when (state.phase) {
             NavPhase.NO_TOKEN -> NavWords("Maps need your phone.", state.message, Modifier.weight(1f))
@@ -91,7 +97,7 @@ internal fun NavFace(state: NavState, controller: NavController, modifier: Modif
                         NavMap(
                             following = state.following,
                             stale = lines.stale,
-                            panAllowed = com.kevin.midnightai.navigation.NavInput.mapPanAllowed(driving),
+                            panAllowed = com.kevin.midnightai.navigation.NavInput.mapPanAllowed(locked),
                             onMovedByHand = controller::mapMovedByHand,
                             onFailed = { kind -> controller.mapFailed(kind) },
                             modifier = Modifier.fillMaxSize(),
@@ -100,7 +106,7 @@ internal fun NavFace(state: NavState, controller: NavController, modifier: Modif
                     lines.banner?.let { TurnBanner(it, lines.stale, Modifier.align(Alignment.TopCenter)) }
                 }
                 Spacer(Modifier.height(6.dp))
-                NavBottom(state, controller, lines.bottom, com.kevin.midnightai.navigation.NavInput.listScrollAllowed(driving))
+                NavBottom(state, controller, lines.bottom, com.kevin.midnightai.navigation.NavInput.listScrollAllowed(locked))
             }
         }
     }
