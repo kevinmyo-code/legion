@@ -48,6 +48,7 @@ import com.kevin.legion.ui.theme.soft.TypesetType
 internal fun OrbWithOutput(output: OutputToggle?, onFlip: () -> Unit, orb: @Composable () -> Unit) {
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         orb()
+        if (output != null) OutputToggleButton(output, onFlip, Modifier.align(Alignment.CenterEnd))
     }
 }
 
