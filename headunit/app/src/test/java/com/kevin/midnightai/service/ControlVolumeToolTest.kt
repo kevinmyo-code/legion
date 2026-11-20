@@ -44,7 +44,8 @@ class ControlVolumeToolTest {
         val r = call(JSONObject().put("action", "set").put("level", 100))
         assertTrue(r.getBoolean("success"))
         assertTrue(r.getString("message"), r.getString("message").startsWith("Set to "))
-        assertTrue("index ${index()}", index() * 100 / 15 <= 50)
+        // 20% + 30 points = 50%, which a 15-step stream rounds to index 8 (53%): never higher.
+        assertTrue("index ${index()}", index() <= 8)
     }
 
     @Test fun louderStopsAtTheVoiceCeiling() {
