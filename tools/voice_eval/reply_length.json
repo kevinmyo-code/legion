@@ -1,0 +1,13 @@
+{
+  "about": "Reply length cases (made-up; public). Ticket T13, 2026-11-19: replies vary in length the way people talk, still brief. Run twice, the old voice clause and the new (LEGION_VOICE_EVAL_VOICE_CLAUSE_FILE for the old), and compare the `lengths` line the scorer prints: sentence and reply word counts, mean and spread. Every case keeps the brief bound.",
+  "cases": [
+    {"id": "len_octopus", "say": "tell me something interesting about octopuses", "expect": {"max_words": 50, "max_sentences": 3}},
+    {"id": "len_basil", "say": "how do I keep basil alive on a windowsill", "expect": {"max_words": 50, "max_sentences": 3}},
+    {"id": "len_turbo", "say": "explain what a turbocharger does", "expect": {"max_words": 50, "max_sentences": 3}},
+    {"id": "len_latte", "say": "what's the difference between a latte and a flat white", "expect": {"max_words": 50, "max_sentences": 3}},
+    {"id": "len_sleep", "say": "give me one tip for sleeping better", "expect": {"max_words": 50, "max_sentences": 3}},
+    {"id": "len_moon", "say": "what's a fun fact about the moon", "expect": {"max_words": 50, "max_sentences": 3}},
+    {"id": "len_warmup", "say": "should I let an engine warm up in the cold before driving", "expect": {"max_words": 50, "max_sentences": 3}},
+    {"id": "len_bread", "say": "why does bread go stale", "expect": {"max_words": 50, "max_sentences": 3}}
+  ]
+}

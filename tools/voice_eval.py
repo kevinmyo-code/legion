@@ -382,6 +382,11 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
             if not all(arg_ok(c.args.get(k), mt, today) for k, mt in params.items()):
                 fails.append(f"{spec} call {json.dumps(c.args, sort_keys=True)} misses {json.dumps(params)} (today {today})")
     answer = turn.answer
+    # Reply length bounds (2026-11-19, T13): varied, never long.
+    if "max_words" in expect and len(answer.split()) > expect["max_words"]:
+        fails.append(f"answer has {len(answer.split())} words, over {expect['max_words']}")
+    if "max_sentences" in expect and len(sentences(answer)) > expect["max_sentences"]:
+        fails.append(f"answer has {len(sentences(answer))} sentences, over {expect['max_sentences']}")
     for rx in expect.get("answer_has", []):
         if not re.search(rx, answer, re.I):
             fails.append(f"answer lacks /{rx}/")
@@ -718,6 +723,27 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
     return [head] + na_line + [""] + lines + [""] + tail, summary
 
 
+def sentences(text: str) -> list[str]:
+    """The answer's sentences: split after . ! ? (a decimal point is not an end)."""
+    return [s for s in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])", text.strip()) if s.strip()]
+
+
+def reply_lengths(runs: list) -> dict:
+    """Words per sentence and per reply over every answered turn: mean and spread (T13)."""
+    import statistics
+    replies = [t.answer for r in runs for t in r.turns if t.answer]
+    per_sentence = [len(s.split()) for a in replies for s in sentences(a)]
+    per_reply = [len(a.split()) for a in replies]
+
+    def stats(xs: list[int]) -> dict:
+        if not xs:
+            return {"n": 0, "mean": 0.0, "sd": 0.0, "max": 0}
+        return {"n": len(xs), "mean": round(statistics.mean(xs), 1),
+                "sd": round(statistics.pstdev(xs), 1), "max": max(xs)}
+    return {"sentence_words": stats(per_sentence), "reply_words": stats(per_reply),
+            "sentences_per_reply": stats([len(sentences(a)) for a in replies])}
+
+
 def compare(summaries: list[dict]) -> list[str]:
     ids = []
     for s in summaries:
@@ -763,8 +789,10 @@ def cmd_score(a) -> int:
         lines = Path(log).read_text(encoding="utf-8", errors="replace").splitlines()
         facts, runs = parse_run(lines, a.year)
         out, summary = scorecard(cases, runs, facts, phone=a.phone, grader=grader, verbose=not a.quiet)
+        summary["lengths"] = reply_lengths(runs)
         print(f"== {log}")
         print("\n".join(out))
+        print("lengths " + json.dumps(summary["lengths"], sort_keys=True))
         summaries.append(summary)
         if a.json:
             Path(a.json if len(a.logs) == 1 else f"{a.json}.{len(summaries)}").write_text(

@@ -30,6 +30,11 @@ engine is configured in the test JVM, so no tool can write to a real household. 
 path: speech, speculative drafts, screens (screen tools answer success), and the cost of the ask_*
 routers' own sub-agent calls.
 
+A prompt wording change is measured both ways on the same cases: set
+`LEGION_VOICE_EVAL_VOICE_CLAUSE_FILE` to a file holding the old voice clause for the before run. The
+scorer prints a `lengths` line per run (words per sentence and per reply, mean and spread);
+`reply_length.json` is the set for reply length (ticket T13), with `max_words` / `max_sentences` bounds.
+
 The no-key half runs in the suite: `VoiceEvalOfflineTest` (every expected call exists on the voice
 surface; the real tools read the fixture) and `python -m pytest tools/tests/test_voice_eval.py`.
 

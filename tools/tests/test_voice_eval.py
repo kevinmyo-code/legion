@@ -483,3 +483,20 @@ def test_a_closing_text_not_spoken_is_counted():
     out, _ = ve.scorecard(cases, runs, facts, phone=False)
     assert runs[0].turns[0].closing_dropped
     assert any("closing text not spoken after confirmed writes: 1" in l for l in out)
+
+
+def test_sentences_split_after_end_marks_not_decimals():
+    assert ve.sentences("It is 3.5 miles. Go left! Then right? Fine") == ["It is 3.5 miles.", "Go left!", "Then right?", "Fine"]
+    assert ve.sentences("") == []
+
+
+def test_reply_lengths_report_mean_and_spread_and_the_bounds_fail_long_answers():
+    turn = lambda text: ve.Turn(user="x", answer_parts=[text])  # noqa: E731
+    run = ve.CaseRun(id="c", day=ve.datetime.date(2026, 1, 1),
+                     turns=[turn("One two three. Four five."), turn("Six seven eight nine ten.")])
+    got = ve.reply_lengths([run])
+    assert got["reply_words"]["n"] == 2 and got["reply_words"]["mean"] == 5.0
+    assert got["sentence_words"]["max"] == 5 and got["sentences_per_reply"]["max"] == 2
+    fails, _ = ve.check_turn(turn("A b c d e f. G h. I j. K l."), {"max_words": 5, "max_sentences": 3},
+                             ve.datetime.date(2026, 1, 1), phone=False, write=False, allow_writes=False)
+    assert any("over 5" in f for f in fails) and any("4 sentences, over 3" in f for f in fails)
