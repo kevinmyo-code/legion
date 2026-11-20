@@ -94,9 +94,23 @@ object CarLink {
     @Volatile
     var store: LinkKeySource = NoLink
 
-    /** True while a pairing session (the Car link screen) is open (review N1, spec 3.7). */
-    @Volatile
-    var pairingSessionOpen = false
+    /**
+     * Open pairing sessions, one token each (review P5: a single flag let an old session's late
+     * close switch off the new session's protection).
+     */
+    private val openSessions: MutableSet<Any> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** True while any pairing session is open (review N1, spec 3.7). */
+    val pairingSessionOpen: Boolean get() = openSessions.isNotEmpty()
+
+    fun pairingSessionStarted(token: Any) {
+        openSessions += token
+    }
+
+    /** Idempotent: ending a session twice, or one that never started, changes nothing. */
+    fun pairingSessionEnded(token: Any) {
+        openSessions -= token
+    }
 
     private val _status = MutableStateFlow(LinkStatus.NOT_PAIRED)
 
@@ -128,5 +142,6 @@ object CarLink {
         store = NoLink
         _status.value = LinkStatus.NOT_PAIRED
         listeners.clear()
+        openSessions.clear()
     }
 }

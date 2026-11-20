@@ -70,7 +70,19 @@ class PairingServerTest {
         }
     }
 
-    @org.junit.After fun clearSessionFlag() { CarLink.pairingSessionOpen = false }
+    @org.junit.After fun clearSessionFlag() { CarLink.resetForTest() }
+
+    /** Review P5: an old server closing late (after TRY AGAIN) must not switch off the new session's N1 protection. */
+    @Test fun p5_aLateCloseOfTheOldSessionLeavesTheNewOneProtected() {
+        val (old, _) = server()
+        val (new, _) = server()
+        old.close()
+        Thread.sleep(300)
+        assertTrue("closing the old session switched off the new one", CarLink.pairingSessionOpen)
+        new.close()
+        Thread.sleep(300)
+        assertEquals(false, CarLink.pairingSessionOpen)
+    }
 
     /** Review P1: the session flag (N1 protection) ends with the session, not only with close(). */
     @Test fun p1_theSessionFlagClearsWhenTheSessionFailsEvenIfTheScreenNeverCloses() {

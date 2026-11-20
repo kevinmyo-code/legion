@@ -140,7 +140,8 @@ class PairingSessionTest {
         var nanos = 1_000_000_000_000L
         val rng = java.util.Random(3)
         fun feed(k: ByteArray) = com.kevin.midnightai.location.PhoneFeed(k, nowNanos = { nanos }, random = { rng.nextBytes(it) })
-        CarLink.pairingSessionOpen = true // as PairingServer.start sets it
+        val token = Any()
+        CarLink.pairingSessionStarted(token) // as PairingServer.start does
         try {
             val set = com.kevin.midnightai.location.LinkFeedSet(feed(oldKey), feed(newKey))
             val w = com.kevin.midnightai.location.PhoneLinkWire
@@ -155,7 +156,7 @@ class PairingSessionTest {
             assertTrue("old-key fix not accepted: ${r.outcome}", r.outcome is com.kevin.midnightai.location.PhoneFeed.Outcome.Fix)
             if (r.dropPending) { sink.dropPending(); commitError = HandoverSink.NOTHING_PENDING }
         } finally {
-            CarLink.pairingSessionOpen = false
+            CarLink.pairingSessionEnded(token)
         }
         s.onMessage(phone.stored())
         assertEquals(0, drops)

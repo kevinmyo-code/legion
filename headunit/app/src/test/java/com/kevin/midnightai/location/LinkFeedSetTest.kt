@@ -30,11 +30,12 @@ class LinkFeedSetTest {
         }
     }
 
-    @After fun reset() { CarLink.pairingSessionOpen = false }
+    private val token = Any()
+    @After fun reset() { CarLink.pairingSessionEnded(token) }
 
     @Test fun n1_oldKeyTrafficWhileThePairingSessionIsOpenNeverDropsPending() {
         val set = LinkFeedSet(feed(keyOld), feed(keyNew))
-        CarLink.pairingSessionOpen = true
+        CarLink.pairingSessionStarted(token)
         val old = Phone(keyOld)
         // Between `done` and `stored` the phone may still send under the old key.
         val r = set.receive(old.fix(set.committed!!.hello(1000)).let { it }, 105)
