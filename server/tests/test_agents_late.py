@@ -502,7 +502,7 @@ def test_cancel_that_cancels_the_newest_open_task(
     fake_model["rounds"] = []
     older = _task(household_user, question="older")
     newer = _task(household_user, question="newer")
-    assert _sentences(_turn(auth_client, "cancel that")) == [late.CANCELLED]
+    assert _sentences(_turn(auth_client, "cancel the background task")) == [late.CANCELLED]
     older.refresh_from_db()
     newer.refresh_from_db()
     assert (older.status, newer.status) == ("queued", "cancelled")
@@ -689,3 +689,45 @@ def test_the_owner_key_cascades_at_the_database(table):
             [f"public.{table}"],
         )
         assert [row[0] for row in cursor.fetchall()] == ["c"]
+
+
+# -- review 2026-11-20, item B: a bare "cancel it" is ours only right after our own ack ----------
+
+
+def _conversation_of(events) -> str:
+    return next(d for k, d in events if k == "turn")["conversation_id"]
+
+
+def test_cancel_it_after_a_timer_goes_to_the_model(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    task = _task(household_user)
+    fake_model["rounds"] = [m.say("Timer set for ten minutes.")]
+    conversation = _conversation_of(_turn(auth_client, "set a timer for ten minutes"))
+    fake_model["rounds"] = [m.say("The timer is cancelled.")]
+    said = _sentences(_turn(auth_client, "cancel it", conversation_id=conversation))
+    assert said == ["The timer is cancelled."]
+    task.refresh_from_db()
+    assert task.status == "queued"
+
+
+def test_a_bare_cancel_right_after_the_ack_cancels_the_task(
+    auth_client, door_on, late_on, fake_model
+):
+    fake_model["rounds"] = []
+    conversation = _conversation_of(_turn(auth_client, ASK))
+    said = _sentences(_turn(auth_client, "cancel that", conversation_id=conversation))
+    assert said == [late.CANCELLED]
+    assert LateTask.objects.get().status == "cancelled"
+
+
+@pytest.mark.parametrize(
+    "words",
+    ["cancel the background task", "cancel the research", "cancel what you're looking into"],
+)
+def test_the_explicit_cancel_is_ours_anywhere(
+    auth_client, household_user, door_on, late_on, fake_model, words
+):
+    _task(household_user)
+    fake_model["rounds"] = []
+    assert _sentences(_turn(auth_client, words)) == [late.CANCELLED]

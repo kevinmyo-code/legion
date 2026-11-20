@@ -149,3 +149,23 @@ def test_a_line_built_on_a_web_search_marks_the_record_read_through(
     record = _record(_of(events, "turn")[0]["conversation_id"])
     # Memory consolidation keeps no assistant line after this mark (`member_memory/consolidate.py`).
     assert ("read_through source=carry" in record) is tainted
+
+
+def test_cancel_it_after_the_models_question_goes_to_the_model(
+    member, engine, household_user, late_on
+):
+    """Review item B: the web door holds no awaiting-yes state, so a bare "cancel it" is the
+    model's unless the last thing said was the late-answer acknowledgement."""
+    LateTask.objects.create(
+        household=household_user.household,
+        owner_user=household_user,
+        origin_client="web",
+        question="the invented ferry",
+    )
+    engine.model = FakeModel([say("Shall I add the dentist on Friday?")])
+    first = _events(_post(member, text="add the dentist on friday"))
+    conversation = _of(first, "turn")[0]["conversation_id"]
+    engine.model = FakeModel([say("Okay, I won't add it.")])
+    said = _of(_events(_post(member, text="cancel it", conversation_id=conversation)), "sentence")
+    assert [s["text"] for s in said] == ["Okay, I won't add it."]
+    assert LateTask.objects.get().status == "queued"
