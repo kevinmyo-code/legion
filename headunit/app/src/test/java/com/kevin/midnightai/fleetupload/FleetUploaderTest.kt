@@ -139,7 +139,7 @@ class FleetUploaderTest {
             encrypt = { "ENC($it)" },
             decrypt = { it.removePrefix("ENC(").removeSuffix(")") },
         )
-        config.saveBaseUrl(server.url("/").toString().trimEnd('/'))
+        config.saveBaseUrl(server.url("/").newBuilder().host("127.0.0.1").build().toString().trimEnd('/'))
         if (signedIn) config.saveSession("device-token", "22222222-2222-2222-2222-222222222222") else config.clearSession()
         return FleetUploader(source, cursors, EngineHttp(config, OkHttpClient()), sink, log = { logged += it }, maxBatches = maxBatches)
     }

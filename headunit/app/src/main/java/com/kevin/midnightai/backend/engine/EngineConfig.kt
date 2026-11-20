@@ -148,7 +148,26 @@ class EngineConfig(
                 trimmed.startsWith("https://") -> trimmed.removePrefix("https://")
                 else -> return false
             }
-            return withoutScheme.substringBefore("/").isNotBlank()
+            val host = withoutScheme.substringBefore("/").substringBefore(":")
+            if (host.isBlank()) return false
+            // Recheck 2026-11-20: the unit's Android does not block cleartext, so plain http is
+            // refused except to a private LAN address (a household engine on the hotspot or at
+            // home), where the screen says in words that it is not encrypted.
+            return trimmed.startsWith("https://") || isPrivateLanHost(host)
+        }
+
+        /** True for an http address the Engine screen must label "not encrypted". */
+        fun isUnencrypted(url: String): Boolean = url.trim().startsWith("http://")
+
+        /**
+         * RFC 1918 IPv4 literals (10/8, 172.16/12, 192.168/16) and this device's own loopback;
+         * any other name never counts.
+         */
+        fun isPrivateLanHost(host: String): Boolean {
+            if (host == "localhost") return true
+            val o = host.split('.').map { it.toIntOrNull() ?: return false }
+            if (o.size != 4 || o.any { it !in 0..255 }) return false
+            return o[0] == 10 || o[0] == 127 || (o[0] == 172 && o[1] in 16..31) || (o[0] == 192 && o[1] == 168)
         }
     }
 }

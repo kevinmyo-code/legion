@@ -45,7 +45,7 @@ class EngineTimeoutTest {
             encrypt = { plain -> "ENC($plain)" },
             decrypt = { blob -> blob.removePrefix("ENC(").removeSuffix(")") },
         )
-        config.saveBaseUrl(server.url("/").toString().trimEnd('/'))
+        config.saveBaseUrl(server.url("/").newBuilder().host("127.0.0.1").build().toString().trimEnd('/'))
         config.saveSession("test-device-token", "user-1")
         val fast = OkHttpClient.Builder().readTimeout(300, TimeUnit.MILLISECONDS).build()
         return EngineMcpClient(EngineHttp(config, fast), config::baseUrl)

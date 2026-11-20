@@ -100,9 +100,9 @@ fun EngineEntry(modifier: Modifier = Modifier) {
         val saved = saveUrlDroppingStaleSession()
         urlStatus = if (saved) {
             urlText = config.baseUrl()
-            "Saved."
+            if (EngineConfig.isUnencrypted(urlText)) "Saved. Not encrypted: this local address uses plain http." else "Saved."
         } else {
-            "That didn't look like an address - start with https://."
+            "Use an https:// address. Plain http is accepted only for a local network address (192.168.x.x, 10.x.x.x, 172.16-31.x.x)."
         }
         configured = config.isConfigured()
     }
@@ -185,6 +185,13 @@ fun EngineEntry(modifier: Modifier = Modifier) {
         }
         urlStatus?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = AriaColors.TextDim)
+        }
+        if (configured && EngineConfig.isUnencrypted(config.baseUrl())) {
+            Text(
+                "Not encrypted: this engine address uses plain http on the local network.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AriaColors.accentText(AriaColors.Amber),
+            )
         }
         Spacer(Modifier.height(16.dp))
 

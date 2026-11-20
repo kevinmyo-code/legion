@@ -52,7 +52,7 @@ class DriveLogUploaderTest {
             encrypt = { plain -> "ENC($plain)" },
             decrypt = { blob -> blob.removePrefix("ENC(").removeSuffix(")") },
         )
-        config.saveBaseUrl(server.url("/").toString().trimEnd('/'))
+        config.saveBaseUrl(server.url("/").newBuilder().host("127.0.0.1").build().toString().trimEnd('/'))
         if (signedIn) config.saveSession("test-device-token", "11111111-1111-1111-1111-111111111111")
         else config.clearSession()
         return config
