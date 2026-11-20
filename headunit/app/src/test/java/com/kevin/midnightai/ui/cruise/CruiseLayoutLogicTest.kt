@@ -3,6 +3,7 @@ package com.kevin.midnightai.ui.cruise
 import com.kevin.midnightai.media.MusicDeckLogic
 import com.kevin.midnightai.ui.GaugeReading
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -33,6 +34,28 @@ class CruiseLayoutLogicTest {
             // Room for the CAR / NAV pair (2 x 84) and the GPS readout beside it.
             assertTrue("$w middle ${c.middle}", c.middle >= 300f)
         }
+    }
+
+    @Test fun theRailFitsAPortraitAt800x480AndUnderTheStatusBar() {
+        listOf(480f, 456f).forEach { h ->
+            val u = CruiseLayoutLogic.unit(800f, h)
+            val c = CruiseLayoutLogic.columns(800f, h)
+            val rail = h - 2 * c.pad
+            listOf(1.0f, 1.3f).forEach { scale ->
+                assertTrue("800x$h at font $scale", CruiseLayoutLogic.railShowsPortrait(rail, c.rail, u, scale))
+            }
+            val box = rail - CruiseLayoutLogic.clockHeight(u, 1f) - CruiseLayoutLogic.railBottomHeight(u) - 2 * u
+            assertTrue("800x$h edge", CruiseLayoutLogic.portraitEdge(box, c.rail, u) >= 72f)
+        }
+    }
+
+    @Test fun aShortRailFallsBackToATalkTileInsteadOfLosingTheTalkControl() {
+        // Phone landscape (MEDIUM rides the head-unit layout): about 800x360.
+        val u = CruiseLayoutLogic.unit(800f, 360f)
+        val c = CruiseLayoutLogic.columns(800f, 360f)
+        assertFalse(CruiseLayoutLogic.railShowsPortrait(360f - 2 * c.pad, c.rail, u, 1f))
+        // In fallback the TALK tile replaces the phone chip: the bottom group is the same height.
+        assertTrue(CruiseLayoutLogic.railBottomHeight(u) + 2 * c.pad <= 360f)
     }
 
     @Test fun heroKeysMatchThePrototypeAt800() {

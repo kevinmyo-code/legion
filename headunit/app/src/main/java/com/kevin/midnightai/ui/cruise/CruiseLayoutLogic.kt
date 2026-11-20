@@ -16,7 +16,7 @@ object CruiseLayoutLogic {
     fun unit(widthDp: Float, heightDp: Float): Float = minOf(widthDp / 100f, heightDp / HEIGHT_UNITS)
 
     data class Columns(val pad: Float, val gap: Float, val rail: Float, val middle: Float, val music: Float) {
-        /** One rail tile: two per row. */
+        /** One rail tile: two per row. Kept for [Columns]; height is [railTileHeight]. */
         val tileWidth: Float get() = (rail - gap) / 2f
     }
 
@@ -29,6 +29,36 @@ object CruiseLayoutLogic {
         val music = u * 35f
         val middle = widthDp - 2 * pad - 2 * gap - rail - music
         return Columns(pad, gap, rail, middle, music)
+    }
+
+    // --- The console rail's height budget (review L2, 2026-11-20) ---------------------------
+
+    /** The prototype's 58 dp tile at 800 wide, never under drive size. */
+    fun railTileHeight(u: Float): Float = maxOf(MusicDeckLogic.TOUCH_MIN, u * 7.25f)
+
+    /** Phone chip (or TALK tile) + three tile rows, gaps of u between them. */
+    fun railBottomHeight(u: Float): Float = MusicDeckLogic.TOUCH_MIN + 3 * railTileHeight(u) + 3 * u
+
+    /**
+     * The clock block (time at 3.3u, then date and weather lines that follow the system font
+     * scale). An ESTIMATE of the composed height: it decides only whether the portrait is tried.
+     */
+    fun clockHeight(u: Float, fontScale: Float): Float = u * 3.3f * 1.25f + 2 * 16f * fontScale
+
+    /** The status line under the portrait (TAP TO TALK / LISTENING...). */
+    const val PORTRAIT_STATUS_LINE = 28f
+
+    /** The portrait's edge in a box [boxHeight] x [boxWidth] (same rule the composable uses). */
+    fun portraitEdge(boxHeight: Float, boxWidth: Float, u: Float): Float =
+        minOf(u * 13.5f, boxHeight - PORTRAIT_STATUS_LINE, boxWidth)
+
+    /**
+     * Whether a rail [railHeight] x [railWidth] has room for a drive-size portrait; when it does
+     * not, a TALK tile takes the phone chip's place so the talk control never disappears.
+     */
+    fun railShowsPortrait(railHeight: Float, railWidth: Float, u: Float, fontScale: Float): Boolean {
+        val box = railHeight - clockHeight(u, fontScale) - railBottomHeight(u) - 2 * u
+        return portraitEdge(box, railWidth, u) >= MusicDeckLogic.TOUCH_MIN
     }
 
 }

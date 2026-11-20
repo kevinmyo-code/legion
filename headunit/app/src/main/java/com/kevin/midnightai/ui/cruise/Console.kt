@@ -162,7 +162,11 @@ private fun weekdayKanji(day: java.time.DayOfWeek): String =
  * room for the portrait.
  *
  * Fits by construction, no scroll: the clock and the bottom group (phone chip, dock) are fixed,
- * and the portrait takes what is left, up to 13.5u.
+ * and the portrait takes what is left, up to 13.5u. When that leaves too little for a drive-size
+ * portrait (a short frame, a large font, phone landscape), the talk control never disappears
+ * ([CruiseLayoutLogic.railShowsPortrait], review L2 2026-11-20): a TALK tile takes the phone
+ * chip's place (Phones stays in Settings), and if the portrait box still measures short it holds
+ * a TALK tile too.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -183,7 +187,18 @@ internal fun CruiseConsole(
     val context = LocalContext.current
     val density = LocalDensity.current
     val gap = u
-    Column(modifier) {
+    // The prototype's 58 dp tile at 800 wide.
+    val tileHeight = CruiseLayoutLogic.railTileHeight(u.value).dp
+    val talkTile: @Composable (Modifier, Dp) -> Unit = { mod, h ->
+        ConsoleTile(
+            u, "◉", statusLabel(phase) ?: "TALK", h, ring = ringColor(phase), modifier = mod,
+        ) { talk(context) }
+    }
+    BoxWithConstraints(modifier) {
+    val showPortrait = CruiseLayoutLogic.railShowsPortrait(
+        railHeight = maxHeight.value, railWidth = maxWidth.value, u = u.value, fontScale = density.fontScale,
+    )
+    Column(Modifier.fillMaxSize()) {
         // Clock digits scale with the frame; 3.3u = 34sp at 1024dp wide.
         val timeSize = with(density) { (u * 3.3f).toSp() }
         Clock(context = context, timeSize = timeSize)
@@ -195,8 +210,12 @@ internal fun CruiseConsole(
             contentAlignment = Alignment.TopCenter,
         ) {
             // The status line under the portrait (TAP TO TALK / LISTENING...) is ~28dp.
-            val edge = minOf(u * 13.5f, maxHeight - 28.dp, maxWidth)
-            if (edge >= AriaDimens.driveTouchMin) {
+            val edge = CruiseLayoutLogic.portraitEdge(maxHeight.value, maxWidth.value, u.value).dp
+            if (!showPortrait) {
+                // The TALK tile is in the bottom group instead.
+            } else if (edge < AriaDimens.driveTouchMin) {
+                talkTile(Modifier.fillMaxWidth(), maxHeight.coerceAtMost(tileHeight))
+            } else {
                 AvatarVibe(
                     avatar = avatar,
                     ring = ringColor(phase),
@@ -210,12 +229,14 @@ internal fun CruiseConsole(
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-            PhoneLinkChip(
-                onClick = onOpenPhoneLink,
-                modifier = Modifier.fillMaxWidth().heightIn(min = AriaDimens.driveTouchMin),
-            )
-            // The prototype's 58 dp tile at 800 wide.
-            val tileHeight = (u * 7.25f).coerceAtLeast(AriaDimens.driveTouchMin)
+            if (showPortrait) {
+                PhoneLinkChip(
+                    onClick = onOpenPhoneLink,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = AriaDimens.driveTouchMin),
+                )
+            } else {
+                talkTile(Modifier.fillMaxWidth(), AriaDimens.driveTouchMin)
+            }
             val muted by ProactivePreferences.muted.collectAsState()
             val night = AriaPalette.isNight
             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
@@ -244,6 +265,7 @@ internal fun CruiseConsole(
                 ConsoleTile(u, "⚙", "SETUP", tileHeight, modifier = Modifier.weight(1f), onClick = onOpenSettings)
             }
         }
+    }
     }
 }
 
