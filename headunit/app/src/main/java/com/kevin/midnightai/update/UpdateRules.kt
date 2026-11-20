@@ -41,14 +41,24 @@ object UpdateRules {
 
     private fun mb(bytes: Long) = (bytes + 512 * 1024) / (1024 * 1024)
 
-    /** Null when there is room: twice the APK (the partial file plus the verified copy). */
-    fun spaceRefusal(freeBytes: Long, sizeBytes: Long): String? =
-        if (sizeBytes > 0 && freeBytes < 2 * sizeBytes) {
-            "Not downloaded: the update needs about ${mb(2 * sizeBytes)} MB free and this unit has ${mb(freeBytes)} MB free. " +
+    /**
+     * Free space an update needs, as a multiple of the APK (review C-3): the downloaded file (1x),
+     * Android's installer copy (1x), and the native libraries it extracts at install with legacy
+     * JNI packaging. Those were 59.0 MB uncompressed in a 42.8 MB arm64 APK (1.4x) on 2026-11-20,
+     * rounded up to 1.5x. Total 3.5x. An estimate from the measured build, not read from the APK.
+     */
+    const val SPACE_FACTOR_TENTHS = 35L
+
+    /** Null when there is room for the download, the install copy and the extracted libraries. */
+    fun spaceRefusal(freeBytes: Long, sizeBytes: Long): String? {
+        val needed = sizeBytes * SPACE_FACTOR_TENTHS / 10
+        return if (sizeBytes > 0 && freeBytes < needed) {
+            "Not downloaded: the update needs about ${mb(needed)} MB free and this unit has ${mb(freeBytes)} MB free. " +
                 "Free some space, then check again."
         } else {
             null
         }
+    }
 
     fun needsHotspotTap(unmetered: Boolean, sizeBytes: Long): Boolean = !unmetered && sizeBytes > LARGE_METERED_BYTES
 

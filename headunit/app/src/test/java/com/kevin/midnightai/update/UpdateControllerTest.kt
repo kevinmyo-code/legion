@@ -135,6 +135,21 @@ class UpdateControllerTest {
         assertEquals(0, downloader.calls)
     }
 
+    /**
+     * Review C-3: the install also extracts the native libraries (legacy JNI packaging), so twice
+     * the APK is not enough: 3x free (room for the file, Android's copy and part of the extraction)
+     * still refuses.
+     */
+    @Test
+    fun `room for the extracted native libraries is counted too`() = runBlocking {
+        platform.free = 3 * apkBytes.size.toLong()
+        val state = controller.check()
+        assertTrue(state.toString(), state is UpdateState.Available && state.why.contains("free"))
+        assertEquals(0, downloader.calls)
+        platform.free = 4 * apkBytes.size.toLong()
+        assertTrue(controller.check() is UpdateState.Ready)
+    }
+
     /** Item 8: a large update over the hotspot names its size and waits for DOWNLOAD. */
     @Test
     fun `a large update on the hotspot waits for a tap that names its size`() = runBlocking {
