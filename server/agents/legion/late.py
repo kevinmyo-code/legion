@@ -1,4 +1,4 @@
-"""The late-answer path (design 2026-11-20, `.legion/reports/late-answer-path-design-1120.md`):
+"""The late-answer path (design 2026-11-20):
 work goes to the background while the conversation stays free, and Alfred says the result at
 his next turn. DARK: nothing here reads or writes a row unless `LEGION_LATE_ANSWERS=on`.
 
