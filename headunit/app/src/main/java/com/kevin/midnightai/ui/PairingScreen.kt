@@ -101,7 +101,9 @@ internal fun CarLinkSection(context: Context, onBack: () -> Unit) {
     var asking by remember { mutableStateOf<GuardedAction?>(null) }
     var settingPin by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
-    var pinSet by remember { mutableStateOf(false) }
+    // Review B1: known from the first frame. isSet() is a plain prefs lookup (no Keystore), so a long
+    // press can never land in a window where a set PIN still reads as "not set".
+    var pinSet by remember { mutableStateOf(ownerPin.isSet()) }
     var holdsToken by remember { mutableStateOf(false) }
     var facts by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
