@@ -248,6 +248,7 @@ RECRUITER_DENIED: dict[str, str] = {
     "greeting.views.GreetingTopicView": _GREETING,
     # engine-brain ticket 02 (ADR 0095): dark, and never a recruiter's in v1 (plan section 5).
     "agents.views.AgentTurnView": _AGENTS,
+    "agents.views.AgentTurnStreamView": _AGENTS,
     "agents.views.AgentCancelView": _AGENTS,
     "agents.views.AgentLimbView": _AGENTS,
     "agents.views.AgentWarmView": _AGENTS,
