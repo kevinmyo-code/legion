@@ -94,7 +94,8 @@ fun CarLinkContent(state: CarLinkUiState, onBack: () -> Unit, actions: CarLinkAc
                 Spacer(Modifier.height(16.dp))
                 VoiceTurnRow(
                     title = "Send location to the head unit",
-                    explanation = "only while paired and on the car's hotspot. Off by default.",
+                    explanation = "only while paired, and only while this phone is on the network it paired on " +
+                        "(the same hotspot or Wi-Fi, same address range). Off by default.",
                     enabled = state.sendLocation,
                     onToggle = actions.sendLocation,
                 )

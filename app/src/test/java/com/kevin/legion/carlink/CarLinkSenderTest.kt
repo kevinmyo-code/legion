@@ -51,7 +51,7 @@ class CarLinkSenderTest {
         override fun holdFast(on: Boolean) { fast += on }
     }
 
-    private val lan = LocalSubnets { listOf(InetAddress.getByName("10.0.0.2") as Inet4Address to 24) }
+    private val lan = PairingNetwork("ap-test0", "10.0.0.0", 24)
     private val port = FakePort()
     private val fixes = FakeFixes()
     private var setting = true
@@ -130,11 +130,6 @@ class CarLinkSenderTest {
         assertEquals(Mnai2.REVOKE, Mnai2.openFromPhone(DirectionKeys(key).p2u, port.sent.last().first)!!.type)
     }
 
-    @Test fun `local subnets accept only private addresses inside a local prefix`() {
-        assertTrue(lan.contains(InetAddress.getByName("10.0.0.200")))
-        assertFalse(lan.contains(InetAddress.getByName("10.0.1.1")))
-        assertFalse(lan.contains(InetAddress.getByName("8.8.8.8")))
-    }
 
     // ---- P-B: any LAN peer can send bytes; handling one must never take the loop down.
     @Test fun `a datagram whose handling throws is counted and contained, and later HELLOs still work`() {

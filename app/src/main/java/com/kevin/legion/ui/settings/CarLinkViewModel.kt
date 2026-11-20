@@ -231,6 +231,9 @@ object CarLinkWords {
         CarLinkNote.FORGET_FAILED -> "Could not forget the head unit: this phone could not change its saved pairing."
         CarLinkNote.PORT_UNAVAILABLE -> "Could not open the car link port, so no location goes to the head unit."
         CarLinkNote.SETTING_NOT_SAVED -> "That setting could not be saved."
+        CarLinkNote.NETWORK_NOT_RECORDED ->
+            "Paired, but this phone could not tell which network the head unit is on, so it will send it " +
+                "nothing. Pair again with this phone's hotspot on and the head unit joined to it."
         CarLinkNote.FORGOT_WILL_TELL ->
             "Forgotten on this phone. The head unit was not in range, so it will be told to forget this " +
                 "phone the next time this phone is in the car (for up to 90 days)."

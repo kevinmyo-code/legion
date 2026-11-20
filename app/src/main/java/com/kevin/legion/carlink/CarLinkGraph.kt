@@ -55,12 +55,14 @@ class CarLinkGraph(private val app: Application) {
                 redact = LogcatRedactor::addLiteral,
             ),
             newSender = { ring, onEvent, sendFixes, revokeOnly ->
+                // Only HELLOs from inside the network the phone paired on count (4.3, rev 5).
+                val net = store.pairingNetwork()
                 UdpPort.open()?.let { port ->
                     CarLinkSender(
                         feed = Mnai2Feed(
                             ring = ring,
                             newSession = ::newSession,
-                            onLan = LocalSubnets.system()::contains,
+                            onLan = { net?.contains(it) == true },
                             // A revoke-only listener sends nothing but REVOKE: no zone.
                             zoneId = { if (revokeOnly) null else TimeZone.getDefault().id },
                             onRingEvent = onEvent,
@@ -76,6 +78,11 @@ class CarLinkGraph(private val app: Application) {
             io = Dispatchers.IO,
             jitterMs = { PairingRunner.jitter(kotlin.random.Random.Default) },
             sleep = { delay(it) },
+            network = { store.pairingNetwork()?.present(PairingNetwork.systemInterfaces()) == true },
+            recordNetwork = { host ->
+                val net = PairingNetwork.recordFor(host, PairingNetwork.systemInterfaces())
+                store.setPairingNetwork(net) && net != null
+            },
         )
     }
 
@@ -84,7 +91,12 @@ class CarLinkGraph(private val app: Application) {
     private fun newSession(): ByteArray = ByteArray(Mnai2.SESSION_LEN).also(random::nextBytes)
 }
 
-/** UDP on [Mnai2.PORT], all local addresses. Null when the port cannot be bound. */
+/**
+ * UDP on [Mnai2.PORT]. Bound to all local addresses on purpose: the unit's first HELLOs are broadcasts,
+ * and on Linux a socket bound to one unicast address never receives a broadcast. It exists only
+ * while the pairing network is present, and the feed drops every source outside that network's
+ * subnet (rev 5, 4.3). Null when the port cannot be bound.
+ */
 class UdpPort private constructor(private val socket: DatagramSocket) : DatagramPort {
     override fun receive(buf: ByteArray, timeoutMs: Int): Incoming? = try {
         socket.soTimeout = timeoutMs

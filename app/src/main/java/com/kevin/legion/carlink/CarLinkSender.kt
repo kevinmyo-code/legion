@@ -6,7 +6,6 @@ import com.kevin.legion.carlink.protocol.Mnai2Feed
 import com.kevin.legion.carlink.protocol.Outgoing
 import java.io.Closeable
 import java.io.IOException
-import java.net.Inet4Address
 import java.net.InetAddress
 
 /** A datagram that arrived: its length in the caller's buffer and its source address. */
@@ -115,42 +114,3 @@ class CarLinkSender(
     }
 }
 
-/**
- * "On the unit's LAN": the source is a private IPv4 address inside the subnet of one of this phone's
- * own IPv4 interfaces (its hotspot or its Wi-Fi). The document names the hotspot LAN (sections 1 and
- * 4.6) without defining the check; this is this end's reading of it.
- */
-class LocalSubnets(private val interfaces: () -> List<Pair<Inet4Address, Int>>) {
-    fun contains(addr: InetAddress): Boolean {
-        if (addr !is Inet4Address || !isPrivate(addr)) return false
-        val a = toInt(addr)
-        return interfaces().any { (local, prefix) ->
-            if (prefix !in 1..MAX_PREFIX || !isPrivate(local)) return@any false
-            val mask = -1 shl (MAX_PREFIX - prefix)
-            (a and mask) == (toInt(local) and mask)
-        }
-    }
-
-    private fun toInt(a: Inet4Address) =
-        a.address.fold(0) { acc, b -> (acc shl BYTE_BITS) or (b.toInt() and BYTE_MASK) }
-
-    private fun isPrivate(a: Inet4Address): Boolean =
-        com.kevin.legion.carlink.protocol.QrPayload.isPrivateIpv4(a.hostAddress ?: "")
-
-    companion object {
-        private const val MAX_PREFIX = 32
-        private const val BYTE_BITS = 8
-        private const val BYTE_MASK = 0xFF
-
-        /** This phone's up, non-loopback IPv4 interfaces and their prefix lengths. */
-        fun system(): LocalSubnets = LocalSubnets {
-            java.net.NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
-                .filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
-                .flatMap { ni ->
-                    ni.interfaceAddresses.mapNotNull { ia ->
-                        (ia.address as? Inet4Address)?.let { it to ia.networkPrefixLength.toInt() }
-                    }
-                }
-        }
-    }
-}

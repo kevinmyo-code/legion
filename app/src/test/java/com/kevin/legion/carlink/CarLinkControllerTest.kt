@@ -58,7 +58,7 @@ class CarLinkControllerTest {
         CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> errors += e })
     private var port = BlockingPort()
     private val store = CarLinkStore(FakeKeystoreStandIn(), MemoryRecordFile()) {}
-    private val lan = LocalSubnets { listOf(InetAddress.getByName("10.0.0.2") as Inet4Address to 24) }
+    private val lan = PairingNetwork("ap-test0", "10.0.0.0", 24)
 
     private var networkUp = true
     private var wallNow = 1_000_000_000_000L
@@ -235,7 +235,7 @@ class CarLinkControllerTest {
     }
 
     // ---- P-D: nothing listens when the network the phone paired on is absent.
-    @Ignore("red until fix P-D") @Test fun `with the pairing network absent the controller opens no socket`() {
+    @Test fun `with the pairing network absent the controller opens no socket`() {
         assertTrue(store.write(key, null))
         networkUp = false
         controller().start()

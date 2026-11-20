@@ -73,6 +73,7 @@ class CarLinkStore(
                     put(CAR_GEMINI, null)
                     put(REVOKE_ONLY, null)
                     put(REVOKE_SINCE, null)
+                    put(PAIRING_NET, null)
                 }
             },
         )
@@ -123,9 +124,10 @@ class CarLinkStore(
         return file.writeAll(mapOf(CAR_GEMINI to sealed))
     }
 
-    fun pairingNetwork(): PairingNetwork? = null
+    /** The network the phone paired on (4.3, rev 5). Kept by a revoke-only record, cleared by Forget. */
+    fun pairingNetwork(): PairingNetwork? = PairingNetwork.decode(file.read()[PAIRING_NET])
 
-    fun setPairingNetwork(n: PairingNetwork?): Boolean = false
+    fun setPairingNetwork(n: PairingNetwork?): Boolean = file.writeAll(mapOf(PAIRING_NET to n?.encode()))
 
     fun unitDeviceId(): String? = file.read()[UNIT_DEVICE_ID]
 
@@ -157,5 +159,6 @@ class CarLinkStore(
         private const val CAR_GEMINI = "car_gemini_key"
         private const val REVOKE_ONLY = "revoke_only_key"
         private const val REVOKE_SINCE = "revoke_only_since"
+        private const val PAIRING_NET = "pairing_network"
     }
 }

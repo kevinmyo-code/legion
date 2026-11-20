@@ -23,8 +23,8 @@ class Outgoing(val bytes: ByteArray, val to: InetAddress, val port: Int) {
  * The phone's MNAI2 side, section 4, without a socket or a clock: [onDatagram] for what arrived,
  * [tick] for what is due, [revoke] for "Forget head unit". The Android sender owns the socket.
  *
- * - A HELLO is accepted only if it opens and its (session, counter) is new (4.3); only an accepted
- *   HELLO moves the destination. A session counts as new only if this end has never accepted it,
+ * - A HELLO is accepted only if it opens and its (session, counter) is new (4.3); only accepted
+ *   HELLOs move the destination, and a new address needs two of them in a row (rev 5). A session counts as new only if this end has never accepted it,
  *   which is stricter than "a different session" and costs nothing (a unit draws a fresh random one).
  * - HELLOs under the reserve key (3.7) are authenticated and replay-checked the same way and feed
  *   [LinkKeyRing.onHello]; nothing is ever sent under the reserve.
@@ -71,6 +71,9 @@ class Mnai2Feed(
 
     private var destination: InetAddress? = null
     private var destinationPort = 0
+    // A new source seen once; it becomes the destination at its second accepted HELLO (rev 5).
+    private var candidate: InetAddress? = null
+    private var candidatePort = 0
     private var challenge: ByteArray? = null
     private var challengeAt = 0L
     private var intervalMs = 0L
@@ -123,8 +126,7 @@ class Mnai2Feed(
             syncKeys()
             return emptyList()
         }
-        destination = from
-        destinationPort = fromPort
+        if (!adopt(from, fromPort)) return emptyList()
         challenge = hello.challenge
         challengeAt = nowMs
         intervalMs = hello.intervalMs
@@ -186,6 +188,7 @@ class Mnai2Feed(
             session = newSession()
             counter = 0
             destination = null
+            candidate = null
             challenge = null
             intervalMs = 0
             lastFixAt = null
@@ -198,6 +201,25 @@ class Mnai2Feed(
             reserveKeys = res?.let(::DirectionKeys)
             reserveReplay = Replay()
         }
+    }
+
+    /**
+     * Whether a HELLO from [from]:[fromPort] may drive the feed. The first source is taken at once; a
+     * different one only at its second accepted HELLO in a row, so one replayed HELLO cannot move
+     * where fixes go (rev 5, 4.3).
+     */
+    private fun adopt(from: InetAddress, fromPort: Int): Boolean {
+        val current = destination
+        val same = current == null || (current == from && destinationPort == fromPort)
+        if (!same && !(candidate == from && candidatePort == fromPort)) {
+            candidate = from
+            candidatePort = fromPort
+            return false
+        }
+        candidate = null
+        destination = from
+        destinationPort = fromPort
+        return true
     }
 
     private fun helloEvery(): Long = minOf(intervalMs, MAX_HELLO_EVERY_MS)

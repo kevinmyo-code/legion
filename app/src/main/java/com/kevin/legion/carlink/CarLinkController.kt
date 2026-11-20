@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,7 +33,7 @@ enum class LinkState { LOADING, NOT_PAIRED, PAIRED, BROKEN }
 /** Something that happened that the screen should say once, in words. */
 enum class CarLinkNote {
     CONFIRMED, REVERTED_QUIET, FORGOT_REVOKE_SENT, FORGOT_NOT_IN_RANGE, FORGET_FAILED, PORT_UNAVAILABLE,
-    SETTING_NOT_SAVED, FORGOT_WILL_TELL,
+    SETTING_NOT_SAVED, FORGOT_WILL_TELL, NETWORK_NOT_RECORDED,
 }
 
 /** Everything the Car link screen reads. Not printed anywhere; [PairingStage.DigitsShown] hides its digits. */
@@ -62,7 +63,10 @@ class CarLinkController(
     private val io: CoroutineDispatcher,
     private val jitterMs: () -> Long,
     private val sleep: suspend (Long) -> Unit,
+    /** The network the phone paired on is up now (4.3, rev 5). Nothing listens while it is not. */
     private val network: () -> Boolean = { true },
+    /** Records the network that holds [String] (the unit's address) at pairing; false = none found. */
+    private val recordNetwork: (String) -> Boolean = { true },
     private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
     private val _status = MutableStateFlow(CarLinkStatus())
@@ -147,32 +151,46 @@ class CarLinkController(
             revokeKey?.let { LinkKeyRing(it.copyOf(), null) { _, _ -> false } } ?: return
         }
         feedJob = scope.launch(io) {
-            val s = newSender(feedRing, ::onRingEvent, { !revokeOnly && _status.value.sendLocation }, revokeOnly)
-            if (s == null) {
-                // A revoke-only listener keeps Forget's own words on screen.
-                if (!revokeOnly) _status.update { it.copy(note = CarLinkNote.PORT_UNAVAILABLE) }
-                return@launch
-            }
-            sender = s
-            try {
-                while (isActive && feedRing.current != null) {
-                    if (!stepContained(s)) break
-                    val inRange = s.inRange()
-                    if (revokeOnly) {
-                        if (inRange && s.revoke()) {
-                            revokeDelivered()
-                            break
-                        }
-                    } else if (inRange != _status.value.unitInRange) {
-                        _status.update { it.copy(unitInRange = inRange) }
-                    }
+            while (isActive && feedRing.current != null) {
+                // 4.3 rev 5: no socket at all while the network the phone paired on is absent.
+                if (!network()) {
+                    delay(NETWORK_POLL_MS)
+                    continue
                 }
-            } finally {
-                if (sender === s) sender = null
-                s.close()
-                _status.update { it.copy(unitInRange = false) }
+                if (!runSender(feedRing, revokeOnly)) break
+                delay(RESTART_DELAY_MS)
             }
         }
+    }
+
+    /** One socket's life. False = stop for good (no port, or the REVOKE went); true = the network left. */
+    private suspend fun runSender(feedRing: LinkKeyRing, revokeOnly: Boolean): Boolean {
+        val s = newSender(feedRing, ::onRingEvent, { !revokeOnly && _status.value.sendLocation }, revokeOnly)
+        if (s == null) {
+            // A revoke-only listener keeps Forget's own words on screen.
+            if (!revokeOnly) _status.update { it.copy(note = CarLinkNote.PORT_UNAVAILABLE) }
+            return false
+        }
+        sender = s
+        try {
+            while (currentCoroutineContext().isActive && feedRing.current != null && network()) {
+                if (!stepContained(s)) break
+                val inRange = s.inRange()
+                if (revokeOnly) {
+                    if (inRange && s.revoke()) {
+                        revokeDelivered()
+                        return false
+                    }
+                } else if (inRange != _status.value.unitInRange) {
+                    _status.update { it.copy(unitInRange = inRange) }
+                }
+            }
+        } finally {
+            if (sender === s) sender = null
+            s.close()
+            _status.update { it.copy(unitInRange = false) }
+        }
+        return true
     }
 
     /**
@@ -221,7 +239,7 @@ class CarLinkController(
                 ring.sessionOpen = false
                 withContext(NonCancellable) {
                     if (client.stage !is PairingStage.Paired) handover.discard()
-                    finish(client.stage)
+                    finish(client.stage, qr.host)
                 }
             }
         }
@@ -234,10 +252,11 @@ class CarLinkController(
         _status.update { it.copy(revokePending = false, note = CarLinkNote.FORGOT_REVOKE_SENT) }
     }
 
-    private fun finish(end: PairingStage) {
+    private fun finish(end: PairingStage, unitHost: String) {
         if (end is PairingStage.Paired) {
             store.setUnitDeviceId(handover.mintedId())
             handover.keep()
+            if (!recordNetwork(unitHost)) _status.update { it.copy(note = CarLinkNote.NETWORK_NOT_RECORDED) }
             // A new pairing replaces any revoke-only record (its key is no longer the unit's current one).
             if (revokeKey != null) {
                 stopFeed()
@@ -333,6 +352,8 @@ class CarLinkController(
 
     private companion object {
         const val LOOP_BACKOFF_MS = 1_000L
+        const val NETWORK_POLL_MS = 10_000L
+        const val RESTART_DELAY_MS = 1_000L
 
         /** 5.4 rev 5: a revoke-only record waits about 90 days, then expires unused. */
         const val REVOKE_ONLY_MAX_MS = 90L * 24 * 60 * 60 * 1000

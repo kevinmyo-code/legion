@@ -206,7 +206,7 @@ class Mnai2FeedTest {
         assertEquals(1, f.tick(1_000, fix(900), true).size)
     }
 
-    @Ignore("red until fix P-D") @Test fun `the destination moves to a new address only after 2 accepted HELLOs from it`() {
+    @Test fun `the destination moves to a new address only after 2 accepted HELLOs from it`() {
         val f = feed(MemoryKeys(current = oldKey).ring())
         val unit = FakeUnit(oldKey)
         val a = unit.hello(intervalMs = 1000)
@@ -218,6 +218,19 @@ class Mnai2FeedTest {
         val b2 = unit.hello(intervalMs = 1000)
         f.onDatagram(b2, b2.size, otherAddr, UNIT_PORT, 2_000)
         assertEquals(otherAddr, f.tick(2_100, fix(2_050), true).single().to)
+    }
+
+    @Test fun `a captured run of old-key HELLOs from off the pairing network cannot force a revert`() {
+        val ring = MemoryKeys(current = newKey, reserve = oldKey).ring()
+        val f = feed(ring)
+        val unit = FakeUnit(oldKey)
+        val outside = InetAddress.getByName("192.0.2.1")
+        for (t in 0L..120_000L step 5_000L) {
+            val h = unit.hello(intervalMs = 5000)
+            f.onDatagram(h, h.size, outside, UNIT_PORT, t)
+        }
+        assertArrayEquals(newKey, ring.current)
+        assertArrayEquals(oldKey, ring.reserve)
     }
 
     private companion object {

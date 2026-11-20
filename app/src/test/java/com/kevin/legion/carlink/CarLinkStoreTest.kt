@@ -164,7 +164,7 @@ class CarLinkStoreTest {
         assertNull(store.carGeminiKey())
     }
 
-    @Ignore("red until fix P-D") @Test fun `the pairing network is recorded and read back`() {
+    @Test fun `the pairing network is recorded and read back`() {
         assertTrue(store.setPairingNetwork(PairingNetwork("ap-test0", "10.20.30.0", 24)))
         val n = store.pairingNetwork()!!
         assertEquals("ap-test0", n.name)
