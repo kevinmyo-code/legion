@@ -578,7 +578,7 @@ def test_a_head_unit_starts_nothing_and_hears_nothing(household_user, late_on):
     assert OwedLine.objects.get().delivered_at is None
 
 
-def test_late_rows_are_pruned_after_30_days(household_user):
+def test_late_rows_are_pruned_after_30_days(household_user, late_on):
     from agents.legion.retention import prune
 
     old = timezone.now() - timedelta(days=31)
@@ -648,3 +648,23 @@ def test_a_pronoun_topic_is_asked_back_and_queues_nothing(
     assert _sentences(_turn(auth_client, words)) == [late.ASK_WHAT]
     assert not LateTask.objects.exists()
     assert fake_model["model"].requests == []
+
+
+# -- review 2026-11-20, item i: switched off, the turn's prune issues no late-answer query -------
+
+
+def test_switched_off_prune_leaves_the_late_tables_alone(household_user, monkeypatch):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    from agents.legion.retention import prune
+
+    monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
+    _task(household_user, question="old")
+    LateTask.objects.update(created_at=timezone.now() - timedelta(days=31))
+    with CaptureQueriesContext(connection) as queries:
+        out = prune()
+    assert "late_tasks" not in out
+    assert not any("agents_late_task" in q["sql"] or "agents_owed_line" in q["sql"]
+                   for q in queries.captured_queries)
+    assert LateTask.objects.count() == 1
