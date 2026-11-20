@@ -127,6 +127,11 @@ class EngineHttp(
      * before deciding to even build a backend. */
     fun isUsable(): Boolean = EngineConfig.isValidBaseUrl(config.baseUrl()) && config.isSignedIn()
 
+    /** The car's own sign-in (handed over the car link): see [CarLinkScope]. */
+    fun isCarLinkSignIn(): Boolean = config.isCarLinkSignIn()
+
+    fun carLinkVehicleId(): String? = config.carLinkVehicleId()
+
     /**
      * `GET <base><path>?<query>`. [query] entries are attached through
      * [HttpUrl.Builder.addQueryParameter], never string-concatenated into [path] - **the `+`
@@ -140,7 +145,7 @@ class EngineHttp(
      * parameters and would never hit this"). See `EngineHttpQueryEncodingTest` for the proof.
      */
     suspend fun get(path: String, query: Map<String, String> = emptyMap()): Result<EngineOk> =
-        send(path) { baseUrl ->
+        send("GET", path) { baseUrl ->
             val urlBuilder = (baseUrl + path).toHttpUrl().newBuilder()
             query.forEach { (key, value) -> urlBuilder.addQueryParameter(key, value) }
             Request.Builder().url(urlBuilder.build()).get().authorize().build()
@@ -156,7 +161,7 @@ class EngineHttp(
         jsonBody: String,
         extraHeaders: Map<String, String> = emptyMap(),
     ): Result<EngineOk> =
-        send(path) { baseUrl ->
+        send("POST", path) { baseUrl ->
             val builder = Request.Builder()
                 .url(baseUrl + path)
                 .post(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
@@ -181,7 +186,7 @@ class EngineHttp(
         fileBytes: ByteArray,
         fileMimeType: String,
     ): Result<EngineOk> =
-        send(path) { baseUrl ->
+        send("POST", path) { baseUrl ->
             val body = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
             fields.forEach { (name, value) -> body.addFormDataPart(name, value) }
             body.addFormDataPart(fileField, fileName, fileBytes.toRequestBody(fileMimeType.toMediaType()))
@@ -189,7 +194,7 @@ class EngineHttp(
         }
 
     suspend fun patch(path: String, jsonBody: String): Result<EngineOk> =
-        send(path) { baseUrl ->
+        send("PATCH", path) { baseUrl ->
             Request.Builder()
                 .url(baseUrl + path)
                 .patch(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
@@ -206,7 +211,7 @@ class EngineHttp(
      * plain server-minted-id POST/PATCH instead, so this method had no caller until then.
      */
     suspend fun put(path: String, jsonBody: String): Result<EngineOk> =
-        send(path) { baseUrl ->
+        send("PUT", path) { baseUrl ->
             Request.Builder()
                 .url(baseUrl + path)
                 .put(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
@@ -215,7 +220,7 @@ class EngineHttp(
         }
 
     suspend fun delete(path: String): Result<EngineOk> =
-        send(path) { baseUrl ->
+        send("DELETE", path) { baseUrl ->
             Request.Builder().url(baseUrl + path).delete().authorize().build()
         }
 
@@ -236,9 +241,19 @@ class EngineHttp(
      * queued write behind this branch is exactly right (it will go out once an address is saved).
      */
     private suspend fun send(
+        method: String,
         path: String,
         buildRequest: (baseUrl: String) -> Request,
     ): Result<EngineOk> {
+        // The car's own sign-in (2026-11-20): only the routes the engine accepts it on go out, and
+        // after a 401 nothing at all until a new hand-over. Never a sign-out, never a loop.
+        val carLink = config.isCarLinkSignIn()
+        if (carLink && config.carLinkRefused()) {
+            return Result.failure(EngineHttpException(EngineFailure.Unauthorized(CarLinkScope.REFUSED)))
+        }
+        if (carLink && !CarLinkScope.allows(method, path)) {
+            return Result.failure(EngineHttpException(EngineFailure.Refused(0, CarLinkScope.NOT_ON_CAR_SIGN_IN)))
+        }
         val baseUrl = config.baseUrl()
         if (!EngineConfig.isValidBaseUrl(baseUrl)) {
             return Result.failure(
@@ -251,7 +266,7 @@ class EngineHttp(
             )
         }
         return try {
-            classify(executeAsync(buildRequest(baseUrl)))
+            classify(executeAsync(buildRequest(baseUrl)), carLink)
         } catch (e: IOException) {
             Result.failure(
                 EngineHttpException(
@@ -288,12 +303,16 @@ class EngineHttp(
         )
     }
 
-    private fun classify(response: Response): Result<EngineOk> {
+    private fun classify(response: Response, carLink: Boolean = false): Result<EngineOk> {
         val code = response.code
         val headers = response.headers.associate { (name, value) -> name.lowercase() to value }
         val body = response.use { r -> runCatching { r.body?.string() }.getOrNull() }.orEmpty()
         return when {
             code in SUCCESS_RANGE -> Result.success(EngineOk(code, body, headers))
+            carLink && code == UNAUTHORIZED -> {
+                config.markCarLinkRefused()
+                Result.failure(EngineHttpException(EngineFailure.Unauthorized(CarLinkScope.REFUSED)))
+            }
             code == UNAUTHORIZED || code == FORBIDDEN -> Result.failure(
                 EngineHttpException(
                     EngineFailure.Unauthorized(

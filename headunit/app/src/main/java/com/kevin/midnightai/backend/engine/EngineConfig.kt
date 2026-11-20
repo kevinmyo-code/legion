@@ -31,6 +31,9 @@ import com.kevin.midnightai.ai.KeyVault
  * app has no Supabase client to cross-reference, so those comparisons were dropped rather than
  * pointing at classes that do not exist here.
  */
+/** Which sign-in this unit holds: none, a member's (typed here), or the car's own (car link). */
+enum class EngineSignIn { NONE, MEMBER, CAR_LINK }
+
 class EngineConfig(
     context: Context,
     private val encrypt: (String) -> String? = KeyVault::encrypt,
@@ -63,6 +66,29 @@ class EngineConfig(
 
     fun isSignedIn(): Boolean = !token().isNullOrBlank()
 
+    /**
+     * The sign-in this unit holds (2026-11-20). CAR_LINK is entered ONLY by a token handed over the
+     * car link ([saveSessionStrict] with `carLink`); a member signing in on the unit leaves it.
+     */
+    fun signIn(): EngineSignIn = when {
+        !isSignedIn() -> EngineSignIn.NONE
+        isCarLinkSignIn() -> EngineSignIn.CAR_LINK
+        else -> EngineSignIn.MEMBER
+    }
+
+    /** True when the stored token is the car's own, handed over the link. No decrypt. */
+    fun isCarLinkSignIn(): Boolean = prefs.getString(KEY_KIND, null) == KIND_CAR_LINK
+
+    /** The ONE engine vehicle the car's own sign-in may upload OBD samples for (from the hand-over). */
+    fun carLinkVehicleId(): String? = prefs.getString(KEY_VEHICLE_ID, null)?.takeIf { it.isNotBlank() }
+
+    /** The engine answered 401 to the car's sign-in: nothing more is sent until a new hand-over. */
+    fun carLinkRefused(): Boolean = prefs.getString(KEY_REFUSED, null) != null
+
+    fun markCarLinkRefused() {
+        if (isCarLinkSignIn()) prefs.edit().putString(KEY_REFUSED, "1").commit()
+    }
+
     /** Saves [url] only if it passes [isValidBaseUrl]; otherwise saves nothing and returns false -
      * distinguishing "saved" from "rejected" rather than silently leaving prefs half-written. */
     fun saveBaseUrl(url: String): Boolean {
@@ -83,6 +109,10 @@ class EngineConfig(
         write {
             putString(KEY_TOKEN, encrypted)
             putString(KEY_USER_ID, userId)
+            // A member signing in on the unit: not the car's own sign-in any more.
+            remove(KEY_KIND)
+            remove(KEY_VEHICLE_ID)
+            remove(KEY_REFUSED)
         }
         return true
     }
@@ -90,7 +120,8 @@ class EngineConfig(
     // --- Car link (HU-1 T3, review M7): strict, all-or-nothing writes ---------------------------
 
     /** The raw stored values (ciphertext for the token), for snapshot and restore. */
-    fun snapshot(): Map<String, String?> = listOf(KEY_BASE_URL, KEY_TOKEN, KEY_USER_ID).associateWith { prefs.getString(it, null) }
+    fun snapshot(): Map<String, String?> =
+        listOf(KEY_BASE_URL, KEY_TOKEN, KEY_USER_ID, KEY_KIND, KEY_VEHICLE_ID, KEY_REFUSED).associateWith { prefs.getString(it, null) }
 
     /** Writes [snapshot] back exactly (null = removed) with commit(). */
     fun restore(snapshot: Map<String, String?>): Boolean {
@@ -103,12 +134,21 @@ class EngineConfig(
     fun rawToken(): String? = prefs.getString(KEY_TOKEN, null)
 
     /** Encrypts and saves the session with commit(); false and nothing written on any failure. */
-    fun saveSessionStrict(baseUrl: String, token: String, userId: String): Boolean {
+    fun saveSessionStrict(
+        baseUrl: String,
+        token: String,
+        userId: String,
+        carLink: Boolean = false,
+        vehicleId: String? = null,
+    ): Boolean {
         val encrypted = encrypt(token) ?: return false
         return prefs.edit()
             .putString(KEY_BASE_URL, baseUrl.trim())
             .putString(KEY_TOKEN, encrypted)
             .putString(KEY_USER_ID, userId)
+            .putString(KEY_KIND, if (carLink) KIND_CAR_LINK else null)
+            .putString(KEY_VEHICLE_ID, if (carLink) vehicleId?.takeIf { it.isNotBlank() } else null)
+            .remove(KEY_REFUSED)
             .commit()
     }
 
@@ -118,6 +158,9 @@ class EngineConfig(
         write {
             remove(KEY_TOKEN)
             remove(KEY_USER_ID)
+            remove(KEY_KIND)
+            remove(KEY_VEHICLE_ID)
+            remove(KEY_REFUSED)
         }
     }
 
@@ -135,6 +178,10 @@ class EngineConfig(
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_TOKEN = "device_token"
         private const val KEY_USER_ID = "user_id"
+        private const val KEY_KIND = "sign_in_kind"
+        private const val KIND_CAR_LINK = "car_link"
+        private const val KEY_VEHICLE_ID = "car_link_vehicle_id"
+        private const val KEY_REFUSED = "car_link_refused"
 
         /**
          * Loose shape check - `http://` or `https://` plus a non-blank host, deliberately loose

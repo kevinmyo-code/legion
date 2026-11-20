@@ -163,7 +163,9 @@ class EngineMcpClient(
     }
 
     private fun notUsable(): McpFailure? =
-        if (http.isUsable()) {
+        if (http.isUsable() && http.isCarLinkSignIn()) {
+            McpFailure.NotSignedIn(CarLinkScope.ENGINE_QUESTIONS)
+        } else if (http.isUsable()) {
             null
         } else {
             McpFailure.NotSignedIn(
