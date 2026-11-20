@@ -234,7 +234,30 @@ object BeaconClient {
         }
         val set = LinkFeedSet(committed = feed(keys.committed), pending = feed(keys.pending))
         beforeInstallForTest?.invoke()
-        return install(gen, decided, set)
+        val installed = install(gen, decided, set)
+        if (installed) scheduleReread(context, gen, keys.pendingUnreadable)
+        return installed
+    }
+
+    private val rereads = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * Review P2: a PENDING that did not decrypt is read again after 5, 10, 20, 40, 80, 160 s (then
+     * left for the next restart), each time through CarLink.changed so the screen and the feed
+     * both follow. A readable read resets the count.
+     */
+    private fun scheduleReread(context: Context, gen: Int, unreadable: Boolean) {
+        if (!unreadable) {
+            rereads.set(0)
+            return
+        }
+        val n = rereads.getAndIncrement()
+        if (n >= MAX_REREADS) return
+        val wait = rereadBaseMs shl n
+        scope.launch {
+            delay(wait)
+            if (generation.get() == gen) com.kevin.midnightai.link.CarLink.changed(context)
+        }
     }
 
     /** Installs this run's decision only if no newer start or stop happened meanwhile (N3). */
@@ -361,6 +384,10 @@ object BeaconClient {
 
     /** Tests only: a hook inside the startup step (to make it slow), and a datagram handed in directly. */
     @Volatile internal var beforeInstallForTest: (() -> Unit)? = null
+
+    /** First wait before re-reading an unreadable PENDING (review P2); doubled per try. */
+    @Volatile internal var rereadBaseMs = 5_000L
+    private const val MAX_REREADS = 6
 
     internal fun handleForTest(context: Context, data: ByteArray) =
         handle(context, DatagramPacket(data, data.size, java.net.InetAddress.getLoopbackAddress(), BeaconProtocol.PORT))

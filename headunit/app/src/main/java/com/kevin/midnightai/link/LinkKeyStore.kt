@@ -94,14 +94,17 @@ class LinkKeyStore(
         val pending = linkOf(open(KEY_PENDING))
         val hasCommitted = prefs.contains(KEY_COMMITTED)
         val committed = if (hasCommitted) linkOf(open(KEY_COMMITTED)) else null
+        // Review P2: a PENDING record that did not open beside a readable COMMITTED is "waiting" (the
+        // true state), and the receiver reads it again with backoff; COMMITTED stays in charge.
+        val pendingUnreadable = pending == null && prefs.contains(KEY_PENDING) && committed != null
         val status = when {
-            pending != null -> LinkStatus.PENDING
+            pending != null || pendingUnreadable -> LinkStatus.PENDING
             prefs.contains(KEY_PENDING) && committed == null -> LinkStatus.BROKEN
             hasCommitted && committed == null -> LinkStatus.BROKEN
             committed != null -> LinkStatus.PAIRED
             else -> LinkStatus.NOT_PAIRED
         }
-        return LinkKeys(committed, pending, status)
+        return LinkKeys(committed, pending, status, pendingUnreadable)
     }
 
     /** Writes a new pairing as PENDING. Null on success. COMMITTED is never touched here. */

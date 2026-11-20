@@ -58,9 +58,14 @@ class CarLinkFeedTest {
         var committed: ByteArray? = null
         var pending: ByteArray? = null
         var broken = false
+        /** Reads of PENDING that fail before it decrypts (review P2). */
+        var pendingFailures = 0
+        var reads = 0
         override fun hasRecord() = committed != null || pending != null || broken
         override fun keys(): LinkKeys = when {
             broken -> LinkKeys(null, null, LinkStatus.BROKEN)
+            pending != null && pendingFailures > 0 && ++reads <= pendingFailures ->
+                LinkKeys(committed?.copyOf(), null, LinkStatus.PENDING, pendingUnreadable = true)
             pending != null -> LinkKeys(committed?.copyOf(), pending?.copyOf(), LinkStatus.PENDING)
             committed != null -> LinkKeys(committed?.copyOf(), null, LinkStatus.PAIRED)
             else -> LinkKeys(null, null, LinkStatus.NOT_PAIRED)
@@ -83,6 +88,7 @@ class CarLinkFeedTest {
     }
 
     @After fun stop() {
+        BeaconClient.rereadBaseMs = 5_000L
         BeaconClient.stop()
         CarLink.resetForTest()
     }
@@ -217,6 +223,17 @@ class CarLinkFeedTest {
         val fix = fixUnder(phone.current, after, after.committed!!, keyA)
         assertTrue(synchronized(after) { after.receive(fix, fix.size) }.outcome is PhoneFeed.Outcome.Fix)
         assertEquals(LinkStatus.PAIRED, CarLink.status.value)
+    }
+
+    /** Review P2: a PENDING that did not decrypt is read again (bounded backoff), not left until a restart. */
+    @Test fun p2_anUnreadablePendingIsReadAgainUntilItOpens() {
+        BeaconClient.rereadBaseMs = 50
+        store.committed = keyA.copyOf()
+        store.pending = keyB.copyOf()
+        store.pendingFailures = 2
+        BeaconClient.start(context)
+        waitFor("the pending feed after re-reads") { BeaconClient.feedsForTest()?.pending != null }
+        assertTrue(store.reads >= 3)
     }
 
     @Test fun h3_aPendingPairingIsCommittedByTheFirstDatagramUnderItsKey() {

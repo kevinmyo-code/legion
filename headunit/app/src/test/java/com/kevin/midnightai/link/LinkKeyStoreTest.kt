@@ -161,7 +161,11 @@ class LinkKeyStoreTest {
     @Test fun anUnreadablePendingIsKeptAndTheCommittedOneRulesMeanwhile() {
         pair(keyA)
         context.getSharedPreferences("car_link", Context.MODE_PRIVATE).edit().putString("pending_enc", "garbage").commit()
-        assertEquals(LinkStatus.PAIRED, store().keys().status)
+        val keys = store().keys()
+        // Review P2: the true state is "waiting", not "Paired with <old name>", and the read is retried.
+        assertEquals(LinkStatus.PENDING, keys.status)
+        assertTrue(keys.pendingUnreadable)
+        assertTrue(keys.committed != null && keys.pending == null)
         // Review N4: a read failure never deletes; commit says it could not read it, not "nothing pending".
         assertTrue(context.getSharedPreferences("car_link", Context.MODE_PRIVATE).contains("pending_enc"))
         assertTrue(store().commitPending() != HandoverSink.NOTHING_PENDING)

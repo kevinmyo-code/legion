@@ -18,7 +18,13 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class LinkStatus { NOT_PAIRED, PAIRED, PENDING, BROKEN }
 
 /** The link keys as read (decrypted) right now. Never logged; [toString] says nothing. */
-class LinkKeys(val committed: ByteArray?, val pending: ByteArray?, val status: LinkStatus) {
+class LinkKeys(
+    val committed: ByteArray?,
+    val pending: ByteArray?,
+    val status: LinkStatus,
+    /** A PENDING record exists but did not decrypt this time (review P2): read it again later. */
+    val pendingUnreadable: Boolean = false,
+) {
     override fun toString(): String = "LinkKeys($status)"
 }
 
