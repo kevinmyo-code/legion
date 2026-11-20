@@ -110,6 +110,7 @@ class PairingSession(
         CANCELLED("Pairing cancelled. Nothing was changed; the earlier pairing, if any, stays."),
         PHONE_CANCELLED("The phone stopped pairing. Nothing was changed."),
         STORE_FAILED("This unit could not store the keys safely, so nothing was kept. The old pairing, if any, is unchanged."),
+        COMMIT_FAILED("The phone has the new pairing but this unit could not finish saving it. It tries again the next time the phone sends location; if this stays, pair again."),
         PAIRING_LOST("The phone took the new pairing but this unit no longer has it. Pair again."),
     }
 
@@ -236,7 +237,12 @@ class PairingSession(
         // Review N1: `stored` with nothing left to commit means the phone holds a key this unit
         // dropped. That is a failure the driver must see, never "Paired".
         if (result == HandoverSink.NOTHING_PENDING) return listOfNotNull(fail(Reason.PAIRING_LOST, tellPhone = false))
-        if (result != null) return listOfNotNull(fail(Reason.STORE_FAILED, tellPhone = false))
+        if (result != null) {
+            // The phone provably holds the new key now, so PENDING is kept (a Keystore read failure
+            // never deletes it, review N4): the next new-key datagram can still commit it.
+            pendingWritten = false
+            return listOfNotNull(fail(Reason.COMMIT_FAILED, tellPhone = false))
+        }
         pendingWritten = false
         stage = Stage.Paired(h?.phoneName, h?.present().orEmpty(), confirmed = result == null)
         wipe()

@@ -175,7 +175,9 @@ class PairingSessionTest {
         val (s, phone) = upToDone()
         s.onMessage(phone.stored())
         assertEquals(PairingSession.COMMIT_TRIES, commits)
-        assertEquals(Stage.Failed(Reason.STORE_FAILED), s.stage)
+        assertEquals(Stage.Failed(Reason.COMMIT_FAILED), s.stage)
+        // The phone holds the new key: PENDING stays so a later new-key datagram can commit it.
+        assertEquals(0, drops)
     }
 
     @Test fun n2_cancelAfterDoneDropsThePendingPairing() {
