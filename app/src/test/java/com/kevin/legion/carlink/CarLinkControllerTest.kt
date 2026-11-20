@@ -351,7 +351,7 @@ class CarLinkControllerTest {
     }
 
     // ---- A phone that never pairs: app start reads only the car link's own record.
-    @Test fun `on a phone that never paired, app start opens no socket, no service, no network, no location, no car list`() {
+    @Test fun `a never-paired phone at app start opens no socket, service or connection and reads no key or car`() {
         val c = controller()
         c.start()
         waitFor("the load") { c.status.value.link == LinkState.NOT_PAIRED }
