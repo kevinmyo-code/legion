@@ -1160,7 +1160,10 @@ object LiveToolbox {
                 val outcome = VehicleController.setOdometer(context, args.optInt("miles"), it.obdMac)
                 result(success = outcome.success, message = outcome.message)
             }
-            "log_service" -> withResolvedVehicle(context, args) {
+            // Phone audit 2026-11-19: a log_service with no service wrote a blank record and item.
+            "log_service" -> if (args.optString("service").isBlank()) {
+                noItem("Which service was it?")
+            } else withResolvedVehicle(context, args) {
                 // Dollars -> cents at the voice edge (CLAUDE.md §4 rule 3: VehicleController.logServiceDirect
                 // only ever sees Long cents) - same Math.round(amount * 100) shape
                 // LedgerPendingLog.pendingAmountCents already uses for a spoken dollar figure, with the
@@ -1176,7 +1179,9 @@ object LiveToolbox {
                 result(success = outcome.success, message = outcome.message)
             }
             "log_past_service" -> withResolvedVehicle(context, args) { logPastService(context, args, it.obdMac) }
-            "set_maintenance_interval" -> withResolvedVehicle(context, args) {
+            "set_maintenance_interval" -> if (args.optString("service").isBlank()) {
+                noItem("Which service?")
+            } else withResolvedVehicle(context, args) {
                 val outcome = VehicleController.setMaintenanceInterval(
                     context,
                     args.optString("service"),
@@ -2559,7 +2564,7 @@ object LiveToolbox {
      */
     private suspend fun logBuildEntry(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject {
         val title = args.optString("title")
-        if (title.isBlank()) return result(success = false, message = "What should I log on the build sheet?")
+        if (title.isBlank()) return noItem("What should I log on the build sheet?")
         val cost = if (args.has("cost") && !args.isNull("cost"))
             args.optDouble("cost").takeIf { !it.isNaN() } else null
         val msg = BuildSheetController.add(
@@ -5983,7 +5988,7 @@ object LiveToolbox {
      */
     private suspend fun logPastService(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject {
         val service = args.optString("service")
-        if (service.isBlank()) return result(success = false, message = "Which service?")
+        if (service.isBlank()) return noItem("Which service was it?")
 
         val mileage = args.optInt("mileage", -1).takeIf { it > 0 }
         val milesAgo = args.optInt("miles_ago", -1).takeIf { it >= 0 }
@@ -7402,6 +7407,10 @@ object LiveToolbox {
 
     private fun result(success: Boolean, message: String?): JSONObject =
         JSONObject().put("success", success).apply { if (message != null) put("message", message) }
+
+    /** A car write named no item: nothing is written, and the result asks him which ([needs_answer]). */
+    private fun noItem(question: String): JSONObject =
+        result(false, "Nothing was logged: no item was named. $question").put("needs_answer", true)
 
     // ---- Lists a tool call may have reached by the wrong door (ListRouting, 2026-11-15) ----
 
