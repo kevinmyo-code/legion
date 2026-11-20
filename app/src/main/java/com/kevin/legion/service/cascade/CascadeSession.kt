@@ -1938,6 +1938,9 @@ internal class CascadeSession(
      * done and never said).
      */
     private suspend fun endByStop(u: TurnUtterance, words: String) {
+        // No "Mm." before "Goodbye." (review F4): a backchannel not yet started is dropped. At this point
+        // nothing but that clip can be playing, so playback means it started: it finishes.
+        if (!playbackActive) fillerJobs.endTurn()
         discardDraftOf(u, "not_answered")
         carry = ""
         recordTurn(words, owed.due()?.line.orEmpty())

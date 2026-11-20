@@ -152,6 +152,9 @@ class CascadeWiringTest {
         assertTrue(close.contains("MAX_NOISE_IN_A_ROW"))
         // 2026-11-20: the close's chime is played by the release (playCloseCue), not a stock tone here.
         assertTrue(bodyOf(s, "releaseNow").contains("playCloseCue(reason)"))
+        // F4: a farewell cancels a backchannel that has not started (one already playing finishes).
+        val stop = bodyOf(s, "endByStop")
+        assertTrue(stop.indexOf("if (!playbackActive) fillerJobs.endTurn()") in 0 until stop.indexOf("endByVoice()"))
         // F2: the hand-over's release carries the reason the chime rule knows.
         assertTrue(bodyOf(s, "handOver").contains("release(CloseCue.voiceFailedReason(reason, VoiceEngineSettings.LIVE_RETIRED, quiet))"))
         assertTrue("a noise drop counts", bodyOf(s, "droppedWords").contains("closedOnNoise()"))
