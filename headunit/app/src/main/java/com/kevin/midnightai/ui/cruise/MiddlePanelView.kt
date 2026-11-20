@@ -73,15 +73,7 @@ internal fun CruiseMiddlePanel(
 ) {
     val state by MiddlePanel.state.collectAsState()
     val host by MiddlePanel.host.collectAsState()
-    // One 1 s tick on the monotonic clock drives the fix age and the speed's freshness.
-    var nowNanos by remember { mutableLongStateOf(SystemClock.elapsedRealtimeNanos()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            nowNanos = SystemClock.elapsedRealtimeNanos()
-        }
-    }
-    val ageMs = location?.let { (nowNanos - it.elapsedRealtimeNanos) / 1_000_000L }
+    val ageMs = rememberFixAgeMs(location)
     val speedMph = MiddlePanelText.speedMph(location?.takeIf { it.hasSpeed() }?.speed, ageMs)
     Column(modifier.deckCard(m)) {
         Row(
@@ -118,6 +110,23 @@ internal fun CruiseMiddlePanel(
             }
         }
     }
+}
+
+/**
+ * How old [location] is, re-read once a second on the monotonic clock, so a fix that stops arriving
+ * goes stale on screen by itself. Shared by the CAR panel and Lights Out: one freshness rule
+ * ([MiddlePanelText.isFresh]) for every speed the driver sees.
+ */
+@Composable
+internal fun rememberFixAgeMs(location: Location?): Long? {
+    var nowNanos by remember { mutableLongStateOf(SystemClock.elapsedRealtimeNanos()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            nowNanos = SystemClock.elapsedRealtimeNanos()
+        }
+    }
+    return MiddlePanelText.fixAgeMs(nowNanos, location?.elapsedRealtimeNanos)
 }
 
 /** "GPS from phone / fix 1 s ago": source over age. */

@@ -77,7 +77,6 @@ import com.kevin.midnightai.ui.cruise.ringColor
 import com.kevin.midnightai.ui.cruise.statusLabel
 import com.kevin.midnightai.ui.cruise.talk
 import java.io.File
-import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -174,7 +173,6 @@ internal data class GaugeReading(val key: String, val label: String, val value: 
 
 /** Live gauge values for the instrument strip + Lights Out footer. */
 internal data class CruiseTelemetry(
-    val speedMph: Int? = null,                        // GPS-derived, works without OBD
     val obdGauges: List<GaugeReading> = emptyList(),  // driver-selected, per-car (see ObdGauge)
 )
 
@@ -312,8 +310,6 @@ fun CruiseScreen(
         onDispose { LocationController.stopNavMode() }
     }
     val location by LocationController.state.collectAsState()
-    val speedMph = location?.takeIf { it.hasSpeed() && System.currentTimeMillis() - it.time < 15_000 }
-        ?.let { (it.speed * 2.23694f).roundToInt() }
 
     // OBD gauges: the driver-selected, per-car set (see ObdGauge + the Settings
     // gauge picker). Only slow-changing PIDs are offered, polled on a gentle 15s
@@ -339,7 +335,7 @@ fun CruiseScreen(
             delay(if (connected) 15_000L else 5_000L)
         }
     }
-    val telemetry = CruiseTelemetry(speedMph, obdGauges)
+    val telemetry = CruiseTelemetry(obdGauges)
 
     // Stored codes, polled once a minute (the same single Mode 03 read as before HU-1, no new OBD
     // traffic): Lights Out's HUD footer shows the count, the CAR panel the first code by name.
@@ -642,6 +638,7 @@ fun CruiseScreen(
             LightsOut(
                 context = context,
                 telemetry = telemetry,
+                location = location,
                 dtcCount = dtcCount,
                 nowPlayingLine = if (playing) npLine else null,
                 phase = phase,

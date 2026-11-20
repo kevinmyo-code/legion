@@ -80,6 +80,10 @@ import java.util.Locale
 internal fun LightsOut(
     context: Context,
     telemetry: CruiseTelemetry,
+    // GPS speed comes from the fix itself, on the CAR panel's freshness rule (3 s, monotonic clock,
+    // 1 s tick): a phone-fed fix that stops arriving blanks the speed instead of freezing it
+    // (review R1, 2026-11-20; it used a 15 s wall-clock window and could sit frozen).
+    location: android.location.Location?,
     dtcCount: Int,
     nowPlayingLine: String?,
     phase: Phase,
@@ -147,14 +151,18 @@ internal fun LightsOut(
 
         // --- Side instrument readouts: speed (left), top OBD gauge (right) ---
         val loKeys = CruiseSettings.enabledLightsOutGaugeKeys(context)
+        val speedMph = com.kevin.midnightai.ui.cruise.MiddlePanelText.speedMph(
+            location?.takeIf { it.hasSpeed() }?.speed,
+            com.kevin.midnightai.ui.cruise.rememberFixAgeMs(location),
+        )
         val loGauges = telemetry.obdGauges.filter { it.key in loKeys && it.value != "––" }
         val sideGauge = loGauges.firstOrNull()
         val overflowGauges = if (sideGauge != null) loGauges.drop(1) else emptyList()
 
         if (!compact) {
-            if (CruiseSettings.lightsOutShowSpeed(context) && telemetry.speedMph != null) {
+            if (CruiseSettings.lightsOutShowSpeed(context) && speedMph != null) {
                 HudReadout(
-                    value = telemetry.speedMph.toString(),
+                    value = speedMph.toString(),
                     label = "MPH",
                     color = nightAmber,
                     tickColor = nightMagenta,
@@ -262,7 +270,7 @@ internal fun LightsOut(
             // lands here regardless of size class.
             val overflowRow = buildList {
                 if (compact) {
-                    if (CruiseSettings.lightsOutShowSpeed(context)) telemetry.speedMph?.let { add("$it MPH") }
+                    if (CruiseSettings.lightsOutShowSpeed(context)) speedMph?.let { add("$it MPH") }
                     sideGauge?.let { add("${it.value} ${it.label}") }
                 }
                 overflowGauges.forEach { add("${it.value} ${it.label}") }

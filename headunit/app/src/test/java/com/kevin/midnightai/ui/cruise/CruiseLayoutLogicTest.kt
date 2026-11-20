@@ -132,6 +132,13 @@ class CruiseLayoutLogicTest {
         assertEquals("lost over an hour", MiddlePanelText.gps(beacon, 7_200_000L, beacon).age)
     }
 
+    @Test fun fixAgeComesFromTheMonotonicClock() {
+        assertEquals(null, MiddlePanelText.fixAgeMs(nowNanos = 5_000_000_000L, fixNanos = null))
+        assertEquals(1_500L, MiddlePanelText.fixAgeMs(nowNanos = 5_000_000_000L, fixNanos = 3_500_000_000L))
+        // A fix stamped after now (another boot, a clock jump) is negative: gps() and speedMph() reject it.
+        assertEquals(-1_000L, MiddlePanelText.fixAgeMs(nowNanos = 1_000_000_000L, fixNanos = 2_000_000_000L))
+    }
+
     @Test fun speedBlanksAtTheSameMomentTheHeaderSaysLost() {
         assertEquals(64, MiddlePanelText.speedMph(28.6f, 900L))
         assertEquals(64, MiddlePanelText.speedMph(28.6f, 3_000L))

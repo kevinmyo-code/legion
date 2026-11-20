@@ -113,6 +113,9 @@ internal object MiddlePanelText {
      */
     fun isFresh(ageMs: Long?): Boolean = ageMs != null && ageMs in 0..STALE_MS
 
+    /** How old a fix stamped [fixNanos] (elapsedRealtimeNanos) is at [nowNanos], in ms; null = no fix. */
+    fun fixAgeMs(nowNanos: Long, fixNanos: Long?): Long? = fixNanos?.let { (nowNanos - it) / 1_000_000L }
+
     /** GPS speed in mph, or null without a speed or once the fix is not [isFresh]. */
     fun speedMph(speedMps: Float?, ageMs: Long?): Int? {
         if (speedMps == null || !isFresh(ageMs)) return null
