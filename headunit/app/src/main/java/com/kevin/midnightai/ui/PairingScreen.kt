@@ -181,15 +181,36 @@ private fun PairingPane(context: Context, store: LinkKeyStore, attempt: Int, onF
         DriveLog.breadcrumb("car link pairing stage=${stage::class.simpleName}")
         onDispose {}
     }
+    PairingStageView(
+        stage, p.qr, store.lastNote,
+        onCancel = { p.server.close(); onFinished() },
+        onCode = { p.server.enterCode(it) },
+        onFinished = onFinished,
+    )
+}
+
+/**
+ * What each pairing stage shows (split out so each stage renders in a test at 800x456; it emits
+ * into the Settings pane's column).
+ */
+@Composable
+internal fun PairingStageView(
+    stage: PairingSession.Stage,
+    qr: Bitmap?,
+    note: String?,
+    onCancel: () -> Unit,
+    onCode: (String) -> Unit,
+    onFinished: () -> Unit,
+) {
     when (val s = stage) {
         PairingSession.Stage.WaitingForPhone -> {
             Text("On your phone: Settings, Car link, Scan. Point it at this code.", style = RowTitle, color = AriaColors.TextPrimary)
             Spacer(Modifier.height(AriaDimens.s3))
-            p.qr?.let { Image(it.asImageBitmap(), contentDescription = "Pairing code for the phone to scan", modifier = Modifier.size(220.dp)) }
+            qr?.let { Image(it.asImageBitmap(), contentDescription = "Pairing code for the phone to scan", modifier = Modifier.size(220.dp)) }
             Spacer(Modifier.height(AriaDimens.s2))
-            OutlinedButton(onClick = { p.server.close(); onFinished() }, modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin)) { Text("CANCEL") }
+            OutlinedButton(onClick = onCancel, modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin)) { Text("CANCEL") }
         }
-        is PairingSession.Stage.EnterCode -> CodePad(s.triesLeft, onSubmit = { p.server.enterCode(it) })
+        is PairingSession.Stage.EnterCode -> CodePad(s.triesLeft, onSubmit = onCode)
         PairingSession.Stage.Receiving -> Text("Numbers match. Receiving from the phone...", style = RowTitle, color = AriaColors.TextPrimary)
         PairingSession.Stage.AwaitingPhone -> Text("Saved. Waiting for the phone to confirm...", style = RowTitle, color = AriaColors.TextPrimary)
         is PairingSession.Stage.Paired -> {
@@ -201,7 +222,7 @@ private fun PairingPane(context: Context, store: LinkKeyStore, attempt: Int, onF
             Text(
                 listOfNotNull(
                     if (s.received.isEmpty()) "The phone sent nothing else." else "Received: ${s.received.joinToString()}.",
-                    store.lastNote,
+                    note,
                 ).joinToString(" "),
                 style = RowSubtitle, color = AriaColors.TextDim,
             )
