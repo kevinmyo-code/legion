@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 import { useSceneSteps } from '@/components/demo/scroll-story'
 
@@ -83,6 +83,12 @@ export function diagramLayers(svg: string): Band[] {
   })
 }
 
+/** Width over height, from the diagram's own box; null when it states none. */
+export function diagramAspect(svg: string): number | null {
+  const box = /viewBox\s*=\s*["']([^"']+)["']/.exec(svg)?.[1].trim().split(/[\s,]+/).map(Number)
+  return box && box.length === 4 && box[2] > 0 && box[3] > 0 ? box[2] / box[3] : null
+}
+
 /** The layer step `step` of `steps` lights: the same share of the way through. */
 export function layerFor(step: number, steps: number, layers: number): number {
   if (layers <= 0 || steps <= 0) return -1
@@ -109,11 +115,13 @@ export function LegionScene({
   // The reading line sits below the pinned diagram (about the top half of the screen).
   useSceneSteps(root, true, onStep, '-72% 0px -24% 0px')
   const lit = layerFor(step, parts.length, layers.length)
+  const aspect = useMemo(() => diagramAspect(svg), [svg])
   return (
     <div ref={root} className="rc-scene" data-scene="legion">
       <figure className="rc-scene-pin rc-figure">
         <div role="region" className="rc-frame" tabIndex={0} aria-label="Diagram, scrolls sideways">
-          <div className="rc-scene-frame">
+          {/* Its height capped by the screen's (CSS), so the parts always have room under it. */}
+          <div className="rc-scene-frame" style={aspect ? ({ '--diagram-aspect': aspect } as CSSProperties) : undefined}>
             <img src={src} alt={caption || 'Diagram'} />
             {layers.map((layer, index) => (
               <span

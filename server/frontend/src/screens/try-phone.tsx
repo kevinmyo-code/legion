@@ -12,7 +12,7 @@ import type { OrbSide } from '@/components/demo/scroll-story'
  * (Kevin, 2026-11-19: "each section should be a separate video, like the old
  * clips") the frame holds ONE player, from 900 px: scrolling swaps only its clip
  * (poster and title, nothing loads or plays); a row's Play button puts that clip
- * in it and plays it. Narrower, or with reduced motion, there is no frame: each
+ * in it and plays it. Narrower or shorter, or with reduced motion, there is no frame: each
  * clip sits under its own text, as before.
  *
  * Nothing plays by itself. A clip with a `video` is a `<video>` with controls
@@ -24,7 +24,9 @@ import type { OrbSide } from '@/components/demo/scroll-story'
  */
 
 /** The stage needs room and motion. Asked positively, so "no answer" is the inline layout. */
-const STAGE_QUERY = '(min-width: 900px) and (prefers-reduced-motion: no-preference)'
+// And height: the pinned phone (about 680 px with its line) never cut off at the foot (review
+// 2026-11-20: a 1024 x 768 or 1280 x 720 window shows about 600-650 px of page).
+const STAGE_QUERY = '(min-width: 900px) and (min-height: 720px) and (prefers-reduced-motion: no-preference)'
 
 function subscribe(onChange: () => void) {
   if (typeof window.matchMedia !== 'function') return () => {}

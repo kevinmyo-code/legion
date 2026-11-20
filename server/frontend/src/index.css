@@ -756,10 +756,22 @@
     .recruiter .rc-scene-frame {
         position: relative;
     }
-    /* With room, the whole diagram in view (no sideways scroll); a phone keeps the plain page's. */
+    /* With room, the whole diagram in view (no sideways scroll), no taller than 40% of the screen
+       so the parts have room under it; a phone keeps the plain page's sideways frame. */
     @media (min-width: 900px) {
         .recruiter .rc-scene .rc-frame img {
             min-width: 0;
+        }
+        .recruiter .rc-scene .rc-scene-frame {
+            max-width: calc(40vh * var(--diagram-aspect, 2.3));
+            margin: 0 auto;
+        }
+    }
+    /* Short screens (a phone on its side, a small laptop): the diagram is not pinned at all, so it
+       never covers the parts it explains (review 2026-11-20). */
+    @media (max-height: 699px) {
+        .recruiter .rc-scene-pin {
+            position: static;
         }
     }
     .recruiter .rc-scene-band {
