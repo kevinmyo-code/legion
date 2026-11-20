@@ -91,7 +91,13 @@ TTS_CHARS_PER_TOKEN = 4
 FILLER_LINE_PROMPT_TOKENS = 15
 FILLER_LINE_OUTPUT_TOKENS = 60
 
-# The agents door's filler lines, kept in this process per voice (`FillerAudio`).
+# The agents door's filler lines, kept in this process per voice (`FillerAudio`). A second cache
+# beside the web door's `assistant.cascade.FILLER_AUDIO`, kept on purpose (recheck 2026-11-20):
+# sharing that one would change the live web door, because its turns would then find lines in
+# memory that only this door fetched (a filler said where none was before) and its line picker
+# would skip a line this door said last. The cost of two caches is one more set of filler lines per
+# voice per process (about $0.014, metered here: `FILLER_LINE_*`). Merge them when the web door
+# moves onto this pipeline.
 FILLER_AUDIO = FillerAudio()
 
 
