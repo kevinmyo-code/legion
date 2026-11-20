@@ -75,6 +75,9 @@ internal object Backchannel {
      */
     const val EDGE_PAD_MS = 40L
 
+    /** Each cut of a trimmed clip fades over this long, so it never starts or stops on a step (a click). */
+    const val FADE_MS = 5L
+
     /** A 16-bit sample louder than this is voice, for [trimSilence]. */
     private const val SILENCE_LEVEL = 600
 
@@ -145,7 +148,25 @@ internal object Backchannel {
         val pad = (EDGE_PAD_MS * sampleRate / MS_PER_S).toInt()
         val from = (first - pad).coerceAtLeast(0)
         val to = (last + pad).coerceAtMost(samples - 1)
-        return pcm.copyOfRange(2 * from, 2 * (to + 1))
+        return fadeEdges(pcm.copyOfRange(2 * from, 2 * (to + 1)), (FADE_MS * sampleRate / MS_PER_S).toInt())
+    }
+
+    /** Linear fade over [fade] samples at both ends of [pcm] (in place), from silence to full and back. */
+    private fun fadeEdges(pcm: ByteArray, fade: Int): ByteArray {
+        val n = pcm.size / 2
+        val span = minOf(fade, n / 2)
+        for (i in 0 until span) {
+            scale(pcm, i, i, span)
+            scale(pcm, n - 1 - i, i, span)
+        }
+        return pcm
+    }
+
+    private fun scale(pcm: ByteArray, at: Int, step: Int, span: Int) {
+        val v = (pcm[2 * at].toInt() and BYTE_MASK) or (pcm[2 * at + 1].toInt() shl BITS)
+        val scaled = v * step / span
+        pcm[2 * at] = (scaled and BYTE_MASK).toByte()
+        pcm[2 * at + 1] = (scaled shr BITS).toByte()
     }
 
     private const val BYTE_MASK = 0xff

@@ -70,4 +70,20 @@ class BackchannelVarietyTest {
     }
 
     private fun loud(n: Int) = ByteArray(n) { i -> if (i % 2 == 0) 0 else 0x20 }
+
+    @Test
+    fun `the trimmed clip fades in and out at its cuts, so a cut never clicks`() {
+        val rate = 24_000
+        // Full-scale voice right to the edges: a cut there would step from silence to full level.
+        val loudPcm = ByteArray(rate / 10 * 2) { i -> if (i % 2 == 0) 0 else 0x60 }
+        val out = Backchannel.trimSilence(loudPcm, rate)
+        fun sample(i: Int) = (out[2 * i].toInt() and 0xff) or (out[2 * i + 1].toInt() shl 8)
+        val n = out.size / 2
+        val fade = (Backchannel.FADE_MS * rate / 1000).toInt()
+        assertEquals("first sample is silent", 0, sample(0))
+        assertEquals("last sample is silent", 0, sample(n - 1))
+        assertTrue("ramps up", sample(fade / 2) in 1 until sample(fade + 1))
+        assertEquals("full level after the fade", 0x6000, sample(fade + 1))
+        assertTrue("ramps down", sample(n - 1 - fade / 2) in 1 until 0x6000)
+    }
 }
