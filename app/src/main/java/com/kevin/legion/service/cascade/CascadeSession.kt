@@ -304,6 +304,13 @@ internal class CascadeSession(
     /** Whether his current speech started over a reply or a turn still running. */
     @Volatile private var uttOverReply = false
 
+    /**
+     * The open's own audio (the tap chime, the listen cue): the job that plays or waits for it, and when
+     * it ends. Not a reply: his first turn over it still gets a backchannel ([Backchannel.overReply]).
+     */
+    private var openingJob: Job? = null
+    @Volatile private var openingCueEndsAtMs: Long? = null
+
     /** This turn's backchannel timer ([Backchannel.DELAY_MS]), which turn it is for, and its clip's end. */
     private var backchannelJob: Job? = null
     private val backchannelSeq = AtomicInteger(0)
@@ -1056,7 +1063,9 @@ internal class CascadeSession(
         heardSinceOpen = true
         if (continuesFirstHalf()) return
         // Over an audible reply or a turn still in flight: a correction or a merge, never a backchannel.
-        uttOverReply = speaking || turnJob?.isActive == true
+        // The open's chime or cue is neither (2026-11-20: it made the first turn after a tap over_reply).
+        val opening = turnJob != null && turnJob === openingJob
+        uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)
         backchannelJob?.cancel()
         if (checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING) {
             checkInStep = CheckInStep.DONE
@@ -1200,7 +1209,17 @@ internal class CascadeSession(
     private suspend fun playBackchannel(seq: Int, eotAtMs: Long) {
         val b = backend ?: return
         val p = player ?: return
-        fun due() = !closing.get() && Backchannel.stillDue(turnAudioStarted, speaking, seq == backchannelSeq.get())
+        // The open's chime or cue still playing: wait for its end if the clip can still start in time.
+        val cueWait = Backchannel.cueWaitMs(System.currentTimeMillis(), eotAtMs, openingCueEndsAtMs)
+        if (cueWait == null) {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=over_cue")
+            return
+        }
+        if (cueWait > 0) delay(cueWait)
+        // The cue counts as audible (onReplyAudible) until its job ends; past its end it is not.
+        val cueOver = { openingCueEndsAtMs?.let { System.currentTimeMillis() >= it } ?: false }
+        fun due() = !closing.get() &&
+            Backchannel.stillDue(turnAudioStarted, speaking && !cueOver(), seq == backchannelSeq.get())
         if (!due()) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=answer_first")
             return
@@ -2241,9 +2260,12 @@ internal class CascadeSession(
         turnJob = scope.launch(loop) {
             onReplyAudible()
             val gen = p.generation()
+            openingCueEndsAtMs = System.currentTimeMillis() +
+                cue.pcm.size * MS_PER_S / (ListenCue.SAMPLE_RATE * PCM_BYTES_PER_SAMPLE)
             withContext(Dispatchers.IO) { p.write(cue.pcm, gen) }
             afterReply()
         }
+        openingJob = turnJob
     }
 
     private suspend fun onScriptedFailed(voice: SpeechBackend, line: String, reason: String) {
@@ -3096,7 +3118,10 @@ internal class CascadeSession(
             firstAudioLogged = true
             LiveLatency.log(LiveLatency.TAG, "open_chime_ms=${System.currentTimeMillis() - openStartedAtMs}")
             host.phase(Phase.LISTENING, "Listening...")
-            withContext(Dispatchers.IO) { chime.write(ListenCue.earconPcm(), chime.generation()) }
+            val earcon = ListenCue.earconPcm()
+            openingCueEndsAtMs = System.currentTimeMillis() +
+                earcon.size * MS_PER_S / (ListenCue.SAMPLE_RATE * PCM_BYTES_PER_SAMPLE)
+            withContext(Dispatchers.IO) { chime.write(earcon, chime.generation()) }
             chime.awaitDrained()
             if (!tapBarge) delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
         } finally {
@@ -3116,6 +3141,7 @@ internal class CascadeSession(
             withTimeoutOrNull(CHIME_WAIT_MS) { chimeDone.await() }
             if (!heardSinceOpen) backToListening()
         }
+        openingJob = turnJob
     }
 
     /**

@@ -116,7 +116,7 @@ class VoiceSpeedWiringTest {
         // New speech cancels a pending one, and notes whether it started over a reply or a turn.
         val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
         assertTrue(start.contains("backchannelJob?.cancel()"))
-        assertTrue(start.contains("uttOverReply = speaking || turnJob?.isActive == true"))
+        assertTrue(start.contains("uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)"))
     }
 
     @Test
@@ -249,6 +249,14 @@ class VoiceSpeedWiringTest {
         val play = bodyOf(session(), "playBackchannel")
         assertTrue(play.contains("Backchannel.choose("))
         assertFalse("one failed clip no longer ends the turn's backchannel", play.contains("if (!Backchannel.clipFits(ms))"))
+    }
+
+    @Test
+    fun `the opening chime or cue is not a reply, and a clip waits for it instead of skipping`() {
+        val s = session()
+        val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
+        assertTrue(start.contains("Backchannel.overReply("))
+        assertTrue(bodyOf(s, "playBackchannel").contains("Backchannel.cueWaitMs("))
     }
 
     private companion object {

@@ -95,6 +95,21 @@ class BackchannelTest {
     }
 
     @Test
+    fun `the open's chime is not a reply, and a clip queues after it while it can start in time`() {
+        assertFalse(Backchannel.overReply(replyAudible = true, turnInFlight = true, openingCue = true))
+        assertTrue(Backchannel.overReply(replyAudible = true, turnInFlight = false, openingCue = false))
+        assertTrue(Backchannel.overReply(replyAudible = false, turnInFlight = true, openingCue = false))
+        // His speech ended at 10,000; the clip is due at 10,600.
+        assertEquals(0L, Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = null))
+        assertEquals(0L, Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = 10_400))
+        // The chime ends at 10,800: the clip waits 200 ms and starts 800 ms after his last word.
+        assertEquals(200L, Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = 10_800))
+        assertEquals(300L, Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = 10_000 + Backchannel.MAX_START_AFTER_EOT_MS))
+        // It would start later than that: skipped.
+        assertNull(Backchannel.cueWaitMs(nowMs = 10_600, eotAtMs = 10_000, cueEndsAtMs = 10_000 + Backchannel.MAX_START_AFTER_EOT_MS + 1))
+    }
+
+    @Test
     fun `only a clip of a backchannel's length plays`() {
         assertFalse(Backchannel.clipFits(0))
         assertFalse(Backchannel.clipFits(Backchannel.MIN_CLIP_MS - 1))

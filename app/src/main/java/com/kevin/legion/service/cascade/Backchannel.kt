@@ -22,7 +22,10 @@ package com.kevin.legion.service.cascade
  *
  * **When not** ([decide]): only what is physically or safely necessary, never taste:
  * - he started over a reply or a turn still in flight (a barge-in, a merge): a clip would play over
- *   Alfred's own audio, or over the answer to the turn he is correcting;
+ *   Alfred's own audio, or over the answer to the turn he is correcting. The open's tap chime or
+ *   listen cue is NOT a reply ([overReply]; 2026-11-20: the first turn after a tap was skipped as
+ *   over_reply because of it): a clip still due while one plays waits for its end, if it can still
+ *   start within [MAX_START_AFTER_EOT_MS] of his end of speech ([cueWaitMs]), else it is skipped;
  * - Quiet mode: he asked for silence (he can turn Quiet off);
  * - not a turn of his (a proactive line, the greeting): there is no one waiting;
  * - half-duplex (barge-in off: Bluetooth, a call): the mic is deaf while a clip plays, so a clip
@@ -44,6 +47,9 @@ package com.kevin.legion.service.cascade
 internal object Backchannel {
     /** After his speech ends: the end-of-speech wait (~0.7 s) is already behind him, so ~1.3 s after his last word. */
     const val DELAY_MS = 600L
+
+    /** The latest a clip may start after his end of speech when it waits for the open's chime or cue. */
+    const val MAX_START_AFTER_EOT_MS = 900L
 
     /** The task line waits this long after a backchannel's end: never two clips back to back. */
     const val SPACING_MS = 400L
@@ -174,6 +180,22 @@ internal object Backchannel {
     private const val BYTE_MASK = 0xff
     private const val BITS = 8
     private const val MS_PER_S = 1_000L
+
+    /**
+     * His speech started over Alfred's own audio or a turn still in flight. The open's chime or listen
+     * cue ([openingCue]: the only thing playing or running is the open's own) is neither.
+     */
+    fun overReply(replyAudible: Boolean, turnInFlight: Boolean, openingCue: Boolean): Boolean =
+        !openingCue && (replyAudible || turnInFlight)
+
+    /**
+     * How long a due clip waits for the open's chime or cue to end (0: nothing playing). Null: it
+     * would start later than [MAX_START_AFTER_EOT_MS] after his end of speech, so it is skipped.
+     */
+    fun cueWaitMs(nowMs: Long, eotAtMs: Long, cueEndsAtMs: Long?): Long? {
+        val end = cueEndsAtMs?.takeIf { it > nowMs } ?: return 0L
+        return if (end - eotAtMs <= MAX_START_AFTER_EOT_MS) end - nowMs else null
+    }
 
     /** Whether a clip of [ms] measured audio may play. */
     fun clipFits(ms: Long): Boolean = ms in MIN_CLIP_MS..MAX_CLIP_MS
