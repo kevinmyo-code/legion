@@ -1283,6 +1283,13 @@ internal class CascadeSession(
         lastFillerEndAtMs = System.currentTimeMillis()
     }
 
+    /** The answer's own first audio: no more fillers, and the answer_text skip's gap logged (2026-11-20). */
+    private fun onAnswerAudioStarted(nowMs: Long) {
+        answerAudioStarted = true
+        answerTextSkipAtMs?.let { LiveLatency.log(LiveLatency.TAG, Backchannel.answerTextGapLine(it, nowMs)) }
+        answerTextSkipAtMs = null
+    }
+
     /** A task line started: audited, and counted toward this turn's fillers and its said words. */
     private fun noteTaskFiller(text: String) {
         audit.filler("task", text)
@@ -2238,10 +2245,7 @@ internal class CascadeSession(
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
                 } else {
                     answerAudible = true
-                    answerAudioStarted = true
-                    // How long he waited in silence after an answer_text skip (2026-11-20).
-                    answerTextSkipAtMs?.let { LiveLatency.log(LiveLatency.TAG, Backchannel.answerTextGapLine(it, now)) }
-                    answerTextSkipAtMs = null
+                    onAnswerAudioStarted(now)
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
                     LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
                 }

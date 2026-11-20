@@ -45,6 +45,8 @@ package com.kevin.legion.service.cascade
  *
  * Pure: no clock, no Android.
  */
+// One object for every backchannel rule (when, which clip, the gates, its log lines); split, they drift.
+@Suppress("TooManyFunctions")
 internal object Backchannel {
     /** After his speech ends: the end-of-speech wait (~0.7 s) is already behind him, so ~1.3 s after his last word. */
     const val DELAY_MS = 600L
