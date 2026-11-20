@@ -50,6 +50,8 @@ import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.TurnModels
 import com.kevin.legion.service.turn.TurnTaker
+import com.kevin.legion.service.turn.VoiceOutlet
+import com.kevin.legion.service.turn.VoiceOutputRule
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
 import com.kevin.legion.service.testturn.TestTurns
@@ -242,6 +244,7 @@ internal class CascadeSession(
 
     /** Focus, the car's hands-free mic, and the Bluetooth watch ([CascadeAudio]). */
     private val audioRoute = CascadeAudio(ctx, audioManager)
+    private val earpiece = EarpieceRoute(ctx, audioManager)
     private var player: ReplyPlayer? = null
     private var callAudio: CallAudioMode? = null
     private var micJob: Job? = null
@@ -1061,6 +1064,8 @@ internal class CascadeSession(
         override fun onBargeInDisabled(selfInterrupts: Int) {
             host.notice("Interrupting turned off for this conversation")
             scope.launch(loop) {
+                // On the earpiece call audio is the route itself, not only barge-in: it stays.
+                if (callAudio?.onEarpiece == true) return@launch
                 callAudio?.let { if (it.isActive) it.exit("self-interrupts") }
                 player?.rebuild()
             }
@@ -2712,8 +2717,10 @@ internal class CascadeSession(
      */
     private fun onBluetoothConnected() {
         scope.launch(loop) {
-            val tt = turnTaker?.takeIf { it.bargeIn } ?: return@launch
-            tt.disableBargeIn()
+            val tt = turnTaker?.takeIf { it.bargeIn }
+            // Call audio entered for the earpiece alone (barge-in off) leaves for Bluetooth too.
+            if (tt == null && callAudio?.onEarpiece != true) return@launch
+            tt?.disableBargeIn()
             LiveLatency.log(TurnTaker.BARGE_TAG, "off for this session: Bluetooth connected (cascade)")
             audioRoute.stopWatching()
             callAudio?.let { if (it.isActive) it.exit("bluetooth connected") }
@@ -3027,7 +3034,7 @@ internal class CascadeSession(
         }
         if (!p.config.bargeIn) {
             // The barge-in call mode goes; the car's hands-free link (no barge-in) stays.
-            callAudio?.takeUnless { it.onBluetoothMic }?.let {
+            callAudio?.takeUnless { it.onBluetoothMic || it.onEarpiece }?.let {
                 if (it.isActive) {
                     it.exit("swap to ${b.kind.token}")
                     player?.rebuild()
@@ -3192,6 +3199,7 @@ internal class CascadeSession(
         step("turn") { turnTaker?.reset() }
         step("player") { player?.release() }
         step("route_watch") { audioRoute.stopWatching() }
+        step("earpiece") { earpiece.stop() }
         step("call_audio") { callAudio?.let { if (it.isActive) it.exit("cascade $reason") } }
         step("focus") { abandonFocus() }
         step("caption") { CompanionPhase.setCaption("") }
@@ -3283,17 +3291,37 @@ internal class CascadeSession(
         startMic(chime = true)
     }
 
-    /** Call audio for barge-in (with the Bluetooth watch), else the car's hands-free mic when there is one. */
+    /**
+     * Call audio for barge-in or the earpiece (with the Bluetooth watch), else the car's hands-free mic
+     * when there is one. Then [earpiece] follows the toggle and headset changes until release.
+     */
     private fun enterRoute(barge: Boolean, token: String) {
-        if (barge) {
-            val mode = CallAudioMode(audioManager)
-            LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter()} (cascade, $token)")
-            callAudio = mode
-            audioRoute.watchForBluetooth { onBluetoothConnected() }
+        val outlet = earpiece.outlet()
+        if (VoiceOutputRule.callAudio(barge, outlet)) {
+            enterCallAudio(outlet == VoiceOutlet.EARPIECE, token)
         } else {
             // In the car: the car's own hands-free mic, as Live did (Kevin, 2026-11-10).
             callAudio = audioRoute.enterBluetoothMic(token)
         }
+        earpiece.follow(scope, loop, { callAudio }) { enterEarpieceMidway() }
+    }
+
+    private fun enterCallAudio(onEarpiece: Boolean, token: String) {
+        val mode = CallAudioMode(audioManager)
+        LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter(onEarpiece)} (cascade, $token)")
+        callAudio = mode
+        audioRoute.watchForBluetooth { onBluetoothConnected() }
+    }
+
+    /**
+     * The toggle went to CALL while outside call audio (barge-in off): the reply in flight finishes on
+     * the loudspeaker, then call audio is entered and the player rebuilt on its usage, so no word is cut.
+     */
+    private suspend fun enterEarpieceMidway() {
+        while (speaking && !closing.get()) delay(MIDWAY_POLL_MS)
+        if (closing.get() || callAudio?.isActive == true) return
+        enterCallAudio(onEarpiece = true, token = "earpiece")
+        player?.rebuild()
     }
 
     /**
@@ -3378,6 +3406,7 @@ internal class CascadeSession(
         /** A test turn waits this long (beyond the turn models) for the open to start its first line. */
         private const val OPEN_WAIT_MS = 20_000L
         private const val TEST_POLL_MS = 50L
+        private const val MIDWAY_POLL_MS = 50L
 
 
         private const val CAPTION_CHARS = 160
