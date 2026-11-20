@@ -61,7 +61,8 @@ class KeyDispatchTest {
         assertFalse(dispatch(down(KeyEvent.KEYCODE_MEDIA_NEXT), superResult = false))
         assertEquals(listOf(KeyEvent.KEYCODE_MEDIA_NEXT), superCalls)
         val line = InputProbe.wheel.value.single().text
-        assertTrue(line, line.startsWith("KEYCODE_MEDIA_NEXT code=87"))
+        // The name comes from KeyEvent.keyCodeToString (Robolectric returns the bare number).
+        assertTrue(line, line.contains(" code=87 "))
         assertTrue(line, line.endsWith("passed-on"))
     }
 
