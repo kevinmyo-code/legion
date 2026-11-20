@@ -39,6 +39,15 @@ ROUTES: frozenset[tuple[str, str]] = frozenset(
 
 TOOLS: frozenset[str] = frozenset({"next_service", "vehicle_recalls", "check_conditions"})
 
+# Review B2. The reasons a head unit's own drive log is sent under (`DriveLogUploader.kt`).
+# Never `conversation` (what the Claude worker lists and renders), nor the phone's `logcat` and
+# `crash`: a unit token cannot plant text in what another reader trusts. A unit's upload is stored
+# with `uploader_kind = head_unit` and the worker-facing reader (`devicelogs.records`) never
+# returns it; `manage.py device_logs` (the operator) still does.
+LOG_REASONS: frozenset[str] = frozenset({"drive_end", "startup", "manual", "periodic"})
+# Its own size cap, decompressed: the unit seals a batch at about 1 MB.
+LOG_MAX_RAW_BYTES = 2 * 1024 * 1024
+
 # The `client` every head-unit turn is recorded under; a head-unit token reaches no other
 # conversation of its member's (`agents.legion.turn`).
 TURN_CLIENT = "headunit"

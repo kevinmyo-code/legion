@@ -70,6 +70,12 @@ REASONS: tuple[str, ...] = (
     REASON_CRASH,
 )
 
+# Who uploaded a batch (review B2): a member's own device or browser, or a head unit's own token
+# (`headunit_signin`). A head unit's batches are never served to the worker-facing reader.
+UPLOADER_MEMBER = "member"
+UPLOADER_HEAD_UNIT = "head_unit"
+UPLOADER_KINDS: tuple[str, ...] = (UPLOADER_MEMBER, UPLOADER_HEAD_UNIT)
+
 # One upload is refused above this, compressed or decompressed (the second is
 # the gzip-bomb guard). The head unit seals batches at about 1 MB, well under.
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -151,6 +157,15 @@ class DeviceLog(models.Model):
     # NAV_AUDIT_RETENTION_DAYS; past its reason's retention its body is cut to these lines (then
     # line_count == nav_audit_lines, so it is cut once).
     nav_audit_lines = models.IntegerField(default=0)
+    uploader_kind = models.CharField(max_length=16, default=UPLOADER_MEMBER)
+    # The head unit whose token uploaded it; SET_NULL keeps the kind when the unit is deleted.
+    headunit = models.ForeignKey(
+        "headunit_signin.HeadUnitCredential",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
 
     class Meta:
         db_table = "device_logs"
@@ -169,6 +184,10 @@ class DeviceLog(models.Model):
             ),
             models.CheckConstraint(
                 condition=models.Q(reason__in=REASONS), name="device_logs_reason_valid"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(uploader_kind__in=UPLOADER_KINDS),
+                name="device_logs_uploader_kind_valid",
             ),
             # A household, or a recruiter visit's conversation: exactly one.
             models.CheckConstraint(

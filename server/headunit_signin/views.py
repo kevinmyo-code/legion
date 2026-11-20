@@ -95,6 +95,17 @@ class RotateThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": view.kwargs["credential_id"]}
 
 
+class UploadThrottle(SimpleRateThrottle):
+    """A head unit's own log uploads, per unit (review B2). None for every other caller."""
+
+    scope = "headunit_upload"
+
+    def get_cache_key(self, request, view):
+        if not isinstance(request.auth, HeadUnitCredential) or request.method != "POST":
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": request.auth.pk}
+
+
 class MintSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=LABEL_MAX, trim_whitespace=True)
     kind = serializers.ChoiceField(choices=[KIND])

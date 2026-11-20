@@ -657,6 +657,8 @@ REST_FRAMEWORK = {
         # CREDENTIAL. Same per-process LocMemCache caveat as `mcp` above.
         "headunit_mint": "5/hour",
         "headunit_rotate": "6/hour",
+        # A head unit's own log uploads, per CREDENTIAL (review B2): periodic every few minutes.
+        "headunit_upload": "60/hour",
     },
 }
 

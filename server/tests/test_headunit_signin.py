@@ -472,6 +472,83 @@ def test_the_token_is_never_logged_and_never_stored(phone, on, caplog, monkeypat
         assert _rows_holding(body) == []
 
 
+def test_a_unit_may_not_upload_a_conversation_or_any_reason_the_unit_does_not_send(phone, on):
+    """Review B2: `conversation` (and the phone's logcat and crash) are what the Claude worker and
+    the conversation spool read. A unit token uploads drive logs only."""
+    from devicelogs.models import DeviceLog
+
+    _id, raw = _paired(phone)
+    for reason in ("conversation", "logcat", "crash"):
+        response = unit_client(raw).post(
+            "/api/device-logs/", {**_log_upload(), "reason": reason}, format="multipart"
+        )
+        assert response.status_code == 403, (reason, response.data)
+    assert not DeviceLog.objects.exists()
+    for reason in ("drive_end", "startup", "manual", "periodic"):
+        response = unit_client(raw).post(
+            "/api/device-logs/", {**_log_upload(), "reason": reason}, format="multipart"
+        )
+        assert response.status_code == 201, (reason, response.data)
+
+
+def test_a_unit_upload_is_marked_and_the_worker_facing_reader_never_returns_it(phone, on):
+    from devicelogs.models import DeviceLog
+
+    _id, raw = _paired(phone)
+    unit_up = unit_client(raw).post("/api/device-logs/", _log_upload(), format="multipart")
+    phone_up = phone.post("/api/device-logs/", _log_upload(), format="multipart")
+    assert unit_up.status_code == phone_up.status_code == 201
+    unit_row = DeviceLog.objects.get(pk=unit_up.data["id"])
+    phone_row = DeviceLog.objects.get(pk=phone_up.data["id"])
+    assert (unit_row.uploader_kind, phone_row.uploader_kind) == ("head_unit", "member")
+    listed = {str(r["id"]) for r in phone.get("/api/device-logs/").data["results"]}
+    assert listed == {str(phone_row.pk)}
+    assert phone.get(f"/api/device-logs/{unit_row.pk}/render").status_code == 404
+    assert phone.get(f"/api/device-logs/{phone_row.pk}/render").status_code == 200
+
+
+def test_a_unit_cannot_probe_another_devices_batch_id(phone, on):
+    _id, raw = _paired(phone)
+    upload = _log_upload()
+    batch = upload["batch_id"]
+    mine = phone.post("/api/device-logs/", upload, format="multipart")
+    assert mine.status_code == 201
+    response = unit_client(raw).post(
+        "/api/device-logs/", {**_log_upload(), "batch_id": batch}, format="multipart"
+    )
+    assert response.status_code == 409
+    assert str(mine.data["id"]) not in str(response.data)
+
+
+def test_unit_uploads_are_throttled_per_unit(phone, on, monkeypatch):
+    from headunit_signin.views import UploadThrottle
+
+    monkeypatch.setattr(UploadThrottle, "rate", "2/hour", raising=False)
+    _a, raw_a = _paired(phone)
+    _b, raw_b = _paired(phone)
+    for _ in range(2):
+        assert unit_client(raw_a).post(
+            "/api/device-logs/", _log_upload(), format="multipart"
+        ).status_code == 201
+    assert unit_client(raw_a).post(
+        "/api/device-logs/", _log_upload(), format="multipart"
+    ).status_code == 429
+    assert unit_client(raw_b).post(
+        "/api/device-logs/", _log_upload(), format="multipart"
+    ).status_code == 201
+    assert phone.post("/api/device-logs/", _log_upload(), format="multipart").status_code == 201
+
+
+def test_a_unit_upload_has_its_own_size_cap(phone, on, monkeypatch):
+    from headunit_signin import scope as unit_scope
+
+    monkeypatch.setattr(unit_scope, "LOG_MAX_RAW_BYTES", 8)
+    _id, raw = _paired(phone)
+    response = unit_client(raw).post("/api/device-logs/", _log_upload(), format="multipart")
+    assert response.status_code == 413
+    assert phone.post("/api/device-logs/", _log_upload(), format="multipart").status_code == 201
+
+
 def test_a_unit_upload_lands_in_its_members_household(phone, on, household_user, household_a):
     from devicelogs.models import DeviceLog
 
