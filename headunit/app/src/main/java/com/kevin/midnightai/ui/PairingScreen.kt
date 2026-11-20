@@ -121,7 +121,11 @@ internal fun CarLinkSection(context: Context, onBack: () -> Unit) {
                 store.forget() // the pairing, every handed-over value and the owner PIN, together
                 DriveLog.breadcrumb(if (action == GuardedAction.RESET) "car link reset" else "car link forgotten")
                 CarLink.changed(context)
-                facts++
+                withContext(Dispatchers.Main) {
+                    // Protocol 5.5: the unit cannot tell the phone or the engine (review L-d).
+                    note = FORGOTTEN_WORDS
+                    facts++
+                }
             }
         }
     }
@@ -182,6 +186,11 @@ internal fun CarLinkSection(context: Context, onBack: () -> Unit) {
         }
     }
 }
+
+/** Said after Forget or RESET on the unit (protocol rev 8, 5.5). */
+internal const val FORGOTTEN_WORDS =
+    "Forgotten on this unit. On your phone, remove \"Head unit\" too (or Forget it there): that revokes the car's " +
+        "sign-in on the engine. This unit cannot tell the phone or the engine itself."
 
 /** What the owner PIN guards on this screen; RESET is the no-PIN way out that wipes everything. */
 internal enum class GuardedAction { PAIR_AGAIN, FORGET, RESET }
