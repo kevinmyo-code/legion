@@ -48,8 +48,16 @@ fun <T> startOrReport(step: () -> T, failed: (String) -> Unit): T? =
 /** The back camera when the phone has one, otherwise the first other camera, otherwise none. */
 fun <S : Any> pickCamera(back: S, hasBack: Boolean, others: List<S>): S? = if (hasBack) back else others.firstOrNull()
 
-/** STUB (red step). */
+/**
+ * The camera use cases this pane bound, so leaving it unbinds those and nothing else (not another
+ * screen's camera use). [release] hands them over once.
+ */
 class PaneCameraUses<T> {
-    fun record(uses: List<T>) = Unit
-    fun release(): List<T> = emptyList()
+    private var uses: List<T> = emptyList()
+
+    @Synchronized fun record(bound: List<T>) {
+        uses = bound
+    }
+
+    @Synchronized fun release(): List<T> = uses.also { uses = emptyList() }
 }

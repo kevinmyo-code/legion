@@ -62,16 +62,18 @@ fun CarLinkQrScanPane(onQr: (String) -> Unit, onFailed: () -> Unit) {
         val providerFuture = ProcessCameraProvider.getInstance(context)
         // Leaving the pane before the camera is ready must not bind it afterwards.
         val gate = ScanBindGate()
+        val mine = PaneCameraUses<UseCase>()
         providerFuture.addListener({ gate.runIfLive {
             val bound = startOrReport(
                 step = { bindScanCamera(providerFuture.get(), owner, preview, executor, scanner, seen, main, onQr) },
                 failed = { kind -> Log.w("CarLink", "camera could not start: $kind") },
             )
-            if (bound == null) onFailed()
+            if (bound == null) onFailed() else mine.record(bound)
         } }, main)
         onDispose {
             gate.dispose()
-            runCatching { providerFuture.get().unbindAll() }
+            val release = mine.release()
+            if (release.isNotEmpty()) runCatching { providerFuture.get().unbind(*release.toTypedArray()) }
             scanner.close()
             executor.shutdown()
         }
