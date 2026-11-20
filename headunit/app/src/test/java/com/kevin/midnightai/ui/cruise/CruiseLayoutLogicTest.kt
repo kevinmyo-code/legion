@@ -60,15 +60,17 @@ class CruiseLayoutLogicTest {
         }
     }
 
-    @Test fun thePlaylistsFaceShowsThreeRowsOfTilesWithoutScrollingAtBothFrames() {
-        frames.forEach { (w, h) ->
-            val u = CruiseLayoutLogic.unit(w, h)
-            val card = h - 2 * u
-            assertTrue(
-                "$w face ${CruiseLayoutLogic.musicFaceHeight(card, u)}",
-                CruiseLayoutLogic.musicFaceHeight(card, u) >= CruiseLayoutLogic.playlistFaceMin(u),
-            )
+    @Test fun scrollingPlaylistRowsFillTheFaceAndNeverGoUnderDriveSize() {
+        // The function PinnedPlaylistGrid's scroll mode calls with its measured height.
+        val gap = 7.2f
+        listOf(140f, 168f, 190f, 260f).forEach { h ->
+            val row = MusicDeckLogic.scrollRowHeight(h, gap)
+            assertTrue("$h -> $row", row >= MusicDeckLogic.TOUCH_MIN)
+            if (h >= 3 * MusicDeckLogic.TOUCH_MIN + 2 * gap) {
+                assertEquals(h, 3 * row + 2 * gap, 0.01f)
+            }
         }
+        assertEquals(MusicDeckLogic.TOUCH_MIN, MusicDeckLogic.scrollRowHeight(100f, gap), 0.01f)
     }
 
     // --- Middle panel words --------------------------------------------------------------

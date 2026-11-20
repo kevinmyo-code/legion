@@ -177,19 +177,15 @@ internal fun PinnedPlaylistGrid(
         // Before the first authorization check lands, nothing but the label: neither empty
         // slots nor a "Connect" prompt that may be wrong a moment later.
         if (state.authorized == null) return@Column
-        Column(
-            modifier = when {
-                rowHeight == null -> Modifier.weight(1f).fillMaxWidth()
-                scroll -> Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
-                else -> Modifier.fillMaxWidth()
-            },
+        val tiles: @Composable (Modifier, Dp?) -> Unit = { tilesModifier, rowH -> Column(
+            modifier = tilesModifier,
             verticalArrangement = Arrangement.spacedBy(m.tileGap),
         ) {
             slots.chunked(2).forEach { pair ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(if (rowHeight == null) Modifier.weight(1f) else Modifier.height(rowHeight)),
+                        .then(if (rowH == null) Modifier.weight(1f) else Modifier.height(rowH)),
                     horizontalArrangement = Arrangement.spacedBy(m.tileGap),
                 ) {
                     pair.forEach { slot ->
@@ -227,6 +223,16 @@ internal fun PinnedPlaylistGrid(
                     }
                 }
             }
+        } }
+        when {
+            rowHeight == null -> tiles(Modifier.weight(1f).fillMaxWidth(), null)
+            // The HU-1 music card: rows sized from the space the face really has, so exactly
+            // MusicDeckLogic.SCROLL_ROWS_VISIBLE rows show (never under drive size) and the rest scroll.
+            scroll -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val rowH = MusicDeckLogic.scrollRowHeight(maxHeight.value, m.tileGap.value).dp
+                tiles(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), rowH)
+            }
+            else -> tiles(Modifier.fillMaxWidth(), rowHeight)
         }
     }
 }

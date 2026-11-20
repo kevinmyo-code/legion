@@ -241,6 +241,16 @@ object MusicDeckLogic {
     /** The hero card's meter: 10 bars of 6 dp + 9 gaps of 4 dp (the prototype's). */
     const val HERO_METER_WIDTH = 96f
 
+    /** Playlist rows the HU-1 music card's PLAYLISTS face shows before it scrolls. */
+    const val SCROLL_ROWS_VISIBLE = 3
+
+    /**
+     * Row height for a scrolling playlist face [height] dp tall with [gap] dp between rows: exactly
+     * [rows] rows fill it, never below [TOUCH_MIN] (a short face shows fewer rows and scrolls).
+     */
+    fun scrollRowHeight(height: Float, gap: Float, rows: Int = SCROLL_ROWS_VISIBLE): Float =
+        maxOf(TOUCH_MIN, (height - (rows - 1) * gap) / rows)
+
     /** The tile's count line: "1 TRACK", "42 TRACKS". */
     fun trackCountLabel(n: Int): String = if (n == 1) "1 TRACK" else "$n TRACKS"
 

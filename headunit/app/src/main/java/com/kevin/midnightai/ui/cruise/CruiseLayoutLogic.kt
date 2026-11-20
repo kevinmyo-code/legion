@@ -31,17 +31,6 @@ object CruiseLayoutLogic {
         return Columns(pad, gap, rail, middle, music)
     }
 
-    /**
-     * Height left for the music card's face (art + title, or the playlist tiles) once the header,
-     * transport and volume rows are placed. [cardHeight] is the card's outer height.
-     */
-    fun musicFaceHeight(cardHeight: Float, u: Float): Float {
-        val keys = MusicDeckLogic.heroKeys(contentWidth = u * 35f - 2 * u, u = u)
-        return cardHeight - 2 * u - MusicDeckLogic.TOUCH_MIN - keys.height - keys.volumeHeight - 3 * u
-    }
-
-    /** Three rows of drive-size playlist tiles: the least the PLAYLISTS face must show without scrolling. */
-    fun playlistFaceMin(u: Float): Float = 3 * MusicDeckLogic.TOUCH_MIN + 2 * u
 }
 
 /** What the middle panel's words say. Plain values in, strings out. */
