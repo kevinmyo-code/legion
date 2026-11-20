@@ -699,6 +699,7 @@ private fun SwitchLabel(
             color = if (active) AriaColors.Panel else AriaColors.TextDim,
             maxLines = 1,
             softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

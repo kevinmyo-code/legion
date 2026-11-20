@@ -277,6 +277,8 @@ private fun SegmentKey(label: String, selected: Boolean, minWidth: Dp, size: Tex
             style = AriaType.neonLabel.copy(fontSize = size, letterSpacing = 1.sp, fontWeight = DeckBold),
             color = if (selected) AriaColors.Panel else AriaColors.TextPrimary,
             maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

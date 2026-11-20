@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,8 +75,16 @@ internal fun MusicHeroCard(
 ) {
     var face by remember { mutableStateOf(MusicFace.NOW) }
     val keys = rememberTransportKeys(info)
+    // Header text is locked to dp (review M5, 2026-11-20): at a system font scale above 1 the
+    // NOW / LISTS pair and the PHONE | SPOTIFY switch would no longer fit the 264 dp header at
+    // 800 wide. Labels that still run long ellipsize instead of drawing over the border.
+    val density = LocalDensity.current
+    val headerM = remember(m, u, density) {
+        m.copy(label = with(density) { maxOf(u * 1.05f, 9.dp).toSp() })
+    }
+    val segmentSize = with(density) { maxOf(u * 1.3f, 11.dp).toSp() }
     Column(modifier.deckCard(m).padding(u), verticalArrangement = Arrangement.spacedBy(u)) {
-        SourceLabelRow(m, title = null, modifier = Modifier.height(AriaDimens.driveTouchMin)) {
+        SourceLabelRow(headerM, title = null, modifier = Modifier.height(AriaDimens.driveTouchMin)) {
             SegmentPair(
                 u = u,
                 left = "NOW",
@@ -84,7 +93,7 @@ internal fun MusicHeroCard(
                 onLeft = { face = MusicFace.NOW },
                 onRight = { face = MusicFace.LISTS },
                 keyMinWidth = AriaDimens.driveTouchMin,
-                labelSize = uSp(u, 1.3f, 11.sp),
+                labelSize = segmentSize,
             )
             Spacer(Modifier.width(4.dp))
         }
