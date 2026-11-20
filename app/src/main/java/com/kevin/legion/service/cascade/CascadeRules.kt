@@ -162,7 +162,7 @@ internal object CascadeRules {
         route: AudioRoute,
         inCall: Boolean,
     ): TurnPlan {
-        val barge = bargeSetting && route != AudioRoute.BLUETOOTH && !inCall
+        val barge = OpeningRule.bargeIn(bargeSetting, route, inCall)
         val smart = !serviceEndsTurns && smartSetting && smartTurnReady
         val note = buildString {
             append(if (serviceEndsTurns) "service end of turn, phone cap $CAP ms" else "phone end of turn")

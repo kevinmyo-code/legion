@@ -35,7 +35,13 @@ internal class CascadeMic(private val ctx: Context) {
         "CyclomaticComplexMethod",
         "LoopWithTooManyJumpStatements",
     ) // a copy of Live's capture loop, trimmed; its shape is Live's
-    suspend fun run(onBuffer: (ByteArray, Int) -> Unit, onNoPermission: () -> Unit, onFailure: (String) -> Unit) {
+    suspend fun run(
+        onBuffer: (ByteArray, Int) -> Unit,
+        onNoPermission: () -> Unit,
+        onFailure: (String) -> Unit,
+        /** Capture has started: the first buffer is on its way (the tap's chime plays from here). */
+        onRecording: () -> Unit = {},
+    ) {
         val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO)
         if (granted != PackageManager.PERMISSION_GRANTED) {
             onNoPermission()
@@ -72,6 +78,7 @@ internal class CascadeMic(private val ctx: Context) {
         try {
             record.startRecording()
             Log.d(TAG, "AudioRecord opened (cascade) sessionId=${record.audioSessionId}")
+            onRecording()
             while (kotlin.coroutines.coroutineContext.isActive) {
                 val n = record.read(buffer, 0, buffer.size)
                 if (n < 0) {

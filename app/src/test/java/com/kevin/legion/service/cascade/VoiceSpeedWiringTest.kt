@@ -1,0 +1,126 @@
+package com.kevin.legion.service.cascade
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Test
+import java.io.File
+
+/**
+ * The speed plan's wiring in [CascadeSession] (Kevin, 2026-11-19, items 1 to 3), read from source as
+ * [CascadeWiringTest] does: the session needs a live Context, a mic and a socket to construct. The
+ * rules themselves are pure and tested on their own ([OpeningRule], [MicBacklog], [GreetingWords],
+ * [FillerTurn], [Backchannel]).
+ */
+class VoiceSpeedWiringTest {
+
+    // --- 1: a tap opens the mic at once ---------------------------------------------------------
+
+    @Test
+    fun `a tap opens the route and the mic before the voice service, and says nothing`() {
+        val s = session()
+        val openNow = bodyOf(s, "openNow")
+        val micNow = openNow.indexOf("openMicNow()")
+        assertTrue("a tap opens the mic in openNow", micNow >= 0)
+        assertTrue("before the turn models", micNow < openNow.indexOf("TurnModels.awaitReady("))
+        assertTrue("before the voice service", micNow < openNow.indexOf("openBackend("))
+        // The chime branch returns before the greeting plan is awaited or any line is spoken.
+        val chimeAt = openNow.indexOf("listenAfterChime()")
+        assertTrue(chimeAt >= 0)
+        assertTrue(chimeAt < openNow.indexOf("greetingPlan?.await()"))
+        assertTrue(chimeAt < openNow.indexOf("speakGreeting("))
+        assertTrue(chimeAt < openNow.indexOf("speakScripted("))
+        // No greeting pack is even fetched for a tap.
+        assertTrue(openNow.contains("if (opening == OpeningRule.Opening.GREETING)"))
+        val micNowBody = bodyOf(s, "openMicNow")
+        assertTrue("route first", micNowBody.indexOf("enterRoute(") < micNowBody.indexOf("startMic(chime = true)"))
+        assertTrue(micNowBody.indexOf("backlog = MicBacklog()") < micNowBody.indexOf("startMic(chime = true)"))
+    }
+
+    @Test
+    fun `what he said since the tap reaches the detector first, under the feed lock`() {
+        val openNow = bodyOf(session(), "openNow")
+        val lock = openNow.indexOf("synchronized(turnLock)")
+        val built = openNow.indexOf("turnTaker = taker")
+        val drained = openNow.indexOf("drainTo {")
+        assertTrue(lock in 0 until built)
+        assertTrue(built in 0 until drained)
+        assertTrue(openNow.indexOf("backlog = null") > drained)
+        // A route entered at the tap is not entered twice.
+        assertTrue(openNow.contains("if (early == null) enterRoute("))
+        val feed = bodyOf(session(), "onMicBuffer")
+        assertTrue(feed.contains("else backlog?.add(buf, n, playbackActive)"))
+    }
+
+    @Test
+    fun `the chime is local, counted as playback half-duplex, and never a reply`() {
+        val s = session()
+        val chime = bodyOf(s, "playOpenChime")
+        assertTrue(chime.contains("ListenCue.earconPcm()"))
+        assertTrue(chime.contains("if (!tapBarge) playbackActive = true"))
+        assertTrue(chime.contains("chimeDone.complete(Unit)"))
+        for (reply in listOf("onReplyAudible(", "speaking = true", "lastClipText", "history.add", "newSpeaker(", "followUpEvent(")) {
+            assertFalse("the chime must not touch $reply", chime.contains(reply))
+        }
+        // Played once capture has started; the listening window after it, unless he already spoke.
+        assertTrue(bodyOf(s, "startMic").contains("onRecording = recording"))
+        val after = bodyOf(s, "listenAfterChime")
+        assertTrue(after.contains("turnJob = scope.launch(loop)"))
+        assertTrue(after.contains("if (!heardSinceOpen) backToListening()"))
+        assertTrue(bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart").contains("heardSinceOpen = true"))
+    }
+
+    @Test
+    fun `the tap path is timed from the open call, each step its own LIVE_LATENCY key`() {
+        val s = session()
+        assertTrue(bodyOf(s, "open").contains("openStartedAtMs = System.currentTimeMillis()"))
+        for (key in listOf("open_kind=", "open_mic_ms=", "open_backend_ms=", "open_listening_ms=", "open_backlog_ms=")) {
+            assertTrue("openNow no longer logs $key", bodyOf(s, "openNow").contains(key))
+        }
+        assertTrue(bodyOf(s, "startMic").contains("open_route_ms="))
+        assertTrue(bodyOf(s, "onMicBuffer").contains("open_capture_ms="))
+        assertTrue(bodyOf(s, "playOpenChime").contains("open_chime_ms="))
+    }
+
+    private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
+
+    private fun bodyOf(source: String, name: String): String {
+        val signature = Regex("fun $name\\(").find(source)?.range?.first ?: fail("no fun $name(").let { -1 }
+        val open = source.indexOf('{', signature)
+        var depth = 0
+        var i = open
+        while (i < source.length) {
+            when (source[i]) {
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(open + 1, i)
+                }
+            }
+            i++
+        }
+        fail("unbalanced braces in $name")
+        return ""
+    }
+
+    private fun sourceRoot(): File {
+        var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (dir != null) {
+            val candidate = File(dir, "app/src/main/java/com/kevin/legion")
+            if (candidate.isDirectory) return candidate
+            val here = File(dir, "src/main/java/com/kevin/legion")
+            if (here.isDirectory) return here
+            dir = dir.parentFile
+        }
+        fail("source root not found")
+        return File(".")
+    }
+
+    private fun stripComments(text: String): String =
+        LINE_COMMENT.replace(BLOCK_COMMENT.replace(text) { "\n".repeat(it.value.count { c -> c == '\n' }) }, "")
+
+    private companion object {
+        val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)
+        val LINE_COMMENT = Regex("(?<![:\"])//[^\n]*")
+    }
+}
