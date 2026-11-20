@@ -60,8 +60,19 @@ object LogRedactor {
         """(?<![A-Za-z0-9_+-])(?=[A-Za-z0-9_+-]*\d)(?=[A-Za-z0-9_+-]*[A-Za-z])[A-Za-z0-9_+-]{40,}={0,2}""",
     )
 
+    // Review NAV-3: positions. A pair of decimal degrees (3+ decimals) side by side, a lat/lng/
+    // latitude/longitude key with a value, and the coordinate path of a Mapbox directions/matching URL.
+    private val coordPair = Regex("""-?\d{1,3}\.\d{3,}\s*[,;]\s*-?\d{1,3}\.\d{3,}""")
+    private val coordKey = Regex("""(?i)("?\b(?:lat|lng|lon|latitude|longitude)"?\s*[:=]\s*)-?\d{1,3}\.\d+""")
+    private val routePath = Regex("""(?i)(/(?:directions|matching|directions-matrix)/v\d+/[^/\s]+/[^/\s]+/)[^?\s]+""")
+
+    const val COORDS = "[position]"
+
     fun redact(line: String): String {
         var out = line
+        out = routePath.replace(out) { "${it.groupValues[1]}$COORDS" }
+        out = coordPair.replace(out, COORDS)
+        out = coordKey.replace(out) { "${it.groupValues[1]}$COORDS" }
         for (literal in literals) if (out.contains(literal)) out = out.replace(literal, MARK)
         out = authHeader.replace(out) { "${it.groupValues[1]}$MARK" }
         out = schemeToken.replace(out) { "${it.groupValues[1]}${it.groupValues[2]}$MARK" }
