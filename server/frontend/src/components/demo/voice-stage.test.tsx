@@ -305,7 +305,7 @@ describe('the docked orb when the orb is off screen', () => {
   describe('beside the sections, where there is room', () => {
     afterEach(() => {
       vi.unstubAllGlobals()
-      setOrbPlace({ side: 'right', pinned: false })
+      setOrbPlace({ side: 'right', pinned: false, placed: false })
     })
     const wide = () =>
       vi.stubGlobal('matchMedia', (query: string) => ({
@@ -320,6 +320,7 @@ describe('the docked orb when the orb is off screen', () => {
       wide()
       fakeIO()
       stage(false, true)
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
       expect(side()).toHaveAttribute('data-shown', 'false')
       expect(side()).toHaveAttribute('inert')
       deliver(false)
@@ -336,6 +337,7 @@ describe('the docked orb when the orb is off screen', () => {
       wide()
       fakeIO()
       stage(false, true)
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
       deliver(false)
       expect(side()).toHaveAttribute('data-side', 'right')
       act(() => setOrbPlace({ side: 'left', pinned: true }))
@@ -405,6 +407,76 @@ describe('the docked orb when the orb is off screen', () => {
       // Beside the scene the side copy is gone; the stage's own is the one left.
       expect(side()!.querySelector('[role="group"]')).toBeNull()
       expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
+    })
+
+    test('never shows before a section has placed it (the header and hero have no room for it)', () => {
+      wide()
+      fakeIO()
+      stage(false, true)
+      deliver(false)
+      expect(side()).toHaveAttribute('data-shown', 'false')
+      expect(side()).toHaveAttribute('inert')
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      expect(side()).toHaveAttribute('data-shown', 'true')
+      // Back above the sections: out of the way again.
+      act(() => setOrbPlace({ side: 'right', pinned: false, placed: false }))
+      expect(side()).toHaveAttribute('data-shown', 'false')
+    })
+
+    test('chips you can see under the stage orb answer a tap at every scroll position; only off screen do they step aside', async () => {
+      wide()
+      fakeIO()
+      const asked: string[] = []
+      const deps: CascadeDeps = {
+        startTurn: async (request): Promise<TurnStart> => {
+          if (!request.greet) asked.push(request.text ?? '')
+          return {
+            ok: true,
+            events: (async function* () {
+              yield { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } } as SseEvent
+              yield { type: 'done', data: { status: request.greet ? 'greeting' : 'done', final_text: 'Hi.', offer: 'offer-0' } } as SseEvent
+            })(),
+          }
+        },
+        chips: async () => [{ label: 'An invented chip', question: 'An invented question?', token: 'chip-1' }],
+        audio: () => new FakeAudio(),
+        now: () => Date.now(),
+        utcOffsetMinutes: () => 0,
+      }
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <AssistantProvider voiceFirst={{ prepare: async () => true }} cascadeDeps={deps}>
+            <VoiceStage />
+          </AssistantProvider>
+        </QueryClientProvider>,
+      )
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+        await settle()
+      })
+      await screen.findByRole('group', { name: 'Suggested questions' })
+      const room = () => document.querySelector<HTMLElement>('[data-stage="chips-room"]')!
+      // The orb watcher counts half an orb; the chips' own watcher counts any of the row.
+      const deliverBy = (threshold: number, seen: boolean) =>
+        act(() =>
+          observers.filter(({ options }) => (options?.threshold ?? 0) === threshold).forEach(({ cb }) => cb([{ isIntersecting: seen }])),
+        )
+      // The orb is half off screen, the chips under it still on: they are the ones to tap.
+      deliverBy(0.5, false)
+      deliverBy(0, true)
+      expect(room()).not.toHaveAttribute('inert')
+      expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
+      expect(side()!.querySelector('[role="group"]')).toBeNull()
+      await act(async () => {
+        fireEvent.click(within(room()).getByRole('button', { name: 'An invented chip' }))
+        await settle()
+      })
+      expect(asked).toEqual(['An invented question?'])
+      // The chips scroll off too: the side copy takes over, the off-screen one steps aside.
+      deliverBy(0, false)
+      expect(room()).toHaveAttribute('inert')
+      expect(side()).toContainElement(screen.getByRole('group', { name: 'Suggested questions' }))
     })
 
     test('narrower, or with reduced motion, it docks at the foot as before', () => {

@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import { useRef } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { diagramLayers, layerFor, LegionScene } from '@/screens/try-legion-scene'
+import { diagramAspect, diagramLayers, layerFor, LegionScene } from '@/screens/try-legion-scene'
 
 import { setOrbPlace, useOrbPlace, useStoryGlide, useStoryMotion, useStorySections } from './scroll-story'
 
@@ -56,7 +56,7 @@ afterEach(() => {
   ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = realIO
   observers.length = 0
   vi.unstubAllGlobals()
-  setOrbPlace({ side: 'right', pinned: false })
+  setOrbPlace({ side: 'right', pinned: false, placed: false })
 })
 
 function Page({ content = 'content' }: { content?: string }) {
@@ -67,7 +67,7 @@ function Page({ content = 'content' }: { content?: string }) {
   useStorySections(main, motion, content)
   return (
     <main ref={main} data-story={motion ? 'on' : undefined} data-glide={glide ? 'on' : 'off'}>
-      <p data-testid="place">{`${place.side}${place.pinned ? ' pinned' : ''}`}</p>
+      <p data-testid="place">{`${place.placed ? '' : 'unplaced '}${place.side}${place.pinned ? ' pinned' : ''}`}</p>
       <section data-testid="first" data-orb-side="right">
         <h2>First</h2>
         <p>An invented line.</p>
@@ -120,10 +120,31 @@ describe('the sections', () => {
     fakeIO()
     media((q) => q.includes('no-preference'))
     render(<Page />)
+    expect(screen.getByTestId('place')).toHaveTextContent('unplaced right')
     inView(screen.getByTestId('second'), '-50% 0px -50% 0px')
-    expect(screen.getByTestId('place')).toHaveTextContent('left pinned')
+    expect(screen.getByTestId('place')).toHaveTextContent(/^left pinned$/)
     inView(screen.getByTestId('first'), '-50% 0px -50% 0px')
-    expect(screen.getByTestId('place')).toHaveTextContent('right')
+    expect(screen.getByTestId('place')).toHaveTextContent(/^right$/)
+    // Scrolled back above the first section (its top below the middle): no place, the orb goes.
+    act(() => {
+      for (const o of observers) {
+        if (o.options?.rootMargin !== '-50% 0px -50% 0px') continue
+        o.cb([{ isIntersecting: false, target: screen.getByTestId('first'), boundingClientRect: { top: window.innerHeight * 0.7 } } as never])
+      }
+    })
+    expect(screen.getByTestId('place')).toHaveTextContent('unplaced')
+  })
+
+  test('the last block of the page is revealed even if it can never climb past the reading margin', () => {
+    fakeIO()
+    media((q) => q.includes('no-preference'))
+    render(<Page />)
+    const lastSection = screen.getByTestId('second')
+    const last = lastSection.children[lastSection.children.length - 1] as HTMLElement
+    expect(last.dataset.reveal).toBe('pending')
+    // Watched by an observer with no reading margin as well, so the foot of the page shows it.
+    const plain = observers.filter((o) => o.targets.includes(last) && !(o.options?.rootMargin ?? '').includes('-'))
+    expect(plain.length).toBeGreaterThan(0)
   })
 
   test('glides only with room beside the sections (900 px and up), motion allowed', () => {
@@ -171,6 +192,12 @@ describe('the LEGION scene', () => {
       { left: 40, width: 20, top: 5, height: 90 },
       { left: 75, width: 20, top: 5, height: 45 },
     ])
+  })
+
+  test('a diagram with no viewBox gives its aspect from its own width and height', () => {
+    expect(diagramAspect('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300"></svg>')).toBe(2)
+    expect(diagramAspect('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="10" height="10"></svg>')).toBe(2)
+    expect(diagramAspect('<svg xmlns="http://www.w3.org/2000/svg"></svg>')).toBeNull()
   })
 
   test('part N lights the layer at the same share of the way down', () => {

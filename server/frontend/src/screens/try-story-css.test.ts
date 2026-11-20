@@ -51,6 +51,21 @@ describe('the LEGION scene', () => {
     const unpinned = all.filter((r) => r.selector.includes('.rc-scene-pin') && /max-height:\s*699px/.test(r.within))
     expect(unpinned.some((r) => /position\s*:\s*static/.test(r.body))).toBe(true)
   })
+
+  test('never pinned under 900 px wide (a phone in portrait has no room under it)', () => {
+    const unpinned = all.filter((r) => r.selector.includes('.rc-scene-pin') && /max-width:\s*899px/.test(r.within))
+    expect(unpinned.some((r) => /position\s*:\s*static/.test(r.body))).toBe(true)
+  })
+})
+
+describe('the side orb', () => {
+  test('takes clicks only on the orb and the chips, never on its status line', () => {
+    const side = all.find((r) => r.selector.trim() === '.recruiter .rc-voice-side')
+    expect(side?.body).toMatch(/pointer-events\s*:\s*none/)
+    const live = all.filter((r) => /pointer-events\s*:\s*auto/.test(r.body)).map((r) => r.selector)
+    expect(live.some((sel) => sel.includes('.rc-side-orb'))).toBe(true)
+    expect(live.some((sel) => sel.includes('.rc-voice-side') && sel.includes('.rc-chips'))).toBe(true)
+  })
 })
 
 describe('print', () => {
