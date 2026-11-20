@@ -361,6 +361,52 @@ describe('the docked orb when the orb is off screen', () => {
       expect(document.activeElement).toBe(dockOrb())
     })
 
+    test('draws its orb only while it shows (the hidden one costs no frames)', () => {
+      wide()
+      fakeIO()
+      stage(false, true)
+      expect(side()!.querySelector('canvas')).toBeNull()
+      deliver(false)
+      expect(side()!.querySelector('canvas')).not.toBeNull()
+    })
+
+    test('one group of suggested questions in the accessibility tree; none hidden beside a pinned scene', async () => {
+      wide()
+      fakeIO()
+      const deps: CascadeDeps = {
+        startTurn: async (request): Promise<TurnStart> => ({
+          ok: true,
+          events: (async function* () {
+            yield { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } } as SseEvent
+            yield { type: 'done', data: { status: request.greet ? 'greeting' : 'done', final_text: 'Hi.', offer: 'offer-0' } } as SseEvent
+          })(),
+        }),
+        chips: async () => [{ label: 'An invented chip', question: 'An invented question?', token: 'chip-1' }],
+        audio: () => new FakeAudio(),
+        now: () => Date.now(),
+        utcOffsetMinutes: () => 0,
+      }
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <AssistantProvider voiceFirst={{ prepare: async () => true }} cascadeDeps={deps}>
+            <VoiceStage />
+          </AssistantProvider>
+        </QueryClientProvider>,
+      )
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+        await settle()
+      })
+      await screen.findByRole('group', { name: 'Suggested questions' })
+      deliver(false)
+      expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
+      expect(side()).toContainElement(screen.getByRole('group', { name: 'Suggested questions' }))
+      act(() => setOrbPlace({ side: 'left', pinned: true }))
+      // Beside the scene the side copy is gone; the stage's own is the one left.
+      expect(side()!.querySelector('[role="group"]')).toBeNull()
+      expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
+    })
+
     test('narrower, or with reduced motion, it docks at the foot as before', () => {
       vi.stubGlobal('matchMedia', (query: string) => ({
         matches: !query.includes('min-width'),

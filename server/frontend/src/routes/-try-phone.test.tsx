@@ -151,7 +151,7 @@ describe('the phone section', () => {
     // section only once its session and content have answered.
     const original = window.matchMedia
     window.matchMedia = ((query: string) =>
-      query === '(min-width: 900px) and (prefers-reduced-motion: no-preference)'
+      query === '(min-width: 900px) and (min-height: 720px) and (prefers-reduced-motion: no-preference)'
         ? ({ matches: true, media: query, addEventListener() {}, removeEventListener() {} } as unknown as MediaQueryList)
         : original(query)) as typeof window.matchMedia
     const cross = (index: number) =>
@@ -203,6 +203,26 @@ describe('the phone section', () => {
       expect(row).toHaveAttribute('aria-current', 'true')
       // A clip with no recording has no Play to press.
       expect(within(section).queryByRole('button', { name: 'Play: Morning briefing' })).toBeNull()
+    } finally {
+      restore()
+    }
+  })
+
+  test('a clip that is playing stays in the player while the page scrolls past other rows', async () => {
+    const { cross, restore } = wideStage()
+    try {
+      const section = await phoneSection()
+      const row = await within(section).findByRole('button', { name: 'Play: Car check over OBD' })
+      act(() => row.click())
+      const video = section.querySelector('video')!
+      Object.defineProperty(video, 'paused', { configurable: true, value: false })
+      cross(0)
+      expect(section.querySelector('video')).toHaveAttribute('src', '/static/demo/obd.mp4')
+      expect(within(section).getByText('3 of 3: Car check over OBD')).toBeInTheDocument()
+      // Paused again, the rows lead once more.
+      Object.defineProperty(video, 'paused', { configurable: true, value: true })
+      cross(0)
+      expect(section.querySelector('video')).toHaveAttribute('src', '/static/demo/wake.mp4')
     } finally {
       restore()
     }

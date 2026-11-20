@@ -59,18 +59,22 @@ afterEach(() => {
   setOrbPlace({ side: 'right', pinned: false })
 })
 
-function Page() {
+function Page({ content = 'content' }: { content?: string }) {
   const motion = useStoryMotion()
   const glide = useStoryGlide()
   const place = useOrbPlace()
   const main = useRef<HTMLElement>(null)
-  useStorySections(main, motion, 'content')
+  useStorySections(main, motion, content)
   return (
     <main ref={main} data-story={motion ? 'on' : undefined} data-glide={glide ? 'on' : 'off'}>
       <p data-testid="place">{`${place.side}${place.pinned ? ' pinned' : ''}`}</p>
       <section data-testid="first" data-orb-side="right">
         <h2>First</h2>
         <p>An invented line.</p>
+        <div data-testid="media">
+          <video />
+        </div>
+        <div data-testid="scene" data-scene="invented" />
       </section>
       <section data-testid="second" data-orb-side="left" data-pinned="true">
         <h2>Second</h2>
@@ -91,6 +95,25 @@ describe('the sections', () => {
     inView(heading)
     expect(heading.dataset.reveal).toBe('shown')
     expect(line.dataset.reveal).toBe('pending')
+  })
+
+  test('blocks a screen or more tall (a pinned scene, a player, a 3D model) never rise in: no big layer moves', () => {
+    fakeIO()
+    media((q) => q.includes('no-preference'))
+    render(<Page />)
+    expect(screen.getByTestId('media')).not.toHaveAttribute('data-reveal')
+    expect(screen.getByTestId('scene')).not.toHaveAttribute('data-reveal')
+  })
+
+  test('a live content reload never hides again what was already shown', () => {
+    fakeIO()
+    media((q) => q.includes('no-preference'))
+    const { rerender } = render(<Page content="first" />)
+    const heading = screen.getByTestId('first').children[0] as HTMLElement
+    inView(heading)
+    expect(heading.dataset.reveal).toBe('shown')
+    rerender(<Page content="reloaded" />)
+    expect(heading.dataset.reveal).not.toBe('pending')
   })
 
   test('the orb rides on the side of the section crossing the middle, alone beside a pinned scene', () => {
@@ -170,5 +193,16 @@ describe('the LEGION scene', () => {
     expect(bands.map((b) => b.getAttribute('data-on'))).toEqual(['false', 'false', 'true'])
     // The diagram is still an image (never the SVG's markup in the page) with its words.
     expect(screen.getByRole('img', { name: 'An invented caption.' }).tagName).toBe('IMG')
+    // Narrow, its frame scrolls sideways, and says so, as the plain page's does.
+    expect(screen.getByRole('region', { name: 'Diagram, scrolls sideways' })).toBeInTheDocument()
+    expect(container.querySelector('.rc-swipe')).toHaveTextContent('Swipe sideways for the rest of the diagram.')
+  })
+
+  test('with room (900 px and up) the whole diagram shows: no sideways claim, no hint', () => {
+    fakeIO()
+    media(() => true)
+    const { container } = render(<LegionScene svg={SVG} caption="An invented caption." parts={[{ title: 'One', body: 'Invented.' }]} lead={(t) => t} />)
+    expect(screen.getByRole('region', { name: 'Diagram' })).toBeInTheDocument()
+    expect(container.querySelector('.rc-swipe')).toBeNull()
   })
 })
