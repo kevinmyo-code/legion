@@ -214,6 +214,17 @@ class LinkKeyStore(
     /** The Mapbox public token the phone handed over (HU-1 T5), or null. Off-main (Keystore). */
     fun mapboxToken(): String? = open(KEY_COMMITTED)?.optString("mapbox_token")?.takeIf { it.isNotBlank() }
 
+    /**
+     * The same read, telling a real absence (no committed pairing, or no map token in it) from a
+     * bundle that could not be read right now (review C-1). Read only. Off-main (Keystore).
+     */
+    fun mapboxTokenRead(): com.kevin.midnightai.navigation.TokenRead {
+        if (!prefs.contains(KEY_COMMITTED)) return com.kevin.midnightai.navigation.TokenRead.Absent
+        val bundle = open(KEY_COMMITTED) ?: return com.kevin.midnightai.navigation.TokenRead.Unreadable
+        val t = bundle.optString("mapbox_token").takeIf { it.isNotBlank() }
+        return if (t != null) com.kevin.midnightai.navigation.TokenRead.Present(t) else com.kevin.midnightai.navigation.TokenRead.Absent
+    }
+
     /** Secrets that came over the link, for the log redactor at app start (review L5). Off-main. */
     fun secretsForRedactor(): List<String> =
         listOfNotNull(open(KEY_COMMITTED)?.optString("mapbox_token")?.takeIf { it.isNotBlank() })

@@ -70,17 +70,21 @@ object NavRuntime {
     /** Re-reads the handed-over map token (Keystore: off the main thread), then refreshes the face. */
     fun refreshToken() {
         kotlin.concurrent.thread(name = "nav-token", isDaemon = true) {
-            val read = runCatching { (CarLink.store as? LinkKeyStore)?.mapboxToken() }.getOrNull()
+            val read = runCatching { (CarLink.store as? LinkKeyStore)?.mapboxTokenRead() }.getOrNull()
+                ?: TokenRead.Unreadable
             val before = token
-            token = read
+            // Review C-1: a failed read keeps the token in use; only a real absence or a different
+            // token changes it.
+            val decision = NavTokenDecision.of(before, read)
+            if (decision != NavTokenDecision.KEEP) token = (read as? TokenRead.Present)?.token
             main.post {
                 // Review item 6: Forget (or a pairing with another token) drops the old token from
                 // this process as far as the SDK allows: the navigator built with it is destroyed,
                 // a trip ends in words, and the global access token is cleared. What stays until the
                 // app restarts: Mapbox's native libraries and its on-disk tile cache.
-                if (before != null && before != read) {
+                if (decision == NavTokenDecision.DROP) {
                     controller.dropSdk()
-                    runCatching { MapboxOptions.accessToken = read ?: "" }
+                    runCatching { MapboxOptions.accessToken = token ?: "" }
                 }
                 controller.refresh()
             }
