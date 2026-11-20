@@ -789,6 +789,13 @@
             position: static;
         }
     }
+    /* Nor under 900 px wide: a phone in portrait has no room under a diagram that keeps its
+       readable width and scrolls sideways (review recheck 2026-11-20). The layer still lights. */
+    @media (max-width: 899px) {
+        .recruiter .rc-scene-pin {
+            position: static;
+        }
+    }
     .recruiter .rc-scene-band {
         position: absolute;
         outline: 2px solid var(--rc-accent);
