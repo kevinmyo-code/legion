@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,12 +97,10 @@ class CarLinkController(
             sender = s
             try {
                 while (isActive && ring.current != null) {
-                    s.step()
+                    if (!stepContained(s)) break
                     val inRange = s.inRange()
                     if (inRange != _status.value.unitInRange) _status.update { it.copy(unitInRange = inRange) }
                 }
-            } catch (_: IOException) {
-                // The socket closed under a blocked receive (Forget, or the port went away): the loop ends.
             } finally {
                 sender = null
                 s.close()
@@ -109,6 +108,26 @@ class CarLinkController(
             }
         }
     }
+
+    /**
+     * One loop step that can never take the app down: false when the socket closed (Forget, or the
+     * port went away) and the loop should end; anything else unexpected is counted and backed off.
+     */
+    @Suppress("TooGenericExceptionCaught") // a crash here would be the whole app's, from LAN bytes
+    private suspend fun stepContained(s: CarLinkSender): Boolean = try {
+        s.step()
+        true
+    } catch (_: IOException) {
+        false
+    } catch (e: RuntimeException) {
+        loopFaults++
+        delay(LOOP_BACKOFF_MS)
+        true
+    }
+
+    /** Unexpected failures the sender loop survived. */
+    @Volatile var loopFaults = 0
+        private set
 
     /** The scanner (or the debug paste) produced [qrText]. */
     @Synchronized fun pair(qrText: String) {
@@ -209,5 +228,9 @@ class CarLinkController(
         feedJob = null
         // Unblocks a receive that is waiting on the socket.
         sender?.close()
+    }
+
+    private companion object {
+        const val LOOP_BACKOFF_MS = 1_000L
     }
 }

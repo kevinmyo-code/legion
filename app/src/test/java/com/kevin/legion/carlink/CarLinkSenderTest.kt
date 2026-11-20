@@ -137,7 +137,7 @@ class CarLinkSenderTest {
     }
 
     // ---- P-B: any LAN peer can send bytes; handling one must never take the loop down.
-    @Ignore("red until fix P-B") @Test fun `a datagram whose handling throws is counted and contained, and later HELLOs still work`() {
+    @Test fun `a datagram whose handling throws is counted and contained, and later HELLOs still work`() {
         var explode = true
         val fragile = CarLinkSender(
             feed = Mnai2Feed(
@@ -159,7 +159,7 @@ class CarLinkSenderTest {
         assertTrue(fragile.inRange())
     }
 
-    @Ignore("red until fix P-B") @Test fun `random and truncated datagrams never throw out of step`() {
+    @Test fun `random and truncated datagrams never throw out of step`() {
         val r = java.util.Random(11)
         val good = unit.hello()
         repeat(3000) { i ->

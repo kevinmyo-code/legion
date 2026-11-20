@@ -45,20 +45,23 @@ class CarLinkSender(
     private val buf = ByteArray(Mnai2.MAX_DATAGRAM + 1)
     private var fastHeld = false
 
-    /** Datagrams whose handling threw (P-B). */
+    /** Datagrams whose handling threw. Any LAN peer can send bytes, so none may end the loop. */
     var faults = 0
         private set
+    private var faultStreak = 0
+    private var quietUntil = Long.MIN_VALUE
 
     fun step() {
         val wait = clock().let { if (feed.inRange(it)) feed.requestedIntervalMs() else IDLE_WAIT_MS }
         val incoming = port.receive(buf, wait.toInt().coerceAtLeast(1))
         val now = clock()
-        // An oversized datagram (more than 256 bytes arrived) is not MNAI2: dropped silently.
-        if (incoming != null && incoming.length <= Mnai2.MAX_DATAGRAM) {
-            send(feed.onDatagram(buf, incoming.length, incoming.from, incoming.port, now))
+        // An oversized datagram (more than 256 bytes arrived) is not MNAI2: dropped silently. After a
+        // datagram whose handling threw, the next ones are dropped for a while (backing off).
+        if (incoming != null && incoming.length <= Mnai2.MAX_DATAGRAM && now >= quietUntil) {
+            contained(now) { send(feed.onDatagram(buf, incoming.length, incoming.from, incoming.port, now)) }
         }
         val on = sendFixes()
-        send(feed.tick(now, if (on) fixes.latest() else null, on))
+        contained(now) { send(feed.tick(now, if (on) fixes.latest() else null, on)) }
         val wantFast = on && feed.inRange(now)
         if (wantFast != fastHeld) {
             fixes.holdFast(wantFast)
@@ -67,6 +70,18 @@ class CarLinkSender(
     }
 
     fun inRange(): Boolean = feed.inRange(clock())
+
+    @Suppress("TooGenericExceptionCaught") // the point: nothing a peer sends may crash the app
+    private inline fun contained(now: Long, block: () -> Unit) {
+        try {
+            block()
+            faultStreak = 0
+        } catch (e: RuntimeException) {
+            faults++
+            faultStreak++
+            quietUntil = now + minOf(BACKOFF_MS * faultStreak, MAX_BACKOFF_MS)
+        }
+    }
 
     /** REVOKE for "Forget head unit" (4.3, 5.4). False = the unit is not in range. */
     fun revoke(): Boolean {
@@ -95,6 +110,8 @@ class CarLinkSender(
     companion object {
         /** No unit in range: wake at least this often (the unit HELLOs at most every 5 s, 4.3). */
         const val IDLE_WAIT_MS = 5_000L
+        const val BACKOFF_MS = 250L
+        const val MAX_BACKOFF_MS = 5_000L
     }
 }
 

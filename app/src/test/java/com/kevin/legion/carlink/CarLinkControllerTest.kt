@@ -143,7 +143,7 @@ class CarLinkControllerTest {
     }
 
     // ---- P-B: nothing a LAN peer sends, and no surprise in the loop, may crash the app.
-    @Ignore("red until fix P-B") @Test fun `an unexpected exception in the loop is contained and the loop keeps listening`() = runBlocking {
+    @Test fun `an unexpected exception in the loop is contained and the loop keeps listening`() = runBlocking {
         assertTrue(store.write(key, null))
         val throwing = object : DatagramPort {
             var calls = 0
