@@ -61,6 +61,9 @@ class CarLinkControllerTest {
 
     private var look: NetworkLook = NetworkLook.Present
     private var hotspotNow = true
+    @Volatile private var carReads = 0
+    @Volatile private var connects = 0
+    @Volatile private var keyReads = 0
     private var cars = listOf(VehicleOption("car-a-id", "Car A"), VehicleOption("car-b-id", "Car B"))
     private val service = FakeServiceHost()
 
@@ -77,8 +80,10 @@ class CarLinkControllerTest {
 
     private fun controller(store: CarLinkStore = this.store) = CarLinkController(
         store = store,
-        transport = { h, p -> transport.connect(h, p) },
-        handover = HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+        transport = { h, p -> connects++; transport.connect(h, p) },
+        handover = HandoverPlan(
+            HandoverSources({ keyReads++; null }, { keyReads++; null }, { null }), UnitTokenNotYetAvailable(),
+        ) {},
         newSender = { ring, onEvent, sendFixes, mode ->
             if (senders > 0) port = BlockingPort()
             senders++
@@ -104,7 +109,7 @@ class CarLinkControllerTest {
         wallClock = { wallNow },
         revokeSilenceMs = 1_500L,
         ownHotspotNow = { hotspotNow },
-        vehicles = { cars },
+        vehicles = { carReads++; cars },
         locationService = service,
     )
 
@@ -332,7 +337,7 @@ class CarLinkControllerTest {
     // ---- Vehicle choice: the household's cars are offered, and the chosen one is kept for the mint.
     @Test fun `the pairing offers the household's cars and keeps the one chosen`() {
         val c = controller()
-        c.start()
+        c.showScreen()
         waitFor("the cars") { c.status.value.vehicles.size == 2 }
         c.chooseVehicle("car-b-id")
         waitFor("the choice") { c.status.value.vehicleId == "car-b-id" }
@@ -341,8 +346,21 @@ class CarLinkControllerTest {
     @Test fun `with one car it is chosen already`() {
         cars = listOf(VehicleOption("only-car-id", "Only car"))
         val c = controller()
-        c.start()
+        c.showScreen()
         waitFor("the only car chosen") { c.status.value.vehicleId == "only-car-id" }
+    }
+
+    // ---- A phone that never pairs: app start reads only the car link's own record.
+    @Test fun `on a phone that never paired, app start opens no socket, no service, no network, no location, no car list`() {
+        val c = controller()
+        c.start()
+        waitFor("the load") { c.status.value.link == LinkState.NOT_PAIRED }
+        Thread.sleep(300)
+        assertEquals("no UDP listener (no sender, so no location request either)", 0, senders)
+        assertTrue("no foreground service", service.log.isEmpty())
+        assertEquals("no pairing connection", 0, connects)
+        assertEquals("the car list is read only when the Car link screen opens", 0, carReads)
+        assertEquals("no Gemini key or map token read (no KeyVault decrypt)", 0, keyReads)
     }
 
     private companion object {

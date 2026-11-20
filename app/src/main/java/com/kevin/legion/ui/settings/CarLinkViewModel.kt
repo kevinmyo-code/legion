@@ -79,8 +79,8 @@ class CarLinkViewModel(
 
     init {
         this.scope.launch { controller.status.combine(scanUi) { s, u -> render(s, u) }.collect { _state.value = it } }
-        // Reads the stored pairing off the main thread if app start has not yet.
-        controller.start()
+        // Reads the stored pairing (off the main thread) and what the screen shows before a pairing.
+        controller.showScreen()
     }
 
     /** Scan tapped: the screen asks for the camera (only now) and shows the camera pane. */

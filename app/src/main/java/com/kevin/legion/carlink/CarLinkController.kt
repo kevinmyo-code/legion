@@ -164,6 +164,18 @@ class CarLinkController(
     fun start() {
         scope.launch(io) {
             ensureLoaded()
+            startFeed()
+        }
+    }
+
+    /**
+     * The Car link screen opened: also read what it shows before a pairing (the household's cars,
+     * what the hand-over would lack). Never at app start, so a phone that never pairs reads nothing
+     * but the car link's own record.
+     */
+    fun showScreen() {
+        scope.launch(io) {
+            ensureLoaded()
             refreshForScreen()
             startFeed()
         }
