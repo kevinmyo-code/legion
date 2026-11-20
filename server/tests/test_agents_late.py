@@ -1089,3 +1089,41 @@ def test_an_ask_holds_the_member_row_without_blocking_rows_that_point_at_it(
         done.set()
         asker.join()
     assert not blocked
+
+
+# -- recheck extras: honest cancel, a capped day still says lines wait, no words in the logs -----
+
+
+def test_cancel_says_nothing_of_the_kind_when_the_task_finished_first(
+    household_user, late_on, monkeypatch
+):
+    from agents.evals.runner import member_request
+
+    done = _task(household_user, status="done")
+    monkeypatch.setattr(late, "_newest_open", lambda request: done)
+    assert late.intercept(member_request(household_user), "cancel the research", "web") is None
+
+
+def test_after_the_spoken_cap_pending_says_lines_are_waiting(household_user, late_on):
+    from agents.evals.runner import member_request
+
+    for n in range(late.MAX_SPOKEN_PER_DAY):
+        _owe(household_user, source_id=f"said-{n}", delivered_at=timezone.now())
+    _owe(household_user, source_id="waiting")
+    reply = late.intercept(member_request(household_user), "anything pending?", "web")
+    assert reply.text == late.CAPPED_WAITING
+    assert OwedLine.objects.get(source_id="waiting").delivered_at is None
+
+
+def test_a_failed_run_logs_no_words_of_the_question(household_user, late_on, caplog):
+    _task(household_user, question="the secret invented museum")
+
+    class Raises:
+        def stream(self, req):
+            raise RuntimeError("the secret invented museum")
+
+    late.run_due(lambda: Raises())
+    assert caplog.records
+    for record in caplog.records:
+        assert "secret" not in record.getMessage()
+        assert record.exc_info is None
