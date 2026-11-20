@@ -13,8 +13,8 @@ import org.junit.Test
 class BackchannelVarietyTest {
 
     @Test
-    fun `nine neutral words, none that promises or claims anything`() {
-        assertEquals(listOf("Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright.", "Let's see."), Backchannel.LINES)
+    fun `eight neutral words, none that promises or claims anything`() {
+        assertEquals(listOf("Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright."), Backchannel.LINES)
         // It plays before the transcript exists: wrong before a "didn't catch that" or a refusal.
         for (claim in listOf("Got it.", "I see.", "Sure.", "On it.", "One sec.", "Will do.", "Done.", "Noted.")) {
             assertFalse(claim, claim in Backchannel.LINES)
@@ -23,7 +23,7 @@ class BackchannelVarietyTest {
     }
 
     @Test
-    fun `no word repeats within the last five, across nine words`() {
+    fun `no word repeats within the last five, across eight words`() {
         assertEquals(5, Backchannel.ROTATION)
         val recent = RecentLines(Backchannel.ROTATION)
         val said = mutableListOf<String>()
@@ -51,7 +51,7 @@ class BackchannelVarietyTest {
     @Test
     fun `the last word of the last conversation is not first in the next`() {
         val carried = RecentLines(Backchannel.ROTATION, listOf("Yeah."))
-        repeat(9) { i -> assertTrue(Backchannel.pick(carried, i) { _, _ -> true }!!.first != "Yeah.") }
+        repeat(8) { i -> assertTrue(Backchannel.pick(carried, i) { _, _ -> true }!!.first != "Yeah.") }
     }
 
     @Test
