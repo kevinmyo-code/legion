@@ -187,6 +187,21 @@ internal fun SystemUpdatesSection(context: Context, onBack: () -> Unit) {
                 enabled = state is UpdateState.Ready,
                 modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin),
             ) { Text("INSTALL") }
+            // Review round edd3a320, item 8: a large update over the hotspot waits for this tap.
+            if ((state as? UpdateState.Available)?.needsTap == true) {
+                Button(
+                    onClick = {
+                        if (working) return@Button
+                        working = true
+                        scope.launch {
+                            controller.approveDownload()
+                            working = false
+                        }
+                    },
+                    enabled = !working,
+                    modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin),
+                ) { Text("DOWNLOAD") }
+            }
         }
         Spacer(Modifier.height(AriaDimens.s4))
 

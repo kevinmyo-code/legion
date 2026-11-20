@@ -36,6 +36,25 @@ object UpdateRules {
      * internet is normally the phone's hotspot, which Android reports as metered, so a Wi-Fi-only
      * default would never download at all. The `fast` APK was 16.7 MB on 2026-11-06. Null when it may start.
      */
+    /** Over this, a download on the phone's hotspot waits for a tap. */
+    const val LARGE_METERED_BYTES = 20L * 1024 * 1024
+
+    private fun mb(bytes: Long) = (bytes + 512 * 1024) / (1024 * 1024)
+
+    /** Null when there is room: twice the APK (the partial file plus the verified copy). */
+    fun spaceRefusal(freeBytes: Long, sizeBytes: Long): String? =
+        if (sizeBytes > 0 && freeBytes < 2 * sizeBytes) {
+            "Not downloaded: the update needs about ${mb(2 * sizeBytes)} MB free and this unit has ${mb(freeBytes)} MB free. " +
+                "Free some space, then check again."
+        } else {
+            null
+        }
+
+    fun needsHotspotTap(unmetered: Boolean, sizeBytes: Long): Boolean = !unmetered && sizeBytes > LARGE_METERED_BYTES
+
+    fun hotspotTapWords(sizeBytes: Long): String =
+        "The update is ${mb(sizeBytes)} MB and would come over the phone's hotspot (its mobile data). Tap DOWNLOAD to fetch it."
+
     fun downloadRefusal(online: Boolean, unmetered: Boolean, allowMetered: Boolean): String? = when {
         !online -> "Not downloaded: this unit is offline."
         !unmetered && !allowMetered ->

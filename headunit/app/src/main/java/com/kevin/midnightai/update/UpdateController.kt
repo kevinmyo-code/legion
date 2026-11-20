@@ -37,12 +37,18 @@ interface UpdatePlatform {
     fun mayInstallPackages(): Boolean
     fun conversationBusy(): Boolean
     fun driving(): Boolean
+
+    /** Free bytes where the download is written. */
+    fun freeBytes(): Long
 }
 
 /** The few facts kept between runs. */
 interface UpdatePrefs {
     var allowMetered: Boolean
     var pendingInstallAtMs: Long
+
+    /** The release the driver agreed to download over the hotspot (its versionCode), or 0. */
+    var approvedLargeDownloadCode: Long
 }
 
 /** Where the updater is, for the Cruise chip and the Settings leaf alike. */
@@ -51,7 +57,8 @@ sealed interface UpdateState {
     data object Checking : UpdateState
     data object DebugBuild : UpdateState
     data class UpToDate(val checkedAtMs: Long) : UpdateState
-    data class Available(val release: ReleaseInfo, val why: String) : UpdateState
+    /** [needsTap]: a large download over the hotspot waits for DOWNLOAD (approveDownload). */
+    data class Available(val release: ReleaseInfo, val why: String, val needsTap: Boolean = false) : UpdateState
     data class Downloading(val release: ReleaseInfo, val bytes: Long) : UpdateState
     /** Verified and waiting for a tap. [note] is why the last tap or held tap did not install. */
     data class Ready(val release: ReleaseInfo, val file: File, val note: String? = null) : UpdateState
@@ -121,6 +128,14 @@ class UpdateController(
         }
         UpdateRules.downloadRefusal(platform.online(), platform.unmetered(), prefs.allowMetered)
             ?.let { return UpdateState.Available(release, it) }
+        // Review round edd3a320, item 8: room for the download first, then the driver's word for a
+        // large one over the phone's hotspot (the APK grew to ~80 MB with the map).
+        UpdateRules.spaceRefusal(platform.freeBytes(), release.sizeBytes)?.let { return UpdateState.Available(release, it) }
+        if (UpdateRules.needsHotspotTap(platform.unmetered(), release.sizeBytes) &&
+            prefs.approvedLargeDownloadCode != release.versionCode
+        ) {
+            return UpdateState.Available(release, UpdateRules.hotspotTapWords(release.sizeBytes), needsTap = true)
+        }
         val link = backend.downloadLink(release).getOrElse {
             return UpdateState.Available(release, "Not downloaded: ${it.message ?: "no download link"}")
         }
@@ -157,6 +172,12 @@ class UpdateController(
      * Kevin's tap. A moving car or a missing install grant refuse in words; a conversation in
      * progress holds the tap and installs when it ends.
      */
+    /** DOWNLOAD on a large update over the hotspot: remember the driver's word for this release, then fetch it. */
+    suspend fun approveDownload(): UpdateState {
+        (state.value as? UpdateState.Available)?.let { prefs.approvedLargeDownloadCode = it.release.versionCode }
+        return check()
+    }
+
     suspend fun install(): InstallOutcome {
         // After a restart the controller starts Idle while the verified file is still on disk:
         // find it again before deciding.
