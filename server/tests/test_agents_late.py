@@ -298,8 +298,8 @@ def test_a_research_task_runs_its_tool_as_him_and_is_marked_tainted(
     assert seen["query"] == "made-up museum hours"
     from llm.models import LlmUsage
 
-    # Run as him: his own search, metered to him under the search's own feature.
-    assert LlmUsage.objects.filter(feature="web_search", user=household_user).count() == 1
+    # Run as him: his own search, metered to him once, as background work.
+    assert LlmUsage.objects.filter(feature=late.SEARCH_FEATURE, user=household_user).count() == 1
     task = LateTask.objects.get()
     assert task.status == "done" and task.tainted
     call = AgentTurn.objects.get().tool_calls.get()

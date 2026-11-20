@@ -51,6 +51,7 @@ from agents.models import (
     LateTask,
     OwedLine,
 )
+from engine_mcp.tools import SEARCH_FEATURE_ATTR
 from headunit_signin import scope as headunit_scope
 from household.models import User, is_recruiter
 from household.tenancy import household_of
@@ -59,10 +60,10 @@ from llm import cap as member_cap
 log = logging.getLogger(__name__)
 
 FEATURE = "agent_late"
-# Each web search a task runs, metered at its grounding fee (the search's own tokens are in the
-# `web_search` row the tool writes). ESTIMATE: Google's list price for a grounded request.
+# A web search a task runs is metered ONCE, by the tool's own row (`engine_mcp.tools._web_search`,
+# priced by `llm.client.usage_of`: tokens plus `SEARCH_MICRO_USD` per grounded query), filed under
+# this feature instead of `web_search` (`engine_mcp.tools.SEARCH_FEATURE_ATTR` on the request).
 SEARCH_FEATURE = "agent_late_search"
-SEARCH_FEE_MICRO_USD = 35_000
 SPEC = "background"
 SOURCE = "late_task"
 CLIENT = "background"
@@ -71,8 +72,14 @@ CLIENT = "background"
 MAX_PER_DAY = 6
 MAX_OPEN = 2
 # What a member's background work may cost in a UTC day: model rounds (`FEATURE`) plus searches
-# (`SEARCH_FEATURE`). Worst case of one task: 2 attempts x 30,000 (the spec's model cap) + 2
-# searches x 35,000 = 130,000, so a day is at most this plus one task that started under it.
+# (`SEARCH_FEATURE`). Kept at $0.50 by the owner's ruling (2026-11-20). Estimates, micro-USD:
+# - one search: 14,000 per grounded query (1 to 3 a search) + about 2,000 of tokens: 16,000 to
+#   44,000;
+# - one task, worst: 2 attempts x (30,000 model cap + up to one round over it, about 5,000) + 2
+#   searches x 44,000 = 158,000; typical: one attempt, about 5,000 of model + 2 x 16,000 = 37,000;
+# - so $0.50 buys about 3 worst-case tasks a day (the cap is checked at the ask and at the run's
+#   start, so one more may start under it: a worst day is about 632,000), or the 6-a-day count of
+#   typical ones.
 DAILY_MICRO_USD = 500_000
 # Per task, whatever the attempts: at most 2 searches; per model round at most 2 calls.
 MAX_SEARCHES = 2
@@ -433,7 +440,10 @@ def member_request(user):
     raw = RequestFactory().post("/api/agents/turn", data={}, content_type="application/json")
     raw._force_auth_user = user
     raw._force_auth_token = None
-    return Request(raw)
+    request = Request(raw)
+    # Its searches are metered as background work (one row each, the tool's own).
+    setattr(request, SEARCH_FEATURE_ATTR, SEARCH_FEATURE)
+    return request
 
 
 def _owe(task: LateTask, text: str) -> None:
@@ -468,7 +478,7 @@ TIME_UP = "Not run: this background task is out of time. Answer with what you ha
 class _ToolLimit:
     """The runner's cap on one task's calls (`LegionGateway.limit`): at most `MAX_CALLS_PER_ROUND`
     a round and `MAX_SEARCHES` searches a task (counted on the row, so a second attempt shares
-    them). A search it lets through is metered at once at `SEARCH_FEE_MICRO_USD`."""
+    them). A search it lets through is metered by the tool itself (`SEARCH_FEATURE`)."""
 
     def __init__(self, task: LateTask, clock=time.monotonic):
         self.task = task
@@ -495,15 +505,6 @@ class _ToolLimit:
         # Marked before the search runs, and never cleared: a later attempt that searches nothing
         # still owes a line built on what this one read.
         LateTask.objects.filter(pk=self.task.pk).update(tainted=True)
-        from llm import client as llm_client
-
-        llm_client.record(
-            household=self.task.owner_user.household,
-            feature=SEARCH_FEATURE,
-            model="web_search",
-            user=self.task.owner_user,
-            cost_estimate_micro_usd=SEARCH_FEE_MICRO_USD,
-        )
         return None
 
 
