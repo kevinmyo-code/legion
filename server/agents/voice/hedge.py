@@ -13,8 +13,9 @@ The rule, as the phone's:
 - never more than `MAX_REQUESTS` (2) requests, the retry included;
 - only one result is ever used. The loser is cancelled: its answer is dropped unread. A request
   already on the wire cannot be stopped from here (a blocking HTTP read on a worker thread), so
-  "cancelled" means abandoned. It is counted in `stt_sent`, but its tokens are not metered: only
-  the winner's reach the member's cap (a known gap, small: one clip's audio at most).
+  "cancelled" means abandoned. It is still paid for: when two requests went out, the turn is
+  metered at twice the winner's tokens (the same clip and ask, so the same price; an estimate,
+  since the loser's own counts may never arrive).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from __future__ import annotations
 import queue
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from agents.runtime.model import ModelFailure
 from agents.voice.speech import STT_TIMEOUT_S, SpeechFailure, worth_retry
@@ -129,14 +130,28 @@ class HedgedSpeech:
         return self.inner.stt_sent
 
     def transcribe(self, pcm: bytes):
+        sent = []
+
+        def attempt():
+            sent.append(1)
+            return self.inner._transcribe_once(pcm)
+
         result = race(
-            lambda: self.inner._transcribe_once(pcm),
+            attempt,
             hedge_after_s=hedge_after_for(len(pcm) // 32) / 1000,
             attempt_timeout_s=STT_TIMEOUT_S + 1.0,
             worth_retry=_worth_a_second,
         )
         if isinstance(result, Won):
-            return result.value
+            heard = result.value
+            if len(sent) < 2:
+                return heard
+            # The loser was sent and billed: metered at the winner's counts (review C8).
+            return replace(
+                heard,
+                prompt_tokens=heard.prompt_tokens * 2,
+                output_tokens=heard.output_tokens * 2,
+            )
         if isinstance(result.last, SpeechFailure):
             raise result.last
         if result.last is not None and not _worth_a_second(result.last):
