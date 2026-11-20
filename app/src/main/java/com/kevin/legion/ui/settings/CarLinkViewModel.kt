@@ -50,6 +50,8 @@ data class CarLinkUiState(
     val scanNote: String? = null,
     /** The camera was refused: what to do. */
     val cameraNote: String? = null,
+    /** The scanner itself could not start (ML Kit failed). */
+    val scannerFailure: String? = null,
     /** The last code the camera read was not a pairing code. */
     val scanReject: String? = null,
 ) {
@@ -58,7 +60,12 @@ data class CarLinkUiState(
 }
 
 /** The scanner's own bit of state, kept apart from the controller's. */
-private data class ScanUi(val scanning: Boolean = false, val cameraNote: String? = null, val reject: String? = null)
+private data class ScanUi(
+    val scanning: Boolean = false,
+    val cameraNote: String? = null,
+    val reject: String? = null,
+    val scannerFailure: String? = null,
+)
 
 /**
  * The Car link screen's ViewModel (Settings, Car link): one [StateFlow] of [CarLinkUiState] over the
@@ -104,6 +111,11 @@ class CarLinkViewModel(
         controller.pair(text)
     }
 
+    /** ML Kit could not start: leave the pane (its camera is released) and say so; Scan tries again. */
+    fun onScannerFailed() {
+        scanUi.value = ScanUi(scannerFailure = CarLinkWords.SCANNER_FAILED)
+    }
+
     /** The camera was refused: say what to do; Scan stays there to try again. */
     fun onCameraDenied() {
         scanUi.value = ScanUi(cameraNote = CarLinkWords.CAMERA_REFUSED)
@@ -140,13 +152,10 @@ class CarLinkViewModel(
             vehicleNote = if (s.vehicles.isEmpty()) CarLinkWords.NO_VEHICLE else null,
             // No dead button: with no camera the scan button is not drawn, and the words say why.
             showScan = scannerAvailable,
-            scanNote = when {
-                scannerAvailable -> null
-                debugPaste -> "No camera on this phone: this debug build pairs from pasted code text below."
-                else -> "No camera on this phone, so it cannot read the pairing code."
-            },
+            scanNote = scanNote(scannerAvailable, debugPaste),
             cameraNote = u.cameraNote,
             scanReject = u.reject,
+            scannerFailure = u.scannerFailure,
             debugPaste = debugPaste,
             note = s.note?.let(CarLinkWords::note),
             canForget = s.link == LinkState.PAIRED || s.link == LinkState.BROKEN,
@@ -189,34 +198,6 @@ class CarLinkViewModel(
         }
     }
 
-    /** No pairing on screen: what the stored link is. */
-    private fun resting(s: CarLinkStatus, base: CarLinkUiState): CarLinkUiState {
-        val p = s.pairing
-        return when {
-            s.link == LinkState.LOADING -> base.copy(headline = "Reading the car link.", canPair = false)
-            s.link == LinkState.BROKEN -> base.copy(
-                phase = CarLinkPhase.BROKEN,
-                headline = "Pairing broken: pair again.",
-                detail = "This phone cannot read its car link key, so it sends the head unit nothing.",
-            )
-            s.link == LinkState.PAIRED -> base.copy(
-                phase = CarLinkPhase.PAIRED,
-                headline = if (p == PairingStage.Paired) "Paired with the head unit." else "Paired with a head unit.",
-                detail = when {
-                    s.networkChanged -> "Not listening yet: the network it paired on changed its address range."
-                    s.unitInRange -> "The head unit is in range."
-                    else -> "The head unit is out of range now."
-                },
-            )
-            s.revokePending -> base.copy(
-                detail = "The head unit will be told to forget this phone the next time this phone is in " +
-                    "the car (for up to 90 days). Until then this phone sends it nothing else.",
-            )
-            else -> base
-        }
-    }
-
-
     class Factory(context: Context) : ViewModelProvider.Factory {
         private val app = context.applicationContext as Application
 
@@ -230,6 +211,40 @@ class CarLinkViewModel(
     }
 }
 
+/** No pairing on screen: what the stored link is. */
+private fun resting(s: CarLinkStatus, base: CarLinkUiState): CarLinkUiState {
+    val p = s.pairing
+    return when {
+        s.link == LinkState.LOADING -> base.copy(headline = "Reading the car link.", canPair = false)
+        s.link == LinkState.BROKEN -> base.copy(
+            phase = CarLinkPhase.BROKEN,
+            headline = "Pairing broken: pair again.",
+            detail = "This phone cannot read its car link key, so it sends the head unit nothing.",
+        )
+        s.link == LinkState.PAIRED -> base.copy(
+            phase = CarLinkPhase.PAIRED,
+            headline = if (p == PairingStage.Paired) "Paired with the head unit." else "Paired with a head unit.",
+            detail = when {
+                s.networkChanged -> "Not listening yet: the network it paired on changed its address range."
+                s.unitInRange -> "The head unit is in range."
+                else -> "The head unit is out of range now."
+            },
+        )
+        s.revokePending -> base.copy(
+            detail = "The head unit will be told to forget this phone the next time this phone is in " +
+                "the car (for up to 90 days). Until then this phone sends it nothing else.",
+        )
+        else -> base
+    }
+}
+
+/** Why there is no Scan button, when there is none. */
+private fun scanNote(scannerAvailable: Boolean, debugPaste: Boolean): String? = when {
+    scannerAvailable -> null
+    debugPaste -> "No camera on this phone: this debug build pairs from pasted code text below."
+    else -> "No camera on this phone, so it cannot read the pairing code."
+}
+
 /** The words for every outcome. */
 object CarLinkWords {
     fun linkLine(s: CarLinkStatus): String = when (s.link) {
@@ -238,6 +253,7 @@ object CarLinkWords {
         LinkState.NOT_PAIRED, LinkState.LOADING -> "This phone is not paired with a head unit."
     }
 
+    const val SCANNER_FAILED = "The scanner could not start on this phone."
     const val NOT_A_PAIRING_CODE =
         "That is not a head unit pairing code. Point the camera at the code on the head unit."
     const val CAMERA_REFUSED = "LEGION uses the camera only to read the pairing code on the head unit. " +

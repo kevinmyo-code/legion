@@ -63,6 +63,7 @@ fun CarLinkScreen(onBack: () -> Unit) {
         actions = CarLinkActions(
             scan = { if (hasCamera()) viewModel.scan() else cameraAsk.launch(Manifest.permission.CAMERA) },
             scanned = viewModel::onScanned,
+            scannerFailed = viewModel::onScannerFailed,
             paste = viewModel::pasteCode,
             cancel = viewModel::cancel,
             dismiss = viewModel::dismiss,
@@ -89,6 +90,8 @@ class CarLinkActions(
     val scan: () -> Unit,
     /** The camera pane read a QR: its raw text, which only the pairing parser ever sees. */
     val scanned: (String) -> Unit,
+    /** The scanner itself could not start on this phone. */
+    val scannerFailed: () -> Unit,
     val paste: (String) -> Unit,
     val cancel: () -> Unit,
     val dismiss: () -> Unit,
@@ -118,16 +121,7 @@ fun CarLinkContent(state: CarLinkUiState, onBack: () -> Unit, actions: CarLinkAc
                     Spacer(Modifier.height(6.dp))
                     Text(it, style = MaterialTheme.typography.bodyMedium)
                 }
-                if (state.phase == CarLinkPhase.SCANNING) {
-                    Spacer(Modifier.height(12.dp))
-                    CarLinkQrScanPane(onQr = actions.scanned)
-                    state.scanReject?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                }
-                state.cameraNote?.let {
-                    Spacer(Modifier.height(6.dp))
-                    Text(it, style = MaterialTheme.typography.bodyMedium)
-                    DeckButton(text = "Open app settings", onClick = actions.openAppSettings)
-                }
+                ScanSection(state, actions)
                 if (state.canPair) VehiclePicker(state, actions.vehicle)
                 Spacer(Modifier.height(12.dp))
                 PairButtons(state, actions)
@@ -157,6 +151,25 @@ fun CarLinkContent(state: CarLinkUiState, onBack: () -> Unit, actions: CarLinkAc
                 )
             }
         }
+    }
+}
+
+/** The camera pane while scanning, and what to say when the scanner or the camera could not start. */
+@Composable
+private fun ScanSection(state: CarLinkUiState, actions: CarLinkActions) {
+    if (state.phase == CarLinkPhase.SCANNING) {
+        Spacer(Modifier.height(12.dp))
+        CarLinkQrScanPane(onQr = actions.scanned, onFailed = actions.scannerFailed)
+        state.scanReject?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    }
+    state.scannerFailure?.let {
+        Spacer(Modifier.height(6.dp))
+        Text(it, style = MaterialTheme.typography.bodyMedium)
+    }
+    state.cameraNote?.let {
+        Spacer(Modifier.height(6.dp))
+        Text(it, style = MaterialTheme.typography.bodyMedium)
+        DeckButton(text = "Open app settings", onClick = actions.openAppSettings)
     }
 }
 

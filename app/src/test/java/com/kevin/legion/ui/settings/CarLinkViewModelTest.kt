@@ -198,4 +198,14 @@ class CarLinkViewModelTest {
         assertNull(release.state.value.scanNote)
         assertTrue(release.state.value.showScan)
     }
+
+    @Test fun `a scanner that could not start leaves the pane and says so`() {
+        vm.scan()
+        vm.onScannerFailed()
+        assertEquals(CarLinkPhase.NOT_PAIRED, state().phase)
+        assertEquals(CarLinkWords.SCANNER_FAILED, state().scannerFailure)
+        vm.scan()
+        assertNull(state().scannerFailure)
+    }
+
 }

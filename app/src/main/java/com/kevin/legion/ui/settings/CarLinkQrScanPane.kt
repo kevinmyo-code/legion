@@ -4,6 +4,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import android.util.Log
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,21 +26,32 @@ import java.util.concurrent.Executors
  * The camera pane that reads the head unit's pairing QR: CameraX preview plus ML Kit's barcode
  * scanner with its model BUNDLED in the APK (no Play services download, works offline). QR codes
  * only. Each distinct text it reads goes to [onQr] once; the ViewModel hands it to nothing but the
- * pairing parser, so a QR holding a web address is never opened.
+ * pairing parser, so a QR holding a web address is never opened. If ML Kit cannot start, the camera
+ * is never opened and [onFailed] is called instead.
  */
 @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
 @Composable
-fun CarLinkQrScanPane(onQr: (String) -> Unit) {
+fun CarLinkQrScanPane(onQr: (String) -> Unit, onFailed: () -> Unit) {
     val context = LocalContext.current
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val preview = remember { PreviewView(context) }
     DisposableEffect(owner) {
-        val executor = Executors.newSingleThreadExecutor()
-        // The manifest removes ML Kit's start-up provider, so ML Kit starts here, only when Scan opens.
-        MlKitContext.initializeIfNeeded(context.applicationContext)
-        val scanner = BarcodeScanning.getClient(
-            BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build(),
+        // The manifest removes ML Kit's start-up provider, so ML Kit starts here, only when Scan opens,
+        // and before the camera: a failed start leaves nothing to release.
+        val scanner = openScanner(
+            init = { MlKitContext.initializeIfNeeded(context.applicationContext) },
+            client = {
+                BarcodeScanning.getClient(
+                    BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build(),
+                )
+            },
+            failed = { kind -> Log.w("CarLink", "scanner could not start: $kind") },
         )
+        if (scanner == null) {
+            onFailed()
+            return@DisposableEffect onDispose {}
+        }
+        val executor = Executors.newSingleThreadExecutor()
         val seen = HashSet<String>()
         val main = ContextCompat.getMainExecutor(context)
         val providerFuture = ProcessCameraProvider.getInstance(context)
