@@ -245,7 +245,8 @@ def take_utterance(
     try:
         return _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms)
     except FrameError as exc:
-        # Nothing runs, but audio already sent to the session was paid for.
+        # Nothing runs, but audio already sent to the session was paid for (a session that
+        # failed mid-stream included: `sent_bytes` counts only what was sent).
         exc.spent = _estimate(session, bytes(pcm)) if session is not None else (0, 0)
         raise
     finally:
@@ -254,6 +255,7 @@ def take_utterance(
 
 
 def _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms) -> Streamed:
+    dead = None
     try:
         while True:
             item = reader.next()
@@ -272,7 +274,10 @@ def _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms) 
                     try:
                         session.feed(payload)
                     except StreamFailure as exc:
+                        # The audio it already sent was paid for: billed on the fallback too
+                        # (review 1120, finding 6).
                         session.close()
+                        dead = session
                         session, failure = None, str(exc)
             elif kind == b"E":
                 marks["end_signal_ms"] = ms()
@@ -286,7 +291,7 @@ def _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms) 
             else:
                 raise FrameError("bad_request", "Only audio and the end frame follow the metadata.")
         pcm_bytes = bytes(pcm)
-        prompt = output = 0
+        prompt, output = _estimate(dead, pcm_bytes) if dead is not None else (0, 0)
         heard = None
         if session is not None:
             try:

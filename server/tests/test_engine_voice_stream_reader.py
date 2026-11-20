@@ -211,3 +211,47 @@ def test_a_client_that_stops_sending_is_refused_as_stalled_not_held():
     with pytest.raises(streaming.FrameError) as caught:
         reader.next()
     assert caught.value.code == "stalled"
+
+
+# ---- review 1120 finding 6: audio sent before a send failed is paid for ------------------------
+
+
+class FailsAfter(FakeSocket):
+    """Takes `pieces` audio sends, then the connection dies."""
+
+    def __init__(self, pieces: int):
+        super().__init__()
+        self.pieces = pieces
+
+    def send(self, message: dict) -> None:
+        if "audio" in message.get("realtimeInput", {}):
+            if self.pieces == 0:
+                raise ConnectionResetError("gone")
+            self.pieces -= 1
+        super().send(message)
+
+
+def test_audio_sent_before_the_session_failed_is_billed_on_the_batch_fallback(monkeypatch):
+    monkeypatch.setattr(streaming, "socket_for", lambda key: FailsAfter(2))
+    pcm = b"\x10\x00" * 16_000
+    reader = streaming.FrameReader(_body(meta() + audio(pcm) + end(len(pcm))))
+    reader.next()
+    streamed = streaming.take_utterance(
+        reader, key="k", max_audio_bytes=10**7, arrived_at=time.monotonic()
+    )
+    assert streamed.heard is None and streamed.fallback == 1
+    assert streamed.failure.startswith("feed_")
+    # Two 100 ms pieces reached the service: 6,400 bytes at about 25 audio tokens a second.
+    assert (streamed.stream_prompt_tokens, streamed.stream_output_tokens) == (6, 0)
+
+
+def test_audio_sent_before_the_session_failed_is_billed_on_a_hang_up(monkeypatch):
+    monkeypatch.setattr(streaming, "socket_for", lambda key: FailsAfter(2))
+    pcm = b"\x10\x00" * 16_000
+    reader = streaming.FrameReader(_body(meta() + audio(pcm)))
+    reader.next()
+    with pytest.raises(streaming.FrameError) as caught:
+        streaming.take_utterance(
+            reader, key="k", max_audio_bytes=10**7, arrived_at=time.monotonic()
+        )
+    assert caught.value.code == "hung_up" and caught.value.spent == (6, 0)

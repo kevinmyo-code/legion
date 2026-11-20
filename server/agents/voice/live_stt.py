@@ -199,7 +199,7 @@ class TranscribeSession:
                 pass
 
     def _send_audio(self, pcm: bytes) -> None:
-        self.sent_bytes += len(pcm)
+        # Counted once sent: a piece whose send failed did not reach the service.
         self._socket.send(
             {
                 "realtimeInput": {
@@ -210,6 +210,7 @@ class TranscribeSession:
                 }
             }
         )
+        self.sent_bytes += len(pcm)
 
     def _read(self, message: dict) -> bool:
         """Takes in one server message; True when it completes the turn AFTER the end signal is
