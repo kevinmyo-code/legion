@@ -112,6 +112,10 @@ class _SwitchedAgentsView(_AgentsView):
             raise exceptions.NotFound(OFF_WORDS)
 
 
+# Voice contract versions this door serves: N and N-1, as the wire doc says, floored at 1 because
+# no version 0 was ever published or spoken by a client. Today that is 1 alone.
+SERVED_VERSIONS = range(max(1, limbs.CONTRACT_VERSION - 1), limbs.CONTRACT_VERSION + 1)
+
 # A multipart body's most: the clip, its WAV header and a few form fields.
 MAX_BODY_BYTES = MAX_AUDIO_BYTES + 64 * 1024
 
@@ -119,6 +123,22 @@ MAX_BODY_BYTES = MAX_AUDIO_BYTES + 64 * 1024
 @extend_schema_field(OpenApiTypes.BINARY)
 class _AudioField(serializers.FileField):
     """A file field the schema types as binary (the clip's bytes), not as a link."""
+
+
+class _TurnThrottled(exceptions.APIException):
+    """DRF's `Throttled`, with wire v1's `code` in its body. `wait` keeps the `Retry-After` header:
+    DRF's exception handler sets it from this attribute."""
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+
+    def __init__(self, wait=None):
+        self.wait = None if wait is None else max(int(wait), 1)
+        super().__init__(
+            detail={
+                "detail": "Nothing was answered: too many turns in a short time.",
+                "code": "throttled",
+            }
+        )
 
 
 class TurnRequestSerializer(serializers.Serializer):
@@ -155,6 +175,13 @@ class TurnRequestSerializer(serializers.Serializer):
     )
     conversation_id = serializers.UUIDField(required=False, allow_null=True)
     client = serializers.ChoiceField(choices=["phone", "web", "headunit"], default="phone")
+    contract_version = serializers.IntegerField(
+        required=False,
+        help_text=(
+            "The voice contract the client speaks (wire v1: 1). Another version is refused with "
+            "`contract_unsupported`."
+        ),
+    )
 
 
 def _refuse(detail: str, code: str, http: int) -> Response:
@@ -225,7 +252,7 @@ def _speech_client():
     return HedgedSpeech(speech) if flags.stt_hedge_enabled() else speech
 
 
-def _stream(request, data, utterance):
+def _stream(request, data, utterance, arrived_at=None):
     speech = _speech_client() if utterance.spoken else None
     turn = pipeline.voice_turn(
         request,
@@ -236,6 +263,7 @@ def _stream(request, data, utterance):
             request, data.get("conversation_id"), data["client"]
         ),
         voice=voice_engine.voice_for(request.user),
+        arrived_at=arrived_at,
     )
     try:
         for event in turn:
@@ -259,6 +287,9 @@ def _sse(body) -> StreamingHttpResponse:
 class AgentTurnView(_SwitchedAgentsView):
     throttle_classes = [AgentTurnThrottle]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
+
+    def throttled(self, request, wait):
+        raise _TurnThrottled(wait)
 
     @extend_schema(
         tags=AGENTS_TAGS,
@@ -285,6 +316,8 @@ class AgentTurnView(_SwitchedAgentsView):
         },
     )
     def post(self, request):
+        # `done.timing` counts from here (wire v1: offsets from the request).
+        arrived = time.monotonic()
         try:
             length = int(request.META.get("CONTENT_LENGTH") or 0)
         except ValueError:
@@ -299,11 +332,22 @@ class AgentTurnView(_SwitchedAgentsView):
                 status.HTTP_400_BAD_REQUEST,
             )
         data = body.validated_data
+        version = data.get("contract_version")
+        if version is not None and version not in SERVED_VERSIONS:
+            return _refuse(
+                f"This engine serves voice contract {limbs.CONTRACT_VERSION}; this client speaks "
+                f"{version}. Update the app.",
+                limbs.CODE_UNSUPPORTED,
+                status.HTTP_409_CONFLICT,
+            )
         refusal = _shape_refusal(data)
         if refusal is not None:
             return refusal
         if not gemini_key():
-            return Response({"detail": KEY_ABSENT}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response(
+                {"detail": KEY_ABSENT, "code": "no_key"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         if data["kind"] == "say" and not AgentSayThrottle().allow_request(request, self):
             return _refuse(
                 "Too many spoken lines in a short time.",
@@ -325,7 +369,7 @@ class AgentTurnView(_SwitchedAgentsView):
             text=data.get("text"),
             speak=bool(data.get("speak")),
         )
-        return _sse(_stream(request, data, utterance))
+        return _sse(_stream(request, data, utterance, arrived))
 
 
 class AgentCancelView(_SwitchedAgentsView):
@@ -426,7 +470,7 @@ class AgentLimbView(_SwitchedAgentsView):
         # The version is read first: another version's manifest may have another shape, and the
         # client needs "update the app", not a list of field errors.
         version = _contract_version(data)
-        if version is not None and version != limbs.CONTRACT_VERSION:
+        if version is not None and version not in SERVED_VERSIONS:
             return Response(
                 {
                     "detail": (

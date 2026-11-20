@@ -11626,6 +11626,8 @@ export interface components {
             conversation_id?: string | null;
             /** @default phone */
             client: components["schemas"]["ClientEnum"];
+            /** @description The voice contract the client speaks (wire v1: 1). Another version is refused with `contract_unsupported`. */
+            contract_version?: number;
         };
         /**
          * @description * `user` - user

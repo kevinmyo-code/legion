@@ -48,7 +48,10 @@ class FillerAudio:
     def default_lines(self) -> tuple[str, ...]:
         return (*fillers.all_lines(), *SPOKEN_FAILURES)
 
-    def warm(self, speech, voice: str, lines=None) -> int:
+    def warm(self, speech, voice: str, lines=None, on_fetched=None) -> int:
+        """Sends for the lines not in memory, in the background; their number. `on_fetched`, if
+        given, is told each line's `Spoken` stats and whether any audio came (paid for), on the
+        fetching thread; the web door passes none."""
         lines = self.default_lines() if lines is None else lines
         missing = []
         with self._lock:
@@ -72,6 +75,8 @@ class FillerAudio:
                     audio = b"".join(speech.speak(said, voice, stats))
                 except (SpeechFailure, OSError):
                     audio = b""
+                if on_fetched is not None:
+                    on_fetched(stats, bool(audio))
                 if stats.voice not in (None, voice):
                     # Spoken in the fallback voice: never kept under this voice (round 3 S3); it
                     # is asked for again later, when the voice may be back.

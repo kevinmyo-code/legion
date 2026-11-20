@@ -115,7 +115,7 @@ def test_audio_in_is_heard_answered_and_spoken(auth_client, engine):
     kinds = [k for k, _ in events]
     assert kinds[:3] == ["waiting", "turn", "heard"] and kinds[-1] == "done"
     assert events[2][1] == {"text": "What is on the calendar today?"}
-    assert ("sentence", {"text": "Nothing is on today."}) in events
+    assert "Nothing is on today." in [d["text"] for k, d in events if k == "sentence"]
     audio = [d for k, d in events if k == "audio"]
     assert audio and all(d["rate"] == 24_000 and d["pcm"] for d in audio)
     assert kinds.index("sentence") < kinds.index("audio") < kinds.index("done")
@@ -145,10 +145,14 @@ def test_a_transcript_with_speak_is_spoken(auth_client, engine):
 def test_no_speech_in_the_clip_is_silence_and_no_model_call(auth_client, engine):
     engine.speech = FakeSpeech(heard="")
     events = _events(_post(auth_client, audio=_wav()))
-    assert events[-1] == (
-        "done",
-        {"status": "nothing_heard", "final_text": "", "writes_ran": False, "ignored": "no_speech"},
-    )
+    kind, done = events[-1]
+    assert kind == "done"
+    assert {k: done[k] for k in ("status", "final_text", "writes_ran", "ignored")} == {
+        "status": "nothing_heard",
+        "final_text": "",
+        "writes_ran": False,
+        "ignored": "no_speech",
+    }
     assert engine.models == [] and not AgentTurn.objects.exists()
 
 
@@ -215,7 +219,7 @@ def test_over_the_member_cap_nothing_is_transcribed(auth_client, engine, monkeyp
 
 def test_say_speaks_the_line_with_no_model_and_no_turn_row(auth_client, engine):
     events = _events(_post(auth_client, kind="say", text="Your timer is done."))
-    assert ("sentence", {"text": "Your timer is done."}) in events
+    assert "Your timer is done." in [d["text"] for k, d in events if k == "sentence"]
     assert any(k == "audio" for k, _ in events)
     assert events[-1][0] == "done" and events[-1][1]["status"] == "say"
     assert engine.models == [] and not AgentTurn.objects.exists()
