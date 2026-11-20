@@ -359,7 +359,8 @@ const SIZES = [
 /**
  * What gates and what only reports (review recheck 2026-11-20). The long-frame bound gates only
  * headed (the GPU); headless draws canvases and WebGL in software and its numbers only report. The
- * phone-390 scroll run (CPU slowed 4x, software drawing) only reports: it was flaky.
+ * phone-390 run's frame numbers (CPU slowed 4x) only report; its overflow, layout shift and dock
+ * still gate.
  */
 const REPORT_ONLY_SCROLL = new Set(['phone-390'])
 function reportOnly(what: string) {
@@ -468,10 +469,8 @@ for (const size of SIZES) {
     fs.writeFileSync(path.join(OUT, `${size.name}-scroll.json`), JSON.stringify(numbers, null, 2))
     console.log(JSON.stringify(numbers))
     if (REPORT_ONLY_SCROLL.has(size.name)) {
-      reportOnly(`${size.name} scroll: every number above (long frames ${share(motion)} vs plain ${share(plain)}, overflow ${run.overflow}, CLS ${motion.cls})`)
-      return
-    }
-    if (HEADED) {
+      reportOnly(`${size.name} long frames (CPU slowed 4x): story ${share(motion)} vs plain ${share(plain)} per hundred`)
+    } else if (HEADED) {
       expect(share(motion), `long frames per hundred, story vs plain page ${share(plain)} (headed)`).toBeLessThanOrEqual(budget(share(plain)))
     } else {
       reportOnly(`${size.name} long frames, headless (software drawing): story ${share(motion)} vs plain ${share(plain)} per hundred`)
@@ -643,6 +642,78 @@ for (const width of [900, 1024, 1280]) {
     console.log(JSON.stringify({ width, shownAt, hits }))
     await ctx.close()
     expect(hits, 'the side orb covered a header link').toEqual([])
+  })
+}
+
+/** The header's links the side orb (orb or chips) covers right now, if it shows. */
+async function headerHits(page: Page) {
+  return page.evaluate(() => {
+    const side = document.querySelector('[data-stage="side"]') as HTMLElement | null
+    if (!side || side.getAttribute('data-shown') !== 'true') return { shown: false, hits: [] as string[] }
+    const boxes = [side.querySelector('.rc-side-orb'), side.querySelector('.rc-chips')]
+      .filter((el): el is Element => Boolean(el))
+      .map((el) => el.getBoundingClientRect())
+    const out: string[] = []
+    for (const link of Array.from(document.querySelectorAll('.rc-top a, .rc-top button'))) {
+      const r = link.getBoundingClientRect()
+      if (r.width === 0 || r.bottom < 0 || r.top > window.innerHeight) continue
+      for (const b of boxes) {
+        if (b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top) out.push(link.textContent?.trim() ?? '?')
+      }
+    }
+    return { shown: true, hits: out }
+  })
+}
+
+/**
+ * A jump straight back to the top (review recheck cbe39b2a): deep in the page, then Home, or from
+ * the middle with scrollTo(0); then the slow scroll down past the header. The side orb must not
+ * show while the header is on screen, so it covers none of its links.
+ */
+for (const width of [900, 1024, 1280]) {
+  test(`header clear after a jump to the top at ${width}`, async ({ browser }) => {
+    fs.mkdirSync(OUT, { recursive: true })
+    const size = { name: `jump-${width}`, viewport: { width, height: 800 }, mobile: false, throttle: 1 }
+    const ctx = await context(browser, size, false, false)
+    const page = await ctx.newPage()
+    await open(page)
+    const results: { how: string; shownWhileHeader: number; hits: string[] }[] = []
+    for (const how of ['deep, then Home', 'middle, then scrollTo(0)']) {
+      await page.mouse.move(width / 2, 300)
+      const target = await page.evaluate((h) => document.documentElement.scrollHeight * (h.startsWith('deep') ? 0.8 : 0.45), how)
+      // Down by the wheel, so each section on the way places the orb as a visitor's scroll would.
+      while ((await page.evaluate(() => window.scrollY)) < target) {
+        const before = await page.evaluate(() => window.scrollY)
+        await page.mouse.wheel(0, 400)
+        await page.waitForTimeout(60)
+        if ((await page.evaluate(() => window.scrollY)) === before) break
+      }
+      await page.waitForTimeout(500)
+      if (how.endsWith('Home')) await page.keyboard.press('Home')
+      else await page.evaluate(() => window.scrollTo(0, 0))
+      await page.waitForTimeout(700)
+      let shownWhileHeader = 0
+      const hits: string[] = []
+      for (let step = 0; step < 40; step++) {
+        await page.mouse.wheel(0, 50)
+        await page.waitForTimeout(110)
+        const headerOn = await page.evaluate(() => (document.querySelector('.rc-top')?.getBoundingClientRect().bottom ?? 0) > 0)
+        const look = await headerHits(page)
+        if (look.shown && headerOn) shownWhileHeader++
+        hits.push(...look.hits)
+        if (step === 8) await page.screenshot({ path: path.join(OUT, `jump-${width}-${how.startsWith('deep') ? 'home' : 'middle'}.png`) })
+      }
+      results.push({ how, shownWhileHeader, hits })
+      await page.evaluate(() => window.scrollTo(0, 0))
+      await page.waitForTimeout(400)
+    }
+    fs.writeFileSync(path.join(OUT, `jump-${width}.json`), JSON.stringify({ width, results }, null, 2))
+    console.log(JSON.stringify({ width, results }))
+    await ctx.close()
+    for (const r of results) {
+      expect(r.hits, `${r.how}: the side orb covered a header link`).toEqual([])
+      expect(r.shownWhileHeader, `${r.how}: the side orb showed while the header was on screen`).toBe(0)
+    }
   })
 }
 

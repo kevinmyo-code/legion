@@ -135,6 +135,41 @@ describe('the sections', () => {
     expect(screen.getByTestId('place')).toHaveTextContent('unplaced')
   })
 
+  test('a jump straight to the top (Home, a scrollbar drag, a flick) takes the orb out of place', () => {
+    fakeIO()
+    media((q) => q.includes('no-preference'))
+    render(<Page />)
+    const first = screen.getByTestId('first')
+    const second = screen.getByTestId('second')
+    const leave = (target: Element) =>
+      act(() => {
+        for (const o of observers) {
+          if (o.options?.rootMargin !== '-50% 0px -50% 0px') continue
+          o.cb([{ isIntersecting: false, target, boundingClientRect: { top: -2000 } } as never])
+        }
+      })
+    const firstAt = (top: number) => {
+      first.getBoundingClientRect = () => ({ top, bottom: top + 500, left: 0, right: 0, width: 0, height: 500, x: 0, y: top, toJSON() {} })
+    }
+    // Deep in the page: the second section is in the middle.
+    firstAt(-3000)
+    inView(second, '-50% 0px -50% 0px')
+    expect(screen.getByTestId('place')).toHaveTextContent(/^left pinned$/)
+    // Jump to the top: the only entry is the deep section leaving; the first one never crossed.
+    firstAt(window.innerHeight * 0.8)
+    leave(second)
+    expect(screen.getByTestId('place')).toHaveTextContent('unplaced')
+    // Deep, to the middle of the page, and back to the top again.
+    firstAt(-3000)
+    inView(second, '-50% 0px -50% 0px')
+    firstAt(-200)
+    inView(first, '-50% 0px -50% 0px')
+    expect(screen.getByTestId('place')).toHaveTextContent(/^right$/)
+    firstAt(window.innerHeight * 0.9)
+    leave(first)
+    expect(screen.getByTestId('place')).toHaveTextContent('unplaced')
+  })
+
   test('the last block of the page is revealed even if it can never climb past the reading margin', () => {
     fakeIO()
     media((q) => q.includes('no-preference'))
