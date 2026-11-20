@@ -39,6 +39,8 @@ on:
       - 'server/assistant/packs/**'
       - 'server/assistant/read_through.py'
       - 'tools/live_tool_eval/**'
+      - 'tools/voice_eval/**'
+      - 'tools/voice_audit.py'
       - '.github/workflows/android.yml'
       - '.github/scripts/junit_totals.py'
   pull_request:
@@ -55,6 +57,8 @@ on:
       - 'server/assistant/packs/**'
       - 'server/assistant/read_through.py'
       - 'tools/live_tool_eval/**'
+      - 'tools/voice_eval/**'
+      - 'tools/voice_audit.py'
       - '.github/workflows/android.yml'
       - '.github/scripts/junit_totals.py'
   workflow_dispatch:

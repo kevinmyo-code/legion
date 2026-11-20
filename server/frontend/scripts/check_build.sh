@@ -52,9 +52,14 @@ echo "ok 4: the 3D chunk $STAGE ($(wc -c < "$ASSETS/$STAGE") bytes) is lazy and 
 
 MAIN=$(grep -o 'src="/assets/index-[^"]*\.js"' "$OUT/index.html" | head -1 | sed 's#^src="/assets/##;s/"$//')
 [ -n "$MAIN" ] || fail "5. index.html names no /assets/index-*.js main chunk"
+[ -f "$ASSETS/$MAIN" ] || fail "5. the main chunk $MAIN named by index.html is not in the build output"
 ! grep -q 'WebGLRenderer' "$ASSETS/$MAIN" || fail "5. three.js (WebGLRenderer) is in the main chunk $MAIN"
-for f in $(grep -oE 'assets/[A-Za-z0-9._-]+\.js' "$SW" | sort -u); do
+# The precache list must really be in sw.js (else the loop below checks nothing): the main chunk is in it.
+grep -q "assets/$MAIN" "$SW" || fail "5. the service worker's precache list does not name the main chunk $MAIN (list moved or empty: nothing could be checked)"
+PRECACHED=$(grep -oE 'assets/[A-Za-z0-9._-]+\.js' "$SW" | sort -u)
+for f in $PRECACHED; do
+  [ -f "$OUT/$f" ] || fail "5. the precached $f is not in the build output"
   ! grep -q 'WebGLRenderer' "$OUT/$f" || fail "5. the precached $f carries three.js (WebGLRenderer)"
 done
-echo "ok 5: no three.js in the main chunk $MAIN ($(wc -c < "$ASSETS/$MAIN") bytes) or any precached chunk"
+echo "ok 5: no three.js in the main chunk $MAIN ($(wc -c < "$ASSETS/$MAIN") bytes) or any of the $(echo "$PRECACHED" | grep -c .) precached chunks"
 echo "check_build: all 5 checks passed"
