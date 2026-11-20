@@ -113,8 +113,8 @@ def test_switched_off_audio_is_refused_and_never_transcribed(auth_client, engine
 def test_audio_in_is_heard_answered_and_spoken(auth_client, engine):
     events = _events(_post(auth_client, audio=_wav(1.0)))
     kinds = [k for k, _ in events]
-    assert kinds[0] == "turn" and kinds[1] == "heard" and kinds[-1] == "done"
-    assert events[1][1] == {"text": "What is on the calendar today?"}
+    assert kinds[:3] == ["waiting", "turn", "heard"] and kinds[-1] == "done"
+    assert events[2][1] == {"text": "What is on the calendar today?"}
     assert ("sentence", {"text": "Nothing is on today."}) in events
     audio = [d for k, d in events if k == "audio"]
     assert audio and all(d["rate"] == 24_000 and d["pcm"] for d in audio)

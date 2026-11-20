@@ -11,7 +11,10 @@ wants spoken as it is: no model, no turn row) are built. `greeting`, `opener`, `
 The web door's schema (`POST /api/assistant/turn`), event for event; fields marked "agents" differ
 from the web door's and are listed under "Differences".
 
-- `turn` {turn_id, conversation_id, seq}: first, once the turn row exists (agents shape).
+- `waiting` {}: first, at once, on an `audio` turn, before speech-to-text (which can take
+  seconds): the client knows the engine has its clip (wire v1 section 5, `waiting` exists; the
+  client's "unreachable" rule counts from the post to the first event, client section 9).
+- `turn` {turn_id, conversation_id, seq}: once the turn row exists (agents shape).
 - `heard` {text}: the transcript of an `audio` turn, right after `turn`.
 - `crisis` {text}: the crisis pre-check fired (`agents/voice/crisis.py`). `text` is the fixed
   crisis line, sent just before as a `sentence` (with its `audio` on a spoken turn); a client with
@@ -154,6 +157,8 @@ def voice_turn(
         heard = None
         words = (utterance.transcript or "").strip()
         if utterance.audio is not None:
+            # The first event, before the transcription it would otherwise wait on (review).
+            yield ev.waiting()
             try:
                 heard = stage.transcribe(speech, utterance.audio, timings)
             except SpeechFailure as exc:
