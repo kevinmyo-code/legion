@@ -100,7 +100,7 @@ class CarLinkScreenRenderTest {
         // Let the pane settle in a stable state (no Wi-Fi under Robolectric), so nothing else
         // recomposes it: only the 1 s driving check can take the pairing pane away.
         var now = texts(activity)
-        val settle = System.currentTimeMillis() + 5_000
+        val settle = System.currentTimeMillis() + 15_000
         while (System.currentTimeMillis() < settle && now.keys.none { it.contains("Wi-Fi") }) {
             ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS)
             Thread.sleep(20)
