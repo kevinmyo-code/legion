@@ -18,6 +18,7 @@ import datetime
 
 from django.utils import timezone
 
+from agents.legion import flags
 from agents.models import (
     CHECKPOINT_RETENTION_DAYS,
     METRIC_RETENTION_DAYS,
@@ -52,8 +53,11 @@ def prune(now: datetime.datetime | None = None) -> dict[str, int]:
         .delete()[1]
         .get("agents.AgentTurn", 0)
     )
-    out["late_tasks"] = LateTask.objects.filter(created_at__lt=content_cutoff).delete()[0]
-    out["owed_lines"] = OwedLine.objects.filter(created_at__lt=content_cutoff).delete()[0]
+    if flags.late_answers_enabled():
+        # Switched off, no query at all: no rows are made while off (rows left from a time it was
+        # on wait for the next prune with it on).
+        out["late_tasks"] = LateTask.objects.filter(created_at__lt=content_cutoff).delete()[0]
+        out["owed_lines"] = OwedLine.objects.filter(created_at__lt=content_cutoff).delete()[0]
     out["conversations"] = AgentConversation.objects.filter(
         last_turn_at__lt=content_cutoff, turns__isnull=True
     ).delete()[0]
