@@ -256,6 +256,10 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
 
+    // Mapbox Navigation SDK v3 core + ui-maps (HU-1 T5): the map in the NAV face, routing and the
+    // maneuver/progress data. The public token comes over the car link at run time; nothing baked.
+    implementation(libs.mapbox.navigation)
+
     // Room
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

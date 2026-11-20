@@ -37,7 +37,12 @@ activityCompose = "1.9.0"
 firebase-bom = "33.7.0"
 zxing-core = "3.5.3"
 
+# Mapbox Navigation SDK v3 for the head unit's NAV face (HU-1 T5); the same version as the phone
+# (root gradle/libs.versions.toml). `-ndk27` is the 16 KB page-size build. Anonymous repository.
+mapboxNavigation = "3.32.0"
+
 [libraries]
+mapbox-navigation = { group = "com.mapbox.navigationcore", name = "android-ndk27", version.ref = "mapboxNavigation" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
