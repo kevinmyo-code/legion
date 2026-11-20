@@ -121,6 +121,20 @@ class _AudioField(serializers.FileField):
     """A file field the schema types as binary (the clip's bytes), not as a link."""
 
 
+class _TurnThrottled(exceptions.APIException):
+    """DRF's `Throttled`, with wire v1's `code` in its body."""
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+
+    def __init__(self):
+        super().__init__(
+            detail={
+                "detail": "Nothing was answered: too many turns in a short time.",
+                "code": "throttled",
+            }
+        )
+
+
 class TurnRequestSerializer(serializers.Serializer):
     transcript = serializers.CharField(
         max_length=4000,
@@ -155,6 +169,13 @@ class TurnRequestSerializer(serializers.Serializer):
     )
     conversation_id = serializers.UUIDField(required=False, allow_null=True)
     client = serializers.ChoiceField(choices=["phone", "web", "headunit"], default="phone")
+    contract_version = serializers.IntegerField(
+        required=False,
+        help_text=(
+            "The voice contract the client speaks (wire v1: 1). Another version is refused with "
+            "`contract_unsupported`."
+        ),
+    )
 
 
 def _refuse(detail: str, code: str, http: int) -> Response:
@@ -260,6 +281,9 @@ class AgentTurnView(_SwitchedAgentsView):
     throttle_classes = [AgentTurnThrottle]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
+    def throttled(self, request, wait):
+        raise _TurnThrottled()
+
     @extend_schema(
         tags=AGENTS_TAGS,
         operation_id="api_agents_turn_create",
@@ -299,11 +323,22 @@ class AgentTurnView(_SwitchedAgentsView):
                 status.HTTP_400_BAD_REQUEST,
             )
         data = body.validated_data
+        version = data.get("contract_version")
+        if version is not None and version != limbs.CONTRACT_VERSION:
+            return _refuse(
+                f"This engine serves voice contract {limbs.CONTRACT_VERSION}; this client speaks "
+                f"{version}. Update the app.",
+                limbs.CODE_UNSUPPORTED,
+                status.HTTP_409_CONFLICT,
+            )
         refusal = _shape_refusal(data)
         if refusal is not None:
             return refusal
         if not gemini_key():
-            return Response({"detail": KEY_ABSENT}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response(
+                {"detail": KEY_ABSENT, "code": "no_key"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         if data["kind"] == "say" and not AgentSayThrottle().allow_request(request, self):
             return _refuse(
                 "Too many spoken lines in a short time.",

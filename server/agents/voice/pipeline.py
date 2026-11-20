@@ -20,16 +20,28 @@ from the web door's and are listed under "Differences".
   crisis line, sent just before as a `sentence` (with its `audio` on a spoken turn); a client with
   a screen shows its crisis card and does not also caption that line. `done` follows at once.
 - `working` {tool}: a slow tool is about to run (the runtime's own event).
-- `filler` {tool, text}: the line said while that tool runs, from memory; its `audio` follows.
+- `filler` {tool, text, line_id}: the line said while that tool runs, from memory; its `audio`
+  follows.
 - `tool` {name, ok, outcome, guard}: a tool call ended (agents shape: never its text).
-- `sentence` {text}: one finished sentence of the reply, tags removed, exact figures.
-- `audio` {pcm, rate, filler?}: base64 16-bit mono PCM at `rate` (24000); `filler` true on a
-  filler's audio. Only on a spoken turn (`audio` in, `speak` set, or `say`).
+- `sentence` {text, line_id, role}: one finished sentence of the reply, tags removed, exact
+  figures. `role` is `answer` here (the model's words, the crisis line, a `say` line); wire v1's
+  `write` and `owed` lines come with the write ledger.
+- `audio` {pcm, rate, line_id, filler?}: base64 16-bit mono PCM at `rate` (24000); `line_id` is the
+  line it speaks (one speech request per line on this door, so every chunk belongs to one line);
+  `filler` true on a filler's audio. Only on a spoken turn (`audio` in, `speak` set, or `say`).
+  The miss line ("Didn't catch that") is audio with a `line_id` and no `sentence`, as on the web.
+- `line_id` is wire v1's `"<seq>.<stream_no>.<n>"`: the turn's `seq` (0 for a line said before any
+  turn row exists: the miss, the crisis line, `say`), stream 1 (relay continuations come with the
+  relay), `n` counting this stream's lines.
 - `speech_failed` {reason}: a sentence's speech failed; its text was still sent.
 - `speech_stopped` {reason}: the speech budget ran out; the rest is shown, not said.
-- `done` {status, final_text, writes_ran, ignored?, end?}: last. `status` is the agent turn's own
-  (`done`, `refused`, `cancelled`, `failed`, ...) or `nothing_heard` (with `ignored: "no_speech"`),
-  `crisis` (with `end: true`, `final_text` empty) or `say`.
+- `done` {status, final_text, writes_ran, contract_version, timing, ignored?, end?}: last.
+  `status` is the agent turn's own (`done`, `refused`, `cancelled`, `failed`, ...) or
+  `nothing_heard` (with `ignored`: `noise` when the engine's loudness or voice gate kept the clip
+  from speech-to-text, `no_speech` when speech-to-text heard no words), `crisis` (with
+  `end: true`, `final_text` empty) or `say`. `contract_version` is the voice contract served (1).
+  `timing` is the engine's own stage times in ms from the request: `stt_ms`, `heard_ms`,
+  `first_sentence_ms`, `first_audio_ms` (each only once reached).
 - `error` {words}: the turn could not run (e.g. `STT_FAILED` after the spoken miss).
 
 Differences from the web door, kept on purpose in V1: `turn` and `tool` carry the agent turn's own
@@ -39,8 +51,9 @@ turn row is made from the transcript; `crisis` is this door's only. The web door
 
 ## What a turn's speech may cost (review 2026-11-19, C3)
 
-- Per turn: at most `MAX_TTS_REQUESTS` speech requests (no growth past it, unlike the web door's
-  member turns) and at most `MAX_SPOKEN_CHARS` characters of the answer spoken; past either the
+- Per turn: at most `MAX_SPOKEN_LINES` speech requests, one per line (no growth past it, unlike
+  the web door's member turns), and at most `MAX_SPOKEN_CHARS` characters of the answer spoken;
+  past either the
   rest is shown, not said, and `speech_stopped {reason: "limit"}` is sent once. A `say` line is
   one request of at most `MAX_SAY_CHARS`.
 - Per day: `agents/voice/allowance.py` (the member cap, or a code default when it is unset).
@@ -58,6 +71,7 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
+from agents.legion.limbs import CONTRACT_VERSION
 from agents.legion.lines import MISSED_LINE, STT_FAILED
 from agents.legion.turn import run_turn
 from agents.runtime import events as ev
@@ -76,6 +90,10 @@ MAX_SAY_CHARS = 600
 # The most of one answer that is spoken (characters). At about 15 characters a second that is
 # about 100 s of speech, or about 2,500 speech tokens.
 MAX_SPOKEN_CHARS = 1_500
+# The most lines of one answer that are spoken, one speech request each (the web door's
+# `MAX_SPOKEN_SENTENCES`). One more request is kept back for a closing line.
+MAX_SPOKEN_LINES = 12
+ROLE_ANSWER = "answer"
 # How often a turn playing speech asks the database whether it was cancelled.
 CANCEL_EVERY_S = 0.2
 # ESTIMATES for speech whose own counts never arrive (recheck 2026-11-20, metering leaks):
@@ -127,19 +145,51 @@ class TurnCancel:
         return self()
 
 
-class AgentSpeaker(Speaker):
-    """The agents door's speaker: it keeps every request it sent, so speech cut short is metered
-    too (the base drops a cancelled request from `jobs` before the turn's end can count it)."""
+class Lines:
+    """Wire v1 line ids for one stream: `"<seq>.1.<n>"`."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self):
+        self.seq = 0
+        self.n = 0
+
+    def next(self) -> str:
+        self.n += 1
+        return f"{self.seq}.1.{self.n}"
+
+
+class AgentSpeaker(Speaker):
+    """The agents door's speaker. One speech request per line, so each `audio` event names the one
+    line it speaks (wire v1 `line_id`); and it keeps every request it sent, so speech cut short is
+    metered too (the base drops a cancelled request from `jobs` before the turn's end counts it)."""
+
+    def __init__(self, speech, voice: str, enabled: bool, clock=time.monotonic):
+        super().__init__(speech, voice, enabled, clock, grouping="sentence")
+        self.allowed = MAX_SPOKEN_LINES + 1
         self.sent: list = []
+        self._line: str | None = None
+
+    def say(self, text: str, line_id: str, **kwargs) -> None:
+        self._line = line_id
+        try:
+            self.add(text, **kwargs)
+        finally:
+            self._line = None
 
     def _submit(self, spoken: str) -> None:
         before = len(self.jobs)
         super()._submit(spoken)
         if len(self.jobs) > before:
-            self.sent.append(self.jobs[-1])
+            job = self.jobs[-1]
+            job.line_id = self._line
+            self.sent.append(job)
+
+    def audio_event(self, chunk: bytes, filler: bool = False) -> ev.Event:
+        event = super().audio_event(chunk, filler)
+        # Called while the line being spoken is the head of `jobs` (`Speaker._take`); a filler's
+        # line id is set by the caller.
+        if not filler and self.jobs and getattr(self.jobs[0], "line_id", None):
+            event.data["line_id"] = self.jobs[0].line_id
+        return event
 
     def cut_short_tokens(self) -> tuple[int, int]:
         """(prompt, output) tokens of requests that never finished: their own counts if any came,
@@ -193,6 +243,8 @@ def voice_turn(
     timings: dict = {}
     filler_audio = filler_audio or FILLER_AUDIO
     speaker = AgentSpeaker(speech, voice, enabled=utterance.spoken, clock=clock)
+    lines = Lines()
+    marks: dict = {}
     # Bounded per turn: never more requests than reserved at the start (review C3).
     speaker.more = lambda n: False
     cancel = TurnCancel(clock)
@@ -203,7 +255,7 @@ def voice_turn(
     try:
         if utterance.kind == "say":
             status = "say"
-            yield from _say(speaker, utterance.text or "")
+            yield from _say(speaker, utterance.text or "", lines, marks, t0, clock, timings)
             return
         heard = None
         words = (utterance.transcript or "").strip()
@@ -216,28 +268,34 @@ def voice_turn(
                 timings["stt_failed"] = str(exc)
                 status = "stt_failed"
                 # The miss is said like a person, and shown (the web door's rule).
-                speaker.add(MISSED_LINE)
+                speaker.say(MISSED_LINE, lines.next())
                 yield from speaker.drain()
                 yield ev.error(STT_FAILED)
                 return
             words = heard.text
+            marks["stt_ms"] = heard.ms
             if not words:
-                # No speech: silence, no model call, nothing kept.
+                # No speech: silence, no model call, nothing kept. `noise` when no request was
+                # sent at all (the loudness or voice gate), `no_speech` when one heard no words.
                 status = "nothing_heard"
-                yield ev.done("nothing_heard", "", False, ignored="no_speech")
+                ignored = "noise" if not heard.prompt_tokens else "no_speech"
+                yield _done("nothing_heard", "", False, speaker, marks, t0, clock, ignored=ignored)
                 return
         if crisis.detect(words):
             # No model, no tool, no turn row, none of his words kept. One fixed line, by code,
             # never the model's, with the help number; the card for a client with a screen.
             status = "crisis"
             if heard is not None:
+                marks["heard_ms"] = _ms(clock, t0)
                 yield ev.Event("heard", {"text": words})
             speaker.exact = True
-            speaker.add(crisis.LINE)
-            yield ev.Event("sentence", {"text": crisis.LINE})
+            line_id = lines.next()
+            speaker.say(crisis.LINE, line_id)
+            marks["first_sentence_ms"] = _ms(clock, t0)
+            yield _sentence(crisis.LINE, line_id)
             yield from speaker.drain()
             yield ev.Event("crisis", {"text": crisis.LINE})
-            yield ev.done("crisis", "", False, end=True)
+            yield _done("crisis", "", False, speaker, marks, t0, clock, end=True)
             return
         if speaker.enabled:
             # The filler lines' audio, fetched once speech was heard (room noise costs nothing).
@@ -257,6 +315,9 @@ def voice_turn(
             timings,
             clock,
             cancel,
+            lines,
+            marks,
+            t0,
         )
     finally:
         speaker.close()
@@ -277,18 +338,55 @@ def voice_turn(
         )
 
 
-def _say(speaker: Speaker, text: str) -> Iterator[ev.Event]:
+def _ms(clock, t0) -> int:
+    return int((clock() - t0) * 1000)
+
+
+def _sentence(text: str, line_id: str) -> ev.Event:
+    return ev.Event("sentence", {"text": text, "line_id": line_id, "role": ROLE_ANSWER})
+
+
+def _done(status, final_text, writes_ran, speaker, marks, t0, clock, **extra) -> ev.Event:
+    """`done` with wire v1's `contract_version` and the engine's own stage times."""
+    timing = dict(marks)
+    if speaker.first_audio_ms is not None:
+        # The speaker's clock starts with the turn's.
+        timing["first_audio_ms"] = speaker.first_audio_ms
+    timing = {k: v for k, v in timing.items() if isinstance(v, int) and v >= 0}
+    return ev.done(
+        status,
+        final_text,
+        writes_ran,
+        **{**extra, "contract_version": CONTRACT_VERSION, "timing": timing},
+    )
+
+
+def _say(speaker, text, lines, marks, t0, clock, timings) -> Iterator[ev.Event]:
     line = text.strip()[:MAX_SAY_CHARS]
     # Said as given: no figure in the client's line is rounded for speech.
     speaker.exact = True
-    yield ev.Event("sentence", {"text": line})
-    speaker.add(line)
+    line_id = lines.next()
+    speaker.say(line, line_id)
+    marks["first_sentence_ms"] = _ms(clock, t0)
+    yield _sentence(line, line_id)
     yield from speaker.drain()
-    yield ev.done("say", line, False)
+    yield _done("say", line, False, speaker, marks, t0, clock)
 
 
 def _answer(
-    request, words, heard, model, conversation, speaker, filler_audio, timings, clock, cancel
+    request,
+    words,
+    heard,
+    model,
+    conversation,
+    speaker,
+    filler_audio,
+    timings,
+    clock,
+    cancel,
+    lines,
+    marks,
+    t_turn,
 ):
     """The agent turn's events, with its sentences spoken as they come (up to the turn's bound)
     and a slow tool's filler line said from memory. Returns the turn's status."""
@@ -307,15 +405,17 @@ def _answer(
             sentences += 1
             if timings.get("first_sentence_ms") is None:
                 timings["first_sentence_ms"] = int((clock() - t0) * 1000)
+                marks["first_sentence_ms"] = _ms(clock, t_turn)
+            line_id = lines.next()
             if speaker.enabled and spoken_chars + len(text) <= MAX_SPOKEN_CHARS:
                 spoken_chars += len(text)
                 # To speech before it is shown, as on the web door: a cancel that lands while it
                 # is shown stops everything after it.
-                speaker.add(tagged, expressive=True, model=True)
+                speaker.say(tagged, line_id, expressive=True, model=True)
             elif speaker.enabled and not speaker.stopped:
                 speaker.stopped = True
                 yield ev.Event("speech_stopped", {"reason": "limit"})
-            yield ev.Event("sentence", {"text": text})
+            yield _sentence(text, line_id)
             continue
         # A round ended (a tool is next, or the turn): what it said goes to speech now.
         speaker.flush()
@@ -323,7 +423,17 @@ def _answer(
             status = event.data.get("status", "done")
             timings["sentences"] = sentences
             yield from speaker.drain()
-            yield event
+            data = dict(event.data)
+            yield _done(
+                data.pop("status"),
+                data.pop("final_text"),
+                data.pop("writes_ran"),
+                speaker,
+                marks,
+                t_turn,
+                clock,
+                **data,
+            )
             continue
         if event.type == "error":
             yield from speaker.drain()
@@ -331,8 +441,10 @@ def _answer(
             continue
         if event.type == "turn":
             cancel.turn_id = event.data.get("turn_id")
+            lines.seq = event.data.get("seq") or 0
         yield event
         if event.type == "turn" and heard is not None:
+            marks["heard_ms"] = _ms(clock, t_turn)
             yield ev.Event("heard", {"text": words})
         if (
             event.type == "working"
@@ -347,6 +459,11 @@ def _answer(
                 filler_said = True
                 timings["filler"] = 1
                 timings["filler_ms"] = int((clock() - t0) * 1000)
-                yield ev.Event("filler", {"tool": event.data["tool"], "text": line})
-                yield speaker.audio_event(audio, filler=True)
+                line_id = lines.next()
+                yield ev.Event(
+                    "filler", {"tool": event.data["tool"], "text": line, "line_id": line_id}
+                )
+                said = speaker.audio_event(audio, filler=True)
+                said.data["line_id"] = line_id
+                yield said
     return status

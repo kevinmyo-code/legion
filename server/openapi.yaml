@@ -26029,6 +26029,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/ClientEnum'
           default: phone
+        contract_version:
+          type: integer
+          description: 'The voice contract the client speaks (wire v1: 1). Another
+            version is refused with `contract_unsupported`.'
     TurnRequestKindEnum:
       enum:
       - user
