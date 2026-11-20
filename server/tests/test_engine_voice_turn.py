@@ -20,6 +20,7 @@ from agents.runtime import model as m
 from agents.voice import hedge, pipeline
 from agents.voice.filler_audio import FillerAudio
 from agents.voice.speech import Heard, SpeechFailure
+from assistant import fillers
 from llm.models import LlmUsage
 
 pytestmark = pytest.mark.django_db
@@ -283,3 +284,40 @@ class FakeSpeechOnce(FakeSpeech):
     def _transcribe_once(self, pcm):
         self.stt_sent += 1
         return self.transcribe(pcm)
+
+
+# ---- figures and fillers ------------------------------------------------------------------------
+
+
+def test_say_speaks_its_figures_exactly(auth_client, engine):
+    _events(_post(auth_client, kind="say", text="The total is $1,962.48 today."))
+    assert [text for text, _ in engine.speech.spoken] == ["The total is $1,962.48 today."]
+
+
+def test_a_slow_tool_gets_its_filler_line_from_memory(auth_client, engine, monkeypatch):
+    audio = FillerAudio(spawn=lambda work: None)
+    audio._audio = {
+        (voice, one): b"\x02\x00" * 240
+        for voice in ("Puck", "Kore", "Charon")
+        for one in fillers.lines_for("web_search")
+    }
+    monkeypatch.setattr(pipeline, "FILLER_AUDIO", audio)
+    monkeypatch.setattr("assistant.voice_engine.voice_for", lambda user: "Puck")
+    monkeypatch.setattr("agents.views.voice_engine.voice_for", lambda user: "Puck")
+    from engine_mcp.tools import ToolResult
+
+    # The search itself never leaves the process.
+    monkeypatch.setattr(
+        "agents.legion.gateway.run_engine_tool", lambda *a, **k: ToolResult(text="Sunny today.")
+    )
+    engine.rounds = [m.call("web_search", {"query": "weather"}), m.say("Sunny.")]
+    events = _events(_post(auth_client, audio=_wav()))
+    kinds = [k for k, _ in events]
+    filler = [d for k, d in events if k == "filler"]
+    assert (
+        filler
+        and filler[0]["tool"] == "web_search"
+        and filler[0]["text"] in fillers.lines_for("web_search")
+    )
+    assert kinds.index("working") < kinds.index("filler") < kinds.index("sentence")
+    assert any(k == "audio" and d.get("filler") for k, d in events)

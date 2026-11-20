@@ -50,7 +50,7 @@ from agents.voice import crisis, stage
 from agents.voice.filler_audio import FillerAudio
 from agents.voice.speaker import Speaker
 from agents.voice.speech import SpeechFailure
-from assistant import fillers, speech_tags
+from assistant import fillers, speech_tags, spoken_figures
 
 log = logging.getLogger(__name__)
 
@@ -133,6 +133,9 @@ def voice_turn(
         if speaker.enabled:
             # The filler lines' audio, fetched once speech was heard (room noise costs nothing).
             timings["speech_fetched"] = filler_audio.warm(speech, voice)
+        # He asked for exact figures: nothing is rounded when spoken (the web door's rule; its
+        # second half, exact after a write, needs the tool event's write flag: slice E3).
+        speaker.exact = spoken_figures.wants_exact(words)
         status = yield from _answer(
             request,
             words,
@@ -160,6 +163,8 @@ def voice_turn(
 
 def _say(speaker: Speaker, text: str) -> Iterator[ev.Event]:
     line = text.strip()[:MAX_SAY_CHARS]
+    # Said as given: no figure in the client's line is rounded for speech.
+    speaker.exact = True
     yield ev.Event("sentence", {"text": line})
     speaker.add(line)
     yield from speaker.drain()

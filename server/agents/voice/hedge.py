@@ -13,7 +13,8 @@ The rule, as the phone's:
 - never more than `MAX_REQUESTS` (2) requests, the retry included;
 - only one result is ever used. The loser is cancelled: its answer is dropped unread. A request
   already on the wire cannot be stopped from here (a blocking HTTP read on a worker thread), so
-  "cancelled" means abandoned, and its usage still counts (`HedgedSpeech.sent`).
+  "cancelled" means abandoned. It is counted in `stt_sent`, but its tokens are not metered: only
+  the winner's reach the member's cap (a known gap, small: one clip's audio at most).
 """
 
 from __future__ import annotations
