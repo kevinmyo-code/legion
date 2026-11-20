@@ -1016,10 +1016,8 @@ internal class CascadeSession(
         }
 
         override fun onEndOfTurn(end: EndOfTurnPolicy.Action.EndActivity) {
-            LiveLatency.log(
-                LiveLatency.TAG,
-                "eot_ms=${end.silenceMs} eot_reason=${end.reason.wire} st_checks=${end.scores.size}",
-            )
+            // Smart Turn scores too (2026-11-20), so drive logs show how often one lands near 0.5.
+            LiveLatency.log(LiveLatency.TAG, com.kevin.legion.service.turn.EndOfTurnLine.of(end))
         }
 
         override fun onBargeIn(fire: BargeInGate.Event.Fire) {
