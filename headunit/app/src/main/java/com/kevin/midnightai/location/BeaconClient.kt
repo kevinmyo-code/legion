@@ -113,6 +113,13 @@ object BeaconClient {
      * [feeds] is guarded by itself.
      */
     @Volatile private var mode: com.kevin.midnightai.link.FeedMode = com.kevin.midnightai.link.FeedMode.OFF
+
+    /**
+     * Which run may install [mode] and [feeds] (review N3). Every start and stop moves it on, and a
+     * run installs only if it still holds the current number, so a slow earlier start that finishes
+     * after a Forget or a re-pair can never put an old key back.
+     */
+    private val generation = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var feeds: LinkFeedSet? = null
 
     /** Tests only: the feeds the running receiver holds, and its mode. */
@@ -156,10 +163,11 @@ object BeaconClient {
         // send throws and discovery silently only ever tries the gateway.
         runCatching { sock.broadcast = true }
         socket = sock
+        val gen = generation.incrementAndGet()
 
         job = scope.launch {
             // The keys are decrypted here, off the caller's (often the main) thread.
-            if (!resolveMode(appContext)) {
+            if (!resolveMode(appContext, gen)) {
                 runCatching { sock.close() }
                 if (socket === sock) socket = null
                 return@launch
@@ -181,6 +189,7 @@ object BeaconClient {
 
     @Synchronized
     fun stop() {
+        generation.incrementAndGet()
         job?.cancel()
         job = null
         // Closing is what actually stops the loops; cancel alone cannot reach a
@@ -197,7 +206,8 @@ object BeaconClient {
         _linkUp.value = false
     }
 
-    /** Stops and starts again with the current pairing (CarLink listener; review H2). */
+    /** Stops and starts again with the current pairing (CarLink listener; review H2). Serialised (N3). */
+    @Synchronized
     fun restart(context: Context) {
         stop()
         start(context)
@@ -207,21 +217,30 @@ object BeaconClient {
      * Decides the mode for this run from the device role and the pairing (keys decrypted here).
      * Returns false when this run should not listen at all (OFF, or NOTHING for a broken pairing).
      */
-    private fun resolveMode(context: Context): Boolean {
+    private fun resolveMode(context: Context, gen: Int): Boolean {
         val keys = com.kevin.midnightai.link.CarLink.refresh()
         val role = com.kevin.midnightai.service.DeviceRole.current(context)
-        mode = com.kevin.midnightai.link.CarLinkRules.feedMode(role, keys.status)
-        if (mode != com.kevin.midnightai.link.FeedMode.MNAI2) {
+        val decided = com.kevin.midnightai.link.CarLinkRules.feedMode(role, keys.status)
+        if (decided != com.kevin.midnightai.link.FeedMode.MNAI2) {
             keys.committed?.fill(0)
             keys.pending?.fill(0)
-            return mode == com.kevin.midnightai.link.FeedMode.MNAI1
+            return install(gen, decided, null) && decided == com.kevin.midnightai.link.FeedMode.MNAI1
         }
         val random = java.security.SecureRandom()
         fun feed(key: ByteArray?) = key?.let {
             PhoneFeed(it, nowNanos = SystemClock::elapsedRealtimeNanos, random = { b -> random.nextBytes(b) }).also { _ -> it.fill(0) }
         }
+        val set = LinkFeedSet(committed = feed(keys.committed), pending = feed(keys.pending))
         beforeInstallForTest?.invoke()
-        feeds = LinkFeedSet(committed = feed(keys.committed), pending = feed(keys.pending))
+        return install(gen, decided, set)
+    }
+
+    /** Installs this run's decision only if no newer start or stop happened meanwhile (N3). */
+    @Synchronized
+    private fun install(gen: Int, decided: com.kevin.midnightai.link.FeedMode, set: LinkFeedSet?): Boolean {
+        if (gen != generation.get()) return false
+        mode = decided
+        feeds = set
         return true
     }
 
