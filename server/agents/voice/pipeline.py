@@ -1,0 +1,219 @@
+"""One voice turn on the agents door (`POST /api/agents/turn`, DARK behind `LEGION_AGENTS_TURN`):
+audio in, the agent turn (`agents.legion.turn.run_turn`) in the middle, audio out, through the same
+speech stage as the web door (`agents/voice`).
+
+Kinds (`KINDS`): `user` (his words, as `audio` or a `transcript`) and `say` (a line the client
+wants spoken as it is: no model, no turn row) are built. `greeting`, `opener`, `check_in` and
+`proactive` are accepted names that the view refuses with `kind_not_built` until they are built.
+
+## The events (Server-Sent Events, one per thing that happened)
+
+The web door's schema (`POST /api/assistant/turn`), event for event; fields marked "agents" differ
+from the web door's and are listed under "Differences".
+
+- `turn` {turn_id, conversation_id, seq}: first, once the turn row exists (agents shape).
+- `heard` {text}: the transcript of an `audio` turn, right after `turn`.
+- `crisis` {}: the crisis pre-check fired (`agents/voice/crisis.py`); `done` follows at once.
+- `working` {tool}: a slow tool is about to run (the runtime's own event).
+- `filler` {tool, text}: the line said while that tool runs, from memory; its `audio` follows.
+- `tool` {name, ok, outcome, guard}: a tool call ended (agents shape: never its text).
+- `sentence` {text}: one finished sentence of the reply, tags removed, exact figures.
+- `audio` {pcm, rate, filler?}: base64 16-bit mono PCM at `rate` (24000); `filler` true on a
+  filler's audio. Only on a spoken turn (`audio` in, `speak` set, or `say`).
+- `speech_failed` {reason}: a sentence's speech failed; its text was still sent.
+- `speech_stopped` {reason}: the speech budget ran out; the rest is shown, not said.
+- `done` {status, final_text, writes_ran, ignored?, end?}: last. `status` is the agent turn's own
+  (`done`, `refused`, `cancelled`, `failed`, ...) or `nothing_heard` (with `ignored: "no_speech"`),
+  `crisis` (with `end: true`, `final_text` empty) or `say`.
+- `error` {words}: the turn could not run (e.g. `STT_FAILED` after the spoken miss).
+
+Differences from the web door, kept on purpose in V1: `turn` and `tool` carry the agent turn's own
+fields (the eval runner and the limb contract read them); `heard` follows `turn` here because the
+turn row is made from the transcript; `crisis` is this door's only. The web door's `greeting`,
+`offer`, `tour`, `cost_usd`, `tools_ms` and `words` are the web's alone.
+
+The per-turn record is one `agents_voice_turn` log line of `stage.TIMING_KEYS` (names and numbers,
+never words), and speech is metered on the member's cap (`stage.meter_speech`).
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+
+from agents.legion.lines import MISSED_LINE, STT_FAILED
+from agents.legion.turn import run_turn
+from agents.runtime import events as ev
+from agents.voice import crisis, stage
+from agents.voice.filler_audio import FillerAudio
+from agents.voice.speaker import Speaker
+from agents.voice.speech import SpeechFailure
+from assistant import fillers, speech_tags
+
+log = logging.getLogger(__name__)
+
+FEATURE = "agent_turn"
+KINDS = ("user", "greeting", "opener", "check_in", "proactive", "say")
+BUILT_KINDS = frozenset({"user", "say"})
+MAX_SAY_CHARS = 600
+
+# The agents door's filler lines, kept in this process per voice (`FillerAudio`).
+FILLER_AUDIO = FillerAudio()
+
+
+@dataclass(frozen=True)
+class Utterance:
+    kind: str = "user"
+    # 16 kHz PCM16 mono samples, header already removed (`agents/views.py`).
+    audio: bytes | None = None
+    transcript: str | None = None
+    # `say`: the line to speak.
+    text: str | None = None
+    # A `transcript` turn answered aloud too (an `audio` or `say` turn always is).
+    speak: bool = False
+
+    @property
+    def spoken(self) -> bool:
+        return self.audio is not None or self.kind == "say" or self.speak
+
+
+def voice_turn(
+    request,
+    utterance: Utterance,
+    model_for: Callable[[], object],
+    speech,
+    *,
+    conversation_for: Callable[[], object],
+    voice: str,
+    filler_audio: FillerAudio | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> Iterator[ev.Event]:
+    """Yields the turn's events. `model_for` and `conversation_for` make the model client and open
+    (or find) the conversation, called only once a turn will reach the model, so a silent clip, a
+    failed transcription, a `say` or a crisis makes neither."""
+    t0 = clock()
+    timings: dict = {}
+    filler_audio = filler_audio or FILLER_AUDIO
+    speaker = Speaker(speech, voice, enabled=utterance.spoken, clock=clock)
+    status = "failed"
+    try:
+        if utterance.kind == "say":
+            status = "say"
+            yield from _say(speaker, utterance.text or "")
+            return
+        heard = None
+        words = (utterance.transcript or "").strip()
+        if utterance.audio is not None:
+            try:
+                heard = stage.transcribe(speech, utterance.audio, timings)
+            except SpeechFailure as exc:
+                timings["stt_failed"] = str(exc)
+                status = "stt_failed"
+                # The miss is said like a person, and shown (the web door's rule).
+                speaker.add(MISSED_LINE)
+                yield from speaker.drain()
+                yield ev.error(STT_FAILED)
+                return
+            words = heard.text
+            if not words:
+                # No speech: silence, no model call, nothing kept.
+                status = "nothing_heard"
+                yield ev.done("nothing_heard", "", False, ignored="no_speech")
+                return
+        if crisis.detect(words):
+            # No model, no tool, no turn row, no words kept: the client's crisis response follows.
+            status = "crisis"
+            if heard is not None:
+                yield ev.Event("heard", {"text": words})
+            yield ev.Event("crisis", {})
+            yield ev.done("crisis", "", False, end=True)
+            return
+        if speaker.enabled:
+            # The filler lines' audio, fetched once speech was heard (room noise costs nothing).
+            timings["speech_fetched"] = filler_audio.warm(speech, voice)
+        status = yield from _answer(
+            request,
+            words,
+            heard,
+            model_for(),
+            conversation_for(),
+            speaker,
+            filler_audio,
+            timings,
+            clock,
+        )
+    finally:
+        speaker.close()
+        stage.record_speech(timings, speaker)
+        timings["turn_ms"] = int((clock() - t0) * 1000)
+        timings["tts_requests"] = speaker.requests
+        stage.meter_speech(request, timings, FEATURE)
+        log.warning(
+            "agents_voice_turn status=%s spoken=%s %s",
+            status,
+            str(utterance.spoken).lower(),
+            stage.timing_values(timings),
+        )
+
+
+def _say(speaker: Speaker, text: str) -> Iterator[ev.Event]:
+    line = text.strip()[:MAX_SAY_CHARS]
+    yield ev.Event("sentence", {"text": line})
+    speaker.add(line)
+    yield from speaker.drain()
+    yield ev.done("say", line, False)
+
+
+def _answer(request, words, heard, model, conversation, speaker, filler_audio, timings, clock):
+    """The agent turn's events, with its sentences spoken as they come and a slow tool's filler
+    line said from memory. Returns the turn's status."""
+    t0 = clock()
+    status = "failed"
+    sentences = 0
+    filler_said = False
+    for event in run_turn(request, words, model, conversation=conversation):
+        yield from speaker.ready()
+        if event.type == "sentence":
+            tagged = event.data.get("text", "")
+            text = speech_tags.untagged(tagged)
+            if not text:
+                continue
+            sentences += 1
+            if timings.get("first_sentence_ms") is None:
+                timings["first_sentence_ms"] = int((clock() - t0) * 1000)
+            yield ev.Event("sentence", {"text": text})
+            speaker.add(tagged, expressive=True, model=True)
+            continue
+        # A round ended (a tool is next, or the turn): what it said goes to speech now.
+        speaker.flush()
+        if event.type == "done":
+            status = event.data.get("status", "done")
+            timings["sentences"] = sentences
+            yield from speaker.drain()
+            yield event
+            continue
+        if event.type == "error":
+            yield from speaker.drain()
+            yield event
+            continue
+        yield event
+        if event.type == "turn" and heard is not None:
+            yield ev.Event("heard", {"text": words})
+        if (
+            event.type == "working"
+            and speaker.enabled
+            and not sentences
+            and not filler_said
+            and fillers.is_slow(event.data.get("tool", ""))
+        ):
+            picked = filler_audio.pick(speaker.voice, event.data["tool"])
+            if picked is not None:
+                line, audio = picked
+                filler_said = True
+                timings["filler"] = 1
+                timings["filler_ms"] = int((clock() - t0) * 1000)
+                yield ev.Event("filler", {"tool": event.data["tool"], "text": line})
+                yield speaker.audio_event(audio, filler=True)
+    return status

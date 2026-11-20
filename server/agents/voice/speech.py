@@ -1,4 +1,5 @@
-"""Gemini speech-to-text and text-to-speech for the web cascade (ADR 0102), on the engine's key.
+"""Gemini speech-to-text and text-to-speech for every voice door (the web cascade, ADR 0102, and
+the agents door, `agents/voice/pipeline.py`), on the engine's key.
 
 The request shapes are copied from the phone's working code, `app/.../service/cascade/
 CloudSpeech.kt` (`CloudSpeechWire`), not from memory:
@@ -27,6 +28,7 @@ import base64
 import json
 import re
 import struct
+import threading
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 
@@ -35,6 +37,11 @@ from agents.runtime.model import API, ModelFailure, UrllibTransport
 TTS_MODEL = "gemini-3.8-flash-tts"
 INPUT_RATE = 16_000
 OUTPUT_RATE = 24_000
+# The longest utterance a turn takes, and so the most audio bytes (16 kHz, 16-bit mono), on
+# every voice door. The browser stops recording at this too (`frontend/src/assistant/
+# endpointer.ts`). Spec 13: the phone's utterance cap.
+MAX_UTTERANCE_SECONDS = 28
+MAX_AUDIO_BYTES = MAX_UTTERANCE_SECONDS * INPUT_RATE * 2
 STT_MAX_OUTPUT_TOKENS = 512
 STT_TIMEOUT_S = 12.0
 TTS_TIMEOUT_S = 12.0
@@ -154,7 +161,7 @@ def voiced_speech(pcm: bytes) -> bool:
     return lag_spread >= 1.0 or power_cv >= 0.25
 
 
-def _worth_retry(said: str) -> bool:
+def worth_retry(said: str) -> bool:
     """A dropped request or a server error (the phone's `worthRetry`); a 4xx is not."""
     if "could not be reached" in said or "stopped answering" in said:
         return True
@@ -333,6 +340,7 @@ class GeminiSpeech:
         # FALLBACK_VOICE instead until then.
         self.bad_voices: dict[str, float] = {}
         self.stt_sent = 0
+        self._sent_lock = threading.Lock()
 
     def _headers(self) -> dict:
         key = self._key()
@@ -353,7 +361,7 @@ class GeminiSpeech:
         except SpeechFailure:
             raise
         except ModelFailure as exc:
-            if not _worth_retry(str(exc)):
+            if not worth_retry(str(exc)):
                 raise SpeechFailure("stt_failed") from None
         try:
             return self._transcribe_once(pcm)
@@ -372,7 +380,8 @@ class GeminiSpeech:
         started = self._clock()
         text, usage = [], {}
         # Requests actually sent, a retry included: what the turn is charged for (round 3).
-        self.stt_sent += 1
+        with self._sent_lock:
+            self.stt_sent += 1
         for ev in self._stream(self._stt_model, transcribe_body(pcm), STT_TIMEOUT_S):
             if isinstance(ev.get("error"), dict):
                 raise SpeechFailure(f"stt_error_{ev['error'].get('code', '?')}")
@@ -427,7 +436,7 @@ class GeminiSpeech:
                     # The new voice shape refused: this request once more in the older shape,
                     # whose error names the voice when the voice is the problem. Nothing is kept.
                     legacy = True
-                elif _worth_retry(said) and not retried:
+                elif worth_retry(said) and not retried:
                     retried = True
                 elif voice != FALLBACK_VOICE and not fell_back:
                     # Any other failure in the chosen voice (an in-stream error says only its

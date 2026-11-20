@@ -11596,12 +11596,47 @@ export interface components {
          */
         TurnRefusalCodeEnum: "bad_request" | "budget" | "busy" | "demo_full" | "duplicate" | "live_engine" | "member_cap" | "no_conversation" | "no_key" | "throttled" | "time_limit" | "too_long";
         TurnRequest: {
-            transcript: string;
+            /** @description What was said, as text. Send this OR `audio`. */
+            transcript?: string;
+            /**
+             * Format: uri
+             * @description One utterance: a WAV of 16 kHz 16-bit mono PCM, at most 28 seconds (multipart). Transcribed and answered aloud. Never stored.
+             */
+            audio?: string;
+            /**
+             * @description `user` (his words) or `say` (`text` spoken as it is). Others: not built yet.
+             *
+             *     * `user` - user
+             *     * `greeting` - greeting
+             *     * `opener` - opener
+             *     * `check_in` - check_in
+             *     * `proactive` - proactive
+             *     * `say` - say
+             * @default user
+             */
+            kind: components["schemas"]["TurnRequestKindEnum"];
+            /** @description With `kind=say`: the line to speak. */
+            text?: string;
+            /**
+             * @description With `transcript`: answer aloud too (`audio` events).
+             * @default false
+             */
+            speak: boolean;
             /** Format: uuid */
             conversation_id?: string | null;
             /** @default phone */
             client: components["schemas"]["ClientEnum"];
         };
+        /**
+         * @description * `user` - user
+         *     * `greeting` - greeting
+         *     * `opener` - opener
+         *     * `check_in` - check_in
+         *     * `proactive` - proactive
+         *     * `say` - say
+         * @enum {string}
+         */
+        TurnRequestKindEnum: "user" | "greeting" | "opener" | "check_in" | "proactive" | "say";
         /**
          * @description * `next_income` - next_income
          *     * `30_days` - 30_days
@@ -12382,15 +12417,14 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
                 "application/json": components["schemas"]["TurnRequest"];
-                "application/x-www-form-urlencoded": components["schemas"]["TurnRequest"];
                 "multipart/form-data": components["schemas"]["TurnRequest"];
             };
         };
         responses: {
-            /** @description text/event-stream: turn, sentence, tool, done */
+            /** @description text/event-stream: turn, heard, crisis, working, filler, tool, sentence, audio, speech_failed, speech_stopped, done, error (`agents/voice/pipeline.py`) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -12407,6 +12441,24 @@ export interface operations {
             };
             /** @description The agent turn is switched off. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The utterance is too long. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The member's daily cap is spent. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
