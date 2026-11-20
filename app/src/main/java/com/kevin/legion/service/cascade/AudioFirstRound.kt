@@ -5,30 +5,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * An audio-first round 1 (Kevin, 2026-11-19, speed plan item 4b; OFF, not wired into the session
- * yet): his turn goes to the text model as audio, so one call does both understanding and the tool
- * choice, instead of speech-to-text (median 1.1 s on the 11-19 drive) and then the model. The
- * transcript is still made beside it, for the record and the panel.
- *
- * This file is the request only, and `AudioFirstEvalRun` (laptop, made-up clips) runs the same
- * utterances both ways and reports tool-choice agreement and latency. What the session must do
- * before a switch can turn it on, consumer by consumer of the transcript in the turn path (each
- * keys on his words, so in audio-first each either waits for the transcript or runs on the model's
- * structured output):
- * - the stop and sleep phrase ([CascadeSession] `endsConversation`, [com.kevin.legion.service.WakePhrases]):
- *   waits for the transcript; a stop cancels the round and nothing it chose runs;
- * - [SttGuard] (noise, foreign script): waits; a drop cancels the round;
- * - the crisis check ([com.kevin.legion.ai.CrisisDetector]): waits; a hit cancels the round;
- * - the language switch ([SpokenLanguages]): waits; a refusal cancels the round;
- * - [LoneWordWriteGuard] and `answersSpokenAsk`: read `record.heard` when a write is called, so every
- *   tool call of the round is held until the transcript is in (the speculative draft's `hold` gate,
- *   [SpeculativeAnswer], is the existing shape for this);
- * - [com.kevin.legion.vehicle.ClearCodesVoiceGate]: reads his words at the clear call: same hold;
- * - the read-through mark (ADR 0090) keys on tools, not words: unchanged;
- * - the turn's merge carry and history: the transcript, once in, replaces [AUDIO_NOTE] in history,
- *   so later turns are text as today;
- * - the reply's speech may start before the transcript only if every guard above has passed; until
- *   then it is held (so the gain is max(speech-to-text, round 1) instead of their sum).
+ * The audio-first round's request (Kevin, 2026-11-19; wired in [CascadeSession] behind
+ * [VoiceEngineSettings.audioFirst], ON at ship): his turn goes to the text model as audio, so one
+ * call does both understanding and the choice of a read, instead of speech-to-text and then the
+ * model. The transcript is made beside it. The rules (writes wait and are re-chosen from the
+ * words, round 2 on text, the checks on the transcript) are [AudioFirstGate]'s and
+ * [GeminiTextLoop]'s; this file only builds the turn and swaps the audio for the words.
  * Pure: no Android.
  */
 @Suppress("NestedBlockDepth") // one walk over a turn's parts

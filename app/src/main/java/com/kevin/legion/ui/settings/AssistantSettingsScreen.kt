@@ -258,9 +258,9 @@ fun AssistantSettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 VoiceTurnRow(
                     title = "Understand from the audio (faster first answer)",
-                    explanation = "your words go to the model as sound while the transcript is made " +
-                        "beside it; nothing is changed until the transcript is in and checked. " +
-                        "Cloud voice only. Applies from the next conversation.",
+                    explanation = "questions and lookups are answered from the sound of your words " +
+                        "while the transcript is made; anything that changes something is decided from " +
+                        "the transcript once it is in and checked. Cloud voice only. Applies from the next conversation.",
                     enabled = audioFirst,
                     onToggle = { on ->
                         VoiceEngineSettings.setAudioFirst(context, on)

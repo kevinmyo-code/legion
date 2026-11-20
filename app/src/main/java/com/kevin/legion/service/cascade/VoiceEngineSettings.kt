@@ -112,9 +112,10 @@ object VoiceEngineSettings {
 
     /**
      * Audio-first round 1 ([AudioFirstGate], Kevin 2026-11-19): what a conversation does when the
-     * switch was never touched. Built OFF; turning it on for everyone is this one line.
+     * switch was never touched. ON at ship (Kevin, 2026-11-20: "audio first default at ship"); a
+     * stored choice from the Settings toggle wins; turning it off for everyone is this one line.
      */
-    const val AUDIO_FIRST_DEFAULT = false
+    const val AUDIO_FIRST_DEFAULT = true
     private const val KEY_SPEED = "speech_speed"
     private const val KEY_CLOUD_VOICE = "cloud_voice"
 

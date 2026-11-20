@@ -1628,7 +1628,7 @@ internal class CascadeSession(
         CheckIns.onOutcome(ctx, mark, outcome)
     }
 
-    // --- audio-first round 1 ([AudioFirstGate], Kevin 2026-11-19; switch built OFF) ----------------
+    // --- audio-first round 1 ([AudioFirstGate], Kevin 2026-11-19; switch ON at ship) ---------------
 
     /**
      * Runs [u] audio-first when the switch and the turn allow it ([AudioFirstGate.applies]); true when

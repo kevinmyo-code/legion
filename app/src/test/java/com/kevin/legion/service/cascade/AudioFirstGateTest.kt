@@ -66,6 +66,6 @@ class AudioFirstGateTest {
         assertFalse(AudioFirstGate.applies(switchOn = true, cloudVoice = false, carryBlank = true, audioKept = true))
         assertFalse(AudioFirstGate.applies(switchOn = true, cloudVoice = true, carryBlank = false, audioKept = true))
         assertFalse(AudioFirstGate.applies(switchOn = true, cloudVoice = true, carryBlank = true, audioKept = false))
-        assertFalse("built off", VoiceEngineSettings.AUDIO_FIRST_DEFAULT)
+        assertTrue("ships on (Kevin, 2026-11-20)", VoiceEngineSettings.AUDIO_FIRST_DEFAULT)
     }
 }

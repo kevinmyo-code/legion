@@ -7,7 +7,7 @@ import org.json.JSONObject
 
 /**
  * One audio-first turn's gate (Kevin, 2026-11-19: "audio first earlier"; switch
- * [VoiceEngineSettings.audioFirst], built OFF). Round 1 hears his audio ([AudioFirstRound]) while the
+ * [VoiceEngineSettings.audioFirst], ON at ship). Round 1 hears his audio ([AudioFirstRound]) while the
  * transcript request runs beside it; this gate is where the transcript's verdict lands, and what
  * waits on it:
  * - **writes** ([awaitForWrite]): no tool that changes data or device state runs until the
