@@ -186,8 +186,11 @@ class VoiceEvalOfflineTest {
         assertTrue(r.toString(), r.getBoolean("success"))
         assertTrue(r.toString(), r.getString("window").endsWith(today.plusDays(1).toString()))
         assertTrue(r.toString(), r.toString().contains(VoiceEvalFixture.Facts.ALL_DAY_TOMORROW))
-        val bad = LiveToolbox.dispatch(context, "read_calendar", JSONObject().put("from", "next week").put("to", "x"))!!
+        // Since 2026-11-19 "next week" is a named range code resolves (NamedRange); words it does not know are refused.
+        val bad = LiveToolbox.dispatch(context, "read_calendar", JSONObject().put("from", "someday").put("to", "x"))!!
         assertTrue(bad.toString(), !bad.getBoolean("success"))
+        val week = LiveToolbox.dispatch(context, "read_calendar", JSONObject().put("from", "next week").put("to", "x"))!!
+        assertTrue(week.toString(), week.getJSONObject("range").getString("name") == "next_week")
     }
 
     @Test

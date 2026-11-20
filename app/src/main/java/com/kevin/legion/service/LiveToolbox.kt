@@ -2024,8 +2024,8 @@ object LiveToolbox {
     }
 
     private const val CALENDAR_INVALID_WINDOW_MESSAGE =
-        "I need a valid date range to read your calendar - from and to as yyyy-MM-dd or today, " +
-            "tomorrow or yesterday, with to on or after from."
+        "I need a valid date range to read your calendar - from and to as yyyy-MM-dd, yesterday, or " +
+            "a named range (today, tomorrow, this_week, next_7_days, this_weekend, next_week, overdue)."
 
     /**
      * `complete_task` (2026-10-03). Resolves with [TaskDoneMatcher], writes with
@@ -2189,9 +2189,16 @@ object LiveToolbox {
      */
     private suspend fun readCalendar(context: Context, args: JSONObject): JSONObject {
         val zone = java.time.ZoneId.systemDefault()
-        val window = parseCalendarWindow(args.optString("from"), args.optString("to"), zone)
-            ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
-        return readCalendarWindow(context, zone, window, args.optString("city"))
+        // A named range ("this_week") is resolved here on the local date and wins over dates sent
+        // beside it (2026-11-19, NamedRange); the result names the window that was read.
+        val w = com.kevin.legion.service.tools.day.NamedRange.window(
+            args.optString("from"), args.optString("to"), RelativeDay.today(zone),
+        ) ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
+        val startMs = w.from.atStartOfDay(zone).toInstant().toEpochMilli()
+        val endMs = w.to.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+        val range = JSONObject().put("from", w.from.toString()).put("to", w.to.toString())
+        w.name?.let { range.put("name", it) }
+        return readCalendarWindow(context, zone, startMs to endMs, args.optString("city")).put("range", range)
     }
 
     /** [readCalendar] once its window is settled. */
