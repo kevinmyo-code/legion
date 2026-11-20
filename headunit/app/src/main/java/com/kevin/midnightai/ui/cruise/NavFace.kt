@@ -71,6 +71,13 @@ internal fun NavFace(state: NavState, controller: NavController, modifier: Modif
     // Review NAV-1: the same 3 s rule as the CAR face, on the fixes the navigator gets.
     val fix by com.kevin.midnightai.location.LocationController.navFixes.collectAsState()
     val lines = com.kevin.midnightai.navigation.NavGuidance.lines(state, rememberFixAgeMs(fix))
+    var driving by remember { mutableStateOf(com.kevin.midnightai.update.DrivingState.isDriving()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1_000)
+            driving = com.kevin.midnightai.update.DrivingState.isDriving()
+        }
+    }
     Column(modifier) {
         when (state.phase) {
             NavPhase.NO_TOKEN -> NavWords("Maps need your phone.", state.message, Modifier.weight(1f))
@@ -84,6 +91,7 @@ internal fun NavFace(state: NavState, controller: NavController, modifier: Modif
                         NavMap(
                             following = state.following,
                             stale = lines.stale,
+                            panAllowed = com.kevin.midnightai.navigation.NavInput.mapPanAllowed(driving),
                             onMovedByHand = controller::mapMovedByHand,
                             onFailed = controller::mapFailed,
                             modifier = Modifier.fillMaxSize(),
@@ -92,7 +100,7 @@ internal fun NavFace(state: NavState, controller: NavController, modifier: Modif
                     lines.banner?.let { TurnBanner(it, lines.stale, Modifier.align(Alignment.TopCenter)) }
                 }
                 Spacer(Modifier.height(6.dp))
-                NavBottom(state, controller, lines.bottom)
+                NavBottom(state, controller, lines.bottom, com.kevin.midnightai.navigation.NavInput.listScrollAllowed(driving))
             }
         }
     }
@@ -115,9 +123,9 @@ private fun TurnBanner(text: String, stale: Boolean, modifier: Modifier) {
 }
 
 @Composable
-private fun NavBottom(state: NavState, controller: NavController, guidingLine: String) {
+private fun NavBottom(state: NavState, controller: NavController, guidingLine: String, scrollAllowed: Boolean) {
     when (state.phase) {
-        NavPhase.IDLE -> SavedPlaces(controller, state.message)
+        NavPhase.IDLE -> SavedPlaces(controller, state.message, scrollAllowed)
         NavPhase.REQUESTING -> NavLine(state.message)
         NavPhase.PREVIEW -> {
             NavLine(state.message)
@@ -144,7 +152,7 @@ private fun NavBottom(state: NavState, controller: NavController, guidingLine: S
 
 /** Saved places on this unit, as keys that start a trip (v1 has no typed search). */
 @Composable
-private fun SavedPlaces(controller: NavController, idleWords: String) {
+private fun SavedPlaces(controller: NavController, idleWords: String, scrollAllowed: Boolean) {
     val context = LocalContext.current
     var places by remember { mutableStateOf<List<TaggedPlace>?>(null) }
     LaunchedEffect(Unit) { places = runCatching { PlaceController.all(context) }.getOrDefault(emptyList()) }
@@ -154,7 +162,7 @@ private fun SavedPlaces(controller: NavController, idleWords: String) {
         list.isEmpty() -> NavLine("No saved places yet. Say \"tag this place as home\" when you are there, then pick it here.")
         else -> {
             NavLine(idleWords)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState(), enabled = scrollAllowed), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 list.forEach { place ->
                     NavKey(place.label.uppercase()) {
                         controller.navigateTo(NavDestination(place.label, GeoPoint(place.latitude, place.longitude)))

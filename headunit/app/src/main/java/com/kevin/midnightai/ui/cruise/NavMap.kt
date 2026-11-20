@@ -49,6 +49,7 @@ import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineViewOptions
 internal fun NavMap(
     following: Boolean,
     stale: Boolean,
+    panAllowed: Boolean,
     onMovedByHand: () -> Unit,
     onFailed: (String) -> Unit,
     modifier: Modifier,
@@ -118,6 +119,17 @@ internal fun NavMap(
                     .build(),
                 MapAnimationOptions.mapAnimationOptions { duration(CAMERA_MS) },
             )
+        }
+    }
+
+    // Review item 5: no panning, zooming, tilting or turning the map while the car moves.
+    LaunchedEffect(panAllowed) {
+        mapView.gestures.updateSettings {
+            scrollEnabled = panAllowed
+            pinchToZoomEnabled = panAllowed
+            doubleTapToZoomInEnabled = panAllowed
+            rotateEnabled = panAllowed
+            pitchEnabled = panAllowed
         }
     }
 
