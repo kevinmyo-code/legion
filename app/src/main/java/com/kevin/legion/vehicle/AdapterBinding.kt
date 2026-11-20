@@ -87,7 +87,7 @@ object AdapterBinding {
             val labels = if (car is DongleCar.OnCar) DongleCarController.labels(context) else emptyMap()
             noteFor(car, labels, DongleCarController.connectionKey())
         }
-        note?.let { response.put("adapter_car", it) }
+        note?.let { response.put(NOTE_FIELD, it) }
         // The which-car question asks him something: his one-word answer ("Ranger.") is an answer,
         // not a lone word to hold (fix/phone-write-always-said's `needs_answer`). Only the ask.
         if (note == ASK_ONCE) response.put(NEEDS_ANSWER, true)
@@ -168,6 +168,9 @@ object AdapterBinding {
                 "Until then readings still show, but nothing is saved to \"this car\" and no codes are cleared."
         else -> null
     }
+
+    /** The result field carrying the adapter note the model is to say once ([annotate]). */
+    const val NOTE_FIELD = "adapter_car"
 
     /** The result field that says the tool asked him a question and waits for his answer. */
     const val NEEDS_ANSWER = "needs_answer"

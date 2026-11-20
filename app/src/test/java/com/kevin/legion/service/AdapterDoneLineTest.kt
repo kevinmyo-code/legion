@@ -240,12 +240,49 @@ class AdapterDoneLineTest {
         DongleCarController.onConnected(context, mac, null) { VinResponse.Result.NoData }
         setLink(mac, withLink = true)
         // The model names the cars by the labels it was given: the one code just said, in full.
-        val label = com.kevin.legion.vehicle.VehicleController.label(FleetEngineStore.getByMac(context, "car:comet")!!)
+        val label = labelOf("car:comet")
         val question = "Which car is the adapter in, the 2010 Acme Zephyr or the $label?"
-        val transport = Scripted(
-            calls(call("manage_vehicle", "action" to "switch", "vehicle" to "Comet")),
-            text(question),
-        )
+        val (codeLines, heard) = switchThenSay("Comet", question)
+        assertEquals(listOf("Done: switched to the $label."), codeLines)
+        assertTrue("the which-car question was dropped: $heard", heard.contains(question))
+    }
+
+    /** A recognised car (ASSUMED by its print): the result carries the one "Looks like the X" for the model to say. */
+    private suspend fun recognisedZephyr() {
+        seed()
+        CarFingerprint.save(context, "car:zephyr", print)
+        DongleCarController.onConnected(context, mac, print) { VinResponse.Result.NoData }
+        setLink(mac, withLink = true)
+    }
+
+    @Test
+    fun `the recognition note - a plain pick of another car still lets the model say looks like the X`() = runBlocking {
+        recognisedZephyr()
+        val looks = "Looks like the ${labelOf("car:zephyr")}."
+        val (codeLines, heard) = switchThenSay("Comet", looks)
+        assertEquals(listOf("Done: switched to the ${labelOf("car:comet")}."), codeLines)
+        assertTrue("the recognition was not spoken: $heard", heard.contains(looks))
+    }
+
+    @Test
+    fun `the recognition note - picking the recognised car itself still lets the model say looks like the X`() = runBlocking {
+        recognisedZephyr()
+        ActiveVehicle.select(context, "car:comet")
+        val looks = "Looks like the ${labelOf("car:zephyr")}."
+        val (codeLines, heard) = switchThenSay("Zephyr", looks)
+        assertEquals(listOf("Done: switched to the ${labelOf("car:zephyr")}."), codeLines)
+        assertTrue("the recognition was not spoken: $heard", heard.contains(looks))
+    }
+
+    private suspend fun labelOf(id: String): String =
+        com.kevin.legion.vehicle.VehicleController.label(FleetEngineStore.getByMac(context, id)!!)
+
+    /**
+     * A voice turn through the real loop and the real tool: the model switches to [car], then says
+     * [modelText]. Returns code's lines and what was spoken of the model's words.
+     */
+    private suspend fun switchThenSay(car: String, modelText: String): Pair<List<String>, String> {
+        val transport = Scripted(calls(call("manage_vehicle", "action" to "switch", "vehicle" to car)), text(modelText))
         val heard = StringBuilder()
         val codeLines = mutableListOf<String>()
         val listener = object : GeminiTextLoop.Listener {
@@ -264,10 +301,9 @@ class AdapterDoneLineTest {
             isReadThrough = { _, _ -> false },
             writeFact = ScriptedLines::factOf,
         )
-        val tools =TextToolExecutor { name, args, _ -> withContext(heardDates()) { LiveToolbox.dispatch(context, name, args)!! } }
+        val tools = TextToolExecutor { name, args, _ -> withContext(heardDates()) { LiveToolbox.dispatch(context, name, args)!! } }
         loop.answer(CascadePrefix("model-x", "Invented instruction.", JSONArray()), userTurn(), tools, listener)
-        assertEquals(listOf("Done: switched to the $label."), codeLines)
-        assertTrue("the which-car question was dropped: $heard", heard.contains(question))
+        return codeLines to heard.toString()
     }
 
     // --- e. a new list is said by its name ----------------------------------------------------------------

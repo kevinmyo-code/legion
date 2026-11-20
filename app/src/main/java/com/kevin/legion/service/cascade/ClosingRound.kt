@@ -1,5 +1,6 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.vehicle.AdapterBinding
 import org.json.JSONObject
 
 /**
@@ -16,7 +17,8 @@ import org.json.JSONObject
  * words may carry a part that failed or a question, review round 2 D2), a write that failed, was
  * refused, timed out, did not change anything (`changed: false`), or whose result asks him
  * something (`needs_answer`, `needs_confirmation`, a mail draft's `draft_id`), or the first step of
- * a two-step write (not a write, so it has no facts).
+ * a two-step write (not a write, so it has no facts), or that carries the adapter's one-time note
+ * ([carriesMore]).
  */
 object ClosingRound {
     /** One call of the round: its write's facts (null for anything that is not a write) and its result. */
@@ -25,6 +27,14 @@ object ClosingRound {
     /** True when a text-only closing round after these calls is not spoken. */
     fun dropsText(calls: List<Call>): Boolean = calls.isNotEmpty() && calls.all { confirmedWrite(it) }
 
-    private fun confirmedWrite(c: Call): Boolean =
-        c.fact?.said == true && !c.fact.router && !LoneWordWriteGuard.asksField(c.response)
+    private fun confirmedWrite(c: Call): Boolean = c.fact?.said == true && !c.fact.router && !carriesMore(c.response)
+
+    /**
+     * A result that gives the model something to say beyond the change: a question for him
+     * ([LoneWordWriteGuard.asksField]) or the adapter's one-time note ("Looks like the X",
+     * [AdapterBinding.NOTE_FIELD]). Its closing text is kept and its names drop no sentence
+     * ([GeminiTextLoop]), since that text may name the very car code just said.
+     */
+    fun carriesMore(response: JSONObject): Boolean =
+        LoneWordWriteGuard.asksField(response) || response.has(AdapterBinding.NOTE_FIELD)
 }
