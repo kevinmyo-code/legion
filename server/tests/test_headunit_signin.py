@@ -18,7 +18,7 @@ import gzip
 import json
 import re
 import uuid
-from datetime import timedelta
+from datetime import UTC, timedelta
 
 import pytest
 from django.core.cache import cache
@@ -612,6 +612,28 @@ def test_a_unit_bound_to_no_vehicle_writes_no_obd_samples(phone, on):
     assert not ObdSample.objects.exists()
 
 
+def test_switched_off_a_phone_upload_answers_exactly_as_before(phone, monkeypatch):
+    """With LEGION_HEADUNIT_SIGNIN unset, a phone's upload and its retry answer as on dev: the same
+    statuses, keys and words, the retry echoing its own row. The only new thing is the stored
+    row's `uploader_kind`, `member` by default."""
+    from devicelogs.models import DeviceLog
+
+    monkeypatch.delenv(SIGNIN_ENV, raising=False)
+    upload = _log_upload()
+    batch = upload["batch_id"]
+    first = phone.post("/api/device-logs/", upload, format="multipart")
+    assert first.status_code == 201
+    assert set(first.data) == {"id", "received_at", "stored_bytes", "detail"}
+    assert first.data["detail"] == "Stored."
+    again = {**_log_upload(), "batch_id": batch}
+    retry = phone.post("/api/device-logs/", again, format="multipart")
+    assert retry.status_code == 200
+    assert retry.data["id"] == first.data["id"]
+    assert retry.data["detail"] == "Already stored; nothing new was added."
+    row = DeviceLog.objects.get(pk=first.data["id"])
+    assert (row.uploader_kind, row.headunit_id) == ("member", None)
+
+
 def test_the_previous_revision_can_still_insert_a_device_log(household_a, household_user):
     """The deploy migrates while old instances still serve: an INSERT that names neither new
     column (what the previous revision's model sends) still succeeds and reads as a member's."""
@@ -985,6 +1007,29 @@ def test_a_unit_has_its_own_daily_cap_inside_the_members(phone, on, monkeypatch)
     _turn_ready(monkeypatch, [m.say("Other unit.")])
     _other, raw_b = _paired(phone)
     assert unit_client(raw_b).post(
+        "/api/agents/turn", {"transcript": "x"}, format="json"
+    ).status_code == 200
+
+
+def test_a_units_cap_holds_across_engine_instances(phone, on, monkeypatch):
+    """The unit's day is a row in the database, not process memory: a second instance (a fresh
+    process cache, a fresh request, the credential read again) refuses the turn too."""
+    from agents.runtime import model as m
+    from headunit_signin import spend
+
+    monkeypatch.setenv(spend.CAP_ENV, "0.10")
+    _turn_ready(monkeypatch, [m.say("Never reached.")])
+    cred_id, raw = _paired(phone)
+    HeadUnitCredential.objects.filter(pk=cred_id).update(
+        spend_day=timezone.now().astimezone(UTC).date(), spent_micro_usd=100_000
+    )
+    for _instance in range(2):
+        cache.clear()
+        response = unit_client(raw).post("/api/agents/turn", {"transcript": "x"}, format="json")
+        assert response.status_code == 429, response.data
+    yesterday = timezone.now().astimezone(UTC).date() - timedelta(days=1)
+    HeadUnitCredential.objects.filter(pk=cred_id).update(spend_day=yesterday)
+    assert unit_client(raw).post(
         "/api/agents/turn", {"transcript": "x"}, format="json"
     ).status_code == 200
 
