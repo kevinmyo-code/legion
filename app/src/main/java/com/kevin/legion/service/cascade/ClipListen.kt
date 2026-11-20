@@ -30,6 +30,9 @@ internal class ClipListen(
 ) {
     private val during = java.io.ByteArrayOutputStream()
 
+    /** His audio kept while the clip and its settle played, in ms. */
+    val keptMs: Long get() = during.size().toLong() / PCM_BYTES_PER_MS
+
     /** Bytes captured since the clip and its settle ended (nothing plays). */
     var bytesAfter = 0L
         private set
@@ -69,6 +72,14 @@ internal class ClipListen(
 
     companion object {
         private const val PCM_BYTES_PER_MS = 32
+
+        /**
+         * The audit line when kept clip audio joins a new utterance (review of aed1c786: whether the
+         * car's echo cancelling lets the clip itself into the transcript is not known; this marks the
+         * turns to inspect). Numbers and the clip's kind only.
+         */
+        fun joinedLine(keptMs: Long, kind: String, idx: Int): String =
+            "clip_listen joined kept_ms=$keptMs clip=$kind idx=$idx"
 
         /**
          * Whether a resume may take over the first half's turn: only while it still runs and no write

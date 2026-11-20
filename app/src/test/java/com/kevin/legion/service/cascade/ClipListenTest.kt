@@ -12,6 +12,15 @@ import org.junit.Test
  */
 class ClipListenTest {
 
+    // Review of aed1c786 (#1): which turns took clip audio, in numbers, for the drive log.
+    @Test
+    fun `a joined listen logs the kept clip audio, the clip's kind and index, numbers only`() {
+        val listen = ClipListen(ByteArray(0))
+        listen.onFrame(ByteArray(3_200), 3_200, playing = true)
+        assertEquals(100L, listen.keptMs)
+        assertEquals("clip_listen joined kept_ms=100 clip=wait idx=2", ClipListen.joinedLine(listen.keptMs, "wait", 2))
+    }
+
     // Review of aed1c786 (#3): the first turn's write can start between the mic thread's check and the
     // takeover on the main loop. Both points ask this; a write already called is never taken over.
     @Test

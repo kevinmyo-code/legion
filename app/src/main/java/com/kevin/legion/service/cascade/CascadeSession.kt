@@ -1140,6 +1140,7 @@ internal class CascadeSession(
         val takesOver = ClipListen.takesOver(turnJob?.isActive == true, turn?.writeCalled == true)
         if (!listen.resumes() || !takesOver || first === u) return
         val prefix = listen.prefix(TurnTaker.PRE_ROLL_MS * PCM_BYTES_PER_MS)
+        LiveLatency.log(LiveLatency.TAG, ClipListen.joinedLine(listen.keptMs, clipListenKind, clipListenIdx))
         u.audio(prefix, 0, prefix.size)
         u.resumedFrom = first
         LiveLatency.log(LiveLatency.TAG, "backchannel_resume prefix_ms=${prefix.size / PCM_BYTES_PER_MS}")
@@ -1266,7 +1267,7 @@ internal class CascadeSession(
         val ms = chosen.ms
         playGate.withLock {
             if (!due()) return
-            listenThroughClip()
+            listenThroughClip("backchannel", Backchannel.LINES.indexOf(line))
             recentBackchannels.add(line)
             VoiceEngineSettings.setLastBackchannel(ctx, line)
             turnFillers.incrementAndGet()
@@ -1296,6 +1297,10 @@ internal class CascadeSession(
         answerTextSkipAtMs?.let { LiveLatency.log(LiveLatency.TAG, Backchannel.answerTextGapLine(it, nowMs)) }
         answerTextSkipAtMs = null
     }
+
+    /** The clip whose audio [clipListen] keeps: its kind and line index, for [ClipListen.joinedLine]. */
+    @Volatile private var clipListenKind = ""
+    @Volatile private var clipListenIdx = -1
 
     /** A call on the line for the fillers: the phone state, or a call's audio mode not LEGION's own. */
     private fun callOnLine(): Boolean =
@@ -1371,7 +1376,7 @@ internal class CascadeSession(
             )
             audit.filler("wait", chosen.line)
             // Half-duplex (Bluetooth): his audio through the line is kept and handed on, as for a backchannel.
-            listenThroughClip()
+            listenThroughClip("wait", WaitFillers.LINES.indexOf(chosen.line))
             clipPlayback.during {
                 val gen = p.generation()
                 withContext(Dispatchers.IO) { p.write(pcm, gen) }
@@ -1432,9 +1437,13 @@ internal class CascadeSession(
     private fun answerTextIn(): Boolean = turn?.let { it.fromUser && it.reply.isNotEmpty() } == true
 
     /** Half-duplex (only with its setting): his audio is kept through the clip, never dropped ([ClipListen]). */
-    private fun listenThroughClip() {
+    private fun listenThroughClip(kind: String, idx: Int) {
         if (turnTaker?.bargeIn == true) return
-        synchronized(turnLock) { clipListen = ClipListen(backchannelUtt?.keptAudio() ?: ByteArray(0)) }
+        synchronized(turnLock) {
+            clipListen = ClipListen(backchannelUtt?.keptAudio() ?: ByteArray(0))
+            clipListenKind = kind
+            clipListenIdx = idx
+        }
     }
 
     /** A task line never starts within [Backchannel.SPACING_MS] of a backchannel's end (no stacking). */
