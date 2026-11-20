@@ -55,9 +55,12 @@ from agents.voice import speech as speech_mod
 from agents.voice.live_stt import LiveSocket, StreamFailure, TranscribeSession
 
 HEADER = struct.Struct(">cI")
+# The longest an utterance's upload may run (the 28 s utterance cap plus slack for a slow network),
+# checked between frames. A client that stops sending altogether is bounded only by the request
+# timeout (300 s): a blocking read cannot be interrupted from here.
+UPLOAD_WALL_MS = 45_000
 MAX_FRAME_BYTES = 64 * 1024
 MAX_META_BYTES = 4 * 1024
-READ_BYTES = 8 * 1024
 
 
 def socket_for(key: str) -> LiveSocket:
@@ -84,11 +87,21 @@ class FrameReader:
         self.left = length
         self.buffer = b""
         self.eof = False
+        self.broken = False
 
     def _fill(self, wanted: int) -> bool:
+        # Asks for exactly what the next frame still needs: gunicorn's `Body.read(n)` waits until
+        # it has `n` bytes or the body ends, so asking for more would hold a frame back behind
+        # audio not yet spoken (and the end frame until the body closes).
         while len(self.buffer) < wanted and not self.eof:
-            size = READ_BYTES if self.left is None else min(READ_BYTES, self.left)
-            chunk = self.stream.read(size) if size and hasattr(self.stream, "read") else b""
+            size = wanted - len(self.buffer)
+            if self.left is not None:
+                size = min(size, self.left)
+            try:
+                chunk = self.stream.read(size) if size and hasattr(self.stream, "read") else b""
+            except Exception:  # noqa: BLE001 - a dropped connection mid-body is a hang-up
+                chunk = b""
+                self.broken = True
             if not chunk:
                 self.eof = True
             else:
@@ -181,6 +194,8 @@ def _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms) 
             item = reader.next()
             if item is None:
                 raise FrameError("hung_up", "No end frame came: nothing was run.")
+            if ms() > UPLOAD_WALL_MS:
+                raise FrameError("too_long", "The utterance took too long to arrive.")
             kind, payload = item
             if kind == b"A":
                 if not pcm:

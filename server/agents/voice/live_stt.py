@@ -228,9 +228,15 @@ class LiveSocket:
                 raise
             return session, ws
 
-        self._session, self._ws = asyncio.run_coroutine_threadsafe(connect(), self._loop).result(
-            SETUP_TIMEOUT_S
-        )
+        try:
+            self._session, self._ws = asyncio.run_coroutine_threadsafe(
+                connect(), self._loop
+            ).result(SETUP_TIMEOUT_S)
+        except BaseException:
+            # No socket to close later: the loop and its thread stop here, or every failed
+            # connect (an outage) would leave one behind.
+            self._stop_loop()
+            raise
         asyncio.run_coroutine_threadsafe(self._pump(), self._loop)
 
     async def _pump(self):
@@ -264,4 +270,10 @@ class LiveSocket:
         try:
             asyncio.run_coroutine_threadsafe(shut(), self._loop).result(2)
         finally:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            self._stop_loop()
+
+    def _stop_loop(self) -> None:
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(2)
+        if not self._thread.is_alive():
+            self._loop.close()

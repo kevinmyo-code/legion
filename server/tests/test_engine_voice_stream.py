@@ -99,6 +99,13 @@ def test_the_stream_door_is_off_unless_its_own_switch_is_on(auth_client, stream,
     assert stream.opened == [] and not AgentTurn.objects.exists()
 
 
+def test_the_stream_switch_alone_does_not_open_the_agents_door(auth_client, stream, monkeypatch):
+    monkeypatch.delenv("LEGION_AGENTS_TURN", raising=False)
+    response = _post(auth_client, utterance())
+    assert response.status_code == 404
+    assert stream.opened == [] and not AgentTurn.objects.exists()
+
+
 # ---- a streamed utterance ----------------------------------------------------------------------
 
 
