@@ -146,6 +146,35 @@ class CarLinkViewModelTest {
         assertEquals(CarLinkPhase.NOT_PAIRED, state().phase)
     }
 
+    @Test fun `while the scanner is open the screen says scanning, and its result pairs`() {
+        var pending: ((String?) -> Unit)? = null
+        val scanner = object : QrScanner {
+            override val available = true
+            override fun scan(onResult: (String?) -> Unit) { pending = onResult }
+        }
+        val withScanner = CarLinkViewModel(controller, scanner, debugPaste = false, scope = scope)
+        withScanner.scan()
+        assertEquals(CarLinkPhase.SCANNING, withScanner.state.value.phase)
+        assertTrue(withScanner.state.value.canCancel)
+        pending!!.invoke(CarLinkVectors.qrText())
+        assertEquals(CarLinkPhase.DIGITS, withScanner.state.value.phase)
+    }
+
+    @Test fun `a key this phone cannot read shows Pairing broken and offers Forget`() {
+        val file = MemoryRecordFile()
+        CarLinkStore(FakeKeystoreStandIn(), file) {}.write(ByteArray(32) { 1 }, null)
+        val unreadable = FakeKeystoreStandIn().apply { failOpens = 3 }
+        val brokenController = CarLinkController(
+            CarLinkStore(unreadable, file) {}, { _, _ -> null },
+            HandoverPlan({ null }, UnitTokenNotYetAvailable(), { false }, { null }, {}),
+            { _, _, _ -> null }, scope, Dispatchers.Unconfined, { 300L }, {},
+        )
+        val broken = CarLinkViewModel(brokenController, NoQrScannerChosen(), debugPaste = false, scope = scope)
+        assertEquals(CarLinkPhase.BROKEN, broken.state.value.phase)
+        assertEquals("Pairing broken: pair again.", broken.state.value.headline)
+        assertTrue(broken.state.value.canForget)
+    }
+
     @Test fun `debug paste does nothing in a release build`() {
         val release = CarLinkViewModel(controller, NoQrScannerChosen(), debugPaste = false, scope = scope)
         release.pasteCode(CarLinkVectors.qrText())

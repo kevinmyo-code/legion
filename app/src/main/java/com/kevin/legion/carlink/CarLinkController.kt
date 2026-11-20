@@ -12,12 +12,16 @@ import com.kevin.legion.carlink.protocol.RingEvent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 
 enum class LinkState { NOT_PAIRED, PAIRED, BROKEN }
 
@@ -94,6 +98,8 @@ class CarLinkController(
                     val inRange = s.inRange()
                     if (inRange != _status.value.unitInRange) _status.update { it.copy(unitInRange = inRange) }
                 }
+            } catch (_: IOException) {
+                // The socket closed under a blocked receive (Forget, or the port went away): the loop ends.
             } finally {
                 sender = null
                 s.close()
@@ -120,11 +126,14 @@ class CarLinkController(
                 if (stage is PairingStage.DigitsShown) scope.launch(io) { handover.prepare() }
             }
             try {
-                val end = runner.run(client, qr.host, qr.port)
-                finish(end)
+                runner.run(client, qr.host, qr.port)
             } finally {
+                // Also on a cancel: one after `stored` still leaves the new key current (Paired).
                 ring.sessionOpen = false
-                if (client.stage !is PairingStage.Paired) handover.discard()
+                withContext(NonCancellable) {
+                    if (client.stage !is PairingStage.Paired) handover.discard()
+                    finish(client.stage)
+                }
             }
         }
     }
@@ -155,13 +164,14 @@ class CarLinkController(
     }
 
     /** "Forget head unit" (5.4): REVOKE if in range, revoke the unit's engine token, delete the keys. */
-    suspend fun forget() {
-        pairingJob?.cancel()
+    suspend fun forget() = withContext(io) {
+        // On io: the REVOKE is a socket send, never allowed on the main thread.
+        pairingJob?.cancelAndJoin()
         val sentRevoke = sender?.revoke() == true
         store.unitDeviceId()?.let { handover.revoke(it) }
         if (!ring.forget()) {
             _status.update { it.copy(note = CarLinkNote.FORGET_FAILED) }
-            return
+            return@withContext
         }
         stopFeed()
         _status.update {
