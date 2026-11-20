@@ -68,7 +68,6 @@ object WakeWordEngine {
     private const val TAG = "WakeWordEngine"
     private const val SAMPLE_RATE = 16000.0f
     private const val EVENT_LIMIT = 20
-    private const val MODEL_ASSET_DIR = "vosk-model"
     private const val WATCHDOG_INTERVAL_MS = 500L
     // 0.2s of audio per read, matching the cadence Vosk's own SpeechService used, so the
     // recognizer sees the same shaped chunks it always did.
@@ -268,6 +267,8 @@ object WakeWordEngine {
         // claim when it's still ours) - safe to call unconditionally on every teardown path.
         MicArbiter.release(MicArbiter.Claimant.WAKE_WORD)
         pausedForMic = true
+        // Dropped, never closed: it is the process-wide [VoskModels] model, which the local
+        // command gate may be using and the next start reuses.
         model = null
         scope?.cancel()
         scope = null
@@ -276,11 +277,11 @@ object WakeWordEngine {
 
     /** Copies the bundled model out of assets on first use (Vosk needs a real filesystem path). */
     private fun loadModel(context: Context): Model {
-        val dest = File(context.filesDir, MODEL_ASSET_DIR)
-        if (!File(dest, "am/final.mdl").exists()) {
-            copyAssetDir(context, MODEL_ASSET_DIR, dest)
+        val dest = File(context.filesDir, VoskModels.DIR)
+        if (!VoskModels.isCopied(dest)) {
+            copyAssetDir(context, VoskModels.DIR, dest)
         }
-        return Model(dest.absolutePath)
+        return VoskModels.get(dest)
     }
 
     private fun copyAssetDir(context: Context, assetPath: String, destDir: File) {
