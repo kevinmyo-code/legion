@@ -56,7 +56,9 @@ def test_try_orb_flow(real, live_server, tmp_path):
     out.mkdir(parents=True, exist_ok=True)
     tag = os.environ.get("ORBFLOW_TAG", "run")
     seed()
-    call_command("load_recruiter_content", str(write_folder(tmp_path / "content", content=_content())))
+    call_command(
+        "load_recruiter_content", str(write_folder(tmp_path / "content", content=_content()))
+    )
     wav = _silent_wav(tmp_path / "silence.wav")
     sizes = [(390, 700), (1280, 800)]
     only = os.environ.get("ORBFLOW_WIDTHS")
@@ -86,7 +88,9 @@ def test_try_orb_flow(real, live_server, tmp_path):
             done.stdout + "\n" + done.stderr, encoding="utf-8"
         )
         lines = done.stdout.strip().splitlines()
-        results.append(json.loads(lines[-1]) if lines else {"width": width, "error": done.stderr[-1500:]})
+        results.append(
+            json.loads(lines[-1]) if lines else {"width": width, "error": done.stderr[-1500:]}
+        )
     reserved = DemoBudgetDay.objects.aggregate(c=Sum("reserved_cents"))["c"] or 0
     summary = {"tag": tag, "reservedCents": reserved, "results": results}
     (out / f"orbflow-{tag}.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")

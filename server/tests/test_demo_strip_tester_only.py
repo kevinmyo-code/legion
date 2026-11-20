@@ -133,7 +133,9 @@ def test_tour_beats_on_an_ordinary_visit_carry_no_cost_and_no_tool_times(
     assert all("cost_usd" not in d and "tools_ms" not in d for d in _of(events, "done"))
 
 
-def test_tour_beats_on_the_tester_visit_keep_each_tool_time(visitor, visitor_user, engine, tmp_path):
+def test_tour_beats_on_the_tester_visit_keep_each_tool_time(
+    visitor, visitor_user, engine, tmp_path
+):
     from tests.test_recruiter_content import load_fake
 
     load_fake(tmp_path)
@@ -142,7 +144,9 @@ def test_tour_beats_on_the_tester_visit_keep_each_tool_time(visitor, visitor_use
     assert tools and all(isinstance(t["ms"], int) for t in tools)
 
 
-def test_saying_it_sounded_robotic_on_an_ordinary_visit_marks_nothing(visitor, visitor_user, engine):
+def test_saying_it_sounded_robotic_on_an_ordinary_visit_marks_nothing(
+    visitor, visitor_user, engine
+):
     from assistant import cascade
     from tests.test_assistant_cascade import _record
 
@@ -160,9 +164,9 @@ def test_saying_it_sounded_robotic_on_an_ordinary_visit_marks_nothing(visitor, v
 def test_the_transcribe_route_gives_an_ordinary_visit_the_words_without_their_time(
     visitor, visitor_user, engine, monkeypatch
 ):
-    from assistant import voice_engine
     from django.core.files.uploadedfile import SimpleUploadedFile
 
+    from assistant import voice_engine
     from tests.test_assistant_cascade import PCM
 
     monkeypatch.setenv(voice_engine.EARLY_TRANSCRIPTS_ENV, "on")
@@ -204,10 +208,10 @@ STRIP_KEYS = {"ms", "cost_usd", "tools_ms", "first_sound_ms", "filler_ms", "tts_
 def _slow_lookup_turn(client, engine, monkeypatch, user):
     """A later spoken turn (the first question's acknowledgement behind it) whose lookup returns
     at once and whose answer round is silent for about a second: the delayed line falls due."""
-    from tests.test_addressed import _warm
-    from tests.test_assistant_cascade import PCM
     from household.demo_seed import seed_household
     from household.models import HouseholdMember
+    from tests.test_addressed import _warm
+    from tests.test_assistant_cascade import PCM
     from tests.test_filler_every_turn import SlowModel
 
     # A seeded visit household, so the lookup comes back ok (a failed lookup gets no line).

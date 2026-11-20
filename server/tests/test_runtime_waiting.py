@@ -1,8 +1,8 @@
 """The runtime's `Waiting` item (perf/try-faster-first-word rule A). Only a model client that reads
 the model on its own thread makes one: `assistant.cascade.Ticking`, used by the web cascade's answer
 path alone. The engine-brain turn (`agents.graph.nodes`, which drives the same `run_loop`) wraps no
-such client, so it never sees a `waiting` event; and for any caller, the events a round makes are the
-same with or without `Waiting` items, apart from the `waiting` events themselves."""
+such client, so it never sees a `waiting` event; and for any caller, the events a round makes are
+the same with or without `Waiting` items, apart from the `waiting` events themselves."""
 
 from __future__ import annotations
 
@@ -32,7 +32,9 @@ def _shape(events):
 
 
 def test_a_model_that_never_waits_gives_no_waiting_event():
-    events, _ = _drive(run_loop(_spec(), _state(), m.FakeModel(_rounds()), FakeGateway(), system="s"))
+    events, _ = _drive(
+        run_loop(_spec(), _state(), m.FakeModel(_rounds()), FakeGateway(), system="s")
+    )
     assert "waiting" not in [e.type for e in events]
 
 
@@ -41,7 +43,9 @@ def test_waiting_items_add_waiting_events_and_change_nothing_else():
         run_loop(_spec(), _state(), m.FakeModel(_rounds()), FakeGateway(), system="s")
     )
     waited_events, waited = _drive(
-        run_loop(_spec(), _state(), m.FakeModel(_with_waiting(_rounds())), FakeGateway(), system="s")
+        run_loop(
+            _spec(), _state(), m.FakeModel(_with_waiting(_rounds())), FakeGateway(), system="s"
+        )
     )
     assert [e.type for e in waited_events].count("waiting") == 4
     assert _shape([e for e in waited_events if e.type != "waiting"]) == _shape(plain_events)

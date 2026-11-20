@@ -1,3 +1,4 @@
+# ruff: noqa: F811 - `engine` and `member` are fixtures imported from the cascade tests
 """One money lookup, not two (perf/try-faster-first-word fix 2). Recorded on a real /try run
 (2026-11-19, invented demo household): asked "What did we spend last month?", the model called
 `monthly_spend` with `{"month": "2026-10-01"}` (a full date), the door refused it ("does not match

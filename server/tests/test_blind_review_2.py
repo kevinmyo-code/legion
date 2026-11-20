@@ -77,7 +77,6 @@ def test_a_transcription_cut_off_mid_response_is_retried_then_a_speech_failure(m
 @pytest.mark.django_db(transaction=True)
 def test_the_robotic_tap_works_in_autocommit_as_in_production(visitor, visitor_user, engine):
     from agents.runtime.model import FakeModel, say
-
     from tests.test_demo_strip_tester_only import make_visit
 
     # The marker is the tester visit's only (`tests/test_demo_strip_tester_only.py`).

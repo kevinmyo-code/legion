@@ -475,7 +475,9 @@ def test_the_tool_reads_the_same_pack_and_says_its_rules(kevin, auth_client, pin
 def _repeating_class(client):
     """A daily class this afternoon with yesterday's occurrence skipped."""
     eid = _event(client, "Daily standup", start=_at(-48 + 2), end=_at(-48 + 3))
-    Event.objects.filter(pk=eid).update(repeat_kind="DAILY", repeat_every=1, repeat_end_kind="NEVER")
+    Event.objects.filter(pk=eid).update(
+        repeat_kind="DAILY", repeat_every=1, repeat_end_kind="NEVER"
+    )
     skipped = (NOW - dt.timedelta(days=1)).date().isoformat()
     made = client.post(f"/api/events/{eid}/skips", {"skip_date": skipped}, format="json")
     assert made.status_code == 201, made.data
