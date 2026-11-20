@@ -30,7 +30,7 @@ name: Server
 
 on:
   push:
-    branches: [dev, main, 'up/**', 'integrate/**']
+    branches: [dev, main, 'up/**', 'integrate/**', 'ship/**']
     paths:
       - 'server/**'
       - '!server/frontend/**'
