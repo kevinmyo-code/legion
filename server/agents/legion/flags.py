@@ -27,3 +27,14 @@ STT_HEDGE_ENV = "LEGION_AGENTS_STT_HEDGE"
 
 def stt_hedge_enabled() -> bool:
     return os.environ.get(STT_HEDGE_ENV, "").strip().lower() == "on"
+
+
+# The late-answer path (`agents/legion/late.py`, design 2026-11-20): background tasks and the lines
+# Alfred owes at the next turn. Off unless `on`: with it off no door reads or writes a late-answer
+# row and `manage.py late_tasks` does nothing. Not in `deploy/cloudrun/flags.yaml` or `_common.py`
+# yet, like `LEGION_AGENTS_TURN`: switching it on is a reviewed deploy change.
+LATE_ANSWERS_ENV = "LEGION_LATE_ANSWERS"
+
+
+def late_answers_enabled() -> bool:
+    return os.environ.get(LATE_ANSWERS_ENV, "").strip().lower() == "on"

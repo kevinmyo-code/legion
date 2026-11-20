@@ -1,0 +1,417 @@
+"""The late-answer path (design 2026-11-20, `.legion/reports/late-answer-path-design-1120.md`):
+work goes to the background while the conversation stays free, and Alfred says the result at
+his next turn. DARK: nothing here reads or writes a row unless `LEGION_LATE_ANSWERS=on`.
+
+Three parts, each a public function a door or the runner calls:
+
+- **`intercept`** (a door, before any model call): his whole utterance, matched by code.
+  "Look into X and tell me later" queues a task and answers at once with a code line; "anything
+  pending?" and "cancel that" are answered by code. Anything else is not ours (None).
+- **`run_due`** (`manage.py late_tasks`, driven by the warm-service tick): claims queued tasks,
+  and running ones whose lease ran out, with `select_for_update(skip_locked=True)`, and runs each
+  through the ordinary turn (`turn.run_turn`) under the read-only `background` spec, in its OWN
+  conversation: never his live one, so his history, turn numbers and waiting yes are untouched.
+  `writes: none` makes the guard refuse every write, so a background task cannot change anything.
+  The answer becomes an owed line (`OwedLine`), built by code.
+- **`claim`** (a door, at the start of his next turn): at most one owed line, claimed with one
+  atomic update, so phone, web and head unit can never all say it. Said first, as a `sentence`
+  with `role: "late"`; it is NOT put into that turn's model context, so a web-search answer cannot
+  taint the turn he is in.
+
+Never for a recruiter (every entry returns None for one), never on a head unit: a task is not
+started from one (a rebuilt request would lose the unit's narrow scope) and nothing is said on
+one (whoever holds the unit may not be him).
+
+Logs carry numbers and names only, never the question or the answer.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import time
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+from django.db import transaction
+from django.db.models import Q, Sum
+from django.utils import timezone as dj_timezone
+
+from agents.legion import flags
+from agents.models import (
+    LATE_CANCELLED,
+    LATE_DONE,
+    LATE_FAILED,
+    LATE_QUEUED,
+    LATE_RUNNING,
+    AgentConversation,
+    AgentTurn,
+    LateTask,
+    OwedLine,
+)
+from headunit_signin import scope as headunit_scope
+from household.models import is_recruiter
+from household.tenancy import household_of
+from llm import cap as member_cap
+
+log = logging.getLogger(__name__)
+
+FEATURE = "agent_late"
+SPEC = "background"
+SOURCE = "late_task"
+CLIENT = "background"
+
+# Limits (design section 1).
+MAX_PER_DAY = 6
+MAX_OPEN = 2
+DAILY_MICRO_USD = 250_000
+MAX_ATTEMPTS = 2
+LEASE = timedelta(seconds=150)
+OWED_TTL = timedelta(hours=24)
+MAX_SPOKEN_PER_DAY = 8
+TOPIC_CHARS = 60
+ANSWER_CHARS = 400
+
+# Code's words. None names a person, a figure or a place.
+ACK = "On it. I'll tell you when it's ready."
+TOO_MANY_OPEN = "I'm already working on two things in the background. Ask again when one is done."
+TOO_MANY_TODAY = "That's as many background tasks as I take in a day. Ask me again tomorrow."
+SPENT = "Background work has used today's allowance, so I didn't start that one."
+NOT_FROM_UNIT = "I can't start background work from the car yet. Ask me on the phone or the web."
+NOTHING_PENDING = "Nothing pending."
+NOTHING_TO_CANCEL = "There's nothing running in the background to cancel."
+CANCELLED = "Cancelled. I won't look into that any further."
+STILL_WORKING = "Still working on {topics}."
+LAST_ONE = "Nothing new. The last one was: {text}"
+MORE = "{n} more {are} ready; ask what's pending."
+FAILED_LINE = "I couldn't finish looking into {topic}."
+
+_ASKS = (
+    re.compile(
+        r"^\W*(?:(?:can|could|would) you\s+|please\s+)*"
+        r"(?:look into|find out|research|dig into|check on|figure out|look up)\s+(?P<q>.+?)"
+        r"\W*\s+(?:and\s+)?(?:then\s+)?(?:tell|let) me(?: know)?\s+"
+        r"(?:later|when (?:it'?s|you'?re|you are|it is) (?:done|ready|back))\W*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\W*(?:(?:can|could|would) you\s+|please\s+)*"
+        r"(?:look into|find out|research|dig into|check on|figure out|look up)\s+(?P<q>.+?)"
+        r"\s+in the background\W*$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\W*(?:(?:can|could|would) you\s+|please\s+)*get back to me (?:on|about)\s+(?P<q>.+?)\W*$",
+        re.IGNORECASE,
+    ),
+)
+_PENDING = re.compile(
+    r"^\W*(?:is\s+)?(?:anything|what'?s|what is)\s+(?:pending|ready|back)(?:\s+yet)?\W*$"
+    r"|^\W*(?:any|are there any)\s+(?:answers|results)\s+(?:yet|back|ready)\W*$",
+    re.IGNORECASE,
+)
+_CANCEL = re.compile(
+    r"^\W*(?:cancel|stop|forget)\s+(?:that|it|the (?:research|background task|task))\W*$",
+    re.IGNORECASE,
+)
+
+
+def enabled() -> bool:
+    return flags.late_answers_enabled()
+
+
+def _eligible(request) -> bool:
+    user = getattr(request, "user", None)
+    return (
+        enabled()
+        and user is not None
+        and user.is_authenticated
+        and not is_recruiter(user)
+    )
+
+
+def ask_of(words: str) -> str | None:
+    """The question in "look into X and tell me later", or None."""
+    for pattern in _ASKS:
+        match = pattern.match(words or "")
+        if match:
+            question = match.group("q").strip(" ,.")
+            return question or None
+    return None
+
+
+def _topic(question: str) -> str:
+    text = " ".join(question.split())
+    return text if len(text) <= TOPIC_CHARS else text[: TOPIC_CHARS - 3].rstrip() + "..."
+
+
+def _midnight(now: datetime) -> datetime:
+    return now.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def spent_today_micro_usd(user, now: datetime | None = None) -> int:
+    from llm.models import LlmUsage
+
+    now = now or dj_timezone.now()
+    total = LlmUsage.objects.filter(
+        user=user, feature=FEATURE, created_at__gte=_midnight(now)
+    ).aggregate(spent=Sum("cost_estimate_micro_usd"))["spent"]
+    return int(total or 0)
+
+
+def _over_allowance(user) -> bool:
+    return member_cap.over_cap(user) or spent_today_micro_usd(user) >= DAILY_MICRO_USD
+
+
+def _mine(model, request):
+    return model.objects.filter(household=household_of(request), owner_user=request.user)
+
+
+def intercept(request, words: str, client: str) -> str | None:
+    """Code's whole answer to his utterance when it is a late-answer phrase, else None. Called by
+    a door before any model call; a None leaves the turn exactly as it was."""
+    if not _eligible(request):
+        return None
+    question = ask_of(words)
+    if question is not None:
+        return _start(request, question, client)
+    if _PENDING.match(words or ""):
+        return _pending(request, client)
+    if _CANCEL.match(words or ""):
+        return _cancel(request)
+    return None
+
+
+def _start(request, question: str, client: str) -> str:
+    if headunit_scope.is_headunit(request):
+        return NOT_FROM_UNIT
+    mine = _mine(LateTask, request)
+    if mine.filter(status__in=(LATE_QUEUED, LATE_RUNNING)).count() >= MAX_OPEN:
+        return TOO_MANY_OPEN
+    if mine.filter(created_at__gte=_midnight(dj_timezone.now())).count() >= MAX_PER_DAY:
+        return TOO_MANY_TODAY
+    if _over_allowance(request.user):
+        return SPENT
+    LateTask.objects.create(
+        household=household_of(request),
+        owner_user=request.user,
+        origin_client=client,
+        question=question,
+    )
+    log.warning("late_task status=queued")
+    return ACK
+
+
+def _pending(request, client: str) -> str:
+    line, more = claim(request, client)
+    if line is not None:
+        return f"{line.text} {more}".strip()
+    running = list(
+        _mine(LateTask, request)
+        .filter(status__in=(LATE_QUEUED, LATE_RUNNING))
+        .order_by("created_at")
+        .values_list("question", flat=True)
+    )
+    if running:
+        return STILL_WORKING.format(topics=" and ".join(_topic(q) for q in running))
+    last = (
+        _mine(OwedLine, request)
+        .filter(delivered_at__gte=dj_timezone.now() - OWED_TTL)
+        .order_by("-delivered_at")
+        .first()
+    )
+    if last is not None:
+        return LAST_ONE.format(text=last.text)
+    return NOTHING_PENDING
+
+
+def _cancel(request) -> str:
+    task = (
+        _mine(LateTask, request)
+        .filter(status__in=(LATE_QUEUED, LATE_RUNNING))
+        .order_by("-created_at")
+        .first()
+    )
+    if task is None:
+        return NOTHING_TO_CANCEL
+    changed = LateTask.objects.filter(
+        pk=task.pk, status__in=(LATE_QUEUED, LATE_RUNNING)
+    ).update(status=LATE_CANCELLED, finished_at=dj_timezone.now())
+    if changed and task.run_conversation:
+        # A running task's turn stops at its next round or tool call (the loop's own check).
+        AgentTurn.objects.filter(conversation_id=task.run_conversation).update(
+            cancel_requested=True
+        )
+    log.warning("late_task status=cancelled")
+    return CANCELLED
+
+
+def claim(request, client: str) -> tuple[OwedLine | None, str]:
+    """The one owed line to say first this turn, claimed for good, and the words for any others
+    still waiting ("" when none). (None, "") when nothing is owed or it may not be said here."""
+    if not _eligible(request) or headunit_scope.is_headunit(request):
+        return None, ""
+    now = dj_timezone.now()
+    mine = _mine(OwedLine, request)
+    if mine.filter(delivered_at__gte=_midnight(now)).count() >= MAX_SPOKEN_PER_DAY:
+        return None, ""
+    waiting = mine.filter(delivered_at__isnull=True, expires_at__gt=now).order_by("ready_at")
+    for line in waiting[:3]:
+        # One atomic update: a second door asking at the same moment updates nothing.
+        if OwedLine.objects.filter(pk=line.pk, delivered_at__isnull=True).update(
+            delivered_at=now, delivered_client=client
+        ):
+            line.delivered_at = now
+            others = waiting.exclude(pk=line.pk).count()
+            log.warning("late_owed delivered=1 waiting=%d", others)
+            more = (
+                MORE.format(n=others, are="is" if others == 1 else "are") if others else ""
+            )
+            return line, more
+    return None, ""
+
+
+def late_event(line: OwedLine, more: str = ""):
+    """The owed line as the stream's first `sentence`: `role: "late"` (additive to wire v1; the
+    contract's `owed` role stays write facts only)."""
+    from agents.runtime import events as ev
+
+    return ev.Event(
+        "sentence", {"text": f"{line.text} {more}".strip(), "role": "late", "owed_id": str(line.pk)}
+    )
+
+
+# -- the runner --------------------------------------------------------------------------------
+
+
+@dataclass
+class _Claimed:
+    task: LateTask
+    give_up: bool
+
+
+def _claim_due(now: datetime, limit: int) -> list[_Claimed]:
+    out = []
+    with transaction.atomic():
+        due = (
+            LateTask.objects.select_for_update(skip_locked=True)
+            .filter(
+                Q(status=LATE_QUEUED) | Q(status=LATE_RUNNING, lease_until__lt=now),
+            )
+            .order_by("created_at")[:limit]
+        )
+        for task in due:
+            if task.attempts >= MAX_ATTEMPTS:
+                task.status = LATE_FAILED
+                task.finished_at = now
+                task.save(update_fields=["status", "finished_at"])
+                out.append(_Claimed(task, give_up=True))
+                continue
+            task.status = LATE_RUNNING
+            task.attempts += 1
+            task.lease_until = now + LEASE
+            task.started_at = task.started_at or now
+            task.save(update_fields=["status", "attempts", "lease_until", "started_at"])
+            out.append(_Claimed(task, give_up=False))
+    return out
+
+
+def member_request(user):
+    """A DRF request as `user`, signed in like a web member (no device token): what the turn code
+    needs to run tools under their `visible()`. Never a head-unit request (none is queued). The
+    eval runner builds the same (`agents/evals/runner.py`); runtime code does not import evals."""
+    from django.test.client import RequestFactory
+    from rest_framework.request import Request
+
+    raw = RequestFactory().post("/api/agents/turn", data={}, content_type="application/json")
+    raw._force_auth_user = user
+    raw._force_auth_token = None
+    return Request(raw)
+
+
+def _owe(task: LateTask, text: str) -> None:
+    OwedLine.objects.get_or_create(
+        household_id=task.household_id,
+        source=SOURCE,
+        source_id=str(task.pk),
+        defaults={
+            "owner_user_id": task.owner_user_id,
+            "text": text,
+            "expires_at": dj_timezone.now() + OWED_TTL,
+        },
+    )
+
+
+def _answer_text(text: str) -> str:
+    text = " ".join((text or "").split())
+    if len(text) <= ANSWER_CHARS:
+        return text
+    cut = text[:ANSWER_CHARS]
+    end = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
+    return cut[: end + 1] if end > 0 else cut.rstrip() + "..."
+
+
+def _run_one(task: LateTask, model) -> str:
+    from agents.legion.turn import run_turn
+
+    started = time.monotonic()
+    user = task.owner_user
+    request = member_request(user)
+    if _over_allowance(user):
+        status, text = LATE_FAILED, FAILED_LINE.format(topic=_topic(task.question))
+    else:
+        conversation = AgentConversation.objects.create(
+            household_id=task.household_id, owner_user=user, client=CLIENT
+        )
+        LateTask.objects.filter(pk=task.pk).update(run_conversation=conversation.pk)
+        gen = run_turn(
+            request, task.question, model, conversation=conversation, agent=SPEC, feature=FEATURE,
+            do_prune=False,
+        )
+        try:
+            while True:
+                next(gen)
+        except StopIteration as stop:
+            state = stop.value
+        answer = _answer_text(state.final_text or state.words)
+        ok = state.status == "done" and bool(answer)
+        status = LATE_DONE if ok else LATE_FAILED
+        topic = _topic(task.question)
+        text = f"About {topic}: {answer}" if ok else FAILED_LINE.format(topic=topic)
+        LateTask.objects.filter(pk=task.pk).update(
+            tainted=state.tainted,
+            cost_micro_usd=state.budget.cost_micro_usd,
+            answer=answer if ok else "",
+        )
+    # A cancel that landed while it ran wins: nothing is owed.
+    finished = LateTask.objects.filter(pk=task.pk, status=LATE_RUNNING).update(
+        status=status, finished_at=dj_timezone.now(), lease_until=None
+    )
+    if finished:
+        _owe(task, text)
+    log.warning(
+        "late_task status=%s owed=%d ms=%d",
+        status if finished else LATE_CANCELLED,
+        int(bool(finished)),
+        int((time.monotonic() - started) * 1000),
+    )
+    return status
+
+
+def run_due(model_for, *, limit: int = 2, now: datetime | None = None) -> int:
+    """Runs up to `limit` due tasks; returns how many it claimed. Does nothing with the switch off.
+    `model_for()` makes the model client, once per task."""
+    if not enabled():
+        return 0
+    claimed = _claim_due(now or dj_timezone.now(), limit)
+    for item in claimed:
+        if item.give_up:
+            _owe(item.task, FAILED_LINE.format(topic=_topic(item.task.question)))
+            log.warning("late_task status=failed owed=1 ms=0")
+            continue
+        try:
+            _run_one(item.task, model_for())
+        except Exception:  # noqa: BLE001 - one task's failure never stops the others
+            # The lease runs out and the next tick tries again, up to MAX_ATTEMPTS.
+            log.warning("late_task status=error", exc_info=True)
+    return len(claimed)

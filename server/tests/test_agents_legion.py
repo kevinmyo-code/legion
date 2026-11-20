@@ -73,7 +73,12 @@ def test_the_generalist_carries_todays_engine_surface_and_the_twins():
         sorted(set(WEB_TOOL_NAMES) ^ (set(generalist.tools) - set(TWINS))),
     )
     assert generalist.taint_ok and generalist.writes_allowed
-    assert set(specs.load_specs()) == {"generalist"}  # specialists and the router are stage 5
+    # The specialists and the router are stage 5; `background` is the late-answer path's
+    # read-only spec (`agents/legion/late.py`), used only by its runner.
+    assert set(specs.load_specs()) == {"generalist", "background"}
+    background = specs.load_specs()["background"]
+    assert not background.writes_allowed
+    assert set(background.tools) <= set(WEB_TOOL_NAMES)
 
 
 def test_the_twins_stay_out_of_the_registry():

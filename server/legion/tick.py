@@ -16,7 +16,8 @@ double work (a held lock records `skipped_locked`; `push_sent` dedupes a notific
 is `--allow-unauthenticated` (phones authenticate with their own tokens), so the check is
 here, not in IAM. Either setting unset: every call is a 404, as if the route did not exist.
 
-**Not the brief or the backups.** Only these two: they are short, frequent, and safe to
+**Not the brief or the backups.** Only these three (`late_tasks` runs the late-answer path's
+background tasks, each bounded at 90 s, two a call): they are short, frequent, and safe to
 retry. Long jobs (`backup_nightly`, `drive_statements`, `plaid_sync`) stay on the job,
 where a 300 s request ceiling cannot cut them off.
 """
@@ -34,7 +35,8 @@ from django.views.decorators.http import require_POST
 
 logger = logging.getLogger(__name__)
 
-TASKS = frozenset({"push_dispatch", "evaluate_watches"})
+# `late_tasks` (late-answer path, design 2026-11-20): a no-op unless LEGION_LATE_ANSWERS=on.
+TASKS = frozenset({"push_dispatch", "evaluate_watches", "late_tasks"})
 GOOGLE_ISSUERS = frozenset({"accounts.google.com", "https://accounts.google.com"})
 
 

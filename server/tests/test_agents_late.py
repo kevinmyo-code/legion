@@ -1,0 +1,548 @@
+"""The late-answer path (design 2026-11-20, `agents/legion/late.py`), dark behind
+`LEGION_LATE_ANSWERS`.
+
+- Off (the default): every door behaves as before. A "tell me later" utterance goes to the model
+  like any other, no row is read or written, the runner does nothing.
+- On: "look into X and tell me later" is answered at once by code and queues a task; the runner
+  answers it read-only in its own conversation; his next turn says the answer first, once, on
+  whichever door asks first; "anything pending?" and "cancel that" are answered by code.
+
+Made-up questions and answers only.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import timedelta
+
+import pytest
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+
+from agents.legion import late
+from agents.legion.flags import LATE_ANSWERS_ENV, TURN_ENV
+from agents.models import AgentConversation, AgentTurn, LateTask, OwedLine
+from agents.runtime import model as m
+
+pytestmark = pytest.mark.django_db
+
+ASK = "look into the opening hours of the made-up museum and tell me later"
+
+
+def _events(response) -> list[tuple[str, dict]]:
+    body = b"".join(response.streaming_content).decode()
+    out = []
+    for block in body.strip().split("\n\n"):
+        lines = dict(line.split(": ", 1) for line in block.splitlines())
+        out.append((lines["event"], json.loads(lines["data"])))
+    return out
+
+
+def _sentences(events) -> list[str]:
+    return [d["text"] for k, d in events if k == "sentence"]
+
+
+@pytest.fixture
+def door_on(monkeypatch):
+    monkeypatch.setenv(TURN_ENV, "on")
+    monkeypatch.setenv("LEGION_GEMINI_KEY", "test-key-not-real")
+
+
+@pytest.fixture
+def late_on(monkeypatch):
+    monkeypatch.setenv(LATE_ANSWERS_ENV, "on")
+
+
+@pytest.fixture
+def fake_model(monkeypatch):
+    holder = {"made": 0}
+
+    def factory(key):
+        holder["made"] += 1
+        holder["model"] = m.FakeModel(holder.pop("rounds", []))
+        return holder["model"]
+
+    monkeypatch.setattr("agents.views.GeminiClient", factory)
+    return holder
+
+
+def _turn(client, words, conversation_id=None):
+    body = {"transcript": words}
+    if conversation_id:
+        body["conversation_id"] = conversation_id
+    return _events(client.post("/api/agents/turn", body, format="json"))
+
+
+def _owe(user, text="About the made-up museum: it opens at nine.", **extra):
+    from agents.evals.runner import member_request
+    from household.tenancy import household_of
+
+    request = member_request(user)
+    fields = {"expires_at": timezone.now() + timedelta(hours=1), **extra}
+    return OwedLine.objects.create(
+        household=household_of(request),
+        owner_user=user,
+        source="late_task",
+        source_id=str(fields.pop("source_id", "made-up-1")),
+        text=text,
+        **fields,
+    )
+
+
+# -- the phrases ---------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "words,question",
+    [
+        (ASK, "the opening hours of the made-up museum"),
+        ("Can you find out when the made-up shop closes, and let me know later.",
+         "when the made-up shop closes"),
+        ("research invented widgets in the background", "invented widgets"),
+        ("get back to me on the invented ferry times", "the invented ferry times"),
+        ("look into it and tell me when it's ready", "it"),
+    ],
+)
+def test_a_tell_me_later_phrase_names_its_question(words, question):
+    assert late.ask_of(words) == question
+
+
+@pytest.mark.parametrize(
+    "words",
+    ["what's the weather", "look into the museum", "tell me later", "remind me later to call"],
+)
+def test_other_words_are_not_a_late_ask(words):
+    assert late.ask_of(words) is None
+
+
+# -- switched off: exactly as before ------------------------------------------------------------
+
+
+def test_switched_off_a_tell_me_later_ask_goes_to_the_model_and_no_row_is_written(
+    auth_client, door_on, fake_model, monkeypatch
+):
+    monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
+    fake_model["rounds"] = [m.say("Sure, the museum opens at nine.")]
+    events = _turn(auth_client, ASK)
+    assert _sentences(events) == ["Sure, the museum opens at nine."]
+    assert fake_model["model"].requests  # the model answered
+    assert not LateTask.objects.exists() and not OwedLine.objects.exists()
+
+
+def test_switched_off_an_owed_line_is_never_said(auth_client, household_user, door_on, fake_model,
+                                                monkeypatch):
+    monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
+    line = _owe(household_user)
+    fake_model["rounds"] = [m.say("Hello.")]
+    events = _turn(auth_client, "hello")
+    assert _sentences(events) == ["Hello."]
+    line.refresh_from_db()
+    assert line.delivered_at is None
+
+
+def test_switched_off_the_runner_does_nothing(household_user, monkeypatch):
+    monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
+    _task(household_user)
+    assert late.run_due(lambda: pytest.fail("no model may be made")) == 0
+    assert LateTask.objects.get().status == "queued"
+
+
+# -- asking: the conversation stays free --------------------------------------------------------
+
+
+def test_an_ask_is_answered_by_code_at_once_with_no_model_round(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    fake_model["rounds"] = []
+    events = _turn(auth_client, ASK)
+    assert _sentences(events) == [late.ACK]
+    assert events[-1][0] == "done" and events[-1][1]["status"] == "done"
+    assert fake_model["model"].requests == []
+    task = LateTask.objects.get()
+    assert (task.status, task.question, task.owner_user_id) == (
+        "queued",
+        "the opening hours of the made-up museum",
+        household_user.pk,
+    )
+    turn = AgentTurn.objects.get()
+    assert turn.final_text == late.ACK and turn.route_reason == "late_answer"
+    # The next turn's model sees what was said.
+    assert turn.history[-1] == {"role": "model", "parts": [{"text": late.ACK}]}
+
+
+def test_two_open_tasks_is_the_most(auth_client, door_on, late_on, fake_model):
+    fake_model["rounds"] = []
+    for _ in range(2):
+        assert _sentences(_turn(auth_client, ASK)) == [late.ACK]
+    assert _sentences(_turn(auth_client, ASK)) == [late.TOO_MANY_OPEN]
+    assert LateTask.objects.count() == 2
+
+
+def test_the_daily_count_is_a_cap(auth_client, household_user, door_on, late_on, fake_model):
+    for _ in range(late.MAX_PER_DAY):
+        _task(household_user, status="done")
+    fake_model["rounds"] = []
+    assert _sentences(_turn(auth_client, ASK)) == [late.TOO_MANY_TODAY]
+    assert LateTask.objects.count() == late.MAX_PER_DAY
+
+
+def test_the_daily_allowance_is_its_own_feature(auth_client, household_user, door_on, late_on,
+                                               fake_model):
+    from llm import client as llm_client
+
+    llm_client.record(
+        household=household_user.household,
+        feature=late.FEATURE,
+        model="x",
+        user=household_user,
+        cost_estimate_micro_usd=late.DAILY_MICRO_USD,
+    )
+    fake_model["rounds"] = []
+    assert _sentences(_turn(auth_client, ASK)) == [late.SPENT]
+    assert not LateTask.objects.exists()
+
+
+# -- the runner ---------------------------------------------------------------------------------
+
+
+def _task(user, question="the opening hours of the made-up museum", **fields):
+    from agents.evals.runner import member_request
+    from household.tenancy import household_of
+
+    return LateTask.objects.create(
+        household=household_of(member_request(user)),
+        owner_user=user,
+        origin_client="web",
+        question=question,
+        **fields,
+    )
+
+
+def test_the_runner_answers_in_its_own_conversation_and_owes_the_line(
+    household_user, late_on, monkeypatch
+):
+    from llm.models import LlmUsage
+
+    live = AgentConversation.objects.create(
+        household=household_user.household, owner_user=household_user, client="web"
+    )
+    task = _task(household_user)
+    model = m.FakeModel([m.say("It opens at nine. It closes at five.")])
+    assert late.run_due(lambda: model) == 1
+    task.refresh_from_db()
+    assert task.status == "done" and task.attempts == 1
+    assert task.answer == "It opens at nine. It closes at five."
+    line = OwedLine.objects.get()
+    assert line.text == (
+        "About the opening hours of the made-up museum: It opens at nine. It closes at five."
+    )
+    assert line.source_id == str(task.pk) and line.delivered_at is None
+    # Its own conversation, never his live one.
+    run = AgentConversation.objects.get(pk=task.run_conversation)
+    assert run.client == "background" and run.pk != live.pk
+    assert not live.turns.exists()
+    # Under the read-only background spec, metered as its own feature.
+    assert AgentTurn.objects.get().route_agents == ["background"]
+    assert set(LlmUsage.objects.values_list("feature", flat=True)) == {late.FEATURE}
+
+
+def test_a_background_task_cannot_write(household_user, late_on):
+    from checklists.models import ChecklistItem
+
+    _task(household_user)
+    model = m.FakeModel(
+        [
+            m.call("add_checklist_item", {"checklist": "Todo", "text": "made-up"}),
+            m.say("I could not add it. Want me to add it?"),
+        ]
+    )
+    late.run_due(lambda: model)
+    assert not ChecklistItem.objects.exists()
+    turn = AgentTurn.objects.get()
+    assert turn.writes_ran is False
+    call = turn.tool_calls.get()
+    assert call.outcome == "refused" and call.guard == "not_allowed"
+    assert OwedLine.objects.get().text.endswith("Want me to add it?")
+
+
+def test_a_failed_run_owes_a_plain_failure_line(household_user, late_on):
+    _task(household_user)
+    late.run_due(lambda: m.FakeModel([]))
+    assert LateTask.objects.get().status == "failed"
+    assert OwedLine.objects.get().text == (
+        "I couldn't finish looking into the opening hours of the made-up museum."
+    )
+
+
+def test_a_task_whose_lease_ran_out_is_claimed_again_then_given_up(household_user, late_on):
+    past = timezone.now() - timedelta(minutes=5)
+    task = _task(household_user, status="running", attempts=1, lease_until=past)
+    model = m.FakeModel([m.say("It opens at nine.")])
+    assert late.run_due(lambda: model) == 1
+    task.refresh_from_db()
+    assert (task.status, task.attempts) == ("done", 2)
+
+    stuck = _task(household_user, question="invented ferry", status="running", attempts=2,
+                  lease_until=past)
+    late.run_due(lambda: pytest.fail("no model after the last attempt"))
+    stuck.refresh_from_db()
+    assert stuck.status == "failed"
+    assert OwedLine.objects.get(source_id=str(stuck.pk)).text == (
+        "I couldn't finish looking into invented ferry."
+    )
+
+
+def test_a_running_task_with_a_live_lease_is_left_alone(household_user, late_on):
+    _task(household_user, status="running", attempts=1,
+          lease_until=timezone.now() + timedelta(minutes=1))
+    assert late.run_due(lambda: pytest.fail("not due")) == 0
+
+
+def test_a_cancel_that_lands_while_it_runs_owes_nothing(household_user, late_on):
+    task = _task(household_user)
+
+    class CancelMidway:
+        requests = []
+
+        def stream(self, req):
+            LateTask.objects.filter(pk=task.pk).update(status="cancelled")
+            yield from m.say("It opens at nine.")
+
+    late.run_due(lambda: CancelMidway())
+    task.refresh_from_db()
+    assert task.status == "cancelled" and not OwedLine.objects.exists()
+
+
+def test_the_command_is_a_no_op_while_switched_off(household_user, monkeypatch):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
+    _task(household_user)
+    out = StringIO()
+    call_command("late_tasks", stdout=out)
+    assert "switched off" in out.getvalue()
+    assert LateTask.objects.get().status == "queued"
+
+
+def test_the_warm_tick_may_run_it():
+    from legion.tick import TASKS
+
+    assert "late_tasks" in TASKS
+
+
+# -- delivery at the next turn ------------------------------------------------------------------
+
+
+def test_the_owed_line_is_said_first_once_and_kept_out_of_the_model(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    line = _owe(household_user)
+    fake_model["rounds"] = [m.say("Hello again.")]
+    events = _turn(auth_client, "hello")
+    sentences = [(d["text"], d.get("role")) for k, d in events if k == "sentence"]
+    assert sentences == [
+        ("About the made-up museum: it opens at nine.", "late"),
+        ("Hello again.", None),
+    ]
+    late_event = next(d for k, d in events if k == "sentence" and d.get("role") == "late")
+    assert late_event["owed_id"] == str(line.pk)
+    # Not in the model's context for this turn.
+    sent = json.dumps(fake_model["model"].requests[0].contents)
+    assert "made-up museum" not in sent
+    line.refresh_from_db()
+    assert line.delivered_at is not None and line.delivered_client == "phone"
+    # Never twice.
+    fake_model["rounds"] = [m.say("Still here.")]
+    assert _sentences(_turn(auth_client, "and now")) == ["Still here."]
+
+
+def test_one_line_a_turn_and_the_rest_are_counted(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    _owe(household_user, text="First made-up answer.", source_id="a")
+    _owe(household_user, text="Second made-up answer.", source_id="b",
+         ready_at=timezone.now() + timedelta(seconds=1))
+    fake_model["rounds"] = [m.say("Hi.")]
+    said = _sentences(_turn(auth_client, "hi"))
+    assert said[0] == "First made-up answer. 1 more is ready; ask what's pending."
+    assert OwedLine.objects.filter(delivered_at__isnull=True).count() == 1
+
+
+def test_an_expired_line_is_never_said(auth_client, household_user, door_on, late_on, fake_model):
+    _owe(household_user, expires_at=timezone.now() - timedelta(minutes=1))
+    fake_model["rounds"] = [m.say("Hi.")]
+    assert _sentences(_turn(auth_client, "hi")) == ["Hi."]
+
+
+def test_a_line_is_not_said_while_a_yes_is_awaited(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    conversation = AgentConversation.objects.create(
+        household=household_user.household,
+        owner_user=household_user,
+        client="phone",
+        pending_confirm={"tool": "x", "args_sha256": "0" * 64, "until_seq": 5},
+    )
+    _owe(household_user)
+    fake_model["rounds"] = [m.say("Okay, I won't.")]
+    said = _sentences(_turn(auth_client, "no", conversation_id=str(conversation.pk)))
+    assert said == ["Okay, I won't."]
+    assert OwedLine.objects.get().delivered_at is None
+
+
+def test_another_member_never_hears_his_line(household_user, household_a, door_on, late_on,
+                                            fake_model):
+    from tests.conftest import _client_for, _member
+
+    mia_client = _client_for(_member(household_a, "mia@example.com"))
+    _owe(household_user)
+    fake_model["rounds"] = [m.say("Hi.")]
+    assert _sentences(_turn(mia_client, "hi")) == ["Hi."]
+    assert OwedLine.objects.get().delivered_at is None
+
+
+def test_two_doors_claiming_at_once_say_it_once(household_user, late_on):
+    from agents.evals.runner import member_request
+
+    _owe(household_user)
+    request = member_request(household_user)
+    first, _ = late.claim(request, "web")
+    second, _ = late.claim(request, "phone")
+    assert first is not None and second is None
+
+
+def test_the_daily_spoken_cap_holds(household_user, late_on):
+    from agents.evals.runner import member_request
+
+    for n in range(late.MAX_SPOKEN_PER_DAY):
+        _owe(household_user, source_id=f"said-{n}", delivered_at=timezone.now())
+    _owe(household_user, source_id="one-more")
+    assert late.claim(member_request(household_user), "web") == (None, "")
+
+
+# -- pending and cancel, by code ----------------------------------------------------------------
+
+
+def test_anything_pending_names_what_runs_then_says_what_is_ready(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    fake_model["rounds"] = []
+    assert _sentences(_turn(auth_client, "anything pending?")) == [late.NOTHING_PENDING]
+    _task(household_user)
+    assert _sentences(_turn(auth_client, "anything pending?")) == [
+        "Still working on the opening hours of the made-up museum."
+    ]
+    LateTask.objects.update(status="done")
+    _owe(household_user)
+    assert _sentences(_turn(auth_client, "what's ready")) == [
+        "About the made-up museum: it opens at nine."
+    ]
+    # Said once; asked again, it is read back as the last one.
+    assert _sentences(_turn(auth_client, "anything pending")) == [
+        "Nothing new. The last one was: About the made-up museum: it opens at nine."
+    ]
+    assert fake_model["model"].requests == []
+
+
+def test_cancel_that_cancels_the_newest_open_task(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    fake_model["rounds"] = []
+    assert _sentences(_turn(auth_client, "cancel that")) == [late.NOTHING_TO_CANCEL]
+    older = _task(household_user, question="older")
+    newer = _task(household_user, question="newer")
+    assert _sentences(_turn(auth_client, "cancel that")) == [late.CANCELLED]
+    older.refresh_from_db()
+    newer.refresh_from_db()
+    assert (older.status, newer.status) == ("queued", "cancelled")
+    assert late.run_due(lambda: m.FakeModel([m.say("Older answer.")])) == 1
+    assert OwedLine.objects.get().source_id == str(older.pk)
+
+
+def test_cancel_that_with_nothing_open_while_switched_off_is_the_models(
+    auth_client, door_on, fake_model, monkeypatch
+):
+    monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
+    fake_model["rounds"] = [m.say("Nothing to cancel.")]
+    assert _sentences(_turn(auth_client, "cancel that")) == ["Nothing to cancel."]
+
+
+# -- never a recruiter, never a head unit -------------------------------------------------------
+
+
+def test_a_recruiter_is_never_served(late_on):
+    from agents.evals.runner import member_request
+    from demo.models import DemoCode
+    from household.models import User, is_recruiter
+    from rest_framework.test import APIClient
+
+    _row, code = DemoCode.rotate()
+    browser = APIClient(enforce_csrf_checks=True)
+    browser.get("/api/auth/csrf")
+    assert browser.post("/api/demo/enter", {"code": code, "ref": "late"},
+                        format="json").status_code == 201
+    visitor = next(u for u in User.objects.all() if is_recruiter(u))
+    request = member_request(visitor)
+    assert late.intercept(request, ASK, "web") is None
+    assert late.claim(request, "web") == (None, "")
+    assert not LateTask.objects.exists()
+
+
+def test_a_head_unit_starts_nothing_and_hears_nothing(household_user, late_on):
+    from agents.evals.runner import member_request
+    from headunit_signin.models import HeadUnitCredential
+
+    _owe(household_user)
+    unit, _raw = HeadUnitCredential.mint(
+        household=household_user.household, owner_user=household_user, label="Invented unit"
+    )
+    request = member_request(household_user)
+    assert request.user == household_user  # authenticates first; the unit's token then rides
+    request.auth = unit
+    assert late.intercept(request, ASK, "headunit") == late.NOT_FROM_UNIT
+    assert late.claim(request, "headunit") == (None, "")
+    assert not LateTask.objects.exists()
+    assert OwedLine.objects.get().delivered_at is None
+
+
+# -- the tables ---------------------------------------------------------------------------------
+
+
+def test_both_tables_are_private_to_their_member(household_user, household_a):
+    from agents.evals.runner import member_request
+    from household.tenancy import visible
+    from tests.conftest import _member
+
+    mia = _member(household_a, "mia@example.com")
+    _task(household_user)
+    _owe(household_user)
+    for model in (LateTask, OwedLine):
+        assert visible(model, member_request(household_user)).count() == 1
+        assert not visible(model, member_request(mia)).exists()
+
+
+def test_the_database_refuses_an_owner_from_another_household(household_user, user_b):
+    with pytest.raises(IntegrityError), transaction.atomic():
+        LateTask.objects.create(
+            household=household_user.household,
+            owner_user=user_b,
+            origin_client="web",
+            question="made-up",
+        )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        OwedLine.objects.create(
+            household=household_user.household,
+            owner_user=user_b,
+            source="late_task",
+            source_id="x",
+            text="made-up",
+            expires_at=timezone.now(),
+        )
+
+
+def test_an_owed_line_is_unique_per_source(household_user):
+    _owe(household_user, source_id="same")
+    with pytest.raises(IntegrityError), transaction.atomic():
+        _owe(household_user, source_id="same")

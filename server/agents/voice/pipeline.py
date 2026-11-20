@@ -262,7 +262,8 @@ def _answer(
             elif speaker.enabled and not speaker.stopped:
                 speaker.stopped = True
                 yield ev.Event("speech_stopped", {"reason": "limit"})
-            yield ev.Event("sentence", {"text": text})
+            # Extra fields ride along (a late-answer line's `role` and `owed_id`).
+            yield ev.Event("sentence", {**event.data, "text": text})
             continue
         # A round ended (a tool is next, or the turn): what it said goes to speech now.
         speaker.flush()
