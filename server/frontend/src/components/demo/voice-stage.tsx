@@ -229,7 +229,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
             className="rc-side-orb flex-none rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
             {/* Drawn only while it shows: a hidden orb would still draw every frame. */}
-            {sideShown && <VoiceOrb mode={mode} levels={() => client.levels()} points={420} dot={0.8} className="block size-full" />}
+            {sideShown && <VoiceOrb mode={mode} levels={() => client.levels()} points={800} dot={1} className="block size-full" />}
           </button>
           {/* Beside a pinned scene the words fade out; out of the tab order with them. */}
           <div className="rc-side-words" inert={place.pinned}>

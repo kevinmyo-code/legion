@@ -715,9 +715,11 @@
     .recruiter .rc-voice-side .rc-chips {
         pointer-events: auto;
     }
+    /* 10rem (Kevin, 2026-11-20: "about twice as big"): still inside the 12rem column and the 14rem
+       room each section keeps, so it covers no section text at any width from 900 px. */
     .recruiter .rc-side-orb {
-        width: 5rem;
-        height: 5rem;
+        width: 10rem;
+        height: 10rem;
         color: var(--rc-ink);
         --orb-accent: var(--rc-accent);
     }
