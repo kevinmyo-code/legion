@@ -367,11 +367,17 @@ def voice_turn(
         timings["turn_ms"] = int((clock() - t0) * 1000)
         timings["tts_requests"] = speaker.requests
         stage.meter_speech(request, timings, FEATURE)
+        streamed = utterance.streamed
         log.warning(
-            "agents_voice_turn status=%s spoken=%s %s",
+            "agents_voice_turn status=%s spoken=%s %s%s",
             status,
             str(utterance.spoken).lower(),
             stage.timing_values(timings),
+            (
+                f" stream=1 stt_fallback={streamed.fallback} stt_failure={streamed.failure or '-'}"
+                if streamed is not None
+                else ""
+            ),
         )
 
 
