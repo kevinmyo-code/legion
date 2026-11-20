@@ -1,5 +1,5 @@
-"""Streaming speech-to-text for the agents door (Kevin, 2026-11-20: "a streaming transcription
-model"; behind `LEGION_AGENTS_STREAM_STT`, off unless `on`).
+"""Streaming speech-to-text for the agents door: the words are transcribed while the audio is
+still arriving (behind `LEGION_AGENTS_STREAM_STT`, off unless `on`).
 
 `gemini-3.5-transcribe-live` over the Live API socket, on the engine's own key (the same key and
 supplier as today). Price, from the official pricing page (aistudio.google.com/docs/pricing, read

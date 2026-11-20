@@ -160,3 +160,14 @@ def test_the_key_never_appears_in_a_failure():
     with pytest.raises(live_stt.StreamFailure) as caught:
         session.finish()
     assert "k-secret" not in str(caught.value)
+
+
+def test_the_streaming_modules_quote_no_one():
+    # Public repo: the design is said in plain words, not as anyone's quoted words.
+    from pathlib import Path
+
+    from agents.voice import streaming
+
+    for module in (live_stt, streaming):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert "Kevin" not in source, module.__name__

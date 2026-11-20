@@ -1,6 +1,6 @@
 """The agents door's streamed utterance (`POST /api/agents/turn/stream`, DARK: behind
-`LEGION_AGENTS_STREAM_STT` on top of `LEGION_AGENTS_TURN`; Kevin, 2026-11-20: clients stream audio
-to the engine while he speaks, and a streaming transcription model hears it).
+`LEGION_AGENTS_STREAM_STT` on top of `LEGION_AGENTS_TURN`). The client streams the audio to the
+engine while the member speaks, and a streaming transcription model hears it as it comes.
 
 ## The transport: one long request per utterance
 
