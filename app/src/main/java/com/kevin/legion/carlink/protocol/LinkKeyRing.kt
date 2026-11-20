@@ -40,6 +40,7 @@ class LinkKeyRing(
 
     @Volatile private var silenced = false
     private var oldOnlySince: Long? = null
+    private var lastOldHello = 0L
 
     /** The key fixes, zones and revokes go out under; null while silenced or unpaired. */
     @Synchronized fun sendKey(): ByteArray? = if (silenced) null else current
@@ -104,6 +105,9 @@ class LinkKeyRing(
             return RingEvent.CONFIRMED
         }
         if (reserve == null || sessionOpen) return RingEvent.NONE
+        // The 60 s must be a run of HELLOs: after a gap of 3 missed 5 s HELLOs it starts again.
+        if (oldOnlySince != null && nowMs - lastOldHello > RUN_GAP_MS) oldOnlySince = null
+        lastOldHello = nowMs
         val since = oldOnlySince ?: nowMs.also { oldOnlySince = it }
         if (nowMs - since < QUIET_MS) return RingEvent.NONE
         return if (revert()) RingEvent.REVERTED else RingEvent.NONE
@@ -112,5 +116,8 @@ class LinkKeyRing(
     companion object {
         /** Section 3.7: 60 s of old-key-only HELLOs. */
         const val QUIET_MS = 60_000L
+
+        /** 3 missed HELLOs at the unit's slowest cadence, 5 s (4.3). */
+        const val RUN_GAP_MS = 15_000L
     }
 }

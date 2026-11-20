@@ -145,6 +145,18 @@ class Mnai2FeedTest {
         assertNotNull(f.tick(62_000, fix(61_900), true).singleOrNull())
     }
 
+    @Test fun `the 60 s must be a run of old-key HELLOs, not two far apart`() {
+        val ring = MemoryKeys(current = newKey, reserve = oldKey).ring()
+        val f = feed(ring)
+        val unit = FakeUnit(oldKey)
+        val first = unit.hello(intervalMs = 5000)
+        f.onDatagram(first, first.size, unitAddr, 0)
+        val late = unit.hello(intervalMs = 5000)
+        f.onDatagram(late, late.size, unitAddr, 61_000)
+        assertArrayEquals(newKey, ring.current)
+        assertTrue(events.isEmpty())
+    }
+
     @Test fun `old-key HELLOs never revert while the pairing session is open`() {
         val ring = MemoryKeys(current = newKey, reserve = oldKey).ring()
         ring.sessionOpen = true
