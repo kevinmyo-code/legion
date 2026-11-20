@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.net.InetAddress
 
@@ -34,7 +35,7 @@ class Mnai2FeedTest {
         val unit = FakeUnit(oldKey)
         val challenge = unit.nextChallenge()
         val h = unit.hello(challenge = challenge)
-        f.onDatagram(h, h.size, unitAddr, 0)
+        f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0)
         val out = f.tick(1_000, fix(900), sendFixes = true).single()
         assertEquals(unitAddr, out.to)
         val d = opened(out, oldKey)
@@ -47,20 +48,20 @@ class Mnai2FeedTest {
         val f = feed(MemoryKeys(current = oldKey).ring())
         val unit = FakeUnit(oldKey)
         val first = unit.hello()
-        f.onDatagram(first, first.size, unitAddr, 0)
-        f.onDatagram(first, first.size, otherAddr, 100)
+        f.onDatagram(first, first.size, unitAddr, UNIT_PORT, 0)
+        f.onDatagram(first, first.size, otherAddr, UNIT_PORT, 100)
         assertEquals(unitAddr, f.tick(1_000, fix(900), true).single().to)
         val older = unit.hello(counterOverride = 1)
-        f.onDatagram(older, older.size, otherAddr, 1_100)
+        f.onDatagram(older, older.size, otherAddr, UNIT_PORT, 1_100)
         assertEquals(unitAddr, f.tick(2_100, fix(2_000), true).single().to)
     }
 
     @Test fun `a HELLO under a wrong key or from off the LAN is dropped`() {
         val f = feed(MemoryKeys(current = oldKey).ring())
         val stranger = FakeUnit(ByteArray(32) { 0x7F }).hello()
-        f.onDatagram(stranger, stranger.size, unitAddr, 0)
+        f.onDatagram(stranger, stranger.size, unitAddr, UNIT_PORT, 0)
         val offLan = FakeUnit(oldKey).hello()
-        f.onDatagram(offLan, offLan.size, InetAddress.getByName("192.0.2.1"), 0)
+        f.onDatagram(offLan, offLan.size, InetAddress.getByName("192.0.2.1"), UNIT_PORT, 0)
         assertTrue(f.tick(1_000, fix(900), true).isEmpty())
     }
 
@@ -68,7 +69,7 @@ class Mnai2FeedTest {
         val f = feed(MemoryKeys(current = oldKey).ring())
         val unit = FakeUnit(oldKey)
         val h = unit.hello(intervalMs = 1000)
-        f.onDatagram(h, h.size, unitAddr, 0)
+        f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0)
         assertTrue(f.tick(1_000, fix(900), sendFixes = false).isEmpty())
         assertTrue(f.tick(1_000, fix(-10_000), sendFixes = true).isEmpty())
         assertEquals(1, f.tick(2_000, fix(1_900), sendFixes = true).size)
@@ -79,7 +80,7 @@ class Mnai2FeedTest {
         val f = feed(MemoryKeys(current = oldKey).ring())
         val unit = FakeUnit(oldKey)
         val h = unit.hello(intervalMs = 1000)
-        f.onDatagram(h, h.size, unitAddr, 0)
+        f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0)
         assertEquals(1, f.tick(100, fix(50), true).size)
         assertTrue(f.tick(600, fix(550), true).isEmpty())
         assertTrue(f.tick(1_200, fix(50), true).isEmpty())
@@ -89,7 +90,7 @@ class Mnai2FeedTest {
     @Test fun `ageMs is the monotonic difference, measured at send time`() {
         val f = feed(MemoryKeys(current = oldKey).ring())
         val h = FakeUnit(oldKey).hello()
-        f.onDatagram(h, h.size, unitAddr, 0)
+        f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0)
         val body = opened(f.tick(2_000, fix(1_250), true).single(), oldKey).body
         assertEquals(750, java.nio.ByteBuffer.wrap(body, 46, 4).int)
     }
@@ -98,7 +99,7 @@ class Mnai2FeedTest {
         val f = feed(MemoryKeys(current = oldKey).ring())
         assertNull(f.revoke(0))
         val h = FakeUnit(oldKey).hello()
-        f.onDatagram(h, h.size, unitAddr, 0)
+        f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0)
         assertEquals(Mnai2.REVOKE, opened(f.revoke(9_000)!!, oldKey).type)
         assertNull(f.revoke(10_000))
     }
@@ -107,9 +108,9 @@ class Mnai2FeedTest {
         val f = feed(MemoryKeys(current = oldKey).ring(), zone = "Etc/UTC")
         val unit = FakeUnit(oldKey)
         val a = unit.hello()
-        assertEquals(Mnai2.ZONE, opened(f.onDatagram(a, a.size, unitAddr, 0).single(), oldKey).type)
+        assertEquals(Mnai2.ZONE, opened(f.onDatagram(a, a.size, unitAddr, UNIT_PORT, 0).single(), oldKey).type)
         val b = unit.hello()
-        assertTrue(f.onDatagram(b, b.size, unitAddr, 1_000).isEmpty())
+        assertTrue(f.onDatagram(b, b.size, unitAddr, UNIT_PORT, 1_000).isEmpty())
     }
 
     @Test fun `lost stored - the first new-key HELLO deletes the reserve`() {
@@ -117,7 +118,7 @@ class Mnai2FeedTest {
         val ring = store.ring()
         val f = feed(ring)
         val h = FakeUnit(newKey).hello()
-        f.onDatagram(h, h.size, unitAddr, 0)
+        f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0)
         assertNull(ring.reserve)
         assertNull(store.reserve)
         assertEquals(listOf(RingEvent.CONFIRMED), events)
@@ -130,18 +131,18 @@ class Mnai2FeedTest {
         val unit = FakeUnit(oldKey)
         for (t in 0L..59_000L step 5_000L) {
             val h = unit.hello(intervalMs = 5000)
-            f.onDatagram(h, h.size, unitAddr, t)
+            f.onDatagram(h, h.size, unitAddr, UNIT_PORT, t)
         }
         assertArrayEquals(newKey, ring.current)
         val last = unit.hello(intervalMs = 5000)
-        f.onDatagram(last, last.size, unitAddr, 60_000)
+        f.onDatagram(last, last.size, unitAddr, UNIT_PORT, 60_000)
         assertArrayEquals(oldKey, ring.current)
         assertArrayEquals(oldKey, store.current)
         assertNull(ring.reserve)
         assertEquals(listOf(RingEvent.REVERTED), events)
         // Back on the old key: the next HELLO under it is accepted and fixes flow again.
         val next = unit.hello()
-        f.onDatagram(next, next.size, unitAddr, 61_000)
+        f.onDatagram(next, next.size, unitAddr, UNIT_PORT, 61_000)
         assertNotNull(f.tick(62_000, fix(61_900), true).singleOrNull())
     }
 
@@ -150,9 +151,9 @@ class Mnai2FeedTest {
         val f = feed(ring)
         val unit = FakeUnit(oldKey)
         val first = unit.hello(intervalMs = 5000)
-        f.onDatagram(first, first.size, unitAddr, 0)
+        f.onDatagram(first, first.size, unitAddr, UNIT_PORT, 0)
         val late = unit.hello(intervalMs = 5000)
-        f.onDatagram(late, late.size, unitAddr, 61_000)
+        f.onDatagram(late, late.size, unitAddr, UNIT_PORT, 61_000)
         assertArrayEquals(newKey, ring.current)
         assertTrue(events.isEmpty())
     }
@@ -164,7 +165,7 @@ class Mnai2FeedTest {
         val unit = FakeUnit(oldKey)
         for (t in 0L..120_000L step 5_000L) {
             val h = unit.hello()
-            f.onDatagram(h, h.size, unitAddr, t)
+            f.onDatagram(h, h.size, unitAddr, UNIT_PORT, t)
         }
         assertArrayEquals(newKey, ring.current)
     }
@@ -172,7 +173,7 @@ class Mnai2FeedTest {
     @Test fun `nothing is ever sent under the reserve key`() {
         val f = feed(MemoryKeys(current = newKey, reserve = oldKey).ring())
         val h = FakeUnit(oldKey).hello()
-        assertTrue(f.onDatagram(h, h.size, unitAddr, 0).isEmpty())
+        assertTrue(f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0).isEmpty())
         assertTrue(f.tick(1_000, fix(900), true).isEmpty())
         assertNull(f.revoke(1_000))
     }
@@ -182,12 +183,12 @@ class Mnai2FeedTest {
         val ring = store.ring()
         val f = feed(ring)
         val h = FakeUnit(oldKey).hello()
-        f.onDatagram(h, h.size, unitAddr, 0)
+        f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0)
         val before = opened(f.tick(1_000, fix(900), true).single(), oldKey)
         assertTrue(ring.commit(newKey))
         assertTrue(f.tick(2_000, fix(1_900), true).isEmpty())
         val nh = FakeUnit(newKey).hello()
-        f.onDatagram(nh, nh.size, unitAddr, 2_100)
+        f.onDatagram(nh, nh.size, unitAddr, UNIT_PORT, 2_100)
         val after = opened(f.tick(3_000, fix(2_900), true).single(), newKey)
         assertEquals(1L, after.counter)
         assertTrue(!before.session.contentEquals(after.session))
@@ -197,11 +198,29 @@ class Mnai2FeedTest {
         val ring = MemoryKeys(current = oldKey).ring()
         val f = feed(ring)
         val h = FakeUnit(oldKey).hello()
-        f.onDatagram(h, h.size, unitAddr, 0)
+        f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 0)
         ring.beginHandover()
         assertTrue(f.tick(1_000, fix(900), true).isEmpty())
         assertNull(f.revoke(1_000))
         ring.handoverFailed()
         assertEquals(1, f.tick(1_000, fix(900), true).size)
+    }
+
+    @Ignore("red until fix P-D") @Test fun `the destination moves to a new address only after 2 accepted HELLOs from it`() {
+        val f = feed(MemoryKeys(current = oldKey).ring())
+        val unit = FakeUnit(oldKey)
+        val a = unit.hello(intervalMs = 1000)
+        f.onDatagram(a, a.size, unitAddr, UNIT_PORT, 0)
+        assertEquals(unitAddr, f.tick(100, fix(50), true).single().to)
+        val b1 = unit.hello(intervalMs = 1000)
+        f.onDatagram(b1, b1.size, otherAddr, UNIT_PORT, 1_000)
+        assertEquals(unitAddr, f.tick(1_100, fix(1_050), true).single().to)
+        val b2 = unit.hello(intervalMs = 1000)
+        f.onDatagram(b2, b2.size, otherAddr, UNIT_PORT, 2_000)
+        assertEquals(otherAddr, f.tick(2_100, fix(2_050), true).single().to)
+    }
+
+    private companion object {
+        const val UNIT_PORT = 40_000
     }
 }

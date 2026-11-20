@@ -28,7 +28,7 @@ enum class LinkState { NOT_PAIRED, PAIRED, BROKEN }
 /** Something that happened that the screen should say once, in words. */
 enum class CarLinkNote {
     CONFIRMED, REVERTED_QUIET, FORGOT_REVOKE_SENT, FORGOT_NOT_IN_RANGE, FORGET_FAILED, PORT_UNAVAILABLE,
-    SETTING_NOT_SAVED,
+    SETTING_NOT_SAVED, FORGOT_WILL_TELL,
 }
 
 /** Everything the Car link screen reads. Not printed anywhere; [PairingStage.DigitsShown] hides its digits. */
@@ -56,6 +56,8 @@ class CarLinkController(
     private val io: CoroutineDispatcher,
     private val jitterMs: () -> Long,
     private val sleep: suspend (Long) -> Unit,
+    private val network: () -> Boolean = { true },
+    private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
     private val _status = MutableStateFlow(CarLinkStatus())
     val status: StateFlow<CarLinkStatus> = _status.asStateFlow()

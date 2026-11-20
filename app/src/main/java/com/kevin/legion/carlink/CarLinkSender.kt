@@ -10,7 +10,7 @@ import java.net.Inet4Address
 import java.net.InetAddress
 
 /** A datagram that arrived: its length in the caller's buffer and its source address. */
-class Incoming(val length: Int, val from: InetAddress)
+class Incoming(val length: Int, val from: InetAddress, val port: Int)
 
 /** The UDP port the sender listens and sends on. */
 interface DatagramPort : Closeable {
@@ -45,13 +45,17 @@ class CarLinkSender(
     private val buf = ByteArray(Mnai2.MAX_DATAGRAM + 1)
     private var fastHeld = false
 
+    /** Datagrams whose handling threw (P-B). */
+    var faults = 0
+        private set
+
     fun step() {
         val wait = clock().let { if (feed.inRange(it)) feed.requestedIntervalMs() else IDLE_WAIT_MS }
         val incoming = port.receive(buf, wait.toInt().coerceAtLeast(1))
         val now = clock()
         // An oversized datagram (more than 256 bytes arrived) is not MNAI2: dropped silently.
         if (incoming != null && incoming.length <= Mnai2.MAX_DATAGRAM) {
-            send(feed.onDatagram(buf, incoming.length, incoming.from, now))
+            send(feed.onDatagram(buf, incoming.length, incoming.from, incoming.port, now))
         }
         val on = sendFixes()
         send(feed.tick(now, if (on) fixes.latest() else null, on))
@@ -80,7 +84,7 @@ class CarLinkSender(
         var ok = true
         for (o in out) {
             try {
-                port.send(o.bytes, o.to, Mnai2.PORT)
+                port.send(o.bytes, o.to, o.port)
             } catch (_: IOException) {
                 ok = false
             }

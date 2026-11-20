@@ -76,6 +76,18 @@ class CarLinkStore(
         )
     }
 
+    fun revokeOnlyPending(): Boolean = false
+
+    fun writeRevokeOnly(key: ByteArray, sinceMs: Long): Boolean = false
+
+    fun carGeminiKey(): String? = null
+
+    fun setCarGeminiKey(key: String?): Boolean = false
+
+    fun pairingNetwork(): PairingNetwork? = null
+
+    fun setPairingNetwork(n: PairingNetwork?): Boolean = false
+
     fun unitDeviceId(): String? = file.read()[UNIT_DEVICE_ID]
 
     fun setUnitDeviceId(id: String?): Boolean = file.writeAll(mapOf(UNIT_DEVICE_ID to id))

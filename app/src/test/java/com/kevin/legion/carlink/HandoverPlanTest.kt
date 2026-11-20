@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 
 /** What goes over the link in the hand-over (3.5): only the fields the document lists, never a URL. */
@@ -82,5 +83,15 @@ class HandoverPlanTest {
 
     @Test fun `production mints nothing until the engine endpoint exists`() = runBlocking {
         assertNull(UnitTokenNotYetAvailable().mint("Head unit"))
+    }
+
+    @Ignore("red until fix car key") @Test fun `the Gemini key handed over is only ever the car's own key field, never the phone's`() {
+        val store = CarLinkStore(FakeKeystoreStandIn(), MemoryRecordFile()) {}
+        val carPlan = HandoverPlan.forCar(store, tokens, { "Test phone" }, {})
+        assertNull(fields(carPlan.body().toJson())["gemini_key"])
+        store.setCarGeminiKey("car-only-key-for-tests")
+        assertEquals("\"car-only-key-for-tests\"", fields(carPlan.body().toJson())["gemini_key"].toString())
+        store.setCarGeminiKey(null)
+        assertNull(fields(carPlan.body().toJson())["gemini_key"])
     }
 }

@@ -10,6 +10,7 @@ import com.kevin.legion.carlink.protocol.PhoneFix
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -20,6 +21,7 @@ class CarLinkSenderTest {
     private val unit = FakeUnit(key)
     private val unitAddr = InetAddress.getByName("10.0.0.1")
     private var now = 0L
+    private var unitPort = Mnai2.PORT
 
     private inner class FakePort : DatagramPort {
         val inbox = ArrayDeque<Pair<ByteArray, InetAddress>?>()
@@ -33,8 +35,10 @@ class CarLinkSenderTest {
                 now += timeoutMs
                 return null
             }
-            next.first.copyInto(buf)
-            return Incoming(next.first.size, next.second)
+            // Like DatagramSocket: a datagram longer than the buffer is cut to the buffer's length.
+            val n = minOf(next.first.size, buf.size)
+            next.first.copyInto(buf, endIndex = n)
+            return Incoming(n, next.second, unitPort)
         }
 
         override fun send(bytes: ByteArray, to: InetAddress, port: Int) { sent += Triple(bytes, to, port) }
@@ -70,6 +74,18 @@ class CarLinkSenderTest {
         assertEquals(Mnai2.PORT, p)
         assertEquals(Mnai2.FIX, Mnai2.openFromPhone(DirectionKeys(key).p2u, bytes)!!.type)
         assertEquals(listOf(true), fixes.fast)
+    }
+
+    @Test fun `every datagram goes to the HELLO's source address AND port, never to 17311`() {
+        // The unit listens only on the socket its HELLO came from (rev 5, section 4).
+        unitPort = 40_001
+        port.inbox += unit.hello(intervalMs = 1000) to unitAddr
+        sender.step()
+        sender.step()
+        assertTrue(sender.revoke())
+        assertTrue(port.sent.size >= 2)
+        assertTrue(port.sent.none { it.third == Mnai2.PORT })
+        assertTrue(port.sent.all { it.second == unitAddr && it.third == 40_001 })
     }
 
     @Test fun `with the setting off nothing is sent and GPS is never asked for`() {
@@ -118,5 +134,43 @@ class CarLinkSenderTest {
         assertTrue(lan.contains(InetAddress.getByName("10.0.0.200")))
         assertFalse(lan.contains(InetAddress.getByName("10.0.1.1")))
         assertFalse(lan.contains(InetAddress.getByName("8.8.8.8")))
+    }
+
+    // ---- P-B: any LAN peer can send bytes; handling one must never take the loop down.
+    @Ignore("red until fix P-B") @Test fun `a datagram whose handling throws is counted and contained, and later HELLOs still work`() {
+        var explode = true
+        val fragile = CarLinkSender(
+            feed = Mnai2Feed(
+                MemoryKeys(current = key).ring(), { ByteArray(16) { 1 } }, lan::contains,
+                { if (explode) error("zone lookup failed") else null },
+            ),
+            port = port,
+            clock = { now },
+            fixes = fixes,
+            sendFixes = { true },
+        )
+        port.inbox += unit.hello(intervalMs = 1000) to unitAddr
+        fragile.step()
+        assertEquals(1, fragile.faults)
+        explode = false
+        now += 10_000
+        port.inbox += unit.hello(intervalMs = 1000) to unitAddr
+        fragile.step()
+        assertTrue(fragile.inRange())
+    }
+
+    @Ignore("red until fix P-B") @Test fun `random and truncated datagrams never throw out of step`() {
+        val r = java.util.Random(11)
+        val good = unit.hello()
+        repeat(3000) { i ->
+            val bytes = when (i % 3) {
+                0 -> ByteArray(r.nextInt(300)).also(r::nextBytes)
+                1 -> good.copyOf(r.nextInt(good.size))
+                else -> good.copyOf().also { it[r.nextInt(it.size)] = r.nextInt().toByte() }
+            }
+            port.inbox += bytes to unitAddr
+            sender.step()
+        }
+        assertEquals(0, sender.faults)
     }
 }

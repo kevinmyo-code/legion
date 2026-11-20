@@ -75,6 +75,10 @@ class HandoverPlan(
     suspend fun revoke(id: String): Boolean = tokens.revoke(id)
 
     companion object {
+        /** STUB (red step). */
+        fun forCar(store: CarLinkStore, tokens: UnitTokenSource, phoneName: () -> String?, redact: (String) -> Unit) =
+            HandoverPlan({ null }, tokens, { false }, phoneName, redact)
+
         /** 5.1's device name, listed as "Head unit" in the phone's device list. */
         const val UNIT_NAME = "Head unit"
     }

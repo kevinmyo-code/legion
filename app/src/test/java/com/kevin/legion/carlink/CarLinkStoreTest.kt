@@ -11,6 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
@@ -152,5 +153,33 @@ class CarLinkStoreTest {
         assertTrue(excludes("src/main/res/xml/data_extraction_rules.xml", "cloud-backup"))
         assertTrue(excludes("src/main/res/xml/data_extraction_rules.xml", "device-transfer"))
         assertTrue(excludes("src/main/res/xml/backup_rules.xml", "full-backup-content"))
+    }
+
+    @Ignore("red until fix car key") @Test fun `the car's own Gemini key is sealed, read back, and cleared by Forget`() {
+        assertTrue(store.setCarGeminiKey("car-key-for-tests-0001"))
+        assertEquals("car-key-for-tests-0001", store.carGeminiKey())
+        assertFalse(file.values.values.joinToString().contains("car-key-for-tests-0001"))
+        assertTrue(redacted.contains("car-key-for-tests-0001"))
+        store.write(key, null)
+        store.write(null, null)
+        assertNull(store.carGeminiKey())
+    }
+
+    @Ignore("red until fix P-D") @Test fun `the pairing network is recorded and read back`() {
+        assertTrue(store.setPairingNetwork(PairingNetwork("ap-test0", "10.20.30.0", 24)))
+        val n = store.pairingNetwork()!!
+        assertEquals("ap-test0", n.name)
+        assertEquals("10.20.30.0", n.base)
+        assertEquals(24, n.prefix)
+    }
+
+    @Ignore("red until fix revoke-only") @Test fun `a revoke-only record keeps one sealed key and its date, and nothing else`() {
+        store.write(key, old)
+        store.setSendLocation(true)
+        assertTrue(store.writeRevokeOnly(key, 123L))
+        assertTrue(store.revokeOnlyPending())
+        assertSame(StoredLink.NotPaired, store.load())
+        assertFalse(store.sendLocation())
+        assertFalse(file.values.values.joinToString().contains(LinkCrypto.b64(key)))
     }
 }

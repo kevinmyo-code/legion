@@ -11,8 +11,11 @@ class FixSample(val elapsedMs: Long, val fix: PhoneFix) {
     override fun toString() = "FixSample(redacted)"
 }
 
-/** One datagram to send, to the unit's address on [Mnai2.PORT]. */
-class Outgoing(val bytes: ByteArray, val to: InetAddress) {
+/**
+ * One datagram to send, to the accepted HELLO's source address AND port (rev 5, section 4: the unit
+ * listens on the socket its HELLOs come from, not on 17311).
+ */
+class Outgoing(val bytes: ByteArray, val to: InetAddress, val port: Int) {
     override fun toString() = "Outgoing(${bytes.size} bytes)"
 }
 
@@ -67,6 +70,7 @@ class Mnai2Feed(
     private var counter = 0L
 
     private var destination: InetAddress? = null
+    private var destinationPort = 0
     private var challenge: ByteArray? = null
     private var challengeAt = 0L
     private var intervalMs = 0L
@@ -82,20 +86,32 @@ class Mnai2Feed(
     /** Requested fix interval of the newest accepted HELLO, 0 when none. */
     @Synchronized fun requestedIntervalMs(): Long = intervalMs
 
-    @Synchronized fun onDatagram(bytes: ByteArray, length: Int, from: InetAddress, nowMs: Long): List<Outgoing> {
+    @Synchronized fun onDatagram(
+        bytes: ByteArray,
+        length: Int,
+        from: InetAddress,
+        fromPort: Int,
+        nowMs: Long,
+    ): List<Outgoing> {
         if (!onLan(from)) return emptyList()
         syncKeys()
         val cur = keys
         cur?.let { k -> Mnai2.openFromUnit(k.u2p, bytes, length) }?.let { d ->
-            return onHello(d, KeySlot.CURRENT, from, nowMs)
+            return onHello(d, KeySlot.CURRENT, from, fromPort, nowMs)
         }
         reserveKeys?.let { k -> Mnai2.openFromUnit(k.u2p, bytes, length) }?.let { d ->
-            onHello(d, KeySlot.RESERVE, from, nowMs)
+            onHello(d, KeySlot.RESERVE, from, fromPort, nowMs)
         }
         return emptyList()
     }
 
-    private fun onHello(d: Mnai2Datagram, slot: KeySlot, from: InetAddress, nowMs: Long): List<Outgoing> {
+    private fun onHello(
+        d: Mnai2Datagram,
+        slot: KeySlot,
+        from: InetAddress,
+        fromPort: Int,
+        nowMs: Long,
+    ): List<Outgoing> {
         if (d.type != Mnai2.HELLO) return emptyList()
         val hello = Mnai2.readHello(d.body) ?: return emptyList()
         val replay = if (slot == KeySlot.CURRENT) currentReplay else reserveReplay
@@ -108,6 +124,7 @@ class Mnai2Feed(
             return emptyList()
         }
         destination = from
+        destinationPort = fromPort
         challenge = hello.challenge
         challengeAt = nowMs
         intervalMs = hello.intervalMs
@@ -155,7 +172,7 @@ class Mnai2Feed(
         // 3.4: nothing under the old key between `handover` and `done`.
         if (ring.sendKey() !== keyRef) return null
         counter++
-        return Outgoing(Mnai2.seal(k.p2u, type, session, counter, body), to)
+        return Outgoing(Mnai2.seal(k.p2u, type, session, counter, body), to, destinationPort)
     }
 
     /** Re-derives everything when the ring's keys changed (commit, revert, forget). */

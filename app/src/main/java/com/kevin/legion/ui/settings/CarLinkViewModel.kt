@@ -52,6 +52,8 @@ data class CarLinkUiState(
     val canForget: Boolean = false,
     val scannerAvailable: Boolean = false,
     val debugPaste: Boolean = false,
+    val scanNote: String? = null,
+    val showScan: Boolean = true,
 ) {
     // A data class's toString would print the digits; nothing may log them.
     override fun toString() = "CarLinkUiState($phase)"
@@ -221,5 +223,6 @@ object CarLinkWords {
         CarLinkNote.FORGET_FAILED -> "Could not forget the head unit: this phone could not change its saved pairing."
         CarLinkNote.PORT_UNAVAILABLE -> "Could not open the car link port, so no location goes to the head unit."
         CarLinkNote.SETTING_NOT_SAVED -> "That setting could not be saved."
+        CarLinkNote.FORGOT_WILL_TELL -> "STUB"
     }
 }

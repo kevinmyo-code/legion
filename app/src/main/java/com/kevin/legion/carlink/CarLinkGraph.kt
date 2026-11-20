@@ -91,7 +91,7 @@ class UdpPort private constructor(private val socket: DatagramSocket) : Datagram
         socket.soTimeout = timeoutMs
         val packet = DatagramPacket(buf, buf.size)
         socket.receive(packet)
-        Incoming(packet.length, packet.address)
+        Incoming(packet.length, packet.address, packet.port)
     } catch (_: SocketTimeoutException) {
         null
     }
