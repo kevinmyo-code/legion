@@ -131,6 +131,40 @@ class PairingServerTest {
         server.close()
     }
 
+    /** Read state of an idle client: -1 closed by the server, -2 still open (read timed out). */
+    private fun Socket.state(): Int {
+        soTimeout = 300
+        return runCatching { getInputStream().read() }.getOrDefault(-2)
+    }
+
+    private fun from(last: Int, port: Int) = Socket(loopback, port, InetAddress.getByName("127.0.0.$last"), 0)
+
+    @Test fun m1_whenAllSlotsAreTakenTheOldestIsEvictedNotTheNewcomer() {
+        val (server, qr) = server()
+        val port = Phone(qr).port
+        val idle = (2..4).map { from(it, port).also { Thread.sleep(50) } }
+        val fourth = from(5, port)
+        Thread.sleep(300)
+        assertEquals("oldest not evicted", -1, idle[0].state())
+        assertEquals("a newer idle one was closed", -2, idle[1].state())
+        assertEquals("the newcomer was refused", -2, fourth.state())
+        (idle + fourth).forEach { it.close() }
+        server.close()
+    }
+
+    @Test fun m1_oneSlotPerSourceAddress() {
+        val (server, qr) = server()
+        val port = Phone(qr).port
+        val first = from(7, port)
+        Thread.sleep(100)
+        val second = from(7, port)
+        Thread.sleep(300)
+        assertEquals("the older connection from the same address was not closed", -1, first.state())
+        assertEquals(-2, second.state())
+        first.close(); second.close()
+        server.close()
+    }
+
     @Test fun m1_anIdleConnectionIsClosedWithinThreeSeconds() {
         val (server, qr) = server()
         Socket(loopback, Phone(qr).port).use { idle ->

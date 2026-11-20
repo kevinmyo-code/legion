@@ -128,6 +128,41 @@ class PairingSessionTest {
         return s to phone
     }
 
+    /**
+     * Review N1, the exact sequence: an old-key fix arrives between `done` and `stored` while the
+     * pairing screen is open. The real feed set decides (a drop would reach the sink as the owner
+     * applies it); the pairing must still end Paired, confirmed, with the new key committed.
+     */
+    @Test fun n1_anOldKeyFixBetweenDoneAndStoredLeavesTheNewPairingIntact() {
+        val oldKey = ByteArray(32) { 9 }
+        val (s, phone) = upToDone()
+        val newKey = staged.single().second
+        var nanos = 1_000_000_000_000L
+        val rng = java.util.Random(3)
+        fun feed(k: ByteArray) = com.kevin.midnightai.location.PhoneFeed(k, nowNanos = { nanos }, random = { rng.nextBytes(it) })
+        CarLink.pairingSessionOpen = true // as PairingServer.start sets it
+        try {
+            val set = com.kevin.midnightai.location.LinkFeedSet(feed(oldKey), feed(newKey))
+            val w = com.kevin.midnightai.location.PhoneLinkWire
+            val hello = set.committed!!.hello(1000)
+            val heard = w.decodeHello(w.unitToPhoneKey(oldKey), hello, hello.size)!!
+            val fix = w.encodeFix(
+                w.phoneToUnitKey(oldKey), ByteArray(16) { 5 }, 1, heard.challenge,
+                com.kevin.midnightai.location.PhoneFix(0.5, 0.5, 5f, null, null, null, 50),
+            )
+            nanos += 100_000_000L
+            val r = set.receive(fix, fix.size)
+            assertTrue("old-key fix not accepted: ${r.outcome}", r.outcome is com.kevin.midnightai.location.PhoneFeed.Outcome.Fix)
+            if (r.dropPending) { sink.dropPending(); commitError = HandoverSink.NOTHING_PENDING }
+        } finally {
+            CarLink.pairingSessionOpen = false
+        }
+        s.onMessage(phone.stored())
+        assertEquals(0, drops)
+        assertEquals(1, commits)
+        assertTrue("stage ${s.stage}", s.stage is Stage.Paired && (s.stage as Stage.Paired).confirmed)
+    }
+
     @Test fun n1_aStoredWithNothingPendingIsAFailureNeverPaired() {
         commitError = "nothing pending"
         val (s, phone) = upToDone()
