@@ -227,11 +227,17 @@ class PairingSession(
         LinkCrypto.open(k.handover, LinkCrypto.nonce(STOR, 1), STORED_AAD, sealed)
             ?: return listOfNotNull(fail(Reason.BAD_MESSAGE))
         val h = pending
-        val result = runCatching { sink.commit() }.getOrElse { "commit threw" }
+        // A failing commit (Keystore) is retried, then the session fails visibly (review N4).
+        var result: String? = "not tried"
+        for (attempt in 1..COMMIT_TRIES) {
+            result = runCatching { sink.commit() }.getOrElse { "commit threw" }
+            if (result == null || result == HandoverSink.NOTHING_PENDING) break
+        }
         // Review N1: `stored` with nothing left to commit means the phone holds a key this unit
         // dropped. That is a failure the driver must see, never "Paired".
         if (result == HandoverSink.NOTHING_PENDING) return listOfNotNull(fail(Reason.PAIRING_LOST, tellPhone = false))
-        if (result == null) pendingWritten = false
+        if (result != null) return listOfNotNull(fail(Reason.STORE_FAILED, tellPhone = false))
+        pendingWritten = false
         stage = Stage.Paired(h?.phoneName, h?.present().orEmpty(), confirmed = result == null)
         wipe()
         return emptyList()
@@ -289,6 +295,7 @@ class PairingSession(
         const val QR_LIFETIME_MS = 2 * 60_000L
         const val STAGE_LIFETIME_MS = 2 * 60_000L
         const val MAX_CODE_TRIES = 3
+        const val COMMIT_TRIES = 3
         private fun ascii(s: String) = s.toByteArray(Charsets.US_ASCII)
         val CDOK = ascii("CDOK")
         val HAND = ascii("HAND")

@@ -135,6 +135,14 @@ class PairingSessionTest {
         assertTrue("stage ${s.stage}", s.stage is Stage.Failed)
     }
 
+    @Test fun n4_aCommitThatKeepsFailingIsRetriedThenFailsVisibly() {
+        commitError = "keystore broken"
+        val (s, phone) = upToDone()
+        s.onMessage(phone.stored())
+        assertEquals(PairingSession.COMMIT_TRIES, commits)
+        assertEquals(Stage.Failed(Reason.STORE_FAILED), s.stage)
+    }
+
     @Test fun n2_cancelAfterDoneDropsThePendingPairing() {
         val (s, _) = upToDone()
         s.cancel()

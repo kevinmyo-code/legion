@@ -158,11 +158,13 @@ class LinkKeyStoreTest {
         assertTrue(store().hasRecord())
     }
 
-    @Test fun anUnreadablePendingIsDroppedAndTheCommittedOneRules() {
+    @Test fun anUnreadablePendingIsKeptAndTheCommittedOneRulesMeanwhile() {
         pair(keyA)
         context.getSharedPreferences("car_link", Context.MODE_PRIVATE).edit().putString("pending_enc", "garbage").commit()
         assertEquals(LinkStatus.PAIRED, store().keys().status)
-        assertFalse(context.getSharedPreferences("car_link", Context.MODE_PRIVATE).contains("pending_enc"))
+        // Review N4: a read failure never deletes; commit says it could not read it, not "nothing pending".
+        assertTrue(context.getSharedPreferences("car_link", Context.MODE_PRIVATE).contains("pending_enc"))
+        assertTrue(store().commitPending() != HandoverSink.NOTHING_PENDING)
     }
 
     @Test fun n4_aTransientReadFailureNeverDeletesThePendingPairing() {

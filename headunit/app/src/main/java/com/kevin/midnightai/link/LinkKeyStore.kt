@@ -72,24 +72,31 @@ class LinkKeyStore(
 
     override fun phoneName(): String? = prefs.getString(KEY_PHONE_NAME, null)
 
-    private fun open(key: String): JSONObject? =
-        prefs.getString(key, null)?.let(decrypt)?.let { runCatching { JSONObject(it) }.getOrNull() }
+    /**
+     * Decrypts one slot, retrying a few times: cheap keymaster HALs fail transiently (review N4),
+     * and a read failure must never be mistaken for "no pairing".
+     */
+    private fun open(key: String): JSONObject? {
+        val raw = prefs.getString(key, null) ?: return null
+        repeat(READ_TRIES) {
+            raw.let(decrypt)?.let { plain -> return runCatching { JSONObject(plain) }.getOrNull() }
+        }
+        return null
+    }
 
     private fun linkOf(json: JSONObject?): ByteArray? =
         json?.optString("link")?.let { runCatching { Base64.Default.decode(it) }.getOrNull() }
             ?.takeIf { it.size == LinkCrypto.KEY_BYTES }
 
     override fun keys(): LinkKeys {
-        var pending = linkOf(open(KEY_PENDING))
-        if (pending == null && prefs.contains(KEY_PENDING)) {
-            // An unreadable PENDING is dropped: the COMMITTED pairing (if any) stays in charge.
-            prefs.edit().remove(KEY_PENDING).commit()
-            pending = null
-        }
+        // An unreadable PENDING is never deleted here (review N4): it stays on disk for the next
+        // read, and the COMMITTED pairing (if any) stays in charge meanwhile.
+        val pending = linkOf(open(KEY_PENDING))
         val hasCommitted = prefs.contains(KEY_COMMITTED)
         val committed = if (hasCommitted) linkOf(open(KEY_COMMITTED)) else null
         val status = when {
             pending != null -> LinkStatus.PENDING
+            prefs.contains(KEY_PENDING) && committed == null -> LinkStatus.BROKEN
             hasCommitted && committed == null -> LinkStatus.BROKEN
             committed != null -> LinkStatus.PAIRED
             else -> LinkStatus.NOT_PAIRED
@@ -121,8 +128,10 @@ class LinkKeyStore(
     }
 
     override fun commitPending(): String? {
-        val p = open(KEY_PENDING) ?: return HandoverSink.NOTHING_PENDING.also { prefs.edit().remove(KEY_PENDING).commit() }
-        val link = linkOf(p) ?: return "pending unreadable".also { prefs.edit().remove(KEY_PENDING).commit() }
+        if (!prefs.contains(KEY_PENDING)) return HandoverSink.NOTHING_PENDING
+        // Unreadable right now: keep it and say so; the caller retries or fails visibly (N4).
+        val p = open(KEY_PENDING) ?: return PENDING_UNREADABLE
+        val link = linkOf(p) ?: return PENDING_UNREADABLE
         val engineBefore = engine.snapshot()
         val geminiBefore = gemini.snapshot()
         val fromLink = prefs.getString(KEY_FROM_LINK, null)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
@@ -191,6 +200,8 @@ class LinkKeyStore(
         private const val KEY_FROM_LINK = "from_link"
         private const val KEYSTORE = "this unit's keystore is not working"
         private const val DISK = "this unit could not write its settings"
+        private const val PENDING_UNREADABLE = "the new pairing could not be read right now"
+        private const val READ_TRIES = 3
 
         /** The app's store over the real EngineConfig, CompanionProfile and build constant. */
         fun forApp(context: Context): LinkKeyStore {
