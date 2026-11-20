@@ -47,6 +47,7 @@ from agents.models import (
     LATE_RUNNING,
     AgentConversation,
     AgentTurn,
+    LateHeartbeat,
     LateTask,
     OwedLine,
 )
@@ -72,6 +73,11 @@ MAX_ATTEMPTS = 2
 # the turn, so no later tick claims a task still running.
 LEASE = timedelta(seconds=120)
 OWED_TTL = timedelta(hours=24)
+# A task still queued this long after the ask is given up, its slot freed and a line owed: the
+# answer would come too late to be the one he asked for.
+QUEUE_TTL = timedelta(minutes=10)
+# The scheduler ticks every minute; three minutes without a tick means no runner is behind an ask.
+TICK_FRESH = timedelta(minutes=3)
 MAX_SPOKEN_PER_DAY = 8
 TOPIC_CHARS = 60
 ANSWER_CHARS = 400
@@ -87,6 +93,8 @@ STILL_WORKING = "Still working on {topics}."
 LAST_ONE = "Nothing new. The last one was: {text}"
 MORE = "{n} more {are} ready; ask what's pending."
 FAILED_LINE = "I couldn't finish looking into {topic}."
+EXPIRED_LINE = "I couldn't get to {topic} in time."
+NO_RUNNER = "I can't run things in the background right now, so I didn't start that."
 ASK_WHAT = "What should I look into? Say it with the topic, and I'll tell you later."
 # A topic that is only a pronoun means nothing in the task's own, empty conversation.
 _BARE_TOPICS = frozenset({"it", "that", "this", "them", "those", "these", "that one", "this one"})
@@ -215,11 +223,39 @@ def intercept(request, words: str, client: str, last_reply: str = "") -> Reply |
     return None
 
 
+def saw_tick(now: datetime | None = None) -> None:
+    """The runner ran (`manage.py late_tasks`)."""
+    LateHeartbeat.objects.update_or_create(pk=1, defaults={"seen_at": now or dj_timezone.now()})
+
+
+def runner_is_fresh(now: datetime | None = None) -> bool:
+    seen = LateHeartbeat.objects.filter(pk=1).values_list("seen_at", flat=True).first()
+    return seen is not None and seen >= (now or dj_timezone.now()) - TICK_FRESH
+
+
+def expire_stale(now: datetime | None = None, **mine) -> int:
+    """Gives up tasks queued longer than `QUEUE_TTL` (all, or one member's with `household` and
+    `owner_user`): failed, their slot free, one line owed each. Returns how many."""
+    now = now or dj_timezone.now()
+    stale = list(
+        LateTask.objects.filter(status=LATE_QUEUED, created_at__lt=now - QUEUE_TTL, **mine)
+    )
+    for task in stale:
+        if LateTask.objects.filter(pk=task.pk, status=LATE_QUEUED).update(
+            status=LATE_FAILED, finished_at=now
+        ):
+            _owe(task, EXPIRED_LINE.format(topic=_topic(task.question)))
+    return len(stale)
+
+
 def _start(request, question: str, client: str) -> str:
     if headunit_scope.is_headunit(request):
         return NOT_FROM_UNIT
     if question.lower().strip(" .,!?") in _BARE_TOPICS:
         return ASK_WHAT
+    expire_stale(household=household_of(request), owner_user=request.user)
+    if not runner_is_fresh():
+        return NO_RUNNER
     mine = _mine(LateTask, request)
     if mine.filter(status__in=(LATE_QUEUED, LATE_RUNNING)).count() >= MAX_OPEN:
         return TOO_MANY_OPEN
@@ -240,6 +276,7 @@ def _start(request, question: str, client: str) -> str:
 def _pending(request, client: str) -> Reply | None:
     """Code's answer to "anything pending?" while the late-answer path has something to say;
     None (the model's turn, as before) when it has nothing: no task, no line in 24 hours."""
+    expire_stale(household=household_of(request), owner_user=request.user)
     line, more = claim(request, client)
     if line is not None:
         return Reply(f"{line.text} {more}".strip(), owed=line)
@@ -456,6 +493,8 @@ def run_due(model_for, *, limit: int = 1, now: datetime | None = None) -> int:
     the model client, once per task."""
     if not enabled():
         return 0
+    saw_tick(now)
+    expire_stale(now)
     count = 0
     for _ in range(limit):
         claimed = _claim_due(now or dj_timezone.now(), 1)

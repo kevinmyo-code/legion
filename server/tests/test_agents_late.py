@@ -49,8 +49,9 @@ def door_on(monkeypatch):
 
 
 @pytest.fixture
-def late_on(monkeypatch):
+def late_on(monkeypatch, db):
     monkeypatch.setenv(LATE_ANSWERS_ENV, "on")
+    late.saw_tick()  # a runner is ticking (review item C)
 
 
 @pytest.fixture
@@ -836,3 +837,4 @@ def test_the_command_records_the_tick(household_user, late_on, monkeypatch):
     )
     call_command("late_tasks", stdout=StringIO())
     assert late.runner_is_fresh()
+

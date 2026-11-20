@@ -52,6 +52,7 @@ def test_the_owed_line_is_said_first_on_the_stream_door(
     auth_client, household_user, stream, engine, monkeypatch
 ):
     monkeypatch.setenv(LATE_ANSWERS_ENV, "on")
+    late.saw_tick()
     line = _owe(household_user)
     engine.rounds = [m.say("Nothing is on today.")]
     events = _events(_post(auth_client, utterance()))
@@ -67,6 +68,7 @@ def test_an_ask_on_the_stream_door_is_answered_by_code(
     auth_client, household_user, stream, engine, monkeypatch
 ):
     monkeypatch.setenv(LATE_ANSWERS_ENV, "on")
+    late.saw_tick()
     stream.socket = FakeSocket(
         after_end=[_final("look into the invented ferry times and tell me later"), DONE]
     )

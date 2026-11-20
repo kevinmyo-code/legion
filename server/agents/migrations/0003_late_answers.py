@@ -1,4 +1,5 @@
-"""`public.agents_late_task` and `public.agents_owed_line`: the late-answer path (design
+"""`public.agents_late_task`, `public.agents_owed_line` and the engine-wide one-row
+`public.agents_late_heartbeat`: the late-answer path (design
 2026-11-20, `agents/legion/late.py`), dark behind `LEGION_LATE_ANSWERS`.
 
 Born tenanted in `public` by the same temporary search_path swap `0001` and `0002` use, and
@@ -218,6 +219,16 @@ class Migration(migrations.Migration):
                         name="agents_owed_line_source_valid",
                     ),
                 ],
+            },
+        ),
+        migrations.CreateModel(
+            name="LateHeartbeat",
+            fields=[
+                ("id", models.SmallIntegerField(default=1, primary_key=True, serialize=False)),
+                ("seen_at", models.DateTimeField()),
+            ],
+            options={
+                "db_table": "agents_late_heartbeat",
             },
         ),
         migrations.RunPython(guard, unguard),

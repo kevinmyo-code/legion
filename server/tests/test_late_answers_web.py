@@ -64,8 +64,9 @@ def visitor(db):
 
 
 @pytest.fixture
-def late_on(monkeypatch):
+def late_on(monkeypatch, db):
     monkeypatch.setenv(LATE_ANSWERS_ENV, "on")
+    late.saw_tick()  # a runner is ticking (review item C)
 
 
 @pytest.fixture

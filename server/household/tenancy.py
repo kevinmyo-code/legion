@@ -357,7 +357,9 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
 # `releases_apprelease` (alfred-ota ticket 04, `releases/models.py`): a published build of the
 # app is engine-wide. Every member of every household on this engine reads the same newest
 # release, and the APK it names holds no household data. Owners publish; members read.
-ENGINE_WIDE_TABLES: frozenset[str] = frozenset({"releases_apprelease"})
+# `agents_late_heartbeat` (late-answer path): when the engine's runner last ran, one row for the
+# whole engine; it holds no household's data.
+ENGINE_WIDE_TABLES: frozenset[str] = frozenset({"releases_apprelease", "agents_late_heartbeat"})
 
 BOOTSTRAP_ID_ENV = "LEGION_BOOTSTRAP_HOUSEHOLD_ID"
 BOOTSTRAP_NAME_ENV = "LEGION_BOOTSTRAP_HOUSEHOLD_NAME"

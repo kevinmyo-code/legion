@@ -32,9 +32,10 @@ export belongs with the trace page (ticket 04).
 - `agents_late_task` (late-answer path, migration 0003): one background task he asked to be told
   about later, run read-only by `manage.py late_tasks` in its own conversation.
 - `agents_owed_line` (0003): one line Alfred owes him, said once at his next turn.
+- `agents_late_heartbeat` (0003): engine-wide, one row: when the late-answer runner last ran.
 
 Additive: 0001 made five tables; 0002 adds `agents_limb`, `agents_turn.pending_relay` and the
-`awaiting_limb` status; 0003 adds the two late-answer tables. Unused by any live code path while
+`awaiting_limb` status; 0003 adds the three late-answer tables. Unused by any live code path while
 their switches are off.
 """
 
@@ -363,3 +364,15 @@ class OwedLine(_Owned):
                 condition=models.Q(source__in=OWED_SOURCES), name="agents_owed_line_source_valid"
             ),
         ]
+
+
+class LateHeartbeat(models.Model):
+    """When `manage.py late_tasks` last ran (one row, id 1): ENGINE-WIDE, not a household's
+    (`household.tenancy.ENGINE_WIDE_TABLES`). The doors acknowledge a background ask only while
+    it is fresh (`late.TICK_FRESH`), so "On it" is never said with no runner behind it."""
+
+    id = models.SmallIntegerField(primary_key=True, default=1)
+    seen_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "agents_late_heartbeat"
