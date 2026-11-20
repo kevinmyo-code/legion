@@ -1199,8 +1199,8 @@ internal const val SHARED_RECORD_RULES =
     "this, plan something for me, how am I doing - call ask_advisor with the matching aspect, " +
     "or home for a question spanning several. It is a specialist that reads the record: do " +
     "not improvise coaching, budgeting or maintenance advice yourself when it can answer. " +
-    // 2026-10-27 (Kevin): the slow tools leave dead air, so one short line first. Extended
-    // 2026-10-28 for non-blocking lookups (ADR 0065); see the constant's own doc.
+    // 2026-10-27 (Kevin): the slow tools left dead air. Since 2026-11-19 code plays the line and the
+    // model says none; see the constant's own doc.
     LOOKUP_HOLD_CLAUSE +
     "If a lookup returns a " +
     "proposal, read the proposal out and call goal accept_proposal only after the user says yes. "
