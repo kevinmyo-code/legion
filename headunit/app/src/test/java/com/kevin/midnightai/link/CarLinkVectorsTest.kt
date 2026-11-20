@@ -62,6 +62,7 @@ class CarLinkVectorsTest {
                 return null
             }
             override fun commit(): String? { committed = true; return null }
+            override fun dropPending() {}
         }
         val unitKeys = KeyPair(PairingCrypto.decode(unitPk, template)!!, privateKey(p.getString("unit_private_scalar")))
         val session = PairingSession(unitKeys, b("secret").copyOf(), sink, now = { 0L })

@@ -165,6 +165,20 @@ class LinkKeyStoreTest {
         assertFalse(context.getSharedPreferences("car_link", Context.MODE_PRIVATE).contains("pending_enc"))
     }
 
+    @Test fun n4_aTransientReadFailureNeverDeletesThePendingPairing() {
+        pair(keyA)
+        store().stage(handover(), keyB)
+        var failOnce = true
+        val flaky = LinkKeyStore(
+            context, engine, gemini, "https://engine.example",
+            encrypt = { "e:" + it.reversed() },
+            decrypt = { if (failOnce && it.contains("e:")) { failOnce = false; null } else if (it.startsWith("e:")) it.removePrefix("e:").reversed() else null },
+        )
+        flaky.keys()
+        assertTrue(context.getSharedPreferences("car_link", Context.MODE_PRIVATE).contains("pending_enc"))
+        assertArrayEquals(keyB, store().keys().pending)
+    }
+
     @Test fun dropPendingKeepsTheCommittedPairing() {
         pair(keyA)
         store().stage(handover(), keyB)

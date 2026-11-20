@@ -56,8 +56,8 @@ interface HandoverSink {
     /** PENDING -> COMMITTED, all or nothing. */
     fun commit(): String?
 
-    /** Drops PENDING (seam for review N2; not yet called). */
-    fun dropPending() {}
+    /** Drops PENDING (review N2: a cancel or failure after `done` keeps nothing). */
+    fun dropPending()
 
     companion object {
         /** What [commit] returns when there is no PENDING pairing to commit. */
@@ -87,6 +87,8 @@ class PairingSession(
     private var codeOk = false
     private var wrongCodes = 0
     private var stageStartedAt = startedAt
+    /** True once [HandoverSink.stage] wrote this session's PENDING pairing and it is not yet committed. */
+    private var pendingWritten = false
 
     sealed interface Stage {
         data object WaitingForPhone : Stage
@@ -105,7 +107,7 @@ class PairingSession(
         BAD_VERSION("The phone speaks a different pairing version. Update both apps."),
         BAD_MESSAGE("The phone sent something this unit cannot read. Start again."),
         CODE_WRONG("Three wrong numbers, so nothing was paired. Start again."),
-        CANCELLED("Pairing cancelled. Nothing was changed."),
+        CANCELLED("Pairing cancelled. Nothing was changed; the earlier pairing, if any, stays."),
         PHONE_CANCELLED("The phone stopped pairing. Nothing was changed."),
         STORE_FAILED("This unit could not store the keys safely, so nothing was kept. The old pairing, if any, is unchanged."),
         PAIRING_LOST("The phone took the new pairing but this unit no longer has it. Pair again."),
@@ -212,6 +214,7 @@ class PairingSession(
         val error = runCatching { sink.stage(handover, k.link) }.getOrElse { "store threw" }
         if (error != null) return listOfNotNull(fail(Reason.STORE_FAILED))
         pending = handover
+        pendingWritten = true
         enter(Stage.AwaitingPhone)
         val done = LinkCrypto.seal(k.handover, LinkCrypto.nonce(DONE, 1), DONE_AAD, OK_BODY)
         return listOf(JSONObject().put("t", "done").put("c", Base64.Default.encode(done)))
@@ -228,6 +231,7 @@ class PairingSession(
         // Review N1: `stored` with nothing left to commit means the phone holds a key this unit
         // dropped. That is a failure the driver must see, never "Paired".
         if (result == HandoverSink.NOTHING_PENDING) return listOfNotNull(fail(Reason.PAIRING_LOST, tellPhone = false))
+        if (result == null) pendingWritten = false
         stage = Stage.Paired(h?.phoneName, h?.present().orEmpty(), confirmed = result == null)
         wipe()
         return emptyList()
@@ -260,6 +264,11 @@ class PairingSession(
     }
 
     private fun fail(reason: Reason, tellPhone: Boolean = true): JSONObject? {
+        // Review N2: a cancel or failure after `done` must keep nothing, as the words say.
+        if (pendingWritten) {
+            pendingWritten = false
+            runCatching { sink.dropPending() }
+        }
         stage = Stage.Failed(reason)
         wipe()
         return if (tellPhone) JSONObject().put("t", "abort").put("why", reason.name.lowercase()) else null

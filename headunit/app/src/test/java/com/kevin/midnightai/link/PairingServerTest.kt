@@ -26,6 +26,7 @@ class PairingServerTest {
     private val sink = object : HandoverSink {
         override fun stage(handover: Handover, linkKey: ByteArray): String? = null
         override fun commit(): String? { commits++; return null }
+        override fun dropPending() {}
     }
 
     private fun server(): Pair<PairingServer, String> {
@@ -113,6 +114,32 @@ class PairingServerTest {
             assertEquals("ack", sock.read().getString("t"))
         }
         idle.close()
+        server.close()
+    }
+
+    @Test fun m1_idleConnectionsCannotHoldTheSlotsAgainstThePhone() {
+        val (server, qr) = server()
+        val idle = List(3) { Socket(loopback, Phone(qr).port) }
+        Thread.sleep(200)
+        val phone = Phone(qr)
+        Socket(loopback, phone.port).use { sock ->
+            sock.soTimeout = 5_000
+            PairingServer.writeFrame(sock.out(), phone.hello())
+            assertEquals("ack", sock.read().getString("t"))
+        }
+        idle.forEach { it.close() }
+        server.close()
+    }
+
+    @Test fun m1_anIdleConnectionIsClosedWithinThreeSeconds() {
+        val (server, qr) = server()
+        Socket(loopback, Phone(qr).port).use { idle ->
+            idle.soTimeout = 3_600
+            val started = System.currentTimeMillis()
+            val r = runCatching { idle.getInputStream().read() }.getOrDefault(-2)
+            assertEquals("closed by the server, not a read timeout", -1, r)
+            assertTrue(System.currentTimeMillis() - started < 3_500)
+        }
         server.close()
     }
 

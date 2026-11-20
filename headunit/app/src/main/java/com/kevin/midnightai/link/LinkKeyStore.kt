@@ -228,4 +228,9 @@ class AndroidHandoverSink(private val context: Context, private val store: LinkK
         store.stage(handover, linkKey).also { if (it == null) CarLink.changed(context) }
 
     override fun commit(): String? = store.commitPending().also { CarLink.changed(context) }
+
+    override fun dropPending() {
+        store.dropPending()
+        CarLink.changed(context)
+    }
 }
