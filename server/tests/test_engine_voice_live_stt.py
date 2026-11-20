@@ -13,9 +13,15 @@ PCM = b"\x10\x00" * 16_000  # one second
 
 class FakeSocket:
     """Scripted server with one ordered inbox, as a real socket has: `before_end` messages are in
-    it from the start, `after_end` ones join it behind whatever is still unread once
-    `audioStreamEnd` is sent, and `arrive()` adds messages now (they landed after the last read).
-    A message the session did not read before the end is still delivered after it, first."""
+    it from the start, `after_end` ones join it behind whatever is still unread once the end
+    signal (`activityEnd`, or the automatic mode's `audioStreamEnd`) is sent, and `arrive()` adds
+    messages now (they landed after the last read). A message the session did not read before the
+    end is still delivered after it, first.
+
+    Two orderings are scripted with it: MANUAL mode, what the service does with automatic
+    activity detection off (nothing completes before `activityEnd`; the final and the completion
+    come after it, `manual_mode()`), and the AUTOMATIC mode's (a completion at a pause, possibly
+    still queued at the end), which the finish() rule stays the backstop for."""
 
     def __init__(self, before_end=(), after_end=(), setup=({"setupComplete": {}},), fail_on=None):
         self.sent: list[dict] = []
@@ -33,7 +39,8 @@ class FakeSocket:
         if self.fail_on and self.fail_on in message.get("realtimeInput", {}):
             raise ConnectionResetError("gone")
         self.sent.append(message)
-        if message.get("realtimeInput", {}).get("audioStreamEnd"):
+        signal = message.get("realtimeInput", {})
+        if signal.get("audioStreamEnd") or "activityEnd" in signal:
             self.ended = True
             self.inbox.extend(self.after_end)
             self.after_end = []
@@ -60,6 +67,15 @@ def _interim(text):
 DONE = {"serverContent": {"turnComplete": True}}
 
 
+def manual_mode(*words):
+    """The manual-mode ordering measured on 66 real runs: no final and no completion before the
+    end signal; after `activityEnd`, the final and `generationComplete` together."""
+    return FakeSocket(
+        before_end=[_interim(words[0])] if words else [],
+        after_end=[_final("".join(words)), {"serverContent": {"generationComplete": True}}],
+    )
+
+
 def _session(socket):
     session = live_stt.TranscribeSession("not-a-real-key", lambda key: socket)
     session.open()
@@ -74,6 +90,26 @@ def test_the_setup_names_the_model_and_asks_for_input_transcription():
     assert "inputAudioTranscription" in setup
 
 
+def test_automatic_activity_detection_is_off_and_activity_starts_before_any_audio():
+    socket = manual_mode("Add milk.")
+    session = _session(socket)
+    session.feed(PCM)
+    session.finish()
+    setup = socket.sent[0]["setup"]
+    assert setup.get("realtimeInputConfig") == {"automaticActivityDetection": {"disabled": True}}
+    assert socket.sent[1] == {"realtimeInput": {"activityStart": {}}}
+    assert "audio" in socket.sent[2]["realtimeInput"]
+
+
+def test_the_client_end_signal_is_activity_end_and_the_manual_final_is_the_transcript():
+    socket = manual_mode("Pay the rent", " no, cancel that.")
+    session = _session(socket)
+    session.feed(PCM)
+    assert session.finish().text == "Pay the rent no, cancel that."
+    assert socket.sent[-1] == {"realtimeInput": {"activityEnd": {}}}
+    assert not any("audioStreamEnd" in m.get("realtimeInput", {}) for m in socket.sent)
+
+
 def test_audio_goes_in_100_ms_pieces_and_the_end_signal_last():
     socket = FakeSocket(after_end=[_final("Add milk."), DONE])
     session = _session(socket)
@@ -82,7 +118,7 @@ def test_audio_goes_in_100_ms_pieces_and_the_end_signal_last():
     result = session.finish()
     audio = [m for m in socket.sent if "audio" in m.get("realtimeInput", {})]
     assert len(audio) == 10 and session.sent_bytes == len(PCM)
-    assert socket.sent[-1] == {"realtimeInput": {"audioStreamEnd": True}}
+    assert socket.sent[-1] == {"realtimeInput": {"activityEnd": {}}}
     assert result.text == "Add milk." and socket.closed
 
 

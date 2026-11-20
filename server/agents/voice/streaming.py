@@ -10,6 +10,9 @@ The request body is the utterance, sent as it is spoken (HTTP/1.1 chunked), in f
 - `M` metadata, first, JSON: `conversation_id`, `client`, `contract_version`, `probe`.
 - `A` audio: 16 kHz PCM16 mono samples, any size up to `MAX_FRAME_BYTES`.
 - `E` the client's end of turn (its own end-of-turn rule fired), JSON `{"bytes": <audio total>}`.
+  The transcription session runs in manual activity mode (`live_stt`): the engine opens the speech
+  (`activityStart`) when the session opens after `M`, and closes it (`activityEnd`) on `E`, so the
+  client's own end-of-turn decision is the only one; the client sends nothing new for it.
 - `T` (probe only) the client's clock, JSON `{"client_ms": n}`, before the audio frame it stamps.
 
 The response (Server-Sent Events, the agents door's own schema, `agents/voice/pipeline.py`) starts

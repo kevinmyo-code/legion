@@ -6,18 +6,23 @@ supplier as today). Price, from the official pricing page (aistudio.google.com/d
 2026-11-20): $3.50 per million audio tokens in, $21.00 per million text tokens out. The protocol,
 from the official guide (aistudio.google.com/docs/live-api/live-transcribe):
 
-- `setup` names the model and turns on `inputAudioTranscription`;
+- `setup` names the model, turns on `inputAudioTranscription` and, in MANUAL activity mode (the
+  guide's "Manual VAD"), turns the service's own activity detection off:
+  `realtimeInputConfig.automaticActivityDetection.disabled = true`;
+- `realtimeInput.activityStart` opens the speech, sent right after the setup completes;
 - `realtimeInput.audio` carries 16 kHz PCM16 mono, base64, about 100 ms at a time;
-- `realtimeInput.audioStreamEnd` says the audio is over;
+- `realtimeInput.activityEnd` closes it: the client's end of turn;
 - the server sends `serverContent.interimInputTranscription` (speculative, may change) and
   `serverContent.inputTranscription` (final segments, appended in the default mode), then
   `turnComplete` / `generationComplete`.
 
 The rules this module keeps, and the door's tests pin:
-- **The client's end signal ends the turn**, not the model: `finish()` sends `audioStreamEnd` and
-  takes the final segments that arrive after it. A `turnComplete` the model sends BEFORE the end
-  signal (its own pause detection, mid-sentence) ends nothing, even when it is read after the end
-  signal went out (`finish()` says the rule).
+- **The client's end signal ends the turn**, not the model: `finish()` sends `activityEnd` and
+  takes the final segments that arrive after it. With the service's activity detection off it
+  should not complete at a pause at all (on 66 measured runs, 2026-11-20, no final or completion
+  ever came before `activityEnd`; the guide does not state the order). The rule in `finish()`
+  stays as the backstop: a completion read before the end signal, or after it but before any
+  final words did, ends nothing.
 - **Interim text is never a transcript.** It is kept only to notice a session that "disagrees with
   itself" (interim words, then no final words), which the door treats as a failure.
 - **Any failure is a `StreamFailure`**: the door then transcribes the audio it holds the batch way.
@@ -123,6 +128,9 @@ class TranscribeSession:
                     "setup": {
                         "model": f"models/{MODEL}",
                         "generationConfig": {"responseModalities": ["TEXT"]},
+                        # Manual activity mode: the client's end of turn ends the speech, never
+                        # the service's own pause detection.
+                        "realtimeInputConfig": {"automaticActivityDetection": {"disabled": True}},
                         "inputAudioTranscription": {},
                     }
                 }
@@ -133,6 +141,8 @@ class TranscribeSession:
                 if message is None:
                     raise StreamFailure("setup_timeout")
                 if "setupComplete" in message:
+                    # Manual activity mode: the speech opens now, before any audio.
+                    self._socket.send({"realtimeInput": {"activityStart": {}}})
                     return
                 self._read(message)
         except StreamFailure:
@@ -159,7 +169,7 @@ class TranscribeSession:
             raise StreamFailure(_fault("feed", exc)) from None
 
     def finish(self, timeout: float = FINAL_TIMEOUT_S) -> StreamResult:
-        """The client's end signal: the rest of the audio, `audioStreamEnd`, then the final
+        """The client's end signal: the rest of the audio, `activityEnd`, then the final
         segments until a completion that answers the end signal.
 
         The protocol ties no completion to the end signal, so this is a rule, and its doubtful
@@ -184,7 +194,7 @@ class TranscribeSession:
             while (message := self._socket.recv(0)) is not None:
                 self._read(message)
             finals_before_end = len(self._final)
-            self._socket.send({"realtimeInput": {"audioStreamEnd": True}})
+            self._socket.send({"realtimeInput": {"activityEnd": {}}})
             until = started + timeout
             while True:
                 left = until - self.clock()
