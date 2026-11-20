@@ -463,6 +463,12 @@ object LegionRoute {
      */
     const val SETTINGS_UPDATES = "settings/updates"
 
+    /**
+     * Car link: pair with the car's head unit, send it the phone's location, forget it - see
+     * [com.kevin.legion.ui.settings.CarLinkScreen]. The car link's hands path (ADR 0035).
+     */
+    const val SETTINGS_CAR_LINK = "settings/car-link"
+
     // TOP_LEVEL, topLevelOf and label DELETED 2026-09-10, one-home ticket 03b, on ticket 01's
     // resolution: **there are no top-level tabs any more.** HOME is what the app opens to and the
     // only surface you land on; everything else is a drill-down reached by tapping the row that
