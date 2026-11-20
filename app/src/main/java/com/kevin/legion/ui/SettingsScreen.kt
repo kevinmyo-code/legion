@@ -54,6 +54,8 @@ fun SettingsScreen(
     onOpenDumbMode: () -> Unit = {},
     // Updates (alfred-ota ticket 06): the app_update voice tool's hands path (ADR 0035).
     onOpenUpdates: () -> Unit = {},
+    // Car link to the head unit: pairing, location, forget.
+    onOpenCarLink: () -> Unit = {},
 ) {
     val sem = LocalLegionSemantics.current
 
@@ -121,6 +123,13 @@ fun SettingsScreen(
                 label = "Updates",
                 status = "This version, the newest one, and installing it. Asks first.",
                 onClick = onOpenUpdates,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            SettingsNavRow(
+                label = "Car link",
+                status = "Pair with the car's head unit and send it this phone's location.",
+                onClick = onOpenCarLink,
             )
 
             Spacer(Modifier.height(8.dp))
