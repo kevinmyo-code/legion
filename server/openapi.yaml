@@ -1520,6 +1520,127 @@ paths:
           description: 'Rate limited: 5 signup attempts a minute per IP, shared with
             GET /api/auth/invite/{code} so guessing codes cannot be split across the
             two. Nothing was created.'
+  /api/board:
+    get:
+      operationId: api_board_retrieve
+      tags:
+      - board
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+    put:
+      operationId: api_board_update
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardStored'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/board/writer:
+    post:
+      operationId: api_board_writer_create
+      tags:
+      - board
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardWriterIssued'
+          description: The token, shown this once.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    delete:
+      operationId: api_board_writer_destroy
+      tags:
+      - board
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: 'Revoked: the laptop can no longer send the board.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/body/bodyweight_logs/:
     get:
       operationId: api_body_bodyweight_logs_list
@@ -15097,6 +15218,165 @@ components:
       - amount_cents
       - due_on
       - label
+    Board:
+      type: object
+      properties:
+        snapshot:
+          allOf:
+          - $ref: '#/components/schemas/BoardSnapshot'
+          nullable: true
+        live:
+          type: boolean
+          description: Received within the last 3 minutes.
+        age_s:
+          type: integer
+          nullable: true
+        laptop_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        laptop_on:
+          type: boolean
+        writer:
+          allOf:
+          - $ref: '#/components/schemas/BoardWriterInfo'
+          nullable: true
+        spoken:
+          type: array
+          items:
+            type: string
+          description: Lines a voice says word for word, built by code.
+      required:
+      - age_s
+      - laptop_on
+      - laptop_seen_at
+      - live
+      - snapshot
+      - spoken
+      - writer
+    BoardCard:
+      type: object
+      properties:
+        id:
+          type: string
+        col:
+          $ref: '#/components/schemas/ColEnum'
+        kind:
+          $ref: '#/components/schemas/BoardCardKindEnum'
+        title:
+          type: string
+        status:
+          type: string
+        waiting:
+          type: string
+        owner:
+          type: string
+        ask:
+          type: string
+        age_min:
+          type: integer
+          description: Minutes since the card changed, as of now.
+        stale:
+          type: boolean
+      required:
+      - age_min
+      - ask
+      - col
+      - id
+      - kind
+      - owner
+      - stale
+      - status
+      - title
+      - waiting
+    BoardCardKindEnum:
+      enum:
+      - agent
+      - ship
+      - build
+      - cloud
+      - decision
+      - session
+      type: string
+      description: |-
+        * `agent` - agent
+        * `ship` - ship
+        * `build` - build
+        * `cloud` - cloud
+        * `decision` - decision
+        * `session` - session
+    BoardSnapshot:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'The laptop''s own clock: display only.'
+        received_at:
+          type: string
+          format: date-time
+          description: When the engine received it.
+        build_slot:
+          type: string
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        needs_kevin:
+          type: array
+          items:
+            type: string
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardCard'
+      required:
+      - build_slot
+      - cards
+      - counts
+      - generated_at
+      - needs_kevin
+      - received_at
+    BoardStored:
+      type: object
+      properties:
+        cards:
+          type: integer
+        bytes:
+          type: integer
+        received_at:
+          type: string
+          format: date-time
+      required:
+      - bytes
+      - cards
+      - received_at
+    BoardWriterInfo:
+      type: object
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - last_used_at
+    BoardWriterIssued:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Shown once. The engine keeps only its hash.
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - created_at
+      - token
     BodyweightLog:
       type: object
       description: |-
@@ -17580,6 +17860,20 @@ components:
       - sync_id
       - updated_at
       - vehicle_id
+    ColEnum:
+      enum:
+      - queued
+      - working
+      - needs_kevin
+      - testing
+      - done
+      type: string
+      description: |-
+        * `queued` - queued
+        * `working` - working
+        * `needs_kevin` - needs_kevin
+        * `testing` - testing
+        * `done` - done
     CompanionMemory:
       type: object
       description: |-
@@ -27479,6 +27773,13 @@ components:
       - trust_tier
       - updated_at
   securitySchemes:
+    boardWriterToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: The laptop's board writer token, sent as `Token bw1_<key>`. It
+        reaches only PUT /api/board; every other route and method refuses it. Minted
+        by POST /api/board/writer from a member's signed-in session.
     cookieAuth:
       type: apiKey
       in: cookie

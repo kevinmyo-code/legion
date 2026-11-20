@@ -736,6 +736,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_board_retrieve"];
+        put: operations["api_board_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/writer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_writer_create"];
+        delete: operations["api_board_writer_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/body/bodyweight_logs/": {
         parameters: {
             query?: never;
@@ -6455,6 +6487,77 @@ export interface components {
             due_on: string;
             amount_cents: number;
         };
+        Board: {
+            snapshot: components["schemas"]["BoardSnapshot"] | null;
+            /** @description Received within the last 3 minutes. */
+            live: boolean;
+            age_s: number | null;
+            /** Format: date-time */
+            laptop_seen_at: string | null;
+            laptop_on: boolean;
+            writer: components["schemas"]["BoardWriterInfo"] | null;
+            /** @description Lines a voice says word for word, built by code. */
+            spoken: string[];
+        };
+        BoardCard: {
+            id: string;
+            col: components["schemas"]["ColEnum"];
+            kind: components["schemas"]["BoardCardKindEnum"];
+            title: string;
+            status: string;
+            waiting: string;
+            owner: string;
+            ask: string;
+            /** @description Minutes since the card changed, as of now. */
+            age_min: number;
+            stale: boolean;
+        };
+        /**
+         * @description * `agent` - agent
+         *     * `ship` - ship
+         *     * `build` - build
+         *     * `cloud` - cloud
+         *     * `decision` - decision
+         *     * `session` - session
+         * @enum {string}
+         */
+        BoardCardKindEnum: "agent" | "ship" | "build" | "cloud" | "decision" | "session";
+        BoardSnapshot: {
+            /**
+             * Format: date-time
+             * @description The laptop's own clock: display only.
+             */
+            generated_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the engine received it.
+             */
+            received_at: string;
+            build_slot: string;
+            counts: {
+                [key: string]: number;
+            };
+            needs_kevin: string[];
+            cards: components["schemas"]["BoardCard"][];
+        };
+        BoardStored: {
+            cards: number;
+            bytes: number;
+            /** Format: date-time */
+            received_at: string;
+        };
+        BoardWriterInfo: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+        };
+        BoardWriterIssued: {
+            /** @description Shown once. The engine keeps only its hash. */
+            token: string;
+            /** Format: date-time */
+            created_at: string;
+        };
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -7569,6 +7672,15 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
         };
+        /**
+         * @description * `queued` - queued
+         *     * `working` - working
+         *     * `needs_kevin` - needs_kevin
+         *     * `testing` - testing
+         *     * `done` - done
+         * @enum {string}
+         */
+        ColEnum: "queued" | "working" | "needs_kevin" | "testing" | "done";
         /**
          * @description Field-for-field `RemoteCompanionMemory`. See this module's own doc
          *     comment for the embedding columns that exist on neither side.
@@ -13838,6 +13950,169 @@ export interface operations {
             };
             /** @description Rate limited: 5 signup attempts a minute per IP, shared with GET /api/auth/invite/{code} so guessing codes cannot be split across the two. Nothing was created. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardStored"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_writer_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token, shown this once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardWriterIssued"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_writer_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked: the laptop can no longer send the board. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
