@@ -314,6 +314,9 @@ internal class CascadeSession(
     private val saidThisTurn: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
     @Volatile private var answerAudioStarted = false
 
+    /** A task line has started and not yet ended: no wait line starts meanwhile (F5). */
+    @Volatile private var taskLinePlaying = false
+
     @Volatile private var fillerSkip: Backchannel.Skip? = null
     private val recentWaitLines = RecentLines(WaitFillers.ROTATION)
     private val waitIndex = AtomicInteger(0)
@@ -1223,6 +1226,7 @@ internal class CascadeSession(
         lastFillerEndAtMs = eotAtMs
         saidThisTurn.clear()
         answerAudioStarted = false
+        taskLinePlaying = false
         val seq = backchannelSeq.incrementAndGet()
         val skip = Backchannel.decide(
             Backchannel.Turn(
@@ -1308,6 +1312,7 @@ internal class CascadeSession(
 
     /** A task line started: audited, and counted toward this turn's fillers and its said words. */
     private fun noteTaskFiller(text: String) {
+        taskLinePlaying = true
         audit.filler("task", text)
         turnFillers.incrementAndGet()
         saidThisTurn.add(text)
@@ -1332,8 +1337,11 @@ internal class CascadeSession(
                     delay(minOf(wait, WAIT_POLL_MS))
                     continue
                 }
-                if (!playWaitFiller(seq, eotAtMs)) return@startWait
-                said++
+                when (playWaitFiller(seq, eotAtMs, said)) {
+                    WaitPlay.PLAYED -> said++
+                    WaitPlay.NOT_YET -> delay(WAIT_POLL_MS)
+                    WaitPlay.STOP -> return@startWait
+                }
             }
         }
     }
@@ -1343,13 +1351,15 @@ internal class CascadeSession(
      * or audio has started, never over it (the answer's writes take the same gate, so an answer ready
      * during the line follows it). False: none played, and none will this turn.
      */
+    private enum class WaitPlay { PLAYED, NOT_YET, STOP }
+
     @Suppress("ReturnCount") // one worded skip per reason
-    private suspend fun playWaitFiller(seq: Int, eotAtMs: Long): Boolean {
-        val b = backend ?: return false
-        val p = player ?: return false
+    private suspend fun playWaitFiller(seq: Int, eotAtMs: Long, said: Int): WaitPlay {
+        val b = backend ?: return WaitPlay.STOP
+        val p = player ?: return WaitPlay.STOP
         fun due() = !closing.get() && seq == backchannelSeq.get() && !answerAudioStarted && !answerTextIn() &&
             !QuietMode.isOn(ctx) && !callOnLine()
-        if (!due()) return false
+        if (!due()) return WaitPlay.STOP
         var pcm = ByteArray(0)
         val chosen = WaitFillers.choose(
             recentWaitLines,
@@ -1362,10 +1372,15 @@ internal class CascadeSession(
         }
         if (chosen == null) {
             LiveLatency.log(LiveLatency.TAG, "filler_skip kind=wait reason=no_clip_fits")
-            return false
+            return WaitPlay.STOP
         }
         playGate.withLock {
-            if (!due()) return false
+            if (!due()) return WaitPlay.STOP
+            // A task line queued on the gate, or one that just ended, moves this one back (F5).
+            val now = System.currentTimeMillis()
+            if (!WaitFillers.dueNow(now, lastFillerEndAtMs, said, turnFillers.get(), taskLinePlaying)) {
+                return WaitPlay.NOT_YET
+            }
             recentWaitLines.add(chosen.line)
             saidThisTurn.add(chosen.line)
             turnFillers.incrementAndGet()
@@ -1386,7 +1401,7 @@ internal class CascadeSession(
         // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
         clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         lastFillerEndAtMs = System.currentTimeMillis()
-        return true
+        return WaitPlay.PLAYED
     }
 
     /**
@@ -2324,6 +2339,7 @@ internal class CascadeSession(
             onFillerStarted = { text -> noteTaskFiller(text) },
             onFillerPlayed = {
                 lastFillerEndAtMs = System.currentTimeMillis()
+                taskLinePlaying = false
                 // Half-duplex: the filler is over, the answer is not here yet. Listen again once it
                 // has drained (and its Bluetooth tail settled), so he can still add to his turn.
                 if (turnTaker?.bargeIn != true) {

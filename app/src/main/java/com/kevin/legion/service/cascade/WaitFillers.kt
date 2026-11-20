@@ -51,6 +51,17 @@ internal object WaitFillers {
         return lastFillerEndAtMs + if (waitSaid == 0) FIRST_GAP_MS else NEXT_GAP_MS
     }
 
+    /**
+     * A wait line may start now (checked under the play lock, review of 546cce67 F5): no filler is
+     * playing ([fillerPlaying], a task line queued or running) and its gap from the last filler's END has
+     * passed ([nextAtMs]).
+     */
+    fun dueNow(nowMs: Long, lastFillerEndAtMs: Long, waitSaid: Int, fillersSaid: Int, fillerPlaying: Boolean): Boolean {
+        if (fillerPlaying) return false
+        val at = nextAtMs(lastFillerEndAtMs, waitSaid, fillersSaid) ?: return false
+        return nowMs >= at
+    }
+
     fun clipFits(ms: Long): Boolean = ms in MIN_CLIP_MS..MAX_CLIP_MS
 
     /** A wait line that passed the length gate: line, take, measured length, lines that failed first. */

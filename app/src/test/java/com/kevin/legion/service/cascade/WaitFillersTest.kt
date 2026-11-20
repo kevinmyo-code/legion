@@ -37,6 +37,19 @@ class WaitFillersTest {
         assertTrue(WaitFillers.timeline(backchannelEnd, 1, answerAtMs = 2_000, clipMs = clip).isEmpty())
     }
 
+    // Review of 546cce67 (F5): a wait line due while a task line was queued played right after it.
+    // Under the play lock it is due only FIRST_GAP_MS after the END of the last filler of any kind.
+    @Test
+    fun `a wait line is due only after the gap from the last filler's end, never during a task line`() {
+        // A task line ended at 4,000: not before 5,800.
+        assertFalse(WaitFillers.dueNow(nowMs = 4_100, lastFillerEndAtMs = 4_000, waitSaid = 0, fillersSaid = 2, fillerPlaying = false))
+        assertTrue(WaitFillers.dueNow(nowMs = 5_800, lastFillerEndAtMs = 4_000, waitSaid = 0, fillersSaid = 2, fillerPlaying = false))
+        // A task line still playing: never.
+        assertFalse(WaitFillers.dueNow(nowMs = 9_000, lastFillerEndAtMs = 1_000, waitSaid = 0, fillersSaid = 2, fillerPlaying = true))
+        // The cap: never.
+        assertFalse(WaitFillers.dueNow(nowMs = 60_000, lastFillerEndAtMs = 0, waitSaid = 0, fillersSaid = WaitFillers.MAX_PER_TURN, fillerPlaying = false))
+    }
+
     @Test
     fun `the cap counts every kind of filler`() {
         // Backchannel and a task line already played: up to the hard cap of 6 fillers in all.
