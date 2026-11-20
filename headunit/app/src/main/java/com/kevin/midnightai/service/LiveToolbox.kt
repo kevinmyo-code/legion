@@ -39,6 +39,7 @@ import com.kevin.midnightai.media.SpotifyController
 import com.kevin.midnightai.media.SpotifyVoiceLogic
 import com.kevin.midnightai.media.SpotifyWebApi
 import com.kevin.midnightai.media.VolumeController
+import com.kevin.midnightai.media.VolumeRules
 import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.vehicle.BuildSheetController
 import com.kevin.midnightai.vehicle.CarToolbelt
@@ -1718,7 +1719,13 @@ object LiveToolbox {
             "set" -> {
                 val level = args.optInt("level", -1)
                 if (level < 0) return result(success = false, message = "What level should I set it to?")
-                VolumeController.setPercent(context, level, by = "voice")
+                // Review L4: by voice, never above 80% and never more than 30 points up in one call.
+                val plan = VolumeRules.voiceSet(VolumeController.current(context), level)
+                val pct = VolumeController.setPercent(context, plan.target, by = "voice")
+                if (plan.capped) {
+                    return result(success = true, message = VolumeRules.cappedMessage(pct, level)).put("volumePercent", pct)
+                }
+                pct
             }
             "mute" -> VolumeController.mute(context, true, by = "voice")
             "unmute" -> VolumeController.mute(context, false, by = "voice")
