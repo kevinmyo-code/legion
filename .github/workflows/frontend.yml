@@ -17,12 +17,16 @@ on:
     paths:
       - 'server/frontend/**'
       - 'server/openapi.yaml'
+      - 'shared/**'
+      - 'server/tests/fixtures/recurrence_vectors.json'
       - '.github/workflows/frontend.yml'
       - '.github/scripts/junit_totals.py'
   pull_request:
     paths:
       - 'server/frontend/**'
       - 'server/openapi.yaml'
+      - 'shared/**'
+      - 'server/tests/fixtures/recurrence_vectors.json'
       - '.github/workflows/frontend.yml'
       - '.github/scripts/junit_totals.py'
   workflow_dispatch:
