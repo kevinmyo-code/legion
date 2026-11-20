@@ -86,22 +86,57 @@ def _words(text: str) -> tuple[list[str], list[bool]]:
     return words, broken
 
 
-def _at(words: list[str], phrase: list[str], i: int) -> bool:
-    return words[i : i + len(phrase)] == phrase
+# What may follow a phrase's last word and still be that word (review recheck 2026-11-20): plural,
+# possessive (its apostrophe dropped), and -ly / -ally / -ity / -ality, so "suicides",
+# "suicide's", "suicidally" and "suicidality" are hits as on the phone. Nothing else: "diet" is not
+# "die", "lifetime" is not "life".
+SUFFIXES = ("", "s", "es", "ly", "ally", "ity", "ality")
+
+# The words that put an excluded phrase in car talk: a part someone has, wants or describes ("has
+# suicide doors", "a suicide knob", "with suicide doors"). An excluded phrase after any other word,
+# or first in what was said, hides nothing (review recheck, C7): speech-to-text writes no
+# punctuation, so "thinking about suicide door is locked" must still be a hit.
+CAR_TALK_LEAD = frozenset(
+    "a an the its his her their our your my this that these those with has have had of rear "
+    "front back two four both any some no got get gets getting want wants wanted like likes love "
+    "loves".split()
+)
+
+
+def _phrase_at(words: list[str], phrase: list[str], i: int) -> bool:
+    n = len(phrase)
+    if words[i : i + n - 1] != phrase[:-1]:
+        return False
+    last, said = phrase[-1], words[i + n - 1]
+    return any(said == last + suffix for suffix in SUFFIXES)
+
+
+def _excluded_at(words: list[str], broken: list[bool], exclusion: list[str], j: int) -> bool:
+    n = len(exclusion)
+    return (
+        words[j : j + n] == exclusion
+        and not any(broken[j + 1 : j + n])
+        and j > 0
+        and not broken[j]
+        and words[j - 1] in CAR_TALK_LEAD
+    )
 
 
 def detect(text: str) -> bool:
     """True if `text` says one of the phone's phrases as whole words.
 
-    Where the engine differs from the phone's `detect` (review 2026-11-19, C2 and C7), on
-    purpose and never with fewer hits on the phrases themselves:
-    - a phrase matches whole words only, so "I want to diet" and "end my lifetime subscription" are
-      not hits ("want to die" and "end my life" inside longer words);
-    - an exclusion hides a hit only when the excluded words cover that hit and were said together,
-      with no punctuation between them: "suicide, door's locked" is a hit, "suicide doors" is not.
+    Where the engine differs from the phone's `detect` (review 2026-11-19, C2 and C7; recheck
+    2026-11-20), on purpose:
+    - a phrase starts on a word boundary and its last word may take only `SUFFIXES`, so "I want
+      to diet" and "end my lifetime subscription" are not hits, while "suicides" and
+      "suicidality" still are. Every other string the phone hits is a hit here
+      (`tests/test_engine_voice_crisis.py` checks a generated list);
+    - an exclusion hides a hit only when its own words are all there, together, with no
+      punctuation between, after a word that makes them car talk (`CAR_TALK_LEAD`): "has suicide
+      doors" is quiet, "suicide, door's locked" and "about suicide door is locked" are hits.
     Kept as hits on the safe side, where whole words cannot tell: "cut myself a check", "hurt
-    myself at the gym", "Suicide Squad", "dont want to live with these fees". A help line said
-    there costs a moment; a miss could cost more.
+    myself at the gym", "Suicide Squad", "dont want to live with these fees", and an utterance
+    that starts "suicide doors ...". A help line said there costs a moment; a miss could cost more.
     """
     words, broken = _words(text)
     if not words:
@@ -110,11 +145,11 @@ def detect(text: str) -> bool:
     for exclusion in EXCLUSIONS:
         shape = exclusion.split()
         for j in range(len(words) - len(shape) + 1):
-            if _at(words, shape, j) and not any(broken[j + 1 : j + len(shape)]):
+            if _excluded_at(words, broken, shape, j):
                 hidden.update(range(j, j + len(shape)))
     for phrase in PHRASES:
         shape = phrase.split()
         for i in range(len(words) - len(shape) + 1):
-            if _at(words, shape, i) and not set(range(i, i + len(shape))) <= hidden:
+            if _phrase_at(words, shape, i) and not set(range(i, i + len(shape))) <= hidden:
                 return True
     return False

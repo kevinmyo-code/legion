@@ -117,3 +117,98 @@ def test_an_exclusion_split_by_punctuation_does_not_hide_the_hit():
     # the exclusion "suicide doors" is not what was said.
     assert crisis.detect("I keep thinking about suicide, door's locked")
     assert not crisis.detect("the coupe has suicide doors, sadly")
+
+
+# ---- recheck 2026-11-20: inflected hits come back; unpunctuated exclusions swallow nothing ------
+
+
+def _phone_detect(text: str) -> bool:
+    """The phone's `CrisisDetector.detect`, line for line: lowercase, drop straight and curly
+    apostrophes, every run of non [a-z0-9] one space, exclusions blanked, then a substring test."""
+    normalized = re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "").replace("’", ""))
+    normalized = normalized.strip()
+    if not normalized:
+        return False
+    for exclusion in crisis.EXCLUSIONS:
+        normalized = normalized.replace(exclusion, " ")
+    return any(phrase in normalized for phrase in crisis.PHRASES)
+
+
+# What may follow a phrase's last word and still be the phrase: plural, possessive (its apostrophe
+# dropped), -ly, -ally, -ity, -ality ("suicidally", "suicidality").
+INFLECTIONS = ("", "s", "es", "'s", "ly", "ally", "ity", "ality")
+# Endings that make another word: the phone hits these, the engine must not. Listed one by one.
+NOT_THE_PHRASE = {
+    ("want to die", "t"): "diet",
+    ("wanna die", "t"): "diet",
+    ("end my life", "time"): "lifetime",
+    ("ending my life", "time"): "lifetime",
+    ("take my own life", "time"): "lifetime",
+    ("taking my own life", "time"): "lifetime",
+}
+_CASES = (str.lower, str.upper, str.title)
+_WRAPS = ("{x}", "{x}.", "well, {x}!", '"{x}"', "I think {x} today", "honestly... {x}?")
+
+
+def _generated():
+    for phrase in crisis.PHRASES:
+        head, _, last = phrase.rpartition(" ")
+        for ending in (*INFLECTIONS, "t", "time"):
+            spoken = f"{head} {last}{ending}".strip().replace("dont", "don't")
+            for case in _CASES:
+                for wrap in _WRAPS:
+                    yield phrase, ending, wrap.format(x=case(spoken))
+
+
+def test_every_string_the_phone_hits_is_a_hit_here_but_the_named_other_words():
+    missed = []
+    for phrase, ending, said in _generated():
+        if not _phone_detect(said):
+            continue
+        if (phrase, ending) in NOT_THE_PHRASE:
+            assert not crisis.detect(said), said
+            continue
+        if not crisis.detect(said):
+            missed.append(said)
+    assert missed == []
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "I've been thinking about suicides",
+        "thinking about suicide's appeal",
+        "I feel suicidally low",
+        "my suicidality is back",
+    ],
+)
+def test_inflected_hits_the_phone_caught_are_hits(said):
+    assert crisis.detect(said)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        # Speech-to-text often writes no punctuation: the exclusion's words are there, but not as
+        # a car part (review recheck, C7).
+        "im thinking about suicide door is locked",
+        "i keep thinking about suicide doors are locked anyway",
+        "thinking of suicide knob in my head",
+    ],
+)
+def test_unpunctuated_speech_does_not_let_an_exclusion_swallow_the_hit(said):
+    assert crisis.detect(said)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "Does it have suicide doors?",
+        "the coupe has suicide doors",
+        "my old truck had a suicide knob",
+        "Does the old coupe come with suicide doors?",
+        "it's got rear suicide doors",
+    ],
+)
+def test_car_talk_about_the_parts_stays_quiet(said):
+    assert not crisis.detect(said)
