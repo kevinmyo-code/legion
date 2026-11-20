@@ -179,7 +179,11 @@ class CarLinkViewModel(
             s.link == LinkState.PAIRED -> base.copy(
                 phase = CarLinkPhase.PAIRED,
                 headline = if (p == PairingStage.Paired) "Paired with the head unit." else "Paired with a head unit.",
-                detail = if (s.unitInRange) "The head unit is in range." else "The head unit is out of range now.",
+                detail = when {
+                    s.networkChanged -> "Not listening yet: the network it paired on changed its address range."
+                    s.unitInRange -> "The head unit is in range."
+                    else -> "The head unit is out of range now."
+                },
             )
             s.revokePending -> base.copy(
                 detail = "The head unit will be told to forget this phone the next time this phone is in " +
@@ -256,8 +260,12 @@ object CarLinkWords {
             "Another app is using the car link's port (17311), so this phone cannot hear the car. It does " +
                 "not move to another port. Close that app or restart the phone."
         CarLinkNote.FORGET_TELLING -> "Telling the car to forget this phone..."
-        CarLinkNote.NETWORK_CHANGED_HEALING,
-        CarLinkNote.NETWORK_CHANGED_REPAIR -> "STUB"
+        CarLinkNote.NETWORK_CHANGED_HEALING ->
+            "This phone's hotspot came back with a different address range. Waiting for the car to " +
+                "confirm it (two messages from the car), then this phone listens there again."
+        CarLinkNote.NETWORK_CHANGED_REPAIR ->
+            "The network this phone paired on now has a different address range. For safety this phone " +
+                "does not follow it: pair again."
         CarLinkNote.FORGOT_WILL_TELL ->
             "The car has not heard yet; it will be told next time it is in range (for up to 90 days)."
     }

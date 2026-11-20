@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -16,11 +15,11 @@ class PairingNetworkTest {
     private val cafe = LocalIface("wl-test0", ip("10.99.0.7"), 16)
 
     @Test fun `pairing records the interface whose subnet holds the unit`() {
-        val n = PairingNetwork.recordFor("10.20.30.44", listOf(cafe, hotspot))!!
+        val n = PairingNetwork.recordFor("10.20.30.44", listOf(cafe, hotspot)) { false }!!
         assertEquals("ap-test0", n.name)
         assertEquals("10.20.30.0", n.base)
         assertEquals(24, n.prefix)
-        assertNull(PairingNetwork.recordFor("10.50.0.1", listOf(cafe, hotspot)))
+        assertNull(PairingNetwork.recordFor("10.50.0.1", listOf(cafe, hotspot)) { false })
     }
 
     @Test fun `present only when that interface is up with that subnet`() {
@@ -44,7 +43,7 @@ class PairingNetworkTest {
         assertTrue(n.acceptsHelloFrom(ip("10.20.30.44"), listOf(hotspot)))
     }
 
-    @Ignore("red until fix R2") @Test fun `the same interface with a new subnet is a change, not an absence, and the record says if it is the phone's hotspot`() {
+    @Test fun `the same interface with a new subnet is a change, not an absence, and the record says if it is the phone's hotspot`() {
         val n = PairingNetwork.recordFor("10.20.30.44", listOf(cafe, hotspot)) { it == "ap-test0" }!!
         assertTrue(n.ownHotspot)
         assertTrue(PairingNetwork.decode(n.encode())!!.ownHotspot)

@@ -12,7 +12,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import java.net.InetAddress
 import java.net.SocketException
@@ -30,6 +29,7 @@ class CarLinkControllerTest {
         val inbox = LinkedBlockingQueue<ByteArray>()
         val sent: MutableList<ByteArray> = Collections.synchronizedList(mutableListOf())
         @Volatile var closed = false
+        @Volatile var from = "10.0.0.1"
 
         override fun receive(buf: ByteArray, timeoutMs: Int): Incoming? {
             if (closed) throw SocketException("closed")
@@ -37,7 +37,7 @@ class CarLinkControllerTest {
             if (closed || d === POISON) throw SocketException("closed")
             d ?: return null
             d.copyInto(buf)
-            return Incoming(d.size, InetAddress.getByName("10.0.0.1"), 40_000)
+            return Incoming(d.size, InetAddress.getByName(from), 40_000)
         }
 
         override fun send(bytes: ByteArray, to: InetAddress, port: Int) { sent += bytes }
@@ -298,7 +298,7 @@ class CarLinkControllerTest {
         assertTrue("loop errors: $errors", errors.isEmpty())
     }
 
-    @Ignore("red until fix R2") @Test fun `a hotspot that came back on a new subnet heals after 2 authenticated HELLOs from a fresh session`() {
+    @Test fun `a hotspot that came back on a new subnet heals after 2 authenticated HELLOs from a fresh session`() {
         assertTrue(store.write(key, null))
         assertTrue(store.setPairingNetwork(PairingNetwork("ap-test0", "10.0.0.0", 24, ownHotspot = true)))
         val moved = LocalIface("ap-test0", InetAddress.getByName("10.9.9.1") as java.net.Inet4Address, 24)
@@ -308,6 +308,7 @@ class CarLinkControllerTest {
         waitFor("the healing words") { c.status.value.note == CarLinkNote.NETWORK_CHANGED_HEALING }
         waitFor("a listener on the new subnet") { senders > 0 }
         val unit = FakeUnit(key, session = ByteArray(16) { 0x44 })
+        port.from = "10.9.9.20"
         port.inbox.put(unit.hello(intervalMs = 5000))
         Thread.sleep(200)
         assertEquals("10.0.0.0", store.pairingNetwork()!!.base)
@@ -316,7 +317,7 @@ class CarLinkControllerTest {
         assertTrue(store.pairingNetwork()!!.ownHotspot)
     }
 
-    @Ignore("red until fix R2") @Test fun `a client Wi-Fi that changed subnet is never followed, the screen asks for a re-pair`() {
+    @Test fun `a client Wi-Fi that changed subnet is never followed, the screen asks for a re-pair`() {
         assertTrue(store.write(key, null))
         assertTrue(store.setPairingNetwork(PairingNetwork("wl-test0", "10.0.0.0", 24, ownHotspot = false)))
         look = NetworkLook.Changed(LocalIface("wl-test0", InetAddress.getByName("10.9.9.7") as java.net.Inet4Address, 24))

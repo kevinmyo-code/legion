@@ -28,7 +28,10 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 
 /** LOADING until the stored keys were read, off the main thread. */
-/** STUB (red step). */
+/**
+ * How a sender runs: [revokeOnly] for a forgotten pairing (REVOKE only), [healOn] while it checks
+ * whether the car is on the hotspot's new subnet (sends nothing, R2).
+ */
 class FeedMode(val revokeOnly: Boolean, val healOn: PairingNetwork?)
 
 enum class LinkState { LOADING, NOT_PAIRED, PAIRED, BROKEN }
@@ -166,25 +169,58 @@ class CarLinkController(
         feedJob = scope.launch(io) {
             var keepGoing = true
             while (keepGoing && isActive && feedRing.current != null) {
-                // 4.3 rev 5: no socket at all while the network the phone paired on is absent.
-                val present = network() is NetworkLook.Present
-                keepGoing = !present || runSender(feedRing, revokeOnly)
-                if (keepGoing) delay(if (present) RESTART_DELAY_MS else NETWORK_POLL_MS)
+                // 4.3: no socket at all while the network the phone paired on is absent (rev 5); a
+                // changed subnet is followed only on the phone's own hotspot (rev 6, R2).
+                val look = network()
+                val heal = healTarget(look)
+                keepGoing = when {
+                    look is NetworkLook.Present -> runSender(feedRing, FeedMode(revokeOnly, null))
+                    heal != null -> runSender(feedRing, FeedMode(revokeOnly, heal))
+                    else -> true
+                }
+                if (keepGoing) delay(if (look is NetworkLook.Present) RESTART_DELAY_MS else NETWORK_POLL_MS)
             }
         }
     }
 
     /** One socket's life. False = stop for good (no port, or the REVOKE went); true = the network left. */
-    private suspend fun runSender(feedRing: LinkKeyRing, revokeOnly: Boolean): Boolean {
-        val s = openSender(feedRing, revokeOnly) ?: return false
+    /**
+     * R2, the heal rule. The recorded interface's name is up with a different subnet:
+     * - on the phone's OWN hotspot, listen there (sending nothing) for the car to confirm it;
+     * - on any other network, never follow: say so and ask for a re-pair.
+     * Why the hotspot case is safe: that interface exists only while this phone is the access point,
+     * so only devices that joined with the hotspot's passphrase are on it. A captured HELLO replayed
+     * from any other network (P-D) never reaches this path, because that network's interface is not the
+     * recorded hotspot interface. Inside the hotspot the heal needs 2 HELLOs that open under the
+     * current link key, from a session this listener has never seen, rising counters (4.3 replay rule).
+     * The phone still cannot prove a HELLO is live (4.3 rev 5), which is why the heal is limited to it.
+     */
+    private fun healTarget(look: NetworkLook): PairingNetwork? {
+        if (look !is NetworkLook.Changed) {
+            if (look is NetworkLook.Present && _status.value.networkChanged) {
+                _status.update { it.copy(networkChanged = false, note = null) }
+            }
+            return null
+        }
+        val own = store.pairingNetwork()?.ownHotspot == true
+        val note = if (own) CarLinkNote.NETWORK_CHANGED_HEALING else CarLinkNote.NETWORK_CHANGED_REPAIR
+        if (_status.value.note != note) _status.update { it.copy(networkChanged = true, note = note) }
+        return if (own) PairingNetwork.of(look.iface, ownHotspot = true) else null
+    }
+
+    private suspend fun runSender(feedRing: LinkKeyRing, mode: FeedMode): Boolean {
+        val revokeOnly = mode.revokeOnly
+        val s = openSender(feedRing, mode) ?: return false
         sender = s
         var delivered = false
         val tell = RevokeTelling(sentAny = revokeSentAtForget, heardAt = s.nowMs())
         try {
-            while (!delivered && keepListening(feedRing)) {
+            while (!delivered && keepListening(feedRing, mode)) {
                 if (!stepContained(s)) break
                 val inRange = s.inRange()
-                if (revokeOnly) {
+                if (mode.healOn != null) {
+                    if (s.acceptedHellos() >= HEAL_HELLOS) healed(mode.healOn)
+                } else if (revokeOnly) {
                     delivered = revokeStep(s, tell)
                 } else if (inRange != _status.value.unitInRange) {
                     _status.update { it.copy(unitInRange = inRange) }
@@ -199,9 +235,10 @@ class CarLinkController(
     }
 
     /** A sender, or null with the reason said in words (a taken port is never worked around). */
-    private fun openSender(feedRing: LinkKeyRing, revokeOnly: Boolean): CarLinkSender? {
+    private fun openSender(feedRing: LinkKeyRing, mode: FeedMode): CarLinkSender? {
+        val revokeOnly = mode.revokeOnly
         val note = try {
-            newSender(feedRing, ::onRingEvent, { !revokeOnly && _status.value.sendLocation }, FeedMode(revokeOnly, null))
+            newSender(feedRing, ::onRingEvent, { mode.healOn == null && !revokeOnly && _status.value.sendLocation }, mode)
                 ?.let { return it }
             CarLinkNote.PORT_UNAVAILABLE
         } catch (_: java.net.BindException) {
@@ -214,8 +251,19 @@ class CarLinkController(
         return null
     }
 
-    private suspend fun keepListening(feedRing: LinkKeyRing): Boolean =
-        currentCoroutineContext().isActive && feedRing.current != null && network() is NetworkLook.Present
+    private suspend fun keepListening(feedRing: LinkKeyRing, mode: FeedMode): Boolean =
+        currentCoroutineContext().isActive && feedRing.current != null && stillOn(network(), mode)
+
+    /** The sender stays up only while the network still looks the way it did when it started. */
+    private fun stillOn(look: NetworkLook, mode: FeedMode): Boolean {
+        val heal = mode.healOn ?: return look is NetworkLook.Present
+        return look is NetworkLook.Changed && PairingNetwork.of(look.iface, ownHotspot = true).encode() == heal.encode()
+    }
+
+    /** Two authenticated HELLOs on the hotspot's new subnet: record it and listen there as normal. */
+    private fun healed(net: PairingNetwork) {
+        if (store.setPairingNetwork(net)) _status.update { it.copy(networkChanged = false, note = null) }
+    }
 
     /**
      * One loop step that can never take the app down: false when the socket closed (Forget, or the
@@ -423,6 +471,7 @@ class CarLinkController(
         const val LOOP_BACKOFF_MS = 1_000L
         const val NETWORK_POLL_MS = 10_000L
         const val RESTART_DELAY_MS = 1_000L
+        const val HEAL_HELLOS = 2L
 
         /** 5.4 rev 5: a revoke-only record waits about 90 days, then expires unused. */
         const val REVOKE_ONLY_MAX_MS = 90L * 24 * 60 * 60 * 1000

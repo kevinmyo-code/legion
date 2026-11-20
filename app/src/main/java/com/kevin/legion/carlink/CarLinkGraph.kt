@@ -57,7 +57,7 @@ class CarLinkGraph(private val app: Application) {
             newSender = { ring, onEvent, sendFixes, mode ->
                 val revokeOnly = mode.revokeOnly
                 // Only HELLOs from inside the network the phone paired on count (4.3, rev 5).
-                val net = store.pairingNetwork()
+                val net = mode.healOn ?: store.pairingNetwork()
                 val own = PairingNetwork.systemInterfaces()
                 UdpPort.open().let { port ->
                     CarLinkSender(
@@ -66,7 +66,8 @@ class CarLinkGraph(private val app: Application) {
                             newSession = ::newSession,
                             onLan = { net?.acceptsHelloFrom(it, own) == true },
                             // A revoke-only listener sends nothing but REVOKE: no zone.
-                            zoneId = { if (revokeOnly) null else TimeZone.getDefault().id },
+                            // A revoke-only or healing listener sends no zone.
+                            zoneId = { if (revokeOnly || mode.healOn != null) null else TimeZone.getDefault().id },
                             onRingEvent = onEvent,
                         ),
                         port = port,
@@ -82,13 +83,20 @@ class CarLinkGraph(private val app: Application) {
             sleep = { delay(it) },
             network = { store.pairingNetwork()?.look(PairingNetwork.systemInterfaces()) ?: NetworkLook.Absent },
             recordNetwork = { host ->
-                val net = PairingNetwork.recordFor(host, PairingNetwork.systemInterfaces())
+                val net = PairingNetwork.recordFor(host, PairingNetwork.systemInterfaces(), ::isTethered)
                 store.setPairingNetwork(net) && net != null
             },
         )
     }
 
     private val random = SecureRandom()
+
+    /** This phone's own hotspot: an up interface that no Android Network carries (tethering). */
+    @Suppress("DEPRECATION") // allNetworks: the one call that lists every network on API 24+
+    private fun isTethered(name: String): Boolean {
+        val cm = app.getSystemService(android.net.ConnectivityManager::class.java) ?: return false
+        return cm.allNetworks.none { cm.getLinkProperties(it)?.interfaceName == name }
+    }
 
     private fun newSession(): ByteArray = ByteArray(Mnai2.SESSION_LEN).also(random::nextBytes)
 }

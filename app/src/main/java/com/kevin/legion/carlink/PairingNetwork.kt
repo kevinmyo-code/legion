@@ -8,7 +8,7 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 
-/** STUB (red step). */
+/** What the phone sees of the network it paired on (4.3, rev 6). */
 sealed interface NetworkLook {
     object Present : NetworkLook
     object Absent : NetworkLook
@@ -43,10 +43,19 @@ class PairingNetwork(val name: String, val base: String, val prefix: Int, val ow
     fun acceptsHelloFrom(addr: InetAddress, ifaces: List<LocalIface>): Boolean =
         contains(addr) && ifaces.none { it.address == addr }
 
-    /** STUB (red step). */
-    fun look(ifaces: List<LocalIface>): NetworkLook = if (present(ifaces)) NetworkLook.Present else NetworkLook.Absent
+    /**
+     * Present; or Changed when an interface with the recorded NAME is up with a different private
+     * subnet (Android may give its hotspot a new range after a toggle, R2); otherwise Absent.
+     */
+    fun look(ifaces: List<LocalIface>): NetworkLook {
+        if (present(ifaces)) return NetworkLook.Present
+        val moved = ifaces.firstOrNull {
+            it.name == name && it.prefix in MIN_PREFIX..MAX_PREFIX && QrPayload.isPrivateIpv4(it.address.hostAddress ?: "")
+        }
+        return moved?.let { NetworkLook.Changed(it) } ?: NetworkLook.Absent
+    }
 
-    fun encode(): String = "$name$SEP$base$SEP$prefix"
+    fun encode(): String = "$name$SEP$base$SEP$prefix$SEP${if (ownHotspot) HOTSPOT else CLIENT}"
 
     private fun sameSubnet(a: Inet4Address): Boolean = (bits(a) and mask(prefix)) == (baseBits and mask(prefix))
 
@@ -59,6 +68,8 @@ class PairingNetwork(val name: String, val base: String, val prefix: Int, val ow
         private const val BYTE_BITS = 8
         private const val BYTE_MASK = 0xFF
         private const val PARTS = 3
+        private const val HOTSPOT = "hotspot"
+        private const val CLIENT = "client"
         private const val OCTETS = 4
 
         private fun bits(a: Inet4Address) =
@@ -72,21 +83,29 @@ class PairingNetwork(val name: String, val base: String, val prefix: Int, val ow
         }
 
         /** The interface whose private subnet holds [host] (the unit's address from the QR), or null. */
-        fun recordFor(host: String, ifaces: List<LocalIface>, isTethered: (String) -> Boolean = { false }): PairingNetwork? {
+        /**
+         * [isTethered]: the interface is this phone's own hotspot (no Android Network carries it). Only
+         * then may a later subnet change be followed (R2).
+         */
+        fun recordFor(host: String, ifaces: List<LocalIface>, isTethered: (String) -> Boolean): PairingNetwork? {
             if (!QrPayload.isPrivateIpv4(host)) return null
             val h = InetAddress.getByName(host) as Inet4Address
             val iface = ifaces.firstOrNull {
                 it.prefix in MIN_PREFIX..MAX_PREFIX && QrPayload.isPrivateIpv4(it.address.hostAddress ?: "") &&
                     (bits(h) and mask(it.prefix)) == (bits(it.address) and mask(it.prefix))
             } ?: return null
-            return PairingNetwork(iface.name, baseOf(iface.address, iface.prefix), iface.prefix)
+            return of(iface, isTethered(iface.name))
         }
 
+        /** The record for [iface] as it is now. */
+        fun of(iface: LocalIface, ownHotspot: Boolean) =
+            PairingNetwork(iface.name, baseOf(iface.address, iface.prefix), iface.prefix, ownHotspot)
+
         fun decode(text: String?): PairingNetwork? {
-            val p = text?.split(SEP)?.takeIf { it.size == PARTS } ?: return null
+            val p = text?.split(SEP)?.takeIf { it.size == PARTS || it.size == PARTS + 1 } ?: return null
             val prefix = p[2].toIntOrNull()?.takeIf { it in MIN_PREFIX..MAX_PREFIX } ?: return null
             if (!QrPayload.isPrivateIpv4(p[1])) return null
-            return PairingNetwork(p[0], p[1], prefix)
+            return PairingNetwork(p[0], p[1], prefix, ownHotspot = p.getOrNull(PARTS) == HOTSPOT)
         }
 
         /** This phone's up, non-loopback IPv4 interfaces. */
