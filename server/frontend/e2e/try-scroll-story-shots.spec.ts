@@ -120,7 +120,7 @@ function invented(): DemoContent {
       clips: Array.from({ length: 7 }, (_, i) => ({ title: `Fake clip ${i + 1}`, body: LOREM, video: `/fake-media/clip-${i + 1}.mp4`, poster: '/api/demo/media/poster.png' })),
     },
     project_sections: [
-      { id: 'fake-ops', title: 'Fake operations', intro: LOREM, parts: parts(4, 'Ops'), media: { note: 'Recorded on fake data.' } },
+      { id: 'fake-ops', title: 'Fake operations', intro: LOREM, parts: parts(4, 'Ops'), media: { video: '/api/demo/media/ops.mp4', poster: '/api/demo/media/ops.png', captions: '/api/demo/media/ops.vtt', note: 'Recorded on fake data.' } },
       {
         id: 'fake-hardware',
         title: 'Fake hardware',
@@ -140,6 +140,12 @@ function content(): DemoContent {
   // Media named by file, as the engine serves them.
   const served = (name: string | undefined) => (!name || name.startsWith('/') || /^https?:/.test(name) ? name : `/api/demo/media/${name}`)
   for (const section of base.project_sections ?? []) {
+    const media = section.media
+    if (media) {
+      media.video = served(media.video)
+      media.poster = served(media.poster)
+      media.captions = served(media.captions)
+    }
     for (const model of section.media?.models ?? []) {
       model.model = served(model.model)!
       model.poster = served(model.poster) ?? model.poster
@@ -154,11 +160,12 @@ function mediaFile(name: string): Buffer | null {
   if (MEDIA) return null
   if (name.endsWith('.glb')) return cubeGlb()
   if (name.endsWith('.png')) return PAPER_PNG
+  if (name.endsWith('.vtt')) return Buffer.from('WEBVTT\n\n00:00.000 --> 00:05.000\nA fake caption.\n')
   return null
 }
 
 async function open(page: Page) {
-  const engine: Engine = createEngine({ signedIn: false, assistant: { companionName: 'Alfred' } })
+  const engine: Engine = createEngine({ signedIn: false, assistant: { companionName: 'Alfred', engine: 'cascade' } })
   engine.demo.session = { role: 'recruiter', expires_at: new Date(Date.now() + 3_600_000).toISOString(), ref: 'acme' }
   engine.demo.content = content()
   await page.route('**/api/**', async (route) => {
@@ -176,7 +183,8 @@ async function open(page: Page) {
     const name = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop()!)
     const data = mediaFile(name)
     if (!data) return route.fulfill({ status: 404, body: '{}' })
-    await route.fulfill({ status: 200, body: data, contentType: name.endsWith('.glb') ? 'model/gltf-binary' : 'image/png' })
+    const type = name.endsWith('.glb') ? 'model/gltf-binary' : name.endsWith('.vtt') ? 'text/vtt' : name.endsWith('.mp4') ? 'video/mp4' : 'image/png'
+    await route.fulfill({ status: 200, body: data, contentType: type })
   })
   // Videos are never fetched by this run (nothing presses Play); answer anything that asks anyway.
   await page.route('**/fake-media/**', (route) => route.fulfill({ status: 404, body: '' }))
@@ -229,32 +237,31 @@ async function watch(page: Page) {
 }
 
 /** The page, top to bottom, by the wheel at a reader's pace; a shot as each named place passes. */
-async function scrollThrough(page: Page, tag: string, places: string[]) {
-  const height = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)
+async function scrollThrough(page: Page, tag: string, places: string[], shoot = true) {
   const width = page.viewportSize()!.width
-  const overflow: number[] = []
+  let overflow = 0
   const shot = new Set<string>()
   let stalled = 0
   await page.mouse.move(width / 2, 200)
-  for (let step = 0; step < 600 && stalled < 6; step++) {
-    const before = await page.evaluate(() => window.scrollY)
-    await page.mouse.wheel(0, 90)
-    await page.waitForTimeout(70)
-    const y = await page.evaluate(() => window.scrollY)
-    stalled = y === before ? stalled + 1 : 0
-    if (y >= height - 1) stalled = Math.max(stalled, 5)
-    if (step % 10 === 0) overflow.push(await page.evaluate(() => document.documentElement.scrollWidth))
-    for (const id of places) {
-      if (shot.has(id)) continue
-      const top = await page.evaluate((sel) => document.getElementById(sel)?.getBoundingClientRect().top ?? Infinity, id)
-      if (top < 40) {
-        shot.add(id)
-        await page.waitForTimeout(900) // the reveal settles
-        await page.screenshot({ path: path.join(OUT, `${tag}-${String(shot.size).padStart(2, '0')}-${id}.png`) })
-      }
+  for (let step = 0; step < 400 && stalled < 5; step++) {
+    await page.mouse.wheel(0, 140)
+    await page.waitForTimeout(60)
+    // One look per step: where the page is, how wide, and where each place's top sits.
+    const now = await page.evaluate((ids) => {
+      const tops = ids.map((id) => document.getElementById(id)?.getBoundingClientRect().top ?? Infinity)
+      return { y: window.scrollY, max: document.documentElement.scrollHeight - window.innerHeight, wide: document.documentElement.scrollWidth, tops }
+    }, places)
+    overflow = Math.max(overflow, now.wide)
+    stalled = now.y >= now.max - 1 ? stalled + 1 : 0
+    for (let i = 0; i < places.length; i++) {
+      if (!shoot || shot.has(places[i]) || now.tops[i] >= 40) continue
+      shot.add(places[i])
+      await page.waitForTimeout(900) // the reveal settles
+      await page.screenshot({ path: path.join(OUT, `${tag}-${String(shot.size).padStart(2, '0')}-${places[i]}.png`) })
     }
   }
-  return { overflow: Math.max(...overflow), reached: await page.evaluate(() => window.scrollY), height }
+  const end = await page.evaluate(() => ({ reached: window.scrollY, height: document.documentElement.scrollHeight - window.innerHeight }))
+  return { overflow, ...end }
 }
 
 /**
@@ -345,7 +352,7 @@ test.use({
 test.describe.configure({ timeout: 600_000 })
 
 for (const size of SIZES) {
-  test(`${size.name}: scroll top to bottom, modals in each pinned scene, the orb, the models`, async ({ browser }) => {
+  test(`${size.name}: scroll top to bottom`, async ({ browser }) => {
     fs.mkdirSync(OUT, { recursive: true })
     const ctx = await context(browser, size, false, true)
     const page = await ctx.newPage()
@@ -358,8 +365,13 @@ for (const size of SIZES) {
     await page.screenshot({ path: path.join(OUT, `${size.name}-00-top.png`) })
 
     const places = await page.evaluate(() => Array.from(document.querySelectorAll('main section[id]')).map((s) => s.id))
-    const meter = await watch(page)
+    // First pass: the stills (a screenshot stalls frames, so nothing is measured on it).
     const run = await scrollThrough(page, size.name, places)
+    // Second pass, measured: from the top again, no screenshots.
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.waitForTimeout(1200)
+    const meter = await watch(page)
+    await scrollThrough(page, size.name, places, false)
     const motion = await meter.read()
 
     // Off the stage: the side orb (wide) or the foot dock (narrow), reachable and named.
@@ -378,22 +390,8 @@ for (const size of SIZES) {
       const first = document.querySelector('main [data-orb-side]')!
       return Boolean(orb.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING)
     })
-
-    const modals = []
-    for (const scene of ['#legion', '#phone']) {
-      const has = await page.evaluate((sel) => Boolean(document.querySelector(`${sel}[data-pinned="true"], ${sel} [data-scene]`)), scene)
-      if (has) modals.push(await modalHoldsPlace(page, scene))
-    }
-    for (const m of modals) {
-      expect(m.yOpen, `${m.scene}: opening the modal kept the page`).toBe(m.y0)
-      expect(m.yClosed, `${m.scene}: closing the modal kept the page`).toBe(m.y0)
-    }
-
-    const models = (await page.locator('.rc-model-box').count()) >= 2 ? await modelsTurnWithScroll(page) : null
-    await page.screenshot({ path: path.join(OUT, `${size.name}-zz-models.png`) })
-
-    const numbers = { size: size.name, throttle: size.throttle, ...motion, ...run, orbPlace, orbName, orbFirst, modals, models }
-    fs.writeFileSync(path.join(OUT, `${size.name}-numbers.json`), JSON.stringify(numbers, null, 2))
+    const numbers = { size: size.name, throttle: size.throttle, ...motion, ...run, orbPlace, orbName, orbFirst }
+    fs.writeFileSync(path.join(OUT, `${size.name}-scroll.json`), JSON.stringify(numbers, null, 2))
     console.log(JSON.stringify(numbers))
     await ctx.close()
 
@@ -402,6 +400,30 @@ for (const size of SIZES) {
     expect(orbFirst, 'the orb is read before the sections').toBe(true)
     if (wide) expect(orbPlace).toMatchObject({ shown: 'true', inert: false })
     else expect(orbPlace).toMatchObject({ dock: true })
+  })
+
+  test(`${size.name}: scenes hold the page under a modal; models turn with the scroll`, async ({ browser }) => {
+    fs.mkdirSync(OUT, { recursive: true })
+    const ctx = await context(browser, size, false, false)
+    const page = await ctx.newPage()
+    await open(page)
+    const modals = []
+    for (const scene of ['#legion', '#phone']) {
+      const has = await page.evaluate((sel) => Boolean(document.querySelector(`${sel}[data-pinned="true"]`)), scene)
+      if (has) modals.push(await modalHoldsPlace(page, scene))
+    }
+    await page.screenshot({ path: path.join(OUT, `${size.name}-zy-scene-after-modal.png`) })
+    const models = (await page.locator('.rc-model-box').count()) >= 2 ? await modelsTurnWithScroll(page) : null
+    await page.screenshot({ path: path.join(OUT, `${size.name}-zz-models.png`) })
+    const numbers = { size: size.name, modals, models }
+    fs.writeFileSync(path.join(OUT, `${size.name}-scenes.json`), JSON.stringify(numbers, null, 2))
+    console.log(JSON.stringify(numbers))
+    await ctx.close()
+    expect(modals.length, 'at least the LEGION scene was checked').toBeGreaterThan(0)
+    for (const m of modals) {
+      expect(m.yOpen, `${m.scene}: opening the modal kept the page`).toBe(m.y0)
+      expect(m.yClosed, `${m.scene}: closing the modal kept the page`).toBe(m.y0)
+    }
     if (models) expect(models).toMatchObject({ turnedWithScroll: true, stillAfterTouch: true })
   })
 
@@ -417,10 +439,19 @@ for (const size of SIZES) {
       scene: document.querySelectorAll('[data-scene]').length,
       stage: document.querySelectorAll('.rc-scrolly[data-mode="stage"]').length,
     }))
+    // The plain page's own cost, measured the same way: the baseline for the story's numbers.
+    if (size.throttle > 1) {
+      const cdp = await ctx.newCDPSession(page)
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: size.throttle })
+    }
+    const places = await page.evaluate(() => Array.from(document.querySelectorAll('main section[id]')).map((s) => s.id))
+    const meter = await watch(page)
+    await scrollThrough(page, size.name, places, false)
+    const baseline = await meter.read()
     await page.evaluate(() => document.getElementById('legion')?.scrollIntoView({ block: 'start' }))
     await page.waitForTimeout(400)
     await page.screenshot({ path: path.join(OUT, `${size.name}-reduced-legion.png`) })
-    fs.writeFileSync(path.join(OUT, `${size.name}-reduced.json`), JSON.stringify(plain))
+    fs.writeFileSync(path.join(OUT, `${size.name}-reduced.json`), JSON.stringify({ ...plain, baseline }, null, 2))
     await ctx.close()
     expect(plain).toEqual({ story: 0, reveal: 0, side: 0, scene: 0, stage: 0 })
   })

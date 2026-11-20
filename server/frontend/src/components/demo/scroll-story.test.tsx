@@ -129,12 +129,25 @@ const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
 describe('the LEGION scene', () => {
   test("the diagram's layers are the rows its boxes sit in (never a backdrop or a marker's box)", () => {
     expect(diagramLayers(SVG)).toEqual([
-      { top: 5, height: 20 },
-      { top: 45, height: 15 },
-      { top: 75, height: 20 },
+      { left: 2.5, width: 45, top: 5, height: 20 },
+      { left: 2.5, width: 95, top: 45, height: 15 },
+      { left: 2.5, width: 20, top: 75, height: 20 },
     ])
     expect(diagramLayers('<svg></svg>')).toEqual([])
     expect(diagramLayers('not a picture')).toEqual([])
+  })
+
+  test('a diagram drawn in columns (a tall box joins its rows) is read as its columns', () => {
+    const columns = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+      <rect x="20" y="10" width="80" height="40"/><rect x="20" y="60" width="80" height="40"/>
+      <rect x="160" y="10" width="80" height="180"/>
+      <rect x="300" y="10" width="80" height="40"/><rect x="300" y="60" width="80" height="40"/>
+    </svg>`
+    expect(diagramLayers(columns)).toEqual([
+      { left: 5, width: 20, top: 5, height: 45 },
+      { left: 40, width: 20, top: 5, height: 90 },
+      { left: 75, width: 20, top: 5, height: 45 },
+    ])
   })
 
   test('part N lights the layer at the same share of the way down', () => {
