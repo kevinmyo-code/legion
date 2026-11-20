@@ -136,7 +136,11 @@ class VoiceSpeedWiringTest {
         val speaker = bodyOf(s, "newSpeaker")
         assertTrue(speaker.contains("play = { pcm -> playGate.withLock { p.write(pcm, gen) } }"))
         assertTrue(speaker.contains("turnAudioStarted = true"))
-        assertTrue(speaker.contains("onFillerStarted = { text -> audit.filler(\"task\", text) }"))
+        // The task line is audited, and counts toward the turn's fillers and its said words (WaitFillers).
+        assertTrue(speaker.contains("onFillerStarted = { text -> noteTaskFiller(text) }"))
+        val task = bodyOf(s, "noteTaskFiller")
+        assertTrue(task.contains("audit.filler(\"task\", text)"))
+        assertTrue(task.contains("turnFillers.incrementAndGet()"))
     }
 
     @Test
@@ -275,6 +279,27 @@ class VoiceSpeedWiringTest {
     @Test
     fun `a turn already known to be noise gets no clip`() {
         assertTrue(bodyOf(session(), "backchannelStillDue").contains("noiseUtt"))
+    }
+
+    // --- 2026-11-20: chained fillers on a long wait (Kevin: "sometimes two or more") ---------------
+
+    @Test
+    fun `the wait lines are kept and warmed like the other fillers`() {
+        val lines = listOf("Still on it.", "Still checking.", "One moment more.", "Bear with me.", "Working on it.")
+        assertTrue(ScriptedLines.KEEP.containsAll(lines))
+        val warm = bodyOf(session(), "warmFillers")
+        assertTrue(warm.contains("WaitFillers.LINES"))
+    }
+
+    @Test
+    fun `every waiting turn schedules the wait lines at his end of speech`() {
+        val s = session()
+        val end = bodyOf(s, "onTurnEnd")
+        assertTrue(end.indexOf("scheduleWaitFillers(") in 0 until end.indexOf("runTurn("))
+        val play = bodyOf(s, "playWaitFiller")
+        assertTrue(play.contains("playGate.withLock"))
+        assertTrue(play.contains("filler kind=wait at_ms="))
+        assertTrue(play.contains("answerTextIn()"))
     }
 
     private companion object {

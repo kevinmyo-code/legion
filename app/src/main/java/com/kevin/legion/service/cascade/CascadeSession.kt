@@ -308,6 +308,19 @@ internal class CascadeSession(
     @Volatile private var noiseUtt: TurnUtterance? = null
 
     /**
+     * This turn's fillers ([WaitFillers]): how many played (every kind), when the last one ended, the
+     * words said (no wait line repeats them), whether the answer's own audio started, and the timer.
+     */
+    private val turnFillers = AtomicInteger(0)
+    @Volatile private var lastFillerEndAtMs = 0L
+    private val saidThisTurn: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
+    @Volatile private var answerAudioStarted = false
+    @Volatile private var fillerSkip: Backchannel.Skip? = null
+    private var waitFillerJob: Job? = null
+    private val recentWaitLines = RecentLines(WaitFillers.ROTATION)
+    private val waitIndex = AtomicInteger(0)
+
+    /**
      * The open's own audio (the tap chime, the listen cue): the job that plays or waits for it, and when
      * it ends. Not a reply: his first turn over it still gets a backchannel ([Backchannel.overReply]).
      */
@@ -1070,6 +1083,7 @@ internal class CascadeSession(
         val opening = turnJob != null && turnJob === openingJob
         uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)
         backchannelJob?.cancel()
+        waitFillerJob?.cancel()
         if (checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING) {
             checkInStep = CheckInStep.DONE
             reportCheckIn(CheckInOutcome.ANSWERED)
@@ -1165,6 +1179,7 @@ internal class CascadeSession(
         audit.activityEnd()
         host.phase(Phase.THINKING, "...")
         scheduleBackchannel(u, eotAtMs)
+        scheduleWaitFillers(eotAtMs)
         val previous = turnJob
         turnJob = scope.launch(loop) {
             previous?.join()
@@ -1182,6 +1197,10 @@ internal class CascadeSession(
         backchannelUtt = u
         turnAudioStarted = false
         backchannelEndAtMs = null
+        turnFillers.set(0)
+        lastFillerEndAtMs = eotAtMs
+        saidThisTurn.clear()
+        answerAudioStarted = false
         val seq = backchannelSeq.incrementAndGet()
         val skip = Backchannel.decide(
             Backchannel.Turn(
@@ -1193,6 +1212,7 @@ internal class CascadeSession(
                 onCall = TelephonyController.isInCall,
             ),
         )
+        fillerSkip = skip
         if (skip != null) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${skip.token}")
             return
@@ -1236,6 +1256,7 @@ internal class CascadeSession(
             playbackActive = true
             recentBackchannels.add(line)
             VoiceEngineSettings.setLastBackchannel(ctx, line)
+            turnFillers.incrementAndGet()
             LiveLatency.log(
                 LiveLatency.TAG,
                 // The word as its index in Backchannel.LINES (a number, never the word), and how many
@@ -1251,6 +1272,88 @@ internal class CascadeSession(
         delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
         if (!speaking && !turnAudioStarted) playbackActive = false
         backchannelEndAtMs = System.currentTimeMillis()
+        lastFillerEndAtMs = System.currentTimeMillis()
+    }
+
+    /** A task line started: audited, and counted toward this turn's fillers and its said words. */
+    private fun noteTaskFiller(text: String) {
+        audit.filler("task", text)
+        turnFillers.incrementAndGet()
+        saidThisTurn.add(text)
+    }
+
+    /**
+     * His speech ended: the wait lines ([WaitFillers]) for this turn. Each is due [WaitFillers.FIRST_GAP_MS]
+     * or [WaitFillers.NEXT_GAP_MS] after the last filler of any kind ended, while no answer audio or
+     * text has started, up to [WaitFillers.MAX_PER_TURN] fillers in all. Re-read every
+     * [WAIT_POLL_MS], so a backchannel or task line that ends later moves the next one back.
+     */
+    private fun scheduleWaitFillers(eotAtMs: Long) {
+        waitFillerJob?.cancel()
+        val seq = backchannelSeq.get()
+        // The backchannel's own rules (Quiet, a call, over a reply, half-duplex) bind these too.
+        if (fillerSkip != null) return
+        waitFillerJob = scope.launch(loop) {
+            var said = 0
+            while (seq == backchannelSeq.get() && !closing.get()) {
+                val at = WaitFillers.nextAtMs(lastFillerEndAtMs, said, turnFillers.get()) ?: return@launch
+                val wait = at - System.currentTimeMillis()
+                if (wait > 0) {
+                    delay(minOf(wait, WAIT_POLL_MS))
+                    continue
+                }
+                if (!playWaitFiller(seq, eotAtMs)) return@launch
+                said++
+            }
+        }
+    }
+
+    /**
+     * One wait line, from memory, under [playGate] like the backchannel: never once the answer's text
+     * or audio has started, never over it (the answer's writes take the same gate, so an answer ready
+     * during the line follows it). False: none played, and none will this turn.
+     */
+    @Suppress("ReturnCount") // one worded skip per reason
+    private suspend fun playWaitFiller(seq: Int, eotAtMs: Long): Boolean {
+        val b = backend ?: return false
+        val p = player ?: return false
+        fun due() = !closing.get() && seq == backchannelSeq.get() && !answerAudioStarted && !answerTextIn() &&
+            !QuietMode.isOn(ctx) && !TelephonyController.isInCall
+        if (!due()) return false
+        var pcm = ByteArray(0)
+        val chosen = WaitFillers.choose(
+            recentWaitLines,
+            saidThisTurn.toSet(),
+            waitIndex.getAndIncrement(),
+            inHand = { line, take -> b.tts.inHandTake(SpokenText.forSpeech(line), take) },
+        ) { line, take ->
+            pcm = Backchannel.trimSilence(clipFromMemory(b.tts, line, take), b.tts.sampleRate)
+            pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
+        }
+        if (chosen == null) {
+            LiveLatency.log(LiveLatency.TAG, "filler_skip kind=wait reason=no_clip_fits")
+            return false
+        }
+        playGate.withLock {
+            if (!due()) return false
+            playbackActive = true
+            recentWaitLines.add(chosen.line)
+            saidThisTurn.add(chosen.line)
+            turnFillers.incrementAndGet()
+            LiveLatency.log(
+                LiveLatency.TAG,
+                "filler kind=wait at_ms=${System.currentTimeMillis() - eotAtMs} " +
+                    "idx=${WaitFillers.LINES.indexOf(chosen.line)}",
+            )
+            audit.filler("wait", chosen.line)
+            val gen = p.generation()
+            withContext(Dispatchers.IO) { p.write(pcm, gen) }
+            p.awaitDrained()
+        }
+        delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
+        if (!speaking && !turnAudioStarted) playbackActive = false
+        lastFillerEndAtMs = System.currentTimeMillis()
+        return true
     }
 
     /**
@@ -2122,6 +2225,7 @@ internal class CascadeSession(
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
                 } else {
                     answerAudible = true
+                    answerAudioStarted = true
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
                     LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
                 }
@@ -2141,8 +2245,9 @@ internal class CascadeSession(
             },
             // Count only, never the words.
             onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
-            onFillerStarted = { text -> audit.filler("task", text) },
+            onFillerStarted = { text -> noteTaskFiller(text) },
             onFillerPlayed = {
+                lastFillerEndAtMs = System.currentTimeMillis()
                 // Half-duplex: the filler is over, the answer is not here yet. Listen again once it
                 // has drained (and its Bluetooth tail settled), so he can still add to his turn.
                 if (turnTaker?.bargeIn != true) {
@@ -2223,8 +2328,8 @@ internal class CascadeSession(
         if (fillersWarmedFor === b) return
         fillersWarmedFor = b
         b.tts.warm(FILLERS_SPOKEN)
-        // The backchannels' second renders, kept apart ([Backchannel.TAKES]).
-        b.tts.warmTakes(Backchannel.LINES.map { SpokenText.forSpeech(it) }, 1)
+        // The backchannels' and the wait lines' second renders, kept apart ([Backchannel.TAKES]).
+        b.tts.warmTakes((Backchannel.LINES + WaitFillers.LINES).map { SpokenText.forSpeech(it) }, 1)
     }
 
     /** Tap or barge-in: stop the reply now. A tool already running finishes and is reported. */
@@ -3242,9 +3347,12 @@ internal class CascadeSession(
         private val FILLERS_SPOKEN =
             (
                 ToolFillers.GENERIC + ScriptedLines.MISSED + ScriptedLines.VOICE_LOST + Backchannel.LINES +
-                    ScriptedLines.GENERIC_DONE
+                    WaitFillers.LINES + ScriptedLines.GENERIC_DONE
                 )
                 .distinct().map { SpokenText.forSpeech(it) }
+
+        /** How often the wait-line timer looks again for a filler that ended later than it planned for. */
+        private const val WAIT_POLL_MS = 250L
 
         /** A backchannel's audio must be in hand within this, or it is skipped (it is from memory). */
         private const val BACKCHANNEL_FETCH_MS = 300L
