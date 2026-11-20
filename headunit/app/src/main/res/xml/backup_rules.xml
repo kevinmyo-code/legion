@@ -9,4 +9,8 @@
 -->
 <full-backup-content>
     <exclude domain="sharedpref" path="companion_profile.xml" />
+    <!-- Car link pairing and engine sign-in (HU-1 T3, review H1): a restored ciphertext
+         never decrypts on another device and must never make a unit look paired. -->
+    <exclude domain="sharedpref" path="car_link.xml" />
+    <exclude domain="sharedpref" path="engine_config.xml" />
 </full-backup-content>

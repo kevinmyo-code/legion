@@ -187,7 +187,7 @@ object LocationController {
      * transport only ever carries a live fix - see [BeaconProtocol].
      */
     fun acceptExternal(fix: BeaconFix) {
-        publish(FixSource.PHONE, Location(BEACON_PROVIDER).apply {
+        publish(FixSource.PHONE_UNVERIFIED, Location(LocationSources.UNVERIFIED_PROVIDER).apply {
             latitude = fix.lat
             longitude = fix.lng
             fix.accuracyM?.let { accuracy = it }

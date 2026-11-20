@@ -1,22 +1,128 @@
 package com.kevin.midnightai.link
 
-/**
- * Where the car link's long-term key comes from (HU-1 T3 pairing writes it; T4's location feed
- * reads it). A seam so the location feed is testable without a Keystore, and so T3's real,
- * Keystore-wrapped store plugs in without T4 knowing how the key is kept.
- */
-fun interface LinkKeySource {
-    /** The 32-byte link key, or null when this unit has not been paired (or was forgotten). */
-    fun linkKey(): ByteArray?
+import android.content.Context
+import com.kevin.midnightai.service.DeviceRole
+import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-    /** Cheap check with no decryption (the Settings row and service start ask it on the main thread). */
-    fun isPaired(): Boolean = linkKey() != null
+/**
+ * Where this unit stands with its phone (spec 3.7):
+ * - NOT_PAIRED: no pairing record at all.
+ * - PAIRED: a committed link key that decrypts, nothing pending.
+ * - PENDING: a new pairing waits for the phone's first word (with or without a committed one).
+ * - BROKEN: a record exists but its key cannot be read (Keystore failure, restore, corruption):
+ *   accept no phone position at all, never say "Paired", never label a fix "Phone".
+ */
+enum class LinkStatus { NOT_PAIRED, PAIRED, PENDING, BROKEN }
+
+/** The link keys as read (decrypted) right now. Never logged; [toString] says nothing. */
+class LinkKeys(val committed: ByteArray?, val pending: ByteArray?, val status: LinkStatus) {
+    override fun toString(): String = "LinkKeys($status)"
 }
 
-/** Process-wide car link state: the installed key source. Nothing here is ever logged. */
+/** How the location receiver runs (one decision, used by every start site). */
+enum class FeedMode {
+    /** Not listening (role unset and never paired, or this device is the beacon itself). */
+    OFF,
+    /** Unpaired unit, beacon role set by hand: the legacy unauthenticated feed, labelled unverified. */
+    MNAI1,
+    /** Paired (or pending): authenticated MNAI2 only. */
+    MNAI2,
+    /** A pairing record whose key cannot be read: listen to nothing at all. */
+    NOTHING,
+}
+
+object CarLinkRules {
+    /**
+     * Review H1/H2 (2026-11-20). MNAI1 is gated on "no pairing record exists", never on whether a
+     * key happened to decrypt: a paired unit with an unreadable key accepts nothing.
+     */
+    fun feedMode(role: DeviceRole.Role, status: LinkStatus): FeedMode = when {
+        role == DeviceRole.Role.GPS_BEACON -> FeedMode.OFF
+        status == LinkStatus.BROKEN -> FeedMode.NOTHING
+        status == LinkStatus.PAIRED || status == LinkStatus.PENDING -> FeedMode.MNAI2
+        role == DeviceRole.Role.HEAD_UNIT -> FeedMode.MNAI1
+        else -> FeedMode.OFF
+    }
+
+    /** The Settings line for each state. */
+    fun statusLine(status: LinkStatus, phoneName: String?): String = when (status) {
+        LinkStatus.NOT_PAIRED -> "Pair once with your phone: it sends location and your sign-in"
+        LinkStatus.PAIRED -> "Paired with ${phoneName ?: "your phone"}: location comes from it"
+        LinkStatus.PENDING -> "Paired, waiting for the phone"
+        LinkStatus.BROKEN -> "Pairing broken: pair again"
+    }
+}
+
+/** The car link's storage (Android: [LinkKeyStore]); a seam so the feed and pairing are testable. */
+interface LinkKeySource {
+    /** Cheap, no decryption: is there any pairing record (committed or pending)? */
+    fun hasRecord(): Boolean
+
+    /** Decrypts (Keystore): call off the main thread. */
+    fun keys(): LinkKeys
+
+    /** PENDING -> PAIRED (spec 3.7). Null on success, else a reason in words. */
+    fun commitPending(): String?
+
+    /** Drops PENDING; COMMITTED is untouched. */
+    fun dropPending()
+
+    /** Forget: the link keys and exactly the values that came over the link (spec 3.7). */
+    fun forget()
+
+    fun phoneName(): String?
+}
+
+private object NoLink : LinkKeySource {
+    override fun hasRecord() = false
+    override fun keys() = LinkKeys(null, null, LinkStatus.NOT_PAIRED)
+    override fun commitPending() = "not paired"
+    override fun dropPending() = Unit
+    override fun forget() = Unit
+    override fun phoneName(): String? = null
+}
+
+/**
+ * Process-wide car link state. Every change (pair, pending, commit, drop, forget, revoke) goes
+ * through [changed], which re-reads the status and tells the listeners (the location receiver
+ * rebuilds its feed at once, review H2). Nothing here is ever logged.
+ */
 object CarLink {
     @Volatile
-    var keys: LinkKeySource = LinkKeySource { null }
+    var store: LinkKeySource = NoLink
 
-    fun isPaired(): Boolean = runCatching { keys.isPaired() }.getOrDefault(false)
+    private val _status = MutableStateFlow(LinkStatus.NOT_PAIRED)
+
+    /** Last status read by [refresh]; NOT_PAIRED until the first read. */
+    val status: StateFlow<LinkStatus> = _status.asStateFlow()
+
+    private val listeners = CopyOnWriteArrayList<(Context) -> Unit>()
+
+    fun addListener(listener: (Context) -> Unit) {
+        listeners += listener
+    }
+
+    /** Re-reads the keys (Keystore: off the main thread) and returns them. */
+    fun refresh(): LinkKeys {
+        val keys = runCatching { store.keys() }.getOrElse {
+            LinkKeys(null, null, if (store.hasRecord()) LinkStatus.BROKEN else LinkStatus.NOT_PAIRED)
+        }
+        _status.value = keys.status
+        return keys
+    }
+
+    /** Something about the pairing changed: refresh and rebuild whatever depends on it. */
+    fun changed(context: Context) {
+        refresh()
+        listeners.forEach { runCatching { it(context.applicationContext) } }
+    }
+
+    internal fun resetForTest() {
+        store = NoLink
+        _status.value = LinkStatus.NOT_PAIRED
+        listeners.clear()
+    }
 }

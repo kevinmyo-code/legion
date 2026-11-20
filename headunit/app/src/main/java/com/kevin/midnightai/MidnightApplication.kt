@@ -23,9 +23,20 @@ class MidnightApplication : Application() {
         } catch (e: Exception) {
             android.util.Log.w("MidnightApp", "drive log failed to start: ${e.message}")
         }
-        // HU-1 T3: the car link's key lives in the Keystore-wrapped LinkKeyStore; the location feed
-        // (BeaconClient) reads it through CarLink. Cheap: no Keystore call until a key is asked for.
-        com.kevin.midnightai.link.CarLink.keys = com.kevin.midnightai.link.LinkKeyStore(this)
+        // HU-1 T3: the car link's keys live in the Keystore-wrapped LinkKeyStore. Every pairing
+        // change rebuilds the location receiver at once (review H2). The first status read and the
+        // redactor registrations (review L5) decrypt, so they run off the main thread.
+        val linkStore = com.kevin.midnightai.link.LinkKeyStore.forApp(this)
+        com.kevin.midnightai.link.CarLink.store = linkStore
+        com.kevin.midnightai.link.CarLink.addListener { ctx -> com.kevin.midnightai.location.BeaconClient.restart(ctx) }
+        kotlin.concurrent.thread(name = "car-link-init", isDaemon = true) {
+            runCatching {
+                com.kevin.midnightai.link.CarLink.refresh()
+                linkStore.secretsForRedactor().forEach(com.kevin.midnightai.diag.LogRedactor::addLiteral)
+                com.kevin.midnightai.ai.CompanionProfile.geminiKey(this).takeIf { it.isNotBlank() }
+                    ?.let(com.kevin.midnightai.diag.LogRedactor::addLiteral)
+            }
+        }
         // Captured before StartupTrace/Crashlytics exist, then recorded as spans once they do.
         val tTop = android.os.SystemClock.elapsedRealtime()
 

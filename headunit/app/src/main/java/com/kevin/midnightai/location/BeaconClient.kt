@@ -106,11 +106,22 @@ object BeaconClient {
     @Volatile private var resolvedPeer: InetAddress? = null
 
     /**
-     * HU-1 T4: the authenticated feed, present while this unit is paired with a phone (T3). When it
-     * is, ONLY MNAI2 is spoken and accepted (an unauthenticated MNAI1 fix could be sent by anyone on
-     * the hotspot); unpaired, the hand-set MNAI1 beacon role works as before. Guarded by itself.
+     * How this run listens ([com.kevin.midnightai.link.CarLinkRules.feedMode], review H1/H2) and,
+     * in MNAI2 mode, the feeds under the COMMITTED and PENDING link keys. A unit with a pairing
+     * record NEVER speaks or accepts MNAI1; one whose key cannot be read listens to nothing.
+     * Rebuilt by [restart] on every pairing change, so a forgotten or replaced key is dead at once.
+     * [feeds] is guarded by itself.
      */
-    @Volatile private var feed: PhoneFeed? = null
+    @Volatile private var mode: com.kevin.midnightai.link.FeedMode = com.kevin.midnightai.link.FeedMode.OFF
+    @Volatile private var feeds: LinkFeedSet? = null
+
+    /** Tests only: the feeds the running receiver holds, and its mode. */
+    internal fun feedsForTest(): LinkFeedSet? = feeds
+    internal fun modeForTest(): com.kevin.midnightai.link.FeedMode = mode
+
+    /** A candidate peer address and how many accepted datagrams in a row came from it (review L8). */
+    @Volatile private var candidatePeer: InetAddress? = null
+    @Volatile private var candidateCount = 0
 
     private val _linkUp = MutableStateFlow(false)
 
@@ -145,13 +156,14 @@ object BeaconClient {
         // send throws and discovery silently only ever tries the gateway.
         runCatching { sock.broadcast = true }
         socket = sock
-        feed = com.kevin.midnightai.link.CarLink.keys.linkKey()?.let { key ->
-            val random = java.security.SecureRandom()
-            PhoneFeed(key, nowNanos = SystemClock::elapsedRealtimeNanos, random = { random.nextBytes(it) })
-                .also { key.fill(0) }
-        }
 
         job = scope.launch {
+            // The keys are decrypted here, off the caller's (often the main) thread.
+            if (!resolveMode(appContext)) {
+                runCatching { sock.close() }
+                if (socket === sock) socket = null
+                return@launch
+            }
             // Announce on a timer; receive on this coroutine. Two jobs, one socket -
             // DatagramSocket permits a concurrent send during a blocking receive,
             // which is what lets the receive loop stay a simple blocking read.
@@ -176,21 +188,51 @@ object BeaconClient {
         runCatching { socket?.close() }
         socket = null
         lastFixAtMs = 0L
-        feed = null
+        feeds = null
+        mode = com.kevin.midnightai.link.FeedMode.OFF
         resolvedPeer = null
+        candidatePeer = null
+        candidateCount = 0
         _peerLabel.value = null
         _linkUp.value = false
     }
 
+    /** Stops and starts again with the current pairing (CarLink listener; review H2). */
+    fun restart(context: Context) {
+        stop()
+        start(context)
+    }
+
+    /**
+     * Decides the mode for this run from the device role and the pairing (keys decrypted here).
+     * Returns false when this run should not listen at all (OFF, or NOTHING for a broken pairing).
+     */
+    private fun resolveMode(context: Context): Boolean {
+        val keys = com.kevin.midnightai.link.CarLink.refresh()
+        val role = com.kevin.midnightai.service.DeviceRole.current(context)
+        mode = com.kevin.midnightai.link.CarLinkRules.feedMode(role, keys.status)
+        if (mode != com.kevin.midnightai.link.FeedMode.MNAI2) {
+            keys.committed?.fill(0)
+            keys.pending?.fill(0)
+            return mode == com.kevin.midnightai.link.FeedMode.MNAI1
+        }
+        val random = java.security.SecureRandom()
+        fun feed(key: ByteArray?) = key?.let {
+            PhoneFeed(it, nowNanos = SystemClock::elapsedRealtimeNanos, random = { b -> random.nextBytes(b) }).also { _ -> it.fill(0) }
+        }
+        feeds = LinkFeedSet(committed = feed(keys.committed), pending = feed(keys.pending))
+        return true
+    }
+
     private suspend fun CoroutineScope.helloLoop(context: Context, sock: DatagramSocket) {
         while (isActive) {
-            val f = feed
-            val payload = if (f != null) {
-                synchronized(f) { f.hello(LocationController.desiredIntervalMs) }
+            val set = feeds
+            val payloads = if (set != null) {
+                synchronized(set) { set.hellos(LocationController.desiredIntervalMs) }
             } else {
-                BeaconProtocol.encodeHello(LocationController.desiredIntervalMs)
+                listOf(BeaconProtocol.encodeHello(LocationController.desiredIntervalMs))
             }
-            for (target in helloTargets(context)) {
+            for (payload in payloads) for (target in helloTargets(context)) {
                 runCatching {
                     sock.send(DatagramPacket(payload, payload.size, target, BeaconProtocol.PORT))
                 }.onFailure { Log.v(TAG, "HELLO to $target failed: ${it.message}") }
@@ -206,7 +248,8 @@ object BeaconClient {
                 resolvedPeer = null
                 _peerLabel.value = null
             }
-            delay(HELLO_INTERVAL_MS)
+            // MNAI2: a HELLO at the fix rate (spec 4.3), so a fix's conservative age stays small.
+            delay(if (set != null) PhoneFeed.helloIntervalMs(LocationController.desiredIntervalMs) else HELLO_INTERVAL_MS)
         }
     }
 
@@ -274,7 +317,7 @@ object BeaconClient {
         return runCatching { InetAddress.getByAddress(littleEndianToBytes(broadcast)) }.getOrNull()
     }
 
-    private fun receiveLoop(context: Context, sock: DatagramSocket) {
+    private suspend fun receiveLoop(context: Context, sock: DatagramSocket) {
         val buffer = ByteArray(maxOf(BeaconProtocol.MAX_PACKET_BYTES, PhoneLinkWire.MAX_PACKET_BYTES))
         while (!sock.isClosed) {
             val packet = DatagramPacket(buffer, buffer.size)
@@ -283,14 +326,25 @@ object BeaconClient {
             } catch (_: SocketTimeoutException) {
                 continue
             } catch (e: Exception) {
-                if (!sock.isClosed) Log.w(TAG, "Beacon receive failed", e)
-                return
+                if (sock.isClosed) return
+                // Review L10: a receive error is not the end of the link; back off and go on.
+                Log.w(TAG, "Beacon receive failed", e)
+                delay(1_000)
+                continue
             }
-            val f = feed
-            if (f != null) {
+            // One bad datagram must never end the loop (review L10).
+            runCatching { handle(context, packet) }.onFailure { Log.w(TAG, "Beacon datagram dropped", it) }
+        }
+    }
+
+    private fun handle(context: Context, packet: DatagramPacket) {
+        run {
+            val set = feeds
+            if (set != null) {
                 // Paired: authenticated MNAI2 only. A refusal is dropped silently (anyone on the
                 // hotspot can send this port anything; nothing about it is logged).
-                when (val out = synchronized(f) { f.receive(packet.data, packet.length) }) {
+                val result = synchronized(set) { set.receive(packet.data, packet.length) }
+                when (val out = result.outcome) {
                     is PhoneFeed.Outcome.Fix -> {
                         notePeer(packet.address)
                         LocationController.acceptPhone(out.fix, out.fixNanos)
@@ -299,22 +353,35 @@ object BeaconClient {
                         notePeer(packet.address)
                         com.kevin.midnightai.time.TrustedClock.acceptPhoneZone(out.zoneId)
                     }
+                    PhoneFeed.Outcome.Revoke -> scope.launch {
+                        com.kevin.midnightai.link.CarLink.store.forget()
+                        com.kevin.midnightai.link.CarLink.changed(context)
+                    }
                     is PhoneFeed.Outcome.Rejected -> Unit
                 }
-                continue
+                if (result.commitPending) scope.launch {
+                    com.kevin.midnightai.link.CarLink.store.commitPending()
+                    com.kevin.midnightai.link.CarLink.changed(context)
+                }
+                if (result.dropPending) scope.launch {
+                    com.kevin.midnightai.link.CarLink.store.dropPending()
+                    com.kevin.midnightai.link.CarLink.changed(context)
+                }
+                return
             }
+            if (mode != com.kevin.midnightai.link.FeedMode.MNAI1) return
             // The phone's zone (trusted clock, 2026-10-13): same pinning rule as a fix, and
             // only from the beacon this unit already follows.
             BeaconProtocol.decodeZone(packet.data, packet.length)?.let { zoneId ->
                 val pinnedPeer = manualPeerAddress(context)
                 val fromBeacon = if (pinnedPeer != null) packet.address == pinnedPeer else packet.address == resolvedPeer
                 if (fromBeacon) com.kevin.midnightai.time.TrustedClock.acceptPhoneZone(zoneId)
-                continue
+                return
             }
 
             // A hostile or malformed datagram from anyone else on the hotspot decodes
             // to null and is dropped here, before it can reach location state.
-            val fix = BeaconProtocol.decodeFix(packet.data, packet.length) ?: continue
+            val fix = BeaconProtocol.decodeFix(packet.data, packet.length) ?: return
 
             // A typed address PINS the beacon: anything else on the hotspot is
             // ignored outright. Without this, any device running PHONE role - a
@@ -324,7 +391,7 @@ object BeaconClient {
             // settings screen. When no address is typed we accept the first
             // answerer, which is the whole point of auto-discovery.
             val pinned = manualPeerAddress(context)
-            if (pinned != null && packet.address != pinned) continue
+            if (pinned != null && packet.address != pinned) return
 
             // Learn where the beacon actually is from its first valid reply, and
             // stop broadcasting at the whole subnet from here on.
@@ -338,15 +405,30 @@ object BeaconClient {
         }
     }
 
-    /** An authenticated datagram arrived from [address]: the link is up and we know where the phone is. */
+    /**
+     * An authenticated datagram arrived from [address]: the link is up. The unicast target moves
+     * only after [PEER_CONFIRMATIONS] accepted datagrams in a row from the same new address, so an
+     * in-path attacker re-sending one captured datagram from its own address cannot steer the
+     * HELLOs away from the phone (review L8).
+     */
     private fun notePeer(address: InetAddress?) {
         if (address != null && resolvedPeer != address) {
-            resolvedPeer = address
-            _peerLabel.value = address.hostAddress
+            if (candidatePeer == address) candidateCount++ else { candidatePeer = address; candidateCount = 1 }
+            if (resolvedPeer == null || candidateCount >= PEER_CONFIRMATIONS) {
+                resolvedPeer = address
+                _peerLabel.value = address.hostAddress
+                candidatePeer = null
+                candidateCount = 0
+            }
+        } else {
+            candidatePeer = null
+            candidateCount = 0
         }
         lastFixAtMs = SystemClock.elapsedRealtime()
         _linkUp.value = true
     }
+
+    private const val PEER_CONFIRMATIONS = 2
 
     /**
      * The phone's address on the hotspot: this device's default gateway.

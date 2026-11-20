@@ -6,7 +6,7 @@ package com.kevin.midnightai.location
  * change; the phone's GPS over the car link comes next; a Wi-Fi or cell network fix (often 100 m
  * off) is the last resort.
  */
-enum class FixSource { UNIT_GPS, PHONE, NETWORK }
+enum class FixSource { UNIT_GPS, PHONE, PHONE_UNVERIFIED, NETWORK }
 
 /** Pure rules for choosing between live sources and naming them. */
 object LocationSources {
@@ -21,9 +21,16 @@ object LocationSources {
     /** `LocationManager.GPS_PROVIDER`, copied so this object needs no Android runtime. */
     const val GPS_PROVIDER = "gps"
 
+    /**
+     * Provider stamped on legacy MNAI1 fixes (unauthenticated: anyone on the hotspot could have sent
+     * one). Only an unpaired unit with the beacon role set by hand accepts them (review H1).
+     */
+    const val UNVERIFIED_PROVIDER = "midnight-beacon-v1"
+
     fun of(provider: String?, beaconProvider: String): FixSource = when (provider) {
         GPS_PROVIDER -> FixSource.UNIT_GPS
         beaconProvider -> FixSource.PHONE
+        UNVERIFIED_PROVIDER -> FixSource.PHONE_UNVERIFIED
         else -> FixSource.NETWORK
     }
 
@@ -31,6 +38,7 @@ object LocationSources {
     fun label(source: FixSource): String = when (source) {
         FixSource.UNIT_GPS -> "GPS on this unit"
         FixSource.PHONE -> "Phone"
+        FixSource.PHONE_UNVERIFIED -> "Phone (unverified)"
         FixSource.NETWORK -> "Network location"
     }
 

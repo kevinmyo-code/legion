@@ -73,14 +73,6 @@ object DeviceRole {
     }
 
     /** The role for whichever car this device is currently in. */
-    /**
-     * Whether this unit runs the receiving end of the location link: the HEAD_UNIT role, or (HU-1
-     * T4) a unit paired with a phone (T3) whose role was never set. A unit set to GPS_BEACON never
-     * listens: the two roles bind the same port.
-     */
-    fun listensForPhone(role: Role, paired: Boolean): Boolean =
-        role == Role.HEAD_UNIT || (role == Role.OFF && paired)
-
     fun current(context: Context): Role = forVehicle(context, ActiveVehicle.current(context))
 
     fun forVehicle(context: Context, vehicleId: String): Role {
@@ -130,10 +122,9 @@ object DeviceRole {
         com.kevin.midnightai.location.BeaconClient.stop()
         BeaconService.stop(appContext)
         when (role) {
-            Role.OFF -> if (listensForPhone(role, com.kevin.midnightai.link.CarLink.isPaired())) {
-                com.kevin.midnightai.location.BeaconClient.start(appContext)
-            }
-            Role.HEAD_UNIT -> com.kevin.midnightai.location.BeaconClient.start(appContext)
+            // The receiver decides for itself whether to listen and how
+            // (link.CarLinkRules.feedMode: pairing first, then the role).
+            Role.OFF, Role.HEAD_UNIT -> com.kevin.midnightai.location.BeaconClient.start(appContext)
             Role.GPS_BEACON ->
                 // Skipped without the grant rather than started-and-crashed: the
                 // service declares foregroundServiceType="location", which Android 14
