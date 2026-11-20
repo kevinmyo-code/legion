@@ -271,6 +271,12 @@ class VoiceSpeedWiringTest {
         assertTrue(play.contains("word=${'$'}{Backchannel.LINES.indexOf(line)}"))
     }
 
+    @Test
+    fun `a turn already known to be noise gets no clip`() {
+        val play = bodyOf(session(), "playBackchannel")
+        assertTrue(play.contains("noiseUtt"))
+    }
+
     private companion object {
         val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)
         val LINE_COMMENT = Regex("(?<![:\"])//[^\n]*")

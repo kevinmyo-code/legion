@@ -304,6 +304,9 @@ internal class CascadeSession(
     /** Whether his current speech started over a reply or a turn still running. */
     @Volatile private var uttOverReply = false
 
+    /** The last utterance whose transcript was noise or empty: no model call, so no backchannel either. */
+    @Volatile private var noiseUtt: TurnUtterance? = null
+
     /**
      * The open's own audio (the tap chime, the listen cue): the job that plays or waits for it, and when
      * it ends. Not a reply: his first turn over it still gets a backchannel ([Backchannel.overReply]).
@@ -1229,6 +1232,12 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${Backchannel.Skip.ANSWER_TEXT.token}")
             return
         }
+        // His turn already read as noise or nothing (no model call happens): nothing to acknowledge.
+        // A transcript that comes after the clip's time cannot stop it; that turn still gets one.
+        if (backchannelUtt != null && backchannelUtt === noiseUtt) {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=noise")
+            return
+        }
         // A clip that fails the length gate is swapped for another word; silent only if none fits.
         var pcm = ByteArray(0)
         val chosen = Backchannel.choose(
@@ -1354,6 +1363,7 @@ internal class CascadeSession(
             noiseInARow = 0
         }
         if (heard.isBlank()) {
+            noiseUtt = u
             discardDraftOf(u, "nothing_heard")
             if (!closedOnNoise()) backToListening()
             return
