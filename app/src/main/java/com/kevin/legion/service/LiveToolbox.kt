@@ -330,7 +330,11 @@ object LiveToolbox {
         // Live cost diet (voice cost audit 2026-11-10, F1): every candidate below, then
         // LiveSurface folds writes and instant reads into action tools. See LiveSurface.
         val candidates = surfaceCandidates()
-        return LiveSurface.apply((0 until candidates.length()).map { candidates.getJSONObject(it) })
+        val all = allDeclarations()
+        return LiveSurface.apply(
+            (0 until candidates.length()).map { candidates.getJSONObject(it) },
+            (0 until all.length()).map { all.getJSONObject(it) },
+        )
     }
 
     /**
@@ -5255,7 +5259,9 @@ object LiveToolbox {
         } else {
             getCodes(context)
         }
-        return read.put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
+        // Phone audit 2026-11-19: this read was spoken word for word in talk about something else. A
+        // mis-call is data for the model only; code speaks a read only for car read_codes or ask_fleet.
+        return com.kevin.legion.ai.VerbatimSpeech.unmark(read).put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
     }
 
     /**
@@ -5281,7 +5287,7 @@ object LiveToolbox {
         com.kevin.legion.ai.VerbatimSpeech.mark(result, words, com.kevin.legion.ai.VerbatimSpeech.DIAGNOSTICS)
 
     internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
-        "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
+        "codes, so nothing was cleared and nothing was asked. Mention codes only if he asked about them."
 
     @Suppress("CyclomaticComplexMethod", "ReturnCount") // read, empty, failed, each code
     private suspend fun getCodes(context: Context): JSONObject {

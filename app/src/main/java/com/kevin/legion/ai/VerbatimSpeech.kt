@@ -38,6 +38,13 @@ object VerbatimSpeech {
         return result
     }
 
+    /** [result] with its words no longer marked to be spoken by the phone. Returns [result]. */
+    fun unmark(result: JSONObject): JSONObject {
+        result.remove(KEY)
+        result.remove(FROM)
+        return result
+    }
+
     /** From a routed tool's raw output (a JSON string), when [tool] may carry it. */
     fun fromToolOutput(tool: String, output: String?): String? {
         val json = output?.takeIf { tool in TOOLS }?.let { runCatching { JSONObject(it) }.getOrNull() }
