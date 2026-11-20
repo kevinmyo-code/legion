@@ -22,7 +22,9 @@ internal object Declarations {
         add(fn(
             name = "get_balance",
             description = "Report the latest known balance for a ledger account, LEADING WITH THE " +
-                "AVAILABLE FIGURE the way the user's own bank app does. If the user doesn't " +
+                "AVAILABLE FIGURE the way the user's own bank app does. A bare \"what's left\" or " +
+                "\"how much do I have left\" is this tool with no account: net cash (not when he says " +
+                "spend or this month: that is budget left). If the user doesn't " +
                 "name one and only one account is on file, use that one; if several exist, ask " +
                 "which, or report all of them. The available figure can include TWO different " +
                 "kinds of unconfirmed activity, and both must be said out loud, not just reported " +
@@ -183,7 +185,7 @@ internal object Declarations {
         // than it looks on screen.
         add(fn(
             name = "get_monthly_spend",
-            description = "Report this month's categorised operating spend for the US ledger " +
+            description = "Report a month's categorised operating spend for the US ledger " +
                 "entity - the SAME figure the Money screen's SPEND pane shows. Money moved between " +
                 "the user's own accounts (a card payment, a savings transfer) is excluded from " +
                 "this total; ALWAYS say how many transactions and how much were excluded, exactly " +
@@ -198,8 +200,23 @@ internal object Declarations {
                 "month's spend: whenever early_housing_notes is non-empty, say each note out loud. " +
                 "If the response's verified field is false, say " +
                 "the figure is not fully confirmed (pending bank data, an unconfirmed AI-guessed " +
-                "category, or a month not fully covered by an imported statement).",
-            params = obj(),
+                "category, or a month not fully covered by an imported statement). " +
+                // 2026-11-19: the budget views read what HOME shows; the phone speaks their answer itself.
+                "view=left only when he names a budget or he says spend or this month ('left to " +
+                "spend', 'what's left this month'): budget remaining, month as said; a bare " +
+                "\"what's left\" is net cash: get_balance. view=category with " +
+                "category: one category's spend, e.g. groceries or dining. view=top: the highest " +
+                "categories. For these three the phone has ALREADY said the answer (speak_verbatim): " +
+                "never restate a figure; when valid_categories comes back, ask him which one he means.",
+            params = obj(
+                "view" to schema(
+                    "string",
+                    "total (default): the whole month's spend. left, category or top: see above.",
+                    enum = listOf("total", "left", "category", "top"),
+                ),
+                "month" to schema("string", "this (default), last, or YYYY-MM, as he said it."),
+                "category" to schema("string", "For view=category: the category in his words."),
+            ),
             required = emptyList(),
         ))
     }

@@ -2,6 +2,7 @@ package com.kevin.legion.service
 
 import java.time.YearMonth
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,19 +23,29 @@ class SpendMonthTest {
         assertNull(note)
     }
 
+    // 2026-11-19: the words he says are resolved here, on the phone's month, never worked out by the model.
+    @Test
+    fun `this and last are resolved against the phone's month`() {
+        assertEquals(november to null, SpendMonth.resolve("this", november))
+        assertEquals(november to null, SpendMonth.resolve("this month", november))
+        assertEquals(YearMonth.of(2026, 10) to null, SpendMonth.resolve("last", november))
+        assertEquals(YearMonth.of(2026, 10) to null, SpendMonth.resolve("Last Month", november))
+        assertEquals(YearMonth.of(2025, 12) to null, SpendMonth.resolve("last", YearMonth.of(2026, 1)))
+    }
+
     @Test
     fun `an unreadable month falls back to the current one and says so`() {
-        val (month, note) = SpendMonth.resolve("last month", november)
+        val (month, note) = SpendMonth.resolve("the month before the wedding", november)
         assertEquals(november, month)
         assertTrue(note!!, note.contains("November 2026 instead"))
     }
 
     @Test
-    fun `the result names its month and sends any other month to ask_engine`() {
+    fun `the result names its month and says how to read another one`() {
         assertEquals("November 2026", SpendMonth.words(november))
         val other = SpendMonth.otherMonths(november)
         assertTrue(other, other.contains("covers November 2026 only"))
-        assertTrue(other, other.contains("October 2026"))
-        assertTrue(other, other.contains("ask_engine"))
+        assertTrue(other, other.contains("month=last"))
+        assertFalse(other, other.contains("cannot"))
     }
 }

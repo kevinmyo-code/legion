@@ -14,10 +14,13 @@ object VerbatimSpeech {
     const val KEY = "speak_verbatim"
     const val FROM = "verbatim_from"
 
-    /** The balance tool (stage 7) and the diagnostics reads (stage 7 diagnostics, 2026-11-17). */
+    /** The balance tool (stage 7), the diagnostics reads (2026-11-17), and the budget views below. */
     const val BALANCE = "get_balance"
     const val DIAGNOSTICS = "get_codes"
-    val TOOLS: Set<String> = setOf(BALANCE, DIAGNOSTICS)
+
+    /** Budget left, a category's spend, top categories (2026-11-19); its `total` view is not marked. */
+    const val BUDGET = "get_monthly_spend"
+    val TOOLS: Set<String> = setOf(BALANCE, DIAGNOSTICS, BUDGET)
 
     /** The words to speak from a result the cascade received, or null. */
     fun of(response: JSONObject?): String? {
