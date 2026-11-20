@@ -44,6 +44,8 @@ class CarLinkStore(
 
     fun load(): StoredLink {
         val values = file.read()
+        // The retired "Car's own Gemini key" field (5.3 rev 8) and its earlier switch: removed once.
+        if (RETIRED.any(values::containsKey)) file.writeAll(RETIRED.associateWith { null })
         val curBlob = values[CURRENT]
         val current = curBlob?.let(::openWithRetry)
         // An unreadable reserve is not "broken": the current key rules, the reserve only serves a revert.
@@ -143,5 +145,6 @@ class CarLinkStore(
         private const val REVOKE_ONLY = "revoke_only_key"
         private const val REVOKE_SINCE = "revoke_only_since"
         private const val PAIRING_NET = "pairing_network"
+        private val RETIRED = listOf("car_gemini_key", "hand_over_gemini")
     }
 }

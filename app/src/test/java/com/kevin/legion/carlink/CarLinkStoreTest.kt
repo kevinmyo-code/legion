@@ -170,4 +170,12 @@ class CarLinkStoreTest {
         assertFalse(store.sendLocation())
         assertFalse(file.values.values.joinToString().contains(LinkCrypto.b64(key)))
     }
+
+    @Test fun `values from the retired car-key field are removed once`() {
+        file.values["car_gemini_key"] = "sealed-blob-for-tests"
+        file.values["hand_over_gemini"] = "1"
+        store.load()
+        assertFalse(file.values.containsKey("car_gemini_key"))
+        assertFalse(file.values.containsKey("hand_over_gemini"))
+    }
 }
