@@ -66,9 +66,7 @@ import queue
 import re
 import threading
 import time
-from collections import deque
 from collections.abc import Callable, Iterator
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -77,6 +75,34 @@ from django.db import connections as db_connections
 
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
+from agents.legion.lines import (
+    CHANGE_MADE,
+    CHANGE_NOT_MADE,
+    FAILED_AFTER_WRITE_SPOKEN,
+    FAILED_SPOKEN,
+    MISSED_LINE,
+    NO_TEXT,
+    NOT_ANSWERED_BUDGET,
+    NOT_ANSWERED_MODEL,
+    NOT_ANSWERED_TIMEOUT,
+    NOTHING_CHANGED,
+    READ_THROUGH_WAIT,
+    READ_THROUGH_WAIT_AFTER_WRITE,
+    SPOKEN_FAILURES,  # noqa: F401 - read as cascade.SPOKEN_FAILURES
+    STT_FAILED,
+    TOO_MANY_TOOLS,
+)
+from agents.legion.speech_rules import (
+    FILLER_NOTE,
+    VERBATIM_TOOLS,  # noqa: F401 - read as cascade.VERBATIM_TOOLS
+    _verbatim,
+    backed_cents,
+    decimal_cents,  # noqa: F401 - read as cascade.decimal_cents
+    has_money,
+    is_filler,
+    is_stop_utterance,
+    states_unbacked_figure,
+)
 from agents.runtime import events as ev
 from agents.runtime.budget import BudgetUsed, LoopLimits
 from agents.runtime.loop import (
@@ -101,10 +127,29 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
+from agents.voice import filler_audio as voice_filler_audio
+from agents.voice import speaker as voice_speaker
+from agents.voice.speaker import (  # noqa: F401 - the web door's tuning, read and set as cascade.X
+    MAX_TTS_REQUESTS,
+    SPEECH_GROUPING,
+    TTS_REQUEST_CEILING,
+    TTS_WAIT_S,
+    _never,
+    first_clause,
+)
+from agents.voice.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure
+from agents.voice.stage import (  # noqa: F401 - prices read as cascade.X
+    PRICE_TEXT_CACHED,
+    PRICE_TEXT_IN,
+    PRICE_TEXT_OUT,
+    meter_speech,
+    record_speech,
+    timing_values,
+    transcribe,
+    turn_cost_usd,
+)
 from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
-from assistant.speech import OUTPUT_RATE, GeminiSpeech, SpeechFailure, Spoken
-from assistant.spoken_words import pronounced, speakable_words
 from assistant.surface import recruiter_only_tool, refusal_for, tools_for
 from demo import suggestions
 from demo.budget import tester_visit
@@ -113,11 +158,6 @@ from devicelogs import web_conversation
 from engine_mcp import cards
 from engine_mcp.models import Outcome
 from engine_mcp.tools import (
-    ENDS_TURN,
-    FOR_MODEL,
-    REPLAY_AS,
-    SPEAK_EXACT,
-    SPEAK_VERBATIM,
     ToolResult,
     run_engine_tool,
     run_tool,
@@ -142,19 +182,9 @@ LIMITS = LoopLimits(
     turn_timeout_s=30.0,
     max_input_tokens=120_000,
 )
-# `about_kevin`: his profile, spoken by code and never by the model (2026-11-18, `demo/tools.py`).
-VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances", "about_kevin"})
 # Cached input, in hundredths of a micro-dollar per token: the rate the agent turn quotes for
 # flash-lite (`agents/legion/turn.py`, $0.03 / 1M). An ESTIMATE, like every cost here.
 CACHED_MICRO_USD_PER_TOKEN_X100 = 3
-# How long the turn waits for the next sentence's speech before it gives up on it.
-TTS_WAIT_S = 20.0
-# How often a turn waiting on speech asks whether it was cancelled (round 3 N4): well inside the
-# page's 6 s of `busy` re-sends.
-CANCEL_POLL_S = 0.25
-# The longest a whole turn may hold its server thread, speech included (finding 1): speech-to-text
-# (12 s), the rounds (`LIMITS`), and what is left of the speech is cut here.
-TURN_WALL_S = 60.0
 
 # The phone's `CascadePrompt.VOICE_CLAUSE` (spec 11), added to the cached prefix, with its figure
 # rule changed for the web (round 2 speech review B): the model writes every figure exactly, in
@@ -209,10 +239,6 @@ def mark_robotic(request, conversation_id, turn: int, *, source: str) -> None:
         "assistant robotic conversation=%s turn=%d source=%s", conversation_id, turn, source
     )
 
-
-# The phone's `ScriptedLines.FILLERS` (spec 22): what a reply that opens with only these is
-# stripped of. What the web says while a tool runs is per tool (`assistant/fillers.py`).
-FILLERS = ("One moment.", "Just a moment.", "On it.", "Checking.", "Let me look.")
 
 # The phone's `end_conversation` (spec 18): the description and the sign-off instruction, with
 # "he" made "they" (the web serves every member and a visitor).
@@ -281,44 +307,12 @@ END_DECLARATION = {
     ),
     "parameters": {"type": "object", "properties": {}},
 }
-# The stop phrases `end_conversation` names, as whole utterances (Kevin, 2026-11-17: "keep listening
-# unless user says stop"). Measured in a real browser: the model signed off ("Catch you later") on
-# "That will be all, thanks" without calling the tool, so the page kept listening. Only an
-# utterance that is nothing but one of these closes by itself; a plain "no" never does.
-_STOP_UTTERANCE = re.compile(
-    r"^\W*(ok(ay)?[, ]+)?(that('?s| is| will be) all|never ?mind|i'?m good|nothing( else)?|go away|"
-    r"go to sleep|stand down|that will do|we'?re done|i'?m done)"
-    r"([,.!]*\s+(thanks?( you)?|thank you|for now|alfred))*\W*$",
-    re.I,
-)
-
-
-def is_stop_utterance(words: str) -> bool:
-    return bool(_STOP_UTTERANCE.match((words or "").strip()))
-
 
 END_INSTRUCTION = (
     "Sign off now with one dry line in your own register (a <chuckle> before it is fine), "
     "about this conversation, then "
     "stop. The conversation ends when you finish speaking."
 )
-
-# The phone's failure leads (`TextChatEngine.TextFailure`, spec 31), less "Check it in Setup".
-NOT_ANSWERED_MODEL = "Not answered: Gemini returned an error for that message."
-NOT_ANSWERED_TIMEOUT = "Not answered: that took too long and was stopped."
-NOT_ANSWERED_BUDGET = "Not answered: this turn reached its spending limit."
-NO_TEXT = "No written reply came back for that."
-NOTHING_CHANGED = " Nothing was changed."
-NOTHING_HEARD = "Nothing heard, so nothing was asked."
-STT_FAILED = "Not answered: the words could not be made out just now."
-MISSED_LINE = "Didn't catch that, say it again?"
-# A turn that broke is said too, from memory, when its line is in hand (round 2 turn review 7):
-# the voice cannot be asked for new speech once the turn has failed.
-FAILED_SPOKEN = "Sorry, something broke on my end. Nothing was changed."
-FAILED_AFTER_WRITE_SPOKEN = (
-    "Sorry, something broke on my end, but the change you asked for went through."
-)
-SPOKEN_FAILURES = (MISSED_LINE, FAILED_SPOKEN, FAILED_AFTER_WRITE_SPOKEN)
 
 
 def failure_audio(voice: str, wrote: bool) -> ev.Event | None:
@@ -330,524 +324,36 @@ def failure_audio(voice: str, wrote: bool) -> ev.Event | None:
     return ev.Event("audio", {"pcm": base64.b64encode(clip).decode("ascii"), "rate": OUTPUT_RATE})
 
 
-# ADR 0090's reason in code, spoken whenever a turn that read outside text does not make a change
-# it was asked for (measured 2026-11-17: the model gave a false reason, "that only works in the
-# phone app", or claimed the change). The person's next message may make it.
-READ_THROUGH_WAIT = (
-    "I haven't changed anything: this turn read text from the web, so changes wait for your next "
-    "message. Ask me again and I'll do it."
-)
-# Said after a claimed change that no write backed and none went through by the end of the turn.
-CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
-# The same, when a write did go through in this turn (a claim made before its own call).
-CHANGE_MADE = "That change went through."
-# ADR 0090 after a write in this turn was refused because the turn read outside text, but an
-# earlier write in the same turn went through (finding 3): what happened, not "nothing".
-READ_THROUGH_WAIT_AFTER_WRITE = (
-    "The first change went through. The next one waits for your next message, because this turn "
-    "read text from the web. Ask me again and I'll do it."
-)
-TOO_MANY_TOOLS = (
-    "Nothing was read or written: this turn already ran as many tool calls as one turn may."
-)
+# ---- fillers kept in memory (spec 22): `agents/voice/filler_audio.py` --------------------------
 
 
-# ---- money in a sentence (the phone's `MoneyFilter.hasMoney`) ---------------------------------
+class FillerAudio(voice_filler_audio.FillerAudio):
+    """The web door's filler audio: every instance picks lines with this module's one `LINES`, so
+    a line is never said twice running across the door's turns."""
 
-_SYMBOL = re.compile(r"[$€£]\s?\d|\d+\.\d{2}\b|\d[\d,]*\s*(dollars?|bucks?|cents?)\b", re.I)
-_MONEY_WORD = re.compile(r"\b(dollars?|bucks?|cents?)\b", re.I)
-_NUMBER_WORDS = frozenset(
-    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
-    "fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty "
-    "ninety hundred thousand million".split()
-)
-
-
-def _number_word(word: str) -> bool:
-    return bool(word) and all(part in _NUMBER_WORDS for part in word.split("-"))
-
-
-def has_money(sentence: str) -> bool:
-    if _SYMBOL.search(sentence) or _MONEY_WORD.search(sentence):
-        return True
-    words = re.split(r"[^a-z\-]+", sentence.lower())
-    return any(_number_word(a) and _number_word(b) for a, b in zip(words, words[1:], strict=False))
-
-
-# ---- money figures a tool returned (2026-11-18, the chips ship's live gate) ------------------
-# A model reply said a category's spend a few cents off the tool's figure, as a bare decimal, and
-# nothing compared the two: the money guard above runs only after code has spoken a money line
-# itself. Now, in a turn where a money tool ran (one whose result holds an amount in cents: the
-# engine's `*_cents` convention, so no list of tools to keep), every decimal figure a model sentence
-# states must be one of the amounts the tools returned, or the sentence is not said. Membership
-# only: nothing computed, no guess at what the model meant.
-
-_DECIMAL = re.compile(r"(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})(?![\d])")
-_CENTS_KEY = "_cents"
-
-
-def decimal_cents(text: str) -> set[int]:
-    """Every decimal figure with two places in `text` ("1,962.48", "$84.27", "84.27 USD"), in
-    cents, without its sign."""
-    return {
-        int(whole.replace(",", "")) * 100 + int(cents)
-        for whole, cents in _DECIMAL.findall(text or "")
-    }
-
-
-def _cents_in(data, out: set[int]) -> bool:
-    found = False
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if key.endswith(_CENTS_KEY) and isinstance(value, int) and not isinstance(value, bool):
-                out.add(abs(value))
-                found = True
-            else:
-                found = _cents_in(value, out) or found
-    elif isinstance(data, list):
-        for item in data:
-            found = _cents_in(item, out) or found
-    return found
-
-
-def backed_cents(calls) -> set[int] | None:
-    """The amounts this turn's money tools returned, in cents, or None when none ran. A money tool
-    is one whose result holds a `*_cents` amount; its backed amounts are those values plus the
-    decimal figures ITS OWN text handed the model (code's words, e.g. a total the handler adds up
-    and states without storing). Another tool's text (a web page, a record dump) never backs a
-    figure (blind review, 2026-11-18)."""
-    backed: set[int] = set()
-    money = False
-    for c in calls:
-        if c.ok and _cents_in(c.data, backed):
-            money = True
-            backed |= decimal_cents(c.text)
-    return backed if money else None
-
-
-def states_unbacked_figure(sentence: str, backed: set[int] | None) -> bool:
-    """True when a money tool ran and `sentence` states a decimal figure none of them returned."""
-    return backed is not None and not decimal_cents(sentence) <= backed
-
-
-# The phone's `FillerTurn` (spec 23): a line of at most four words that opens with a filler opener
-# and, after it, only a word that keeps it filler ("Checking now.", "Looking into it.").
-FILLER_OPENERS = (
-    "checking",
-    "looking",
-    "let me look",
-    "let me check",
-    "one moment",
-    "just a moment",
-    "on it",
-    "hold on",
-)
-FILLER_TAIL_START = frozenset(
-    "now into at up for the that this it your those on over through please again".split()
-)
-FILLER_MAX_WORDS = 4
-# The phone's `FillerTurn.NOTE`, with "him" made "them".
-FILLER_NOTE = (
-    "(System note: the lookup is finished. Give them the answer now, from the tool results "
-    "above, in plain words. If it could not be done or the results do not say, tell them that "
-    "plainly. Do not say you are checking or looking.)"
-)
-
-
-def is_filler(sentence: str) -> bool:
-    """True when `sentence` is nothing but filler. Blank is not filler."""
-    core = re.sub(r"[.!?…]+$", "", sentence.strip().lower()).strip()
-    if not core:
-        return False
-    if any(c in ",;:" or c.isdigit() for c in core):
-        return False
-    words = core.split()
-    if len(words) > FILLER_MAX_WORDS:
-        return False
-    opener = next((o for o in FILLER_OPENERS if core == o or core.startswith(o + " ")), None)
-    if opener is None:
-        return False
-    tail = core[len(opener) :].strip()
-    return not tail or tail.split()[0] in FILLER_TAIL_START
-
-
-# ---- fillers kept in memory (spec 22) ----------------------------------------------------------
-
-
-# How long a filler line whose speech failed waits before it is asked for again.
-FILLER_RETRY_S = 600.0
-
-
-class FillerAudio:
-    """Each filler line's audio per voice, kept in this process once made. A line is said only from
-    memory; a missing one is fetched in the background for next time (the phone's rule: a filler
-    that waits for speech holds the answer up behind it)."""
-
-    def __init__(self, spawn: Callable[[Callable[[], None]], None] | None = None):
-        self._audio: dict[tuple[str, str], bytes] = {}
-        self._fetching: set[tuple[str, str]] = set()
-        # A line whose speech failed is not asked for again for a while (finding 6: with speech
-        # failing, every spoken turn re-sent the whole set).
-        self._failed: dict[tuple[str, str], float] = {}
-        self._lock = threading.Lock()
-        self._last: str | None = None
-        self._spawn = spawn or (lambda work: threading.Thread(target=work, daemon=True).start())
-
-    def warm(self, speech, voice: str, lines=None) -> int:
-        lines = (*fillers.all_lines(), *SPOKEN_FAILURES) if lines is None else lines
-        missing = []
-        with self._lock:
-            now = time.monotonic()
-            for line in lines:
-                key = (voice, line)
-                if now - self._failed.get(key, -FILLER_RETRY_S) < FILLER_RETRY_S:
-                    continue
-                if key not in self._audio and key not in self._fetching:
-                    self._fetching.add(key)
-                    missing.append(line)
-        if not missing:
-            return 0
-
-        def fetch() -> None:
-            for line in missing:
-                stats = Spoken()
-                try:
-                    # Through the same tag rules as an answer (round 2 speech review 6).
-                    said = speech_tags.for_speech(pronounced(line), expressive=True)
-                    audio = b"".join(speech.speak(said, voice, stats))
-                except (SpeechFailure, OSError):
-                    audio = b""
-                if stats.voice not in (None, voice):
-                    # Spoken in the fallback voice: never kept under this voice (round 3 S3); it
-                    # is asked for again later, when the voice may be back.
-                    audio = b""
-                with self._lock:
-                    self._fetching.discard((voice, line))
-                    if audio:
-                        self._audio[(voice, line)] = audio
-                    else:
-                        self._failed[(voice, line)] = time.monotonic()
-
-        self._spawn(fetch)
-        return len(missing)
-
-    def missing(self, voice: str, lines=None) -> int:
-        """How many lines `warm` would fetch now: what a turn reserves for them first."""
-        lines = (*fillers.all_lines(), *SPOKEN_FAILURES) if lines is None else lines
-        now = time.monotonic()
-        with self._lock:
-            return sum(
-                1
-                for line in lines
-                if (voice, line) not in self._audio
-                and (voice, line) not in self._fetching
-                and now - self._failed.get((voice, line), -FILLER_RETRY_S) >= FILLER_RETRY_S
-            )
-
-    def get(self, voice: str, line: str) -> bytes | None:
-        with self._lock:
-            return self._audio.get((voice, line))
-
-    def pick(
-        self, voice: str, tool: str, shortest: bool = False, ceiling_ms: int | None = None
-    ) -> tuple[str, bytes] | None:
-        """One of `tool`'s lines that is in memory, never the last line said; None when the tool
-        is silent or none of its lines is in hand yet. `shortest`: the shortest clip in hand (the
-        delayed kind, which plays while an answer may already be on its way: a shorter clip holds
-        it up less), else the next shortest when that one was the last said. `ceiling_ms`: no clip
-        longer than this; when none of the tool's own is short enough, the shortest generic line
-        (`fillers.FALLBACK`) that is, else nothing."""
-        limit = None if ceiling_ms is None else ceiling_ms * OUTPUT_RATE * 2 // 1000
-        with self._lock:
-            ready = [line for line in fillers.lines_for(tool) if (voice, line) in self._audio]
-            if limit is not None:
-                ready = [line for line in ready if len(self._audio[(voice, line)]) <= limit]
-                if not ready and fillers.lines_for(tool):
-                    ready = [
-                        line
-                        for line in fillers.FALLBACK
-                        if (voice, line) in self._audio and len(self._audio[(voice, line)]) <= limit
-                    ]
-            if shortest:
-                ready.sort(key=lambda line: len(self._audio[(voice, line)]))
-        if shortest:
-            line = next((one for one in ready if LINES.pick([one]) is not None), None)
-        else:
-            line = LINES.pick(ready)
-        if line is None:
-            return None
-        return line, self._audio[(voice, line)]
+    def picker(self) -> fillers.LinePicker:
+        return LINES
 
 
 FILLER_AUDIO = FillerAudio()
 LINES = fillers.LinePicker()
 
 
-# ---- speech, two sentences at a time (spec 5) --------------------------------------------------
-
-_END = object()
+# ---- speech, two sentences at a time (spec 5): `agents/voice/speaker.py` ----------------------
 
 
-@dataclass
-class _Job:
-    text: str
-    chunks: queue.Queue
-    stats: Spoken
-    cancelled: threading.Event
+class Speaker(voice_speaker.Speaker):
+    """The web door's speaker: its grouping and its wait for speech are this module's
+    `SPEECH_GROUPING` and `TTS_WAIT_S`, read when the speaker is made."""
 
-
-# How a reply goes to speech (`Speaker`): "breath" (the first clause alone, the rest of each round
-# as one request) or "sentence" (one request per sentence, the phone's old shape). Kept as a
-# constant while the two are measured against each other (section 8.3); the loser goes.
-SPEECH_GROUPING = "breath"
-# Speech requests reserved before a turn starts (finding 6). A longer answer reserves more as it
-# goes, one request at a time, up to `TTS_REQUEST_CEILING` (round 3 speech S4: the 12-sentence
-# limit spoken one sentence a request, plus the closing lines); one is always kept back for a
-# closing honesty line.
-MAX_TTS_REQUESTS = 6
-TTS_REQUEST_CEILING = 16
-GROUP_SENTENCES = 3
-GROUP_CHARS = 400
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
-# Speech only (2026-11-18, speed; blind review round 7 moved it here from the runtime, after the
-# checks): a first sentence past this many words is spoken in two requests, cut at its first
-# , ; or : that leaves at least FIRST_CLAUSE_MIN_WORDS in front.
-FIRST_CLAUSE_PAST_WORDS = 8
-FIRST_CLAUSE_MIN_WORDS = 6
-_CLAUSE_BREAK = re.compile(r"(?<=[,;:])\s+")
-
-
-def _first_sentence(text: str) -> tuple[str, str]:
-    parts = _SENTENCE_END.split(text, maxsplit=1)
-    return parts[0], parts[1] if len(parts) > 1 else ""
-
-
-def first_clause(text: str) -> tuple[str, str]:
-    """(what is spoken at once, the rest) for an answer's first sentence; a short one goes whole."""
-    if len(text.split()) <= FIRST_CLAUSE_PAST_WORDS:
-        return text, ""
-    for match in _CLAUSE_BREAK.finditer(text):
-        head, rest = text[: match.start()].strip(), text[match.end() :].strip()
-        if len(head.split()) >= FIRST_CLAUSE_MIN_WORDS and rest:
-            return head, rest
-    return text, ""
-
-
-def _transcribe(speech, pcm: bytes, timings: dict):
-    """`speech.transcribe(pcm)`, noting how many requests it sent beyond the first (a retry),
-    which the turn's reservation holds one call for (round 3, finding 8 leftovers)."""
-    try:
-        return speech.transcribe(pcm)
-    finally:
-        timings["stt_retries"] = max(getattr(speech, "stt_sent", 1) - 1, 0)
+    def __init__(self, speech, voice: str, enabled: bool, clock=time.monotonic):
+        super().__init__(
+            speech, voice, enabled, clock, grouping=SPEECH_GROUPING, wait_s=TTS_WAIT_S
+        )
 
 
 def _whole(value) -> int:
     return value if isinstance(value, int) and value > 0 else 0
-
-
-class _Cancelled(Exception):
-    """The turn was cancelled while it waited on speech."""
-
-
-class Speaker:
-    """Each sentence goes to speech the moment it is whole, at most two at once; audio comes out
-    in sentence order. `ready()` hands over what has arrived without waiting; `drain()` waits."""
-
-    def __init__(self, speech, voice: str, enabled: bool, clock=time.monotonic):
-        self.speech = speech
-        self.voice = voice
-        self.enabled = enabled
-        self.clock = clock
-        self.jobs: deque[_Job] = deque()
-        self.done: list[Spoken] = []
-        self.started_at = clock()
-        # The ANSWER's first audio (no acknowledgement or lookup line), and the first sound of any
-        # kind, which is what the page's own `first_audio` line measures from its side.
-        self.first_audio_ms: int | None = None
-        self.first_sound_ms: int | None = None
-        self.total_ms = 0
-        # The whole turn, speech included, ends by this time (finding 1).
-        self.deadline = self.started_at + TURN_WALL_S
-        self._pool = ThreadPoolExecutor(max_workers=2) if enabled else None
-        # The person asked for exact figures this turn: nothing is rounded when spoken.
-        self.exact = False
-        # "One breath per reply" (voice-persona section 8.3): the first words go to speech alone
-        # and at once; what follows in the same round is one request, so its intonation carries
-        # across sentences. `SPEECH_GROUPING` "sentence" is the old one-request-per-sentence.
-        self.grouping = SPEECH_GROUPING
-        self._first_out = False
-        self._pending: list[str] = []
-        self.requests = 0
-        self.skipped = 0
-        self.cancelled = _never
-        self.cancelled_often = _never
-        # Speech requests this turn may make now, and how to reserve more (round 3 S4).
-        self.allowed = MAX_TTS_REQUESTS
-        self.more: Callable[[int], bool] = lambda n: True
-        # Set for the turn's closing lines: they may use the request kept back for them.
-        self.closing = False
-        self.stopped = False
-        self._notices: list[ev.Event] = []
-
-    def spoken_text(self, text: str, expressive: bool = False, model: bool = False) -> str:
-        """What goes to speech for `text`: for a `model` sentence only, no file span, link or
-        backtick read out (`spoken_words`; a line code wrote, his profile or a figure, is never
-        reworded); its figures rounded like a person says them (`spoken_figures`; the exact ones
-        stay in the caption), and its allowed tags only when `expressive` (a model sentence or a
-        code line written with one)."""
-        said = speakable_words(text) if model else text
-        said = spoken_figures.speakable(pronounced(said), exact=self.exact)
-        return speech_tags.for_speech(said, expressive=expressive)
-
-    def add(self, text: str, expressive: bool = False, model: bool = False) -> None:
-        if not self.enabled:
-            return
-        spoken = self.spoken_text(text, expressive, model)
-        if self.grouping == "sentence":
-            self._submit(spoken)
-            return
-        if not self._first_out:
-            # The answer's first clause is spoken as soon as it exists (section 8.2), and with no
-            # tag: tags stay off an answer's first sentence (section 9). Only for words written to
-            # be said (`expressive`: the model's, the greeting); code's own lines (a figure, his
-            # profile) are never cut, which once put "2026." in a request of its own.
-            self._first_out = True
-            lead, more = _first_sentence(spoken)
-            spoken = f"{speech_tags.untagged(lead)} {more}".strip()
-            head, rest = first_clause(spoken) if expressive else (spoken, "")
-            self._submit(head)
-            if rest:
-                self._pending.append(rest)
-            return
-        self._pending.append(spoken)
-        if len(self._pending) >= GROUP_SENTENCES or sum(map(len, self._pending)) >= GROUP_CHARS:
-            self.flush()
-
-    def flush(self) -> None:
-        """Speak what is held as one request (the round ended, or enough is held)."""
-        if self._pending:
-            self._submit(" ".join(self._pending))
-            self._pending = []
-
-    def _submit(self, spoken: str) -> None:
-        if self.cancelled():
-            return
-        if not self._may_speak():
-            # Past what could be reserved: the rest is shown, not said, and the page is told
-            # once (round 3 S4). The closing lines still have the request kept back for them.
-            self.skipped += 1
-            if not self.stopped:
-                self.stopped = True
-                self._notices.append(ev.Event("speech_stopped", {"reason": "limit"}))
-            return
-        self.requests += 1
-        job = _Job(spoken, queue.Queue(), Spoken(), threading.Event())
-        self.jobs.append(job)
-        self._pool.submit(self._run, job)
-
-    def _may_speak(self) -> bool:
-        def room() -> bool:
-            return self.requests < (self.allowed if self.closing else self.allowed - 1)
-
-        if room():
-            return True
-        if self.allowed < TTS_REQUEST_CEILING and self.more(1):
-            self.allowed += 1
-        return room()
-
-    def _run(self, job: _Job) -> None:
-        started = time.monotonic()
-        try:
-            for chunk in self.speech.speak(job.text, self.voice, job.stats):
-                if job.cancelled.is_set():
-                    break
-                job.chunks.put(chunk)
-        except SpeechFailure as exc:
-            job.stats.failed = job.stats.failed or str(exc)
-        except Exception as exc:  # noqa: BLE001 - a sentence's speech failing is not the turn's
-            job.stats.failed = type(exc).__name__
-        finally:
-            self.total_ms += int((time.monotonic() - started) * 1000)
-            job.chunks.put(_END)
-
-    def audio_event(self, chunk: bytes, filler: bool = False) -> ev.Event:
-        at = int((self.clock() - self.started_at) * 1000)
-        if self.first_sound_ms is None:
-            self.first_sound_ms = at
-        if self.first_audio_ms is None and not filler:
-            self.first_audio_ms = at
-        data = {"pcm": base64.b64encode(chunk).decode("ascii"), "rate": OUTPUT_RATE}
-        if filler:
-            # The page may drop a filler that has not started once the answer's audio is ready.
-            data["filler"] = True
-        return ev.Event("audio", data)
-
-    def _take(self, block: bool) -> Iterator[ev.Event]:
-        while self._notices:
-            yield self._notices.pop(0)
-        while self.jobs:
-            if self.cancelled_often():
-                # Stopped: what is queued or still speaking is dropped, nothing more is asked for.
-                for job in self.jobs:
-                    job.cancelled.set()
-                self.jobs.clear()
-                self._pending = []
-                return
-            head = self.jobs[0]
-            # Never past the turn's own deadline, however many sentences are still queued.
-            wait = min(TTS_WAIT_S, max(self.deadline - self.clock(), 0.05))
-            try:
-                item = self._next(head, wait) if block else head.chunks.get_nowait()
-            except _Cancelled:
-                for job in self.jobs:
-                    job.cancelled.set()
-                self.jobs.clear()
-                self._pending = []
-                return
-            except queue.Empty:
-                if block:
-                    head.cancelled.set()
-                    head.stats.failed = head.stats.failed or "tts_timeout"
-                    self.done.append(head.stats)
-                    self.jobs.popleft()
-                    yield ev.Event("speech_failed", {"reason": "tts"})
-                    continue
-                return
-            if item is _END:
-                self.jobs.popleft()
-                self.done.append(head.stats)
-                if head.stats.failed:
-                    yield ev.Event("speech_failed", {"reason": "tts"})
-                continue
-            yield self.audio_event(item)
-
-    def _next(self, job: _Job, wait: float):
-        """The job's next chunk within `wait` seconds, asking about a cancel every
-        `CANCEL_POLL_S` meanwhile (round 3 N4: a 20 s wait must not hold a cancelled turn)."""
-        until = time.monotonic() + wait
-        while True:
-            left = until - time.monotonic()
-            try:
-                return job.chunks.get(timeout=max(min(CANCEL_POLL_S, left), 0.001))
-            except queue.Empty:
-                if self.cancelled_often():
-                    raise _Cancelled from None
-                if left <= CANCEL_POLL_S:
-                    raise
-
-    def ready(self) -> Iterator[ev.Event]:
-        yield from self._take(block=False)
-
-    def drain(self) -> Iterator[ev.Event]:
-        self.flush()
-        yield from self._take(block=True)
-
-    def close(self) -> None:
-        for job in self.jobs:
-            job.cancelled.set()
-        if self._pool is not None:
-            self._pool.shutdown(wait=False, cancel_futures=True)
 
 
 # ---- the tool door, as a runtime gateway ------------------------------------------------------
@@ -884,37 +390,6 @@ TOOL_TIMED_OUT = (
     "Not done: {name} took too long, so it was stopped and nothing it did was kept. Nothing was "
     "changed."
 )
-
-
-@dataclass(frozen=True)
-class _Verbatim:
-    lines: tuple[str, ...]
-    exact: bool
-    ends_turn: bool
-    for_model: str | None
-    replay: str | None
-
-
-def _verbatim(name: str, result) -> _Verbatim | None:
-    """The code-written sentences a `VERBATIM_TOOLS` result asks to be said (`SPEAK_VERBATIM`, one
-    sentence or a list) and how (`engine_mcp.tools`), or None."""
-    if result is None or name not in VERBATIM_TOOLS:
-        return None
-    data = result.structured or {}
-    said = data.get(SPEAK_VERBATIM)
-    raw = [said] if isinstance(said, str) else said if isinstance(said, list) else []
-    lines = tuple(line.strip() for line in raw if isinstance(line, str) and line.strip())
-    if not lines:
-        return None
-    for_model = data.get(FOR_MODEL)
-    replay = data.get(REPLAY_AS)
-    return _Verbatim(
-        lines,
-        exact=bool(data.get(SPEAK_EXACT)),
-        ends_turn=bool(data.get(ENDS_TURN)),
-        for_model=for_model if isinstance(for_model, str) and for_model else None,
-        replay=replay if isinstance(replay, str) and replay else None,
-    )
 
 
 def _run_by_deadline(work, deadline_s: float):
@@ -1323,10 +798,6 @@ class CancelCheck:
         return self()
 
 
-def _never() -> bool:
-    return False
-
-
 class CountingModel:
     """Counts every paid model call started: each `stream` and each prompt cache made, so a
     cancelled round, a resend after a broken cache (counted under the cache layer, round 2 turn
@@ -1554,7 +1025,7 @@ def run_turn(
             if turn_input.audio is not None:
                 # Said during the tour: "skip" and "stop" steer it; anything else is a question.
                 try:
-                    heard = _transcribe(speech, turn_input.audio, timings)
+                    heard = transcribe(speech, turn_input.audio, timings)
                 except SpeechFailure as exc:
                     timings["stt_failed"] = str(exc)
                     report.status = "stt_failed"
@@ -1563,10 +1034,6 @@ def run_turn(
                     yield from speaker.drain()
                     yield ev.error(STT_FAILED)
                     return
-                timings.update(stt_ms=heard.ms, audio_ms=heard.audio_ms)
-                timings.update(
-                    stt_prompt_tokens=heard.prompt_tokens, stt_output_tokens=heard.output_tokens
-                )
                 words = heard.text
                 yield ev.Event("heard", {"text": words})
             elif turn_input.text:
@@ -1608,21 +1075,13 @@ def run_turn(
         )
     finally:
         speaker.close()
-        timings.update(
-            tts_first_audio_ms=speaker.first_audio_ms,
-            first_sound_ms=speaker.first_sound_ms,
-            tts_ms=speaker.total_ms,
-            tts_audio_ms=sum(s.audio_ms for s in speaker.done),
-            tts_prompt_tokens=sum(s.prompt_tokens for s in speaker.done),
-            tts_output_tokens=sum(s.output_tokens for s in speaker.done),
-            tts_failed=sum(1 for s in speaker.done if s.failed),
-            turn_ms=int((clock() - t0) * 1000),
-        )
+        record_speech(timings, speaker)
+        timings["turn_ms"] = int((clock() - t0) * 1000)
         # Every model call that was started counts, even one a hang-up cut short or a cache retry
         # sent twice (finding 6): billed rounds are never handed back to the budget.
         report.rounds = max(report.rounds, counted.calls)
         timings["tts_requests"] = speaker.requests
-        _meter_speech(request, timings)
+        meter_speech(request, timings, FEATURE)
 
 
 def _answer(
@@ -1649,7 +1108,7 @@ def _answer(
     # 1. The words.
     if turn_input.audio is not None:
         try:
-            heard = _transcribe(speech, turn_input.audio, timings)
+            heard = transcribe(speech, turn_input.audio, timings)
         except SpeechFailure as exc:
             timings["stt_failed"] = str(exc)
             report.status = "stt_failed"
@@ -1658,12 +1117,6 @@ def _answer(
             yield from speaker.drain()
             yield ev.error(STT_FAILED)
             return
-        timings.update(
-            stt_ms=heard.ms,
-            audio_ms=heard.audio_ms,
-            stt_prompt_tokens=heard.prompt_tokens,
-            stt_output_tokens=heard.output_tokens,
-        )
         words = heard.text
         if door.cancelled():
             # Stopped while being transcribed: no model round starts.
@@ -2450,104 +1903,8 @@ def _meter_rows(request, model_name: str, rounds: list[dict]) -> None:
         )
 
 
-def _meter_speech(request, timings: dict) -> None:
-    """A member's speech-to-text and text-to-speech as `llm_usage` rows too (finding 12), so their
-    daily cap sees all of a spoken turn. Estimates, at `tools/voice_prices.json`'s prices."""
-    if not member_cap.applies_to(request.user):
-        return
-
-    def g(key: str) -> int:
-        value = timings.get(key)
-        return value if isinstance(value, int) and value > 0 else 0
-
-    parts = (
-        ("stt", g("stt_prompt_tokens"), g("stt_output_tokens"), PRICE_TEXT_IN, PRICE_TEXT_OUT),
-        ("tts", g("tts_prompt_tokens"), g("tts_output_tokens"), PRICE_TTS_IN, PRICE_TTS_OUT),
-    )
-    try:
-        with transaction.atomic():
-            for model, prompt, out, price_in, price_out in parts:
-                if not (prompt or out):
-                    continue
-                llm_client.record(
-                    household=household_of(request),
-                    feature=FEATURE,
-                    model=model,
-                    user=request.user,
-                    usage={
-                        "prompt_tokens": prompt,
-                        "output_tokens": out,
-                        "total_tokens": prompt + out,
-                    },
-                    cost_estimate_micro_usd=int(prompt * price_in + out * price_out) + 1,
-                )
-    except DatabaseError:
-        log.warning("assistant cascade: speech meter rows failed", exc_info=True)
-
-
-# USD per million tokens, from `tools/voice_prices.json` (read 2026-11-15). ESTIMATES: what the
-# live strip shows and what the reports quote, never a bill.
-PRICE_TEXT_IN = 0.30
-PRICE_TEXT_CACHED = 0.03
-PRICE_TEXT_OUT = 2.50
-PRICE_TTS_IN = 0.50
-PRICE_TTS_OUT = 9.00
-
-
-def turn_cost_usd(timings: dict, spoken: list | None = None) -> float:
-    """A turn's estimated cost: speech-to-text, the text rounds (cached input at the cached
-    rate) and the speech made. `spoken` is the speaker's per-sentence stats, when the turn has not
-    yet folded them into `timings`."""
-
-    def g(key: str) -> int:
-        value = timings.get(key)
-        return value if isinstance(value, int) and value > 0 else 0
-
-    tts_in = sum(s.prompt_tokens for s in spoken) if spoken is not None else g("tts_prompt_tokens")
-    tts_out = sum(s.output_tokens for s in spoken) if spoken is not None else g("tts_output_tokens")
-    cached = min(g("cached_tokens"), g("prompt_tokens"))
-    usd = (
-        (g("prompt_tokens") - cached + g("stt_prompt_tokens")) * PRICE_TEXT_IN
-        + cached * PRICE_TEXT_CACHED
-        + (g("output_tokens") + g("stt_output_tokens")) * PRICE_TEXT_OUT
-        + tts_in * PRICE_TTS_IN
-        + tts_out * PRICE_TTS_OUT
-    )
-    return usd / 1_000_000
-
-
 def timing_line(report: TurnReport, *, spoken: bool) -> str:
     """The record's and the log's `cascade_turn` line: names and numbers only."""
-    keys = (
-        "audio_ms",
-        "stt_ms",
-        "stt_prompt_tokens",
-        "stt_output_tokens",
-        "rounds",
-        "tools",
-        "model_ms",
-        "prompt_tokens",
-        "cached_tokens",
-        "output_tokens",
-        "first_sentence_ms",
-        "sentences",
-        "verbatim",
-        "money_dropped",
-        "unbacked",
-        "filler",
-        "tts_first_audio_ms",
-        "tts_ms",
-        "tts_audio_ms",
-        "tts_prompt_tokens",
-        "tts_output_tokens",
-        "tts_failed",
-        "turn_ms",
-        "ack",
-        "filler_ms",
-        "first_sound_ms",
-    )
-    values = " ".join(
-        f"{k}={-1 if report.timings.get(k) is None else report.timings[k]}" for k in keys
-    )
     status = web_conversation.word(report.status)
+    values = timing_values(report.timings)
     return f"cascade_turn status={status} spoken={str(spoken).lower()} {values}"

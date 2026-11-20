@@ -631,6 +631,8 @@ REST_FRAMEWORK = {
         # one spends the household key, so it is bounded like the assistant's mint. Same
         # per-process LocMemCache caveat as `mcp` above.
         "agents_turn": "30/min",
+        # `kind=say` on the agents door: a client's own line spoken, no model (review C4).
+        "agents_say": "10/min",
         # The browser's half of a conversation record (`POST /api/assistant/conversation`):
         # about one upload per turn and one at the end, per member.
         "assistant_conversation": (
