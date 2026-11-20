@@ -123,4 +123,23 @@ class BackchannelTest {
         assertTrue(r.contains("C"))
         assertEquals("d", r.last())
     }
+
+    @Test
+    fun `a slow tool's line plays though its call has not reached the executor, a late one only while one runs`() {
+        // The slow line's check can run before the executor counts the call (same loop): never asked.
+        assertTrue(ToolFillers.stillDue(slow = true, sameTurn = true, toolsRunning = false, answerStarted = false, played = false))
+        assertFalse(ToolFillers.stillDue(slow = false, sameTurn = true, toolsRunning = false, answerStarted = false, played = false))
+        assertTrue(ToolFillers.stillDue(slow = false, sameTurn = true, toolsRunning = true, answerStarted = false, played = false))
+        for ((same, answered, played) in listOf(Triple(false, false, false), Triple(true, true, false), Triple(true, false, true))) {
+            assertFalse(ToolFillers.stillDue(slow = true, sameTurn = same, toolsRunning = true, answerStarted = answered, played = played))
+        }
+    }
+
+    @Test
+    fun `kept clips are looked up by the spoken form, which is the line itself`() {
+        // inHand and speak get SpokenText.forSpeech(line); KEEP holds the line. They must be equal.
+        for (line in Backchannel.LINES + ScriptedLines.FIXED_DONE_LINES + ToolFillers.GENERIC) {
+            assertEquals(line, SpokenText.forSpeech(line))
+        }
+    }
 }

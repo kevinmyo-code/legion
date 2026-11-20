@@ -142,6 +142,7 @@ class VoiceSpeedWiringTest {
         val wait = starting.indexOf("awaitBackchannelSpacing()")
         assertTrue(wait >= 0)
         assertTrue(wait < starting.indexOf("sayToolFiller(plan, reply, record)"))
+        assertTrue(starting.substring(0, starting.indexOf("override fun onToolResult(")).contains("ToolFillers.stillDue("))
         val spacing = bodyOf(s, "awaitBackchannelSpacing")
         assertTrue(spacing.contains("backchannelJob?.join()"))
         assertTrue(spacing.contains("Backchannel.spacingWaitMs("))

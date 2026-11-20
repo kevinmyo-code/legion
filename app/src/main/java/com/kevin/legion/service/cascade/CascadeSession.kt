@@ -1945,8 +1945,14 @@ internal class CascadeSession(
             scope.launch(loop) {
                 if (!plan.slow) delay(ToolFillers.FAST_DELAY_MS)
                 awaitBackchannelSpacing()
-                val stillWaiting = turn === record && toolsInFlight.get() > 0
-                if (stillWaiting && !reply.anyText && !record.fillerPlayed) sayToolFiller(plan, reply, record)
+                val due = ToolFillers.stillDue(
+                    slow = plan.slow,
+                    sameTurn = turn === record,
+                    toolsRunning = toolsInFlight.get() > 0,
+                    answerStarted = reply.anyText,
+                    played = record.fillerPlayed,
+                )
+                if (due) sayToolFiller(plan, reply, record)
             }
         }
 
