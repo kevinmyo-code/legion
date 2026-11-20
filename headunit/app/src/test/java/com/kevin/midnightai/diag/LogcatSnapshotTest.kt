@@ -22,6 +22,24 @@ class LogcatSnapshotTest {
         )
     }
 
+    /**
+     * Review NAV-3: Mapbox's own log lines (maps, navigation, native) never enter the drive log,
+     * which is uploaded to the engine: they can carry route URLs and positions.
+     */
+    @Test
+    fun `mapbox lines never enter the drive log`() {
+        val ours = "11-20 09:30:01.120  1234  1300 I BeaconClient: phone fix accepted"
+        val raw = listOf(
+            "11-20 09:30:01.123  1234  1300 I Mapbox  : [maps-core\\Map]: Style loaded in 812 ms",
+            "11-20 09:30:01.124  1234  1301 W MapboxNavigation: [nav-sdk\\RouterWrapper] https://api.mapbox.com/directions/v5/mapbox/driving-traffic/-95.37,29.76;-95.40,29.70?access_token=pk.x",
+            "11-20 09:30:01.125  1234  1302 D MbxNavigator: route progress 29.7604,-95.3698",
+            "11-20 09:30:01.126  1234  1303 I nav-native: map matched",
+            ours,
+            "11-20 09:30:01.127  1234  1304 E OkHttp  : --> GET https://api.mapbox.com/styles/v1/mapbox/traffic-night-v2",
+        )
+        assertEquals(listOf(ours), LogcatSnapshot.ours(raw, setOf("1234")))
+    }
+
     @Test
     fun `new lines are those after the last occurrence of the anchor`() {
         val ours = listOf(line(1, "a", 1), line(1, "b", 2), line(1, "c", 3))

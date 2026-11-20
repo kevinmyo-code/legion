@@ -46,6 +46,7 @@ object NavRuntime {
         controller = NavController(
             sdkFactory = {
                 val t = token ?: error("no map token")
+                quietMapbox()
                 MapboxOptions.accessToken = t
                 MapboxNavSdk(app, provider, feed)
             },
@@ -83,8 +84,19 @@ object NavRuntime {
         else -> null
     }
 
+    /**
+     * Before any Mapbox object is built (review NAV-3): Mapbox's own logging down to errors
+     * (`LogConfiguration.setLoggingLevel(LoggingLevel.ERROR)`, javap-checked); its lines are kept
+     * out of the drive log anyway (`LogcatSnapshot`). Native: a unit that cannot load it is told
+     * apart elsewhere, so a failure here is ignored.
+     */
+    internal fun quietMapbox() {
+        runCatching { com.mapbox.common.LogConfiguration.setLoggingLevel(com.mapbox.common.LoggingLevel.ERROR) }
+    }
+
     /** The guard is armed only while the native map is being brought up. */
     fun mapStarting() {
+        quietMapbox()
         MapboxOptions.accessToken = token ?: return
         guard.edit().putBoolean(KEY_MAP_STARTING, true).commit()
     }
