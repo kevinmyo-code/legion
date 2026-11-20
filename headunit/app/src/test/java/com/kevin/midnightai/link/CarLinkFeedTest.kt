@@ -166,6 +166,59 @@ class CarLinkFeedTest {
         assertNull(BeaconClient.feedsForTest())
     }
 
+    /**
+     * Spec 3.7 rev 4 (recheck c53f1fc3, call d), phone side modelled by a fake: the phone keeps its
+     * old key in reserve until its first authenticated HELLO under the new one. The unit end needs
+     * no change for this, and this test proves why: while PENDING exists the unit still sends HELLOs
+     * under the old key and accepts fixes under it, and after a cancel after `done` (PENDING dropped)
+     * it speaks ONLY the old key, which a phone that reverted on the abort answers at once.
+     */
+    private class ReservePhone(var current: ByteArray, var reserve: ByteArray?) {
+        /** First authenticated HELLO under the new key: the reserve is no longer needed. */
+        fun heard(hello: ByteArray): Boolean {
+            if (PhoneLinkWire.decodeHello(PhoneLinkWire.unitToPhoneKey(current), hello, hello.size) != null) {
+                reserve?.fill(0); reserve = null
+                return true
+            }
+            return false
+        }
+        /** An `abort` after `done` opened (or 60 s of reserve-key-only HELLOs): go back to the old key. */
+        fun revert() { reserve?.let { current = it; reserve = null } }
+    }
+
+    @Test fun rev4_aCancelAfterDoneLeavesThePhoneAndUnitOnTheOldKey() {
+        store.committed = keyA.copyOf()
+        store.pending = keyB.copyOf() // written at `done`
+        val token = Any()
+        CarLink.pairingSessionStarted(token)
+        BeaconClient.start(context)
+        waitFor("both feeds") { BeaconClient.feedsForTest()?.pending != null }
+        val both = BeaconClient.feedsForTest()!!
+        val phone = ReservePhone(current = keyB.copyOf(), reserve = keyA.copyOf()) // opened `done`
+        // During the window the unit still answers the old key: HELLOs go out under A and B, and an A fix is accepted.
+        val hellos = synchronized(both) { both.hellos(1000) }
+        assertEquals(2, hellos.size)
+        assertTrue(hellos.any { PhoneLinkWire.decodeHello(PhoneLinkWire.unitToPhoneKey(keyA), it, it.size) != null })
+        val underA = fixUnder(keyA, both, both.committed!!, keyA)
+        val r = synchronized(both) { both.receive(underA, underA.size) }
+        assertTrue(r.outcome is PhoneFeed.Outcome.Fix)
+        assertTrue("old-key fix dropped PENDING inside the session", !r.dropPending)
+
+        // The driver cancels after `done`: the unit drops PENDING (spec 3.6) and sends `abort`.
+        store.dropPending()
+        CarLink.pairingSessionEnded(token)
+        CarLink.changed(context)
+        waitFor("old key only") { BeaconClient.feedsForTest()?.let { it.pending == null && it.committed != null } == true }
+        val after = BeaconClient.feedsForTest()!!
+        val only = synchronized(after) { after.hellos(1000) }.single()
+        assertTrue("the phone must not hear the dropped key", !phone.heard(only))
+        phone.revert() // on the abort
+        assertTrue("reverted phone does not hear the unit", phone.heard(only))
+        val fix = fixUnder(phone.current, after, after.committed!!, keyA)
+        assertTrue(synchronized(after) { after.receive(fix, fix.size) }.outcome is PhoneFeed.Outcome.Fix)
+        assertEquals(LinkStatus.PAIRED, CarLink.status.value)
+    }
+
     @Test fun h3_aPendingPairingIsCommittedByTheFirstDatagramUnderItsKey() {
         store.committed = keyA.copyOf()
         store.pending = keyB.copyOf()
