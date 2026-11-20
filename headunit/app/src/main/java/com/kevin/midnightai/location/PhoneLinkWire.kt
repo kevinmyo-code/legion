@@ -30,7 +30,7 @@ data class PhoneFix(
  * ```
  * 0  "MNAI2"      5 bytes ASCII
  * 5  version      1 byte  = 1
- * 6  type         1 byte  'H' hello (unit->phone), 'F' fix, 'Z' zone (phone->unit)
+ * 6  type         1 byte  'H' hello (unit->phone), 'F' fix, 'Z' zone, 'R' revoke (phone->unit)
  * 7  session      16 bytes, random per sender start
  * 23 counter      8 bytes big-endian, starts at 1, +1 per datagram of that session
  * 31 sealed body  AES-256-GCM(ciphertext || 16-byte tag)
@@ -46,6 +46,7 @@ object PhoneLinkWire {
     const val TYPE_HELLO: Byte = 'H'.code.toByte()
     const val TYPE_FIX: Byte = 'F'.code.toByte()
     const val TYPE_ZONE: Byte = 'Z'.code.toByte()
+    const val TYPE_REVOKE: Byte = 'R'.code.toByte()
     const val SESSION_BYTES = 16
     const val CHALLENGE_BYTES = 8
     const val HEADER_BYTES = 5 + 1 + 1 + SESSION_BYTES + 8
@@ -56,6 +57,12 @@ object PhoneLinkWire {
     private const val FIX_BODY = CHALLENGE_BYTES + 2 + 8 + 8 + 4 + 4 + 4 + 8 + 4 + 4 + 4
     private const val HELLO_BODY = 4 + CHALLENGE_BYTES
     private const val MAX_ZONE_BYTES = 64
+
+    /** Field bounds (spec 4.4 rule 6). */
+    const val MAX_SPEED_MPS = 100f
+    const val MAX_ACCURACY_M = 10_000f
+    const val MIN_ALTITUDE_M = -1_000.0
+    const val MAX_ALTITUDE_M = 10_000.0
 
     fun phoneToUnitKey(linkKey: ByteArray): ByteArray =
         LinkCrypto.hkdf(linkKey, ByteArray(0), "MNAI2 loc phone->unit v1".toByteArray(Charsets.US_ASCII))
@@ -86,7 +93,13 @@ object PhoneLinkWire {
     }
 
     /** Opens a datagram sealed under [dirKey] in [direction]; the refusal says why not. */
-    private fun open(dirKey: ByteArray, direction: ByteArray, data: ByteArray, length: Int): Pair<Opened?, Refusal?> {
+    private fun open(
+        dirKey: ByteArray,
+        direction: ByteArray,
+        data: ByteArray,
+        length: Int,
+        cache: SessionKeyCache? = null,
+    ): Pair<Opened?, Refusal?> {
         if (length < HEADER_BYTES + LinkCrypto.TAG_BYTES || length > MAX_PACKET_BYTES || length > data.size) {
             return null to (if (length >= 5 && magicOk(data)) Refusal.BAD_LENGTH else Refusal.NOT_MNAI2)
         }
@@ -98,13 +111,30 @@ object PhoneLinkWire {
         val session = ByteArray(SESSION_BYTES).also { buf.get(it) }
         val counter = buf.getLong()
         if (counter <= 0) return null to Refusal.AUTH_FAILED
-        val key = sessionKey(dirKey, session)
+        val key = cache?.get(dirKey, session) ?: sessionKey(dirKey, session)
         val body = LinkCrypto.open(
             key, LinkCrypto.nonce(direction, counter), data.copyOfRange(0, HEADER_BYTES),
             data.copyOfRange(HEADER_BYTES, length),
         )
-        key.fill(0)
+        if (cache == null) key.fill(0)
         return if (body == null) null to Refusal.AUTH_FAILED else Opened(type, session, counter, body) to null
+    }
+
+    /**
+     * Session keys of the last few sessions (review L9): one HKDF per new session instead of one
+     * per datagram. Owned by one receiver; not thread-safe.
+     */
+    class SessionKeyCache(private val max: Int = 4) {
+        private val keys = LinkedHashMap<String, ByteArray>()
+
+        fun get(dirKey: ByteArray, session: ByteArray): ByteArray {
+            val id = dirKey.contentHashCode().toString() + ":" + session.joinToString("") { "%02x".format(it) }
+            keys[id]?.let { return it }
+            val k = sessionKey(dirKey, session)
+            keys[id] = k
+            while (keys.size > max) keys.remove(keys.keys.first())?.fill(0)
+            return k
+        }
     }
 
     private fun magicOk(data: ByteArray): Boolean = data.size >= 5 && (0 until 5).all { data[it] == MAGIC[it] }
@@ -161,6 +191,12 @@ object PhoneLinkWire {
         return seal(phoneToUnitKey, P2U, TYPE_FIX, session, counter, body)
     }
 
+    /** Phone end ("Forget head unit", spec 4.3): body is only the echoed challenge. */
+    fun encodeRevoke(phoneToUnitKey: ByteArray, session: ByteArray, counter: Long, challenge: ByteArray): ByteArray {
+        require(challenge.size == CHALLENGE_BYTES)
+        return seal(phoneToUnitKey, P2U, TYPE_REVOKE, session, counter, challenge.copyOf())
+    }
+
     fun encodeZone(phoneToUnitKey: ByteArray, session: ByteArray, counter: Long, challenge: ByteArray, zoneId: String): ByteArray {
         val id = zoneId.toByteArray(Charsets.US_ASCII)
         require(challenge.size == CHALLENGE_BYTES && id.size in 1..MAX_ZONE_BYTES)
@@ -175,13 +211,19 @@ object PhoneLinkWire {
 
         class Fix(override val session: ByteArray, override val counter: Long, override val challenge: ByteArray, val fix: PhoneFix) : Decoded
         class Zone(override val session: ByteArray, override val counter: Long, override val challenge: ByteArray, val zoneId: String) : Decoded
+        class Revoke(override val session: ByteArray, override val counter: Long, override val challenge: ByteArray) : Decoded
     }
 
     enum class BodyRefusal { WRONG_TYPE, BAD_FIELDS }
 
     /** Unit end: opens and parses one phone datagram. Left: refusal; right: decoded. */
-    fun decodePhone(phoneToUnitKey: ByteArray, data: ByteArray, length: Int): Pair<Decoded?, String?> {
-        val (opened, refusal) = open(phoneToUnitKey, P2U, data, length)
+    fun decodePhone(
+        phoneToUnitKey: ByteArray,
+        data: ByteArray,
+        length: Int,
+        cache: SessionKeyCache? = null,
+    ): Pair<Decoded?, String?> {
+        val (opened, refusal) = open(phoneToUnitKey, P2U, data, length, cache)
         if (opened == null) return null to refusal!!.name
         val body = opened.body
         return when (opened.type) {
@@ -191,6 +233,10 @@ object PhoneLinkWire {
                 val id = String(body, CHALLENGE_BYTES, body.size - CHALLENGE_BYTES, Charsets.US_ASCII)
                 if (!Regex("[A-Za-z0-9_+\\-/]+").matches(id)) return null to BodyRefusal.BAD_FIELDS.name
                 Decoded.Zone(opened.session, opened.counter, body.copyOfRange(0, CHALLENGE_BYTES), id) to null
+            }
+            TYPE_REVOKE -> {
+                if (body.size != CHALLENGE_BYTES) return null to BodyRefusal.BAD_FIELDS.name
+                Decoded.Revoke(opened.session, opened.counter, body.copyOf()) to null
             }
             else -> null to BodyRefusal.WRONG_TYPE.name
         }
@@ -207,23 +253,25 @@ object PhoneLinkWire {
         val bearing = b.getFloat()
         val speed = b.getFloat()
         val alt = b.getDouble()
-        val age = b.getInt().toLong()
+        // u32 on the wire (review M4): read unsigned, so 0xFFFFFFFF is ~49 days old, never negative.
+        val age = b.getInt().toLong() and 0xFFFFFFFFL
         val bearingAcc = b.getFloat()
         val speedAcc = b.getFloat()
         if (!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) {
             return null to BodyRefusal.BAD_FIELDS.name
         }
         fun f(bit: Int, v: Float): Float? = v.takeIf { flags and bit != 0 && it.isFinite() }
+        // Authenticated is not the same as sane (review L7): out-of-range values read as absent.
         val fix = PhoneFix(
             lat = lat,
             lng = lng,
-            accuracyM = f(F_ACC, acc)?.takeIf { it >= 0f },
+            accuracyM = f(F_ACC, acc)?.takeIf { it in 0f..MAX_ACCURACY_M },
             bearingDeg = f(F_BEARING, bearing)?.takeIf { it in 0f..360f },
-            speedMps = f(F_SPEED, speed)?.takeIf { it >= 0f },
-            altitudeM = alt.takeIf { flags and F_ALT != 0 && it.isFinite() },
+            speedMps = f(F_SPEED, speed)?.takeIf { it in 0f..MAX_SPEED_MPS },
+            altitudeM = alt.takeIf { flags and F_ALT != 0 && it.isFinite() && it in MIN_ALTITUDE_M..MAX_ALTITUDE_M },
             ageMs = age,
-            bearingAccuracyDeg = f(F_BEARING_ACC, bearingAcc)?.takeIf { it >= 0f },
-            speedAccuracyMps = f(F_SPEED_ACC, speedAcc)?.takeIf { it >= 0f },
+            bearingAccuracyDeg = f(F_BEARING_ACC, bearingAcc)?.takeIf { it in 0f..180f },
+            speedAccuracyMps = f(F_SPEED_ACC, speedAcc)?.takeIf { it in 0f..MAX_SPEED_MPS },
         )
         return Decoded.Fix(opened.session, opened.counter, challenge, fix) to null
     }
