@@ -77,6 +77,8 @@ class CarLinkViewModel(
     init {
         this.scope.launch { controller.status.collect { s -> _state.value = render(s, scanning.value) } }
         this.scope.launch { scanning.collect { _state.value = render(controller.status.value, it) } }
+        // Reads the stored pairing off the main thread if app start has not yet.
+        controller.start()
     }
 
     fun scan() {
@@ -149,6 +151,7 @@ class CarLinkViewModel(
             )
             p is PairingStage.Failed ->
                 base.copy(phase = CarLinkPhase.FAILED, headline = CarLinkWords.failure(p), detail = linkLine(s))
+            s.link == LinkState.LOADING -> base.copy(headline = "Reading the car link.", canPair = false)
             s.link == LinkState.BROKEN -> base.copy(
                 phase = CarLinkPhase.BROKEN,
                 headline = "Pairing broken: pair again.",
@@ -166,7 +169,7 @@ class CarLinkViewModel(
     private fun linkLine(s: CarLinkStatus): String = when (s.link) {
         LinkState.PAIRED -> "This phone is still paired with its earlier head unit."
         LinkState.BROKEN -> "Pairing broken: pair again."
-        LinkState.NOT_PAIRED -> "This phone is not paired with a head unit."
+        LinkState.NOT_PAIRED, LinkState.LOADING -> "This phone is not paired with a head unit."
     }
 
     class Factory(context: Context) : ViewModelProvider.Factory {

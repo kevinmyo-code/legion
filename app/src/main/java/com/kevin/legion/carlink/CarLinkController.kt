@@ -21,10 +21,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
-enum class LinkState { NOT_PAIRED, PAIRED, BROKEN }
+/** LOADING until the stored keys were read, off the main thread. */
+enum class LinkState { LOADING, NOT_PAIRED, PAIRED, BROKEN }
 
 /** Something that happened that the screen should say once, in words. */
 enum class CarLinkNote {
@@ -34,7 +37,7 @@ enum class CarLinkNote {
 
 /** Everything the Car link screen reads. Not printed anywhere; [PairingStage.DigitsShown] hides its digits. */
 data class CarLinkStatus(
-    val link: LinkState = LinkState.NOT_PAIRED,
+    val link: LinkState = LinkState.LOADING,
     val pairing: PairingStage? = null,
     val unitInRange: Boolean = false,
     val sendLocation: Boolean = false,
@@ -63,30 +66,58 @@ class CarLinkController(
     private val _status = MutableStateFlow(CarLinkStatus())
     val status: StateFlow<CarLinkStatus> = _status.asStateFlow()
 
-    private val ring: LinkKeyRing
+    // Empty until [ensureLoaded] read the store; nothing touches the Keystore on the caller's thread.
+    @Volatile private var ring = LinkKeyRing(null, null, store)
+    private val loadLock = Mutex()
+    @Volatile private var loaded = false
     private var pairingJob: Job? = null
     private var feedJob: Job? = null
     @Volatile private var sender: CarLinkSender? = null
 
-    init {
-        val loaded = store.load()
-        ring = when (loaded) {
-            is StoredLink.Paired -> LinkKeyRing(loaded.current, loaded.reserve, store)
-            else -> LinkKeyRing(null, null, store)
+    /**
+     * Reads the stored keys once, on [io] (Keystore decrypts with retries can be slow). A store that
+     * throws is "Pairing broken", never a crash: app start must not fail because of the car link.
+     */
+    @Suppress("TooGenericExceptionCaught") // a failing Keystore must not take app start down
+    private suspend fun ensureLoaded() = loadLock.withLock {
+        if (loaded) return@withLock
+        loaded = true
+        val result = try {
+            store.load()
+        } catch (e: RuntimeException) {
+            StoredLink.Broken
         }
-        _status.value = CarLinkStatus(
-            link = when (loaded) {
-                is StoredLink.Paired -> LinkState.PAIRED
-                StoredLink.Broken -> LinkState.BROKEN
-                StoredLink.NotPaired -> LinkState.NOT_PAIRED
-            },
-            sendLocation = store.sendLocation(),
-            handOverGemini = store.handOverGemini(),
-        )
+        if (result is StoredLink.Paired) ring = LinkKeyRing(result.current, result.reserve, store)
+        val sendLocation = try {
+            store.sendLocation()
+        } catch (e: RuntimeException) {
+            false
+        }
+        _status.update {
+            it.copy(
+                link = when (result) {
+                    is StoredLink.Paired -> LinkState.PAIRED
+                    StoredLink.Broken -> LinkState.BROKEN
+                    StoredLink.NotPaired -> LinkState.NOT_PAIRED
+                },
+                sendLocation = sendLocation,
+                handOverGemini = runCatching { store.handOverGemini() }.getOrDefault(false),
+            )
+        }
     }
 
-    /** Starts the sender if paired. Safe to call repeatedly (app start, after pairing). */
-    @Synchronized fun start() {
+    /**
+     * Loads (once, off the caller's thread) and starts the sender if paired. Returns at once; safe to
+     * call repeatedly (app start, the Car link screen, after pairing).
+     */
+    fun start() {
+        scope.launch(io) {
+            ensureLoaded()
+            startFeed()
+        }
+    }
+
+    @Synchronized private fun startFeed() {
         if (ring.current == null || feedJob?.isActive == true) return
         feedJob = scope.launch(io) {
             val s = newSender(ring, ::onRingEvent) { _status.value.sendLocation }
@@ -137,9 +168,11 @@ class CarLinkController(
             _status.update { it.copy(pairing = PairingStage.Failed(PairingFailure.BAD_QR), note = null) }
             return
         }
-        ring.sessionOpen = true
         _status.update { it.copy(pairing = PairingStage.AwaitingAck, note = null) }
         pairingJob = scope.launch(io) {
+            ensureLoaded()
+            val ring = ring
+            ring.sessionOpen = true
             val client = PairingClient(qr, P256.generate(), ring, handover::body)
             val runner = PairingRunner(transport, jitterMs, sleep) { stage ->
                 _status.update { it.copy(pairing = stage) }
@@ -170,7 +203,7 @@ class CarLinkController(
         }
         _status.update { it.copy(link = link, pairing = end) }
         // The sender re-derives its keys from the ring on every call; it only needs starting.
-        start()
+        startFeed()
     }
 
     /** The person cancelled pairing. */
@@ -188,6 +221,7 @@ class CarLinkController(
     suspend fun forget() = withContext(io) {
         // On io: the REVOKE is a socket send, never allowed on the main thread.
         pairingJob?.cancelAndJoin()
+        ensureLoaded()
         val sentRevoke = sender?.revoke() == true
         store.unitDeviceId()?.let { handover.revoke(it) }
         if (!ring.forget()) {

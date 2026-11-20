@@ -118,6 +118,7 @@ class CarLinkControllerTest {
         assertTrue(store.write(key, null))
         val c = controller()
         c.start()
+        waitFor("the listener") { senders > 0 }
         c.forget()
         assertEquals(CarLinkNote.FORGOT_NOT_IN_RANGE, c.status.value.note)
         assertEquals(StoredLink.NotPaired, store.load())
@@ -138,6 +139,7 @@ class CarLinkControllerTest {
             { _, _, _ -> error("a broken pairing must not start a sender") }, scope, Dispatchers.IO, { 300L }, {},
         )
         c.start()
+        waitFor("the load") { c.status.value.link != LinkState.LOADING }
         assertEquals(LinkState.BROKEN, c.status.value.link)
         assertTrue(file.values.containsKey("link_current"))
     }
@@ -177,7 +179,7 @@ class CarLinkControllerTest {
     }
 
     // ---- P-C: app start must not block or throw because of the car link.
-    @Ignore("red until fix P-C") @Test fun `building and starting the controller never reads the store on the caller, and a throwing store is contained`() {
+    @Test fun `building and starting the controller never reads the store on the caller, and a throwing store is contained`() {
         val reads = java.util.concurrent.atomic.AtomicInteger()
         val callerThread = Thread.currentThread()
         var readOnCaller = false
