@@ -12,7 +12,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import java.net.InetAddress
 import java.net.SocketException
@@ -269,7 +268,7 @@ class CarLinkControllerTest {
     }
 
     // ---- C2: silence counts only after a REVOKE answered a HELLO the listener heard.
-    @Ignore("red until fix C2") @Test fun `walking away right after an in-range Forget never shows Forgotten`() = runBlocking {
+    @Test fun `walking away right after an in-range Forget never shows Forgotten`() = runBlocking {
         assertTrue(store.write(key, null))
         val c = controller()
         c.start()
@@ -288,7 +287,8 @@ class CarLinkControllerTest {
         assertTrue(store.write(key, null))
         assertTrue(store.setPairingNetwork(PairingNetwork("ap-test0", "10.0.0.0", 24, ownHotspot = true)))
         hotspotNow = false
-        look = NetworkLook.Changed(LocalIface("ap-test0", InetAddress.getByName("10.9.9.1") as java.net.Inet4Address, 24))
+        val moved = LocalIface("ap-test0", InetAddress.getByName("10.9.9.1") as java.net.Inet4Address, 24)
+        look = NetworkLook.Changed(moved)
         val c = controller()
         c.start()
         waitFor("the re-pair words") { c.status.value.note != null }

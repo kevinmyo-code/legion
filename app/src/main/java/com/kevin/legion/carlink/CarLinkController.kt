@@ -99,8 +99,6 @@ class CarLinkController(
     // A pairing session is running: the revoke-only listener pauses (C1). Its REVOKE under the old
     // key would make a unit holding the new pairing as PENDING forget that too.
     @Volatile private var pairingOpen = false
-    // Forget sent a REVOKE itself before handing over to the revoke-only listener.
-    @Volatile private var revokeSentAtForget = false
 
     /**
      * Reads the stored keys once, on [io] (Keystore decrypts with retries can be slow). A store that
@@ -164,7 +162,6 @@ class CarLinkController(
     @Synchronized private fun startFeed() {
         if (feedJob?.isActive == true) return
         val revokeOnly = ring.current == null
-        if (revokeOnly && pairingOpen) return
         val feedRing = if (!revokeOnly) ring else revokeRing() ?: return
         feedJob = scope.launch(io) {
             var keepGoing = true
@@ -215,7 +212,7 @@ class CarLinkController(
         val s = openSender(feedRing, mode) ?: return false
         sender = s
         var delivered = false
-        val tell = RevokeTelling(sentAny = revokeSentAtForget, heardAt = s.nowMs())
+        val tell = RevokeTelling(sentAny = false, heardAt = s.nowMs())
         try {
             while (!delivered && keepListening(feedRing, mode)) {
                 if (!stepContained(s)) break
@@ -346,14 +343,22 @@ class CarLinkController(
                 _status.update { it.copy(note = CarLinkNote.FORGET_TELLING) }
             }
         }
-        val quiet = tell.sentAny && s.nowMs() - tell.heardAt >= revokeSilenceMs
+        // C2: silence proves the car forgot only when it begins right after a REVOKE this listener sent in
+        // reply to a HELLO it heard. A REVOKE sent at Forget and then nothing may just mean the phone walked
+        // away (its hotspot stays up), so then the record waits and the words say so.
+        val silent = s.nowMs() - tell.heardAt >= revokeSilenceMs
+        if (silent && !tell.sentAny && _status.value.note == CarLinkNote.FORGET_TELLING) {
+            _status.update { it.copy(note = CarLinkNote.FORGOT_WILL_TELL) }
+        }
+        val quiet = silent && tell.sentAny
         if (quiet) revokeDelivered()
         return quiet
     }
 
     /** A ring holding only the forgotten key (writes refused), or null when there is none or it expired. */
     private fun revokeRing(): LinkKeyRing? {
-        val key = revokeKey ?: return null
+        // Paused while a pairing session is open (C1).
+        val key = revokeKey?.takeIf { !pairingOpen } ?: return null
         return if (revokeExpired()) {
             expireRevoke()
             null
@@ -426,7 +431,6 @@ class CarLinkController(
         // In range or not, a key becomes a REVOKE-only record: REVOKE goes again on every HELLO under it
         // until the car goes quiet (R1), so one lost datagram never leaves the car paired.
         val keepForRevoke = key != null
-        revokeSentAtForget = sentRevoke
         val forgotten = if (keepForRevoke) {
             store.writeRevokeOnly(key!!, wallClock()).also { if (it) ring.dropFromMemory() }
         } else {
