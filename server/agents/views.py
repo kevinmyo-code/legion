@@ -112,6 +112,10 @@ class _SwitchedAgentsView(_AgentsView):
             raise exceptions.NotFound(OFF_WORDS)
 
 
+# Voice contract versions this door serves: N and N-1, as the wire doc says, floored at 1 because
+# no version 0 was ever published or spoken by a client. Today that is 1 alone.
+SERVED_VERSIONS = range(max(1, limbs.CONTRACT_VERSION - 1), limbs.CONTRACT_VERSION + 1)
+
 # A multipart body's most: the clip, its WAV header and a few form fields.
 MAX_BODY_BYTES = MAX_AUDIO_BYTES + 64 * 1024
 
@@ -329,7 +333,7 @@ class AgentTurnView(_SwitchedAgentsView):
             )
         data = body.validated_data
         version = data.get("contract_version")
-        if version is not None and version != limbs.CONTRACT_VERSION:
+        if version is not None and version not in SERVED_VERSIONS:
             return _refuse(
                 f"This engine serves voice contract {limbs.CONTRACT_VERSION}; this client speaks "
                 f"{version}. Update the app.",
@@ -466,7 +470,7 @@ class AgentLimbView(_SwitchedAgentsView):
         # The version is read first: another version's manifest may have another shape, and the
         # client needs "update the app", not a list of field errors.
         version = _contract_version(data)
-        if version is not None and version != limbs.CONTRACT_VERSION:
+        if version is not None and version not in SERVED_VERSIONS:
             return Response(
                 {
                     "detail": (
