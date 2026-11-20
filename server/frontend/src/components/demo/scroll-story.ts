@@ -69,6 +69,10 @@ export function useOrbPlace(): OrbPlace {
   )
 }
 
+// What has risen in once stays shown for the visit: a live content reload re-runs the marking,
+// and must never hide again what the visitor has already seen (review 2026-11-20).
+const risen = new WeakSet<Element>()
+
 /**
  * For the sections under `root`: each `[data-orb-side]` section that crosses the middle of the
  * screen puts the orb on its side; each section's own children rise in as they arrive, a few
@@ -84,7 +88,7 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
     for (const section of sections) {
       Array.from(section.children).forEach((child, index) => {
         const el = child as HTMLElement
-        if (el.dataset.reveal === 'shown') return
+        if (el.dataset.reveal === 'shown' || risen.has(el)) return
         el.dataset.reveal = 'pending'
         el.style.setProperty('--reveal-i', String(Math.min(index, 6)))
         pending.push(el)
@@ -95,6 +99,7 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
         for (const entry of entries) {
           if (!entry.isIntersecting) continue
           ;(entry.target as HTMLElement).dataset.reveal = 'shown'
+          risen.add(entry.target)
           reveal.unobserve(entry.target)
         }
       },
