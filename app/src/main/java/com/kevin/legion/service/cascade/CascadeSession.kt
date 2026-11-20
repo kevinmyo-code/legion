@@ -1758,7 +1758,7 @@ internal class CascadeSession(
         val reply = newSpeaker(null)
         reply.say(ClosingLines.next(ctx), tagsAllowed = true)
         val o = withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() }
-        if (o == ReplySpeaker.Outcome.Played) player?.awaitDrained() else host.closingTone()
+        if (o == ReplySpeaker.Outcome.Played) player?.awaitDrained()
         shutdown("check_in_no_reply")
         host.closed("check_in_no_reply")
     }
@@ -1899,7 +1899,6 @@ internal class CascadeSession(
         if (++missedInARow > MAX_MISSED_IN_A_ROW) {
             LiveLatency.log(LiveLatency.TAG, "stt_missed_close n=$missedInARow")
             sayOwed()
-            host.closingTone()
             shutdown("missed_twice")
             host.closed("missed_twice")
             return
@@ -1981,7 +1980,6 @@ internal class CascadeSession(
         if (++noiseInARow < MAX_NOISE_IN_A_ROW) return false
         LiveLatency.log(LiveLatency.TAG, "stt_noise_close n=$noiseInARow")
         sayOwed()
-        host.closingTone()
         shutdown("noise")
         host.closed("noise")
         return true
@@ -2381,7 +2379,6 @@ internal class CascadeSession(
         val oneShotDone = (oneShot || oneShotRequested) && answeredOnce
         if (dismissAfterReply || oneShotDone) {
             sayOwed()
-            host.closingTone()
             shutdown("dismissed")
             host.closed("dismissed")
             return
@@ -2611,7 +2608,6 @@ internal class CascadeSession(
     private suspend fun endByVoice() {
         sayOwed()
         sayFarewell()
-        host.closingTone()
         shutdown("sleep_phrase")
         host.notice("Conversation closed")
         host.closed("sleep_phrase")
@@ -2706,7 +2702,6 @@ internal class CascadeSession(
         scope.launch(loop) {
             LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}")
             sayOwed()
-            host.closingTone()
             shutdown("follow_up")
             host.notice("Conversation closed")
             host.closed("follow_up")
@@ -3113,7 +3108,6 @@ internal class CascadeSession(
             if (VoiceEngineSettings.LIVE_RETIRED) {
                 // Live is retired (Kevin, 2026-11-15): never opened behind his back. The failure is
                 // said in words above and the conversation ends with the closing tone.
-                if (!quiet) host.closingTone()
                 host.closed("voice_failed_$reason")
             } else {
                 // Whatever happened above, Live is opened: never a dead assistant.
@@ -3146,6 +3140,40 @@ internal class CascadeSession(
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             handOver(currentMoment(), "crash", label, phoneFault = true)
         }
+    }
+
+    /** The closing chime has played for this session's close ([CloseCue]: once only). */
+    @Volatile private var closeCuePlayed = false
+
+    /**
+     * The closing chime ([ListenCue.closeChimePcm], [CloseCue]): through Alfred's own track, after the
+     * mic has closed and before the route is released, waited for at most the chime plus the route's
+     * tail ([CloseCue.waitCapMs]). Logged either way.
+     */
+    private suspend fun playCloseCue(reason: String) {
+        val p = player
+        val skip = CloseCue.decide(
+            reason,
+            quiet = QuietMode.isOn(ctx),
+            onCall = callOnLine(),
+            audioOpened = p != null,
+            alreadyPlayed = closeCuePlayed,
+            rateMatches = backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE,
+        )
+        LiveLatency.log(LiveLatency.TAG, CloseCue.auditLine(reason, skip))
+        if (skip != null || p == null) return
+        closeCuePlayed = true
+        val pcm = ListenCue.closeChimePcm()
+        val settle = MicReopen.settleMs(CallAudioMode.route(audioManager))
+        val cap = CloseCue.waitCapMs(ListenCue.durationMs(pcm), settle)
+        CloseCue.playBounded(
+            cap,
+            write = { withContext(Dispatchers.IO) { p.write(pcm, p.generation()) } },
+            drained = {
+                p.awaitDrained()
+                delay(settle)
+            },
+        )
     }
 
     /** Idempotent full release. */
@@ -3199,13 +3227,20 @@ internal class CascadeSession(
             Log.w(TAG, "mic join: ${e.message}")
         }
         step("turn") { turnTaker?.reset() }
+        // The mic is closed: its claim goes now, so the wake word re-arms without waiting on the chime.
+        step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
+        micClaimed = false
+        // The closing chime, before the player and the route go (Bluetooth would cut it off).
+        try {
+            playCloseCue(reason)
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            Log.w(TAG, "close cue: ${e.message}")
+        }
         step("player") { player?.release() }
         step("route_watch") { audioRoute.stopWatching() }
         step("call_audio") { callAudio?.let { if (it.isActive) it.exit("cascade $reason") } }
         step("focus") { abandonFocus() }
         step("caption") { CompanionPhase.setCaption("") }
-        step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
-        micClaimed = false
         step("socket") { backend?.close(reason) }
         step("usage") {
             if (auditStarted) {

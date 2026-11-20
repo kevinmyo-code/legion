@@ -941,7 +941,6 @@ class LiveSessionController(context: Context) {
                 cascade = null
                 handleEvent(LiveEvent.CrisisDetected)
             },
-            tone = ::playClosingTone,
             toLive = { wake, opener ->
                 cascade = null
                 afterCascade = null
