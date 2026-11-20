@@ -78,15 +78,18 @@ internal object MiddlePanelText {
             age < 3_600_000L -> "lost ${age / 60_000} min"
             else -> "lost over an hour"
         }
-        return Gps(source, words, stale = age > STALE_MS)
+        return Gps(source, words, stale = !isFresh(ageMs))
     }
 
-    /** A fix older than this shows no speed: a number frozen at its last value reads as live. */
-    const val SPEED_FRESH_MS = 15_000L
+    /**
+     * The one freshness rule (review M3, 2026-11-20): the header's "fix N s ago" and the big speed
+     * numeral go stale at the same moment, so the screen never says "lost" beside a live-looking speed.
+     */
+    fun isFresh(ageMs: Long?): Boolean = ageMs != null && ageMs in 0..STALE_MS
 
-    /** GPS speed in mph, or null without a speed or once the fix is older than [SPEED_FRESH_MS]. */
+    /** GPS speed in mph, or null without a speed or once the fix is not [isFresh]. */
     fun speedMph(speedMps: Float?, ageMs: Long?): Int? {
-        if (speedMps == null || ageMs == null || ageMs < 0 || ageMs > SPEED_FRESH_MS) return null
+        if (speedMps == null || !isFresh(ageMs)) return null
         return Math.round(speedMps * 2.23694f)
     }
 

@@ -106,9 +106,12 @@ class CruiseLayoutLogicTest {
         assertEquals("lost over an hour", MiddlePanelText.gps(beacon, 7_200_000L, beacon).age)
     }
 
-    @Test fun speedBlanksOnceTheFixIsStale() {
+    @Test fun speedBlanksAtTheSameMomentTheHeaderSaysLost() {
         assertEquals(64, MiddlePanelText.speedMph(28.6f, 900L))
-        assertEquals(null, MiddlePanelText.speedMph(28.6f, 15_001L))
+        assertEquals(64, MiddlePanelText.speedMph(28.6f, 3_000L))
+        assertEquals(false, MiddlePanelText.gps(beacon, 3_000L, beacon).stale)
+        assertEquals(null, MiddlePanelText.speedMph(28.6f, 3_001L))
+        assertEquals(true, MiddlePanelText.gps(beacon, 3_001L, beacon).stale)
         assertEquals(null, MiddlePanelText.speedMph(null, 900L))
         assertEquals(null, MiddlePanelText.speedMph(28.6f, null))
     }
