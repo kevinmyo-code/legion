@@ -476,10 +476,8 @@ class GeminiTextLoop(
         if (state.text.isNotEmpty() && !state.text.last().isWhitespace()) state.text.append(' ')
         state.text.append(line).append(' ')
         state.writesSaid += said.map { it.result.name }
-        // A result that asks him something or carries the adapter's note arms no names: the model's
-        // question or "Looks like the X" may name the very car code just said, and it must be heard.
-        val namesFrom = said.filterNot { ClosingRound.carriesMore(it.result.response) }
-        state.saidNames += ScriptedLines.namesIn(namesFrom.mapNotNull { it.fact }, line)
+        // Not from a result that asks him, never a name the adapter's note carries ([ClosingRound.armedNames]).
+        state.saidNames += ClosingRound.armedNames(said.map { ClosingRound.Call(it.fact, it.result.response) }, line)
         state.codeLines++
         listener.onCodeLine(line, said.mapNotNull { it.fact })
     }

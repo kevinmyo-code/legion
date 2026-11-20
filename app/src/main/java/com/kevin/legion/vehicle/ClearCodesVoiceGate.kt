@@ -124,8 +124,8 @@ class ClearCodesVoiceGate(private val clock: () -> Long = System::currentTimeMil
 
         const val NOT_ASKED =
             "Nothing was cleared and nothing was asked: his words did not ask to clear or erase codes. " +
-                "Reading codes and scanning every module go through ask with domain ask_fleet (all modules " +
-                "when he says every module). Call that now instead."
+                "Reading codes and scanning every module is car read_codes (all_modules when he says every " +
+                "module). Call that now instead."
 
         private val CLEAR_ASK = Regex(
             "\\b(clear|clearing|erase|wipe|reset|delete|remove|get rid of|turn off)\\b",

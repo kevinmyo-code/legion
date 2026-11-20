@@ -23,7 +23,7 @@ object ClockToolbox {
         "alarm_set", "alarm_cancel", "alarm_list",
         "timer_start", "timer_pause", "timer_resume", "timer_cancel", "timer_left",
         "stopwatch_start", "stopwatch_stop", "stopwatch_lap", "stopwatch_reset",
-        "bedtime_on", "bedtime_off",
+        "bedtime_on", "bedtime_off", "feed_block_on",
     )
 
     /** Test seam. */
@@ -31,7 +31,7 @@ object ClockToolbox {
 
     private const val DESCRIPTION =
         "Phone clock, offline: alarms (wake-ups), named timers, stopwatch, bedtime (feed block on, Quiet till " +
-            "next alarm). time HH:mm; days e.g. weekdays or mon,fri, none = once. " +
+            "next alarm), feed_block_on (that alone). time HH:mm; days e.g. weekdays or mon,fri, none = once. " +
             "bedtime_on with time = nightly, else now. Say only what the result says."
 
     fun declarations(): JSONArray = JSONArray().put(
@@ -88,6 +88,8 @@ object ClockToolbox {
         "stopwatch_reset" to { c, _ -> c.stopwatch.reset() },
         "bedtime_on" to { c, a -> c.bedtime.voiceOn(a.time) },
         "bedtime_off" to { c, _ -> c.bedtime.voiceOff() },
+        // Phone audit 2026-11-19: a feed-block-only request could only reach bedtime_on, Quiet included.
+        "feed_block_on" to { c, _ -> c.bedtime.feedBlockOnly() },
     )
 
     /** One action, parsed. Pure over the controller so it is tested without Android. */

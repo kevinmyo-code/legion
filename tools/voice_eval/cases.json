@@ -534,6 +534,24 @@
         "answer_has": ["(?i)which (car|one|vehicle)"],
         "not_calls": ["car/clear_codes", "car/switch_vehicle", "car/adapter_in"]
       }
+    },
+    {
+      "id": "codes_any",
+      "say": "any codes on the car?",
+      "why": "2026-11-19 phone audit: every codes question became clear_codes (the car tool had no read)",
+      "expect": {"calls": ["car/read_codes|ask/ask_fleet"], "not_calls": ["car/clear_codes"]}
+    },
+    {
+      "id": "codes_what",
+      "say": "what codes does it have",
+      "why": "2026-11-19 phone audit: same as codes_any",
+      "expect": {"calls": ["car/read_codes|ask/ask_fleet"], "not_calls": ["car/clear_codes"]}
+    },
+    {
+      "id": "codes_in_passing",
+      "say": "my cousin's bakery put up a new menu board, the discount codes are printed so small now, anyway the bread was great",
+      "why": "2026-11-19 phone audit: talk that mentioned codes in passing became clear_codes, and code then read the car's stored codes aloud",
+      "expect": {"not_calls": ["car"]}
     }
   ]
 }

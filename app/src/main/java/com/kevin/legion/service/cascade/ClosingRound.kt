@@ -32,9 +32,22 @@ object ClosingRound {
     /**
      * A result that gives the model something to say beyond the change: a question for him
      * ([LoneWordWriteGuard.asksField]) or the adapter's one-time note ("Looks like the X",
-     * [AdapterBinding.NOTE_FIELD]). Its closing text is kept and its names drop no sentence
-     * ([GeminiTextLoop]), since that text may name the very car code just said.
+     * [AdapterBinding.NOTE_FIELD]). Its closing text is kept; which names still filter it is [armedNames].
      */
     fun carriesMore(response: JSONObject): Boolean =
         LoneWordWriteGuard.asksField(response) || response.has(AdapterBinding.NOTE_FIELD)
+
+    /**
+     * The names code's [line] said that still drop a model sentence next round ([SaidFilter]): none
+     * from a write whose result asks him something (his question may name any car), and never a
+     * name the adapter's note itself carries ("Looks like the X" must be heard). The switched-to car
+     * is still filtered (review 2026-11-19, P1-c2: "switched to X" not said twice). Membership only.
+     */
+    fun armedNames(calls: List<Call>, line: String): List<String> {
+        val notes = calls.mapNotNull { it.response.optString(AdapterBinding.NOTE_FIELD).ifEmpty { null } }
+            .map { SaidFilter.fold(it) }
+        val facts = calls.filterNot { LoneWordWriteGuard.asksField(it.response) }.mapNotNull { it.fact }
+        return ScriptedLines.namesIn(facts, line)
+            .filterNot { n -> notes.any { SaidFilter.pattern(n).containsMatchIn(it) } }
+    }
 }
