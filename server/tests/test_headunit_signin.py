@@ -190,6 +190,7 @@ def test_the_phone_mints_a_token_shown_once_and_lists_it_without_the_token(phone
         "created_at",
         "last_used_at",
         "expires_at",
+        "vehicle_id",
         "rotated_at",
         "stale_use_count",
         "stale_used_at",
@@ -547,6 +548,67 @@ def test_a_unit_upload_has_its_own_size_cap(phone, on, monkeypatch):
     response = unit_client(raw).post("/api/device-logs/", _log_upload(), format="multipart")
     assert response.status_code == 413
     assert phone.post("/api/device-logs/", _log_upload(), format="multipart").status_code == 201
+
+
+def _vehicle(client, i=0) -> str:
+    from tests.test_fleet_api import a_vehicle
+
+    response = client.put(f"/api/fleet/vehicles/hu-vehicle-{i}/", a_vehicle(i), format="json")
+    assert response.status_code == 200, response.data
+    return str(response.data["id"])
+
+
+def _sample(vehicle_id: str, second: int = 0) -> dict:
+    return {
+        "vehicle_id": vehicle_id,
+        "pid": "010C",
+        "value": 800.0,
+        "unit": "rpm",
+        "recorded_at": f"2026-01-02T03:04:{second:02d}Z",
+    }
+
+
+def test_a_unit_is_bound_at_mint_to_one_vehicle_of_its_household(phone, on, token_b):
+    mine = _vehicle(phone, 0)
+    theirs = _vehicle(token_b, 5)
+    response = _mint(phone, {**UNIT, "vehicle_id": mine})
+    assert response.status_code == 201, response.data
+    assert str(HeadUnitCredential.objects.get(pk=response.data["id"]).vehicle_id) == mine
+    for bad in (theirs, str(uuid.uuid4())):
+        refused = _mint(phone, {**UNIT, "vehicle_id": bad})
+        assert refused.status_code == 400, refused.data
+    assert HeadUnitCredential.objects.count() == 1
+    [listed] = phone.get(LIST).data
+    assert str(listed["vehicle_id"]) == mine
+
+
+def test_a_unit_writes_obd_samples_only_for_its_own_vehicle(phone, on, token_b):
+    from legacy.models.fleet import ObdSample
+
+    bound, other = _vehicle(phone, 0), _vehicle(phone, 1)
+    theirs = _vehicle(token_b, 5)
+    raw = _mint(phone, {**UNIT, "vehicle_id": bound}).data["token"]
+    unit = unit_client(raw)
+    ok = unit.post("/api/fleet/obd_samples/batch/", [_sample(bound)], format="json")
+    assert ok.status_code == 201, ok.data
+    for wrong in (other, theirs):
+        response = unit.post(
+            "/api/fleet/obd_samples/batch/", [_sample(bound, 1), _sample(wrong, 2)], format="json"
+        )
+        assert response.status_code == 403, response.data
+    assert ObdSample.objects.count() == 1
+
+
+def test_a_unit_bound_to_no_vehicle_writes_no_obd_samples(phone, on):
+    from legacy.models.fleet import ObdSample
+
+    vehicle = _vehicle(phone, 0)
+    _id, raw = _paired(phone)
+    response = unit_client(raw).post(
+        "/api/fleet/obd_samples/batch/", [_sample(vehicle)], format="json"
+    )
+    assert response.status_code == 403
+    assert not ObdSample.objects.exists()
 
 
 def test_a_unit_upload_lands_in_its_members_household(phone, on, household_user, household_a):

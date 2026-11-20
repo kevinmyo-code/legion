@@ -161,6 +161,7 @@ from api.synced import (
     range_error,
 )
 from api.vehicle_plate import PLATE_MAX_CHARS
+from headunit_signin import scope as headunit_scope
 from headunit_signin.authentication import HeadUnitTokenAuthentication
 from household.authentication import DeviceTokenAuthentication
 from household.tenancy import household_of, scoped
@@ -1889,6 +1890,9 @@ class ObdSampleBatchView(APIView):
         # would refuse the statement anyway, and a 400 naming the id is a
         # better answer than the database's own message.
         wanted = {row["vehicle_id"] for row in rows}
+        refusal = headunit_scope.obd_refusal(request, wanted)
+        if refusal is not None:
+            return Response({"detail": refusal}, status=status.HTTP_403_FORBIDDEN)
         known = set(
             scoped(Vehicle, request).filter(id__in=wanted).values_list("id", flat=True)
         )

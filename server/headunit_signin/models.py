@@ -58,6 +58,10 @@ class HeadUnitCredential(models.Model):
     )
     owner_user = models.ForeignKey("household.User", on_delete=models.CASCADE, related_name="+")
     label = models.CharField(max_length=LABEL_MAX)
+    # The one vehicle this unit is in (review B3), chosen by the member at mint from the
+    # household's vehicles. A bare id, not a key: `vehicles` is a legacy table Django does not own.
+    # Null: the unit writes no telemetry and its turn reads no vehicle.
+    vehicle_id = models.UUIDField(null=True, blank=True)
     key_hash = models.CharField(max_length=64, unique=True)
     created_at = models.DateTimeField(default=timezone.now)
     last_used_at = models.DateTimeField(null=True, blank=True)
@@ -96,7 +100,9 @@ class HeadUnitCredential(models.Model):
         return f"{self.label} ({self.pk})"
 
     @classmethod
-    def mint(cls, *, household, owner_user, label: str, now=None) -> tuple[HeadUnitCredential, str]:
+    def mint(
+        cls, *, household, owner_user, label: str, vehicle_id=None, now=None
+    ) -> tuple[HeadUnitCredential, str]:
         """A new credential and its raw token. The token is the return value, never a field."""
         now = now or timezone.now()
         raw = new_token()
@@ -104,6 +110,7 @@ class HeadUnitCredential(models.Model):
             household=household,
             owner_user=owner_user,
             label=label,
+            vehicle_id=vehicle_id,
             key_hash=hash_token(raw),
             created_at=now,
             expires_at=now + LIFETIME,

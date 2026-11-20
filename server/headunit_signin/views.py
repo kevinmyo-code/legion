@@ -40,6 +40,7 @@ from headunit_signin.models import (
     REASON_LOST_OR_SOLD,
     HeadUnitCredential,
 )
+from headunit_signin.scope import live_vehicles
 from household.authentication import DeviceTokenAuthentication
 from household.models import DeviceToken, is_recruiter
 from household.permissions import IsHouseholdMember
@@ -62,6 +63,7 @@ ROTATE_FROM_PHONE = (
 )
 NOT_ROTATED = "Nothing was rotated: no live head unit of yours has that id."
 NOT_FOUND = "Nothing was revoked: no head unit of yours has that id."
+NO_SUCH_VEHICLE = "Nothing was issued. No vehicle in this household has that vehicle_id."
 
 
 class _OffBeforeAnything(APIView):
@@ -109,6 +111,11 @@ class UploadThrottle(SimpleRateThrottle):
 class MintSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=LABEL_MAX, trim_whitespace=True)
     kind = serializers.ChoiceField(choices=[KIND])
+    vehicle_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text="The household vehicle this unit is in. Without one the unit sends no telemetry.",
+    )
 
 
 class IssuedSerializer(serializers.Serializer):
@@ -123,6 +130,7 @@ class HeadUnitSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     last_used_at = serializers.DateTimeField(allow_null=True)
     expires_at = serializers.DateTimeField()
+    vehicle_id = serializers.UUIDField(allow_null=True)
     rotated_at = serializers.DateTimeField(allow_null=True)
     stale_use_count = serializers.IntegerField(
         help_text="Uses of a token after it was rotated away: a copy, or a lost hand-over."
@@ -185,10 +193,14 @@ class HeadUnitListView(_MemberView):
                 {"detail": f"Nothing was issued. {body.errors}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        vehicle_id = body.validated_data.get("vehicle_id")
+        if vehicle_id is not None and not live_vehicles(request).filter(pk=vehicle_id).exists():
+            return Response({"detail": NO_SUCH_VEHICLE}, status=status.HTTP_400_BAD_REQUEST)
         row, raw = HeadUnitCredential.mint(
             household=household_of(request),
             owner_user=request.user,
             label=body.validated_data["name"],
+            vehicle_id=vehicle_id,
         )
         return Response(_issued(row, raw), status=status.HTTP_201_CREATED)
 

@@ -53,6 +53,32 @@ LOG_MAX_RAW_BYTES = 2 * 1024 * 1024
 TURN_CLIENT = "headunit"
 
 
+def live_vehicles(request):
+    """The household's live vehicles, the ones a unit may be bound to (shared rows: `scoped`)."""
+    from household.tenancy import scoped
+    from legacy.models.fleet import Vehicle
+
+    return scoped(Vehicle, request).filter(deleted_at__isnull=True)
+
+
+def obd_refusal(request, vehicle_ids) -> str | None:
+    """Review B3: a unit token appends samples for its own vehicle only. None for anyone else."""
+    if not is_headunit(request):
+        return None
+    bound = request.auth.vehicle_id
+    if bound is None:
+        return (
+            "Nothing was written. This head unit is bound to no vehicle, so it uploads no "
+            "telemetry. Pair it again and choose its vehicle."
+        )
+    if set(vehicle_ids) != {bound}:
+        return (
+            "Nothing was written. A head unit uploads samples only for the vehicle it is bound "
+            "to; the whole batch was refused."
+        )
+    return None
+
+
 def route_name(request) -> str | None:
     match = getattr(getattr(request, "_request", request), "resolver_match", None)
     if match is None:

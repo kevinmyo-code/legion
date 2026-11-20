@@ -18822,6 +18822,10 @@ components:
         expires_at:
           type: string
           format: date-time
+        vehicle_id:
+          type: string
+          format: uuid
+          nullable: true
         rotated_at:
           type: string
           format: date-time
@@ -18843,6 +18847,7 @@ components:
       - rotated_at
       - stale_use_count
       - stale_used_at
+      - vehicle_id
     Health:
       type: object
       description: |-
@@ -20604,6 +20609,12 @@ components:
           maxLength: 64
         kind:
           $ref: '#/components/schemas/MintKindEnum'
+        vehicle_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The household vehicle this unit is in. Without one the unit
+            sends no telemetry.
       required:
       - kind
       - name

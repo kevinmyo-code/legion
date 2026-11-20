@@ -8159,6 +8159,8 @@ export interface components {
             last_used_at: string | null;
             /** Format: date-time */
             expires_at: string;
+            /** Format: uuid */
+            vehicle_id: string | null;
             /** Format: date-time */
             rotated_at: string | null;
             /** @description Uses of a token after it was rotated away: a copy, or a lost hand-over. */
@@ -9075,6 +9077,11 @@ export interface components {
         Mint: {
             name: string;
             kind: components["schemas"]["MintKindEnum"];
+            /**
+             * Format: uuid
+             * @description The household vehicle this unit is in. Without one the unit sends no telemetry.
+             */
+            vehicle_id?: string | null;
         };
         /**
          * @description * `head_unit` - head_unit
