@@ -58,6 +58,11 @@ interface HandoverSink {
 
     /** Drops PENDING (seam for review N2; not yet called). */
     fun dropPending() {}
+
+    companion object {
+        /** What [commit] returns when there is no PENDING pairing to commit. */
+        const val NOTHING_PENDING = "nothing pending"
+    }
 }
 
 /**
@@ -103,6 +108,7 @@ class PairingSession(
         CANCELLED("Pairing cancelled. Nothing was changed."),
         PHONE_CANCELLED("The phone stopped pairing. Nothing was changed."),
         STORE_FAILED("This unit could not store the keys safely, so nothing was kept. The old pairing, if any, is unchanged."),
+        PAIRING_LOST("The phone took the new pairing but this unit no longer has it. Pair again."),
     }
 
     var stage: Stage = Stage.WaitingForPhone
@@ -218,9 +224,11 @@ class PairingSession(
         LinkCrypto.open(k.handover, LinkCrypto.nonce(STOR, 1), STORED_AAD, sealed)
             ?: return listOfNotNull(fail(Reason.BAD_MESSAGE))
         val h = pending
-        // A commit that fails leaves PENDING in place; the phone's next datagram retries it.
-        val committed = runCatching { sink.commit() }.getOrElse { "commit threw" } == null
-        stage = Stage.Paired(h?.phoneName, h?.present().orEmpty(), confirmed = committed)
+        val result = runCatching { sink.commit() }.getOrElse { "commit threw" }
+        // Review N1: `stored` with nothing left to commit means the phone holds a key this unit
+        // dropped. That is a failure the driver must see, never "Paired".
+        if (result == HandoverSink.NOTHING_PENDING) return listOfNotNull(fail(Reason.PAIRING_LOST, tellPhone = false))
+        stage = Stage.Paired(h?.phoneName, h?.present().orEmpty(), confirmed = result == null)
         wipe()
         return emptyList()
     }

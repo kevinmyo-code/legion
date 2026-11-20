@@ -127,6 +127,37 @@ class CarLinkFeedTest {
         assertEquals(PhoneFeed.Outcome.Rejected(PhoneFeed.Refusal.AUTH_FAILED), out)
     }
 
+    @Test fun n3_aSlowStartFinishingAfterForgetNeverReinstallsTheOldKey() {
+        store.committed = keyA.copyOf()
+        val release = java.util.concurrent.CountDownLatch(1)
+        var hooked = false
+        BeaconClient.beforeInstallForTest = { if (!hooked) { hooked = true; release.await(3, java.util.concurrent.TimeUnit.SECONDS) } }
+        try {
+            BeaconClient.start(context)
+            Thread.sleep(200) // the first start is now stuck inside its startup step, holding key A
+            store.forget()
+            CarLink.changed(context)
+            Thread.sleep(300)
+            release.countDown() // the slow first run finishes after the Forget
+            Thread.sleep(500)
+            assertNull("old key reinstalled after Forget", BeaconClient.feedsForTest())
+        } finally {
+            BeaconClient.beforeInstallForTest = null
+        }
+    }
+
+    @Test fun anAcceptedRevokeForgetsThePairingAndStopsTheReceiver() {
+        store.committed = keyA.copyOf()
+        BeaconClient.start(context)
+        waitFor("MNAI2") { BeaconClient.feedsForTest() != null }
+        val set = BeaconClient.feedsForTest()!!
+        val hello = synchronized(set) { set.committed!!.hello(1000) }
+        val heard = PhoneLinkWire.decodeHello(PhoneLinkWire.unitToPhoneKey(keyA), hello, hello.size)!!
+        val revoke = PhoneLinkWire.encodeRevoke(PhoneLinkWire.phoneToUnitKey(keyA), ByteArray(16) { 9 }, 1, heard.challenge)
+        BeaconClient.handleForTest(context, revoke)
+        waitFor("forgotten and off") { store.committed == null && BeaconClient.feedsForTest() == null }
+    }
+
     @Test fun h1_aBrokenPairingListensToNothingNotMnai1EvenInTheHeadUnitRole() {
         DeviceRole.set(context, Role.HEAD_UNIT)
         store.broken = true
@@ -145,7 +176,8 @@ class CarLinkFeedTest {
         val underB = fixUnder(keyB, set, set.pending!!, keyB)
         val result = synchronized(set) { set.receive(underB, underB.size) }
         assertTrue(result.commitPending)
+        // Old-key traffic alone does not drop PENDING at once (review N1: only after a quiet period).
         val underA = fixUnder(keyA, set, set.committed!!, keyA)
-        assertTrue(synchronized(set) { set.receive(underA, underA.size) }.dropPending)
+        assertTrue(!synchronized(set) { set.receive(underA, underA.size) }.dropPending)
     }
 }

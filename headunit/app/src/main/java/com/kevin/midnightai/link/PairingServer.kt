@@ -50,6 +50,8 @@ class PairingServer(
 
     /** Starts accepting (its own thread) and the 1 s timeout tick (the worker). */
     fun start() {
+        // Review N1: while this session is open, old-key traffic never drops a PENDING pairing.
+        CarLink.pairingSessionOpen = true
         Thread({ acceptLoop() }, "pairing-accept").apply { isDaemon = true }.start()
         worker.scheduleWithFixedDelay({ onWorker { listOfNotNull(session.tick()) } }, 1, 1, TimeUnit.SECONDS)
     }
@@ -162,6 +164,7 @@ class PairingServer(
         worker.execute {
             write(session.cancel())
             closed = true
+            CarLink.pairingSessionOpen = false
             runCatching { claimed?.close() }
             runCatching { server.close() }
             publish()

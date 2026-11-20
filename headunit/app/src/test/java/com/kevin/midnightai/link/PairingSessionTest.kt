@@ -29,12 +29,14 @@ class PairingSessionTest {
     private var commits = 0
     private var stageError: String? = null
     private var commitError: String? = null
+    private var drops = 0
     private val sink = object : HandoverSink {
         override fun stage(handover: Handover, linkKey: ByteArray): String? {
             staged += handover to linkKey.copyOf()
             return stageError
         }
         override fun commit(): String? { commits++; return commitError }
+        override fun dropPending() { drops++ }
     }
 
     private fun newSession(): Pair<PairingSession, String> {
@@ -115,6 +117,34 @@ class PairingSessionTest {
         s.onDisconnect()
         assertEquals(0, commits)
         assertEquals(Stage.Paired("Test phone", listOf("engine sign-in", "Gemini key"), confirmed = false), s.stage)
+    }
+
+    private fun upToDone(): Pair<PairingSession, FakePhone> {
+        val (s, qr) = newSession()
+        val phone = FakePhone(qr)
+        claim(s, phone)
+        s.enterCode(phone.keys.checkCode)
+        assertEquals("done", s.onMessage(phone.handover()).single().getString("t"))
+        return s to phone
+    }
+
+    @Test fun n1_aStoredWithNothingPendingIsAFailureNeverPaired() {
+        commitError = "nothing pending"
+        val (s, phone) = upToDone()
+        s.onMessage(phone.stored())
+        assertTrue("stage ${s.stage}", s.stage is Stage.Failed)
+    }
+
+    @Test fun n2_cancelAfterDoneDropsThePendingPairing() {
+        val (s, _) = upToDone()
+        s.cancel()
+        assertEquals(1, drops)
+    }
+
+    @Test fun n2_aBadStoredAfterDoneDropsThePendingPairing() {
+        val (s, _) = upToDone()
+        s.onMessage(JSONObject().put("t", "stored").put("c", Base64.Default.encode(ByteArray(40))))
+        assertEquals(1, drops)
     }
 
     @Test fun m5_wrongDigitsThreeTimesEndTheSessionAndStoreNothing() {

@@ -121,7 +121,7 @@ class LinkKeyStore(
     }
 
     override fun commitPending(): String? {
-        val p = open(KEY_PENDING) ?: return "nothing pending".also { prefs.edit().remove(KEY_PENDING).commit() }
+        val p = open(KEY_PENDING) ?: return HandoverSink.NOTHING_PENDING.also { prefs.edit().remove(KEY_PENDING).commit() }
         val link = linkOf(p) ?: return "pending unreadable".also { prefs.edit().remove(KEY_PENDING).commit() }
         val engineBefore = engine.snapshot()
         val geminiBefore = gemini.snapshot()

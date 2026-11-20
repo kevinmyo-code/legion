@@ -94,7 +94,7 @@ object CarLink {
     @Volatile
     var store: LinkKeySource = NoLink
 
-    /** True while a pairing session (the Car link screen) is open. Seam for review N1. */
+    /** True while a pairing session (the Car link screen) is open (review N1, spec 3.7). */
     @Volatile
     var pairingSessionOpen = false
 
