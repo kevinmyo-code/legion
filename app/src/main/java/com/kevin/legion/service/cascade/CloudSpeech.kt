@@ -299,6 +299,8 @@ internal class GeminiStt(
     private val instruction: () -> String = { CloudSpeechWire.STT_INSTRUCTION },
     /** A request with no answer by then is abandoned and asked again, once ([attemptTimeoutFor]). */
     private val attemptTimeoutMs: (audioMs: Long) -> Long = { attemptTimeoutFor(it) },
+    /** A request still out by then gets a second, identical one beside it ([SttHedge.hedgeAfterFor]). */
+    private val hedgeAfterMs: (audioMs: Long) -> Long = { SttHedge.hedgeAfterFor(it) },
 ) : SpeechToText {
     override val endsTurns = false
     private val ids = AtomicInteger(-1)
@@ -321,17 +323,30 @@ internal class GeminiStt(
         val started = now()
         // 2026-11-17: three of 34 requests hung 10 to 17 s (every good one took 2.4 s or less) and the
         // turn waited out the 8 s timeout. A request that has not answered in its deadline (longer for
-        // longer audio) is abandoned and the same audio asked again on a fresh call, once.
+        // longer audio) is abandoned and the same audio asked again on a fresh call, once. Since
+        // 2026-11-19 the second request also starts beside a first that is merely slow ([SttHedge]).
         val deadline = attemptTimeoutMs(audioMs.toLong())
-        val first = withTimeoutOrNull(deadline) { attempt(body, audioMs.toLong(), report) }
-        var (outcome, turn) = first ?: (StreamOutcome.Network("hung") to StreamedTurn())
-        if (first == null || CloudSpeechWire.worthRetry(outcome)) {
-            val why = if (first == null) "hung_$deadline" else CloudSpeechWire.token(outcome)
-            log("stt_cloud_retry after=$why")
-            val again = withTimeoutOrNull(deadline) { attempt(body, audioMs.toLong(), report) }
-                ?: return SttResult.Failed("timeout")
-            outcome = again.first
-            turn = again.second
+        val hedge = hedgeAfterMs(audioMs.toLong())
+        val race = SttHedge.race(
+            hedgeAfterMs = hedge,
+            attemptTimeoutMs = deadline,
+            attempt = { attempt(body, audioMs.toLong(), report) },
+            good = { it.first == StreamOutcome.Ok },
+            worthRetry = { CloudSpeechWire.worthRetry(it.first) },
+            onSecond = { why, got ->
+                when (why) {
+                    SttHedge.Why.SLOW -> log("stt_cloud_hedge after_ms=$hedge")
+                    SttHedge.Why.HUNG -> log("stt_cloud_retry after=hung_$deadline")
+                    SttHedge.Why.FAILED -> log("stt_cloud_retry after=${got?.let { CloudSpeechWire.token(it.first) }}")
+                }
+            },
+        )
+        val (outcome, turn) = when (race) {
+            is SttHedge.Result.Won -> {
+                if (race.request == 1) log("stt_cloud_hedge_won second")
+                race.value
+            }
+            is SttHedge.Result.Lost -> race.last ?: return SttResult.Failed("timeout")
         }
         val ms = now() - started
         when (outcome) {

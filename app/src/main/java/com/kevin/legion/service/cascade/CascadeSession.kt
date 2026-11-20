@@ -325,6 +325,9 @@ internal class CascadeSession(
     private val languages: List<SpokenLanguages.Language> = SpokenLanguages.load(ctx)
     @Volatile private var conversationLanguage: SpokenLanguages.Language = SpokenLanguages.ENGLISH
 
+    /** When the last reply finished playing (0: none yet), for [MissedLine.hold]. */
+    @Volatile private var lastReplyEndAtMs = 0L
+
     /** "Didn't catch that" said this many times in a row; the third closes the conversation. */
     private var missedInARow = 0
 
@@ -952,10 +955,10 @@ internal class CascadeSession(
                 val utt = self ?: return@begin
                 scope.launch(loop) { onServiceEnd(utt) }
             }
-            // The laptop's words are also kept on the phone: if it fails, the cloud hears them. On
-            // the cloud voice they are kept for a speculative draft's transcription.
-            val keep = b.kind == SpeechBackend.Kind.LAPTOP || speculate || saveTurns
-            val u = TurnUtterance(inner, b, keepAudio = keep)
+            // His words are always kept on the phone (30 s cap): a laptop that fails is heard again by the
+            // cloud, a cloud transcript that never came is measured for voice and asked again
+            // ([MissedLine]), and a speculative draft is transcribed from them.
+            val u = TurnUtterance(inner, b, keepAudio = true)
             self = u
             currentUtt = u
             scope.launch(loop) {
@@ -1537,7 +1540,7 @@ internal class CascadeSession(
         val moment = if (carry.isBlank()) Handover.Moment.LostWords else heardMoment(carry)
         if (!swapToCloud(u.backend, "stt", reason)) {
             if (u.backend.kind == SpeechBackend.Kind.CLOUD) {
-                missedWords(moment, reason, u.backend.kind)
+                return cloudMissed(u, reason, moment)
             } else {
                 handOver(moment, "stt", reason, from = u.backend.kind)
             }
@@ -1573,6 +1576,52 @@ internal class CascadeSession(
     }
 
     /**
+     * The cloud transcript did not come back ([MissedLine], 2026-11-19): silence closes quietly, voiced
+     * audio is transcribed once more, and only then is the missed line said. Null when the turn ends here.
+     */
+    private suspend fun cloudMissed(u: TurnUtterance, reason: String, moment: Handover.Moment): String? {
+        val audio = u.keptAudio()?.takeIf { it.isNotEmpty() }
+        val voiced = audio?.let { SttGuard.voicedMs(it) }
+        when (MissedLine.onFailure(voiced, retried = false)) {
+            MissedLine.OnFailure.SILENT -> {
+                LiveLatency.log(LiveLatency.TAG, "stt_missed_silent reason=$reason voiced_ms=$voiced")
+                if (!closedOnNoise()) {
+                    lastClipText = null
+                    backToListening()
+                }
+                return null
+            }
+            MissedLine.OnFailure.SAY -> {
+                missedWords(moment, reason, u.backend.kind)
+                return null
+            }
+            MissedLine.OnFailure.RETRY -> Unit
+        }
+        val b = backend ?: return null
+        val pcm = audio ?: return null
+        val started = System.currentTimeMillis()
+        val again = b.stt.begin()
+        again.audio(pcm, 0, pcm.size)
+        again.end()
+        return when (val r = again.result(b.sttFinalTimeoutMs)) {
+            is SttResult.Text -> {
+                LiveLatency.log(
+                    LiveLatency.TAG,
+                    "stt_recovered backend=${b.kind.token} ms=${System.currentTimeMillis() - started} from=$reason",
+                )
+                when (val v = verdictOf(r)) {
+                    is SttGuard.Verdict.Keep -> v.text
+                    is SttGuard.Verdict.Drop -> if (droppedWords(u, v.reason)) "" else null
+                }
+            }
+            is SttResult.Failed -> {
+                if (r.reason != "cancelled") missedWords(moment, r.reason, b.kind)
+                null
+            }
+        }
+    }
+
+    /**
      * The cloud voice did not catch his words (after its one retry). With Live retired nothing can
      * take the conversation over, and ending it for one missed sentence would be worse than asking
      * again: it is said on screen and the floor is his. The follow-up window still closes a
@@ -1587,6 +1636,16 @@ internal class CascadeSession(
     ) {
         if (!VoiceEngineSettings.LIVE_RETIRED && !spokenFallback) {
             handOver(moment, "stt", reason, from = from)
+            return
+        }
+        // Never over his ongoing speech, nor on top of a reply that just ended (2026-11-19).
+        val hold = MissedLine.hold(
+            speakingNow = currentUtt != null,
+            msSinceReplyEnd = lastReplyEndAtMs.takeIf { it > 0 }?.let { System.currentTimeMillis() - it },
+        )
+        if (hold != MissedLine.Hold.NONE) {
+            LiveLatency.log(LiveLatency.TAG, "stt_missed_held backend=${from.token} reason=$reason why=${hold.token}")
+            if (currentUtt == null) backToListening()
             return
         }
         LiveLatency.log(LiveLatency.TAG, "stt_missed backend=${from.token} reason=$reason")
@@ -2017,6 +2076,7 @@ internal class CascadeSession(
     /** The reply played to the end: drain, settle, listen again (or hang up if he asked). */
     private suspend fun afterReply() {
         player?.awaitDrained()
+        lastReplyEndAtMs = System.currentTimeMillis()
         delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
         speaking = false
         playbackActive = false

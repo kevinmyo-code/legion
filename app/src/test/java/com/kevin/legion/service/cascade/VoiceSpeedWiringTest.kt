@@ -145,6 +145,24 @@ class VoiceSpeedWiringTest {
         assertTrue(spacing.contains("Backchannel.spacingWaitMs("))
     }
 
+    // --- 4a: speech-to-text hangs ------------------------------------------------------------------
+
+    @Test
+    fun `a missed cloud transcript is measured, asked again when voiced, and never said over him`() {
+        val s = session()
+        val recover = bodyOf(s, "recoverWords")
+        assertTrue(recover.contains("return cloudMissed(u, reason, moment)"))
+        val missed = bodyOf(s, "cloudMissed")
+        assertTrue(missed.contains("SttGuard.voicedMs("))
+        assertTrue(missed.contains("MissedLine.onFailure("))
+        assertTrue(missed.indexOf("closedOnNoise()") < missed.indexOf("b.stt.begin()"))
+        val words = bodyOf(s, "missedWords")
+        assertTrue(words.indexOf("MissedLine.hold(") in 0 until words.indexOf("host.notice(MISSED_NOTICE)"))
+        assertTrue(bodyOf(s, "afterReply").contains("lastReplyEndAtMs = System.currentTimeMillis()"))
+        // Every utterance keeps its audio, so the cloud's miss can be measured and sent again.
+        assertTrue(s.contains("TurnUtterance(inner, b, keepAudio = true)"))
+    }
+
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 
     private fun bodyOf(source: String, name: String): String {
