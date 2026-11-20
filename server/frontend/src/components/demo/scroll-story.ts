@@ -103,20 +103,22 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
         pending.push(el)
       })
     }
-    const reveal = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue
-          ;(entry.target as HTMLElement).dataset.reveal = 'shown'
-          risen.add(entry.target)
-          reveal.unobserve(entry.target)
-        }
-      },
-      // Its top a little way up the screen; never a share of its area, which a block taller than
-      // several screens (a pinned scene) would never reach.
-      { rootMargin: '0px 0px -12% 0px', threshold: 0 },
-    )
+    const show = (entries: IntersectionObserverEntry[]) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        ;(entry.target as HTMLElement).dataset.reveal = 'shown'
+        risen.add(entry.target)
+        reveal.unobserve(entry.target)
+        tail.unobserve(entry.target)
+      }
+    }
+    // Its top a little way up the screen; never a share of its area, which a block taller than
+    // several screens (a pinned scene) would never reach.
+    const reveal = new IntersectionObserver(show, { rootMargin: '0px 0px -12% 0px', threshold: 0 })
+    // The page's last block may end too near the foot to ever climb that far: it shows on arrival.
+    const tail = new IntersectionObserver(show, { threshold: 0 })
     pending.forEach((el) => reveal.observe(el))
+    if (pending.length > 0) tail.observe(pending[pending.length - 1])
     const middle = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -139,6 +141,7 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
     sections.forEach((section) => middle.observe(section))
     return () => {
       reveal.disconnect()
+      tail.disconnect()
       middle.disconnect()
       // Off again (reduced motion switched on, or the page left): nothing stays hidden.
       for (const el of pending) {
