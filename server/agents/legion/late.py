@@ -87,6 +87,9 @@ STILL_WORKING = "Still working on {topics}."
 LAST_ONE = "Nothing new. The last one was: {text}"
 MORE = "{n} more {are} ready; ask what's pending."
 FAILED_LINE = "I couldn't finish looking into {topic}."
+ASK_WHAT = "What should I look into? Say it with the topic, and I'll tell you later."
+# A topic that is only a pronoun means nothing in the task's own, empty conversation.
+_BARE_TOPICS = frozenset({"it", "that", "this", "them", "those", "these", "that one", "this one"})
 
 _ASKS = (
     re.compile(
@@ -186,6 +189,8 @@ def intercept(request, words: str, client: str) -> str | None:
 def _start(request, question: str, client: str) -> str:
     if headunit_scope.is_headunit(request):
         return NOT_FROM_UNIT
+    if question.lower().strip(" .,!?") in _BARE_TOPICS:
+        return ASK_WHAT
     mine = _mine(LateTask, request)
     if mine.filter(status__in=(LATE_QUEUED, LATE_RUNNING)).count() >= MAX_OPEN:
         return TOO_MANY_OPEN
