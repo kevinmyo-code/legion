@@ -131,12 +131,13 @@ class AudioFirstEvalRun {
         val agree = rows.count { it.toolsAgree }
         val argsAgree = rows.count { it.argsAgree }
         val writes = rows.filter { it.write }
-        val textFirst = rows.map { it.sttMs + it.text.firstMs }.sorted()
-        val audioFirst = rows.map { it.audio.firstMs }.sorted()
+        val writeTurns = rows.filter { it.redo }
+        val readTurns = rows.filterNot { it.redo }
         say(
             "summary model=$model cases=${rows.size} tools_agree=$agree/${rows.size} args_agree=$argsAgree/${rows.size} " +
                 "write_args_agree=${writes.count { it.argsAgree }}/${writes.size} " +
-                "median_text_first_part_ms=${median(textFirst)} (stt+round1) median_audio_first_part_ms=${median(audioFirst)} (round1) " +
+                "redo=${writeTurns.size} write_turns_median_off=${median(writeTurns.map { it.offMs }.sorted())} on=${median(writeTurns.map { it.onMs }.sorted())} " +
+                "read_turns_median_off=${median(readTurns.map { it.offMs }.sorted())} on=${median(readTurns.map { it.onMs }.sorted())} " +
                 "median_stt_ms=${median(rows.map { it.sttMs }.sorted())} audio_failed=${rows.count { !it.audio.ok }} text_failed=${rows.count { !it.text.ok }}",
         )
         val out = File("build/voice-eval/audio-first-$model.txt")
@@ -219,13 +220,27 @@ class AudioFirstEvalRun {
         }
     }
 
-    private class Round(val calls: List<String>, val args: List<String>, val firstMs: Long, val ok: Boolean)
+    private class Round(
+        val calls: List<String>,
+        val args: List<String>,
+        val firstMs: Long,
+        val ok: Boolean,
+        val totalMs: Long = firstMs,
+        val write: Boolean = false,
+    )
 
-    private class Row(val id: String, val write: Boolean, val sttMs: Long, val text: Round, val audio: Round) {
+    private class Row(val id: String, val write: Boolean, val sttMs: Long, val text: Round, val audioRound: Round) {
+        /** A write proposed from the audio is thrown away and round 1 redone on the text (the shipped rule). */
+        val redo: Boolean get() = audioRound.write
+        val audio: Round get() = if (redo) text else audioRound
+
+        /** Switch on, first part after end of speech: the audio round, or (redo) the later of it and the transcript, then the text round. */
+        val onMs: Long get() = if (redo) maxOf(audioRound.totalMs, sttMs) + text.firstMs else audioRound.firstMs
+        val offMs: Long get() = sttMs + text.firstMs
         val toolsAgree: Boolean get() = text.calls.toSet() == audio.calls.toSet()
         val argsAgree: Boolean get() = text.args.sorted() == audio.args.sorted()
-        fun line() = "case=$id write=$write tools_agree=$toolsAgree args_agree=$argsAgree stt_ms=$sttMs " +
-            "text_first_ms=${text.firstMs} audio_first_ms=${audio.firstMs} text_calls=${text.calls} audio_calls=${audio.calls}" +
+        fun line() = "case=$id write=$write redo=$redo tools_agree=$toolsAgree args_agree=$argsAgree stt_ms=$sttMs " +
+            "off_ms=$offMs on_ms=$onMs audio_round_calls=${audioRound.calls} text_calls=${text.calls}" +
             if (argsAgree) "" else " text_args=${text.args} audio_args=${audio.args}"
     }
 
@@ -239,8 +254,12 @@ class AudioFirstEvalRun {
             turn.onEvent(ev) {}
             if (first < 0 && turn.text.length + turn.calls.size > before) first = System.currentTimeMillis() - t0
         }
-        if (first < 0) first = System.currentTimeMillis() - t0
-        return Round(turn.calls.map { key(it.name, it.args) }, turn.calls.map { argsOf(it) }, first, outcome == StreamOutcome.Ok)
+        val total = System.currentTimeMillis() - t0
+        if (first < 0) first = total
+        return Round(
+            turn.calls.map { key(it.name, it.args) }, turn.calls.map { argsOf(it) }, first, outcome == StreamOutcome.Ok,
+            totalMs = total, write = turn.calls.any { CascadeRules.isWrite(it.name, it.args) },
+        )
     }
 
     private fun key(name: String, args: JSONObject): String {
@@ -254,7 +273,7 @@ class AudioFirstEvalRun {
         val r = LiveSurface.resolve(call.name, call.args)
         return key(call.name, call.args) + r.args.keys().asSequence().sorted().joinToString(",", "{", "}") { k ->
             val v = r.args.opt(k)
-            "$k=" + if (v is String) v.lowercase().trim().trimEnd('.', '!', '?') else v.toString()
+            "$k=" + if (v is String) v.lowercase().trim().trimEnd('.', '!', '?') else v?.toString()
         }
     }
 

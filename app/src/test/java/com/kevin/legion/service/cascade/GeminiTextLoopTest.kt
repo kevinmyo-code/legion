@@ -574,6 +574,46 @@ class GeminiTextLoopTest {
     }
 
     @Test
+    fun `a write proposed from the audio never runs, round 1 is redone on the words as text`() = runBlocking<Unit> {
+        // Round 1 on audio proposes a write; the text round chooses for real.
+        val t = Scripted(ok(textEv("Adding it."), callEv("add_item")), ok(callEv("add_item")), ok(textEv("Added.")))
+        val ran = Collections.synchronizedList(mutableListOf<String>())
+        val tool = TextToolExecutor { n, _, _ -> ran += n; JSONObject().put("success", true) }
+        val l = Collect()
+        val r = loop(t).answer(prefix, AudioFirstRound.contents(emptyList(), ByteArray(640), ""), tool, l,
+            userWords = { "add an invented item" })
+        assertNull(r.failure)
+        assertEquals("the write ran once, chosen from the text round", listOf("add_item"), ran.toList())
+        assertEquals(3, t.bodies.size)
+        val redo = t.bodies[1].getJSONArray("contents")
+        assertEquals("the redo is round 1 again: the audio turn as text, nothing else", 1, redo.length())
+        assertFalse(redo.toString().contains("inlineData"))
+        assertFalse("the audio round's words are never spoken", l.text.contains("Adding it."))
+    }
+
+    @Test
+    fun `a read and a write together from the audio is a write turn`() = runBlocking<Unit> {
+        val t = Scripted(ok(callEv("get_weather", "add_item")), ok(textEv("It is mild.")))
+        val ran = Collections.synchronizedList(mutableListOf<String>())
+        val tool = TextToolExecutor { n, _, _ -> ran += n; JSONObject().put("success", true) }
+        loop(t).answer(prefix, AudioFirstRound.contents(emptyList(), ByteArray(640), ""), tool, Collect(),
+            userWords = { "what's the weather" })
+        assertTrue("nothing from the audio round ran", ran.isEmpty())
+        assertFalse(t.bodies[1].toString().contains("inlineData"))
+    }
+
+    @Test
+    fun `a read from the audio runs early and its reply is spoken`() = runBlocking<Unit> {
+        val t = Scripted(ok(callEv("get_weather")), ok(textEv("It is mild.")))
+        val ran = Collections.synchronizedList(mutableListOf<String>())
+        val tool = TextToolExecutor { n, _, _ -> ran += n; JSONObject().put("success", true) }
+        val l = Collect()
+        loop(t).answer(prefix, AudioFirstRound.contents(emptyList(), ByteArray(640), ""), tool, l, userWords = { "weather?" })
+        assertEquals(listOf("get_weather"), ran.toList())
+        assertEquals("It is mild.", l.text.toString())
+    }
+
+    @Test
     fun `words that never came through go to round 2 as the note`() = runBlocking<Unit> {
         val t = Scripted(ok(callEv("get_weather")), ok(textEv("It is mild.")))
         val r = loop(t).answer(prefix, AudioFirstRound.contents(emptyList(), ByteArray(640), ""), okTool, Collect(),

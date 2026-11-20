@@ -2260,6 +2260,10 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "llm_first_ms=$ms round=$round")
             if (round == 1 && record.gate != null) LiveLatency.log(LiveLatency.TAG, "af_round1_ms=$ms")
         }
+
+        override fun onAudioWriteRedo(waitMs: Long) {
+            LiveLatency.log(LiveLatency.TAG, "audio_first_write_redo wait_ms=$waitMs")
+        }
     }
 
     /** [plan]'s line now, from memory only (else its audio is fetched for next time). */

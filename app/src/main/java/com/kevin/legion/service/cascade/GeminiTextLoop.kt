@@ -92,6 +92,12 @@ class GeminiTextLoop(
         /** One round's first text or call part arrived, [ms] after its request was sent. */
         fun onFirstPart(round: Int, ms: Long) {}
 
+        /**
+         * An audio round proposed a write: it was thrown away and round 1 runs again on his words as
+         * text; [waitMs] is how long the words took after the audio round ended.
+         */
+        fun onAudioWriteRedo(waitMs: Long) {}
+
         /** A write finished: its facts, done or failed (only when the loop was given `writeFact`). */
         fun onWriteFact(fact: ScriptedLines.WriteFact) {}
 
@@ -270,6 +276,10 @@ class GeminiTextLoop(
             // Before any tool, only exact filler lines are held ([FillerTurn.FirstHold], 2026-11-19).
             val held = if (state.toolsRan.isNotEmpty()) FillerTurn.Hold() else null
             val first = if (held == null) FillerTurn.FirstHold() else null
+            // The audio round (round 1 of an audio-first turn): its text is held to the round's end,
+            // because a write it proposes is thrown away with everything it said ([audioWriteRedo]).
+            val audioRound = !heardAsText
+            val audioText = StringBuilder()
             // After the phone spoke a balance itself, no money sentence of the model's is spoken; after a
             // diagnostics answer, no sentence restating its codes, counts or a verdict.
             val money: SentenceFilter? = when {
@@ -300,7 +310,11 @@ class GeminiTextLoop(
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
                     turn.onEvent(ev) { delta ->
-                        pass(held?.feed(delta) ?: first?.feed(delta) ?: delta)
+                        if (audioRound) {
+                            audioText.append(delta)
+                        } else {
+                            pass(held?.feed(delta) ?: first?.feed(delta) ?: delta)
+                        }
                     }
                     if (!firstSeen && turn.text.length + turn.calls.size > before) {
                         firstSeen = true
@@ -332,6 +346,22 @@ class GeminiTextLoop(
             }
             meter(prefix.model, turn.usage)
             state.usage = state.usage.plus(turn.usage, cacheName != null)
+            if (audioRound) {
+                if (turn.calls.any { isMutating(it.name, it.args) }) {
+                    // A write is never chosen from the audio (2026-11-19): wait for his checked words and
+                    // run round 1 again on them as text, as with the switch off. Nothing of this round
+                    // ran or was said. No words: no write, the session's miss rule speaks.
+                    val waitedAt = now()
+                    val words = userWords?.invoke() ?: return fail(TextFailure.NO_TEXT, state)
+                    listener.onAudioWriteRedo(now() - waitedAt)
+                    val at = initial.length() - 1
+                    contents.put(at, AudioFirstRound.withTranscript(contents.getJSONObject(at), words))
+                    heardAsText = true
+                    round--
+                    continue
+                }
+                if (audioText.isNotEmpty()) pass(first?.feed(audioText.toString()) ?: audioText.toString())
+            }
             held?.end()?.let { pass(it) }
             first?.end(calls = turn.calls.isNotEmpty() && !force)?.let { pass(it) }
             money?.let {
