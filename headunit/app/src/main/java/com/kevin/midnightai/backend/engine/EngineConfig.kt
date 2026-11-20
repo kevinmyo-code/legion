@@ -85,6 +85,22 @@ class EngineConfig(
     /** The engine answered 401 to the car's sign-in: nothing more is sent until a new hand-over. */
     fun carLinkRefused(): Boolean = prefs.getString(KEY_REFUSED, null) != null
 
+    /** A car token from a pairing waits here while a member is signed in (review F1). */
+    fun hasCarLinkReserve(): Boolean = prefs.contains(KEY_RESERVE_TOKEN)
+
+    /** The car's own token as stored, active or in reserve (ciphertext), for the car link's provenance. */
+    fun carLinkRawToken(): String? =
+        if (isCarLinkSignIn()) prefs.getString(KEY_TOKEN, null) else prefs.getString(KEY_RESERVE_TOKEN, null)
+
+    /** Removes the car's own sign-in, active or in reserve; a member sign-in stays. With commit(). */
+    fun clearCarLink(): Boolean {
+        val editor = prefs.edit().remove(KEY_RESERVE_TOKEN).remove(KEY_RESERVE_USER).remove(KEY_RESERVE_VEHICLE).remove(KEY_RESERVE_BASE)
+        if (isCarLinkSignIn()) {
+            editor.remove(KEY_TOKEN).remove(KEY_USER_ID).remove(KEY_KIND).remove(KEY_VEHICLE_ID).remove(KEY_REFUSED)
+        }
+        return editor.commit()
+    }
+
     fun markCarLinkRefused() {
         if (isCarLinkSignIn()) prefs.edit().putString(KEY_REFUSED, "1").commit()
     }
@@ -121,7 +137,10 @@ class EngineConfig(
 
     /** The raw stored values (ciphertext for the token), for snapshot and restore. */
     fun snapshot(): Map<String, String?> =
-        listOf(KEY_BASE_URL, KEY_TOKEN, KEY_USER_ID, KEY_KIND, KEY_VEHICLE_ID, KEY_REFUSED).associateWith { prefs.getString(it, null) }
+        listOf(
+            KEY_BASE_URL, KEY_TOKEN, KEY_USER_ID, KEY_KIND, KEY_VEHICLE_ID, KEY_REFUSED,
+            KEY_RESERVE_TOKEN, KEY_RESERVE_USER, KEY_RESERVE_VEHICLE, KEY_RESERVE_BASE,
+        ).associateWith { prefs.getString(it, null) }
 
     /** Writes [snapshot] back exactly (null = removed) with commit(). */
     fun restore(snapshot: Map<String, String?>): Boolean {
@@ -142,6 +161,16 @@ class EngineConfig(
         vehicleId: String? = null,
     ): Boolean {
         val encrypted = encrypt(token) ?: return false
+        // Review F1 (orchestrator's call): a member signed in on the unit stays in use; the car's
+        // token waits in reserve, used only once no member sign-in exists (see clearSession).
+        if (carLink && isSignedIn() && !isCarLinkSignIn()) {
+            return prefs.edit()
+                .putString(KEY_RESERVE_TOKEN, encrypted)
+                .putString(KEY_RESERVE_USER, userId)
+                .putString(KEY_RESERVE_VEHICLE, vehicleId?.takeIf { it.isNotBlank() })
+                .putString(KEY_RESERVE_BASE, baseUrl.trim())
+                .commit()
+        }
         return prefs.edit()
             .putString(KEY_BASE_URL, baseUrl.trim())
             .putString(KEY_TOKEN, encrypted)
@@ -155,7 +184,24 @@ class EngineConfig(
     /** Clears the device token and user id. Does NOT touch [baseUrl] - a driver signing out of one
      * account on this device should not have to re-type where the engine lives. */
     fun clearSession() {
+        // A car token waiting in reserve takes over, but only for the engine it was minted for.
+        val reserve = prefs.getString(KEY_RESERVE_TOKEN, null)
+        if (reserve != null && !isCarLinkSignIn() && prefs.getString(KEY_RESERVE_BASE, null) == baseUrl()) {
+            prefs.edit()
+                .putString(KEY_TOKEN, reserve)
+                .putString(KEY_USER_ID, prefs.getString(KEY_RESERVE_USER, null))
+                .putString(KEY_KIND, KIND_CAR_LINK)
+                .putString(KEY_VEHICLE_ID, prefs.getString(KEY_RESERVE_VEHICLE, null))
+                .remove(KEY_REFUSED)
+                .remove(KEY_RESERVE_TOKEN).remove(KEY_RESERVE_USER).remove(KEY_RESERVE_VEHICLE).remove(KEY_RESERVE_BASE)
+                .commit()
+            return
+        }
         write {
+            remove(KEY_RESERVE_TOKEN)
+            remove(KEY_RESERVE_USER)
+            remove(KEY_RESERVE_VEHICLE)
+            remove(KEY_RESERVE_BASE)
             remove(KEY_TOKEN)
             remove(KEY_USER_ID)
             remove(KEY_KIND)
@@ -182,6 +228,10 @@ class EngineConfig(
         private const val KIND_CAR_LINK = "car_link"
         private const val KEY_VEHICLE_ID = "car_link_vehicle_id"
         private const val KEY_REFUSED = "car_link_refused"
+        private const val KEY_RESERVE_TOKEN = "car_link_reserve_token"
+        private const val KEY_RESERVE_USER = "car_link_reserve_user"
+        private const val KEY_RESERVE_VEHICLE = "car_link_reserve_vehicle"
+        private const val KEY_RESERVE_BASE = "car_link_reserve_base"
 
         /**
          * Loose shape check - `http://` or `https://` plus a non-blank host, deliberately loose

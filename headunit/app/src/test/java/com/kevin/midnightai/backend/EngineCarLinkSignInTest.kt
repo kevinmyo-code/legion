@@ -53,6 +53,7 @@ class EngineCarLinkSignInTest {
         c.saveBaseUrl(base())
         c.saveSession("member-token", "user-1")
         assertEquals(EngineSignIn.MEMBER, c.signIn())
+        c.clearSession() // no member signed in: the car token is used (a member keeps precedence, F1)
         val linked = carLinked()
         assertEquals(EngineSignIn.CAR_LINK, linked.signIn())
         assertEquals("veh-1", linked.carLinkVehicleId())
@@ -84,6 +85,48 @@ class EngineCarLinkSignInTest {
         assertEquals(1, server.requestCount)
         assertTrue(c.saveSessionStrict(base(), "hu1_renewed", "user-1", carLink = true, vehicleId = "veh-1"))
         assertFalse(c.carLinkRefused())
+    }
+
+    /**
+     * Review F1 (orchestrator's call): a member signed in on the unit stays in use; the car's token
+     * from a pairing waits in reserve and is used only once no member sign-in exists.
+     */
+    @Test fun aMemberSignInStaysAndTheCarsTokenWaitsInReserve() {
+        val c = config()
+        c.saveBaseUrl(base())
+        c.saveSession("member-token", "user-1")
+        assertTrue(c.saveSessionStrict(base(), "hu1_made-up", "user-1", carLink = true, vehicleId = "veh-1"))
+        assertEquals(EngineSignIn.MEMBER, c.signIn())
+        assertEquals("member-token", c.token())
+        assertTrue(c.hasCarLinkReserve())
+        // The member signs out on the unit: the car's own sign-in takes over.
+        c.clearSession()
+        assertEquals(EngineSignIn.CAR_LINK, c.signIn())
+        assertEquals("hu1_made-up", c.token())
+        assertEquals("veh-1", c.carLinkVehicleId())
+        assertFalse(c.hasCarLinkReserve())
+    }
+
+    @Test fun aReserveIsNeverPromotedOntoAnotherEngineAddress() {
+        val c = config()
+        c.saveBaseUrl(base())
+        c.saveSession("member-token", "user-1")
+        c.saveSessionStrict(base(), "hu1_made-up", "user-1", carLink = true, vehicleId = "veh-1")
+        c.saveBaseUrl("https://another.example")
+        c.clearSession()
+        assertEquals(EngineSignIn.NONE, c.signIn())
+    }
+
+    @Test fun forgettingTheCarLinkClearsItsReserveAndKeepsTheMember() {
+        val c = config()
+        c.saveBaseUrl(base())
+        c.saveSession("member-token", "user-1")
+        val access = com.kevin.midnightai.link.LinkKeyStore.engineLinkAccess(c)
+        assertTrue(access.saveStrict(base(), "hu1_made-up", "user-1", "veh-1"))
+        assertEquals("ENC(hu1_made-up)", access.rawToken())
+        assertTrue(access.clear())
+        assertEquals("member-token", c.token())
+        assertFalse(c.hasCarLinkReserve())
     }
 
     @Test fun aMember401IsUnchanged() = runBlocking {

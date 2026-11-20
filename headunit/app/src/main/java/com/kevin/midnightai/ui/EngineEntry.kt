@@ -210,6 +210,13 @@ fun EngineEntry(modifier: Modifier = Modifier) {
                 color = AriaColors.accentText(AriaColors.Amber),
             )
         }
+        if (signedIn && config.hasCarLinkReserve()) {
+            Text(
+                "The car's own sign-in from your phone is kept in reserve. It is used only if you sign out here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AriaColors.TextDim,
+            )
+        }
         if (configured && EngineConfig.isUnencrypted(config.baseUrl())) {
             Text(
                 "Not encrypted: this engine address uses plain http on the local network.",

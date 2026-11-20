@@ -20,6 +20,9 @@ interface EngineAccess {
     fun saveStrict(baseUrl: String, token: String, userId: String, vehicleId: String?): Boolean
     /** The stored token's ciphertext, to recognise "still the one the link handed over". */
     fun rawToken(): String?
+
+    /** A member is signed in on the unit (the car's token then waits in reserve, review F1). */
+    fun memberSignedIn(): Boolean = false
     fun clear(): Boolean
 }
 
@@ -149,6 +152,7 @@ class LinkKeyStore(
         val token = p.optString("engine_token").takeIf { it.isNotBlank() }
         val url = EnginePolicy.handoverEngineUrl(engineConstant)
         if (token != null && url != null) {
+            if (engine.memberSignedIn()) lastNote = MEMBER_KEPT
             val vehicle = p.optString("engine_vehicle_id").takeIf { it.isNotBlank() }
             if (!engine.saveStrict(url, token, p.optString("engine_user_id"), vehicle)) return undo(KEYSTORE)
         } else if (fromLink.optString("engine").let { it.isNotBlank() && it == engine.rawToken() }) {
@@ -220,6 +224,9 @@ class LinkKeyStore(
         private const val DISK = "this unit could not write its settings"
         private const val PENDING_UNREADABLE = "the new pairing could not be read right now"
         private const val READ_TRIES = 3
+        const val MEMBER_KEPT =
+            "Your member sign-in on this unit stays in use. The car's own sign-in from the phone is kept in reserve " +
+                "and is used only if you sign out under Settings, Engine."
 
         /** The Gemini slot the car link writes and Forget clears. */
         fun geminiLinkAccess(context: Context): GeminiAccess {
@@ -238,21 +245,26 @@ class LinkKeyStore(
             }
         }
 
+        /** The engine sign-in as the car link writes and clears it. */
+        fun engineLinkAccess(engineConfig: EngineConfig): EngineAccess = object : EngineAccess {
+            override fun snapshot() = engineConfig.snapshot()
+            override fun restore(snapshot: Map<String, String?>) = engineConfig.restore(snapshot)
+            // A token that came over the link is the car's own sign-in (CarLinkScope).
+            override fun saveStrict(baseUrl: String, token: String, userId: String, vehicleId: String?) =
+                engineConfig.saveSessionStrict(baseUrl, token, userId, carLink = true, vehicleId = vehicleId)
+            // The car's token wherever it is kept (in use, or in reserve behind a member sign-in).
+            override fun rawToken() = engineConfig.carLinkRawToken()
+            override fun clear() = engineConfig.clearCarLink()
+            override fun memberSignedIn() = engineConfig.signIn() == com.kevin.midnightai.backend.engine.EngineSignIn.MEMBER
+        }
+
         /** The app's store over the real EngineConfig, CompanionProfile and build constant. */
         fun forApp(context: Context): LinkKeyStore {
             val app = context.applicationContext
             val engineConfig = EngineConfig(app)
             return LinkKeyStore(
                 app,
-                engine = object : EngineAccess {
-                    override fun snapshot() = engineConfig.snapshot()
-                    override fun restore(snapshot: Map<String, String?>) = engineConfig.restore(snapshot)
-                    // A token that came over the link is the car's own sign-in (CarLinkScope).
-                    override fun saveStrict(baseUrl: String, token: String, userId: String, vehicleId: String?) =
-                        engineConfig.saveSessionStrict(baseUrl, token, userId, carLink = true, vehicleId = vehicleId)
-                    override fun rawToken() = engineConfig.rawToken()
-                    override fun clear() = engineConfig.restore(engineConfig.snapshot().mapValues { (k, v) -> if (k == "base_url") v else null })
-                },
+                engine = engineLinkAccess(engineConfig),
                 gemini = geminiLinkAccess(app),
                 engineConstant = BuildConfig.ENGINE_BASE_URL,
             )
