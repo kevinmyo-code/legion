@@ -260,7 +260,8 @@ fun AssistantSettingsScreen(
                     title = "Understand from the audio (faster first answer)",
                     explanation = "questions and lookups are answered from the sound of your words " +
                         "while the transcript is made; anything that changes something is decided from " +
-                        "the transcript once it is in and checked. Cloud voice only. Applies from the next conversation.",
+                        "the transcript once it is in and checked. Cloud voice only. Applies from the " +
+                        "next conversation.",
                     enabled = audioFirst,
                     onToggle = { on ->
                         VoiceEngineSettings.setAudioFirst(context, on)
