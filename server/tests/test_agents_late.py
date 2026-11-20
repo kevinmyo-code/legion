@@ -269,6 +269,43 @@ def test_a_background_task_cannot_write(household_user, late_on):
     assert OwedLine.objects.get().text.endswith("Want me to add it?")
 
 
+def test_a_research_task_runs_its_tool_as_him_and_is_marked_tainted(
+    household_user, late_on, monkeypatch
+):
+    """The allowed tool runs through the rebuilt request, as the member; a web search taints the
+    task, and the line it owes is marked as read-through when said (`read_third_party`)."""
+    from types import SimpleNamespace
+
+    seen = {}
+
+    def fake_search(query):
+        seen["query"] = query
+        return SimpleNamespace(
+            answer="The made-up museum opens at nine.",
+            sources=[],
+            search_queries=[query],
+            model="fake",
+            usage={},
+        )
+
+    monkeypatch.setattr("engine_mcp.web_search.search", fake_search)
+    _task(household_user)
+    model = m.FakeModel(
+        [m.call("web_search", {"query": "made-up museum hours"}), m.say("It opens at nine.")]
+    )
+    late.run_due(lambda: model)
+    assert seen["query"] == "made-up museum hours"
+    from llm.models import LlmUsage
+
+    # Run as him: his own search, metered to him under the search's own feature.
+    assert LlmUsage.objects.filter(feature="web_search", user=household_user).count() == 1
+    task = LateTask.objects.get()
+    assert task.status == "done" and task.tainted
+    call = AgentTurn.objects.get().tool_calls.get()
+    assert (call.tool, call.outcome) == ("web_search", "ok")
+    assert late.read_third_party(OwedLine.objects.get())
+
+
 def test_a_failed_run_owes_a_plain_failure_line(household_user, late_on):
     _task(household_user)
     late.run_due(lambda: m.FakeModel([]))
@@ -443,7 +480,6 @@ def test_anything_pending_names_what_runs_then_says_what_is_ready(
     auth_client, household_user, door_on, late_on, fake_model
 ):
     fake_model["rounds"] = []
-    assert _sentences(_turn(auth_client, "anything pending?")) == [late.NOTHING_PENDING]
     _task(household_user)
     assert _sentences(_turn(auth_client, "anything pending?")) == [
         "Still working on the opening hours of the made-up museum."
@@ -464,7 +500,6 @@ def test_cancel_that_cancels_the_newest_open_task(
     auth_client, household_user, door_on, late_on, fake_model
 ):
     fake_model["rounds"] = []
-    assert _sentences(_turn(auth_client, "cancel that")) == [late.NOTHING_TO_CANCEL]
     older = _task(household_user, question="older")
     newer = _task(household_user, question="newer")
     assert _sentences(_turn(auth_client, "cancel that")) == [late.CANCELLED]
@@ -481,6 +516,19 @@ def test_cancel_that_with_nothing_open_while_switched_off_is_the_models(
     monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
     fake_model["rounds"] = [m.say("Nothing to cancel.")]
     assert _sentences(_turn(auth_client, "cancel that")) == ["Nothing to cancel."]
+
+
+@pytest.mark.parametrize(
+    "words", ["cancel that", "anything pending?", "what's pending", "stop it", "forget it"]
+)
+def test_with_nothing_of_ours_to_act_on_the_words_are_the_models(
+    auth_client, door_on, late_on, fake_model, words
+):
+    """A timer, music, a waiting change, a pending purchase: switched on, these still reach the
+    model when the late-answer path has no task open and no line from the last day."""
+    fake_model["rounds"] = [m.say("The model answered.")]
+    assert _sentences(_turn(auth_client, words)) == ["The model answered."]
+    assert fake_model["model"].requests
 
 
 # -- never a recruiter, never a head unit -------------------------------------------------------
@@ -521,7 +569,29 @@ def test_a_head_unit_starts_nothing_and_hears_nothing(household_user, late_on):
     assert late.intercept(request, ASK, "headunit") == late.NOT_FROM_UNIT
     assert late.claim(request, "headunit") == (None, "")
     assert not LateTask.objects.exists()
+    # Nothing of his read back or cancelled from the unit either.
+    task = _task(household_user)
+    assert late.intercept(request, "anything pending?", "headunit") is None
+    assert late.intercept(request, "cancel that", "headunit") is None
+    task.refresh_from_db()
+    assert task.status == "queued"
     assert OwedLine.objects.get().delivered_at is None
+
+
+def test_late_rows_are_pruned_after_30_days(household_user):
+    from agents.legion.retention import prune
+
+    old = timezone.now() - timedelta(days=31)
+    _task(household_user, question="old")
+    _owe(household_user, source_id="old")
+    LateTask.objects.update(created_at=old)
+    OwedLine.objects.update(created_at=old)
+    _task(household_user, question="new")
+    _owe(household_user, source_id="new")
+    out = prune()
+    assert (out["late_tasks"], out["owed_lines"]) == (1, 1)
+    assert list(LateTask.objects.values_list("question", flat=True)) == ["new"]
+    assert list(OwedLine.objects.values_list("source_id", flat=True)) == ["new"]
 
 
 # -- the tables ---------------------------------------------------------------------------------

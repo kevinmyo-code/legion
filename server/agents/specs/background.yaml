@@ -20,10 +20,11 @@ confirm: []
 # web_search and github_status read text other people wrote.
 taint_ok: true
 limits:
-  max_rounds: 6
-  round_timeout_s: 20.0
-  tool_timeout_s: 15.0
-  turn_timeout_s: 90.0
+  # 45 s in all: one task fits a tick call inside the scheduler's 60 s attempt deadline.
+  max_rounds: 4
+  round_timeout_s: 12.0
+  tool_timeout_s: 12.0
+  turn_timeout_s: 45.0
   max_input_tokens: 200000
   max_cost_micro_usd: 30000
 router:

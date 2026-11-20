@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -66,7 +67,10 @@ MAX_PER_DAY = 6
 MAX_OPEN = 2
 DAILY_MICRO_USD = 250_000
 MAX_ATTEMPTS = 2
-LEASE = timedelta(seconds=150)
+# One task a tick call (`late_tasks --limit 1`): the background spec's 45 s turn fits inside the
+# scheduler's 60 s attempt deadline (`deploy/cloudrun/install_schedule.py`), and the lease outlives
+# the turn, so no later tick claims a task still running.
+LEASE = timedelta(seconds=120)
 OWED_TTL = timedelta(hours=24)
 MAX_SPOKEN_PER_DAY = 8
 TOPIC_CHARS = 60
@@ -78,8 +82,6 @@ TOO_MANY_OPEN = "I'm already working on two things in the background. Ask again 
 TOO_MANY_TODAY = "That's as many background tasks as I take in a day. Ask me again tomorrow."
 SPENT = "Background work has used today's allowance, so I didn't start that one."
 NOT_FROM_UNIT = "I can't start background work from the car yet. Ask me on the phone or the web."
-NOTHING_PENDING = "Nothing pending."
-NOTHING_TO_CANCEL = "There's nothing running in the background to cancel."
 CANCELLED = "Cancelled. I won't look into that any further."
 STILL_WORKING = "Still working on {topics}."
 LAST_ONE = "Nothing new. The last one was: {text}"
@@ -112,7 +114,7 @@ _PENDING = re.compile(
     re.IGNORECASE,
 )
 _CANCEL = re.compile(
-    r"^\W*(?:cancel|stop|forget)\s+(?:that|it|the (?:research|background task|task))\W*$",
+    r"^\W*cancel\s+(?:that|it|the (?:research|background task|task))\W*$",
     re.IGNORECASE,
 )
 
@@ -171,6 +173,9 @@ def intercept(request, words: str, client: str) -> str | None:
     question = ask_of(words)
     if question is not None:
         return _start(request, question, client)
+    if headunit_scope.is_headunit(request):
+        # Whoever holds the unit may not be him: no topic, answer or cancel of his from there.
+        return None
     if _PENDING.match(words or ""):
         return _pending(request, client)
     if _CANCEL.match(words or ""):
@@ -198,7 +203,9 @@ def _start(request, question: str, client: str) -> str:
     return ACK
 
 
-def _pending(request, client: str) -> str:
+def _pending(request, client: str) -> str | None:
+    """Code's answer to "anything pending?" while the late-answer path has something to say;
+    None (the model's turn, as before) when it has nothing: no task, no line in 24 hours."""
     line, more = claim(request, client)
     if line is not None:
         return f"{line.text} {more}".strip()
@@ -218,10 +225,12 @@ def _pending(request, client: str) -> str:
     )
     if last is not None:
         return LAST_ONE.format(text=last.text)
-    return NOTHING_PENDING
+    return None
 
 
-def _cancel(request) -> str:
+def _cancel(request) -> str | None:
+    """Cancels his newest open task; None (the model's turn: a timer, music, a waiting change)
+    when none is open."""
     task = (
         _mine(LateTask, request)
         .filter(status__in=(LATE_QUEUED, LATE_RUNNING))
@@ -229,7 +238,7 @@ def _cancel(request) -> str:
         .first()
     )
     if task is None:
-        return NOTHING_TO_CANCEL
+        return None
     changed = LateTask.objects.filter(pk=task.pk, status__in=(LATE_QUEUED, LATE_RUNNING)).update(
         status=LATE_CANCELLED, finished_at=dj_timezone.now()
     )
@@ -263,6 +272,16 @@ def claim(request, client: str) -> tuple[OwedLine | None, str]:
             more = MORE.format(n=others, are="is" if others == 1 else "are") if others else ""
             return line, more
     return None, ""
+
+
+def read_third_party(line: OwedLine) -> bool:
+    """True when the owed line's answer was built on text other people wrote (its task read the
+    web): the door marks the turn that says it, so memory never keeps it (ADR 0075, 0090)."""
+    try:
+        task_id = uuid.UUID(line.source_id)
+    except ValueError:
+        return False
+    return line.source == SOURCE and LateTask.objects.filter(pk=task_id, tainted=True).exists()
 
 
 def late_event(line: OwedLine, more: str = ""):
@@ -397,13 +416,19 @@ def _run_one(task: LateTask, model) -> str:
     return status
 
 
-def run_due(model_for, *, limit: int = 2, now: datetime | None = None) -> int:
-    """Runs up to `limit` due tasks; returns how many it claimed. Does nothing with the switch off.
-    `model_for()` makes the model client, once per task."""
+def run_due(model_for, *, limit: int = 1, now: datetime | None = None) -> int:
+    """Runs up to `limit` due tasks, one claimed at a time (so none waits out its lease behind
+    another); returns how many it claimed. Does nothing with the switch off. `model_for()` makes
+    the model client, once per task."""
     if not enabled():
         return 0
-    claimed = _claim_due(now or dj_timezone.now(), limit)
-    for item in claimed:
+    count = 0
+    for _ in range(limit):
+        claimed = _claim_due(now or dj_timezone.now(), 1)
+        if not claimed:
+            break
+        count += 1
+        item = claimed[0]
         if item.give_up:
             _owe(item.task, FAILED_LINE.format(topic=_topic(item.task.question)))
             log.warning("late_task status=failed owed=1 ms=0")
@@ -413,4 +438,4 @@ def run_due(model_for, *, limit: int = 2, now: datetime | None = None) -> int:
         except Exception:  # noqa: BLE001 - one task's failure never stops the others
             # The lease runs out and the next tick tries again, up to MAX_ATTEMPTS.
             log.warning("late_task status=error", exc_info=True)
-    return len(claimed)
+    return count

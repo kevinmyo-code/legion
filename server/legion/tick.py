@@ -17,7 +17,7 @@ is `--allow-unauthenticated` (phones authenticate with their own tokens), so the
 here, not in IAM. Either setting unset: every call is a 404, as if the route did not exist.
 
 **Not the brief or the backups.** Only these three (`late_tasks` runs the late-answer path's
-background tasks, each bounded at 90 s, two a call): they are short, frequent, and safe to
+background tasks, one a call, bounded at 45 s): they are short, frequent, and safe to
 retry. Long jobs (`backup_nightly`, `drive_statements`, `plaid_sync`) stay on the job,
 where a 300 s request ceiling cannot cut them off.
 """

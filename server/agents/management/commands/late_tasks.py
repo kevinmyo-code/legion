@@ -1,7 +1,8 @@
 """`manage.py late_tasks`: run the late-answer tasks that are due (`agents/legion/late.py`).
 
 Driven by the warm-service tick (`POST /api/internal/tick/late_tasks`, `legion/tick.py`), so it
-runs on an instance with CPU, not on a request thread. Claims at most `--limit` tasks with a
+runs on an instance with CPU, not on a request thread. Claims at most `--limit` tasks (one by
+default, to fit the scheduler's 60 s attempt deadline), each with a
 lease; a task cut off by a restart is claimed again by a later run once its lease runs out.
 Does nothing unless `LEGION_LATE_ANSWERS=on`. Prints counts only, never words.
 """
@@ -21,7 +22,7 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("--limit", type=int, default=2)
+        parser.add_argument("--limit", type=int, default=1)
 
     def handle(self, *args, **options):
         if not late.enabled():
