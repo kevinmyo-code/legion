@@ -715,7 +715,8 @@ object LiveToolbox {
         ))
         fns.put(fn(
             name = "start_navigation",
-            description = "Start guidance on the route navigate_to planned (the GO key). Only after the driver agreed.",
+            description = "Start guidance on the route navigate_to just planned (the GO key), after the driver said yes. " +
+                "It is refused unless navigate_to planned that route within the last minute and it is still showing.",
             params = obj(),
             required = listOf(),
         ))
