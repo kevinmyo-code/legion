@@ -2068,6 +2068,8 @@ internal class CascadeSession(
             }
             val reply = newSpeaker(null)
             val firstText = CompletableDeferred<Unit>()
+            // The model's whole hello as written, for the "do not reuse" list ([GreetingOpening.noteOpened]).
+            val written = StringBuffer()
             val call = launch(Dispatchers.IO) {
                 try {
                     loopRef.answer(
@@ -2079,6 +2081,7 @@ internal class CascadeSession(
                         },
                         object : GeminiTextLoop.Listener {
                             override fun onText(delta: String) {
+                                written.append(delta)
                                 reply.text(delta)
                                 firstText.complete(Unit)
                             }
@@ -2103,8 +2106,11 @@ internal class CascadeSession(
                 }
                 call.join()
                 reply.finishText()
-                // A test open (adb) does not use up the topic for his real greetings.
-                if (test == null) greeting?.noteOpened(plan, reply.spoken())
+                // A test open (adb) does not use up the topic for his real greetings. The words are the
+                // model's text, whole now: what was heard ([ReplySpeaker.spoken]) is still empty here,
+                // since the stream ends before the clip starts, and the avoid list never filled (11-19
+                // drive: most hellos were one line).
+                if (test == null) greeting?.noteOpened(plan, GreetingWords.of(written.toString()))
                 when (val o = reply.await()) {
                     ReplySpeaker.Outcome.Played -> {
                         // So his answer is understood: the greeting is the first exchange.

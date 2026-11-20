@@ -133,7 +133,7 @@ class GreetingPackCacheTest {
         }
     }
 
-    @Test fun `the last place and the last two hellos are kept beside the leads and survive the process`() {
+    @Test fun `the last place and the last five hellos are kept beside the leads and survive the process`() {
         val file = File.createTempFile("leads", ".json").also { it.delete() }
         try {
             val backend = FakeGreetingBackend { GreetingOutcome.Ok(good) }
@@ -142,13 +142,14 @@ class GreetingPackCacheTest {
             val c = at(packDay)
             c.notePlace("place:austin, texas")
             c.notePlace(null) // unreadable: the last known place stands
-            c.noteHello("First invented hello.")
-            c.noteHello("Second invented hello.")
-            c.noteHello("Third invented hello.")
+            val hellos = listOf("First", "Second", "Third", "Fourth", "Fifth", "Sixth").map { "$it invented hello." }
+            hellos.forEach { c.noteHello(it) }
             c.noteHello() // words unknown: still a hello, nothing kept
             val h = at(packDay.plusDays(1)).history()
             assertEquals("place:austin, texas", h.lastPlace)
-            assertEquals(listOf("Second invented hello.", "Third invented hello."), h.hellos)
+            // Five, so a line is not asked for again until five other opens have passed (2026-11-19).
+            assertEquals(hellos.takeLast(5), h.hellos)
+            assertTrue(GreetingPrompt.hello(h.hellos).let { p -> h.hellos.all { p.contains(it) } })
             assertEquals(GreetingBlock.HELLO, h.last)
         } finally {
             file.delete()

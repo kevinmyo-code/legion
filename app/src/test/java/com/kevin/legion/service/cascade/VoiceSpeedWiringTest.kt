@@ -82,6 +82,21 @@ class VoiceSpeedWiringTest {
         assertTrue(bodyOf(s, "playOpenChime").contains("open_chime_ms="))
     }
 
+    // --- 2: greeting variety ----------------------------------------------------------------------
+
+    @Test
+    fun `the hello's avoid list gets the model's whole text, not what had been heard by then`() {
+        val greet = bodyOf(session(), "speakGreeting")
+        val noted = greet.substring(greet.indexOf("greeting?.noteOpened("))
+            .lineSequence().first()
+        assertFalse("heard is still empty when the stream ends", noted.contains("reply.spoken()"))
+        assertTrue(noted.contains("GreetingWords.of(written.toString())"))
+        assertTrue(greet.contains("written.append(delta)"))
+        // When it is noted is unchanged (a topic is marked raised at the same point as before).
+        assertTrue(greet.indexOf("call.join()") < greet.indexOf("greeting?.noteOpened("))
+        assertTrue(greet.indexOf("greeting?.noteOpened(") < greet.indexOf("reply.await()"))
+    }
+
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 
     private fun bodyOf(source: String, name: String): String {
