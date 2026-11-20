@@ -13,7 +13,12 @@ import org.junit.Test
  */
 class VoiceOutputRuleTest {
 
-    private fun outlet(choice: OutputChoice, route: AudioRoute = AudioRoute.PHONE_SPEAKER, inCall: Boolean = false, earpiece: Boolean = true) =
+    private fun outlet(
+        choice: OutputChoice,
+        route: AudioRoute = AudioRoute.PHONE_SPEAKER,
+        inCall: Boolean = false,
+        earpiece: Boolean = true,
+    ) =
         VoiceOutputRule.outlet(choice, route, inCall, earpiece)
 
     @Test

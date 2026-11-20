@@ -109,6 +109,11 @@ internal fun rememberOutputToggle(key: Any?): OutputToggle? {
     }
     val tick = devices.intValue
     return remember(choice, tick, key) {
-        VoiceOutputRule.toggle(choice, CallAudioMode.route(audio), TelephonyController.isInCall, VoiceOutput.hasEarpiece(audio))
+        VoiceOutputRule.toggle(
+            choice,
+            CallAudioMode.route(audio),
+            TelephonyController.isInCall,
+            VoiceOutput.hasEarpiece(audio),
+        )
     }
 }

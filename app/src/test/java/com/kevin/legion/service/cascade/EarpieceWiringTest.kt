@@ -1,6 +1,7 @@
 package com.kevin.legion.service.cascade
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -33,9 +34,11 @@ class EarpieceWiringTest {
     fun `the barge-in exits keep call audio on the earpiece, Bluetooth still takes it`() {
         val s = session()
         val bargeOff = s.substring(s.indexOf("override fun onBargeInDisabled("))
-        assertTrue(bargeOff.substring(0, bargeOff.indexOf("exit(\"self-interrupts\")")).contains("onEarpiece == true) return@launch"))
+        val beforeExit = bargeOff.substring(0, bargeOff.indexOf("exit(\"self-interrupts\")"))
+        assertTrue(beforeExit.contains("onEarpiece == true) return@launch"))
         assertTrue(s.contains("callAudio?.takeUnless { it.onBluetoothMic || it.onEarpiece }"))
-        assertTrue(bodyOf(s, "onBluetoothConnected").contains("callAudio?.let { if (it.isActive) it.exit(\"bluetooth connected\") }"))
+        val bluetooth = bodyOf(s, "onBluetoothConnected")
+        assertTrue(bluetooth.contains("callAudio?.let { if (it.isActive) it.exit(\"bluetooth connected\") }"))
     }
 
     @Test
@@ -56,7 +59,8 @@ class EarpieceWiringTest {
             .map { it.name }.toList()
         assertEquals(listOf("CallAudioMode.kt"), setters)
         val earpiece = stripComments(File(sourceRoot(), "service/cascade/EarpieceRoute.kt").readText())
-        assertTrue("the follower goes through CallAudioMode", !earpiece.contains("setCommunicationDevice") && !earpiece.contains(".mode ="))
+        assertFalse("the follower goes through CallAudioMode", earpiece.contains("setCommunicationDevice"))
+        assertFalse("the follower never sets the mode", earpiece.contains(".mode ="))
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())

@@ -8,8 +8,9 @@ import android.util.Log
 /**
  * Call-style audio for barge-in (Kevin, 2026-10-27: "sounds fine" on the speaker): while a
  * conversation with barge-in runs, the phone is in MODE_IN_COMMUNICATION with the voice-call route
- * (wired headset if plugged, else the loudspeaker, or the earpiece in the toggle's CALL choice), so the platform AEC has Alfred's audio as its
- * reference. The playback track switches to USAGE_VOICE_COMMUNICATION alongside it.
+ * (wired headset if plugged, else the loudspeaker, or the earpiece in the toggle's CALL choice), so
+ * the platform AEC has Alfred's audio as its reference. The playback track switches to
+ * USAGE_VOICE_COMMUNICATION alongside it.
  *
  * Restored on every exit (park, close, destroy). [ownCommActive] is what lets dumb mode
  * (`DumbBounce`, ADR 0062) tell this mode from a real call. Never entered during a Telecom-owned call
