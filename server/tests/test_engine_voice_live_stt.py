@@ -12,17 +12,22 @@ PCM = b"\x10\x00" * 16_000  # one second
 
 
 class FakeSocket:
-    """Scripted server: `before_end` messages are delivered while audio is fed, `after_end` once
-    `audioStreamEnd` arrives. `None` in a list means 'nothing yet' for one recv."""
+    """Scripted server with one ordered inbox, as a real socket has: `before_end` messages are in
+    it from the start, `after_end` ones join it behind whatever is still unread once
+    `audioStreamEnd` is sent, and `arrive()` adds messages now (they landed after the last read).
+    A message the session did not read before the end is still delivered after it, first."""
 
     def __init__(self, before_end=(), after_end=(), setup=({"setupComplete": {}},), fail_on=None):
         self.sent: list[dict] = []
         self.setup = list(setup)
-        self.before_end = list(before_end)
+        self.inbox = list(before_end)
         self.after_end = list(after_end)
         self.ended = False
         self.closed = False
         self.fail_on = fail_on
+
+    def arrive(self, *messages) -> None:
+        self.inbox.extend(messages)
 
     def send(self, message: dict) -> None:
         if self.fail_on and self.fail_on in message.get("realtimeInput", {}):
@@ -30,13 +35,14 @@ class FakeSocket:
         self.sent.append(message)
         if message.get("realtimeInput", {}).get("audioStreamEnd"):
             self.ended = True
+            self.inbox.extend(self.after_end)
+            self.after_end = []
 
     def recv(self, timeout: float):
         if self.setup:
             return self.setup.pop(0)
-        queue = self.after_end if self.ended else self.before_end
-        if queue:
-            return queue.pop(0)
+        if self.inbox:
+            return self.inbox.pop(0)
         return None
 
     def close(self) -> None:
@@ -92,6 +98,38 @@ def test_a_pause_the_model_hears_before_the_end_signal_ends_nothing():
     assert session.finish().text == "Remind me to call the garage."
 
 
+def test_a_completion_still_unread_when_the_end_is_sent_does_not_cut_the_tail():
+    # Review 1120 finding 3: the model's pause-completion landed after the last feed's read, so
+    # it is still queued when the end signal goes out. It answers the pause, not the end.
+    socket = FakeSocket(after_end=[_final(" no, cancel that."), DONE])
+    session = _session(socket)
+    session.feed(PCM)
+    socket.arrive(_final("Pay the rent"), DONE)
+    assert session.finish().text == "Pay the rent no, cancel that."
+
+
+def test_a_completion_on_the_wire_when_the_end_is_sent_does_not_cut_the_tail():
+    # The same completion still travelling: it is the first thing read after the end signal,
+    # ahead of the tail's final words and the completion that answers the end.
+    socket = FakeSocket(
+        before_end=[_final("Pay the rent")],
+        after_end=[DONE, _final(" no, cancel that."), DONE],
+    )
+    session = _session(socket)
+    session.feed(PCM)
+    assert session.finish().text == "Pay the rent no, cancel that."
+
+
+def test_a_completion_with_no_final_words_after_the_end_goes_to_the_batch_path():
+    # Words were heard, but nothing final came after the end signal: no sign that the completion
+    # answers the end, so the session is a failure and the batch path transcribes the clip.
+    socket = FakeSocket(before_end=[_final("Add milk.")], after_end=[DONE])
+    session = _session(socket)
+    session.feed(PCM)
+    with pytest.raises(live_stt.StreamFailure, match="no_final_after_end"):
+        session.finish()
+
+
 def test_interim_text_is_never_the_transcript():
     socket = FakeSocket(
         before_end=[_interim("Remind me to cancel")], after_end=[_final("Remind me."), DONE]
@@ -109,11 +147,15 @@ def test_interim_words_and_no_final_words_is_a_failure():
         session.finish()
 
 
-def test_silence_with_no_words_at_all_is_an_empty_transcript_not_a_failure():
+def test_a_completion_with_no_words_at_all_goes_to_the_batch_path():
+    # No final words after the end signal, so nothing shows the completion answers it (it may be
+    # a pause's, with the words still coming): the batch path decides, and its own gates keep
+    # silence from costing a request.
     socket = FakeSocket(after_end=[DONE])
     session = _session(socket)
     session.feed(PCM)
-    assert session.finish().text == ""
+    with pytest.raises(live_stt.StreamFailure, match="no_final_after_end"):
+        session.finish()
 
 
 @pytest.mark.parametrize(

@@ -16,7 +16,8 @@ from the official guide (aistudio.google.com/docs/live-api/live-transcribe):
 The rules this module keeps, and the door's tests pin:
 - **The client's end signal ends the turn**, not the model: `finish()` sends `audioStreamEnd` and
   takes the final segments that arrive after it. A `turnComplete` the model sends BEFORE the end
-  signal (its own pause detection, mid-sentence) ends nothing.
+  signal (its own pause detection, mid-sentence) ends nothing, even when it is read after the end
+  signal went out (`finish()` says the rule).
 - **Interim text is never a transcript.** It is kept only to notice a session that "disagrees with
   itself" (interim words, then no final words), which the door treats as a failure.
 - **Any failure is a `StreamFailure`**: the door then transcribes the audio it holds the batch way.
@@ -129,26 +130,46 @@ class TranscribeSession:
 
     def finish(self, timeout: float = FINAL_TIMEOUT_S) -> StreamResult:
         """The client's end signal: the rest of the audio, `audioStreamEnd`, then the final
-        segments until the turn completes. Anything that ended before this call counts for
-        nothing on its own: only what completes after the end signal is the transcript."""
+        segments until a completion that answers the end signal.
+
+        The protocol ties no completion to the end signal, so this is a rule, and its doubtful
+        case goes to the batch path, never to the transcript (review 1120, finding 3):
+        - everything already in the inbox is read BEFORE the end signal goes out, and a completion
+          read then counts for nothing (it answered a pause);
+        - after the end signal, a completion counts only once at least one final segment has
+          arrived after the end signal. A completion before any such final (one sent at a pause,
+          still on the wire when the end went out) is passed over;
+        - no counted completion within `timeout`: a `StreamFailure`, and the batch path
+          transcribes the held audio.
+        A completion and final words BOTH still on the wire when the end goes out remain
+        indistinguishable from the answer; only the live check can say how often that happens."""
         if self._socket is None:
             raise StreamFailure("not_open")
         started = self.clock()
+        completed_unanswered = False
         try:
             if self._pending:
                 self._send_audio(self._pending)
                 self._pending = b""
+            while (message := self._socket.recv(0)) is not None:
+                self._read(message)
+            finals_before_end = len(self._final)
             self._socket.send({"realtimeInput": {"audioStreamEnd": True}})
             until = started + timeout
             while True:
                 left = until - self.clock()
-                if left <= 0:
-                    raise StreamFailure("final_timeout")
-                message = self._socket.recv(left)
+                message = self._socket.recv(left) if left > 0 else None
                 if message is None:
+                    if self.interim.strip() and not self._final:
+                        # Interim words and no final words: the session disagrees with itself.
+                        raise StreamFailure("no_final_after_interim")
+                    if completed_unanswered:
+                        raise StreamFailure("no_final_after_end")
                     raise StreamFailure("final_timeout")
                 if self._read(message):
-                    break
+                    if len(self._final) > finals_before_end:
+                        break
+                    completed_unanswered = True
         except StreamFailure:
             raise
         except Exception as exc:  # noqa: BLE001
