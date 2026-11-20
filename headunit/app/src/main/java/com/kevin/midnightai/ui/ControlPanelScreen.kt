@@ -356,8 +356,9 @@ private fun settingsRows(
             openRow("Phones", "Switch which phone plays, pair, forget, reset Bluetooth", Section.CONN_PHONES),
             openRow(
                 "Car link",
-                if (com.kevin.midnightai.link.CarLink.isPaired()) "Paired: location and sign-in come from your phone"
-                else "Pair once with your phone: it sends location and your sign-in",
+                com.kevin.midnightai.link.CarLinkRules.statusLine(
+                    com.kevin.midnightai.link.CarLink.status.value, com.kevin.midnightai.link.CarLink.store.phoneName(),
+                ),
                 Section.CONN_CAR_LINK,
             ),
             openRow("Bluetooth check", "Which BT stack owns the phones - read before the two-phone switcher", Section.SYSTEM_BLUETOOTH_DIAGNOSTICS),
