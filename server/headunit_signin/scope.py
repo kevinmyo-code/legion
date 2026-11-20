@@ -14,7 +14,6 @@ by mistake opens nothing.
 | `agents-turn-cancel` | POST | the stop button of that turn (same switch) |
 | `device-logs-upload` | POST | its own drive log; GET (the household's list) is refused |
 | `fleet-obd-samples-batch` | POST | append-only OBD telemetry; no read, no edit |
-| `headunit-refresh` | POST | the token rotates itself |
 
 **Tools.** Inside a turn, a tool runs as the member, either through
 `engine_mcp.dispatch.call_route` (forced authentication: the class above never runs, and
@@ -35,7 +34,6 @@ ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("agents-turn-cancel", "POST"),
         ("device-logs-upload", "POST"),
         ("fleet-obd-samples-batch", "POST"),
-        ("headunit-refresh", "POST"),
     }
 )
 

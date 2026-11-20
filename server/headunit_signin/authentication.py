@@ -21,6 +21,7 @@ from __future__ import annotations
 import hmac
 from datetime import timedelta
 
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework import authentication, exceptions
 
@@ -53,10 +54,14 @@ def live_credential(raw: str, now=None) -> HeadUnitCredential | None:
     digest = hash_token(raw)
     row = (
         HeadUnitCredential.objects.select_related("owner_user__household_member")
-        .filter(key_hash=digest)
+        .filter(Q(key_hash=digest) | Q(previous_key_hash=digest))
         .first()
     )
-    if row is None or not hmac.compare_digest(row.key_hash, digest):
+    if row is None:
+        return None
+    if not hmac.compare_digest(row.key_hash, digest):
+        if hmac.compare_digest(row.previous_key_hash, digest):
+            record_stale_use(row, now)
         return None
     if not row.is_live(now) or not row.owner_user.is_active:
         return None
@@ -68,6 +73,16 @@ def live_credential(raw: str, now=None) -> HeadUnitCredential | None:
     ):
         return None
     return row
+
+
+def record_stale_use(row: HeadUnitCredential, now) -> None:
+    """A token presented after its rotation: a thief's copy, or a unit the hand-over never reached.
+    Refused like any dead key and counted for the member's list, but NOT revoked: a hand-over lost
+    on the car link would otherwise brick the paired unit, and telling the two apart is the
+    member's call (revoke, or rotate again), not the engine's."""
+    HeadUnitCredential.objects.filter(pk=row.pk).update(
+        stale_use_count=F("stale_use_count") + 1, stale_used_at=now
+    )
 
 
 def touch(row: HeadUnitCredential, now) -> None:

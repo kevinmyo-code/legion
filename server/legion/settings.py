@@ -653,10 +653,10 @@ REST_FRAMEWORK = {
         # The demo's funnel counts (`demo.funnel`): anonymous, so per IP; a page sends a handful.
         "demo_funnel": "120/hour",
         # T3b (`headunit_signin/views.py`): a head unit's sign-in minted by the phone, per MEMBER
-        # (the protocol's 5 an hour), and a unit's own token refresh, per CREDENTIAL. Same
-        # per-process LocMemCache caveat as `mcp` above.
+        # (the protocol's 5 an hour), and the phone's rotation of one unit's token, per
+        # CREDENTIAL. Same per-process LocMemCache caveat as `mcp` above.
         "headunit_mint": "5/hour",
-        "headunit_refresh": "6/hour",
+        "headunit_rotate": "6/hour",
     },
 }
 

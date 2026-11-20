@@ -446,7 +446,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/auth/head-units/refresh": {
+    "/api/auth/head-units/{credential_id}/rotate": {
         parameters: {
             query?: never;
             header?: never;
@@ -455,7 +455,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["api_auth_head_units_refresh"];
+        post: operations["api_auth_head_units_rotate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8159,6 +8159,12 @@ export interface components {
             last_used_at: string | null;
             /** Format: date-time */
             expires_at: string;
+            /** Format: date-time */
+            rotated_at: string | null;
+            /** @description Uses of a token after it was rotated away: a copy, or a lost hand-over. */
+            stale_use_count: number;
+            /** Format: date-time */
+            stale_used_at: string | null;
         };
         /**
          * @description The 200 body. `db` is the only key, and it is only ever `"ok"` -
@@ -13299,30 +13305,24 @@ export interface operations {
             };
         };
     };
-    api_auth_head_units_refresh: {
+    api_auth_head_units_rotate: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                credential_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description The new token; the one that asked is dead now. */
+            /** @description The unit's new token, shown this once; the old one is dead now. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["Issued"];
-                };
-            };
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Detail"];
                 };
             };
             403: {
@@ -13333,7 +13333,6 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
-            /** @description Head-unit sign-in is off. */
             404: {
                 headers: {
                     [name: string]: unknown;

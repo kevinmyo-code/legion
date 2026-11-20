@@ -11,8 +11,12 @@ guard refuses an owner from outside the row's household.
 
 - **Only a hash is stored.** The token is `hu1_` plus 32 random bytes (256 bits, base64url). It is
   returned once, by `mint` or `rotate`, and never written anywhere: `key_hash` is its SHA-256.
-- **Lifetime.** 30 days from mint or refresh, and never past `MAX_AGE` (90 days) after the
+- **Lifetime.** 30 days from mint or rotation, and never past `MAX_AGE` (90 days) after the
   pairing: after that the phone pairs again.
+- **Rotation is the member's** (review B1): the member's phone asks for a new token for a unit it
+  paired and hands it over the car link; the unit never rotates its own. The superseded hash is
+  kept in `previous_key_hash` so a later use of the old token is recognised: refused like any dead
+  key, and counted (`stale_use_count`, `stale_used_at`) for the member's list.
 - **Revocation.** `revoked_at` set is revoked (the flag); `revoked_reason` says why. Checked on
   every request by `headunit_signin.authentication`, with expiry and membership.
 - What the token may reach is `headunit_signin.scope`, not this file.
@@ -59,6 +63,10 @@ class HeadUnitCredential(models.Model):
     last_used_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField()
     rotated_at = models.DateTimeField(null=True, blank=True)
+    # The hash the last rotation superseded, and how often a token with it was presented since.
+    previous_key_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    stale_use_count = models.IntegerField(default=0)
+    stale_used_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
     revoked_reason = models.TextField(default="", blank=True)
 
@@ -106,15 +114,16 @@ class HeadUnitCredential(models.Model):
         return min(now + LIFETIME, self.created_at + MAX_AGE)
 
     def rotate(self, now=None) -> str:
-        """A new token for this credential; the old one stops working at once (its hash is gone).
-        The caller holds the row locked (`select_for_update`)."""
+        """A new token for this credential; the old one stops working at once. Its hash moves to
+        `previous_key_hash`, only so a later use of it can be told from an unknown key. The caller
+        holds the row locked (`select_for_update`)."""
         now = now or timezone.now()
         raw = new_token()
+        self.previous_key_hash = self.key_hash
         self.key_hash = hash_token(raw)
         self.expires_at = self.next_expiry(now)
         self.rotated_at = now
-        self.last_used_at = now
-        self.save(update_fields=["key_hash", "expires_at", "rotated_at", "last_used_at"])
+        self.save(update_fields=["previous_key_hash", "key_hash", "expires_at", "rotated_at"])
         return raw
 
     def is_live(self, now=None) -> bool:

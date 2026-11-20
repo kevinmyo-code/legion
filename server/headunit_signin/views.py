@@ -13,9 +13,12 @@ Every route here is a 404 before authentication unless `LEGION_HEADUNIT_SIGNIN=o
   anyone else's id is a 404. Immediate.
 - `POST /api/auth/head-units/revoke-all`: a lost or sold unit: every live head unit of the
   member, at once.
-- `POST /api/auth/head-units/refresh`: called by the HEAD UNIT with its own live token. The
-  token rotates: the answer carries the new one and the old one stops working at once. Never
-  past 90 days from pairing (`models.MAX_AGE`). 6 an hour per unit.
+- `POST /api/auth/head-units/<id>/rotate`: the member's PHONE (its own write device token) asks
+  for a new token for a live unit it paired, and hands it over the car link. The old token stops
+  working at once; a later use of it is refused and counted (`stale_use_count`), never revoked
+  (`authentication.record_stale_use` says why). Never past 90 days from pairing
+  (`models.MAX_AGE`). 6 an hour per unit. A unit never rotates its own token (review B1: a thief
+  holding it would lock the real unit out).
 """
 
 from __future__ import annotations
@@ -31,7 +34,6 @@ from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
 from headunit_signin import flags
-from headunit_signin.authentication import UNKNOWN, HeadUnitTokenAuthentication
 from headunit_signin.models import (
     LABEL_MAX,
     REASON_FORGOTTEN,
@@ -54,7 +56,11 @@ MINT_FROM_PHONE = (
     "with the phone's own device token, not from a browser."
 )
 NOT_FOR_RECRUITER = "Nothing was issued. A demo visit cannot sign in a head unit."
-NOT_A_UNIT = "Nothing was refreshed. Only a head unit's own token can refresh itself."
+ROTATE_FROM_PHONE = (
+    "Nothing was rotated. A head unit's token is rotated by the member's phone, with the phone's "
+    "own device token, which then hands the new one to the unit over the car link."
+)
+NOT_ROTATED = "Nothing was rotated: no live head unit of yours has that id."
 NOT_FOUND = "Nothing was revoked: no head unit of yours has that id."
 
 
@@ -80,14 +86,13 @@ class MintThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": request.user.pk}
 
 
-class RefreshThrottle(SimpleRateThrottle):
-    scope = "headunit_refresh"
+class RotateThrottle(SimpleRateThrottle):
+    """Per credential (the id in the path), whoever asks."""
+
+    scope = "headunit_rotate"
 
     def get_cache_key(self, request, view):
-        credential = request.auth
-        if not isinstance(credential, HeadUnitCredential):
-            return None
-        return self.cache_format % {"scope": self.scope, "ident": credential.pk}
+        return self.cache_format % {"scope": self.scope, "ident": view.kwargs["credential_id"]}
 
 
 class MintSerializer(serializers.Serializer):
@@ -107,6 +112,11 @@ class HeadUnitSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     last_used_at = serializers.DateTimeField(allow_null=True)
     expires_at = serializers.DateTimeField()
+    rotated_at = serializers.DateTimeField(allow_null=True)
+    stale_use_count = serializers.IntegerField(
+        help_text="Uses of a token after it was rotated away: a copy, or a lost hand-over."
+    )
+    stale_used_at = serializers.DateTimeField(allow_null=True)
 
 
 class RevokedSerializer(serializers.Serializer):
@@ -208,39 +218,34 @@ class HeadUnitRevokeAllView(_MemberView):
         return Response({"revoked": count, "detail": words})
 
 
-class HeadUnitRefreshView(_OffBeforeAnything):
-    # The member's own credentials are authenticated too, only so the household fence can refuse
-    # a recruiter in its own words and a phone is told why (403); neither can refresh.
-    authentication_classes = [
-        HeadUnitTokenAuthentication,
-        DeviceTokenAuthentication,
-        SessionAuthentication,
-    ]
-    permission_classes = [IsHouseholdMember]
-    throttle_classes = [RefreshThrottle]
+class HeadUnitRotateView(_MemberView):
+    throttle_classes = [RotateThrottle]
 
     @extend_schema(
-        operation_id="api_auth_head_units_refresh",
+        operation_id="api_auth_head_units_rotate",
         tags=TAGS,
         request=None,
         responses={
             200: OpenApiResponse(
-                IssuedSerializer, description="The new token; the one that asked is dead now."
+                IssuedSerializer,
+                description="The unit's new token, shown this once; the old one is dead now.",
             ),
-            401: DetailSerializer,
             403: DetailSerializer,
-            404: OpenApiResponse(DetailSerializer, description="Head-unit sign-in is off."),
+            404: DetailSerializer,
             429: DetailSerializer,
         },
     )
-    def post(self, request):
-        presented = request.auth
-        if not isinstance(presented, HeadUnitCredential):
-            return Response({"detail": NOT_A_UNIT}, status=status.HTTP_403_FORBIDDEN)
+    def post(self, request, credential_id):
+        if not isinstance(request.auth, DeviceToken):
+            return Response({"detail": ROTATE_FROM_PHONE}, status=status.HTTP_403_FORBIDDEN)
         with transaction.atomic():
-            row = HeadUnitCredential.objects.select_for_update().filter(pk=presented.pk).first()
-            # A refresh that raced this one already rotated the key: the key that asked is dead.
-            if row is None or row.key_hash != presented.key_hash or not row.is_live():
-                raise exceptions.AuthenticationFailed(UNKNOWN)
+            row = (
+                _mine(request)
+                .select_for_update()
+                .filter(pk=credential_id, revoked_at__isnull=True, expires_at__gt=timezone.now())
+                .first()
+            )
+            if row is None:
+                return Response({"detail": NOT_ROTATED}, status=status.HTTP_404_NOT_FOUND)
             raw = row.rotate()
         return Response(_issued(row, raw))

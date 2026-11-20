@@ -2,7 +2,7 @@
 
 What is proved here, from the outside where it can be:
 - the token: 256 random bits, shown once, only its hash stored, never in a log or any row;
-- the four doors (mint, list, revoke, revoke-all) and the unit's refresh: who may call each, and a
+- the five doors (mint, list, rotate, revoke, revoke-all): who may call each, and a
   404 with no database query at all while `LEGION_HEADUNIT_SIGNIN` is off;
 - the scope: a walk over EVERY URL pattern in the project, every method, where a head-unit token
   must get exactly what an unknown token gets unless the (route, method) is on
@@ -47,7 +47,6 @@ from tests.conftest import _client_for, _member
 pytestmark = pytest.mark.django_db
 
 LIST = "/api/auth/head-units"
-REFRESH = "/api/auth/head-units/refresh"
 REVOKE_ALL = "/api/auth/head-units/revoke-all"
 UNIT = {"name": "Invented car", "kind": "head_unit"}
 
@@ -84,6 +83,16 @@ def _paired(phone) -> tuple[str, str]:
     response = _mint(phone)
     assert response.status_code == 201, response.data
     return response.data["id"], response.data["token"]
+
+
+def _probe(raw: str):
+    """A request on an allow-listed route that stops at its body check: 400 for a live token,
+    401 for a dead one. Nothing is stored either way."""
+    return unit_client(raw).post("/api/device-logs/", {}, format="multipart")
+
+
+def _rotate(client, cred_id):
+    return client.post(f"{LIST}/{cred_id}/rotate")
 
 
 def _unknown_key() -> str:
@@ -134,7 +143,7 @@ def test_rotation_never_reaches_past_max_age_from_pairing(household_a, household
         ("post", LIST),
         ("delete", f"{LIST}/{uuid.uuid4()}"),
         ("post", REVOKE_ALL),
-        ("post", REFRESH),
+        ("post", f"{LIST}/{uuid.uuid4()}/rotate"),
     ],
 )
 def test_every_door_is_a_404_with_no_query_while_switched_off(
@@ -175,7 +184,16 @@ def test_the_phone_mints_a_token_shown_once_and_lists_it_without_the_token(phone
     assert listed.status_code == 200
     [row] = listed.data
     assert row["label"] == "Invented car" and str(row["id"]) == str(response.data["id"])
-    assert set(row) == {"id", "label", "created_at", "last_used_at", "expires_at"}
+    assert set(row) == {
+        "id",
+        "label",
+        "created_at",
+        "last_used_at",
+        "expires_at",
+        "rotated_at",
+        "stale_use_count",
+        "stale_used_at",
+    }
     assert raw not in repr(listed.content)
 
 
@@ -237,29 +255,68 @@ def test_never_over_mcp(phone, on, settings):
 # =============================================================================
 
 
-def test_refresh_rotates_and_the_old_token_stops_working(phone, on):
+def test_the_unit_cannot_refresh_itself(phone, on):
+    """Review B1: a unit holding its own token cannot rotate it (a thief would lock the real unit
+    out). Rotation is the member's, over the phone."""
+    _id, raw = _paired(phone)
+    assert unit_client(raw).post("/api/auth/head-units/refresh").status_code == 404
+    assert not any(name == "headunit-refresh" for name, _m in scope.ROUTES)
+    assert _probe(raw).status_code == 400
+
+
+def test_the_member_rotates_a_unit_and_the_old_token_dies(phone, on):
     cred_id, old = _paired(phone)
-    response = unit_client(old).post(REFRESH)
+    response = _rotate(phone, cred_id)
     assert response.status_code == 200, response.data
+    assert set(response.data) == {"id", "token", "expires"}
     new = response.data["token"]
     assert new != old and str(response.data["id"]) == str(cred_id)
-    assert unit_client(old).post(REFRESH).status_code == 401
-    assert unit_client(new).post(REFRESH).status_code == 200
+    assert _probe(old).status_code == 401
+    assert _probe(new).status_code == 400
 
 
-def test_a_device_token_cannot_refresh(phone, on):
-    _paired(phone)
-    response = phone.post(REFRESH)
-    assert response.status_code == 403 and "head unit's own token" in response.data["detail"]
+def test_an_old_token_after_rotation_is_refused_and_recorded_not_revoked(phone, on):
+    cred_id, old = _paired(phone)
+    new = _rotate(phone, cred_id).data["token"]
+    for _ in range(2):
+        response = _probe(old)
+        assert (response.status_code, response.data) == (401, {"detail": "Invalid token."})
+    row = HeadUnitCredential.objects.get(pk=cred_id)
+    assert row.stale_use_count == 2 and row.stale_used_at is not None
+    assert row.revoked_at is None
+    assert _probe(new).status_code == 400
+    [listed] = phone.get(LIST).data
+    assert listed["stale_use_count"] == 2
+    assert listed["rotated_at"] is not None and listed["stale_used_at"] is not None
 
 
-def test_refresh_is_throttled_per_unit(phone, on):
-    _id, raw = _paired(phone)
+def test_only_the_pairing_members_phone_may_rotate(phone, on, household_a, token_b, household_user):
+    cred_id, raw = _paired(phone)
+    mia = _client_for(_member(household_a, "mia@example.com"))
+    assert _rotate(mia, cred_id).status_code == 404
+    assert _rotate(token_b, cred_id).status_code == 404
+    browser = APIClient()
+    browser.force_login(household_user)
+    assert _rotate(browser, cred_id).status_code == 403
+    assert _rotate(unit_client(raw), cred_id).status_code == 401
+    _token, key = DeviceToken.issue(household_user, "Invented tool", DeviceToken.SCOPE_READ)
+    assert _rotate(unit_client(key), cred_id).status_code == 403
+    assert _probe(raw).status_code == 400
+
+
+def test_a_revoked_unit_cannot_be_rotated_back_to_life(phone, on):
+    cred_id, _raw = _paired(phone)
+    phone.delete(f"{LIST}/{cred_id}")
+    assert _rotate(phone, cred_id).status_code == 404
+
+
+def test_rotation_is_throttled_per_unit(phone, on):
+    cred_id, _raw = _paired(phone)
     for _ in range(6):
-        response = unit_client(raw).post(REFRESH)
-        assert response.status_code == 200
-        raw = response.data["token"]
-    assert unit_client(raw).post(REFRESH).status_code == 429
+        assert _rotate(phone, cred_id).status_code == 200
+    assert _rotate(phone, cred_id).status_code == 429
+    other_id, _other = _paired(phone)
+    assert _rotate(phone, other_id).status_code == 200
 
 
 # =============================================================================
@@ -272,26 +329,26 @@ def _dead(response):
 
 
 def test_expired_revoked_and_removed_are_answered_as_unknown(phone, on, household_user):
-    unknown = _dead(unit_client(_unknown_key()).post(REFRESH))
+    unknown = _dead(_probe(_unknown_key()))
     assert unknown == (401, {"detail": "Invalid token."})
 
     cred_id, raw = _paired(phone)
     HeadUnitCredential.objects.filter(pk=cred_id).update(expires_at=timezone.now())
-    assert _dead(unit_client(raw).post(REFRESH)) == unknown
+    assert _dead(_probe(raw)) == unknown
 
     cred_id, raw = _paired(phone)
     assert phone.delete(f"{LIST}/{cred_id}").status_code == 204
-    assert _dead(unit_client(raw).post(REFRESH)) == unknown
+    assert _dead(_probe(raw)) == unknown
 
     _cred_id, raw = _paired(phone)
     User.objects.filter(pk=household_user.pk).update(is_active=False)
-    assert _dead(unit_client(raw).post(REFRESH)) == unknown
+    assert _dead(_probe(raw)) == unknown
 
 
 def test_a_member_removed_from_the_household_signs_their_units_out(phone, on, household_user):
     _cred_id, raw = _paired(phone)
     HouseholdMember.objects.filter(user=household_user).delete()
-    assert _dead(unit_client(raw).post(REFRESH)) == (401, {"detail": "Invalid token."})
+    assert _dead(_probe(raw)) == (401, {"detail": "Invalid token."})
 
 
 # =============================================================================
@@ -315,7 +372,7 @@ def test_another_member_of_the_household_cannot_list_or_revoke(phone, on, househ
     assert mia.get(LIST).data == []
     assert mia.delete(f"{LIST}/{cred_id}").status_code == 404
     assert mia.post(REVOKE_ALL).data["revoked"] == 0
-    assert unit_client(raw).post(REFRESH).status_code == 200
+    assert _probe(raw).status_code == 400
 
 
 def test_a_member_of_another_household_cannot_list_or_revoke(phone, on, token_b):
@@ -323,7 +380,7 @@ def test_a_member_of_another_household_cannot_list_or_revoke(phone, on, token_b)
     assert token_b.get(LIST).data == []
     assert token_b.delete(f"{LIST}/{cred_id}").status_code == 404
     assert token_b.post(REVOKE_ALL).data["revoked"] == 0
-    assert unit_client(raw).post(REFRESH).status_code == 200
+    assert _probe(raw).status_code == 400
 
 
 def test_revoke_all_signs_out_every_unit_of_the_member_and_no_one_elses(phone, on, household_a):
@@ -334,8 +391,8 @@ def test_revoke_all_signs_out_every_unit_of_the_member_and_no_one_elses(phone, o
     response = phone.post(REVOKE_ALL)
     assert response.status_code == 200 and response.data["revoked"] == 2
     for raw in (raw_a, raw_b):
-        assert unit_client(raw).post(REFRESH).status_code == 401
-    assert unit_client(raw_m).post(REFRESH).status_code == 200
+        assert _probe(raw).status_code == 401
+    assert _probe(raw_m).status_code == 400
     reasons = set(
         HeadUnitCredential.objects.filter(owner_user__email="kevin@example.com").values_list(
             "revoked_reason", flat=True
@@ -407,7 +464,7 @@ def test_the_token_is_never_logged_and_never_stored(phone, on, caplog, monkeypat
     unit = unit_client(raw)
     assert unit.post("/api/device-logs/", _log_upload(), format="multipart").status_code == 201
     unit.post("/api/agents/turn", {"transcript": "invented question"}, format="json")
-    refreshed = unit.post(REFRESH).data["token"]
+    refreshed = _rotate(phone, _id).data["token"]
     unit_client(refreshed).post("/api/device-logs/", _log_upload(), format="multipart")
     for secret in (raw, refreshed):
         body = secret[len("hu1_") :]
@@ -520,7 +577,7 @@ def test_every_url_refuses_a_unit_token_unless_its_route_is_on_the_list(
     assert not failures, failures
     assert walked > 1000, walked
     assert accepted <= scope.ROUTES, accepted - scope.ROUTES
-    assert unit_client(raw).post(REFRESH).status_code == 200  # the token was live all along
+    assert _probe(raw).status_code == 400  # the token was live all along
 
 
 def test_each_allow_listed_route_accepts_a_unit_token(phone, on, monkeypatch):
@@ -537,13 +594,11 @@ def test_each_allow_listed_route_accepts_a_unit_token(phone, on, monkeypatch):
     assert log.status_code == 400 and log.data["detail"].startswith("Nothing was stored")
     obd = unit.post("/api/fleet/obd_samples/batch/", {}, format="json")
     assert obd.status_code == 400, obd.data
-    assert unit.post(REFRESH).status_code == 200
     assert {name for name, _m in scope.ROUTES} == {
         "agents-turn",
         "agents-turn-cancel",
         "device-logs-upload",
         "fleet-obd-samples-batch",
-        "headunit-refresh",
     }
 
 

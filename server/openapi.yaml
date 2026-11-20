@@ -978,13 +978,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
-  /api/auth/head-units/refresh:
+  /api/auth/head-units/{credential_id}/rotate:
     post:
-      operationId: api_auth_head_units_refresh
+      operationId: api_auth_head_units_rotate
+      parameters:
+      - in: path
+        name: credential_id
+        schema:
+          type: string
+          format: uuid
+        required: true
       tags:
       - auth
       security:
-      - headUnitToken: []
       - deviceToken: []
       - cookieAuth: []
       responses:
@@ -993,13 +999,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Issued'
-          description: The new token; the one that asked is dead now.
-        '401':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Detail'
-          description: ''
+          description: The unit's new token, shown this once; the old one is dead
+            now.
         '403':
           content:
             application/json:
@@ -1011,7 +1012,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Detail'
-          description: Head-unit sign-in is off.
+          description: ''
         '429':
           content:
             application/json:
@@ -18821,12 +18822,27 @@ components:
         expires_at:
           type: string
           format: date-time
+        rotated_at:
+          type: string
+          format: date-time
+          nullable: true
+        stale_use_count:
+          type: integer
+          description: 'Uses of a token after it was rotated away: a copy, or a lost
+            hand-over.'
+        stale_used_at:
+          type: string
+          format: date-time
+          nullable: true
       required:
       - created_at
       - expires_at
       - id
       - label
       - last_used_at
+      - rotated_at
+      - stale_use_count
+      - stale_used_at
     Health:
       type: object
       description: |-

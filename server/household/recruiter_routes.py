@@ -145,7 +145,7 @@ RECRUITER_DENIED: dict[str, str] = {
     "headunit_signin.views.HeadUnitListView": "a demo visit has no head unit to sign in",
     "headunit_signin.views.HeadUnitDetailView": "a demo visit has no head unit to sign in",
     "headunit_signin.views.HeadUnitRevokeAllView": "a demo visit has no head unit to sign in",
-    "headunit_signin.views.HeadUnitRefreshView": "a demo visit has no head unit to sign in",
+    "headunit_signin.views.HeadUnitRotateView": "a demo visit has no head unit to sign in",
     "household.households.InviteListCreateView": _SETTINGS,
     "household.households.InviteDetailView": _SETTINGS,
     "household.households.MemberDetailView": _SETTINGS,
