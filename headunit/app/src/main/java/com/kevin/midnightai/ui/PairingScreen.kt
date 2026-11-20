@@ -149,8 +149,9 @@ private fun PairingPane(context: Context, store: LinkKeyStore, attempt: Int, onF
     var problem by remember(attempt) { mutableStateOf<String?>(null) }
     LaunchedEffect(attempt) {
         // Socket bind, key generation and the QR all happen off the UI thread.
-        val built = withContext<Pair<Pairing?, String?>>(Dispatchers.IO) {
-            val ip = lanIpv4(context) ?: return@withContext null to "This unit is not on Wi-Fi, so the phone cannot reach it. Join the phone's hotspot, then open this again."
+        // Review P1: if the driver backs out mid-build, the started server is closed, never leaked.
+        val built = PairingLaunch.build<Pair<Pairing?, String?>>(Dispatchers.IO, discard = { it.first?.server?.close() }) build@{
+            val ip = lanIpv4(context) ?: return@build null to "This unit is not on Wi-Fi, so the phone cannot reach it. Join the phone's hotspot, then open this again."
             runCatching {
                 val secret = ByteArray(PairingCrypto.SECRET_BYTES).also { SecureRandom().nextBytes(it) }
                 val sink = AndroidHandoverSink(context, store)

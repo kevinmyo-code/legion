@@ -214,6 +214,9 @@ class PairingServer(
 
     private fun publish() {
         _stage.value = session.stage
+        // Review P1: the session is over at Paired or Failed, whether or not the screen ever closes;
+        // from here the 60 s quiet-period rule (spec 3.7) applies to old-key traffic.
+        if (isOver()) CarLink.pairingSessionOpen = false
     }
 
     companion object {

@@ -70,6 +70,27 @@ class PairingServerTest {
         }
     }
 
+    @org.junit.After fun clearSessionFlag() { CarLink.pairingSessionOpen = false }
+
+    /** Review P1: the session flag (N1 protection) ends with the session, not only with close(). */
+    @Test fun p1_theSessionFlagClearsWhenTheSessionFailsEvenIfTheScreenNeverCloses() {
+        val (server, qr) = server()
+        assertTrue(CarLink.pairingSessionOpen)
+        val phone = Phone(qr)
+        Socket(loopback, phone.port).use { sock ->
+            sock.soTimeout = 5_000
+            PairingServer.writeFrame(sock.out(), phone.hello())
+            assertEquals("ack", sock.read().getString("t"))
+            waitFor(server) { it is PairingSession.Stage.EnterCode }
+            val wrong = if (phone.keys.checkCode == "000000") "000001" else "000000"
+            repeat(3) { server.enterCode(wrong) }
+            waitFor(server) { it is PairingSession.Stage.Failed }
+        }
+        Thread.sleep(200)
+        assertEquals("session over but still flagged open", false, CarLink.pairingSessionOpen)
+        server.close()
+    }
+
     @Test fun h3_aFullPairingWhereEveryWriteIsOnTheWorkerNotTheCaller() {
         val (server, qr) = server()
         val writers = Collections.synchronizedList(mutableListOf<Thread>())
