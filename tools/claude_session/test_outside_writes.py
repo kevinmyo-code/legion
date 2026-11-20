@@ -174,6 +174,63 @@ class FileTools(Base):
         self.assertIn("cannot be confirmed", reason)
 
 
+class OtherSpellings(Base):
+    """R5-1 (review round 5): long-path, device and UNC spellings of a refused place are refused too."""
+
+    def refused_places(self):
+        return [PYTHON_HOME / "Lib" / "site-packages" / "zz.pth", PYTHON_HOME / "Lib" / "json" / "__init__.py",
+                HERE / "common.py", self.paths.root / "projects.json",
+                self.local / "Microsoft" / "WinGet" / "Packages" / "GitHub.cli_x" / "bin" / "gh.exe"]
+
+    def spellings(self, p):
+        s = str(p.resolve() if p.exists() else p)
+        drive, rest = s[0], s[3:]
+        host = os.environ.get("COMPUTERNAME", "localhost")
+        b = chr(92)  # one backslash
+        fwd = rest.replace(b, "/")
+        return [
+            b + b + "?" + b + s, "//?/" + s.replace(b, "/"), b + b + "." + b + s, "//./" + s.replace(b, "/"),
+            b + b + "localhost" + b + drive + "$" + b + rest, "//localhost/" + drive + "$/" + fwd,
+            b + b + "127.0.0.1" + b + drive + "$" + b + rest, b + b + host + b + drive + "$" + b + rest,
+            b + b + "?" + b + "UNC" + b + "localhost" + b + drive + "$" + b + rest,
+        ]
+
+    def test_each_spelling_of_each_refused_place_is_refused_yes_or_not(self):
+        self.yes()
+        for place in self.refused_places():
+            for spelled in self.spellings(place):
+                for tool in ("Write", "Edit"):
+                    with self.subTest(spelled=spelled, tool=tool):
+                        got, rule, _ = self.decide(tool, {"file_path": spelled})
+                        self.assertEqual(got, "deny", rule)
+
+    def test_any_other_unc_target_is_refused(self):
+        self.yes()
+        b = chr(92)
+        for spelled in (b + b + "fileserver" + b + "share" + b + "x.txt", "//fileserver/share/x.txt",
+                        b + b + "?" + b + "UNC" + b + "fileserver" + b + "s" + b + "x"):
+            with self.subTest(spelled=spelled):
+                self.assertEqual(self.decide("Write", {"file_path": spelled})[0], "deny")
+
+    def test_own_folder_through_a_long_path_prefix_still_passes(self):
+        b = chr(92)
+        self.assertEqual(self.decide("Write", {"file_path": b + b + "?" + b + str(self.work / "x.txt")})[0], "pass")
+
+
+class FollowUps(Base):
+    """A follow-up task (its record names a parent) may make new files in its parent's folder."""
+
+    def test_parent_folder_for_a_child_only(self):
+        parent = self.paths.task_work(40)
+        parent.mkdir()
+        target = {"file_path": str(parent / "clone" / "new.py")}
+        self.assertEqual(self.decide("Write", target)[0], "deny")  # task 41 has no parent yet
+        self.tasks["41"]["parent"] = 40
+        write_json_atomic(self.paths.state, {"tasks": self.tasks})
+        self.assertEqual(self.decide("Write", target)[0], "pass")
+        self.assertEqual(self.decide("Write", {"file_path": str(self.other / "new.txt")})[0], "deny")
+
+
 class Shell(Base):
     def test_protected_write_targets_named_in_a_command(self):
         site = (PYTHON_HOME / "Lib" / "site-packages").as_posix()

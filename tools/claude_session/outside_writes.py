@@ -88,11 +88,51 @@ def place(target: str, paths: Paths) -> str | None:
     return None
 
 
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+def canonical(target: str) -> str | None:
+    """A file-tool path in plain drive form, or None when it names a share elsewhere (refused).
+
+    R5-1 (review round 5): realpath keeps a `\\\\?\\` or `\\\\.\\` prefix and never maps
+    `\\\\localhost\\C$\\...` to `C:\\...`, so those spellings slipped past the folder checks. The
+    long-path and device prefixes are stripped; an admin share on this machine (localhost,
+    127.0.0.1, its own name) becomes its drive; any other `\\\\` or `//` path is not this laptop's
+    plain file system and is refused."""
+    t = (target or "").replace("/", "\\")
+    for prefix in ("\\\\?\\UNC\\", "\\\\.\\UNC\\"):
+        if t.upper().startswith(prefix):
+            t = "\\\\" + t[len(prefix):]
+            break
+    else:
+        for prefix in ("\\\\?\\", "\\\\.\\"):
+            if t.startswith(prefix):
+                t = t[len(prefix):]
+                break
+    if t.startswith("\\\\"):
+        parts = t[2:].split("\\")
+        hosts = _LOCAL_HOSTS | {h.lower() for h in (os.environ.get("COMPUTERNAME"), os.environ.get("HOSTNAME")) if h}
+        m = re.match(r"^([A-Za-z])\$$", parts[1]) if len(parts) > 1 else None
+        if parts[0].lower() not in hosts or not m:
+            return None
+        t = f"{m.group(1)}:\\" + "\\".join(parts[2:])
+    if t.startswith("\\"):  # `\\?\` leftovers or a rootless path: not a plain drive path
+        return None
+    return t
+
+
 def file_verdict(target: str, paths: Paths, task: int | None, trec: dict | None) -> str | None:
-    """For a file tool: HARD, ASK, or None (the hook's older rules decide)."""
+    """For a file tool: WORKER, HARD, ASK, or None (the hook's older rules decide)."""
+    target = canonical(target)
+    if target is None:
+        return HARD
     # A helper not yet in the agents map has no task: the whole work folder is its own then (the
-    # older rule), and protected places still apply.
-    if is_under(target, paths.task_work(task) if task is not None else paths.work):
+    # older rule), and protected places still apply. A follow-up may also use its parent's folder.
+    own = [paths.task_work(task)] if task is not None else [paths.work]
+    parent = (trec or {}).get("parent")
+    if task is not None and parent:
+        own.append(paths.task_work(int(parent)))
+    if any(is_under(target, f) for f in own):
         return None
     kind = place(target, paths)
     if kind:
