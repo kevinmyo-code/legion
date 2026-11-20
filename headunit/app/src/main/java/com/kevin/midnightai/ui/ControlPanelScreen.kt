@@ -167,6 +167,7 @@ private enum class Section {
     SYSTEM_LOGS,
     SYSTEM_DEVELOPER_TOOLS,
     SYSTEM_UPDATES,
+    CONN_CAR_LINK,
 }
 
 @Composable
@@ -277,6 +278,7 @@ fun ControlPanel(
             Section.SYSTEM_LOGS -> SystemLogsSection { section = null }
             Section.SYSTEM_DEVELOPER_TOOLS -> DeveloperToolsSection(context) { section = null }
             Section.SYSTEM_UPDATES -> SystemUpdatesSection(context) { section = null }
+            Section.CONN_CAR_LINK -> CarLinkSection(context) { section = null }
         }
     } else {
         // key(): the toggle rows hold remembered state, and the same slot is reused
@@ -352,6 +354,12 @@ private fun settingsRows(
     return when (category) {
         SettingsCategory.PHONES -> listOf(
             openRow("Phones", "Switch which phone plays, pair, forget, reset Bluetooth", Section.CONN_PHONES),
+            openRow(
+                "Car link",
+                if (com.kevin.midnightai.link.CarLink.isPaired()) "Paired: location and sign-in come from your phone"
+                else "Pair once with your phone: it sends location and your sign-in",
+                Section.CONN_CAR_LINK,
+            ),
             openRow("Bluetooth check", "Which BT stack owns the phones - read before the two-phone switcher", Section.SYSTEM_BLUETOOTH_DIAGNOSTICS),
         )
         SettingsCategory.MUSIC -> {
