@@ -122,11 +122,13 @@ class _AudioField(serializers.FileField):
 
 
 class _TurnThrottled(exceptions.APIException):
-    """DRF's `Throttled`, with wire v1's `code` in its body."""
+    """DRF's `Throttled`, with wire v1's `code` in its body. `wait` keeps the `Retry-After` header:
+    DRF's exception handler sets it from this attribute."""
 
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
 
-    def __init__(self):
+    def __init__(self, wait=None):
+        self.wait = None if wait is None else max(int(wait), 1)
         super().__init__(
             detail={
                 "detail": "Nothing was answered: too many turns in a short time.",
@@ -282,7 +284,7 @@ class AgentTurnView(_SwitchedAgentsView):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def throttled(self, request, wait):
-        raise _TurnThrottled()
+        raise _TurnThrottled(wait)
 
     @extend_schema(
         tags=AGENTS_TAGS,
