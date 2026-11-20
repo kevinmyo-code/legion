@@ -46,8 +46,14 @@ def board_status(request, arguments: dict):
         f"Done: read aloud and shown, word for word, from the member's factory board. {facts} "
         "The cards' own words are not shown to you; never describe them. The turn ends here."
     )
+    # What a door that cannot speak by code (Live, the web tool door) hands its model: the facts,
+    # and no claim that anything was said.
+    text = (
+        f"From the member's factory board: {facts} The cards' own words are spoken only by "
+        "LEGION's own voice and are not shown to you; never describe them."
+    )
     return ok(
-        for_model,
+        text,
         {
             SPEAK_VERBATIM: said,
             SPEAK_EXACT: True,

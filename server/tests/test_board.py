@@ -214,11 +214,11 @@ def test_key_shapes_and_emails_are_refused_without_echoing(on, auth_client, text
 @pytest.mark.parametrize(
     "text",
     [
-        "CI run 44836128639 (first compile)",
-        "Reviewed at d41507ef, full sha 0123456789abcdef0123456789abcdef01234567",
-        "APK at .legion/releases/app-263242206.apk",
-        "launch_ship_engine_late_answers_1120.sh ready",
-        "feat/web-assistant-cascade, gates owed",
+        "CI run 10000000001 (first compile)",
+        "Reviewed at 0a1b2c3d, full sha 0123456789abcdef0123456789abcdef01234567",
+        "APK at builds/out/teapot-100000001.apk",
+        "run_the_invented_teapot_release_0401.sh ready",
+        "feat/invented-teapot-branch, checks owed",
     ],
 )
 def test_real_card_shapes_pass_the_guard(text):
@@ -279,7 +279,7 @@ def test_old_snapshot_with_the_laptop_on_says_when_it_was_sent(
     )
     body = auth_client.get(BOARD).json()
     assert body["laptop_on"] is True
-    assert body["spoken"][0].startswith("The laptop is on, but its board was last sent")
+    assert body["spoken"][0].startswith("The laptop is on. Its board last changed")
 
 
 def test_never_sent_is_a_sentence(on, auth_client):
@@ -298,3 +298,5 @@ def test_tool_speaks_cards_by_code_and_hands_the_model_counts_only(on, auth_clie
         for card_words in ("teapot", "Kettle", "Scone", "oven", "blue or green"):
             assert card_words not in model_text
     assert "1 waiting on you" in result.structured[FOR_MODEL]
+    # Only the cascade speaks; a door that cannot is never told anything was said.
+    assert "read aloud" not in result.text and "1 waiting on you" in result.text

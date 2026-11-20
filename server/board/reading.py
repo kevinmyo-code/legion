@@ -113,7 +113,7 @@ def freshness_line(request, reading: Reading) -> str:
         return f"The laptop's board, sent {_ago((reading.age_s or 0) // 60)}."
     as_of = _bank_as_of_words(request, reading.row.received_at)
     if reading.laptop_on:
-        return f"The laptop is on, but its board was last sent {as_of}."
+        return f"The laptop is on. Its board last changed {as_of}."
     return f"This is the last board the laptop sent, {as_of}. The laptop is off or offline."
 
 
