@@ -167,8 +167,26 @@ class FleetUploaderTest {
         assertEquals(0L, cursors.samples[other] ?: 0L)
     }
 
+    /**
+     * Review S2, with the values the unit really has: the upload runs at drive end, when the
+     * dongle has just dropped and nothing was picked by hand, so ActiveVehicle.current() is
+     * "default" while the only car on the unit is keyed by its dongle MAC.
+     */
+    @Test fun `the car's own sign-in uploads the unit's only car after the dongle dropped`() = runTest {
+        val outcome = carLinkUploader(Source(listOf(car()), samples(3)), active = "default").upload(FleetUploadReason.DRIVE_END)
+        assertEquals(listOf(3), batchSizes())
+        assertEquals(3, (outcome as FleetUploadOutcome.Sent).samples)
+    }
+
+    @Test fun `the car's own sign-in uploads a car picked by hand under its synthetic id`() = runTest {
+        val picked = "car:6f1c0d2e-1111-2222-3333-444455556666"
+        val outcome = carLinkUploader(Source(listOf(car(), car(picked)), samples(2, picked)), active = picked)
+            .upload(FleetUploadReason.MANUAL)
+        assertEquals(2, (outcome as FleetUploadOutcome.Sent).samples)
+    }
+
     @Test fun `the car's own sign-in with no bound car sends nothing and says so`() = runTest {
-        val outcome = carLinkUploader(Source(listOf(car()), samples(3)), active = "someone-else").upload(FleetUploadReason.MANUAL)
+        val outcome = carLinkUploader(Source(listOf(car(), car("11:22:33:44:55:66")), samples(3)), active = "someone-else").upload(FleetUploadReason.MANUAL)
         assertTrue(requests.isEmpty())
         assertTrue(outcome is FleetUploadOutcome.Skipped)
     }

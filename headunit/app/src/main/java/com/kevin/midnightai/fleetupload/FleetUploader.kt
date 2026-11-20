@@ -242,7 +242,11 @@ class FleetUploader(
     private suspend fun runCarLink(reason: FleetUploadReason, waiting: List<Vehicle>): FleetUploadOutcome {
         val engineId = http.carLinkVehicleId()
             ?: return FleetUploadOutcome.Skipped(listOf(CAR_LINK_NO_VEHICLE)).also { log("car data upload: ${it.sentence}") }
+        // Review S2: the active car's id when it names a car here; else, when this unit knows exactly
+        // one car, that car (at drive end the dongle has dropped and current() reads "default").
+        val all = source.vehicles()
         val bound = activeVehicleId()?.let { id -> waiting.firstOrNull { it.obdMac == id } }
+            ?: all.singleOrNull()?.let { only -> waiting.firstOrNull { it.obdMac == only.obdMac } }
             ?: return FleetUploadOutcome.Skipped(listOf(CAR_LINK_OTHER_CARS)).also { log("car data upload: ${it.sentence}") }
         val sent = sendCar(bound, engineId, samplesOnly = true)
         sent.failure?.let { return failed(it, sent.samples, 0) }
