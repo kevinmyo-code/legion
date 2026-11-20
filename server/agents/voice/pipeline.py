@@ -30,9 +30,12 @@ from the web door's and are listed under "Differences".
   line it speaks (one speech request per line on this door, so every chunk belongs to one line);
   `filler` true on a filler's audio. Only on a spoken turn (`audio` in, `speak` set, or `say`).
   The miss line ("Didn't catch that") is audio with a `line_id` and no `sentence`, as on the web.
-- `line_id` is wire v1's `"<seq>.<stream_no>.<n>"`: the turn's `seq` (0 for a line said before any
-  turn row exists: the miss, the crisis line, `say`), stream 1 (relay continuations come with the
-  relay), `n` counting this stream's lines.
+- `line_id` is wire v1's `"<seq>.<stream_no>.<n>"`: the turn's `seq`, stream 1 (relay
+  continuations come with the relay), `n` counting this stream's lines. A line said before any
+  turn row exists (the miss, the crisis line, `say`) is `"0.<request stamp>.<n>"`: seq 0, never
+  a turn's, and as its stream the request's arrival in epoch milliseconds times 1,000 plus this
+  process's request count (mod 1,000), so it is unique in the conversation without a stored
+  counter (a stored per-conversation counter would need a migration).
 - `speech_failed` {reason}: a sentence's speech failed; its text was still sent.
 - `speech_stopped` {reason}: the speech budget ran out; the rest is shown, not said.
 - `done` {status, final_text, writes_ran, contract_version, timing, ignored?, end?}: last.
@@ -66,6 +69,7 @@ never words), and speech is metered on the member's cap (`stage.meter_speech`).
 
 from __future__ import annotations
 
+import itertools
 import logging
 import time
 from collections.abc import Callable, Iterator
@@ -145,16 +149,24 @@ class TurnCancel:
         return self()
 
 
-class Lines:
-    """Wire v1 line ids for one stream: `"<seq>.1.<n>"`."""
+_REQUESTS = itertools.count()
 
-    def __init__(self):
+
+class Lines:
+    """Wire v1 line ids for one stream: `"<seq>.1.<n>"` once the turn row exists, and before it
+    `"0.<request ms>.<n>"` (see the module docstring)."""
+
+    def __init__(self, request_ms: int):
         self.seq = 0
+        self.stream = request_ms
         self.n = 0
+
+    def turn(self, seq: int) -> None:
+        self.seq, self.stream = seq, 1
 
     def next(self) -> str:
         self.n += 1
-        return f"{self.seq}.1.{self.n}"
+        return f"{self.seq}.{self.stream}.{self.n}"
 
 
 class AgentSpeaker(Speaker):
@@ -243,7 +255,7 @@ def voice_turn(
     timings: dict = {}
     filler_audio = filler_audio or FILLER_AUDIO
     speaker = AgentSpeaker(speech, voice, enabled=utterance.spoken, clock=clock)
-    lines = Lines()
+    lines = Lines(int(time.time() * 1000) * 1000 + next(_REQUESTS) % 1000)
     marks: dict = {}
     # Bounded per turn: never more requests than reserved at the start (review C3).
     speaker.more = lambda n: False
@@ -441,7 +453,7 @@ def _answer(
             continue
         if event.type == "turn":
             cancel.turn_id = event.data.get("turn_id")
-            lines.seq = event.data.get("seq") or 0
+            lines.turn(event.data.get("seq") or 0)
         yield event
         if event.type == "turn" and heard is not None:
             marks["heard_ms"] = _ms(clock, t_turn)

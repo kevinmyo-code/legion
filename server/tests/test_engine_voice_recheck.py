@@ -24,7 +24,7 @@ from tests.test_engine_voice_turn import FakeSpeech, _events, _post, _wav, engin
 
 pytestmark = pytest.mark.django_db
 
-LINE_ID = re.compile(r"^\d+\.1\.\d+$")
+LINE_ID = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 @pytest.fixture(autouse=True)
