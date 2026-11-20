@@ -35,7 +35,9 @@ from the web door's and are listed under "Differences".
   turn row exists (the miss, the crisis line, `say`) is `"0.<request stamp>.<n>"`: seq 0, never
   a turn's, and as its stream the request's arrival in epoch milliseconds times 1,000 plus this
   process's request count (mod 1,000), so it is unique in the conversation without a stored
-  counter (a stored per-conversation counter would need a migration).
+  counter (a stored per-conversation counter would need a migration). A client treats every
+  `line_id` as OPAQUE: a string it compares for equality and sends back in `played`, never parsed
+  for its parts or ordered by them (the pre-turn stamp is a 16-digit number, not a stream count).
 - `speech_failed` {reason}: a sentence's speech failed; its text was still sent.
 - `speech_stopped` {reason}: the speech budget ran out; the rest is shown, not said.
 - `done` {status, final_text, writes_ran, contract_version, timing, ignored?, end?}: last.
