@@ -16,6 +16,7 @@ import com.kevin.legion.carlink.LinkState
 import com.kevin.legion.carlink.VehicleOption
 import com.kevin.legion.carlink.protocol.PairingFailure
 import com.kevin.legion.carlink.protocol.PairingStage
+import com.kevin.legion.carlink.protocol.QrPayload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,11 +89,25 @@ class CarLinkViewModel(
         scanUi.value = ScanUi(scanning = true)
     }
 
-    /** STUB (red step). */
-    fun onScanned(raw: String) = Unit
+    /**
+     * The camera read a QR. Its text goes to nothing but the pairing parser: anything that is not a
+     * head unit pairing code (a web address included) is refused in words and scanning goes on.
+     */
+    fun onScanned(raw: String) {
+        if (!scanUi.value.scanning) return
+        val text = raw.trim()
+        if (QrPayload.parse(text) == null) {
+            scanUi.value = scanUi.value.copy(reject = CarLinkWords.NOT_A_PAIRING_CODE)
+            return
+        }
+        scanUi.value = ScanUi()
+        controller.pair(text)
+    }
 
-    /** STUB (red step). */
-    fun onCameraDenied() = Unit
+    /** The camera was refused: say what to do; Scan stays there to try again. */
+    fun onCameraDenied() {
+        scanUi.value = ScanUi(cameraNote = CarLinkWords.CAMERA_REFUSED)
+    }
 
     /** Debug builds only: the pasted `mnai-pair:` text stands in for a scan. */
     fun pasteCode(text: String) {
@@ -219,6 +234,11 @@ class CarLinkViewModel(
 
 /** The words for every outcome. */
 object CarLinkWords {
+    const val NOT_A_PAIRING_CODE =
+        "That is not a head unit pairing code. Point the camera at the code on the head unit."
+    const val CAMERA_REFUSED = "LEGION uses the camera only to read the pairing code on the head unit. " +
+        "To allow it: Android Settings, Apps, LEGION, Permissions, Camera, \"Allow only while using the app\". " +
+        "Then tap Scan again."
     const val NO_VEHICLE = "No car in LEGION yet: the head unit will send no car data until it is tied to one."
 
     /** What pairing hands the car, in words; what this phone lacks is said, never hidden. */

@@ -28,7 +28,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 
 /** The Car link screen's ViewModel over the real controller, with a scripted head unit on a fake connection. */
@@ -143,7 +142,7 @@ class CarLinkViewModelTest {
         assertTrue(store.sendLocation())
     }
 
-    @Ignore("red until fix D") @Test fun `while the camera is open the screen says scanning, and a pairing code it reads starts pairing`() {
+    @Test fun `while the camera is open the screen says scanning, and a pairing code it reads starts pairing`() {
         vm.scan()
         assertEquals(CarLinkPhase.SCANNING, state().phase)
         assertTrue(state().canCancel)
@@ -151,7 +150,7 @@ class CarLinkViewModelTest {
         assertEquals(CarLinkPhase.DIGITS, state().phase)
     }
 
-    @Ignore("red until fix D") @Test fun `a code that is not a pairing code is refused in words and nothing starts`() {
+    @Test fun `a code that is not a pairing code is refused in words and nothing starts`() {
         vm.scan()
         vm.onScanned("https://example.invalid/not-a-pairing-code")
         assertEquals(CarLinkPhase.SCANNING, state().phase)
@@ -159,7 +158,7 @@ class CarLinkViewModelTest {
         assertTrue(conn.sent.isEmpty())
     }
 
-    @Ignore("red until fix D") @Test fun `a refused camera says what to do, and Scan stays available`() {
+    @Test fun `a refused camera says what to do, and Scan stays available`() {
         vm.onCameraDenied()
         assertEquals(CarLinkPhase.NOT_PAIRED, state().phase)
         assertTrue(state().cameraNote!!.contains("Settings"))
