@@ -13,4 +13,6 @@
          never decrypts on another device and must never make a unit look paired. -->
     <exclude domain="sharedpref" path="car_link.xml" />
     <exclude domain="sharedpref" path="engine_config.xml" />
+    <!-- The owner PIN record (review L-b): Keystore-sealed, and it never leaves the unit. -->
+    <exclude domain="sharedpref" path="owner_pin.xml" />
 </full-backup-content>

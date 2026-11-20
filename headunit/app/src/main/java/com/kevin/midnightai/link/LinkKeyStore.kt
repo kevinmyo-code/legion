@@ -201,13 +201,14 @@ class LinkKeyStore(
      * handed over and the owner PIN go together (2026-11-20), so nothing secret survives it.
      */
     override fun forget() {
-        ownerPinPrefs.edit().clear().commit()
         val fromLink = prefs.getString(KEY_FROM_LINK, null)?.let { runCatching { JSONObject(it) }.getOrNull() }
         if (fromLink != null) {
             fromLink.optString("engine").takeIf { it.isNotBlank() && it == engine.rawToken() }?.let { engine.clear() }
             fromLink.optString("gemini").takeIf { it.isNotBlank() && it == gemini.raw() }?.let { gemini.clear() }
         }
-        prefs.edit().clear().commit()
+        // The PIN goes LAST, and only once the pairing is really gone (review L-a): a disk failure
+        // part way must never leave a pairing with no PIN in front of it.
+        if (prefs.edit().clear().commit()) ownerPinPrefs.edit().clear().commit()
     }
 
     /** Secrets that came over the link, for the log redactor at app start (review L5). Off-main. */
