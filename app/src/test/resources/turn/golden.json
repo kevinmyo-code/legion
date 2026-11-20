@@ -7,6 +7,14 @@
   "long": {
    "samples": 144000,
    "smart_turn_prob": 0.4803165793418884
+  },
+  "far_high": {
+   "samples": 92800,
+   "smart_turn_prob": 0.963354766368866
+  },
+  "far_low": {
+   "samples": 32000,
+   "smart_turn_prob": 0.00949278473854065
   }
  },
  "silero_short": [
