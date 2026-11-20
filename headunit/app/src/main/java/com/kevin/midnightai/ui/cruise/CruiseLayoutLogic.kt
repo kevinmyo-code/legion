@@ -45,7 +45,7 @@ object CruiseLayoutLogic {
 }
 
 /** What the middle panel's words say. Plain values in, strings out. */
-object MiddlePanelText {
+internal object MiddlePanelText {
 
     /** The GPS readout under the CAR / NAV switch, and whether it should read as a warning. */
     data class Gps(val source: String, val age: String, val stale: Boolean)
