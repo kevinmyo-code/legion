@@ -756,6 +756,14 @@
     .recruiter .rc-scene-frame {
         position: relative;
     }
+    /* Narrow, as wide as the picture, which is wider than the frame and scrolls sideways: the
+       layer bands are placed in percent of this box. */
+    @media (max-width: 899px) {
+        .recruiter .rc-scene-frame {
+            width: fit-content;
+            min-width: 100%;
+        }
+    }
     /* With room, the whole diagram in view (no sideways scroll), no taller than 40% of the screen
        so the parts have room under it; a phone keeps the plain page's sideways frame. */
     @media (min-width: 900px) {
