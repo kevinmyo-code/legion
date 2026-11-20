@@ -208,8 +208,18 @@ class VoiceSpeedWiringTest {
         assertTrue(release.contains("backlog = null"))
         assertTrue(release.contains("clipListen = null"))
         assertTrue(s.contains("gemini.transcribe(audio, hold::add, hedged = false)"))
-        assertTrue(bodyOf(s, "backchannelStillDue").contains("Backchannel.Skip.ANSWER_TEXT"))
+        // 2026-11-20: the answer's text being in no longer skips the clip; only its audio does.
+        assertFalse(bodyOf(s, "backchannelStillDue").contains("answerTextIn()"))
         assertTrue(bodyOf(s, "answerTextIn").contains("it.reply.isNotEmpty()"))
+    }
+
+    // 2026-11-20: a first session after an update, or a warm that failed offline, had no clip in
+    // memory until the first reply ended. Every turn's end asks for what is missing again.
+    @Test
+    fun `the filler clips are asked for again at every turn's end, not once per voice`() {
+        val s = session()
+        assertTrue(bodyOf(s, "scheduleBackchannel").contains("warmFillers()"))
+        assertFalse(bodyOf(s, "warmFillers").contains("fillersWarmedFor"))
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())

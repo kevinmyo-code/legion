@@ -215,9 +215,6 @@ internal class CascadeSession(
 
     /** When this conversation first called a write: the agenda read before it is withdrawn. */
     @Volatile private var agendaChangedAt: LocalTime? = null
-
-    /** The voice the filler lines were last warmed on ([warmFillers]). */
-    private var fillersWarmedFor: SpeechBackend? = null
     private var plan: CascadeRules.TurnPlan? = null
     @Volatile private var turnTaker: TurnTaker? = null
 
@@ -316,8 +313,6 @@ internal class CascadeSession(
     private val saidThisTurn: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
     @Volatile private var answerAudioStarted = false
 
-    /** When this turn's backchannel was skipped for answer text already in; logged with the audio's gap. */
-    @Volatile private var answerTextSkipAtMs: Long? = null
     @Volatile private var fillerSkip: Backchannel.Skip? = null
     private val recentWaitLines = RecentLines(WaitFillers.ROTATION)
     private val waitIndex = AtomicInteger(0)
@@ -1219,13 +1214,14 @@ internal class CascadeSession(
         // A new turn's wait starts: the last one's timers are over.
         fillerJobs.endTurn()
         backchannelUtt = u
+        // What is not in memory yet is asked for again (a warm that failed, the first session after an update).
+        warmFillers()
         turnAudioStarted = false
         backchannelEndAtMs = null
         turnFillers.set(0)
         lastFillerEndAtMs = eotAtMs
         saidThisTurn.clear()
         answerAudioStarted = false
-        answerTextSkipAtMs = null
         val seq = backchannelSeq.incrementAndGet()
         val skip = Backchannel.decide(
             Backchannel.Turn(
@@ -1284,7 +1280,9 @@ internal class CascadeSession(
                 // The word as its index in Backchannel.LINES (a number, never the word), and how many
                 // words' clips failed the length gate before it.
                 "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=$ms " +
-                    "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected}",
+                    "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected} " +
+                    // 1: the answer's text was already in, so the answer waits for this clip.
+                    "answer_text=${if (answerTextIn()) 1 else 0}",
             )
             audit.filler("backchannel", line)
             clipPlayback.during {
@@ -1297,13 +1295,6 @@ internal class CascadeSession(
         clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         backchannelEndAtMs = System.currentTimeMillis()
         lastFillerEndAtMs = System.currentTimeMillis()
-    }
-
-    /** The answer's own first audio: no more fillers, and the answer_text skip's gap logged (2026-11-20). */
-    private fun onAnswerAudioStarted(nowMs: Long) {
-        answerAudioStarted = true
-        answerTextSkipAtMs?.let { LiveLatency.log(LiveLatency.TAG, Backchannel.answerTextGapLine(it, nowMs)) }
-        answerTextSkipAtMs = null
     }
 
     /** The clip whose audio [clipListen] keeps: its kind and line index, for [ClipListen.joinedLine]. */
@@ -1418,10 +1409,8 @@ internal class CascadeSession(
                 Backchannel.stillDue(turnAudioStarted, speaking && !cueOver(), seq == backchannelSeq.get())
         }
         if (!due()) return skip("answer_first")
-        if (answerTextIn()) {
-            answerTextSkipAtMs = System.currentTimeMillis()
-            return skip(Backchannel.Skip.ANSWER_TEXT.token)
-        }
+        // The answer's text being in is no reason for silence (Kevin, 2026-11-20: a filler every
+        // time); only its audio having started is. The answer then waits for the clip (<= its length).
         // His turn already read as noise or nothing (no model call happens): nothing to acknowledge.
         // A transcript that comes after the clip's time cannot stop it; that turn still gets one.
         if (backchannelUtt != null && backchannelUtt === noiseUtt) return skip("noise")
@@ -2294,7 +2283,7 @@ internal class CascadeSession(
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
                 } else {
                     answerAudible = true
-                    onAnswerAudioStarted(now)
+                    answerAudioStarted = true
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
                     LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
                 }
@@ -2396,8 +2385,7 @@ internal class CascadeSession(
      */
     private fun warmFillers() {
         val b = backend ?: return
-        if (fillersWarmedFor === b) return
-        fillersWarmedFor = b
+        // Only what is missing is fetched (a kept line in memory, or one already in flight, is skipped).
         b.tts.warm(FILLERS_SPOKEN)
         // The backchannels' and the wait lines' second renders, kept apart ([Backchannel.TAKES]).
         b.tts.warmTakes((Backchannel.LINES + WaitFillers.LINES).map { SpokenText.forSpeech(it) }, 1)
