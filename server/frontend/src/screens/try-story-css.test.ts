@@ -60,7 +60,7 @@ describe('the LEGION scene', () => {
 
 describe('the side orb', () => {
   test('takes clicks only on the orb and the chips, never on its status line', () => {
-    const side = all.find((r) => r.selector.trim() === '.recruiter .rc-voice-side')
+    const side = all.find((r) => r.selector.trim() === '.recruiter .rc-voice-side' && !r.within.includes('@media'))
     expect(side?.body).toMatch(/pointer-events\s*:\s*none/)
     const live = all.filter((r) => /pointer-events\s*:\s*auto/.test(r.body)).map((r) => r.selector)
     expect(live.some((sel) => sel.includes('.rc-side-orb'))).toBe(true)
