@@ -787,3 +787,52 @@ def test_the_background_prompt_never_asks_for_a_yes():
     # A yes to a question built from web pages could run a change a page asked for.
     assert "end with" not in prompt and "whether they want" not in prompt
     assert "do not ask" in prompt
+
+
+# -- review 2026-11-20, item C: queued tasks expire; no "On it" without a runner ------------------
+
+
+def test_a_queued_task_past_its_time_expires_frees_its_slot_and_is_owed_once(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    late.saw_tick()
+    stale = timezone.now() - late.QUEUE_TTL - timedelta(minutes=1)
+    for question in ("first stale", "second stale"):
+        _task(household_user, question=question)
+    LateTask.objects.update(created_at=stale)
+    fake_model["rounds"] = []
+    # Both slots were taken; the stale ones expire, so a new ask is taken.
+    assert _sentences(_turn(auth_client, ASK)) == [late.ACK]
+    assert set(LateTask.objects.filter(status="failed").values_list("question", flat=True)) == {
+        "first stale",
+        "second stale",
+    }
+    lines = set(OwedLine.objects.values_list("text", flat=True))
+    assert lines == {
+        "I couldn't get to first stale in time.",
+        "I couldn't get to second stale in time.",
+    }
+    late.run_due(lambda: m.FakeModel([m.say("Nine.")]))
+    assert OwedLine.objects.filter(text__contains="in time").count() == 2  # once each
+
+
+def test_without_a_recent_tick_there_is_no_on_it(
+    auth_client, door_on, late_on, fake_model
+):
+    late.saw_tick(timezone.now() - late.TICK_FRESH - timedelta(seconds=1))
+    fake_model["rounds"] = []
+    assert _sentences(_turn(auth_client, ASK)) == [late.NO_RUNNER]
+    assert not LateTask.objects.exists()
+
+
+def test_the_command_records_the_tick(household_user, late_on, monkeypatch):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    monkeypatch.setenv("LEGION_GEMINI_KEY", "test-key-not-real")
+    monkeypatch.setattr(
+        "agents.management.commands.late_tasks.GeminiClient", lambda key: m.FakeModel([])
+    )
+    call_command("late_tasks", stdout=StringIO())
+    assert late.runner_is_fresh()
