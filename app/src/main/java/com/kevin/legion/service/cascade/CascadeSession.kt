@@ -316,7 +316,6 @@ internal class CascadeSession(
     private val saidThisTurn: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
     @Volatile private var answerAudioStarted = false
     @Volatile private var fillerSkip: Backchannel.Skip? = null
-    private var waitFillerJob: Job? = null
     private val recentWaitLines = RecentLines(WaitFillers.ROTATION)
     private val waitIndex = AtomicInteger(0)
 
@@ -327,8 +326,11 @@ internal class CascadeSession(
     private var openingJob: Job? = null
     @Volatile private var openingCueEndsAtMs: Long? = null
 
-    /** This turn's backchannel timer ([Backchannel.DELAY_MS]), which turn it is for, and its clip's end. */
-    private var backchannelJob: Job? = null
+    /**
+     * This turn's backchannel and wait-line timers ([TurnFillerJobs]), ended with the turn's wait
+     * (review B1), which turn they are for, and the backchannel clip's end.
+     */
+    private val fillerJobs by lazy { TurnFillerJobs(scope, loop) }
     private val backchannelSeq = AtomicInteger(0)
     @Volatile private var backchannelEndAtMs: Long? = null
 
@@ -1082,8 +1084,7 @@ internal class CascadeSession(
         // The open's chime or cue is neither (2026-11-20: it made the first turn after a tap over_reply).
         val opening = turnJob != null && turnJob === openingJob
         uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)
-        backchannelJob?.cancel()
-        waitFillerJob?.cancel()
+        fillerJobs.endTurn()
         if (checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING) {
             checkInStep = CheckInStep.DONE
             reportCheckIn(CheckInOutcome.ANSWERED)
@@ -1193,7 +1194,8 @@ internal class CascadeSession(
      * this turn started, Quiet, the route), never his words. Every turn of his, short or long.
      */
     private fun scheduleBackchannel(u: TurnUtterance, eotAtMs: Long) {
-        backchannelJob?.cancel()
+        // A new turn's wait starts: the last one's timers are over.
+        fillerJobs.endTurn()
         backchannelUtt = u
         turnAudioStarted = false
         backchannelEndAtMs = null
@@ -1217,7 +1219,7 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${skip.token}")
             return
         }
-        backchannelJob = scope.launch(loop) {
+        fillerJobs.startBackchannel {
             delay((eotAtMs + Backchannel.DELAY_MS - System.currentTimeMillis()).coerceAtLeast(0))
             playBackchannel(seq, eotAtMs)
         }
@@ -1289,20 +1291,19 @@ internal class CascadeSession(
      * [WAIT_POLL_MS], so a backchannel or task line that ends later moves the next one back.
      */
     private fun scheduleWaitFillers(eotAtMs: Long) {
-        waitFillerJob?.cancel()
         val seq = backchannelSeq.get()
         // The backchannel's own rules (Quiet, a call, over a reply, half-duplex) bind these too.
         if (fillerSkip != null) return
-        waitFillerJob = scope.launch(loop) {
+        fillerJobs.startWait {
             var said = 0
             while (seq == backchannelSeq.get() && !closing.get()) {
-                val at = WaitFillers.nextAtMs(lastFillerEndAtMs, said, turnFillers.get()) ?: return@launch
+                val at = WaitFillers.nextAtMs(lastFillerEndAtMs, said, turnFillers.get()) ?: return@startWait
                 val wait = at - System.currentTimeMillis()
                 if (wait > 0) {
                     delay(minOf(wait, WAIT_POLL_MS))
                     continue
                 }
-                if (!playWaitFiller(seq, eotAtMs)) return@launch
+                if (!playWaitFiller(seq, eotAtMs)) return@startWait
                 said++
             }
         }
@@ -1408,7 +1409,7 @@ internal class CascadeSession(
 
     /** A task line never starts within [Backchannel.SPACING_MS] of a backchannel's end (no stacking). */
     private suspend fun awaitBackchannelSpacing() {
-        backchannelJob?.join()
+        fillerJobs.awaitBackchannel()
         delay(Backchannel.spacingWaitMs(System.currentTimeMillis(), backchannelEndAtMs))
     }
 
@@ -2313,6 +2314,8 @@ internal class CascadeSession(
 
     private fun backToListening() {
         if (closing.get()) return
+        // The turn's wait is over (answered, noise, a dropped transcript, a failed voice): no more fillers.
+        fillerJobs.endTurn()
         warmFillers()
         host.phase(Phase.LISTENING, "Listening...")
         followUpEvent(FollowUpWindow.Event.TurnComplete)
@@ -2342,6 +2345,8 @@ internal class CascadeSession(
         playbackActive = false
         turnTaker?.onReplyEnd()
         turnJob?.cancel()
+        // A tap or barge-in stops the wait too: no backchannel or wait line after it (review B1).
+        fillerJobs.endTurn()
         audit.interrupted(source)
         LiveLatency.log("LIVE_TURN", "interrupted source=$source speaking=$wasSpeaking")
         host.phase(Phase.LISTENING, "Listening...")

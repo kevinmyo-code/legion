@@ -115,7 +115,7 @@ class VoiceSpeedWiringTest {
         assertTrue(schedule.contains("Backchannel.DELAY_MS"))
         // New speech cancels a pending one, and notes whether it started over a reply or a turn.
         val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
-        assertTrue(start.contains("backchannelJob?.cancel()"))
+        assertTrue(start.contains("fillerJobs.endTurn()"))
         assertTrue(start.contains("uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)"))
     }
 
@@ -152,7 +152,7 @@ class VoiceSpeedWiringTest {
         assertTrue(wait < starting.indexOf("sayToolFiller(plan, reply, record)"))
         assertTrue(starting.substring(0, starting.indexOf("override fun onToolResult(")).contains("ToolFillers.stillDue("))
         val spacing = bodyOf(s, "awaitBackchannelSpacing")
-        assertTrue(spacing.contains("backchannelJob?.join()"))
+        assertTrue(spacing.contains("fillerJobs.awaitBackchannel()"))
         assertTrue(spacing.contains("Backchannel.spacingWaitMs("))
     }
 
