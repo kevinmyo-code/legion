@@ -1547,8 +1547,9 @@ def _answer(
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
         yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
-    if not door.cancelled() and not crisis.detect(words):
-        # The late-answer path (`agents/legion/late.py`): the one owed line, claimed only now, after
+    if late.enabled() and not door.cancelled() and not crisis.detect(words):
+        # The late-answer path (`agents/legion/late.py`; switched off, not even the cancel check
+        # runs here): the one owed line, claimed only now, after
         # the model ruled the words were for the assistant (`_not_for_me` returned before this)
         # and never on words of distress, so neither room talk nor a crisis spends it. After his
         # answer on this door; said and shown, never replayed as the model's own words.
