@@ -274,7 +274,7 @@ class CarLinkControllerTest {
             assertEquals(CarLinkNote.FORGOT_REVOKE_SENT, c.status.value.note)
         }
 
-    @Ignore("red until fix expiry") @Test fun `a revoke-only record past 90 days is not used even if the app has run since`() {
+    @Test fun `a revoke-only record past 90 days is not used even if the app has run since`() {
         assertTrue(store.writeRevokeOnly(key, wallNow - 89L * DAY))
         controller().start()
         waitFor("the listener") { senders == 1 }

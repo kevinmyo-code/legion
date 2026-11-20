@@ -141,8 +141,7 @@ class CarLinkController(
     /** A revoke-only record younger than 90 days is kept for one REVOKE; an older one expires unused. */
     private fun loadRevokeOnly() {
         if (!store.revokeOnlyPending()) return
-        val since = store.revokeOnlySince()
-        if (since == null || wallClock() - since > REVOKE_ONLY_MAX_MS) {
+        if (revokeExpired()) {
             store.clearRevokeOnly()
             return
         }
@@ -160,7 +159,9 @@ class CarLinkController(
         val feedRing = if (!revokeOnly) {
             ring
         } else {
-            revokeKey?.let { LinkKeyRing(it.copyOf(), null) { _, _ -> false } } ?: return
+            val key = revokeKey ?: return
+            if (revokeExpired()) return expireRevoke()
+            LinkKeyRing(key.copyOf(), null) { _, _ -> false }
         }
         feedJob = scope.launch(io) {
             var keepGoing = true
@@ -277,6 +278,11 @@ class CarLinkController(
      * which means the car forgot. True = done.
      */
     private fun revokeStep(s: CarLinkSender, tell: RevokeTelling): Boolean {
+        // The 90 days are checked where the record is used, not only at app start.
+        if (revokeExpired()) {
+            expireRevoke()
+            return true
+        }
         val n = s.acceptedHellos()
         if (n > tell.hellos) {
             tell.hellos = n
@@ -289,6 +295,19 @@ class CarLinkController(
         val quiet = tell.sentAny && s.nowMs() - tell.heardAt >= revokeSilenceMs
         if (quiet) revokeDelivered()
         return quiet
+    }
+
+    /** Wall clock, so the 90 days count across reboots; a record with no readable date is expired. */
+    private fun revokeExpired(): Boolean {
+        val since = store.revokeOnlySince() ?: return true
+        return wallClock() - since > REVOKE_ONLY_MAX_MS
+    }
+
+    private fun expireRevoke() {
+        store.clearRevokeOnly()
+        revokeKey?.fill(0)
+        revokeKey = null
+        _status.update { it.copy(revokePending = false) }
     }
 
     private fun revokeDelivered() {
