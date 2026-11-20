@@ -176,9 +176,10 @@ def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
     grades = {"canvas_grades", "what_i_need"}
     # greeting_facts (alfred-greets ticket 01): one member's own day, coursework and budgets.
     greeting = {"greeting_facts"}
+    # board_status (2026-11-20): a real member's laptop board.
     assert set(RECRUITER_EXCLUDED) == {
-        "list_tables", "brief_latest", "check_conditions", "github_status", *memory, *body,
-        *grades, *greeting,
+        "list_tables", "brief_latest", "check_conditions", "github_status", "board_status",
+        *memory, *body, *grades, *greeting,
     }
     assert surface.BODY_COACH_TOOLS == body
     assert (
@@ -294,8 +295,11 @@ def test_the_recruiter_live_setup_declares_exactly_the_allowlist(recruiter_web, 
 
 def test_an_owner_setup_is_unchanged_by_the_recruiter_role(household_user):
     from assistant.surface import WEB_TOOL_NAMES, tools_for
+    from engine_mcp.tools import dark_tools
 
-    assert [t.name for t in tools_for(household_user)] == list(WEB_TOOL_NAMES)
+    # A dark tool (its switch off) is in no one's list; the rest is the whole web surface.
+    expected = [name for name in WEB_TOOL_NAMES if name not in dark_tools()]
+    assert [t.name for t in tools_for(household_user)] == expected
     assert surface.refusal_for("add_event", household_user) is None
     assert not is_recruiter(household_user)
 
@@ -448,6 +452,7 @@ def test_every_denied_route_refuses_a_recruiter_in_words(
     # Doors that are a 404 before authentication while dark are switched on, so the fence is seen.
     settings.LEGION_MCP = True
     monkeypatch.setenv("LEGION_HEADUNIT_SIGNIN", "on")
+    monkeypatch.setenv("LEGION_BOARD", "on")
     client = recruiter_web if credential == "session" else recruiter_token_client
     wrong = []
     for path, cls in DENIED_ROUTES:
