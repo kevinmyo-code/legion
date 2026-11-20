@@ -115,6 +115,29 @@ internal object Backchannel {
         return word to own[Math.floorMod(index, own.size)]
     }
 
+    /** A clip that passed the length gate: its word, take and measured length, and how many words failed first. */
+    data class Chosen(val word: String, val take: Int, val ms: Long, val rejected: Int)
+
+    /**
+     * The clip to play: [pick]'s word, and when its clip fails the length gate ([clipFits]) another
+     * word that passes (2026-11-20: a failed clip used to leave the turn silent). [measure] gives a
+     * word and take's trimmed length in ms. Null only when no clip in memory fits at all.
+     */
+    suspend fun choose(
+        recent: RecentLines,
+        index: Int,
+        inHand: (String, Int) -> Boolean,
+        measure: suspend (String, Int) -> Long,
+    ): Chosen? {
+        val tried = mutableSetOf<String>()
+        while (true) {
+            val (word, take) = pick(recent, index) { w, t -> w !in tried && inHand(w, t) } ?: return null
+            val ms = measure(word, take)
+            if (clipFits(ms)) return Chosen(word, take, ms, tried.size)
+            tried += word
+        }
+    }
+
     /** [pcm] (16-bit mono at [sampleRate]) cut to its voice plus [EDGE_PAD_MS] each side; empty when silent. */
     fun trimSilence(pcm: ByteArray, sampleRate: Int): ByteArray {
         val samples = pcm.size / 2

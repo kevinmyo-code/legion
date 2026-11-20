@@ -127,7 +127,8 @@ class VoiceSpeedWiringTest {
             assertFalse("a backchannel must not touch $reply", play.contains(reply))
         }
         assertTrue(play.contains("playGate.withLock"))
-        assertTrue(play.contains("Backchannel.clipFits("))
+        // The length gate now runs inside Backchannel.choose (pinned in BackchannelTest).
+        assertTrue(play.contains("Backchannel.choose("))
         assertTrue(play.contains("audit.filler(\"backchannel\", line)"))
         assertTrue(play.contains("b.tts.inHandTake("))
         assertTrue(play.contains("Backchannel.trimSilence("))
@@ -240,6 +241,15 @@ class VoiceSpeedWiringTest {
 
     private fun stripComments(text: String): String =
         LINE_COMMENT.replace(BLOCK_COMMENT.replace(text) { "\n".repeat(it.value.count { c -> c == '\n' }) }, "")
+
+    // --- 2026-11-20: a backchannel on every turn (Kevin: "fire every time, no restrictions") -------
+
+    @Test
+    fun `a clip that fails the length gate is replaced by another word, never silence`() {
+        val play = bodyOf(session(), "playBackchannel")
+        assertTrue(play.contains("Backchannel.choose("))
+        assertFalse("one failed clip no longer ends the turn's backchannel", play.contains("if (!Backchannel.clipFits(ms))"))
+    }
 
     private companion object {
         val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)

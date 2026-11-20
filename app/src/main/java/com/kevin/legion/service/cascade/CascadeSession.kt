@@ -1209,20 +1209,22 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${Backchannel.Skip.ANSWER_TEXT.token}")
             return
         }
-        val picked = Backchannel.pick(recentBackchannels, backchannelIndex.getAndIncrement()) { w, t ->
-            b.tts.inHandTake(SpokenText.forSpeech(w), t)
+        // A clip that fails the length gate is swapped for another word; silent only if none fits.
+        var pcm = ByteArray(0)
+        val chosen = Backchannel.choose(
+            recentBackchannels,
+            backchannelIndex.getAndIncrement(),
+            inHand = { w, t -> b.tts.inHandTake(SpokenText.forSpeech(w), t) },
+        ) { w, t ->
+            pcm = Backchannel.trimSilence(clipFromMemory(b.tts, w, t), b.tts.sampleRate)
+            pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
         }
-        if (picked == null) {
-            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=not_in_memory")
+        if (chosen == null) {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=no_clip_fits")
             return
         }
-        val (line, take) = picked
-        val pcm = Backchannel.trimSilence(clipFromMemory(b.tts, line, take), b.tts.sampleRate)
-        val ms = pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
-        if (!Backchannel.clipFits(ms)) {
-            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=clip_ms_$ms")
-            return
-        }
+        val line = chosen.word
+        val ms = chosen.ms
         playGate.withLock {
             if (!due()) return
             listenThroughClip()

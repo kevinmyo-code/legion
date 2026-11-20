@@ -80,6 +80,21 @@ class BackchannelTest {
     }
 
     @Test
+    fun `a clip that fails the length gate is swapped for another word, silent only if none fits`() = kotlinx.coroutines.runBlocking {
+        val recent = RecentLines(Backchannel.ROTATION)
+        val first = Backchannel.pick(recent, 0) { _, _ -> true }!!.first
+        // The first word's clip renders as a sigh (too long): the next word plays instead.
+        val chosen = Backchannel.choose(recent, 0, { _, _ -> true }) { w, _ -> if (w == first) 1_500L else 300L }!!
+        assertFalse(chosen.word == first)
+        assertEquals(300L, chosen.ms)
+        assertEquals(1, chosen.rejected)
+        // Every clip fails: nothing, rather than a clip outside the gate.
+        assertNull(Backchannel.choose(recent, 0, { _, _ -> true }) { _, _ -> 0L })
+        // Nothing in memory: nothing.
+        assertNull(Backchannel.choose(recent, 0, { _, _ -> false }) { _, _ -> 300L })
+    }
+
+    @Test
     fun `only a clip of a backchannel's length plays`() {
         assertFalse(Backchannel.clipFits(0))
         assertFalse(Backchannel.clipFits(Backchannel.MIN_CLIP_MS - 1))
