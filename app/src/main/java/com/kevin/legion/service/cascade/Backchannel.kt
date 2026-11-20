@@ -37,7 +37,7 @@ package com.kevin.legion.service.cascade
  * **What may be a backchannel ([LINES]), and why:** it plays about a second after his last word,
  * before the transcript exists, so it must promise nothing and claim nothing. "Got it.", "I see.",
  * "Sure.", "On it." or "One sec." would be wrong before a "didn't catch that" or a refusal; only
- * neutral sounds of listening go here ("Let's see." included: it claims no result and starts no task).
+ * neutral sounds of listening go here.
  * The same skips apply to every word.
  *
  * Pure: no clock, no Android.
@@ -65,7 +65,8 @@ internal object Backchannel {
     const val MIN_CLIP_MS = 120L
     const val MAX_CLIP_MS = 700L
 
-    val LINES = listOf("Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright.", "Let's see.")
+    // "Let's see." was tried (2026-11-19) and dropped: trimmed, 3 of 10 renders fit the length gate.
+    val LINES = listOf("Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright.")
 
     /**
      * The cloud voice pads a one-word render with 80 to 520 ms of silence each side (measured

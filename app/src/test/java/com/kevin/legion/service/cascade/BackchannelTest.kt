@@ -94,8 +94,7 @@ class BackchannelTest {
     @Test
     fun `the clips are short, content-free and kept like the fillers`() {
         for (line in Backchannel.LINES) {
-            // One word, or "Let's see." (2026-11-19 variety): two words, still a sound of listening.
-            assertTrue(line, line.split(' ').size <= 2)
+            assertTrue(line, line.split(' ').size == 1)
             assertTrue(line, line in ScriptedLines.KEEP)
             assertFalse("a backchannel is not a filler the model's text is checked against", line in ScriptedLines.FILLERS)
         }
