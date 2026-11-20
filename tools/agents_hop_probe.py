@@ -17,6 +17,8 @@ for a phone-like network (or on Wi-Fi for a second row). Stdlib only; prints tim
   200 ms apart. Pass bar: every gap within 50 ms of 200 ms (no buffering in front of Django).
 - **turn-off**: `POST /api/agents/turn` with a member's token (`--token-file`) must answer 404
   "switched off" while `LEGION_AGENTS_TURN` is unset (with no token: 401/403, auth comes first).
+  With the switch ON that post runs a real, paid agent turn, so with a token it is sent only
+  with `--paid`; the estimate is printed first either way.
 
 Not measured here: the phone's own `turn_post_ms` / `first_event_ms` lines and a warm request at
 wake (a phone change, ticket 04).
@@ -113,9 +115,18 @@ def sse(base: str, token_file: str) -> int:
     return 0
 
 
-def turn_off(base: str, token_file: str) -> int:
+# What the member post costs if the agent turn is ON (a typed "probe": one or two text rounds of
+# about 13k cached prompt tokens on gemini-3.5-flash-lite, no speech). An ESTIMATE.
+PAID_TURN_ESTIMATE = "about $0.001 to $0.005 (one typed agent turn, no speech)"
+
+
+def turn_off(base: str, token_file: str, paid: bool = False) -> int:
     headers = {"Content-Type": "application/json"}
     if token_file and os.path.isfile(token_file):
+        print(f"turn_off: if the agent turn is ON this post is a real turn, {PAID_TURN_ESTIMATE}")
+        if not paid:
+            print("turn_off: not sent. Add --paid to send it as the member.")
+            return 2
         with open(token_file, encoding="utf-8") as fh:
             headers["Authorization"] = f"Token {fh.read().strip()}"
     else:
@@ -136,11 +147,12 @@ def main(argv=None) -> int:
     p.add_argument("--cold", action="store_true")
     p.add_argument("--sse", action="store_true")
     p.add_argument("--turn-off", action="store_true")
+    p.add_argument("--paid", action="store_true", help="--turn-off with a token: send the post")
     p.add_argument("--token-file", default=os.environ.get("LEGION_TOKEN_FILE", ""))
     a = p.parse_args(argv)
     base = a.base.rstrip("/")
     if a.turn_off:
-        return turn_off(base, a.token_file)
+        return turn_off(base, a.token_file, a.paid)
     if a.sse:
         return sse(base, a.token_file)
     return hop(base, a.n, a.cold)
