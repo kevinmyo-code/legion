@@ -183,7 +183,7 @@ class VoiceSpeedWiringTest {
         assertTrue(schedule.contains("halfDuplex = turnTaker?.bargeIn != true"))
         assertTrue(schedule.contains("halfDuplexAllowed = VoiceTurnSettings.backchannelHalfDuplex(ctx)"))
         val play = bodyOf(s, "playBackchannel")
-        assertTrue(play.indexOf("listenThroughClip()") in 0 until play.indexOf("playbackActive = true"))
+        assertTrue(play.indexOf("listenThroughClip()") in 0 until play.indexOf("clipPlayback.during"))
         assertTrue(bodyOf(s, "listenThroughClip").contains("clipListen = ClipListen("))
         val feed = bodyOf(s, "onMicBuffer")
         assertTrue(feed.indexOf("listen.onFrame(buf, n, playbackActive)") in 0 until feed.indexOf("taker.feed("))

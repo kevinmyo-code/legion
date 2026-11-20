@@ -331,6 +331,9 @@ internal class CascadeSession(
      * (review B1), which turn they are for, and the backchannel clip's end.
      */
     private val fillerJobs by lazy { TurnFillerJobs(scope, loop) }
+
+    /** A filler clip's playback mark, cleared at its end even when it is cut (review M1). */
+    private val clipPlayback = ClipPlayback({ playbackActive = it }) { speaking }
     private val backchannelSeq = AtomicInteger(0)
     @Volatile private var backchannelEndAtMs: Long? = null
 
@@ -1255,7 +1258,6 @@ internal class CascadeSession(
         playGate.withLock {
             if (!due()) return
             listenThroughClip()
-            playbackActive = true
             recentBackchannels.add(line)
             VoiceEngineSettings.setLastBackchannel(ctx, line)
             turnFillers.incrementAndGet()
@@ -1267,12 +1269,14 @@ internal class CascadeSession(
                     "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected}",
             )
             audit.filler("backchannel", line)
-            val gen = p.generation()
-            withContext(Dispatchers.IO) { p.write(pcm, gen) }
-            p.awaitDrained()
+            clipPlayback.during {
+                val gen = p.generation()
+                withContext(Dispatchers.IO) { p.write(pcm, gen) }
+                p.awaitDrained()
+            }
         }
-        delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
-        if (!speaking && !turnAudioStarted) playbackActive = false
+        // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
+        clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         backchannelEndAtMs = System.currentTimeMillis()
         lastFillerEndAtMs = System.currentTimeMillis()
     }
@@ -1337,7 +1341,6 @@ internal class CascadeSession(
         }
         playGate.withLock {
             if (!due()) return false
-            playbackActive = true
             recentWaitLines.add(chosen.line)
             saidThisTurn.add(chosen.line)
             turnFillers.incrementAndGet()
@@ -1347,12 +1350,14 @@ internal class CascadeSession(
                     "idx=${WaitFillers.LINES.indexOf(chosen.line)}",
             )
             audit.filler("wait", chosen.line)
-            val gen = p.generation()
-            withContext(Dispatchers.IO) { p.write(pcm, gen) }
-            p.awaitDrained()
+            clipPlayback.during {
+                val gen = p.generation()
+                withContext(Dispatchers.IO) { p.write(pcm, gen) }
+                p.awaitDrained()
+            }
         }
-        delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
-        if (!speaking && !turnAudioStarted) playbackActive = false
+        // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
+        clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         lastFillerEndAtMs = System.currentTimeMillis()
         return true
     }

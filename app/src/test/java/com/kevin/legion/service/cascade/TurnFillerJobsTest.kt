@@ -66,4 +66,31 @@ class TurnFillerJobsTest {
             assertEquals("$exit: no backchannel after it", 0, backchannels)
         }
     }
+
+    @Test
+    fun `a clip cancelled mid-play leaves no playback mark`() = runTest {
+        var active = false
+        val clip = ClipPlayback({ active = it }, replyHolds = { false })
+        val started = CompletableDeferred<Unit>()
+        val job = launch {
+            clip.during {
+                started.complete(Unit)
+                delay(700) // the clip plays
+            }
+        }
+        started.await()
+        assertTrue(active)
+        job.cancel() // his speech starts over the clip
+        runCurrent()
+        assertFalse("the mark is cleared when the clip is cut", active)
+    }
+
+    @Test
+    fun `a clip played to its end clears the mark, unless a reply now holds playback`() = runTest {
+        var active = false
+        ClipPlayback({ active = it }, replyHolds = { false }).during { delay(500) }
+        assertFalse(active)
+        ClipPlayback({ active = it }, replyHolds = { true }).during { delay(500) }
+        assertTrue("a real reply speaking keeps it", active)
+    }
 }
