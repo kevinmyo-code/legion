@@ -152,6 +152,8 @@ class CascadeWiringTest {
         assertTrue(close.contains("MAX_NOISE_IN_A_ROW"))
         // 2026-11-20: the close's chime is played by the release (playCloseCue), not a stock tone here.
         assertTrue(bodyOf(s, "releaseNow").contains("playCloseCue(reason)"))
+        // F2: the hand-over's release carries the reason the chime rule knows.
+        assertTrue(bodyOf(s, "handOver").contains("release(CloseCue.voiceFailedReason(reason, VoiceEngineSettings.LIVE_RETIRED, quiet))"))
         assertTrue("a noise drop counts", bodyOf(s, "droppedWords").contains("closedOnNoise()"))
         assertTrue("no voice at all counts", bodyOf(s, "runTurn").contains("closedOnNoise()"))
         assertTrue("heard words reset it", bodyOf(s, "runTurn").contains("noiseInARow = 0"))

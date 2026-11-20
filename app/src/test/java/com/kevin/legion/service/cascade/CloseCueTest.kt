@@ -44,6 +44,17 @@ class CloseCueTest {
         assertEquals(CloseCue.Skip.PLAYED, decide("stopped", played = true))
     }
 
+    // Review of 546cce67 (F2): the hand-over released with the raw reason, so a failed voice closed in
+    // silence. The release now gets the reason the chime rule knows, unless it was a background line.
+    @Test
+    fun `a failed voice's close chimes, a background line's does not`() {
+        val r = CloseCue.voiceFailedReason("tts", liveRetired = true, background = false)
+        assertEquals("voice_failed_tts", r)
+        assertNull(decide(r))
+        assertEquals(CloseCue.Skip.NOT_A_CLOSE, decide(CloseCue.voiceFailedReason("tts", liveRetired = true, background = true)))
+        assertEquals("tts", CloseCue.voiceFailedReason("tts", liveRetired = false, background = false))
+    }
+
     @Test
     fun `the audit line is numbers and fixed tokens`() {
         assertEquals("close_cue played=1 reason=follow_up skipped=none", CloseCue.auditLine("follow_up", null))

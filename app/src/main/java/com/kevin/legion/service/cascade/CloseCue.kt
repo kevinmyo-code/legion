@@ -61,6 +61,14 @@ internal object CloseCue {
             true
         } ?: false
 
+    /**
+     * The reason a voice failure's release is given (review of 546cce67, F2): with Live retired the
+     * conversation ends here, so it is a close the chime is for; a background line nobody asked for
+     * ([background]) and a hand-over to Live are not.
+     */
+    fun voiceFailedReason(reason: String, liveRetired: Boolean, background: Boolean): String =
+        if (liveRetired && !background) "$VOICE_FAILED$reason" else reason
+
     /** `close_cue played=<0|1> reason=<token> skipped=<why>`: fixed tokens only. */
     fun auditLine(reason: String, skip: Skip?): String =
         "close_cue played=${if (skip == null) 1 else 0} reason=${token(reason)} skipped=${skip?.token ?: "none"}"

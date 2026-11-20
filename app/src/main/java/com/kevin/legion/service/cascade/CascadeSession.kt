@@ -3103,7 +3103,7 @@ internal class CascadeSession(
             VoiceEngineSettings.noteStatus(ctx, said)
             // A background line nobody asked for fails quietly on screen; Settings still says why.
             if (!quiet) host.notice(failedNotice(moment, said, from, phoneFault))
-            release(reason)
+            release(CloseCue.voiceFailedReason(reason, VoiceEngineSettings.LIVE_RETIRED, quiet))
         } finally {
             if (VoiceEngineSettings.LIVE_RETIRED) {
                 // Live is retired (Kevin, 2026-11-15): never opened behind his back. The failure is
