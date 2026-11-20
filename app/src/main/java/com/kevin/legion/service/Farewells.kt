@@ -39,6 +39,23 @@ object Farewells {
 
     val TAILS: List<String> = listOf("for now", "then", "now", "again", "mate", "buddy")
 
+    /**
+     * Words that answer a question (review of 546cce67, F1): the yes/no family, the lead-ins, and times.
+     * While Alfred awaits an answer, a turn holding any of these (or a digit) is an answer, not a
+     * farewell: "yes, bye" goes down the answer path so the confirmed action runs.
+     */
+    val ANSWER_WORDS: List<String> = LEADS + listOf(
+        "yep", "yup", "no", "nope", "nah", "sure", "go ahead", "do it", "please", "fine", "correct",
+        "exactly", "tomorrow", "today", "tonight", "morning", "afternoon", "evening", "am", "pm", "o clock",
+    )
+
+    /** [transcript] holds a word that answers a question ([ANSWER_WORDS]) or a number. */
+    fun answersQuestion(transcript: String): Boolean {
+        val w = normalise(transcript).split(' ').filter { it.isNotEmpty() }
+        if (w.any { t -> t.any { it.isDigit() } }) return true
+        return words(ANSWER_WORDS).any { phrase -> w.windowed(phrase.size).any { it == phrase } }
+    }
+
     fun normalise(text: String): String =
         text.lowercase().map { if (it.isLetterOrDigit()) it else ' ' }
             .joinToString("").trim().replace(Regex("\\s+"), " ")
