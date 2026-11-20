@@ -109,6 +109,20 @@ class NavControllerTest {
         assertEquals(0, started)
     }
 
+    /** Review item 7: the SDK's own failure text (URLs, tokens, positions) never reaches the screen or the voice model. */
+    @Test fun aRouteFailureIsAFixedSentenceNeverTheSdksText() {
+        // The real SDK's text would be "HTTP 401 GET https://api.mapbox.com/directions/...access_token=...";
+        // MapboxNavSdk keeps only the kind.
+        sdk.route = RouteResult.Failed(RouteFailure.TOKEN_REFUSED)
+        val c = controller()
+        var result: NavResult? = null
+        c.navigateTo(home) { result = it }
+        for (words in listOf(result!!.message, c.state.value.message)) {
+            assertFalse(words, words.contains("api.mapbox.com") || words.contains("access_token") || words.contains("29.76"))
+        }
+        assertEquals(NavController.failureWords(RouteFailure.TOKEN_REFUSED, "home"), c.state.value.message)
+    }
+
     @Test fun noPositionAsksForNoRoute() {
         pos = null
         val c = controller()

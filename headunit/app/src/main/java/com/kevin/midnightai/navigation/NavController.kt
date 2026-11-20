@@ -100,7 +100,7 @@ class NavController(
                         onResult(NavResult(true, _state.value.message + " Say go or tap GO."))
                     }
                     is RouteResult.Failed -> {
-                        val words = "No route to ${destination.name}: ${result.message}"
+                        val words = failureWords(result.kind, destination.name)
                         _state.value = NavState(NavPhase.FAILED, words, destination)
                         onResult(NavResult(false, words))
                     }
@@ -223,6 +223,14 @@ class NavController(
 
     companion object {
         const val ARRIVAL_HOLD_MS = 30_000L
+
+        /** The only words a route failure ever shows or says (review item 7). */
+        fun failureWords(kind: RouteFailure, place: String): String = when (kind) {
+            RouteFailure.NO_ROUTE -> "No route to $place: the map service found no way there."
+            RouteFailure.OFFLINE -> "No route to $place: the map service could not be reached. Check the phone's hotspot."
+            RouteFailure.TOKEN_REFUSED -> "No route to $place: the map service refused this unit's map token. Pair your phone again."
+            RouteFailure.OTHER -> "No route to $place: the map service did not give one. Try again in a moment."
+        }
         const val NO_TOKEN_WORDS = "Pair your phone to get maps: the map token comes from it over the car link."
         const val IDLE_WORDS = "No trip. Pick a saved place, or say \"navigate to\" and its name."
         fun unavailableWords(reason: String) =

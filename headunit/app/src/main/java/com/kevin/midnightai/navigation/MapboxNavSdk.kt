@@ -136,7 +136,7 @@ class MapboxNavSdk(appContext: Context, provider: BeaconLocationProvider, privat
             override fun onRoutesReady(routes: List<NavigationRoute>, @RouterOrigin routerOrigin: String) {
                 val first = routes.firstOrNull()
                 if (first == null) {
-                    onResult(RouteResult.Failed("the map service returned no route."))
+                    onResult(RouteResult.Failed(RouteFailure.NO_ROUTE))
                     return
                 }
                 feed.setRoutes(listOf(first)) // the preview line
@@ -150,13 +150,26 @@ class MapboxNavSdk(appContext: Context, provider: BeaconLocationProvider, privat
             }
 
             override fun onFailure(reasons: List<RouterFailure>, routeOptions: RouteOptions) {
-                onResult(RouteResult.Failed(reasons.firstOrNull()?.message?.takeIf { it.isNotBlank() } ?: "the map service gave no reason."))
+                onResult(RouteResult.Failed(classify(reasons.firstOrNull())))
             }
 
             override fun onCanceled(routeOptions: RouteOptions, @RouterOrigin routerOrigin: String) {
-                onResult(RouteResult.Failed("the request was cancelled."))
+                onResult(RouteResult.Failed(RouteFailure.OTHER))
             }
         })
+    }
+
+    /** The SDK's failure, reduced to a kind; its text never leaves this file (review item 7). */
+    private fun classify(failure: RouterFailure?): RouteFailure {
+        val text = failure?.message.orEmpty()
+        val thrown = failure?.throwable
+        return when {
+            thrown is java.io.IOException || text.contains("UnknownHost", true) || text.contains("timeout", true) ||
+                text.contains("network", true) -> RouteFailure.OFFLINE
+            text.contains("401") || text.contains("403") || text.contains("token", true) -> RouteFailure.TOKEN_REFUSED
+            text.contains("NoRoute", true) || text.contains("no route", true) -> RouteFailure.NO_ROUTE
+            else -> RouteFailure.OTHER
+        }
     }
 
     @Suppress("UNCHECKED_CAST") // the token is always the List<NavigationRoute> put in Ready above

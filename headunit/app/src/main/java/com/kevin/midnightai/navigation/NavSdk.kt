@@ -1,9 +1,13 @@
 package com.kevin.midnightai.navigation
 
+/** Why a route request failed, as far as the words need to know (never the SDK's own text). */
+enum class RouteFailure { NO_ROUTE, OFFLINE, TOKEN_REFUSED, OTHER }
+
 sealed interface RouteResult {
     /** [token] is opaque: the real seam keeps the SDK's own route objects in it. */
     data class Ready(val token: Any, val route: NavRoute) : RouteResult
-    data class Failed(val message: String) : RouteResult
+    /** Only the kind: the SDK's own text (URLs, tokens, positions) is never carried (review item 7). */
+    data class Failed(val kind: RouteFailure) : RouteResult
 }
 
 /** What the SDK reports on its own while a trip runs. Main thread. */
