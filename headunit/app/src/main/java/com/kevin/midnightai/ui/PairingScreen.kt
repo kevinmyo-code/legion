@@ -41,6 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -186,7 +188,7 @@ private fun PairingPane(context: Context, store: LinkKeyStore, attempt: Int, onF
             Spacer(Modifier.height(AriaDimens.s2))
             OutlinedButton(onClick = { p.server.close(); onFinished() }, modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin)) { Text("CANCEL") }
         }
-        is PairingSession.Stage.EnterCode -> CodePad(s.triesLeft) { p.server.enterCode(it) }
+        is PairingSession.Stage.EnterCode -> CodePad(s.triesLeft, onSubmit = { p.server.enterCode(it) })
         PairingSession.Stage.Receiving -> Text("Numbers match. Receiving from the phone...", style = RowTitle, color = AriaColors.TextPrimary)
         PairingSession.Stage.AwaitingPhone -> Text("Saved. Waiting for the phone to confirm...", style = RowTitle, color = AriaColors.TextPrimary)
         is PairingSession.Stage.Paired -> {
@@ -215,7 +217,11 @@ private fun PairingPane(context: Context, store: LinkKeyStore, attempt: Int, onF
 
 /** Six digits typed on an on-screen pad; nothing goes through the keyboard or the key log. */
 @Composable
-private fun CodePad(triesLeft: Int, onSubmit: (String) -> Unit) {
+internal fun CodePad(
+    triesLeft: Int,
+    onSubmit: (String) -> Unit,
+    onKeyPlaced: (String, androidx.compose.ui.geometry.Rect) -> Unit = { _, _ -> },
+) {
     var digits by remember(triesLeft) { mutableStateOf("") }
     Row(horizontalArrangement = Arrangement.spacedBy(AriaDimens.s4)) {
         Column(Modifier.width(260.dp)) {
@@ -230,13 +236,15 @@ private fun CodePad(triesLeft: Int, onSubmit: (String) -> Unit) {
                 Text("That did not match. Tries left: $triesLeft.", style = RowSubtitle, color = AriaColors.accentText(AriaColors.Amber))
             }
         }
-        BoxWithConstraints(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+        // Sized from the pane's visible height, not the scroll column's unbounded one: the OK key
+        // must be on screen without scrolling (recheck render test at 800x456).
+        BoxWithConstraints(Modifier.fillMaxWidth().heightIn(max = minOf(320.dp, LocalSectionViewportHeight.current))) {
             val edge = (PairingPad.keyEdge(maxWidth.value, maxHeight.value) ?: AriaDimens.driveTouchMin.value).dp
             Column(verticalArrangement = Arrangement.spacedBy(PairingPad.GAP_DP.dp)) {
                 listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("DEL", "0", "OK")).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(PairingPad.GAP_DP.dp)) {
                         row.forEach { k ->
-                            PadKey(k, edge) {
+                            PadKey(k, edge, onKeyPlaced) {
                                 when (k) {
                                     "DEL" -> digits = digits.dropLast(1)
                                     "OK" -> if (digits.length == 6) onSubmit(digits)
@@ -252,11 +260,17 @@ private fun CodePad(triesLeft: Int, onSubmit: (String) -> Unit) {
 }
 
 @Composable
-private fun PadKey(label: String, edge: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+private fun PadKey(
+    label: String,
+    edge: androidx.compose.ui.unit.Dp,
+    onPlaced: (String, androidx.compose.ui.geometry.Rect) -> Unit,
+    onClick: () -> Unit,
+) {
     val shape = RoundedCornerShape(10.dp)
     Box(
         Modifier
             .size(edge)
+            .onGloballyPositioned { onPlaced(label, it.boundsInWindow()) }
             .clip(shape)
             .background(AriaColors.Panel)
             .border(1.dp, AriaColors.PanelBorder, shape)

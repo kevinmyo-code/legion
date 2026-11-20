@@ -911,6 +911,12 @@ internal fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? = try {
     null
 }
 
+/**
+ * The height a Settings pane body can SEE (its scroll viewport), for content that must fit on screen
+ * without scrolling (the pairing digit pad). Infinite outside a SectionScaffold.
+ */
+internal val LocalSectionViewportHeight = androidx.compose.runtime.staticCompositionLocalOf { androidx.compose.ui.unit.Dp.Infinity }
+
 @Composable
 internal fun SectionScaffold(
     title: String,
@@ -938,11 +944,15 @@ internal fun SectionScaffold(
         Spacer(Modifier.height(10.dp))
         Text(title, style = ScreenTitle, color = AriaColors.TextPrimary)
         Spacer(Modifier.height(16.dp))
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-        ) { body() }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalSectionViewportHeight provides maxHeight) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                ) { body() }
+            }
+        }
     }
 }
 
