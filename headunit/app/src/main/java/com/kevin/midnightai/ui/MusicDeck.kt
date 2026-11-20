@@ -404,8 +404,8 @@ internal fun NowPlayingCard(
             onPrevious = { MusicRouter.previous(context) },
             onPlayPause = { if (playing) MusicRouter.pause(context) else MusicRouter.play(context) },
             onNext = { MusicRouter.next(context) },
-            onVolumeDown = { volumePct = VolumeController.lower(context) },
-            onVolumeUp = { volumePct = VolumeController.raise(context) },
+            onVolumeDown = { volumePct = VolumeController.lower(context, by = "screen") },
+            onVolumeUp = { volumePct = VolumeController.raise(context, by = "screen") },
         )
         TransportBlock(m, keys)
     }

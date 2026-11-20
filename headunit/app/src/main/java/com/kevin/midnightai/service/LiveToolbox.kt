@@ -1713,15 +1713,15 @@ object LiveToolbox {
      */
     private fun controlVolume(context: Context, args: JSONObject): JSONObject {
         val pct = when (val action = args.optString("action")) {
-            "up" -> VolumeController.raise(context)
-            "down" -> VolumeController.lower(context)
+            "up" -> VolumeController.raise(context, by = "voice")
+            "down" -> VolumeController.lower(context, by = "voice")
             "set" -> {
                 val level = args.optInt("level", -1)
                 if (level < 0) return result(success = false, message = "What level should I set it to?")
-                VolumeController.setPercent(context, level)
+                VolumeController.setPercent(context, level, by = "voice")
             }
-            "mute" -> VolumeController.mute(context, true)
-            "unmute" -> VolumeController.mute(context, false)
+            "mute" -> VolumeController.mute(context, true, by = "voice")
+            "unmute" -> VolumeController.mute(context, false, by = "voice")
             else -> return result(success = false, message = "Unknown volume action: $action")
         }
         return result(success = true, message = null).put("volumePercent", pct)

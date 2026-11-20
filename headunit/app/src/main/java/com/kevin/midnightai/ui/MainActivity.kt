@@ -314,11 +314,36 @@ class MainActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val up = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP
         if (!up && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) return super.dispatchKeyEvent(event)
+        // HU-1 T2 volume probe: the key as delivered, then the write it causes (VolumeController logs that).
+        logKey(event, handled = true) { com.kevin.midnightai.diag.InputProbe.volume(it) }
         if (event.action == KeyEvent.ACTION_DOWN) {
-            if (up) com.kevin.midnightai.media.VolumeController.raise(this)
-            else com.kevin.midnightai.media.VolumeController.lower(this)
+            // A held key's repeats still move the volume; only the first press is logged as a write.
+            val by = if (event.repeatCount == 0) "key" else com.kevin.midnightai.diag.ProbeFormat.QUIET_WRITER
+            if (up) com.kevin.midnightai.media.VolumeController.raise(this, by = by)
+            else com.kevin.midnightai.media.VolumeController.lower(this, by = by)
         }
         return true
+    }
+
+    /** One probe line for [event] (first press and release only), via [sink]. Never changes what is consumed. */
+    private fun logKey(event: KeyEvent, handled: Boolean, sink: (String) -> Unit) {
+        val p = com.kevin.midnightai.diag.ProbeFormat
+        if (!p.shouldLogKey(event.action, event.repeatCount)) return
+        runCatching {
+            sink(
+                p.keyLine(
+                    name = KeyEvent.keyCodeToString(event.keyCode),
+                    keyCode = event.keyCode,
+                    scanCode = event.scanCode,
+                    source = event.source,
+                    action = event.action,
+                    repeatCount = event.repeatCount,
+                    heldMs = if (event.action == KeyEvent.ACTION_UP) event.eventTime - event.downTime else null,
+                    device = event.device?.name,
+                    handled = handled,
+                ),
+            )
+        }
     }
 
     override fun onPause() {

@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioManager
 import android.os.Build
 import android.os.SystemClock
+import com.kevin.midnightai.diag.InputProbe
+import com.kevin.midnightai.diag.ProbeFormat
 import kotlin.math.roundToInt
 
 /**
@@ -15,7 +17,8 @@ import kotlin.math.roundToInt
  * [com.kevin.midnightai.service.GeminiLiveSession]).
  *
  * Every call returns the resulting volume as a 0-100 percentage so the caller can
- * tell the driver where it landed.
+ * tell the driver where it landed. [by] names who asked (screen, key, voice, panel) for the
+ * volume probe's drive-log line (HU-1 T2).
  */
 object VolumeController {
 
@@ -27,6 +30,8 @@ object VolumeController {
 
     /** Raw STREAM_MUSIC index, for [VolumeSync]. */
     internal fun index(context: Context): Int = am(context).getStreamVolume(AudioManager.STREAM_MUSIC)
+
+    internal fun maxIndex(context: Context): Int = am(context).getStreamMaxVolume(AudioManager.STREAM_MUSIC)
 
     /**
      * Re-applies the CURRENT index after an external change (hardware / steering keys).
@@ -47,29 +52,89 @@ object VolumeController {
         val away = if (target > 0) AudioManager.ADJUST_LOWER else AudioManager.ADJUST_RAISE
         am.adjustStreamVolume(AudioManager.STREAM_MUSIC, away, AudioManager.FLAG_SHOW_UI)
         am.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
-        noteOwnWrite(am)
+        noteOwnWrite(am, "sync", "reassert", target)
     }
 
-    private fun noteOwnWrite(am: AudioManager) =
-        tracker.onOwnWrite(am.getStreamVolume(AudioManager.STREAM_MUSIC), SystemClock.uptimeMillis())
+    private fun noteOwnWrite(am: AudioManager, by: String, what: String, before: Int) {
+        val after = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        tracker.onOwnWrite(after, SystemClock.uptimeMillis())
+        if (ProbeFormat.shouldLogWrite(by)) {
+            InputProbe.volume(ProbeFormat.writeLine(by, what, before, after, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)))
+        }
+    }
 
-    fun raise(context: Context, steps: Int = 1): Int = nudge(context, AudioManager.ADJUST_RAISE, steps)
+    fun raise(context: Context, steps: Int = 1, by: String = "app"): Int =
+        nudge(context, AudioManager.ADJUST_RAISE, steps, by)
 
-    fun lower(context: Context, steps: Int = 1): Int = nudge(context, AudioManager.ADJUST_LOWER, steps)
+    fun lower(context: Context, steps: Int = 1, by: String = "app"): Int =
+        nudge(context, AudioManager.ADJUST_LOWER, steps, by)
 
     /** Jumps to [percent] (0-100) of max media volume. */
-    fun setPercent(context: Context, percent: Int): Int {
+    fun setPercent(context: Context, percent: Int, by: String = "app"): Int {
         val am = am(context)
+        val before = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val target = (percent.coerceIn(0, 100) / 100f * max).roundToInt().coerceIn(0, max)
         am.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
-        noteOwnWrite(am)
+        noteOwnWrite(am, by, "set $percent%", before)
         return percent(am)
     }
 
-    /** Mutes or unmutes media playback; returns the resulting percentage. */
-    fun mute(context: Context, muted: Boolean): Int {
+    /**
+     * The Volume check panel's re-apply buttons (HU-1 T2 probe): each re-sends the CURRENT index
+     * a different way, so a drive can show which call the amp actually follows. The fix waits for
+     * that drive's log. [what] is shown under the button and written to the log.
+     */
+    enum class Reapply(val label: String, val what: String) {
+        STEP_AWAY_AND_BACK(
+            "STEP AWAY + BACK",
+            "adjustStreamVolume(STREAM_MUSIC, one notch away, FLAG_SHOW_UI), then setStreamVolume(STREAM_MUSIC, " +
+                "same index, FLAG_SHOW_UI). Today's automatic re-assert.",
+        ),
+        ADJUST_SAME("ADJUST SAME", "adjustStreamVolume(STREAM_MUSIC, ADJUST_SAME, FLAG_SHOW_UI)"),
+        SET_SAME_SHOW_UI("SET SAME + PANEL", "setStreamVolume(STREAM_MUSIC, same index, FLAG_SHOW_UI)"),
+        SET_SAME_NO_FLAG("SET SAME, NO FLAG", "setStreamVolume(STREAM_MUSIC, same index, no flags)"),
+        RAISE_THEN_LOWER(
+            "UP 1 + DOWN 1",
+            "adjustStreamVolume(STREAM_MUSIC, ADJUST_RAISE, FLAG_SHOW_UI), then ADJUST_LOWER. What the on-screen keys call.",
+        ),
+    }
+
+    /** Runs one [Reapply] strategy on the current index; recorded as our own write so VolumeSync ignores its echo. */
+    fun reapply(context: Context, strategy: Reapply): Int {
         val am = am(context)
+        val index = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val show = AudioManager.FLAG_SHOW_UI
+        when (strategy) {
+            Reapply.STEP_AWAY_AND_BACK -> {
+                val away = if (index > 0) AudioManager.ADJUST_LOWER else AudioManager.ADJUST_RAISE
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, away, show)
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, index, show)
+            }
+            Reapply.ADJUST_SAME -> am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, show)
+            Reapply.SET_SAME_SHOW_UI -> am.setStreamVolume(AudioManager.STREAM_MUSIC, index, show)
+            Reapply.SET_SAME_NO_FLAG -> am.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0)
+            Reapply.RAISE_THEN_LOWER -> {
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, show)
+                am.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, show)
+            }
+        }
+        noteOwnWrite(am, "panel", "reapply ${strategy.name}", index)
+        return percent(am)
+    }
+
+    /** Raw index, max and mute, for the Volume check panel. */
+    fun readout(context: Context): String {
+        val am = am(context)
+        val muted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && am.isStreamMute(AudioManager.STREAM_MUSIC)
+        return "STREAM_MUSIC index ${am.getStreamVolume(AudioManager.STREAM_MUSIC)} of " +
+            "${am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}" + (if (muted) ", muted" else "")
+    }
+
+    /** Mutes or unmutes media playback; returns the resulting percentage. */
+    fun mute(context: Context, muted: Boolean, by: String = "app"): Int {
+        val am = am(context)
+        val before = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             am.adjustStreamVolume(
                 AudioManager.STREAM_MUSIC,
@@ -79,12 +144,13 @@ object VolumeController {
         } else if (muted) {
             am.setStreamVolume(AudioManager.STREAM_MUSIC, 0, AudioManager.FLAG_SHOW_UI)
         }
-        noteOwnWrite(am)
+        noteOwnWrite(am, by, if (muted) "mute" else "unmute", before)
         return percent(am)
     }
 
-    private fun nudge(context: Context, direction: Int, steps: Int): Int {
+    private fun nudge(context: Context, direction: Int, steps: Int, by: String): Int {
         val am = am(context)
+        val before = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         // FLAG_SHOW_UI is required on many head units / OEM ROMs for a programmatic
         // STREAM_MUSIC change to actually take effect (without it the call is a
         // silent no-op — the on-screen meter never moved). It also surfaces the
@@ -92,7 +158,7 @@ object VolumeController {
         repeat(steps.coerceIn(1, 10)) {
             am.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
         }
-        noteOwnWrite(am)
+        noteOwnWrite(am, by, if (direction == AudioManager.ADJUST_RAISE) "raise" else "lower", before)
         return percent(am)
     }
 
