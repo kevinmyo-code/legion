@@ -4,6 +4,7 @@ import com.kevin.legion.carlink.CarLinkController
 import com.kevin.legion.carlink.CarLinkStore
 import com.kevin.legion.carlink.FakeKeystoreStandIn
 import com.kevin.legion.carlink.HandoverPlan
+import com.kevin.legion.carlink.HandoverSources
 import com.kevin.legion.carlink.MemoryRecordFile
 import com.kevin.legion.carlink.UnitTokenNotYetAvailable
 import com.kevin.legion.carlink.protocol.CarLinkVectors
@@ -25,7 +26,9 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 
 /** The Car link screen's ViewModel over the real controller, with a scripted head unit on a fake connection. */
@@ -70,22 +73,21 @@ class CarLinkViewModelTest {
     private val controller = CarLinkController(
         store = store,
         transport = { _, _ -> conn },
-        handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { "Test phone" }, {}),
+        handover = HandoverPlan(HandoverSources({ null }, { null }, { "Test phone" }), UnitTokenNotYetAvailable()) {},
         newSender = { _, _, _, _ -> null },
         scope = scope,
         io = Dispatchers.Unconfined,
         jitterMs = { 300L },
         sleep = {},
     )
-    private val vm = CarLinkViewModel(controller, NoQrScannerChosen(), debugPaste = true, scope = scope)
+    private val vm = CarLinkViewModel(controller, scannerAvailable = true, debugPaste = true, scope = scope)
 
     private fun state() = vm.state.value
 
-    @Test fun `starts not paired, off by default, with no scanner chosen`() {
+    @Test fun `starts not paired, off by default, with Scan offered`() {
         assertEquals(CarLinkPhase.NOT_PAIRED, state().phase)
         assertFalse(state().sendLocation)
-        assertFalse(state().carKeySet)
-        assertFalse(state().scannerAvailable)
+        assertTrue(state().showScan)
         assertTrue(state().canPair)
     }
 
@@ -141,23 +143,34 @@ class CarLinkViewModelTest {
         assertTrue(store.sendLocation())
     }
 
-    @Test fun `scan with no scanner chosen returns to the resting state`() {
+    @Ignore("red until fix D") @Test fun `while the camera is open the screen says scanning, and a pairing code it reads starts pairing`() {
         vm.scan()
-        assertEquals(CarLinkPhase.NOT_PAIRED, state().phase)
+        assertEquals(CarLinkPhase.SCANNING, state().phase)
+        assertTrue(state().canCancel)
+        vm.onScanned(CarLinkVectors.qrText())
+        assertEquals(CarLinkPhase.DIGITS, state().phase)
     }
 
-    @Test fun `while the scanner is open the screen says scanning, and its result pairs`() {
-        var pending: ((String?) -> Unit)? = null
-        val scanner = object : QrScanner {
-            override val available = true
-            override fun scan(onResult: (String?) -> Unit) { pending = onResult }
-        }
-        val withScanner = CarLinkViewModel(controller, scanner, debugPaste = false, scope = scope)
-        withScanner.scan()
-        assertEquals(CarLinkPhase.SCANNING, withScanner.state.value.phase)
-        assertTrue(withScanner.state.value.canCancel)
-        pending!!.invoke(CarLinkVectors.qrText())
-        assertEquals(CarLinkPhase.DIGITS, withScanner.state.value.phase)
+    @Ignore("red until fix D") @Test fun `a code that is not a pairing code is refused in words and nothing starts`() {
+        vm.scan()
+        vm.onScanned("https://example.invalid/not-a-pairing-code")
+        assertEquals(CarLinkPhase.SCANNING, state().phase)
+        assertEquals("That is not a head unit pairing code. Point the camera at the code on the head unit.", state().scanReject)
+        assertTrue(conn.sent.isEmpty())
+    }
+
+    @Ignore("red until fix D") @Test fun `a refused camera says what to do, and Scan stays available`() {
+        vm.onCameraDenied()
+        assertEquals(CarLinkPhase.NOT_PAIRED, state().phase)
+        assertTrue(state().cameraNote!!.contains("Settings"))
+        assertTrue(state().canPair)
+    }
+
+    @Ignore("red until fix B") @Test fun `the screen says what pairing hands over, and what this phone lacks`() {
+        assertEquals(
+            "This phone has no Gemini key and no map token, so the car will get neither.",
+            state().handsOver,
+        )
     }
 
     @Test fun `a key this phone cannot read shows Pairing broken and offers Forget`() {
@@ -166,24 +179,24 @@ class CarLinkViewModelTest {
         val unreadable = FakeKeystoreStandIn().apply { failOpens = 3 }
         val brokenController = CarLinkController(
             CarLinkStore(unreadable, file) {}, { _, _ -> null },
-            HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
+            HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
             { _, _, _, _ -> null }, scope, Dispatchers.Unconfined, { 300L }, {},
         )
-        val broken = CarLinkViewModel(brokenController, NoQrScannerChosen(), debugPaste = false, scope = scope)
+        val broken = CarLinkViewModel(brokenController, scannerAvailable = true, debugPaste = false, scope = scope)
         assertEquals(CarLinkPhase.BROKEN, broken.state.value.phase)
         assertEquals("Pairing broken: pair again.", broken.state.value.headline)
         assertTrue(broken.state.value.canForget)
     }
 
     @Test fun `debug paste does nothing in a release build`() {
-        val release = CarLinkViewModel(controller, NoQrScannerChosen(), debugPaste = false, scope = scope)
+        val release = CarLinkViewModel(controller, scannerAvailable = true, debugPaste = false, scope = scope)
         release.pasteCode(CarLinkVectors.qrText())
         assertEquals(CarLinkPhase.NOT_PAIRED, release.state.value.phase)
     }
 
-    @Test fun `a build with no scanner and no paste field says scanning comes later, with no dead button`() {
-        val release = CarLinkViewModel(controller, NoQrScannerChosen(), debugPaste = false, scope = scope)
-        assertEquals("Scanning arrives in a later update.", release.state.value.scanNote)
-        assertFalse(release.state.value.showScan)
+    @Test fun `a phone with a camera shows Scan and no words about scanning later`() {
+        val release = CarLinkViewModel(controller, scannerAvailable = true, debugPaste = false, scope = scope)
+        assertNull(release.state.value.scanNote)
+        assertTrue(release.state.value.showScan)
     }
 }

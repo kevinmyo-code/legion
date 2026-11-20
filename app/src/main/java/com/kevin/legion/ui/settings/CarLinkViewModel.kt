@@ -2,6 +2,7 @@ package com.kevin.legion.ui.settings
 
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -10,33 +11,17 @@ import com.kevin.legion.MidnightApplication
 import com.kevin.legion.carlink.CarLinkController
 import com.kevin.legion.carlink.CarLinkNote
 import com.kevin.legion.carlink.CarLinkStatus
+import com.kevin.legion.carlink.HandoverGap
 import com.kevin.legion.carlink.LinkState
+import com.kevin.legion.carlink.VehicleOption
 import com.kevin.legion.carlink.protocol.PairingFailure
 import com.kevin.legion.carlink.protocol.PairingStage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-
-/**
- * Reads a pairing QR. A DECISION FOR KEVIN, not made here: ZXing was removed by ruling, and
- * CameraX + ML Kit, Google's code scanner and ZXing core are each a new dependency. Until he picks
- * one, [NoQrScannerChosen] is wired and debug builds offer a paste field instead.
- */
-interface QrScanner {
-    val available: Boolean
-    fun scan(onResult: (String?) -> Unit)
-}
-
-/** What a build with no scanner and no paste field says instead of a scan button. */
-const val SCAN_LATER = "Scanning arrives in a later update."
-
-class NoQrScannerChosen : QrScanner {
-    override val available = false
-    override fun scan(onResult: (String?) -> Unit) = onResult(null)
-}
 
 enum class CarLinkPhase { NOT_PAIRED, SCANNING, DIGITS, WAITING_FOR_UNIT, PAIRED, FAILED, BROKEN }
 
@@ -49,50 +34,65 @@ data class CarLinkUiState(
     val digits: String? = null,
     val note: String? = null,
     val sendLocation: Boolean = false,
-    /** Whether the car's own Gemini key is set. The key itself is never shown. */
-    val carKeySet: Boolean = false,
+    /** What pairing hands the car, in words (the phone's own Gemini key and map token, or their absence). */
+    val handsOver: String = "",
+    /** The household's cars and the one this head unit is in. */
+    val vehicles: List<VehicleOption> = emptyList(),
+    val vehicleId: String? = null,
+    val vehicleNote: String? = null,
     val canPair: Boolean = true,
     val canCancel: Boolean = false,
     val canForget: Boolean = false,
-    val scannerAvailable: Boolean = false,
-    val debugPaste: Boolean = false,
-    val scanNote: String? = null,
     val showScan: Boolean = true,
+    val debugPaste: Boolean = false,
+    /** Why there is no scan button (no camera on this phone), when there is none. */
+    val scanNote: String? = null,
+    /** The camera was refused: what to do. */
+    val cameraNote: String? = null,
+    /** The last code the camera read was not a pairing code. */
+    val scanReject: String? = null,
 ) {
     // A data class's toString would print the digits; nothing may log them.
     override fun toString() = "CarLinkUiState($phase)"
 }
 
+/** The scanner's own bit of state, kept apart from the controller's. */
+private data class ScanUi(val scanning: Boolean = false, val cameraNote: String? = null, val reject: String? = null)
+
 /**
  * The Car link screen's ViewModel (Settings, Car link): one [StateFlow] of [CarLinkUiState] over the
  * process's one [CarLinkController]. [Factory] is the injection point (no Hilt in the build yet).
+ * The QR comes from the camera pane (CameraX + ML Kit, bundled model) through [onScanned], which
+ * hands nothing anywhere but the pairing parser.
  */
 class CarLinkViewModel(
     private val controller: CarLinkController,
-    private val scanner: QrScanner,
+    private val scannerAvailable: Boolean,
     private val debugPaste: Boolean,
     scope: CoroutineScope? = null,
 ) : ViewModel() {
     private val scope: CoroutineScope = scope ?: viewModelScope
-    private val scanning = MutableStateFlow(false)
+    private val scanUi = MutableStateFlow(ScanUi())
     private val _state = MutableStateFlow(CarLinkUiState())
     val state: StateFlow<CarLinkUiState> = _state.asStateFlow()
 
     init {
-        this.scope.launch { controller.status.collect { s -> _state.value = render(s, scanning.value) } }
-        this.scope.launch { scanning.collect { _state.value = render(controller.status.value, it) } }
+        this.scope.launch { controller.status.combine(scanUi) { s, u -> render(s, u) }.collect { _state.value = it } }
         // Reads the stored pairing off the main thread if app start has not yet.
         controller.start()
     }
 
+    /** Scan tapped: the screen asks for the camera (only now) and shows the camera pane. */
     fun scan() {
         controller.dismiss()
-        scanning.value = true
-        scanner.scan { text ->
-            scanning.value = false
-            text?.let(controller::pair)
-        }
+        scanUi.value = ScanUi(scanning = true)
     }
+
+    /** STUB (red step). */
+    fun onScanned(raw: String) = Unit
+
+    /** STUB (red step). */
+    fun onCameraDenied() = Unit
 
     /** Debug builds only: the pasted `mnai-pair:` text stands in for a scan. */
     fun pasteCode(text: String) {
@@ -102,7 +102,7 @@ class CarLinkViewModel(
     }
 
     fun cancel() {
-        scanning.value = false
+        scanUi.value = ScanUi()
         controller.cancel()
     }
 
@@ -114,24 +114,29 @@ class CarLinkViewModel(
 
     fun setSendLocation(on: Boolean) = controller.setSendLocation(on)
 
-    fun setCarGeminiKey(key: String?) = controller.setCarGeminiKey(key)
+    fun chooseVehicle(id: String?) = controller.chooseVehicle(id)
 
-    private fun render(s: CarLinkStatus, scanningNow: Boolean): CarLinkUiState {
+    private fun render(s: CarLinkStatus, u: ScanUi): CarLinkUiState {
         val base = CarLinkUiState(
             sendLocation = s.sendLocation,
-            carKeySet = s.carKeySet,
-            scannerAvailable = scanner.available,
-            // No dead button: with no scanner the scan button is not drawn, and the words say why.
-            showScan = scanner.available,
+            handsOver = CarLinkWords.handsOver(s.gaps),
+            vehicles = s.vehicles,
+            vehicleId = s.vehicleId,
+            vehicleNote = if (s.vehicles.isEmpty()) CarLinkWords.NO_VEHICLE else null,
+            // No dead button: with no camera the scan button is not drawn, and the words say why.
+            showScan = scannerAvailable,
             scanNote = when {
-                scanner.available -> null
-                debugPaste -> "No code scanner yet: this debug build pairs from pasted code text below."
-                else -> SCAN_LATER
+                scannerAvailable -> null
+                debugPaste -> "No camera on this phone: this debug build pairs from pasted code text below."
+                else -> "No camera on this phone, so it cannot read the pairing code."
             },
+            cameraNote = u.cameraNote,
+            scanReject = u.reject,
             debugPaste = debugPaste,
             note = s.note?.let(CarLinkWords::note),
             canForget = s.link == LinkState.PAIRED || s.link == LinkState.BROKEN,
         )
+        val scanningNow = u.scanning
         val p = s.pairing
         return when {
             scanningNow -> base.copy(
@@ -206,7 +211,7 @@ class CarLinkViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             CarLinkViewModel(
                 controller = (app as MidnightApplication).carLink.controller,
-                scanner = NoQrScannerChosen(),
+                scannerAvailable = app.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY),
                 debugPaste = BuildConfig.DEBUG,
             ) as T
     }
@@ -214,6 +219,20 @@ class CarLinkViewModel(
 
 /** The words for every outcome. */
 object CarLinkWords {
+    const val NO_VEHICLE = "No car in LEGION yet: the head unit will send no car data until it is tied to one."
+
+    /** What pairing hands the car, in words; what this phone lacks is said, never hidden. */
+    fun handsOver(gaps: Set<HandoverGap>): String {
+        val noKey = HandoverGap.NO_GEMINI_KEY in gaps
+        val noMap = HandoverGap.NO_MAP_TOKEN in gaps
+        return when {
+            noKey && noMap -> "This phone has no Gemini key and no map token, so the car will get neither."
+            noKey -> "This phone has no Gemini key, so the car will get none. It gets this phone's map token."
+            noMap -> "This phone has no map token, so the car will get none. It gets this phone's Gemini key."
+            else -> "Pairing hands the car this phone's Gemini key and map token."
+        }
+    }
+
     @Suppress("CyclomaticComplexMethod") // one sentence per failure code; a table, not logic
     fun failure(f: PairingStage.Failed): String = when (f.why) {
         PairingFailure.BAD_QR -> "That is not a head unit pairing code. Nothing was sent."
@@ -256,6 +275,9 @@ object CarLinkWords {
         CarLinkNote.NETWORK_NOT_RECORDED ->
             "Paired, but this phone could not tell which network the head unit is on, so it will send it " +
                 "nothing. Pair again with this phone's hotspot on and the head unit joined to it."
+        CarLinkNote.SERVICE_NOT_STARTED ->
+            "Android did not let LEGION keep sending with the screen off. Open LEGION with \"Send location\" " +
+                "on to start it."
         CarLinkNote.PORT_TAKEN ->
             "Another app is using the car link's port (17311), so this phone cannot hear the car. It does " +
                 "not move to another port. Close that app or restart the phone."

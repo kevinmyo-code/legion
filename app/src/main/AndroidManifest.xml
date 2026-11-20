@@ -91,6 +91,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Car link: keeps sending the phone's position to the car's head unit with the screen off, only
+         while paired, "Send location" is on and the pairing network is present (CarLinkLocationService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- Android Auto probe harness (`.scratch/android-auto/map.md`, research 04). Required by BOTH
          microphone routing paths ticket 04 found (Telecom's MODE_IN_COMMUNICATION wrapper and the
@@ -379,6 +382,12 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".carlink.CarLinkLocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <service
             android:name=".service.AriaForegroundService"

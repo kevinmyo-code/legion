@@ -17,6 +17,8 @@ class HandoverBody(
     val geminiKey: String? = null,
     val mapboxToken: String? = null,
     phoneName: String? = null,
+    /** STUB (red step): not yet sent. */
+    val engineVehicleId: String? = null,
 ) {
     /** 3.5: "<display name, <= 40 chars>". */
     val phoneName: String? = phoneName?.trim()?.take(MAX_NAME)

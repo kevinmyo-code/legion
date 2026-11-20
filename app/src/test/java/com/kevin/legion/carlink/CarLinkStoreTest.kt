@@ -128,7 +128,6 @@ class CarLinkStoreTest {
         store.write(key, old)
         store.setUnitDeviceId("dev-1")
         store.setSendLocation(true)
-        store.setCarGeminiKey("car-key-for-tests-0002")
         assertTrue(store.write(null, null))
         assertTrue(file.values.isEmpty())
         assertSame(StoredLink.NotPaired, store.load())
@@ -153,15 +152,6 @@ class CarLinkStoreTest {
         assertTrue(excludes("src/main/res/xml/backup_rules.xml", "full-backup-content"))
     }
 
-    @Test fun `the car's own Gemini key is sealed, read back, and cleared by Forget`() {
-        assertTrue(store.setCarGeminiKey("car-key-for-tests-0001"))
-        assertEquals("car-key-for-tests-0001", store.carGeminiKey())
-        assertFalse(file.values.values.joinToString().contains("car-key-for-tests-0001"))
-        assertTrue(redacted.contains("car-key-for-tests-0001"))
-        store.write(key, null)
-        store.write(null, null)
-        assertNull(store.carGeminiKey())
-    }
 
     @Test fun `the pairing network is recorded and read back`() {
         assertTrue(store.setPairingNetwork(PairingNetwork("ap-test0", "10.20.30.0", 24)))

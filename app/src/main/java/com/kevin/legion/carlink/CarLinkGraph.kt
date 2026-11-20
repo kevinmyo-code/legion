@@ -48,10 +48,14 @@ class CarLinkGraph(private val app: Application) {
         CarLinkController(
             store = store,
             transport = TcpPairingTransport(),
-            handover = HandoverPlan.forCar(
-                store = store,
+            handover = HandoverPlan(
+                sources = HandoverSources(
+                    // The app's own runtime key, never BuildConfig's baked one (5.3 rev 8).
+                    geminiKey = { com.kevin.legion.ai.CompanionProfile.geminiKey(app) },
+                    mapboxToken = { (app as com.kevin.legion.MidnightApplication).mapboxTokens.token() },
+                    phoneName = { Build.MODEL },
+                ),
                 tokens = UnitTokenNotYetAvailable(),
-                phoneName = { Build.MODEL },
                 redact = LogcatRedactor::addLiteral,
             ),
             newSender = { ring, onEvent, sendFixes, mode ->
@@ -83,6 +87,8 @@ class CarLinkGraph(private val app: Application) {
             sleep = { delay(it) },
             network = { store.pairingNetwork()?.look(PairingNetwork.systemInterfaces()) ?: NetworkLook.Absent },
             ownHotspotNow = ::isTethered,
+            vehicles = ::householdCars,
+            locationService = CarLinkLocationService.host(app),
             recordNetwork = { host ->
                 val net = PairingNetwork.recordFor(host, PairingNetwork.systemInterfaces(), ::isTethered)
                 store.setPairingNetwork(net) && net != null
@@ -91,6 +97,18 @@ class CarLinkGraph(private val app: Application) {
     }
 
     private val random = SecureRandom()
+
+    /**
+     * The household's cars by their engine record id (the sidecar's serverId), for the pairing's
+     * "which car is this unit in". A car that never reached the engine has no id and is left out.
+     */
+    private suspend fun householdCars(): List<VehicleOption> {
+        val sidecars = com.kevin.legion.data.local.CarDatabase.getDatabase(app).vehicleSidecarDao()
+        return com.kevin.legion.vehicle.VehicleController.allVehicles(app).mapNotNull { v ->
+            val label = v.name.ifBlank { listOfNotNull(v.year.takeIf { it > 0 }?.toString(), v.make, v.model).joinToString(" ").trim() }
+            sidecars.getByMac(v.obdMac)?.serverId?.let { VehicleOption(it, label) }
+        }
+    }
 
     /** This phone's own hotspot: an up interface that no Android Network carries (tethering). */
     @Suppress("DEPRECATION") // allNetworks: the one call that lists every network on API 24+

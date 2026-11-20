@@ -25,6 +25,9 @@ lifecycle = "2.10.0"
 # ADR 0084, "look at this": CameraX for the look screen's preview and ~1 fps frames. 1.4.2, the
 # last 1.4 stable on Google Maven (read 2026-11-10); 1.5+ was not tried against Kotlin 2.1.0.
 camerax = "1.4.2"
+# ML Kit barcode scanning, BUNDLED model (the car link's QR scanner): the model ships in the APK, so it
+# works offline and never waits on Play services to download one (Kevin, 2026-11-20).
+mlkitBarcode = "17.3.0"
 activityCompose = "1.9.0"
 # Nav for the single-activity shell (ticket 07, app shell and ignition):
 # bottom-nav tabs (fleet/ledger/pantry/settings) plus their absorbed sub-routes
@@ -199,6 +202,7 @@ lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", 
 camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
 work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }

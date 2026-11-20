@@ -34,13 +34,27 @@ import java.io.IOException
  */
 class FeedMode(val revokeOnly: Boolean, val healOn: PairingNetwork?)
 
+/** Starts and stops the foreground service that keeps the sender alive with the screen off. */
+interface LocationServiceHost {
+    /** False = Android refused to start it (said in words). */
+    fun start(): Boolean
+    fun stop()
+
+    companion object {
+        val NONE = object : LocationServiceHost {
+            override fun start() = true
+            override fun stop() = Unit
+        }
+    }
+}
+
 enum class LinkState { LOADING, NOT_PAIRED, PAIRED, BROKEN }
 
 /** Something that happened that the screen should say once, in words. */
 enum class CarLinkNote {
     CONFIRMED, REVERTED_QUIET, FORGOT_REVOKE_SENT, FORGOT_NOT_IN_RANGE, FORGET_FAILED, PORT_UNAVAILABLE,
     SETTING_NOT_SAVED, FORGOT_WILL_TELL, NETWORK_NOT_RECORDED, FORGET_TELLING, PORT_TAKEN,
-    NETWORK_CHANGED_HEALING, NETWORK_CHANGED_REPAIR,
+    NETWORK_CHANGED_HEALING, NETWORK_CHANGED_REPAIR, SERVICE_NOT_STARTED,
 }
 
 /** Everything the Car link screen reads. Not printed anywhere; [PairingStage.DigitsShown] hides its digits. */
@@ -49,7 +63,11 @@ data class CarLinkStatus(
     val pairing: PairingStage? = null,
     val unitInRange: Boolean = false,
     val sendLocation: Boolean = false,
-    val carKeySet: Boolean = false,
+    /** What the hand-over will not carry because this phone lacks it (said in words). */
+    val gaps: Set<HandoverGap> = emptySet(),
+    /** The household's cars, and the one this head unit is in (the engine binds one). */
+    val vehicles: List<VehicleOption> = emptyList(),
+    val vehicleId: String? = null,
     /** A forgotten pairing whose unit will be told at the next contact (5.4, rev 5). */
     val revokePending: Boolean = false,
     val networkChanged: Boolean = false,
@@ -83,6 +101,10 @@ class CarLinkController(
     private val revokeSilenceMs: Long = 30_000L,
     /** Whether an interface is the phone's own hotspot NOW; asked again at heal time (C3). */
     private val ownHotspotNow: (String) -> Boolean = { false },
+    /** The household's cars, for the pairing's vehicle choice. */
+    private val vehicles: suspend () -> List<VehicleOption> = { emptyList() },
+    /** STUB (red step): keeps the process sending with the screen off. */
+    private val locationService: LocationServiceHost = LocationServiceHost.NONE,
 ) {
     private val _status = MutableStateFlow(CarLinkStatus())
     val status: StateFlow<CarLinkStatus> = _status.asStateFlow()
@@ -128,7 +150,6 @@ class CarLinkController(
                     StoredLink.NotPaired -> LinkState.NOT_PAIRED
                 },
                 sendLocation = sendLocation,
-                carKeySet = runCatching { store.carGeminiKey() != null }.getOrDefault(false),
             )
         }
     }
@@ -140,8 +161,20 @@ class CarLinkController(
     fun start() {
         scope.launch(io) {
             ensureLoaded()
+            refreshForScreen()
             startFeed()
         }
+    }
+
+    /** What the screen shows before a pairing: what the hand-over would lack. */
+    @Suppress("TooGenericExceptionCaught") // a failing source must not stop the car link starting
+    private suspend fun refreshForScreen() {
+        val gaps = try {
+            handover.gaps()
+        } catch (_: RuntimeException) {
+            emptySet()
+        }
+        _status.update { it.copy(gaps = gaps) }
     }
 
     /** A revoke-only record younger than 90 days is kept for one REVOKE; an older one expires unused. */
@@ -304,7 +337,7 @@ class CarLinkController(
             val runner = PairingRunner(transport, jitterMs, sleep) { stage ->
                 _status.update { it.copy(pairing = stage) }
                 // Mint the unit's token only once the unit proved itself (a verified ack).
-                if (stage is PairingStage.DigitsShown) scope.launch(io) { handover.prepare() }
+                if (stage is PairingStage.DigitsShown) scope.launch(io) { handover.prepare(_status.value.vehicleId) }
             }
             try {
                 runner.run(client, qr.host, qr.port)
@@ -461,15 +494,8 @@ class CarLinkController(
         _status.update { it.copy(sendLocation = on) }
     }
 
-    /** The car's own Gemini key field (blank clears it). Sealed on [io]: the Keystore is slow. */
-    fun setCarGeminiKey(key: String?) {
-        scope.launch(io) {
-            val saved = store.setCarGeminiKey(key)
-            _status.update {
-                if (saved) it.copy(carKeySet = !key.isNullOrBlank()) else it.copy(note = CarLinkNote.SETTING_NOT_SAVED)
-            }
-        }
-    }
+    /** STUB (red step). */
+    fun chooseVehicle(id: String?) = Unit
 
     private fun onRingEvent(e: RingEvent) {
         val note = when (e) {

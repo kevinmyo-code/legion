@@ -9,6 +9,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -148,5 +149,27 @@ class CarLinkVectorsTest {
         val d = Mnai2.openFromPhone(m.hex("p2u_key"), m.obj("fix").hex("bytes"))!!
         assertEquals(Mnai2.FIX, d.type)
         assertEquals(3L, d.counter)
+    }
+
+    @Ignore("red until fix C") @Test fun `a hand-over with engine_vehicle_id seals and opens under the hand key, and without it the vector bytes hold`() {
+        // Without the field the body is exactly the vectors' plaintext (checked above, byte for byte).
+        assertEquals(p.str("handover_plain"), CarLinkVectors.vectorHandover().toJson())
+        val with = HandoverBody(
+            engineToken = "test-token", engineUserId = "u-1", phoneName = "Test phone",
+            engineVehicleId = "vehicle-id-for-tests",
+        ).toJson()
+        assertEquals(
+            "{\"v\":1,\"engine_token\":\"test-token\",\"engine_user_id\":\"u-1\"," +
+                "\"engine_vehicle_id\":\"vehicle-id-for-tests\",\"phone_name\":\"Test phone\"}",
+            with,
+        )
+        val aad = LinkCrypto.ascii("MNAI-PAIR handover v1")
+        val sealed = LinkCrypto.seal(keys().handKey, LinkCrypto.nonce("HAND", 1), aad, with.toByteArray())
+        assertEquals(with, String(LinkCrypto.open(keys().handKey, LinkCrypto.nonce("HAND", 1), aad, sealed)!!))
+    }
+
+    @Test fun `engine_vehicle_id longer than 64 characters is never sent`() {
+        val body = HandoverBody(engineVehicleId = "x".repeat(65)).toJson()
+        assertEquals(false, body.contains("engine_vehicle_id"))
     }
 }

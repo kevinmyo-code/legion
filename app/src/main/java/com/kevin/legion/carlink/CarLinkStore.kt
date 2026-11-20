@@ -72,7 +72,6 @@ class CarLinkStore(
                 if (clearing) {
                     put(UNIT_DEVICE_ID, null)
                     put(SEND_LOCATION, null)
-                    put(CAR_GEMINI, null)
                     put(REVOKE_ONLY, null)
                     put(REVOKE_SINCE, null)
                     put(PAIRING_NET, null)
@@ -99,34 +98,13 @@ class CarLinkStore(
         register(key)
         return file.writeAll(
             mapOf(
-                CURRENT to null, RESERVE to null, UNIT_DEVICE_ID to null, SEND_LOCATION to null, CAR_GEMINI to null,
+                CURRENT to null, RESERVE to null, UNIT_DEVICE_ID to null, SEND_LOCATION to null,
                 REVOKE_ONLY to blob, REVOKE_SINCE to sinceMs.toString(),
             ),
         )
     }
 
     fun clearRevokeOnly(): Boolean = file.writeAll(mapOf(REVOKE_ONLY to null, REVOKE_SINCE to null))
-
-    /**
-     * The car's OWN Gemini key (5.3, rev 5): a separate, restricted key pasted for the unit, sealed like
-     * the link keys. Never the phone's key, never prefilled, never logged. Null when not set.
-     */
-    fun carGeminiKey(): String? {
-        val plain = file.read()[CAR_GEMINI]?.let(::openWithRetry) ?: return null
-        return String(plain, Charsets.UTF_8).also { plain.fill(0); redact(it) }
-    }
-
-    /** Blank clears it. False = not saved (the Keystore could not seal it; nothing was written). */
-    fun setCarGeminiKey(key: String?): Boolean {
-        val trimmed = key?.trim().orEmpty()
-        val value = if (trimmed.isEmpty()) {
-            null
-        } else {
-            redact(trimmed)
-            sealed(trimmed.toByteArray(Charsets.UTF_8)) ?: return false
-        }
-        return file.writeAll(mapOf(CAR_GEMINI to value))
-    }
 
     /** The network the phone paired on (4.3, rev 5). Kept by a revoke-only record, cleared by Forget. */
     fun pairingNetwork(): PairingNetwork? = PairingNetwork.decode(file.read()[PAIRING_NET])
@@ -162,7 +140,6 @@ class CarLinkStore(
         private const val RESERVE = "link_reserve"
         private const val UNIT_DEVICE_ID = "unit_device_id"
         private const val SEND_LOCATION = "send_location"
-        private const val CAR_GEMINI = "car_gemini_key"
         private const val REVOKE_ONLY = "revoke_only_key"
         private const val REVOKE_SINCE = "revoke_only_since"
         private const val PAIRING_NET = "pairing_network"

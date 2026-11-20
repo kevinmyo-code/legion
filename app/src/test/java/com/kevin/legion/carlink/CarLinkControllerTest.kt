@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.net.InetAddress
 import java.net.SocketException
@@ -61,6 +62,16 @@ class CarLinkControllerTest {
 
     private var look: NetworkLook = NetworkLook.Present
     private var hotspotNow = true
+    private var cars = listOf(VehicleOption("car-a-id", "Car A"), VehicleOption("car-b-id", "Car B"))
+    private val service = FakeServiceHost()
+
+    /** Records the foreground service's starts and stops. */
+    private class FakeServiceHost : LocationServiceHost {
+        @Volatile var running = false
+        val log: MutableList<String> = Collections.synchronizedList(mutableListOf())
+        override fun start(): Boolean { running = true; log += "start"; return true }
+        override fun stop() { running = false; log += "stop" }
+    }
     private var transport = com.kevin.legion.carlink.protocol.PairingTransport { _, _ -> null }
     private var wallNow = 1_000_000_000_000L
     private var senders = 0
@@ -68,7 +79,7 @@ class CarLinkControllerTest {
     private fun controller(store: CarLinkStore = this.store) = CarLinkController(
         store = store,
         transport = { h, p -> transport.connect(h, p) },
-        handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
+        handover = HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
         newSender = { ring, onEvent, sendFixes, mode ->
             if (senders > 0) port = BlockingPort()
             senders++
@@ -94,10 +105,12 @@ class CarLinkControllerTest {
         wallClock = { wallNow },
         revokeSilenceMs = 1_500L,
         ownHotspotNow = { hotspotNow },
+        vehicles = { cars },
+        locationService = service,
     )
 
-    private fun waitFor(what: String, cond: () -> Boolean) {
-        val until = System.currentTimeMillis() + 5_000
+    private fun waitFor(what: String, ms: Long = 5_000, cond: () -> Boolean) {
+        val until = System.currentTimeMillis() + ms
         while (!cond()) {
             check(System.currentTimeMillis() < until) { "timed out waiting for $what" }
             Thread.sleep(10)
@@ -143,7 +156,7 @@ class CarLinkControllerTest {
         val box = FakeKeystoreStandIn().apply { failOpens = 3 }
         val c = CarLinkController(
             CarLinkStore(box, file) {}, { _, _ -> null },
-            HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
+            HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
             { _, _, _, _ -> error("a broken pairing must not start a sender") }, scope, Dispatchers.IO, { 300L }, {},
         )
         c.start()
@@ -167,7 +180,7 @@ class CarLinkControllerTest {
             override fun close() = Unit
         }
         val c = CarLinkController(
-            store, { _, _ -> null }, HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
+            store, { _, _ -> null }, HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
             { ring, onEvent, sendFixes, mode ->
                 CarLinkSender(
                     Mnai2Feed(ring, { ByteArray(16) }, lan::contains, { null }, onEvent), throwing,
@@ -297,6 +310,41 @@ class CarLinkControllerTest {
         assertEquals(0, senders)
     }
 
+    // ---- Screen-off location: the foreground service runs only while paired, switched on, on the network.
+    @Ignore("red until fix E") @Test fun `the location service runs only while paired, switched on and on the pairing network`() {
+        assertTrue(store.write(key, null))
+        val c = controller()
+        c.start()
+        waitFor("the listener") { senders > 0 }
+        Thread.sleep(200)
+        assertTrue("not running while the switch is off", !service.running)
+        c.setSendLocation(true)
+        waitFor("the service started") { service.running }
+        c.setSendLocation(false)
+        waitFor("the service stopped") { !service.running }
+        c.setSendLocation(true)
+        waitFor("started again") { service.running }
+        look = NetworkLook.Absent
+        // The sender notices at its next wake (at most the 5 s idle wait).
+        waitFor("stopped when the network left", ms = 12_000) { !service.running }
+    }
+
+    // ---- Vehicle choice: the household's cars are offered, and the chosen one is kept for the mint.
+    @Ignore("red until fix C") @Test fun `the pairing offers the household's cars and keeps the one chosen`() {
+        val c = controller()
+        c.start()
+        waitFor("the cars") { c.status.value.vehicles.size == 2 }
+        c.chooseVehicle("car-b-id")
+        waitFor("the choice") { c.status.value.vehicleId == "car-b-id" }
+    }
+
+    @Ignore("red until fix C") @Test fun `with one car it is chosen already`() {
+        cars = listOf(VehicleOption("only-car-id", "Only car"))
+        val c = controller()
+        c.start()
+        waitFor("the only car chosen") { c.status.value.vehicleId == "only-car-id" }
+    }
+
     private companion object {
         const val DAY = 86_400_000L
     }
@@ -342,7 +390,7 @@ class CarLinkControllerTest {
     @Test fun `a taken port is said in words and nothing falls back`() {
         assertTrue(store.write(key, null))
         val c = CarLinkController(
-            store, { _, _ -> null }, HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
+            store, { _, _ -> null }, HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
             { _, _, _, _ -> throw java.net.BindException("Address already in use") },
             scope, Dispatchers.IO, { 300L }, {},
         )

@@ -1,5 +1,15 @@
 package com.kevin.legion.ui.settings
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.Alignment
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -41,17 +50,33 @@ fun CarLinkScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val viewModel: CarLinkViewModel = viewModel(factory = CarLinkViewModel.Factory(context))
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // The camera is asked for only when Scan is tapped, never before (and never in the background).
+    val cameraAsk = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) viewModel.scan() else viewModel.onCameraDenied()
+    }
+    val hasCamera = {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    }
     CarLinkContent(
         state = state,
         onBack = onBack,
         actions = CarLinkActions(
-            scan = viewModel::scan,
+            scan = { if (hasCamera()) viewModel.scan() else cameraAsk.launch(Manifest.permission.CAMERA) },
+            scanned = viewModel::onScanned,
             paste = viewModel::pasteCode,
             cancel = viewModel::cancel,
             dismiss = viewModel::dismiss,
             forget = viewModel::forget,
             sendLocation = viewModel::setSendLocation,
-            carKey = viewModel::setCarGeminiKey,
+            vehicle = viewModel::chooseVehicle,
+            openAppSettings = {
+                runCatching {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
         ),
     )
 }
@@ -59,12 +84,15 @@ fun CarLinkScreen(onBack: () -> Unit) {
 /** The screen's buttons, gathered so [CarLinkContent] stays stateless. */
 class CarLinkActions(
     val scan: () -> Unit,
+    /** The camera pane read a QR: its raw text, which only the pairing parser ever sees. */
+    val scanned: (String) -> Unit,
     val paste: (String) -> Unit,
     val cancel: () -> Unit,
     val dismiss: () -> Unit,
     val forget: () -> Unit,
     val sendLocation: (Boolean) -> Unit,
-    val carKey: (String?) -> Unit,
+    val vehicle: (String?) -> Unit,
+    val openAppSettings: () -> Unit,
 )
 
 @Composable
@@ -87,8 +115,23 @@ fun CarLinkContent(state: CarLinkUiState, onBack: () -> Unit, actions: CarLinkAc
                     Spacer(Modifier.height(6.dp))
                     Text(it, style = MaterialTheme.typography.bodyMedium)
                 }
+                if (state.phase == CarLinkPhase.SCANNING) {
+                    Spacer(Modifier.height(12.dp))
+                    CarLinkQrScanPane(onQr = actions.scanned)
+                    state.scanReject?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                }
+                state.cameraNote?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, style = MaterialTheme.typography.bodyMedium)
+                    DeckButton(text = "Open app settings", onClick = actions.openAppSettings)
+                }
+                if (state.canPair) VehiclePicker(state, actions.vehicle)
                 Spacer(Modifier.height(12.dp))
                 PairButtons(state, actions)
+                if (state.canPair && state.handsOver.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(state.handsOver, style = LegionType.stamp, color = sem.faint)
+                }
                 if (state.debugPaste && state.canPair) DebugPaste(actions.paste)
 
                 Spacer(Modifier.height(16.dp))
@@ -99,8 +142,6 @@ fun CarLinkContent(state: CarLinkUiState, onBack: () -> Unit, actions: CarLinkAc
                     enabled = state.sendLocation,
                     onToggle = actions.sendLocation,
                 )
-                Spacer(Modifier.height(8.dp))
-                CarKeyField(state.carKeySet, actions.carKey)
                 if (state.canForget) ForgetButton(actions.forget)
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -156,37 +197,16 @@ private fun DebugPaste(onPaste: (String) -> Unit) {
     DeckButton(text = "Pair from pasted code", onClick = { onPaste(text); text = "" }, enabled = text.isNotBlank())
 }
 
-/**
- * The car's OWN Gemini key (5.3, rev 5): a separate, API-restricted key made for the car. Never
- * prefilled from this phone's key, never shown back; empty means the car gets no Gemini key.
- */
+/** Which of the household's cars this head unit is in: the engine binds the unit's sign-in to one. */
 @Composable
-private fun CarKeyField(isSet: Boolean, onSave: (String?) -> Unit) {
-    var text by remember { mutableStateOf("") }
-    Spacer(Modifier.height(16.dp))
-    Text("Car's own Gemini key", style = MaterialTheme.typography.labelLarge)
-    Text(
-        if (isSet) {
-            "Set. It goes to the head unit at the next pairing."
-        } else {
-            "Not set: the head unit gets no Gemini key. Use a separate, restricted key made for the car, " +
-                "never this phone's own."
-        },
-        style = MaterialTheme.typography.bodyMedium,
-    )
-    OutlinedTextField(
-        value = text,
-        onValueChange = { text = it },
-        label = { Text("Paste the car's key") },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-    )
-    Row(Modifier.fillMaxWidth()) {
-        DeckButton(text = "Save", onClick = { onSave(text); text = "" }, enabled = text.isNotBlank())
-        if (isSet) {
-            Spacer(Modifier.width(8.dp))
-            DeckButton(text = "Clear", onClick = { onSave(null) })
+private fun VehiclePicker(state: CarLinkUiState, onPick: (String?) -> Unit) {
+    Spacer(Modifier.height(12.dp))
+    Text("Which car is this head unit in?", style = MaterialTheme.typography.labelLarge)
+    state.vehicleNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    for (v in state.vehicles) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = state.vehicleId == v.id, onClick = { onPick(v.id) })
+            Text(v.label, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
