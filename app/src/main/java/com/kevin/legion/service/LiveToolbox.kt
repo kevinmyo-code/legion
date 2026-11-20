@@ -330,7 +330,11 @@ object LiveToolbox {
         // Live cost diet (voice cost audit 2026-11-10, F1): every candidate below, then
         // LiveSurface folds writes and instant reads into action tools. See LiveSurface.
         val candidates = surfaceCandidates()
-        return LiveSurface.apply((0 until candidates.length()).map { candidates.getJSONObject(it) })
+        val all = allDeclarations()
+        return LiveSurface.apply(
+            (0 until candidates.length()).map { candidates.getJSONObject(it) },
+            (0 until all.length()).map { all.getJSONObject(it) },
+        )
     }
 
     /**
@@ -553,7 +557,7 @@ object LiveToolbox {
      */
     fun isMutatingCall(name: String, args: JSONObject): Boolean {
         // 2026-11-16: an unconfirmed clear_codes never sends a clear (it asks, or it reads when his
-        // words only read: readInsteadOfClear), so a successful one is never a write done.
+        // words only read: clearNotAsked), so a successful one is never a write done.
         if (name == "clear_codes" && !args.optBoolean("confirmed", false)) return false
         val dispatcher = name == "ask_engine" || name in DISPATCHED.keys.map { "ask_$it" }
         return name in MUTATING_TOOLS || (dispatcher && wantsWrite(args))
@@ -792,6 +796,8 @@ object LiveToolbox {
         "the next workout, how many sessions a week, all the sessions - is get_workout_programme. " +
         "Never say a day or a session does not exist because a today-only read did not list it. " +
         BODY_COACH_RULES +
+        // Phone audit 2026-11-19: a meal question was answered on a clock six hours out.
+        " " + com.kevin.legion.util.LocalClock.turnLine() +
         dispatchBoundaryClause("body") +
         Priming.dispatchClause(context, "body")
 
@@ -819,7 +825,7 @@ object LiveToolbox {
         "against budget, recent transactions and pending ones. Every amount carries its own " +
         "currency; keep it, never convert. Keep every exclusion and unverified note a tool " +
         "returns. Pull only what would change your answer, then answer in plain spoken text, no " +
-        "markdown." +
+        "markdown. " + com.kevin.legion.util.LocalClock.turnLine() +
         dispatchBoundaryClause("money") +
         Priming.dispatchClause(context, "money")
 
@@ -875,6 +881,20 @@ object LiveToolbox {
         turnDates?.let { RelativeDay.corrected(name, args, userText, it) }?.let { (fixed, note) ->
             return dispatch(context, name, fixed, touchedReadThroughToolThisTurn, userText)?.put("date_note", note)
         }
+        // The adapter's car is unknown or only recognised: a live read still runs (its readings are held,
+        // not filed), and its result carries the ask or the "looks like" once a connection (AdapterBinding).
+        // The fleet specialist's answer carries it too: "how's the car doing" goes there, and the
+        // specialist's own live reads run inside this mark, so only the answer he hears is noted. Only
+        // a voice turn (it carries TurnDates) gets it: a background read never uses up the ask (A9).
+        val carNoted = name in CATEGORY_A_TOOLS && name != "clear_codes" || name == "ask_fleet"
+        val heard = turnDates != null
+        if (carNoted && heard &&
+            kotlin.coroutines.coroutineContext[com.kevin.legion.vehicle.AdapterBinding.Annotating] == null
+        ) {
+            return kotlinx.coroutines.withContext(com.kevin.legion.vehicle.AdapterBinding.Annotating()) {
+                dispatch(context, name, args, touchedReadThroughToolThisTurn, userText)
+            }?.let { com.kevin.legion.vehicle.AdapterBinding.annotate(context, it) }
+        }
         MidnightEvents.toolDispatched(name)
         // Category A guard (ticket 01 §0): if a live-hardware tool got handed a
         // `vehicle` argument anyway (the model shouldn't, since these declare no
@@ -882,6 +902,8 @@ object LiveToolbox {
         // doesn't name the car the dongle is actually in, refuse before ever
         // touching the connected car's real readings. Category B tools are
         // exempt - they resolve their own `vehicle` argument below.
+        com.kevin.legion.vehicle.AdapterBinding.unnamedCarWriteRefusal(name, args.optString("vehicle"))
+            ?.let { return result(false, it) }
         if (name in CATEGORY_A_TOOLS) {
             refuseIfNotConnectedCar(context, args)?.let { return it }
         }
@@ -1078,11 +1100,14 @@ object LiveToolbox {
             // 2026-11-15: a module clear (modules named, or the yes to a module question) goes to
             // DiagVoice and its own yes-check; everything else is the engine's Mode 04 below.
             // 2026-11-16: an ask needs his words to ask for a clear (ClearCodesVoiceGate.notAskedToClear);
-            // words that only read get the read itself here, never a "call something else" refusal.
+            // words that only read get no read here, only where the read is (car read_codes, review P2-1).
             "clear_codes" -> if (com.kevin.legion.vehicle.ClearCodesVoiceGate
                     .notAskedToClear(args.optBoolean("confirmed", false), userText) != null
             ) {
-                readInsteadOfClear(context, userText.orEmpty())
+                clearNotAsked(userText.orEmpty())
+            } else if (com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow() != null) {
+                // Engine or module clear: never while the adapter's car is unknown or only recognised.
+                result(false, com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow().orEmpty())
             } else if (com.kevin.legion.vehicle.diag.DiagVoice.handles(
                     args.optString("modules"),
                     args.optBoolean("confirmed", false),
@@ -1141,7 +1166,10 @@ object LiveToolbox {
                 val outcome = VehicleController.setOdometer(context, args.optInt("miles"), it.obdMac)
                 result(success = outcome.success, message = outcome.message)
             }
-            "log_service" -> withResolvedVehicle(context, args) {
+            // Phone audit 2026-11-19: a log_service with no service wrote a blank record and item.
+            "log_service" -> if (args.optString("service").isBlank()) {
+                noItem("Which service was it?")
+            } else withResolvedVehicle(context, args) {
                 // Dollars -> cents at the voice edge (CLAUDE.md §4 rule 3: VehicleController.logServiceDirect
                 // only ever sees Long cents) - same Math.round(amount * 100) shape
                 // LedgerPendingLog.pendingAmountCents already uses for a spoken dollar figure, with the
@@ -1157,7 +1185,9 @@ object LiveToolbox {
                 result(success = outcome.success, message = outcome.message)
             }
             "log_past_service" -> withResolvedVehicle(context, args) { logPastService(context, args, it.obdMac) }
-            "set_maintenance_interval" -> withResolvedVehicle(context, args) {
+            "set_maintenance_interval" -> if (args.optString("service").isBlank()) {
+                noItem("Which service?")
+            } else withResolvedVehicle(context, args) {
                 val outcome = VehicleController.setMaintenanceInterval(
                     context,
                     args.optString("service"),
@@ -1529,6 +1559,13 @@ object LiveToolbox {
             // contradictory refusal here would just be confusing.
             return null
         }
+        // The adapter's car is unknown (held under a pending id): never a dead end, the refusal says how
+        // to name it (2026-11-17).
+        if (com.kevin.legion.vehicle.DongleCar.isPending(connectedId)) {
+            return JSONObject().put("success", false)
+                .put("error", com.kevin.legion.vehicle.AdapterBinding.UNKNOWN_CAR_ERROR)
+                .put("message", com.kevin.legion.vehicle.AdapterBinding.unknownCarRefusal(requested))
+        }
         val connectedVehicle = VehicleController.vehicleFor(context, connectedId)
         // Ticket 04's label rule: the one rule, every surface - see VehicleController.label's own
         // doc. This used to hand-roll the same name-then-spec-then-placeholder precedence
@@ -1546,7 +1583,8 @@ object LiveToolbox {
             .put(
                 "message",
                 "The OBD adapter's plugged into the $connectedLabel right now, not that one - I can " +
-                    "only read live data for the car it's actually in.",
+                    "only read live data for the car it's actually in. If he says the adapter is in the " +
+                    "$requested now, that is car adapter_in vehicle=$requested.",
             )
     }
 
@@ -1585,10 +1623,7 @@ object LiveToolbox {
         if (action != "add" && args.optString("vehicle").isBlank()) {
             // 2026-11-15 voice eval: "which cars do I have on file" called switch_vehicle with no car.
             // Nothing changes without a named car; the refusal says where a read goes instead.
-            return result(
-                false,
-                if (action == "switch") SWITCH_NEEDS_A_CAR else "Which car do you mean? Tell me and I'll $action it.",
-            )
+            return result(false, needsACar(action))
         }
 
         return when (action) {
@@ -1613,6 +1648,7 @@ object LiveToolbox {
                 else result(true, VehicleController.correctVehicle(context, it.obdMac, name = name))
             }
             "switch" -> withResolvedVehicle(context, args) { switchTo(context, it) }
+            "adapter" -> withResolvedVehicle(context, args) { adapterIn(context, it) }
             "archive" -> withResolvedVehicle(context, args) {
                 VehicleController.archive(context, it.obdMac)
                 result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")
@@ -2056,12 +2092,32 @@ object LiveToolbox {
      * to change, and the result says so.
      */
     private suspend fun switchTo(context: Context, car: Vehicle): JSONObject {
+        // `changed` and `vehicle` (the app's label) let code say the outcome in words (2026-11-19).
+        val label = VehicleController.label(car)
         val noDongle = com.kevin.legion.vehicle.DongleCarController.state.value == null
         if (ActiveVehicle.selected(context) == car.obdMac && noDongle) {
-            return result(true, "The ${VehicleController.label(car)} was already the selected car; nothing changed.")
+            return result(true, "The $label was already the selected car; nothing changed.")
+                .put("changed", false).put("vehicle", label)
         }
         val outcome = VehicleController.switchToOutcome(context, car.obdMac)
-        return result(outcome.success, outcome.message)
+        val out = result(outcome.success, outcome.message).put("changed", outcome.changed == true).put("vehicle", label)
+        // A pick never answers the which-car question; while it is open, his turn still carries it (R2-2).
+        val heard = kotlin.coroutines.coroutineContext[RelativeDay.TurnDates] != null
+        return if (heard) com.kevin.legion.vehicle.AdapterBinding.annotate(context, out) else out
+    }
+
+    /** The refusal for a `manage_vehicle` [action] called with no car named. */
+    private fun needsACar(action: String): String = when (action) {
+        "switch" -> SWITCH_NEEDS_A_CAR
+        "adapter" -> "Nothing changed: say which car the adapter is in."
+        else -> "Which car do you mean? Tell me and I'll $action it."
+    }
+
+    /** `manage_vehicle adapter`: [VehicleController.adapterIn], with what code needs to say it. */
+    private suspend fun adapterIn(context: Context, car: Vehicle): JSONObject {
+        val r = VehicleController.adapterIn(context, car.obdMac)
+        return result(r.outcome.success, r.outcome.message).put("changed", r.outcome.changed == true)
+            .put("vehicle", VehicleController.label(car)).put("readings_moved", r.readingsMoved)
     }
 
     private const val SWITCH_NEEDS_A_CAR = "Nothing was switched: switch_vehicle changes which car is selected " +
@@ -2102,7 +2158,11 @@ object LiveToolbox {
         return result(
             committed.isNotEmpty(),
             TaskDoneMatcher.resultText(target, committed, failed, queued, r.alreadyThere, dateOf),
-        )
+        ).apply {
+            // What the phone's done line names (2026-11-19): the task, and which way it went.
+            put("done", target)
+            committed.singleOrNull()?.let { put("title", it.title) }
+        }
     }
 
     /**
@@ -2510,7 +2570,7 @@ object LiveToolbox {
      */
     private suspend fun logBuildEntry(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject {
         val title = args.optString("title")
-        if (title.isBlank()) return result(success = false, message = "What should I log on the build sheet?")
+        if (title.isBlank()) return noItem("What should I log on the build sheet?")
         val cost = if (args.has("cost") && !args.isNull("cost"))
             args.optDouble("cost").takeIf { !it.isNaN() } else null
         val msg = BuildSheetController.add(
@@ -3314,7 +3374,10 @@ object LiveToolbox {
                 true,
                 "Updated the ${aspectLabel(aspect)} goal: $statement. Previous: \"${outcome.previous.statement}\".",
             )
-            is GoalController.SetOutcome.Unchanged -> result(true, "That's already the current ${aspectLabel(aspect)} goal - nothing changed.")
+            // `changed: false`: nothing to confirm aloud (the phone's done line reads this field, 2026-11-19).
+            is GoalController.SetOutcome.Unchanged ->
+                result(true, "That's already the current ${aspectLabel(aspect)} goal - nothing changed.")
+                    .put("changed", false)
         }
     }
 
@@ -4043,9 +4106,11 @@ object LiveToolbox {
         // a yes to the question the unconfirmed call put (ClearCodesVoiceGate). Refused before
         // anything is read from or sent to the car.
         val gate = DtcClearController.voiceGate
+        // The question and its yes belong to this connection and the car it records under.
+        val subject = com.kevin.legion.vehicle.DongleCarController.connectionKey()
         val refusal = when {
             !connected -> "The OBD adapter isn't connected, so I can't clear anything."
-            confirmed -> gate.checkConfirmed(userText, heardVoicedMs())
+            confirmed -> gate.checkConfirmed(userText, heardVoicedMs(), subject)
             else -> null
         }
         if (refusal != null) {
@@ -4063,7 +4128,9 @@ object LiveToolbox {
             // The confirm question: remember it was asked, and tell the model to ask and wait.
             // A module-clear question left waiting is void now (one question at a time).
             com.kevin.legion.vehicle.diag.DiagVoice.forget()
-            gate.asked(userText)
+            gate.asked(userText, subject)
+            // The question names the car, so his yes is a yes to that car.
+            out.put("message", "This is for the ${VehicleController.label(vehicle)}. ${r.message}")
             // The adapter may have dropped during the read: armed first, then checked, so a disconnect
             // on either side of this line leaves no question waiting (2026-11-18 review).
             if (!ObdBluetoothManager.isConnected) {
@@ -4221,7 +4288,7 @@ object LiveToolbox {
             return result(
                 true,
                 ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Reminder, added.text, whenPhrase),
-            )
+            ).put("item", added.text) // what the phone's done line names (2026-11-19)
         }
 
         if (itemArg.isBlank()) return result(false, "Which item?")
@@ -4683,6 +4750,14 @@ object LiveToolbox {
 
     private fun isGroceriesName(name: String) = name.trim().equals("Groceries", ignoreCase = true)
 
+    /** Whole items that point at something without naming it: never a checklist line on their own. */
+    private val BARE_REFERENCES = setOf(
+        "it", "that", "this", "them", "those", "these", "something", "that one", "this one", "it all", "all of it",
+    )
+
+    private fun isBareReference(text: String): Boolean =
+        text.lowercase().replace(Regex("[^\\p{L}' ]"), " ").trim().replace(Regex("\\s+"), " ") in BARE_REFERENCES
+
     /** `today`/`yesterday` (the only two the tool declares) -> a local epoch day, matching
      * [ChecklistController.tick]/[ChecklistController.untick]'s own `day` parameter. Anything
      * else (blank, or a value the model was not offered) defaults to today rather than failing the
@@ -4775,7 +4850,8 @@ object LiveToolbox {
                 scheduleEvery = scheduleEvery,
                 scheduleDaysOfWeek = scheduleDaysOfWeek,
             )
-            return result(true, "Created the \"$listArg\" checklist, $scheduleWords.")
+            // `list`: what the phone's done line names ("created the Camping list"), never the message.
+            return result(true, "Created the \"$listArg\" checklist, $scheduleWords.").put("list", listArg)
         }
 
         // Every action from here on addresses an EXISTING checklist by name. The Todo checklist is
@@ -4818,6 +4894,12 @@ object LiveToolbox {
                             "\"${checklist.name}\".",
                     )
                 }
+                // Phone audit 2026-11-19: a line literally named "it" was added. A closed word list,
+                // matched on the whole item only, never a reading of what he meant.
+                if (isBareReference(textArg)) {
+                    return result(false, "Nothing was added: \"$textArg\" names nothing. What should I add?")
+                        .put("needs_answer", true)
+                }
                 val unit = args.optString("unit").trim().ifBlank { null }
                 val target = if (args.has("target") && !args.isNull("target")) args.optDouble("target") else null
                 val direction = when (args.optString("direction").trim().lowercase()) {
@@ -4835,7 +4917,9 @@ object LiveToolbox {
                     measureTarget = target,
                     measureDirection = direction,
                 )
+                // `item` and `list`: what the phone's done line names (2026-11-19), never the message.
                 return result(true, "Added \"${added.text}\" to \"${checklist.name}\".")
+                    .put("item", added.text).put("list", checklist.name)
             }
 
             "read" -> {
@@ -4929,6 +5013,7 @@ object LiveToolbox {
                                 is ChecklistController.TickOutcome.Refused -> result(false, outcome.message)
                                 ChecklistController.TickOutcome.Ticked ->
                                     result(true, "Ticked \"${match.item.text}\" on \"${checklist.name}\".")
+                                        .put("item", match.item.text).put("list", checklist.name)
                             }
                         }
                         "untick" -> {
@@ -5163,20 +5248,17 @@ object LiveToolbox {
     }
 
     /**
-     * What an unconfirmed `clear_codes` does when his words did not ask to clear (2026-11-16, stage 7
-     * fleet eval: refused with "call ask_fleet instead", flash-lite then ended the turn on a filler
-     * line 3 times in 5). The read he asked for runs here and its answer comes back, marked as a read:
-     * a module-scan request gets [com.kevin.legion.vehicle.diag.DiagVoice.scan] (the same function and
-     * the same code-built `say` as ask_fleet's scan), anything else the engine's code read
-     * ([getCodes]). Nothing is cleared and no clear question is asked; no clear command is sent.
+     * What an unconfirmed `clear_codes` does when his words did not ask to clear (review 2026-11-19,
+     * P2-1): nothing is read, cleared or asked here, and no code data comes back. The result names
+     * the read door, `car read_codes` (with `all_modules` for a module-scan request), whose answer
+     * code speaks through the diagnostics filter; a read through this door reached the model
+     * unfiltered. [com.kevin.legion.vehicle.ClearCodesVoiceGate] stays the last check before a
+     * real clear.
      */
-    internal suspend fun readInsteadOfClear(context: Context, words: String): JSONObject {
-        val read = if (com.kevin.legion.vehicle.diag.ScanSay.isModuleScanQuestion(words)) {
-            com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
-        } else {
-            getCodes(context)
-        }
-        return read.put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
+    internal fun clearNotAsked(words: String): JSONObject {
+        val scan = com.kevin.legion.vehicle.diag.ScanSay.isModuleScanQuestion(words)
+        return result(false, com.kevin.legion.vehicle.ClearCodesVoiceGate.NOT_ASKED)
+            .put("cleared", false).put("call_instead", "car read_codes").put("all_modules", scan)
     }
 
     /**
@@ -5200,9 +5282,6 @@ object LiveToolbox {
      */
     private fun spokenRead(result: JSONObject, words: String): JSONObject =
         com.kevin.legion.ai.VerbatimSpeech.mark(result, words, com.kevin.legion.ai.VerbatimSpeech.DIAGNOSTICS)
-
-    internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
-        "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
 
     @Suppress("CyclomaticComplexMethod", "ReturnCount") // read, empty, failed, each code
     private suspend fun getCodes(context: Context): JSONObject {
@@ -5923,7 +6002,7 @@ object LiveToolbox {
      */
     private suspend fun logPastService(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject {
         val service = args.optString("service")
-        if (service.isBlank()) return result(success = false, message = "Which service?")
+        if (service.isBlank()) return noItem("Which service was it?")
 
         val mileage = args.optInt("mileage", -1).takeIf { it > 0 }
         val milesAgo = args.optInt("miles_ago", -1).takeIf { it >= 0 }
@@ -7044,7 +7123,8 @@ object LiveToolbox {
             }
             "recently_played" -> {
                 val json = libraryOutcomeToJson(context, SpotifyWebApi.getRecentlyPlayed(context, limit), "recently played") { t ->
-                    JSONObject().put("name", t.name).put("artist", t.artist).put("playedAt", t.playedAt)
+                    JSONObject().put("name", t.name).put("artist", t.artist)
+                        .put("playedAt", com.kevin.legion.util.LocalClock.stamp(t.playedAt))
                 }
                 // Honesty requirement (ticket 05 part C.9): this is Spotify's OWN history,
                 // everywhere the driver uses Spotify - not scoped to LEGION or to this device.
@@ -7343,6 +7423,10 @@ object LiveToolbox {
     private fun result(success: Boolean, message: String?): JSONObject =
         JSONObject().put("success", success).apply { if (message != null) put("message", message) }
 
+    /** A car write named no item: nothing is written, and the result asks him which ([needs_answer]). */
+    private fun noItem(question: String): JSONObject =
+        result(false, "Nothing was logged: no item was named. $question").put("needs_answer", true)
+
     // ---- Lists a tool call may have reached by the wrong door (ListRouting, 2026-11-15) ----
 
     private const val TASK_NOT_REMINDER = "It was a calendar task, not a reminder."
@@ -7407,7 +7491,7 @@ object LiveToolbox {
             true,
             "Added \"${added.text}\" to his to-do list (the ${todo.name} checklist): no date or repeat, so " +
                 "it is a to-do, not a reminder.",
-        )
+        ).put("item", added.text).put("list", todo.name)
     }
 
     /** A tick for a Todo line by [phrase]; null when no single line there matches it. */
@@ -7424,6 +7508,7 @@ object LiveToolbox {
             is ChecklistController.TickOutcome.Refused -> result(false, o.message)
             ChecklistController.TickOutcome.Ticked ->
                 result(true, "Ticked \"${line.text}\" on the ${todo.name} checklist ($TODO_LINE).")
+                    .put("item", line.text).put("list", todo.name)
         }
     }
 
@@ -7501,7 +7586,9 @@ object LiveToolbox {
     ): JSONObject = if (requireMutation && mutatingToolsCalled.isEmpty()) {
         result(false, "That didn't get written down - nothing changed. Try again and I'll log it properly.")
     } else {
-        result(true, subAgentText)
+        // `changed`: a write the sub-agent made, so the phone may say it (2026-11-19); a router's
+        // answer without it (a read, a scan) is never confirmed aloud.
+        result(true, subAgentText).apply { if (requireMutation) put("changed", true) }
     }
 
     // --- JSON schema helpers --------------------------------------------

@@ -44,6 +44,19 @@ class BedtimeOps(private val core: ClockCore, private val effects: BedtimeEffect
         }
     }
 
+    /** The feed block alone, by voice: Quiet and the bedtime state are not touched. */
+    fun feedBlockOnly(): ClockResult {
+        // The feed block keeps its state in credential-encrypted storage ([BedtimeEffects.unlocked]).
+        if (!effects.unlocked()) {
+            return ClockResult(false, "The phone has not been unlocked since it restarted. Nothing was changed.")
+        }
+        return when (val r = effects.feedOn()) {
+            BedtimeEffects.On.TurnedOn -> ClockResult(true, "The feed block is on. Quiet was not changed.")
+            BedtimeEffects.On.AlreadyOn -> ClockResult(true, "The feed block was already on. Quiet was not changed.")
+            is BedtimeEffects.On.Refused -> ClockResult(false, "${r.message} Nothing was changed.")
+        }
+    }
+
     /** Bedtime starts: Quiet and the feed block on, recording whether this turned Quiet on. */
     fun startNow(): ClockResult {
         if (core.read().bedtime.active) return ClockResult(true, "Bedtime is already on.")

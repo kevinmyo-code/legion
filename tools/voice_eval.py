@@ -143,6 +143,11 @@ class ToolCall:
     def refused_for_test(self) -> bool:
         return TEST_REFUSAL in self.response
 
+    @property
+    def needs_yes(self) -> bool:
+        """The phone's lone-word guard refused this write and asked for a yes (2026-11-19): nothing ran."""
+        return re.search(r'"needs_yes"\s*:\s*true', self.response) is not None
+
 
 @dataclass
 class Turn:
@@ -155,6 +160,8 @@ class Turn:
     read_windows: list[str] = field(default_factory=list)  # days a calendar read covered (laptop harness)
     ended: bool = False  # the stop/goodbye rule ended the conversation on this turn (laptop harness)
     missed: str = ""  # the transcript guard's drop reason when the turn got the spoken miss (laptop harness)
+    said_dropped: int = 0  # model sentences not spoken: they named what code had just confirmed
+    closing_dropped: bool = False  # ruling D-prime: closing text after confirmed writes alone not spoken
 
     @property
     def answer(self) -> str:
@@ -270,6 +277,12 @@ def parse_run(lines: list[str], year: int) -> tuple[dict, list[CaseRun]]:
             if msg.startswith("gemini_usage "):
                 cur.usage.append(_usage_call(fields))
                 continue
+            # Model sentences the phone did not speak because they named what code had confirmed (ruling A).
+            if msg.startswith("reply_said_dropped ") and cur.turns and str(fields.get("n", "")).isdigit():
+                cur.turns[-1].said_dropped += int(fields["n"])
+            # Ruling D-prime: the closing round's text after confirmed writes alone was not spoken.
+            if msg.startswith("reply_closing_dropped") and cur.turns:
+                cur.turns[-1].closing_dropped = True
             if msg.startswith("greeting scripted"):
                 cur.notes.append(f"greeting fell back to the scripted line ({fields.get('reason', '?')})")
             for k, v in fields.items():
@@ -409,6 +422,16 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
         for rx in expect.get("tts_not", []):
             if re.search(rx, turn.to_voice, re.I):
                 fails.append(f"the voice was handed /{rx}/: {turn.to_voice[:120]}")
+    # A lone word may not change anything without his yes (2026-11-19, lone_word_write): the write
+    # is refused in code and the answer asks.
+    if expect.get("asks_yes"):
+        if any(c.success and _looks_write(c) for c in turn.calls):
+            fails.append("a write went through on a lone word")
+        if any(_looks_write(c) for c in turn.calls) and not any(c.needs_yes for c in turn.calls):
+            fails.append("a write was tried on a lone word and not held for a yes")
+    # The yes after a held lone word reaches the controller: nothing in the turn is held again.
+    if expect.get("not_held") and any(c.needs_yes for c in turn.calls):
+        fails.append("a write was held again after his yes")
     if expect.get("no_empty_claim"):
         # An open task in the result: a task row not done, or a non-empty `due` block (fix/greet-and-due).
         # The `due` block leads with its counts, so `"open":N` survives the audit line's 400-character cut.
@@ -445,7 +468,7 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
     # called car/switch_vehicle on the laptop eval).
     if not write:
         for c in turn.calls:
-            if _looks_write(c):
+            if _looks_write(c) and not c.needs_yes:
                 fails.append(f"changed something on a question that only reads: {c.key}")
     # Writes on the phone: refused unless the case allows them, and never claimed.
     for c in turn.calls:
@@ -478,15 +501,43 @@ WRITE_ACTIONS = {"add", "remove", "tick", "untick", "schedule", "skip", "create"
                  "complete_task", "watch_set", "watch_pause", "watch_resume", "watch_remove", "remember", "forget",
                  "start_voice_note", "stop_voice_note", "place_call", "answer_call", "decline_call", "install"}
 WRITE_TOOLS = {"complete_task", "car", "body_log", "money", "place", "memory", "phone", "clock", "goal", "trip"}
-READ_ACTIONS = {"list", "read", "lists", "ticked", "list_budget_categories", "watch_list", "recall", "search"}
+READ_ACTIONS = {"list", "read", "lists", "ticked", "list_budget_categories", "watch_list", "recall", "search",
+                # 2026-11-19 review: the phone's own read actions on writing tools (ToolReads.READ_ACTIONS).
+                "alarm_list", "timer_left", "whats_new", "status", "last", "recent",
+                # 2026-11-19 phone audit: car read_codes reads the stored codes (get_codes).
+                "read_codes"}
 
 
 def _looks_write(c: ToolCall) -> bool:
     """Only a hint for the scorer; the phone's own gate is the guarantee (TestTurnPolicy.kt)."""
     if c.action in READ_ACTIONS:
         return False
+    # A router asked to record (ask_engine, ask_fleet...) is a write, as on the phone.
+    if str(c.args.get("intent", "")) == "record":
+        return True
     return (c.action in WRITE_ACTIONS or c.action.startswith(("log_", "set_", "switch_", "add_"))
             or c.name in WRITE_TOOLS)
+
+
+# The phone's own confirmation of a write, spoken by code from the tool's result (2026-11-19,
+# ScriptedLines.doneLine). Measured here only: the product never reads the model's words.
+CODE_LINE = re.compile(r"Done: [^.]*\.|That change went through\.")
+
+
+def doubled_confirmation(answer: str) -> bool | None:
+    """None when no code confirmation was said; else whether the model's own words claimed it again."""
+    if not CODE_LINE.search(answer):
+        return None
+    rest = CODE_LINE.sub(" ", answer)
+    return bool(CLAIM.search(rest)) and not NOT_DONE.search(rest)
+
+
+def doubling(runs: list[CaseRun]) -> tuple[int, int, int]:
+    """(turns with a code confirmation, of those the ones the model confirmed again in what was
+    heard, model sentences the phone dropped for naming it)."""
+    seen = [doubled_confirmation(t.answer) for r in runs for t in r.turns]
+    said = [d for d in seen if d is not None]
+    return len(said), sum(said), sum(t.said_dropped for r in runs for t in r.turns)
 
 
 def score_case(case: dict, run: CaseRun, *, phone: bool) -> Verdict:
@@ -648,6 +699,12 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
             + (f", incl. {usd(overhead)} for the context cache" if overhead else "") + ")")
     na_line = ([f"passed, not counted, proves nothing on this layer ({len(na_ids)}): {', '.join(na_ids)}"]
                if na_ids else [])
+    confirmed, doubled, dropped = doubling([r for r in runs if r.id in {c["id"] for c in cases}])
+    if confirmed:
+        skipped = sum(t.closing_dropped for r in runs if r.id in {c["id"] for c in cases} for t in r.turns)
+        na_line.append(f"code confirmations: {confirmed} turn(s), model repeated it in {doubled} "
+                       f"({100 * doubled // confirmed}%); model sentences dropped for naming it: {dropped}; "
+                       f"closing text not spoken after confirmed writes: {skipped}")
     hits = sum("KNOWN LIMIT" in r for r in known_rows)
     if known_rows:
         na_line.append(f"known limits, recorded, not counted ({hits} of {len(known_rows)} showed): {'; '.join(known_rows)}")
@@ -658,6 +715,7 @@ def scorecard(cases: list[dict], runs: list[CaseRun], run_facts: dict, *, phone:
     facts = {k: v for k, v in run_facts.items() if not k.startswith("_")}
     summary = {"model": model, "phone": phone, "passed": passed, "failed": failed, "missing": missing,
                "not_counted": na_ids, "known_limits": known_rows,
+               "confirmations": {"turns": confirmed, "doubled": doubled, "dropped": dropped},
                "usd": str(total), "overhead_usd": str(overhead), "cases": rows, "run": facts}
     return [head] + na_line + [""] + lines + [""] + tail, summary
 

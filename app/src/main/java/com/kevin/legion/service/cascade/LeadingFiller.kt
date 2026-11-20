@@ -39,6 +39,29 @@ internal class LeadingFiller(private val cores: List<String> = CORES) {
     /** The model is done: anything still held (a reply that is only a filler line) goes as it is. */
     fun flush(): String = if (decided) "" else release(buf.toString())
 
+    /**
+     * Something not the model's (a code line, [ReplySpeaker.line]) is said now: what is held is
+     * decided at once, so none of it can be spoken after that line. A held filler line is dropped;
+     * anything else goes.
+     */
+    fun settle(): String {
+        // Nothing held yet (an owed line opening the reply): the model's first sentence is still
+        // to be judged when it comes (review: an empty settle turned the filler drop off).
+        if (decided || buf.isBlank()) return ""
+        val held = buf.toString()
+        return when (val v = verdict(held, cores)) {
+            Verdict.Keep -> release(held)
+            is Verdict.Drop -> {
+                dropped = true
+                release(v.rest)
+            }
+            Verdict.Wait -> {
+                dropped = held.isNotBlank()
+                release("")
+            }
+        }
+    }
+
     private fun release(text: String): String {
         decided = true
         buf.setLength(0)

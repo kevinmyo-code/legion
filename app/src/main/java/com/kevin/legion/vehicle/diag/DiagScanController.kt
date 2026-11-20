@@ -114,6 +114,9 @@ object DiagScanController {
         val refusal = when {
             stored == null -> "That scan is no longer on file."
             DongleCar.isPending(carId) -> PENDING_CAR
+            // Only recognised by its print, or not decided yet: named or VIN-proven cars only (2026-11-17).
+            com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow() != null ->
+                com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow()
             stored.row.vehicleId != carId -> OTHER_CAR
             System.currentTimeMillis() - stored.report.finishedAtMs > MAX_SCAN_AGE_MS -> TOO_OLD
             else -> null

@@ -59,7 +59,8 @@ class LiveSurfaceTest {
 
     @Test
     fun `every action resolves to a declaration the toolbox owns`() {
-        val all = LiveToolbox.surfaceCandidatesForTest()
+        // A router's own read counts (car read_codes -> get_codes, 2026-11-19).
+        val all = LiveToolbox.sourceDeclarationsForTest()
         val owned = (0 until all.length()).map { all.getJSONObject(it).getString("name") }.toSet()
         for (tool in LiveSurface.ACTION_TOOLS) for (a in tool.actions) {
             assertTrue("${tool.name}.${a.value} points at ${a.target}, which no toolbox declares", a.target in owned)
