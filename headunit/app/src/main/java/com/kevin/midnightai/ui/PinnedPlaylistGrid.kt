@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -89,6 +91,10 @@ import java.io.File
  *
  * [rowHeight] null = the five rows split the card's height (head unit); a value = fixed rows
  * (phone portrait, where the card sits in a scrolling column with no height to split).
+ *
+ * HU-1 music card ([framed] false, [scroll] true): no card of its own (it is the PLAYLISTS face of
+ * the one music card), fixed drive-size rows, and the ten cells scroll by hand; the face shows at
+ * least three rows at 800x480 (CruiseLayoutLogic).
  */
 @Composable
 internal fun PinnedPlaylistGrid(
@@ -97,6 +103,8 @@ internal fun PinnedPlaylistGrid(
     onOpenPicker: () -> Unit,
     modifier: Modifier = Modifier,
     rowHeight: Dp? = null,
+    framed: Boolean = true,
+    scroll: Boolean = false,
 ) {
     val context = LocalContext.current
     val state by SpotifyPlaylists.state.collectAsState()
@@ -136,7 +144,7 @@ internal fun PinnedPlaylistGrid(
         return
     }
 
-    Column(modifier.deckCard(m).padding(m.listPad)) {
+    Column(if (framed) modifier.deckCard(m).padding(m.listPad) else modifier) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 label,
@@ -170,7 +178,11 @@ internal fun PinnedPlaylistGrid(
         // slots nor a "Connect" prompt that may be wrong a moment later.
         if (state.authorized == null) return@Column
         Column(
-            modifier = if (rowHeight == null) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth(),
+            modifier = when {
+                rowHeight == null -> Modifier.weight(1f).fillMaxWidth()
+                scroll -> Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                else -> Modifier.fillMaxWidth()
+            },
             verticalArrangement = Arrangement.spacedBy(m.tileGap),
         ) {
             slots.chunked(2).forEach { pair ->

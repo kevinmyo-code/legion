@@ -56,11 +56,16 @@ import com.kevin.midnightai.service.ProactivePreferences
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaDimens
 import com.kevin.midnightai.ui.theme.LightsOutSwatch
+import com.kevin.midnightai.vehicle.DtcDescriptions
 import com.kevin.midnightai.vehicle.ObdBluetoothManager
 import com.kevin.midnightai.vehicle.ObdGauge
 import com.kevin.midnightai.ui.cruise.AvatarVibe
 import com.kevin.midnightai.ui.cruise.Clock
 import com.kevin.midnightai.ui.cruise.CruiseConsole
+import com.kevin.midnightai.ui.cruise.CruiseLayoutLogic
+import com.kevin.midnightai.ui.cruise.CruiseMiddlePanel
+import com.kevin.midnightai.ui.cruise.MiddlePanelText
+import com.kevin.midnightai.ui.cruise.MusicHeroCard
 import com.kevin.midnightai.ui.cruise.DockTile
 import com.kevin.midnightai.ui.cruise.DockTileLabel
 import com.kevin.midnightai.ui.cruise.SetupPromptChip
@@ -82,17 +87,16 @@ private const val DECK_ART_PX = 512
  * The in-car ambient "Cruise screen" - the app's foreground default. A glanceable,
  * lofi-summer city-pop dashboard people leave up.
  *
- * **Split deck, 2026-10-13** (Kevin picked prototype A): on the head unit a quiet console
- * column on the left (clock, companion portrait, telemetry chips, phone chip, dock) and the
- * music area on the right ~72% - a NOW PLAYING card (album art, title, seeker, transport;
- * ui/MusicDeck.kt) beside a 2 x 5 grid of pinned Spotify playlists (ui/PinnedPlaylistGrid.kt).
- * This replaced the cassette deck, its colorway switcher, the separate transport row and the
- * 5-cover playlist strip. Phone portrait stacks the same two cards.
+ * **HU-1 layout, 2026-11-19** (Kevin approved the prototype): on the head unit the console rail
+ * on the left (clock, companion portrait, phone chip, the six dock tiles; ui/cruise/Console.kt),
+ * the CAR / NAV panel in the middle (big GPS speed, the Cruise gauges, the stored-code line, or
+ * the NAV face T5 fills; ui/cruise/MiddlePanelView.kt) and ONE music card on the right that
+ * flips between NOW PLAYING and the pinned PLAYLISTS (ui/cruise/MusicHero.kt). Phone portrait
+ * keeps the 2026-10-13 split deck: the NOW PLAYING card stacked over the pinned grid.
  *
- * **Slimmed 2026-09-27** (the head-unit-only pass): the embedded nav map, the CODES/GARAGE/
- * CARS tabs, the logbook binder, and the trivia scoreboard are not shown here - none of those
- * surfaces were deleted, Cruise just stopped being their entry point. `dtcCount` is still
- * computed because Lights Out's HUD footer reads it.
+ * **Slimmed 2026-09-27** (the head-unit-only pass): the CODES/GARAGE/CARS tabs, the logbook
+ * binder, and the trivia scoreboard are not shown here - none of those surfaces were deleted,
+ * Cruise just stopped being their entry point.
  */
 internal object CruiseSettings {
     private const val PREFS = "cruise"
@@ -334,17 +338,25 @@ fun CruiseScreen(
     }
     val telemetry = CruiseTelemetry(speedMph, obdGauges)
 
-    // Stored-code count. No longer a Cruise dock tile (the CODES/GARAGE/CARS
-    // tabs and the logbook binder moved off the home screen entirely - see this
-    // file's header kdoc), but Lights Out's HUD footer still reads this to show
-    // "N CODES STORED" vs "ALL SYSTEMS NOMINAL", so it's still polled here.
-    var dtcCount by remember { mutableStateOf(0) }
+    // Stored codes, polled once a minute (the same single Mode 03 read as before HU-1, no new OBD
+    // traffic): Lights Out's HUD footer shows the count, the CAR panel the first code by name.
+    var dtcCodes by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(Unit) {
         while (true) {
-            dtcCount = if (ObdBluetoothManager.isConnected) {
-                runCatching { ObdBluetoothManager.getDtcCodes().size }.getOrDefault(0)
-            } else 0
+            dtcCodes = if (ObdBluetoothManager.isConnected) {
+                runCatching { ObdBluetoothManager.getDtcCodes() }.getOrDefault(emptyList())
+            } else emptyList()
             delay(60_000)
+        }
+    }
+    val dtcCount = dtcCodes.size
+    // Code names from the bundled seed + this install's learned list: disk reads, off the main thread.
+    val dtcNames by produceState(emptyMap<String, String>(), dtcCodes) {
+        if (dtcCodes.isEmpty()) return@produceState
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                (DtcDescriptions.loadSeed(context) + DtcDescriptions.loadLearned(context)).mapValues { it.value.first }
+            }.getOrDefault(emptyMap())
         }
     }
 
@@ -535,26 +547,26 @@ fun CruiseScreen(
                 }
             }
         } else {
-            // --- Head unit (EXPANDED, and MEDIUM phone landscape): the split deck, prototype A
-            // "Split deck" (Kevin, 2026-10-13). A quiet console column on the left (clock,
-            // avatar, telemetry chips, phone chip, dock), and the music area on the right ~72%:
-            // the NOW PLAYING card and the PINNED grid side by side at 1 : 1.18.
+            // --- Head unit (EXPANDED, and MEDIUM phone landscape): HU-1 layout, Kevin's approved
+            // prototype (2026-11-19): "car in the middle song on the right, left keep as is with
+            // the avatar and the buttons". Console rail | CAR / NAV panel | one music card.
             //
             // Every size comes from u = 1% of the frame width, the unit the prototype is drawn
-            // in, capped by height (58.6u = a 1024x600 frame) so a wider-than-16:10 window
-            // keeps the composition instead of overflowing vertically.
+            // in, capped by height (58.6u = a 1024x600 frame); CruiseLayoutLogic holds the numbers.
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val u = minOf(maxWidth / 100f, maxHeight / 58.6f)
+                val cols = CruiseLayoutLogic.columns(maxWidth.value, maxHeight.value)
+                val u = CruiseLayoutLogic.unit(maxWidth.value, maxHeight.value).dp
                 val density = LocalDensity.current
                 val m = remember(u, density) { DeckMetrics.fromUnit(u, density) }
+                val cruiseKeys = remember { CruiseSettings.enabledCruiseGaugeKeys(context) }
                 Row(
                     Modifier
                         .fillMaxSize()
-                        .padding(horizontal = u * 2.2f, vertical = u * 2.6f),
+                        .padding(cols.pad.dp),
+                    horizontalArrangement = Arrangement.spacedBy(cols.gap.dp),
                 ) {
                     CruiseConsole(
                         u = u,
-                        telemetry = telemetry,
                         avatar = face,
                         phase = phase,
                         notice = shownNotice,
@@ -565,33 +577,34 @@ fun CruiseScreen(
                         onOpenAppTray = { showAppTray = true },
                         onRearCamera = openRearCamera,
                         onRearCameraPicker = { showReverseCameraPicker = true },
-                        setupPrompt = if (showSetupPrompt) {
-                            { SetupPromptChip(onStartVoiceSetup, dismissSetupPrompt, Modifier.fillMaxWidth()) }
-                        } else null,
-                        updatePrompt = updatePrompt,
-                        modifier = Modifier.width(u * 24f).fillMaxHeight(),
+                        modifier = Modifier.width(cols.rail.dp).fillMaxHeight(),
                     )
-                    Spacer(Modifier.width(u * 1.8f))
-                    Row(
-                        Modifier.weight(1f).fillMaxHeight(),
-                        horizontalArrangement = Arrangement.spacedBy(u * 1.6f),
+                    CruiseMiddlePanel(
+                        u = u,
+                        m = m,
+                        location = location,
+                        speedMph = speedMph,
+                        gauges = MiddlePanelText.carGauges(obdGauges, cruiseKeys),
+                        storedCodes = MiddlePanelText.storedCodes(dtcCodes, dtcNames),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                     ) {
-                        NowPlayingCard(
-                            m = m,
-                            info = nowPlaying,
-                            art = deckArt,
-                            contextName = deckContextName,
-                            emptyState = mediaEmptyState,
-                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                            debugLine = debugLine,
-                        )
-                        PinnedPlaylistGrid(
-                            m = m,
-                            playing = playing,
-                            onOpenPicker = onOpenSpotifySettings,
-                            modifier = Modifier.weight(1.18f).fillMaxHeight(),
-                        )
+                        // The setup and update chips used to sit in the console rail; in the HU-1
+                        // rail they would push the portrait (the talk target) off a 480 dp frame.
+                        if (showSetupPrompt) SetupPromptChip(onStartVoiceSetup, dismissSetupPrompt, Modifier.fillMaxWidth())
+                        updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth()) }
                     }
+                    MusicHeroCard(
+                        u = u,
+                        m = m,
+                        info = nowPlaying,
+                        art = deckArt,
+                        contextName = deckContextName,
+                        emptyState = mediaEmptyState,
+                        playing = playing,
+                        onOpenPicker = onOpenSpotifySettings,
+                        modifier = Modifier.width(cols.music.dp).fillMaxHeight(),
+                        debugLine = debugLine,
+                    )
                 }
             }
         }
@@ -608,8 +621,8 @@ fun CruiseScreen(
         // banner felt like the app was forcing onboarding). A small dismissible
         // pill tucked in the top-right corner - nothing is spoken or started
         // until the driver explicitly taps it; the ✕ dismisses it for good.
-        // Phone portrait only: on the head unit the chip rides in the console column instead
-        // (see CruiseConsole's setupPrompt), where its 56dp targets cannot cover the grid.
+        // Phone portrait only: on the head unit the chip rides at the top of the middle panel
+        // (CruiseMiddlePanel's prompts), where its 56dp targets cannot cover the music card.
         if (showSetupPrompt && sizeClass == SizeClass.COMPACT) {
             SetupPromptChip(
                 onStart = onStartVoiceSetup,

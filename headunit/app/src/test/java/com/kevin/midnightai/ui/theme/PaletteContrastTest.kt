@@ -86,6 +86,21 @@ class PaletteContrastTest {
         }
     }
 
+    /**
+     * HU-1 T1's new text-on-fill pairs, day (summer coast) and night: the CAR panel's speed numeral
+     * and stored-code line (amber accent text), the GPS readout (cyan accent text), gauge and key
+     * labels on the card, and the selected CAR / NAV / NOW / LISTS key (panel ink on a text-colour fill).
+     */
+    @Test fun hu1CruisePairsAreReadableDayAndNight() {
+        listOf(AriaPalette.SUMMER_COAST to 0.86f, AriaPalette.SUMMER_NIGHT to 0.78f).forEach { (p, cardAlpha) ->
+            assertReadable(p, cardAlpha, "speed/codes", p.accentText(p.amber))
+            assertReadable(p, cardAlpha, "gps", p.accentText(p.cyan))
+            assertReadable(p, cardAlpha, "labels", p.textDim)
+            val selected = contrast(p.panel, p.textPrimary)
+            assertTrue("${p.key} selected key ink is ${"%.2f".format(selected)}:1", selected >= 4.5)
+        }
+    }
+
     @Test fun darkPalettesKeepTheirAccentText() {
         val p = AriaPalette.SHOWA_PURPLE
         assertEquals(p.magenta, p.accentText(p.magenta))

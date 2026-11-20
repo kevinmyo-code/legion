@@ -53,12 +53,7 @@ import com.kevin.midnightai.service.AriaForegroundService
 import com.kevin.midnightai.service.Phase
 import com.kevin.midnightai.service.ProactivePreferences
 import com.kevin.midnightai.time.TrustedClock
-import com.kevin.midnightai.ui.CruiseSettings
-import com.kevin.midnightai.ui.CruiseTelemetry
-import com.kevin.midnightai.ui.GaugeReading
 import com.kevin.midnightai.ui.PhoneLinkChip
-import com.kevin.midnightai.ui.UpdateChip
-import com.kevin.midnightai.ui.UpdatePrompt
 import com.kevin.midnightai.ui.deckCardColor
 import com.kevin.midnightai.ui.deckLineColor
 import com.kevin.midnightai.ui.driveTarget
@@ -159,21 +154,20 @@ private fun weekdayKanji(day: java.time.DayOfWeek): String =
     }
 
 /**
- * The head unit's left console column (2026-10-13 split deck): clock + weekday and the
- * companion portrait (tap to talk) on top; telemetry chips, the phone-link chip and a 2 x 3
- * dock pinned to the bottom. The dock takes over everything the old bottom dash rows carried
- * (Lights Out, day/night, mute, REAR CAM, app tray, Setup), since the music deck now runs to
- * the bottom edge on the right.
+ * The head unit's left console rail (HU-1 T1, Kevin's approved prototype 2026-11-19: "left keep
+ * as is with the avatar and the buttons"): clock + weekday and weather, the companion portrait
+ * (tap to talk), the phone-link chip and the six dock tiles, two per row (LIGHTS OUT, DAY/NIGHT,
+ * MUTE, REAR CAM, APPS, SETUP). The telemetry chips moved into the middle CAR panel (ruling 4),
+ * and the setup / update chips ride at the top of the middle panel, so the rail's 480 dp keeps
+ * room for the portrait.
  *
- * Fits by construction, no scroll: the clock and the bottom group (chips, phone chip, dock)
- * are fixed, and the portrait takes what is left, up to 13.5u - so a short frame (800x480)
- * gets a smaller portrait instead of a dock pushed off the bottom.
+ * Fits by construction, no scroll: the clock and the bottom group (phone chip, dock) are fixed,
+ * and the portrait takes what is left, up to 13.5u.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun CruiseConsole(
     u: Dp,
-    telemetry: CruiseTelemetry,
     avatar: Bitmap?,
     phase: Phase,
     notice: String,
@@ -184,16 +178,13 @@ internal fun CruiseConsole(
     onOpenAppTray: () -> Unit,
     onRearCamera: () -> Unit,
     onRearCameraPicker: () -> Unit,
-    setupPrompt: (@Composable () -> Unit)?,
-    // Head unit OTA (ui/UpdatesEntry.kt): null when no update waits or the car is moving.
-    updatePrompt: UpdatePrompt? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val gap = u * 1.4f
+    val gap = u
     Column(modifier) {
-        // Clock digits scale with the frame; 3.3u = today's 34sp at 1024dp wide.
+        // Clock digits scale with the frame; 3.3u = 34sp at 1024dp wide.
         val timeSize = with(density) { (u * 3.3f).toSp() }
         Clock(context = context, timeSize = timeSize)
         BoxWithConstraints(
@@ -201,7 +192,7 @@ internal fun CruiseConsole(
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(vertical = gap),
-            contentAlignment = Alignment.TopStart,
+            contentAlignment = Alignment.TopCenter,
         ) {
             // The status line under the portrait (TAP TO TALK / LISTENING...) is ~28dp.
             val edge = minOf(u * 13.5f, maxHeight - 28.dp, maxWidth)
@@ -218,18 +209,16 @@ internal fun CruiseConsole(
                 )
             }
         }
-        Column(verticalArrangement = Arrangement.spacedBy(u * 0.8f)) {
-            setupPrompt?.invoke()
-            updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth()) }
-            TelemetryChips(u, telemetry)
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
             PhoneLinkChip(
                 onClick = onOpenPhoneLink,
                 modifier = Modifier.fillMaxWidth().heightIn(min = AriaDimens.driveTouchMin),
             )
-            val tileHeight = (u * 5.5f).coerceAtLeast(AriaDimens.driveTouchMin)
+            // The prototype's 58 dp tile at 800 wide.
+            val tileHeight = (u * 7.25f).coerceAtLeast(AriaDimens.driveTouchMin)
             val muted by ProactivePreferences.muted.collectAsState()
             val night = AriaPalette.isNight
-            Row(horizontalArrangement = Arrangement.spacedBy(u * 0.8f)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 // Lights Out keeps a full-strength amber ring: a driver flagged the old dim
                 // glyph as hard to find by feel at night, exactly when it matters most.
                 ConsoleTile(u, "◐", "LIGHTS OUT", tileHeight, ring = AriaColors.Amber, modifier = Modifier.weight(1f), onClick = onLightsOut)
@@ -238,17 +227,19 @@ internal fun CruiseConsole(
                     u, if (night) "☀" else "☾", if (night) "DAY" else "NIGHT", tileHeight,
                     modifier = Modifier.weight(1f),
                 ) { AriaPalette.setNight(context, !night) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 // Silences proactive chatter/alerts, never driver-initiated speech.
                 ConsoleTile(
                     u, if (muted) "🔕" else "🔔", if (muted) "MUTED" else "MUTE", tileHeight,
                     active = muted, modifier = Modifier.weight(1f),
                 ) { ProactivePreferences.setMuted(context, !muted) }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(u * 0.8f)) {
                 ConsoleTile(
                     u, "⛛", "REAR CAM", tileHeight, modifier = Modifier.weight(1f),
                     onLongClick = onRearCameraPicker, onClick = onRearCamera,
                 )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 ConsoleTile(u, "⊞", "APPS", tileHeight, modifier = Modifier.weight(1f), onClick = onOpenAppTray)
                 ConsoleTile(u, "⚙", "SETUP", tileHeight, modifier = Modifier.weight(1f), onClick = onOpenSettings)
             }
@@ -289,53 +280,6 @@ internal fun SetupPromptChip(onStart: () -> Unit, onDismiss: () -> Unit, modifie
             contentAlignment = Alignment.Center,
         ) {
             Text("✕", style = AriaType.neonLabel.copy(fontSize = 14.sp), color = AriaColors.TextDim)
-        }
-    }
-}
-
-/**
- * GPS speed plus the driver's Cruise gauge picks (Settings gauge picker), as small cards. At
- * most three, one row: the column has no room for a second, and Lights Out's footer still
- * shows the full selection.
- */
-@Composable
-private fun TelemetryChips(u: Dp, telemetry: CruiseTelemetry) {
-    val context = LocalContext.current
-    val density = LocalDensity.current
-    val cruiseKeys = remember { CruiseSettings.enabledCruiseGaugeKeys(context) }
-    val chips = listOf(GaugeReading("speed", "MPH", telemetry.speedMph?.toString() ?: "––")) +
-        telemetry.obdGauges.filter { it.key in cruiseKeys }.take(2)
-    // Labels never below 11sp (glanceable at arm's length); values scale with the frame.
-    val labelSize = with(density) { (u * 1.0f).toSp() }.let { if (it.value < 11f) 11.sp else it }
-    val valueSize = with(density) { (u * 2.1f).toSp() }
-    val shape = RoundedCornerShape(u)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(u * 0.8f)) {
-        chips.forEach { g ->
-            Column(
-                Modifier
-                    .weight(1f)
-                    .clip(shape)
-                    .background(deckCardColor())
-                    .border(1.dp, deckLineColor(), shape)
-                    .padding(horizontal = u * 0.6f, vertical = u * 0.6f),
-            ) {
-                Text(
-                    g.label,
-                    style = AriaType.neonLabel.copy(fontSize = labelSize, letterSpacing = 0.5.sp),
-                    color = AriaColors.TextDim,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                )
-                Text(
-                    g.value,
-                    style = AriaType.readout.copy(fontSize = valueSize, letterSpacing = 0.sp),
-                    color = AriaColors.TextPrimary,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Clip,
-                )
-            }
         }
     }
 }

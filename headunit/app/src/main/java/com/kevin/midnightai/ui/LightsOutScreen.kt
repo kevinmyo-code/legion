@@ -219,6 +219,10 @@ internal fun LightsOut(
                 )
             }
 
+            // HU-1 T5 slot (Kevin's ruling 5, 2026-11-19): while a trip runs, one dim amber
+            // next-turn line ("0.4 mi · right onto Elm St") goes HERE, above now-playing, read
+            // from the navigation host ui/cruise/MiddlePanel. T1 ships nothing in this slot.
+
             // Now-playing: below the status box (2026-07-22, moved off the
             // bottom edge and sized up - it's a night-drive HUD, not a footnote).
             if (nowPlayingLine != null) {

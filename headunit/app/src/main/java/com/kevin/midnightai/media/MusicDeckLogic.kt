@@ -202,6 +202,45 @@ object MusicDeckLogic {
         return KeySizes(mid, big)
     }
 
+    /**
+     * The HU-1 music card's keys (Kevin's approved prototype, 2026-11-19): previous / play / next as
+     * one row of tall rounded keys about three times today's, and volume - / + either side of the
+     * bar readout. [mid] and [big] are key WIDTHS from [keySizes]; [height] is shared by all three.
+     */
+    data class HeroKeys(
+        val mid: Float,
+        val big: Float,
+        val height: Float,
+        val volumeWidth: Float,
+        val volumeHeight: Float,
+        /** True when the 10-bar meter fits between the two volume keys. */
+        val meterFits: Boolean,
+    )
+
+    /** Prototype at 800 wide (u = 8): keys 92 tall, prev/next 75, play 98, volume 76 x 64. */
+    const val HERO_KEY_HEIGHT_U = 11.5f
+    const val HERO_MID_U = 11.5f
+    const val HERO_BIG_U = 14.95f
+    const val HERO_VOLUME_W_U = 9.5f
+    const val HERO_VOLUME_H_U = 8f
+
+    /** Keys for a card whose content is [contentWidth] dp wide, at unit [u] dp. Gaps are [u]. */
+    fun heroKeys(contentWidth: Float, u: Float): HeroKeys {
+        val sizes = keySizes(contentWidth - 2 * u, HERO_MID_U * u, HERO_BIG_U * u)
+        val volumeWidth = maxOf(TOUCH_MIN, HERO_VOLUME_W_U * u)
+        return HeroKeys(
+            mid = sizes.mid,
+            big = sizes.big,
+            height = maxOf(TOUCH_MIN, HERO_KEY_HEIGHT_U * u),
+            volumeWidth = volumeWidth,
+            volumeHeight = maxOf(TOUCH_MIN, HERO_VOLUME_H_U * u),
+            meterFits = contentWidth >= 2 * volumeWidth + 2 * u + HERO_METER_WIDTH,
+        )
+    }
+
+    /** The hero card's meter: 10 bars of 6 dp + 9 gaps of 4 dp (the prototype's). */
+    const val HERO_METER_WIDTH = 96f
+
     /** The tile's count line: "1 TRACK", "42 TRACKS". */
     fun trackCountLabel(n: Int): String = if (n == 1) "1 TRACK" else "$n TRACKS"
 

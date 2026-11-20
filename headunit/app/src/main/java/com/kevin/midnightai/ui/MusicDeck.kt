@@ -12,8 +12,10 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,6 +50,7 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -226,6 +229,202 @@ internal fun NowPlayingCard(
     fixedArt: Dp? = null,
     debugLine: String? = null,
 ) {
+    Column(modifier.deckCard(m).padding(m.npPad)) {
+        SourceLabelRow(m, title = "NOW PLAYING")
+        Spacer(Modifier.height(m.gap))
+        NowPlayingBody(
+            m = m,
+            info = info,
+            art = art,
+            contextName = contextName,
+            emptyState = emptyState,
+            artModifier = if (fixedArt != null) Modifier.fillMaxWidth().height(fixedArt) else Modifier.fillMaxWidth().weight(1f),
+            debugLine = debugLine,
+        )
+        Spacer(Modifier.height(m.gap))
+        TransportBlock(m, rememberTransportKeys(info))
+    }
+}
+
+/**
+ * The NOW PLAYING label row: "[title] ・ SOURCE", or the PHONE | SPOTIFY switch when there is
+ * something to switch between (head-unit Spotify connected, no mixtape loaded). Stays when
+ * head-unit Spotify is set up but App Remote is momentarily down (2026-10-15 car report: it vanished
+ * on a drop, so there was no hands path back). Read off the main thread: the client ID and Web
+ * grant decrypt through the Keystore.
+ *
+ * [title] null (the HU-1 music card, whose [leading] slot carries the NOW / LISTS flip): no title,
+ * and the source word alone when there is no switch. Shared by the phone-portrait card and the
+ * head unit's music card so both keep one source switch.
+ */
+@Composable
+internal fun SourceLabelRow(
+    m: DeckMetrics,
+    title: String?,
+    modifier: Modifier = Modifier,
+    leading: @Composable RowScope.() -> Unit = {},
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val source by MusicSource.current.collectAsState()
+    val link by SpotifyController.link.collectAsState()
+    val spotifyConnected = link == AppRemoteLink.CONNECTED && SpotifyController.isConnected
+    val scope = rememberCoroutineScope()
+    var spotifySetUp by remember { mutableStateOf(false) }
+    LaunchedEffect(link) {
+        spotifySetUp = withContext(Dispatchers.IO) {
+            CompanionProfile.hasSpotifyClientId(context) && SpotifyWebApi.isAuthorized(context) &&
+                !SpotifyController.lastFailureIsNotInstalled()
+        }
+    }
+    var reconnecting by remember { mutableStateOf(false) }
+    val switchMode = MusicDeckLogic.switchMode(spotifyConnected, spotifySetUp, source)
+    val canSwitch = switchMode != MusicDeckLogic.SwitchMode.HIDDEN
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        leading()
+        Text(
+            when {
+                title == null && canSwitch -> ""
+                title == null -> MusicDeckLogic.sourceLabel(source)
+                canSwitch -> title
+                else -> "$title ・ ${MusicDeckLogic.sourceLabel(source)}"
+            },
+            style = AriaType.neonLabel.copy(fontSize = m.label, letterSpacing = m.labelTracking),
+            color = AriaColors.TextDim,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = if (title == null) TextAlign.End else TextAlign.Start,
+            modifier = Modifier.weight(1f),
+        )
+        if (canSwitch) {
+            SourceSwitch(m, source, context, switchMode, reconnecting) {
+                if (reconnecting) return@SourceSwitch
+                scope.launch {
+                    reconnecting = true
+                    val ok = withTimeoutOrNull(MusicDeckLogic.RECONNECT_TAP_BUDGET_MS) {
+                        SpotifyController.ensureConnected(context)
+                    }
+                    reconnecting = false
+                    when {
+                        ok == true -> if (!MusicRouter.switchToSpotify(context)) {
+                            Toast.makeText(context, SpotifyController.notConnectedMessage(), Toast.LENGTH_SHORT).show()
+                        }
+                        else -> Toast.makeText(
+                            context,
+                            MusicDeckLogic.reconnectFailureMessage(
+                                SpotifyController.playbackReasonShort(SpotifyController.lastFailure),
+                                timedOut = ok == null,
+                            ),
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Album art (square, centred, as big as [artModifier] allows; swipe to skip, like the cassette it
+ * replaces), then the title, "artist ・ playlist/album" and the seeker, or the idle sentence.
+ * [titleTrailing] sits at the end of the title row (the HU-1 music card's shuffle and like).
+ */
+@Composable
+internal fun ColumnScope.NowPlayingBody(
+    m: DeckMetrics,
+    info: NowPlayingInfo?,
+    art: Bitmap?,
+    contextName: String?,
+    emptyState: MediaEmptyState,
+    artModifier: Modifier,
+    debugLine: String? = null,
+    titleTrailing: @Composable RowScope.() -> Unit = {},
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val source by MusicSource.current.collectAsState()
+    BoxWithConstraints(artModifier, contentAlignment = Alignment.Center) {
+        val edge = minOf(maxWidth, maxHeight)
+        val shape = RoundedCornerShape(m.artRadius)
+        Box(
+            Modifier
+                .size(edge)
+                .shadow(elevation = m.artRadius, shape = shape, clip = false)
+                .clip(shape)
+                .background(placeholderBrush())
+                .pointerInput(Unit) {
+                    horizontalSwipe(
+                        onSwipeLeft = { MusicRouter.next(context) },
+                        onSwipeRight = { MusicRouter.previous(context) },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (art != null) {
+                Image(
+                    bitmap = art.asImageBitmap(),
+                    contentDescription = info?.album?.takeIf { it.isNotBlank() } ?: "Album art",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("♪", style = AriaType.readout.copy(fontSize = m.title * 2), color = AriaColors.Panel)
+                    Text(
+                        "ミュージック",
+                        style = AriaType.neonLabel.copy(fontSize = m.label, letterSpacing = 2.sp),
+                        color = AriaColors.Panel,
+                    )
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(m.gap))
+
+    // --- Title + subtitle, or the idle sentence.
+    val title = when {
+        info != null -> info.title
+        emptyState == MediaEmptyState.NEEDS_NOTIFICATION_ACCESS -> "Can't see music"
+        emptyState == MediaEmptyState.METADATA_MISSING -> "No track info"
+        else -> "Nothing playing"
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = AriaType.readout.copy(fontSize = m.title, letterSpacing = 0.sp, fontWeight = DeckBold),
+                color = AriaColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (info != null) {
+                Text(
+                    MusicDeckLogic.subtitle(info.artist, contextName ?: info.album),
+                    style = AriaType.readout.copy(fontSize = m.subtitle, letterSpacing = 0.sp),
+                    color = AriaColors.TextDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                IdleCaption(m, emptyState, source, context)
+            }
+        }
+        titleTrailing()
+    }
+    if (info != null && MusicDeckLogic.showProgress(info.duration)) {
+        Spacer(Modifier.height(m.gap))
+        Seeker(m, info)
+    }
+    if (debugLine != null) {
+        Text(debugLine, style = AriaType.neonLabel.copy(fontSize = 8.sp), color = AriaColors.TextDim)
+    }
+}
+
+/**
+ * Everything the transport keys show and do, wired to [MusicRouter], App Remote (shuffle, like:
+ * live only on connected Spotify) and [VolumeController]. Like reads the track's real saved state
+ * from App Remote when it can; the meter follows volume changed elsewhere (hardware key, voice).
+ */
+@Composable
+internal fun rememberTransportKeys(info: NowPlayingInfo?): TransportKeys {
     val context = androidx.compose.ui.platform.LocalContext.current
     val source by MusicSource.current.collectAsState()
     val spotifyState by SpotifyController.playerState.collectAsState()
@@ -235,184 +434,50 @@ internal fun NowPlayingCard(
     val extras = MusicDeckLogic.spotifyExtrasEnabled(source, spotifyConnected)
     val playing = info?.isActive == true
     val scope = rememberCoroutineScope()
-
-    Column(modifier.deckCard(m).padding(m.npPad)) {
-        // --- Label row: "NOW PLAYING ・ SOURCE", or the PHONE | SPOTIFY switch when there is
-        // something to switch between (head-unit Spotify connected, no mixtape loaded).
-        // Stays when head-unit Spotify is set up but App Remote is momentarily down (2026-10-15 car
-        // report: it vanished on a drop, so there was no hands path back). Read off the main thread:
-        // the client ID and Web grant decrypt through the Keystore.
-        var spotifySetUp by remember { mutableStateOf(false) }
-        LaunchedEffect(link) {
-            spotifySetUp = withContext(Dispatchers.IO) {
-                CompanionProfile.hasSpotifyClientId(context) && SpotifyWebApi.isAuthorized(context) &&
-                    !SpotifyController.lastFailureIsNotInstalled()
-            }
-        }
-        var reconnecting by remember { mutableStateOf(false) }
-        val switchMode = MusicDeckLogic.switchMode(spotifyConnected, spotifySetUp, source)
-        val canSwitch = switchMode != MusicDeckLogic.SwitchMode.HIDDEN
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                if (canSwitch) "NOW PLAYING" else "NOW PLAYING ・ ${MusicDeckLogic.sourceLabel(source)}",
-                style = AriaType.neonLabel.copy(fontSize = m.label, letterSpacing = m.labelTracking),
-                color = AriaColors.TextDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            if (canSwitch) {
-                SourceSwitch(m, source, context, switchMode, reconnecting) {
-                    if (reconnecting) return@SourceSwitch
-                    scope.launch {
-                        reconnecting = true
-                        val ok = withTimeoutOrNull(MusicDeckLogic.RECONNECT_TAP_BUDGET_MS) {
-                            SpotifyController.ensureConnected(context)
-                        }
-                        reconnecting = false
-                        when {
-                            ok == true -> if (!MusicRouter.switchToSpotify(context)) {
-                                Toast.makeText(context, SpotifyController.notConnectedMessage(), Toast.LENGTH_SHORT).show()
-                            }
-                            else -> Toast.makeText(
-                                context,
-                                MusicDeckLogic.reconnectFailureMessage(
-                                    SpotifyController.playbackReasonShort(SpotifyController.lastFailure),
-                                    timedOut = ok == null,
-                                ),
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        }
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(m.gap))
-
-        // --- Album art: square, centred, as big as the space allows. Swipe to skip, like the
-        // cassette it replaces.
-        val artBox = if (fixedArt != null) Modifier.fillMaxWidth().height(fixedArt) else Modifier.fillMaxWidth().weight(1f)
-        BoxWithConstraints(artBox, contentAlignment = Alignment.Center) {
-            val edge = minOf(maxWidth, maxHeight)
-            val shape = RoundedCornerShape(m.artRadius)
-            Box(
-                Modifier
-                    .size(edge)
-                    .shadow(elevation = m.artRadius, shape = shape, clip = false)
-                    .clip(shape)
-                    .background(placeholderBrush())
-                    .pointerInput(Unit) {
-                        horizontalSwipe(
-                            onSwipeLeft = { MusicRouter.next(context) },
-                            onSwipeRight = { MusicRouter.previous(context) },
-                        )
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (art != null) {
-                    Image(
-                        bitmap = art.asImageBitmap(),
-                        contentDescription = info?.album?.takeIf { it.isNotBlank() } ?: "Album art",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("♪", style = AriaType.readout.copy(fontSize = m.title * 2), color = AriaColors.Panel)
-                        Text(
-                            "ミュージック",
-                            style = AriaType.neonLabel.copy(fontSize = m.label, letterSpacing = 2.sp),
-                            color = AriaColors.Panel,
-                        )
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(m.gap))
-
-        // --- Title + subtitle, or the idle sentence.
-        val title = when {
-            info != null -> info.title
-            emptyState == MediaEmptyState.NEEDS_NOTIFICATION_ACCESS -> "Can't see music"
-            emptyState == MediaEmptyState.METADATA_MISSING -> "No track info"
-            else -> "Nothing playing"
-        }
-        Text(
-            title,
-            style = AriaType.readout.copy(fontSize = m.title, letterSpacing = 0.sp, fontWeight = DeckBold),
-            color = AriaColors.TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (info != null) {
-            Text(
-                MusicDeckLogic.subtitle(info.artist, contextName ?: info.album),
-                style = AriaType.readout.copy(fontSize = m.subtitle, letterSpacing = 0.sp),
-                color = AriaColors.TextDim,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (MusicDeckLogic.showProgress(info.duration)) {
-                Spacer(Modifier.height(m.gap))
-                Seeker(m, info)
-            }
-        } else {
-            IdleCaption(m, emptyState, source, context)
-        }
-        if (debugLine != null) {
-            Text(debugLine, style = AriaType.neonLabel.copy(fontSize = 8.sp), color = AriaColors.TextDim)
-        }
-        Spacer(Modifier.height(m.gap))
-
-        // --- Transport: shuffle (small), previous, play/pause (big, coral), next, like (small),
-        // volume. Like reads the track's real saved state from App Remote when it can.
-        val trackUri = spotifyState?.track?.uri?.takeIf { extras }
-        var liked by remember(trackUri) { mutableStateOf(false) }
-        LaunchedEffect(trackUri) {
-            liked = trackUri?.let { SpotifyController.isSaved(it) } ?: false
-        }
-        val shuffling = spotifyState?.playbackOptions?.isShuffling == true
-        var volumePct by remember { mutableStateOf(VolumeController.current(context)) }
-        LaunchedEffect(Unit) {
-            // Keep the meter in sync if volume is changed elsewhere (hardware knob, voice).
-            while (true) { volumePct = VolumeController.current(context); delay(1000) }
-        }
-        val keys = TransportKeys(
-            playing = playing,
-            extras = extras,
-            shuffling = shuffling,
-            liked = liked,
-            volumePct = volumePct,
-            onShuffle = {
-                scope.launch {
-                    if (SpotifyController.toggleShuffle(context) == null) {
-                        Toast.makeText(context, SpotifyController.notConnectedMessage(), Toast.LENGTH_SHORT).show()
-                    }
-                }
-            },
-            onLike = {
-                scope.launch {
-                    val action = if (liked) SpotifyController.LibraryAction.UNLIKE else SpotifyController.LibraryAction.LIKE
-                    val outcome = if (liked) SpotifyController.unlike(context) else SpotifyController.like(context)
-                    if (SpotifyController.succeeded(outcome)) {
-                        liked = action == SpotifyController.LibraryAction.LIKE
-                    } else {
-                        Toast.makeText(context, SpotifyController.message(outcome, action), Toast.LENGTH_SHORT).show()
-                    }
-                }
-            },
-            onPrevious = { MusicRouter.previous(context) },
-            onPlayPause = { if (playing) MusicRouter.pause(context) else MusicRouter.play(context) },
-            onNext = { MusicRouter.next(context) },
-            onVolumeDown = { volumePct = VolumeController.lower(context, by = "screen") },
-            onVolumeUp = { volumePct = VolumeController.raise(context, by = "screen") },
-        )
-        TransportBlock(m, keys)
+    val trackUri = spotifyState?.track?.uri?.takeIf { extras }
+    var liked by remember(trackUri) { mutableStateOf(false) }
+    LaunchedEffect(trackUri) {
+        liked = trackUri?.let { SpotifyController.isSaved(it) } ?: false
     }
+    val shuffling = spotifyState?.playbackOptions?.isShuffling == true
+    var volumePct by remember { mutableStateOf(VolumeController.current(context)) }
+    LaunchedEffect(Unit) {
+        while (true) { volumePct = VolumeController.current(context); delay(1000) }
+    }
+    return TransportKeys(
+        playing = playing,
+        extras = extras,
+        shuffling = shuffling,
+        liked = liked,
+        volumePct = volumePct,
+        onShuffle = {
+            scope.launch {
+                if (SpotifyController.toggleShuffle(context) == null) {
+                    Toast.makeText(context, SpotifyController.notConnectedMessage(), Toast.LENGTH_SHORT).show()
+                }
+            }
+        },
+        onLike = {
+            scope.launch {
+                val action = if (liked) SpotifyController.LibraryAction.UNLIKE else SpotifyController.LibraryAction.LIKE
+                val outcome = if (liked) SpotifyController.unlike(context) else SpotifyController.like(context)
+                if (SpotifyController.succeeded(outcome)) {
+                    liked = action == SpotifyController.LibraryAction.LIKE
+                } else {
+                    Toast.makeText(context, SpotifyController.message(outcome, action), Toast.LENGTH_SHORT).show()
+                }
+            }
+        },
+        onPrevious = { MusicRouter.previous(context) },
+        onPlayPause = { if (playing) MusicRouter.pause(context) else MusicRouter.play(context) },
+        onNext = { MusicRouter.next(context) },
+        onVolumeDown = { volumePct = VolumeController.lower(context, by = "screen") },
+        onVolumeUp = { volumePct = VolumeController.raise(context, by = "screen") },
+    )
 }
 
 /** Everything the transport block shows and does, so its layout can be chosen by width alone. */
-private class TransportKeys(
+internal class TransportKeys(
     val playing: Boolean,
     val extras: Boolean,
     val shuffling: Boolean,
@@ -667,7 +732,7 @@ private fun MidKey(m: DeckMetrics, size: Dp, glyph: String, description: String,
 }
 
 @Composable
-private fun SmallKey(
+internal fun SmallKey(
     m: DeckMetrics,
     glyph: String,
     on: Boolean,
@@ -694,11 +759,11 @@ private fun SmallKey(
 
 /** Ten rising bars; lit ones in ink, the top two in the coral accent. A readout only. */
 @Composable
-private fun VolumeBars(percent: Int, height: Dp, segments: Int = 10) {
+internal fun VolumeBars(percent: Int, height: Dp, segments: Int = 10, barWidth: Dp = 4.dp, barGap: Dp = 2.dp) {
     val lit = (percent.coerceIn(0, 100) * segments + 50) / 100
     Row(
         Modifier.height(height),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(barGap),
         verticalAlignment = Alignment.Bottom,
     ) {
         for (i in 0 until segments) {
@@ -709,7 +774,7 @@ private fun VolumeBars(percent: Int, height: Dp, segments: Int = 10) {
             }
             Box(
                 Modifier
-                    .width(4.dp)
+                    .width(barWidth)
                     .fillMaxHeight(0.4f + 0.6f * i / (segments - 1))
                     .clip(RoundedCornerShape(1.dp))
                     .background(color),
