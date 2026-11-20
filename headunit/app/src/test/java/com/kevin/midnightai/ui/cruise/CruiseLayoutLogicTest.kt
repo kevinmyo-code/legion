@@ -13,7 +13,8 @@ import org.junit.Test
  */
 class CruiseLayoutLogicTest {
 
-    private val frames = listOf(800f to 480f, 1024f to 600f)
+    // 800x456 = 800x480 under a 24 dp status bar (the layout starts below it).
+    private val frames = listOf(800f to 480f, 800f to 456f, 1024f to 600f)
 
     @Test fun at800x480TheColumnsMatchThePrototype() {
         val c = CruiseLayoutLogic.columns(800f, 480f)

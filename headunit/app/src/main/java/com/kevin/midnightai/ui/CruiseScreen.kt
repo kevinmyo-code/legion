@@ -4,6 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -553,7 +556,10 @@ fun CruiseScreen(
             //
             // Every size comes from u = 1% of the frame width, the unit the prototype is drawn
             // in, capped by height (58.6u = a 1024x600 frame); CruiseLayoutLogic holds the numbers.
-            BoxWithConstraints(Modifier.fillMaxSize()) {
+            // The status bar stays visible (MainActivity hides only the navigation bar), so the
+            // layout starts below it: the CAR / NAV and NOW / LISTS keys sit in the top row, and a
+            // touch under the bar would pull the shade instead (review L1, 2026-11-20).
+            BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.statusBars)) {
                 val cols = CruiseLayoutLogic.columns(maxWidth.value, maxHeight.value)
                 val u = CruiseLayoutLogic.unit(maxWidth.value, maxHeight.value).dp
                 val density = LocalDensity.current

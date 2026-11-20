@@ -146,7 +146,7 @@ private fun HeroKeys(u: Dp, k: TransportKeys) {
                 HeroKey(u, sizes.volumeWidth.dp, sizes.volumeHeight.dp, "−", "Volume down", accent = false, onClick = k.onVolumeDown)
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     if (sizes.meterFits) {
-                        VolumeBars(percent = k.volumePct, height = sizes.volumeHeight.dp * 0.55f, barWidth = 6.dp, barGap = 4.dp)
+                        VolumeBars(percent = k.volumePct, height = sizes.volumeHeight.dp * 0.55f, barWidth = 5.dp, barGap = 3.dp)
                     }
                 }
                 HeroKey(u, sizes.volumeWidth.dp, sizes.volumeHeight.dp, "＋", "Volume up", accent = false, onClick = k.onVolumeUp)

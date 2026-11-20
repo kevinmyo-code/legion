@@ -238,8 +238,11 @@ object MusicDeckLogic {
         )
     }
 
-    /** The hero card's meter: 10 bars of 6 dp + 9 gaps of 4 dp (the prototype's). */
-    const val HERO_METER_WIDTH = 96f
+    /**
+     * The hero card's meter: 10 bars of 5 dp + 9 gaps of 3 dp. The prototype's 6 + 4 (96 dp) no
+     * longer fits between the volume keys once the layout sits below the status bar (800x456).
+     */
+    const val HERO_METER_WIDTH = 77f
 
     /** Playlist rows the HU-1 music card's PLAYLISTS face shows before it scrolls. */
     const val SCROLL_ROWS_VISIBLE = 3
