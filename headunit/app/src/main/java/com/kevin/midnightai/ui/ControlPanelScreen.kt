@@ -86,6 +86,7 @@ import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaPalette
 import com.kevin.midnightai.ui.theme.LightsOutSwatch
 import com.kevin.midnightai.update.UpdateGraph
+import com.kevin.midnightai.update.UpdateState
 import com.kevin.midnightai.vehicle.ActiveVehicle
 import com.kevin.midnightai.vehicle.ObdBluetoothManager
 import com.kevin.midnightai.vehicle.ObdGauge
@@ -619,7 +620,9 @@ private fun rememberSettingsStatuses(context: Context, showing: Boolean): Settin
     val updateState by remember { UpdateGraph.controller(context).state }.collectAsState()
     val installedCode = remember { UpdateGraph.platform(context).installed().versionCode }
     val update = updateStatusLine(updateState, installedCode)
-    val system = systemCategoryStatus(base.getValue(SettingsCategory.SYSTEM), update)
+    val system = systemCategoryStatus(
+        base.getValue(SettingsCategory.SYSTEM), update, updateFailed = updateState is UpdateState.Failed,
+    )
     return SettingsLive(base + (SettingsCategory.LOOK to look) + (SettingsCategory.SYSTEM to system), spotify, update)
 }
 

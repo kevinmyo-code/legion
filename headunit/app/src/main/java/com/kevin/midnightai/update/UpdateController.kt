@@ -107,7 +107,7 @@ class UpdateController(
                     is UpdateRules.Offer.Newer -> prepare(offer.release, installed)
                 }
             },
-            onFailure = { UpdateState.Failed("Could not check for an update: ${it.message ?: "the engine did not answer"}") },
+            onFailure = { UpdateState.Failed("${UpdateRules.CHECK_FAILED}: ${it.message ?: "the engine did not answer"}") },
         )
         _state.value = next
         next

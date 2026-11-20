@@ -2,6 +2,7 @@ package com.kevin.midnightai.ui
 
 import com.kevin.midnightai.media.AppRemoteLink
 import com.kevin.midnightai.media.SpotifyScopes
+import com.kevin.midnightai.update.UpdateRules
 import com.kevin.midnightai.update.UpdateState
 
 /**
@@ -85,19 +86,30 @@ internal fun updateStatusLine(state: UpdateState, installedCode: Long): Category
     is UpdateState.Ready -> CategoryStatus("Update ready · tap to install", SettingsDot.WARN)
     is UpdateState.Waiting -> CategoryStatus("Update installs after this chat")
     is UpdateState.Installing -> CategoryStatus("Installing update")
-    // Offline at start lands here too ("Could not check..."), as do a refused download and an
-    // install Android refused: one neutral line, no dot, so a start without the hotspot never nags.
-    // The Updates leaf says which one in full.
-    is UpdateState.Failed -> CategoryStatus("Last update attempt failed")
+    // A check that could not reach the engine (often just offline at start) is a plain line with
+    // no dot, so a start without the hotspot never nags; it still shows on the rail
+    // ([systemCategoryStatus]). A refused download, checksum, signer, ABI or install is a real
+    // problem with the next APK (recheck L6, 2026-11-20): ACTION NEEDED. The leaf says which.
+    is UpdateState.Failed -> if (state.sentence.startsWith(UpdateRules.CHECK_FAILED)) {
+        CategoryStatus("Last update check failed")
+    } else {
+        CategoryStatus("Update refused · open Updates", SettingsDot.WARN)
+    }
 }
 
 /**
  * The System rail line: a missing permission outranks everything (the app half-works without it);
  * otherwise the update line once the updater has read something, else the permissions line.
  */
-internal fun systemCategoryStatus(permissions: CategoryStatus, update: CategoryStatus): CategoryStatus = when {
+internal fun systemCategoryStatus(
+    permissions: CategoryStatus,
+    update: CategoryStatus,
+    updateFailed: Boolean = false,
+): CategoryStatus = when {
     permissions.dot == SettingsDot.WARN || permissions.dot == SettingsDot.ERROR -> permissions
     update.dot != SettingsDot.NONE -> update
+    // A failed check has no dot but must still be seen: the rail says it instead of "All granted".
+    updateFailed -> update
     else -> permissions
 }
 

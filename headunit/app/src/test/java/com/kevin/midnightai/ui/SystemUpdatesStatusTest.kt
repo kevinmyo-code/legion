@@ -54,8 +54,20 @@ class SystemUpdatesStatusTest {
 
     @Test fun aFailedAttemptIsNeutralSoAnOfflineStartDoesNotNag() {
         val s = updateStatusLine(UpdateState.Failed("Could not check for an update: offline"), 1L)
-        assertEquals(CategoryStatus("Last update attempt failed"), s)
-        assertEquals(permissionsCategoryStatus(0), systemCategoryStatus(permissionsCategoryStatus(0), s))
+        assertEquals(CategoryStatus("Last update check failed"), s)
+    }
+
+    @Test fun aFailedCheckStillShowsOnTheRail() {
+        val s = updateStatusLine(UpdateState.Failed("Could not check for an update: offline"), 1L)
+        assertEquals(s, systemCategoryStatus(permissionsCategoryStatus(0), s, updateFailed = true))
+        // A missing permission still wins.
+        assertEquals(permissionsCategoryStatus(1), systemCategoryStatus(permissionsCategoryStatus(1), s, updateFailed = true))
+    }
+
+    @Test fun aRefusedUpdateAsksForAction() {
+        val s = updateStatusLine(UpdateState.Failed("Not installed: Android said conflict"), 1L)
+        assertEquals(CategoryStatus("Update refused · open Updates", SettingsDot.WARN), s)
+        assertEquals(s, systemCategoryStatus(permissionsCategoryStatus(0), s, updateFailed = true))
     }
 
     @Test fun aMissingPermissionStillWinsTheSystemRail() {

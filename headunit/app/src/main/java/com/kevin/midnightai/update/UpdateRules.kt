@@ -14,6 +14,9 @@ object UpdateRules {
 
     const val APP = "Midnight AI"
 
+    /** How a failed CHECK (engine unreachable, offline) begins; every other Failed is a refusal. */
+    const val CHECK_FAILED = "Could not check for an update"
+
     /** What a release means for the app installed now. */
     sealed interface Offer {
         data object DebugBuild : Offer
