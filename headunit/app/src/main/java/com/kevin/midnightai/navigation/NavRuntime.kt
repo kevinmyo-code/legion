@@ -42,7 +42,7 @@ object NavRuntime {
     fun init(context: Context) {
         app = context.applicationContext
         guard = app.getSharedPreferences(GUARD_PREFS, Context.MODE_PRIVATE)
-        provider = BeaconLocationProvider(LocationController.state)
+        provider = BeaconLocationProvider(LocationController.navFixes)
         controller = NavController(
             sdkFactory = {
                 val t = token ?: error("no map token")
@@ -51,7 +51,7 @@ object NavRuntime {
             },
             hasToken = { token != null },
             availability = { unavailableReason() },
-            position = { LocationController.state.value?.let { GeoPoint(it.latitude, it.longitude) } },
+            position = { NavFix.freshOrigin(LocationController.navFixes.value, android.os.SystemClock.elapsedRealtimeNanos()) },
             onTripStarted = {
                 LocationController.startNavMode(app) // 1 s fixes from the phone while guiding
                 MiddlePanel.tripStarted()

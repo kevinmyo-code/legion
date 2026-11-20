@@ -97,7 +97,7 @@ internal fun NavMap(following: Boolean, onMovedByHand: () -> Unit, onFailed: (St
     }
 
     // The puck and the camera follow the phone's fixes (matched while guiding).
-    val raw by LocationController.state.collectAsState()
+    val raw by LocationController.navFixes.collectAsState()
     val matched by NavRuntime.feed.matched.collectAsState()
     LaunchedEffect(raw, matched, following) {
         val location = matched ?: raw?.let { fix -> runCatching { fix.toCommonLocation() }.getOrNull() } ?: return@LaunchedEffect

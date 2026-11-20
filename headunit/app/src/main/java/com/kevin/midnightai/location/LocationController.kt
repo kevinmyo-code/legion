@@ -32,6 +32,19 @@ object LocationController {
     private val _state = MutableStateFlow<Location?>(null)
     val state: StateFlow<Location?> = _state.asStateFlow()
 
+    private val _navFixes = MutableStateFlow<Location?>(null)
+
+    /**
+     * Fixes for navigation (HU-1 T5, review NAV-2): ONLY a live fix from the phone's authenticated
+     * feed (MNAI2) or this unit's own GPS, as published and accepted below. Never the
+     * getLastKnownLocation seed (it can be hours old) and never a network fix (often 100 m off).
+     */
+    val navFixes: StateFlow<Location?> = _navFixes.asStateFlow()
+
+    internal fun resetNavFixesForTest() {
+        _navFixes.value = null
+    }
+
     /** Provider name stamped on beacon fixes, so a log or a bug report can tell them apart. */
     const val BEACON_PROVIDER = "midnight-beacon"
 
@@ -141,7 +154,10 @@ object LocationController {
     internal fun publish(source: FixSource, location: Location) {
         val now = SystemClock.elapsedRealtime()
         lastSeenMs[source] = now
-        if (LocationSources.accepts(source, lastSeenMs, now)) _state.value = location
+        if (LocationSources.accepts(source, lastSeenMs, now)) {
+            _state.value = location
+            if (source == FixSource.PHONE || source == FixSource.UNIT_GPS) _navFixes.value = location
+        }
     }
 
     /**

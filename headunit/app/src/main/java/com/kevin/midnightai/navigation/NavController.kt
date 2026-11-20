@@ -78,7 +78,7 @@ class NavController(
             return onResult(NavResult(false, "A trip is already running. End it first, then start the new one."))
         }
         val origin = position() ?: run {
-            val words = "No position from the phone yet, so no route was asked for. Check the car link, then try again."
+            val words = "No current position from the phone yet, so no route was asked for. Check the car link, then try again."
             _state.value = NavState(NavPhase.FAILED, words, destination)
             return onResult(NavResult(false, words))
         }

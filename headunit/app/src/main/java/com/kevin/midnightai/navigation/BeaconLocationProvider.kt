@@ -22,10 +22,10 @@ import android.location.Location as AndroidLocation
 
 /**
  * The head unit's position for Mapbox (HU-1 T5): the unit's own GPS is dead (headunit/CLAUDE.md
- * §14), so the navigator and the map follow the fixes [com.kevin.midnightai.location.LocationController]
- * publishes, which on the car are the authenticated phone feed (MNAI2). REAL fixes only: nothing is
- * fabricated or extrapolated, a fix is passed on once, and a fix older than the last one passed is
- * dropped. No fix means no callback (Mapbox then has no position, and the NAV face says so).
+ * §14), so the navigator and the map follow [com.kevin.midnightai.location.LocationController.navFixes]:
+ * ONLY the phone's authenticated feed (MNAI2) or the unit's own GPS, never the getLastKnownLocation
+ * seed and never a network fix (review NAV-2). Nothing is fabricated or extrapolated, a fix is
+ * passed on once, and a fix older than the last one passed is dropped. No fix means no callback.
  *
  * Conversion is Mapbox's own `LocationServiceUtils.toCommonLocation` (traced by javap: it maps
  * `elapsedRealtimeNanos` to `monotonicTimestamp`), so every fix carries the unit's own monotonic
