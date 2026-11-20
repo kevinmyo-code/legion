@@ -103,7 +103,7 @@ class CarLinkController(
     private val ownHotspotNow: (String) -> Boolean = { false },
     /** The household's cars, for the pairing's vehicle choice. */
     private val vehicles: suspend () -> List<VehicleOption> = { emptyList() },
-    /** STUB (red step): keeps the process sending with the screen off. */
+    /** Keeps the process sending with the screen off (a foreground service of type location). */
     private val locationService: LocationServiceHost = LocationServiceHost.NONE,
 ) {
     private val _status = MutableStateFlow(CarLinkStatus())
@@ -121,6 +121,9 @@ class CarLinkController(
     // A pairing session is running: the revoke-only listener pauses (C1). Its REVOKE under the old
     // key would make a unit holding the new pairing as PENDING forget that too.
     @Volatile private var pairingOpen = false
+    // The foreground service's wanted state, and whether the pairing network is up right now.
+    @Volatile private var serviceOn = false
+    @Volatile private var networkPresent = false
 
     /**
      * Reads the stored keys once, on [io] (Keystore decrypts with retries can be slow). A store that
@@ -211,6 +214,7 @@ class CarLinkController(
                 // 4.3: no socket at all while the network the phone paired on is absent (rev 5); a
                 // changed subnet is followed only on the phone's own hotspot (rev 6, R2).
                 val look = network()
+                noteNetwork(look)
                 val heal = healTarget(look)
                 keepGoing = when {
                     look is NetworkLook.Present -> runSender(feedRing, FeedMode(revokeOnly, null))
@@ -293,8 +297,29 @@ class CarLinkController(
         return null
     }
 
-    private suspend fun keepListening(feedRing: LinkKeyRing, mode: FeedMode): Boolean =
-        currentCoroutineContext().isActive && feedRing.current != null && stillOn(network(), mode)
+    private suspend fun keepListening(feedRing: LinkKeyRing, mode: FeedMode): Boolean {
+        val look = network()
+        noteNetwork(look)
+        return currentCoroutineContext().isActive && feedRing.current != null && stillOn(look, mode)
+    }
+
+    private fun noteNetwork(look: NetworkLook) {
+        networkPresent = look is NetworkLook.Present
+        syncService()
+    }
+
+    /**
+     * The foreground service runs only while paired AND "Send location" is on AND the pairing
+     * network is present; it stops the moment any of them ends. A start Android refuses is said in
+     * words and not retried until the conditions change.
+     */
+    @Synchronized private fun syncService() {
+        val want = ring.current != null && _status.value.sendLocation && networkPresent
+        if (want == serviceOn) return
+        serviceOn = want
+        if (!want) return locationService.stop()
+        if (!locationService.start()) _status.update { it.copy(note = CarLinkNote.SERVICE_NOT_STARTED) }
+    }
 
     /** The sender stays up only while the network still looks the way it did when it started. */
     private fun stillOn(look: NetworkLook, mode: FeedMode): Boolean {
@@ -495,12 +520,14 @@ class CarLinkController(
                 },
             )
         }
+        syncService()
         if (keepForRevoke) startFeed()
     }
 
     fun setSendLocation(on: Boolean) {
         if (!store.setSendLocation(on)) return _status.update { it.copy(note = CarLinkNote.SETTING_NOT_SAVED) }
         _status.update { it.copy(sendLocation = on) }
+        syncService()
     }
 
     /** Which of the household's cars this head unit is in (the engine binds its sign-in to one). */

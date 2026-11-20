@@ -12,7 +12,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import java.net.InetAddress
 import java.net.SocketException
@@ -311,7 +310,7 @@ class CarLinkControllerTest {
     }
 
     // ---- Screen-off location: the foreground service runs only while paired, switched on, on the network.
-    @Ignore("red until fix E") @Test fun `the location service runs only while paired, switched on and on the pairing network`() {
+    @Test fun `the location service runs only while paired, switched on and on the pairing network`() {
         assertTrue(store.write(key, null))
         val c = controller()
         c.start()
