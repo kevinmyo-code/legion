@@ -10,6 +10,7 @@ import com.kevin.midnightai.link.LinkKeyStore
 import com.kevin.midnightai.location.LocationController
 import com.kevin.midnightai.ui.cruise.MiddlePanel
 import com.mapbox.common.MapboxOptions
+import kotlinx.coroutines.launch
 
 /**
  * Process-wide wiring for the head unit's navigation (HU-1 T5). Nothing Mapbox is created at app
@@ -62,7 +63,14 @@ object NavRuntime {
                 MiddlePanel.tripEnded()
             },
             schedule = { ms, block -> main.postDelayed(block, ms) },
+            positionFresh = {
+                NavFix.freshOrigin(LocationController.navFixes.value, android.os.SystemClock.elapsedRealtimeNanos()) != null
+            },
         )
+        // Every navigation fix: an arrival held back while the position was stale may land now.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main).launch {
+            LocationController.navFixes.collect { if (it != null) controller.onFreshFix() }
+        }
         refreshToken()
         CarLink.addListener { refreshToken() }
     }

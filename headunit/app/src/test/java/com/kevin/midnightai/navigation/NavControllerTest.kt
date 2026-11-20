@@ -48,6 +48,7 @@ class NavControllerTest {
     private var factoryThrows: Throwable? = null
 
     private var built = 0
+    private var fresh = true
     private fun controller() = NavController(
         sdkFactory = { factoryThrows?.let { throw it }; built++; sdk },
         hasToken = { token },
@@ -56,6 +57,7 @@ class NavControllerTest {
         onTripStarted = { started++ },
         onTripEnded = { ended++ },
         schedule = { ms, block -> scheduled += ms to block },
+        positionFresh = { fresh },
     )
 
     @Test fun noTokenSaysPairYourPhoneAndAsksNothing() {
@@ -149,6 +151,19 @@ class NavControllerTest {
         val words = c.state.value.message
         assertFalse(words, words.contains("api.mapbox.com") || words.contains("access_token") || words.contains("401"))
         assertEquals(NavController.unavailableWords(NavController.mapFailureWords(MapFailure.STYLE)), words)
+    }
+
+    /** Review confirm 0cac90f7: "Arrived" is never declared from a stale (possibly predicted) position. */
+    @Test fun arrivalWaitsForAFreshFix() {
+        val c = controller()
+        c.navigateTo(home)
+        c.go()
+        fresh = false
+        sdk.listener!!.onArrival()
+        assertEquals("arrived on a stale position", NavPhase.GUIDING, c.state.value.phase)
+        fresh = true
+        c.onFreshFix()
+        assertEquals(NavPhase.ARRIVED, c.state.value.phase)
     }
 
     @Test fun noPositionAsksForNoRoute() {

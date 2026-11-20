@@ -30,6 +30,8 @@ class NavController(
     private val onTripEnded: () -> Unit,
     /** Runs [block] after [delayMs] on the main thread (the arrival hold). */
     private val schedule: (delayMs: Long, block: () -> Unit) -> Unit,
+    /** True while the newest navigation fix is fresh (NavFix.FRESH_MS). */
+    private val positionFresh: () -> Boolean = { true },
 ) {
     private val _state = MutableStateFlow(NavState(NavPhase.IDLE, IDLE_WORDS))
     val state: StateFlow<NavState> = _state.asStateFlow()
@@ -191,6 +193,16 @@ class NavController(
         if (wasGuiding) onTripEnded()
     }
 
+    private var arrivalWaiting = false
+
+    /** A fresh fix arrived (NavRuntime calls this on every navigation fix): an arrival held back lands now. */
+    fun onFreshFix() {
+        if (arrivalWaiting && positionFresh() && _state.value.phase == NavPhase.GUIDING) {
+            arrivalWaiting = false
+            arrive()
+        }
+    }
+
     fun recenter() {
         _state.value = _state.value.copy(following = true)
     }
@@ -229,8 +241,20 @@ class NavController(
         }
 
         override fun onArrival() {
+            if (_state.value.phase != NavPhase.GUIDING) return
+            // Review confirm 0cac90f7: never declared from a stale (possibly predicted) position;
+            // it lands with the next fresh fix instead.
+            if (!positionFresh()) {
+                arrivalWaiting = true
+                return
+            }
+            arrive()
+        }
+    }
+
+    private fun arrive() {
+        run {
             val st = _state.value
-            if (st.phase != NavPhase.GUIDING) return
             val epoch = ++tripEpoch
             sdk?.let { runCatching { it.stopAndClear() } }
             _state.value = st.copy(phase = NavPhase.ARRIVED, message = "Arrived at ${st.destination?.name}.", rerouting = false)
