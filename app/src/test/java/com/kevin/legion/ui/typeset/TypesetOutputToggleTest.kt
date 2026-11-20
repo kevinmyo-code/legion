@@ -81,7 +81,7 @@ class TypesetOutputToggleTest {
     }
 
     @Test
-    fun `headphones hold the route: it says so and does not flip`() {
+    fun `headphones hold the route, it says so and does not flip`() {
         var flips = 0
         val held = OutputToggle(OutputChoice.CALL, VoiceOutlet.WIRED, enabled = false, label = "Headphones")
         show(held, TypesetHomeActions(onFlipOutput = { flips++ }))
