@@ -51,7 +51,7 @@ internal fun NavMap(
     stale: Boolean,
     panAllowed: Boolean,
     onMovedByHand: () -> Unit,
-    onFailed: (String) -> Unit,
+    onFailed: (com.kevin.midnightai.navigation.MapFailure) -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current
@@ -61,7 +61,7 @@ internal fun NavMap(
         NavRuntime.mapStarting()
         runCatching { MapView(context) }.onFailure {
             NavRuntime.mapStarted()
-            failed("the map view could not be created (${it.javaClass.simpleName})")
+            failed(com.kevin.midnightai.navigation.MapFailure.VIEW)
         }.getOrNull()
     } ?: return
     val puckSource = remember { NavigationLocationProvider() }
@@ -89,7 +89,8 @@ internal fun NavMap(
         }
         val loadErrors = mapView.mapboxMap.subscribeMapLoadingError { error ->
             NavRuntime.mapStarted()
-            if (mapView.mapboxMap.style == null) failed("the map did not load (${error.message})")
+            // Review C-2: never Mapbox's own text (a style URL in it carries the token).
+            if (mapView.mapboxMap.style == null) failed(com.kevin.midnightai.navigation.MapFailure.STYLE)
         }
         mapView.mapboxMap.loadStyle(Style.TRAFFIC_NIGHT)
         onDispose {

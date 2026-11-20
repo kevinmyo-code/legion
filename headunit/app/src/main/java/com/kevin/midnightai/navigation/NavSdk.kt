@@ -1,5 +1,8 @@
 package com.kevin.midnightai.navigation
 
+/** How the map surface failed (review C-2). */
+enum class MapFailure { VIEW, STYLE }
+
 /** Why a route request failed, as far as the words need to know (never the SDK's own text). */
 enum class RouteFailure { NO_ROUTE, OFFLINE, TOKEN_REFUSED, OTHER }
 

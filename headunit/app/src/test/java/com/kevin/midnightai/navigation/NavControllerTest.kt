@@ -142,6 +142,15 @@ class NavControllerTest {
         assertEquals("a new SDK is built for a new token", 2, built)
     }
 
+    /** Review C-2: a map-loading error shows fixed words, never Mapbox's text (a style URL carries the token). */
+    @Test fun aMapLoadingErrorIsFixedWordsNeverTheSdksText() {
+        val c = controller()
+        c.mapFailed(MapFailure.STYLE, "Failed to load https://api.mapbox.com/styles/v1/mapbox/traffic-night-v2?access_token=pk.made-up: HTTP 401")
+        val words = c.state.value.message
+        assertFalse(words, words.contains("api.mapbox.com") || words.contains("access_token") || words.contains("401"))
+        assertEquals(NavController.unavailableWords(NavController.mapFailureWords(MapFailure.STYLE)), words)
+    }
+
     @Test fun noPositionAsksForNoRoute() {
         pos = null
         val c = controller()
@@ -193,7 +202,7 @@ class NavControllerTest {
         val c = controller()
         c.navigateTo(home)
         c.go()
-        c.mapFailed("the map style did not load")
+        c.mapFailed(MapFailure.STYLE)
         assertEquals(NavPhase.UNAVAILABLE, c.state.value.phase)
         assertEquals(1, ended)
         assertFalse(sdk.running)

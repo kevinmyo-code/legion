@@ -201,7 +201,12 @@ class NavController(
     }
 
     /** The map surface itself failed (style, GL, native): fall back to the car face with words. */
-    fun mapFailed(reason: String) = failUnavailable(reason)
+    /**
+     * The map surface failed (review C-2): fixed words for the kind on screen and in tool results.
+     * [sdkText] (which can hold a style URL with the token) is ignored on purpose.
+     */
+    fun mapFailed(kind: MapFailure, @Suppress("UNUSED_PARAMETER") sdkText: String? = null) =
+        failUnavailable(mapFailureWords(kind))
 
     private fun failUnavailable(reason: String) {
         val wasGuiding = _state.value.phase == NavPhase.GUIDING
@@ -240,6 +245,11 @@ class NavController(
 
     companion object {
         const val ARRIVAL_HOLD_MS = 30_000L
+
+        fun mapFailureWords(kind: MapFailure): String = when (kind) {
+            MapFailure.VIEW -> "the map could not be started on this unit"
+            MapFailure.STYLE -> "the map did not load (check the phone's hotspot; the map token may also be refused)"
+        }
 
         /** The only words a route failure ever shows or says (review item 7). */
         fun failureWords(kind: RouteFailure, place: String): String = when (kind) {

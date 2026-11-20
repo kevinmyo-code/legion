@@ -93,7 +93,7 @@ internal fun NavFace(state: NavState, controller: NavController, modifier: Modif
                             stale = lines.stale,
                             panAllowed = com.kevin.midnightai.navigation.NavInput.mapPanAllowed(driving),
                             onMovedByHand = controller::mapMovedByHand,
-                            onFailed = controller::mapFailed,
+                            onFailed = { kind -> controller.mapFailed(kind) },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
