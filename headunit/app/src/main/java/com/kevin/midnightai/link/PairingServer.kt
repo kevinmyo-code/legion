@@ -20,8 +20,10 @@ import org.json.JSONObject
  * - Every session call and every socket write runs on ONE worker thread ([worker]); nothing here
  *   touches the network from the caller's thread (review H3: the screen's buttons used to write
  *   to the socket from the UI thread, where Android forbids it and the `done` silently vanished).
- * - Up to [MAX_PREAUTH] connections may be waiting to authenticate; each must send a valid hello
- *   within [PREAUTH_TIMEOUT_MS]. Anything else from them closes that connection only (review M1).
+ * - Up to [MAX_PREAUTH] connections may be waiting to authenticate, one per source address, at most
+ *   one new connection per address per [RATE_LIMIT_MS]; when full a silent one is evicted before
+ *   one mid-hello. Each must send a valid hello within [PREAUTH_TIMEOUT_MS]. Anything else from
+ *   them closes that connection only (review M1).
  * - Frames: 4-byte big-endian length (checked before allocating) + UTF-8 JSON. A frame split
  *   across reads is reassembled against an overall deadline (review L6).
  *
@@ -33,8 +35,16 @@ class PairingServer(
 ) {
     private val server = ServerSocket(0, MAX_PREAUTH, bindAddress).apply { soTimeout = ACCEPT_POLL_MS }
     private val worker = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "pairing-worker").apply { isDaemon = true } }
+    /** A connection not yet authenticated, and whether it has sent any byte yet. */
+    private class Slot(val socket: Socket) {
+        @Volatile var started = false
+    }
+
     /** Connections not yet authenticated, oldest first, at most one per source address (review M1). */
-    private val preAuth = LinkedHashMap<InetAddress, Socket>()
+    private val preAuth = LinkedHashMap<InetAddress, Slot>()
+
+    /** When each address last got a connection in (monotonic ms), for the per-address rate limit. */
+    private val lastAcceptMs = HashMap<InetAddress, Long>()
     @Volatile private var claimed: Socket? = null
     @Volatile private var closed = false
     private val _stage = MutableStateFlow(session.stage)
@@ -69,25 +79,43 @@ class PairingServer(
                 runCatching { socket.close() }
                 continue
             }
-            // A newer connection from the same address replaces the older one, and when all slots
-            // are taken the OLDEST is evicted: idle sockets can never hold the phone out.
-            synchronized(preAuth) {
-                socket.inetAddress?.let { ip -> preAuth.remove(ip)?.let { old -> runCatching { old.close() } } }
-                while (preAuth.size >= MAX_PREAUTH) {
-                    val oldest = preAuth.keys.first()
-                    preAuth.remove(oldest)?.let { old -> runCatching { old.close() } }
+            val ip = socket.inetAddress
+            val slot = Slot(socket)
+            val admitted = synchronized(preAuth) {
+                val now = System.nanoTime() / 1_000_000L
+                // Rate limit (recheck c53f1fc3): one new connection per address per RATE_LIMIT_MS.
+                // A burst is refused; it never displaces anything.
+                val last = ip?.let { lastAcceptMs[it] }
+                if (last != null && now - last < RATE_LIMIT_MS) {
+                    false
+                } else {
+                    ip?.let { lastAcceptMs[it] = now }
+                    // A newer connection from the same address replaces the older one.
+                    ip?.let { preAuth.remove(it)?.let { old -> runCatching { old.socket.close() } } }
+                    // When full, evict the oldest connection that has sent NOTHING; only if every
+                    // slot is mid-message, the oldest of all. Idle sockets never hold the phone out.
+                    while (preAuth.size >= MAX_PREAUTH) {
+                        val victim = preAuth.entries.firstOrNull { !it.value.started }?.key ?: preAuth.keys.first()
+                        preAuth.remove(victim)?.let { old -> runCatching { old.socket.close() } }
+                    }
+                    ip?.let { preAuth[it] = slot }
+                    true
                 }
-                socket.inetAddress?.let { preAuth[it] = socket }
             }
-            Thread({ serve(socket) }, "pairing-conn").apply { isDaemon = true }.start()
+            if (!admitted) {
+                runCatching { socket.close() }
+                continue
+            }
+            Thread({ serve(slot) }, "pairing-conn").apply { isDaemon = true }.start()
         }
     }
 
-    private fun serve(socket: Socket) {
+    private fun serve(slot: Slot) {
+        val socket = slot.socket
         try {
             socket.soTimeout = READ_POLL_MS
             val input = socket.getInputStream()
-            val hello = readFrame(input, System.nanoTime() + PREAUTH_TIMEOUT_MS * 1_000_000L) ?: return
+            val hello = readFrame(input, System.nanoTime() + PREAUTH_TIMEOUT_MS * 1_000_000L) { slot.started = true } ?: return
             val verdict = onWorkerWait { session.preAuth(hello) }
             when (verdict) {
                 null, PairingSession.PreAuth.Close -> return
@@ -99,7 +127,7 @@ class PairingServer(
                     claimed = socket
                     // The session is taken: close every other unauthenticated connection now.
                     synchronized(preAuth) {
-                        preAuth.values.filter { it !== socket }.forEach { runCatching { it.close() } }
+                        preAuth.values.filter { it.socket !== socket }.forEach { runCatching { it.socket.close() } }
                         preAuth.clear()
                     }
                     onWorker { listOf(verdict.reply) }
@@ -113,7 +141,7 @@ class PairingServer(
         } catch (_: IOException) {
             // A dropped connection is handled below.
         } finally {
-            synchronized(preAuth) { socket.inetAddress?.let { if (preAuth[it] === socket) preAuth.remove(it) } }
+            synchronized(preAuth) { socket.inetAddress?.let { if (preAuth[it] === slot) preAuth.remove(it) } }
             if (socket === claimed) {
                 onWorkerWait { session.onDisconnect() }
                 claimed = null
@@ -127,8 +155,8 @@ class PairingServer(
      * Reads one frame, or null on EOF, an oversized length or the deadline. Survives read timeouts
      * mid-frame (the bytes already read are kept).
      */
-    private fun readFrame(input: InputStream, deadlineNanos: Long): JSONObject? {
-        val header = readExactly(input, 4, deadlineNanos) ?: return null
+    private fun readFrame(input: InputStream, deadlineNanos: Long, onBytes: (() -> Unit)? = null): JSONObject? {
+        val header = readExactly(input, 4, deadlineNanos, onBytes) ?: return null
         val n = ((header[0].toInt() and 0xff) shl 24) or ((header[1].toInt() and 0xff) shl 16) or
             ((header[2].toInt() and 0xff) shl 8) or (header[3].toInt() and 0xff)
         if (n !in 1..MAX_FRAME) return null
@@ -138,7 +166,7 @@ class PairingServer(
         return msg ?: JSONObject().put("t", "unreadable")
     }
 
-    private fun readExactly(input: InputStream, n: Int, deadlineNanos: Long): ByteArray? {
+    private fun readExactly(input: InputStream, n: Int, deadlineNanos: Long, onBytes: (() -> Unit)? = null): ByteArray? {
         val out = ByteArray(n)
         var got = 0
         while (got < n) {
@@ -149,6 +177,7 @@ class PairingServer(
                 continue
             }
             if (r < 0) return null
+            if (r > 0) onBytes?.invoke()
             got += r
         }
         return out
@@ -221,7 +250,10 @@ class PairingServer(
 
     companion object {
         const val MAX_FRAME = 8 * 1024
-        const val MAX_PREAUTH = 3
+        /** Pre-auth slots (recheck c53f1fc3: 8, so an evicting attacker needs 8 addresses inside the phone's window). */
+        const val MAX_PREAUTH = 8
+        /** One new connection per source address per this long; a burst is refused (recheck c53f1fc3). */
+        const val RATE_LIMIT_MS = 250L
         /** A real phone sends its hello at once; 3 s is plenty and keeps a squatter's slot short. */
         const val PREAUTH_TIMEOUT_MS = 3_000L
         private const val ACCEPT_POLL_MS = 500

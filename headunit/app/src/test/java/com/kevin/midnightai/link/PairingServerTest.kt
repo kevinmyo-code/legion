@@ -130,11 +130,12 @@ class PairingServerTest {
 
     @Test fun m1_idleAndJunkConnectionsNeitherBlockNorKillThePairing() {
         val (server, qr) = server()
-        val idle = Socket(loopback, Phone(qr).port)
-        Socket(loopback, Phone(qr).port).use { junk ->
+        // Separate source addresses: one address gets one new connection per 250 ms.
+        val idle = from(30, Phone(qr).port)
+        from(31, Phone(qr).port).use { junk ->
             junk.out().apply { writeInt(PairingServer.MAX_FRAME + 1); flush() }
         }
-        Socket(loopback, Phone(qr).port).use { junk ->
+        from(32, Phone(qr).port).use { junk ->
             PairingServer.writeFrame(junk.out(), JSONObject().put("t", "abort").put("why", "x"))
         }
         Thread.sleep(300)
@@ -153,7 +154,7 @@ class PairingServerTest {
     @Test fun m1_idleConnectionsCannotHoldTheSlotsAgainstThePhone() {
         val (server, qr) = server()
         val idle = List(3) { Socket(loopback, Phone(qr).port) }
-        Thread.sleep(200)
+        Thread.sleep(300) // past the per-address rate limit (all of these share one address)
         val phone = Phone(qr)
         Socket(loopback, phone.port).use { sock ->
             sock.soTimeout = 5_000
@@ -167,7 +168,13 @@ class PairingServerTest {
     /** Read state of an idle client: -1 closed by the server, -2 still open (read timed out). */
     private fun Socket.state(): Int {
         soTimeout = 300
-        return runCatching { getInputStream().read() }.getOrDefault(-2)
+        return try {
+            getInputStream().read()
+        } catch (_: java.net.SocketTimeoutException) {
+            -2 // still open, nothing to read
+        } catch (_: java.io.IOException) {
+            -1 // reset by the server: closed
+        }
     }
 
     private fun from(last: Int, port: Int) = Socket(loopback, port, InetAddress.getByName("127.0.0.$last"), 0)
@@ -175,8 +182,9 @@ class PairingServerTest {
     @Test fun m1_whenAllSlotsAreTakenTheOldestIsEvictedNotTheNewcomer() {
         val (server, qr) = server()
         val port = Phone(qr).port
-        val idle = (2..4).map { from(it, port).also { Thread.sleep(50) } }
-        val fourth = from(5, port)
+        // Review M1 hardening (recheck c53f1fc3): 8 pre-auth slots, not 3.
+        val idle = (2..9).map { from(it, port).also { Thread.sleep(30) } }
+        val fourth = from(10, port)
         Thread.sleep(300)
         assertEquals("oldest not evicted", -1, idle[0].state())
         assertEquals("a newer idle one was closed", -2, idle[1].state())
@@ -189,12 +197,42 @@ class PairingServerTest {
         val (server, qr) = server()
         val port = Phone(qr).port
         val first = from(7, port)
-        Thread.sleep(100)
+        Thread.sleep(300) // past the per-address rate limit
         val second = from(7, port)
         Thread.sleep(300)
         assertEquals("the older connection from the same address was not closed", -1, first.state())
         assertEquals(-2, second.state())
         first.close(); second.close()
+        server.close()
+    }
+
+    /** M1 hardening: one new connection per address per 250 ms; a burst from one address is refused, not let in. */
+    @Test fun m1_aBurstFromOneAddressIsRateLimited() {
+        val (server, qr) = server()
+        val port = Phone(qr).port
+        val first = from(11, port)
+        Thread.sleep(50)
+        val burst = from(11, port)
+        Thread.sleep(200)
+        assertEquals("a burst connection was let in", -1, burst.state())
+        assertEquals("the burst displaced the earlier connection", -2, first.state())
+        first.close(); burst.close()
+        server.close()
+    }
+
+    /** M1 hardening: when full, a connection that has sent nothing goes before one that is mid-message. */
+    @Test fun m1_aSilentConnectionIsEvictedBeforeOneThatHasStartedItsHello() {
+        val (server, qr) = server()
+        val port = Phone(qr).port
+        val idle = (20..27).map { from(it, port).also { Thread.sleep(30) } }
+        idle[0].getOutputStream().apply { write(byteArrayOf(0, 0)); flush() } // half a frame header
+        Thread.sleep(100)
+        val newcomer = from(28, port)
+        Thread.sleep(200)
+        assertEquals("the connection mid-hello was evicted", -2, idle[0].state())
+        assertEquals("the oldest silent connection was kept", -1, idle[1].state())
+        assertEquals(-2, newcomer.state())
+        (idle + newcomer).forEach { it.close() }
         server.close()
     }
 
