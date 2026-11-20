@@ -25,7 +25,7 @@ name: Android
 
 on:
   push:
-    branches: [dev, main, 'up/**', 'integrate/**']
+    branches: [dev, main, 'up/**', 'integrate/**', 'ship/**']
     paths:
       - 'app/**'
       - 'shared/**'
@@ -35,6 +35,12 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'gradlew'
+      - 'server/assistant/pack.py'
+      - 'server/assistant/packs/**'
+      - 'server/assistant/read_through.py'
+      - 'tools/live_tool_eval/**'
+      - 'tools/voice_eval/**'
+      - 'tools/voice_audit.py'
       - '.github/workflows/android.yml'
       - '.github/scripts/junit_totals.py'
   pull_request:
@@ -47,6 +53,12 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'gradlew'
+      - 'server/assistant/pack.py'
+      - 'server/assistant/packs/**'
+      - 'server/assistant/read_through.py'
+      - 'tools/live_tool_eval/**'
+      - 'tools/voice_eval/**'
+      - 'tools/voice_audit.py'
       - '.github/workflows/android.yml'
       - '.github/scripts/junit_totals.py'
   workflow_dispatch:
