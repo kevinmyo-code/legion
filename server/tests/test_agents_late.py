@@ -633,3 +633,18 @@ def test_an_owed_line_is_unique_per_source(household_user):
     _owe(household_user, source_id="same")
     with pytest.raises(IntegrityError), transaction.atomic():
         _owe(household_user, source_id="same")
+
+
+# -- review 2026-11-20, item F: a topic of a bare pronoun is asked back -------------------------
+
+
+@pytest.mark.parametrize(
+    "words", ["look into it and tell me later", "research that in the background"]
+)
+def test_a_pronoun_topic_is_asked_back_and_queues_nothing(
+    auth_client, door_on, late_on, fake_model, words
+):
+    fake_model["rounds"] = []
+    assert _sentences(_turn(auth_client, words)) == [late.ASK_WHAT]
+    assert not LateTask.objects.exists()
+    assert fake_model["model"].requests == []
