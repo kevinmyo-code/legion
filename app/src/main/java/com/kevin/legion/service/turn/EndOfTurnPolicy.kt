@@ -24,6 +24,10 @@ package com.kevin.legion.service.turn
  *   turn past [BASE_MS] (without Smart Turn it would have ended there), even if the user then spoke
  *   again and the final silence ended at the base. [Action.EndActivity.longestSilenceMs] says how far.
  * - Without a working Smart Turn ([smartAvailable] false) it is silence only, [Reason.FALLBACK].
+ * - **Except, for a caller that passes [finishedMs] below the base (the cascade, Kevin 2026-11-19,
+ *   the web's rule):** a "done" verdict that lands before the base ends the turn at [finishedMs] of
+ *   silence (or at once if that is already past), [Reason.FINISHED]. Without that verdict nothing
+ *   changes. Live passes nothing and keeps the rule above.
  */
 internal class EndOfTurnPolicy(
     var smartAvailable: Boolean,
@@ -34,9 +38,13 @@ internal class EndOfTurnPolicy(
      * silence end is then only the safety net.
      */
     private val baseMs: Int = BASE_MS,
+    /** The silence that ends a turn Smart Turn called finished; at or above [baseMs] it is off. */
+    private val finishedMs: Int = baseMs,
 ) {
 
-    enum class Reason(val wire: String) { BASE("base"), EXTENDED("extended"), CAP("cap"), FALLBACK("fallback") }
+    enum class Reason(val wire: String) {
+        BASE("base"), EXTENDED("extended"), CAP("cap"), FALLBACK("fallback"), FINISHED("finished"),
+    }
 
     sealed interface Action {
         /** Speech confirmed; it began [onsetWindows] windows ago, counting this one. */
@@ -67,6 +75,9 @@ internal class EndOfTurnPolicy(
     private var silenceMs = 0
     private var hold = false
     private var anyResult = false
+
+    /** Smart Turn said "done" before the base, and [finishedMs] is on: the turn ends at [finishedMs]. */
+    private var finished = false
     // This turn: a hold carried a silence past the base at least once, and the longest silence seen.
     private var extendedThisTurn = false
     private var longestSilenceMs = 0
@@ -140,6 +151,11 @@ internal class EndOfTurnPolicy(
         val first = !anyResult
         anyResult = true
         val done = score >= THRESHOLD
+        if (done && silenceMs < baseMs && finishedMs < baseMs && (first || hold)) {
+            hold = false
+            finished = true
+            return if (silenceMs >= finishedMs) end(Reason.FINISHED) else emptyList()
+        }
         return when {
             // The verdict that matters for the base: only a "not done" before baseMs holds.
             first && !done && silenceMs < baseMs -> {
@@ -198,6 +214,7 @@ internal class EndOfTurnPolicy(
         if (crossedGate(before)) out += request()
         when {
             silenceMs >= CAP_MS -> out += end(Reason.CAP)
+            finished && !hold && silenceMs >= finishedMs -> out += end(Reason.FINISHED)
             silenceMs >= baseMs && !hold -> out += end(
                 when {
                     extendedThisTurn -> Reason.EXTENDED
@@ -234,6 +251,7 @@ internal class EndOfTurnPolicy(
     private fun resetSilence() {
         silenceMs = 0
         hold = false
+        finished = false
         anyResult = false
         inFlight = null
     }
@@ -245,6 +263,9 @@ internal class EndOfTurnPolicy(
         const val CONFIRM_MS = 200
         const val GATE_MS = 192
         const val BASE_MS = 700
+
+        /** The cascade's end after a Smart Turn "done" (the web's rule, 2026-11-19). */
+        const val FINISHED_MS = 500
         const val CAP_MS = 2_500
         const val THRESHOLD = 0.5f
     }

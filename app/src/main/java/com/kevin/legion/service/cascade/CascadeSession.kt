@@ -502,6 +502,7 @@ internal class CascadeSession(
                     models.smartTurn.takeIf { p.config.smartTurn },
                     sink,
                     p.endBaseMs,
+                    p.endFinishedMs,
                 )
                 turnTaker = taker
                 // What he said since the tap goes through the detector first, in order, before the
@@ -2728,6 +2729,7 @@ internal class CascadeSession(
                 m.smartTurn.takeIf { next.config.smartTurn },
                 sink,
                 next.endBaseMs,
+                next.endFinishedMs,
             )
             plan = next
             old?.reset()
@@ -3113,7 +3115,10 @@ internal class CascadeSession(
          * first time each is due, and play from the next time on.
          */
         private val FILLERS_SPOKEN =
-            (ToolFillers.GENERIC + ScriptedLines.MISSED + ScriptedLines.VOICE_LOST + Backchannel.LINES)
+            (
+                ToolFillers.GENERIC + ScriptedLines.MISSED + ScriptedLines.VOICE_LOST + Backchannel.LINES +
+                    ScriptedLines.GENERIC_DONE
+                )
                 .distinct().map { SpokenText.forSpeech(it) }
 
         /** A backchannel's audio must be in hand within this, or it is skipped (it is from memory). */

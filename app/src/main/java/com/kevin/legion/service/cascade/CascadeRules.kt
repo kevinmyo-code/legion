@@ -77,6 +77,8 @@ internal object CascadeRules {
         /** The phone's silence end: the policy base, or the cap when it is only the safety net. */
         val endBaseMs: Int,
         val serviceEndsTurns: Boolean,
+        /** The silence end after a Smart Turn "done" ([EndOfTurnPolicy.FINISHED_MS]); [endBaseMs] when off. */
+        val endFinishedMs: Int = endBaseMs,
     ) {
         /** What a phone-side end means in this plan. */
         val phoneEnd: EotSource get() = if (serviceEndsTurns) EotSource.PHONE_CAP else EotSource.PHONE_DETECTOR
@@ -173,6 +175,12 @@ internal object CascadeRules {
             config = TurnConfig(manualActivity = true, bargeIn = barge, smartTurn = smart, note = note),
             endBaseMs = if (serviceEndsTurns) EndOfTurnPolicy.CAP_MS else EndOfTurnPolicy.BASE_MS,
             serviceEndsTurns = serviceEndsTurns,
+            // Only when Smart Turn runs on the phone: its "done" ends the turn at 500 ms, else the base.
+            endFinishedMs = when {
+                smart -> EndOfTurnPolicy.FINISHED_MS
+                serviceEndsTurns -> EndOfTurnPolicy.CAP_MS
+                else -> EndOfTurnPolicy.BASE_MS
+            },
         )
     }
 }
@@ -598,10 +606,19 @@ object ScriptedLines {
         "generate_goal_plan", "email/open", "claude_session/check", "claude_session/open_page", "app_update/check",
     )
 
-    /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
+    /**
+     * Code's write lines with no title in them (2026-11-19, speed plan item 5): the same words every
+     * time, so they are kept like the fillers and play from memory after their first use.
+     */
+    val FIXED_DONE_LINES: List<String> = listOf(GENERIC_DONE, UNCONFIRMED_ONE) +
+        PHRASES.values.filter { "%s" !in it }.map { doneText(listOf(it)) }
+
+    /** The opening acks, fillers, missed line, check-in closers ([ClosingLines]) and fixed write lines. */
     val KEEP: Set<String> =
-        (AckLines.DEFAULT + FILLERS + MISSED + VOICE_LOST + ToolFillers.ALL + Backchannel.LINES + ClosingLines.LINES)
-            .toSet()
+        (
+            AckLines.DEFAULT + FILLERS + MISSED + VOICE_LOST + ToolFillers.ALL + Backchannel.LINES +
+                ClosingLines.LINES + FIXED_DONE_LINES
+            ).toSet()
 
     /**
      * The lookups a filler is said for, by the name the model calls (2026-11-16: the router rename
