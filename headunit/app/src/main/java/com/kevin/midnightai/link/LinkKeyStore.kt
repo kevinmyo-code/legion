@@ -211,6 +211,9 @@ class LinkKeyStore(
         if (prefs.edit().clear().commit()) ownerPinPrefs.edit().clear().commit()
     }
 
+    /** The Mapbox public token the phone handed over (HU-1 T5), or null. Off-main (Keystore). */
+    fun mapboxToken(): String? = open(KEY_COMMITTED)?.optString("mapbox_token")?.takeIf { it.isNotBlank() }
+
     /** Secrets that came over the link, for the log redactor at app start (review L5). Off-main. */
     fun secretsForRedactor(): List<String> =
         listOfNotNull(open(KEY_COMMITTED)?.optString("mapbox_token")?.takeIf { it.isNotBlank() })

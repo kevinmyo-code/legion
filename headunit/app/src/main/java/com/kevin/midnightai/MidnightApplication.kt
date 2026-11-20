@@ -29,6 +29,11 @@ class MidnightApplication : Application() {
         val linkStore = com.kevin.midnightai.link.LinkKeyStore.forApp(this)
         com.kevin.midnightai.link.CarLink.store = linkStore
         com.kevin.midnightai.link.CarLink.addListener { ctx -> com.kevin.midnightai.location.BeaconClient.restart(ctx) }
+        // HU-1 T5: navigation wiring only (no Mapbox object is built until the NAV face needs one).
+        runCatching {
+            com.kevin.midnightai.navigation.NavRuntime.init(this)
+            com.kevin.midnightai.ui.cruise.MiddlePanel.install(com.kevin.midnightai.ui.cruise.NavFaceHost)
+        }
         kotlin.concurrent.thread(name = "car-link-init", isDaemon = true) {
             runCatching {
                 com.kevin.midnightai.link.CarLink.refresh()
