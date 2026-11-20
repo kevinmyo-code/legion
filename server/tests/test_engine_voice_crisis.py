@@ -153,7 +153,8 @@ _WRAPS = ("{x}", "{x}.", "well, {x}!", '"{x}"', "I think {x} today", "honestly..
 def _generated():
     for phrase in crisis.PHRASES:
         head, _, last = phrase.rpartition(" ")
-        for ending in (*INFLECTIONS, "t", "time"):
+        other_words = [end for (said, end) in NOT_THE_PHRASE if said == phrase]
+        for ending in (*INFLECTIONS, *other_words):
             spoken = f"{head} {last}{ending}".strip().replace("dont", "don't")
             for case in _CASES:
                 for wrap in _WRAPS:

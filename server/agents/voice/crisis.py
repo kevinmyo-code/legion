@@ -97,7 +97,7 @@ SUFFIXES = ("", "s", "es", "ly", "ally", "ity", "ality")
 # or first in what was said, hides nothing (review recheck, C7): speech-to-text writes no
 # punctuation, so "thinking about suicide door is locked" must still be a hit.
 CAR_TALK_LEAD = frozenset(
-    "a an the its his her their our your my this that these those with has have had of rear "
+    "a an the its his her their our your my this that these those with has have had rear "
     "front back two four both any some no got get gets getting want wants wanted like likes love "
     "loves".split()
 )
