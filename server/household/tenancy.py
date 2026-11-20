@@ -224,6 +224,10 @@ TENANT_TABLES: tuple[str, ...] = (
     # engine-brain ticket 04 (ADR 0098): one row per device attached as a limb, private to the
     # member whose device token it is (`OWNER_PATHS`; `agents/models.py`).
     "agents_limb",
+    # Late-answer path (design 2026-11-20): his background tasks and the lines Alfred owes him,
+    # always private to the member (`OWNER_PATHS`; `agents/models.py`).
+    "agents_late_task",
+    "agents_owed_line",
     # engine-brain ticket 03 (ADR 0095): homes for what lived only on the phone. Advice and raises
     # are always private to their member (`OWNER_PATHS`); a pending transaction is shared like
     # every ledger row (`homes/models.py`).
@@ -331,6 +335,8 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "agents_model_call",
         "agents_tool_call",
         "agents_limb",
+        "agents_late_task",
+        "agents_owed_line",
         "advisor_advice",
         "pending_transactions",
         "proactive_raises",
@@ -540,6 +546,9 @@ OWNER_PATHS: dict[str, str] = {
     "agents_tool_call": "owner_user",
     # ADR 0098: a limb is one member's device, never null.
     "agents_limb": "owner_user",
+    # Late-answer path: a task and an owed line are always one member's, never null.
+    "agents_late_task": "owner_user",
+    "agents_owed_line": "owner_user",
     # engine-brain ticket 03: advice and raises are always one member's (`homes/models.py`).
     "advisor_advice": "owner_user",
     "proactive_raises": "owner_user",

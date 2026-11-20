@@ -29,8 +29,13 @@ The plan names the member column `member`; it is `owner_user` here because that 
 `agents_eval_candidate`, is not built in this stage: ticket 02 lists five, and the candidate
 export belongs with the trace page (ticket 04).
 
+- `agents_late_task` (late-answer path, migration 0003): one background task he asked to be told
+  about later, run read-only by `manage.py late_tasks` in its own conversation.
+- `agents_owed_line` (0003): one line Alfred owes him, said once at his next turn.
+
 Additive: 0001 made five tables; 0002 adds `agents_limb`, `agents_turn.pending_relay` and the
-`awaiting_limb` status. Unused by any live code path while the turn endpoint is off.
+`awaiting_limb` status; 0003 adds the two late-answer tables. Unused by any live code path while
+their switches are off.
 """
 
 from __future__ import annotations
@@ -268,5 +273,83 @@ class Limb(_Owned):
             models.CheckConstraint(
                 condition=models.Q(brain_choice__isnull=True) | models.Q(brain_choice__in=BRAINS),
                 name="agents_limb_brain_choice_valid",
+            ),
+        ]
+
+
+# The late-answer path (`agents/legion/late.py`, dark behind `LEGION_LATE_ANSWERS`).
+LATE_QUEUED = "queued"
+LATE_RUNNING = "running"
+LATE_DONE = "done"
+LATE_FAILED = "failed"
+LATE_CANCELLED = "cancelled"
+LATE_STATUSES: tuple[str, ...] = (LATE_QUEUED, LATE_RUNNING, LATE_DONE, LATE_FAILED, LATE_CANCELLED)
+# Where an owed line came from. Only `late_task` is made today; the others are named so worker
+# results and speaking up first need no migration (design 2026-11-20, slices 2 and 3).
+OWED_SOURCES: tuple[str, ...] = ("late_task", "claude_task", "budget", "traffic")
+
+
+class LateTask(_Owned):
+    """One background task: a question he asked to be answered later. Run by `manage.py
+    late_tasks` under the read-only `background` spec, in its own conversation (`run_conversation`),
+    never his live one. `question` is his words, kept like a turn's transcript (30 days)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    origin_client = models.TextField()
+    question = models.TextField()
+    status = models.TextField(default=LATE_QUEUED)
+    attempts = models.IntegerField(default=0)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    answer = models.TextField(default="", blank=True)
+    tainted = models.BooleanField(default=False)
+    cost_micro_usd = models.BigIntegerField(default=0)
+    # The background conversation it ran in. A plain id, not a foreign key: code that predates
+    # this table prunes conversations without knowing this row, and a key would block it.
+    run_conversation = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        db_table = "agents_late_task"
+        indexes = [
+            models.Index(
+                fields=["household", "owner_user", "created_at"], name="agents_late_owner_idx"
+            ),
+            models.Index(fields=["status", "lease_until"], name="agents_late_due_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=LATE_STATUSES), name="agents_late_task_status_valid"
+            ),
+        ]
+
+
+class OwedLine(_Owned):
+    """One line Alfred owes him, built by code, said once at his next turn on an engine door
+    (claimed by setting `delivered_at`), or never if it expires first."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source = models.TextField()
+    source_id = models.TextField()
+    text = models.TextField()
+    ready_at = models.DateTimeField(db_default=Now())
+    expires_at = models.DateTimeField()
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    delivered_client = models.TextField(default="", blank=True)
+
+    class Meta:
+        db_table = "agents_owed_line"
+        indexes = [
+            models.Index(
+                fields=["household", "owner_user", "ready_at"], name="agents_owed_owner_idx"
+            )
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["household", "source", "source_id"],
+                name=household_unique_name("agents_owed_line", ["source", "source_id"]),
+            ),
+            models.CheckConstraint(
+                condition=models.Q(source__in=OWED_SOURCES), name="agents_owed_line_source_valid"
             ),
         ]
