@@ -55,6 +55,13 @@ class CloseCueTest {
         assertEquals("tts", CloseCue.voiceFailedReason("tts", liveRetired = false, background = false))
     }
 
+    // Review of 546cce67 (F3): the order of the close, in numbers, for the Bluetooth check in the car.
+    @Test
+    fun `the close's order is logged in ms from the release's start`() {
+        assertEquals("close_order mic_released_ms=12 chime_end_ms=1004 route_released_ms=1030", CloseCue.orderLine(12, 1004, 1030))
+        assertEquals("close_order mic_released_ms=12 chime_end_ms=none route_released_ms=40", CloseCue.orderLine(12, null, 40))
+    }
+
     @Test
     fun `the audit line is numbers and fixed tokens`() {
         assertEquals("close_cue played=1 reason=follow_up skipped=none", CloseCue.auditLine("follow_up", null))

@@ -3169,7 +3169,7 @@ internal class CascadeSession(
      * mic has closed and before the route is released, waited for at most the chime plus the route's
      * tail ([CloseCue.waitCapMs]). Logged either way.
      */
-    private suspend fun playCloseCue(reason: String) {
+    private suspend fun playCloseCue(reason: String): Boolean {
         val p = player
         val skip = CloseCue.decide(
             reason,
@@ -3180,12 +3180,12 @@ internal class CascadeSession(
             rateMatches = backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE,
         )
         LiveLatency.log(LiveLatency.TAG, CloseCue.auditLine(reason, skip))
-        if (skip != null || p == null) return
+        if (skip != null || p == null) return false
         closeCuePlayed = true
         val pcm = ListenCue.closeChimePcm()
         val settle = MicReopen.settleMs(CallAudioMode.route(audioManager))
         val cap = CloseCue.waitCapMs(ListenCue.durationMs(pcm), settle)
-        CloseCue.playBounded(
+        return CloseCue.playBounded(
             cap,
             write = { withContext(Dispatchers.IO) { p.write(pcm, p.generation()) } },
             drained = {
@@ -3222,6 +3222,7 @@ internal class CascadeSession(
     }
 
     private suspend fun releaseNow(reason: String, caller: Job?) {
+        val releaseStartMs = System.currentTimeMillis()
         isOpen = false
         // A clear-codes question belongs to this conversation: a "yes" in the next one answers nothing.
         step("clear_question") { DtcClearController.forgetClearQuestion() }
@@ -3249,15 +3250,20 @@ internal class CascadeSession(
         // The mic is closed: its claim goes now, so the wake word re-arms without waiting on the chime.
         step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
         micClaimed = false
+        val micReleasedMs = System.currentTimeMillis() - releaseStartMs
         // The closing chime, before the player and the route go (Bluetooth would cut it off).
-        try {
+        val chimed = try {
             playCloseCue(reason)
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
             Log.w(TAG, "close cue: ${e.message}")
+            false
         }
+        val chimeEndMs = if (chimed) System.currentTimeMillis() - releaseStartMs else null
         step("player") { player?.release() }
         step("route_watch") { audioRoute.stopWatching() }
         step("call_audio") { callAudio?.let { if (it.isActive) it.exit("cascade $reason") } }
+        val routeReleasedMs = System.currentTimeMillis() - releaseStartMs
+        LiveLatency.log(LiveLatency.TAG, CloseCue.orderLine(micReleasedMs, chimeEndMs, routeReleasedMs))
         step("focus") { abandonFocus() }
         step("caption") { CompanionPhase.setCaption("") }
         step("socket") { backend?.close(reason) }

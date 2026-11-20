@@ -69,6 +69,14 @@ internal object CloseCue {
     fun voiceFailedReason(reason: String, liveRetired: Boolean, background: Boolean): String =
         if (liveRetired && !background) "$VOICE_FAILED$reason" else reason
 
+    /**
+     * `close_order mic_released_ms=<n> chime_end_ms=<n|none> route_released_ms=<n>`, each from the
+     * release's start (review of 546cce67, F3): whether the wake word re-armed before the route went.
+     */
+    fun orderLine(micReleasedMs: Long, chimeEndMs: Long?, routeReleasedMs: Long): String =
+        "close_order mic_released_ms=$micReleasedMs chime_end_ms=${chimeEndMs ?: "none"} " +
+            "route_released_ms=$routeReleasedMs"
+
     /** `close_cue played=<0|1> reason=<token> skipped=<why>`: fixed tokens only. */
     fun auditLine(reason: String, skip: Skip?): String =
         "close_cue played=${if (skip == null) 1 else 0} reason=${token(reason)} skipped=${skip?.token ?: "none"}"
