@@ -148,10 +148,12 @@ def run_turn(
     observe=None,
     agent: str = "generalist",
     feature: str = FEATURE,
+    tool_limit=None,
 ):
     """Yields the turn's events; returns its final `TurnState`. `agent` and `feature` are the
     spec that answers and the `llm_usage` feature it is metered under: the late-answer runner
-    (`late.py`) passes its read-only `background` spec and its own feature."""
+    (`late.py`) passes its read-only `background` spec and its own feature, and `tool_limit`, its
+    cap on calls (`LegionGateway.limit`)."""
     started = time.monotonic()
     now = now or dj_timezone.now()
     if do_prune:
@@ -234,7 +236,7 @@ def run_turn(
 
     ctx = NodeContext(
         model=model,
-        gateway=LegionGateway(request, recorder=store, observe=observe),
+        gateway=LegionGateway(request, recorder=store, observe=observe, limit=tool_limit),
         route=route(request, agent),
         spec=spec_named,
         system_for=system_for,

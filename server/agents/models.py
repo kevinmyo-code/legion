@@ -315,6 +315,8 @@ class LateTask(_Owned):
     answer = models.TextField(default="", blank=True)
     tainted = models.BooleanField(default=False)
     cost_micro_usd = models.BigIntegerField(default=0)
+    # Web searches run for this task, over all its attempts (`late.MAX_SEARCHES`).
+    searches = models.IntegerField(default=0)
     # The background conversation it ran in. A plain id, not a foreign key: code that predates
     # this table prunes conversations without knowing this row, and a key would block it.
     run_conversation = models.UUIDField(null=True, blank=True)

@@ -105,6 +105,7 @@ class Migration(migrations.Migration):
                 ("answer", models.TextField(blank=True, default="")),
                 ("tainted", models.BooleanField(default=False)),
                 ("cost_micro_usd", models.BigIntegerField(default=0)),
+                ("searches", models.IntegerField(default=0)),
                 ("run_conversation", models.UUIDField(blank=True, null=True)),
                 (
                     "household",

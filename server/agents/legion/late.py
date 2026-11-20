@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import F, Q, Sum
 from django.utils import timezone as dj_timezone
 
 from agents.legion import flags
@@ -59,6 +59,10 @@ from llm import cap as member_cap
 log = logging.getLogger(__name__)
 
 FEATURE = "agent_late"
+# Each web search a task runs, metered at its grounding fee (the search's own tokens are in the
+# `web_search` row the tool writes). ESTIMATE: Google's list price for a grounded request.
+SEARCH_FEATURE = "agent_late_search"
+SEARCH_FEE_MICRO_USD = 35_000
 SPEC = "background"
 SOURCE = "late_task"
 CLIENT = "background"
@@ -66,7 +70,13 @@ CLIENT = "background"
 # Limits (design section 1).
 MAX_PER_DAY = 6
 MAX_OPEN = 2
-DAILY_MICRO_USD = 250_000
+# What a member's background work may cost in a UTC day: model rounds (`FEATURE`) plus searches
+# (`SEARCH_FEATURE`). Worst case of one task: 2 attempts x 30,000 (the spec's model cap) + 2
+# searches x 35,000 = 130,000, so a day is at most this plus one task that started under it.
+DAILY_MICRO_USD = 500_000
+# Per task, whatever the attempts: at most 2 searches; per model round at most 2 calls.
+MAX_SEARCHES = 2
+MAX_CALLS_PER_ROUND = 2
 MAX_ATTEMPTS = 2
 # One task a tick call (`late_tasks --limit 1`): the background spec's 45 s turn fits inside the
 # scheduler's 60 s attempt deadline (`deploy/cloudrun/install_schedule.py`), and the lease outlives
@@ -168,7 +178,7 @@ def spent_today_micro_usd(user, now: datetime | None = None) -> int:
 
     now = now or dj_timezone.now()
     total = LlmUsage.objects.filter(
-        user=user, feature=FEATURE, created_at__gte=_midnight(now)
+        user=user, feature__in=(FEATURE, SEARCH_FEATURE), created_at__gte=_midnight(now)
     ).aggregate(spent=Sum("cost_estimate_micro_usd"))["spent"]
     return int(total or 0)
 
@@ -435,6 +445,45 @@ def _answer_text(text: str) -> str:
     return cut[: end + 1] if end > 0 else cut.rstrip() + "..."
 
 
+NO_MORE_SEARCHES = "Not searched: this background task has used its searches. Answer with what you have."
+TOO_MANY_CALLS = "Not run: one step may make at most two calls. Answer with what you have."
+
+
+class _ToolLimit:
+    """The runner's cap on one task's calls (`LegionGateway.limit`): at most `MAX_CALLS_PER_ROUND`
+    a round and `MAX_SEARCHES` searches a task (counted on the row, so a second attempt shares
+    them). A search it lets through is metered at once at `SEARCH_FEE_MICRO_USD`."""
+
+    def __init__(self, task: LateTask):
+        self.task = task
+        self._round = -1
+        self._in_round = 0
+
+    def __call__(self, state, call) -> str | None:
+        if state.budget.rounds != self._round:
+            self._round, self._in_round = state.budget.rounds, 0
+        self._in_round += 1
+        if self._in_round > MAX_CALLS_PER_ROUND:
+            return TOO_MANY_CALLS
+        if call.name != "web_search":
+            return None
+        taken = LateTask.objects.filter(pk=self.task.pk, searches__lt=MAX_SEARCHES).update(
+            searches=F("searches") + 1
+        )
+        if not taken:
+            return NO_MORE_SEARCHES
+        from llm import client as llm_client
+
+        llm_client.record(
+            household=self.task.owner_user.household,
+            feature=SEARCH_FEATURE,
+            model="web_search",
+            user=self.task.owner_user,
+            cost_estimate_micro_usd=SEARCH_FEE_MICRO_USD,
+        )
+        return None
+
+
 def _run_one(task: LateTask, model) -> str:
     from agents.legion.turn import run_turn
 
@@ -456,6 +505,7 @@ def _run_one(task: LateTask, model) -> str:
             agent=SPEC,
             feature=FEATURE,
             do_prune=False,
+            tool_limit=_ToolLimit(task),
         )
         try:
             while True:
