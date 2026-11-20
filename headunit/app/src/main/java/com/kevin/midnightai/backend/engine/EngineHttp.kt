@@ -350,6 +350,11 @@ class EngineHttp(
             .connectTimeout(CONNECT_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(READ_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
             .writeTimeout(WRITE_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+            // Review P4: never follow a redirect. A 307/308 keeps a POST body (a voice turn) and
+            // could carry it to another, possibly plain-http, host. The engine's own paths are
+            // called exactly (trailing slashes included), so a redirect is an error to report.
+            .followRedirects(false)
+            .followSslRedirects(false)
             .build()
 
         internal const val CONNECT_TIMEOUT_S = 15L
