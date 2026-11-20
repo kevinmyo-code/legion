@@ -3320,6 +3320,8 @@ internal class CascadeSession(
     private suspend fun enterEarpieceMidway() {
         while (speaking && !closing.get()) delay(MIDWAY_POLL_MS)
         if (closing.get() || callAudio?.isActive == true) return
+        // He may have flipped back, or plugged headphones in, while the reply finished.
+        if (earpiece.outlet() != VoiceOutlet.EARPIECE) return
         enterCallAudio(onEarpiece = true, token = "earpiece")
         player?.rebuild()
     }

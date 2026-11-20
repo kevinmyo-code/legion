@@ -59,13 +59,13 @@ internal class EarpieceRoute(
         enterCallAudio: suspend () -> Unit,
     ) {
         if (job != null) return
-        job = scope.launch(loop) { VoiceOutput.flow.drop(1).collect { reapply(callAudio(), enterCallAudio) } }
+        job = scope.launch(loop) { VoiceOutput.flow.drop(1).collect { reapply(callAudio, enterCallAudio) } }
         val watch = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) = changed(added)
             override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) = changed(removed)
             private fun changed(devices: Array<out AudioDeviceInfo>) {
                 if (devices.none { it.isSink }) return
-                scope.launch(loop) { reapply(callAudio(), enterCallAudio) }
+                scope.launch(loop) { reapply(callAudio, enterCallAudio) }
             }
         }
         deviceWatch = watch
@@ -77,14 +77,16 @@ internal class EarpieceRoute(
      * One re-application: inside call audio a device switch (no track rebuild, the reply keeps
      * playing); outside it, entry only for the earpiece. Bluetooth and a phone call: hands off.
      */
-    suspend fun reapply(mode: CallAudioMode?, enterCallAudio: suspend () -> Unit) {
+    suspend fun reapply(callAudio: () -> CallAudioMode?, enterCallAudio: suspend () -> Unit) {
         val outlet = outlet()
+        val mode = callAudio()
         when {
             outlet == VoiceOutlet.PHONE_CALL || outlet == VoiceOutlet.BLUETOOTH -> Unit
             mode != null && mode.isActive && !mode.onBluetoothMic -> mode.retarget(outlet == VoiceOutlet.EARPIECE)
             outlet == VoiceOutlet.EARPIECE -> enterCallAudio()
         }
-        sync(mode, outlet)
+        // Read again: an entry above made a new call audio, and the lock follows that one.
+        sync(callAudio(), outlet)
     }
 
     /** Holds the proximity lock exactly while the earpiece is the live route; releases it otherwise. */
