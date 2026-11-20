@@ -176,6 +176,22 @@ def test_every_fault_is_a_stream_failure(socket, token):
         session.finish(timeout=0.05)
 
 
+@pytest.mark.parametrize(
+    "blocked",
+    [
+        {"promptFeedback": {"blockReason": "SAFETY"}},
+        {"serverContent": {"promptFeedback": {"blockReason": "OTHER"}}},
+    ],
+    ids=["top_level", "in_server_content"],
+)
+def test_a_blocked_transcript_is_the_batch_paths_stt_blocked(blocked):
+    socket = FakeSocket(after_end=[blocked, _final("Hi."), DONE])
+    session = _session(socket)
+    session.feed(PCM)
+    with pytest.raises(live_stt.StreamFailure, match="^stt_blocked$"):
+        session.finish()
+
+
 def test_usage_reported_is_used_and_missing_usage_is_estimated():
     reported = FakeSocket(
         after_end=[

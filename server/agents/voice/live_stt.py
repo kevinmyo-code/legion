@@ -53,6 +53,8 @@ SETUP_TIMEOUT_S = 5.0
 # (the spike measured 266 ms median, 307 ms worst).
 FINAL_TIMEOUT_S = 2.5
 SEND_BYTES = 3200  # 100 ms of 16 kHz PCM16
+# The service refused to transcribe (a block reason): the batch path's own refusal, never a retry.
+BLOCKED = "stt_blocked"
 
 
 class StreamFailure(Exception):
@@ -217,9 +219,14 @@ class TranscribeSession:
         sent (the caller only asks after it). Raises on a server error."""
         if isinstance(message.get("error"), dict):
             raise StreamFailure(f"server_error_{message['error'].get('code', '?')}")
+        content = message.get("serverContent") or {}
+        for feedback in (message.get("promptFeedback"), content.get("promptFeedback")):
+            if isinstance(feedback, dict) and feedback.get("blockReason"):
+                # The batch path's refusal (`speech.py`, `stt_blocked`): where the Live API puts
+                # a block is not in its guide, so both places are read.
+                raise StreamFailure(BLOCKED)
         if isinstance(message.get("usageMetadata"), dict):
             self._usage = message["usageMetadata"]
-        content = message.get("serverContent") or {}
         interim = (content.get("interimInputTranscription") or {}).get("text")
         if interim:
             self.interim = interim

@@ -43,6 +43,8 @@ under the 32 MiB HTTP/1 cap (a 28 s utterance is 0.9 MB).
   quiet, no voice): a clip they call noise is `ignored: noise`, and the stream's words are dropped.
   Then the pipeline's checks run on the final words as on every turn (no words, the crisis check,
   the write gate in the turn).
+- A transcript the service blocks is refused as the batch path refuses it (`stt_blocked`), and
+  is not handed to the batch path for a second try.
 - Partial transcripts are not used for anything (no warm-up, no draft round) in this slice.
 """
 
@@ -55,7 +57,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from agents.voice import speech as speech_mod
-from agents.voice.live_stt import LiveSocket, StreamFailure, TranscribeSession
+from agents.voice.live_stt import BLOCKED, LiveSocket, StreamFailure, TranscribeSession
 
 HEADER = struct.Struct(">cI")
 # The longest an utterance's upload may run (the 28 s utterance cap plus slack for a slow network),
@@ -310,7 +312,8 @@ def _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms) 
             heard,
             prompt,
             output,
-            fallback=int(heard is None),
+            # A blocked transcript is refused as the batch path refuses it, not retried there.
+            fallback=int(heard is None and failure != BLOCKED),
             failure=failure,
             marks=marks,
         )

@@ -87,6 +87,7 @@ from agents.legion.turn import run_turn
 from agents.runtime import events as ev
 from agents.voice import crisis, stage
 from agents.voice.filler_audio import FillerAudio
+from agents.voice.live_stt import BLOCKED as STT_BLOCKED
 from agents.voice.speaker import Speaker
 from agents.voice.speech import SpeechFailure
 from assistant import fillers, speech_tags, spoken_figures
@@ -294,6 +295,10 @@ def voice_turn(
                 timings["stt_stream_prompt_tokens"] = streamed.stream_prompt_tokens
                 timings["stt_stream_output_tokens"] = streamed.stream_output_tokens
             try:
+                if streamed is not None and streamed.failure == STT_BLOCKED:
+                    # The stream's service refused the words: the batch path's refusal, with no
+                    # second request (review 1120, finding 9).
+                    raise SpeechFailure(STT_BLOCKED)
                 if streamed is not None and streamed.heard is not None:
                     heard = streamed.heard
                     timings.update(audio_ms=heard.audio_ms, stt_ms=heard.ms)

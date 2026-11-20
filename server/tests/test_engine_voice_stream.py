@@ -144,6 +144,26 @@ def test_a_stalled_session_falls_back_and_one_row_counts_both(
     assert rows.get().prompt_tokens == 26 + 40
 
 
+def test_a_transcript_the_service_blocked_is_refused_as_on_the_batch_path(
+    auth_client, stream, engine
+):
+    # Review 1120 finding 9: the batch path refuses `stt_blocked`; so does the stream, and it
+    # does not hand the clip to the batch path for a second try.
+    from agents.legion.lines import STT_FAILED
+
+    stream.socket = FakeSocket(
+        after_end=[
+            {"promptFeedback": {"blockReason": "SAFETY"}},
+            _final("What is on the calendar today?"),
+            DONE,
+        ]
+    )
+    events = _events(_post(auth_client, utterance()))
+    assert events[-1] == ("error", {"words": STT_FAILED})
+    assert "heard" not in [k for k, _ in events]
+    assert engine.speech.transcribed == [] and engine.models == []
+
+
 # ---- nothing runs before the final transcript has passed every check ---------------------------
 
 
