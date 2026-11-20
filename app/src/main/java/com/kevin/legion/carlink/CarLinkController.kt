@@ -71,6 +71,8 @@ data class CarLinkStatus(
     /** A forgotten pairing whose unit will be told at the next contact (5.4, rev 5). */
     val revokePending: Boolean = false,
     val networkChanged: Boolean = false,
+    /** [gaps] and [vehicles] have been read once for the screen; until then neither means anything. */
+    val screenFactsLoaded: Boolean = false,
     val note: CarLinkNote? = null,
 )
 
@@ -197,7 +199,7 @@ class CarLinkController(
         _status.update { s ->
             // One car: it is the one. A choice no longer on the list is dropped.
             val chosen = s.vehicleId?.takeIf { id -> cars.any { it.id == id } } ?: cars.singleOrNull()?.id
-            s.copy(gaps = gaps, vehicles = cars, vehicleId = chosen)
+            s.copy(gaps = gaps, vehicles = cars, vehicleId = chosen, screenFactsLoaded = true)
         }
     }
 

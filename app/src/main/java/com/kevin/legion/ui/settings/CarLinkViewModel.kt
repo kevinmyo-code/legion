@@ -146,10 +146,11 @@ class CarLinkViewModel(
     private fun render(s: CarLinkStatus, u: ScanUi): CarLinkUiState {
         val base = CarLinkUiState(
             sendLocation = s.sendLocation,
-            handsOver = CarLinkWords.handsOver(s.gaps),
+            // Neither line is true before the facts are read: say nothing until then.
+            handsOver = if (s.screenFactsLoaded) CarLinkWords.handsOver(s.gaps) else "",
             vehicles = s.vehicles,
             vehicleId = s.vehicleId,
-            vehicleNote = if (s.vehicles.isEmpty()) CarLinkWords.NO_VEHICLE else null,
+            vehicleNote = if (s.screenFactsLoaded && s.vehicles.isEmpty()) CarLinkWords.NO_VEHICLE else null,
             // No dead button: with no camera the scan button is not drawn, and the words say why.
             showScan = scannerAvailable,
             scanNote = scanNote(scannerAvailable, debugPaste),

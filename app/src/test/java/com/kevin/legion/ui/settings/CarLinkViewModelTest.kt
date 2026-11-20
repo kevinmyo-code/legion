@@ -208,4 +208,16 @@ class CarLinkViewModelTest {
         assertNull(state().scannerFailure)
     }
 
+    @Test fun `the hands-over line and the no-car note wait until the facts have loaded`() {
+        val slow = CarLinkController(
+            store = store, transport = { _, _ -> null },
+            handover = HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            newSender = { _, _, _, _ -> null }, scope = scope, io = Dispatchers.Unconfined,
+            jitterMs = { 300L }, sleep = {},
+            vehicles = { kotlinx.coroutines.awaitCancellation() },
+        )
+        val waiting = CarLinkViewModel(slow, scannerAvailable = true, debugPaste = false, scope = scope)
+        assertEquals("", waiting.state.value.handsOver)
+        assertNull(waiting.state.value.vehicleNote)
+    }
 }
