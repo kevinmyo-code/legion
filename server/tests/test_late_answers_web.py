@@ -73,12 +73,12 @@ def late_off(monkeypatch):
     monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
 
 
-def _owe(user, text="About the invented ferry: it leaves at noon."):
+def _owe(user, text="About the invented ferry: it leaves at noon.", source_id="made-up"):
     return OwedLine.objects.create(
         household=user.household,
         owner_user=user,
         source="late_task",
-        source_id="made-up",
+        source_id=source_id,
         text=text,
         expires_at=timezone.now() + timedelta(hours=1),
     )
@@ -129,3 +129,23 @@ def test_a_visitor_is_untouched_with_it_switched_on(visitor, engine, late_on):
     assert _of(events, "sentence") == [{"text": "Happy to show you around."}]
     assert engine.model.requests
     assert not LateTask.objects.exists()
+
+
+@pytest.mark.parametrize("tainted", [True, False])
+def test_a_line_built_on_a_web_search_marks_the_record_read_through(
+    member, engine, household_user, late_on, tainted
+):
+    task = LateTask.objects.create(
+        household=household_user.household,
+        owner_user=household_user,
+        origin_client="web",
+        question="the invented ferry",
+        status="done",
+        tainted=tainted,
+    )
+    _owe(household_user, source_id=str(task.pk))
+    engine.model = FakeModel([say("Hello again.")])
+    events = _events(_post(member, text="Hello"))
+    record = _record(_of(events, "turn")[0]["conversation_id"])
+    # Memory consolidation keeps no assistant line after this mark (`member_memory/consolidate.py`).
+    assert ("read_through source=carry" in record) is tainted

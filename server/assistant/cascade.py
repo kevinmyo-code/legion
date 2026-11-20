@@ -1198,6 +1198,14 @@ def _answer(
         return
     owed, more = late.claim(request, "web")
     if owed is not None:
+        if late.read_third_party(owed):
+            # Built on a web search: marked as read-through, so memory keeps none of it. Written
+            # now, ahead of this turn's own lines, so it errs to dropping more, never less.
+            web_conversation.record_lines(
+                request,
+                conversation_id_of(door),
+                [web_conversation.engine_read_through_line(datetime.now(UTC), "carry")],
+            )
         owed_line = late.late_event(owed, more)
         report.said.append(owed_line.data["text"])
         speaker.add(owed_line.data["text"], model=True)
