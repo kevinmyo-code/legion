@@ -12,7 +12,7 @@ package com.kevin.legion.service.cascade
  * from memory or not at all. No line twice in one turn, none of the last [ROTATION] wait lines.
  *
  * When not: the same rules as the backchannel ([Backchannel.decide]: not over Alfred's own audio, not
- * on a call, not in Quiet, not on half-duplex for now), and never once the answer's text or audio
+ * on a call, not in Quiet; Bluetooth too, his audio kept through the line), and never once the answer's text or audio
  * has started. A line already playing finishes; the answer follows it, never over it. Pure.
  */
 internal object WaitFillers {

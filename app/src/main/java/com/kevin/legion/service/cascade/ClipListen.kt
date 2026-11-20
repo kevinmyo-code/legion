@@ -1,8 +1,8 @@
 package com.kevin.legion.service.cascade
 
 /**
- * His audio through a half-duplex backchannel (blind review M1, 2026-11-19; behind
- * [com.kevin.legion.service.turn.VoiceTurnSettings.backchannelHalfDuplex], OFF). With barge-in off the
+ * His audio through a half-duplex filler clip (blind review M1, 2026-11-19; always on since Kevin's
+ * 2026-11-20 ruling, fillers on Bluetooth: the backchannel and the wait lines). With barge-in off the
  * turn detector ignores the mic while a clip, its drain and the route's settle play, so words he
  * resumed with there were lost. Now nothing captured is discarded:
  *

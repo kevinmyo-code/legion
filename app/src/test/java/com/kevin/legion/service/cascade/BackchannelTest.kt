@@ -33,7 +33,7 @@ class BackchannelTest {
     fun `short speech, an answer to an ask and a quick next turn each get one`() {
         assertNull(Backchannel.decide(turn()))
         assertEquals(
-            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET", "HALF_DUPLEX", "ANSWER_TEXT"),
+            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET", "ANSWER_TEXT"),
             Backchannel.Skip.entries.map { it.name },
         )
     }
@@ -186,17 +186,16 @@ class BackchannelTest {
     }
 
     @Test
-    fun `a phone call gets none, even where half-duplex clips are allowed`() {
+    fun `a phone call gets none, on any route`() {
         assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(turn().copy(onCall = true)))
-        assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(turn().copy(onCall = true, halfDuplex = true, halfDuplexAllowed = true)))
-        assertTrue("the half-duplex skip stays until Kevin rules on it", Backchannel.SKIP_ON_HALF_DUPLEX)
     }
 
+    // Kevin, 2026-11-20: fillers on Bluetooth too ("fillers everywhere"). His audio through the clip is
+    // kept and handed on (ClipListen), as the old setting did; the setting is gone.
     @Test
-    fun `half-duplex gets none unless its setting allows it (the mic is deaf during a clip)`() {
-        val half = turn().copy(halfDuplex = true)
-        assertEquals(Backchannel.Skip.HALF_DUPLEX, Backchannel.decide(half))
-        assertNull(Backchannel.decide(half.copy(halfDuplexAllowed = true)))
-        assertNull(Backchannel.decide(turn().copy(halfDuplex = false)))
+    fun `half-duplex (Bluetooth) gets one like any route`() {
+        // The Turn no longer carries the route: no rule can skip on it.
+        assertNull(Backchannel.decide(turn()))
+        assertFalse(Backchannel.Skip.entries.any { it.token == "half_duplex" })
     }
 }

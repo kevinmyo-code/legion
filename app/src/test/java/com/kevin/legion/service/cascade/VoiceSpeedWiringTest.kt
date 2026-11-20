@@ -180,8 +180,9 @@ class VoiceSpeedWiringTest {
     fun `half-duplex backchannels keep his audio through the clip and a resume continues the turn`() {
         val s = session()
         val schedule = bodyOf(s, "scheduleBackchannel")
-        assertTrue(schedule.contains("halfDuplex = turnTaker?.bargeIn != true"))
-        assertTrue(schedule.contains("halfDuplexAllowed = VoiceTurnSettings.backchannelHalfDuplex(ctx)"))
+        // 2026-11-20: no half-duplex skip any more; his audio is kept through every filler clip instead.
+        assertFalse(schedule.contains("halfDuplex"))
+        assertTrue(bodyOf(s, "playWaitFiller").contains("listenThroughClip()"))
         val play = bodyOf(s, "playBackchannel")
         assertTrue(play.indexOf("listenThroughClip()") in 0 until play.indexOf("clipPlayback.during"))
         assertTrue(bodyOf(s, "listenThroughClip").contains("clipListen = ClipListen("))

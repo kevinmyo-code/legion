@@ -1212,8 +1212,6 @@ internal class CascadeSession(
                 fromUser = true,
                 overReplyOrTurn = uttOverReply || carry.isNotBlank(),
                 quiet = QuietMode.isOn(ctx),
-                halfDuplex = turnTaker?.bargeIn != true,
-                halfDuplexAllowed = VoiceTurnSettings.backchannelHalfDuplex(ctx),
                 onCall = TelephonyController.isInCall,
             ),
         )
@@ -1350,6 +1348,8 @@ internal class CascadeSession(
                     "idx=${WaitFillers.LINES.indexOf(chosen.line)}",
             )
             audit.filler("wait", chosen.line)
+            // Half-duplex (Bluetooth): his audio through the line is kept and handed on, as for a backchannel.
+            listenThroughClip()
             clipPlayback.during {
                 val gen = p.generation()
                 withContext(Dispatchers.IO) { p.write(pcm, gen) }

@@ -29,11 +29,10 @@ package com.kevin.legion.service.cascade
  * - a phone call ([Turn.onCall]): a clip would go down the call to the other person;
  * - Quiet mode: he asked for silence (he can turn Quiet off);
  * - not a turn of his (a proactive line, the greeting): there is no one waiting;
- * - half-duplex ([SKIP_ON_HALF_DUPLEX], the one restriction left for Kevin to rule on, 2026-11-20;
- *   barge-in off: Bluetooth): the mic is deaf while a clip plays, so a clip
- *   about a second after his last word would swallow the rest of a sentence he was still saying
- *   (blind review M1, 2026-11-19). Allowed there only behind [halfDuplexAllowed] (off), which keeps
- *   his audio through the clip and hands it on ([ClipListen]).
+ * Half-duplex routes (Bluetooth) get one too (Kevin, 2026-11-20: "fillers on Bluetooth yes, fillers
+ * everywhere"). The mic is not judged while a clip plays there (no echo reference), so his audio
+ * through the clip and its settle is kept and handed on ([ClipListen]): words he goes on with after
+ * it are not lost. Words said wholly inside the clip with nothing after are (ClipListen's stated limit).
  * Which clip ([pick]): none of the last [ROTATION] words (a [RecentLines] window, seeded with the last
  * word of the last conversation so it is not the first of the next), and of that word one of its
  * [TAKES] renders (the cloud voice renders the same word differently each time; measured 2026-11-19).
@@ -49,13 +48,6 @@ package com.kevin.legion.service.cascade
 internal object Backchannel {
     /** After his speech ends: the end-of-speech wait (~0.7 s) is already behind him, so ~1.3 s after his last word. */
     const val DELAY_MS = 600L
-
-    /**
-     * Half-duplex routes (Bluetooth) skip the clip: the mic is deaf while it plays, so his words during
-     * it would be lost. Kept for now (2026-11-20); Kevin decides. [Turn.halfDuplexAllowed] (a setting,
-     * off) already lets one play with [ClipListen] keeping his audio.
-     */
-    const val SKIP_ON_HALF_DUPLEX = true
 
     /** The latest a clip may start after his end of speech when it waits for the open's chime or cue. */
     const val MAX_START_AFTER_EOT_MS = 900L
@@ -95,17 +87,13 @@ internal object Backchannel {
         /** He started over an audible reply or a turn still running. */
         val overReplyOrTurn: Boolean,
         val quiet: Boolean,
-        /** Barge-in is off for this conversation (Bluetooth route, call audio): the mic is deaf during a clip. */
-        val halfDuplex: Boolean = false,
-        /** The setting that lets a half-duplex conversation have one, with [ClipListen] keeping his audio (off). */
-        val halfDuplexAllowed: Boolean = false,
         /** A phone call is on the line (TelephonyController.isInCall): never, whatever the route. */
         val onCall: Boolean = false,
     )
 
     enum class Skip(val token: String) {
         NOT_HIS("not_his"), ON_CALL("on_call"), OVER_REPLY("over_reply"), QUIET("quiet"),
-        HALF_DUPLEX("half_duplex"), ANSWER_TEXT("answer_text"),
+        ANSWER_TEXT("answer_text"),
     }
 
     /** Null: play one (if one is in memory and the answer has not started). Otherwise why not. */
@@ -114,7 +102,6 @@ internal object Backchannel {
         if (!t.fromUser) return Skip.NOT_HIS
         if (t.quiet) return Skip.QUIET
         if (t.onCall) return Skip.ON_CALL
-        if (SKIP_ON_HALF_DUPLEX && t.halfDuplex && !t.halfDuplexAllowed) return Skip.HALF_DUPLEX
         if (t.overReplyOrTurn) return Skip.OVER_REPLY
         return null
     }
