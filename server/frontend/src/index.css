@@ -754,15 +754,17 @@
     .recruiter .rc-scene-band[data-on="true"] {
         opacity: 1;
     }
+    /* The part at the reading line turns ink; the others stay meta, which keeps AA contrast
+       (review 2026-11-20: a 40% fade put them near 1.8:1). */
     .recruiter .rc-prose .rc-scene-steps p {
         min-height: 34vh;
         margin: 0;
         padding: calc(0.6 * var(--u)) 0;
-        opacity: 0.4;
-        transition: opacity 400ms ease-out;
+        color: var(--rc-meta);
+        transition: color 400ms ease-out;
     }
     .recruiter .rc-prose .rc-scene-steps p[data-on="true"] {
-        opacity: 1;
+        color: var(--rc-ink);
     }
 
     /* The phone scene (900 px and up, motion allowed; `try-phone.tsx`): each row's Play
