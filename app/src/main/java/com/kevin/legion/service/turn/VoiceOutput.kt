@@ -32,24 +32,43 @@ internal data class OutputToggle(
 internal object VoiceOutputRule {
 
     /** Headsets and Bluetooth win over the choice; a phone call on the line means hands off. */
-    fun outlet(choice: OutputChoice, route: AudioRoute, inCall: Boolean, hasEarpiece: Boolean): VoiceOutlet =
-        TODO("red first")
+    fun outlet(choice: OutputChoice, route: AudioRoute, inCall: Boolean, hasEarpiece: Boolean): VoiceOutlet = when {
+        inCall -> VoiceOutlet.PHONE_CALL
+        route == AudioRoute.BLUETOOTH -> VoiceOutlet.BLUETOOTH
+        route == AudioRoute.WIRED_HEADSET -> VoiceOutlet.WIRED
+        choice == OutputChoice.CALL && hasEarpiece -> VoiceOutlet.EARPIECE
+        else -> VoiceOutlet.LOUDSPEAKER
+    }
 
     /** The toggle's face; null hides it (a tablet: no earpiece to choose). */
-    fun toggle(choice: OutputChoice, route: AudioRoute, inCall: Boolean, hasEarpiece: Boolean): OutputToggle? =
-        TODO("red first")
+    fun toggle(choice: OutputChoice, route: AudioRoute, inCall: Boolean, hasEarpiece: Boolean): OutputToggle? {
+        if (!hasEarpiece) return null
+        val outlet = outlet(choice, route, inCall, hasEarpiece)
+        val label = when (outlet) {
+            VoiceOutlet.LOUDSPEAKER -> "Speaker"
+            VoiceOutlet.EARPIECE -> "Call"
+            VoiceOutlet.WIRED -> "Headphones"
+            VoiceOutlet.BLUETOOTH -> "Bluetooth"
+            VoiceOutlet.PHONE_CALL -> "On a call"
+        }
+        val enabled = outlet == VoiceOutlet.LOUDSPEAKER || outlet == VoiceOutlet.EARPIECE
+        return OutputToggle(choice, outlet, enabled, label)
+    }
 
     /**
      * Whether the conversation enters call audio ([CallAudioMode]): for barge-in as before, and for the
      * earpiece, which only exists as a communication route.
      */
-    fun callAudio(barge: Boolean, outlet: VoiceOutlet): Boolean = TODO("red first")
+    fun callAudio(barge: Boolean, outlet: VoiceOutlet): Boolean = barge || outlet == VoiceOutlet.EARPIECE
 
     /**
      * The communication device type to select from [available] types: a wired headset first, then the
      * earpiece when [earpiece] and the phone has one, else the loudspeaker. Null when none is offered.
      */
-    fun device(available: List<Int>, earpiece: Boolean): Int? = TODO("red first")
+    fun device(available: List<Int>, earpiece: Boolean): Int? =
+        available.firstOrNull { it in WIRED_TYPES }
+            ?: available.firstOrNull { earpiece && it == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+            ?: available.firstOrNull { it == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
 
     internal val WIRED_TYPES = setOf(
         AudioDeviceInfo.TYPE_WIRED_HEADSET,
