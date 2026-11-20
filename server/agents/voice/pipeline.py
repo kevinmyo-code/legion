@@ -95,7 +95,8 @@ FEATURE = "agent_turn"
 KINDS = ("user", "greeting", "opener", "check_in", "proactive", "say")
 BUILT_KINDS = frozenset({"user", "say"})
 MAX_SAY_CHARS = 600
-# The most of one answer that is spoken (characters). At about 15 characters a second that is
+# The most of one answer that is spoken (characters of the text sent to speech, after links and
+# figures are put into words). At about 15 characters a second that is
 # about 100 s of speech, or about 2,500 speech tokens.
 MAX_SPOKEN_CHARS = 1_500
 # The most lines of one answer that are spoken, one speech request each (the web door's
@@ -456,8 +457,12 @@ def _answer(
                 timings["first_sentence_ms"] = int((clock() - t0) * 1000)
                 marks["first_sentence_ms"] = _ms(clock, t_turn)
             line_id = lines.next()
-            if speaker.enabled and spoken_chars + len(text) <= MAX_SPOKEN_CHARS:
-                spoken_chars += len(text)
+            # Counted as it goes to speech: a link is said "the link on screen", a figure in words.
+            said = (
+                speaker.spoken_text(tagged, expressive=True, model=True) if speaker.enabled else ""
+            )
+            if speaker.enabled and spoken_chars + len(said) <= MAX_SPOKEN_CHARS:
+                spoken_chars += len(said)
                 # To speech before it is shown, as on the web door: a cancel that lands while it
                 # is shown stops everything after it.
                 speaker.say(tagged, line_id, expressive=True, model=True)
