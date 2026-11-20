@@ -270,7 +270,8 @@ class VoiceSpeedWiringTest {
     @Test
     fun `a phone call is its own skip, and the half-duplex skip is one named rule`() {
         val schedule = bodyOf(session(), "scheduleBackchannel")
-        assertTrue(schedule.contains("onCall = TelephonyController.isInCall"))
+        assertTrue(schedule.contains("onCall = callOnLine()"))
+        assertTrue(session().contains("Backchannel.callOnLine(TelephonyController.isInCall, audioManager.mode, CallAudioMode.ownCommActive)"))
     }
 
     @Test

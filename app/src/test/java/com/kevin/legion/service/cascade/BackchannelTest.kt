@@ -191,6 +191,20 @@ class BackchannelTest {
         assertEquals("backchannel skip=answer_text gap_ms=0", Backchannel.answerTextGapLine(10_600, 10_500))
     }
 
+    // Review of aed1c786 (#5): a VoIP call or a denied phone-state permission was missed. The audio
+    // mode says a call too, unless the mode is LEGION's own (CallAudioMode.ownCommActive).
+    @Test
+    fun `a call is seen by the phone state or by a call audio mode that is not LEGION's own`() {
+        val inCall = android.media.AudioManager.MODE_IN_CALL
+        val comm = android.media.AudioManager.MODE_IN_COMMUNICATION
+        val normal = android.media.AudioManager.MODE_NORMAL
+        assertTrue(Backchannel.callOnLine(telephonyInCall = true, audioMode = normal, ownComm = false))
+        assertTrue("a VoIP call", Backchannel.callOnLine(telephonyInCall = false, audioMode = comm, ownComm = false))
+        assertFalse("LEGION's own call-style audio", Backchannel.callOnLine(telephonyInCall = false, audioMode = comm, ownComm = true))
+        assertTrue("phone state denied", Backchannel.callOnLine(telephonyInCall = false, audioMode = inCall, ownComm = true))
+        assertFalse(Backchannel.callOnLine(telephonyInCall = false, audioMode = normal, ownComm = false))
+    }
+
     @Test
     fun `a phone call gets none, on any route`() {
         assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(turn().copy(onCall = true)))

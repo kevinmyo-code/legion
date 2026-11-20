@@ -1223,7 +1223,7 @@ internal class CascadeSession(
                 fromUser = true,
                 overReplyOrTurn = uttOverReply || carry.isNotBlank(),
                 quiet = QuietMode.isOn(ctx),
-                onCall = TelephonyController.isInCall,
+                onCall = callOnLine(),
             ),
         )
         fillerSkip = skip
@@ -1297,6 +1297,10 @@ internal class CascadeSession(
         answerTextSkipAtMs = null
     }
 
+    /** A call on the line for the fillers: the phone state, or a call's audio mode not LEGION's own. */
+    private fun callOnLine(): Boolean =
+        Backchannel.callOnLine(TelephonyController.isInCall, audioManager.mode, CallAudioMode.ownCommActive)
+
     /** A task line started: audited, and counted toward this turn's fillers and its said words. */
     private fun noteTaskFiller(text: String) {
         audit.filler("task", text)
@@ -1339,7 +1343,7 @@ internal class CascadeSession(
         val b = backend ?: return false
         val p = player ?: return false
         fun due() = !closing.get() && seq == backchannelSeq.get() && !answerAudioStarted && !answerTextIn() &&
-            !QuietMode.isOn(ctx) && !TelephonyController.isInCall
+            !QuietMode.isOn(ctx) && !callOnLine()
         if (!due()) return false
         var pcm = ByteArray(0)
         val chosen = WaitFillers.choose(

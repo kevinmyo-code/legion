@@ -205,6 +205,18 @@ internal object Backchannel {
     fun answerTextGapLine(skipAtMs: Long, answerAudioAtMs: Long): String =
         "backchannel skip=answer_text gap_ms=${(answerAudioAtMs - skipAtMs).coerceAtLeast(0)}"
 
+    /**
+     * A call is on the line for a filler (review of aed1c786): the phone's call state, or the audio
+     * mode a call sets, which needs no permission and also covers a VoIP call. MODE_IN_CALL is never
+     * LEGION's; MODE_IN_COMMUNICATION is LEGION's own while [ownComm]
+     * ([com.kevin.legion.service.turn.CallAudioMode.ownCommActive], dumb mode's same test). If a VoIP
+     * call takes that mode while LEGION holds it too, the two cannot be told apart: that one is missed.
+     */
+    fun callOnLine(telephonyInCall: Boolean, audioMode: Int, ownComm: Boolean): Boolean =
+        telephonyInCall ||
+            audioMode == android.media.AudioManager.MODE_IN_CALL ||
+            (audioMode == android.media.AudioManager.MODE_IN_COMMUNICATION && !ownComm)
+
     /** Whether a clip of [ms] measured audio may play. */
     fun clipFits(ms: Long): Boolean = ms in MIN_CLIP_MS..MAX_CLIP_MS
 
