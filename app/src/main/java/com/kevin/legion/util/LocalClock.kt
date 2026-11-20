@@ -7,8 +7,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Times a model reads, written in the phone's local time by code (phone audit 2026-11-19: at 4:39 PM
- * local a reply said it was past ten at night, the local time plus the UTC offset it had been told).
+ * Times a model reads, written in the phone's local time by code (phone audit 2026-11-19: a reply
+ * put the time of day hours out, apparently by applying the UTC offset to a time already local).
  * A raw epoch or an ISO instant in UTC leaves the zone sum to the model; these never do. The UTC offset
  * is deliberately absent from what they write.
  */

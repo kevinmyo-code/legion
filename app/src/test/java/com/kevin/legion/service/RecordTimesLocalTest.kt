@@ -46,7 +46,9 @@ class RecordTimesLocalTest {
     fun `query_records states created and updated times in local time across the UTC date`() = runBlocking {
         val made = ZonedDateTime.of(2026, 11, 19, 18, 30, 0, 0, ZoneOffset.ofHours(-6)).toInstant().toEpochMilli()
         val aspectId = db.aspectDao().insert(Aspect(name = "Plants", createdAt = made, updatedAt = made))
-        val typeId = db.recordTypeDao().insert(RecordType(aspectId = aspectId, name = "Plant", createdAt = made, updatedAt = made))
+        val typeId = db.recordTypeDao().insert(
+            RecordType(aspectId = aspectId, name = "Plant", createdAt = made, updatedAt = made),
+        )
         db.engineRecordDao().insert(
             EngineRecord(recordTypeId = typeId, createdAt = made, updatedAt = made, provenance = RecordProvenance.USER),
         )

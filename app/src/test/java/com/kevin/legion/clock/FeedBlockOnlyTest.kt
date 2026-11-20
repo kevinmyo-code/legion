@@ -8,8 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * "Turn the feed blocker on" turns on the feed block alone (phone audit 2026-11-19: the only voice
- * door was bedtime_on, which turned Quiet on too). Over fakes; no Android.
+ * The feed block alone, by voice (phone audit 2026-11-19: the only voice door was bedtime_on,
+ * which turned Quiet on too). Over fakes; no Android.
  */
 class FeedBlockOnlyTest {
 

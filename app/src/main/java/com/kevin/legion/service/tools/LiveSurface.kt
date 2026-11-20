@@ -506,7 +506,8 @@ internal object LiveSurface {
      * and only its parameters are taken from it.
      */
     fun apply(candidates: List<JSONObject>, routerReads: List<JSONObject> = emptyList()): JSONArray {
-        val byDeclName = routerReads.associateBy { it.getString("name") } + candidates.associateBy { it.getString("name") }
+        val byDeclName =
+            routerReads.associateBy { it.getString("name") } + candidates.associateBy { it.getString("name") }
         val placed = mutableSetOf<String>()
         val out = JSONArray()
         for (decl in candidates) {

@@ -5263,7 +5263,8 @@ object LiveToolbox {
         }
         // Phone audit 2026-11-19: this read was spoken word for word in talk about something else. A
         // mis-call is data for the model only; code speaks a read only for car read_codes or ask_fleet.
-        return com.kevin.legion.ai.VerbatimSpeech.unmark(read).put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
+        return com.kevin.legion.ai.VerbatimSpeech.unmark(read)
+            .put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
     }
 
     /**

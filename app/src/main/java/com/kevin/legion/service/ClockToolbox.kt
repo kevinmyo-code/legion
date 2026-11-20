@@ -88,7 +88,7 @@ object ClockToolbox {
         "stopwatch_reset" to { c, _ -> c.stopwatch.reset() },
         "bedtime_on" to { c, a -> c.bedtime.voiceOn(a.time) },
         "bedtime_off" to { c, _ -> c.bedtime.voiceOff() },
-        // Phone audit 2026-11-19: "turn the feed blocker on" could only reach bedtime_on, Quiet included.
+        // Phone audit 2026-11-19: a feed-block-only request could only reach bedtime_on, Quiet included.
         "feed_block_on" to { c, _ -> c.bedtime.feedBlockOnly() },
     )
 

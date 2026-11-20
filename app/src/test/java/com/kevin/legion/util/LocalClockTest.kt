@@ -8,9 +8,9 @@ import java.time.ZoneOffset
 import java.time.ZonedDateTime
 
 /**
- * Times the model reads are local, written by code (phone audit 2026-11-19: at 4:39 PM local the reply
- * said it was past ten at night, the local time plus the stated UTC offset). Checked at a UTC/local
- * date boundary: 6:30 PM on a Thursday at UTC-6 is 00:30 on Friday in UTC. Made-up times.
+ * Times the model reads are local, written by code (phone audit 2026-11-19: a reply put the time of
+ * day hours out). Checked at a UTC/local date boundary: 6:30 PM on a Thursday at UTC-6 is 00:30 on
+ * Friday in UTC. Made-up times.
  */
 class LocalClockTest {
     private val zone = ZoneOffset.ofHours(-6)
