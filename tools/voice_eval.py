@@ -503,7 +503,9 @@ WRITE_ACTIONS = {"add", "remove", "tick", "untick", "schedule", "skip", "create"
 WRITE_TOOLS = {"complete_task", "car", "body_log", "money", "place", "memory", "phone", "clock", "goal", "trip"}
 READ_ACTIONS = {"list", "read", "lists", "ticked", "list_budget_categories", "watch_list", "recall", "search",
                 # 2026-11-19 review: the phone's own read actions on writing tools (ToolReads.READ_ACTIONS).
-                "alarm_list", "timer_left", "whats_new", "status", "last", "recent"}
+                "alarm_list", "timer_left", "whats_new", "status", "last", "recent",
+                # 2026-11-19 phone audit: car read_codes reads the stored codes (get_codes).
+                "read_codes"}
 
 
 def _looks_write(c: ToolCall) -> bool:
