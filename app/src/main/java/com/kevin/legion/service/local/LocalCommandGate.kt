@@ -2,6 +2,7 @@ package com.kevin.legion.service.local
 
 import android.content.Context
 import android.util.Log
+import com.kevin.legion.service.VoskModels
 import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
@@ -64,20 +65,15 @@ class VoskLocalCommandGate(
     companion object {
         private const val TAG = "LIVE_LOCAL"
         private const val SAMPLE_RATE = 16_000f
-        private const val MODEL_DIR = "vosk-model"
 
         /** How the recogniser spells words the matcher reads without their apostrophe. */
         private val SPOKEN_FORMS = setOf("that's", "that'll", "o'clock", "it's")
 
-        @Volatile private var loaded: Model? = null
-
-        @Synchronized
-        @Suppress("ReturnCount") // loaded, not copied yet, or load now
+        /** The wake engine's model ([VoskModels]), once it has copied it out; null before then. */
         private fun model(context: Context): Model? {
-            loaded?.let { return it }
-            val dir = File(context.filesDir, MODEL_DIR)
-            if (!File(dir, "am/final.mdl").exists()) return null
-            return runCatching { Model(dir.absolutePath) }.getOrNull()?.also { loaded = it }
+            val dir = File(context.filesDir, VoskModels.DIR)
+            if (!VoskModels.isCopied(dir)) return null
+            return runCatching { VoskModels.get(dir) }.getOrNull()
         }
 
         /** Warms the model off the mic thread, so the first held turn does not pay for the load. */
