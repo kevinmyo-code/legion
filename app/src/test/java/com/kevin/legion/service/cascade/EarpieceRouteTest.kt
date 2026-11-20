@@ -62,7 +62,7 @@ class EarpieceRouteTest {
     fun `a flip to call inside call audio moves to the earpiece and holds the proximity lock`() = runBlocking {
         val mode = CallAudioMode(audio).also { it.enter() }
         VoiceOutput.set(ctx, OutputChoice.CALL)
-        route.reapply(mode, enter)
+        route.reapply({ mode }, enter)
         assertTrue(mode.onEarpiece)
         assertEquals(0, enterAsked)
         assertTrue(ShadowPowerManager.getLatestWakeLock()!!.isHeld)
@@ -75,7 +75,7 @@ class EarpieceRouteTest {
         val mode = CallAudioMode(audio).also { it.enter(earpiece = true) }
         route.sync(mode)
         VoiceOutput.set(ctx, OutputChoice.SPEAKER)
-        route.reapply(mode, enter)
+        route.reapply({ mode }, enter)
         assertFalse(mode.onEarpiece)
         assertTrue(mode.isActive)
         assertEquals(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, audio.communicationDevice?.type)
@@ -86,11 +86,21 @@ class EarpieceRouteTest {
     @Test
     fun `outside call audio only the earpiece asks to enter it`() = runBlocking {
         VoiceOutput.set(ctx, OutputChoice.SPEAKER)
-        route.reapply(null, enter)
+        route.reapply({ null }, enter)
         assertEquals(0, enterAsked)
         VoiceOutput.set(ctx, OutputChoice.CALL)
-        route.reapply(null, enter)
+        route.reapply({ null }, enter)
         assertEquals(1, enterAsked)
+    }
+
+    @Test
+    fun `a midway entry into call audio takes the proximity lock on the new call audio`() = runBlocking {
+        var session: CallAudioMode? = null
+        VoiceOutput.set(ctx, OutputChoice.CALL)
+        route.reapply({ session }) { session = CallAudioMode(audio).also { it.enter(earpiece = true) } }
+        assertTrue(session!!.onEarpiece)
+        assertTrue(ShadowPowerManager.getLatestWakeLock()!!.isHeld)
+        session!!.exit("test")
     }
 
     @Test
@@ -98,7 +108,7 @@ class EarpieceRouteTest {
         inCall = true
         VoiceOutput.set(ctx, OutputChoice.CALL)
         assertEquals(VoiceOutlet.PHONE_CALL, route.outlet())
-        route.reapply(null, enter)
+        route.reapply({ null }, enter)
         assertEquals(0, enterAsked)
         assertEquals(AudioManager.MODE_NORMAL, audio.mode)
         assertNull(ShadowPowerManager.getLatestWakeLock())

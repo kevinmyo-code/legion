@@ -44,6 +44,9 @@ class EarpieceWiringTest {
         val wait = midway.indexOf("while (speaking")
         assertTrue(wait >= 0)
         assertTrue("waits before it rebuilds the player", wait < midway.indexOf("player?.rebuild()"))
+        val recheck = midway.indexOf("earpiece.outlet() != VoiceOutlet.EARPIECE")
+        assertTrue("re-reads the choice after the wait (a flip back while he spoke)", recheck > wait)
+        assertTrue(recheck < midway.indexOf("enterCallAudio("))
     }
 
     @Test
