@@ -838,3 +838,70 @@ def test_the_command_records_the_tick(household_user, late_on, monkeypatch):
     call_command("late_tasks", stdout=StringIO())
     assert late.runner_is_fresh()
 
+
+# -- review 2026-11-20, item D: searches and calls are capped and searches count as spend ---------
+
+
+def _stub_search(monkeypatch):
+    from types import SimpleNamespace
+
+    ran = []
+
+    def fake_search(query):
+        ran.append(query)
+        return SimpleNamespace(
+            answer="Made-up answer.", sources=[], search_queries=[query], model="fake", usage={}
+        )
+
+    monkeypatch.setattr("engine_mcp.web_search.search", fake_search)
+    return ran
+
+
+def test_a_task_runs_at_most_two_searches_and_each_counts_as_spend(
+    household_user, late_on, monkeypatch
+):
+    ran = _stub_search(monkeypatch)
+    task = _task(household_user)
+    model = m.FakeModel(
+        [
+            m.call("web_search", {"query": "one"}),
+            m.call("web_search", {"query": "two"}),
+            m.call("web_search", {"query": "three"}),
+            m.say("Done looking."),
+        ]
+    )
+    late.run_due(lambda: model)
+    assert ran == ["one", "two"]
+    task.refresh_from_db()
+    assert task.searches == 2
+    third = AgentTurn.objects.get().tool_calls.order_by("created_at", "id").last()
+    assert (third.outcome, third.guard) == ("refused", "budget")
+    assert late.spent_today_micro_usd(household_user) >= 2 * late.SEARCH_FEE_MICRO_USD
+
+
+def test_a_round_runs_at_most_two_calls(household_user, late_on, monkeypatch):
+    ran = _stub_search(monkeypatch)
+    _task(household_user)
+    three_at_once = (
+        m.call("check_conditions", {}, call_id="a")
+        + m.call("legion_docs", {"query": "x"}, call_id="b")
+        + m.call("web_search", {"query": "late"}, call_id="c")
+    )
+    late.run_due(lambda: m.FakeModel([three_at_once, m.say("Done.")]))
+    calls = list(AgentTurn.objects.get().tool_calls.values_list("tool", "guard"))
+    assert ("web_search", "budget") in calls and ran == []
+
+
+def test_the_daily_allowance_counts_searches(auth_client, household_user, door_on, late_on,
+                                            fake_model):
+    from llm import client as llm_client
+
+    llm_client.record(
+        household=household_user.household,
+        feature=late.SEARCH_FEATURE,
+        model="x",
+        user=household_user,
+        cost_estimate_micro_usd=late.DAILY_MICRO_USD,
+    )
+    fake_model["rounds"] = []
+    assert _sentences(_turn(auth_client, ASK)) == [late.SPENT]
