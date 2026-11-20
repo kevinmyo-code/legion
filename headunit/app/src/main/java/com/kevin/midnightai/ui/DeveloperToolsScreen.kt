@@ -185,6 +185,8 @@ internal fun DeveloperToolsSection(context: Context, onBack: () -> Unit) {
         Text(DeveloperTools.EXPOSURE_NOTE, style = RowSubtitle, color = AriaColors.TextDim)
         Spacer(Modifier.height(AriaDimens.s4))
         VolumeCheckPanel(context)
+        Spacer(Modifier.height(AriaDimens.s2))
+        WheelKeysPanel()
     }
 }
 

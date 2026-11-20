@@ -77,6 +77,22 @@ internal fun VolumeCheckPanel(context: Context) {
     ProbeLines(lines, empty = "No volume events yet. Press a volume key.")
 }
 
+/** Wheel keys: every key event that reached Cruise, newest last. */
+@Composable
+internal fun WheelKeysPanel() {
+    var open by remember { mutableStateOf(false) }
+    SettingsRowCard(SettingsRowSpec(
+        "Wheel keys",
+        "Every key the unit hands this app while it is in front (steering wheel, panel, remote). " +
+            "Keys the vendor firmware or the music app keep never reach here.",
+        RowAction.Button(if (open) "CLOSE" else "OPEN", ButtonWeight.QUIET) { open = !open },
+    ))
+    if (!open) return
+    Spacer(Modifier.height(AriaDimens.s2))
+    val lines by InputProbe.wheel.collectAsState()
+    ProbeLines(lines, empty = "No keys yet. Press each steering-wheel key once.")
+}
+
 @Composable
 private fun ProbeLines(lines: List<ProbeLine>, empty: String) {
     val shape = RoundedCornerShape(4.dp)

@@ -310,10 +310,19 @@ class MainActivity : ComponentActivity() {
      * the one known to reach the head unit's speakers (2026-10-13 field report: the
      * hardware keys moved the meter but not the sound). Keys handled below us (MCU,
      * system) are caught after the fact by [com.kevin.midnightai.media.VolumeSync].
+     *
+     * HU-1 T9: every key that reaches us also goes to the Wheel keys log, with whether something
+     * here handled it, so one drive shows what the steering wheel actually sends. Logging never
+     * changes what is consumed.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val up = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP
-        if (!up && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) return super.dispatchKeyEvent(event)
+        if (!up && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
+            val handled = super.dispatchKeyEvent(event)
+            logKey(event, handled) { com.kevin.midnightai.diag.InputProbe.wheel(it) }
+            return handled
+        }
+        logKey(event, handled = true) { com.kevin.midnightai.diag.InputProbe.wheel(it) }
         // HU-1 T2 volume probe: the key as delivered, then the write it causes (VolumeController logs that).
         logKey(event, handled = true) { com.kevin.midnightai.diag.InputProbe.volume(it) }
         if (event.action == KeyEvent.ACTION_DOWN) {
