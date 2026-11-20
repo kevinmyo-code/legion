@@ -86,11 +86,12 @@ def _words(text: str) -> tuple[list[str], list[bool]]:
     return words, broken
 
 
-# What may follow a phrase's last word and still be that word (review recheck 2026-11-20): plural,
-# possessive (its apostrophe dropped), and -ly / -ally / -ity / -ality, so "suicides",
-# "suicide's", "suicidally" and "suicidality" are hits as on the phone. Nothing else: "diet" is not
-# "die", "lifetime" is not "life".
-SUFFIXES = ("", "s", "es", "ly", "ally", "ity", "ality")
+# How a phrase matches (review v1b, 2026-11-20). A one-word phrase ("suicide", "suicidal") is a
+# stem: any word that contains it is a hit, as on the phone, so "suicides", "suicide's",
+# "suicidally", "suicidality", "presuicidal" and "suicidey" are hits (the safe side). A phrase of
+# several words matches whole words only: "deadly", "diet", "lifetime" and "life's savings" are
+# other words, not the phrase (the phone hits them; the engine says the help line only for the
+# phrase itself).
 
 # The words that put an excluded phrase in car talk: a part someone has, wants or describes ("has
 # suicide doors", "a suicide knob", "with suicide doors"). An excluded phrase after any other word,
@@ -104,11 +105,9 @@ CAR_TALK_LEAD = frozenset(
 
 
 def _phrase_at(words: list[str], phrase: list[str], i: int) -> bool:
-    n = len(phrase)
-    if words[i : i + n - 1] != phrase[:-1]:
-        return False
-    last, said = phrase[-1], words[i + n - 1]
-    return any(said == last + suffix for suffix in SUFFIXES)
+    if len(phrase) == 1:
+        return phrase[0] in words[i]
+    return words[i : i + len(phrase)] == phrase
 
 
 def _excluded_at(words: list[str], broken: list[bool], exclusion: list[str], j: int) -> bool:
@@ -127,10 +126,11 @@ def detect(text: str) -> bool:
 
     Where the engine differs from the phone's `detect` (review 2026-11-19, C2 and C7; recheck
     2026-11-20), on purpose:
-    - a phrase starts on a word boundary and its last word may take only `SUFFIXES`, so "I want
-      to diet" and "end my lifetime subscription" are not hits, while "suicides" and
-      "suicidality" still are. Every other string the phone hits is a hit here
-      (`tests/test_engine_voice_crisis.py` checks a generated list);
+    - a phrase of several words matches whole words, so "I want to diet", "deadly at poker" and
+      "end my life's savings" are not hits; a one-word stem ("suicide", "suicidal") is a hit
+      inside any word, as on the phone. Every other string the phone hits is a hit here
+      (`tests/test_engine_voice_crisis.py` checks a generated list against a port of the
+      phone's matcher);
     - an exclusion hides a hit only when its own words are all there, together, with no
       punctuation between, after a word that makes them car talk (`CAR_TALK_LEAD`): "has suicide
       doors" is quiet, "suicide, door's locked" and "about suicide door is locked" are hits.

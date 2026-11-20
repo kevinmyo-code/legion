@@ -134,44 +134,50 @@ def _phone_detect(text: str) -> bool:
     return any(phrase in normalized for phrase in crisis.PHRASES)
 
 
-# What may follow a phrase's last word and still be the phrase: plural, possessive (its apostrophe
-# dropped), -ly, -ally, -ity, -ality ("suicidally", "suicidality").
-INFLECTIONS = ("", "s", "es", "'s", "ly", "ally", "ity", "ality")
-# Endings that make another word: the phone hits these, the engine must not. Listed one by one.
-NOT_THE_PHRASE = {
-    ("want to die", "t"): "diet",
-    ("wanna die", "t"): "diet",
-    ("end my life", "time"): "lifetime",
-    ("ending my life", "time"): "lifetime",
-    ("take my own life", "time"): "lifetime",
-    ("taking my own life", "time"): "lifetime",
-}
+# The generated list (review v1b, 2026-11-20): every phrase with endings and prefixes the engine
+# does not choose, in every case and wrapping, plus car talk before each exclusion. What the PHONE
+# hits is computed by `_phone_detect` above, never by the engine's own rules.
+ENDINGS = ("", "s", "es", "'s", "ly", "ally", "ity", "ality", "y", "t", "time", "line", "ie")
+PREFIXES = ("", "pre", "non")
 _CASES = (str.lower, str.upper, str.title)
 _WRAPS = ("{x}", "{x}.", "well, {x}!", '"{x}"', "I think {x} today", "honestly... {x}?")
+_CAR_TALK = ("has", "a", "with", "the", "rear", "got")
 
 
 def _generated():
     for phrase in crisis.PHRASES:
         head, _, last = phrase.rpartition(" ")
-        other_words = [end for (said, end) in NOT_THE_PHRASE if said == phrase]
-        for ending in (*INFLECTIONS, *other_words):
-            spoken = f"{head} {last}{ending}".strip().replace("dont", "don't")
-            for case in _CASES:
-                for wrap in _WRAPS:
-                    yield phrase, ending, wrap.format(x=case(spoken))
+        for prefix in PREFIXES if not head else ("",):
+            for ending in ENDINGS:
+                spoken = f"{head} {prefix}{last}{ending}".strip().replace("dont", "don't")
+                for case in _CASES:
+                    for wrap in _WRAPS:
+                        yield phrase, prefix + ending, wrap.format(x=case(spoken))
+    for exclusion in crisis.EXCLUSIONS:
+        for lead in _CAR_TALK:
+            for tail in ("", ", I want to die", " and I want to die"):
+                yield exclusion, "car", f"it {lead} {exclusion}{tail}"
 
 
-def test_every_string_the_phone_hits_is_a_hit_here_but_the_named_other_words():
-    missed = []
-    for phrase, ending, said in _generated():
+def _deliberately_quiet(phrase: str, change: str) -> bool:
+    """The engine's one deliberate narrowing of the phone: a phrase of several words matches its
+    last word whole ("diet", "lifetime", "deadly", "life's savings" are other words)."""
+    return " " in phrase and change not in ("", "car")
+
+
+def test_every_string_the_phone_hits_is_a_hit_here_but_other_words_after_a_phrase():
+    missed, quiet = [], []
+    for phrase, change, said in _generated():
         if not _phone_detect(said):
             continue
-        if (phrase, ending) in NOT_THE_PHRASE:
-            assert not crisis.detect(said), said
+        if _deliberately_quiet(phrase, change):
+            if crisis.detect(said):
+                quiet.append(said)
             continue
         if not crisis.detect(said):
             missed.append(said)
     assert missed == []
+    assert quiet == []
 
 
 @pytest.mark.parametrize(
@@ -213,3 +219,20 @@ def test_unpunctuated_speech_does_not_let_an_exclusion_swallow_the_hit(said):
 )
 def test_car_talk_about_the_parts_stays_quiet(said):
     assert not crisis.detect(said)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "I want to be deadly at poker",
+        "that would end my life's savings",
+        "you could take my own life's savings",
+    ],
+)
+def test_a_longer_word_after_a_phrase_is_not_a_hit(said):
+    assert not crisis.detect(said)
+
+
+@pytest.mark.parametrize("said", ["I feel presuicidal", "I've been feeling kind of suicidey"])
+def test_other_forms_of_the_single_word_stems_are_hits_on_the_safe_side(said):
+    assert crisis.detect(said)
