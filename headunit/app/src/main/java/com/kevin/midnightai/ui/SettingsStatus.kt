@@ -2,6 +2,7 @@ package com.kevin.midnightai.ui
 
 import com.kevin.midnightai.media.AppRemoteLink
 import com.kevin.midnightai.media.SpotifyScopes
+import com.kevin.midnightai.update.UpdateState
 
 /**
  * Status dot on a Settings rail item. [NONE] means "nothing honest to say", which is what a
@@ -62,6 +63,39 @@ internal fun permissionsCategoryStatus(missing: Int): CategoryStatus = when {
     missing <= 0 -> CategoryStatus("All permissions granted", SettingsDot.OK)
     missing == 1 -> CategoryStatus("1 permission missing", SettingsDot.WARN)
     else -> CategoryStatus("$missing permissions missing", SettingsDot.WARN)
+}
+
+/** The rows of Settings > System, top to bottom (HU-1 T7: Updates leads, the rest keep their order). */
+internal enum class SystemRow { UPDATES, CLOCK, PERMISSIONS, PREFERENCES, LOGS, DEVELOPER_TOOLS, RESET }
+
+internal fun systemRows(): List<SystemRow> = SystemRow.entries.toList()
+
+/**
+ * Where the updater is, as the Updates row's subtitle and the System rail line. [installedCode] is
+ * this install's version code. A dot only for a state a check actually produced: Idle and Checking
+ * have read nothing yet.
+ */
+internal fun updateStatusLine(state: UpdateState, installedCode: Long): CategoryStatus = when (state) {
+    UpdateState.Idle -> CategoryStatus("Version $installedCode")
+    UpdateState.Checking -> CategoryStatus("Checking for updates")
+    UpdateState.DebugBuild -> CategoryStatus("Debug build · no updates")
+    is UpdateState.UpToDate -> CategoryStatus("Up to date · $installedCode", SettingsDot.OK)
+    is UpdateState.Available -> CategoryStatus("Update found · ${state.release.versionCode}")
+    is UpdateState.Downloading -> CategoryStatus("Downloading update")
+    is UpdateState.Ready -> CategoryStatus("Update ready · tap to install", SettingsDot.WARN)
+    is UpdateState.Waiting -> CategoryStatus("Update installs after this chat")
+    is UpdateState.Installing -> CategoryStatus("Installing update")
+    is UpdateState.Failed -> CategoryStatus("Update check failed", SettingsDot.WARN)
+}
+
+/**
+ * The System rail line: a missing permission outranks everything (the app half-works without it);
+ * otherwise the update line once the updater has read something, else the permissions line.
+ */
+internal fun systemCategoryStatus(permissions: CategoryStatus, update: CategoryStatus): CategoryStatus = when {
+    permissions.dot == SettingsDot.WARN || permissions.dot == SettingsDot.ERROR -> permissions
+    update.dot != SettingsDot.NONE -> update
+    else -> permissions
 }
 
 /**

@@ -85,6 +85,7 @@ import com.kevin.midnightai.service.LauncherSettings
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaPalette
 import com.kevin.midnightai.ui.theme.LightsOutSwatch
+import com.kevin.midnightai.update.UpdateGraph
 import com.kevin.midnightai.vehicle.ActiveVehicle
 import com.kevin.midnightai.vehicle.ObdBluetoothManager
 import com.kevin.midnightai.vehicle.ObdGauge
@@ -289,6 +290,7 @@ fun ControlPanel(
                 spotifyStatus = statuses[SettingsCategory.MUSIC],
                 spotifyFacts = live.spotify,
                 byoKey = planMode == RuntimeMode.BYO_KEY,
+                updateStatus = live.update,
             )
         }
         SettingsTwoPane(
@@ -341,6 +343,7 @@ private fun settingsRows(
     spotifyStatus: CategoryStatus?,
     spotifyFacts: SpotifyFacts?,
     byoKey: Boolean,
+    updateStatus: CategoryStatus,
 ): List<SettingsRowSpec> {
     fun openRow(title: String, subtitle: String, section: Section, chip: SettingsChip? = null) =
         SettingsRowSpec(title, subtitle, RowAction.Button("OPEN", ButtonWeight.QUIET) { open(section) }, chip)
@@ -422,19 +425,22 @@ private fun settingsRows(
             openRow("Gauges", "Which OBD readouts show on Cruise and Lights Out", Section.APPEARANCE_GAUGES),
             openRow("Screen & deck", "Screen saver timing and the cassette colorway", Section.APPEARANCE_SCREEN_DECK),
         )
-        SettingsCategory.SYSTEM -> listOf(
-            openRow("Clock & time zone", clockRowSubtitle(), Section.SYSTEM_CLOCK),
-            openRow("Permissions", "Microphone, media access", Section.SYSTEM_PERMISSIONS),
-            openRow("Preferences", "Music app, home screen, subtitles, recalls", Section.SYSTEM_PREFERENCES),
-            openRow("Drive logs", "Upload this unit's own log to your engine after each drive", Section.SYSTEM_LOGS),
-            openRow("Updates", "New versions from your engine, installed on your tap", Section.SYSTEM_UPDATES),
-            openRow(
-                "Developer tools",
-                "Android Settings, Developer options, Wireless debugging, ADB status",
-                Section.SYSTEM_DEVELOPER_TOOLS,
-            ),
-            openRow("Reset", "Start over or wipe data", Section.SYSTEM_RESET),
-        )
+        // Updates leads (HU-1 T7): its subtitle is the updater's live status line.
+        SettingsCategory.SYSTEM -> systemRows().map { row ->
+            when (row) {
+                SystemRow.UPDATES -> openRow("Updates", updateStatus.line, Section.SYSTEM_UPDATES, settingsChip(updateStatus))
+                SystemRow.CLOCK -> openRow("Clock & time zone", clockRowSubtitle(), Section.SYSTEM_CLOCK)
+                SystemRow.PERMISSIONS -> openRow("Permissions", "Microphone, media access", Section.SYSTEM_PERMISSIONS)
+                SystemRow.PREFERENCES -> openRow("Preferences", "Music app, home screen, subtitles, recalls", Section.SYSTEM_PREFERENCES)
+                SystemRow.LOGS -> openRow("Drive logs", "Upload this unit's own log to your engine after each drive", Section.SYSTEM_LOGS)
+                SystemRow.DEVELOPER_TOOLS -> openRow(
+                    "Developer tools",
+                    "Android Settings, Developer options, Wireless debugging, ADB status",
+                    Section.SYSTEM_DEVELOPER_TOOLS,
+                )
+                SystemRow.RESET -> openRow("Reset", "Start over or wipe data", Section.SYSTEM_RESET)
+            }
+        }
     }
 }
 
@@ -514,7 +520,12 @@ private fun settingsStatusesNow(context: Context): Map<SettingsCategory, Categor
     )
 
 /** Rail statuses plus the raw Spotify facts the Music rows need (null until read). */
-private class SettingsLive(val statuses: Map<SettingsCategory, CategoryStatus>, val spotify: SpotifyFacts?)
+private class SettingsLive(
+    val statuses: Map<SettingsCategory, CategoryStatus>,
+    val spotify: SpotifyFacts?,
+    /** The updater's status line (HU-1 T7): the Updates row subtitle, and the System rail when permissions are fine. */
+    val update: CategoryStatus,
+)
 
 /**
  * Live rail statuses. Recomputed on ON_RESUME (a grant, a Spotify consent, or a Bluetooth change
@@ -605,7 +616,11 @@ private fun rememberSettingsStatuses(context: Context, showing: Boolean): Settin
     val palette = AriaPalette.current.label.lowercase().split(' ')
         .joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
     val look = CategoryStatus(if (AriaPalette.isNight) "$palette, night" else palette)
-    return SettingsLive(base + (SettingsCategory.LOOK to look), spotify)
+    val updateState by remember { UpdateGraph.controller(context).state }.collectAsState()
+    val installedCode = remember { UpdateGraph.platform(context).installed().versionCode }
+    val update = updateStatusLine(updateState, installedCode)
+    val system = systemCategoryStatus(base.getValue(SettingsCategory.SYSTEM), update)
+    return SettingsLive(base + (SettingsCategory.LOOK to look) + (SettingsCategory.SYSTEM to system), spotify, update)
 }
 
 /** The companion's name (what the driver named their car), or a neutral fallback. */
