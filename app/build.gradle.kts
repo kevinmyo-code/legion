@@ -381,6 +381,8 @@ dependencies {
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
+    // The car link's QR scanner: ML Kit barcode scanning with the model bundled (no Play services download).
+    implementation(libs.mlkit.barcode.scanning)
     // WorkManager, for books ticket 05 only (the unmetered-network PDF conversion worker).
     implementation(libs.work.runtime.ktx)
     // Single-activity shell (ticket 07): bottom-nav tabs + absorbed sub-routes.
