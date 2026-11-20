@@ -49,6 +49,10 @@ class NamedRangeTest {
     fun `a named range wins over dates sent beside it`() {
         val w = NamedRange.window(from = "this_week", to = "2026-11-20", today = thu)
         assertEquals(NamedRange.Window("this_week", thu, sun), w)
+        // As the model sends it (eval, 2026-11-20): from today to this_week is this week.
+        assertEquals(NamedRange.Window("this_week", thu, sun), NamedRange.window("today", "this_week", thu))
+        assertEquals(NamedRange.Window("next_7_days", thu, thu.plusDays(6)), NamedRange.window("today", "next_7_days", thu))
+        assertEquals(NamedRange.Window("this_week", thu, sun), NamedRange.window("2026-11-19", "this_week", thu))
         // A spoken date stays possible: plain dates and day words pass through.
         assertEquals(NamedRange.Window(null, thu, sat), NamedRange.window("2026-11-19", "2026-11-21", thu))
         assertEquals(NamedRange.Window(null, thu.minusDays(1), thu), NamedRange.window("yesterday", "2026-11-19", thu))

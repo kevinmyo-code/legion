@@ -43,7 +43,8 @@ internal object NamedRange {
      * dates. Null: unreadable.
      */
     fun window(from: String, to: String, today: LocalDate): Window? {
-        val named = resolve(from, today) ?: resolve(to, today)?.takeIf { RelativeDay.parse(from, today) == null }
+        // Both named ("today" .. "this_week", as the model sends it): the one reaching further is the span.
+        val named = listOfNotNull(resolve(from, today), resolve(to, today)).maxByOrNull { it.to }
         if (named != null) return named
         val f = RelativeDay.parse(from, today)
         val t = f?.let { RelativeDay.parse(to.ifBlank { from }, today) }
