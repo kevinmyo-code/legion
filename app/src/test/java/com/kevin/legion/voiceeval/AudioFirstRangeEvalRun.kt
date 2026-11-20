@@ -1,4 +1,4 @@
-@file:Suppress("MagicNumber", "MaxLineLength", "LongMethod") // a by-hand run: one-line logs
+@file:Suppress("MagicNumber", "MaxLineLength", "LongMethod", "ReturnCount") // a by-hand run: one-line logs
 
 package com.kevin.legion.voiceeval
 
@@ -77,14 +77,16 @@ class AudioFirstRangeEvalRun {
 
     private fun window(calls: List<Pair<String, JSONObject>>): Pair<LocalDate, LocalDate>? {
         val a = calls.firstOrNull { it.first == "read_calendar" }?.second ?: return null
-        val from = runCatching { LocalDate.parse(a.optString("from")) }.getOrNull() ?: return null
-        val to = runCatching { LocalDate.parse(a.optString("to").ifBlank { a.optString("from") }) }.getOrNull() ?: from
-        return from to to
+        // As the tool resolves it: a named range or dates (NamedRange, the phone's own rule).
+        val w = com.kevin.legion.service.tools.day.NamedRange.window(a.optString("from"), a.optString("to"), LocalDate.now())
+            ?: return null
+        return w.from to w.to
     }
 
     private val rangeCases = listOf(
-        RangeCase("due_open", "what do I have due?", "from <= today, to >= today+6 (the coming week)") { c, d ->
-            window(c)?.let { (f, t) -> !f.isAfter(d) && !t.isBefore(d.plusDays(6)) } == true
+        // Kevin, 2026-11-20: a bare "what do I have due" reads today only ("today only is fine").
+        RangeCase("due_open", "what do I have due?", "today") { c, d ->
+            window(c)?.let { (f, t) -> f == d && t == d } == true
         },
         RangeCase("overdue", "is anything overdue?", "from <= today, today-1 <= to <= today (the past, not ahead)") { c, d ->
             window(c)?.let { (f, t) -> !f.isAfter(d) && !t.isBefore(d.minusDays(1)) && !t.isAfter(d) } == true
