@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.google.mlkit.common.sdkinternal.MlKitContext
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -34,6 +35,8 @@ fun CarLinkQrScanPane(onQr: (String) -> Unit) {
     val preview = remember { PreviewView(context) }
     DisposableEffect(owner) {
         val executor = Executors.newSingleThreadExecutor()
+        // The manifest removes ML Kit's start-up provider, so ML Kit starts here, only when Scan opens.
+        MlKitContext.initializeIfNeeded(context.applicationContext)
         val scanner = BarcodeScanning.getClient(
             BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build(),
         )

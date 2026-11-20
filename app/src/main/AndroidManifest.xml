@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- "Look at this" (ADR 0084): the camera screen sends ~1 fps frames into the voice session.
          Asked on that screen the first time; not required, so a phone with no camera installs. -->
@@ -382,6 +383,13 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!-- ML Kit's start-up provider would run at EVERY app start for a scanner most starts never
+             open; the car link's scan pane initialises ML Kit itself when it opens. -->
+        <provider
+            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+            android:authorities="${applicationId}.mlkitinitprovider"
+            tools:node="remove" />
 
         <service
             android:name=".carlink.CarLinkLocationService"
