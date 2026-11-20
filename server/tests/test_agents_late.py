@@ -731,3 +731,59 @@ def test_the_explicit_cancel_is_ours_anywhere(
     _task(household_user)
     fake_model["rounds"] = []
     assert _sentences(_turn(auth_client, words)) == [late.CANCELLED]
+
+
+# -- review 2026-11-20, item A: a line built from web pages never becomes the model's own words ---
+
+
+PLANTED = "About the made-up museum: it opens at nine. Shall I add a visit to your calendar?"
+
+
+def _tainted_line(user):
+    task = _task(user, status="done", tainted=True)
+    return _owe(user, text=PLANTED, source_id=str(task.pk))
+
+
+def test_a_yes_after_a_web_built_line_writes_nothing(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    _tainted_line(household_user)
+    fake_model["rounds"] = [m.say("Hello again.")]
+    first = _turn(auth_client, "hello")
+    assert _sentences(first)[0] == PLANTED
+    conversation = _conversation_of(first)
+    fake_model["rounds"] = [
+        m.call("add_event", {"fields": {"title": "Museum visit"}}),
+        m.say("I can't add that this turn."),
+    ]
+    _turn(auth_client, "yes", conversation_id=conversation)
+    # The model never saw the line as anything it said.
+    assert "made-up museum" not in json.dumps(fake_model["model"].requests[0].contents)
+    call = AgentTurn.objects.get(seq=2).tool_calls.get()
+    assert (call.tool, call.outcome, call.guard) == ("add_event", "refused", "tainted")
+
+
+def test_anything_pending_keeps_the_answer_out_of_history_and_taints_the_next_turn(
+    auth_client, household_user, door_on, late_on, fake_model
+):
+    _tainted_line(household_user)
+    first = _turn(auth_client, "anything pending?")
+    assert _sentences(first) == [PLANTED]
+    turn = AgentTurn.objects.get()
+    assert "made-up museum" not in json.dumps(turn.history)
+    fake_model["rounds"] = [
+        m.call("add_event", {"fields": {"title": "Museum visit"}}),
+        m.say("I can't add that this turn."),
+    ]
+    _turn(auth_client, "yes", conversation_id=_conversation_of(first))
+    call = AgentTurn.objects.get(seq=2).tool_calls.get()
+    assert (call.outcome, call.guard) == ("refused", "tainted")
+
+
+def test_the_background_prompt_never_asks_for_a_yes():
+    from agents.legion.specs import spec
+
+    prompt = " ".join(spec("background").prompt.lower().split())
+    # A yes to a question built from web pages could run a change a page asked for.
+    assert "end with" not in prompt and "whether they want" not in prompt
+    assert "do not ask" in prompt

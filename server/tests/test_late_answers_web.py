@@ -14,7 +14,7 @@ from django.utils import timezone
 from agents.legion import late
 from agents.legion.flags import LATE_ANSWERS_ENV
 from agents.models import LateTask, OwedLine
-from agents.runtime.model import FakeModel, say
+from agents.runtime.model import FakeModel, call, say
 from assistant import cascade, views
 from ingest.statements import GEMINI_KEY_ENV
 from tests.test_assistant import browser
@@ -169,3 +169,31 @@ def test_cancel_it_after_the_models_question_goes_to_the_model(
     said = _of(_events(_post(member, text="cancel it", conversation_id=conversation)), "sentence")
     assert [s["text"] for s in said] == ["Okay, I won't add it."]
     assert LateTask.objects.get().status == "queued"
+
+
+def test_a_yes_after_a_web_built_line_writes_nothing_and_history_holds_no_line(
+    member, engine, household_user, late_on
+):
+    """Review item A: said by code, shown, never fed back as the assistant's own words; the turn
+    after it may not write."""
+    planted = "About the invented ferry: it leaves at noon. Shall I add it to your calendar?"
+    task = LateTask.objects.create(
+        household=household_user.household,
+        owner_user=household_user,
+        origin_client="web",
+        question="the invented ferry",
+        status="done",
+        tainted=True,
+    )
+    _owe(household_user, text=planted, source_id=str(task.pk))
+    engine.model = FakeModel([say("Hello again.")])
+    first = _events(_post(member, text="Hello"))
+    assert planted in [s["text"] for s in _of(first, "sentence")]
+    conversation = _of(first, "turn")[0]["conversation_id"]
+    engine.model = FakeModel(
+        [call("add_event", {"fields": {"title": "Ferry"}}), say("I can't add that now.")]
+    )
+    later = _events(_post(member, text="Yes", conversation_id=conversation))
+    assert "invented ferry" not in str(engine.model.requests[0].contents)
+    tool = _of(later, "tool")[0]
+    assert tool["name"] == "add_event" and tool["ok"] is False
