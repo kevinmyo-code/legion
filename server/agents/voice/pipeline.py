@@ -78,6 +78,18 @@ MAX_SAY_CHARS = 600
 MAX_SPOKEN_CHARS = 1_500
 # How often a turn playing speech asks the database whether it was cancelled.
 CANCEL_EVERY_S = 0.2
+# ESTIMATES for speech whose own counts never arrive (recheck 2026-11-20, metering leaks):
+# - a request cut short by a cancel or a hang-up: Google sends its usage at the end of the stream,
+#   so it is metered from the audio it had made (about 25 speech tokens a second) and its text
+#   (about 4 characters a token);
+# - a filler line fetched for memory (`FillerAudio.warm` keeps no counts): each line is metered to
+#   the turn that sent for it at one short line's cost, 15 tokens in and 60 out (about 2.4 s).
+#   A voice's whole set is about 25 lines, so about 1,500 tokens, about $0.014, once per voice per
+#   process, plus a retry of a failed line at most every 10 minutes.
+TTS_TOKENS_PER_AUDIO_S = 25
+TTS_CHARS_PER_TOKEN = 4
+FILLER_LINE_PROMPT_TOKENS = 15
+FILLER_LINE_OUTPUT_TOKENS = 60
 
 # The agents door's filler lines, kept in this process per voice (`FillerAudio`).
 FILLER_AUDIO = FillerAudio()
@@ -107,6 +119,38 @@ class TurnCancel:
         if self._asked is not None and self._clock() - self._asked < CANCEL_EVERY_S:
             return self.hit
         return self()
+
+
+class AgentSpeaker(Speaker):
+    """The agents door's speaker: it keeps every request it sent, so speech cut short is metered
+    too (the base drops a cancelled request from `jobs` before the turn's end can count it)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sent: list = []
+
+    def _submit(self, spoken: str) -> None:
+        before = len(self.jobs)
+        super()._submit(spoken)
+        if len(self.jobs) > before:
+            self.sent.append(self.jobs[-1])
+
+    def cut_short_tokens(self) -> tuple[int, int]:
+        """(prompt, output) tokens of requests that never finished: their own counts if any came,
+        else the estimate from the audio they made and their text."""
+        finished = {id(stats) for stats in self.done}
+        prompt = output = 0
+        for job in self.sent:
+            stats = job.stats
+            if id(stats) in finished:
+                continue
+            if stats.prompt_tokens or stats.output_tokens:
+                prompt += stats.prompt_tokens
+                output += stats.output_tokens
+            else:
+                prompt += len(job.text) // TTS_CHARS_PER_TOKEN + 1
+                output += stats.audio_ms * TTS_TOKENS_PER_AUDIO_S // 1000
+        return prompt, output
 
 
 @dataclass(frozen=True)
@@ -142,13 +186,14 @@ def voice_turn(
     t0 = clock()
     timings: dict = {}
     filler_audio = filler_audio or FILLER_AUDIO
-    speaker = Speaker(speech, voice, enabled=utterance.spoken, clock=clock)
+    speaker = AgentSpeaker(speech, voice, enabled=utterance.spoken, clock=clock)
     # Bounded per turn: never more requests than reserved at the start (review C3).
     speaker.more = lambda n: False
     cancel = TurnCancel(clock)
     speaker.cancelled = cancel
     speaker.cancelled_often = cancel.often
     status = "failed"
+    fetched = 0
     try:
         if utterance.kind == "say":
             status = "say"
@@ -191,6 +236,7 @@ def voice_turn(
         if speaker.enabled:
             # The filler lines' audio, fetched once speech was heard (room noise costs nothing).
             timings["speech_fetched"] = filler_audio.warm(speech, voice)
+            fetched = timings["speech_fetched"]
         # He asked for exact figures: nothing is rounded when spoken (the web door's rule; its
         # second half, exact after a write, needs the tool event's write flag: slice E3).
         speaker.exact = spoken_figures.wants_exact(words)
@@ -209,10 +255,11 @@ def voice_turn(
     finally:
         speaker.close()
         stage.record_speech(timings, speaker)
-        # Speech cut short by a cancel or a hang-up was still paid for as far as it went.
-        for job in speaker.jobs:
-            timings["tts_prompt_tokens"] += job.stats.prompt_tokens
-            timings["tts_output_tokens"] += job.stats.output_tokens
+        # Speech cut short by a cancel or a hang-up was still paid for as far as it went, and the
+        # filler lines this turn sent for are paid for too (estimates, above).
+        cut_prompt, cut_output = speaker.cut_short_tokens()
+        timings["tts_prompt_tokens"] += cut_prompt + fetched * FILLER_LINE_PROMPT_TOKENS
+        timings["tts_output_tokens"] += cut_output + fetched * FILLER_LINE_OUTPUT_TOKENS
         timings["turn_ms"] = int((clock() - t0) * 1000)
         timings["tts_requests"] = speaker.requests
         stage.meter_speech(request, timings, FEATURE)
