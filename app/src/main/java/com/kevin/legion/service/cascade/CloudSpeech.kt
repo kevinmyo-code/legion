@@ -526,9 +526,11 @@ internal class GeminiTts(
 
     override val performsTags = true
 
-    override fun speak(text: String): SpeechClip {
-        val clip = Clip(ids.addAndGet(2), text)
-        val key = keyOf(text)
+    override fun speak(text: String): SpeechClip = speakTake(text, 0)
+
+    override fun speakTake(text: String, take: Int): SpeechClip {
+        val clip = Clip(ids.addAndGet(2), text, take = take)
+        val key = keyOf(text, take)
         val cached = if (text in keepLines) kept[key] else null
         when {
             text.isBlank() -> clip.finish(TtsOutcome.Done(0, null))
@@ -542,19 +544,23 @@ internal class GeminiTts(
     }
 
     /** A kept line: its audio is in memory, or on disk and now loaded into memory ([KeptLineAudio]). */
-    override fun inHand(text: String): Boolean = text in keepLines && kept[keyOf(text)] != null
+    override fun inHand(text: String): Boolean = inHandTake(text, 0)
+
+    override fun inHandTake(text: String, take: Int): Boolean = text in keepLines && kept[keyOf(text, take)] != null
 
     /**
      * Renders each kept line in [lines] that has no audio yet, so its first use plays from memory
      * (2026-11-16: the first filler cost a TTS round trip, 805 ms measured). Nobody listens to these
      * clips; a finished one stores its audio in [kept] as a spoken one would.
      */
-    override fun warm(lines: Collection<String>): Int {
+    override fun warm(lines: Collection<String>): Int = warmTakes(lines, 0)
+
+    override fun warmTakes(lines: Collection<String>, take: Int): Int {
         var asked = 0
         for (text in lines.distinct()) {
-            val due = text.isNotBlank() && text in keepLines && kept[keyOf(text)] == null
-            if (!due || !warming.add(keyOf(text))) continue
-            Clip(ids.addAndGet(2), text, warmUp = true).start()
+            val due = text.isNotBlank() && text in keepLines && kept[keyOf(text, take)] == null
+            if (!due || !warming.add(keyOf(text, take))) continue
+            Clip(ids.addAndGet(2), text, warmUp = true, take = take).start()
             asked++
         }
         if (asked > 0) log("tts_warm lines=$asked")
@@ -571,6 +577,8 @@ internal class GeminiTts(
         override val text: String,
         /** A warm-up fetch: its own gate, behind every reply ([warmGate]). */
         private val warmUp: Boolean = false,
+        /** Which render of a kept line this is ([speakTake]); 0 is the line's own. */
+        private val take: Int = 0,
     ) : StreamingSpeechClip {
         override val frames = Channel<ByteArray>(Channel.UNLIMITED)
         private val outcome = CompletableDeferred<TtsOutcome>()
@@ -615,7 +623,7 @@ internal class GeminiTts(
                                 } else {
                                     // Filed under the voice that actually spoke it (a fallback may have changed it).
                                     if (text in keepLines) {
-                                        kept[keyOf(text)] = synchronized(whole) { whole.toByteArray() }
+                                        kept[keyOf(text, take)] = synchronized(whole) { whole.toByteArray() }
                                     }
                                     TtsOutcome.Done(bytes / BYTES_PER_MS, firstAudioMs)
                                 }
@@ -624,7 +632,7 @@ internal class GeminiTts(
                 }
             }.also { j ->
                 j.invokeOnCompletion {
-                    if (warmUp) warming.remove(keyOf(text))
+                    if (warmUp) warming.remove(keyOf(text, take))
                     finish(TtsOutcome.Cancelled)
                 }
             }
@@ -737,7 +745,8 @@ internal class GeminiTts(
     }
 
     // The voice actually speaking is in the key: a Puck clip is never replayed as another voice, or the reverse.
-    private fun keyOf(text: String) = "cloud|${CloudSpeechWire.TTS_MODEL}|$voiceNow|$sampleRate|$text"
+    private fun keyOf(text: String, take: Int = 0) =
+        "cloud|${CloudSpeechWire.TTS_MODEL}|$voiceNow|$sampleRate|$text" + if (take > 0) "#take$take" else ""
 
     companion object {
         /** 24 kHz PCM16 mono. */

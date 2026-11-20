@@ -127,7 +127,8 @@ class VoiceSpeedWiringTest {
         assertTrue(play.contains("playGate.withLock"))
         assertTrue(play.contains("Backchannel.clipFits("))
         assertTrue(play.contains("audit.filler(\"backchannel\", line)"))
-        assertTrue(play.contains("b.tts.inHand("))
+        assertTrue(play.contains("b.tts.inHandTake("))
+        assertTrue(play.contains("Backchannel.trimSilence("))
         // The answer's writes take the same gate; its first audio marks the turn as answered.
         val speaker = bodyOf(s, "newSpeaker")
         assertTrue(speaker.contains("play = { pcm -> playHeld(p, pcm, gen) }"))
