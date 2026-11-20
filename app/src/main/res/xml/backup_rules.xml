@@ -12,6 +12,8 @@
     <!-- One OBD adapter, moved between cars: which car it is in, and each car's learned print, stay on this phone. -->
     <exclude domain="sharedpref" path="car_fingerprint.xml" />
     <exclude domain="sharedpref" path="dongle_car.xml" />
+    <!-- The car link: the head unit link keys (Keystore-sealed) and its switches stay on this phone. -->
+    <exclude domain="sharedpref" path="car_link.xml" />
     <!-- ADR 0080: files a Claude task brought to the phone (a scan may be an ID). -->
     <exclude domain="file" path="claude_files/" />
     <!-- Recordings of his voice stay on the phone: never in a backup. -->

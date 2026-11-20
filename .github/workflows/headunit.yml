@@ -13,7 +13,7 @@ name: Head unit
 
 on:
   push:
-    branches: [dev, main, 'up/**', 'integrate/**']
+    branches: [dev, main, 'up/**', 'integrate/**', 'ship/**']
     paths:
       - 'headunit/**'
       - '.github/workflows/headunit.yml'

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- "Look at this" (ADR 0084): the camera screen sends ~1 fps frames into the voice session.
          Asked on that screen the first time; not required, so a phone with no camera installs. -->
@@ -91,6 +92,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Car link: keeps sending the phone's position to the car's head unit with the screen off, only
+         while paired, "Send location" is on and the pairing network is present (CarLinkLocationService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- Android Auto probe harness (`.scratch/android-auto/map.md`, research 04). Required by BOTH
          microphone routing paths ticket 04 found (Telecom's MODE_IN_COMMUNICATION wrapper and the
@@ -379,6 +383,19 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!-- ML Kit's start-up provider would run at EVERY app start for a scanner most starts never
+             open; the car link's scan pane initialises ML Kit itself when it opens. -->
+        <provider
+            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+            android:authorities="${applicationId}.mlkitinitprovider"
+            tools:node="remove" />
+
+        <service
+            android:name=".carlink.CarLinkLocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <service
             android:name=".service.AriaForegroundService"
