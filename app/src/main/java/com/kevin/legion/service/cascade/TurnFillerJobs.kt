@@ -43,17 +43,24 @@ internal class TurnFillerJobs(private val scope: CoroutineScope, private val con
 /**
  * A clip's playback mark (review M1, 2026-11-20): [during] marks playback for its block and clears it
  * at the end, also when the block is cancelled mid-clip (his speech cancels a backchannel or a wait
- * line), unless [replyHolds] says a real reply has the playback now. Before this, a cancelled clip
- * left the mark set, and the mic judged his audio by the stricter during-playback gate until the next
- * reply ended.
+ * line), unless a real reply has the playback now. Before this, a cancelled clip left the mark set,
+ * and the mic judged his audio by the stricter during-playback gate until the next reply ended.
+ *
+ * A reply holds it while it is [speaking], and also once the answer's audio has started
+ * ([answerStarted]) though `speaking` is not set yet (review of 01d1623d: in those few milliseconds
+ * clearing the mark would let the reply's own echo be judged as his speech).
  */
-internal class ClipPlayback(private val setActive: (Boolean) -> Unit, private val replyHolds: () -> Boolean) {
+internal class ClipPlayback(
+    private val setActive: (Boolean) -> Unit,
+    private val speaking: () -> Boolean,
+    private val answerStarted: () -> Boolean,
+) {
     suspend fun <T> during(block: suspend () -> T): T {
         setActive(true)
         try {
             return block()
         } finally {
-            if (!replyHolds()) setActive(false)
+            if (!speaking() && !answerStarted()) setActive(false)
         }
     }
 }

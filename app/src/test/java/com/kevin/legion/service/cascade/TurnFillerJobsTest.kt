@@ -70,7 +70,7 @@ class TurnFillerJobsTest {
     @Test
     fun `a clip cancelled mid-play leaves no playback mark`() = runTest {
         var active = false
-        val clip = ClipPlayback({ active = it }, replyHolds = { false })
+        val clip = ClipPlayback({ active = it }, speaking = { false }, answerStarted = { false })
         val started = CompletableDeferred<Unit>()
         val job = launch {
             clip.during {
@@ -88,9 +88,18 @@ class TurnFillerJobsTest {
     @Test
     fun `a clip played to its end clears the mark, unless a reply now holds playback`() = runTest {
         var active = false
-        ClipPlayback({ active = it }, replyHolds = { false }).during { delay(500) }
+        ClipPlayback({ active = it }, speaking = { false }, answerStarted = { false }).during { delay(500) }
         assertFalse(active)
-        ClipPlayback({ active = it }, replyHolds = { true }).during { delay(500) }
+        ClipPlayback({ active = it }, speaking = { true }, answerStarted = { false }).during { delay(500) }
         assertTrue("a real reply speaking keeps it", active)
+    }
+
+    // Review of 01d1623d: the answer's first audio is out but `speaking` is not set yet. Clearing the
+    // mark then would let the reply's own echo be judged as his speech during the settle.
+    @Test
+    fun `the answer's audio started keeps the mark though speaking is not set yet`() = runTest {
+        var active = false
+        ClipPlayback({ active = it }, speaking = { false }, answerStarted = { true }).during { delay(700) }
+        assertTrue(active)
     }
 }

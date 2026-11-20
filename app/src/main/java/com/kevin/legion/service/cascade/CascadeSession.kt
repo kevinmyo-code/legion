@@ -333,7 +333,7 @@ internal class CascadeSession(
     private val fillerJobs by lazy { TurnFillerJobs(scope, loop) }
 
     /** A filler clip's playback mark, cleared at its end even when it is cut (review M1). */
-    private val clipPlayback = ClipPlayback({ playbackActive = it }) { speaking }
+    private val clipPlayback = ClipPlayback({ playbackActive = it }, { speaking }, { answerAudioStarted })
     private val backchannelSeq = AtomicInteger(0)
     @Volatile private var backchannelEndAtMs: Long? = null
 
