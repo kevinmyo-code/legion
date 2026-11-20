@@ -72,6 +72,7 @@ export function useOrbPlace(): OrbPlace {
 // What has risen in once stays shown for the visit: a live content reload re-runs the marking,
 // and must never hide again what the visitor has already seen (review 2026-11-20).
 const risen = new WeakSet<Element>()
+const TALL = '[data-scene], .rc-scrolly, video, canvas, .rc-model-box'
 
 /**
  * For the sections under `root`: each `[data-orb-side]` section that crosses the middle of the
@@ -89,6 +90,9 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
       Array.from(section.children).forEach((child, index) => {
         const el = child as HTMLElement
         if (el.dataset.reveal === 'shown' || risen.has(el)) return
+        // Never a block that is, or holds, a pinned scene, a player or a 3D view: moving a layer
+        // that size re-draws it every frame of the rise (review 2026-11-20, frames at 1440 px).
+        if (el.matches(TALL) || el.querySelector(TALL)) return
         el.dataset.reveal = 'pending'
         el.style.setProperty('--reveal-i', String(Math.min(index, 6)))
         pending.push(el)
