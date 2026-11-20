@@ -74,3 +74,13 @@ describe('print', () => {
     expect(print.some((r) => /opacity\s*:\s*1\s*!important/.test(r.body) && /transform\s*:\s*none\s*!important/.test(r.body))).toBe(true)
   })
 })
+
+describe('the side orb size', () => {
+  test('about twice the first cut: 10rem (160 px)', () => {
+    const orb = all.filter((r) => r.selector.trim() === '.recruiter .rc-side-orb' && !r.within.includes('@media'))
+    expect(orb.some((r) => /width\s*:\s*10rem/.test(r.body) && /height\s*:\s*10rem/.test(r.body))).toBe(true)
+    // It still fits the room each section keeps for it, so it covers no section text.
+    const panel = all.find((r) => r.selector.trim() === '.recruiter .rc-voice-side' && !r.within.includes('@media'))
+    expect(panel?.body).toMatch(/width\s*:\s*12rem/)
+  })
+})
