@@ -54,6 +54,9 @@ data class CarLinkStatus(
  * (ADR 0035). Built by hand in [CarLinkGraph] (no Hilt in the build yet); every dependency is a
  * constructor parameter so the JVM test passes fakes.
  */
+// The car link's one owner (pairing, the feed, Forget, its settings): splitting it would spread one
+// state across classes that must change together.
+@Suppress("TooManyFunctions")
 class CarLinkController(
     private val store: CarLinkStore,
     private val transport: PairingTransport,
@@ -92,14 +95,14 @@ class CarLinkController(
         loaded = true
         val result = try {
             store.load()
-        } catch (e: RuntimeException) {
+        } catch (_: RuntimeException) {
             StoredLink.Broken
         }
         if (result is StoredLink.Paired) ring = LinkKeyRing(result.current, result.reserve, store)
         if (result is StoredLink.NotPaired) loadRevokeOnly()
         val sendLocation = try {
             store.sendLocation()
-        } catch (e: RuntimeException) {
+        } catch (_: RuntimeException) {
             false
         }
         _status.update {
@@ -151,14 +154,12 @@ class CarLinkController(
             revokeKey?.let { LinkKeyRing(it.copyOf(), null) { _, _ -> false } } ?: return
         }
         feedJob = scope.launch(io) {
-            while (isActive && feedRing.current != null) {
+            var keepGoing = true
+            while (keepGoing && isActive && feedRing.current != null) {
                 // 4.3 rev 5: no socket at all while the network the phone paired on is absent.
-                if (!network()) {
-                    delay(NETWORK_POLL_MS)
-                    continue
-                }
-                if (!runSender(feedRing, revokeOnly)) break
-                delay(RESTART_DELAY_MS)
+                val present = network()
+                keepGoing = !present || runSender(feedRing, revokeOnly)
+                if (keepGoing) delay(if (present) RESTART_DELAY_MS else NETWORK_POLL_MS)
             }
         }
     }
@@ -172,15 +173,14 @@ class CarLinkController(
             return false
         }
         sender = s
+        var delivered = false
         try {
-            while (currentCoroutineContext().isActive && feedRing.current != null && network()) {
+            while (!delivered && keepListening(feedRing)) {
                 if (!stepContained(s)) break
                 val inRange = s.inRange()
                 if (revokeOnly) {
-                    if (inRange && s.revoke()) {
-                        revokeDelivered()
-                        return false
-                    }
+                    delivered = inRange && s.revoke()
+                    if (delivered) revokeDelivered()
                 } else if (inRange != _status.value.unitInRange) {
                     _status.update { it.copy(unitInRange = inRange) }
                 }
@@ -190,8 +190,11 @@ class CarLinkController(
             s.close()
             _status.update { it.copy(unitInRange = false) }
         }
-        return true
+        return !delivered
     }
+
+    private suspend fun keepListening(feedRing: LinkKeyRing): Boolean =
+        currentCoroutineContext().isActive && feedRing.current != null && network()
 
     /**
      * One loop step that can never take the app down: false when the socket closed (Forget, or the
@@ -203,7 +206,7 @@ class CarLinkController(
         true
     } catch (_: IOException) {
         false
-    } catch (e: RuntimeException) {
+    } catch (_: RuntimeException) {
         loopFaults++
         delay(LOOP_BACKOFF_MS)
         true
@@ -328,8 +331,10 @@ class CarLinkController(
     /** The car's own Gemini key field (blank clears it). Sealed on [io]: the Keystore is slow. */
     fun setCarGeminiKey(key: String?) {
         scope.launch(io) {
-            if (!store.setCarGeminiKey(key)) return@launch _status.update { it.copy(note = CarLinkNote.SETTING_NOT_SAVED) }
-            _status.update { it.copy(carKeySet = !key.isNullOrBlank()) }
+            val saved = store.setCarGeminiKey(key)
+            _status.update {
+                if (saved) it.copy(carKeySet = !key.isNullOrBlank()) else it.copy(note = CarLinkNote.SETTING_NOT_SAVED)
+            }
         }
     }
 

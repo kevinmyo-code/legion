@@ -1,3 +1,6 @@
+// Guard clauses: each refusal of a malformed record or address is one early return.
+@file:Suppress("ReturnCount")
+
 package com.kevin.legion.carlink
 
 import com.kevin.legion.carlink.protocol.QrPayload
@@ -39,14 +42,16 @@ class PairingNetwork(val name: String, val base: String, val prefix: Int) {
         private const val BYTE_BITS = 8
         private const val BYTE_MASK = 0xFF
         private const val PARTS = 3
+        private const val OCTETS = 4
 
-        private fun bits(a: Inet4Address) = a.address.fold(0) { acc, b -> (acc shl BYTE_BITS) or (b.toInt() and BYTE_MASK) }
+        private fun bits(a: Inet4Address) =
+            a.address.fold(0) { acc, b -> (acc shl BYTE_BITS) or (b.toInt() and BYTE_MASK) }
 
         private fun mask(prefix: Int) = if (prefix == 0) 0 else -1 shl (MAX_PREFIX - prefix)
 
         private fun baseOf(a: Inet4Address, prefix: Int): String {
             val v = bits(a) and mask(prefix)
-            return (3 downTo 0).joinToString(".") { ((v ushr (it * BYTE_BITS)) and BYTE_MASK).toString() }
+            return (OCTETS - 1 downTo 0).joinToString(".") { ((v ushr (it * BYTE_BITS)) and BYTE_MASK).toString() }
         }
 
         /** The interface whose private subnet holds [host] (the unit's address from the QR), or null. */

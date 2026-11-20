@@ -24,7 +24,8 @@ class Outgoing(val bytes: ByteArray, val to: InetAddress, val port: Int) {
  * [tick] for what is due, [revoke] for "Forget head unit". The Android sender owns the socket.
  *
  * - A HELLO is accepted only if it opens and its (session, counter) is new (4.3); only accepted
- *   HELLOs move the destination, and a new address needs two of them in a row (rev 5). A session counts as new only if this end has never accepted it,
+ *   HELLOs move the destination, and a new address needs two of them in a row (rev 5). A session
+ *   counts as new only if this end has never accepted it,
  *   which is stricter than "a different session" and costs nothing (a unit draws a fresh random one).
  * - HELLOs under the reserve key (3.7) are authenticated and replay-checked the same way and feed
  *   [LinkKeyRing.onHello]; nothing is ever sent under the reserve.

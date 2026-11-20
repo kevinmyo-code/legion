@@ -34,6 +34,8 @@ sealed interface StoredLink {
  * times, and a read failure never deletes anything. Each key is registered with the log redactor
  * ([redact]) when it is read and when it is written.
  */
+// One record file: link keys, the revoke-only record, the car's key, the pairing network, the switches.
+@Suppress("TooManyFunctions")
 class CarLinkStore(
     private val box: SecretBox,
     private val file: RecordFile,
@@ -59,7 +61,7 @@ class CarLinkStore(
         val cur = current?.let(::sealed)
         val res = reserve?.let(::sealed)
         // All or nothing: a value the Keystore could not seal means nothing is written.
-        if ((current != null && cur == null) || (reserve != null && res == null)) return false
+        if (!sealedOk(current, cur) || !sealedOk(reserve, res)) return false
         current?.let(::register)
         reserve?.let(::register)
         val clearing = current == null
@@ -110,18 +112,20 @@ class CarLinkStore(
      * the link keys. Never the phone's key, never prefilled, never logged. Null when not set.
      */
     fun carGeminiKey(): String? {
-        val blob = file.read()[CAR_GEMINI] ?: return null
-        val plain = openWithRetry(blob) ?: return null
+        val plain = file.read()[CAR_GEMINI]?.let(::openWithRetry) ?: return null
         return String(plain, Charsets.UTF_8).also { plain.fill(0); redact(it) }
     }
 
     /** Blank clears it. False = not saved (the Keystore could not seal it; nothing was written). */
     fun setCarGeminiKey(key: String?): Boolean {
         val trimmed = key?.trim().orEmpty()
-        if (trimmed.isEmpty()) return file.writeAll(mapOf(CAR_GEMINI to null))
-        redact(trimmed)
-        val sealed = sealed(trimmed.toByteArray(Charsets.UTF_8)) ?: return false
-        return file.writeAll(mapOf(CAR_GEMINI to sealed))
+        val value = if (trimmed.isEmpty()) {
+            null
+        } else {
+            redact(trimmed)
+            sealed(trimmed.toByteArray(Charsets.UTF_8)) ?: return false
+        }
+        return file.writeAll(mapOf(CAR_GEMINI to value))
     }
 
     /** The network the phone paired on (4.3, rev 5). Kept by a revoke-only record, cleared by Forget. */
@@ -136,6 +140,8 @@ class CarLinkStore(
     fun sendLocation(): Boolean = file.read()[SEND_LOCATION] == "1"
 
     fun setSendLocation(on: Boolean): Boolean = file.writeAll(mapOf(SEND_LOCATION to if (on) "1" else null))
+
+    private fun sealedOk(plain: ByteArray?, sealed: String?) = plain == null || sealed != null
 
     private fun sealed(plain: ByteArray): String? = box.seal(plain)?.let(LinkCrypto::b64)
 

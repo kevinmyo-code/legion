@@ -75,7 +75,7 @@ class CarLinkSender(
         try {
             block()
             faultStreak = 0
-        } catch (e: RuntimeException) {
+        } catch (_: RuntimeException) {
             faults++
             faultStreak++
             quietUntil = now + minOf(BACKOFF_MS * faultStreak, MAX_BACKOFF_MS)

@@ -162,6 +162,14 @@ class CarLinkViewModel(
             )
             p is PairingStage.Failed ->
                 base.copy(phase = CarLinkPhase.FAILED, headline = CarLinkWords.failure(p), detail = linkLine(s))
+            else -> resting(s, base)
+        }
+    }
+
+    /** No pairing on screen: what the stored link is. */
+    private fun resting(s: CarLinkStatus, base: CarLinkUiState): CarLinkUiState {
+        val p = s.pairing
+        return when {
             s.link == LinkState.LOADING -> base.copy(headline = "Reading the car link.", canPair = false)
             s.link == LinkState.BROKEN -> base.copy(
                 phase = CarLinkPhase.BROKEN,

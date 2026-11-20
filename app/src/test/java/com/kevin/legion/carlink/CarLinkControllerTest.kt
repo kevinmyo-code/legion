@@ -178,7 +178,7 @@ class CarLinkControllerTest {
     }
 
     // ---- P-C: app start must not block or throw because of the car link.
-    @Test fun `building and starting the controller never reads the store on the caller, and a throwing store is contained`() {
+    @Test fun `the controller reads the store off the caller's thread, and a throwing store is contained`() {
         val reads = java.util.concurrent.atomic.AtomicInteger()
         val callerThread = Thread.currentThread()
         var readOnCaller = false
@@ -213,7 +213,8 @@ class CarLinkControllerTest {
             assertEquals(LinkState.NOT_PAIRED, c.status.value.link)
             waitFor("a listener for the revoke-only record") { senders > 1 }
             port.inbox.put(FakeUnit(key).hello(intervalMs = 5000))
-            waitFor("REVOKE sent") { port.sent.any { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type == Mnai2.REVOKE } }
+            val p2u = DirectionKeys(key).p2u
+            waitFor("REVOKE sent") { port.sent.any { Mnai2.openFromPhone(p2u, it)?.type == Mnai2.REVOKE } }
             val types = port.sent.mapNotNull { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type }
             assertEquals("only a REVOKE, nothing else", listOf(Mnai2.REVOKE), types)
             waitFor("the record wiped") { !store.revokeOnlyPending() }
