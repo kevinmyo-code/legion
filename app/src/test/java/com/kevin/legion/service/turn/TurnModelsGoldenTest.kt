@@ -11,14 +11,20 @@ import java.nio.FloatBuffer
 
 /**
  * The models themselves, run through the same Kotlin wrappers the phone uses, on the JVM build of
- * ONNX Runtime. Silero must give Python's per-window probabilities. Smart Turn is held differently
- * (2026-11-20, CI flake on 679f7c15: "long" expected 0.4803, got 0.5877 on one runner, passed on the
- * next): it is an int8 QDQ model, and on the golden inputs its output moves by up to 0.1 for feature
- * noise of 1e-7 (float32 rounding level) and differs by ORT version and CPU instruction set, so "Kotlin
- * features give Python's probability within 0.01" was never a stable claim. What is held instead,
- * each exactly on one machine: the Kotlin features match Python's ([WhisperLogMelGoldenTest]), and the
- * wrapper gives the raw model's output for the same features, so its input name, shape, layout and
- * output read are right.
+ * ONNX Runtime. Silero must give Python's per-window probabilities.
+ *
+ * **Do not re-add a tight cross-machine probability assert for Smart Turn.** It is an int8 quantized
+ * (QDQ) model, and its probability can move by about 0.1 on rounding-level input differences.
+ * Measured 2026-11-20 with Python ORT 1.23 on the stored "long" features: Gaussian noise of 1e-7 added
+ * to the features (8 draws) spread the output 0.46 to 0.57; the same input gave 0.46 to 0.65 across ORT
+ * optimisation levels. In CI on 679f7c15, "long" (Python 0.4803) came out 0.5877 on one runner and
+ * passed on the next, against the 0.01 tolerance this test used to have.
+ *
+ * So Smart Turn is held four ways instead: the model files' SHA-256; the wrapper against a raw session
+ * on the same machine, exactly (input name, shape, layout, output read); the done / not-done DECISION
+ * against Python on two inputs far from the 0.5 threshold (far_high, far_low), also at the phone's
+ * thread count; and only a +/-0.2 sanity band on the two near the threshold (short, long). Kotlin
+ * features are held to Python's by [WhisperLogMelGoldenTest].
  */
 class TurnModelsGoldenTest {
     private val env = OrtEnvironment.getEnvironment()
