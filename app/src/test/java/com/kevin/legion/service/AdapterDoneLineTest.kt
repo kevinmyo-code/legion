@@ -274,6 +274,18 @@ class AdapterDoneLineTest {
         assertTrue("the recognition was not spoken: $heard", heard.contains(looks))
     }
 
+    @Test
+    fun `the recognition note - a model sentence repeating the pick is still not spoken, the note is`() = runBlocking {
+        // Review 2026-11-19 (P1-c2): the kept closing text is still filtered for the switched-to car.
+        recognisedZephyr()
+        val repeat = "Switched you to the ${labelOf("car:comet")}."
+        val looks = "Looks like the ${labelOf("car:zephyr")} is plugged in."
+        val (codeLines, heard) = switchThenSay("Comet", "$repeat $looks")
+        assertEquals(listOf("Done: switched to the ${labelOf("car:comet")}."), codeLines)
+        assertFalse("the pick was said twice: $heard", heard.contains(repeat))
+        assertTrue("the recognition was not spoken: $heard", heard.contains(looks))
+    }
+
     private suspend fun labelOf(id: String): String =
         com.kevin.legion.vehicle.VehicleController.label(FleetEngineStore.getByMac(context, id)!!)
 
