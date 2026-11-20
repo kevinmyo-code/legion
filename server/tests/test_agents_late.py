@@ -1041,3 +1041,51 @@ def test_two_asks_at_once_take_one_slot(household_user, monkeypatch):
         t.join()
     assert sorted(said) == sorted([late.ACK, late.TOO_MANY_OPEN])
     assert LateTask.objects.count() == late.MAX_OPEN
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_ask_holds_the_member_row_without_blocking_rows_that_point_at_it(
+    household_user, monkeypatch
+):
+    """Recheck item 3: the ask's lock is FOR NO KEY UPDATE, so while it is held another request
+    can still write a row whose key points at the member (here a device token)."""
+    import threading
+
+    from django.db import OperationalError, connection, transaction
+
+    from agents.evals.runner import member_request
+    from household.models import DeviceToken
+
+    monkeypatch.setenv(LATE_ANSWERS_ENV, "on")
+    late.saw_tick()
+    held, done = threading.Event(), threading.Event()
+    real = late._start_locked
+
+    def slow(request, question, client):
+        held.set()
+        done.wait(5)
+        return real(request, question, client)
+
+    monkeypatch.setattr(late, "_start_locked", slow)
+
+    def ask():
+        try:
+            late.intercept(member_request(household_user), ASK, "web")
+        finally:
+            connection.close()
+
+    asker = threading.Thread(target=ask)
+    asker.start()
+    assert held.wait(5)
+    try:
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("set local lock_timeout = '1s'")
+            DeviceToken.issue(household_user, "Invented phone")
+        blocked = False
+    except OperationalError:
+        blocked = True
+    finally:
+        done.set()
+        asker.join()
+    assert not blocked
