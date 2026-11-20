@@ -820,6 +820,9 @@ object LiveToolbox {
     // Architecture review 2026-11-10 item 7. The tools these two hand their sub-agent keep their
     // own full descriptions (the excluded-movements and uncategorised rules on get_monthly_spend,
     // the "never answers is it safe" rule on crime history), so the rules travel with the tool.
+    /** The money specialist's own instruction, for its offline eval (`MoneySpecialistEvalCasesTest`). */
+    internal fun moneyGroundingForTest(context: Context): String = moneyDispatchGrounding(context)
+
     private fun moneyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reading the user's money using the tools you're given: balances, budget left, " +
         "a month's spend in total or by category, recent transactions and pending ones. Budget " +
