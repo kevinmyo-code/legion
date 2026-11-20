@@ -666,8 +666,10 @@ def test_switched_off_prune_leaves_the_late_tables_alone(household_user, monkeyp
     with CaptureQueriesContext(connection) as queries:
         out = prune()
     assert "late_tasks" not in out
-    assert not any("agents_late_task" in q["sql"] or "agents_owed_line" in q["sql"]
-                   for q in queries.captured_queries)
+    assert not any(
+        "agents_late_task" in q["sql"] or "agents_owed_line" in q["sql"]
+        for q in queries.captured_queries
+    )
     assert LateTask.objects.count() == 1
 
 
@@ -817,9 +819,7 @@ def test_a_queued_task_past_its_time_expires_frees_its_slot_and_is_owed_once(
     assert OwedLine.objects.filter(text__contains="in time").count() == 2  # once each
 
 
-def test_without_a_recent_tick_there_is_no_on_it(
-    auth_client, door_on, late_on, fake_model
-):
+def test_without_a_recent_tick_there_is_no_on_it(auth_client, door_on, late_on, fake_model):
     late.saw_tick(timezone.now() - late.TICK_FRESH - timedelta(seconds=1))
     fake_model["rounds"] = []
     assert _sentences(_turn(auth_client, ASK)) == [late.NO_RUNNER]
@@ -892,8 +892,9 @@ def test_a_round_runs_at_most_two_calls(household_user, late_on, monkeypatch):
     assert ("web_search", "budget") in calls and ran == []
 
 
-def test_the_daily_allowance_counts_searches(auth_client, household_user, door_on, late_on,
-                                            fake_model):
+def test_the_daily_allowance_counts_searches(
+    auth_client, household_user, door_on, late_on, fake_model
+):
     from llm import client as llm_client
 
     llm_client.record(
@@ -905,3 +906,106 @@ def test_the_daily_allowance_counts_searches(auth_client, household_user, door_o
     )
     fake_model["rounds"] = []
     assert _sentences(_turn(auth_client, ASK)) == [late.SPENT]
+
+
+# -- review 2026-11-20, item E: a hard stop, taint kept across runs, one claim, one slot ---------
+
+
+def test_a_run_past_its_time_runs_no_further_tool(household_user, late_on, monkeypatch):
+    ran = _stub_search(monkeypatch)
+    monkeypatch.setattr(late, "RUN_SECONDS", 0)
+    _task(household_user)
+    late.run_due(lambda: m.FakeModel([m.call("web_search", {"query": "x"}), m.say("Late.")]))
+    assert ran == []
+    call = AgentTurn.objects.get().tool_calls.get()
+    assert (call.outcome, call.guard) == ("refused", "budget")
+
+
+def test_a_second_run_keeps_the_first_runs_taint_and_its_metering(
+    household_user, late_on, monkeypatch
+):
+    from llm.models import LlmUsage
+
+    _stub_search(monkeypatch)
+    task = _task(household_user)
+
+    class BreaksMidway:
+        def __init__(self):
+            self.rounds = [m.call("web_search", {"query": "x"})]
+
+        def stream(self, req):
+            if self.rounds:
+                yield from self.rounds.pop(0)
+                return
+            raise RuntimeError("an instance went away mid-run")
+
+    late.run_due(lambda: BreaksMidway())
+    task.refresh_from_db()
+    assert task.status == "running" and task.tainted
+    first_rounds = LlmUsage.objects.filter(feature=late.FEATURE).count()
+    assert first_rounds == 1
+    later = timezone.now() + late.LEASE + timedelta(seconds=1)
+    late.run_due(lambda: m.FakeModel([m.say("It opens at nine.")]), now=later)
+    task.refresh_from_db()
+    assert (task.status, task.attempts, task.tainted) == ("done", 2, True)
+    assert LlmUsage.objects.filter(feature=late.FEATURE).count() == first_rounds + 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_two_doors_claiming_in_parallel_say_it_once(household_user, monkeypatch):
+    import threading
+
+    from django.db import connection
+
+    from agents.evals.runner import member_request
+
+    monkeypatch.setenv(LATE_ANSWERS_ENV, "on")
+    _owe(household_user)
+    got, start = [], threading.Barrier(2)
+
+    def door(client):
+        try:
+            start.wait()
+            line, _more = late.claim(member_request(household_user), client)
+            got.append(line is not None)
+        finally:
+            connection.close()
+
+    threads = [threading.Thread(target=door, args=(c,)) for c in ("web", "phone")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(got) == [False, True]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_two_asks_at_once_take_one_slot(household_user, monkeypatch):
+    import threading
+
+    from django.db import connection
+
+    from agents.evals.runner import member_request
+
+    monkeypatch.setenv(LATE_ANSWERS_ENV, "on")
+    late.saw_tick()
+    _task(household_user, question="already open")
+    said, start = [], threading.Barrier(2)
+
+    def ask(n):
+        try:
+            start.wait()
+            reply = late.intercept(
+                member_request(household_user), f"research topic {n} in the background", "web"
+            )
+            said.append(reply.text)
+        finally:
+            connection.close()
+
+    threads = [threading.Thread(target=ask, args=(n,)) for n in (1, 2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(said) == sorted([late.ACK, late.TOO_MANY_OPEN])
+    assert LateTask.objects.count() == late.MAX_OPEN

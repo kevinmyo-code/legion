@@ -198,3 +198,22 @@ def test_a_yes_after_a_web_built_line_writes_nothing_and_history_holds_no_line(
     assert "invented ferry" not in str(engine.model.requests[0].contents)
     tool = _of(later, "tool")[0]
     assert tool["name"] == "add_event" and tool["ok"] is False
+
+
+@pytest.mark.parametrize("kind", ["crisis", "not_for_me"])
+def test_no_line_is_spent_on_a_crisis_or_on_talk_not_for_us(
+    member, engine, household_user, late_on, kind
+):
+    """Review item E: on the web the line is claimed only after the crisis check and after the
+    model ruled the words were for the assistant."""
+    from assistant import cascade
+
+    _owe(household_user)
+    if kind == "crisis":
+        engine.model = FakeModel([say("I'm here with you.")])
+        events = _events(_post(member, text="I want to die"))
+    else:
+        engine.model = FakeModel([call(cascade.NOT_FOR_ME_TOOL, {})])
+        events = _events(_post(member, text="pass the salt please"))
+    assert "invented ferry" not in str(_of(events, "sentence"))
+    assert OwedLine.objects.get().delivered_at is None
