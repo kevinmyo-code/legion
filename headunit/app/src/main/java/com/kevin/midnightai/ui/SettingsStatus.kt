@@ -81,7 +81,12 @@ internal fun updateStatusLine(state: UpdateState, installedCode: Long): Category
     UpdateState.Checking -> CategoryStatus("Checking for updates")
     UpdateState.DebugBuild -> CategoryStatus("Debug build · no updates")
     is UpdateState.UpToDate -> CategoryStatus("Up to date · $installedCode", SettingsDot.OK)
-    is UpdateState.Available -> CategoryStatus("Update found · ${state.release.versionCode}")
+    // Review confirm 0cac90f7: an update waiting for its DOWNLOAD tap gets a warning dot.
+    is UpdateState.Available -> if (state.needsTap) {
+        CategoryStatus("Update waits for DOWNLOAD", SettingsDot.WARN)
+    } else {
+        CategoryStatus("Update found · ${state.release.versionCode}")
+    }
     is UpdateState.Downloading -> CategoryStatus("Downloading update")
     is UpdateState.Ready -> CategoryStatus("Update ready · tap to install", SettingsDot.WARN)
     is UpdateState.Waiting -> CategoryStatus("Update installs after this chat")

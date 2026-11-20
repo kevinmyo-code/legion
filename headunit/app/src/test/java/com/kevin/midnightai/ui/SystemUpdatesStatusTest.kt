@@ -30,6 +30,12 @@ class SystemUpdatesStatusTest {
         assertEquals(CategoryStatus("Up to date · 263101640", SettingsDot.OK), s)
     }
 
+    /** Review confirm 0cac90f7: an update waiting for its DOWNLOAD tap is noticed (a warning dot). */
+    @Test fun anUpdateWaitingForItsDownloadTapGetsAWarningDot() {
+        val s = updateStatusLine(UpdateState.Available(release, "why", needsTap = true), installedCode = 1L)
+        assertEquals(SettingsDot.WARN, s.dot)
+    }
+
     @Test fun readyAsksForATap() {
         val s = updateStatusLine(UpdateState.Ready(release, File("x")), installedCode = 1L)
         assertEquals(CategoryStatus("Update ready · tap to install", SettingsDot.WARN), s)
