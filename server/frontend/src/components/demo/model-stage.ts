@@ -221,13 +221,20 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
   }
   applyActive()
 
+  let drawnWidth = 0
+  let drawnHeight = 0
   const resize = () => {
     const width = host.clientWidth || 1
     const height = host.clientHeight || 1
+    measure()
+    // A new buffer only for a new size: setting the same size again clears the canvas, and the
+    // model would blank for a frame (review recheck 2026-11-20).
+    if (width === drawnWidth && height === drawnHeight) return
+    drawnWidth = width
+    drawnHeight = height
     renderer.setSize(width, height, false)
     camera.aspect = width / height
     camera.updateProjectionMatrix()
-    measure()
     dirty = true
   }
   // Where the viewer sits on the page, read only when a size changes (here or on the page), never
@@ -241,7 +248,10 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
   }
   const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize)
   observer?.observe(host)
-  if (options.scrollTurn) observer?.observe(document.documentElement)
+  // The page changing height above the viewer (a dock's room, a late image) moves where it sits:
+  // a lighter watcher that only measures again.
+  const pageObserver = options.scrollTurn && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+  pageObserver?.observe(document.documentElement)
   resize()
 
   let lastThrough = -1
@@ -310,6 +320,7 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
       canvas.removeEventListener('webglcontextlost', lost)
       renderer.setAnimationLoop(null)
       observer?.disconnect()
+      pageObserver?.disconnect()
       host.removeEventListener('pointerdown', holdTouch, { capture: true })
       controls.removeEventListener('start', firstTouch)
       controls.removeEventListener('change', redraw)
