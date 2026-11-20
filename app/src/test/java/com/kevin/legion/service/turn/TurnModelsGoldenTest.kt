@@ -45,6 +45,18 @@ class TurnModelsGoldenTest {
         env.createSession(bytes, opts)
     }
 
+    // The model files the goldens were made with (assets/turn/README.md): a swapped or re-exported
+    // file fails here, before any probability is compared.
+    @Test
+    fun `the bundled model files are the ones the goldens were made with`() {
+        fun sha256(name: String) = java.security.MessageDigest.getInstance("SHA-256").digest(asset(name))
+            .joinToString("") { "%02x".format(it) }
+        val smartTurn = "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f"
+        val silero = "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3"
+        assertEquals(smartTurn, sha256("smart-turn-v3.2-cpu.onnx"))
+        assertEquals(silero, sha256("silero_vad_v6_2.onnx"))
+    }
+
     @Test
     fun `smart turn wrapper gives the raw model's output, on python's and on kotlin's features`() {
         val bytes = asset("smart-turn-v3.2-cpu.onnx")
