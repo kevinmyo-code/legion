@@ -35,3 +35,15 @@ fun <T> openScanner(init: () -> Unit, client: () -> T, failed: (String) -> Unit)
         failed(e.javaClass.simpleName)
         null
     }
+
+/** STUB (red step). */
+fun <T> startOrReport(step: () -> T, failed: (String) -> Unit): T? = runCatching { step() }.getOrNull()
+
+/** STUB (red step). */
+fun <S : Any> pickCamera(back: S, hasBack: Boolean, others: List<S>): S? = back
+
+/** STUB (red step). */
+class PaneCameraUses<T> {
+    fun record(uses: List<T>) = Unit
+    fun release(): List<T> = emptyList()
+}

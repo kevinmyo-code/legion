@@ -28,4 +28,10 @@ class CarLinkMlKitStartupTest {
         assertTrue("no lazy ML Kit initialisation in the pane", init >= 0)
         assertTrue("initialise before the client", init < client)
     }
+
+    @Test fun `the scan pane unbinds only its own camera use cases`() {
+        val pane = read("src/main/java/com/kevin/legion/ui/settings/CarLinkQrScanPane.kt")
+        assertTrue("the pane must not unbind every camera use in the app", "unbindAll(" !in pane)
+        assertTrue("the pane must unbind what it bound", ".unbind(" in pane)
+    }
 }
