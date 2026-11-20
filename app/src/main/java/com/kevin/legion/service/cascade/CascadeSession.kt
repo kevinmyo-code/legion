@@ -34,6 +34,7 @@ import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
 import com.kevin.legion.service.LiveSessionController
+import com.kevin.legion.service.Farewells
 import com.kevin.legion.service.ListenCue
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.MicArbiter
@@ -1956,6 +1957,25 @@ internal class CascadeSession(
         if (reply.await() == ReplySpeaker.Outcome.Played) player?.awaitDrained()
     }
 
+    private val farewellIndex = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * His farewell closes the conversation with a short line of code's own ([Farewells.SPOKEN],
+     * 2026-11-20): from memory only, at most [CLOSER_MAX_MS]; not in memory, it is skipped and logged.
+     */
+    private suspend fun sayFarewell() {
+        val b = backend ?: return
+        if (player == null) return
+        val line = Farewells.SPOKEN[Math.floorMod(farewellIndex.getAndIncrement(), Farewells.SPOKEN.size)]
+        if (!b.tts.inHand(SpokenText.forSpeech(line))) {
+            LiveLatency.log(LiveLatency.TAG, "farewell_skip reason=not_in_memory")
+            return
+        }
+        val reply = newSpeaker(null)
+        reply.say(line)
+        if (withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() } == ReplySpeaker.Outcome.Played) player?.awaitDrained()
+    }
+
     /** One more silent turn (noise, or no voice at all); the [MAX_NOISE_IN_A_ROW]th closes with the tone. */
     private suspend fun closedOnNoise(): Boolean {
         if (++noiseInARow < MAX_NOISE_IN_A_ROW) return false
@@ -2590,6 +2610,7 @@ internal class CascadeSession(
 
     private suspend fun endByVoice() {
         sayOwed()
+        sayFarewell()
         host.closingTone()
         shutdown("sleep_phrase")
         host.notice("Conversation closed")
@@ -3408,7 +3429,7 @@ internal class CascadeSession(
         private val FILLERS_SPOKEN =
             (
                 ToolFillers.GENERIC + ScriptedLines.MISSED + ScriptedLines.VOICE_LOST + Backchannel.LINES +
-                    WaitFillers.LINES + ScriptedLines.GENERIC_DONE
+                    WaitFillers.LINES + Farewells.SPOKEN + ScriptedLines.GENERIC_DONE
                 )
                 .distinct().map { SpokenText.forSpeech(it) }
 
