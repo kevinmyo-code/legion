@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.net.InetAddress
 
@@ -103,13 +104,19 @@ class Mnai2FeedTest {
         assertNull(f.revoke(10_000))
     }
 
-    @Test fun `zone goes once per unit session`() {
+@Test fun `zone goes on the first 3 accepted HELLOs of a unit session, then stops`() {
+        // R4: with location off ZONE is the only datagram that commits a PENDING pairing; one lost
+        // datagram must not wait for the unit's next session.
         val f = feed(MemoryKeys(current = oldKey).ring(), zone = "Etc/UTC")
         val unit = FakeUnit(oldKey)
-        val a = unit.hello()
-        assertEquals(Mnai2.ZONE, opened(f.onDatagram(a, a.size, unitAddr, UNIT_PORT, 0).single(), oldKey).type)
-        val b = unit.hello()
-        assertTrue(f.onDatagram(b, b.size, unitAddr, UNIT_PORT, 1_000).isEmpty())
+        val zones = (0 until 5).map { i ->
+            val h = unit.hello()
+            f.onDatagram(h, h.size, unitAddr, UNIT_PORT, i * 1_000L).count { opened(it, oldKey).type == Mnai2.ZONE }
+        }
+        assertEquals(listOf(1, 1, 1, 0, 0), zones)
+        val next = FakeUnit(oldKey, session = ByteArray(16) { 0x5C })
+        val h = next.hello()
+        assertEquals(1, f.onDatagram(h, h.size, unitAddr, UNIT_PORT, 6_000).size)
     }
 
     @Test fun `lost stored - the first new-key HELLO deletes the reserve`() {
@@ -234,5 +241,14 @@ class Mnai2FeedTest {
 
     private companion object {
         const val UNIT_PORT = 40_000
+    }
+
+    @Ignore("red until fix R1") @Test fun `the feed counts accepted HELLOs`() {
+        val f = feed(MemoryKeys(current = oldKey).ring())
+        val unit = FakeUnit(oldKey)
+        repeat(3) { val h = unit.hello(); f.onDatagram(h, h.size, unitAddr, UNIT_PORT, it * 1_000L) }
+        val replay = unit.hello(counterOverride = 1)
+        f.onDatagram(replay, replay.size, unitAddr, UNIT_PORT, 4_000)
+        assertEquals(3L, f.acceptedHellos())
     }
 }

@@ -54,7 +54,8 @@ class CarLinkGraph(private val app: Application) {
                 phoneName = { Build.MODEL },
                 redact = LogcatRedactor::addLiteral,
             ),
-            newSender = { ring, onEvent, sendFixes, revokeOnly ->
+            newSender = { ring, onEvent, sendFixes, mode ->
+                val revokeOnly = mode.revokeOnly
                 // Only HELLOs from inside the network the phone paired on count (4.3, rev 5).
                 val net = store.pairingNetwork()
                 UdpPort.open()?.let { port ->
@@ -78,7 +79,7 @@ class CarLinkGraph(private val app: Application) {
             io = Dispatchers.IO,
             jitterMs = { PairingRunner.jitter(kotlin.random.Random.Default) },
             sleep = { delay(it) },
-            network = { store.pairingNetwork()?.present(PairingNetwork.systemInterfaces()) == true },
+            network = { store.pairingNetwork()?.look(PairingNetwork.systemInterfaces()) ?: NetworkLook.Absent },
             recordNetwork = { host ->
                 val net = PairingNetwork.recordFor(host, PairingNetwork.systemInterfaces())
                 store.setPairingNetwork(net) && net != null
@@ -114,8 +115,8 @@ class UdpPort private constructor(private val socket: DatagramSocket) : Datagram
     override fun close() = socket.close()
 
     companion object {
-        fun open(): UdpPort? = try {
-            UdpPort(DatagramSocket(null).apply { reuseAddress = true; bind(InetSocketAddress(Mnai2.PORT)) })
+        fun open(port: Int = Mnai2.PORT): UdpPort? = try {
+            UdpPort(DatagramSocket(null).apply { reuseAddress = true; bind(InetSocketAddress(port)) })
         } catch (_: IOException) {
             null
         }

@@ -81,11 +81,15 @@ class Mnai2Feed(
     private var lastHelloAt = 0L
     private var lastFixAt: Long? = null
     private var lastFixElapsed = Long.MIN_VALUE
-    private var zoneOwed = false
+    // ZONEs still owed to this unit session: sent on its first 3 accepted HELLOs (R4, 4.3 rev 6).
+    private var zonesLeft = 0
 
     /** True while accepted HELLOs keep arriving under the current key. */
     @Synchronized fun inRange(nowMs: Long): Boolean =
         challenge != null && nowMs - lastHelloAt <= MISSED_INTERVALS * helloEvery()
+
+    /** STUB (red step). */
+    @Synchronized fun acceptedHellos(): Long = 0
 
     /** Requested fix interval of the newest accepted HELLO, 0 when none. */
     @Synchronized fun requestedIntervalMs(): Long = intervalMs
@@ -132,7 +136,7 @@ class Mnai2Feed(
         challengeAt = nowMs
         intervalMs = hello.intervalMs
         lastHelloAt = nowMs
-        if (newUnitSession) zoneOwed = true
+        if (newUnitSession) zonesLeft = ZONE_REPEATS
         return zone(nowMs)
     }
 
@@ -162,10 +166,10 @@ class Mnai2Feed(
     }
 
     private fun zone(nowMs: Long): List<Outgoing> {
-        if (!zoneOwed || !inRange(nowMs)) return emptyList()
+        if (zonesLeft <= 0 || !inRange(nowMs)) return emptyList()
         val id = zoneId()?.takeIf { ZONE_ID.matches(it) } ?: return emptyList()
         val out = send(Mnai2.ZONE, Mnai2.zoneBody(challenge!!, id)) ?: return emptyList()
-        zoneOwed = false
+        zonesLeft--
         return listOf(out)
     }
 
@@ -227,6 +231,7 @@ class Mnai2Feed(
 
     companion object {
         const val MISSED_INTERVALS = 3
+        const val ZONE_REPEATS = 3
         const val MAX_HELLO_EVERY_MS = 5_000L
         const val MAX_AGE_MS = 10_000L
         const val CHALLENGE_WINDOW_MS = 10_000L

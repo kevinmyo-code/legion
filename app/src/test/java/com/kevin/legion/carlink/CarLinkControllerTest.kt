@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.net.InetAddress
 import java.net.SocketException
@@ -58,7 +59,7 @@ class CarLinkControllerTest {
     private val store = CarLinkStore(FakeKeystoreStandIn(), MemoryRecordFile()) {}
     private val lan = PairingNetwork("ap-test0", "10.0.0.0", 24)
 
-    private var networkUp = true
+    private var look: NetworkLook = NetworkLook.Present
     private var wallNow = 1_000_000_000_000L
     private var senders = 0
 
@@ -66,11 +67,11 @@ class CarLinkControllerTest {
         store = store,
         transport = { _, _ -> null },
         handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
-        newSender = { ring, onEvent, sendFixes, _ ->
+        newSender = { ring, onEvent, sendFixes, mode ->
             if (senders > 0) port = BlockingPort()
             senders++
             CarLinkSender(
-                feed = Mnai2Feed(ring, { ByteArray(16) { 3 } }, lan::contains, { null }, onEvent),
+                feed = Mnai2Feed(ring, { ByteArray(16) { 3 } }, mode.healOn?.let { h -> h::contains } ?: lan::contains, { null }, onEvent),
                 port = port,
                 clock = { System.nanoTime() / 1_000_000 },
                 fixes = object : FixSource {
@@ -84,8 +85,9 @@ class CarLinkControllerTest {
         io = Dispatchers.IO,
         jitterMs = { 300L },
         sleep = {},
-        network = { networkUp },
+        network = { look },
         wallClock = { wallNow },
+        revokeSilenceMs = 300L,
     )
 
     private fun waitFor(what: String, cond: () -> Boolean) {
@@ -159,7 +161,7 @@ class CarLinkControllerTest {
         }
         val c = CarLinkController(
             store, { _, _ -> null }, HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
-            { ring, onEvent, sendFixes, _ ->
+            { ring, onEvent, sendFixes, mode ->
                 CarLinkSender(
                     Mnai2Feed(ring, { ByteArray(16) }, lan::contains, { null }, onEvent), throwing,
                     { System.nanoTime() / 1_000_000 },
@@ -236,7 +238,7 @@ class CarLinkControllerTest {
     // ---- P-D: nothing listens when the network the phone paired on is absent.
     @Test fun `with the pairing network absent the controller opens no socket`() {
         assertTrue(store.write(key, null))
-        networkUp = false
+        look = NetworkLook.Absent
         controller().start()
         Thread.sleep(300)
         assertEquals(0, senders)
@@ -244,5 +246,83 @@ class CarLinkControllerTest {
 
     private companion object {
         const val DAY = 86_400_000L
+    }
+
+    private fun revokes(p: BlockingPort) = p.sent.count { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type == Mnai2.REVOKE }
+
+    @Ignore("red until fix R1") @Test fun `in-range Forget keeps telling the car on every HELLO until 30 s of silence, then says Forgotten`() =
+        runBlocking {
+            assertTrue(store.write(key, null))
+            val c = controller()
+            c.start()
+            port.inbox.put(FakeUnit(key).hello(intervalMs = 5000))
+            waitFor("the unit in range") { c.status.value.unitInRange }
+            val first = port
+            c.forget()
+            assertEquals(1, revokes(first))
+            assertEquals(CarLinkNote.FORGET_TELLING, c.status.value.note)
+            assertTrue("kept until the car goes quiet", store.revokeOnlyPending())
+            waitFor("the revoke listener") { senders > 1 }
+            val unit = FakeUnit(key, session = ByteArray(16) { 0x33 })
+            port.inbox.put(unit.hello(intervalMs = 5000))
+            waitFor("a REVOKE on that HELLO") { revokes(port) == 1 }
+            port.inbox.put(unit.hello(intervalMs = 5000))
+            waitFor("a REVOKE again on the next HELLO") { revokes(port) == 2 }
+            assertTrue(store.revokeOnlyPending())
+            waitFor("wiped after the silence") { !store.revokeOnlyPending() }
+            assertEquals(CarLinkNote.FORGOT_REVOKE_SENT, c.status.value.note)
+        }
+
+    @Ignore("red until fix expiry") @Test fun `a revoke-only record past 90 days is not used even if the app has run since`() {
+        assertTrue(store.writeRevokeOnly(key, wallNow - 89L * DAY))
+        controller().start()
+        waitFor("the listener") { senders == 1 }
+        wallNow += 2L * DAY
+        port.inbox.put(FakeUnit(key).hello(intervalMs = 5000))
+        waitFor("the expired record cleared") { !store.revokeOnlyPending() }
+        Thread.sleep(200)
+        assertEquals(0, revokes(port))
+    }
+
+    @Ignore("red until fix R3") @Test fun `a taken port is said in words and nothing falls back`() {
+        assertTrue(store.write(key, null))
+        val c = CarLinkController(
+            store, { _, _ -> null }, HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
+            { _, _, _, _ -> throw java.net.BindException("Address already in use") },
+            scope, Dispatchers.IO, { 300L }, {},
+        )
+        c.start()
+        waitFor("the words") { c.status.value.note != null }
+        assertEquals(CarLinkNote.PORT_TAKEN, c.status.value.note)
+        assertTrue("loop errors: $errors", errors.isEmpty())
+    }
+
+    @Ignore("red until fix R2") @Test fun `a hotspot that came back on a new subnet heals after 2 authenticated HELLOs from a fresh session`() {
+        assertTrue(store.write(key, null))
+        assertTrue(store.setPairingNetwork(PairingNetwork("ap-test0", "10.0.0.0", 24, ownHotspot = true)))
+        val moved = LocalIface("ap-test0", InetAddress.getByName("10.9.9.1") as java.net.Inet4Address, 24)
+        look = NetworkLook.Changed(moved)
+        val c = controller()
+        c.start()
+        waitFor("the healing words") { c.status.value.note == CarLinkNote.NETWORK_CHANGED_HEALING }
+        waitFor("a listener on the new subnet") { senders > 0 }
+        val unit = FakeUnit(key, session = ByteArray(16) { 0x44 })
+        port.inbox.put(unit.hello(intervalMs = 5000))
+        Thread.sleep(200)
+        assertEquals("10.0.0.0", store.pairingNetwork()!!.base)
+        port.inbox.put(unit.hello(intervalMs = 5000))
+        waitFor("the network re-recorded") { store.pairingNetwork()!!.base == "10.9.9.0" }
+        assertTrue(store.pairingNetwork()!!.ownHotspot)
+    }
+
+    @Ignore("red until fix R2") @Test fun `a client Wi-Fi that changed subnet is never followed, the screen asks for a re-pair`() {
+        assertTrue(store.write(key, null))
+        assertTrue(store.setPairingNetwork(PairingNetwork("wl-test0", "10.0.0.0", 24, ownHotspot = false)))
+        look = NetworkLook.Changed(LocalIface("wl-test0", InetAddress.getByName("10.9.9.7") as java.net.Inet4Address, 24))
+        val c = controller()
+        c.start()
+        waitFor("the words") { c.status.value.note == CarLinkNote.NETWORK_CHANGED_REPAIR }
+        Thread.sleep(200)
+        assertEquals(0, senders)
     }
 }

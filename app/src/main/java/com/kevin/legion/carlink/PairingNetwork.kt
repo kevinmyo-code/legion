@@ -8,6 +8,13 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 
+/** STUB (red step). */
+sealed interface NetworkLook {
+    object Present : NetworkLook
+    object Absent : NetworkLook
+    class Changed(val iface: LocalIface) : NetworkLook
+}
+
 /** One of this phone's up IPv4 interfaces. */
 class LocalIface(val name: String, val address: Inet4Address, val prefix: Int)
 
@@ -18,7 +25,7 @@ class LocalIface(val name: String, val address: Inet4Address, val prefix: Int)
  * that same subnet, and only from addresses inside it; on any other network (a cafe's Wi-Fi with the
  * same private range included) nothing listens. Not secret.
  */
-class PairingNetwork(val name: String, val base: String, val prefix: Int) {
+class PairingNetwork(val name: String, val base: String, val prefix: Int, val ownHotspot: Boolean = false) {
     private val baseBits = bits(InetAddress.getByName(base) as Inet4Address)
 
     /** True while that interface is up with that subnet. */
@@ -28,6 +35,12 @@ class PairingNetwork(val name: String, val base: String, val prefix: Int) {
     /** A private IPv4 address inside the recorded subnet. */
     fun contains(addr: InetAddress): Boolean =
         addr is Inet4Address && QrPayload.isPrivateIpv4(addr.hostAddress ?: "") && sameSubnet(addr)
+
+    /** STUB (red step). */
+    fun acceptsHelloFrom(addr: InetAddress, ifaces: List<LocalIface>): Boolean = contains(addr)
+
+    /** STUB (red step). */
+    fun look(ifaces: List<LocalIface>): NetworkLook = if (present(ifaces)) NetworkLook.Present else NetworkLook.Absent
 
     fun encode(): String = "$name$SEP$base$SEP$prefix"
 
@@ -55,7 +68,7 @@ class PairingNetwork(val name: String, val base: String, val prefix: Int) {
         }
 
         /** The interface whose private subnet holds [host] (the unit's address from the QR), or null. */
-        fun recordFor(host: String, ifaces: List<LocalIface>): PairingNetwork? {
+        fun recordFor(host: String, ifaces: List<LocalIface>, isTethered: (String) -> Boolean = { false }): PairingNetwork? {
             if (!QrPayload.isPrivateIpv4(host)) return null
             val h = InetAddress.getByName(host) as Inet4Address
             val iface = ifaces.firstOrNull {

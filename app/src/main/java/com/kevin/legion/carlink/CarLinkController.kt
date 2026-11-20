@@ -28,12 +28,16 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 
 /** LOADING until the stored keys were read, off the main thread. */
+/** STUB (red step). */
+class FeedMode(val revokeOnly: Boolean, val healOn: PairingNetwork?)
+
 enum class LinkState { LOADING, NOT_PAIRED, PAIRED, BROKEN }
 
 /** Something that happened that the screen should say once, in words. */
 enum class CarLinkNote {
     CONFIRMED, REVERTED_QUIET, FORGOT_REVOKE_SENT, FORGOT_NOT_IN_RANGE, FORGET_FAILED, PORT_UNAVAILABLE,
-    SETTING_NOT_SAVED, FORGOT_WILL_TELL, NETWORK_NOT_RECORDED,
+    SETTING_NOT_SAVED, FORGOT_WILL_TELL, NETWORK_NOT_RECORDED, FORGET_TELLING, PORT_TAKEN,
+    NETWORK_CHANGED_HEALING, NETWORK_CHANGED_REPAIR,
 }
 
 /** Everything the Car link screen reads. Not printed anywhere; [PairingStage.DigitsShown] hides its digits. */
@@ -45,6 +49,7 @@ data class CarLinkStatus(
     val carKeySet: Boolean = false,
     /** A forgotten pairing whose unit will be told at the next contact (5.4, rev 5). */
     val revokePending: Boolean = false,
+    val networkChanged: Boolean = false,
     val note: CarLinkNote? = null,
 )
 
@@ -61,16 +66,18 @@ class CarLinkController(
     private val store: CarLinkStore,
     private val transport: PairingTransport,
     private val handover: HandoverPlan,
-    private val newSender: (LinkKeyRing, (RingEvent) -> Unit, () -> Boolean, Boolean) -> CarLinkSender?,
+    private val newSender: (LinkKeyRing, (RingEvent) -> Unit, () -> Boolean, FeedMode) -> CarLinkSender?,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val jitterMs: () -> Long,
     private val sleep: suspend (Long) -> Unit,
     /** The network the phone paired on is up now (4.3, rev 5). Nothing listens while it is not. */
-    private val network: () -> Boolean = { true },
+    private val network: () -> NetworkLook = { NetworkLook.Present },
     /** Records the network that holds [String] (the unit's address) at pairing; false = none found. */
     private val recordNetwork: (String) -> Boolean = { true },
     private val wallClock: () -> Long = System::currentTimeMillis,
+    /** R1: a revoke-only record is wiped after this long with no HELLO under its key. */
+    private val revokeSilenceMs: Long = 30_000L,
 ) {
     private val _status = MutableStateFlow(CarLinkStatus())
     val status: StateFlow<CarLinkStatus> = _status.asStateFlow()
@@ -157,7 +164,7 @@ class CarLinkController(
             var keepGoing = true
             while (keepGoing && isActive && feedRing.current != null) {
                 // 4.3 rev 5: no socket at all while the network the phone paired on is absent.
-                val present = network()
+                val present = network() is NetworkLook.Present
                 keepGoing = !present || runSender(feedRing, revokeOnly)
                 if (keepGoing) delay(if (present) RESTART_DELAY_MS else NETWORK_POLL_MS)
             }
@@ -166,7 +173,7 @@ class CarLinkController(
 
     /** One socket's life. False = stop for good (no port, or the REVOKE went); true = the network left. */
     private suspend fun runSender(feedRing: LinkKeyRing, revokeOnly: Boolean): Boolean {
-        val s = newSender(feedRing, ::onRingEvent, { !revokeOnly && _status.value.sendLocation }, revokeOnly)
+        val s = newSender(feedRing, ::onRingEvent, { !revokeOnly && _status.value.sendLocation }, FeedMode(revokeOnly, null))
         if (s == null) {
             // A revoke-only listener keeps Forget's own words on screen.
             if (!revokeOnly) _status.update { it.copy(note = CarLinkNote.PORT_UNAVAILABLE) }
@@ -194,7 +201,7 @@ class CarLinkController(
     }
 
     private suspend fun keepListening(feedRing: LinkKeyRing): Boolean =
-        currentCoroutineContext().isActive && feedRing.current != null && network()
+        currentCoroutineContext().isActive && feedRing.current != null && network() is NetworkLook.Present
 
     /**
      * One loop step that can never take the app down: false when the socket closed (Forget, or the

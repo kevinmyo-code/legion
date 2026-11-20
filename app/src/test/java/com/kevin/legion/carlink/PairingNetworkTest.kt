@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -35,5 +36,23 @@ class PairingNetworkTest {
         assertTrue(n.contains(ip("10.20.30.200")))
         assertFalse(n.contains(ip("10.20.31.200")))
         assertFalse(n.contains(ip("10.99.0.8")))
+    }
+
+    @Ignore("red until fix R3") @Test fun `a HELLO from one of this phone's own addresses is refused`() {
+        val n = PairingNetwork("ap-test0", "10.20.30.0", 24)
+        assertFalse(n.acceptsHelloFrom(ip("10.20.30.1"), listOf(hotspot)))
+        assertTrue(n.acceptsHelloFrom(ip("10.20.30.44"), listOf(hotspot)))
+    }
+
+    @Ignore("red until fix R2") @Test fun `the same interface with a new subnet is a change, not an absence, and the record says if it is the phone's hotspot`() {
+        val n = PairingNetwork.recordFor("10.20.30.44", listOf(cafe, hotspot)) { it == "ap-test0" }!!
+        assertTrue(n.ownHotspot)
+        assertTrue(PairingNetwork.decode(n.encode())!!.ownHotspot)
+        val moved = LocalIface("ap-test0", ip("10.20.77.1"), 24)
+        val look = n.look(listOf(cafe, moved))
+        assertTrue(look is NetworkLook.Changed && look.iface === moved)
+        assertTrue(n.look(listOf(cafe)) === NetworkLook.Absent)
+        assertTrue(n.look(listOf(hotspot)) === NetworkLook.Present)
+        assertFalse(PairingNetwork.recordFor("10.20.30.44", listOf(hotspot)) { false }!!.ownHotspot)
     }
 }

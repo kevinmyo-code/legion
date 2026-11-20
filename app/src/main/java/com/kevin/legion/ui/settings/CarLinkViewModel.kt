@@ -252,6 +252,8 @@ object CarLinkWords {
         CarLinkNote.NETWORK_NOT_RECORDED ->
             "Paired, but this phone could not tell which network the head unit is on, so it will send it " +
                 "nothing. Pair again with this phone's hotspot on and the head unit joined to it."
+        CarLinkNote.FORGET_TELLING, CarLinkNote.PORT_TAKEN, CarLinkNote.NETWORK_CHANGED_HEALING,
+        CarLinkNote.NETWORK_CHANGED_REPAIR -> "STUB"
         CarLinkNote.FORGOT_WILL_TELL ->
             "Forgotten on this phone. The head unit was not in range, so it will be told to forget this " +
                 "phone the next time this phone is in the car (for up to 90 days)."
