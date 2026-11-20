@@ -923,6 +923,33 @@ def test_the_database_refuses_a_limb_owned_by_a_non_member(household_a, kevin, u
         Limb.objects.filter(pk=row.pk).update(owner_user=user_b)
 
 
+def test_a_headunit_credential_is_private_to_the_member_who_paired(household_a, kevin, mia):
+    """T3b: `headunit_credentials` carries `owner_user`, never null (`OWNER_PATHS`): `visible()`
+    hands Mia none of Kevin's units. Invented label."""
+    from agents.evals.runner import member_request
+    from headunit_signin.models import HeadUnitCredential
+    from household.tenancy import visible
+
+    HeadUnitCredential.mint(household=household_a, owner_user=kevin, label="Invented unit")
+    assert visible(HeadUnitCredential, member_request(kevin)).count() == 1
+    assert not visible(HeadUnitCredential, member_request(mia)).exists()
+
+
+def test_the_database_refuses_a_headunit_credential_owned_by_a_non_member(
+    household_a, kevin, user_b
+):
+    """T3b: the ADR 0052 owner guard is attached to `headunit_credentials` too."""
+    from headunit_signin.models import HeadUnitCredential
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        HeadUnitCredential.mint(household=household_a, owner_user=user_b, label="Invented unit")
+    row, _raw = HeadUnitCredential.mint(
+        household=household_a, owner_user=kevin, label="Invented unit"
+    )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        HeadUnitCredential.objects.filter(pk=row.pk).update(owner_user=user_b)
+
+
 # =============================================================================
 # Engine homes (engine-brain ticket 03): advice and raises are private to their member
 # =============================================================================

@@ -218,6 +218,10 @@ INSTALLED_APPS = [
     # REST door, advisor advice and proactive raises (private to their member) and voice-logged
     # pending transactions (`public.advisor_advice`, `pending_transactions`, `proactive_raises`).
     "homes",
+    # T3b: a head unit's own engine sign-in, minted by the member's phone while it pairs
+    # (`public.headunit_credentials`, private to that member, hashes only). DARK: every route
+    # refuses unless LEGION_HEADUNIT_SIGNIN=on.
+    "headunit_signin",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
@@ -648,6 +652,13 @@ REST_FRAMEWORK = {
         "demo_enter": os.environ.get("LEGION_DEMO_ENTER_RATE", "").strip() or "10/hour",
         # The demo's funnel counts (`demo.funnel`): anonymous, so per IP; a page sends a handful.
         "demo_funnel": "120/hour",
+        # T3b (`headunit_signin/views.py`): a head unit's sign-in minted by the phone, per MEMBER
+        # (the protocol's 5 an hour), and the phone's rotation of one unit's token, per
+        # CREDENTIAL. Same per-process LocMemCache caveat as `mcp` above.
+        "headunit_mint": "5/hour",
+        "headunit_rotate": "6/hour",
+        # A head unit's own log uploads, per CREDENTIAL (review B2): periodic every few minutes.
+        "headunit_upload": "60/hour",
     },
 }
 
