@@ -332,12 +332,7 @@ internal class VoiceEvalHarness(
     private suspend fun transcribeSpoken(text: String, instruction: String): Pair<String, Long?> {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
-            val tts = GeminiTts(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.TTS, m, u).line()) })
-            val clip = tts.speak(text)
-            val pcm24 = java.io.ByteArrayOutputStream()
-            withTimeoutOrNull(STT_AUDIO_TIMEOUT_MS) { for (f in clip.frames) pcm24.write(f) }
-            // The phone's turn holds its pre-roll and end-of-turn silence; the clip gets the same.
-            val pcm16 = ByteArray(PRE_ROLL_PAD_MS * 32) + downsample24to16(pcm24.toByteArray()) + ByteArray(END_PAD_MS * 32)
+            val pcm16 = spokenClip(text)
             val stt = GeminiStt(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.STT, m, u).line()) },
                 log = { out(LiveLatency.TAG, it) }, instruction = { instruction })
             val r = stt.transcribe(pcm16)
@@ -346,6 +341,23 @@ internal class VoiceEvalHarness(
             out(TEST_TAG, "stt_audio audio_ms=${pcm16.size / 32} voiced_ms=$voiced result=${if (r is SttResult.Text) "text" else r.toString()} " +
                 "voice=${CloudSpeechWire.VOICE} sent=${LiveAudit.quote(text)} heard=${LiveAudit.quote(heard)}")
             return heard to voiced
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    /**
+     * [text] spoken by the cloud voice (Gemini TTS, 24 kHz) as a 16 kHz turn with the phone's pre-roll
+     * and end-of-turn silence: a made-up utterance as the phone would send it.
+     */
+    internal suspend fun spokenClip(text: String): ByteArray {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val tts = GeminiTts(transport, scope, meter = { m, u -> out(LiveLatency.TAG, CallUsage.of(CallUsage.TTS, m, u).line()) })
+            val clip = tts.speak(text)
+            val pcm24 = java.io.ByteArrayOutputStream()
+            withTimeoutOrNull(STT_AUDIO_TIMEOUT_MS) { for (f in clip.frames) pcm24.write(f) }
+            return ByteArray(PRE_ROLL_PAD_MS * 32) + downsample24to16(pcm24.toByteArray()) + ByteArray(END_PAD_MS * 32)
         } finally {
             scope.cancel()
         }
