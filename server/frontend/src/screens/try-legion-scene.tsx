@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
-import { useSceneSteps } from '@/components/demo/scroll-story'
+import { useSceneSteps, useStoryGlide } from '@/components/demo/scroll-story'
 
 /**
  * The LEGION section as a pinned scene (Kevin, 2026-11-19, "B bolder"): the diagram stays at the
@@ -116,10 +116,12 @@ export function LegionScene({
   useSceneSteps(root, true, onStep, '-72% 0px -24% 0px')
   const lit = layerFor(step, parts.length, layers.length)
   const aspect = useMemo(() => diagramAspect(svg), [svg])
+  // 900 px and up the whole diagram fits; narrower its frame scrolls sideways and says so.
+  const wide = useStoryGlide()
   return (
     <div ref={root} className="rc-scene" data-scene="legion">
       <figure className="rc-scene-pin rc-figure">
-        <div role="region" className="rc-frame" tabIndex={0} aria-label="Diagram, scrolls sideways">
+        <div role="region" className="rc-frame" tabIndex={0} aria-label={wide ? 'Diagram' : 'Diagram, scrolls sideways'}>
           {/* Its height capped by the screen's (CSS), so the parts always have room under it. */}
           <div className="rc-scene-frame" style={aspect ? ({ '--diagram-aspect': aspect } as CSSProperties) : undefined}>
             <img src={src} alt={caption || 'Diagram'} />
@@ -134,6 +136,11 @@ export function LegionScene({
             ))}
           </div>
         </div>
+        {!wide && (
+          <p className="rc-swipe" aria-hidden="true">
+            Swipe sideways for the rest of the diagram.
+          </p>
+        )}
         {caption && <figcaption className="rc-figcaption">{caption}</figcaption>}
       </figure>
       <div className="rc-scene-steps rc-runin">
