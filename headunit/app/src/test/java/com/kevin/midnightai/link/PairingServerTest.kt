@@ -184,6 +184,7 @@ class PairingServerTest {
         val port = Phone(qr).port
         // Review M1 hardening (recheck c53f1fc3): 8 pre-auth slots, not 3.
         val idle = (2..9).map { from(it, port).also { Thread.sleep(30) } }
+        Thread.sleep(350) // every slot past the 300 ms minimum age
         val fourth = from(10, port)
         Thread.sleep(300)
         assertEquals("oldest not evicted", -1, idle[0].state())
@@ -226,13 +227,30 @@ class PairingServerTest {
         val port = Phone(qr).port
         val idle = (20..27).map { from(it, port).also { Thread.sleep(30) } }
         idle[0].getOutputStream().apply { write(byteArrayOf(0, 0)); flush() } // half a frame header
-        Thread.sleep(100)
+        Thread.sleep(350) // every slot past the 300 ms minimum age
         val newcomer = from(28, port)
         Thread.sleep(200)
         assertEquals("the connection mid-hello was evicted", -2, idle[0].state())
         assertEquals("the oldest silent connection was kept", -1, idle[1].state())
         assertEquals(-2, newcomer.state())
         (idle + newcomer).forEach { it.close() }
+        server.close()
+    }
+
+    /**
+     * Q1 (recheck 2faecc19): a connection younger than 300 ms is never evicted, so a phone in the
+     * first milliseconds of its hello cannot be the preferred (silent) victim. With every slot that
+     * young, the newcomer is refused instead.
+     */
+    @Test fun m1_aConnectionYoungerThan300msIsNeverEvicted() {
+        val (server, qr) = server()
+        val port = Phone(qr).port
+        val young = (40..47).map { from(it, port) }
+        val newcomer = from(48, port)
+        Thread.sleep(150)
+        assertEquals("a connection under 300 ms old was evicted", -2, young[0].state())
+        assertEquals("the newcomer should be refused while every slot is young", -1, newcomer.state())
+        (young + newcomer).forEach { it.close() }
         server.close()
     }
 

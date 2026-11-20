@@ -21,7 +21,8 @@ import org.json.JSONObject
  *   touches the network from the caller's thread (review H3: the screen's buttons used to write
  *   to the socket from the UI thread, where Android forbids it and the `done` silently vanished).
  * - Up to [MAX_PREAUTH] connections may be waiting to authenticate, one per source address, at most
- *   one new connection per address per [RATE_LIMIT_MS]; when full a silent one is evicted before
+ *   one new connection per address per [RATE_LIMIT_MS]; when full a silent one older than
+ *   [MIN_EVICT_AGE_MS] is evicted before
  *   one mid-hello. Each must send a valid hello within [PREAUTH_TIMEOUT_MS]. Anything else from
  *   them closes that connection only (review M1).
  * - Frames: 4-byte big-endian length (checked before allocating) + UTF-8 JSON. A frame split
@@ -36,7 +37,7 @@ class PairingServer(
     private val server = ServerSocket(0, MAX_PREAUTH, bindAddress).apply { soTimeout = ACCEPT_POLL_MS }
     private val worker = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "pairing-worker").apply { isDaemon = true } }
     /** A connection not yet authenticated, and whether it has sent any byte yet. */
-    private class Slot(val socket: Socket) {
+    private class Slot(val socket: Socket, val acceptedAtMs: Long) {
         @Volatile var started = false
     }
 
@@ -80,9 +81,9 @@ class PairingServer(
                 continue
             }
             val ip = socket.inetAddress
-            val slot = Slot(socket)
+            val now = System.nanoTime() / 1_000_000L
+            val slot = Slot(socket, now)
             val admitted = synchronized(preAuth) {
-                val now = System.nanoTime() / 1_000_000L
                 // Rate limit (recheck c53f1fc3): one new connection per address per RATE_LIMIT_MS.
                 // A burst is refused; it never displaces anything.
                 val last = ip?.let { lastAcceptMs[it] }
@@ -94,12 +95,21 @@ class PairingServer(
                     ip?.let { preAuth.remove(it)?.let { old -> runCatching { old.socket.close() } } }
                     // When full, evict the oldest connection that has sent NOTHING; only if every
                     // slot is mid-message, the oldest of all. Idle sockets never hold the phone out.
+                    // Never a connection younger than MIN_EVICT_AGE_MS (Q1): a phone in the first
+                    // milliseconds of its hello is silent too and must not be the preferred victim.
+                    // If every slot is that young, the newcomer is refused instead.
+                    var room = true
                     while (preAuth.size >= MAX_PREAUTH) {
-                        val victim = preAuth.entries.firstOrNull { !it.value.started }?.key ?: preAuth.keys.first()
-                        preAuth.remove(victim)?.let { old -> runCatching { old.socket.close() } }
+                        val old = preAuth.entries.filter { now - it.value.acceptedAtMs >= MIN_EVICT_AGE_MS }
+                        val victim = (old.firstOrNull { !it.value.started } ?: old.firstOrNull())?.key
+                        if (victim == null) {
+                            room = false
+                            break
+                        }
+                        preAuth.remove(victim)?.let { v -> runCatching { v.socket.close() } }
                     }
-                    ip?.let { preAuth[it] = slot }
-                    true
+                    if (room) ip?.let { preAuth[it] = slot }
+                    room
                 }
             }
             if (!admitted) {
@@ -254,6 +264,8 @@ class PairingServer(
         const val MAX_PREAUTH = 8
         /** One new connection per source address per this long; a burst is refused (recheck c53f1fc3). */
         const val RATE_LIMIT_MS = 250L
+        /** A pre-auth connection is never evicted before this age (recheck 2faecc19, Q1). */
+        const val MIN_EVICT_AGE_MS = 300L
         /** A real phone sends its hello at once; 3 s is plenty and keeps a squatter's slot short. */
         const val PREAUTH_TIMEOUT_MS = 3_000L
         private const val ACCEPT_POLL_MS = 500
