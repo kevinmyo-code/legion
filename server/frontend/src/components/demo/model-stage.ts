@@ -149,7 +149,8 @@ export async function mountStage(host: HTMLElement, url: string, options: StageO
 }
 
 function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, options: StageOptions): Stage {
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+  // 1.5 at most: a 2x laptop screen otherwise draws each model at four times the pixels.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
   renderer.outputColorSpace = SRGBColorSpace
   renderer.toneMapping = ACESFilmicToneMapping
   renderer.setClearColor(STAGE_BACKGROUND, 1)
@@ -192,6 +193,14 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
   const startOffset = camera.position.clone().sub(controls.target)
   const UP = new Vector3(0, 1, 0)
 
+  // Drawn only when something changed (review 2026-11-20, frames at 1440 px): the controls moved,
+  // the size changed, or the page's scroll turned it.
+  let dirty = true
+  const redraw = () => {
+    dirty = true
+  }
+  controls.addEventListener('change', redraw)
+
   let touched = false
   const firstTouch = () => {
     if (touched) return
@@ -219,21 +228,41 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
     renderer.setSize(width, height, false)
     camera.aspect = width / height
     camera.updateProjectionMatrix()
+    measure()
+    dirty = true
+  }
+  // Where the viewer sits on the page, read only when a size changes (here or on the page), never
+  // in the draw loop: each frame then reads only the scroll position.
+  let pageTop = 0
+  let boxHeight = 1
+  const measure = () => {
+    const box = host.getBoundingClientRect()
+    pageTop = box.top + window.scrollY
+    boxHeight = box.height
   }
   const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize)
   observer?.observe(host)
+  if (options.scrollTurn) observer?.observe(document.documentElement)
   resize()
 
+  let lastThrough = -1
   const frame = () => {
     if (options.scrollTurn && !touched) {
       // How far through the screen the viewer is: 0 as it enters at the foot, 1 as it leaves.
-      const box = host.getBoundingClientRect()
-      const span = window.innerHeight + box.height
-      const through = span > 0 ? Math.min(1, Math.max(0, (window.innerHeight - box.top) / span)) : 0
-      camera.position.copy(controls.target).add(startOffset.clone().applyAxisAngle(UP, through * Math.PI * 3))
-      camera.lookAt(controls.target)
+      const top = pageTop - window.scrollY
+      const span = window.innerHeight + boxHeight
+      const through = span > 0 ? Math.min(1, Math.max(0, (window.innerHeight - top) / span)) : 0
+      if (Math.abs(through - lastThrough) > 1e-4) {
+        lastThrough = through
+        camera.position.copy(controls.target).add(startOffset.clone().applyAxisAngle(UP, through * Math.PI * 3))
+        camera.lookAt(controls.target)
+        dirty = true
+      }
     }
-    controls.update()
+    // True while it moves (damping, the slow turn): draw those frames too.
+    if (controls.update()) dirty = true
+    if (!dirty) return
+    dirty = false
     renderer.render(scene, camera)
   }
   const lost = (event: Event) => {
@@ -256,6 +285,7 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
     setVisible(next) {
       if (next === visible) return
       visible = next
+      dirty = true
       renderer.setAnimationLoop(next ? frame : null)
     },
     turn(dx, dy) {
@@ -269,10 +299,12 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
       const elevation = Math.abs(tilted.clone().normalize().y)
       camera.position.copy(controls.target).add(elevation < 0.97 ? tilted : offset)
       camera.lookAt(controls.target)
+      dirty = true
       if (!visible) frame()
     },
     reset() {
       controls.reset()
+      dirty = true
       if (!visible) frame()
     },
     dispose() {
@@ -281,6 +313,7 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
       observer?.disconnect()
       host.removeEventListener('pointerdown', holdTouch, { capture: true })
       controls.removeEventListener('start', firstTouch)
+      controls.removeEventListener('change', redraw)
       controls.dispose()
       disposeTree(model)
       environment.dispose()
