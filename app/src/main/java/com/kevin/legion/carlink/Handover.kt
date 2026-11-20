@@ -60,11 +60,13 @@ class HandoverPlan(
     private val redact: (String) -> Unit,
 ) {
     @Volatile private var minted: UnitToken? = null
+    @Volatile private var vehicle: String? = null
 
-    /** STUB (red step): the vehicle is not passed yet. */
+    /** Mints the unit's sign-in for the car [vehicleId] (null = none chosen), once per pairing. */
     suspend fun prepare(vehicleId: String?) {
+        vehicle = vehicleId
         if (minted != null) return
-        minted = tokens.mint(UNIT_NAME, null)?.also { redact(it.token) }
+        minted = tokens.mint(UNIT_NAME, vehicleId)?.also { redact(it.token) }
     }
 
     fun body(): HandoverBody {
@@ -73,6 +75,7 @@ class HandoverPlan(
             engineToken = token?.token,
             geminiKey = present(sources.geminiKey())?.also(redact),
             mapboxToken = present(sources.mapboxToken())?.also(redact),
+            engineVehicleId = vehicle,
             phoneName = sources.phoneName(),
         )
     }

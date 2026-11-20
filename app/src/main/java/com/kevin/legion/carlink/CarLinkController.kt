@@ -174,7 +174,16 @@ class CarLinkController(
         } catch (_: RuntimeException) {
             emptySet()
         }
-        _status.update { it.copy(gaps = gaps) }
+        val cars = try {
+            vehicles()
+        } catch (_: RuntimeException) {
+            emptyList()
+        }
+        _status.update { s ->
+            // One car: it is the one. A choice no longer on the list is dropped.
+            val chosen = s.vehicleId?.takeIf { id -> cars.any { it.id == id } } ?: cars.singleOrNull()?.id
+            s.copy(gaps = gaps, vehicles = cars, vehicleId = chosen)
+        }
     }
 
     /** A revoke-only record younger than 90 days is kept for one REVOKE; an older one expires unused. */
@@ -494,8 +503,10 @@ class CarLinkController(
         _status.update { it.copy(sendLocation = on) }
     }
 
-    /** STUB (red step). */
-    fun chooseVehicle(id: String?) = Unit
+    /** Which of the household's cars this head unit is in (the engine binds its sign-in to one). */
+    fun chooseVehicle(id: String?) {
+        _status.update { s -> s.copy(vehicleId = id?.takeIf { v -> s.vehicles.any { it.id == v } }) }
+    }
 
     private fun onRingEvent(e: RingEvent) {
         val note = when (e) {

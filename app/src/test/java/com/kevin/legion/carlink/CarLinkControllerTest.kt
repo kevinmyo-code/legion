@@ -330,7 +330,7 @@ class CarLinkControllerTest {
     }
 
     // ---- Vehicle choice: the household's cars are offered, and the chosen one is kept for the mint.
-    @Ignore("red until fix C") @Test fun `the pairing offers the household's cars and keeps the one chosen`() {
+    @Test fun `the pairing offers the household's cars and keeps the one chosen`() {
         val c = controller()
         c.start()
         waitFor("the cars") { c.status.value.vehicles.size == 2 }
@@ -338,7 +338,7 @@ class CarLinkControllerTest {
         waitFor("the choice") { c.status.value.vehicleId == "car-b-id" }
     }
 
-    @Ignore("red until fix C") @Test fun `with one car it is chosen already`() {
+    @Test fun `with one car it is chosen already`() {
         cars = listOf(VehicleOption("only-car-id", "Only car"))
         val c = controller()
         c.start()

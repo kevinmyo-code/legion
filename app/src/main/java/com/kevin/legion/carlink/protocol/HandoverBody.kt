@@ -17,9 +17,12 @@ class HandoverBody(
     val geminiKey: String? = null,
     val mapboxToken: String? = null,
     phoneName: String? = null,
-    /** STUB (red step): not yet sent. */
-    val engineVehicleId: String? = null,
+    engineVehicleId: String? = null,
 ) {
+    /** 3.5 rev 8: the ONE engine vehicle the car's own sign-in may upload for; at most 64 characters. */
+    val engineVehicleId: String? =
+        engineVehicleId?.trim()?.takeIf { it.isNotEmpty() && it.length <= MAX_VEHICLE_ID }
+
     /** 3.5: "<display name, <= 40 chars>". */
     val phoneName: String? = phoneName?.trim()?.take(MAX_NAME)
 
@@ -30,6 +33,7 @@ class HandoverBody(
         append("{\"v\":1")
         field("engine_token", engineToken)
         field("engine_user_id", engineUserId)
+        field("engine_vehicle_id", engineVehicleId)
         field("gemini_key", geminiKey)
         field("mapbox_token", mapboxToken)
         field("phone_name", phoneName)
@@ -43,5 +47,6 @@ class HandoverBody(
 
     companion object {
         const val MAX_NAME = 40
+        const val MAX_VEHICLE_ID = 64
     }
 }

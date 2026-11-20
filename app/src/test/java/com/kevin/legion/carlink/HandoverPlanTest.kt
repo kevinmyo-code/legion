@@ -7,7 +7,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 
 /** What goes over the link in the hand-over (3.5, 5.3 rev 8): the phone's own key and map token. */
@@ -59,7 +58,7 @@ class HandoverPlanTest {
         assertTrue(HandoverGap.NO_MAP_TOKEN in plan.gaps())
     }
 
-    @Ignore("red until fix C") @Test fun `the unit token is minted for the chosen car, after the unit proved itself`() = runBlocking {
+    @Test fun `the unit token is minted for the chosen car, after the unit proved itself`() = runBlocking {
         assertTrue(tokens.minted.isEmpty())
         plan.prepare("vehicle-id-for-tests")
         assertEquals(listOf("Head unit" to "vehicle-id-for-tests"), tokens.minted)
@@ -95,7 +94,7 @@ class HandoverPlanTest {
         assertFalse(none.revoke("hu-1"))
     }
 
-    @Ignore("red until fix C") @Test fun `the chosen car goes as engine_vehicle_id, and no car means no field`() = runBlocking {
+    @Test fun `the chosen car goes as engine_vehicle_id, and no car means no field`() = runBlocking {
         assertNull(fields(plan.body().toJson())["engine_vehicle_id"])
         plan.prepare("vehicle-id-for-tests")
         assertEquals("\"vehicle-id-for-tests\"", fields(plan.body().toJson())["engine_vehicle_id"].toString())
