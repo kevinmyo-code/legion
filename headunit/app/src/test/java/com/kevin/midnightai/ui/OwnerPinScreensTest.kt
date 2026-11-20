@@ -111,4 +111,13 @@ class OwnerPinScreensTest {
         val shown = waitFor(activity) { t -> t.any { it.contains("Head unit") } }
         assertTrue("no words about the phone: $shown", shown.any { it.contains("remove \"Head unit\"") })
     }
+
+    @Test fun lE_theEnginePinPromptGoesAwayWhenTheCarStartsMoving() {
+        pinIsSet()
+        val activity = render { EngineEntry() }
+        assertTrue(texts(activity).any { it.startsWith("Owner PIN to see or change") })
+        DrivingState.note(30.0)
+        val shown = waitFor(activity) { t -> t.any { it.startsWith("Park to do this") } }
+        assertTrue("PIN pad still up while moving: $shown", shown.any { it.startsWith("Park to do this") })
+    }
 }

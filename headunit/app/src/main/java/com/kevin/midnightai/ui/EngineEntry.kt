@@ -59,8 +59,17 @@ fun EngineEntry(modifier: Modifier = Modifier) {
     // Owner PIN (2026-11-20): once set, the engine sign-in is shown or changed only after it.
     val ownerPin = remember { com.kevin.midnightai.link.OwnerPin(context) }
     var unlocked by remember { mutableStateOf(!ownerPin.isSet()) }
+    // Re-checked every second (review L-e), like the pairing pane: a prompt opened while parked
+    // goes away when the car starts moving.
+    var driving by remember { mutableStateOf(com.kevin.midnightai.update.DrivingState.isDriving()) }
+    LaunchedEffect(unlocked) {
+        while (!unlocked) {
+            kotlinx.coroutines.delay(1_000)
+            driving = com.kevin.midnightai.update.DrivingState.isDriving()
+        }
+    }
     if (!unlocked) {
-        val gate = com.kevin.midnightai.link.OwnerPinGate.gate(pinSet = true, driving = com.kevin.midnightai.update.DrivingState.isDriving())
+        val gate = com.kevin.midnightai.link.OwnerPinGate.gate(pinSet = true, driving = driving)
         if (gate == com.kevin.midnightai.link.OwnerPinGate.Gate.PARK_FIRST) {
             Text(com.kevin.midnightai.link.OwnerPinGate.PARK_FIRST, style = MaterialTheme.typography.bodyMedium, color = AriaColors.TextPrimary)
         } else {
