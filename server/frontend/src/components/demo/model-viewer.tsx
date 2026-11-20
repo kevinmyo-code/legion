@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import type { DemoModel3D } from '@/api/demo'
 import type { Stage } from '@/components/demo/model-stage'
+import { useStoryMotion } from '@/components/demo/scroll-story'
 
 /**
  * A 3D model on /try a visitor can turn (Kevin, 2026-11-19). The poster is drawn first and is all
@@ -15,8 +16,9 @@ import type { Stage } from '@/components/demo/model-stage'
  * the model's (drag turns, pinch or wheel zooms) until "Done", Escape, a tap elsewhere, the
  * mouse leaving it, or it scrolling out of view.
  *
- * Keyboard: the model takes focus, arrow keys turn it, and "Reset view" is a button. It turns
- * slowly by itself until first touched, never under `prefers-reduced-motion`.
+ * Keyboard: the model takes focus, arrow keys turn it, and "Reset view" is a button. Until first
+ * touched it turns with the page's scroll (the /try scroll story), never under
+ * `prefers-reduced-motion`.
  */
 
 export const MODEL_FAILED = 'The 3D view could not load here, so this is a still picture of the model.'
@@ -46,6 +48,10 @@ export function ModelViewer({ model }: { model: DemoModel3D }) {
   const [state, setState] = useState<State>('poster')
   const [active, setActive] = useState(false)
   const [near, setNear] = useState(false)
+  const story = useStoryMotion()
+  // Read when the stage mounts; a change of preference applies the next time it loads.
+  const scrollTurn = useRef(story)
+  scrollTurn.current = story
 
   // Within a screen of view: load. More than three screens away: unload (the GPU memory and the
   // WebGL context go back; browsers cap live contexts), back to the poster until it nears again.
@@ -77,7 +83,12 @@ export function ModelViewer({ model }: { model: DemoModel3D }) {
     }
     import('@/components/demo/model-stage')
       .then(({ mountStage }) =>
-        mountStage(element, model.model, { autoTurn: !matches('(prefers-reduced-motion: reduce)'), onLost }),
+        mountStage(element, model.model, {
+          autoTurn: !matches('(prefers-reduced-motion: reduce)'),
+          // The scroll story: the model turns with the page until touched (never under reduced motion).
+          scrollTurn: scrollTurn.current,
+          onLost,
+        }),
       )
       .then((mounted) => {
         if (cancelled) {

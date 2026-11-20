@@ -443,9 +443,11 @@ DENIED_ROUTES = [(p, c) for p, c in ROUTES if view_key(c) in RECRUITER_DENIED]
 
 @pytest.mark.parametrize("credential", ["session", "token"])
 def test_every_denied_route_refuses_a_recruiter_in_words(
-    credential, recruiter_web, recruiter_token_client, settings
+    credential, recruiter_web, recruiter_token_client, settings, monkeypatch
 ):
+    # Doors that are a 404 before authentication while dark are switched on, so the fence is seen.
     settings.LEGION_MCP = True
+    monkeypatch.setenv("LEGION_HEADUNIT_SIGNIN", "on")
     client = recruiter_web if credential == "session" else recruiter_token_client
     wrong = []
     for path, cls in DENIED_ROUTES:

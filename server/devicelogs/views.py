@@ -32,6 +32,7 @@ from django.db.models import F
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers, status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -44,10 +45,16 @@ from devicelogs.models import (
     REASONS,
     RETENTION_DAYS,
     RETENTION_DAYS_BY_REASON,
+    UPLOADER_HEAD_UNIT,
+    UPLOADER_MEMBER,
     DeviceLog,
     max_raw_bytes,
     retention_days,
 )
+from headunit_signin import scope as headunit_scope
+from headunit_signin.authentication import HeadUnitTokenAuthentication
+from headunit_signin.views import UploadThrottle
+from household.authentication import DeviceTokenAuthentication
 from household.tenancy import household_of, scoped
 
 TAGS = ["device-logs"]
@@ -115,7 +122,16 @@ class DeviceLogUploadView(APIView):
     """`POST` uploads a batch; `GET` lists the household's recent batches (alfred-builds ticket 02,
     `devicelogs/records.py`), so the Claude worker can find a conversation to read."""
 
+    # T3b: a head unit's own token may POST its log here; its GET (the household's list) is
+    # refused by the route list (`headunit_signin.scope`). The rest are the project defaults.
+    authentication_classes = [
+        HeadUnitTokenAuthentication,
+        DeviceTokenAuthentication,
+        SessionAuthentication,
+    ]
     parser_classes = [MultiPartParser, FormParser]
+    # A head unit's uploads per unit (review B2); no throttle for anyone else, as before.
+    throttle_classes = [UploadThrottle]
 
     @extend_schema(
         operation_id="api_device_logs_list",
@@ -156,11 +172,16 @@ class DeviceLogUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         data = serializer.validated_data
+        unit = request.auth if headunit_scope.is_headunit(request) else None
+        if unit is not None and data["reason"] not in headunit_scope.LOG_REASONS:
+            return Response({"detail": UNIT_REASON_REFUSAL}, status=status.HTTP_403_FORBIDDEN)
         upload = data["file"]
-        if upload.size > MAX_UPLOAD_BYTES:
-            return _too_large()
-        blob = upload.read()
         cap = min(MAX_UPLOAD_BYTES, max_raw_bytes(data["reason"]))
+        if unit is not None:
+            cap = min(cap, headunit_scope.LOG_MAX_RAW_BYTES)
+        if upload.size > (cap if unit is not None else MAX_UPLOAD_BYTES):
+            return _too_large(cap if unit is not None else MAX_UPLOAD_BYTES)
+        blob = upload.read()
         try:
             raw = inflate_capped(blob, cap)
         except ValueError as exc:
@@ -172,7 +193,7 @@ class DeviceLogUploadView(APIView):
 
         existing = scoped(DeviceLog, request).filter(batch_id=data["batch_id"]).first()
         if existing is not None:
-            return Response(_stored(existing, "Already stored; nothing new was added."))
+            return _already(existing, unit)
         try:
             with transaction.atomic():
                 row = DeviceLog.objects.create(
@@ -190,13 +211,30 @@ class DeviceLogUploadView(APIView):
                     body_gz=blob,
                     run_id=data["run_id"],
                     nav_audit_lines=len(nav_audit_lines(raw)),
+                    uploader_kind=UPLOADER_HEAD_UNIT if unit is not None else UPLOADER_MEMBER,
+                    headunit=unit,
                 )
         except IntegrityError:
             # A concurrent retry of the same batch won the race: same answer.
             row = scoped(DeviceLog, request).get(batch_id=data["batch_id"])
-            return Response(_stored(row, "Already stored; nothing new was added."))
+            return _already(row, unit)
         prune(household)
         return Response(_stored(row, "Stored."), status=status.HTTP_201_CREATED)
+
+
+UNIT_REASON_REFUSAL = (
+    "Nothing was stored. A head unit's token uploads its own drive logs only (drive_end, startup, "
+    "manual, periodic), never a conversation or a phone's logs."
+)
+UNIT_BATCH_TAKEN = "Nothing was stored. That batch_id is already taken by another device."
+
+
+def _already(row: DeviceLog, unit) -> Response:
+    """A retry of a stored batch. A head unit is told only about its own batches, so a batch id
+    cannot be used to probe another device's rows (review B2)."""
+    if unit is not None and row.headunit_id != unit.pk:
+        return Response({"detail": UNIT_BATCH_TAKEN}, status=status.HTTP_409_CONFLICT)
+    return Response(_stored(row, "Already stored; nothing new was added."))
 
 
 def _too_large(cap: int = MAX_UPLOAD_BYTES) -> Response:

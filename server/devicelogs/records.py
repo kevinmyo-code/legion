@@ -26,7 +26,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from devicelogs.models import REASONS, DeviceLog
+from devicelogs.models import REASONS, UPLOADER_HEAD_UNIT, DeviceLog
 from devicelogs.render import render_batch
 from household.tenancy import scoped
 
@@ -83,7 +83,12 @@ def _own(request):
     """The caller's own records in their household. A conversation record carries one member's
     words and tool results, private rows among them (ADR 0052/0075), so a household member never
     reads another member's, the same rule `web_conversation.owned()` applies to the write."""
-    return scoped(DeviceLog, request).filter(user=request.user)
+    # Never a head unit's upload (review B2): what a unit token sent is not the member's words.
+    return (
+        scoped(DeviceLog, request)
+        .filter(user=request.user)
+        .exclude(uploader_kind=UPLOADER_HEAD_UNIT)
+    )
 
 
 def list_records(request) -> Response:
