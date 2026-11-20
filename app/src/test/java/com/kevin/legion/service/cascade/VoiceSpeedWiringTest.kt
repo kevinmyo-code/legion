@@ -259,6 +259,12 @@ class VoiceSpeedWiringTest {
         assertTrue(bodyOf(s, "playBackchannel").contains("Backchannel.cueWaitMs("))
     }
 
+    @Test
+    fun `a phone call is its own skip, and the half-duplex skip is one named rule`() {
+        val schedule = bodyOf(session(), "scheduleBackchannel")
+        assertTrue(schedule.contains("onCall = TelephonyController.isInCall"))
+    }
+
     private companion object {
         val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)
         val LINE_COMMENT = Regex("(?<![:\"])//[^\n]*")

@@ -26,9 +26,11 @@ package com.kevin.legion.service.cascade
  *   listen cue is NOT a reply ([overReply]; 2026-11-20: the first turn after a tap was skipped as
  *   over_reply because of it): a clip still due while one plays waits for its end, if it can still
  *   start within [MAX_START_AFTER_EOT_MS] of his end of speech ([cueWaitMs]), else it is skipped;
+ * - a phone call ([Turn.onCall]): a clip would go down the call to the other person;
  * - Quiet mode: he asked for silence (he can turn Quiet off);
  * - not a turn of his (a proactive line, the greeting): there is no one waiting;
- * - half-duplex (barge-in off: Bluetooth, a call): the mic is deaf while a clip plays, so a clip
+ * - half-duplex ([SKIP_ON_HALF_DUPLEX], the one restriction left for Kevin to rule on, 2026-11-20;
+ *   barge-in off: Bluetooth): the mic is deaf while a clip plays, so a clip
  *   about a second after his last word would swallow the rest of a sentence he was still saying
  *   (blind review M1, 2026-11-19). Allowed there only behind [halfDuplexAllowed] (off), which keeps
  *   his audio through the clip and hands it on ([ClipListen]).
@@ -47,6 +49,13 @@ package com.kevin.legion.service.cascade
 internal object Backchannel {
     /** After his speech ends: the end-of-speech wait (~0.7 s) is already behind him, so ~1.3 s after his last word. */
     const val DELAY_MS = 600L
+
+    /**
+     * Half-duplex routes (Bluetooth) skip the clip: the mic is deaf while it plays, so his words during
+     * it would be lost. Kept for now (2026-11-20); Kevin decides. [Turn.halfDuplexAllowed] (a setting,
+     * off) already lets one play with [ClipListen] keeping his audio.
+     */
+    const val SKIP_ON_HALF_DUPLEX = true
 
     /** The latest a clip may start after his end of speech when it waits for the open's chime or cue. */
     const val MAX_START_AFTER_EOT_MS = 900L
@@ -90,11 +99,13 @@ internal object Backchannel {
         val halfDuplex: Boolean = false,
         /** The setting that lets a half-duplex conversation have one, with [ClipListen] keeping his audio (off). */
         val halfDuplexAllowed: Boolean = false,
+        /** A phone call is on the line (TelephonyController.isInCall): never, whatever the route. */
+        val onCall: Boolean = false,
     )
 
     enum class Skip(val token: String) {
-        NOT_HIS("not_his"), OVER_REPLY("over_reply"), QUIET("quiet"), HALF_DUPLEX("half_duplex"),
-        ANSWER_TEXT("answer_text"),
+        NOT_HIS("not_his"), ON_CALL("on_call"), OVER_REPLY("over_reply"), QUIET("quiet"),
+        HALF_DUPLEX("half_duplex"), ANSWER_TEXT("answer_text"),
     }
 
     /** Null: play one (if one is in memory and the answer has not started). Otherwise why not. */
@@ -102,7 +113,8 @@ internal object Backchannel {
     fun decide(t: Turn): Skip? {
         if (!t.fromUser) return Skip.NOT_HIS
         if (t.quiet) return Skip.QUIET
-        if (t.halfDuplex && !t.halfDuplexAllowed) return Skip.HALF_DUPLEX
+        if (t.onCall) return Skip.ON_CALL
+        if (SKIP_ON_HALF_DUPLEX && t.halfDuplex && !t.halfDuplexAllowed) return Skip.HALF_DUPLEX
         if (t.overReplyOrTurn) return Skip.OVER_REPLY
         return null
     }

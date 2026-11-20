@@ -33,7 +33,7 @@ class BackchannelTest {
     fun `short speech, an answer to an ask and a quick next turn each get one`() {
         assertNull(Backchannel.decide(turn()))
         assertEquals(
-            listOf("NOT_HIS", "OVER_REPLY", "QUIET", "HALF_DUPLEX", "ANSWER_TEXT"),
+            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET", "HALF_DUPLEX", "ANSWER_TEXT"),
             Backchannel.Skip.entries.map { it.name },
         )
     }
@@ -183,6 +183,13 @@ class BackchannelTest {
         for (line in Backchannel.LINES + ScriptedLines.FIXED_DONE_LINES + ToolFillers.GENERIC) {
             assertEquals(line, SpokenText.forSpeech(line))
         }
+    }
+
+    @Test
+    fun `a phone call gets none, even where half-duplex clips are allowed`() {
+        assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(turn().copy(onCall = true)))
+        assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(turn().copy(onCall = true, halfDuplex = true, halfDuplexAllowed = true)))
+        assertTrue("the half-duplex skip stays until Kevin rules on it", Backchannel.SKIP_ON_HALF_DUPLEX)
     }
 
     @Test

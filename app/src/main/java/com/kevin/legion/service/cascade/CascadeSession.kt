@@ -1187,6 +1187,7 @@ internal class CascadeSession(
                 quiet = QuietMode.isOn(ctx),
                 halfDuplex = turnTaker?.bargeIn != true,
                 halfDuplexAllowed = VoiceTurnSettings.backchannelHalfDuplex(ctx),
+                onCall = TelephonyController.isInCall,
             ),
         )
         if (skip != null) {
