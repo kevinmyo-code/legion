@@ -55,6 +55,9 @@ interface HandoverSink {
 
     /** PENDING -> COMMITTED, all or nothing. */
     fun commit(): String?
+
+    /** Drops PENDING (seam for review N2; not yet called). */
+    fun dropPending() {}
 }
 
 /**

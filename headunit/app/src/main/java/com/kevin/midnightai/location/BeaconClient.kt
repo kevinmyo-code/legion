@@ -220,6 +220,7 @@ object BeaconClient {
         fun feed(key: ByteArray?) = key?.let {
             PhoneFeed(it, nowNanos = SystemClock::elapsedRealtimeNanos, random = { b -> random.nextBytes(b) }).also { _ -> it.fill(0) }
         }
+        beforeInstallForTest?.invoke()
         feeds = LinkFeedSet(committed = feed(keys.committed), pending = feed(keys.pending))
         return true
     }
@@ -336,6 +337,12 @@ object BeaconClient {
             runCatching { handle(context, packet) }.onFailure { Log.w(TAG, "Beacon datagram dropped", it) }
         }
     }
+
+    /** Tests only: a hook inside the startup step (to make it slow), and a datagram handed in directly. */
+    @Volatile internal var beforeInstallForTest: (() -> Unit)? = null
+
+    internal fun handleForTest(context: Context, data: ByteArray) =
+        handle(context, DatagramPacket(data, data.size, java.net.InetAddress.getLoopbackAddress(), BeaconProtocol.PORT))
 
     private fun handle(context: Context, packet: DatagramPacket) {
         run {

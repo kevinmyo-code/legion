@@ -94,6 +94,10 @@ object CarLink {
     @Volatile
     var store: LinkKeySource = NoLink
 
+    /** True while a pairing session (the Car link screen) is open. Seam for review N1. */
+    @Volatile
+    var pairingSessionOpen = false
+
     private val _status = MutableStateFlow(LinkStatus.NOT_PAIRED)
 
     /** Last status read by [refresh]; NOT_PAIRED until the first read. */
