@@ -691,6 +691,9 @@
         gap: 0.5rem;
         opacity: 0;
         visibility: hidden;
+        /* Only the orb and the chips take a click; the status line never swallows one meant for
+           the page under it (review recheck 2026-11-20). */
+        pointer-events: none;
         transform: translate(var(--side-x), -50%);
         transition:
             transform 800ms cubic-bezier(0.2, 0, 0, 1),
@@ -707,6 +710,10 @@
             transform 800ms cubic-bezier(0.2, 0, 0, 1),
             opacity 300ms ease-out,
             visibility 0s;
+    }
+    .recruiter .rc-side-orb,
+    .recruiter .rc-voice-side .rc-chips {
+        pointer-events: auto;
     }
     .recruiter .rc-side-orb {
         width: 5rem;

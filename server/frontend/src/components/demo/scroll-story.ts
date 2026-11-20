@@ -45,16 +45,21 @@ export interface OrbPlace {
   side: OrbSide
   /** Beside a pinned scene the orb rides alone: its line and chips would cover the scene. */
   pinned: boolean
+  /**
+   * A section has put it in place. Until then (the header and hero, which keep no room for it) the
+   * side orb stays hidden (review recheck 2026-11-20: it sat over the header's links at 900-1280 px).
+   */
+  placed: boolean
 }
 
 // One place for the whole page: the sections say which one is in view, the voice stage's orb
 // follows. A tiny store, so the two need no shared parent component.
-let place: OrbPlace = { side: 'right', pinned: false }
+let place: OrbPlace = { side: 'right', pinned: false, placed: false }
 const listeners = new Set<() => void>()
 
-export function setOrbPlace(next: OrbPlace) {
-  if (next.side === place.side && next.pinned === place.pinned) return
-  place = next
+export function setOrbPlace({ side, pinned, placed = true }: { side: OrbSide; pinned: boolean; placed?: boolean }) {
+  if (side === place.side && pinned === place.pinned && placed === place.placed) return
+  place = { side, pinned, placed }
   for (const listener of listeners) listener()
 }
 
@@ -115,8 +120,14 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
     const middle = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (!entry.isIntersecting) continue
           const target = entry.target as HTMLElement
+          if (!entry.isIntersecting) {
+            // The first section dropping below the middle: back up in the header and hero.
+            if (target === sections[0] && entry.boundingClientRect.top > window.innerHeight / 2) {
+              setOrbPlace({ ...place, placed: false })
+            }
+            continue
+          }
           setOrbPlace({
             side: target.dataset.orbSide === 'left' ? 'left' : 'right',
             pinned: target.dataset.pinned === 'true',
