@@ -1,5 +1,7 @@
 package com.kevin.midnightai.link
 
+import com.kevin.midnightai.link.PairingSession.CodeResult
+import com.kevin.midnightai.link.PairingSession.PreAuth
 import com.kevin.midnightai.link.PairingSession.Reason
 import com.kevin.midnightai.link.PairingSession.Stage
 import java.security.SecureRandom
@@ -15,16 +17,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * HU-1 T3 pairing, head unit end, against a fake phone written from the protocol spec only. Made-up
- * values throughout ("test-token", "AIza-test"): nothing real, nothing personal.
+ * HU-1 T3 pairing, unit end, protocol revision 2. The fake phone below is written from the spec; it
+ * is a convenience, not the proof (CarLinkVectorsTest checks the bytes against an independent
+ * implementation). Made-up values only.
  */
 @OptIn(ExperimentalEncodingApi::class)
 class PairingSessionTest {
 
     private var clock = 1_000_000L
-    private val stored = mutableListOf<Pair<Handover, ByteArray>>()
-    private var storeError: String? = null
-    private val sink = HandoverSink { h, key -> stored += h to key.copyOf(); storeError }
+    private val staged = mutableListOf<Pair<Handover, ByteArray>>()
+    private var commits = 0
+    private var stageError: String? = null
+    private var commitError: String? = null
+    private val sink = object : HandoverSink {
+        override fun stage(handover: Handover, linkKey: ByteArray): String? {
+            staged += handover to linkKey.copyOf()
+            return stageError
+        }
+        override fun commit(): String? { commits++; return commitError }
+    }
 
     private fun newSession(): Pair<PairingSession, String> {
         val secret = ByteArray(16).also { SecureRandom().nextBytes(it) }
@@ -32,7 +43,6 @@ class PairingSessionTest {
         return s to s.qrText("192.0.2.10", 40123)
     }
 
-    /** The phone end, from the spec: parse the QR, hello, verify ack, seal the hand-over. */
     private class FakePhone(qr: String) {
         val unitPk: ByteArray
         val secret: ByteArray
@@ -47,173 +57,172 @@ class PairingSessionTest {
             secret = Base64.UrlSafe.decode(parts[3])
         }
 
-        fun hello(macKey: ByteArray = PairingCrypto.qrKey(secret)) = JSONObject().put("t", "hello").put("v", 1)
+        fun hello(macKey: ByteArray = PairingCrypto.qrKey(secret), v: Int = 1) = JSONObject().put("t", "hello").put("v", v)
             .put("pk", Base64.Default.encode(phonePk))
             .put("mac", Base64.Default.encode(PairingCrypto.helloMac(macKey, unitPk, phonePk)))
 
+        /** Verifies the unit's key confirmation and derives the same keys. */
         fun onAck(ack: JSONObject): Boolean {
             val transcript = PairingCrypto.transcript(unitPk, phonePk)
-            val ok = LinkCrypto.constantTimeEquals(
-                Base64.Default.decode(ack.getString("mac")), PairingCrypto.ackMac(PairingCrypto.qrKey(secret), transcript),
-            )
             val unit = PairingCrypto.decode(unitPk, keyPair.public as ECPublicKey)!!
             keys = PairingCrypto.derive(PairingCrypto.sharedSecret(keyPair.private, unit), secret, transcript)
-            return ok
+            return LinkCrypto.constantTimeEquals(Base64.Default.decode(ack.getString("kc")), PairingCrypto.unitConfirm(keys.confirm, transcript))
         }
 
-        fun handover(): JSONObject {
-            val body = JSONObject().put("v", 1)
-                .put("engine", JSONObject().put("url", "https://engine.example").put("token", "test-token").put("user_id", "u-1"))
-                .put("gemini_key", "AIza-test")
-                .put("phone_name", "Test phone")
-            val sealed = LinkCrypto.seal(
-                keys.handover, LinkCrypto.nonce(PairingSession.HAND, 1), PairingSession.HANDOVER_AAD,
-                body.toString().toByteArray(),
+        fun opens(msg: JSONObject, dir: ByteArray, aad: ByteArray) =
+            LinkCrypto.open(keys.handover, LinkCrypto.nonce(dir, 1), aad, Base64.Default.decode(msg.getString("c"))) != null
+
+        fun handover(body: String = """{"v":1,"engine_token":"test-token","gemini_key":"AIza-test","phone_name":"Test phone"}""") =
+            JSONObject().put("t", "handover").put(
+                "c",
+                Base64.Default.encode(LinkCrypto.seal(keys.handover, LinkCrypto.nonce(PairingSession.HAND, 1), PairingSession.HANDOVER_AAD, body.toByteArray())),
             )
-            return JSONObject().put("t", "handover").put("c", Base64.Default.encode(sealed))
-        }
 
-        fun openDone(done: JSONObject): JSONObject? = LinkCrypto.open(
-            keys.handover, LinkCrypto.nonce(PairingSession.DONE, 1), PairingSession.DONE_AAD,
-            Base64.Default.decode(done.getString("c")),
-        )?.let { JSONObject(String(it)) }
+        fun stored() = JSONObject().put("t", "stored").put(
+            "c",
+            Base64.Default.encode(LinkCrypto.seal(keys.handover, LinkCrypto.nonce(PairingSession.STOR, 1), PairingSession.STORED_AAD, """{"ok":true}""".toByteArray())),
+        )
     }
 
-    @Test fun theHappyPathStoresTheHandOverAndTheSameLinkKeyBothSidesDerived() {
+    private fun claim(s: PairingSession, phone: FakePhone): JSONObject =
+        (s.preAuth(phone.hello()) as PreAuth.Claimed).reply.also { assertTrue(phone.onAck(it)) }
+
+    @Test fun theHappyPathTypedDigitsHandOverDoneStored() {
         val (s, qr) = newSession()
         val phone = FakePhone(qr)
-        val ack = s.onMessage(phone.hello()).single()
-        assertEquals("ack", ack.getString("t"))
-        assertTrue(phone.onAck(ack))
-        val stage = s.stage as Stage.CompareCodes
-        assertEquals(phone.keys.checkCode, stage.code)
-        assertEquals(6, stage.code.length)
-
-        assertTrue(s.onMessage(phone.handover()).isEmpty()) // waits for the driver's tap
-        assertTrue(stored.isEmpty())
-        val done = s.confirm().single()
-        assertEquals(true, phone.openDone(done)!!.getBoolean("ok"))
-
-        val (h, key) = stored.single()
+        claim(s, phone)
+        assertEquals(Stage.EnterCode(3), s.stage)
+        val ok = s.enterCode(phone.keys.checkCode) as CodeResult.Correct
+        assertTrue(phone.opens(ok.send, PairingSession.CDOK, PairingSession.CODE_OK_AAD))
+        val done = s.onMessage(phone.handover()).single()
+        assertTrue(phone.opens(done, PairingSession.DONE, PairingSession.DONE_AAD))
+        val (h, key) = staged.single()
         assertEquals("test-token", h.engineToken)
-        assertEquals("AIza-test", h.geminiKey)
         assertArrayEquals(phone.keys.link, key)
-        assertEquals(Stage.Paired("Test phone", listOf("engine sign-in", "Gemini key")), s.stage)
+        assertEquals(0, commits)
+        assertEquals(Stage.AwaitingPhone, s.stage)
+        s.onMessage(phone.stored())
+        assertEquals(1, commits)
+        assertEquals(Stage.Paired("Test phone", listOf("engine sign-in", "Gemini key"), confirmed = true), s.stage)
     }
 
-    @Test fun confirmingBeforeTheHandOverArrivesAlsoWorks() {
+    @Test fun h3_aLostStoredLeavesThePairingPendingNotPairedAndNotFailed() {
         val (s, qr) = newSession()
         val phone = FakePhone(qr)
-        phone.onAck(s.onMessage(phone.hello()).single())
-        assertTrue(s.confirm().isEmpty())
-        assertEquals("done", s.onMessage(phone.handover()).single().getString("t"))
-        assertTrue(s.stage is Stage.Paired)
-    }
-
-    @Test fun aPhoneThatNeverSawTheQrIsRefusedAndTheQrDiesAfterThreeTries() {
-        val (s, qr) = newSession()
-        val intruder = FakePhone(qr)
-        val wrong = ByteArray(32) { 1 }
-        assertEquals("abort", s.onMessage(intruder.hello(wrong)).single().getString("t"))
-        assertEquals(Stage.WaitingForPhone, s.stage)
-        s.onMessage(intruder.hello(wrong))
-        s.onMessage(intruder.hello(wrong))
-        assertEquals(Stage.Failed(Reason.WRONG_QR), s.stage)
-        // The real phone is now too late: a new QR is needed.
-        assertTrue(s.onMessage(FakePhone(qr).hello()).isEmpty())
-        assertTrue(stored.isEmpty())
-    }
-
-    @Test fun theNumbersDifferMeansNothingIsStored() {
-        val (s, qr) = newSession()
-        val phone = FakePhone(qr)
-        phone.onAck(s.onMessage(phone.hello()).single())
+        claim(s, phone)
+        s.enterCode(phone.keys.checkCode)
         s.onMessage(phone.handover())
-        assertEquals("abort", s.mismatch().single().getString("t"))
-        assertEquals(Stage.Failed(Reason.MISMATCH), s.stage)
-        assertTrue(s.confirm().isEmpty())
-        assertTrue(stored.isEmpty())
+        s.onDisconnect()
+        assertEquals(0, commits)
+        assertEquals(Stage.Paired("Test phone", listOf("engine sign-in", "Gemini key"), confirmed = false), s.stage)
     }
 
-    @Test fun aTamperedHandOverIsRefused() {
+    @Test fun m5_wrongDigitsThreeTimesEndTheSessionAndStoreNothing() {
         val (s, qr) = newSession()
         val phone = FakePhone(qr)
-        phone.onAck(s.onMessage(phone.hello()).single())
-        val h = phone.handover()
-        val bytes = Base64.Default.decode(h.getString("c")).also { it[3] = (it[3].toInt() xor 1).toByte() }
-        s.onMessage(h.put("c", Base64.Default.encode(bytes)))
-        assertEquals(Stage.Failed(Reason.BAD_MESSAGE), s.stage)
-        assertTrue(stored.isEmpty())
+        claim(s, phone)
+        val wrong = if (phone.keys.checkCode == "000000") "000001" else "000000"
+        assertEquals(CodeResult.Wrong(2), s.enterCode(wrong))
+        assertEquals(CodeResult.Wrong(1), s.enterCode(wrong))
+        assertTrue(s.enterCode(wrong) is CodeResult.Dead)
+        assertEquals(Stage.Failed(Reason.CODE_WRONG), s.stage)
+        assertTrue(s.onMessage(phone.handover()).isEmpty())
+        assertTrue(staged.isEmpty())
     }
 
-    @Test fun timeoutsAndCancel() {
+    @Test fun aHandOverBeforeTheDigitsIsRefused() {
+        val (s, qr) = newSession()
+        val phone = FakePhone(qr)
+        claim(s, phone)
+        s.onMessage(phone.handover())
+        assertEquals(Stage.Failed(Reason.BAD_MESSAGE), s.stage)
+        assertTrue(staged.isEmpty())
+    }
+
+    @Test fun m1_unauthenticatedJunkNeverEndsTheSession() {
+        val (s, qr) = newSession()
+        assertEquals(PreAuth.Close, s.preAuth(JSONObject().put("t", "abort").put("why", "x")))
+        assertEquals(PreAuth.Close, s.preAuth(JSONObject().put("t", "nonsense")))
+        assertEquals(PreAuth.Close, s.preAuth(JSONObject().put("t", "hello").put("v", 1).put("pk", "!!!").put("mac", "!!!")))
+        repeat(10) { assertEquals(PreAuth.Close, s.preAuth(FakePhone(qr).hello(ByteArray(32) { 1 }))) }
+        assertEquals(Stage.WaitingForPhone, s.stage)
+        // The real phone still pairs afterwards.
+        claim(s, FakePhone(qr))
+    }
+
+    @Test fun l4_anUnreadableHandOverIsABadMessageNotABadVersion() {
+        val (s, qr) = newSession()
+        val phone = FakePhone(qr)
+        claim(s, phone)
+        s.enterCode(phone.keys.checkCode)
+        s.onMessage(phone.handover("not json"))
+        assertEquals(Stage.Failed(Reason.BAD_MESSAGE), s.stage)
+    }
+
+    @Test fun h4_theHandOverCarriesNoEngineAddress() {
+        assertTrue(Handover::class.java.declaredFields.none { it.name.contains("url", ignoreCase = true) })
+        val h = Handover.parse(JSONObject("""{"v":1,"engine":{"url":"http://evil.example","token":"t"},"engine_url":"http://evil.example"}"""))!!
+        assertNull(h.engineToken)
+        assertFalse(h.toString().contains("evil"))
+    }
+
+    @Test fun aSecondTryOfTheHelloAfterClaimingIsClosed() {
+        val (s, qr) = newSession()
+        claim(s, FakePhone(qr))
+        assertEquals(PreAuth.Close, s.preAuth(FakePhone(qr).hello()))
+    }
+
+    @Test fun theNumbersAreNeverInAStageOrAToString() {
+        val (s, qr) = newSession()
+        val phone = FakePhone(qr)
+        claim(s, phone)
+        val code = phone.keys.checkCode
+        listOf(s.toString(), s.stage.toString(), phone.keys.toString()).forEach { assertFalse(it, it.contains(code)) }
+        s.enterCode(code)
+        s.onMessage(phone.handover())
+        s.onMessage(phone.stored())
+        listOf(s.toString(), s.stage.toString(), staged.single().first.toString()).forEach { t ->
+            assertFalse(t, t.contains("test-token") || t.contains("AIza") || t.contains(code))
+        }
+    }
+
+    @Test fun timeoutsUseTheInjectedMonotonicClock() {
         val (s1, _) = newSession()
         clock += PairingSession.QR_LIFETIME_MS + 1
         assertEquals("abort", s1.tick()!!.getString("t"))
-        assertEquals(Stage.Failed(Reason.QR_EXPIRED), s1.stage)
+        assertEquals(Stage.Failed(Reason.TIMEOUT), s1.stage)
+
+        val (s2, qr2) = newSession()
+        claim(s2, FakePhone(qr2))
+        clock += PairingSession.STAGE_LIFETIME_MS + 1
+        assertTrue(s2.enterCode("123456") is CodeResult.Dead)
+        assertEquals(Stage.Failed(Reason.TIMEOUT), s2.stage)
+    }
+
+    @Test fun aStoreFailureEndsWithNothingKept() {
+        stageError = "keystore broken"
+        val (s, qr) = newSession()
+        val phone = FakePhone(qr)
+        claim(s, phone)
+        s.enterCode(phone.keys.checkCode)
+        assertEquals("abort", s.onMessage(phone.handover()).single().getString("t"))
+        assertEquals(Stage.Failed(Reason.STORE_FAILED), s.stage)
+        assertEquals(0, commits)
+    }
+
+    @Test fun aValidMacWithAWrongVersionOrBadKeyEndsTheSession() {
+        val (s, qr) = newSession()
+        assertTrue(s.preAuth(FakePhone(qr).hello(v = 2)) is PreAuth.Fail)
+        assertEquals(Stage.Failed(Reason.BAD_VERSION), s.stage)
 
         val (s2, qr2) = newSession()
         val phone = FakePhone(qr2)
-        phone.onAck(s2.onMessage(phone.hello()).single())
-        clock += PairingSession.CODE_LIFETIME_MS + 1
-        assertEquals(1, s2.confirm().size)
-        assertEquals(Stage.Failed(Reason.CODE_TIMEOUT), s2.stage)
-
-        val (s3, _) = newSession()
-        s3.cancel()
-        assertEquals(Stage.Failed(Reason.CANCELLED), s3.stage)
-    }
-
-    @Test fun aStoreFailureKeepsNothingAndSaysSo() {
-        storeError = "keystore broken"
-        val (s, qr) = newSession()
-        val phone = FakePhone(qr)
-        phone.onAck(s.onMessage(phone.hello()).single())
-        s.onMessage(phone.handover())
-        s.confirm()
-        assertEquals(Stage.Failed(Reason.STORE_FAILED), s.stage)
-    }
-
-    @Test fun aWrongVersionIsRefused() {
-        val (s, qr) = newSession()
-        s.onMessage(FakePhone(qr).hello().put("v", 2))
-        assertEquals(Stage.Failed(Reason.BAD_VERSION), s.stage)
-    }
-
-    @Test fun anInvalidPublicKeyIsRefused() {
-        val (s, qr) = newSession()
-        val phone = FakePhone(qr)
         val bogus = ByteArray(65).also { it[0] = 4; it[5] = 9 }
         val mac = PairingCrypto.helloMac(PairingCrypto.qrKey(phone.secret), phone.unitPk, bogus)
-        s.onMessage(
-            JSONObject().put("t", "hello").put("v", 1).put("pk", Base64.Default.encode(bogus)).put("mac", Base64.Default.encode(mac)),
+        assertTrue(
+            s2.preAuth(JSONObject().put("t", "hello").put("v", 1).put("pk", Base64.Default.encode(bogus)).put("mac", Base64.Default.encode(mac)))
+                is PreAuth.Fail,
         )
-        assertEquals(Stage.Failed(Reason.BAD_MESSAGE), s.stage)
-    }
-
-    @Test fun nothingSecretIsEverInAToString() {
-        val (s, qr) = newSession()
-        val phone = FakePhone(qr)
-        phone.onAck(s.onMessage(phone.hello()).single())
-        s.onMessage(phone.handover())
-        s.confirm()
-        val texts = listOf(s.toString(), s.stage.toString(), stored.single().first.toString(), phone.keys.toString())
-        texts.forEach { t ->
-            assertFalse(t, t.contains("test-token") || t.contains("AIza") || t.contains("engine.example"))
-        }
-        assertNull(Handover.parse(JSONObject().put("v", 2)))
-    }
-
-    @Test fun bothSidesDeriveTheSameCheckCode() {
-        val a = PairingCrypto.generateKeyPair()
-        val b = PairingCrypto.generateKeyPair()
-        val secret = ByteArray(16) { 5 }
-        val pa = PairingCrypto.encode(a.public as ECPublicKey)
-        val pb = PairingCrypto.encode(b.public as ECPublicKey)
-        val t = PairingCrypto.transcript(pa, pb)
-        val ka = PairingCrypto.derive(PairingCrypto.sharedSecret(a.private, PairingCrypto.decode(pb, a.public as ECPublicKey)!!), secret, t)
-        val kb = PairingCrypto.derive(PairingCrypto.sharedSecret(b.private, PairingCrypto.decode(pa, b.public as ECPublicKey)!!), secret, t)
-        assertEquals(ka.checkCode, kb.checkCode)
-        assertArrayEquals(ka.link, kb.link)
+        assertEquals(Stage.Failed(Reason.BAD_MESSAGE), s2.stage)
     }
 }
