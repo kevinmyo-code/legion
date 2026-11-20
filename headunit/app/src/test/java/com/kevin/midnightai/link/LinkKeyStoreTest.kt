@@ -106,6 +106,18 @@ class LinkKeyStoreTest {
         assertEquals("veh-9", engine.vehicleId)
     }
 
+    /** 2026-11-20: Forget (and the reset for a forgotten PIN) wipes the pairing, the token and the PIN together. */
+    @Test fun forgetWipesTheOwnerPinWithThePairing() {
+        pair(keyA)
+        assertTrue(store().holdsLinkEngineToken())
+        val pin = OwnerPin(context, encrypt = { "e:$it" }, decrypt = { it.removePrefix("e:") }, iterations = 1_000)
+        assertTrue(pin.set("4821"))
+        store().forget()
+        assertFalse(pin.isSet())
+        assertFalse(store().holdsLinkEngineToken())
+        assertNull(engine.rawToken())
+    }
+
     @Test fun nothingIsStoredInTheClear() {
         pair(keyA)
         val raw = context.getSharedPreferences("car_link", Context.MODE_PRIVATE).all.values.joinToString()

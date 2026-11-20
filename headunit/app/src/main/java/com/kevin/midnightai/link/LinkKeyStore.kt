@@ -63,6 +63,8 @@ class LinkKeyStore(
     private val decrypt: (String) -> String? = KeyVault::decrypt,
 ) : LinkKeySource {
     private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val ownerPinPrefs: SharedPreferences =
+        context.applicationContext.getSharedPreferences(OwnerPin.PREFS, Context.MODE_PRIVATE)
 
     /** What the last [stage] could not take, in words (shown on the pairing screen). */
     @Volatile var lastNote: String? = null
@@ -184,7 +186,18 @@ class LinkKeyStore(
         prefs.edit().remove(KEY_PENDING).commit()
     }
 
+    /** True while the engine sign-in in use is the one the car link handed over. Off-main. */
+    fun holdsLinkEngineToken(): Boolean {
+        val fromLink = prefs.getString(KEY_FROM_LINK, null)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return false
+        return fromLink.optString("engine").let { it.isNotBlank() && it == engine.rawToken() }
+    }
+
+    /**
+     * Forget, and the full reset for a forgotten owner PIN: the pairing, every value the link
+     * handed over and the owner PIN go together (2026-11-20), so nothing secret survives it.
+     */
     override fun forget() {
+        ownerPinPrefs.edit().clear().commit()
         val fromLink = prefs.getString(KEY_FROM_LINK, null)?.let { runCatching { JSONObject(it) }.getOrNull() }
         if (fromLink != null) {
             fromLink.optString("engine").takeIf { it.isNotBlank() && it == engine.rawToken() }?.let { engine.clear() }
