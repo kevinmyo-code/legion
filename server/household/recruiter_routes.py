@@ -141,6 +141,11 @@ RECRUITER_DENIED: dict[str, str] = {
     "household.views.PasswordChangeView": "a visitor has no password to change",
     "household.views.DeviceListView": "device tokens are household settings",
     "household.views.DeviceDetailView": "device tokens are household settings",
+    # T3b: a head unit's sign-in is a credential of a real member's car.
+    "headunit_signin.views.HeadUnitListView": "a demo visit has no head unit to sign in",
+    "headunit_signin.views.HeadUnitDetailView": "a demo visit has no head unit to sign in",
+    "headunit_signin.views.HeadUnitRevokeAllView": "a demo visit has no head unit to sign in",
+    "headunit_signin.views.HeadUnitRefreshView": "a demo visit has no head unit to sign in",
     "household.households.InviteListCreateView": _SETTINGS,
     "household.households.InviteDetailView": _SETTINGS,
     "household.households.MemberDetailView": _SETTINGS,

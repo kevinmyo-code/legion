@@ -55,6 +55,7 @@ from agents.voice.hedge import HedgedSpeech
 from agents.voice.speech import INPUT_RATE, MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS, GeminiSpeech
 from api.schema import DetailSerializer
 from assistant import voice_engine
+from headunit_signin.authentication import HeadUnitTokenAuthentication
 from household.authentication import DeviceTokenAuthentication
 from household.models import DeviceToken
 from household.permissions import IsHouseholdMember
@@ -257,6 +258,13 @@ def _sse(body) -> StreamingHttpResponse:
 
 
 class AgentTurnView(_SwitchedAgentsView):
+    # T3b: the head unit's own token too (`headunit_signin.scope`); its turn reaches only the
+    # unit's tools (`agents.legion.gateway`) and its own conversations (`agents.legion.turn`).
+    authentication_classes = [
+        HeadUnitTokenAuthentication,
+        DeviceTokenAuthentication,
+        SessionAuthentication,
+    ]
     throttle_classes = [AgentTurnThrottle]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
@@ -329,6 +337,8 @@ class AgentTurnView(_SwitchedAgentsView):
 
 
 class AgentCancelView(_SwitchedAgentsView):
+    authentication_classes = AgentTurnView.authentication_classes
+
     @extend_schema(
         tags=AGENTS_TAGS,
         operation_id="api_agents_turn_cancel",

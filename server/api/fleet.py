@@ -145,6 +145,7 @@ from django.urls import path
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import serializers, status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -160,6 +161,8 @@ from api.synced import (
     range_error,
 )
 from api.vehicle_plate import PLATE_MAX_CHARS
+from headunit_signin.authentication import HeadUnitTokenAuthentication
+from household.authentication import DeviceTokenAuthentication
 from household.tenancy import household_of, scoped
 from legacy.enums import Provenance
 from legacy.models.fleet import (
@@ -1824,6 +1827,14 @@ class ObdSampleBatchView(APIView):
     the immutability trigger exists for gated aspects where a row asserts a
     VERIFIED fact, and this row asserts an observation.
     """
+
+    # T3b: the head unit's own token may append its telemetry here (`headunit_signin.scope`),
+    # beside the project defaults.
+    authentication_classes = [
+        HeadUnitTokenAuthentication,
+        DeviceTokenAuthentication,
+        SessionAuthentication,
+    ]
 
     @extend_schema(
         operation_id="api_fleet_obd_samples_batch_create",

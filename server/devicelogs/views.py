@@ -32,6 +32,7 @@ from django.db.models import F
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import serializers, status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -48,6 +49,8 @@ from devicelogs.models import (
     max_raw_bytes,
     retention_days,
 )
+from headunit_signin.authentication import HeadUnitTokenAuthentication
+from household.authentication import DeviceTokenAuthentication
 from household.tenancy import household_of, scoped
 
 TAGS = ["device-logs"]
@@ -115,6 +118,13 @@ class DeviceLogUploadView(APIView):
     """`POST` uploads a batch; `GET` lists the household's recent batches (alfred-builds ticket 02,
     `devicelogs/records.py`), so the Claude worker can find a conversation to read."""
 
+    # T3b: a head unit's own token may POST its log here; its GET (the household's list) is
+    # refused by the route list (`headunit_signin.scope`). The rest are the project defaults.
+    authentication_classes = [
+        HeadUnitTokenAuthentication,
+        DeviceTokenAuthentication,
+        SessionAuthentication,
+    ]
     parser_classes = [MultiPartParser, FormParser]
 
     @extend_schema(

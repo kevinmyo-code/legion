@@ -38,6 +38,7 @@ from agents.runtime.loop import LoopHooks
 from agents.runtime.model import ModelClient, Usage
 from agents.specs.locked import LOCKED
 from assistant.prompt import member_fact, time_fact
+from headunit_signin import scope as headunit_scope
 from household.models import is_recruiter
 from household.tenancy import household_of
 from household.timezones import utc_offset_minutes, zone_named
@@ -116,10 +117,16 @@ def open_conversation(request, conversation_id=None, client: str = "phone") -> A
     """The member's own conversation `conversation_id`, or a new one. Another member's id (or
     another household's) is never found: it starts a new conversation instead."""
     household = household_of(request)
+    unit = headunit_scope.is_headunit(request)
+    if unit:
+        # T3b: a head unit's token keeps to the unit's own conversations: never the member's
+        # phone or web history, whatever id it sends.
+        client = headunit_scope.TURN_CLIENT
     if conversation_id:
-        found = AgentConversation.objects.filter(
+        mine = AgentConversation.objects.filter(
             pk=conversation_id, household=household, owner_user=request.user
-        ).first()
+        )
+        found = (mine.filter(client=client) if unit else mine).first()
         if found is not None:
             return found
     return AgentConversation.objects.create(
@@ -228,8 +235,9 @@ def run_turn(
 def cancel(request, turn_id) -> bool:
     """Marks the member's own running turn cancelled; checked between rounds and before every
     call (plan section 4.2). False when there is no such turn of theirs."""
-    return bool(
-        AgentTurn.objects.filter(
-            pk=turn_id, household=household_of(request), owner_user=request.user
-        ).update(cancel_requested=True)
+    turns = AgentTurn.objects.filter(
+        pk=turn_id, household=household_of(request), owner_user=request.user
     )
+    if headunit_scope.is_headunit(request):
+        turns = turns.filter(conversation__client=headunit_scope.TURN_CLIENT)
+    return bool(turns.update(cancel_requested=True))

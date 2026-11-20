@@ -26,6 +26,7 @@ from assistant import live, read_through
 from assistant.surface import tools_for, web_description
 from engine_mcp.models import Outcome
 from engine_mcp.tools import ToolResult, run_engine_tool
+from headunit_signin import scope as headunit_scope
 
 SLOW_TOOLS = frozenset(
     {
@@ -95,6 +96,10 @@ class LegionGateway:
         if self._tools is None:
             by_name = {t.name: t for t in tools_for(self.user)}
             by_name.update(TWINS)
+            if headunit_scope.is_headunit(self.request):
+                # T3b: a turn made with a head unit's token is offered, and may call, only the
+                # unit's own tools; any other name is then "not one of this agent's tools".
+                by_name = {n: t for n, t in by_name.items() if n in headunit_scope.TOOLS}
             self._tools = by_name
         return self._tools
 

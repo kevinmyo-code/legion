@@ -88,6 +88,26 @@ class DeviceTokenScheme(OpenApiAuthenticationExtension):
         }
 
 
+class HeadUnitTokenScheme(OpenApiAuthenticationExtension):
+    """`Authorization: Token hu1_<key>`: a head unit's own token (T3b), minted by the member's
+    phone while it pairs. Registered by import, like `DeviceTokenScheme` above."""
+
+    target_class = "headunit_signin.authentication.HeadUnitTokenAuthentication"
+    name = "headUnitToken"
+
+    def get_security_definition(self, auto_schema) -> dict:
+        return {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": (
+                "A head unit's own token, sent as `Token hu1_<key>`. It reaches only the head "
+                "unit's voice turn, its own log and OBD uploads and its own refresh; every other "
+                "route refuses it. Minted by POST /api/auth/head-units from the member's phone."
+            ),
+        }
+
+
 class DetailSerializer(serializers.Serializer):
     """`{"detail": "..."}` - the shape every hand-written refusal in this API
     uses, and the shape DRF itself uses for 401/403/404/405. The strings are
