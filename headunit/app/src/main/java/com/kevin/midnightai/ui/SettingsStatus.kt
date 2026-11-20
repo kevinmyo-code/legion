@@ -123,9 +123,12 @@ internal fun engineCategoryStatus(
     signedIn: Boolean,
     verifiedEmail: String?,
     refusal: Boolean,
+    carLink: Boolean = false,
 ): CategoryStatus = when {
     !configured -> CategoryStatus("No engine address")
     !signedIn -> CategoryStatus("Not signed in", SettingsDot.WARN)
+    carLink && refusal -> CategoryStatus("Car's sign-in refused: pair again", SettingsDot.ERROR)
+    carLink -> CategoryStatus("Car's own sign-in (uploads only)")
     refusal -> CategoryStatus("Sign-in no longer valid", SettingsDot.ERROR)
     verifiedEmail != null -> CategoryStatus("Signed in as $verifiedEmail", SettingsDot.OK)
     else -> CategoryStatus("Signed in")

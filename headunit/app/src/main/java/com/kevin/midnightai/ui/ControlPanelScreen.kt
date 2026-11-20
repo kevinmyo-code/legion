@@ -1,4 +1,4 @@
-﻿package com.kevin.midnightai.ui
+package com.kevin.midnightai.ui
 
 import android.Manifest
 import android.content.Context
@@ -490,7 +490,8 @@ private fun buildSettingsStatuses(
                 configured = engineConfigured,
                 signedIn = engineSignedIn == true,
                 verifiedEmail = (engineMe as? MeResult.Ok)?.email,
-                refusal = engineMe is MeResult.Refused,
+                refusal = engineMe is MeResult.Refused || (engineMe as? MeResult.CarLink)?.refused == true,
+                carLink = engineMe is MeResult.CarLink,
             )
         },
         SettingsCategory.COMPANION to CategoryStatus(

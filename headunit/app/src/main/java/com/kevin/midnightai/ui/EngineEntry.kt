@@ -157,10 +157,15 @@ fun EngineEntry(modifier: Modifier = Modifier) {
         working = true
         testResult = null
         scope.launch {
+            val wasCarLink = config.isCarLinkSignIn()
             auth.logout()
             signedIn = config.isSignedIn()
             me = null
-            status = "Signed out of this device."
+            status = if (wasCarLink) {
+                "Removed the car's sign-in from this unit. Revoke it on your phone too."
+            } else {
+                "Signed out of this device."
+            }
             statusIsError = false
             working = false
         }
@@ -212,10 +217,12 @@ fun EngineEntry(modifier: Modifier = Modifier) {
                 is MeResult.Ok -> "Signed in as ${state.email} on this device."
                 is MeResult.Refused -> state.message
                 is MeResult.Unreachable -> state.message
+                is MeResult.CarLink -> state.message
             },
             style = MaterialTheme.typography.bodySmall,
             color = when (me) {
                 is MeResult.Ok, null -> AriaColors.TextDim
+                is MeResult.CarLink -> if ((me as MeResult.CarLink).refused) AriaColors.ScanRed else AriaColors.TextDim
                 else -> AriaColors.ScanRed
             },
         )

@@ -21,6 +21,11 @@ object CarLinkScope {
         "The engine no longer accepts the car's own sign-in. Pair your phone again to renew it. Nothing more " +
             "is sent until then."
 
+    const val SETTINGS_LINE =
+        "Signed in with the car's own sign-in, sent by your phone over the car link. It covers the car's own " +
+            "drive-log and OBD uploads. Engine questions, updates, and code-event and drive uploads need a member " +
+            "sign-in here."
+
     const val ENGINE_QUESTIONS =
         "Engine questions need a member sign-in on this unit: the car's own sign-in reaches only the car's own " +
             "uploads. Nothing was read or written."
