@@ -116,10 +116,15 @@ _PENDING = re.compile(
     r"|^\W*(?:any|are there any)\s+(?:answers|results)\s+(?:yet|back|ready)\W*$",
     re.IGNORECASE,
 )
+# Names the background work: ours whenever a task is open.
 _CANCEL = re.compile(
-    r"^\W*cancel\s+(?:that|it|the (?:research|background task|task))\W*$",
+    r"^\W*(?:cancel|stop)\s+(?:the (?:research|background task|background work)"
+    r"|what you(?:'re| are) looking into|looking into (?:that|it))\W*$",
     re.IGNORECASE,
 )
+# "Cancel it" / "cancel that": ours ONLY when the last thing said was our own acknowledgement;
+# after a timer, a waiting change or the model's "shall I?", it is the model's (review item B).
+_CANCEL_BARE = re.compile(r"^\W*cancel\s+(?:that|it)\W*$", re.IGNORECASE)
 
 
 def enabled() -> bool:
@@ -168,9 +173,10 @@ def _mine(model, request):
     return model.objects.filter(household=household_of(request), owner_user=request.user)
 
 
-def intercept(request, words: str, client: str) -> str | None:
+def intercept(request, words: str, client: str, last_reply: str = "") -> str | None:
     """Code's whole answer to his utterance when it is a late-answer phrase, else None. Called by
-    a door before any model call; a None leaves the turn exactly as it was."""
+    a door before any model call; a None leaves the turn exactly as it was. `last_reply` is the
+    last thing the assistant said in this conversation."""
     if not _eligible(request):
         return None
     question = ask_of(words)
@@ -181,7 +187,9 @@ def intercept(request, words: str, client: str) -> str | None:
         return None
     if _PENDING.match(words or ""):
         return _pending(request, client)
-    if _CANCEL.match(words or ""):
+    if _CANCEL.match(words or "") or (
+        _CANCEL_BARE.match(words or "") and (last_reply or "").strip() == ACK
+    ):
         return _cancel(request)
     return None
 

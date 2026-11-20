@@ -1187,7 +1187,15 @@ def _answer(
     # LEGION_LATE_ANSWERS=on, and never for a recruiter. Code answers "look into X and tell me
     # later", "anything pending?" and "cancel that" with no model round; otherwise the one line
     # owed from earlier is said first, kept out of this turn's model context.
-    late_words = late.intercept(request, words, "web")
+    late_words = late.intercept(
+        request,
+        words,
+        "web",
+        last_reply=next(
+            (c["parts"][0].get("text", "") for c in reversed(history) if c.get("role") == "model"),
+            "",
+        ),
+    )
     if late_words is not None:
         record_user()
         report.said.append(late_words)

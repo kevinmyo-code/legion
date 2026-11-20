@@ -199,7 +199,9 @@ def run_turn(
         # Code's own answer to "look into X and tell me later", "anything pending?" or "cancel
         # that", with no model round; else the one line owed from earlier, said first and kept
         # out of this turn's model context.
-        handled = late.intercept(request, transcript, conversation.client)
+        handled = late.intercept(
+            request, transcript, conversation.client, last_reply=_last_model_text(history)
+        )
         if handled is not None:
             yield from _code_answer(state, store, handled, started)
             return state
@@ -250,6 +252,14 @@ def run_turn(
         first_sentence_ms=first_sentence_ms,
     )
     return state
+
+
+def _last_model_text(history: list[dict]) -> str:
+    """The text of the last model turn in the conversation's history ("" when none)."""
+    for item in reversed(history):
+        if item.get("role") == "model":
+            return " ".join(p.get("text", "") for p in item.get("parts") or []).strip()
+    return ""
 
 
 def _code_answer(state: TurnState, store: TurnStore, words: str, started: float):
