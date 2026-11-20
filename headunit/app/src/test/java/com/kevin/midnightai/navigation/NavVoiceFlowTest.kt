@@ -33,6 +33,7 @@ class NavVoiceFlowTest {
         override fun startSession() { running = true }
         override fun stopAndClear() { running = false }
         override fun isSessionRunning() = running
+        override fun destroy() = Unit
     }
 
     private val sdk = SlowSdk()

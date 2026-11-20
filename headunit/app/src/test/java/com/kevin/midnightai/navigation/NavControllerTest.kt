@@ -20,6 +20,8 @@ class NavControllerTest {
         var running = false
         var stopKeepsRunning = false
         var requests = 0
+        var destroyed = false
+        override fun destroy() { destroyed = true }
         override fun requestRoute(origin: GeoPoint, destination: GeoPoint, onResult: (RouteResult) -> Unit) {
             requests++
             onResult(route)
@@ -45,8 +47,9 @@ class NavControllerTest {
     private val sdk = FakeSdk()
     private var factoryThrows: Throwable? = null
 
+    private var built = 0
     private fun controller() = NavController(
-        sdkFactory = { factoryThrows?.let { throw it }; sdk },
+        sdkFactory = { factoryThrows?.let { throw it }; built++; sdk },
         hasToken = { token },
         availability = { unavailable },
         position = { pos },
@@ -121,6 +124,22 @@ class NavControllerTest {
             assertFalse(words, words.contains("api.mapbox.com") || words.contains("access_token") || words.contains("29.76"))
         }
         assertEquals(NavController.failureWords(RouteFailure.TOKEN_REFUSED, "home"), c.state.value.message)
+    }
+
+    /** Review item 6: after Forget the SDK built with the old token is torn down and a trip ends in words. */
+    @Test fun forgettingTheTokenTearsDownTheSdkAndEndsTheTrip() {
+        val c = controller()
+        c.navigateTo(home)
+        c.go()
+        token = false
+        c.dropSdk()
+        assertTrue("the SDK with the old token is still alive", sdk.destroyed)
+        assertFalse(sdk.running)
+        assertEquals(1, ended)
+        assertEquals(NavPhase.NO_TOKEN, c.state.value.phase)
+        token = true
+        c.navigateTo(home)
+        assertEquals("a new SDK is built for a new token", 2, built)
     }
 
     @Test fun noPositionAsksForNoRoute() {

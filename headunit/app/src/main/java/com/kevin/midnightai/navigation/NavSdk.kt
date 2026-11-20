@@ -37,4 +37,7 @@ interface NavSdk {
     fun stopAndClear()
 
     fun isSessionRunning(): Boolean
+
+    /** Tears the SDK instance down; the seam is dead afterwards (the token is baked into it). */
+    fun destroy()
 }

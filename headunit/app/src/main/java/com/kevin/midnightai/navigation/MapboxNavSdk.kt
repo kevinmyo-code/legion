@@ -187,6 +187,17 @@ class MapboxNavSdk(appContext: Context, provider: BeaconLocationProvider, privat
 
     override fun isSessionRunning(): Boolean = nav.getTripSessionState() == TripSessionState.STARTED
 
+    override fun destroy() {
+        nav.unregisterRouteProgressObserver(progressObserver)
+        nav.unregisterLocationObserver(locationObserver)
+        nav.unregisterRoutesObserver(routesObserver)
+        nav.unregisterArrivalObserver(arrivalObserver)
+        nav.getRerouteController()?.unregisterRerouteStateObserver(rerouteObserver)
+        listener = null
+        feed.clear()
+        MapboxNavigationProvider.destroy()
+    }
+
     private fun toProgress(progress: RouteProgress): NavProgress {
         val banner = progress.bannerInstructions?.primary()
         val toTurn = progress.currentLegProgress?.currentStepProgress?.distanceRemaining?.toDouble()

@@ -174,6 +174,23 @@ class NavController(
         onResult(NavResult(true, "Trip ended."))
     }
 
+    /**
+     * The map token is gone (Forget) or changed (review item 6): the SDK instance was built with it,
+     * so a trip ends in words and the instance is torn down; the next use builds a new one.
+     */
+    fun dropSdk() {
+        val wasGuiding = _state.value.phase == NavPhase.GUIDING
+        tripEpoch++
+        pendingToken = null
+        sdk?.let { s ->
+            runCatching { s.stopAndClear() }
+            runCatching { s.destroy() }
+        }
+        sdk = null
+        _state.value = baseState()
+        if (wasGuiding) onTripEnded()
+    }
+
     fun recenter() {
         _state.value = _state.value.copy(following = true)
     }
