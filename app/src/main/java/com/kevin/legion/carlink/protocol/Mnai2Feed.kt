@@ -83,13 +83,14 @@ class Mnai2Feed(
     private var lastFixElapsed = Long.MIN_VALUE
     // ZONEs still owed to this unit session: sent on its first 3 accepted HELLOs (R4, 4.3 rev 6).
     private var zonesLeft = 0
+    private var accepted = 0L
 
     /** True while accepted HELLOs keep arriving under the current key. */
     @Synchronized fun inRange(nowMs: Long): Boolean =
         challenge != null && nowMs - lastHelloAt <= MISSED_INTERVALS * helloEvery()
 
-    /** STUB (red step). */
-    @Synchronized fun acceptedHellos(): Long = 0
+    /** HELLOs accepted (authenticated, new, from the destination) since this feed started. */
+    @Synchronized fun acceptedHellos(): Long = accepted
 
     /** Requested fix interval of the newest accepted HELLO, 0 when none. */
     @Synchronized fun requestedIntervalMs(): Long = intervalMs
@@ -132,6 +133,7 @@ class Mnai2Feed(
             return emptyList()
         }
         if (!adopt(from, fromPort)) return emptyList()
+        accepted++
         challenge = hello.challenge
         challengeAt = nowMs
         intervalMs = hello.intervalMs

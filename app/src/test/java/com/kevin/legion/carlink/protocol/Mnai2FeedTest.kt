@@ -243,7 +243,7 @@ class Mnai2FeedTest {
         const val UNIT_PORT = 40_000
     }
 
-    @Ignore("red until fix R1") @Test fun `the feed counts accepted HELLOs`() {
+    @Test fun `the feed counts accepted HELLOs`() {
         val f = feed(MemoryKeys(current = oldKey).ring())
         val unit = FakeUnit(oldKey)
         repeat(3) { val h = unit.hello(); f.onDatagram(h, h.size, unitAddr, UNIT_PORT, it * 1_000L) }

@@ -131,7 +131,7 @@ class CarLinkViewModelTest {
         conn.inbox.send(Received.Closed)
         vm.forget()
         assertEquals(CarLinkPhase.NOT_PAIRED, state().phase)
-        assertTrue(state().note!!.startsWith("Forgotten on this phone."))
+        assertTrue(state().note!!.startsWith("The car has not heard yet"))
         assertEquals(com.kevin.legion.carlink.StoredLink.NotPaired, store.load())
     }
 

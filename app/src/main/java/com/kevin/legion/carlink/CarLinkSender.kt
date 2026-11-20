@@ -70,8 +70,10 @@ class CarLinkSender(
 
     fun inRange(): Boolean = feed.inRange(clock())
 
-    /** STUB (red step). */
-    fun acceptedHellos(): Long = 0
+    fun acceptedHellos(): Long = feed.acceptedHellos()
+
+    /** The sender's monotonic clock, milliseconds. */
+    fun nowMs(): Long = clock()
 
     @Suppress("TooGenericExceptionCaught") // the point: nothing a peer sends may crash the app
     private inline fun contained(now: Long, block: () -> Unit) {

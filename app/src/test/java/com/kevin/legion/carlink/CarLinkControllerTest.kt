@@ -87,7 +87,7 @@ class CarLinkControllerTest {
         sleep = {},
         network = { look },
         wallClock = { wallNow },
-        revokeSilenceMs = 300L,
+        revokeSilenceMs = 1_500L,
     )
 
     private fun waitFor(what: String, cond: () -> Boolean) {
@@ -104,12 +104,13 @@ class CarLinkControllerTest {
         c.start()
         port.inbox.put(FakeUnit(key).hello(intervalMs = 5000))
         waitFor("the unit in range") { c.status.value.unitInRange }
+        val first = port
         c.forget()
-        val revoke = port.sent.mapNotNull { Mnai2.openFromPhone(DirectionKeys(key).p2u, it) }.single()
+        val revoke = first.sent.mapNotNull { Mnai2.openFromPhone(DirectionKeys(key).p2u, it) }.single()
         assertEquals(Mnai2.REVOKE, revoke.type)
         assertEquals(StoredLink.NotPaired, store.load())
-        assertEquals(CarLinkNote.FORGOT_REVOKE_SENT, c.status.value.note)
-        waitFor("the port closed") { port.closed }
+        assertEquals(CarLinkNote.FORGET_TELLING, c.status.value.note)
+        waitFor("the port closed") { first.closed }
         Thread.sleep(100)
         assertTrue("loop errors: $errors", errors.isEmpty())
     }
@@ -214,7 +215,7 @@ class CarLinkControllerTest {
             assertTrue(store.revokeOnlyPending())
             assertEquals(LinkState.NOT_PAIRED, c.status.value.link)
             waitFor("a listener for the revoke-only record") { senders > 1 }
-            port.inbox.put(FakeUnit(key).hello(intervalMs = 5000))
+            port.inbox.put(FakeUnit(key).hello(intervalMs = 1000))
             val p2u = DirectionKeys(key).p2u
             waitFor("REVOKE sent") { port.sent.any { Mnai2.openFromPhone(p2u, it)?.type == Mnai2.REVOKE } }
             val types = port.sent.mapNotNull { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type }
@@ -248,14 +249,14 @@ class CarLinkControllerTest {
         const val DAY = 86_400_000L
     }
 
-    private fun revokes(p: BlockingPort) = p.sent.count { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type == Mnai2.REVOKE }
+    private fun revokes(p: BlockingPort) = synchronized(p.sent) { p.sent.toList() }.count { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type == Mnai2.REVOKE }
 
-    @Ignore("red until fix R1") @Test fun `in-range Forget keeps telling the car on every HELLO until 30 s of silence, then says Forgotten`() =
+    @Test fun `in-range Forget keeps telling the car on every HELLO until 30 s of silence, then says Forgotten`() =
         runBlocking {
             assertTrue(store.write(key, null))
             val c = controller()
             c.start()
-            port.inbox.put(FakeUnit(key).hello(intervalMs = 5000))
+            port.inbox.put(FakeUnit(key).hello(intervalMs = 1000))
             waitFor("the unit in range") { c.status.value.unitInRange }
             val first = port
             c.forget()
@@ -264,9 +265,9 @@ class CarLinkControllerTest {
             assertTrue("kept until the car goes quiet", store.revokeOnlyPending())
             waitFor("the revoke listener") { senders > 1 }
             val unit = FakeUnit(key, session = ByteArray(16) { 0x33 })
-            port.inbox.put(unit.hello(intervalMs = 5000))
+            port.inbox.put(unit.hello(intervalMs = 1000))
             waitFor("a REVOKE on that HELLO") { revokes(port) == 1 }
-            port.inbox.put(unit.hello(intervalMs = 5000))
+            port.inbox.put(unit.hello(intervalMs = 1000))
             waitFor("a REVOKE again on the next HELLO") { revokes(port) == 2 }
             assertTrue(store.revokeOnlyPending())
             waitFor("wiped after the silence") { !store.revokeOnlyPending() }

@@ -242,7 +242,7 @@ object CarLinkWords {
         CarLinkNote.CONFIRMED -> "The head unit confirmed the new pairing."
         CarLinkNote.REVERTED_QUIET ->
             "The head unit did not keep the new pairing, so this phone went back to the earlier one."
-        CarLinkNote.FORGOT_REVOKE_SENT -> "Forgotten. The head unit was told to forget this phone too."
+        CarLinkNote.FORGOT_REVOKE_SENT -> "Forgotten."
         CarLinkNote.FORGOT_NOT_IN_RANGE ->
             "Forgotten on this phone. The head unit was not in range, so it still lists this pairing " +
                 "until you forget it there."
@@ -255,10 +255,10 @@ object CarLinkWords {
         CarLinkNote.PORT_TAKEN ->
             "Another app is using the car link's port (17311), so this phone cannot hear the car. It does " +
                 "not move to another port. Close that app or restart the phone."
-        CarLinkNote.FORGET_TELLING, CarLinkNote.NETWORK_CHANGED_HEALING,
+        CarLinkNote.FORGET_TELLING -> "Telling the car to forget this phone..."
+        CarLinkNote.NETWORK_CHANGED_HEALING,
         CarLinkNote.NETWORK_CHANGED_REPAIR -> "STUB"
         CarLinkNote.FORGOT_WILL_TELL ->
-            "Forgotten on this phone. The head unit was not in range, so it will be told to forget this " +
-                "phone the next time this phone is in the car (for up to 90 days)."
+            "The car has not heard yet; it will be told next time it is in range (for up to 90 days)."
     }
 }
