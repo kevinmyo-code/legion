@@ -82,6 +82,19 @@ class LiveToolboxBudgetVoiceTest {
         assertTrue(VerbatimSpeech.of(r)!!.contains(SpokenMoney.amount(41_207)))
     }
 
+    // Kevin, 2026-11-19: "whats left means how much net cash i have left." A bare "what's left" is
+    // get_balance's net cash; the budget view is only for a budget he names.
+    @Test
+    fun `a bare what's left is net cash, the budget view only when he names a budget`() {
+        val decls = LiveToolbox.sourceDeclarationsForTest()
+        val byName = (0 until decls.length()).map { decls.getJSONObject(it) }.associateBy { it.getString("name") }
+        val spend = byName.getValue("get_monthly_spend").getString("description")
+        val balance = byName.getValue("get_balance").getString("description")
+        assertTrue(spend, spend.contains("view=left only when he names a budget"))
+        assertTrue(spend, spend.contains("a bare \"what's left\" is net cash: get_balance"))
+        assertTrue(balance, balance.contains("\"what's left\""))
+    }
+
     @Test
     fun `a category named with no view is the category view, never the month total`() {
         val r = call("category" to "Dining")

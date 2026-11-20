@@ -823,7 +823,8 @@ object LiveToolbox {
     private fun moneyDispatchGrounding(context: Context) = AssistantIdentity.shortClause(context) +
         " You are reading the user's money using the tools you're given: balances, budget left, " +
         "a month's spend in total or by category, recent transactions and pending ones. Budget " +
-        "left, one category or the top categories is get_monthly_spend with its view. Every amount carries its own " +
+        "left (only when he names a budget), one category or the top categories is get_monthly_spend " +
+        "with its view; a bare \"what's left\" is net cash, get_balance. Every amount carries its own " +
         "currency; keep it, never convert. Keep every exclusion and unverified note a tool " +
         "returns. Pull only what would change your answer, then answer in plain spoken text, no " +
         "markdown. " + com.kevin.legion.util.LocalClock.turnLine() +
