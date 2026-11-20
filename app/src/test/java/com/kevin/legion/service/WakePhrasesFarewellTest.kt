@@ -16,9 +16,12 @@ class WakePhrasesFarewellTest {
         assertTrue(FAREWELLS.size >= 30)
         for (u in FAREWELLS) {
             assertTrue(u, WakePhrases.isSleepPhrase(u, NAME))
-            // Alone, these can answer a question ("Morning or night?"): after one they go to the model.
+            // Alone, these can answer a question ("Morning or night?"), and a farewell with an answer
+            // word in it is an answer (F1): after a question both go down the answer path.
             val alone = u.lowercase().trim('.', '!', ' ') in setOf("night", "nite", "later")
-            assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true) != alone)
+            val words = u.lowercase().split(Regex("[^a-z0-9]+")).toSet()
+            val answer = words.any { it in ANSWER_LEADS }
+            assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true) == !(alone || answer))
         }
     }
 
@@ -28,8 +31,26 @@ class WakePhrasesFarewellTest {
         for (u in REQUESTS) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME))
     }
 
+    // Review of 546cce67 (F1, blocking): after a question, "yes, bye" closed and dropped his yes. While
+    // an answer is awaited, any answer-type word sends the turn down the answer path; a bare farewell
+    // still closes (and does not do the write).
+    @Test
+    fun `after a question an answer with a farewell is an answer, a bare farewell still closes`() {
+        val closes = listOf("bye", "Goodbye.", "bye bye", "good night", "Thanks, bye.", "Goodbye, Jeeves.")
+        val answers = listOf(
+            "yes bye", "Yes, bye.", "ok thanks bye", "no, good night", "yeah go ahead, bye", "sure, see you",
+            "yep, bye now", "okay bye", "alright, goodbye", "at 7, bye", "tomorrow morning, good night",
+            "later", "night", "got it, bye", "sounds good, see you later", "nope, bye",
+        )
+        for (u in closes) assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
+        for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
+    }
+
     companion object {
         const val NAME = "Jeeves"
+
+        /** The answer words among the table's lead-ins (for the after-question expectation). */
+        private val ANSWER_LEADS = setOf("ok", "okay", "alright", "all", "um", "great", "yeah", "yes", "sure")
 
         val FAREWELLS = listOf(
             "bye", "Bye.", "bye bye", "Bye-bye!", "byebye", "Bye bye bye.", "buh-bye", "bye now", "Goodbye.",
