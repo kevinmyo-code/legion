@@ -600,7 +600,8 @@ object ScriptedLines {
 
     /** The opening acks, fillers, missed line and check-in closers ([ClosingLines]). */
     val KEEP: Set<String> =
-        (AckLines.DEFAULT + FILLERS + MISSED + VOICE_LOST + ToolFillers.ALL + ClosingLines.LINES).toSet()
+        (AckLines.DEFAULT + FILLERS + MISSED + VOICE_LOST + ToolFillers.ALL + Backchannel.LINES + ClosingLines.LINES)
+            .toSet()
 
     /**
      * The lookups a filler is said for, by the name the model calls (2026-11-16: the router rename

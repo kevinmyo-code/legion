@@ -97,6 +97,54 @@ class VoiceSpeedWiringTest {
         assertTrue(greet.indexOf("greeting?.noteOpened(") < greet.indexOf("reply.await()"))
     }
 
+    // --- 3: backchannels and task lines -------------------------------------------------------------
+
+    @Test
+    fun `a backchannel is scheduled at the end of his speech and decided by the pure rule`() {
+        val s = session()
+        val end = bodyOf(s, "onTurnEnd")
+        assertTrue(end.indexOf("scheduleBackchannel(eotAtMs)") in 0 until end.indexOf("runTurn("))
+        val schedule = bodyOf(s, "scheduleBackchannel")
+        assertTrue(schedule.contains("Backchannel.decide("))
+        assertTrue(schedule.contains("askedBefore = lastTurnAsked"))
+        assertTrue(schedule.contains("quiet = QuietMode.isOn(ctx)"))
+        assertTrue(schedule.contains("Backchannel.DELAY_MS"))
+        // New speech cancels a pending one, and notes whether it started over a reply or a turn.
+        val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
+        assertTrue(start.contains("backchannelJob?.cancel()"))
+        assertTrue(start.contains("uttOverReply = speaking || turnJob?.isActive == true"))
+    }
+
+    @Test
+    fun `a backchannel is never a reply and never overlaps the answer`() {
+        val s = session()
+        val play = bodyOf(s, "playBackchannel")
+        for (reply in listOf("speaking = true", "onReplyAudible(", "lastClipText", "history.add", "followUpEvent(", "setCaption(", "audit.assistant(")) {
+            assertFalse("a backchannel must not touch $reply", play.contains(reply))
+        }
+        assertTrue(play.contains("playGate.withLock"))
+        assertTrue(play.contains("Backchannel.clipFits("))
+        assertTrue(play.contains("audit.filler(\"backchannel\", line)"))
+        assertTrue(play.contains("b.tts.inHand("))
+        // The answer's writes take the same gate; its first audio marks the turn as answered.
+        val speaker = bodyOf(s, "newSpeaker")
+        assertTrue(speaker.contains("play = { pcm -> playGate.withLock { p.write(pcm, gen) } }"))
+        assertTrue(speaker.contains("turnAudioStarted = true"))
+        assertTrue(speaker.contains("onFillerStarted = { text -> audit.filler(\"task\", text) }"))
+    }
+
+    @Test
+    fun `the task line waits out a backchannel and its spacing`() {
+        val s = session()
+        val starting = s.substring(s.indexOf("override fun onToolsStarting("))
+        val wait = starting.indexOf("awaitBackchannelSpacing()")
+        assertTrue(wait >= 0)
+        assertTrue(wait < starting.indexOf("sayToolFiller(plan, reply, record)"))
+        val spacing = bodyOf(s, "awaitBackchannelSpacing")
+        assertTrue(spacing.contains("backchannelJob?.join()"))
+        assertTrue(spacing.contains("Backchannel.spacingWaitMs("))
+    }
+
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 
     private fun bodyOf(source: String, name: String): String {

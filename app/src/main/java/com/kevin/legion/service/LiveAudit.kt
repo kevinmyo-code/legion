@@ -158,6 +158,14 @@ internal class LiveAudit(
     @Synchronized
     fun interrupted(source: String) = emit("interrupted source=${token(source)}")
 
+    /**
+     * A filler clip that played (2026-11-19): [kind] `backchannel` (an "Mm." while he waits) or `task`
+     * (a tool's holding line). Its own line, never an `assistant` line: it is not the answer, never
+     * history, and memory never reads it; the next drive audit counts them.
+     */
+    @Synchronized
+    fun filler(kind: String, text: String) = emit("filler kind=${token(kind)} text=${quote(text)}")
+
     @Synchronized
     fun activityStart() = emit("activity_start")
 

@@ -42,6 +42,7 @@ import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.TelephonyController
 import com.kevin.legion.service.TextToolExecutor
 import com.kevin.legion.service.WakePhrases
+import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.conversationlog.ConversationLog
 import com.kevin.legion.service.turn.BargeInGate
 import com.kevin.legion.service.turn.CallAudioMode
@@ -72,6 +73,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
@@ -293,6 +295,27 @@ internal class CascadeSession(
 
     /** Settings > Voice engine > Speaking speed, read once per conversation ([ReplyPlayer]). */
     private val speechSpeed: Float = VoiceEngineSettings.speechSpeed(ctx)
+
+    /** Backchannels said lately ([Backchannel.pick] skips them) and a rotating index. */
+    private val recentBackchannels = RecentLines(Backchannel.ROTATION)
+    private val backchannelIndex = AtomicInteger(0)
+    @Volatile private var lastBackchannelAtMs = 0L
+    @Volatile private var lastTurnHadBackchannel = false
+
+    /** When his current speech started, and whether it started over a reply or a turn still running. */
+    @Volatile private var uttStartedAtMs = 0L
+    @Volatile private var uttOverReply = false
+
+    /** This turn's backchannel timer ([Backchannel.DELAY_MS]), which turn it is for, and its clip's end. */
+    private var backchannelJob: Job? = null
+    private val backchannelSeq = AtomicInteger(0)
+    @Volatile private var backchannelEndAtMs: Long? = null
+
+    /** Any audio of this turn's reply (filler or answer) has started: a backchannel due now is dropped. */
+    @Volatile private var turnAudioStarted = false
+
+    /** Every reply write goes through this, so a backchannel's clip and the answer never interleave. */
+    private val playGate = kotlinx.coroutines.sync.Mutex()
 
     /** The last tool line said ([ToolFillers.pick] never repeats it next) and a rotating index. */
     @Volatile private var lastToolFiller: String? = null
@@ -1024,6 +1047,10 @@ internal class CascadeSession(
 
     private fun onUserTurnStart() {
         heardSinceOpen = true
+        uttStartedAtMs = System.currentTimeMillis()
+        // Over an audible reply or a turn still in flight: a correction or a merge, never a backchannel.
+        uttOverReply = speaking || turnJob?.isActive == true
+        backchannelJob?.cancel()
         if (checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING) {
             checkInStep = CheckInStep.DONE
             reportCheckIn(CheckInOutcome.ANSWERED)
@@ -1079,11 +1106,105 @@ internal class CascadeSession(
         LiveLatency.log(LiveLatency.TAG, CascadeLines.eot(source, silence, prob))
         audit.activityEnd()
         host.phase(Phase.THINKING, "...")
+        scheduleBackchannel(eotAtMs)
         val previous = turnJob
         turnJob = scope.launch(loop) {
             previous?.join()
             runTurn(u, eotAtMs)
         }
+    }
+
+    /**
+     * His speech ended: one backchannel ([Backchannel]) [Backchannel.DELAY_MS] later unless a rule
+     * says no or the answer's audio is there first. Decided now from signals code already has
+     * (his voiced span, the last turn's ask fields, how this turn started, Quiet), never his words.
+     */
+    private fun scheduleBackchannel(eotAtMs: Long) {
+        backchannelJob?.cancel()
+        turnAudioStarted = false
+        backchannelEndAtMs = null
+        val seq = backchannelSeq.incrementAndGet()
+        val skip = Backchannel.decide(
+            Backchannel.Turn(
+                fromUser = true,
+                speechMs = (lastLocalSpeechAtMs - uttStartedAtMs).coerceAtLeast(0),
+                askedBefore = lastTurnAsked,
+                overReplyOrTurn = uttOverReply || carry.isNotBlank(),
+                quiet = QuietMode.isOn(ctx),
+                startedAtMs = uttStartedAtMs,
+                lastBackchannelAtMs = lastBackchannelAtMs,
+                lastTurnHadOne = lastTurnHadBackchannel,
+            ),
+        )
+        lastTurnHadBackchannel = false
+        if (skip != null) {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${skip.token}")
+            return
+        }
+        backchannelJob = scope.launch(loop) {
+            delay((eotAtMs + Backchannel.DELAY_MS - System.currentTimeMillis()).coerceAtLeast(0))
+            playBackchannel(seq, eotAtMs)
+        }
+    }
+
+    /**
+     * The backchannel itself: from memory only, measured before it plays ([Backchannel.clipFits]),
+     * under [playGate] so the answer waits for it rather than overlapping. Counted as playback so the
+     * mic never takes it for him; never a reply (no caption, no history, no follow-up event), but its
+     * own audit line so the next drive audit can count it.
+     */
+    @Suppress("ReturnCount") // one worded skip per reason
+    private suspend fun playBackchannel(seq: Int, eotAtMs: Long) {
+        val b = backend ?: return
+        val p = player ?: return
+        fun due() = !closing.get() && Backchannel.stillDue(turnAudioStarted, speaking, seq == backchannelSeq.get())
+        if (!due()) {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=answer_first")
+            return
+        }
+        val line = Backchannel.pick(recentBackchannels, backchannelIndex.getAndIncrement()) {
+            b.tts.inHand(SpokenText.forSpeech(it))
+        }
+        if (line == null) {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=not_in_memory")
+            return
+        }
+        val clip = b.tts.speak(SpokenText.forSpeech(line))
+        val pcm = withTimeoutOrNull(BACKCHANNEL_FETCH_MS) {
+            val out = java.io.ByteArrayOutputStream()
+            for (frame in clip.frames) out.write(frame)
+            out.toByteArray()
+        }
+        if (pcm == null) clip.cancel()
+        val ms = (pcm?.size ?: 0).toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
+        if (pcm == null || !Backchannel.clipFits(ms)) {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=clip_ms_$ms")
+            return
+        }
+        playGate.withLock {
+            if (!due()) return
+            playbackActive = true
+            recentBackchannels.add(line)
+            lastBackchannelAtMs = System.currentTimeMillis()
+            lastTurnHadBackchannel = true
+            LiveLatency.log(
+                LiveLatency.TAG,
+                "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=$ms",
+            )
+            audit.filler("backchannel", line)
+            val gen = p.generation()
+            withContext(Dispatchers.IO) { p.write(pcm, gen) }
+            p.awaitDrained()
+        }
+        delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
+        if (!speaking && !turnAudioStarted) playbackActive = false
+        backchannelEndAtMs = System.currentTimeMillis()
+    }
+
+    /** A task line never starts within [Backchannel.SPACING_MS] of a backchannel's end (no stacking). */
+    private suspend fun awaitBackchannelSpacing() {
+        backchannelJob?.join()
+        delay(Backchannel.spacingWaitMs(System.currentTimeMillis(), backchannelEndAtMs))
     }
 
     @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
@@ -1755,14 +1876,11 @@ internal class CascadeSession(
                 ?: return
             // fillerPlayed is set when a line actually plays ([sayToolFiller]): a fast tool in round 1
             // that never got its line leaves the slow one in round 2 free to say its own.
-            if (plan.slow) {
-                sayToolFiller(plan, reply, record)
-            } else {
-                scope.launch(loop) {
-                    delay(ToolFillers.FAST_DELAY_MS)
-                    val stillWaiting = turn === record && toolsInFlight.get() > 0
-                    if (stillWaiting && !reply.anyText && !record.fillerPlayed) sayToolFiller(plan, reply, record)
-                }
+            scope.launch(loop) {
+                if (!plan.slow) delay(ToolFillers.FAST_DELAY_MS)
+                awaitBackchannelSpacing()
+                val stillWaiting = turn === record && toolsInFlight.get() > 0
+                if (stillWaiting && !reply.anyText && !record.fillerPlayed) sayToolFiller(plan, reply, record)
             }
         }
 
@@ -1827,9 +1945,10 @@ internal class CascadeSession(
         return ReplySpeaker(
             tts = b.tts,
             scope = scope,
-            play = { pcm -> p.write(pcm, gen) },
+            play = { pcm -> playGate.withLock { p.write(pcm, gen) } },
             firstFrameTimeoutMs = b.ttsFirstAudioTimeoutMs,
             onFirstAudio = { _, filler ->
+                turnAudioStarted = true
                 val now = System.currentTimeMillis()
                 if (filler) {
                     // Its own line: eot_reply_ms stays the answer's first audio, not the filler's.
@@ -1855,6 +1974,7 @@ internal class CascadeSession(
             },
             // Count only, never the words.
             onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
+            onFillerStarted = { text -> audit.filler("task", text) },
             onFillerPlayed = {
                 // Half-duplex: the filler is over, the answer is not here yet. Listen again once it
                 // has drained (and its Bluetooth tail settled), so he can still add to his turn.
@@ -2932,8 +3052,13 @@ internal class CascadeSession(
          * lines at once queued ahead of the first answer). Tool lines are fetched one at a time, the
          * first time each is due, and play from the next time on.
          */
-        private val FILLERS_SPOKEN = (ToolFillers.GENERIC + ScriptedLines.MISSED + ScriptedLines.VOICE_LOST)
-            .distinct().map { SpokenText.forSpeech(it) }
+        private val FILLERS_SPOKEN =
+            (ToolFillers.GENERIC + ScriptedLines.MISSED + ScriptedLines.VOICE_LOST + Backchannel.LINES)
+                .distinct().map { SpokenText.forSpeech(it) }
+
+        /** A backchannel's audio must be in hand within this, or it is skipped (it is from memory). */
+        private const val BACKCHANNEL_FETCH_MS = 300L
+        private const val PCM_BYTES_PER_SAMPLE = 2
 
         /** How long the phone's own read of today may take at open (normally well under 100 ms). */
         private const val AGENDA_WAIT_MS = 1_000L
