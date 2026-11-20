@@ -87,6 +87,31 @@ class EngineConfig(
         return true
     }
 
+    // --- Car link (HU-1 T3, review M7): strict, all-or-nothing writes ---------------------------
+
+    /** The raw stored values (ciphertext for the token), for snapshot and restore. */
+    fun snapshot(): Map<String, String?> = listOf(KEY_BASE_URL, KEY_TOKEN, KEY_USER_ID).associateWith { prefs.getString(it, null) }
+
+    /** Writes [snapshot] back exactly (null = removed) with commit(). */
+    fun restore(snapshot: Map<String, String?>): Boolean {
+        val editor = prefs.edit()
+        snapshot.forEach { (k, v) -> if (v == null) editor.remove(k) else editor.putString(k, v) }
+        return editor.commit()
+    }
+
+    /** The token's ciphertext as stored. */
+    fun rawToken(): String? = prefs.getString(KEY_TOKEN, null)
+
+    /** Encrypts and saves the session with commit(); false and nothing written on any failure. */
+    fun saveSessionStrict(baseUrl: String, token: String, userId: String): Boolean {
+        val encrypted = encrypt(token) ?: return false
+        return prefs.edit()
+            .putString(KEY_BASE_URL, baseUrl.trim())
+            .putString(KEY_TOKEN, encrypted)
+            .putString(KEY_USER_ID, userId)
+            .commit()
+    }
+
     /** Clears the device token and user id. Does NOT touch [baseUrl] - a driver signing out of one
      * account on this device should not have to re-type where the engine lives. */
     fun clearSession() {

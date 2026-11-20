@@ -32,6 +32,12 @@ val localProps: Properties = Properties().apply {
 val geminiApiKey: String =
     if (project.hasProperty("nokey")) "" else localProps.getProperty("GEMINI_API_KEY", "")
 
+// The engine address a car-link hand-over may sign this unit in to (HU-1 T3, review H4): the
+// build's own constant, never a value sent over the link. Not a secret, but personal: it comes
+// from local.properties (gitignored, key engine.base.url), blank by default, so a clone builds
+// with no engine and the unit refuses a handed-over token until it is set. Must be https.
+val engineBaseUrl: String = localProps.getProperty("engine.base.url", "").trim()
+
 // Release signing. The keystore (app/release.jks, gitignored) is a personal
 // self-signed key generated for sideloading onto the head unit - it is NOT a
 // Play Store upload key. All four values must come from local.properties
@@ -67,6 +73,7 @@ android {
         }
 
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+        buildConfigField("String", "ENGINE_BASE_URL", "\"$engineBaseUrl\"")
 
         // No abiFilters restriction: the app is pure Kotlin/Java now that the
         // offline wake-word engine (sherpa-onnx, arm64-only native libs) was

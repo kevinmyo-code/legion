@@ -386,6 +386,24 @@ object CompanionProfile {
 
     fun hasGeminiKey(context: Context): Boolean = geminiKey(context).isNotBlank()
 
+    // --- Car link (HU-1 T3, review M7): no plaintext fallback, all-or-nothing writes -------------
+
+    /** The raw stored Gemini slots (ciphertext and the legacy plaintext slot). */
+    fun geminiSnapshot(context: Context): Map<String, String?> =
+        listOf(KEY_GEMINI_KEY_ENC, KEY_GEMINI_KEY).associateWith { prefs(context).getString(it, null) }
+
+    fun restoreGemini(context: Context, snapshot: Map<String, String?>): Boolean {
+        val editor = prefs(context).edit()
+        snapshot.forEach { (k, v) -> if (v == null) editor.remove(k) else editor.putString(k, v) }
+        return editor.commit()
+    }
+
+    /** Encrypted or not at all (unlike [saveGeminiKey], which falls back to plaintext). */
+    fun saveGeminiKeyStrict(context: Context, key: String): Boolean {
+        val enc = KeyVault.encrypt(key.trim()) ?: return false
+        return prefs(context).edit().putString(KEY_GEMINI_KEY_ENC, enc).remove(KEY_GEMINI_KEY).commit()
+    }
+
     /**
      * User-supplied Shelly Cloud auth_key (stored encrypted via [KeyVault]).
      * Blank if not set - garage/gate control stays unconfigured and
