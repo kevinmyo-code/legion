@@ -129,6 +129,21 @@ class EngineCarLinkSignInTest {
         assertFalse(c.hasCarLinkReserve())
     }
 
+    /** Review S1: a 403 is a refused upload, not a dead sign-in: no "no longer valid", no stop. */
+    @Test fun a403OnTheCarsSignInIsARefusedUploadNotADeadSignIn() = runBlocking {
+        val c = carLinked()
+        val http = EngineHttp(c, OkHttpClient())
+        server.enqueue(MockResponse().setResponseCode(403).setBody("""{"detail":"Not a head-unit reason."}"""))
+        server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+        val refused = http.post("/api/device-logs/", "{}")
+        val failure = refused.failure()
+        assertFalse("read as a dead sign-in: $failure", failure is EngineFailure.Unauthorized)
+        assertTrue(failure.sentence, failure.sentence.contains("refused this upload"))
+        assertFalse(c.carLinkRefused())
+        assertTrue(http.post("/api/device-logs/", "{}").isSuccess)
+        assertEquals(2, server.requestCount)
+    }
+
     @Test fun aMember401IsUnchanged() = runBlocking {
         val c = config()
         c.saveBaseUrl(base())

@@ -309,6 +309,16 @@ class EngineHttp(
         val body = response.use { r -> runCatching { r.body?.string() }.getOrNull() }.orEmpty()
         return when {
             code in SUCCESS_RANGE -> Result.success(EngineOk(code, body, headers))
+            // Review S1: on the car's sign-in a 403 is the engine refusing THIS upload (a reason or a
+            // vehicle it does not accept), not a dead sign-in; nothing is marked refused.
+            carLink && code == FORBIDDEN -> Result.failure(
+                EngineHttpException(
+                    EngineFailure.Refused(
+                        code,
+                        "The engine refused this upload${detailSuffix(body)} The car's own sign-in is still valid.",
+                    ),
+                ),
+            )
             carLink && code == UNAUTHORIZED -> {
                 config.markCarLinkRefused()
                 Result.failure(EngineHttpException(EngineFailure.Unauthorized(CarLinkScope.REFUSED)))
