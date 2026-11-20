@@ -249,9 +249,25 @@ async function scrollThrough(page: Page, tag: string, places: string[], shoot = 
     // One look per step: where the page is, how wide, and where each place's top sits.
     const now = await page.evaluate((ids) => {
       const tops = ids.map((id) => document.getElementById(id)?.getBoundingClientRect().top ?? Infinity)
-      return { y: window.scrollY, max: document.documentElement.scrollHeight - window.innerHeight, wide: document.documentElement.scrollWidth, tops }
+      // Past the page's own width (a headed window's scrollbar is not overflow).
+      const wide = document.documentElement.scrollWidth - document.documentElement.clientWidth
+      // When it overflows, which element reaches past the right edge (for the report).
+      let culprit = ''
+      if (wide > 0) {
+        for (const el of Array.from(document.querySelectorAll('body *'))) {
+          const r = el.getBoundingClientRect()
+          if (r.right > document.documentElement.clientWidth + 1 && r.width > 0) {
+            culprit = `${el.tagName.toLowerCase()}.${Array.from(el.classList).join('.')} right=${Math.round(r.right)} sw=${document.documentElement.scrollWidth} cw=${document.documentElement.clientWidth}`
+            break
+          }
+        }
+      }
+      return { y: window.scrollY, max: document.documentElement.scrollHeight - window.innerHeight, wide, tops, culprit }
     }, places)
-    overflow = Math.max(overflow, now.wide)
+    if (now.wide > overflow) {
+      overflow = now.wide
+      if (now.culprit) console.log(`overflow at y=${now.y}: ${now.culprit}`)
+    }
     stalled = now.y >= now.max - 1 ? stalled + 1 : 0
     for (let i = 0; i < places.length; i++) {
       if (!shoot || shot.has(places[i]) || now.tops[i] >= 40) continue
@@ -352,8 +368,13 @@ async function context(browser: Browser, size: (typeof SIZES)[number], reduced: 
  * mean something; headless draws WebGL in software (SwiftShader), which inflates every frame.
  */
 const HEADED = process.env.STORY_HEADED === '1'
-/** The story may cost this many long frames per hundred more than the plain page does. */
-const LONG_FRAME_BUDGET = Number(process.env.STORY_LONG_BUDGET ?? 5)
+/**
+ * The long-frame budget against the plain page on the same scroll. Headed (the GPU): at most 1.5
+ * more long frames per hundred; the reviewed tip measured 3.1 against 0.1 at 1440 and fails it.
+ * Headless draws canvases and WebGL in software, so only a gross regression is caught there:
+ * at most 2.5 times the plain page's share plus 2.
+ */
+const budget = (plainPct: number) => (HEADED ? plainPct + 1.5 : plainPct * 2.5 + 2)
 
 test.use({
   launchOptions: HEADED
@@ -431,11 +452,11 @@ for (const size of SIZES) {
     }
     fs.writeFileSync(path.join(OUT, `${size.name}-scroll.json`), JSON.stringify(numbers, null, 2))
     console.log(JSON.stringify(numbers))
-    expect(share(motion), `long frames per hundred: story vs plain page (+${LONG_FRAME_BUDGET} allowed)`).toBeLessThanOrEqual(
-      share(plain) + LONG_FRAME_BUDGET,
+    expect(share(motion), `long frames per hundred, story vs plain page ${share(plain)} (${HEADED ? 'headed' : 'headless'})`).toBeLessThanOrEqual(
+      budget(share(plain)),
     )
 
-    expect(run.overflow, 'no sideways overflow').toBe(size.viewport.width)
+    expect(run.overflow, 'no sideways overflow').toBe(0)
     expect(motion.cls, 'layout shift while scrolling').toBeLessThan(0.01)
     expect(orbFirst, 'the orb is read before the sections').toBe(true)
     if (wide) expect(orbPlace).toMatchObject({ shown: 'true', inert: false })
