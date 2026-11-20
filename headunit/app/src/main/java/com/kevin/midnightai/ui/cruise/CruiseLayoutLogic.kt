@@ -53,14 +53,25 @@ internal object MiddlePanelText {
     /** Older than this and the readout says the fix is lost (plan: "lost Ns" after 3 s). */
     const val STALE_MS = 3_000L
 
+    /** `LocationManager.GPS_PROVIDER`, copied so this object needs no Android runtime. */
+    const val GPS_PROVIDER = "gps"
+
     /**
      * [provider] is the fix's provider ([com.kevin.midnightai.location.LocationController.BEACON_PROVIDER]
      * for the phone beacon), [ageMs] how old it is on the monotonic clock; null = no fix at all.
+     *
+     * Honest by construction (review M2, 2026-11-20): only the `gps` provider is "GPS on this unit";
+     * a network fix (Wi-Fi or cell, often 100 m off) says so. A negative age (a cached fix stamped
+     * before this boot, a clock jump) is not a fix at all, never "0 s ago".
      */
     fun gps(provider: String?, ageMs: Long?, beaconProvider: String): Gps {
-        if (provider == null || ageMs == null) return Gps("No GPS", "no fix yet", stale = true)
-        val source = if (provider == beaconProvider) "GPS from phone" else "GPS on this unit"
-        val age = ageMs.coerceAtLeast(0L)
+        if (provider == null || ageMs == null || ageMs < 0) return Gps("No GPS", "no fix yet", stale = true)
+        val source = when (provider) {
+            beaconProvider -> "GPS from phone"
+            GPS_PROVIDER -> "GPS on this unit"
+            else -> "Network location"
+        }
+        val age = ageMs
         val words = when {
             age <= STALE_MS -> "fix ${age / 1000} s ago"
             age < 60_000L -> "lost ${age / 1000} s"
@@ -75,7 +86,7 @@ internal object MiddlePanelText {
 
     /** GPS speed in mph, or null without a speed or once the fix is older than [SPEED_FRESH_MS]. */
     fun speedMph(speedMps: Float?, ageMs: Long?): Int? {
-        if (speedMps == null || ageMs == null || ageMs > SPEED_FRESH_MS) return null
+        if (speedMps == null || ageMs == null || ageMs < 0 || ageMs > SPEED_FRESH_MS) return null
         return Math.round(speedMps * 2.23694f)
     }
 

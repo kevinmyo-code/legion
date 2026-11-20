@@ -86,6 +86,17 @@ class CruiseLayoutLogicTest {
         assertEquals("GPS on this unit", MiddlePanelText.gps("gps", 500L, beacon).source)
     }
 
+    @Test fun aNetworkFixIsNeverCalledGps() {
+        assertEquals("Network location", MiddlePanelText.gps("network", 500L, beacon).source)
+        assertEquals("Network location", MiddlePanelText.gps("fused", 500L, beacon).source)
+    }
+
+    @Test fun aNegativeAgeIsNoFixAndShowsNoSpeed() {
+        // A cached fix stamped before this boot, or a clock jump.
+        assertEquals(MiddlePanelText.Gps("No GPS", "no fix yet", stale = true), MiddlePanelText.gps(beacon, -2_000L, beacon))
+        assertEquals(null, MiddlePanelText.speedMph(28.6f, -2_000L))
+    }
+
     @Test fun anOldFixReadsAsLost() {
         assertEquals(
             MiddlePanelText.Gps("GPS from phone", "lost 12 s", stale = true),
