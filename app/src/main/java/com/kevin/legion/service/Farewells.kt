@@ -19,7 +19,6 @@ object Farewells {
         "see you", "see ya", "see you later", "see ya later", "see you tomorrow", "see you soon",
         "talk to you later", "talk later", "talk soon", "catch you later", "later", "ciao", "cheerio",
         "farewell", "peace out", "take care", "have a good night", "have a good one",
-        "that will be all", "that ll be all",
     )
 
     val LEADS: List<String> = listOf(

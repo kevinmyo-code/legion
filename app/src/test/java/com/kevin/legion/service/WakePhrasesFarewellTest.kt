@@ -39,7 +39,7 @@ class WakePhrasesFarewellTest {
             "OK bye", "okay bye bye", "alright, bye", "All right, goodnight.", "thanks, bye", "thank you, goodbye",
             "Thanks Jeeves, bye bye", "bye, thanks", "bye bye Jeeves thanks", "cheers, bye", "thanks a lot, good night",
             "um, bye", "okay then, bye", "great, thanks, see you later", "bye then", "goodbye again",
-            "that will be all", "That'll be all, thanks.", "have a good night", "peace out",
+            "have a good night", "peace out",
         )
 
         val REQUESTS = listOf(

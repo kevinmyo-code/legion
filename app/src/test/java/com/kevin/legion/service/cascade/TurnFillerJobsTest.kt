@@ -41,8 +41,9 @@ class TurnFillerJobsTest {
         val played = mutableListOf<Long>()
         jobs.startWaitLines(played) { testScheduler.currentTime }
         advanceTimeBy(20_000)
-        // Not ended: the two wait lines of a long wait (the cap holds the rest).
-        assertEquals(listOf(3_500L, 8_300L), played)
+        // Not ended: every wait line of a long wait, 1.8 s then every 2.5 s after each ended (Kevin's
+        // timing, 2026-11-20), until each line was said once.
+        assertEquals(listOf(1_800L, 5_100L, 8_400L, 11_700L, 15_000L), played)
         jobs.endTurn()
     }
 
