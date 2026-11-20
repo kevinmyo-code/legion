@@ -147,6 +147,12 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // HU-1 T5 (orchestrator's call, 2026-11-20; Kevin told, his to reverse): Mapbox's native
+        // libraries are stored COMPRESSED in the APK and extracted at install, roughly halving
+        // the download over the phone's hotspot. Costs install time and the extracted copy on disk.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
     sourceSets {
         // Room's exported schema JSONs (app/schemas/) are bundled as androidTest
