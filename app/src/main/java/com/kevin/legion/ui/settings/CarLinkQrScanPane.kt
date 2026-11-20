@@ -40,7 +40,9 @@ fun CarLinkQrScanPane(onQr: (String) -> Unit) {
         val seen = HashSet<String>()
         val main = ContextCompat.getMainExecutor(context)
         val providerFuture = ProcessCameraProvider.getInstance(context)
-        providerFuture.addListener({
+        // Leaving the pane before the camera is ready must not bind it afterwards.
+        val gate = ScanBindGate()
+        providerFuture.addListener({ gate.runIfLive {
             val provider = providerFuture.get()
             val previewUse = Preview.Builder().build().also { it.setSurfaceProvider(preview.surfaceProvider) }
             val analysis = ImageAnalysis.Builder()
@@ -60,8 +62,9 @@ fun CarLinkQrScanPane(onQr: (String) -> Unit) {
             }
             provider.unbindAll()
             provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, previewUse, analysis)
-        }, main)
+        } }, main)
         onDispose {
+            gate.dispose()
             runCatching { providerFuture.get().unbindAll() }
             scanner.close()
             executor.shutdown()
