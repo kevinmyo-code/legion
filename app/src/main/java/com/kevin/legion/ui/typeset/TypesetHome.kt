@@ -378,7 +378,9 @@ private fun Voice(
 ) {
     Column(Modifier.fillMaxWidth().padding(top = tier.gap), horizontalAlignment = Alignment.CenterHorizontally) {
         val size: Dp = orb
-        OrbWithOutput(output, actions.onFlipOutput) {
+        // Not in the measuring passes: the toggle is never taller than the orb, and it would be one
+        // more copy of the same control in the semantics tree.
+        OrbWithOutput(output.takeUnless { measuring }, actions.onFlipOutput) {
             Box(
                 Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
                     .semantics { contentDescription = "Talk to Alfred" },

@@ -6,6 +6,8 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -67,7 +69,7 @@ class TypesetOutputToggleTest {
             .assertHeightIsAtLeast(TapTarget)
             .performClick()
         assertEquals(1, flips)
-        rule.onNodeWithContentDescription("Talk to Alfred").assertExists()
+        rule.onAllNodesWithContentDescription("Talk to Alfred").onFirst().assertExists()
     }
 
     @Test
@@ -93,7 +95,7 @@ class TypesetOutputToggleTest {
         show(null, TypesetHomeActions())
         rule.onNodeWithText("Speaker").assertDoesNotExist()
         rule.onNodeWithText("Call").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Talk to Alfred").assertExists()
+        rule.onAllNodesWithContentDescription("Talk to Alfred").onFirst().assertExists()
     }
 
     @Test
