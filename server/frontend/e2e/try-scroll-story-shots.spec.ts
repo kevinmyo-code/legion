@@ -370,7 +370,7 @@ async function context(browser: Browser, size: (typeof SIZES)[number], reduced: 
 const HEADED = process.env.STORY_HEADED === '1'
 /**
  * The long-frame budget against the plain page on the same scroll. Headed (the GPU): at most 1.5
- * more long frames per hundred; the reviewed tip measured 3.1 against 0.1 at 1440 and fails it.
+ * more long frames per hundred (2026-11-20 on this laptop: story 0.2-0.4, plain 0.1-0.7).
  * Headless draws canvases and WebGL in software, so only a gross regression is caught there:
  * at most 2.5 times the plain page's share plus 2.
  */
