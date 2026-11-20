@@ -311,55 +311,30 @@ class MainActivity : ComponentActivity() {
      * hardware keys moved the meter but not the sound). Keys handled below us (MCU,
      * system) are caught after the fact by [com.kevin.midnightai.media.VolumeSync].
      *
-     * HU-1 T9: every key that reaches us also goes to the Wheel keys log, with whether something
-     * here handled it, so one drive shows what the steering wheel actually sends. Logging never
-     * changes what is consumed.
+     * HU-1 T2/T9 probes: see [KeyDispatch] (what is logged, and the M1 rule: no text keys, nothing
+     * while an editor has the keyboard).
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val up = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP
-        if (!up && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
-            val handled = super.dispatchKeyEvent(event)
-            logKey(event, handled) { com.kevin.midnightai.diag.InputProbe.wheel(it) }
-            return handled
-        }
-        logKey(event, handled = true) { com.kevin.midnightai.diag.InputProbe.wheel(it) }
-        // HU-1 T2 volume probe: the key as delivered, then the write it causes (VolumeController logs that).
-        logKey(event, handled = true) { com.kevin.midnightai.diag.InputProbe.volume(it) }
-        if (event.action == KeyEvent.ACTION_DOWN) {
-            // A held key's repeats still move the volume; only the first press is logged as a write.
-            val by = if (event.repeatCount == 0) "key" else com.kevin.midnightai.diag.ProbeFormat.QUIET_WRITER
-            if (up) com.kevin.midnightai.media.VolumeController.raise(this, by = by)
-            else com.kevin.midnightai.media.VolumeController.lower(this, by = by)
-        } else if (event.action == KeyEvent.ACTION_UP) {
-            runCatching {
-                val vc = com.kevin.midnightai.media.VolumeController
-                com.kevin.midnightai.diag.InputProbe.volume(
-                    com.kevin.midnightai.diag.ProbeFormat.levelLine(vc.index(this), vc.maxIndex(this)),
-                )
-            }
-        }
-        return true
-    }
-
-    /** One probe line for [event] (first press and release only), via [sink]. Never changes what is consumed. */
-    private fun logKey(event: KeyEvent, handled: Boolean, sink: (String) -> Unit) {
-        val p = com.kevin.midnightai.diag.ProbeFormat
-        if (!p.shouldLogKey(event.action, event.repeatCount)) return
-        runCatching {
-            sink(
-                p.keyLine(
-                    name = KeyEvent.keyCodeToString(event.keyCode),
-                    keyCode = event.keyCode,
-                    scanCode = event.scanCode,
-                    source = event.source,
-                    action = event.action,
-                    repeatCount = event.repeatCount,
-                    heldMs = if (event.action == KeyEvent.ACTION_UP) event.eventTime - event.downTime else null,
-                    device = event.device?.name,
-                    handled = handled,
-                ),
-            )
-        }
+        val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+        return KeyDispatch.dispatch(
+            event = event,
+            editorActive = imm?.isAcceptingText == true,
+            onVolumeKey = { up, repeat ->
+                // A held key's repeats still move the volume; only the first press is logged as a write.
+                val by = if (repeat == 0) "key" else com.kevin.midnightai.diag.ProbeFormat.QUIET_WRITER
+                if (up) com.kevin.midnightai.media.VolumeController.raise(this, by = by)
+                else com.kevin.midnightai.media.VolumeController.lower(this, by = by)
+            },
+            onVolumeKeyUp = {
+                runCatching {
+                    val vc = com.kevin.midnightai.media.VolumeController
+                    com.kevin.midnightai.diag.InputProbe.volume(
+                        com.kevin.midnightai.diag.ProbeFormat.levelLine(vc.index(this), vc.maxIndex(this)),
+                    )
+                }
+            },
+            superDispatch = { super.dispatchKeyEvent(it) },
+        )
     }
 
     override fun onPause() {

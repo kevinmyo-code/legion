@@ -29,6 +29,9 @@ class ProbeRing(private val capacity: Int = PANEL_LINES) {
 
     @Synchronized
     fun snapshot(): List<ProbeLine> = lines.toList()
+
+    @Synchronized
+    fun clear() = lines.clear()
 }
 
 /** The probe's wording. Plain ints in, strings out, so every line shape is JVM-tested. */
@@ -65,6 +68,36 @@ object ProbeFormat {
         append(" dev=${device?.takeIf { it.isNotBlank() } ?: "?"}")
         append(if (handled) " handled" else " passed-on")
     }
+
+    /**
+     * Key codes that carry text, logged never (review M1): letters, digits, punctuation, numpad,
+     * space, tab, enter and delete. Even their timing gives typing away.
+     */
+    private val TEXT_KEYS: Set<Int> = buildSet {
+        addAll(7..18) // 0-9, star, pound
+        addAll(29..56) // A-Z, comma, period
+        addAll(61..62) // tab, space
+        add(66) // enter
+        add(67) // del
+        addAll(68..77) // grave, minus, equals, brackets, backslash, semicolon, apostrophe, slash, at
+        add(81) // plus
+        add(112) // forward del
+        addAll(144..163) // numpad digits, operators, enter, equals, parens
+    }
+
+    /**
+     * Whether a key that reached the activity may go to the Wheel keys log: only keys that type
+     * nothing (media, volume, d-pad, function keys, a vendor's own wheel codes), and nothing at all
+     * while an editor has the keyboard (the Gemini key field is in this activity, and the drive log
+     * is uploaded).
+     */
+    fun mayLogWheelKey(keyCode: Int, isPrinting: Boolean, unicodeChar: Int, editorActive: Boolean): Boolean =
+        !editorActive && !isPrinting && unicodeChar == 0 && keyCode !in TEXT_KEYS
+
+    /** A media button that reached a media session this app owns (the mixtape player's). */
+    fun mediaButtonLine(keyName: String, action: Int, owner: String): String =
+        "media-button $keyName " + (if (action == ACTION_DOWN) "down" else if (action == ACTION_UP) "up" else "action=$action") +
+            " session=$owner"
 
     /**
      * An unchanged index is noise (the Settings.System observer fires on every settings write), and
@@ -109,6 +142,12 @@ object InputProbe {
         volumeRing.add(ProbeLine(System.currentTimeMillis(), text))
         _volume.value = volumeRing.snapshot()
         DriveLog.breadcrumb("VOLPROBE $text")
+    }
+
+    /** Tests only: empty both panels. */
+    internal fun clearForTest() {
+        volumeRing.clear(); _volume.value = emptyList()
+        wheelRing.clear(); _wheel.value = emptyList()
     }
 
     fun wheel(text: String) {
