@@ -92,6 +92,10 @@ object NavRuntime {
      */
     internal fun quietMapbox() {
         runCatching { com.mapbox.common.LogConfiguration.setLoggingLevel(com.mapbox.common.LoggingLevel.ERROR) }
+        // Review NAV-3c: Mapbox telemetry OFF, through the SDK's own supported switch
+        // (`TelemetryUtils.setEventsCollectionState(false, callback)`, common 24.32.0, javap-checked;
+        // the phone app's MapboxTelemetry uses the same call). The SDK keeps the state itself.
+        runCatching { com.mapbox.common.TelemetryUtils.setEventsCollectionState(false) { } }
     }
 
     /** The guard is armed only while the native map is being brought up. */
