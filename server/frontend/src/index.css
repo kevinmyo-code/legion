@@ -641,6 +641,25 @@
             padding-right: var(--orb-room);
         }
     }
+    /* Print and Save as PDF: everything shown, nothing pinned (review 2026-11-20: sections not
+       yet scrolled to printed blank). */
+    @media print {
+        .recruiter [data-reveal] {
+            opacity: 1 !important;
+            transform: none !important;
+            transition: none !important;
+        }
+        .recruiter .rc-scene-pin,
+        .recruiter .rc-stage {
+            position: static !important;
+        }
+        .recruiter .rc-voice-side {
+            display: none !important;
+        }
+        .recruiter [data-story="on"] .rc-hero .rc-h1 {
+            animation: none !important;
+        }
+    }
     /* The hero's title eases out as it leaves, on the scroll itself where the browser can run that
        on the compositor (scroll-driven animations); elsewhere it simply stays. */
     @supports (animation-timeline: view()) {
