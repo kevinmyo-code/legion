@@ -4744,6 +4744,14 @@ object LiveToolbox {
 
     private fun isGroceriesName(name: String) = name.trim().equals("Groceries", ignoreCase = true)
 
+    /** Whole items that point at something without naming it: never a checklist line on their own. */
+    private val BARE_REFERENCES = setOf(
+        "it", "that", "this", "them", "those", "these", "something", "that one", "this one", "it all", "all of it",
+    )
+
+    private fun isBareReference(text: String): Boolean =
+        text.lowercase().replace(Regex("[^\\p{L}' ]"), " ").trim().replace(Regex("\\s+"), " ") in BARE_REFERENCES
+
     /** `today`/`yesterday` (the only two the tool declares) -> a local epoch day, matching
      * [ChecklistController.tick]/[ChecklistController.untick]'s own `day` parameter. Anything
      * else (blank, or a value the model was not offered) defaults to today rather than failing the
@@ -4879,6 +4887,12 @@ object LiveToolbox {
                         "add needs the line in \"text\"$sentEmptyItem; nothing was added to " +
                             "\"${checklist.name}\".",
                     )
+                }
+                // Phone audit 2026-11-19: a line literally named "it" was added. A closed word list,
+                // matched on the whole item only, never a reading of what he meant.
+                if (isBareReference(textArg)) {
+                    return result(false, "Nothing was added: \"$textArg\" names nothing. What should I add?")
+                        .put("needs_answer", true)
                 }
                 val unit = args.optString("unit").trim().ifBlank { null }
                 val target = if (args.has("target") && !args.isNull("target")) args.optDouble("target") else null
