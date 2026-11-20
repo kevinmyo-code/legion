@@ -72,9 +72,12 @@ from __future__ import annotations
 
 import itertools
 import logging
+import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+
+from django.db import connection as db_connection
 
 from agents.legion.limbs import CONTRACT_VERSION
 from agents.legion.lines import MISSED_LINE, STT_FAILED
@@ -105,10 +108,10 @@ CANCEL_EVERY_S = 0.2
 # - a request cut short by a cancel or a hang-up: Google sends its usage at the end of the stream,
 #   so it is metered from the audio it had made (about 25 speech tokens a second) and its text
 #   (about 4 characters a token);
-# - a filler line fetched for memory (`FillerAudio.warm` keeps no counts): each line is metered to
-#   the turn that sent for it at one short line's cost, 15 tokens in and 60 out (about 2.4 s).
-#   A voice's whole set is about 25 lines, so about 1,500 tokens, about $0.014, once per voice per
-#   process, plus a retry of a failed line at most every 10 minutes.
+# - a filler line fetched for memory is metered when its fetch ends, to the member whose turn sent
+#   for it: its own counts when Google reported them, else (audio came, no counts) one short
+#   line's estimate, 15 tokens in and 60 out; a fetch that failed (no audio) costs nothing.
+#   A voice's whole set is about 55 lines, about $0.03 at most, once per voice per process.
 TTS_TOKENS_PER_AUDIO_S = 25
 TTS_CHARS_PER_TOKEN = 4
 FILLER_LINE_PROMPT_TOKENS = 15
@@ -119,7 +122,7 @@ FILLER_LINE_OUTPUT_TOKENS = 60
 # sharing that one would change the live web door, because its turns would then find lines in
 # memory that only this door fetched (a filler said where none was before) and its line picker
 # would skip a line this door said last. The cost of two caches is one more set of filler lines per
-# voice per process (about $0.014, metered here: `FILLER_LINE_*`). Merge them when the web door
+# voice per process (metered here: `filler_meter`). Merge them when the web door
 # moves onto this pipeline.
 FILLER_AUDIO = FillerAudio()
 
@@ -267,7 +270,6 @@ def voice_turn(
     speaker.cancelled = cancel
     speaker.cancelled_often = cancel.often
     status = "failed"
-    fetched = 0
     try:
         if utterance.kind == "say":
             status = "say"
@@ -317,8 +319,9 @@ def voice_turn(
             return
         if speaker.enabled:
             # The filler lines' audio, fetched once speech was heard (room noise costs nothing).
-            timings["speech_fetched"] = filler_audio.warm(speech, voice)
-            fetched = timings["speech_fetched"]
+            timings["speech_fetched"] = filler_audio.warm(
+                speech, voice, on_fetched=filler_meter(request)
+            )
         # He asked for exact figures: nothing is rounded when spoken (the web door's rule; its
         # second half, exact after a write, needs the tool event's write flag: slice E3).
         speaker.exact = spoken_figures.wants_exact(words)
@@ -340,11 +343,10 @@ def voice_turn(
     finally:
         speaker.close()
         stage.record_speech(timings, speaker)
-        # Speech cut short by a cancel or a hang-up was still paid for as far as it went, and the
-        # filler lines this turn sent for are paid for too (estimates, above).
+        # Speech cut short by a cancel or a hang-up was still paid for as far as it went.
         cut_prompt, cut_output = speaker.cut_short_tokens()
-        timings["tts_prompt_tokens"] += cut_prompt + fetched * FILLER_LINE_PROMPT_TOKENS
-        timings["tts_output_tokens"] += cut_output + fetched * FILLER_LINE_OUTPUT_TOKENS
+        timings["tts_prompt_tokens"] += cut_prompt
+        timings["tts_output_tokens"] += cut_output
         timings["turn_ms"] = int((clock() - t0) * 1000)
         timings["tts_requests"] = speaker.requests
         stage.meter_speech(request, timings, FEATURE)
@@ -354,6 +356,32 @@ def voice_turn(
             str(utterance.spoken).lower(),
             stage.timing_values(timings),
         )
+
+
+def filler_meter(request) -> Callable[[object, bool], None]:
+    """What `FillerAudio.warm` tells about each line it fetched: metered on the member's cap
+    (`FILLER_LINE_*` above). Runs on the fetching thread, which then closes its own database
+    connection; on the request's own thread (a test's synchronous fetch) it leaves it open."""
+    origin = threading.current_thread()
+
+    def meter(stats, paid: bool) -> None:
+        if stats.prompt_tokens or stats.output_tokens:
+            prompt, output = stats.prompt_tokens, stats.output_tokens
+        elif paid:
+            prompt, output = FILLER_LINE_PROMPT_TOKENS, FILLER_LINE_OUTPUT_TOKENS
+        else:
+            return
+        try:
+            stage.meter_speech(
+                request, {"tts_prompt_tokens": prompt, "tts_output_tokens": output}, FEATURE
+            )
+        except Exception:  # noqa: BLE001 - metering a filler line must never break its fetch
+            log.warning("agents voice: filler meter failed", exc_info=True)
+        finally:
+            if threading.current_thread() is not origin:
+                db_connection.close()
+
+    return meter
 
 
 def _ms(clock, t0) -> int:

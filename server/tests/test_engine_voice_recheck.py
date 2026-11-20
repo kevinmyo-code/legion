@@ -162,8 +162,8 @@ def test_filler_warm_up_is_metered_to_the_turn_that_started_it(
     _events(_post(auth_client, audio=_wav()))
     answer_only = tts_cost()
     LlmUsage.objects.all().delete()
-    # Nothing in memory: the lines this turn sends for are metered too, at an estimate.
-    monkeypatch.setattr(pipeline, "FILLER_AUDIO", FillerAudio(spawn=lambda work: None))
+    # Nothing in memory: the lines this turn sends for are fetched (here at once) and metered too.
+    monkeypatch.setattr(pipeline, "FILLER_AUDIO", FillerAudio(spawn=lambda work: work()))
     _events(_post(auth_client, audio=_wav()))
     assert tts_cost() > answer_only > 0
 
