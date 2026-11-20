@@ -105,7 +105,9 @@ class CarLinkGraph(private val app: Application) {
     private suspend fun householdCars(): List<VehicleOption> {
         val sidecars = com.kevin.legion.data.local.CarDatabase.getDatabase(app).vehicleSidecarDao()
         return com.kevin.legion.vehicle.VehicleController.allVehicles(app).mapNotNull { v ->
-            val label = v.name.ifBlank { listOfNotNull(v.year.takeIf { it > 0 }?.toString(), v.make, v.model).joinToString(" ").trim() }
+            val label = v.name.ifBlank {
+                listOfNotNull(v.year.takeIf { it > 0 }?.toString(), v.make, v.model).joinToString(" ").trim()
+            }
             sidecars.getByMac(v.obdMac)?.serverId?.let { VehicleOption(it, label) }
         }
     }

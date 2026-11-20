@@ -37,7 +37,8 @@ class CarLinkLocationService : Service() {
             .setOngoing(true)
             .setContentIntent(open)
             .build()
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
+        val type =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
         return START_NOT_STICKY
     }

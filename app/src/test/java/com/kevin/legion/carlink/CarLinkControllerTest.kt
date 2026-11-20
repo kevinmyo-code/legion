@@ -179,7 +179,8 @@ class CarLinkControllerTest {
             override fun close() = Unit
         }
         val c = CarLinkController(
-            store, { _, _ -> null }, HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            store, { _, _ -> null },
+            HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
             { ring, onEvent, sendFixes, mode ->
                 CarLinkSender(
                     Mnai2Feed(ring, { ByteArray(16) }, lan::contains, { null }, onEvent), throwing,
@@ -389,7 +390,8 @@ class CarLinkControllerTest {
     @Test fun `a taken port is said in words and nothing falls back`() {
         assertTrue(store.write(key, null))
         val c = CarLinkController(
-            store, { _, _ -> null }, HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
+            store, { _, _ -> null },
+            HandoverPlan(HandoverSources({ null }, { null }, { null }), UnitTokenNotYetAvailable()) {},
             { _, _, _, _ -> throw java.net.BindException("Address already in use") },
             scope, Dispatchers.IO, { 300L }, {},
         )

@@ -154,7 +154,7 @@ class CarLinkViewModelTest {
         vm.scan()
         vm.onScanned("https://example.invalid/not-a-pairing-code")
         assertEquals(CarLinkPhase.SCANNING, state().phase)
-        assertEquals("That is not a head unit pairing code. Point the camera at the code on the head unit.", state().scanReject)
+        assertEquals(CarLinkWords.NOT_A_PAIRING_CODE, state().scanReject)
         assertTrue(conn.sent.isEmpty())
     }
 

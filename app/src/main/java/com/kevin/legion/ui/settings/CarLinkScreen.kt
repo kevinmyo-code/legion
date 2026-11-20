@@ -72,7 +72,10 @@ fun CarLinkScreen(onBack: () -> Unit) {
             openAppSettings = {
                 runCatching {
                     context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:${context.packageName}"),
+                        )
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 }

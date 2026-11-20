@@ -180,8 +180,11 @@ class CarLinkViewModel(
                 canPair = false,
                 canCancel = true,
             )
-            p is PairingStage.Failed ->
-                base.copy(phase = CarLinkPhase.FAILED, headline = CarLinkWords.failure(p), detail = linkLine(s))
+            p is PairingStage.Failed -> base.copy(
+                phase = CarLinkPhase.FAILED,
+                headline = CarLinkWords.failure(p),
+                detail = CarLinkWords.linkLine(s),
+            )
             else -> resting(s, base)
         }
     }
@@ -213,11 +216,6 @@ class CarLinkViewModel(
         }
     }
 
-    private fun linkLine(s: CarLinkStatus): String = when (s.link) {
-        LinkState.PAIRED -> "This phone is still paired with its earlier head unit."
-        LinkState.BROKEN -> "Pairing broken: pair again."
-        LinkState.NOT_PAIRED, LinkState.LOADING -> "This phone is not paired with a head unit."
-    }
 
     class Factory(context: Context) : ViewModelProvider.Factory {
         private val app = context.applicationContext as Application
@@ -234,6 +232,12 @@ class CarLinkViewModel(
 
 /** The words for every outcome. */
 object CarLinkWords {
+    fun linkLine(s: CarLinkStatus): String = when (s.link) {
+        LinkState.PAIRED -> "This phone is still paired with its earlier head unit."
+        LinkState.BROKEN -> "Pairing broken: pair again."
+        LinkState.NOT_PAIRED, LinkState.LOADING -> "This phone is not paired with a head unit."
+    }
+
     const val NOT_A_PAIRING_CODE =
         "That is not a head unit pairing code. Point the camera at the code on the head unit."
     const val CAMERA_REFUSED = "LEGION uses the camera only to read the pairing code on the head unit. " +
@@ -281,6 +285,7 @@ object CarLinkWords {
             }
     }
 
+    @Suppress("CyclomaticComplexMethod") // one sentence per note; a table, not logic
     fun note(n: CarLinkNote): String = when (n) {
         CarLinkNote.CONFIRMED -> "The head unit confirmed the new pairing."
         CarLinkNote.REVERTED_QUIET ->

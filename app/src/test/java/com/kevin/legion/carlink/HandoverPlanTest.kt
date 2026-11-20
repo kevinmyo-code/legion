@@ -21,7 +21,8 @@ class HandoverPlanTest {
             val n = minted.size
             return UnitToken(id = "hu-$n", token = "unit-token-for-tests-$n", expires = "2030-01-01T00:00:00Z")
         }
-        override suspend fun rotate(id: String): UnitToken? = UnitToken(id, "rotated-for-tests", null).also { rotated += id }
+        override suspend fun rotate(id: String): UnitToken? =
+            UnitToken(id, "rotated-for-tests", null).also { rotated += id }
         override suspend fun revoke(id: String): Boolean = revoked.add(id)
     }
 
@@ -29,7 +30,8 @@ class HandoverPlanTest {
     private var phoneKey: String? = null
     private var mapToken: String? = null
     private val redacted = mutableListOf<String>()
-    private val plan = HandoverPlan(HandoverSources({ phoneKey }, { mapToken }, { "Test phone" }), tokens) { redacted += it }
+    private val plan =
+        HandoverPlan(HandoverSources({ phoneKey }, { mapToken }, { "Test phone" }), tokens) { redacted += it }
     private val allowed = setOf("v", "engine_token", "engine_user_id", "gemini_key", "mapbox_token", "phone_name")
 
     private fun fields(json: String) = Json.parseToJsonElement(json).jsonObject

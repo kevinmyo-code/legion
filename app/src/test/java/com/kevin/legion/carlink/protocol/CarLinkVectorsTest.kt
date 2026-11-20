@@ -150,7 +150,7 @@ class CarLinkVectorsTest {
         assertEquals(3L, d.counter)
     }
 
-    @Test fun `a hand-over with engine_vehicle_id seals and opens under the hand key, and without it the vector bytes hold`() {
+    @Test fun `engine_vehicle_id seals and opens under the hand key, and leaves the vector bytes alone`() {
         // Without the field the body is exactly the vectors' plaintext (checked above, byte for byte).
         assertEquals(p.str("handover_plain"), CarLinkVectors.vectorHandover().toJson())
         val with = HandoverBody(
