@@ -5,7 +5,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicReference
@@ -226,7 +229,10 @@ internal class SpeculativeAnswer(
         try {
             return j.await()
         } catch (e: CancellationException) {
-            j.cancel()
+            // Review F2: the draft runs outside the caller's job, and a write it started finishes
+            // (NonCancellable). Wait for it, so its result reaches [listener] before the caller
+            // decides what is owed; otherwise a write that landed is never said.
+            withContext(NonCancellable) { j.cancelAndJoin() }
             throw e
         }
     }
@@ -265,6 +271,12 @@ internal class SpeculativeAnswer(
             deliver { it.onToolResult(name, args, response, ms, writeDone) }
 
         override fun onReadThrough(source: String) = deliver { it.onReadThrough(source) }
+
+        // A write's facts and code's line for it (2026-11-19): only after adoption (tools wait for it).
+        override fun onWriteFact(fact: ScriptedLines.WriteFact) = deliver { it.onWriteFact(fact) }
+
+        override fun onCodeLine(text: String, facts: List<ScriptedLines.WriteFact>) =
+            deliver { it.onCodeLine(text, facts) }
 
         override fun onFirstPart(round: Int, ms: Long) {
             val direct = synchronized(events) {

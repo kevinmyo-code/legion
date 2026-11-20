@@ -7,7 +7,9 @@ import com.kevin.legion.service.TextToolExecutor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
@@ -72,7 +74,11 @@ class SpeculationTest {
     private val lines = Collections.synchronizedList(mutableListOf<CallUsage>())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private fun draft(t: GeminiStreamTransport): SpeculativeAnswer {
+    /** Every write here is an add: its facts, as the session's loop would make them. */
+    private val sayAdds: (String, JSONObject, JSONObject, Boolean, Boolean) -> ScriptedLines.WriteFact =
+        { _, _, r, ok, confirmed -> ScriptedLines.writeFact("manage_item", "add", r, ok, confirmed) }
+
+    private fun draft(t: GeminiStreamTransport, sayWrites: Boolean = false): SpeculativeAnswer {
         val hold = UsageHold { lines.add(it) }
         val loop = GeminiTextLoop(
             transport = t,
@@ -82,6 +88,7 @@ class SpeculationTest {
             isReadThrough = { _, _ -> false },
             meter = { model, u -> hold.add(CallUsage.of(CallUsage.LLM, model, u)) },
             discarded = { model, u, chars -> hold.add(CallUsage.of(CallUsage.LLM, model, u, chars = chars, discarded = true)) },
+            writeFact = if (sayWrites) sayAdds else null,
         )
         return SpeculativeAnswer(scope, loop, hold)
     }
@@ -122,6 +129,31 @@ class SpeculationTest {
         assertEquals(listOf("add_item"), r.writesDone)
         assertEquals(2, lines.size)
         assertTrue(lines.none { it.discarded })
+    }
+
+    @Test
+    fun `an adopted draft cut off mid-write reports the write before the turn ends (review F2)`() = runBlocking {
+        val t = Scripted(listOf(call("add_item"), usage(100, 3)), null)
+        val d = draft(t, sayWrites = true)
+        d.start(prefix, contents)
+        until { d.heldAtTool }
+        val facts = Collections.synchronizedList(mutableListOf<ScriptedLines.WriteFact>())
+        val heard = object : GeminiTextLoop.Listener {
+            override fun onWriteFact(fact: ScriptedLines.WriteFact) {
+                facts.add(fact)
+            }
+        }
+        val slowWrite = TextToolExecutor { _, _, _ ->
+            delay(300)
+            JSONObject().put("success", true).put("item", "milk")
+        }
+        val turn = launch(Dispatchers.Default) { d.adopt(slowWrite, heard) }
+        delay(50)
+        // The turn is cut off while the write runs: by the time the cut-off turn has ended, the
+        // write's result is in, so the session can owe it.
+        turn.cancelAndJoin()
+        assertEquals(1, facts.size)
+        assertTrue(facts[0].said)
     }
 
     @Test

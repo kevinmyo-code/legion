@@ -24,6 +24,7 @@ import com.kevin.legion.service.cascade.GeminiStreamTransport
 import com.kevin.legion.service.cascade.GeminiTextLoop
 import com.kevin.legion.service.cascade.GeminiStt
 import com.kevin.legion.service.cascade.GeminiTts
+import com.kevin.legion.service.cascade.LoneWordWriteGuard
 import com.kevin.legion.service.cascade.ScriptedLines
 import com.kevin.legion.service.cascade.SttGuard
 import com.kevin.legion.service.cascade.SttResult
@@ -34,6 +35,10 @@ import com.kevin.legion.service.cascade.ToolFillers
 import com.kevin.legion.service.cascade.TtsTags
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.tools.day.RelativeDay
+import com.kevin.legion.vehicle.AdapterBinding
+import com.kevin.legion.vehicle.DongleCarController
+import com.kevin.legion.vehicle.ObdBluetoothManager
+import com.kevin.legion.vehicle.VinResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -56,6 +61,8 @@ internal data class EvalCase(
     val sttAudio: Boolean = false,
     /** The languages besides English he has in Settings for this case ([SpokenLanguages]). */
     val languages: List<String> = emptyList(),
+    /** "unknown": a made-up OBD adapter is plugged into a car nobody has named (no VIN, no print). */
+    val dongle: String? = null,
 )
 
 /** Reads the shared case files (`tools/voice_eval/cases.json` and any private ones). */
@@ -75,6 +82,7 @@ internal object VoiceEvalCases {
                     (0 until a.length()).map { a.getString(it) }
                 }.orEmpty(),
                 sttAudio = c.optBoolean("stt_audio", false),
+                dongle = c.optJSONObject("fixture")?.optString("dongle")?.takeIf { it.isNotBlank() },
             )
         }
     }
@@ -113,9 +121,57 @@ internal class VoiceEvalHarness(
     private var turnStartedAt: java.time.LocalTime = java.time.LocalTime.now()
     private val dateCalls = AtomicInteger(0)
 
+    /** As the session ([LoneWordWriteGuard]): the last answered turn's tools asked him something. */
+    @Volatile private var askedBefore = false
+    @Volatile private var asked = false
+
     suspend fun runCase(case: EvalCase) {
         out(TEST_TAG, "case_begin id=${LiveAudit.token(case.id)}")
-        runTurns(case)
+        // Each case is its own conversation: no ask carries over from the case before.
+        askedBefore = false
+        asked = false
+        if (case.dongle == "unknown") plugUnknownDongle()
+        try {
+            runTurns(case)
+        } finally {
+            if (case.dongle != null) unplugDongle()
+        }
+    }
+
+    /** A made-up adapter plugged in with no VIN and no print, in the two-car household: its car is unknown. */
+    private suspend fun plugUnknownDongle() {
+        unplugDongle()
+        setAdapterAddress(EVAL_DONGLE)
+        DongleCarController.onConnected(context, EVAL_DONGLE, null) { VinResponse.Result.NoData }
+        // Nothing speaks in the harness, so the connect-time spoken ask did not reach him: not yet asked.
+        AdapterBinding.resetForTest()
+        out(TEST_TAG, "fixture dongle=${DongleCarController.state.value?.javaClass?.simpleName}")
+    }
+
+    private fun unplugDongle() {
+        DongleCarController.resetForTest()
+        AdapterBinding.resetForTest()
+        setAdapterAddress(null)
+        context.getSharedPreferences("dongle_car", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    /**
+     * The adapter's address and a link with nothing behind it (every read answers nothing at once), so
+     * the tools see an adapter that is connected; the manager keeps both private, tests set them so.
+     */
+    private fun setAdapterAddress(address: String?) {
+        val link = address?.let {
+            object : com.kevin.legion.vehicle.ObdTransport {
+                override val inputStream = java.io.ByteArrayInputStream(ByteArray(0))
+                override val outputStream = object : java.io.OutputStream() { override fun write(b: Int) = Unit }
+                override val label = it
+                override fun close() = Unit
+            }
+        }
+        ObdBluetoothManager::class.java.getDeclaredField("transport").apply { isAccessible = true }
+            .set(ObdBluetoothManager, link)
+        ObdBluetoothManager::class.java.getDeclaredField("connectedDeviceAddress").apply { isAccessible = true }
+            .set(ObdBluetoothManager, address)
     }
 
     @Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements") // the session's turn order, in one place
@@ -126,9 +182,12 @@ internal class VoiceEvalHarness(
         val loop = GeminiTextLoop(
             transport = transport,
             cache = cache,
-            isMutating = LiveToolbox::isMutatingCall,
+            // As the session judges writes: on the tool a call stands for, so an action tool's write counts.
+            isMutating = CascadeRules::isWrite,
             isReadThrough = CascadeRules::isReadThrough,
             toolTimeoutMs = { CascadeSession.TOOL_BACKSTOP_MS },
+            // As the session: a write that went through is said by code from its result.
+            writeFact = ScriptedLines::factOf,
             meter = { model, usage -> out(LiveLatency.TAG, CallUsage.of(CallUsage.LLM, model, usage).line()) },
             discarded = { model, usage, chars ->
                 out(LiveLatency.TAG, CallUsage.of(CallUsage.LLM, model, usage, chars = chars, discarded = true).line())
@@ -192,6 +251,8 @@ internal class VoiceEvalHarness(
                 SpokenLanguages.Decision.Stay -> Unit
             }
             audit.user(heard, final = true)
+            askedBefore = asked
+            asked = false
             val t0 = now()
             turnStartedAt = java.time.LocalTime.now()
             dateCalls.set(0)
@@ -210,6 +271,12 @@ internal class VoiceEvalHarness(
 
                     override fun onReadThrough(source: String) = audit.readThrough(source)
 
+                    // Code's line for a write: heard in its place, between the model's words.
+                    override fun onCodeLine(text: String, facts: List<ScriptedLines.WriteFact>) {
+                        if (raw.isNotEmpty() && !raw.last().isWhitespace()) raw.append(' ')
+                        raw.append(text).append(' ')
+                    }
+
                     // The holding line the phone would say as these tools start ([ToolFillers]).
                     override fun onToolsStarting(calls: List<Pair<String, JSONObject>>) {
                         dateCalls.addAndGet(
@@ -226,10 +293,14 @@ internal class VoiceEvalHarness(
                 },
             )
             out(LiveLatency.TAG, CascadeLines.usage(prefix.model, result.usage))
-            val said = if (result.failure != null && result.text.isBlank()) {
-                result.failureWords ?: result.failure.lead
-            } else {
-                result.text
+            if (result.saidDropped > 0) out(LiveLatency.TAG, "reply_said_dropped n=${result.saidDropped}")
+            if (result.closingDropped) out(LiveLatency.TAG, "reply_closing_dropped n=1")
+            // As the session says it: a failure after a write code said is said after that line.
+            val said = when {
+                result.failure == null -> result.text
+                result.text.isBlank() -> result.failureWords ?: result.failure.lead
+                result.codeLines > 0 -> "${result.text} ${result.failureWords ?: result.failure.lead}"
+                else -> result.text
             }
             audit.assistant(said, readThrough = result.readThrough)
             // What would be heard, even when the record redacts it (made-up data only): the scorer
@@ -284,7 +355,10 @@ internal class VoiceEvalHarness(
         val id = "e${toolSeq.incrementAndGet()}"
         audit.toolCall(id, name, false, args.toString())
         val t = now()
-        val response = runTool(name, args, readThrough, heard)
+        // The session's lone-word rule, before the controller, as in its executor.
+        val response = LoneWordWriteGuard.refusal(name, args, heard, "Alfred", askedBefore)
+            ?: runTool(name, args, readThrough, heard)
+        if (LoneWordWriteGuard.asks(name, args, response)) asked = true
         // The day a calendar read covered, whole (the audit line cuts a result at 400 characters): the
         // date cases grade what was READ, not the model's arguments.
         if (name == "day" && response.has("window")) {
@@ -338,6 +412,7 @@ internal class VoiceEvalHarness(
 
     companion object {
         const val TEST_TAG = "LIVE_TEST"
+        const val EVAL_DONGLE = "EVAL:DONGLE:00:01"
         private const val STT_AUDIO_TIMEOUT_MS = 20_000L
         private const val PRE_ROLL_PAD_MS = 300
         private const val END_PAD_MS = 600

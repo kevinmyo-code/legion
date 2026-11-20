@@ -19,6 +19,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** A write's facts from its call (name, args) and result: `ok` it went through, `confirmed` a result came back. */
+typealias WriteFacts = (name: String, args: JSONObject, response: JSONObject, ok: Boolean, confirmed: Boolean) ->
+    ScriptedLines.WriteFact
+
 /**
  * The cascade's middle: one spoken turn on a Gemini TEXT model with function calling, streamed.
  *
@@ -42,6 +46,7 @@ import org.json.JSONObject
  *
  * One instance per conversation (the search fallback is per conversation).
  */
+@Suppress("TooManyFunctions") // one turn's loop: rounds, one tool, its write's facts and line, verbatim, results
 class GeminiTextLoop(
     private val transport: GeminiStreamTransport,
     private val cache: ContextCacheStore?,
@@ -59,6 +64,11 @@ class GeminiTextLoop(
     private val maxRounds: Int = TextChatEngine.MAX_ROUNDS,
     private val budgetMs: Long = BUDGET_MS,
     private val now: () -> Long = System::currentTimeMillis,
+    /**
+     * A write's facts from its result ([ScriptedLines.factOf]). Given, every write that went
+     * through is said by code after its round ([Listener.onCodeLine], 2026-11-19); null, none is.
+     */
+    private val writeFact: WriteFacts? = null,
 ) {
     interface Listener {
         /** Spoken text, as it streams. */
@@ -81,6 +91,16 @@ class GeminiTextLoop(
 
         /** One round's first text or call part arrived, [ms] after its request was sent. */
         fun onFirstPart(round: Int, ms: Long) {}
+
+        /** A write finished: its facts, done or failed (only when the loop was given `writeFact`). */
+        fun onWriteFact(fact: ScriptedLines.WriteFact) {}
+
+        /**
+         * Code's line for the writes of a round that went through ([ScriptedLines.doneLine]), to be
+         * said after the model's text so far and before its next. Part of [Result.text]; never
+         * passed to [onText] (it is not the model's).
+         */
+        fun onCodeLine(text: String, facts: List<ScriptedLines.WriteFact>) {}
     }
 
     /** Token use over the whole turn, for the per-turn log line. */
@@ -128,6 +148,12 @@ class GeminiTextLoop(
         val diagDropped: Int = 0,
         /** Filler-only sentences dropped after real content ([TrailingFiller]). */
         val trailingFillerDropped: Int = 0,
+        /** Code lines said this turn for writes that went through ([Listener.onCodeLine]). */
+        val codeLines: Int = 0,
+        /** Model sentences not spoken because they named what a code line had just said ([SaidFilter]). */
+        val saidDropped: Int = 0,
+        /** The closing round's text was not spoken: it followed confirmed writes alone ([ClosingRound]). */
+        val closingDropped: Boolean = false,
     )
 
     @Volatile private var searchRejected = false
@@ -146,7 +172,24 @@ class GeminiTextLoop(
         var moneyDropped = 0
         var diagDropped = 0
         var trailingFillerDropped = 0
+
+        /** The calls whose write code already said ([Listener.onCodeLine]), and how many lines. */
+        val writesSaid = mutableListOf<String>()
+        var codeLines = 0
+
+        /** What the last code line named ([ScriptedLines.namesIn]), for the next round only; sentences dropped. */
+        val saidNames = mutableListOf<String>()
+        var saidDropped = 0
+
+        /** The next round's text is held: the round before was confirmed writes alone ([ClosingRound]). */
+        var closingMayDrop = false
+
+        /** A closing round's text was not spoken: it followed confirmed writes alone ([ClosingRound]). */
+        var closingDropped = false
     }
+
+    /** One call's result, and its write's facts when it was a write. */
+    private class Ran(val result: AgentProtocol.ToolResult, val fact: ScriptedLines.WriteFact?)
 
     /**
      * Answers the user's turn. [contents] is the whole conversation so far INCLUDING the new user
@@ -220,7 +263,23 @@ class GeminiTextLoop(
             }
             // A filler-only sentence after real content is never spoken ([TrailingFiller]).
             val trail = TrailingFiller { hasContent(state) }
-            fun pass(t: String) = emit(trail.feed(money?.feed(t) ?: t), state, listener)
+            // After code said a write, a model sentence that names it is not spoken (ruling A, [SaidFilter]).
+            // Only the round right after a code line (review round 2 A1), then the names are spent.
+            val said = if (state.saidNames.isEmpty()) null else SaidFilter(state.saidNames.toList())
+            state.saidNames.clear()
+            fun filtered(t: String): String {
+                val m = money?.feed(t) ?: t
+                return said?.feed(m) ?: m
+            }
+            // Ruling D-prime: after a round of confirmed writes alone, this round's text is held to its
+            // end and spoken only if the round also calls a tool ([ClosingRound]).
+            val holdClosing = state.closingMayDrop
+            state.closingMayDrop = false
+            val closing = StringBuilder()
+            fun out(t: String) {
+                if (holdClosing) closing.append(t) else emit(t, state, listener)
+            }
+            fun pass(t: String) = out(trail.feed(filtered(t)))
             val outcome = try {
                 transport.stream(prefix.model, body) { ev ->
                     val before = turn.text.length + turn.calls.size
@@ -259,11 +318,24 @@ class GeminiTextLoop(
             state.usage = state.usage.plus(turn.usage, cacheName != null)
             held?.end()?.let { pass(it) }
             money?.let {
-                emit(trail.feed(it.flush()), state, listener)
+                val m = it.flush()
+                out(trail.feed(said?.feed(m) ?: m))
                 if (it is DiagFilter) state.diagDropped += it.dropped else state.moneyDropped += it.dropped
             }
-            emit(trail.flush(), state, listener)
+            said?.let {
+                out(trail.feed(it.flush()))
+                state.saidDropped += it.dropped
+            }
+            out(trail.flush())
             state.trailingFillerDropped += trail.dropped
+            if (holdClosing) {
+                // Text alone after confirmed writes could only repeat them; with a tool call it is kept.
+                if (turn.calls.isEmpty() || force) {
+                    if (closing.isNotBlank()) state.closingDropped = true
+                } else {
+                    emit(closing.toString(), state, listener)
+                }
+            }
             if (turn.blockReason != null) return fail(TextFailure.BLOCKED, state)
             if (turn.error != null && !turn.hasParts()) return fail(TextFailure.MODEL_ERROR, state)
             if (turn.grounded && !state.readThrough) {
@@ -274,7 +346,8 @@ class GeminiTextLoop(
             if (calls.isEmpty() || force) {
                 // A tool turn that ended on filler: never said as the answer; asked once more, tool-free.
                 // Not after a verbatim answer: that turn already said what was asked, so it just ends.
-                val fillerOnly = !state.verbatim && (
+                // Nor after a write code said: that line is the answer, and the model has nothing to add.
+                val fillerOnly = !state.verbatim && state.codeLines == 0 && (
                     held?.filler == true ||
                         (held != null && turn.text.isBlank() && FillerTurn.isFillerOnly(state.text.toString()))
                     )
@@ -296,9 +369,12 @@ class GeminiTextLoop(
             contents.put(turn.modelContent())
             listener.onToolCalls(calls.map { it.name })
             listener.onToolsStarting(calls.map { it.name to it.args })
-            val results = coroutineScope {
+            val ran = coroutineScope {
                 calls.map { call -> async { runOne(call, executor, listener, state) } }.awaitAll()
             }
+            sayWrites(ran, state, listener)
+            state.closingMayDrop = ClosingRound.dropsText(ran.map { ClosingRound.Call(it.fact, it.result.response) })
+            val results = ran.map { it.result }
             speakVerbatim(results, state, listener)
             val nudge = if (round + 1 >= maxRounds) "Answer now with what you have." else null
             contents.put(AgentProtocol.functionResponseContent(results, nudge))
@@ -315,7 +391,7 @@ class GeminiTextLoop(
         executor: TextToolExecutor,
         listener: Listener,
         state: TurnState,
-    ): AgentProtocol.ToolResult = withContext(NonCancellable) {
+    ): Ran = withContext(NonCancellable) {
         // ADR 0090: the executor is handed the turn's mark as it stood before this call's OWN mark.
         // A read-through tool that also acts (email reads mail for a recipient, browser opens a
         // page) must not refuse itself; a mark from an earlier read still reaches it.
@@ -339,9 +415,10 @@ class GeminiTextLoop(
             listener.onReadThrough(READ_THROUGH_FLEET_WEB)
         }
         var writeDone = false
+        val write = isMutating(call.name, call.args)
         synchronized(state) {
             state.toolsRan.add(call.name)
-            if (isMutating(call.name, call.args)) {
+            if (write) {
                 when {
                     confirmed && response.optBoolean("success", false) -> {
                         state.writesDone.add(call.name)
@@ -352,7 +429,42 @@ class GeminiTextLoop(
             }
         }
         listener.onToolResult(call.name, call.args, response, now() - started, writeDone)
-        AgentProtocol.ToolResult(call.name, call.id, response)
+        val fact = factOf(call, response, write, writeDone, confirmed, listener)
+        Ran(AgentProtocol.ToolResult(call.name, call.id, response), fact)
+    }
+
+    /** The write's facts, told to [listener]; null for a read or when the loop says no writes. */
+    @Suppress("LongParameterList")
+    private fun factOf(
+        call: AgentProtocol.FunctionCall,
+        response: JSONObject,
+        write: Boolean,
+        writeDone: Boolean,
+        confirmed: Boolean,
+        listener: Listener,
+    ): ScriptedLines.WriteFact? {
+        if (!write) return null
+        val fact = writeFact?.invoke(call.name, call.args, response, writeDone, confirmed)
+        return fact?.also { listener.onWriteFact(it) }
+    }
+
+    /**
+     * The round's writes that went through are said by code, from their results (2026-11-19: a write
+     * was done and never said). One line for the round, after the model's text so far; each of those
+     * results tells the model it was said, so its next words need not say it again. Nothing here
+     * reads what the model wrote.
+     */
+    private fun sayWrites(ran: List<Ran>, state: TurnState, listener: Listener) {
+        val said = ran.filter { it.fact?.said == true }
+        val line = ScriptedLines.doneLine(said.mapNotNull { it.fact }) ?: return
+        for (r in said) r.result.response.put(SAID_ALOUD, line).put(SAID_ALOUD_NOTE, SAID_NOTE)
+        if (state.text.isNotEmpty() && !state.text.last().isWhitespace()) state.text.append(' ')
+        state.text.append(line).append(' ')
+        state.writesSaid += said.map { it.result.name }
+        // Not from a result that asks him, never a name the adapter's note carries ([ClosingRound.armedNames]).
+        state.saidNames += ClosingRound.armedNames(said.map { ClosingRound.Call(it.fact, it.result.response) }, line)
+        state.codeLines++
+        listener.onCodeLine(line, said.mapNotNull { it.fact })
     }
 
     /**
@@ -403,12 +515,15 @@ class GeminiTextLoop(
         moneyDropped = state.moneyDropped,
         diagDropped = state.diagDropped,
         trailingFillerDropped = state.trailingFillerDropped,
+        codeLines = state.codeLines,
+        saidDropped = state.saidDropped,
+        closingDropped = state.closingDropped,
     )
 
     private fun fail(failure: TextFailure, state: TurnState) = Result(
         text = TtsTags.strip(state.text.toString()).trim(),
         failure = failure,
-        failureWords = TextChatEngine.failureWords(failure, state.writesDone, state.writesUnconfirmed),
+        failureWords = failureWords(failure, state),
         writesDone = state.writesDone.toList(),
         toolsRan = state.toolsRan.toList(),
         readThrough = state.readThrough,
@@ -419,13 +534,36 @@ class GeminiTextLoop(
         moneyDropped = state.moneyDropped,
         diagDropped = state.diagDropped,
         trailingFillerDropped = state.trailingFillerDropped,
+        codeLines = state.codeLines,
+        saidDropped = state.saidDropped,
+        closingDropped = state.closingDropped,
     )
+
+    /**
+     * What a failed turn says about its writes: a write code already said is not said again, and
+     * "Nothing was changed" is never said after one (the line said it was).
+     */
+    private fun failureWords(failure: TextFailure, state: TurnState): String {
+        val unsaid = state.writesDone.toMutableList().apply { state.writesSaid.forEach { remove(it) } }
+        return when {
+            state.writesSaid.isEmpty() ->
+                TextChatEngine.failureWords(failure, state.writesDone, state.writesUnconfirmed)
+            unsaid.isEmpty() && state.writesUnconfirmed.isEmpty() -> failure.lead
+            else -> TextChatEngine.failureWords(failure, unsaid, state.writesUnconfirmed)
+        }
+    }
 
     companion object {
         /** A spoken turn should not wait as long as a typed one; above the 45 s specialist ceiling. */
         const val BUDGET_MS = 60_000L
         const val READ_THROUGH_GROUNDING = "grounding"
         const val READ_THROUGH_FLEET_WEB = "fleet_web"
+
+        /** On a write's result once code said it: the line, and what the model is told. */
+        const val SAID_ALOUD = "said_aloud"
+        const val SAID_ALOUD_NOTE = "said_aloud_note"
+        const val SAID_NOTE = "The phone already said this aloud to him. Do not say it again; say only " +
+            "anything else he still needs, or nothing."
 
         /** A cached request that failed because of the cache (gone, expired, not usable): retry inline. */
         internal fun isCacheError(e: StreamOutcome.HttpError): Boolean =

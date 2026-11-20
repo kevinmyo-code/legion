@@ -21,9 +21,11 @@ data class EngineToolAnswer(
 )
 
 /** What `ask_engine` hands back to the Live session: the same `{success, message}` shape every
- * other tool returns. */
-data class AskEngineAnswer(val success: Boolean, val message: String) {
+ * other tool returns, plus `changed` when an engine write committed (2026-11-19: the phone says a
+ * router's write aloud only on that field, never on the router's prose). */
+data class AskEngineAnswer(val success: Boolean, val message: String, val changed: Boolean = false) {
     fun toJson(): JSONObject = JSONObject().put("success", success).put("message", message)
+        .apply { if (changed) put("changed", true) }
 }
 
 /**
@@ -150,7 +152,7 @@ class AskEngine(
         } else {
             ""
         }
-        return AskEngineAnswer(true, text + note)
+        return AskEngineAnswer(true, text + note, changed = tally.committed.isNotEmpty())
     }
 
     private fun failedAfterCalls(tally: Tally): String = when {

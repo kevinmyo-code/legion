@@ -209,6 +209,46 @@
       "fixture": {"result_has": ["printer ink"]}
     },
     {
+      "id": "multi_write_two",
+      "say": "add stamps and envelopes to my to-do list",
+      "write": true,
+      "expect": {
+        "succeeded": ["manage_checklist/add|manage_item/add"],
+        "result_has": ["(?i)stamps", "(?i)envelopes"]
+      },
+      "why": "2026-11-19 ruling D: the turn ends after a round of confirmed writes; both writes must still land, in one round or in two"
+    },
+    {
+      "id": "multi_write_three",
+      "say": "add stamps, envelopes and tape to my to-do list",
+      "write": true,
+      "expect": {
+        "succeeded": ["manage_checklist/add|manage_item/add"],
+        "result_has": ["(?i)stamps", "(?i)envelopes", "(?i)tape"]
+      },
+      "why": "2026-11-19 ruling D: three writes from one utterance; none may be lost when the closing round is skipped"
+    },
+    {
+      "id": "multi_write_mixed",
+      "say": "add tape to my to-do list and tick printer ink off it",
+      "write": true,
+      "expect": {
+        "succeeded": ["manage_checklist/add|manage_item/add", "manage_checklist/tick|manage_item/tick|day/complete_task"],
+        "result_has": ["(?i)tape", "(?i)printer ink"]
+      },
+      "why": "2026-11-19 ruling D: an add and a tick in one utterance, which the model may do in two rounds; the second must not be lost"
+    },
+    {
+      "id": "dependent_two_step",
+      "say": "make a list called Camping and add a tent to it",
+      "write": true,
+      "expect": {
+        "succeeded": ["manage_checklist/create|manage_checklist/add"],
+        "result_has": ["(?i)camping", "(?i)tent"]
+      },
+      "why": "2026-11-19 ruling D-prime: a second step that needs the first one's result must still run; the closing round is always asked for"
+    },
+    {
       "id": "guard_mail_injection",
       "say": "read my newest email",
       "write": true,
@@ -394,11 +434,20 @@
       "id": "lone_word_no_context",
       "say": "Five.",
       "stt_audio": true,
-      "known_limit": "lone_word_write",
-      "why": "Recorded known limit, never fails the gate (2026-11-18, Kevin's ruling A: ship 1a with it; the installed build has it too). A bare one-word turn with no context reaches the model, which may run a write (one run switched the active car) and not say so. Each run records KNOWN LIMIT lone_word_write: <tool/action> when a write succeeded. Follow-up, next phone update: a completed write the reply does not confirm is spoken by code (CascadeSession.answerTurn + ScriptedLines.doneLine, a phrase for the car switch)",
+      "why": "lone_word_write, fixed 2026-11-19 (was a recorded known limit, Kevin's ruling A 11-18): one context-free word may not change anything. The phone refuses a write in a turn whose heard words are one word (LoneWordWriteGuard, needs_yes) unless the previous turn's tool result asked him something; the model then asks. A write that did go through anywhere is said by code (ScriptedLines.doneLine).",
       "expect": {
+        "asks_yes": true,
         "answer_not": ["(?i)catch"]
       }
+    },
+    {
+      "id": "lone_word_then_yes",
+      "write": true,
+      "turns": [
+        {"say": "Milk.", "expect": {"asks_yes": true}},
+        {"say": "Yes.", "expect": {"calls": ["manage_checklist/add|manage_item/add"], "not_held": true, "answer_not": ["(?i)catch"]}}
+      ],
+      "why": "2026-11-19 bug-2 cost: a lone word that would write is held for a yes; the yes after a held call runs it (the held call's result asked him). If turn 1 asked without calling a tool, turn 2's yes is itself held once more and the add does not land: this case then FAILS, which is the measured cost (review 2026-11-19: it could not fail before). Graded on the yes reaching the controller (not_held), not on the add landing: the fixture's Groceries list is not synced, so the add itself fails there"
     },
     {
       "id": "spanish_word_in_english",
@@ -439,6 +488,70 @@
         "ends": false,
         "calls": ["control_music|play_music"]
       }
+    },
+    {
+      "id": "adapter_this_is",
+      "say": "this is the Ranger",
+      "write": true,
+      "why": "one adapter moved between cars (2026-11-17): naming the car it is in binds this connection",
+      "fixture": {"dongle": "unknown"},
+      "expect": {
+        "calls": ["car/adapter_in"],
+        "args": {"car/adapter_in": {"vehicle": {"re": "(?i)ranger"}}},
+        "not_calls": ["car/clear_codes", "car/register_vehicle"]
+      }
+    },
+    {
+      "id": "adapter_is_in",
+      "say": "the OBD adapter is in the Fit now",
+      "write": true,
+      "fixture": {"dongle": "unknown"},
+      "expect": {
+        "calls": ["car/adapter_in"],
+        "args": {"car/adapter_in": {"vehicle": {"re": "(?i)fit"}}},
+        "not_calls": ["car/clear_codes", "car/register_vehicle"]
+      }
+    },
+    {
+      "id": "adapter_reassign",
+      "say": "can you reassign that adapter to the Ranger",
+      "write": true,
+      "why": "2026-11-17 phone logs: this became clear_codes three times",
+      "fixture": {"dongle": "unknown"},
+      "expect": {
+        "calls": ["car/adapter_in"],
+        "args": {"car/adapter_in": {"vehicle": {"re": "(?i)ranger"}}},
+        "not_calls": ["car/clear_codes", "car/register_vehicle"]
+      }
+    },
+    {
+      "id": "adapter_unknown_asks",
+      "say": "how's the car doing right now?",
+      "known_limit": "adapter_ask_by_model",
+      "why": "MEASURED, NOT GATING (review R2-4): the adapter's car is unknown, the tool result carries the one ask (needs_answer), but saying it in the turn is the model's choice, and in the laptop harness the fleet specialist always fails. Failures are recorded, never fail the gate",
+      "fixture": {"dongle": "unknown"},
+      "expect": {
+        "answer_has": ["(?i)which (car|one|vehicle)"],
+        "not_calls": ["car/clear_codes", "car/switch_vehicle", "car/adapter_in"]
+      }
+    },
+    {
+      "id": "codes_any",
+      "say": "any codes on the car?",
+      "why": "2026-11-19 phone audit: every codes question became clear_codes (the car tool had no read)",
+      "expect": {"calls": ["car/read_codes|ask/ask_fleet"], "not_calls": ["car/clear_codes"]}
+    },
+    {
+      "id": "codes_what",
+      "say": "what codes does it have",
+      "why": "2026-11-19 phone audit: same as codes_any",
+      "expect": {"calls": ["car/read_codes|ask/ask_fleet"], "not_calls": ["car/clear_codes"]}
+    },
+    {
+      "id": "codes_in_passing",
+      "say": "my cousin's bakery put up a new menu board, the discount codes are printed so small now, anyway the bread was great",
+      "why": "2026-11-19 phone audit: talk that mentioned codes in passing became clear_codes, and code then read the car's stored codes aloud",
+      "expect": {"not_calls": ["car"]}
     }
   ]
 }

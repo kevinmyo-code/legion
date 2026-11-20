@@ -41,6 +41,7 @@ import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kevin.legion.vehicle.ActiveVehicle
+import com.kevin.legion.vehicle.AdapterBinding
 import com.kevin.legion.vehicle.DongleCar
 import com.kevin.legion.vehicle.DongleCarController
 import com.kevin.legion.vehicle.ObdBluetoothManager
@@ -439,14 +440,19 @@ private suspend fun dongleQuestions(context: android.content.Context, live: Dong
     val cars = labels.entries.map { it.key to it.value }
     val out = mutableListOf<DongleQuestion>()
     when (live) {
-        is DongleCar.Held ->
-            out += DongleQuestion(null, DongleCarController.question(live, labels), live.vin != null, cars)
+        is DongleCar.Held -> out += DongleQuestion(
+            null,
+            DongleCarController.question(live, labels) + " " + AdapterBinding.screenLine(live).orEmpty(),
+            live.vin != null,
+            cars,
+        )
         is DongleCar.OnCar -> {
             val name = labels[live.carId] ?: "car on file"
             when (live.basis) {
                 DongleCar.Basis.ASSUMED -> out += DongleQuestion(
                     null,
-                    "Recording as the $name (assumed): the dongle could not read this car's VIN. Which car is it in?",
+                    "Looks like the $name (recognised by how it answers; the dongle could not read a VIN). " +
+                        AdapterBinding.screenLine(live).orEmpty(),
                     canLookUpNewCar = false,
                     cars = cars,
                 )

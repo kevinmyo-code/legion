@@ -310,7 +310,8 @@ class CascadeWiringTest {
         assertTrue(bodyOf(s, "newSpeaker").contains("onFillerDropped = { LiveLatency.log(LiveLatency.TAG, \"reply_filler_dropped n=1\") }"))
         val answer = bodyOf(s, "answerTurn")
         assertTrue(answer.contains("reply.spoken().ifBlank { LeadingFiller.strip(result.text) }"))
-        assertTrue(answer.contains("text ?: LeadingFiller.strip(result.text)"))
+        // Review F1: the re-voice says the model's words only; code's write line is owed and said first.
+        assertTrue(answer.contains("text ?: LeadingFiller.strip(modelText(record))"))
     }
 
     @Test
@@ -466,6 +467,19 @@ class CascadeWiringTest {
     }
 
     // --- source access ----------------------------------------------------------------------------
+
+    @Test
+    fun `a one-word answer to the spoken which-car ask reaches the lone-word guard as an answer`() {
+        val executor = bodyOf(session(), "executorFor")
+        val guard = executor.indexOf("LoneWordWriteGuard.refusal(")
+        assertTrue("the guard runs in the executor", guard >= 0)
+        assertTrue(
+            "the spoken which-car ask counts as asked (seam d)",
+            executor.substring(0, guard).contains("val asked = record.askedBefore || answersSpokenAsk(") &&
+                executor.substring(guard).substringBefore("\n").contains("asked)"),
+        )
+        assertTrue(bodyOf(session(), "answersSpokenAsk").contains("SpokenWhichCarAsk.answers("))
+    }
 
     private fun controller() = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
 

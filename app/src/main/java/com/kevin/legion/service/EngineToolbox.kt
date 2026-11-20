@@ -1055,8 +1055,9 @@ object EngineToolbox {
         val payload = JSONObject(record.payload)
         val out = JSONObject()
             .put("id", record.id)
-            .put("createdAt", record.createdAt)
-            .put("updatedAt", record.updatedAt)
+            // Local, by code (phone audit 2026-11-19): a raw epoch leaves the zone sum to the model.
+            .put("createdAt", com.kevin.legion.util.LocalClock.stamp(record.createdAt))
+            .put("updatedAt", com.kevin.legion.util.LocalClock.stamp(record.updatedAt))
         if (record.dueAt != null) out.put("dueAt", record.dueAt)
         if (record.amountCents != null) out.put("amountCents", record.amountCents)
         val fieldsOut = JSONObject()

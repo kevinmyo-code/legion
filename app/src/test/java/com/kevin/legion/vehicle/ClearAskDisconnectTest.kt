@@ -47,7 +47,7 @@ class ClearAskDisconnectTest {
         val src = File(listOf("src/main/java", "app/src/main/java").map { File(it) }.first { it.isDirectory },
             "com/kevin/legion/service/LiveToolbox.kt").readText()
         val body = src.substring(src.indexOf("private suspend fun clearCodes("))
-        val asked = body.indexOf("gate.asked(userText)")
+        val asked = body.indexOf("gate.asked(userText, subject)")
         val recheck = body.indexOf("if (!ObdBluetoothManager.isConnected)", asked)
         assertTrue(asked >= 0 && recheck > asked)
         assertTrue(body.substring(recheck, recheck + 200).contains("gate.reset()"))
