@@ -281,7 +281,7 @@ def _start(request, question: str, client: str) -> str:
     with transaction.atomic():
         # One ask at a time per member: the counts below and the create are one step, so two asks
         # at once cannot both take the last open slot.
-        User.objects.select_for_update().filter(pk=request.user.pk).first()
+        User.objects.select_for_update(no_key=True).filter(pk=request.user.pk).first()
         return _start_locked(request, question, client)
 
 
