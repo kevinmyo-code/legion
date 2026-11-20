@@ -36,6 +36,9 @@ class TurnModelsGoldenTest {
             }
         }
 
+    private fun pythonProb(name: String): Double =
+        TurnGolden.meta.getJSONObject("vectors").getJSONObject(name).getDouble("smart_turn_prob")
+
     private fun rawSession(bytes: ByteArray): OrtSession = OrtSession.SessionOptions().use { opts ->
         // The wrapper's own options: the same kernels, so the same features give the same bits.
         opts.setIntraOpNumThreads(1)
@@ -72,6 +75,35 @@ class TurnModelsGoldenTest {
         }
     }
 
+    // Cross-implementation, at the level the product uses: Python's reference far from the 0.5
+    // threshold (far_high about 0.96, far_low about 0.01, both robust to feature noise up to 2e-3 in
+    // tools/turn/make_turn_golden.py's own runs), and the app's wrapper on KOTLIN features must make
+    // the same done / not-done call. Only the decision is asserted, never the probability.
+    @Test
+    fun `smart turn on kotlin features makes python's decision on inputs far from the threshold`() {
+        SmartTurnModel(env, asset("smart-turn-v3.2-cpu.onnx"), threads = 1).use { model ->
+            for (name in listOf("far_high", "far_low")) {
+                val python = pythonProb(name)
+                val kotlin = model.probability(WhisperLogMel().extract(TurnGolden.audio(name)))
+                assertEquals(name, python >= EndOfTurnPolicy.THRESHOLD, kotlin >= EndOfTurnPolicy.THRESHOLD)
+            }
+        }
+    }
+
+    // A SANITY band only, not a golden: "short" (0.67) and "long" (0.48) sit near the threshold, where
+    // this quantized model's output moves by about 0.1 between machines. +/-0.2 catches a broken
+    // model or wiring (an output pinned at 0 or 1, or a different model), nothing finer.
+    @Test
+    fun `smart turn near the threshold stays within a wide band of python's value`() {
+        SmartTurnModel(env, asset("smart-turn-v3.2-cpu.onnx"), threads = 1).use { model ->
+            for (name in listOf("short", "long")) {
+                val python = pythonProb(name)
+                val kotlin = model.probability(WhisperLogMel().extract(TurnGolden.audio(name)))
+                assertEquals(name, python, kotlin.toDouble(), SANITY_BAND)
+            }
+        }
+    }
+
     @Test
     fun `the wrapper check can fail - frames in the wrong order give another output`() {
         val bytes = asset("smart-turn-v3.2-cpu.onnx")
@@ -94,5 +126,9 @@ class TurnModelsGoldenTest {
                 assertEquals("window $i", expected.getDouble(i), p.toDouble(), 1e-3)
             }
         }
+    }
+
+    private companion object {
+        const val SANITY_BAND = 0.2
     }
 }
