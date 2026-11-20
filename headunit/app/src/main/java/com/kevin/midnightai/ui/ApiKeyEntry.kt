@@ -46,12 +46,41 @@ private const val AI_STUDIO_URL = "https://aistudio.google.com/apikey"
  * and a tappable link to where a free key is minted. [onSaved] lets the host
  * re-check key state after a save.
  */
+/** What SHOW does to the typed Gemini key (review L-c). */
+internal object KeyReveal {
+    enum class Action { REVEAL, HIDE, ASK_PIN, PARK_FIRST }
+
+    fun onShow(revealed: Boolean, pinUnlocked: Boolean, pinSet: Boolean, driving: Boolean): Action = when {
+        revealed -> Action.HIDE
+        pinUnlocked -> Action.REVEAL
+        else -> when (com.kevin.midnightai.link.OwnerPinGate.gate(pinSet, driving)) {
+            com.kevin.midnightai.link.OwnerPinGate.Gate.ALLOWED -> Action.REVEAL
+            com.kevin.midnightai.link.OwnerPinGate.Gate.NEEDS_PIN -> Action.ASK_PIN
+            com.kevin.midnightai.link.OwnerPinGate.Gate.PARK_FIRST -> Action.PARK_FIRST
+        }
+    }
+}
+
 @Composable
 fun ApiKeyEntry(modifier: Modifier = Modifier, onSaved: () -> Unit = {}) {
     val context = LocalContext.current
     // Only the key typed on this unit is ever put in the field; the phone's key is never shown.
     var key by remember { mutableStateOf(CompanionProfile.typedGeminiKey(context)) }
     var reveal by remember { mutableStateOf(false) }
+    // Review L-c: with an owner PIN set, the typed key is shown only after the PIN (never while driving).
+    val ownerPin = remember { com.kevin.midnightai.link.OwnerPin(context) }
+    var askingPin by remember { mutableStateOf(false) }
+    var pinUnlocked by remember { mutableStateOf(false) }
+    var parkNote by remember { mutableStateOf<String?>(null) }
+    if (askingPin) {
+        OwnerPinPrompt(
+            ownerPin,
+            prompt = "Owner PIN to show the typed Gemini key.",
+            onOk = { askingPin = false; pinUnlocked = true; reveal = true },
+            onCancel = { askingPin = false },
+        )
+        return
+    }
     // Bump after a save so the status line re-reads the live key state.
     var statusVersion by remember { mutableIntStateOf(0) }
 
@@ -89,9 +118,18 @@ fun ApiKeyEntry(modifier: Modifier = Modifier, onSaved: () -> Unit = {}) {
             enabled = key.isNotBlank(),
         ) { Text("SAVE KEY") }
         Spacer(Modifier.height(4.dp))
-        TextButton(onClick = { reveal = !reveal }) {
+        TextButton(onClick = {
+            parkNote = null
+            when (KeyReveal.onShow(reveal, pinUnlocked, ownerPin.isSet(), com.kevin.midnightai.update.DrivingState.isDriving())) {
+                KeyReveal.Action.REVEAL -> reveal = true
+                KeyReveal.Action.HIDE -> reveal = false
+                KeyReveal.Action.ASK_PIN -> askingPin = true
+                KeyReveal.Action.PARK_FIRST -> parkNote = com.kevin.midnightai.link.OwnerPinGate.PARK_FIRST
+            }
+        }) {
             Text(if (reveal) "Hide" else "Show", color = AriaColors.TextDim)
         }
+        parkNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = AriaColors.TextDim) }
         Text(
             text = "Get a free key at aistudio.google.com/apikey",
             style = MaterialTheme.typography.bodySmall,
