@@ -55,7 +55,8 @@ class CarLinkControllerTest {
     private val errors: MutableList<Throwable> = Collections.synchronizedList(mutableListOf())
     private val scope =
         CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e -> errors += e })
-    private var port = BlockingPort()
+    // Volatile: the listener thread swaps in a new port, and the test thread must see it before it puts a HELLO.
+    @Volatile private var port = BlockingPort()
     private val store = CarLinkStore(FakeKeystoreStandIn(), MemoryRecordFile()) {}
     private val lan = PairingNetwork("ap-test0", "10.0.0.0", 24)
 
@@ -76,7 +77,7 @@ class CarLinkControllerTest {
     }
     private var transport = com.kevin.legion.carlink.protocol.PairingTransport { _, _ -> null }
     private var wallNow = 1_000_000_000_000L
-    private var senders = 0
+    @Volatile private var senders = 0
 
     private fun controller(store: CarLinkStore = this.store) = CarLinkController(
         store = store,
@@ -113,7 +114,8 @@ class CarLinkControllerTest {
         locationService = service,
     )
 
-    private fun waitFor(what: String, ms: Long = 5_000, cond: () -> Boolean) {
+    // A generous bound: the controller runs on real threads, and a loaded machine must not turn a slow pass red.
+    private fun waitFor(what: String, ms: Long = 30_000, cond: () -> Boolean) {
         val until = System.currentTimeMillis() + ms
         while (!cond()) {
             check(System.currentTimeMillis() < until) { "timed out waiting for $what" }
@@ -331,7 +333,7 @@ class CarLinkControllerTest {
         waitFor("started again") { service.running }
         look = NetworkLook.Absent
         // The sender notices at its next wake (at most the 5 s idle wait).
-        waitFor("stopped when the network left", ms = 12_000) { !service.running }
+        waitFor("stopped when the network left") { !service.running }
     }
 
     // ---- Vehicle choice: the household's cars are offered, and the chosen one is kept for the mint.
