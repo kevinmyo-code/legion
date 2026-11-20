@@ -68,6 +68,9 @@ object NavFaceHost : NavPanelHost {
 
 @Composable
 internal fun NavFace(state: NavState, controller: NavController, modifier: Modifier) {
+    // Review NAV-1: the same 3 s rule as the CAR face, on the fixes the navigator gets.
+    val fix by com.kevin.midnightai.location.LocationController.navFixes.collectAsState()
+    val lines = com.kevin.midnightai.navigation.NavGuidance.lines(state, rememberFixAgeMs(fix))
     Column(modifier) {
         when (state.phase) {
             NavPhase.NO_TOKEN -> NavWords("Maps need your phone.", state.message, Modifier.weight(1f))
@@ -80,27 +83,27 @@ internal fun NavFace(state: NavState, controller: NavController, modifier: Modif
                     if (controller.mapAllowed()) {
                         NavMap(
                             following = state.following,
+                            stale = lines.stale,
                             onMovedByHand = controller::mapMovedByHand,
                             onFailed = controller::mapFailed,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
-                    if (state.phase == NavPhase.GUIDING) TurnBanner(state, Modifier.align(Alignment.TopCenter))
+                    lines.banner?.let { TurnBanner(it, lines.stale, Modifier.align(Alignment.TopCenter)) }
                 }
                 Spacer(Modifier.height(6.dp))
-                NavBottom(state, controller)
+                NavBottom(state, controller, lines.bottom)
             }
         }
     }
 }
 
 @Composable
-private fun TurnBanner(state: NavState, modifier: Modifier) {
-    val turn = NavFormat.turn(state.progress?.turn) ?: if (state.rerouting) "Finding a new route..." else "Follow the route."
+private fun TurnBanner(text: String, stale: Boolean, modifier: Modifier) {
     Text(
-        turn,
+        text,
         style = AriaType.readout.copy(fontSize = 20.sp, letterSpacing = 0.sp, fontWeight = DeckBold),
-        color = AriaColors.TextPrimary,
+        color = if (stale) AriaColors.accentText(AriaColors.Amber) else AriaColors.TextPrimary,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
@@ -112,7 +115,7 @@ private fun TurnBanner(state: NavState, modifier: Modifier) {
 }
 
 @Composable
-private fun NavBottom(state: NavState, controller: NavController) {
+private fun NavBottom(state: NavState, controller: NavController, guidingLine: String) {
     when (state.phase) {
         NavPhase.IDLE -> SavedPlaces(controller, state.message)
         NavPhase.REQUESTING -> NavLine(state.message)
@@ -124,11 +127,7 @@ private fun NavBottom(state: NavState, controller: NavController) {
             }
         }
         NavPhase.GUIDING -> {
-            val p = state.progress
-            NavLine(
-                if (p == null) state.message
-                else "${NavFormat.duration(p.durationLeftS)} left, ${NavFormat.distance(p.distanceLeftM)} to ${state.destination?.name}",
-            )
+            NavLine(guidingLine)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!state.following) NavKey("RECENTER") { controller.recenter() }
                 NavKey("END") { controller.end() }

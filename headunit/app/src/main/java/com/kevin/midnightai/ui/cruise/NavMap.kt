@@ -46,7 +46,13 @@ import com.mapbox.navigation.ui.maps.route.line.model.MapboxRouteLineViewOptions
  * frame-clock motion rule (headunit/CLAUDE.md §12).
  */
 @Composable
-internal fun NavMap(following: Boolean, onMovedByHand: () -> Unit, onFailed: (String) -> Unit, modifier: Modifier) {
+internal fun NavMap(
+    following: Boolean,
+    stale: Boolean,
+    onMovedByHand: () -> Unit,
+    onFailed: (String) -> Unit,
+    modifier: Modifier,
+) {
     val context = LocalContext.current
     val failed by rememberUpdatedState(onFailed)
     val moved by rememberUpdatedState(onMovedByHand)
@@ -115,6 +121,13 @@ internal fun NavMap(following: Boolean, onMovedByHand: () -> Unit, onFailed: (St
         }
     }
 
+    // Review NAV-1: a stale position is drawn faded, never as live.
+    LaunchedEffect(stale) {
+        mapView.location.updateSettings {
+            locationPuck = createDefault2DPuck(withBearing = true).let { if (stale) it.copy(opacity = STALE_PUCK_OPACITY) else it }
+        }
+    }
+
     // The route line: the preview's route, then the navigator's.
     val routes by NavRuntime.feed.routes.collectAsState()
     LaunchedEffect(routes, styleGen) {
@@ -132,3 +145,4 @@ internal fun NavMap(following: Boolean, onMovedByHand: () -> Unit, onFailed: (St
 private const val FOLLOW_ZOOM = 15.5
 private const val FOLLOW_PITCH = 45.0
 private const val CAMERA_MS = 800L
+private const val STALE_PUCK_OPACITY = 0.35f
