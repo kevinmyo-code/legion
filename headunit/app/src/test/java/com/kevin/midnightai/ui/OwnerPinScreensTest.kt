@@ -37,6 +37,8 @@ import org.robolectric.shadows.ShadowLooper
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE], qualifiers = "w800dp-h456dp-land-mdpi")
 class OwnerPinScreensTest {
+    @org.junit.After fun closeActivities() = TestActivities.closeAll()
+
     private val context: Context get() = RuntimeEnvironment.getApplication()
 
     private class Paired : LinkKeySource {
@@ -60,7 +62,7 @@ class OwnerPinScreensTest {
     }
 
     private fun render(inScaffold: Boolean = true, body: @Composable (ComponentActivity) -> Unit): ComponentActivity {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = TestActivities.start()
         activity.setContent {
             if (inScaffold) SectionScaffold("Settings", onBack = {}) { body(activity) } else body(activity)
         }

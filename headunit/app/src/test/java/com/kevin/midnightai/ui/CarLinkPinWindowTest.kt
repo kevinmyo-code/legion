@@ -37,6 +37,8 @@ import org.robolectric.shadows.ShadowLooper
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE], qualifiers = "w800dp-h456dp-land-mdpi")
 class CarLinkPinWindowTest {
+    @org.junit.After fun closeActivities() = TestActivities.closeAll()
+
     private val context: Context get() = RuntimeEnvironment.getApplication()
     private val release = CountDownLatch(1)
 
@@ -83,7 +85,7 @@ class CarLinkPinWindowTest {
         CarLink.store = store
         CarLink.refresh()
         store.slow = true // from here every Keystore read hangs until released
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = TestActivities.start()
         activity.setContent { CarLinkSection(activity, onBack = {}) }
         repeat(5) { ShadowLooper.idleMainLooper(20, TimeUnit.MILLISECONDS) }
 
@@ -95,6 +97,9 @@ class CarLinkPinWindowTest {
         repeat(5) { ShadowLooper.idleMainLooper(20, TimeUnit.MILLISECONDS) }
 
         val shown = texts(activity)
+        // Let the held Keystore read finish inside this test, so nothing is left pending for the next.
+        release.countDown()
+        repeat(10) { ShadowLooper.idleMainLooper(20, TimeUnit.MILLISECONDS); Thread.sleep(20) }
         assertTrue("Forget ran without the PIN: $shown", shown.any { it == "Owner PIN to forget the phone." })
     }
 }

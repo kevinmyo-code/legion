@@ -21,8 +21,10 @@ import org.robolectric.shadows.ShadowLooper
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w800dp-h456dp-land-mdpi")
 class PairingPadRenderTest {
+    @org.junit.After fun closeActivities() = TestActivities.closeAll()
+
     @Test fun theDigitPadRendersInsideTheUnitScreenWithDriveSizeKeys() {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = TestActivities.start()
         val placed = linkedMapOf<String, Rect>()
         activity.setContent {
             SectionScaffold("Car link", onBack = {}) {

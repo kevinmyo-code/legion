@@ -35,6 +35,8 @@ import org.robolectric.shadows.ShadowLooper
 // takes the composition down with it.
 @Config(sdk = [android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE], qualifiers = "w800dp-h456dp-land-mdpi")
 class CarLinkScreenRenderTest {
+    @org.junit.After fun closeActivities() = TestActivities.closeAll()
+
 
     private class Store(private val status: LinkStatus) : LinkKeySource {
         override fun hasRecord() = status != LinkStatus.NOT_PAIRED
@@ -54,7 +56,7 @@ class CarLinkScreenRenderTest {
     private fun render(status: LinkStatus): Pair<ComponentActivity, Map<String, Rect>> {
         CarLink.store = Store(status)
         CarLink.refresh()
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = TestActivities.start()
         activity.setContent { CarLinkSection(activity, onBack = {}) }
         val until = System.currentTimeMillis() + 5_000
         var texts = emptyMap<String, Rect>()
@@ -119,9 +121,13 @@ class CarLinkScreenRenderTest {
     }
 
     @Test fun anUnpairedUnitOpensThePairingPane() {
-        val (activity, texts) = render(LinkStatus.NOT_PAIRED)
-        val line = texts.keys.firstOrNull { it.startsWith("Starting") }
+        val (activity, _) = render(LinkStatus.NOT_PAIRED)
+        // "Starting..." or, once its off-thread step has run, why it cannot start (no Wi-Fi here):
+        // either is the pairing pane. Let the layout settle before reading where it is.
+        repeat(5) { ShadowLooper.idleMainLooper(20, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(20) }
+        val texts = texts(activity)
+        val line = texts.keys.firstOrNull { it.startsWith("Starting") || it.contains("not on Wi-Fi") }
         assertTrue("texts $texts", line != null)
-        assertOnScreen(activity, "starting line", texts[line])
+        assertOnScreen(activity, "pairing pane line", texts[line])
     }
 }

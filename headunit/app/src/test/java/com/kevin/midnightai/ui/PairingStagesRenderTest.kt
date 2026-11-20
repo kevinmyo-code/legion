@@ -28,6 +28,8 @@ import org.robolectric.shadows.ShadowLooper
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w800dp-h456dp-land-mdpi")
 class PairingStagesRenderTest {
+    @org.junit.After fun closeActivities() = TestActivities.closeAll()
+
 
     private fun render(stage: Stage): Pair<ComponentActivity, Map<String, Rect>> {
         val qr = Bitmap.createBitmap(440, 440, Bitmap.Config.ARGB_8888)
@@ -35,7 +37,7 @@ class PairingStagesRenderTest {
     }
 
     private fun render(body: @androidx.compose.runtime.Composable () -> Unit): Pair<ComponentActivity, Map<String, Rect>> {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = TestActivities.start()
         activity.setContent {
             SectionScaffold("Car link", onBack = {}) { body() }
         }
