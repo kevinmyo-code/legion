@@ -44,6 +44,9 @@ class KeystoreSecretBox : SecretBox {
         failed("seal", e)
     } catch (e: IllegalStateException) {
         failed("seal", e)
+    } catch (e: java.security.ProviderException) {
+        // Android's Keystore reports many hardware failures this way.
+        failed("seal", e)
     }
 
     override fun open(blob: ByteArray): ByteArray? = try {
@@ -56,6 +59,8 @@ class KeystoreSecretBox : SecretBox {
     } catch (e: java.io.IOException) {
         failed("open", e)
     } catch (e: IllegalArgumentException) {
+        failed("open", e)
+    } catch (e: java.security.ProviderException) {
         failed("open", e)
     }
 
