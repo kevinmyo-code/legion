@@ -256,6 +256,13 @@ def helper_python() -> str:
     return str(exe)
 
 
+def hook_command() -> str:
+    """The ask-list hook, isolated: `-I` (no user site, no PYTHON* environment, not the script's
+    folder on sys.path) and `-S` (no site, so no .pth file or sitecustomize runs first). The hook
+    refuses every call when started any other way (asklist_hook.isolated)."""
+    return f"{cmd_path(helper_python())} -I -S {cmd_path(HERE / 'asklist_hook.py')}"
+
+
 def cmd_path(p) -> str:
     """A path written so it runs as the first word in both Bash and PowerShell."""
     s = str(p).replace("\\", "/")
@@ -385,8 +392,7 @@ class Worker:
             return ""
 
     def write_settings(self) -> None:
-        hook = HERE / "asklist_hook.py"
-        command = f"{cmd_path(helper_python())} {cmd_path(hook)}"
+        command = hook_command()
         # Containment (2026-11-10): reads, web, Gmail and Agent go through the hook on every
         # machine, so a read-through source marks its task before it runs.
         matcher = "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|" + containment.HOOK_MATCHER_EXTRA

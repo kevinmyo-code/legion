@@ -63,7 +63,9 @@ class TestAskList(Base):
         self.assertIn("needs_confirmation", reason)
         self.assertIn("--question", reason)
         self.assertDenied("Edit", {"file_path": str(self.kevin_file)})
-        self.assertPassed("Write", {"file_path": str(self.root / "Documents" / "new.md")})
+        # A NEW file outside the work folder asks too (outside_writes.py, review 11-19 round 4).
+        out = self.assertDenied("Write", {"file_path": str(self.root / "Documents" / "new.md")})
+        self.assertIn("needs_confirmation", out["hookSpecificOutput"]["permissionDecisionReason"])
         own = self.work / "out.xlsx"
         own.write_text("made earlier by the helper")
         self.assertPassed("Write", {"file_path": str(own)})
@@ -76,7 +78,13 @@ class TestAskList(Base):
         not, a scheduled run included (no token)."""
         folder = self.root / "profile" / ".legion" / "reports" / "rates-sheet"
         folder.mkdir(parents=True)
-        self.assertPassed("Write", {"file_path": str(folder / "2026-11-10-task-41.md")})
+        report = folder / "2026-11-10-task-41.md"
+        # The worker names the task's report file; that one file is the exception to "a new file
+        # outside the work folder asks" (outside_writes.py).
+        write_json_atomic(self.paths.agents, {"agentA": 41})
+        write_json_atomic(self.paths.state, {"tasks": {"41": {"id": 41, "report_file": str(report)}}})
+        self.assertPassed("Write", {"file_path": str(report)})
+        self.assertDenied("Write", {"file_path": str(folder / "2026-11-10-other.md")})
         older = folder / "2026-11-03-task-30.md"
         older.write_text("last week's report")
         out = self.assertDenied("Write", {"file_path": str(older)})
@@ -189,13 +197,13 @@ class TestAskList(Base):
     def test_hook_process_fails_closed_and_logs_no_text(self):
         env = {**os.environ, "LEGION_CLAUDE_HOME": str(self.paths.root)}
         write_json_atomic(self.paths.config, {"scope": "full"})
-        p = subprocess.run([sys.executable, str(HERE / "asklist_hook.py")], input="not json",
+        p = subprocess.run([sys.executable, "-I", "-S", str(HERE / "asklist_hook.py")], input="not json",
                            capture_output=True, text=True, env=env)
         self.assertEqual(p.returncode, 0)
         self.assertEqual(json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
         ev = {"tool_name": "Bash", "tool_input": {"command": f"rm {self.kevin_file.as_posix()}"},
               "cwd": str(self.work), "agent_id": "a1"}
-        p = subprocess.run([sys.executable, str(HERE / "asklist_hook.py")], input=json.dumps(ev),
+        p = subprocess.run([sys.executable, "-I", "-S", str(HERE / "asklist_hook.py")], input=json.dumps(ev),
                            capture_output=True, text=True, env=env)
         self.assertEqual(json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
         log = (self.paths.logs / "hook.log").read_text(encoding="utf-8")

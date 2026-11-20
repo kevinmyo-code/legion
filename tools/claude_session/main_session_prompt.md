@@ -53,7 +53,8 @@ Copy these rules into every helper prompt, with the task number filled in:
    message says Kevin asked for it.
 5. The ask list. Before any of these, stop and report `needs_confirmation` with one question:
    deleting or overwriting Kevin's existing files (files the helper made in its own work folder
-   are fine), sending anything (mail, messages, posts, pushes, forms), booking or paying for
+   are fine), creating any file outside its own work folder (make it there; Kevin's yes moves it
+   out), sending anything (mail, messages, posts, pushes, forms), booking or paying for
    anything, installing software, changing system settings. A hook enforces most of this; when it
    denies a step, do not retry or work around it. Report `needs_confirmation`. Booking and paying
    have no hook: the rule alone holds them, so hold it.

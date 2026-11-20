@@ -54,6 +54,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
 import containment as C  # noqa: E402
+import outside_writes as OW  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -273,6 +274,12 @@ def _ship_reason() -> str:
 def _deny(reason: str) -> dict:
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                    "permissionDecisionReason": reason}}
+
+
+def _hard_place_reason() -> str:
+    return ("PROTECTED: this would write where the worker's python, this hook or the worker's own "
+            "files live (or the gh install). That cannot be confirmed. Do not retry or work around "
+            "it. Report what you needed with --status failed.")
 
 
 def _ask_reason(label: str) -> str:
@@ -622,6 +629,19 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             if _confirmed(paths, task, now):
                 return None, "confirmed"
             return _deny(_ask_reason("change one of Kevin's worker skills")), "skills"
+        # Outside the task's own folder (outside_writes.py): a new file, or a protected place, asks;
+        # what the hook itself runs on is refused.
+        tasks = (read_json(paths.state, {}) or {}).get("tasks") or {}
+        where = OW.file_verdict(target, paths, task, tasks.get(str(task))) if target else None
+        if where == OW.WORKER:
+            return _deny(_worker_files_reason()), "worker files"
+        if where == OW.HARD:
+            return _deny(_hard_place_reason()), "hook's own files"
+        if where == OW.ASK:
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason("create a file outside its work folder, or change a protected "
+                                     "one")), "outside work"
         if target and Path(target).exists() and not _scratch(target, paths):
             if _confirmed(paths, task, now):
                 return None, "confirmed"
@@ -636,6 +656,15 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             return None, "ship"  # ship.py / undo.py check Kevin's yes token themselves
         if _pushes(command) or SHIP_TOOLS.search(command):
             return _deny(_ship_reason()), "ship only"
+        where = OW.shell_verdict(command, cwd, paths)
+        if where and where[0] == OW.WORKER:
+            return _deny(_worker_files_reason()), "worker files"
+        if where and where[0] == OW.HARD:
+            return _deny(_hard_place_reason()), "hook's own files"
+        if where:
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason(f"write into a protected place ({where[1]})")), "outside work"
         if _names_skills(command, cwd, paths) and (SKILL_WRITE_RE.search(command) or any(
                 re.search(pat, command, re.I) for _l, kind, pat in RULES if kind == "path")):
             if _confirmed(paths, task, now):
@@ -675,9 +704,24 @@ def _log(paths: Paths, tool: str, decision: str, rule: str, agent: str | None) -
         pass
 
 
+ISOLATION_REASON = ("The ask-list hook is not running isolated (`python -I -S`), so a file on its "
+                    "python's path could have changed it: every call is refused until the worker "
+                    "starts it with -I -S. Stop and report --status failed.")
+
+
+def isolated() -> bool:
+    """`python -I -S`: no user site, no PYTHON* environment, no `site` (so no `.pth` file and no
+    sitecustomize ran before this code). Anything else and the hook cannot trust itself."""
+    return bool(sys.flags.isolated) and bool(sys.flags.no_site) and "site" not in sys.modules
+
+
 def main() -> int:
     paths = Paths()
     tool, agent = "?", None
+    if not isolated():
+        print(json.dumps(_deny(ISOLATION_REASON)))
+        _log(paths, tool, "deny", "not isolated", agent)
+        return 0
     try:
         event = json.load(sys.stdin)
         tool, agent = event.get("tool_name", "?"), event.get("agent_id")
