@@ -41,6 +41,12 @@ export const KEY_TURN = Math.PI / 16
 export interface StageOptions {
   /** Turn slowly until the first touch. False under `prefers-reduced-motion`. */
   autoTurn: boolean
+  /**
+   * The /try scroll story: turn with the page's scroll instead (one and a half turns from entering
+   * the screen to leaving it), until the first touch. Read once a frame from where the viewer
+   * sits on screen, in the draw loop that runs only while it is seen: no scroll listener.
+   */
+  scrollTurn?: boolean
   /** The browser took the WebGL context away (too many on the page, a GPU reset). */
   onLost?: () => void
 }
@@ -180,9 +186,19 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
   controls.enablePan = false
   controls.minDistance = distance * 0.35
   controls.maxDistance = distance * 2.5
-  controls.autoRotate = options.autoTurn
+  controls.autoRotate = options.autoTurn && !options.scrollTurn
   controls.autoRotateSpeed = 1.2
   controls.saveState()
+  const startOffset = camera.position.clone().sub(controls.target)
+  const UP = new Vector3(0, 1, 0)
+
+  // Drawn only when something changed (review 2026-11-20, frames at 1440 px): the controls moved,
+  // the size changed, or the page's scroll turned it.
+  let dirty = true
+  const redraw = () => {
+    dirty = true
+  }
+  controls.addEventListener('change', redraw)
 
   let touched = false
   const firstTouch = () => {
@@ -205,19 +221,57 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
   }
   applyActive()
 
+  let drawnWidth = 0
+  let drawnHeight = 0
   const resize = () => {
     const width = host.clientWidth || 1
     const height = host.clientHeight || 1
+    measure()
+    // A new buffer only for a new size: setting the same size again clears the canvas, and the
+    // model would blank for a frame (review recheck 2026-11-20).
+    if (width === drawnWidth && height === drawnHeight) return
+    drawnWidth = width
+    drawnHeight = height
     renderer.setSize(width, height, false)
     camera.aspect = width / height
     camera.updateProjectionMatrix()
+    dirty = true
+  }
+  // Where the viewer sits on the page, read only when a size changes (here or on the page), never
+  // in the draw loop: each frame then reads only the scroll position.
+  let pageTop = 0
+  let boxHeight = 1
+  const measure = () => {
+    const box = host.getBoundingClientRect()
+    pageTop = box.top + window.scrollY
+    boxHeight = box.height
   }
   const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize)
   observer?.observe(host)
+  // The page changing height above the viewer (a dock's room, a late image) moves where it sits:
+  // a lighter watcher that only measures again.
+  const pageObserver = options.scrollTurn && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+  pageObserver?.observe(document.documentElement)
   resize()
 
+  let lastThrough = -1
   const frame = () => {
-    controls.update()
+    if (options.scrollTurn && !touched) {
+      // How far through the screen the viewer is: 0 as it enters at the foot, 1 as it leaves.
+      const top = pageTop - window.scrollY
+      const span = window.innerHeight + boxHeight
+      const through = span > 0 ? Math.min(1, Math.max(0, (window.innerHeight - top) / span)) : 0
+      if (Math.abs(through - lastThrough) > 1e-4) {
+        lastThrough = through
+        camera.position.copy(controls.target).add(startOffset.clone().applyAxisAngle(UP, through * Math.PI * 3))
+        camera.lookAt(controls.target)
+        dirty = true
+      }
+    }
+    // True while it moves (damping, the slow turn): draw those frames too.
+    if (controls.update()) dirty = true
+    if (!dirty) return
+    dirty = false
     renderer.render(scene, camera)
   }
   const lost = (event: Event) => {
@@ -240,6 +294,7 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
     setVisible(next) {
       if (next === visible) return
       visible = next
+      dirty = true
       renderer.setAnimationLoop(next ? frame : null)
     },
     turn(dx, dy) {
@@ -253,18 +308,22 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
       const elevation = Math.abs(tilted.clone().normalize().y)
       camera.position.copy(controls.target).add(elevation < 0.97 ? tilted : offset)
       camera.lookAt(controls.target)
+      dirty = true
       if (!visible) frame()
     },
     reset() {
       controls.reset()
+      dirty = true
       if (!visible) frame()
     },
     dispose() {
       canvas.removeEventListener('webglcontextlost', lost)
       renderer.setAnimationLoop(null)
       observer?.disconnect()
+      pageObserver?.disconnect()
       host.removeEventListener('pointerdown', holdTouch, { capture: true })
       controls.removeEventListener('start', firstTouch)
+      controls.removeEventListener('change', redraw)
       controls.dispose()
       disposeTree(model)
       environment.dispose()

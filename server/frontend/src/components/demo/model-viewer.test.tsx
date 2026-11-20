@@ -86,7 +86,20 @@ describe('ModelViewer', () => {
     render(<ModelViewer model={MODEL} />)
     await comeNear()
     await screen.findByRole('button', { name: 'Reset view' })
-    expect(mountStage.mock.calls[0][2]).toMatchObject({ autoTurn: false })
+    expect(mountStage.mock.calls[0][2]).toMatchObject({ autoTurn: false, scrollTurn: false })
+  })
+
+  test('with motion allowed (the /try scroll story) it turns with the page until touched', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(prefers-reduced-motion: no-preference)',
+      addEventListener() {},
+      removeEventListener() {},
+    }))
+    mountStage.mockResolvedValue(fakeStage())
+    render(<ModelViewer model={MODEL} />)
+    await comeNear()
+    await screen.findByRole('button', { name: 'Reset view' })
+    expect(mountStage.mock.calls[0][2]).toMatchObject({ autoTurn: true, scrollTurn: true })
   })
 
   test('no WebGL or a failed load keeps the poster, with one plain line', async () => {

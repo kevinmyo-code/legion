@@ -25,6 +25,9 @@ urlpatterns = [
     path("healthz", healthz, name="healthz"),
     path("health", healthz, name="health"),
     path("api/auth/", include("household.urls")),
+    # T3b: a head unit's own sign-in, minted by the member's phone while it pairs, DARK (404
+    # unless LEGION_HEADUNIT_SIGNIN=on; `headunit_signin/views.py`).
+    path("api/auth/", include("headunit_signin.urls")),
     # web-and-households ticket 03. Its own mount rather than folded into
     # `household.urls`, because these routes are the household RESOURCE an
     # owner administers and those are the doors a credential goes through.

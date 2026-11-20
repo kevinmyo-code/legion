@@ -56,6 +56,9 @@ from agents.voice.hedge import HedgedSpeech
 from agents.voice.speech import INPUT_RATE, MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS, GeminiSpeech
 from api.schema import DetailSerializer
 from assistant import voice_engine
+from headunit_signin import scope as headunit_scope
+from headunit_signin import spend as unit_spend
+from headunit_signin.authentication import HeadUnitTokenAuthentication
 from household.authentication import DeviceTokenAuthentication
 from household.models import DeviceToken
 from household.permissions import IsHouseholdMember
@@ -75,6 +78,7 @@ NOT_A_DEVICE = (
 )
 KEY_ABSENT = "Nothing was answered: the engine has no Gemini key (LEGION_GEMINI_KEY is not set)."
 FAILED_WORDS = "The engine hit an error answering that, so the turn stopped."
+UNIT_NO_SAY = "A head unit cannot have the engine say a line of its own; only `user` turns."
 PROBE_EVENTS = 5
 PROBE_GAP_S = 0.2
 
@@ -254,6 +258,8 @@ def _speech_client():
 
 
 def _stream(request, data, utterance, arrived_at=None):
+    unit = request.auth if headunit_scope.is_headunit(request) else None
+    before = unit_spend.member_spent(request.user) if unit is not None else 0
     speech = _speech_client() if utterance.spoken else None
     turn = pipeline.voice_turn(
         request,
@@ -276,6 +282,8 @@ def _stream(request, data, utterance, arrived_at=None):
         # A hang-up closes this stream: the turn's speech stops and is metered now, on this
         # request, not whenever the generator is collected (review C3).
         turn.close()
+        if unit is not None:
+            unit_spend.charge(unit, unit_spend.member_spent(request.user) - before)
 
 
 def _sse(body) -> StreamingHttpResponse:
@@ -286,6 +294,13 @@ def _sse(body) -> StreamingHttpResponse:
 
 
 class AgentTurnView(_SwitchedAgentsView):
+    # T3b: the head unit's own token too (`headunit_signin.scope`); its turn reaches only the
+    # unit's tools (`agents.legion.gateway`) and its own conversations (`agents.legion.turn`).
+    authentication_classes = [
+        HeadUnitTokenAuthentication,
+        DeviceTokenAuthentication,
+        SessionAuthentication,
+    ]
     throttle_classes = [AgentTurnThrottle]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
@@ -349,6 +364,16 @@ class AgentTurnView(_SwitchedAgentsView):
                 {"detail": KEY_ABSENT, "code": "no_key"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        unit = request.auth if headunit_scope.is_headunit(request) else None
+        if unit is not None:
+            # T3b review B6: a head unit never has the engine say a line of its choosing, and
+            # spends its own daily cap inside the member's.
+            if data["kind"] == "say":
+                return _refuse(UNIT_NO_SAY, "headunit_say", status.HTTP_403_FORBIDDEN)
+            if unit_spend.over_cap(unit):
+                return _refuse(
+                    unit_spend.USED_UP, "headunit_cap", status.HTTP_429_TOO_MANY_REQUESTS
+                )
         if data["kind"] == "say" and not AgentSayThrottle().allow_request(request, self):
             return _refuse(
                 "Too many spoken lines in a short time.",
@@ -502,6 +527,8 @@ def _stream_meta(meta: dict) -> tuple[dict, Response | None]:
 
 
 class AgentCancelView(_SwitchedAgentsView):
+    authentication_classes = AgentTurnView.authentication_classes
+
     @extend_schema(
         tags=AGENTS_TAGS,
         operation_id="api_agents_turn_cancel",

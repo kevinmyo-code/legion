@@ -434,6 +434,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/head-units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_auth_head_units_list"];
+        put?: never;
+        post: operations["api_auth_head_units_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/head-units/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["api_auth_head_units_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/head-units/{credential_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_auth_head_units_rotate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/head-units/revoke-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_auth_head_units_revoke_all"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/invite/{code}": {
         parameters: {
             query?: never;
@@ -8105,6 +8169,25 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        HeadUnit: {
+            /** Format: uuid */
+            id: string;
+            label: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: uuid */
+            vehicle_id: string | null;
+            /** Format: date-time */
+            rotated_at: string | null;
+            /** @description Uses of a token after it was rotated away: a copy, or a lost hand-over. */
+            stale_use_count: number;
+            /** Format: date-time */
+            stale_used_at: string | null;
+        };
         /**
          * @description The 200 body. `db` is the only key, and it is only ever `"ok"` -
          *     anything else took the 503 branch below.
@@ -8374,6 +8457,14 @@ export interface components {
              */
             push: components["schemas"]["PushEnum"];
             detail: string;
+        };
+        Issued: {
+            /** Format: uuid */
+            id: string;
+            /** @description Shown once. The engine keeps only its hash. */
+            token: string;
+            /** Format: date-time */
+            expires: string;
         };
         Kind: {
             kind: components["schemas"]["WatchKindEnum"];
@@ -9003,6 +9094,20 @@ export interface components {
              */
             weeks_to_go: number | null;
         };
+        Mint: {
+            name: string;
+            kind: components["schemas"]["MintKindEnum"];
+            /**
+             * Format: uuid
+             * @description The household vehicle this unit is in. Without one the unit sends no telemetry.
+             */
+            vehicle_id?: string | null;
+        };
+        /**
+         * @description * `head_unit` - head_unit
+         * @enum {string}
+         */
+        MintKindEnum: "head_unit";
         /**
          * @description * `create` - create
          *     * `update` - update
@@ -10781,6 +10886,10 @@ export interface components {
             status: string;
             gate: string;
             cluster: number;
+        };
+        Revoked: {
+            revoked: number;
+            detail: string;
         };
         /**
          * @description * `inviter` - inviter
@@ -13170,6 +13279,195 @@ export interface operations {
                 content?: never;
             };
             /** @description No device token of yours has that id. Nothing was revoked. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_head_units_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The calling member's own live head units, newest first. No token. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeadUnit"][];
+                };
+            };
+            /** @description Head-unit sign-in is off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_head_units_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Mint"];
+                "application/x-www-form-urlencoded": components["schemas"]["Mint"];
+                "multipart/form-data": components["schemas"]["Mint"];
+            };
+        };
+        responses: {
+            /** @description The token, shown this once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Issued"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Head-unit sign-in is off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_head_units_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked: that unit is signed out now. Already revoked is the same. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_head_units_rotate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The unit's new token, shown this once; the old one is dead now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Issued"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_auth_head_units_revoke_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revoked"];
+                };
+            };
             404: {
                 headers: {
                     [name: string]: unknown;

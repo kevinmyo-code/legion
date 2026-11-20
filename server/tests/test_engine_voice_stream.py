@@ -223,3 +223,26 @@ def test_the_probe_reports_when_each_frame_arrived_and_costs_nothing(
     assert arrived == sorted(arrived) and all(f["bytes"] == 3200 for f in frames)
     assert stream.opened == [] and engine.models == [] and engine.speech.transcribed == []
     assert not LlmUsage.objects.filter(user=household_user).exists()
+
+
+# ---- the head unit (merge with main's head-unit sign-in) ---------------------------------------
+
+
+def test_the_stream_route_takes_no_head_unit_token():
+    from agents.views import AgentTurnStreamView
+    from headunit_signin.authentication import HeadUnitTokenAuthentication
+    from headunit_signin.scope import ROUTES
+
+    assert HeadUnitTokenAuthentication not in AgentTurnStreamView.authentication_classes
+    assert not any(name == "agents-turn-stream" for name, _method in ROUTES)
+
+
+def test_a_head_unit_token_on_the_stream_route_is_refused(auth_client, stream, monkeypatch):
+    from headunit_signin.flags import SIGNIN_ENV
+    from tests.test_headunit_signin import _paired, unit_client
+
+    monkeypatch.setenv(SIGNIN_ENV, "on")
+    _id, raw = _paired(auth_client)
+    response = unit_client(raw).post(URL, utterance(), content_type="application/octet-stream")
+    assert response.status_code in (401, 403)
+    assert stream.opened == [] and not AgentTurn.objects.exists()
