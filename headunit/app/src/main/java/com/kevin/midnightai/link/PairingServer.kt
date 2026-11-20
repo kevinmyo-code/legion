@@ -9,7 +9,6 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,7 +33,8 @@ class PairingServer(
 ) {
     private val server = ServerSocket(0, MAX_PREAUTH, bindAddress).apply { soTimeout = ACCEPT_POLL_MS }
     private val worker = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "pairing-worker").apply { isDaemon = true } }
-    private val preAuth = AtomicInteger(0)
+    /** Connections not yet authenticated, oldest first, at most one per source address (review M1). */
+    private val preAuth = LinkedHashMap<InetAddress, Socket>()
     @Volatile private var claimed: Socket? = null
     @Volatile private var closed = false
     private val _stage = MutableStateFlow(session.stage)
@@ -65,17 +65,25 @@ class PairingServer(
             } catch (_: IOException) {
                 break
             }
-            if (claimed != null || preAuth.get() >= MAX_PREAUTH) {
+            if (claimed != null) {
                 runCatching { socket.close() }
                 continue
             }
-            preAuth.incrementAndGet()
+            // A newer connection from the same address replaces the older one, and when all slots
+            // are taken the OLDEST is evicted: idle sockets can never hold the phone out.
+            synchronized(preAuth) {
+                socket.inetAddress?.let { ip -> preAuth.remove(ip)?.let { old -> runCatching { old.close() } } }
+                while (preAuth.size >= MAX_PREAUTH) {
+                    val oldest = preAuth.keys.first()
+                    preAuth.remove(oldest)?.let { old -> runCatching { old.close() } }
+                }
+                socket.inetAddress?.let { preAuth[it] = socket }
+            }
             Thread({ serve(socket) }, "pairing-conn").apply { isDaemon = true }.start()
         }
     }
 
     private fun serve(socket: Socket) {
-        var counted = true
         try {
             socket.soTimeout = READ_POLL_MS
             val input = socket.getInputStream()
@@ -89,8 +97,11 @@ class PairingServer(
                 }
                 is PairingSession.PreAuth.Claimed -> {
                     claimed = socket
-                    preAuth.decrementAndGet()
-                    counted = false
+                    // The session is taken: close every other unauthenticated connection now.
+                    synchronized(preAuth) {
+                        preAuth.values.filter { it !== socket }.forEach { runCatching { it.close() } }
+                        preAuth.clear()
+                    }
                     onWorker { listOf(verdict.reply) }
                 }
             }
@@ -102,7 +113,7 @@ class PairingServer(
         } catch (_: IOException) {
             // A dropped connection is handled below.
         } finally {
-            if (counted) preAuth.decrementAndGet()
+            synchronized(preAuth) { socket.inetAddress?.let { if (preAuth[it] === socket) preAuth.remove(it) } }
             if (socket === claimed) {
                 onWorkerWait { session.onDisconnect() }
                 claimed = null
@@ -208,9 +219,10 @@ class PairingServer(
     companion object {
         const val MAX_FRAME = 8 * 1024
         const val MAX_PREAUTH = 3
-        const val PREAUTH_TIMEOUT_MS = 10_000L
+        /** A real phone sends its hello at once; 3 s is plenty and keeps a squatter's slot short. */
+        const val PREAUTH_TIMEOUT_MS = 3_000L
         private const val ACCEPT_POLL_MS = 500
-        private const val READ_POLL_MS = 500
+        private const val READ_POLL_MS = 200
 
         fun writeFrame(out: DataOutputStream, msg: JSONObject) {
             val bytes = msg.toString().toByteArray(Charsets.UTF_8)
