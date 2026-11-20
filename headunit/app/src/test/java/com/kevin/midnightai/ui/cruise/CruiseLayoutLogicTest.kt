@@ -109,7 +109,7 @@ class CruiseLayoutLogicTest {
 
     @Test fun gpsFromThePhoneWithAFreshFix() {
         assertEquals(
-            MiddlePanelText.Gps("GPS from phone", "fix 1 s ago", stale = false),
+            MiddlePanelText.Gps("Phone", "fix 1 s ago", stale = false),
             MiddlePanelText.gps(beacon, 1_400L, beacon),
         )
     }
@@ -131,7 +131,7 @@ class CruiseLayoutLogicTest {
 
     @Test fun anOldFixReadsAsLost() {
         assertEquals(
-            MiddlePanelText.Gps("GPS from phone", "lost 12 s", stale = true),
+            MiddlePanelText.Gps("Phone", "lost 12 s", stale = true),
             MiddlePanelText.gps(beacon, 12_000L, beacon),
         )
         assertEquals("lost 5 min", MiddlePanelText.gps(beacon, 300_000L, beacon).age)

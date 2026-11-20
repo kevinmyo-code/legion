@@ -124,7 +124,7 @@ class AriaForegroundService : Service() {
         // here rather than from a screen so the link is up whenever the engine is,
         // including with the app backgrounded behind nav or music. Default role is
         // OFF, so an install that never touches the setting opens no socket.
-        if (DeviceRole.current(this) == DeviceRole.Role.HEAD_UNIT) {
+        if (DeviceRole.listensForPhone(DeviceRole.current(this), com.kevin.midnightai.link.CarLink.isPaired())) {
             com.kevin.midnightai.location.BeaconClient.start(this)
         }
         // Watch phone-call state (phone paired over BT HFP) so Zero can announce

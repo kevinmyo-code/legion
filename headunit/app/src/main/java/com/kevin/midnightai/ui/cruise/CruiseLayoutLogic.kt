@@ -86,9 +86,6 @@ internal object MiddlePanelText {
     const val NAV_PLACEHOLDER_TITLE = "No navigation yet."
     const val NAV_PLACEHOLDER_LINE = "Navigation arrives in a later update."
 
-    /** `LocationManager.GPS_PROVIDER`, copied so this object needs no Android runtime. */
-    const val GPS_PROVIDER = "gps"
-
     /**
      * [provider] is the fix's provider ([com.kevin.midnightai.location.LocationController.BEACON_PROVIDER]
      * for the phone beacon), [ageMs] how old it is on the monotonic clock; null = no fix at all.
@@ -99,11 +96,9 @@ internal object MiddlePanelText {
      */
     fun gps(provider: String?, ageMs: Long?, beaconProvider: String): Gps {
         if (provider == null || ageMs == null || ageMs < 0) return Gps("No GPS", "no fix yet", stale = true)
-        val source = when (provider) {
-            beaconProvider -> "GPS from phone"
-            GPS_PROVIDER -> "GPS on this unit"
-            else -> "Network location"
-        }
+        val source = com.kevin.midnightai.location.LocationSources.label(
+            com.kevin.midnightai.location.LocationSources.of(provider, beaconProvider),
+        )
         val age = ageMs
         val words = when {
             age <= STALE_MS -> "fix ${age / 1000} s ago"

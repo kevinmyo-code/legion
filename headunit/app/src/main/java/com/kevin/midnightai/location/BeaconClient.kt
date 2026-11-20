@@ -105,6 +105,13 @@ object BeaconClient {
      */
     @Volatile private var resolvedPeer: InetAddress? = null
 
+    /**
+     * HU-1 T4: the authenticated feed, present while this unit is paired with a phone (T3). When it
+     * is, ONLY MNAI2 is spoken and accepted (an unauthenticated MNAI1 fix could be sent by anyone on
+     * the hotspot); unpaired, the hand-set MNAI1 beacon role works as before. Guarded by itself.
+     */
+    @Volatile private var feed: PhoneFeed? = null
+
     private val _linkUp = MutableStateFlow(false)
 
     /** True while fixes are actually arriving - drives the Setup screen's status line. */
@@ -138,6 +145,11 @@ object BeaconClient {
         // send throws and discovery silently only ever tries the gateway.
         runCatching { sock.broadcast = true }
         socket = sock
+        feed = com.kevin.midnightai.link.CarLink.keys.linkKey()?.let { key ->
+            val random = java.security.SecureRandom()
+            PhoneFeed(key, nowNanos = SystemClock::elapsedRealtimeNanos, random = { random.nextBytes(it) })
+                .also { key.fill(0) }
+        }
 
         job = scope.launch {
             // Announce on a timer; receive on this coroutine. Two jobs, one socket -
@@ -164,6 +176,7 @@ object BeaconClient {
         runCatching { socket?.close() }
         socket = null
         lastFixAtMs = 0L
+        feed = null
         resolvedPeer = null
         _peerLabel.value = null
         _linkUp.value = false
@@ -171,7 +184,12 @@ object BeaconClient {
 
     private suspend fun CoroutineScope.helloLoop(context: Context, sock: DatagramSocket) {
         while (isActive) {
-            val payload = BeaconProtocol.encodeHello(LocationController.desiredIntervalMs)
+            val f = feed
+            val payload = if (f != null) {
+                synchronized(f) { f.hello(LocationController.desiredIntervalMs) }
+            } else {
+                BeaconProtocol.encodeHello(LocationController.desiredIntervalMs)
+            }
             for (target in helloTargets(context)) {
                 runCatching {
                     sock.send(DatagramPacket(payload, payload.size, target, BeaconProtocol.PORT))
@@ -257,7 +275,7 @@ object BeaconClient {
     }
 
     private fun receiveLoop(context: Context, sock: DatagramSocket) {
-        val buffer = ByteArray(BeaconProtocol.MAX_PACKET_BYTES)
+        val buffer = ByteArray(maxOf(BeaconProtocol.MAX_PACKET_BYTES, PhoneLinkWire.MAX_PACKET_BYTES))
         while (!sock.isClosed) {
             val packet = DatagramPacket(buffer, buffer.size)
             try {
@@ -267,6 +285,23 @@ object BeaconClient {
             } catch (e: Exception) {
                 if (!sock.isClosed) Log.w(TAG, "Beacon receive failed", e)
                 return
+            }
+            val f = feed
+            if (f != null) {
+                // Paired: authenticated MNAI2 only. A refusal is dropped silently (anyone on the
+                // hotspot can send this port anything; nothing about it is logged).
+                when (val out = synchronized(f) { f.receive(packet.data, packet.length) }) {
+                    is PhoneFeed.Outcome.Fix -> {
+                        notePeer(packet.address)
+                        LocationController.acceptPhone(out.fix, out.fixNanos)
+                    }
+                    is PhoneFeed.Outcome.Zone -> {
+                        notePeer(packet.address)
+                        com.kevin.midnightai.time.TrustedClock.acceptPhoneZone(out.zoneId)
+                    }
+                    is PhoneFeed.Outcome.Rejected -> Unit
+                }
+                continue
             }
             // The phone's zone (trusted clock, 2026-10-13): same pinning rule as a fix, and
             // only from the beacon this unit already follows.
@@ -301,6 +336,16 @@ object BeaconClient {
             _linkUp.value = true
             LocationController.acceptExternal(fix)
         }
+    }
+
+    /** An authenticated datagram arrived from [address]: the link is up and we know where the phone is. */
+    private fun notePeer(address: InetAddress?) {
+        if (address != null && resolvedPeer != address) {
+            resolvedPeer = address
+            _peerLabel.value = address.hostAddress
+        }
+        lastFixAtMs = SystemClock.elapsedRealtime()
+        _linkUp.value = true
     }
 
     /**
