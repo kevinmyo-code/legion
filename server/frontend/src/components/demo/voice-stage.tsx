@@ -84,6 +84,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   }, [docked, glide])
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
+  const sideChips = Boolean(glide && docked && !place.pinned && cascade && cascade.chips.length > 0)
   const mode = orbMode(state)
   const speaking = state.activity === 'speaking'
   // What the orb's tap interrupts.
@@ -167,7 +168,14 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       </button>
       {/* The chips sit right under the orb (Kevin, 2026-11-19: "make them float at the bottom of the
           orb"); the row's height is kept while there are none, so chips arriving never push the page. */}
-      <div data-stage="chips-room" className="flex min-h-12 w-full max-w-[34rem] justify-center">
+      <div
+        data-stage="chips-room"
+        // While the side orb carries the chips, this off-screen copy leaves the tree: one group of
+        // suggested questions for a screen reader and the keyboard, never two (review 2026-11-20).
+        aria-hidden={sideChips || undefined}
+        inert={sideChips}
+        className="flex min-h-12 w-full max-w-[34rem] justify-center"
+      >
         {cascade && cascade.chips.length > 0 && <ChipRow chips={cascade.chips} onTap={tapChip} />}
       </div>
       {glide ? (
@@ -198,9 +206,10 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
           >
             <VoiceOrb mode={mode} levels={() => client.levels()} points={420} dot={0.8} className="block size-full" />
           </button>
-          <div className="rc-side-words">
+          {/* Beside a pinned scene the words fade out; out of the tab order with them. */}
+          <div className="rc-side-words" inert={place.pinned}>
             <p className="rc-side-line">{status}</p>
-            {cascade && cascade.chips.length > 0 && <ChipRow chips={cascade.chips} onTap={tapChip} />}
+            {sideChips && cascade && <ChipRow chips={cascade.chips} onTap={tapChip} />}
           </div>
         </div>
       ) : (
