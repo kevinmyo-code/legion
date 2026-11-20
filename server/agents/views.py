@@ -127,7 +127,8 @@ class TurnRequestSerializer(serializers.Serializer):
         allow_empty_file=False,
         help_text=(
             f"One utterance: a WAV of 16 kHz 16-bit mono PCM, at most {MAX_UTTERANCE_SECONDS} "
-            "seconds (multipart). Transcribed and answered aloud. Never stored."
+            "seconds (multipart). Transcribed and answered aloud. The audio is never stored; the "
+            "transcript is kept on the turn row, like every text turn."
         ),
     )
     kind = serializers.ChoiceField(

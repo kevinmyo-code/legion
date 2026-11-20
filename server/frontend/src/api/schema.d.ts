@@ -11600,7 +11600,7 @@ export interface components {
             transcript?: string;
             /**
              * Format: uri
-             * @description One utterance: a WAV of 16 kHz 16-bit mono PCM, at most 28 seconds (multipart). Transcribed and answered aloud. Never stored.
+             * @description One utterance: a WAV of 16 kHz 16-bit mono PCM, at most 28 seconds (multipart). Transcribed and answered aloud. The audio is never stored; the transcript is kept on the turn row, like every text turn.
              */
             audio?: string;
             /**
