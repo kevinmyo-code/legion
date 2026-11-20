@@ -330,7 +330,11 @@ object LiveToolbox {
         // Live cost diet (voice cost audit 2026-11-10, F1): every candidate below, then
         // LiveSurface folds writes and instant reads into action tools. See LiveSurface.
         val candidates = surfaceCandidates()
-        return LiveSurface.apply((0 until candidates.length()).map { candidates.getJSONObject(it) })
+        val all = allDeclarations()
+        return LiveSurface.apply(
+            (0 until candidates.length()).map { candidates.getJSONObject(it) },
+            (0 until all.length()).map { all.getJSONObject(it) },
+        )
     }
 
     /**
@@ -792,6 +796,8 @@ object LiveToolbox {
         "the next workout, how many sessions a week, all the sessions - is get_workout_programme. " +
         "Never say a day or a session does not exist because a today-only read did not list it. " +
         BODY_COACH_RULES +
+        // Phone audit 2026-11-19: a meal question was answered on a clock six hours out.
+        " " + com.kevin.legion.util.LocalClock.turnLine() +
         dispatchBoundaryClause("body") +
         Priming.dispatchClause(context, "body")
 
@@ -819,7 +825,7 @@ object LiveToolbox {
         "against budget, recent transactions and pending ones. Every amount carries its own " +
         "currency; keep it, never convert. Keep every exclusion and unverified note a tool " +
         "returns. Pull only what would change your answer, then answer in plain spoken text, no " +
-        "markdown." +
+        "markdown. " + com.kevin.legion.util.LocalClock.turnLine() +
         dispatchBoundaryClause("money") +
         Priming.dispatchClause(context, "money")
 
@@ -1160,7 +1166,10 @@ object LiveToolbox {
                 val outcome = VehicleController.setOdometer(context, args.optInt("miles"), it.obdMac)
                 result(success = outcome.success, message = outcome.message)
             }
-            "log_service" -> withResolvedVehicle(context, args) {
+            // Phone audit 2026-11-19: a log_service with no service wrote a blank record and item.
+            "log_service" -> if (args.optString("service").isBlank()) {
+                noItem("Which service was it?")
+            } else withResolvedVehicle(context, args) {
                 // Dollars -> cents at the voice edge (CLAUDE.md §4 rule 3: VehicleController.logServiceDirect
                 // only ever sees Long cents) - same Math.round(amount * 100) shape
                 // LedgerPendingLog.pendingAmountCents already uses for a spoken dollar figure, with the
@@ -1176,7 +1185,9 @@ object LiveToolbox {
                 result(success = outcome.success, message = outcome.message)
             }
             "log_past_service" -> withResolvedVehicle(context, args) { logPastService(context, args, it.obdMac) }
-            "set_maintenance_interval" -> withResolvedVehicle(context, args) {
+            "set_maintenance_interval" -> if (args.optString("service").isBlank()) {
+                noItem("Which service?")
+            } else withResolvedVehicle(context, args) {
                 val outcome = VehicleController.setMaintenanceInterval(
                     context,
                     args.optString("service"),
@@ -2559,7 +2570,7 @@ object LiveToolbox {
      */
     private suspend fun logBuildEntry(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject {
         val title = args.optString("title")
-        if (title.isBlank()) return result(success = false, message = "What should I log on the build sheet?")
+        if (title.isBlank()) return noItem("What should I log on the build sheet?")
         val cost = if (args.has("cost") && !args.isNull("cost"))
             args.optDouble("cost").takeIf { !it.isNaN() } else null
         val msg = BuildSheetController.add(
@@ -4739,6 +4750,14 @@ object LiveToolbox {
 
     private fun isGroceriesName(name: String) = name.trim().equals("Groceries", ignoreCase = true)
 
+    /** Whole items that point at something without naming it: never a checklist line on their own. */
+    private val BARE_REFERENCES = setOf(
+        "it", "that", "this", "them", "those", "these", "something", "that one", "this one", "it all", "all of it",
+    )
+
+    private fun isBareReference(text: String): Boolean =
+        text.lowercase().replace(Regex("[^\\p{L}' ]"), " ").trim().replace(Regex("\\s+"), " ") in BARE_REFERENCES
+
     /** `today`/`yesterday` (the only two the tool declares) -> a local epoch day, matching
      * [ChecklistController.tick]/[ChecklistController.untick]'s own `day` parameter. Anything
      * else (blank, or a value the model was not offered) defaults to today rather than failing the
@@ -4874,6 +4893,12 @@ object LiveToolbox {
                         "add needs the line in \"text\"$sentEmptyItem; nothing was added to " +
                             "\"${checklist.name}\".",
                     )
+                }
+                // Phone audit 2026-11-19: a line literally named "it" was added. A closed word list,
+                // matched on the whole item only, never a reading of what he meant.
+                if (isBareReference(textArg)) {
+                    return result(false, "Nothing was added: \"$textArg\" names nothing. What should I add?")
+                        .put("needs_answer", true)
                 }
                 val unit = args.optString("unit").trim().ifBlank { null }
                 val target = if (args.has("target") && !args.isNull("target")) args.optDouble("target") else null
@@ -5236,7 +5261,10 @@ object LiveToolbox {
         } else {
             getCodes(context)
         }
-        return read.put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
+        // Phone audit 2026-11-19: this read was spoken word for word in talk about something else. A
+        // mis-call is data for the model only; code speaks a read only for car read_codes or ask_fleet.
+        return com.kevin.legion.ai.VerbatimSpeech.unmark(read)
+            .put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
     }
 
     /**
@@ -5262,7 +5290,7 @@ object LiveToolbox {
         com.kevin.legion.ai.VerbatimSpeech.mark(result, words, com.kevin.legion.ai.VerbatimSpeech.DIAGNOSTICS)
 
     internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
-        "codes, so nothing was cleared and nothing was asked. Answer what he asked from this result."
+        "codes, so nothing was cleared and nothing was asked. Mention codes only if he asked about them."
 
     @Suppress("CyclomaticComplexMethod", "ReturnCount") // read, empty, failed, each code
     private suspend fun getCodes(context: Context): JSONObject {
@@ -5983,7 +6011,7 @@ object LiveToolbox {
      */
     private suspend fun logPastService(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject {
         val service = args.optString("service")
-        if (service.isBlank()) return result(success = false, message = "Which service?")
+        if (service.isBlank()) return noItem("Which service was it?")
 
         val mileage = args.optInt("mileage", -1).takeIf { it > 0 }
         val milesAgo = args.optInt("miles_ago", -1).takeIf { it >= 0 }
@@ -7104,7 +7132,8 @@ object LiveToolbox {
             }
             "recently_played" -> {
                 val json = libraryOutcomeToJson(context, SpotifyWebApi.getRecentlyPlayed(context, limit), "recently played") { t ->
-                    JSONObject().put("name", t.name).put("artist", t.artist).put("playedAt", t.playedAt)
+                    JSONObject().put("name", t.name).put("artist", t.artist)
+                        .put("playedAt", com.kevin.legion.util.LocalClock.stamp(t.playedAt))
                 }
                 // Honesty requirement (ticket 05 part C.9): this is Spotify's OWN history,
                 // everywhere the driver uses Spotify - not scoped to LEGION or to this device.
@@ -7402,6 +7431,10 @@ object LiveToolbox {
 
     private fun result(success: Boolean, message: String?): JSONObject =
         JSONObject().put("success", success).apply { if (message != null) put("message", message) }
+
+    /** A car write named no item: nothing is written, and the result asks him which ([needs_answer]). */
+    private fun noItem(question: String): JSONObject =
+        result(false, "Nothing was logged: no item was named. $question").put("needs_answer", true)
 
     // ---- Lists a tool call may have reached by the wrong door (ListRouting, 2026-11-15) ----
 

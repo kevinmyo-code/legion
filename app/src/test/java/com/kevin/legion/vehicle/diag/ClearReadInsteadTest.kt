@@ -90,6 +90,11 @@ class ClearReadInsteadTest {
         LiveToolbox.dispatch(context, "clear_codes", JSONObject(), false, words)!!
     }
 
+    /** The read itself, as `car read_codes` calls it. */
+    private fun readCodes(): JSONObject = runBlocking {
+        LiveToolbox.dispatch(context, "car", JSONObject().put("action", "read_codes"), false, "any codes?")!!
+    }
+
     /** Engine plus one module that answers TesterPresent and then never answers a code read. */
     private fun unreachedCar(): SimCar {
         val pcm = SimCars.uds(0x7E0, emptyList()).apply { obd = SimObd() }
@@ -105,7 +110,8 @@ class ClearReadInsteadTest {
         assertTrue(r.toString(), ScanWords.UNREACHED in say)
         assertTrue(say, ScanWords.NOT_READ_LEAD in say)
         assertTrue(say, "760" in say)
-        assertEquals(say, com.kevin.legion.ai.VerbatimSpeech.of(r))
+        // Phone audit 2026-11-19: a guarded mis-call is a read for the model, never spoken by code.
+        assertEquals(null, com.kevin.legion.ai.VerbatimSpeech.of(r))
         assertFalse(r.getBoolean("cleared"))
         assertEquals(LiveToolbox.READ_NOT_CLEAR, r.getString("read_not_clear"))
         assertFalse("no clear question", r.has("needsConfirmation"))
@@ -129,7 +135,7 @@ class ClearReadInsteadTest {
     fun `an empty engine read says stored engine codes only, never everything`() {
         val pcm = SimCars.uds(0x7E0, emptyList()).apply { obd = SimObd() }
         connect(SimCar(BusKind.CAN_11, listOf(pcm)))
-        val r = clearCodes("any codes?")
+        val r = readCodes()
         assertTrue(r.toString(), r.optBoolean("success"))
         assertEquals(LiveToolbox.NO_ENGINE_CODES, r.getString("message"))
         val spoken = com.kevin.legion.ai.VerbatimSpeech.of(r)
@@ -142,11 +148,34 @@ class ClearReadInsteadTest {
         val car = SimCars.canTruck()
         val elm = connect(car)
         elm.car.ignitionOn = false
-        val r = clearCodes("read the codes")
+        val r = readCodes()
         assertFalse(r.toString(), r.optBoolean("success"))
         assertEquals(LiveToolbox.ENGINE_CODES_NOT_READ, r.getString("message"))
         // Heard without the "(OBD mode 03)" parenthesis; the same claim (2026-11-17).
         assertEquals(LiveToolbox.ENGINE_CODES_NOT_READ_SPOKEN, com.kevin.legion.ai.VerbatimSpeech.of(r))
+    }
+
+    @Test
+    fun `clear_codes called on words that do not ask to clear reads, but code speaks none of it`() {
+        // Phone audit 2026-11-19: the guard's read was spoken word for word in talk about something else.
+        val car = SimCars.canTruck()
+        val elm = connect(car)
+        val r = clearCodes("the bakery on the corner closed early today")
+        assertTrue(r.toString(), "P0420" in r.toString())
+        assertEquals(LiveToolbox.READ_NOT_CLEAR, r.getString("read_not_clear"))
+        assertEquals(null, com.kevin.legion.ai.VerbatimSpeech.of(r))
+        assertEquals(0, clearsSent(car, elm))
+    }
+
+    @Test
+    fun `car read_codes is a read on the car tool that code speaks`() {
+        val car = SimCars.canTruck()
+        val elm = connect(car)
+        val r = readCodes()
+        assertTrue(r.toString(), r.optBoolean("success"))
+        assertTrue(com.kevin.legion.ai.VerbatimSpeech.of(r).orEmpty().startsWith("Stored engine code"))
+        assertFalse(r.has("read_not_clear"))
+        assertEquals(0, clearsSent(car, elm))
     }
 
     @Test
