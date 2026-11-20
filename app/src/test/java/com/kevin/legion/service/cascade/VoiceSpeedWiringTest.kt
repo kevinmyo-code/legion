@@ -130,7 +130,8 @@ class VoiceSpeedWiringTest {
         assertTrue(play.contains("b.tts.inHand("))
         // The answer's writes take the same gate; its first audio marks the turn as answered.
         val speaker = bodyOf(s, "newSpeaker")
-        assertTrue(speaker.contains("play = { pcm -> playGate.withLock { p.write(pcm, gen) } }"))
+        assertTrue(speaker.contains("play = { pcm -> playHeld(p, pcm, gen) }"))
+        assertTrue(bodyOf(s, "playHeld").contains("playGate.withLock { p.write(pcm, gen) }"))
         assertTrue(speaker.contains("turnAudioStarted = true"))
         assertTrue(speaker.contains("onFillerStarted = { text -> audit.filler(\"task\", text) }"))
     }
@@ -199,6 +200,43 @@ class VoiceSpeedWiringTest {
         assertTrue(s.contains("gemini.transcribe(audio, hold::add, hedged = false)"))
         assertTrue(bodyOf(s, "playBackchannel").contains("Backchannel.Skip.ANSWER_TEXT"))
         assertTrue(bodyOf(s, "answerTextIn").contains("it.reply.isNotEmpty()"))
+    }
+
+    // --- audio-first round 1 (2026-11-19) ------------------------------------------------------------
+
+    @Test
+    fun `audio-first runs before the transcript is awaited, and near silence never reaches the model`() {
+        val s = session()
+        val run = bodyOf(s, "runTurn")
+        assertTrue(run.indexOf("runAudioFirst(u, eotAtMs)") in 0 until run.indexOf("u.result("))
+        val af = bodyOf(s, "runAudioFirst")
+        assertTrue(af.indexOf("AudioFirstGate.silent(voiced)") in 0 until af.indexOf("answerTurn("))
+        assertTrue(af.contains("checkTranscript(u, eotAtMs, gate, record)"))
+        assertTrue(s.contains("private val audioFirst = VoiceEngineSettings.audioFirst(ctx)"))
+    }
+
+    @Test
+    fun `the transcript gets every check a spoken turn does, and only a pass opens the gate`() {
+        val check = bodyOf(session(), "checkTranscript")
+        for (step in listOf("endsConversation(", "verdictOf(stt)", "CrisisDetector.detect(", "languageRefused(", "passTranscript(")) {
+            assertTrue(step, check.contains(step))
+        }
+        assertTrue(check.contains("if (failure != null) gate.fail()"))
+        val pass = bodyOf(session(), "passTranscript")
+        assertTrue(pass.indexOf("record.heard = words") in 0 until pass.indexOf("gate.pass(words)"))
+    }
+
+    @Test
+    fun `writes wait for the words, the first audio waits up to the grace, history keeps text`() {
+        val s = session()
+        val exec = bodyOf(s, "executorFor")
+        assertTrue(exec.indexOf("awaitWordsForWrite(record, name, args)") in 0 until exec.indexOf("host.runTool("))
+        assertTrue(bodyOf(s, "awaitWordsForWrite").contains("CascadeRules.isWrite(name, args)"))
+        val held = bodyOf(s, "playHeld")
+        assertTrue(held.indexOf("holdForTranscript()") in 0 until held.indexOf("playGate.withLock"))
+        val answer = bodyOf(s, "answerTurn")
+        assertTrue(answer.indexOf("notHeardNote(record)") in 0 until answer.indexOf("recordTurn(record.heard, kept"))
+        assertTrue(answer.contains("userWords = record.gate"))
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())

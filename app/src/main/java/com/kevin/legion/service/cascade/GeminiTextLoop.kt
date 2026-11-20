@@ -206,10 +206,15 @@ class GeminiTextLoop(
          * announced or run, so nothing is executed before the turn is confirmed. Null: no gate.
          */
         hold: (suspend () -> Unit)? = null,
+        /**
+         * An audio-first turn ([AudioFirstRound]): his checked words, awaited before round 2, which
+         * then carries them as text in place of the audio (null: [AudioFirstGate.NOT_HEARD_NOTE]).
+         */
+        userWords: (suspend () -> String?)? = null,
     ): Result {
         val state = TurnState()
         val result = try {
-            withTimeoutOrNull(budgetMs) { loop(prefix, contents, executor, listener, state, hold) }
+            withTimeoutOrNull(budgetMs) { loop(prefix, contents, executor, listener, state, hold, userWords) }
         } catch (e: CancellationException) {
             throw e
         } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: Exception) {
@@ -232,15 +237,24 @@ class GeminiTextLoop(
         listener: Listener,
         state: TurnState,
         hold: (suspend () -> Unit)?,
+        userWords: (suspend () -> String?)?,
     ): Result {
         val contents = JSONArray()
         for (i in 0 until initial.length()) contents.put(initial.get(i))
+        var heardAsText = userWords == null
         var cacheBroken = false
         var round = 0
         // The one extra round after a filler-only answer ([FillerTurn]) is tool-free.
         var toolFree = false
         while (true) {
             round++
+            if (round > 1 && !heardAsText) {
+                // Round 2 never re-sends the audio: his words, once checked, go in as text.
+                val at = initial.length() - 1
+                val words = userWords?.invoke() ?: AudioFirstGate.NOT_HEARD_NOTE
+                contents.put(at, AudioFirstRound.withTranscript(contents.getJSONObject(at), words))
+                heardAsText = true
+            }
             val prefix = if (searchRejected) basePrefix.copy(search = false) else basePrefix
             val force = round > maxRounds || toolFree
             val cacheName = if (!force && !cacheBroken && !searchRejected) cache?.peek(prefix) else null

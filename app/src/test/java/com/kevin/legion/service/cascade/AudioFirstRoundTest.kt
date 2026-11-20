@@ -29,4 +29,15 @@ class AudioFirstRoundTest {
         assertEquals("RIFF", String(wav, 0, 4))
         assertEquals(pcm.size, wav.size - CloudSpeechWire.wavHeaderLength(wav))
     }
+
+    @Test
+    fun `round 2 carries his words as text in place of the audio`() {
+        val c = AudioFirstRound.contents(emptyList(), ByteArray(640), "(Invented context.) ")
+        val turn = AudioFirstRound.withTranscript(c.getJSONObject(0), "what's on the invented list")
+        val parts = turn.getJSONArray("parts")
+        assertEquals(1, parts.length())
+        assertEquals("(Invented context.) what's on the invented list", parts.getJSONObject(0).getString("text"))
+        // The original is not changed.
+        assertEquals(2, c.getJSONObject(0).getJSONArray("parts").length())
+    }
 }

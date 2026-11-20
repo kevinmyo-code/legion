@@ -107,6 +107,13 @@ object VoiceEngineSettings {
     private const val KEY_STATUS = "last_status"
     private const val KEY_STATUS_AT = "last_status_at"
     private const val KEY_SPECULATE = "speculate"
+    private const val KEY_AUDIO_FIRST = "audio_first"
+
+    /**
+     * Audio-first round 1 ([AudioFirstGate], Kevin 2026-11-19): what a conversation does when the
+     * switch was never touched. Built OFF; turning it on for everyone is this one line.
+     */
+    const val AUDIO_FIRST_DEFAULT = false
     private const val KEY_SPEED = "speech_speed"
     private const val KEY_CLOUD_VOICE = "cloud_voice"
 
@@ -147,6 +154,11 @@ object VoiceEngineSettings {
     fun speculate(context: Context): Boolean = prefs(context).getBoolean(KEY_SPECULATE, true)
 
     fun setSpeculate(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SPECULATE, on).apply()
+
+    /** Audio-first round 1 on the cloud voice ([AUDIO_FIRST_DEFAULT] until set). Read once per conversation. */
+    fun audioFirst(context: Context): Boolean = prefs(context).getBoolean(KEY_AUDIO_FIRST, AUDIO_FIRST_DEFAULT)
+
+    fun setAudioFirst(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_AUDIO_FIRST, on).apply()
 
     /** The cloud voice's id: [CloudSpeechWire.VOICE] (en-gb-advisor-3) unless another passed [testVoice]. */
     fun cloudVoice(context: Context): String =

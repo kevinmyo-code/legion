@@ -31,6 +31,7 @@ import org.json.JSONObject
  *   then it is held (so the gain is max(speech-to-text, round 1) instead of their sum).
  * Pure: no Android.
  */
+@Suppress("NestedBlockDepth") // one walk over a turn's parts
 internal object AudioFirstRound {
     /** Stands in for his words in the text part of the turn; the audio part carries them. */
     const val AUDIO_NOTE = "(His words this turn are in the attached audio. Answer what he said.)"
@@ -52,5 +53,18 @@ internal object AudioFirstRound {
             ),
         )
         return contents
+    }
+
+    /** [turn] (a user turn [contents] built) with its audio removed and [AUDIO_NOTE] replaced by [words]. */
+    fun withTranscript(turn: JSONObject, words: String): JSONObject {
+        val parts = turn.getJSONArray("parts")
+        val kept = JSONArray()
+        for (i in 0 until parts.length()) {
+            val p = parts.getJSONObject(i)
+            if (p.has("inlineData")) continue
+            val text = p.optString("text", "")
+            kept.put(if (p.has("text")) JSONObject(p.toString()).put("text", text.replace(AUDIO_NOTE, words)) else p)
+        }
+        return JSONObject(turn.toString()).put("parts", kept)
     }
 }

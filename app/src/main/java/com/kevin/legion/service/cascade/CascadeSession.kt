@@ -71,6 +71,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
@@ -340,6 +341,17 @@ internal class CascadeSession(
     /** The date the model's prompt states as today ([RelativeDay.TurnDates]). */
     @Volatile private var promptDay: LocalDate = LocalDate.now()
 
+    /** Audio-first round 1 (the switch, read once per conversation, [VoiceEngineSettings.audioFirst]). */
+    private val audioFirst = VoiceEngineSettings.audioFirst(ctx)
+
+    /** The audio-first turn in flight: its gate holds the first audio ([AudioFirstGate.holdSpeech]). */
+    @Volatile private var audioFirstGate: AudioFirstGate? = null
+    @Volatile private var speechReleased = true
+
+    /** An audio-first turn merged into the next before its transcript landed: its words are awaited. */
+    @Volatile private var carryFrom: TurnUtterance? = null
+    @Volatile private var audioFirstUtt: TurnUtterance? = null
+
     /** Writes that went through and that he has not heard said yet ([OwedWrites]). */
     private val owed = OwedWrites()
 
@@ -357,7 +369,8 @@ internal class CascadeSession(
 
     /** What one turn has done so far: what [Handover] needs if the laptop drops mid-turn. */
     private class TurnRecord(
-        val heard: String,
+        /** His words; on an audio-first turn "" until the transcript lands and passes ([AudioFirstGate]). */
+        @Volatile var heard: String,
         val fromUser: Boolean = true,
         /** The voiced time of the clip his words came from ([SttGuard.voicedMs]); null when not measured. */
         val voicedMs: Long? = null,
@@ -390,6 +403,9 @@ internal class CascadeSession(
 
         /** Dropped for his next words, which carry these: not recorded on its own. */
         @Volatile var merged = false
+
+        /** An audio-first turn's gate ([AudioFirstGate]): writes wait on it. */
+        @Volatile var gate: AudioFirstGate? = null
 
         /** A check-in line: held until whole, checked ([CheckInRules.lineRejection]), then said or dropped. */
         @Volatile var holdLine = false
@@ -1089,6 +1105,7 @@ internal class CascadeSession(
                 val p = pending ?: return
                 p.merged = true
                 carry = (carry + " " + p.heard).trim()
+                noteMergedCarry(p)
                 turnJob?.cancel()
                 speaker?.interrupt()
                 val reason = if (tools > 0) "speech_during_lookup" else "speech_resumed"
@@ -1287,6 +1304,8 @@ internal class CascadeSession(
     private suspend fun runTurn(u: TurnUtterance, eotAtMs: Long) {
         // The cloud draft's transcript, when the phone confirmed the turn on the same audio.
         val fromDraft = draft?.takeIf { it.utt === u && it.audioConfirmed }
+        takeCarryFrom()
+        if (fromDraft == null && runAudioFirst(u, eotAtMs)) return
         val stt = fromDraft?.let { draftTranscript(it, u.backend.sttFinalTimeoutMs) }
             ?: u.result(u.backend.sttFinalTimeoutMs)
         LiveLatency.log(LiveLatency.TAG, "stt_final_ms=${System.currentTimeMillis() - eotAtMs}" +
@@ -1377,6 +1396,8 @@ internal class CascadeSession(
         record: TurnRecord,
         /** A speculative draft confirmed with these words: its answer is this turn's. */
         drafted: SpeculativeAnswer? = null,
+        /** An audio-first turn: his audio is round 1's user turn ([AudioFirstRound]). */
+        audio: ByteArray? = null,
     ) {
         turn = record
         if (record.fromUser) record.askedBefore = lastTurnAsked
@@ -1412,9 +1433,10 @@ internal class CascadeSession(
             val result = drafted?.adopt(executorFor(record, seq), listenerFor(record, reply))
                 ?: textLoop!!.answer(
                     pfx,
-                    turnContentsFor(heard),
+                    audio?.let { AudioFirstRound.contents(history, it, turnPreamble()) } ?: turnContentsFor(heard),
                     executorFor(record, seq),
                     listenerFor(record, reply),
+                    userWords = record.gate?.let { g -> suspend { g.awaitForRound() } },
                 )
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
             // A tool turn that ended on filler was asked once more ([FillerTurn]): counts only.
@@ -1496,7 +1518,8 @@ internal class CascadeSession(
             // Without the model's own leading "Checking.", as the speaker dropped it ([LeadingFiller]).
             val said = reply.spoken().ifBlank { LeadingFiller.strip(result.text) }
             val kept = if (outcome == ReplySpeaker.Outcome.Interrupted) withWrites(reply.spoken(), record) else said
-            recordTurn(heard, kept, record.readThrough, seq, record.fromUser)
+            notHeardNote(record)
+            recordTurn(record.heard, kept, record.readThrough, seq, record.fromUser)
             owe(record, cutOff = outcome != ReplySpeaker.Outcome.Played)
             answeredOnce = true
             turnsAnswered.incrementAndGet()
@@ -1600,6 +1623,188 @@ internal class CascadeSession(
         val words = "check_in outcome=${outcome.name.lowercase()} moment=${mark.moment.name.lowercase()}"
         LiveLatency.log("LIVE_FOLLOWUP", words)
         CheckIns.onOutcome(ctx, mark, outcome)
+    }
+
+    // --- audio-first round 1 ([AudioFirstGate], Kevin 2026-11-19; switch built OFF) ----------------
+
+    /**
+     * Runs [u] audio-first when the switch and the turn allow it ([AudioFirstGate.applies]); true when
+     * this turn is handled here. Near silence never reaches the model (local voiced measure). The
+     * answer starts on his audio while [checkTranscript] waits for the transcript beside it; a
+     * transcript that fails its checks ends the answer and does what a spoken turn would.
+     */
+    @Suppress("ReturnCount") // not this turn, silence, or answered here
+    private suspend fun runAudioFirst(u: TurnUtterance, eotAtMs: Long): Boolean {
+        val audio = u.keptAudio()?.takeIf { it.isNotEmpty() }
+        val cloud = u.backend.kind == SpeechBackend.Kind.CLOUD
+        val on = AudioFirstGate.applies(audioFirst, cloud, carry.isBlank(), audio != null)
+        LiveLatency.log(LiveLatency.TAG, "audio_first=${if (on) 1 else 0}")
+        if (!on || audio == null) return false
+        val voiced = SttGuard.voicedMs(audio)
+        discardDraftOf(u, "audio_first")
+        if (AudioFirstGate.silent(voiced)) {
+            LiveLatency.log(LiveLatency.TAG, "af_silent voiced_ms=$voiced")
+            u.cancel()
+            if (!closedOnNoise()) {
+                lastClipText = null
+                backToListening()
+            }
+            return true
+        }
+        val gate = AudioFirstGate()
+        val record = TurnRecord("", voicedMs = voiced).also { it.gate = gate }
+        audioFirstGate = gate
+        speechReleased = false
+        audioFirstUtt = u
+        try {
+            coroutineScope {
+                val answer = launch { answerTurn("", eotAtMs, record, audio = audio) }
+                val failed = checkTranscript(u, eotAtMs, gate, record)
+                if (failed != null) {
+                    // Nothing spoken yet, or a check that must end it: the answer stops here.
+                    if (failed !is AudioFirstFailure.Missed || !turnAudioStarted) {
+                        record.merged = true
+                        answer.cancel()
+                        answer.join()
+                    }
+                    afterFailedTranscript(u, failed)
+                }
+            }
+        } finally {
+            if (audioFirstGate === gate) audioFirstGate = null
+            speechReleased = true
+            if (audioFirstUtt === u) audioFirstUtt = null
+        }
+        return true
+    }
+
+    /** Why an audio-first turn's transcript did not pass, for [afterFailedTranscript]. */
+    private sealed interface AudioFirstFailure {
+        data class Missed(val reason: String, val spoken: Boolean) : AudioFirstFailure
+        data class Stop(val words: String) : AudioFirstFailure
+        data class Dropped(val reason: String) : AudioFirstFailure
+        data class Language(val words: String) : AudioFirstFailure
+        data object Crisis : AudioFirstFailure
+        data object Cancelled : AudioFirstFailure
+    }
+
+    /**
+     * The transcript, checked exactly as [runTurn] checks one today (stop words, [SttGuard], the
+     * crisis check, the language rule). Passed: his words go on the record and the gate opens. Null
+     * when it passed.
+     */
+    @Suppress("ReturnCount") // one exit per check, in runTurn's order
+    private suspend fun checkTranscript(
+        u: TurnUtterance,
+        eotAtMs: Long,
+        gate: AudioFirstGate,
+        record: TurnRecord,
+    ): AudioFirstFailure? {
+        val stt = u.result(u.backend.sttFinalTimeoutMs)
+        LiveLatency.log(LiveLatency.TAG, "af_transcript_wait_ms=${System.currentTimeMillis() - eotAtMs}")
+        val failure: AudioFirstFailure? = when (stt) {
+            is SttResult.Failed ->
+                if (stt.reason == "cancelled") AudioFirstFailure.Cancelled
+                else AudioFirstFailure.Missed(stt.reason, turnAudioStarted)
+            is SttResult.Text -> {
+                val stop = endsConversation(stt.text) && SttGuard.stopVoiced(stt.voicedMs)
+                if (stop) AudioFirstFailure.Stop(stt.text) else when (val v = verdictOf(stt)) {
+                    is SttGuard.Verdict.Drop -> AudioFirstFailure.Dropped(v.reason)
+                    is SttGuard.Verdict.Keep -> when {
+                        v.text.isBlank() -> AudioFirstFailure.Dropped(SttGuard.NOISE)
+                        CrisisDetector.detect(v.text) -> AudioFirstFailure.Crisis
+                        languageRefused(v.text) -> AudioFirstFailure.Language(v.text)
+                        else -> null.also { passTranscript(v.text, gate, record) }
+                    }
+                }
+            }
+        }
+        if (failure != null) gate.fail()
+        return failure
+    }
+
+    private suspend fun passTranscript(words: String, gate: AudioFirstGate, record: TurnRecord) {
+        missedInARow = 0
+        noiseInARow = 0
+        userTurns.incrementAndGet()
+        audit.user(words, final = true)
+        scope.launch(Dispatchers.IO) { runCatching { ProactiveBus.noteReply(ctx, words) } }
+        followLanguage(words)
+        record.heard = words
+        gate.pass(words)
+    }
+
+    /** A refusal [followLanguage] would say; decided here without saying it. */
+    private fun languageRefused(words: String): Boolean = SpokenLanguages.decide(
+        words, languages, conversationLanguage, backend?.kind == SpeechBackend.Kind.CLOUD, CompanionProfile.name(ctx),
+    ) is SpokenLanguages.Decision.Refuse
+
+    /** What a spoken turn does on the same verdict, once the answer has stopped. */
+    private suspend fun afterFailedTranscript(u: TurnUtterance, failed: AudioFirstFailure) {
+        LiveLatency.log(LiveLatency.TAG, "af_transcript_failed kind=${failed.javaClass.simpleName.lowercase()}")
+        when (failed) {
+            is AudioFirstFailure.Missed ->
+                if (!failed.spoken) missedWords(Handover.Moment.LostWords, failed.reason, u.backend.kind)
+            is AudioFirstFailure.Stop -> endByStop(u, failed.words)
+            is AudioFirstFailure.Dropped -> droppedWords(u, failed.reason)
+            is AudioFirstFailure.Language -> followLanguage(failed.words)
+            AudioFirstFailure.Crisis -> {
+                shutdown("crisis")
+                host.crisis()
+            }
+            AudioFirstFailure.Cancelled -> Unit
+        }
+    }
+
+    /** True when [name] may run now: not a write, not audio-first, or his words landed and passed. */
+    @Suppress("ReturnCount") // not audio-first, not a write, or the verdict
+    private suspend fun awaitWordsForWrite(record: TurnRecord, name: String, args: JSONObject): Boolean {
+        val gate = record.gate ?: return true
+        if (!CascadeRules.isWrite(name, args)) return true
+        val started = System.currentTimeMillis()
+        val words = gate.awaitForWrite()
+        LiveLatency.log(LiveLatency.TAG, "af_held_write_ms=${System.currentTimeMillis() - started} ok=${words != null}")
+        return words != null
+    }
+
+    /** One reply write: after an audio-first turn's transcript hold, under the gate a backchannel shares. */
+    private suspend fun playHeld(p: ReplyPlayer, pcm: ByteArray, gen: Int): Boolean {
+        holdForTranscript()
+        return playGate.withLock { p.write(pcm, gen) }
+    }
+
+    /** The first audio of an audio-first turn waits for the transcript, up to the grace. */
+    private suspend fun holdForTranscript() {
+        if (speechReleased) return
+        val gate = audioFirstGate ?: return
+        val started = System.currentTimeMillis()
+        val graceHit = gate.holdSpeech()
+        speechReleased = true
+        LiveLatency.log(
+            LiveLatency.TAG,
+            "af_speech_held_ms=${System.currentTimeMillis() - started} grace_hit=${if (graceHit) 1 else 0}",
+        )
+    }
+
+    /** History keeps text for his turn: on words that never came through, the note (never logged as his). */
+    private fun notHeardNote(record: TurnRecord) {
+        if (record.gate == null || record.heard.isNotBlank()) return
+        history.add(ChatTurn(fromUser = true, text = AudioFirstGate.NOT_HEARD_NOTE))
+    }
+
+    /** An audio-first first half whose words have not landed: they are awaited next turn ([takeCarryFrom]). */
+    private fun noteMergedCarry(p: TurnRecord) {
+        if (p.heard.isBlank() && p.gate != null) carryFrom = audioFirstUtt
+    }
+
+    /** An audio-first first half merged into this turn before its transcript landed: its words lead. */
+    @Suppress("ReturnCount") // nothing carried, no transcript, nothing believed
+    private suspend fun takeCarryFrom() {
+        val first = carryFrom ?: return
+        carryFrom = null
+        val r = first.result(first.backend.sttFinalTimeoutMs) as? SttResult.Text ?: return
+        val words = (verdictOf(r) as? SttGuard.Verdict.Keep)?.text?.takeIf { it.isNotBlank() } ?: return
+        carry = (words + " " + carry).trim()
     }
 
     /**
@@ -1924,6 +2129,8 @@ internal class CascadeSession(
         }
         // Before anything can run: his next words must never carry a write into a second run.
         if (CascadeRules.isWrite(name, args)) record.writeCalled = true
+        // Audio-first: a write waits for his checked words; none, and nothing is changed.
+        if (!awaitWordsForWrite(record, name, args)) return@TextToolExecutor AudioFirstGate.NOT_HEARD
         // One heard word changes nothing without his yes (2026-11-19, lone_word_write).
         val held = if (record.fromUser) {
             val asked = record.askedBefore || answersSpokenAsk(name, args, record.heard)
@@ -2048,6 +2255,7 @@ internal class CascadeSession(
 
         override fun onFirstPart(round: Int, ms: Long) {
             LiveLatency.log(LiveLatency.TAG, "llm_first_ms=$ms round=$round")
+            if (round == 1 && record.gate != null) LiveLatency.log(LiveLatency.TAG, "af_round1_ms=$ms")
         }
     }
 
@@ -2085,7 +2293,7 @@ internal class CascadeSession(
         return ReplySpeaker(
             tts = b.tts,
             scope = scope,
-            play = { pcm -> playGate.withLock { p.write(pcm, gen) } },
+            play = { pcm -> playHeld(p, pcm, gen) },
             firstFrameTimeoutMs = b.ttsFirstAudioTimeoutMs,
             onFirstAudio = { _, filler ->
                 turnAudioStarted = true

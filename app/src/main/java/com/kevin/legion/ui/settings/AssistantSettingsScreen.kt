@@ -101,6 +101,7 @@ fun AssistantSettingsScreen(
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
     var speculate by remember { mutableStateOf(VoiceEngineSettings.speculate(context)) }
+    var audioFirst by remember { mutableStateOf(VoiceEngineSettings.audioFirst(context)) }
     var bluetoothMic by remember { mutableStateOf(VoiceTurnSettings.bluetoothMic(context)) }
     var localCommands by remember { mutableStateOf(VoiceTurnSettings.localCommands(context)) }
     var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
@@ -250,6 +251,20 @@ fun AssistantSettingsScreen(
                     onToggle = { on ->
                         VoiceEngineSettings.setSpeculate(context, on)
                         speculate = on
+                    },
+                )
+
+                // 2026-11-19: audio-first round 1 (cloud voice). Writes still wait for the transcript.
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "Understand from the audio (faster first answer)",
+                    explanation = "your words go to the model as sound while the transcript is made " +
+                        "beside it; nothing is changed until the transcript is in and checked. " +
+                        "Cloud voice only. Applies from the next conversation.",
+                    enabled = audioFirst,
+                    onToggle = { on ->
+                        VoiceEngineSettings.setAudioFirst(context, on)
+                        audioFirst = on
                     },
                 )
 

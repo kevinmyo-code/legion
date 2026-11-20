@@ -553,6 +553,36 @@ class GeminiTextLoopTest {
         }
     }
 
+    // --- audio-first: round 2 carries his words as text (2026-11-19) -----------------------------
+
+    @Test
+    fun `round 2 waits for his checked words and never re-sends the audio`() = runBlocking<Unit> {
+        val t = Scripted(ok(callEv("get_weather")), ok(textEv("It is mild.")))
+        val audioTurn = AudioFirstRound.contents(emptyList(), ByteArray(640), "")
+        var asked = 0
+        val r = loop(t).answer(prefix, audioTurn, okTool, Collect(), userWords = {
+            asked++
+            "is it cold out"
+        })
+        assertNull(r.failure)
+        assertEquals(1, asked)
+        val first = t.bodies[0].getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+        assertTrue(first.toString().contains("inlineData"))
+        val second = t.bodies[1].getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+        assertFalse(second.toString().contains("inlineData"))
+        assertEquals("is it cold out", second.getJSONObject(0).getString("text"))
+    }
+
+    @Test
+    fun `words that never came through go to round 2 as the note`() = runBlocking<Unit> {
+        val t = Scripted(ok(callEv("get_weather")), ok(textEv("It is mild.")))
+        val r = loop(t).answer(prefix, AudioFirstRound.contents(emptyList(), ByteArray(640), ""), okTool, Collect(),
+            userWords = { null })
+        assertNull(r.failure)
+        val second = t.bodies[1].getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+        assertEquals(AudioFirstGate.NOT_HEARD_NOTE, second.getJSONObject(0).getString("text"))
+    }
+
     // --- a balance the phone speaks itself (VerbatimSpeech, stage 7) -----------------------------
 
     private fun verbatimTool(from: String) = TextToolExecutor { _, _, _ ->
