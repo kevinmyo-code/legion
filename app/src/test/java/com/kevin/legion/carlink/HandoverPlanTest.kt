@@ -48,13 +48,13 @@ class HandoverPlanTest {
         assertFalse(HandoverGap.NO_GEMINI_KEY in plan.gaps())
     }
 
-    @Ignore("red until fix B") @Test fun `the phone's map token goes in the map-token field, registered with the redactor`() {
+    @Test fun `the phone's map token goes in the map-token field, registered with the redactor`() {
         mapToken = "pk.map-token-for-tests"
         assertEquals("\"pk.map-token-for-tests\"", fields(plan.body().toJson())["mapbox_token"].toString())
         assertTrue(redacted.contains("pk.map-token-for-tests"))
     }
 
-    @Ignore("red until fix B") @Test fun `no map token on the phone sends none and is said`() {
+    @Test fun `no map token on the phone sends none and is said`() {
         assertNull(fields(plan.body().toJson())["mapbox_token"])
         assertTrue(HandoverGap.NO_MAP_TOKEN in plan.gaps())
     }

@@ -166,7 +166,7 @@ class CarLinkViewModelTest {
         assertTrue(state().canPair)
     }
 
-    @Ignore("red until fix B") @Test fun `the screen says what pairing hands over, and what this phone lacks`() {
+    @Test fun `the screen says what pairing hands over, and what this phone lacks`() {
         assertEquals(
             "This phone has no Gemini key and no map token, so the car will get neither.",
             state().handsOver,

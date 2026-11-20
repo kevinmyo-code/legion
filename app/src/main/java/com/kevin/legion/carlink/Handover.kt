@@ -72,6 +72,7 @@ class HandoverPlan(
         return HandoverBody(
             engineToken = token?.token,
             geminiKey = present(sources.geminiKey())?.also(redact),
+            mapboxToken = present(sources.mapboxToken())?.also(redact),
             phoneName = sources.phoneName(),
         )
     }
@@ -79,6 +80,7 @@ class HandoverPlan(
     /** What this phone does not have to hand over, for the screen's words. */
     fun gaps(): Set<HandoverGap> = buildSet {
         if (present(sources.geminiKey()) == null) add(HandoverGap.NO_GEMINI_KEY)
+        if (present(sources.mapboxToken()) == null) add(HandoverGap.NO_MAP_TOKEN)
     }
 
     private fun present(value: String?): String? = value?.trim()?.takeIf { it.isNotEmpty() }
