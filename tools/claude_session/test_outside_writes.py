@@ -212,6 +212,21 @@ class OtherSpellings(Base):
             with self.subTest(spelled=spelled):
                 self.assertEqual(self.decide("Write", {"file_path": spelled})[0], "deny")
 
+    def test_a_prefix_must_be_followed_by_a_drive_path(self):
+        """R6-1 (review round 6): after the prefix, only `X:\\` or `X:/` is a place we can judge."""
+        self.yes()
+        b = chr(92)
+        for spelled in (b + b + "?" + b + "GLOBALROOT" + b + "Device" + b + "HarddiskVolume3" + b + "x.pth",
+                        b + b + "?" + b + "Volume{0b1c2d3e-0000-1111-2222-333344445555}" + b + "x.pth",
+                        b + b + "?" + b + "C:relative" + b + "x.pth",
+                        b + b + "?" + b, "//?/", b + b + "." + b,
+                        b + b + "?" + b + "globalroot" + b + "device" + b + "harddiskvolume3" + b + "x",
+                        "//?/GlobalRoot/Device/HarddiskVolume3/x", "//./Volume{abc}/x",
+                        b + b + "." + b + "PhysicalDrive0", b + b + "." + b + "pipe" + b + "x"):
+            with self.subTest(spelled=spelled):
+                self.assertEqual(self.decide("Write", {"file_path": spelled})[0], "deny")
+                self.assertEqual(self.decide("NotebookEdit", {"notebook_path": spelled})[0], "deny")
+
     def test_own_folder_through_a_long_path_prefix_still_passes(self):
         b = chr(92)
         self.assertEqual(self.decide("Write", {"file_path": b + b + "?" + b + str(self.work / "x.txt")})[0], "pass")

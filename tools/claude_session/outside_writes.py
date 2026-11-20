@@ -108,6 +108,10 @@ def canonical(target: str) -> str | None:
         for prefix in ("\\\\?\\", "\\\\.\\"):
             if t.startswith(prefix):
                 t = t[len(prefix):]
+                # R6-1: only a drive path may follow (not GLOBALROOT, Volume{guid}, a device, a
+                # drive-relative `C:x` or nothing).
+                if not re.match(r"^[A-Za-z]:\\", t):
+                    return None
                 break
     if t.startswith("\\\\"):
         parts = t[2:].split("\\")
