@@ -64,4 +64,40 @@ class FillerTurnTest {
         assertEquals("Looking good.", d.end())
         assertFalse(d.filler)
     }
+
+    // --- before any tool: exact membership only (2026-11-19) ---------------------------------------
+
+    @Test
+    fun `exact filler only is membership in the scripted lines, one or more, nothing else`() {
+        for (f in ScriptedLines.FILLERS) assertTrue(f, FillerTurn.isExactFillerOnly(f.uppercase()))
+        assertTrue(FillerTurn.isExactFillerOnly("Checking. Let me look."))
+        assertTrue(FillerTurn.isExactFillerOnly("Checking.Let me look!"))
+        // The opener rule after a tool is not used here: these are not the scripted lines.
+        for (notFiller in listOf("Checking the modules.", "Looking into it.", "On it, timer set.", "Checking. Two codes.", "", "Check")) {
+            assertFalse(notFiller, FillerTurn.isExactFillerOnly(notFiller))
+        }
+        assertEquals("Two codes.", FillerTurn.stripExactFillers("Checking. One moment.Two codes."))
+        assertEquals("Looking good.", FillerTurn.stripExactFillers("Looking good."))
+    }
+
+    @Test
+    fun `the first-round hold withholds a filler-only reply with no call, passes it on with a call`() {
+        val a = FillerTurn.FirstHold()
+        assertEquals("", a.feed("Let me "))
+        assertEquals("", a.feed("look."))
+        assertEquals("", a.end(calls = false))
+        assertTrue(a.filler)
+
+        val b = FillerTurn.FirstHold()
+        assertEquals("", b.feed("Checking."))
+        assertEquals("Checking.", b.end(calls = true))
+        assertFalse(b.filler)
+
+        val c = FillerTurn.FirstHold()
+        assertEquals("", c.feed("Checking. "))
+        assertEquals("It is", c.feed("It is"))
+        assertEquals(" mild.", c.feed(" mild."))
+        assertEquals("", c.end(calls = false))
+        assertFalse(c.filler)
+    }
 }
