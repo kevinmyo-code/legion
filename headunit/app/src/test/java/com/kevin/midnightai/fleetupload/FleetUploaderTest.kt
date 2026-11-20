@@ -133,6 +133,46 @@ class FleetUploaderTest {
         """{"id":"$id","origin_guid":${guid?.let { "\"$it\"" } ?: "null"},"last_obd_mac":${lastMac?.let { "\"$it\"" } ?: "null"},""" +
             """"deleted_at":${if (deleted) "\"2026-01-01T00:00:00Z\"" else "null"},"name":"XJ"}"""
 
+    private fun carLinkUploader(source: FleetUploadSource, active: String? = mac): FleetUploader {
+        val config = EngineConfig(
+            context = RuntimeEnvironment.getApplication(),
+            encrypt = { "ENC($it)" },
+            decrypt = { it.removePrefix("ENC(").removeSuffix(")") },
+        )
+        val base = server.url("/").newBuilder().host("127.0.0.1").build().toString().trimEnd('/')
+        assertTrue(config.saveSessionStrict(base, "hu1_made-up", "u-1", carLink = true, vehicleId = "veh-bound"))
+        return FleetUploader(source, cursors, EngineHttp(config, OkHttpClient()), sink, log = { logged += it }, activeVehicleId = { active })
+    }
+
+    /**
+     * 2026-11-20: on the car's own sign-in only the bound car's OBD samples go up, to the engine
+     * vehicle named in the hand-over, with no vehicle lookup; code events, drives and other cars
+     * stay on the unit and the sentence says why.
+     */
+    @Test fun `the car's own sign-in uploads only the bound car's samples`() = runTest {
+        val other = "11:22:33:44:55:66"
+        val source = Source(
+            listOf(car(), car(other)),
+            samples(3) + samples(2, other).map { it.copy(id = it.id + 100) },
+            events = listOf(event(1)),
+        )
+        val outcome = carLinkUploader(source).upload(FleetUploadReason.MANUAL)
+        assertTrue(requests.none { it.path.orEmpty().startsWith("/api/fleet/vehicles/") })
+        assertTrue(requests.none { it.path.orEmpty().startsWith("/api/fleet/code_events/") })
+        assertEquals(listOf(3), batchSizes())
+        val first = (Json.parseToJsonElement(batchRequests().first().body.clone().readUtf8()) as JsonArray)[0]
+        assertEquals("veh-bound", first.jsonObject["vehicle_id"]!!.jsonPrimitive.content)
+        assertEquals(3, (outcome as FleetUploadOutcome.Sent).samples)
+        assertTrue(outcome.sentence, outcome.sentence.contains("member sign-in"))
+        assertEquals(0L, cursors.samples[other] ?: 0L)
+    }
+
+    @Test fun `the car's own sign-in with no bound car sends nothing and says so`() = runTest {
+        val outcome = carLinkUploader(Source(listOf(car()), samples(3)), active = "someone-else").upload(FleetUploadReason.MANUAL)
+        assertTrue(requests.isEmpty())
+        assertTrue(outcome is FleetUploadOutcome.Skipped)
+    }
+
     private fun uploader(source: FleetUploadSource, signedIn: Boolean = true, maxBatches: Int = 40): FleetUploader {
         val config = EngineConfig(
             context = RuntimeEnvironment.getApplication(),
