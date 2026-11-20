@@ -126,6 +126,9 @@ describe('the sections', () => {
     inView(screen.getByTestId('first'), '-50% 0px -50% 0px')
     expect(screen.getByTestId('place')).toHaveTextContent(/^right$/)
     // Scrolled back above the first section (its top below the middle): no place, the orb goes.
+    const top = window.innerHeight * 0.7
+    screen.getByTestId('first').getBoundingClientRect = () =>
+      ({ top, bottom: top + 500, left: 0, right: 0, width: 0, height: 500, x: 0, y: top, toJSON() {} }) as DOMRect
     act(() => {
       for (const o of observers) {
         if (o.options?.rootMargin !== '-50% 0px -50% 0px') continue
@@ -149,7 +152,7 @@ describe('the sections', () => {
         }
       })
     const firstAt = (top: number) => {
-      first.getBoundingClientRect = () => ({ top, bottom: top + 500, left: 0, right: 0, width: 0, height: 500, x: 0, y: top, toJSON() {} })
+      first.getBoundingClientRect = () => ({ top, bottom: top + 500, left: 0, right: 0, width: 0, height: 500, x: 0, y: top, toJSON() {} }) as DOMRect
     }
     // Deep in the page: the second section is in the middle.
     firstAt(-3000)
