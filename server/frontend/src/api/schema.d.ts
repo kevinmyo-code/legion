@@ -11599,7 +11599,7 @@ export interface components {
             /** @description What was said, as text. Send this OR `audio`. */
             transcript?: string;
             /**
-             * Format: uri
+             * Format: binary
              * @description One utterance: a WAV of 16 kHz 16-bit mono PCM, at most 28 seconds (multipart). Transcribed and answered aloud. The audio is never stored; the transcript is kept on the turn row, like every text turn.
              */
             audio?: string;
@@ -12421,6 +12421,7 @@ export interface operations {
             content: {
                 "application/json": components["schemas"]["TurnRequest"];
                 "multipart/form-data": components["schemas"]["TurnRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["TurnRequest"];
             };
         };
         responses: {

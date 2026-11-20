@@ -262,6 +262,9 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/TurnRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TurnRequest'
       security:
       - deviceToken: []
       - cookieAuth: []
@@ -25993,7 +25996,7 @@ components:
           maxLength: 4000
         audio:
           type: string
-          format: uri
+          format: binary
           description: 'One utterance: a WAV of 16 kHz 16-bit mono PCM, at most 28
             seconds (multipart). Transcribed and answered aloud. The audio is never
             stored; the transcript is kept on the turn row, like every text turn.'

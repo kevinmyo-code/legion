@@ -37,7 +37,8 @@ import time
 import wave
 
 from django.http import StreamingHttpResponse
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_field
 from rest_framework import exceptions, serializers, status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -115,6 +116,11 @@ class _SwitchedAgentsView(_AgentsView):
 MAX_BODY_BYTES = MAX_AUDIO_BYTES + 64 * 1024
 
 
+@extend_schema_field(OpenApiTypes.BINARY)
+class _AudioField(serializers.FileField):
+    """A file field the schema types as binary (the clip's bytes), not as a link."""
+
+
 class TurnRequestSerializer(serializers.Serializer):
     transcript = serializers.CharField(
         max_length=4000,
@@ -122,7 +128,7 @@ class TurnRequestSerializer(serializers.Serializer):
         required=False,
         help_text="What was said, as text. Send this OR `audio`.",
     )
-    audio = serializers.FileField(
+    audio = _AudioField(
         required=False,
         allow_empty_file=False,
         help_text=(
@@ -261,6 +267,7 @@ class AgentTurnView(_SwitchedAgentsView):
         request={
             "application/json": TurnRequestSerializer,
             "multipart/form-data": TurnRequestSerializer,
+            "application/x-www-form-urlencoded": TurnRequestSerializer,
         },
         responses={
             200: OpenApiResponse(
