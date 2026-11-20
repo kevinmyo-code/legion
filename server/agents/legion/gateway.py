@@ -114,6 +114,14 @@ class LegionGateway:
     def call(self, state, spec, call: ToolCall, deadline_s: float) -> ToolOutcome:
         tool = self.tools().get(call.name)
         started = time.monotonic()
+        if headunit_scope.is_headunit(self.request):
+            # T3b review B4: a head unit's turn reads at a point, and its own vehicle only.
+            args, refusal = headunit_scope.tool_arguments(self.request, call.name, call.args)
+            if refusal is not None:
+                return self._done(
+                    state, call, tool, False, refusal, "refused", "headunit", started
+                )
+            call = ToolCall(call.id, call.name, args)
         verdict = guards.check_call(state, spec, call.name, call.args, tool, self.user)
         if not verdict.allow:
             return self._done(

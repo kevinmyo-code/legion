@@ -79,6 +79,36 @@ def obd_refusal(request, vehicle_ids) -> str | None:
     return None
 
 
+CONDITIONS_BY_POINT = (
+    "Nothing was read. From the car, conditions are checked at a latitude and longitude only, "
+    "never at home or a saved place by name."
+)
+NO_BOUND_VEHICLE = (
+    "Nothing was read. This head unit is bound to no vehicle on file, so it reads none. The "
+    "member can pair it again and choose its vehicle."
+)
+
+
+def tool_arguments(request, name: str, args: dict) -> tuple[dict, str | None]:
+    """Review B4: a head-unit turn's arguments, narrowed, or the refusal in words.
+
+    - `check_conditions`: a point only. By name ("home" is its default) it would tell whoever holds
+      the unit roughly where the member lives, and which places he saved.
+    - `next_service`, `vehicle_recalls`: the unit's own vehicle only, whatever the model asked for,
+      so the turn never lists the household's other cars.
+    """
+    if name == "check_conditions":
+        if args.get("place") or args.get("lat") is None or args.get("lon") is None:
+            return args, CONDITIONS_BY_POINT
+        return args, None
+    if name in ("next_service", "vehicle_recalls"):
+        bound = request.auth.vehicle_id
+        if bound is None or not live_vehicles(request).filter(pk=bound, archived=False).exists():
+            return args, NO_BOUND_VEHICLE
+        return {**args, "vehicle": str(bound)}, None
+    return args, None
+
+
 def route_name(request) -> str | None:
     match = getattr(getattr(request, "_request", request), "resolver_match", None)
     if match is None:

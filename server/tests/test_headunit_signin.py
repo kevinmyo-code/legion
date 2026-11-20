@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import gzip
+import json
 import re
 import uuid
 from datetime import timedelta
@@ -848,6 +849,82 @@ def test_a_real_turn_through_the_door_keeps_to_the_units_tools_and_stores_no_tok
     )
     assert set(AgentConversation.objects.values_list("client", flat=True)) == {scope.TURN_CLIENT}
     assert _rows_holding(raw[len("hu1_") :]) == []
+
+
+def _unit_call(user, credential, household, name, args):
+    from agents.graph.state import TurnState
+    from agents.legion.gateway import LegionGateway
+    from agents.legion.specs import spec as spec_named
+    from agents.runtime.tools import ToolCall
+
+    state = TurnState(
+        turn_id="t",
+        conversation_id="c",
+        seq=1,
+        household_id=str(household.id),
+        member_id=str(user.pk),
+        client=scope.TURN_CLIENT,
+        transcript="invented",
+    )
+    gateway = LegionGateway(_unit_request(user, credential))
+    return gateway.call(state, spec_named("generalist"), ToolCall("t1", name, args), 5.0)
+
+
+def test_a_unit_turn_checks_conditions_at_coordinates_only(household_a, household_user):
+    """Review B4: by name ("home", any saved place) would tell whoever holds the unit roughly where
+    the member lives."""
+    row, _raw = HeadUnitCredential.mint(
+        household=household_a, owner_user=household_user, label="Invented unit"
+    )
+    for args in ({}, {"place": "home"}, {"place": "Invented gym"}, {"lat": 29.7}):
+        outcome = _unit_call(household_user, row, household_a, "check_conditions", args)
+        assert (outcome.ok, outcome.guard) == (False, "headunit"), args
+    point = {"lat": 29.7, "lon": -95.3}
+    outcome = _unit_call(household_user, row, household_a, "check_conditions", point)
+    assert outcome.guard != "headunit"
+
+
+def test_a_unit_turn_reads_its_own_vehicle_only(phone, on, household_a, household_user):
+    bound, other = _vehicle(phone, 0), _vehicle(phone, 1)
+    row, _raw = HeadUnitCredential.mint(
+        household=household_a, owner_user=household_user, label="Invented unit"
+    )
+    HeadUnitCredential.objects.filter(pk=row.pk).update(vehicle_id=bound)
+    row.refresh_from_db()
+    for name in ("next_service", "vehicle_recalls"):
+        outcome = _unit_call(household_user, row, household_a, name, {"vehicle": other})
+        text = outcome.response["message"]
+        assert other not in text and "M3 1" not in text, (name, text)
+    unbound, _raw = HeadUnitCredential.mint(
+        household=household_a, owner_user=household_user, label="Invented unit"
+    )
+    for name in ("next_service", "vehicle_recalls"):
+        outcome = _unit_call(household_user, unbound, household_a, name, {})
+        assert (outcome.ok, outcome.guard) == (False, "headunit"), name
+
+
+def test_a_unit_turns_prompt_carries_the_clock_and_not_the_members_name(
+    phone, on, monkeypatch, household_user
+):
+    from agents.runtime import model as m
+
+    User.objects.filter(pk=household_user.pk).update(first_name="Invented")
+    monkeypatch.setenv(TURN_ENV, "on")
+    monkeypatch.setenv("LEGION_GEMINI_KEY", "test-key-not-real")
+    holder = {}
+
+    def factory(key):
+        holder["model"] = m.FakeModel([m.say("Noted.")])
+        return holder["model"]
+
+    monkeypatch.setattr("agents.views.GeminiClient", factory)
+    _id, raw = _paired(phone)
+    response = unit_client(raw).post("/api/agents/turn", {"transcript": "hi"}, format="json")
+    b"".join(response.streaming_content)
+    request = holder["model"].requests[0]
+    sent = json.dumps(request.contents) + request.system
+    assert "Today is" in sent
+    assert "Invented" not in sent
 
 
 def test_a_unit_turn_never_reaches_the_members_other_conversations(household_a, household_user):

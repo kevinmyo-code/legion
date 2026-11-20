@@ -90,7 +90,10 @@ def context_line(request, now: datetime) -> str:
     local = now.astimezone(zone) if zone is not None else now
     today = local.date()
     tomorrow = today + timedelta(days=1)
-    first = getattr(request.user, "first_name", "") or ""
+    # T3b review B4: a head unit's turn is not told the member's name; whoever holds the unit may
+    # not be him. The clock stays.
+    first = "" if headunit_scope.is_headunit(request) else getattr(request.user, "first_name", "")
+    first = first or ""
     clock = time_fact(now, offset, from_household=True)
     return (
         f"[Context, not said by the person: {clock} Today is {today:%A} {today.isoformat()}; "
