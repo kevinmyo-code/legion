@@ -236,6 +236,9 @@ TENANT_TABLES: tuple[str, ...] = (
     "user_record_types",
     "user_field_defs",
     "user_records",
+    # T3b: a head unit's own engine sign-in, private to the member who paired it (`OWNER_PATHS`;
+    # `headunit_signin/models.py`). Only a hash of each token is stored.
+    "headunit_credentials",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -335,6 +338,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "user_record_types",
         "user_field_defs",
         "user_records",
+        "headunit_credentials",
     }
 )
 
@@ -539,6 +543,8 @@ OWNER_PATHS: dict[str, str] = {
     # engine-brain ticket 03: advice and raises are always one member's (`homes/models.py`).
     "advisor_advice": "owner_user",
     "proactive_raises": "owner_user",
+    # T3b: never null, so a member lists and revokes only the head units they paired.
+    "headunit_credentials": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

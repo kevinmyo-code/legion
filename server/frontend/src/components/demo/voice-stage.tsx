@@ -7,6 +7,7 @@ import type { Line } from '@/assistant/live-client'
 import { orbMode } from '@/components/assistant/orb'
 import { VoiceOrb } from '@/components/assistant/voice-orb'
 import { ChipRow } from '@/components/demo/chip-row'
+import { useOrbPlace, useStoryGlide } from '@/components/demo/scroll-story'
 
 /**
  * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"). A long
@@ -64,8 +65,33 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   }, [])
   // While docked, the page gets the dock's height as room at its foot, so nothing ends under it.
   const docked = !orbSeen
+  // The scroll story (`scroll-story.ts`): where there is room beside the sections, the orb rides
+  // beside whichever is in view instead of docking at the foot. Same control, same tap path.
+  const glide = useStoryGlide()
+  const place = useOrbPlace()
+  // The chips under the stage orb have their own watcher (any of the row on screen): they stay the
+  // ones to tap until they themselves scroll away, though the orb above them is half gone (review
+  // recheck 2026-11-20: tying them to the orb made visible chips dead to a tap).
+  const chipsRoomRef = useRef<HTMLDivElement>(null)
+  const [chipsSeen, setChipsSeen] = useState(true)
   useEffect(() => {
-    if (!docked) return
+    const el = chipsRoomRef.current
+    if (!glide || !el || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const latest = entries[entries.length - 1]
+        if (latest) setChipsSeen(latest.isIntersecting)
+      },
+      { threshold: 0 },
+    )
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      setChipsSeen(true)
+    }
+  }, [glide])
+  useEffect(() => {
+    if (!docked || glide) return
     const el = dockRef.current
     const room = () => {
       document.body.style.paddingBottom = `${el?.offsetHeight || DOCK_ROOM_PX}px`
@@ -76,9 +102,12 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       window.removeEventListener('resize', room)
       document.body.style.paddingBottom = ''
     }
-  }, [docked])
+  }, [docked, glide])
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
+  // Shown once the stage's orb has gone AND a section has placed it (never over the header).
+  const sideShown = glide && docked && place.placed
+  const sideChips = Boolean(sideShown && !chipsSeen && !place.pinned && cascade && cascade.chips.length > 0)
   const mode = orbMode(state)
   const speaking = state.activity === 'speaking'
   // What the orb's tap interrupts.
@@ -162,10 +191,54 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       </button>
       {/* The chips sit right under the orb (Kevin, 2026-11-19: "make them float at the bottom of the
           orb"); the row's height is kept while there are none, so chips arriving never push the page. */}
-      <div data-stage="chips-room" className="flex min-h-12 w-full max-w-[34rem] justify-center">
+      <div
+        ref={chipsRoomRef}
+        data-stage="chips-room"
+        // While the side orb carries the chips, this off-screen copy leaves the tree: one group of
+        // suggested questions for a screen reader and the keyboard, never two (review 2026-11-20).
+        aria-hidden={sideChips || undefined}
+        inert={sideChips}
+        className="flex min-h-12 w-full max-w-[34rem] justify-center"
+      >
         {cascade && cascade.chips.length > 0 && <ChipRow chips={cascade.chips} onTap={tapChip} />}
       </div>
-      {docked && (
+      {glide ? (
+        // Beside the sections (>= 900 px, motion allowed): always mounted, shown once the stage's
+        // orb has scrolled away, and moved between the two sides by a transform (CSS). Its line and
+        // chips ride with it, except beside a pinned scene, which they would cover.
+        <div
+          data-stage="side"
+          data-shown={sideShown ? 'true' : 'false'}
+          data-side={place.side}
+          data-pinned={place.pinned ? 'true' : 'false'}
+          aria-hidden={!sideShown}
+          inert={!sideShown}
+          className="rc-voice-side"
+        >
+          <button
+            ref={dockOrbRef}
+            type="button"
+            onClick={() => {
+              onOrb()
+              // The keyboard stays on the orb the visitor can see.
+              dockOrbRef.current?.focus({ preventScroll: true })
+            }}
+            aria-label={orbLabel}
+            data-stage="dock-orb"
+            data-mode={mode}
+            className="rc-side-orb flex-none rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            {/* Drawn only while it shows: a hidden orb would still draw every frame. */}
+            {sideShown && <VoiceOrb mode={mode} levels={() => client.levels()} points={800} dot={1} className="block size-full" />}
+          </button>
+          {/* Beside a pinned scene the words fade out; out of the tab order with them. */}
+          <div className="rc-side-words" inert={place.pinned}>
+            <p className="rc-side-line">{status}</p>
+            {sideChips && cascade && <ChipRow chips={cascade.chips} onTap={tapChip} />}
+          </div>
+        </div>
+      ) : (
+        docked && (
         // Its own class and an opaque background (the stage once borrowed a sticky class and
         // stayed pinned, see-through, over the page); the safe area keeps it off a phone's bar.
         <div
@@ -190,6 +263,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
           </button>
           <p className="min-w-0 flex-1 truncate text-left text-sm font-medium">{status}</p>
         </div>
+        )
       )}
       <p role="status" data-stage="line" className="rc-h3 min-h-[1.5em] text-lg font-semibold">
         {status}

@@ -1119,10 +1119,11 @@ def test_a_visitor_cannot_reach_another_visits_row_by_id(two_visits):
     assert theirs.title == "betawrite-event-renamed" and theirs.deleted_at is None
 
 
-def test_every_deny_list_route_refuses_a_visitor_from_enter(world, settings):
+def test_every_deny_list_route_refuses_a_visitor_from_enter(world, settings, monkeypatch):
     from tests.test_recruiter import DENIED_ROUTES
 
     settings.LEGION_MCP = True
+    monkeypatch.setenv("LEGION_HEADUNIT_SIGNIN", "on")
     browser = world["browser"]
     open_ = []
     for path, _cls in DENIED_ROUTES:

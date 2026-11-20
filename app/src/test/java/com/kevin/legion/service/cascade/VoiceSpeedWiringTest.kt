@@ -108,13 +108,15 @@ class VoiceSpeedWiringTest {
         assertTrue(end.indexOf("scheduleBackchannel(u, eotAtMs)") in 0 until end.indexOf("runTurn("))
         val schedule = bodyOf(s, "scheduleBackchannel")
         assertTrue(schedule.contains("Backchannel.decide("))
-        assertTrue(schedule.contains("askedBefore = lastTurnAsked"))
+        // 2026-11-20: no skip reads the last turn's ask fields, his speech length or the last clip's time.
+        assertFalse(schedule.contains("askedBefore"))
+        assertFalse(schedule.contains("speechMs"))
         assertTrue(schedule.contains("quiet = QuietMode.isOn(ctx)"))
         assertTrue(schedule.contains("Backchannel.DELAY_MS"))
         // New speech cancels a pending one, and notes whether it started over a reply or a turn.
         val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
-        assertTrue(start.contains("backchannelJob?.cancel()"))
-        assertTrue(start.contains("uttOverReply = speaking || turnJob?.isActive == true"))
+        assertTrue(start.contains("fillerJobs.endTurn()"))
+        assertTrue(start.contains("uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)"))
     }
 
     @Test
@@ -125,7 +127,8 @@ class VoiceSpeedWiringTest {
             assertFalse("a backchannel must not touch $reply", play.contains(reply))
         }
         assertTrue(play.contains("playGate.withLock"))
-        assertTrue(play.contains("Backchannel.clipFits("))
+        // The length gate now runs inside Backchannel.choose (pinned in BackchannelTest).
+        assertTrue(play.contains("Backchannel.choose("))
         assertTrue(play.contains("audit.filler(\"backchannel\", line)"))
         assertTrue(play.contains("b.tts.inHandTake("))
         assertTrue(play.contains("Backchannel.trimSilence("))
@@ -133,7 +136,11 @@ class VoiceSpeedWiringTest {
         val speaker = bodyOf(s, "newSpeaker")
         assertTrue(speaker.contains("play = { pcm -> playGate.withLock { p.write(pcm, gen) } }"))
         assertTrue(speaker.contains("turnAudioStarted = true"))
-        assertTrue(speaker.contains("onFillerStarted = { text -> audit.filler(\"task\", text) }"))
+        // The task line is audited, and counts toward the turn's fillers and its said words (WaitFillers).
+        assertTrue(speaker.contains("onFillerStarted = { text -> noteTaskFiller(text) }"))
+        val task = bodyOf(s, "noteTaskFiller")
+        assertTrue(task.contains("audit.filler(\"task\", text)"))
+        assertTrue(task.contains("turnFillers.incrementAndGet()"))
     }
 
     @Test
@@ -145,7 +152,7 @@ class VoiceSpeedWiringTest {
         assertTrue(wait < starting.indexOf("sayToolFiller(plan, reply, record)"))
         assertTrue(starting.substring(0, starting.indexOf("override fun onToolResult(")).contains("ToolFillers.stillDue("))
         val spacing = bodyOf(s, "awaitBackchannelSpacing")
-        assertTrue(spacing.contains("backchannelJob?.join()"))
+        assertTrue(spacing.contains("fillerJobs.awaitBackchannel()"))
         assertTrue(spacing.contains("Backchannel.spacingWaitMs("))
     }
 
@@ -173,17 +180,20 @@ class VoiceSpeedWiringTest {
     fun `half-duplex backchannels keep his audio through the clip and a resume continues the turn`() {
         val s = session()
         val schedule = bodyOf(s, "scheduleBackchannel")
-        assertTrue(schedule.contains("halfDuplex = turnTaker?.bargeIn != true"))
-        assertTrue(schedule.contains("halfDuplexAllowed = VoiceTurnSettings.backchannelHalfDuplex(ctx)"))
+        // 2026-11-20: no half-duplex skip any more; his audio is kept through every filler clip instead.
+        assertFalse(schedule.contains("halfDuplex"))
+        assertTrue(bodyOf(s, "playWaitFiller").contains("listenThroughClip(\"wait\""))
         val play = bodyOf(s, "playBackchannel")
-        assertTrue(play.indexOf("listenThroughClip()") in 0 until play.indexOf("playbackActive = true"))
+        assertTrue(play.indexOf("listenThroughClip(\"backchannel\"") in 0 until play.indexOf("clipPlayback.during"))
         assertTrue(bodyOf(s, "listenThroughClip").contains("clipListen = ClipListen("))
         val feed = bodyOf(s, "onMicBuffer")
         assertTrue(feed.indexOf("listen.onFrame(buf, n, playbackActive)") in 0 until feed.indexOf("taker.feed("))
         val start = s.substring(s.indexOf("override fun sendActivityStart()"))
         assertTrue(start.indexOf("resumeThroughClip(u)") in start.indexOf("currentUtt = u") until start.indexOf("override fun sendAudio("))
         val resume = bodyOf(s, "resumeThroughClip")
-        assertTrue(resume.contains("turn?.writeCalled != true"))
+        assertTrue(resume.contains("ClipListen.takesOver(turnJob?.isActive == true, turn?.writeCalled == true)"))
+        // Asked again at the takeover on the main loop (review of aed1c786, #3).
+        assertTrue(bodyOf(s, "continuesFirstHalf").contains("ClipListen.takesOver("))
         assertTrue(resume.contains("listen.prefix(TurnTaker.PRE_ROLL_MS"))
         val take = bodyOf(s, "takeOverFirstHalf")
         for (step in listOf("merged = true", "first.cancel()", "turnJob?.cancel()")) assertTrue(step, take.contains(step))
@@ -198,7 +208,7 @@ class VoiceSpeedWiringTest {
         assertTrue(release.contains("backlog = null"))
         assertTrue(release.contains("clipListen = null"))
         assertTrue(s.contains("gemini.transcribe(audio, hold::add, hedged = false)"))
-        assertTrue(bodyOf(s, "playBackchannel").contains("Backchannel.Skip.ANSWER_TEXT"))
+        assertTrue(bodyOf(s, "backchannelStillDue").contains("Backchannel.Skip.ANSWER_TEXT"))
         assertTrue(bodyOf(s, "answerTextIn").contains("it.reply.isNotEmpty()"))
     }
 
@@ -238,6 +248,63 @@ class VoiceSpeedWiringTest {
 
     private fun stripComments(text: String): String =
         LINE_COMMENT.replace(BLOCK_COMMENT.replace(text) { "\n".repeat(it.value.count { c -> c == '\n' }) }, "")
+
+    // --- 2026-11-20: a backchannel on every turn (Kevin: "fire every time, no restrictions") -------
+
+    @Test
+    fun `a clip that fails the length gate is replaced by another word, never silence`() {
+        val play = bodyOf(session(), "playBackchannel")
+        assertTrue(play.contains("Backchannel.choose("))
+        assertFalse("one failed clip no longer ends the turn's backchannel", play.contains("if (!Backchannel.clipFits(ms))"))
+    }
+
+    @Test
+    fun `the opening chime or cue is not a reply, and a clip waits for it instead of skipping`() {
+        val s = session()
+        val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
+        assertTrue(start.contains("Backchannel.overReply("))
+        assertTrue(bodyOf(s, "playBackchannel").contains("backchannelStillDue(seq, eotAtMs)"))
+        assertTrue(bodyOf(s, "backchannelStillDue").contains("Backchannel.cueWaitMs("))
+    }
+
+    @Test
+    fun `a phone call is its own skip, and the half-duplex skip is one named rule`() {
+        val schedule = bodyOf(session(), "scheduleBackchannel")
+        assertTrue(schedule.contains("onCall = callOnLine()"))
+        assertTrue(session().contains("Backchannel.callOnLine(TelephonyController.isInCall, audioManager.mode, CallAudioMode.ownCommActive)"))
+    }
+
+    @Test
+    fun `the audit line carries the chosen word as a number`() {
+        val play = bodyOf(session(), "playBackchannel")
+        assertTrue(play.contains("word=${'$'}{Backchannel.LINES.indexOf(line)}"))
+    }
+
+    @Test
+    fun `a turn already known to be noise gets no clip`() {
+        assertTrue(bodyOf(session(), "backchannelStillDue").contains("noiseUtt"))
+    }
+
+    // --- 2026-11-20: chained fillers on a long wait (Kevin: "sometimes two or more") ---------------
+
+    @Test
+    fun `the wait lines are kept and warmed like the other fillers`() {
+        val lines = listOf("Still on it.", "Still checking.", "One moment more.", "Bear with me.", "Working on it.")
+        assertTrue(ScriptedLines.KEEP.containsAll(lines))
+        val warm = bodyOf(session(), "warmFillers")
+        assertTrue(warm.contains("WaitFillers.LINES"))
+    }
+
+    @Test
+    fun `every waiting turn schedules the wait lines at his end of speech`() {
+        val s = session()
+        val end = bodyOf(s, "onTurnEnd")
+        assertTrue(end.indexOf("scheduleWaitFillers(") in 0 until end.indexOf("runTurn("))
+        val play = bodyOf(s, "playWaitFiller")
+        assertTrue(play.contains("playGate.withLock"))
+        assertTrue(play.contains("filler kind=wait at_ms="))
+        assertTrue(play.contains("answerTextIn()"))
+    }
 
     private companion object {
         val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)

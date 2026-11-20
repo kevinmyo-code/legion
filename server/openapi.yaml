@@ -266,6 +266,7 @@ paths:
             schema:
               $ref: '#/components/schemas/TurnRequest'
       security:
+      - headUnitToken: []
       - deviceToken: []
       - cookieAuth: []
       responses:
@@ -316,6 +317,7 @@ paths:
       tags:
       - agents
       security:
+      - headUnitToken: []
       - deviceToken: []
       - cookieAuth: []
       responses:
@@ -877,6 +879,167 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No device token of yours has that id. Nothing was revoked.
+  /api/auth/head-units:
+    get:
+      operationId: api_auth_head_units_list
+      tags:
+      - auth
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HeadUnit'
+          description: The calling member's own live head units, newest first. No
+            token.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Head-unit sign-in is off.
+    post:
+      operationId: api_auth_head_units_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Mint'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Mint'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Mint'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issued'
+          description: The token, shown this once.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Head-unit sign-in is off.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/auth/head-units/{credential_id}:
+    delete:
+      operationId: api_auth_head_units_destroy
+      parameters:
+      - in: path
+        name: credential_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - auth
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: 'Revoked: that unit is signed out now. Already revoked is the
+            same.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/auth/head-units/{credential_id}/rotate:
+    post:
+      operationId: api_auth_head_units_rotate
+      parameters:
+      - in: path
+        name: credential_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - auth
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Issued'
+          description: The unit's new token, shown this once; the old one is dead
+            now.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/auth/head-units/revoke-all:
+    post:
+      operationId: api_auth_head_units_revoke_all
+      tags:
+      - auth
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Revoked'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/auth/invite/{code}:
     get:
       operationId: api_auth_invite_retrieve
@@ -5608,6 +5771,7 @@ paths:
       tags:
       - device-logs
       security:
+      - headUnitToken: []
       - deviceToken: []
       - cookieAuth: []
       responses:
@@ -5637,6 +5801,7 @@ paths:
               $ref: '#/components/schemas/Upload'
         required: true
       security:
+      - headUnitToken: []
       - deviceToken: []
       - cookieAuth: []
       responses:
@@ -7357,6 +7522,7 @@ paths:
                 $ref: '#/components/schemas/ObdSampleUpload'
         required: true
       security:
+      - headUnitToken: []
       - deviceToken: []
       - cookieAuth: []
       responses:
@@ -18638,6 +18804,50 @@ components:
       - name
       - rules
       - weight
+    HeadUnit:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+        vehicle_id:
+          type: string
+          format: uuid
+          nullable: true
+        rotated_at:
+          type: string
+          format: date-time
+          nullable: true
+        stale_use_count:
+          type: integer
+          description: 'Uses of a token after it was rotated away: a copy, or a lost
+            hand-over.'
+        stale_used_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - expires_at
+      - id
+      - label
+      - last_used_at
+      - rotated_at
+      - stale_use_count
+      - stale_used_at
+      - vehicle_id
     Health:
       type: object
       description: |-
@@ -19125,6 +19335,22 @@ components:
       - detail
       - match
       - push
+    Issued:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+          description: Shown once. The engine keeps only its hash.
+        expires:
+          type: string
+          format: date-time
+      required:
+      - expires
+      - id
+      - token
     Kind:
       type: object
       properties:
@@ -20375,6 +20601,28 @@ components:
       - statement
       - target_lbs
       - weeks_to_go
+    Mint:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 64
+        kind:
+          $ref: '#/components/schemas/MintKindEnum'
+        vehicle_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The household vehicle this unit is in. Without one the unit
+            sends no telemetry.
+      required:
+      - kind
+      - name
+    MintKindEnum:
+      enum:
+      - head_unit
+      type: string
+      description: '* `head_unit` - head_unit'
     ModeEnum:
       enum:
       - create
@@ -24283,6 +24531,16 @@ components:
       - ids
       - index
       - status
+    Revoked:
+      type: object
+      properties:
+        revoked:
+          type: integer
+        detail:
+          type: string
+      required:
+      - detail
+      - revoked
     RoleEnum:
       enum:
       - inviter
@@ -27167,3 +27425,11 @@ components:
         alone. Send the value as `Token <key>`, including the word Token and the space.
         Get a key from POST /api/auth/login; POST /api/auth/logout revokes only the
         key that made the request.
+    headUnitToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: A head unit's own token, sent as `Token hu1_<key>`. It reaches
+        only the head unit's voice turn, its own log and OBD uploads and its own refresh;
+        every other route refuses it. Minted by POST /api/auth/head-units from the
+        member's phone.

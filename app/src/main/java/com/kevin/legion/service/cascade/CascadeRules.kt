@@ -621,7 +621,7 @@ object ScriptedLines {
     val KEEP: Set<String> =
         (
             AckLines.DEFAULT + FILLERS + MISSED + VOICE_LOST + ToolFillers.ALL + Backchannel.LINES +
-                ClosingLines.LINES + FIXED_DONE_LINES
+                WaitFillers.LINES + ClosingLines.LINES + FIXED_DONE_LINES
             ).toSet()
 
     /**

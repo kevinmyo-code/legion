@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { AssistantProvider } from '@/assistant/assistant-context'
 import type { CascadeDeps, TurnStart } from '@/assistant/cascade-client'
@@ -12,6 +12,7 @@ import { FakeAudio, settle } from '@/test/fake-live'
 
 import indexCss from '../../index.css?raw'
 
+import { setOrbPlace } from './scroll-story'
 import { VoiceStage } from './voice-stage'
 
 /**
@@ -294,6 +295,205 @@ describe('the docked orb when the orb is off screen', () => {
     deliver(false, true)
     expect(dock()).toBeNull()
     expect(orb()).not.toBeNull()
+  })
+
+  /**
+   * The scroll story (Kevin, 2026-11-19, "B bolder"): with room beside the sections (900 px and up,
+   * motion allowed) the orb rides beside the section in view instead of docking at the foot. The
+   * same control: the orb's tap, its name and state, its keyboard landing.
+   */
+  describe('beside the sections, where there is room', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals()
+      setOrbPlace({ side: 'right', pinned: false, placed: false })
+    })
+    const wide = () =>
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: true,
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      }))
+    const side = () => document.querySelector<HTMLElement>('[data-stage="side"]')
+
+    test('rides beside the page once the orb is off screen; no foot bar, no room taken at the foot', () => {
+      wide()
+      fakeIO()
+      stage(false, true)
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      expect(side()).toHaveAttribute('data-shown', 'false')
+      expect(side()).toHaveAttribute('inert')
+      deliver(false)
+      expect(side()).toHaveAttribute('data-shown', 'true')
+      expect(side()).not.toHaveAttribute('inert')
+      expect(side()).toHaveTextContent('Tap and ask me about Kevin')
+      expect(dock()).toBeNull()
+      expect(document.body.style.paddingBottom).toBe('')
+      deliver(true)
+      expect(side()).toHaveAttribute('data-shown', 'false')
+    })
+
+    test('follows the section in view to its side, and rides alone beside a pinned scene', () => {
+      wide()
+      fakeIO()
+      stage(false, true)
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      deliver(false)
+      expect(side()).toHaveAttribute('data-side', 'right')
+      act(() => setOrbPlace({ side: 'left', pinned: true }))
+      expect(side()).toHaveAttribute('data-side', 'left')
+      expect(side()).toHaveAttribute('data-pinned', 'true')
+    })
+
+    test('its tap is the orb tap: while he speaks it interrupts, and the keyboard stays on it', async () => {
+      wide()
+      fakeIO()
+      const { audio, cancels } = stage(true)
+      await tapOrbAndCloseCard()
+      deliver(false)
+      expect(dockOrb()).toHaveAccessibleName('Interrupt the assistant')
+      expect(side()).toContainElement(dockOrb())
+      const flushes = audio.flushes
+      await act(async () => {
+        fireEvent.click(dockOrb()!)
+        await settle()
+      })
+      expect(cancels).toHaveLength(1)
+      expect(audio.flushes).toBe(flushes + 1)
+      expect(document.activeElement).toBe(dockOrb())
+    })
+
+    test('draws its orb only while it shows (the hidden one costs no frames)', () => {
+      wide()
+      fakeIO()
+      stage(false, true)
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      expect(side()!.querySelector('canvas')).toBeNull()
+      deliver(false)
+      expect(side()!.querySelector('canvas')).not.toBeNull()
+    })
+
+    test('one group of suggested questions in the accessibility tree; none hidden beside a pinned scene', async () => {
+      wide()
+      fakeIO()
+      const deps: CascadeDeps = {
+        startTurn: async (request): Promise<TurnStart> => ({
+          ok: true,
+          events: (async function* () {
+            yield { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } } as SseEvent
+            yield { type: 'done', data: { status: request.greet ? 'greeting' : 'done', final_text: 'Hi.', offer: 'offer-0' } } as SseEvent
+          })(),
+        }),
+        chips: async () => [{ label: 'An invented chip', question: 'An invented question?', token: 'chip-1' }],
+        audio: () => new FakeAudio(),
+        now: () => Date.now(),
+        utcOffsetMinutes: () => 0,
+      }
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <AssistantProvider voiceFirst={{ prepare: async () => true }} cascadeDeps={deps}>
+            <VoiceStage />
+          </AssistantProvider>
+        </QueryClientProvider>,
+      )
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+        await settle()
+      })
+      await screen.findByRole('group', { name: 'Suggested questions' })
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      deliver(false)
+      expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
+      expect(side()).toContainElement(screen.getByRole('group', { name: 'Suggested questions' }))
+      act(() => setOrbPlace({ side: 'left', pinned: true }))
+      // Beside the scene the side copy is gone; the stage's own is the one left.
+      expect(side()!.querySelector('[role="group"]')).toBeNull()
+      expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
+    })
+
+    test('never shows before a section has placed it (the header and hero have no room for it)', () => {
+      wide()
+      fakeIO()
+      stage(false, true)
+      deliver(false)
+      expect(side()).toHaveAttribute('data-shown', 'false')
+      expect(side()).toHaveAttribute('inert')
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      expect(side()).toHaveAttribute('data-shown', 'true')
+      // Back above the sections: out of the way again.
+      act(() => setOrbPlace({ side: 'right', pinned: false, placed: false }))
+      expect(side()).toHaveAttribute('data-shown', 'false')
+    })
+
+    test('chips you can see under the stage orb answer a tap at every scroll position; only off screen do they step aside', async () => {
+      wide()
+      fakeIO()
+      const asked: string[] = []
+      const deps: CascadeDeps = {
+        startTurn: async (request): Promise<TurnStart> => {
+          if (!request.greet) asked.push(request.text ?? '')
+          return {
+            ok: true,
+            events: (async function* () {
+              yield { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } } as SseEvent
+              yield { type: 'done', data: { status: request.greet ? 'greeting' : 'done', final_text: 'Hi.', offer: 'offer-0' } } as SseEvent
+            })(),
+          }
+        },
+        chips: async () => [{ label: 'An invented chip', question: 'An invented question?', token: 'chip-1' }],
+        audio: () => new FakeAudio(),
+        now: () => Date.now(),
+        utcOffsetMinutes: () => 0,
+      }
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <AssistantProvider voiceFirst={{ prepare: async () => true }} cascadeDeps={deps}>
+            <VoiceStage />
+          </AssistantProvider>
+        </QueryClientProvider>,
+      )
+      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+        await settle()
+      })
+      await screen.findByRole('group', { name: 'Suggested questions' })
+      const room = () => document.querySelector<HTMLElement>('[data-stage="chips-room"]')!
+      // The orb watcher counts half an orb; the chips' own watcher counts any of the row.
+      const deliverBy = (threshold: number, seen: boolean) =>
+        act(() =>
+          observers.filter(({ options }) => (options?.threshold ?? 0) === threshold).forEach(({ cb }) => cb([{ isIntersecting: seen }])),
+        )
+      // The orb is half off screen, the chips under it still on: they are the ones to tap.
+      deliverBy(0.5, false)
+      deliverBy(0, true)
+      expect(room()).not.toHaveAttribute('inert')
+      expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
+      expect(side()!.querySelector('[role="group"]')).toBeNull()
+      await act(async () => {
+        fireEvent.click(within(room()).getByRole('button', { name: 'An invented chip' }))
+        await settle()
+      })
+      expect(asked).toEqual(['An invented question?'])
+      // The chips scroll off too: the side copy takes over, the off-screen one steps aside.
+      deliverBy(0, false)
+      expect(room()).toHaveAttribute('inert')
+      expect(side()).toContainElement(screen.getByRole('group', { name: 'Suggested questions' }))
+    })
+
+    test('narrower, or with reduced motion, it docks at the foot as before', () => {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: !query.includes('min-width'),
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      }))
+      fakeIO()
+      stage(false, true)
+      deliver(false)
+      expect(side()).toBeNull()
+      expect(dock()).not.toBeNull()
+    })
   })
 
   test('a sliver of orb is not a reachable orb: it counts as seen only at half visible', () => {

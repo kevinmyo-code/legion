@@ -119,6 +119,13 @@ class IsHouseholdMember(permissions.BasePermission):
             return False
         if not HouseholdMember.objects.filter(user=user).exists():
             return False
+        # T3b: a head unit's token only on the routes `headunit_signin.scope` names, checked here
+        # as well as at its authentication class, because a request a turn's tool dispatches to a
+        # routed view (`engine_mcp.dispatch`) carries the credential without authenticating.
+        from headunit_signin.permissions import HeadUnitScope
+
+        if not HeadUnitScope().has_permission(request, view):
+            raise exceptions.PermissionDenied(HeadUnitScope.message)
         # ADR 0068/0069: a recruiter's visit must be live and on its own
         # per-visit household, and the route must be one
         # `household.recruiter_routes` opens to it - here, once, so a route
