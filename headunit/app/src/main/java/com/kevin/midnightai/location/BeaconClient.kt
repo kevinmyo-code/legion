@@ -392,8 +392,12 @@ object BeaconClient {
                 // receiver on every fix.
                 if (result.commitPending && committing.compareAndSet(false, true)) scope.launch {
                     try {
-                        if (com.kevin.midnightai.link.CarLink.store.commitPending() == null) {
+                        val error = runCatching { com.kevin.midnightai.link.CarLink.store.commitPending() }.getOrElse { "commit threw" }
+                        if (error == null) {
                             com.kevin.midnightai.link.CarLink.changed(context)
+                        } else {
+                            // Not committed: no receiver restart, and a later datagram retries.
+                            synchronized(set) { set.commitFailed() }
                         }
                     } finally {
                         committing.set(false)

@@ -23,6 +23,7 @@ class LinkFeedSet(
     data class Result(val outcome: PhoneFeed.Outcome, val commitPending: Boolean = false, val dropPending: Boolean = false)
 
     private var commitReported = false
+    private var commitRetryAt = Long.MIN_VALUE
     private var oldKeyOnlySince: Long? = null
 
     fun hellos(intervalMs: Long): List<ByteArray> = listOfNotNull(pending, committed).map { it.hello(intervalMs) }
@@ -33,7 +34,7 @@ class LinkFeedSet(
                 val out = p.receive(data, length)
                 val accepted = out !is PhoneFeed.Outcome.Rejected && out !is PhoneFeed.Outcome.Revoke
                 if (accepted) oldKeyOnlySince = null
-                val commit = accepted && !commitReported
+                val commit = accepted && !commitReported && nowMs() >= commitRetryAt
                 if (commit) commitReported = true
                 return Result(out, commitPending = commit)
             }
@@ -50,7 +51,15 @@ class LinkFeedSet(
         return Result(out, dropPending = now - since >= QUIET_MS)
     }
 
+    /** The owner's commit failed (Keystore): report it again from a datagram [COMMIT_RETRY_MS] on. */
+    fun commitFailed() {
+        commitRetryAt = nowMs() + COMMIT_RETRY_MS
+        commitReported = false
+    }
+
     companion object {
+        /** Spacing of commit retries after a failure: not per datagram (review N5), never never. */
+        const val COMMIT_RETRY_MS = 5_000L
         /**
          * How long old-key traffic must continue, with no new-key contact, before PENDING is
          * dropped. A phone that opened `done` swaps keys in one Keystore write (well under a

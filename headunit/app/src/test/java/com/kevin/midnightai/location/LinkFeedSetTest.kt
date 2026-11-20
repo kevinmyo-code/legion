@@ -68,6 +68,34 @@ class LinkFeedSetTest {
         assertFalse(set.receive(old.fix(set.committed!!.hello(1000)), 105).dropPending)
     }
 
+    @Test fun n5_aFailedCommitIsRetriedLaterNotOnEveryDatagram() {
+        var ms = 0L
+        val set = LinkFeedSet(feed(keyOld), feed(keyNew), nowMs = { ms }, sessionOpen = { false })
+        val new = Phone(keyNew)
+        assertTrue(set.receive(new.fix(set.pending!!.hello(1000)), 105).commitPending)
+        set.commitFailed()
+        nanos += 1_000_000_000L; ms += 1_000
+        assertFalse("retried on the next datagram", set.receive(new.fix(set.pending!!.hello(1000)), 105).commitPending)
+        nanos += 1_000_000_000L; ms += LinkFeedSet.COMMIT_RETRY_MS
+        assertTrue("never retried", set.receive(new.fix(set.pending!!.hello(1000)), 105).commitPending)
+    }
+
+    @Test fun n1_theQuietPeriodStartsWhenTheSessionClosesNotDuringIt() {
+        var ms = 0L
+        var open = true
+        val set = LinkFeedSet(feed(keyOld), feed(keyNew), nowMs = { ms }, sessionOpen = { open })
+        val old = Phone(keyOld)
+        // Old-key traffic for longer than the quiet period while the pairing screen is open.
+        repeat(3) {
+            assertFalse(set.receive(old.fix(set.committed!!.hello(1000)), 105).dropPending)
+            nanos += 1_000_000_000L; ms += LinkFeedSet.QUIET_MS
+        }
+        open = false
+        assertFalse("dropped at once after the session closed", set.receive(old.fix(set.committed!!.hello(1000)), 105).dropPending)
+        nanos += 1_000_000_000L; ms += LinkFeedSet.QUIET_MS
+        assertTrue(set.receive(old.fix(set.committed!!.hello(1000)), 105).dropPending)
+    }
+
     @Test fun n5_thePendingKeyCommitsOnceNotOnEveryDatagram() {
         val set = LinkFeedSet(feed(keyOld), feed(keyNew))
         val new = Phone(keyNew)
