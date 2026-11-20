@@ -15,6 +15,15 @@ class EngineUrlPolicyTest {
         assertFalse(EngineConfig.isValidBaseUrl("http://8.8.8.8:8000"))
     }
 
+    @Test fun lookalikeHostsAreRefused() {
+        assertFalse(EngineConfig.isValidBaseUrl("http://192.168.1.5.example.com"))
+        assertFalse(EngineConfig.isValidBaseUrl("http://10.0.0.2@example.com/"))
+        assertFalse(EngineConfig.isValidBaseUrl("http://10.0.0.2:80@example.com/"))
+        assertFalse(EngineConfig.isValidBaseUrl("http://172.32.0.1"))
+        assertFalse(EngineConfig.isValidBaseUrl("http://172.15.0.1"))
+        assertFalse(EngineConfig.isValidBaseUrl("https://user:pw@engine.example"))
+    }
+
     @Test fun httpsAndHttpOnAPrivateLanAreAllowed() {
         assertTrue(EngineConfig.isValidBaseUrl("https://engine.example"))
         assertTrue(EngineConfig.isValidBaseUrl("http://192.168.1.5:8000"))

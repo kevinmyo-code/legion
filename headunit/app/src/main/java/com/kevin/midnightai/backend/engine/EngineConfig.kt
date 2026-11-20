@@ -148,8 +148,12 @@ class EngineConfig(
                 trimmed.startsWith("https://") -> trimmed.removePrefix("https://")
                 else -> return false
             }
-            val host = withoutScheme.substringBefore("/").substringBefore(":")
-            if (host.isBlank()) return false
+            if (withoutScheme.substringBefore("/").substringBefore(":").isBlank()) return false
+            // The host as the HTTP client will read it (a hand-split string can be fooled by
+            // user-info such as http://10.0.0.2:80@public.example/), and no user-info at all.
+            val parsed = okhttp3.HttpUrl.Companion.run { trimmed.toHttpUrlOrNull() } ?: return false
+            if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) return false
+            val host = parsed.host
             // Recheck 2026-11-20: the unit's Android does not block cleartext, so plain http is
             // refused except to a private LAN address (a household engine on the hotspot or at
             // home), where the screen says in words that it is not encrypted.

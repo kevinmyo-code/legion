@@ -186,6 +186,13 @@ fun EngineEntry(modifier: Modifier = Modifier) {
         urlStatus?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = AriaColors.TextDim)
         }
+        if (config.baseUrl().isNotBlank() && !EngineConfig.isValidBaseUrl(config.baseUrl())) {
+            Text(
+                "The saved address is not used: plain http is only allowed to a local network address. Enter an https address.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AriaColors.accentText(AriaColors.Amber),
+            )
+        }
         if (configured && EngineConfig.isUnencrypted(config.baseUrl())) {
             Text(
                 "Not encrypted: this engine address uses plain http on the local network.",
