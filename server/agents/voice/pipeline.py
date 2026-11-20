@@ -378,9 +378,11 @@ def filler_meter(request) -> Callable[[object, bool], None]:
             )
         except Exception:  # noqa: BLE001 - metering a filler line must never break its fetch
             log.warning("agents voice: filler meter failed", exc_info=True)
-        finally:
-            if threading.current_thread() is not origin:
+        if threading.current_thread() is not origin:
+            try:
                 db_connection.close()
+            except Exception:  # noqa: BLE001 - nor may closing the thread's own connection
+                log.warning("agents voice: filler meter could not close its connection")
 
     return meter
 

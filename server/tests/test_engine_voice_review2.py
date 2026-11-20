@@ -179,3 +179,32 @@ def test_the_character_bound_counts_the_words_spoken_not_the_words_shown(
     _events(_post(auth_client, audio=_wav()))
     spoken = [text for text, _ in engine.speech.spoken]
     assert sum(map(len, spoken)) <= 1_500
+
+
+# ---- leftover: the filler meter's connection close can never break a fetch -------------------
+
+
+def test_a_failing_connection_close_never_breaks_the_filler_fetch(monkeypatch):
+    import threading
+
+    from agents.voice.speech import Spoken
+
+    class Broken:
+        def close(self):
+            raise RuntimeError("connection already gone")
+
+    monkeypatch.setattr(pipeline.stage, "meter_speech", lambda *a, **k: None)
+    monkeypatch.setattr(pipeline, "db_connection", Broken())
+    meter = pipeline.filler_meter(object())
+    escaped = []
+
+    def fetch_thread():
+        try:
+            meter(Spoken(prompt_tokens=5, output_tokens=50), True)
+        except Exception as exc:  # noqa: BLE001 - what the test looks for
+            escaped.append(exc)
+
+    worker = threading.Thread(target=fetch_thread)
+    worker.start()
+    worker.join(5)
+    assert escaped == []
