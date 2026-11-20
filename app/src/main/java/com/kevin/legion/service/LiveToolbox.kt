@@ -557,7 +557,7 @@ object LiveToolbox {
      */
     fun isMutatingCall(name: String, args: JSONObject): Boolean {
         // 2026-11-16: an unconfirmed clear_codes never sends a clear (it asks, or it reads when his
-        // words only read: readInsteadOfClear), so a successful one is never a write done.
+        // words only read: clearNotAsked), so a successful one is never a write done.
         if (name == "clear_codes" && !args.optBoolean("confirmed", false)) return false
         val dispatcher = name == "ask_engine" || name in DISPATCHED.keys.map { "ask_$it" }
         return name in MUTATING_TOOLS || (dispatcher && wantsWrite(args))
@@ -1100,11 +1100,11 @@ object LiveToolbox {
             // 2026-11-15: a module clear (modules named, or the yes to a module question) goes to
             // DiagVoice and its own yes-check; everything else is the engine's Mode 04 below.
             // 2026-11-16: an ask needs his words to ask for a clear (ClearCodesVoiceGate.notAskedToClear);
-            // words that only read get the read itself here, never a "call something else" refusal.
+            // words that only read get no read here, only where the read is (car read_codes, review P2-1).
             "clear_codes" -> if (com.kevin.legion.vehicle.ClearCodesVoiceGate
                     .notAskedToClear(args.optBoolean("confirmed", false), userText) != null
             ) {
-                readInsteadOfClear(context, userText.orEmpty())
+                clearNotAsked(userText.orEmpty())
             } else if (com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow() != null) {
                 // Engine or module clear: never while the adapter's car is unknown or only recognised.
                 result(false, com.kevin.legion.vehicle.AdapterBinding.clearRefusalNow().orEmpty())
@@ -5248,23 +5248,17 @@ object LiveToolbox {
     }
 
     /**
-     * What an unconfirmed `clear_codes` does when his words did not ask to clear (2026-11-16, stage 7
-     * fleet eval: refused with "call ask_fleet instead", flash-lite then ended the turn on a filler
-     * line 3 times in 5). The read he asked for runs here and its answer comes back, marked as a read:
-     * a module-scan request gets [com.kevin.legion.vehicle.diag.DiagVoice.scan] (the same function and
-     * the same code-built `say` as ask_fleet's scan), anything else the engine's code read
-     * ([getCodes]). Nothing is cleared and no clear question is asked; no clear command is sent.
+     * What an unconfirmed `clear_codes` does when his words did not ask to clear (review 2026-11-19,
+     * P2-1): nothing is read, cleared or asked here, and no code data comes back. The result names
+     * the read door, `car read_codes` (with `all_modules` for a module-scan request), whose answer
+     * code speaks through the diagnostics filter; a read through this door reached the model
+     * unfiltered. [com.kevin.legion.vehicle.ClearCodesVoiceGate] stays the last check before a
+     * real clear.
      */
-    internal suspend fun readInsteadOfClear(context: Context, words: String): JSONObject {
-        val read = if (com.kevin.legion.vehicle.diag.ScanSay.isModuleScanQuestion(words)) {
-            com.kevin.legion.vehicle.diag.DiagVoice.scan(context)
-        } else {
-            getCodes(context)
-        }
-        // Phone audit 2026-11-19: this read was spoken word for word in talk about something else. A
-        // mis-call is data for the model only; code speaks a read only for car read_codes or ask_fleet.
-        return com.kevin.legion.ai.VerbatimSpeech.unmark(read)
-            .put("cleared", false).put("read_not_clear", READ_NOT_CLEAR)
+    internal fun clearNotAsked(words: String): JSONObject {
+        val scan = com.kevin.legion.vehicle.diag.ScanSay.isModuleScanQuestion(words)
+        return result(false, com.kevin.legion.vehicle.ClearCodesVoiceGate.NOT_ASKED)
+            .put("cleared", false).put("call_instead", "car read_codes").put("all_modules", scan)
     }
 
     /**
@@ -5288,9 +5282,6 @@ object LiveToolbox {
      */
     private fun spokenRead(result: JSONObject, words: String): JSONObject =
         com.kevin.legion.ai.VerbatimSpeech.mark(result, words, com.kevin.legion.ai.VerbatimSpeech.DIAGNOSTICS)
-
-    internal const val READ_NOT_CLEAR = "This was a read, not a clear: his words did not ask to clear or erase " +
-        "codes, so nothing was cleared and nothing was asked. Mention codes only if he asked about them."
 
     @Suppress("CyclomaticComplexMethod", "ReturnCount") // read, empty, failed, each code
     private suspend fun getCodes(context: Context): JSONObject {

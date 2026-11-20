@@ -101,34 +101,40 @@ class ClearReadInsteadTest {
         return SimCar(BusKind.CAN_11, listOf(pcm, SimCars.mute(0x760)))
     }
 
-    @Test
-    fun `a scan request on clear_codes runs the scan and says what was not reached`() {
-        val car = unreachedCar()
-        val elm = connect(car)
-        val r = clearCodes("scan every module for codes")
-        val say = r.optString("say")
-        assertTrue(r.toString(), ScanWords.UNREACHED in say)
-        assertTrue(say, ScanWords.NOT_READ_LEAD in say)
-        assertTrue(say, "760" in say)
-        // Phone audit 2026-11-19: a guarded mis-call is a read for the model, never spoken by code.
+    /**
+     * Review 2026-11-19 (P2-1): a clear_codes the gate judges to be a read returns no code data at
+     * all, only where the read is: car read_codes, whose answer code speaks through the diagnostics
+     * filter. Nothing is read, cleared or asked here.
+     */
+    private fun assertSentToReadCodes(r: JSONObject, car: SimCar, elm: SimElm327) {
+        assertFalse(r.toString(), r.optBoolean("success"))
+        assertEquals("car read_codes", r.getString("call_instead"))
+        assertTrue(r.getString("message"), r.getString("message").contains("car read_codes"))
+        assertFalse("no code data", "P0420" in r.toString())
+        assertFalse("no scan words", r.has("say"))
         assertEquals(null, com.kevin.legion.ai.VerbatimSpeech.of(r))
         assertFalse(r.getBoolean("cleared"))
-        assertEquals(LiveToolbox.READ_NOT_CLEAR, r.getString("read_not_clear"))
         assertFalse("no clear question", r.has("needsConfirmation"))
         assertEquals("zero clear commands", 0, clearsSent(car, elm))
+        assertTrue("nothing was even read from the car", elm.log.none { it.trim() == "03" })
     }
 
     @Test
-    fun `a read request on clear_codes reads the engine codes and sends no clear`() {
+    fun `a scan request on clear_codes reads nothing and names read_codes with all_modules`() {
+        val car = unreachedCar()
+        val elm = connect(car)
+        val r = clearCodes("scan every module for codes")
+        assertSentToReadCodes(r, car, elm)
+        assertTrue(r.getBoolean("all_modules"))
+    }
+
+    @Test
+    fun `a read request on clear_codes returns no codes and names read_codes`() {
         val car = SimCars.canTruck()
         val elm = connect(car)
         val r = clearCodes("read the codes again")
-        assertTrue(r.toString(), r.optBoolean("success"))
-        assertTrue(r.toString(), "P0420" in r.toString())
-        assertFalse(r.getBoolean("cleared"))
-        assertFalse("no clear question", r.has("needsConfirmation"))
-        assertFalse("not a module scan", r.has("say"))
-        assertEquals("zero clear commands", 0, clearsSent(car, elm))
+        assertSentToReadCodes(r, car, elm)
+        assertFalse(r.optBoolean("all_modules"))
     }
 
     @Test
@@ -156,15 +162,11 @@ class ClearReadInsteadTest {
     }
 
     @Test
-    fun `clear_codes called on words that do not ask to clear reads, but code speaks none of it`() {
+    fun `clear_codes called on talk about something else returns no codes and names read_codes`() {
         // Phone audit 2026-11-19: the guard's read was spoken word for word in talk about something else.
         val car = SimCars.canTruck()
         val elm = connect(car)
-        val r = clearCodes("the bakery on the corner closed early today")
-        assertTrue(r.toString(), "P0420" in r.toString())
-        assertEquals(LiveToolbox.READ_NOT_CLEAR, r.getString("read_not_clear"))
-        assertEquals(null, com.kevin.legion.ai.VerbatimSpeech.of(r))
-        assertEquals(0, clearsSent(car, elm))
+        assertSentToReadCodes(clearCodes("the bakery on the corner closed early today"), car, elm)
     }
 
     @Test
@@ -187,6 +189,18 @@ class ClearReadInsteadTest {
         assertTrue(r.getString("message"), r.getString("message").endsWith("Do you want me to clear?"))
         assertFalse(r.has("read_not_clear"))
         assertEquals("zero clear commands before a yes", 0, clearsSent(car, elm))
+    }
+
+    @Test
+    fun `a real clear still clears after his yes, through the gate`() {
+        val car = SimCars.canTruck()
+        val elm = connect(car)
+        assertTrue(clearCodes("clear the codes").optBoolean("needsConfirmation"))
+        val yes = JSONObject().put("confirmed", true)
+        val r = runBlocking { LiveToolbox.dispatch(context, "clear_codes", yes, false, "yes, clear them")!! }
+        assertTrue(r.toString(), r.optBoolean("success"))
+        assertFalse(r.has("call_instead"))
+        assertTrue("a clear went out", clearsSent(car, elm) > 0)
     }
 
     @Test
