@@ -289,12 +289,21 @@ LATE_STATUSES: tuple[str, ...] = (LATE_QUEUED, LATE_RUNNING, LATE_DONE, LATE_FAI
 OWED_SOURCES: tuple[str, ...] = ("late_task", "claude_task", "budget", "traffic")
 
 
+def _owner_cascading_in_the_database():
+    """The owner key with no Django-made constraint: migration 0003 adds it itself, `ON DELETE
+    CASCADE`, so code that predates these tables (a rollback) can still delete a member."""
+    return models.ForeignKey(
+        "household.User", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
+
+
 class LateTask(_Owned):
     """One background task: a question he asked to be answered later. Run by `manage.py
     late_tasks` under the read-only `background` spec, in its own conversation (`run_conversation`),
     never his live one. `question` is his words, kept like a turn's transcript (30 days)."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner_user = _owner_cascading_in_the_database()
     origin_client = models.TextField()
     question = models.TextField()
     status = models.TextField(default=LATE_QUEUED)
@@ -329,6 +338,7 @@ class OwedLine(_Owned):
     (claimed by setting `delivered_at`), or never if it expires first."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner_user = _owner_cascading_in_the_database()
     source = models.TextField()
     source_id = models.TextField()
     text = models.TextField()

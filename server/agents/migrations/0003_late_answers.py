@@ -2,7 +2,8 @@
 2026-11-20, `agents/legion/late.py`), dark behind `LEGION_LATE_ANSWERS`.
 
 Born tenanted in `public` by the same temporary search_path swap `0001` and `0002` use, and
-member-private: the ADR 0052 owner guard is attached to both. ADDITIVE and never reversed in
+member-private: the ADR 0052 owner guard is attached to both, and both owner keys are
+`ON DELETE CASCADE` in the database. ADDITIVE and never reversed in
 production: two new tables and nothing else, so code that predates them never reads or writes
 them. No foreign key points at an agents table (the background conversation is a plain id), so
 older code's pruning of conversations is never blocked by a row here.
@@ -42,6 +43,18 @@ def guard(apps, schema_editor):
         create_guard_function(cursor)
         for table in TABLES:
             attach_guard(cursor, table)
+
+
+# Both owner keys delete with the user AT THE DATABASE (Django's CASCADE is emulated in Python, and
+# code that predates these tables would not know to delete their rows, so a key left NO ACTION
+# would block deleting that member after a rollback). The fields say `db_constraint=False`, so
+# Django makes no constraint of its own; this is the only one.
+_OWNER_CASCADE = " ".join(
+    f"alter table public.{table} add constraint {table}_owner_user_cascade foreign key "
+    "(owner_user_id) references household_user (id) on delete cascade "
+    "deferrable initially deferred;"
+    for table in TABLES
+)
 
 
 def unguard(apps, schema_editor):
@@ -103,6 +116,7 @@ class Migration(migrations.Migration):
                 (
                     "owner_user",
                     models.ForeignKey(
+                        db_constraint=False,
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="+",
                         to=settings.AUTH_USER_MODEL,
@@ -174,6 +188,7 @@ class Migration(migrations.Migration):
                 (
                     "owner_user",
                     models.ForeignKey(
+                        db_constraint=False,
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="+",
                         to=settings.AUTH_USER_MODEL,
@@ -206,5 +221,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.RunPython(guard, unguard),
+        migrations.RunSQL(sql=_OWNER_CASCADE, reverse_sql=migrations.RunSQL.noop),
         _DJANGO_FIRST,
     ]
