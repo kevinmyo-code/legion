@@ -108,7 +108,9 @@ class VoiceSpeedWiringTest {
         assertTrue(end.indexOf("scheduleBackchannel(u, eotAtMs)") in 0 until end.indexOf("runTurn("))
         val schedule = bodyOf(s, "scheduleBackchannel")
         assertTrue(schedule.contains("Backchannel.decide("))
-        assertTrue(schedule.contains("askedBefore = lastTurnAsked"))
+        // 2026-11-20: no skip reads the last turn's ask fields, his speech length or the last clip's time.
+        assertFalse(schedule.contains("askedBefore"))
+        assertFalse(schedule.contains("speechMs"))
         assertTrue(schedule.contains("quiet = QuietMode.isOn(ctx)"))
         assertTrue(schedule.contains("Backchannel.DELAY_MS"))
         // New speech cancels a pending one, and notes whether it started over a reply or a turn.

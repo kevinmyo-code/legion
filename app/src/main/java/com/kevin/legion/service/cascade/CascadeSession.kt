@@ -300,11 +300,8 @@ internal class CascadeSession(
     private val recentBackchannels =
         RecentLines(Backchannel.ROTATION, listOfNotNull(VoiceEngineSettings.lastBackchannel(ctx)))
     private val backchannelIndex = AtomicInteger(0)
-    @Volatile private var lastBackchannelAtMs = 0L
-    @Volatile private var lastTurnHadBackchannel = false
 
-    /** When his current speech started, and whether it started over a reply or a turn still running. */
-    @Volatile private var uttStartedAtMs = 0L
+    /** Whether his current speech started over a reply or a turn still running. */
     @Volatile private var uttOverReply = false
 
     /** This turn's backchannel timer ([Backchannel.DELAY_MS]), which turn it is for, and its clip's end. */
@@ -1058,7 +1055,6 @@ internal class CascadeSession(
     private fun onUserTurnStart() {
         heardSinceOpen = true
         if (continuesFirstHalf()) return
-        uttStartedAtMs = System.currentTimeMillis()
         // Over an audible reply or a turn still in flight: a correction or a merge, never a backchannel.
         uttOverReply = speaking || turnJob?.isActive == true
         backchannelJob?.cancel()
@@ -1120,7 +1116,6 @@ internal class CascadeSession(
     private fun continuesFirstHalf(): Boolean {
         val first = currentUtt?.resumedFrom ?: return false
         takeOverFirstHalf(first)
-        uttStartedAtMs = System.currentTimeMillis()
         uttOverReply = true
         followUpEvent(FollowUpWindow.Event.UserSpeech)
         audit.activityStart()
@@ -1167,8 +1162,8 @@ internal class CascadeSession(
 
     /**
      * His speech ended: one backchannel ([Backchannel]) [Backchannel.DELAY_MS] later unless a rule
-     * says no or the answer's audio is there first. Decided now from signals code already has
-     * (his voiced span, the last turn's ask fields, how this turn started, Quiet), never his words.
+     * says no or the answer's audio is there first. Decided now from signals code already has (how
+     * this turn started, Quiet, the route), never his words. Every turn of his, short or long.
      */
     private fun scheduleBackchannel(u: TurnUtterance, eotAtMs: Long) {
         backchannelJob?.cancel()
@@ -1179,18 +1174,12 @@ internal class CascadeSession(
         val skip = Backchannel.decide(
             Backchannel.Turn(
                 fromUser = true,
-                speechMs = (lastLocalSpeechAtMs - uttStartedAtMs).coerceAtLeast(0),
-                askedBefore = lastTurnAsked,
                 overReplyOrTurn = uttOverReply || carry.isNotBlank(),
                 quiet = QuietMode.isOn(ctx),
-                startedAtMs = uttStartedAtMs,
-                lastBackchannelAtMs = lastBackchannelAtMs,
-                lastTurnHadOne = lastTurnHadBackchannel,
                 halfDuplex = turnTaker?.bargeIn != true,
                 halfDuplexAllowed = VoiceTurnSettings.backchannelHalfDuplex(ctx),
             ),
         )
-        lastTurnHadBackchannel = false
         if (skip != null) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${skip.token}")
             return
@@ -1240,8 +1229,6 @@ internal class CascadeSession(
             playbackActive = true
             recentBackchannels.add(line)
             VoiceEngineSettings.setLastBackchannel(ctx, line)
-            lastBackchannelAtMs = System.currentTimeMillis()
-            lastTurnHadBackchannel = true
             LiveLatency.log(
                 LiveLatency.TAG,
                 "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=$ms",

@@ -15,38 +15,50 @@ import org.junit.Test
 class BackchannelTest {
 
     private fun turn(
-        speechMs: Long = 2_500,
-        askedBefore: Boolean = false,
         over: Boolean = false,
         quiet: Boolean = false,
         fromUser: Boolean = true,
-        startedAt: Long = 100_000,
-        lastAt: Long = 0,
-        lastTurnHadOne: Boolean = false,
-    ) = Backchannel.Turn(fromUser, speechMs, askedBefore, over, quiet, startedAt, lastAt, lastTurnHadOne)
+    ) = Backchannel.Turn(fromUser, over, quiet)
 
     @Test
     fun `an ordinary turn of his gets one`() {
         assertNull(Backchannel.decide(turn()))
     }
 
+    // Kevin, 2026-11-20: "the scripted fillers should fire every time, no restrictions". Short speech,
+    // an answer to an ask and a quick next turn were taste, not necessity: each gets one now.
+    // The Turn no longer carries his speech length, the last turn's ask fields or the last clip's
+    // time: no rule can read them, so none of the three can skip a turn again.
     @Test
-    fun `short speech, an answer to an ask, a barge-in, Quiet and a turn not his get none`() {
-        assertEquals(Backchannel.Skip.SHORT, Backchannel.decide(turn(speechMs = Backchannel.MIN_SPEECH_MS - 1)))
-        assertNull(Backchannel.decide(turn(speechMs = Backchannel.MIN_SPEECH_MS)))
-        assertEquals(Backchannel.Skip.ASKED, Backchannel.decide(turn(askedBefore = true)))
+    fun `short speech, an answer to an ask and a quick next turn each get one`() {
+        assertNull(Backchannel.decide(turn()))
+        assertEquals(
+            listOf("NOT_HIS", "OVER_REPLY", "QUIET", "HALF_DUPLEX", "ANSWER_TEXT"),
+            Backchannel.Skip.entries.map { it.name },
+        )
+    }
+
+    @Test
+    fun `a barge-in, Quiet and a turn not his still get none`() {
         assertEquals(Backchannel.Skip.OVER_REPLY, Backchannel.decide(turn(over = true)))
         assertEquals(Backchannel.Skip.QUIET, Backchannel.decide(turn(quiet = true)))
         assertEquals(Backchannel.Skip.NOT_HIS, Backchannel.decide(turn(fromUser = false)))
     }
 
     @Test
-    fun `one on the last turn and a quick next turn is a tic, a later turn is not`() {
-        val tic = turn(startedAt = 110_000, lastAt = 110_000 - Backchannel.TIC_GAP_MS + 1, lastTurnHadOne = true)
-        assertEquals(Backchannel.Skip.TIC, Backchannel.decide(tic))
-        assertNull(Backchannel.decide(turn(startedAt = 200_000, lastAt = 200_000 - Backchannel.TIC_GAP_MS, lastTurnHadOne = true)))
-        // The turn before had none: the one before that does not count.
-        assertNull(Backchannel.decide(turn(startedAt = 110_000, lastAt = 105_000, lastTurnHadOne = false)))
+    fun `five turns in a row of mixed lengths get five clips, never the same twice running`() {
+        val recent = RecentLines(Backchannel.ROTATION)
+        val said = mutableListOf<String>()
+        // "Yes." (0.4 s), a question (3 s), "No." (0.25 s), a follow-up (1.1 s), a long one (6 s): the
+        // length is no input any more, so each is the same ordinary turn of his.
+        for (i in 0 until 5) {
+            assertNull("turn $i", Backchannel.decide(turn()))
+            val line = Backchannel.pick(recent, i) { _, _ -> true }!!.first
+            assertFalse("repeat at $i", line in said)
+            recent.add(line)
+            said += line
+        }
+        assertEquals(5, said.size)
     }
 
     @Test
