@@ -882,7 +882,6 @@ def test_a_task_runs_at_most_two_searches_and_each_counts_as_spend(
     assert (third.outcome, third.guard) == ("refused", "budget")
 
 
-
 def test_one_search_is_metered_once(household_user, late_on, monkeypatch):
     """Recheck item 2: the search tool's own row (priced with the repo's search price) is the only
     row for a search, and the late caps count it."""

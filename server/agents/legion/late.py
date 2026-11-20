@@ -113,6 +113,7 @@ NOT_FROM_UNIT = "I can't start background work from the car yet. Ask me on the p
 CANCELLED = "Cancelled. I won't look into that any further."
 STILL_WORKING = "Still working on {topics}."
 LAST_ONE = "Nothing new. The last one was: {text}"
+CAPPED_WAITING = "More answers are ready, but that's all I'll read out today. Ask me tomorrow."
 MORE = "{n} more {are} ready; ask what's pending."
 FAILED_LINE = "I couldn't finish looking into {topic}."
 EXPIRED_LINE = "I couldn't get to {topic} in time."
@@ -318,6 +319,13 @@ def _pending(request, client: str) -> Reply | None:
     )
     if running:
         return Reply(STILL_WORKING.format(topics=" and ".join(_topic(q) for q in running)))
+    if (
+        _mine(OwedLine, request)
+        .filter(delivered_at__isnull=True, expires_at__gt=dj_timezone.now())
+        .exists()
+    ):
+        # Lines wait, but today's spoken cap is reached (`claim` gave none).
+        return Reply(CAPPED_WAITING)
     last = (
         _mine(OwedLine, request)
         .filter(delivered_at__gte=dj_timezone.now() - OWED_TTL)
@@ -329,21 +337,27 @@ def _pending(request, client: str) -> Reply | None:
     return None
 
 
-def _cancel(request) -> str | None:
-    """Cancels his newest open task; None (the model's turn: a timer, music, a waiting change)
-    when none is open."""
-    task = (
+def _newest_open(request) -> LateTask | None:
+    return (
         _mine(LateTask, request)
         .filter(status__in=(LATE_QUEUED, LATE_RUNNING))
         .order_by("-created_at")
         .first()
     )
+
+
+def _cancel(request) -> str | None:
+    """Cancels his newest open task; None (the model's turn: a timer, music, a waiting change)
+    when none is open, or when it finished before the cancel landed (nothing was cancelled)."""
+    task = _newest_open(request)
     if task is None:
         return None
     changed = LateTask.objects.filter(pk=task.pk, status__in=(LATE_QUEUED, LATE_RUNNING)).update(
         status=LATE_CANCELLED, finished_at=dj_timezone.now()
     )
-    if changed and task.run_conversation:
+    if not changed:
+        return None
+    if task.run_conversation:
         # A running task's turn stops at its next round or tool call (the loop's own check).
         AgentTurn.objects.filter(conversation_id=task.run_conversation).update(
             cancel_requested=True
@@ -582,7 +596,8 @@ def run_due(model_for, *, limit: int = 1, now: datetime | None = None) -> int:
             continue
         try:
             _run_one(item.task, model_for())
-        except Exception:  # noqa: BLE001 - one task's failure never stops the others
-            # The lease runs out and the next tick tries again, up to MAX_ATTEMPTS.
-            log.warning("late_task status=error", exc_info=True)
+        except Exception as exc:  # noqa: BLE001 - one task's failure never stops the others
+            # The lease runs out and the next tick tries again, up to MAX_ATTEMPTS. The type only:
+            # a traceback or an error's message can carry his question (a value in a SQL error).
+            log.warning("late_task status=error error=%s", type(exc).__name__)
     return count
