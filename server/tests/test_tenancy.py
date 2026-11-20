@@ -1065,6 +1065,23 @@ def test_agent_limbs_are_scoped_by_household(
     limb_a.refresh_from_db()
     assert (limb_a.app_version, limb_a.kind) == ("alpha-version", "phone")
 
+
+def test_headunit_credentials_are_scoped_by_household(
+    household_a, household_b, household_user, user_b
+):
+    """T3b: a head unit's sign-in belongs to one household. B's scope never holds A's unit.
+    Invented labels."""
+    from agents.evals.runner import member_request
+    from headunit_signin.models import HeadUnitCredential
+    from household.tenancy import scoped
+
+    a, _raw_a = HeadUnitCredential.mint(
+        household=household_a, owner_user=household_user, label="alpha-unit"
+    )
+    b, _raw_b = HeadUnitCredential.mint(household=household_b, owner_user=user_b, label="beta-unit")
+    assert list(scoped(HeadUnitCredential, member_request(user_b))) == [b]
+    assert list(scoped(HeadUnitCredential, member_request(household_user))) == [a]
+
 _HOME_ROWS = {
     "/api/body/goals/": {
         "lineage_id": 7,

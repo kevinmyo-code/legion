@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-10-14
+amended: 2026-11-19
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-10-14 - Midnight moves into LEGION as headunit/, a head-unit-only limb]]"
@@ -10,6 +11,8 @@ tags: [adr]
 # 59. The head unit is a limb of the engine, and it lives in this repo
 
 ## Standing
+
+**AMENDED 2026-11-19 by [[0104-one-voice-speech-on-the-engine-shared-voice-module]]:** the head unit and the phone will share one code module, the voice module `voice/` at the repo root, included by both builds. Until it is extracted, the head unit shares no code with `app/`, as below.
 
 **`headunit/` is LEGION's car head-unit client:** the app formerly in the private MIDNIGHT_AI repo,
 package `com.kevin.midnightai`, unchanged so an installed head unit upgrades in place. It is

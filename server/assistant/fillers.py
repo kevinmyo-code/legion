@@ -8,7 +8,8 @@ Rules (applied in `assistant.cascade`):
   services, never quick) gets its line the moment it starts, once the door would accept the call
   (a refused tool is never announced); web_search measured 1.4 to 2.3 s. Any other lookup gets
   its line only if the answer is still not in hand `cascade.FILLER_WAIT_S` (0.7 s, the phone's
-  `ToolFillers.FAST_DELAY_MS`) after it started (Kevin, 2026-11-19, perf/try-faster-first-word): a quick answer, or one code speaks at
+  `ToolFillers.FAST_DELAY_MS`) after it started (Kevin, 2026-11-19,
+  perf/try-faster-first-word): a quick answer, or one code speaks at
   once (his profile), gets none, so a line never holds an answer up behind it. Never once an answer
   sentence is ready, and never after the first question's acknowledgement (one line per turn).
 - **Never twice running, never two in a turn.** Two or three light variants each.

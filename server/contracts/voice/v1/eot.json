@@ -1,0 +1,300 @@
+{
+  "contract_version": 1,
+  "kind": "eot",
+  "about": "End of speech: Silero window probabilities and Smart Turn verdicts in, actions and the turn's end out. docs/contracts/voice-client-v1.md section 2.",
+  "sources": [
+    "server/frontend/src/assistant/turn/eot-policy.test.ts (dev 7ef07024)",
+    "app/src/test/java/com/kevin/legion/service/turn/EndOfTurnPolicyTest.kt (dev 679f7c15), which the web file ports case for case"
+  ],
+  "constants": {
+    "window_ms": 32,
+    "start_prob": 0.5,
+    "end_prob": 0.35,
+    "confirm_ms": 200,
+    "gate_ms": 192,
+    "base_ms": 700,
+    "finished_ms": 500,
+    "cap_ms": 2500,
+    "threshold": 0.5,
+    "early_ms": 300
+  },
+  "clients": "a case with `clients` applies only to those clients; a case without it applies to every client",
+  "ops": {
+    "setup": "'speaking' feeds 20 windows of probability 0.9 after building the policy; 'none' feeds nothing",
+    "windows": "feed `count` windows of probability `prob`",
+    "quiet_ms": "feed quiet windows (probability 0.05) for t = 0; t < ms; t += 32, so ceil(ms / 32) windows",
+    "result": "answer the most recently requested check with `score`",
+    "check_failed": "report that the most recently requested check failed",
+    "force_start": "start the activity at once (a barge-in)",
+    "quiet_answering": "feed quiet windows one by one, up to `max_windows`, stopping at the first end; after every `every` windows answer the latest check with `score`"
+  },
+  "expect_keys": {
+    "types": "the exact list of action types this step emitted, in order",
+    "contains": "this step emitted at least one action of this type",
+    "excludes": "this step emitted no action of these types",
+    "count": "the number of actions of each named type this step emitted",
+    "check_silence_ms": "the silence_ms of this step's first check",
+    "start_onset": "the onset windows of this step's start",
+    "end": "this step's end: reason, and silence_ms exactly, or silence_ms_min (inclusive), silence_ms_lt and silence_ms_gt; scores lists the verdicts in order; longest_silence_ms is the longest silence of the turn, longest_silence_ms_min its lower bound",
+    "in_activity": "whether a turn is in progress after this step"
+  },
+  "cases": [
+    {
+      "name": "speech starts after the 200 ms confirm, not before",
+      "source": "eot-policy.test.ts:28",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "none",
+      "steps": [
+        {"op": "windows", "prob": 0.9, "count": 6, "expect": {"types": []}},
+        {"op": "windows", "prob": 0.9, "count": 1, "expect": {"types": ["start"], "start_onset": 7}}
+      ]
+    },
+    {
+      "name": "a blip shorter than the confirm never starts a turn",
+      "source": "eot-policy.test.ts:35",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "none",
+      "steps": [
+        {"op": "windows", "prob": 0.9, "count": 4, "expect": {"types": []}},
+        {"op": "windows", "prob": 0.05, "count": 1, "expect": {"types": [], "in_activity": false}}
+      ]
+    },
+    {
+      "name": "one check starts at the 192 ms gate",
+      "source": "eot-policy.test.ts:42",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 300, "expect": {"count": {"check": 1}, "check_silence_ms": 192}}
+      ]
+    },
+    {
+      "name": "no verdict before 700 ms ends the turn at the base",
+      "source": "eot-policy.test.ts:48 and :154 (longest_silence_ms)",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 800, "expect": {"count": {"end": 1}, "end": {"reason": "base", "silence_ms": 704, "longest_silence_ms": 704}}}
+      ]
+    },
+    {
+      "name": "with no finished time, a done verdict before the base still waits for the base",
+      "source": "eot-policy.test.ts:55",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 320, "expect": {"count": {"check": 1}}},
+        {"op": "result", "score": 0.9, "expect": {"types": []}},
+        {"op": "quiet_ms", "ms": 500, "expect": {"end": {"reason": "base", "silence_ms": 704}}}
+      ]
+    },
+    {
+      "name": "not done before the base holds, re-checks one at a time, ends on the first done",
+      "source": "eot-policy.test.ts:64",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 400, "expect": {"count": {"check": 1}}},
+        {"op": "result", "score": 0.2, "expect": {"types": ["check"]}},
+        {"op": "quiet_ms", "ms": 600, "expect": {"excludes": ["end", "check"]}},
+        {"op": "result", "score": 0.3, "expect": {"types": ["check"]}},
+        {"op": "quiet_ms", "ms": 200, "expect": {"excludes": ["end"]}},
+        {"op": "result", "score": 0.8, "expect": {"types": ["end"], "end": {"reason": "extended", "silence_ms_gt": 700, "scores": [0.2, 0.3, 0.8]}}}
+      ]
+    },
+    {
+      "name": "a held turn ends at the cap",
+      "source": "eot-policy.test.ts:78",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 400, "expect": {"count": {"check": 1}}},
+        {"op": "result", "score": 0.1, "expect": {"types": ["check"]}},
+        {"op": "quiet_answering", "score": 0.1, "every": 10, "max_windows": 199, "expect": {"end": {"reason": "cap", "silence_ms_min": 2500}}}
+      ]
+    },
+    {
+      "name": "a first verdict after the base is too late to extend",
+      "source": "eot-policy.test.ts:91",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 800, "expect": {"count": {"check": 1}, "end": {"reason": "base"}}},
+        {"op": "result", "score": 0.1, "expect": {"types": [], "in_activity": false}}
+      ]
+    },
+    {
+      "name": "speech resuming cancels a pending check and a hold; a stale verdict is ignored",
+      "source": "eot-policy.test.ts:100",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 400, "expect": {"count": {"check": 1}}},
+        {"op": "result", "score": 0.1, "expect": {"types": ["check"]}},
+        {"op": "windows", "prob": 0.9, "count": 1, "expect": {"types": ["resumed"]}},
+        {"op": "result", "score": 0.9, "expect": {"types": []}},
+        {"op": "quiet_ms", "ms": 800, "expect": {"count": {"check": 1}, "end": {"reason": "base"}}}
+      ]
+    },
+    {
+      "name": "a 0.4 window in silence does not resume speech",
+      "source": "eot-policy.test.ts:111",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 300},
+        {"op": "windows", "prob": 0.4, "count": 1, "expect": {"excludes": ["resumed"]}}
+      ]
+    },
+    {
+      "name": "without Smart Turn it is silence only, reason fallback",
+      "source": "eot-policy.test.ts:117 (the test asserts the reason; silence_ms 704 was added and checked by running eot-policy.ts)",
+      "policy": {"smart": false, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 800, "expect": {"count": {"check": 0}, "end": {"reason": "fallback", "silence_ms": 704}}}
+      ]
+    },
+    {
+      "name": "a check that fails while held ends the turn on silence",
+      "source": "eot-policy.test.ts:123",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 400},
+        {"op": "result", "score": 0.1, "expect": {"types": ["check"]}},
+        {"op": "quiet_ms", "ms": 500, "expect": {"excludes": ["end"]}},
+        {"op": "check_failed", "expect": {"types": ["end"], "end": {"reason": "fallback"}}}
+      ]
+    },
+    {
+      "name": "barge-in starts the activity at once",
+      "source": "eot-policy.test.ts:131",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "none",
+      "steps": [
+        {"op": "force_start", "expect": {"types": ["start"], "start_onset": 0, "in_activity": true}}
+      ]
+    },
+    {
+      "name": "a turn held once and then ended at the base reports extended",
+      "source": "eot-policy.test.ts:137",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 192, "expect": {"count": {"check": 1}}},
+        {"op": "quiet_answering", "score": 0.007, "every": 3, "max_windows": 49, "expect": {"excludes": ["end"]}},
+        {"op": "windows", "prob": 0.9, "count": 1, "expect": {"contains": "resumed"}},
+        {"op": "quiet_ms", "ms": 192, "expect": {"count": {"check": 1}}},
+        {"op": "result", "score": 0.099, "expect": {"types": ["check"]}},
+        {"op": "result", "score": 0.578, "expect": {"types": []}},
+        {"op": "quiet_ms", "ms": 600, "expect": {"end": {"reason": "extended", "silence_ms": 704, "longest_silence_ms_min": 1700}}}
+      ]
+    },
+    {
+      "name": "the early signal comes once per silence at 300 ms or more",
+      "source": "eot-policy.test.ts:160",
+      "clients": ["web"],
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 400, "expect": {"count": {"early": 1}}},
+        {"op": "windows", "prob": 0.9, "count": 1, "expect": {"types": ["resumed"]}},
+        {"op": "quiet_ms", "ms": 400, "expect": {"count": {"early": 1}}}
+      ]
+    },
+    {
+      "name": "finished_ms 500: a done verdict before 500 ms ends the turn at 500 ms",
+      "source": "eot-policy.test.ts:179",
+      "policy": {"smart": true, "finished_ms": 500},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 300, "expect": {"count": {"check": 1}}},
+        {"op": "result", "score": 0.9, "expect": {"types": []}},
+        {"op": "quiet_ms", "ms": 400, "expect": {"end": {"reason": "finished", "silence_ms_min": 500, "silence_ms_lt": 532}}}
+      ]
+    },
+    {
+      "name": "finished_ms 500: a done verdict that lands between 500 and 700 ms ends the turn when it lands",
+      "source": "eot-policy.test.ts:190",
+      "policy": {"smart": true, "finished_ms": 500},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 600, "expect": {"count": {"check": 1}, "excludes": ["end"]}},
+        {"op": "result", "score": 0.9, "expect": {"types": ["end"], "end": {"reason": "finished", "silence_ms_min": 500, "silence_ms_lt": 700}}}
+      ]
+    },
+    {
+      "name": "finished_ms 500: a not-done verdict holds the turn",
+      "source": "eot-policy.test.ts:199",
+      "policy": {"smart": true, "finished_ms": 500},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 300},
+        {"op": "result", "score": 0.2},
+        {"op": "quiet_ms", "ms": 900, "expect": {"excludes": ["end"]}},
+        {"op": "windows", "prob": 0.9, "count": 1, "expect": {"contains": "resumed"}}
+      ]
+    },
+    {
+      "name": "finished_ms 500: no verdict keeps the 700 ms base",
+      "source": "eot-policy.test.ts:207",
+      "policy": {"smart": true, "finished_ms": 500},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 800, "expect": {"end": {"reason": "base", "silence_ms": 704}}}
+      ]
+    },
+    {
+      "name": "finished_ms 500: no Smart Turn keeps the 700 ms base",
+      "source": "eot-policy.test.ts:213",
+      "policy": {"smart": false, "finished_ms": 500},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 800, "expect": {"end": {"reason": "fallback", "silence_ms": 704}}}
+      ]
+    },
+    {
+      "name": "finished_ms 500: a 550 ms pause with no verdict stays one turn",
+      "source": "eot-policy.test.ts:219",
+      "policy": {"smart": true, "finished_ms": 500},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 550, "expect": {"excludes": ["end"]}},
+        {"op": "windows", "prob": 0.9, "count": 1, "expect": {"contains": "resumed"}}
+      ]
+    },
+    {
+      "name": "finished_ms 500: a 600 ms pause with no verdict stays one turn",
+      "source": "eot-policy.test.ts:219",
+      "policy": {"smart": true, "finished_ms": 500},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 600, "expect": {"excludes": ["end"]}},
+        {"op": "windows", "prob": 0.9, "count": 1, "expect": {"contains": "resumed"}}
+      ]
+    },
+    {
+      "name": "finished_ms 500: a 650 ms pause with no verdict stays one turn",
+      "source": "eot-policy.test.ts:219",
+      "policy": {"smart": true, "finished_ms": 500},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 650, "expect": {"excludes": ["end"]}},
+        {"op": "windows", "prob": 0.9, "count": 1, "expect": {"contains": "resumed"}}
+      ]
+    },
+    {
+      "name": "with no finished time, a done verdict still waits for the base",
+      "source": "eot-policy.test.ts:227",
+      "policy": {"smart": true, "finished_ms": null},
+      "setup": "speaking",
+      "steps": [
+        {"op": "quiet_ms", "ms": 300},
+        {"op": "result", "score": 0.9},
+        {"op": "quiet_ms", "ms": 300, "expect": {"excludes": ["end"]}},
+        {"op": "quiet_ms", "ms": 200, "expect": {"end": {"reason": "base"}}}
+      ]
+    }
+  ]
+}

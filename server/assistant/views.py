@@ -925,8 +925,8 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
 def _cascade_clients():
     """The text model and the speech client, on the engine's key. Tests replace this."""
     from agents.runtime.model import GeminiClient
-    from assistant.prompt_cache import CachingModel
     from agents.voice.speech import GeminiSpeech
+    from assistant.prompt_cache import CachingModel
 
     return (
         CachingModel(GeminiClient(key=gemini_key)),

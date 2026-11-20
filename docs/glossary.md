@@ -20,6 +20,7 @@ Terms are listed because they are load-bearing and easy to misread, not because 
 | **LEGION** | the app. **Not** the assistant's name | CLAUDE.md §1, [[0020-companion-identity-per-profile]] |
 | **companion** | the thing you talk to. User-named per profile. Never hardcode a name | [[0020-companion-identity-per-profile]] |
 | **register band** | "Alfred/JARVIS" names a *tone*, not a character. `ai/Personas.kt` holds the copy | CLAUDE.md §1 |
+| **Moose** | the head unit's fixed persona, as data on the engine. Elsewhere the companion is the profile's own | [[0104-one-voice-speech-on-the-engine-shared-voice-module]], `headunit/CLAUDE.md` §1 |
 | **clone-and-run** | a stranger clones, sideloads with their own cert and key, and it works | [[0003-clone-and-run]] |
 | **BYO key** | the user's own Gemini API key, direct to Google, no proxy. The web assistant is the exception: it runs on the household's key, held by the engine | [[0002-no-hosted-backend]], [[0056-the-household-key-serves-the-web-assistant]] |
 | **appDataFolder** | the private per-app area of the user's own Drive. Backup and restore only. **Not** the system of record | [[0044-django-is-the-engine]] |
@@ -81,7 +82,7 @@ which makes them more dangerous than terms that were simply deleted.
 | **city-pop** | the old design language | Dead. Replaced by mission control ([[0023-design-language-mission-control]]), itself superseded by soft Material ([[0051-design-language-soft-material]]) |
 | **Instrument** | the first replacement design language | Superseded. [[0022-design-language-instrument]] |
 | **cyberdeck** | the second one. Shipped, then partly superseded | See `.scratch/cyberdeck-ui/map.md` |
-| **Moose, Aria, Kaze, Nightrunner, Yoko** | former assistant names | Dead. See the register-band rule |
+| **Aria, Kaze, Nightrunner, Yoko** | former assistant names | Dead. See the register-band rule |
 | **`CarTask`, `PlaceReminder`** | Room entities, still in the schema | Tombstones. Read by nothing new |
 | **head unit** | the original target hardware | No longer constrains anything. [[0001-phone-only]] |
 

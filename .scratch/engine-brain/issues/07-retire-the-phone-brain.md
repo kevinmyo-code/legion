@@ -25,7 +25,7 @@ Remove from the phone:
 - the model draft in speculation.
 
 Keep on the phone:
-- STT and TTS;
+- STT and TTS, until the phone's engine voice client ships (ADR 0104 moves them to the engine; `docs/contracts/voice-client-v1.md`);
 - wake word and barge-in;
 - the crisis pre-check;
 - the confirm UI;

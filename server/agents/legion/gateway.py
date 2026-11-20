@@ -26,6 +26,7 @@ from assistant import live, read_through
 from assistant.surface import tools_for, web_description
 from engine_mcp.models import Outcome
 from engine_mcp.tools import ToolResult, run_engine_tool
+from headunit_signin import scope as headunit_scope
 
 SLOW_TOOLS = frozenset(
     {
@@ -95,6 +96,10 @@ class LegionGateway:
         if self._tools is None:
             by_name = {t.name: t for t in tools_for(self.user)}
             by_name.update(TWINS)
+            if headunit_scope.is_headunit(self.request):
+                # T3b: a turn made with a head unit's token is offered, and may call, only the
+                # unit's own tools; any other name is then "not one of this agent's tools".
+                by_name = {n: t for n, t in by_name.items() if n in headunit_scope.TOOLS}
             self._tools = by_name
         return self._tools
 
@@ -109,6 +114,14 @@ class LegionGateway:
     def call(self, state, spec, call: ToolCall, deadline_s: float) -> ToolOutcome:
         tool = self.tools().get(call.name)
         started = time.monotonic()
+        if headunit_scope.is_headunit(self.request):
+            # T3b review B4: a head unit's turn reads at a point, and its own vehicle only.
+            args, refusal = headunit_scope.tool_arguments(self.request, call.name, call.args)
+            if refusal is not None:
+                return self._done(
+                    state, call, tool, False, refusal, "refused", "headunit", started
+                )
+            call = ToolCall(call.id, call.name, args)
         verdict = guards.check_call(state, spec, call.name, call.args, tool, self.user)
         if not verdict.allow:
             return self._done(

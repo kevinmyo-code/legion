@@ -79,7 +79,9 @@ def _slow_answer():
 
 def test_a_fast_lookup_gets_no_line_and_no_delay(member, engine, monkeypatch, household_user):
     conversation = _later(member, engine, monkeypatch, household_user)
-    events = _turn(member, engine, conversation, FakeModel([call("monthly_spend", {}), say("Some.")]))
+    events = _turn(
+        member, engine, conversation, FakeModel([call("monthly_spend", {}), say("Some.")])
+    )
     assert _fillers(events) == []
     assert "waiting" not in [k for k, _ in events]  # never sent to the page
 
@@ -182,12 +184,16 @@ def test_the_timing_line_says_no_line_was_heard(member, engine, monkeypatch, hou
     assert dict(re.findall(r"(\w+)=(-?\d+)", line))["filler_ms"] == "-1"
 
 
-# ---- review 2026-11-19 (review-try-first-word-1119.md) --------------------------------------------
+# ---- review 2026-11-19 (review-try-first-word-1119.md) -------------------------------------------
 
 
 @pytest.mark.parametrize(
     ("tool", "args"),
-    [("legion_docs", {"query": "how is it built"}), ("brief_latest", {}), ("run_procedure", {"name": "xx"})],
+    [
+        ("legion_docs", {"query": "how is it built"}),
+        ("brief_latest", {}),
+        ("run_procedure", {"name": "xx"}),
+    ],
 )
 def test_a_quick_local_lookup_on_the_doors_slow_list_is_not_announced_at_its_start(
     member, engine, monkeypatch, household_user, tool, args
@@ -203,7 +209,9 @@ def test_a_slow_answer_after_the_docs_gets_its_line_after_the_tool(
 ):
     conversation = _later(member, engine, monkeypatch, household_user)
     # The docs' own answer, so the lookup succeeds whatever corpus this test database holds.
-    monkeypatch.setattr(cascade, "run_tool", lambda request, name, args: ToolResult(text="ADR 0102."))
+    monkeypatch.setattr(
+        cascade, "run_tool", lambda request, name, args: ToolResult(text="ADR 0102.")
+    )
     model = SlowModel([call("legion_docs", {"query": "how"}), say("It is Django.")], [0.0, 1.0])
     events = _turn(member, engine, conversation, model)
     kinds = [k for k, _ in events]
@@ -282,7 +290,7 @@ def test_the_answers_first_audio_is_not_the_lines(member, engine, monkeypatch, h
     assert t["tts_first_audio_ms"] >= t["first_sentence_ms"] > t["filler_ms"]
 
 
-# ---- review round 2 -------------------------------------------------------------------------------
+# ---- review round 2 ------------------------------------------------------------------------------
 
 
 def _clip(ms: int) -> bytes:

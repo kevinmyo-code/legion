@@ -8174,3 +8174,40 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Persona and delivery (Kevin, the same day, `.legion/reports/voice-persona-1117.md`):** *"round when spoken like a real person. exact on screen for verification"* and *"use as many tags as u can"*. Code rounds spoken amounts, and the exact figure stays in captions and cards (amends ADR 0094's verbatim money sentence). Tags are used liberally: 16 heard-tested, one per sentence. The prompt carries a warmer colleague note. Pace stays 1.0x on the web until a pitch-kept time-stretch is built.
 - **Open for Kevin:** whether `/try` should open to anyone without a code; whether a code-box or returning visitor should also get the voice-first stage (built for the link only).
 - ADR 0103.
+
+## 2026-11-19 - One voice: speech on the engine, a shared Android voice module, persona by surface (Kevin)
+
+- **Rulings (Kevin, 2026-11-19):** the engine is the one voice brain for the phone, the head unit and the web/demo (Midcon out of scope); speech-to-text and text-to-speech move to the engine for every client; one shared Android voice module, `voice/` at the repo root, included by both Gradle builds; Moose stays the head unit's persona, as data chosen by surface; engine voice reaches the head unit as HU-2 by OTA, HU-1 keeps today's voice and its pairing hands over the engine sign-in (the Gemini key hand-over is transitional and leaves in HU-3); the two turn-taking models are allowed on the head unit; audio-first is built only on the engine, behind a flag.
+- **Lifts** the head unit's "share a contract, never code" rule for the `voice/` module only.
+- **Written (docs only, nothing built):** `docs/contracts/voice-client-v1.md`, `docs/contracts/voice-wire-v1.md`, vectors in `server/contracts/voice/v1/`.
+- ADR 0104.
+
+## 2026-11-19 - Audio-first also on the phone's own loop; the voice contract's open questions answered (Kevin)
+
+- **Audio-first (about 23:15):** *"audio first earlier . together with the speed branch."* Audio-first is allowed on the phone's own loop behind a Settings switch (branch `feat/phone-audio-first-1119`), and on the engine it moves to right after the speech stage (V1). This replaces the same day's "audio-first is built only on the engine". The phone wiring is transitional and goes with the phone's own loop.
+- **Contract v1 section 14 (about 23:30):** *"1 ok 2 ok 3 ok 4 ok 5 later 6 ok 7 later"*.
+  - Q1: when the turn models fail, every client falls back to the 1.2 s silence rule; the conversation does not end.
+  - Q2: the barge-in verdict grace stays per client (web 320 ms, phone none), to be unified after a measurement in the car.
+  - Q3: the engine's generic acknowledgement stops when the client plays backchannels; the slow-tool task line stays, spaced after the backchannel.
+  - Q4: one closing tone for every client.
+  - Q5: offline spoken commands: later, not in v1.
+  - Q6: the crisis pre-check runs on the engine, right after the transcript and before the model; with no network a cached clip plays.
+  - Q7: the recruiter visit moves to the agents door later, after parity.
+- ADR 0104.
+
+## 2026-11-19 - Correction: the engine audio-first timing is a reading, not a ruling
+
+- The earlier entry today says audio-first "on the engine ... moves to right after the speech stage (V1)". Kevin's words were *"audio first earlier . together with the speed branch."*; the engine timing is the orchestrator's reading of them, not a ruling. ADR 0104 and the client contract (section 15) say so.
+
+## 2026-11-20 - Voice contract: persona confirmed, the offline clip stays plain (Kevin)
+
+- **Persona** (*"1 yes"*): the profile's companion on the phone and the web, except surfaces with a fixed persona (head unit: Moose; recruiter visit: the guide).
+- **Offline clip** (*"4 ok"*): the "can't reach the engine" clip stays plain, with no crisis resource on it. Offline crisis detection stays a known gap until an on-device recognizer exists.
+- **Not ruled** (Kevin left it to the orchestrator): what a crisis hit sounds like on clients without the phone's card. The orchestrator's default is in the client contract, section 15.
+- ADR 0104.
+
+## 2026-11-20 - Phone audio-first parked; engine audio-first on hold (orchestrator, under Kevin's delegation)
+
+- **Not a ruling by Kevin.** The orchestrator dropped phone audio-first under his delegation (*"just ship once u thin its ok"*). His earlier words (*"audio first earlier . together with the speed branch."*, *"audio first default at ship"*) could not be met safely.
+- **Why:** the phone build (`feat/phone-audio-first-1119`, not merged) failed blind review: a write could run from audio, a failed transcript could freeze the turn, and the checks ran after the model. The phone already answers from a speculative transcript draft on about 9 turns in 10, so the gain over that baseline was unmeasured and likely small.
+- **Effect:** audio-first is engine-only again and on hold there too, pending five open design decisions (streaming audio while he speaks, the transcription model, a larger-model lane, how late background answers are spoken, a speech-to-speech front on the head unit). ADR 0104.
