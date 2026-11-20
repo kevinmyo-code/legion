@@ -163,8 +163,8 @@ def test_a_completion_with_no_words_at_all_goes_to_the_batch_path():
     [
         (FakeSocket(setup=[]), "setup_timeout"),
         (FakeSocket(after_end=[]), "final_timeout"),
-        (FakeSocket(after_end=[{"error": {"code": 503}}]), "server_error_503"),
-        (FakeSocket(fail_on="audio"), "feed_ConnectionResetError"),
+        (FakeSocket(after_end=[{"error": {"code": 503}}]), "server_error_unavailable"),
+        (FakeSocket(fail_on="audio"), "feed_network"),
     ],
     ids=["no_setup", "no_final", "server_error", "socket_dies"],
 )
@@ -190,6 +190,48 @@ def test_a_blocked_transcript_is_the_batch_paths_stt_blocked(blocked):
     session.feed(PCM)
     with pytest.raises(live_stt.StreamFailure, match="^stt_blocked$"):
         session.finish()
+
+
+@pytest.mark.parametrize(
+    ("code", "token"),
+    [
+        (429, "server_error_quota"),
+        ("RESOURCE_EXHAUSTED", "server_error_quota"),
+        (403, "server_error_auth"),
+        (400, "server_error_bad_request"),
+        (500, "server_error_unavailable"),
+        (418, "server_error_other"),
+        ("k-secret is not valid", "server_error_other"),
+        (None, "server_error_other"),
+    ],
+)
+def test_an_upstream_error_code_is_logged_only_as_one_of_a_few_categories(code, token):
+    # Review 1120 finding 12: the failure token reaches a log line; the upstream's own code does
+    # not, beyond a fixed category.
+    socket = FakeSocket(after_end=[{"error": {"code": code}}])
+    session = _session(socket)
+    session.feed(PCM)
+    with pytest.raises(live_stt.StreamFailure) as caught:
+        session.finish()
+    assert str(caught.value) == token
+
+
+@pytest.mark.parametrize(
+    ("error", "token"),
+    [
+        (TimeoutError(), "open_timeout"),
+        (ConnectionRefusedError(), "open_network"),
+        (ValueError("anything"), "open_error"),
+    ],
+)
+def test_a_socket_fault_is_logged_only_as_one_of_a_few_categories(error, token):
+    def socket_for(key):
+        raise error
+
+    session = live_stt.TranscribeSession("k", socket_for)
+    with pytest.raises(live_stt.StreamFailure) as caught:
+        session.open()
+    assert str(caught.value) == token
 
 
 def test_usage_reported_is_used_and_missing_usage_is_estimated():

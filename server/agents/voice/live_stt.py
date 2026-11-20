@@ -57,6 +57,34 @@ SEND_BYTES = 3200  # 100 ms of 16 kHz PCM16
 BLOCKED = "stt_blocked"
 
 
+# What a failure token may say of the upstream's error code (review 1120, finding 12): the token
+# reaches a log line, so the code itself never does, only one of these categories.
+_ERROR_CATEGORIES = {
+    "quota": {"429", "RESOURCE_EXHAUSTED"},
+    "auth": {"401", "403", "PERMISSION_DENIED", "UNAUTHENTICATED"},
+    "bad_request": {"400", "404", "INVALID_ARGUMENT", "FAILED_PRECONDITION", "NOT_FOUND"},
+    "unavailable": {"500", "502", "503", "504", "UNAVAILABLE", "INTERNAL", "DEADLINE_EXCEEDED"},
+}
+
+
+def _category(code) -> str:
+    text = str(code).strip().upper()
+    for name, codes in _ERROR_CATEGORIES.items():
+        if text in codes:
+            return name
+    return "other"
+
+
+def _fault(stage: str, exc: BaseException) -> str:
+    """A socket fault as `<stage>_timeout`, `<stage>_network` or `<stage>_error`: never the
+    exception's own words."""
+    if isinstance(exc, TimeoutError | asyncio.TimeoutError):
+        return f"{stage}_timeout"
+    if isinstance(exc, OSError) or type(exc).__module__.startswith("aiohttp"):
+        return f"{stage}_network"
+    return f"{stage}_error"
+
+
 class StreamFailure(Exception):
     """The streaming session could not give a final transcript. `str()` is a short token."""
 
@@ -112,7 +140,7 @@ class TranscribeSession:
             raise
         except Exception as exc:  # noqa: BLE001 - any socket fault is a failure, said as a token
             self.close()
-            raise StreamFailure(f"open_{type(exc).__name__}") from None
+            raise StreamFailure(_fault("open", exc)) from None
 
     def feed(self, pcm: bytes) -> None:
         """Sends audio in about 100 ms pieces, and reads what has arrived without waiting."""
@@ -128,7 +156,7 @@ class TranscribeSession:
         except StreamFailure:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise StreamFailure(f"feed_{type(exc).__name__}") from None
+            raise StreamFailure(_fault("feed", exc)) from None
 
     def finish(self, timeout: float = FINAL_TIMEOUT_S) -> StreamResult:
         """The client's end signal: the rest of the audio, `audioStreamEnd`, then the final
@@ -175,7 +203,7 @@ class TranscribeSession:
         except StreamFailure:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise StreamFailure(f"finish_{type(exc).__name__}") from None
+            raise StreamFailure(_fault("finish", exc)) from None
         finally:
             self.close()
         text = "".join(self._final).strip()
@@ -218,7 +246,7 @@ class TranscribeSession:
         """Takes in one server message; True when it completes the turn AFTER the end signal is
         sent (the caller only asks after it). Raises on a server error."""
         if isinstance(message.get("error"), dict):
-            raise StreamFailure(f"server_error_{message['error'].get('code', '?')}")
+            raise StreamFailure(f"server_error_{_category(message['error'].get('code'))}")
         content = message.get("serverContent") or {}
         for feedback in (message.get("promptFeedback"), content.get("promptFeedback")):
             if isinstance(feedback, dict) and feedback.get("blockReason"):
