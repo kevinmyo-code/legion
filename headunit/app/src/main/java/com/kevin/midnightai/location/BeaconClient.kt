@@ -122,6 +122,8 @@ object BeaconClient {
     private val generation = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var feeds: LinkFeedSet? = null
 
+    private val committing = java.util.concurrent.atomic.AtomicBoolean(false)
+
     /** Tests only: the feeds the running receiver holds, and its mode. */
     internal fun feedsForTest(): LinkFeedSet? = feeds
     internal fun modeForTest(): com.kevin.midnightai.link.FeedMode = mode
@@ -385,9 +387,17 @@ object BeaconClient {
                     }
                     is PhoneFeed.Outcome.Rejected -> Unit
                 }
-                if (result.commitPending) scope.launch {
-                    com.kevin.midnightai.link.CarLink.store.commitPending()
-                    com.kevin.midnightai.link.CarLink.changed(context)
+                // Once per feed set (LinkFeedSet), single-flight, and the receiver is rebuilt only when
+                // the commit actually happened (review N5): a failing Keystore does not restart the
+                // receiver on every fix.
+                if (result.commitPending && committing.compareAndSet(false, true)) scope.launch {
+                    try {
+                        if (com.kevin.midnightai.link.CarLink.store.commitPending() == null) {
+                            com.kevin.midnightai.link.CarLink.changed(context)
+                        }
+                    } finally {
+                        committing.set(false)
+                    }
                 }
                 if (result.dropPending) scope.launch {
                     com.kevin.midnightai.link.CarLink.store.dropPending()

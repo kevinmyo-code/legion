@@ -5,7 +5,8 @@ import com.kevin.midnightai.link.CarLink
 /**
  * The location feeds of one paired unit (spec 3.7, revision 3): one under the COMMITTED link key
  * and, while a new pairing waits for the phone, one under the PENDING key. HELLOs go out under both.
- *  - A datagram that opens under PENDING commits it (the phone has the new key).
+ *  - A datagram that opens under PENDING commits it (the phone has the new key). Reported once per
+ *    set (review N5): the owner commits, which rebuilds the set.
  *  - Datagrams under COMMITTED NEVER drop PENDING while a pairing session is open (review N1: the
  *    phone may still send under the old key until `done` opens). After the session, PENDING is
  *    dropped only after [QUIET_MS] of old-key traffic with no new-key contact, while new-key HELLOs
@@ -21,6 +22,7 @@ class LinkFeedSet(
 ) {
     data class Result(val outcome: PhoneFeed.Outcome, val commitPending: Boolean = false, val dropPending: Boolean = false)
 
+    private var commitReported = false
     private var oldKeyOnlySince: Long? = null
 
     fun hellos(intervalMs: Long): List<ByteArray> = listOfNotNull(pending, committed).map { it.hello(intervalMs) }
@@ -31,7 +33,9 @@ class LinkFeedSet(
                 val out = p.receive(data, length)
                 val accepted = out !is PhoneFeed.Outcome.Rejected && out !is PhoneFeed.Outcome.Revoke
                 if (accepted) oldKeyOnlySince = null
-                return Result(out, commitPending = accepted)
+                val commit = accepted && !commitReported
+                if (commit) commitReported = true
+                return Result(out, commitPending = commit)
             }
         }
         val c = committed ?: return Result(PhoneFeed.Outcome.Rejected(PhoneFeed.Refusal.AUTH_FAILED))
