@@ -71,6 +71,9 @@ class HeadUnitCredential(models.Model):
     previous_key_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     stale_use_count = models.IntegerField(default=0)
     stale_used_at = models.DateTimeField(null=True, blank=True)
+    # The unit's own agent-turn spend on `spend_day` (UTC), against its own cap (`spend.py`).
+    spend_day = models.DateField(null=True, blank=True)
+    spent_micro_usd = models.BigIntegerField(default=0)
     revoked_at = models.DateTimeField(null=True, blank=True)
     revoked_reason = models.TextField(default="", blank=True)
 

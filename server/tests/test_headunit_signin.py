@@ -927,6 +927,51 @@ def test_a_unit_turns_prompt_carries_the_clock_and_not_the_members_name(
     assert "Invented" not in sent
 
 
+def _turn_ready(monkeypatch, rounds):
+    from agents.runtime import model as m
+
+    monkeypatch.setenv(TURN_ENV, "on")
+    monkeypatch.setenv("LEGION_GEMINI_KEY", "test-key-not-real")
+    monkeypatch.setattr(
+        "agents.views.GeminiClient", lambda key: m.FakeModel([list(r) for r in rounds])
+    )
+
+
+def test_a_unit_cannot_make_the_engine_say_a_line(phone, on, monkeypatch):
+    """Review B6: `kind=say` speaks any line at the member's cost; a unit token never may."""
+    _turn_ready(monkeypatch, [])
+    _id, raw = _paired(phone)
+    response = unit_client(raw).post(
+        "/api/agents/turn", {"kind": "say", "text": "invented line"}, format="json"
+    )
+    assert response.status_code == 403, response.data
+
+
+def test_a_unit_has_its_own_daily_cap_inside_the_members(phone, on, monkeypatch):
+    from agents.runtime import model as m
+    from headunit_signin import spend
+
+    assert spend.DEFAULT_DAILY_USD == "0.25"
+    monkeypatch.setenv(spend.CAP_ENV, "0.000001")
+    _turn_ready(monkeypatch, [m.say("First.", prompt_tokens=5000, output_tokens=500)])
+    cred_id, raw = _paired(phone)
+    first = unit_client(raw).post("/api/agents/turn", {"transcript": "one"}, format="json")
+    assert first.status_code == 200
+    b"".join(first.streaming_content)
+    assert HeadUnitCredential.objects.get(pk=cred_id).spent_micro_usd > 0
+    second = unit_client(raw).post("/api/agents/turn", {"transcript": "two"}, format="json")
+    assert second.status_code == 429, second.data
+    # The member's own phone is not held to the unit's cap.
+    _turn_ready(monkeypatch, [m.say("Phone.")])
+    assert phone.post("/api/agents/turn", {"transcript": "x"}, format="json").status_code == 200
+    # A second unit of the same member has its own.
+    _turn_ready(monkeypatch, [m.say("Other unit.")])
+    _other, raw_b = _paired(phone)
+    assert unit_client(raw_b).post(
+        "/api/agents/turn", {"transcript": "x"}, format="json"
+    ).status_code == 200
+
+
 def test_a_unit_turn_never_reaches_the_members_other_conversations(household_a, household_user):
     from agents.evals.runner import member_request
     from agents.legion.turn import cancel, open_conversation
