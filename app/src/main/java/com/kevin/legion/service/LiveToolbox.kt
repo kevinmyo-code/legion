@@ -796,6 +796,8 @@ object LiveToolbox {
         "the next workout, how many sessions a week, all the sessions - is get_workout_programme. " +
         "Never say a day or a session does not exist because a today-only read did not list it. " +
         BODY_COACH_RULES +
+        // Phone audit 2026-11-19: a meal question was answered on a clock six hours out.
+        " " + com.kevin.legion.util.LocalClock.turnLine() +
         dispatchBoundaryClause("body") +
         Priming.dispatchClause(context, "body")
 
@@ -823,7 +825,7 @@ object LiveToolbox {
         "against budget, recent transactions and pending ones. Every amount carries its own " +
         "currency; keep it, never convert. Keep every exclusion and unverified note a tool " +
         "returns. Pull only what would change your answer, then answer in plain spoken text, no " +
-        "markdown." +
+        "markdown. " + com.kevin.legion.util.LocalClock.turnLine() +
         dispatchBoundaryClause("money") +
         Priming.dispatchClause(context, "money")
 
@@ -7129,7 +7131,8 @@ object LiveToolbox {
             }
             "recently_played" -> {
                 val json = libraryOutcomeToJson(context, SpotifyWebApi.getRecentlyPlayed(context, limit), "recently played") { t ->
-                    JSONObject().put("name", t.name).put("artist", t.artist).put("playedAt", t.playedAt)
+                    JSONObject().put("name", t.name).put("artist", t.artist)
+                        .put("playedAt", com.kevin.legion.util.LocalClock.stamp(t.playedAt))
                 }
                 // Honesty requirement (ticket 05 part C.9): this is Spotify's OWN history,
                 // everywhere the driver uses Spotify - not scoped to LEGION or to this device.
