@@ -66,6 +66,7 @@ import java.net.Inet4Address
 import java.net.InetAddress
 import java.security.SecureRandom
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -141,7 +142,17 @@ private class Pairing(val server: PairingServer, val qr: Bitmap?)
 
 @Composable
 private fun PairingPane(context: Context, store: LinkKeyStore, attempt: Int, onFinished: () -> Unit) {
-    if (DrivingState.isDriving()) {
+    // Re-checked every second (recheck 2faecc19): the QR goes away if the car starts moving
+    // mid-pairing. Leaving the pairing branch disposes its effects, which closes the server, so the
+    // session ENDS; parking again starts a fresh one with a new QR (the simpler of the two options).
+    var driving by remember { mutableStateOf(DrivingState.isDriving()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            driving = DrivingState.isDriving()
+        }
+    }
+    if (driving) {
         Text("Park to pair: the pairing code is never shown while the car moves.", style = RowTitle, color = AriaColors.TextPrimary)
         return
     }

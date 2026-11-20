@@ -31,7 +31,9 @@ import org.robolectric.shadows.ShadowLooper
  * the semantics tree; nothing secret is on either state.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(qualifiers = "w800dp-h456dp-land-mdpi")
+// The unit runs Android 8+; at Robolectric's default SDK 21 the pane's Wi-Fi lookup throws and
+// takes the composition down with it.
+@Config(sdk = [android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE], qualifiers = "w800dp-h456dp-land-mdpi")
 class CarLinkScreenRenderTest {
 
     private class Store(private val status: LinkStatus) : LinkKeySource {
@@ -44,7 +46,10 @@ class CarLinkScreenRenderTest {
     }
 
     @Before fun reset() = CarLink.resetForTest()
-    @After fun after() = CarLink.resetForTest()
+    @After fun after() {
+        CarLink.resetForTest()
+        com.kevin.midnightai.update.DrivingState.reset()
+    }
 
     private fun render(status: LinkStatus): Pair<ComponentActivity, Map<String, Rect>> {
         CarLink.store = Store(status)
@@ -87,6 +92,30 @@ class CarLinkScreenRenderTest {
         assertTrue("texts $texts", texts.keys.any { it.startsWith("Paired") })
         assertOnScreen(activity, "pair again", texts["HOLD TO PAIR AGAIN"])
         assertOnScreen(activity, "forget", texts["HOLD TO FORGET"])
+    }
+
+    /** Recheck 2faecc19: the QR goes away if the car starts moving mid-pairing (checked on a 1 s tick). */
+    @Test fun startingToDriveMidPairingDropsToParkToPair() {
+        val (activity, _) = render(LinkStatus.NOT_PAIRED)
+        // Let the pane settle in a stable state (no Wi-Fi under Robolectric), so nothing else
+        // recomposes it: only the 1 s driving check can take the pairing pane away.
+        var now = texts(activity)
+        val settle = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < settle && now.keys.none { it.contains("Wi-Fi") }) {
+            ShadowLooper.idleMainLooper(50, java.util.concurrent.TimeUnit.MILLISECONDS)
+            Thread.sleep(20)
+            now = texts(activity)
+        }
+        assertTrue("pane never settled: ${now.keys}", now.keys.any { it.contains("Wi-Fi") })
+        com.kevin.midnightai.update.DrivingState.note(30.0)
+        val until = System.currentTimeMillis() + 5_000
+        while (System.currentTimeMillis() < until && now.keys.none { it.startsWith("Park to pair") }) {
+            ShadowLooper.idleMainLooper(250, java.util.concurrent.TimeUnit.MILLISECONDS)
+            Thread.sleep(20) // the effect's delay runs on a real-time timer
+            now = texts(activity)
+        }
+        assertTrue("still showing the pairing pane while moving: ${now.keys}", now.keys.any { it.startsWith("Park to pair") })
+        assertOnScreen(activity, "park line", now[now.keys.first { it.startsWith("Park to pair") }])
     }
 
     @Test fun anUnpairedUnitOpensThePairingPane() {
