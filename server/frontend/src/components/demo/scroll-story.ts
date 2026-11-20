@@ -122,19 +122,19 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
     const middle = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
+          if (!entry.isIntersecting) continue
           const target = entry.target as HTMLElement
-          if (!entry.isIntersecting) {
-            // The first section dropping below the middle: back up in the header and hero.
-            if (target === sections[0] && entry.boundingClientRect.top > window.innerHeight / 2) {
-              setOrbPlace({ ...place, placed: false })
-            }
-            continue
-          }
           setOrbPlace({
             side: target.dataset.orbSide === 'left' ? 'left' : 'right',
             pinned: target.dataset.pinned === 'true',
           })
         }
+        // Above the first section (its top below the middle) the orb has no place: the header and
+        // hero keep no room for it. Read from the section's own position on every callback, so a
+        // jump straight to the top (Home, a scrollbar drag, a flick), where the first section never
+        // crosses the middle, still counts (review recheck cbe39b2a).
+        const first = sections[0]
+        if (first && first.getBoundingClientRect().top > window.innerHeight / 2) setOrbPlace({ ...place, placed: false })
       },
       { rootMargin: '-50% 0px -50% 0px' },
     )
