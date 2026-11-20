@@ -87,7 +87,7 @@ class Mnai2Feed(
 
     /** True while accepted HELLOs keep arriving under the current key. */
     @Synchronized fun inRange(nowMs: Long): Boolean =
-        challenge != null && nowMs - lastHelloAt <= MISSED_INTERVALS * helloEvery()
+        challenge != null && nowMs - lastHelloAt <= MISSED_INTERVALS * minOf(intervalMs, MAX_HELLO_EVERY_MS)
 
     /** HELLOs accepted (authenticated, new, from the destination) since this feed started. */
     @Synchronized fun acceptedHellos(): Long = accepted
@@ -229,7 +229,6 @@ class Mnai2Feed(
         return true
     }
 
-    private fun helloEvery(): Long = minOf(intervalMs, MAX_HELLO_EVERY_MS)
 
     companion object {
         const val MISSED_INTERVALS = 3

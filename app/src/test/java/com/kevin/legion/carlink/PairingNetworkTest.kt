@@ -43,7 +43,7 @@ class PairingNetworkTest {
         assertTrue(n.acceptsHelloFrom(ip("10.20.30.44"), listOf(hotspot)))
     }
 
-    @Test fun `the same interface with a new subnet is a change, not an absence, and the record says if it is the phone's hotspot`() {
+    @Test fun `a new subnet on the same interface is a change, and the record notes the phone's own hotspot`() {
         val n = PairingNetwork.recordFor("10.20.30.44", listOf(cafe, hotspot)) { it == "ap-test0" }!!
         assertTrue(n.ownHotspot)
         assertTrue(PairingNetwork.decode(n.encode())!!.ownHotspot)

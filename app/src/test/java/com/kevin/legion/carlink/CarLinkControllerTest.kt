@@ -71,7 +71,10 @@ class CarLinkControllerTest {
             if (senders > 0) port = BlockingPort()
             senders++
             CarLinkSender(
-                feed = Mnai2Feed(ring, { ByteArray(16) { 3 } }, mode.healOn?.let { h -> h::contains } ?: lan::contains, { null }, onEvent),
+                feed = Mnai2Feed(
+                    ring, { ByteArray(16) { 3 } }, mode.healOn?.let { h -> h::contains } ?: lan::contains,
+                    { null }, onEvent,
+                ),
                 port = port,
                 clock = { System.nanoTime() / 1_000_000 },
                 fixes = object : FixSource {
@@ -249,7 +252,9 @@ class CarLinkControllerTest {
         const val DAY = 86_400_000L
     }
 
-    private fun revokes(p: BlockingPort) = synchronized(p.sent) { p.sent.toList() }.count { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type == Mnai2.REVOKE }
+    private fun revokes(p: BlockingPort) =
+        synchronized(p.sent) { p.sent.toList() }
+            .count { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type == Mnai2.REVOKE }
 
     @Test fun `in-range Forget keeps telling the car on every HELLO until 30 s of silence, then says Forgotten`() =
         runBlocking {
@@ -320,7 +325,8 @@ class CarLinkControllerTest {
     @Test fun `a client Wi-Fi that changed subnet is never followed, the screen asks for a re-pair`() {
         assertTrue(store.write(key, null))
         assertTrue(store.setPairingNetwork(PairingNetwork("wl-test0", "10.0.0.0", 24, ownHotspot = false)))
-        look = NetworkLook.Changed(LocalIface("wl-test0", InetAddress.getByName("10.9.9.7") as java.net.Inet4Address, 24))
+        val moved = LocalIface("wl-test0", InetAddress.getByName("10.9.9.7") as java.net.Inet4Address, 24)
+        look = NetworkLook.Changed(moved)
         val c = controller()
         c.start()
         waitFor("the words") { c.status.value.note == CarLinkNote.NETWORK_CHANGED_REPAIR }

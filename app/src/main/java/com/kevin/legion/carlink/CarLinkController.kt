@@ -159,13 +159,7 @@ class CarLinkController(
     @Synchronized private fun startFeed() {
         if (feedJob?.isActive == true) return
         val revokeOnly = ring.current == null
-        val feedRing = if (!revokeOnly) {
-            ring
-        } else {
-            val key = revokeKey ?: return
-            if (revokeExpired()) return expireRevoke()
-            LinkKeyRing(key.copyOf(), null) { _, _ -> false }
-        }
+        val feedRing = if (!revokeOnly) ring else revokeRing() ?: return
         feedJob = scope.launch(io) {
             var keepGoing = true
             while (keepGoing && isActive && feedRing.current != null) {
@@ -238,7 +232,8 @@ class CarLinkController(
     private fun openSender(feedRing: LinkKeyRing, mode: FeedMode): CarLinkSender? {
         val revokeOnly = mode.revokeOnly
         val note = try {
-            newSender(feedRing, ::onRingEvent, { mode.healOn == null && !revokeOnly && _status.value.sendLocation }, mode)
+            val fixesOn = { mode.healOn == null && !revokeOnly && _status.value.sendLocation }
+            newSender(feedRing, ::onRingEvent, fixesOn, mode)
                 ?.let { return it }
             CarLinkNote.PORT_UNAVAILABLE
         } catch (_: java.net.BindException) {
@@ -343,6 +338,17 @@ class CarLinkController(
         val quiet = tell.sentAny && s.nowMs() - tell.heardAt >= revokeSilenceMs
         if (quiet) revokeDelivered()
         return quiet
+    }
+
+    /** A ring holding only the forgotten key (writes refused), or null when there is none or it expired. */
+    private fun revokeRing(): LinkKeyRing? {
+        val key = revokeKey ?: return null
+        return if (revokeExpired()) {
+            expireRevoke()
+            null
+        } else {
+            LinkKeyRing(key.copyOf(), null) { _, _ -> false }
+        }
     }
 
     /** Wall clock, so the 90 days count across reboots; a record with no readable date is expired. */

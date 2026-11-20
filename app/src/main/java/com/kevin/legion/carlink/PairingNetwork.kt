@@ -50,7 +50,8 @@ class PairingNetwork(val name: String, val base: String, val prefix: Int, val ow
     fun look(ifaces: List<LocalIface>): NetworkLook {
         if (present(ifaces)) return NetworkLook.Present
         val moved = ifaces.firstOrNull {
-            it.name == name && it.prefix in MIN_PREFIX..MAX_PREFIX && QrPayload.isPrivateIpv4(it.address.hostAddress ?: "")
+            it.name == name && it.prefix in MIN_PREFIX..MAX_PREFIX &&
+                QrPayload.isPrivateIpv4(it.address.hostAddress ?: "")
         }
         return moved?.let { NetworkLook.Changed(it) } ?: NetworkLook.Absent
     }
