@@ -617,6 +617,45 @@ def test_a_unit_turn_refuses_a_tool_outside_its_list(household_a, household_user
     assert "not one of this agent's tools" in outcome.response["message"]
 
 
+def test_a_real_turn_through_the_door_keeps_to_the_units_tools_and_stores_no_token(
+    phone, on, monkeypatch
+):
+    """End to end: `POST /api/agents/turn` with a head-unit token. The model is offered exactly
+    the unit's tools, a money tool it asks for anyway is refused, the conversation is the unit's,
+    and the token is in no row of any table after the turn's traces and metering are written."""
+    from agents.models import AgentConversation, AgentToolCall
+    from agents.runtime import model as m
+
+    monkeypatch.setenv(TURN_ENV, "on")
+    monkeypatch.setenv("LEGION_GEMINI_KEY", "test-key-not-real")
+    holder = {}
+
+    def factory(key):
+        holder["model"] = m.FakeModel(
+            [m.call("monthly_spend", {}), m.say("I cannot see that from the car.")]
+        )
+        return holder["model"]
+
+    monkeypatch.setattr("agents.views.GeminiClient", factory)
+    _id, raw = _paired(phone)
+    response = unit_client(raw).post(
+        "/api/agents/turn", {"transcript": "invented question", "client": "phone"}, format="json"
+    )
+    assert response.status_code == 200
+    body = b"".join(response.streaming_content).decode()
+    assert "event: done" in body
+    offered = {d["name"] for d in holder["model"].requests[0].declarations}
+    assert offered == scope.TOOLS
+    [tool_call] = AgentToolCall.objects.all()
+    assert (tool_call.tool, tool_call.outcome, tool_call.guard) == (
+        "monthly_spend",
+        "refused",
+        "not_allowed",
+    )
+    assert set(AgentConversation.objects.values_list("client", flat=True)) == {scope.TURN_CLIENT}
+    assert _rows_holding(raw[len("hu1_") :]) == []
+
+
 def test_a_unit_turn_never_reaches_the_members_other_conversations(household_a, household_user):
     from agents.evals.runner import member_request
     from agents.legion.turn import cancel, open_conversation
