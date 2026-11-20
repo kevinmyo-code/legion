@@ -128,6 +128,7 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
+from agents.voice import crisis
 from agents.voice import filler_audio as voice_filler_audio
 from agents.voice import speaker as voice_speaker
 from agents.voice.speaker import (  # noqa: F401 - the web door's tuning, read and set as cascade.X
@@ -1207,16 +1208,8 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("done", late_reply.text, False)
         return
-    owed, more = late.claim(request, "web")
-    if owed is not None:
-        _late_read_through(request, door, owed)
-        owed_line = late.late_event(owed, more)
-        report.say(owed_line.data["text"], replay="")
-        speaker.add(owed_line.data["text"], model=True)
-        speaker.flush()
-        yield owed_line
     acked = False
-    if owed is None and speak and turn_input.heard_before == 0 and needs_work(words):
+    if speak and turn_input.heard_before == 0 and needs_work(words):
         # First sound within about a second (section 8.2): a short acknowledgement from memory
         # while the model's first round runs. Only on the first utterance after the tap, which is
         # for the assistant by construction (round 2 speech review 5): on any later turn nothing
@@ -1554,6 +1547,18 @@ def _answer(
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
         yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
+    if not door.cancelled() and not crisis.detect(words):
+        # The late-answer path (`agents/legion/late.py`): the one owed line, claimed only now, after
+        # the model ruled the words were for the assistant (`_not_for_me` returned before this)
+        # and never on words of distress, so neither room talk nor a crisis spends it. After his
+        # answer on this door; said and shown, never replayed as the model's own words.
+        owed, more = late.claim(request, "web")
+        if owed is not None:
+            _late_read_through(request, door, owed)
+            owed_line = late.late_event(owed, more)
+            report.say(owed_line.data["text"], replay="")
+            speaker.add(owed_line.data["text"], model=True)
+            yield owed_line
     yield from speaker.drain()
     if door.cancelled():
         # Stopped while its speech played out (round 3 N4): the turn ends as cancelled.

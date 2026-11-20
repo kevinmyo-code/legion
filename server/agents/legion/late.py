@@ -52,7 +52,7 @@ from agents.models import (
     OwedLine,
 )
 from headunit_signin import scope as headunit_scope
-from household.models import is_recruiter
+from household.models import User, is_recruiter
 from household.tenancy import household_of
 from llm import cap as member_cap
 
@@ -77,6 +77,11 @@ DAILY_MICRO_USD = 500_000
 # Per task, whatever the attempts: at most 2 searches; per model round at most 2 calls.
 MAX_SEARCHES = 2
 MAX_CALLS_PER_ROUND = 2
+# No call starts after this many seconds of a run. A model round that starts before the spec's 45 s
+# turn limit is bounded by its own 12 s timeout, and a tool started before this by its own (a web
+# search 10 s), so a run ends inside about 60 s: well inside the 120 s lease, so no tick claims a
+# task still running.
+RUN_SECONDS = 35
 MAX_ATTEMPTS = 2
 # One task a tick call (`late_tasks --limit 1`): the background spec's 45 s turn fits inside the
 # scheduler's 60 s attempt deadline (`deploy/cloudrun/install_schedule.py`), and the lease outlives
@@ -266,6 +271,14 @@ def _start(request, question: str, client: str) -> str:
     expire_stale(household=household_of(request), owner_user=request.user)
     if not runner_is_fresh():
         return NO_RUNNER
+    with transaction.atomic():
+        # One ask at a time per member: the counts below and the create are one step, so two asks
+        # at once cannot both take the last open slot.
+        User.objects.select_for_update().filter(pk=request.user.pk).first()
+        return _start_locked(request, question, client)
+
+
+def _start_locked(request, question: str, client: str) -> str:
     mine = _mine(LateTask, request)
     if mine.filter(status__in=(LATE_QUEUED, LATE_RUNNING)).count() >= MAX_OPEN:
         return TOO_MANY_OPEN
@@ -445,8 +458,11 @@ def _answer_text(text: str) -> str:
     return cut[: end + 1] if end > 0 else cut.rstrip() + "..."
 
 
-NO_MORE_SEARCHES = "Not searched: this background task has used its searches. Answer with what you have."
+NO_MORE_SEARCHES = (
+    "Not searched: this background task has used its searches. Answer with what you have."
+)
 TOO_MANY_CALLS = "Not run: one step may make at most two calls. Answer with what you have."
+TIME_UP = "Not run: this background task is out of time. Answer with what you have."
 
 
 class _ToolLimit:
@@ -454,12 +470,16 @@ class _ToolLimit:
     a round and `MAX_SEARCHES` searches a task (counted on the row, so a second attempt shares
     them). A search it lets through is metered at once at `SEARCH_FEE_MICRO_USD`."""
 
-    def __init__(self, task: LateTask):
+    def __init__(self, task: LateTask, clock=time.monotonic):
         self.task = task
+        self._clock = clock
+        self._started = clock()
         self._round = -1
         self._in_round = 0
 
     def __call__(self, state, call) -> str | None:
+        if self._clock() - self._started > RUN_SECONDS:
+            return TIME_UP
         if state.budget.rounds != self._round:
             self._round, self._in_round = state.budget.rounds, 0
         self._in_round += 1
@@ -472,6 +492,9 @@ class _ToolLimit:
         )
         if not taken:
             return NO_MORE_SEARCHES
+        # Marked before the search runs, and never cleared: a later attempt that searches nothing
+        # still owes a line built on what this one read.
+        LateTask.objects.filter(pk=self.task.pk).update(tainted=True)
         from llm import client as llm_client
 
         llm_client.record(
@@ -517,15 +540,15 @@ def _run_one(task: LateTask, model) -> str:
         status = LATE_DONE if ok else LATE_FAILED
         topic = _topic(task.question)
         text = f"About {topic}: {answer}" if ok else FAILED_LINE.format(topic=topic)
-        LateTask.objects.filter(pk=task.pk).update(
-            tainted=state.tainted,
-            cost_micro_usd=state.budget.cost_micro_usd,
-            answer=answer if ok else "",
-        )
-    # A cancel that landed while it ran wins: nothing is owed.
-    finished = LateTask.objects.filter(pk=task.pk, status=LATE_RUNNING).update(
-        status=status, finished_at=dj_timezone.now(), lease_until=None
-    )
+        mine = LateTask.objects.filter(pk=task.pk, attempts=task.attempts)
+        mine.update(cost_micro_usd=state.budget.cost_micro_usd, answer=answer if ok else "")
+        if state.tainted:
+            mine.update(tainted=True)  # set, never cleared
+    # A cancel that landed while it ran wins, and so does a later attempt that claimed the task
+    # (`attempts` moved on): nothing is owed by this run.
+    finished = LateTask.objects.filter(
+        pk=task.pk, status=LATE_RUNNING, attempts=task.attempts
+    ).update(status=status, finished_at=dj_timezone.now(), lease_until=None)
     if finished:
         _owe(task, text)
     log.warning(

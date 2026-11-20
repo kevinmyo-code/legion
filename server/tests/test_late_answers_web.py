@@ -108,14 +108,18 @@ def test_a_member_ask_is_answered_by_code_and_recorded(member, engine, household
     assert f'assistant text="{late.ACK}"' in record
 
 
-def test_a_member_hears_the_owed_line_first_and_once(member, engine, household_user, late_on):
+def test_a_member_hears_the_owed_line_after_his_answer_and_once(
+    member, engine, household_user, late_on
+):
+    """On the web the line comes after his answer: it is claimed only once the model has ruled
+    the words were for the assistant (review item E)."""
     _owe(household_user)
     engine.model = FakeModel([say("Hello again.")])
     events = _events(_post(member, text="Hello"))
     sentences = _of(events, "sentence")
-    assert sentences[0]["text"] == "About the invented ferry: it leaves at noon."
-    assert sentences[0]["role"] == "late"
-    assert sentences[1] == {"text": "Hello again."}
+    assert sentences[0] == {"text": "Hello again."}
+    assert sentences[1]["text"] == "About the invented ferry: it leaves at noon."
+    assert sentences[1]["role"] == "late"
     # Not in the model's context this turn.
     assert "invented ferry" not in str(engine.model.requests[0].contents)
     assert OwedLine.objects.get().delivered_client == "web"
