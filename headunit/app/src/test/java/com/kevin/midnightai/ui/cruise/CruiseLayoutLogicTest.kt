@@ -49,6 +49,12 @@ class CruiseLayoutLogicTest {
         }
     }
 
+    @Test fun theInBoxTalkTileIsNeverUnderDriveSize() {
+        assertEquals(56f, CruiseLayoutLogic.inBoxTalkTileHeight(boxHeight = 0f, u = 8f), 0.01f)
+        assertEquals(56f, CruiseLayoutLogic.inBoxTalkTileHeight(boxHeight = 30f, u = 8f), 0.01f)
+        assertEquals(58f, CruiseLayoutLogic.inBoxTalkTileHeight(boxHeight = 200f, u = 8f), 0.01f)
+    }
+
     @Test fun aShortRailFallsBackToATalkTileInsteadOfLosingTheTalkControl() {
         // Phone landscape (MEDIUM rides the head-unit layout): about 800x360.
         val u = CruiseLayoutLogic.unit(800f, 360f)

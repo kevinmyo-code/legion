@@ -214,7 +214,7 @@ internal fun CruiseConsole(
             if (!showPortrait) {
                 // The TALK tile is in the bottom group instead.
             } else if (edge < AriaDimens.driveTouchMin) {
-                talkTile(Modifier.fillMaxWidth(), maxHeight.coerceAtMost(tileHeight))
+                talkTile(Modifier.fillMaxWidth(), CruiseLayoutLogic.inBoxTalkTileHeight(maxHeight.value, u.value).dp)
             } else {
                 AvatarVibe(
                     avatar = avatar,

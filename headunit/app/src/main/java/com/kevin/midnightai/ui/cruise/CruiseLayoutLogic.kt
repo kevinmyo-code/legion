@@ -53,6 +53,13 @@ object CruiseLayoutLogic {
         minOf(u * 13.5f, boxHeight - PORTRAIT_STATUS_LINE, boxWidth)
 
     /**
+     * The TALK tile drawn in the portrait's box when the box measures shorter than the model said:
+     * up to a rail tile, never under drive size, even if it then overlaps (recheck 2026-11-20).
+     */
+    fun inBoxTalkTileHeight(boxHeight: Float, u: Float): Float =
+        minOf(boxHeight, railTileHeight(u)).coerceAtLeast(MusicDeckLogic.TOUCH_MIN)
+
+    /**
      * Whether a rail [railHeight] x [railWidth] has room for a drive-size portrait; when it does
      * not, a TALK tile takes the phone chip's place so the talk control never disappears.
      */
