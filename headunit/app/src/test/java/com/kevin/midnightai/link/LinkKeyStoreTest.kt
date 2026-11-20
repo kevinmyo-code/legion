@@ -111,7 +111,7 @@ class LinkKeyStoreTest {
         pair(keyA)
         assertTrue(store().holdsLinkEngineToken())
         val pin = OwnerPin(context, encrypt = { "e:$it" }, decrypt = { it.removePrefix("e:") }, iterations = 1_000)
-        assertTrue(pin.set("4821"))
+        assertTrue(pin.set("482193"))
         store().forget()
         assertFalse(pin.isSet())
         assertFalse(store().holdsLinkEngineToken())

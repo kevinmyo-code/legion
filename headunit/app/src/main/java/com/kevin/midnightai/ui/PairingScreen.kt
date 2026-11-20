@@ -405,7 +405,7 @@ internal fun OwnerPinPrompt(pin: OwnerPin, prompt: String, onOk: () -> Unit, onC
             scope.launch {
                 val result = withContext(Dispatchers.IO) { pin.check(typed) }
                 if (result == OwnerPin.Check.Ok) onOk() else {
-                    feedback = OwnerPin.words(result, System.currentTimeMillis())
+                    feedback = OwnerPin.words(result)
                     tries++
                 }
             }
@@ -427,7 +427,7 @@ internal fun OwnerPinSetup(pin: OwnerPin, onDone: () -> Unit, onCancel: () -> Un
     var feedback by remember { mutableStateOf<String?>(null) }
     var round by remember { mutableIntStateOf(0) }
     DigitPad(
-        prompt = if (first == null) "Choose an owner PIN, 4 to 6 numbers." else "Type the same PIN again.",
+        prompt = if (first == null) "Choose an owner PIN: 6 numbers." else "Type the same PIN again.",
         minDigits = OwnerPin.MIN_DIGITS,
         maxDigits = OwnerPin.MAX_DIGITS,
         masked = true,
