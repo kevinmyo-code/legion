@@ -259,19 +259,19 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TurnRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/TurnRequest'
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/TurnRequest'
-        required: true
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TurnRequest'
       security:
       - deviceToken: []
       - cookieAuth: []
       responses:
         '200':
-          description: 'text/event-stream: turn, sentence, tool, done'
+          description: 'text/event-stream: turn, heard, crisis, working, filler, tool,
+            sentence, audio, speech_failed, speech_stopped, done, error (`agents/voice/pipeline.py`)'
         '400':
           content:
             application/json:
@@ -284,6 +284,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The agent turn is switched off.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The utterance is too long.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The member's daily cap is spent.
         '503':
           content:
             application/json:
@@ -25980,7 +25992,35 @@ components:
       properties:
         transcript:
           type: string
+          description: What was said, as text. Send this OR `audio`.
           maxLength: 4000
+        audio:
+          type: string
+          format: binary
+          description: 'One utterance: a WAV of 16 kHz 16-bit mono PCM, at most 28
+            seconds (multipart). Transcribed and answered aloud. The audio is never
+            stored; the transcript is kept on the turn row, like every text turn.'
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/TurnRequestKindEnum'
+          default: user
+          description: |-
+            `user` (his words) or `say` (`text` spoken as it is). Others: not built yet.
+
+            * `user` - user
+            * `greeting` - greeting
+            * `opener` - opener
+            * `check_in` - check_in
+            * `proactive` - proactive
+            * `say` - say
+        text:
+          type: string
+          description: 'With `kind=say`: the line to speak.'
+          maxLength: 600
+        speak:
+          type: boolean
+          default: false
+          description: 'With `transcript`: answer aloud too (`audio` events).'
         conversation_id:
           type: string
           format: uuid
@@ -25989,8 +26029,22 @@ components:
           allOf:
           - $ref: '#/components/schemas/ClientEnum'
           default: phone
-      required:
-      - transcript
+    TurnRequestKindEnum:
+      enum:
+      - user
+      - greeting
+      - opener
+      - check_in
+      - proactive
+      - say
+      type: string
+      description: |-
+        * `user` - user
+        * `greeting` - greeting
+        * `opener` - opener
+        * `check_in` - check_in
+        * `proactive` - proactive
+        * `say` - say
     UntilReasonEnum:
       enum:
       - next_income

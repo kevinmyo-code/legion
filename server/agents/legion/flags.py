@@ -18,3 +18,12 @@ TURN_ENV = "LEGION_AGENTS_TURN"
 
 def turn_enabled() -> bool:
     return os.environ.get(TURN_ENV, "").strip().lower() == "on"
+
+
+# The speech-to-text hedge on the agents door (`agents/voice/hedge.py`): a second identical request
+# beside a slow first. Off unless `on`: it can pay for one utterance's audio twice.
+STT_HEDGE_ENV = "LEGION_AGENTS_STT_HEDGE"
+
+
+def stt_hedge_enabled() -> bool:
+    return os.environ.get(STT_HEDGE_ENV, "").strip().lower() == "on"
