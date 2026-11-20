@@ -55,22 +55,28 @@ object MixtapePlayer {
                     session: MediaSession,
                     controllerInfo: MediaSession.ControllerInfo,
                     intent: android.content.Intent,
-                ): Boolean {
-                    runCatching {
-                        @Suppress("DEPRECATION")
-                        val key = intent.getParcelableExtra<android.view.KeyEvent>(android.content.Intent.EXTRA_KEY_EVENT)
-                        if (key != null && com.kevin.midnightai.diag.ProbeFormat.shouldLogKey(key.action, key.repeatCount)) {
-                            com.kevin.midnightai.diag.InputProbe.wheel(
-                                com.kevin.midnightai.diag.ProbeFormat.mediaButtonLine(
-                                    android.view.KeyEvent.keyCodeToString(key.keyCode), key.action, "mixtape",
-                                ),
-                            )
-                        }
-                    }
-                    return false
-                }
+                ): Boolean = logMediaButton(intent)
             })
             .build()
+    }
+
+    /**
+     * HU-1 T9: one Wheel keys line for a media button that reached the mixtape session (key name
+     * only, first press and release). Always false, so Media3 handles the button as before.
+     */
+    internal fun logMediaButton(intent: android.content.Intent): Boolean {
+        runCatching {
+            @Suppress("DEPRECATION")
+            val key = intent.getParcelableExtra<android.view.KeyEvent>(android.content.Intent.EXTRA_KEY_EVENT)
+            if (key != null && com.kevin.midnightai.diag.ProbeFormat.shouldLogKey(key.action, key.repeatCount)) {
+                com.kevin.midnightai.diag.InputProbe.wheel(
+                    com.kevin.midnightai.diag.ProbeFormat.mediaButtonLine(
+                        android.view.KeyEvent.keyCodeToString(key.keyCode), key.action, "mixtape",
+                    ),
+                )
+            }
+        }
+        return false
     }
 
     /** Loads a tape's tracks in playlist order and starts playback from the top. */

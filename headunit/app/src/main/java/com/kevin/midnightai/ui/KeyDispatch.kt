@@ -40,6 +40,15 @@ internal object KeyDispatch {
         return true
     }
 
+    /**
+     * Whether a text editor has the keyboard: the IME says it is accepting text, or the focused
+     * view is a text editor (Compose's host view answers true while a TextField has focus).
+     * Either one stops the wheel log.
+     */
+    fun editorActive(focused: android.view.View?, imm: android.view.inputmethod.InputMethodManager?): Boolean =
+        runCatching { imm?.isAcceptingText == true }.getOrDefault(true) ||
+            runCatching { focused?.onCheckIsTextEditor() == true }.getOrDefault(true)
+
     private fun mayLog(event: KeyEvent, editorActive: Boolean): Boolean {
         val printing = runCatching { event.isPrintingKey }.getOrDefault(true)
         val char = runCatching { event.unicodeChar }.getOrDefault(1)

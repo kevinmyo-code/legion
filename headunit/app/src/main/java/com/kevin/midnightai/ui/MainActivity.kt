@@ -318,7 +318,7 @@ class MainActivity : ComponentActivity() {
         val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
         return KeyDispatch.dispatch(
             event = event,
-            editorActive = imm?.isAcceptingText == true,
+            editorActive = KeyDispatch.editorActive(currentFocus, imm),
             onVolumeKey = { up, repeat ->
                 // A held key's repeats still move the volume; only the first press is logged as a write.
                 val by = if (repeat == 0) "key" else com.kevin.midnightai.diag.ProbeFormat.QUIET_WRITER
