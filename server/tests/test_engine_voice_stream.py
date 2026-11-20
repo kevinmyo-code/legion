@@ -295,6 +295,17 @@ def test_a_second_stream_from_the_same_member_is_refused_while_one_is_open(
     assert stream.opened == []
 
 
+def test_the_member_stream_lock_is_held_while_the_answer_streams(
+    auth_client, stream, household_user, other_session
+):
+    response = _post(auth_client, utterance())
+    assert response.status_code == 200
+    assert not _stream_lock_free(other_session, household_user)
+    b"".join(response.streaming_content)
+    response.close()
+    assert _stream_lock_free(other_session, household_user)
+
+
 @pytest.mark.parametrize(
     "body",
     [

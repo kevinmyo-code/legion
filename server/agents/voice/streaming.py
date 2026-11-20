@@ -74,8 +74,10 @@ MAX_FRAMES = 3_000
 # `environ["gunicorn.socket"]`): the metadata frame must start within `FIRST_FRAME_S` of the view
 # starting, and every later read within `IDLE_S` (a client sends audio every 100 ms or so while he
 # speaks). A stall is refused as `stalled`, so a silent client holds a thread for at most about
-# 10 s, not the 300 s request timeout. The timeout is per read: a client dripping a byte at a time
-# is bounded by the 45 s upload wall instead, and by the per-member lock to one thread at a time.
+# 10 s, not the 300 s request timeout. Both are also absolute: the whole first frame must be in
+# within `FIRST_FRAME_S`, and no read waits past the upload wall, so a client dripping a byte at a
+# time is cut off too (5 s before its first frame, 45 s in all); the per-member lock keeps it to one
+# thread.
 FIRST_FRAME_S = 5.0
 IDLE_S = 10.0
 # One open stream per member (review 1120, finding 4): a Postgres advisory lock in this namespace,
@@ -105,7 +107,7 @@ class FrameError(Exception):
 class FrameReader:
     """Frames off a raw `wsgi.input`, read as they arrive. `None` at the end of the body."""
 
-    def __init__(self, stream, length: int | None = None, sock=None):
+    def __init__(self, stream, length: int | None = None, sock=None, clock=time.monotonic):
         # `length`: the declared Content-Length, when the client sent one (a chunked upload,
         # the normal case, has none and is read to its end). `sock`: the connection's socket,
         # when the server hands it over, for the read deadlines; `release()` restores it.
@@ -123,6 +125,14 @@ class FrameReader:
             except Exception:  # noqa: BLE001 - no socket to time, no deadline
                 self.sock = None
         self.frames = 0
+        # Absolute deadlines from the reader's start, so a client dripping a byte at a time
+        # (each read inside its timeout) is still cut off.
+        self.clock = clock
+        self.started = clock()
+        self.first_frame_s = FIRST_FRAME_S
+        self.wall_s = UPLOAD_WALL_MS / 1000
+        self.first_done = False
+        self.over_wall = False
 
     def _fill(self, wanted: int) -> bool:
         # Asks for exactly what the next frame still needs: gunicorn's `Body.read(n)` waits until
@@ -132,7 +142,9 @@ class FrameReader:
             size = wanted - len(self.buffer)
             if self.left is not None:
                 size = min(size, self.left)
-            self._deadline()
+            if not self._deadline():
+                self.eof = True
+                break
             try:
                 chunk = self.stream.read(size) if size and hasattr(self.stream, "read") else b""
             except TimeoutError:
@@ -151,12 +163,33 @@ class FrameReader:
                     self.left -= len(chunk)
         return len(self.buffer) >= wanted
 
-    def _deadline(self) -> None:
+    def _deadline(self) -> bool:
+        """Sets the next read's timeout: `IDLE_S`, and never past the first frame's deadline
+        (until a whole first frame is in) or the upload wall. False when one has passed."""
+        elapsed = self.clock() - self.started
+        wall_left = self.wall_s - elapsed
+        if wall_left <= 0:
+            self.over_wall = True
+            return False
+        timeout = min(IDLE_S, wall_left)
+        if not self.first_done:
+            first_left = self.first_frame_s - elapsed
+            if first_left <= 0:
+                self.stalled = True
+                return False
+            timeout = min(timeout, first_left)
         if self.sock is not None:
             try:
-                self.sock.settimeout(FIRST_FRAME_S if self.frames == 0 else IDLE_S)
+                self.sock.settimeout(timeout)
             except Exception:  # noqa: BLE001 - a closed socket fails its read next
                 pass
+        return True
+
+    def _cut_off(self) -> None:
+        if self.over_wall:
+            raise FrameError("too_long", "The utterance took too long to arrive.")
+        if self.stalled:
+            raise FrameError("stalled", "The client stopped sending: nothing was run.")
 
     def release(self) -> None:
         """Puts the socket's own timeout back (None: blocking), before the answer is written.
@@ -170,8 +203,7 @@ class FrameReader:
 
     def next(self) -> tuple[bytes, bytes] | None:
         if not self._fill(HEADER.size):
-            if self.stalled:
-                raise FrameError("stalled", "The client stopped sending: nothing was run.")
+            self._cut_off()
             if self.buffer:
                 raise FrameError("hung_up", "The body ended inside a frame.")
             return None
@@ -186,11 +218,11 @@ class FrameReader:
         if self.frames > MAX_FRAMES:
             raise FrameError("too_long", f"A body carries at most {MAX_FRAMES} frames.")
         if not self._fill(HEADER.size + length):
-            if self.stalled:
-                raise FrameError("stalled", "The client stopped sending: nothing was run.")
+            self._cut_off()
             raise FrameError("hung_up", "The body ended inside a frame.")
         payload = self.buffer[HEADER.size : HEADER.size + length]
         self.buffer = self.buffer[HEADER.size + length :]
+        self.first_done = True
         return kind, payload
 
 

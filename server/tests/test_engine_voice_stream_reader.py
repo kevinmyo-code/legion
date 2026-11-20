@@ -198,8 +198,9 @@ def test_the_first_frame_has_a_short_deadline_and_later_reads_an_idle_timeout():
     reader = streaming.FrameReader(_body(meta() + audio(b"\x10\x00" * 1_600)), sock=sock)
     reader.next()
     reader.next()
-    assert sock.timeouts[:1] == [streaming.FIRST_FRAME_S]
-    assert set(sock.timeouts[1:-1]) == {streaming.IDLE_S}
+    # Each read waits at most the deadline, less what has already passed.
+    assert streaming.FIRST_FRAME_S - 1 < sock.timeouts[0] <= streaming.FIRST_FRAME_S
+    assert all(streaming.IDLE_S - 1 < s <= streaming.IDLE_S for s in sock.timeouts[2:-1])
     assert streaming.FIRST_FRAME_S <= 5 and streaming.IDLE_S <= 10
     reader.release()
     assert sock.current is None  # gunicorn's own blocking socket again, for the answer
@@ -255,3 +256,41 @@ def test_audio_sent_before_the_session_failed_is_billed_on_a_hang_up(monkeypatch
             reader, key="k", max_audio_bytes=10**7, arrived_at=time.monotonic()
         )
     assert caught.value.code == "hung_up" and caught.value.spent == (6, 0)
+
+
+class DripBody:
+    """A client that sends one byte per read, each a second after the last (`Ticks`): every read
+    beats the per-read timeout, so only an absolute deadline stops it."""
+
+    def __init__(self, data: bytes):
+        self.data = data
+
+    def read(self, size: int) -> bytes:
+        out, self.data = self.data[:1], self.data[1:]
+        return out
+
+
+class Ticks:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        self.now += 1.0
+        return self.now
+
+
+def test_a_client_dripping_the_first_frame_is_cut_off_at_its_deadline():
+    reader = streaming.FrameReader(DripBody(meta(client="phone", padding="x" * 200)), clock=Ticks())
+    with pytest.raises(streaming.FrameError) as caught:
+        reader.next()
+    assert caught.value.code == "stalled"
+
+
+def test_a_client_dripping_audio_is_cut_off_at_the_upload_wall():
+    pcm = b"\x10\x00" * 1_600  # one 100 ms frame takes 3,205 one-second reads
+    reader = streaming.FrameReader(DripBody(meta() + audio(pcm)), clock=Ticks())
+    reader.first_frame_s = 10**9  # only the wall is under test here
+    reader.next()
+    with pytest.raises(streaming.FrameError) as caught:
+        reader.next()
+    assert caught.value.code == "too_long"
