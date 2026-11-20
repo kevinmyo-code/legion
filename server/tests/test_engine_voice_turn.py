@@ -236,7 +236,8 @@ def test_distress_heard_calls_no_model_and_keeps_no_words(auth_client, engine):
     engine.speech = FakeSpeech(heard="I want to die")
     events = _events(_post(auth_client, audio=_wav()))
     kinds = [k for k, _ in events]
-    assert "crisis" in kinds and "sentence" not in kinds
+    # One fixed line, never the model's (`tests/test_engine_voice_review.py` pins its words).
+    assert "crisis" in kinds and kinds.count("sentence") == 1
     assert events[-1][0] == "done" and events[-1][1]["status"] == "crisis"
     assert events[-1][1]["end"] is True and events[-1][1]["final_text"] == ""
     assert engine.models == [] and not AgentTurn.objects.exists()

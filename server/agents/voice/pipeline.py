@@ -13,7 +13,9 @@ from the web door's and are listed under "Differences".
 
 - `turn` {turn_id, conversation_id, seq}: first, once the turn row exists (agents shape).
 - `heard` {text}: the transcript of an `audio` turn, right after `turn`.
-- `crisis` {}: the crisis pre-check fired (`agents/voice/crisis.py`); `done` follows at once.
+- `crisis` {text}: the crisis pre-check fired (`agents/voice/crisis.py`). `text` is the fixed
+  crisis line, sent just before as a `sentence` (with its `audio` on a spoken turn); a client with
+  a screen shows its crisis card and does not also caption that line. `done` follows at once.
 - `working` {tool}: a slow tool is about to run (the runtime's own event).
 - `filler` {tool, text}: the line said while that tool runs, from memory; its `audio` follows.
 - `tool` {name, ok, outcome, guard}: a tool call ended (agents shape: never its text).
@@ -123,11 +125,16 @@ def voice_turn(
                 yield ev.done("nothing_heard", "", False, ignored="no_speech")
                 return
         if crisis.detect(words):
-            # No model, no tool, no turn row, no words kept: the client's crisis response follows.
+            # No model, no tool, no turn row, none of his words kept. One fixed line, by code,
+            # never the model's, with the help number; the card for a client with a screen.
             status = "crisis"
             if heard is not None:
                 yield ev.Event("heard", {"text": words})
-            yield ev.Event("crisis", {})
+            speaker.exact = True
+            speaker.add(crisis.LINE)
+            yield ev.Event("sentence", {"text": crisis.LINE})
+            yield from speaker.drain()
+            yield ev.Event("crisis", {"text": crisis.LINE})
             yield ev.done("crisis", "", False, end=True)
             return
         if speaker.enabled:

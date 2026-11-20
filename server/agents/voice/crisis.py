@@ -12,9 +12,9 @@ for when the prompt was not enough. It is tuned for precision: it fires only on 
 innocent reading ("this traffic is killing me", "suicide doors" are ordinary talk), and misses
 oblique distress, which falls to the prompt rule.
 
-On a hit the voice turn calls no model and no tool, keeps no words, and ends with the `crisis`
-event; what the person then sees or hears is the client's crisis response (the phone's crisis
-card), not words written here.
+On a hit the voice turn calls no model and no tool and keeps no words. It says `LINE` once, by
+code, the same on every client, and sends the `crisis` event so a client with a screen shows its
+card (voice client contract v1 section 10, wire section 5: an orchestrator default, not a ruling).
 """
 
 from __future__ import annotations
@@ -55,6 +55,15 @@ EXCLUSIONS: tuple[str, ...] = (
     "suicide doors",
     "suicide knob",
     "suicide shifter",
+)
+
+# The words are the head unit's crisis card's, its two text blocks joined
+# (`headunit/app/src/main/java/com/kevin/midnightai/ui/CrisisCard.kt`, lines 61-70): no crisis copy
+# is written here. `tests/test_engine_voice_review.py` pins them to that file.
+LINE = (
+    "I'm not equipped for this, and I'm not going to pretend otherwise. "
+    "If you're in crisis, please talk to someone who is. "
+    "In the US, call or text 988 to reach the Suicide and Crisis Lifeline, any time."
 )
 
 _NOT_ALNUM = re.compile(r"[^a-z0-9]+")
