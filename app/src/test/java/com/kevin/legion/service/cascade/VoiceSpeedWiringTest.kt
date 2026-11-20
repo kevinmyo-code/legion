@@ -265,6 +265,12 @@ class VoiceSpeedWiringTest {
         assertTrue(schedule.contains("onCall = TelephonyController.isInCall"))
     }
 
+    @Test
+    fun `the audit line carries the chosen word as a number`() {
+        val play = bodyOf(session(), "playBackchannel")
+        assertTrue(play.contains("word=${'$'}{Backchannel.LINES.indexOf(line)}"))
+    }
+
     private companion object {
         val BLOCK_COMMENT = Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)
         val LINE_COMMENT = Regex("(?<![:\"])//[^\n]*")

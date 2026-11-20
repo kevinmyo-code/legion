@@ -1253,7 +1253,10 @@ internal class CascadeSession(
             VoiceEngineSettings.setLastBackchannel(ctx, line)
             LiveLatency.log(
                 LiveLatency.TAG,
-                "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=$ms",
+                // The word as its index in Backchannel.LINES (a number, never the word), and how many
+                // words' clips failed the length gate before it.
+                "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=$ms " +
+                    "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected}",
             )
             audit.filler("backchannel", line)
             val gen = p.generation()
