@@ -476,9 +476,14 @@ class AgentTurnStreamView(_SwitchedAgentsView):
                 limbs.CODE_UNSUPPORTED,
                 status.HTTP_409_CONFLICT,
             )
+        if allowance.over_cap(request.user):
+            # Before the probe or any session reads on (review 1120, finding 2).
+            return _refuse(member_cap.USED_UP, "member_cap", status.HTTP_429_TOO_MANY_REQUESTS)
         if meta.get("probe") is True:
             try:
-                return Response(streaming.probe(reader, arrived_at=arrived))
+                return Response(
+                    streaming.probe(reader, arrived_at=arrived, max_audio_bytes=MAX_AUDIO_BYTES)
+                )
             except streaming.FrameError as exc:
                 return _refuse(exc.detail, exc.code, _FRAME_STATUS.get(exc.code, 400))
         data, refusal = _stream_meta(meta)
@@ -490,8 +495,6 @@ class AgentTurnStreamView(_SwitchedAgentsView):
                 {"detail": KEY_ABSENT, "code": "no_key"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        if allowance.over_cap(request.user):
-            return _refuse(member_cap.USED_UP, "member_cap", status.HTTP_429_TOO_MANY_REQUESTS)
         try:
             streamed = streaming.take_utterance(
                 reader, key=key, max_audio_bytes=MAX_AUDIO_BYTES, arrived_at=arrived

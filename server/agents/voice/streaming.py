@@ -61,6 +61,10 @@ HEADER = struct.Struct(">cI")
 UPLOAD_WALL_MS = 45_000
 MAX_FRAME_BYTES = 64 * 1024
 MAX_META_BYTES = 4 * 1024
+# The most frames one body may carry, of every kind (review 1120, finding 2): 28 s of audio in
+# 20 ms frames is 1,400, plus a stamp before each in the probe. Without a cap, 5-byte frames would
+# make a 32 MiB body millions of objects.
+MAX_FRAMES = 3_000
 
 
 def socket_for(key: str) -> LiveSocket:
@@ -88,6 +92,7 @@ class FrameReader:
         self.buffer = b""
         self.eof = False
         self.broken = False
+        self.frames = 0
 
     def _fill(self, wanted: int) -> bool:
         # Asks for exactly what the next frame still needs: gunicorn's `Body.read(n)` waits until
@@ -120,6 +125,11 @@ class FrameReader:
             raise FrameError("bad_request", f"Unknown frame type {kind!r}.")
         if length > MAX_FRAME_BYTES:
             raise FrameError("bad_request", f"A frame is at most {MAX_FRAME_BYTES} bytes.")
+        if kind == b"A" and length == 0:
+            raise FrameError("bad_request", "An audio frame carries at least one byte.")
+        self.frames += 1
+        if self.frames > MAX_FRAMES:
+            raise FrameError("too_long", f"A body carries at most {MAX_FRAMES} frames.")
         if not self._fill(HEADER.size + length):
             raise FrameError("hung_up", "The body ended inside a frame.")
         payload = self.buffer[HEADER.size : HEADER.size + length]
@@ -271,25 +281,33 @@ def _gated_or_heard(pcm: bytes, text: str, final_s: float):
     return speech_mod.Heard(speech_mod.clean_transcript(text), audio_ms, int(final_s * 1000))
 
 
-def probe(reader: FrameReader, *, arrived_at: float, clock=time.monotonic) -> dict:
+def probe(
+    reader: FrameReader,
+    *,
+    arrived_at: float,
+    clock=time.monotonic,
+    max_audio_bytes: int = speech_mod.MAX_AUDIO_BYTES,
+) -> dict:
     """The diagnostic: when each audio frame arrived (ms after the request reached this view),
-    beside the client's own stamp. No session, no model, no cost."""
-    frames, stamp = [], None
+    beside the client's own stamp. No session, no model, no cost. Bounded like an utterance
+    (review 1120, finding 2): the reader's frame cap, the utterance's audio cap and the upload
+    wall, so the list it builds is at most `MAX_FRAMES` small entries."""
+    frames, stamp, total = [], None, 0
     while True:
         item = reader.next()
         if item is None:
             break
+        arrived_ms = int((clock() - arrived_at) * 1000)
+        if arrived_ms > UPLOAD_WALL_MS:
+            raise FrameError("too_long", "The probe took too long to arrive.")
         kind, payload = item
         if kind == b"T":
             stamp = json_payload(payload).get("client_ms")
         elif kind == b"A":
-            frames.append(
-                {
-                    "client_ms": stamp,
-                    "arrived_ms": int((clock() - arrived_at) * 1000),
-                    "bytes": len(payload),
-                }
-            )
+            total += len(payload)
+            if total > max_audio_bytes:
+                raise FrameError("too_long", "The probe is over the utterance length limit.")
+            frames.append({"client_ms": stamp, "arrived_ms": arrived_ms, "bytes": len(payload)})
             stamp = None
         elif kind == b"E":
             break

@@ -225,6 +225,15 @@ def test_the_probe_reports_when_each_frame_arrived_and_costs_nothing(
     assert not LlmUsage.objects.filter(user=household_user).exists()
 
 
+def test_over_the_daily_allowance_the_probe_is_refused_before_it_reads_on(
+    auth_client, stream, monkeypatch
+):
+    # Review 1120 finding 2: the allowance check comes before the probe reads any audio.
+    monkeypatch.setattr("llm.cap.over_cap", lambda user: True)
+    response = _post(auth_client, meta(probe=True) + audio(SECOND) + end(len(SECOND)))
+    assert response.status_code == 429 and response.data["code"] == "member_cap"
+
+
 # ---- the head unit (merge with main's head-unit sign-in) ---------------------------------------
 
 

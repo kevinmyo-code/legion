@@ -105,3 +105,57 @@ def test_a_failed_connect_leaves_no_thread_behind():
     with pytest.raises(Exception):  # noqa: B017 - any connect failure
         live_stt.LiveSocket("not-a-real-key", url="ws://127.0.0.1:9/never")
     assert threading.active_count() == before
+
+
+# ---- review 1120 finding 2: the probe's limits ---------------------------------------------------
+
+
+def _body(data: bytes):
+    import io
+
+    return io.BytesIO(data)
+
+
+def test_a_zero_length_audio_frame_is_refused():
+    reader = streaming.FrameReader(_body(meta() + frame(b"A", b"") + end(0)))
+    reader.next()
+    with pytest.raises(streaming.FrameError) as caught:
+        reader.next()
+    assert caught.value.code == "bad_request"
+
+
+def test_a_body_of_endless_small_frames_is_cut_off_at_the_frame_cap():
+    # Each stamp frame is 20 bytes; with no cap a 32 MiB body is 1.6 million of them.
+    stamps = frame(b"T", b'{"client_ms":1}') * 20_000
+    reader = streaming.FrameReader(_body(meta(probe=True) + stamps))
+    reader.next()
+    with pytest.raises(streaming.FrameError) as caught:
+        streaming.probe(reader, arrived_at=time.monotonic())
+    assert caught.value.code == "too_long"
+
+
+def test_the_probe_stops_at_the_audio_byte_cap():
+    # The utterance cap (28 s) plus one more 100 ms frame.
+    from agents.voice.speech import MAX_AUDIO_BYTES
+
+    pcm = b"\x10\x00" * (MAX_AUDIO_BYTES // 2 + 1_600)
+    reader = streaming.FrameReader(_body(meta(probe=True) + audio(pcm) + end(len(pcm))))
+    reader.next()
+    with pytest.raises(streaming.FrameError) as caught:
+        streaming.probe(reader, arrived_at=time.monotonic())
+    assert caught.value.code == "too_long"
+
+
+def test_the_probe_stops_at_the_upload_wall():
+    now = [0.0]
+
+    def clock():
+        now[0] += 1.0  # each frame a second later
+        return now[0]
+
+    pcm = b"\x10\x00" * 1_600 * 60  # sixty 100 ms frames, one a second
+    reader = streaming.FrameReader(_body(meta(probe=True) + audio(pcm) + end(len(pcm))))
+    reader.next()
+    with pytest.raises(streaming.FrameError) as caught:
+        streaming.probe(reader, arrived_at=0.0, clock=clock)
+    assert caught.value.code == "too_long"
