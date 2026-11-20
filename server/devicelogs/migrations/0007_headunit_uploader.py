@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("devicelogs", "0006_nav_audit_lines"),
-        ("headunit_signin", "0002_rotation_by_member"),
+        ("headunit_signin", "0001_initial"),
     ]
 
     operations = [
