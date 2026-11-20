@@ -248,7 +248,7 @@ def _speech_client():
     return HedgedSpeech(speech) if flags.stt_hedge_enabled() else speech
 
 
-def _stream(request, data, utterance):
+def _stream(request, data, utterance, arrived_at=None):
     speech = _speech_client() if utterance.spoken else None
     turn = pipeline.voice_turn(
         request,
@@ -259,6 +259,7 @@ def _stream(request, data, utterance):
             request, data.get("conversation_id"), data["client"]
         ),
         voice=voice_engine.voice_for(request.user),
+        arrived_at=arrived_at,
     )
     try:
         for event in turn:
@@ -311,6 +312,8 @@ class AgentTurnView(_SwitchedAgentsView):
         },
     )
     def post(self, request):
+        # `done.timing` counts from here (wire v1: offsets from the request).
+        arrived = time.monotonic()
         try:
             length = int(request.META.get("CONTENT_LENGTH") or 0)
         except ValueError:
@@ -362,7 +365,7 @@ class AgentTurnView(_SwitchedAgentsView):
             text=data.get("text"),
             speak=bool(data.get("speak")),
         )
-        return _sse(_stream(request, data, utterance))
+        return _sse(_stream(request, data, utterance, arrived))
 
 
 class AgentCancelView(_SwitchedAgentsView):

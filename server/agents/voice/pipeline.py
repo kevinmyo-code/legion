@@ -43,8 +43,9 @@ from the web door's and are listed under "Differences".
   `nothing_heard` (with `ignored`: `noise` when the engine's loudness or voice gate kept the clip
   from speech-to-text, `no_speech` when speech-to-text heard no words), `crisis` (with
   `end: true`, `final_text` empty) or `say`. `contract_version` is the voice contract served (1).
-  `timing` is the engine's own stage times in ms from the request: `stt_ms`, `heard_ms`,
-  `first_sentence_ms`, `first_audio_ms` (each only once reached).
+  `timing` is the engine's own stage times, every one an offset in ms from the request's arrival
+  at the view (after its upload), never a duration: `stt_done_ms` (the transcript came back),
+  `heard_ms`, `first_sentence_ms`, `first_audio_ms` (each only once reached).
 - `error` {words}: the turn could not run (e.g. `STT_FAILED` after the spoken miss).
 
 Differences from the web door, kept on purpose in V1: `turn` and `tool` carry the agent turn's own
@@ -247,11 +248,14 @@ def voice_turn(
     voice: str,
     filler_audio: FillerAudio | None = None,
     clock: Callable[[], float] = time.monotonic,
+    arrived_at: float | None = None,
 ) -> Iterator[ev.Event]:
     """Yields the turn's events. `model_for` and `conversation_for` make the model client and open
     (or find) the conversation, called only once a turn will reach the model, so a silent clip, a
-    failed transcription, a `say` or a crisis makes neither."""
+    failed transcription, a `say` or a crisis makes neither. `arrived_at` is when the request
+    reached the view, on `clock`: `done.timing` counts from it."""
     t0 = clock()
+    origin = t0 if arrived_at is None else arrived_at
     timings: dict = {}
     filler_audio = filler_audio or FILLER_AUDIO
     speaker = AgentSpeaker(speech, voice, enabled=utterance.spoken, clock=clock)
@@ -267,7 +271,7 @@ def voice_turn(
     try:
         if utterance.kind == "say":
             status = "say"
-            yield from _say(speaker, utterance.text or "", lines, marks, t0, clock, timings)
+            yield from _say(speaker, utterance.text or "", lines, marks, origin, clock, timings)
             return
         heard = None
         words = (utterance.transcript or "").strip()
@@ -285,29 +289,31 @@ def voice_turn(
                 yield ev.error(STT_FAILED)
                 return
             words = heard.text
-            marks["stt_ms"] = heard.ms
+            marks["stt_done_ms"] = _ms(clock, origin)
             if not words:
                 # No speech: silence, no model call, nothing kept. `noise` when no request was
                 # sent at all (the loudness or voice gate), `no_speech` when one heard no words.
                 status = "nothing_heard"
                 ignored = "noise" if not heard.prompt_tokens else "no_speech"
-                yield _done("nothing_heard", "", False, speaker, marks, t0, clock, ignored=ignored)
+                yield _done(
+                    "nothing_heard", "", False, speaker, marks, origin, clock, ignored=ignored
+                )
                 return
         if crisis.detect(words):
             # No model, no tool, no turn row, none of his words kept. One fixed line, by code,
             # never the model's, with the help number; the card for a client with a screen.
             status = "crisis"
             if heard is not None:
-                marks["heard_ms"] = _ms(clock, t0)
+                marks["heard_ms"] = _ms(clock, origin)
                 yield ev.Event("heard", {"text": words})
             speaker.exact = True
             line_id = lines.next()
             speaker.say(crisis.LINE, line_id)
-            marks["first_sentence_ms"] = _ms(clock, t0)
+            marks["first_sentence_ms"] = _ms(clock, origin)
             yield _sentence(crisis.LINE, line_id)
             yield from speaker.drain()
             yield ev.Event("crisis", {"text": crisis.LINE})
-            yield _done("crisis", "", False, speaker, marks, t0, clock, end=True)
+            yield _done("crisis", "", False, speaker, marks, origin, clock, end=True)
             return
         if speaker.enabled:
             # The filler lines' audio, fetched once speech was heard (room noise costs nothing).
@@ -329,7 +335,7 @@ def voice_turn(
             cancel,
             lines,
             marks,
-            t0,
+            origin,
         )
     finally:
         speaker.close()
@@ -358,12 +364,15 @@ def _sentence(text: str, line_id: str) -> ev.Event:
     return ev.Event("sentence", {"text": text, "line_id": line_id, "role": ROLE_ANSWER})
 
 
-def _done(status, final_text, writes_ran, speaker, marks, t0, clock, **extra) -> ev.Event:
-    """`done` with wire v1's `contract_version` and the engine's own stage times."""
+def _done(status, final_text, writes_ran, speaker, marks, origin, clock, **extra) -> ev.Event:
+    """`done` with wire v1's `contract_version` and the engine's own stage times (offsets from
+    `origin`, the request's arrival)."""
     timing = dict(marks)
     if speaker.first_audio_ms is not None:
-        # The speaker's clock starts with the turn's.
-        timing["first_audio_ms"] = speaker.first_audio_ms
+        # The speaker counts from its own start; moved onto the request's arrival.
+        timing["first_audio_ms"] = (
+            int((speaker.started_at - origin) * 1000) + speaker.first_audio_ms
+        )
     timing = {k: v for k, v in timing.items() if isinstance(v, int) and v >= 0}
     return ev.done(
         status,

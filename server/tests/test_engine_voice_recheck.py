@@ -182,7 +182,7 @@ def test_done_carries_the_contract_version_and_the_engine_timing(auth_client, en
     done = events[-1][1]
     assert done["contract_version"] == 1
     timing = done["timing"]
-    assert {"heard_ms", "first_sentence_ms", "first_audio_ms", "stt_ms"} <= set(timing)
+    assert {"heard_ms", "first_sentence_ms", "first_audio_ms", "stt_done_ms"} <= set(timing)
     assert all(isinstance(v, int) and v >= 0 for v in timing.values())
 
 
