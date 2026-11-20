@@ -46,7 +46,31 @@ object MixtapePlayer {
         val appContext = context.applicationContext
         val exo = ExoPlayer.Builder(appContext).build()
         player = exo
-        session = MediaSession.Builder(appContext, exo).build()
+        session = MediaSession.Builder(appContext, exo)
+            .setCallback(object : MediaSession.Callback {
+                // HU-1 T9: steering-wheel media keys go to the active media session, not the
+                // activity; while a tape plays that session is ours, so log the key's name.
+                // Returning false keeps Media3's own handling.
+                override fun onMediaButtonEvent(
+                    session: MediaSession,
+                    controllerInfo: MediaSession.ControllerInfo,
+                    intent: android.content.Intent,
+                ): Boolean {
+                    runCatching {
+                        @Suppress("DEPRECATION")
+                        val key = intent.getParcelableExtra<android.view.KeyEvent>(android.content.Intent.EXTRA_KEY_EVENT)
+                        if (key != null && com.kevin.midnightai.diag.ProbeFormat.shouldLogKey(key.action, key.repeatCount)) {
+                            com.kevin.midnightai.diag.InputProbe.wheel(
+                                com.kevin.midnightai.diag.ProbeFormat.mediaButtonLine(
+                                    android.view.KeyEvent.keyCodeToString(key.keyCode), key.action, "mixtape",
+                                ),
+                            )
+                        }
+                    }
+                    return false
+                }
+            })
+            .build()
     }
 
     /** Loads a tape's tracks in playlist order and starts playback from the top. */

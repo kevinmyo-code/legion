@@ -61,6 +61,13 @@ class InputProbeTest {
         listOf("key", "screen", "voice", "panel", "sync", "app").forEach { assertTrue(it, ProbeFormat.shouldLogWrite(it)) }
     }
 
+    @Test fun mediaButtonLineNamesTheKeyAndTheSession() {
+        assertEquals(
+            "media-button KEYCODE_MEDIA_NEXT down session=mixtape",
+            ProbeFormat.mediaButtonLine("KEYCODE_MEDIA_NEXT", ProbeFormat.ACTION_DOWN, "mixtape"),
+        )
+    }
+
     @Test fun keyUpLevelLine() {
         assertEquals("level after key up index=12/30", ProbeFormat.levelLine(12, 30))
     }

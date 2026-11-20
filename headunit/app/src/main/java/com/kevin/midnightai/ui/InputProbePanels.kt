@@ -83,8 +83,9 @@ internal fun WheelKeysPanel() {
     var open by remember { mutableStateOf(false) }
     SettingsRowCard(SettingsRowSpec(
         "Wheel keys",
-        "Every key the unit hands this app while it is in front (steering wheel, panel, remote). " +
-            "Keys the vendor firmware or the music app keep never reach here.",
+        "Keys that type nothing (media, volume, arrows, wheel codes) that reach this app while it is " +
+            "in front, plus media buttons sent to the mixtape player. Media buttons the car sends to " +
+            "Spotify or the phone go to their session and do not show here. Never logs typing.",
         RowAction.Button(if (open) "CLOSE" else "OPEN", ButtonWeight.QUIET) { open = !open },
     ))
     if (!open) return
