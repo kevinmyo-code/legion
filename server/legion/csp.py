@@ -66,6 +66,9 @@ def policy(script_hashes: list[str] | None = None) -> str:
         "img-src": ["'self'", "data:", "blob:"],
         "media-src": ["'self'", "data:", "blob:"],
         "font-src": ["'self'", "data:"],
+        # No `blob:` on purpose (2026-11-19): the /try 3D models are same-origin GLBs with NO
+        # embedded textures, and `demo.content` refuses to load one that has any (three.js
+        # decodes embedded images through blob: fetches). A textured model needs blob: here.
         "connect-src": ["'self'", GEMINI_LIVE, "https://*.plaid.com"],
         "frame-src": ["'self'", "blob:", PLAID_CDN],
         "worker-src": ["'self'", "blob:"],

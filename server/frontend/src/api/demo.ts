@@ -67,10 +67,26 @@ export interface DemoProject {
   media?: DemoMedia
 }
 
+/**
+ * A 3D model a visitor can turn. `model` (a GLB) and `poster` (its still) are the engine's private
+ * `/api/demo/media/<name>` links: served to this visit only, with the visit's cookie.
+ */
+export interface DemoModel3D {
+  title: string
+  model: string
+  poster: string
+  note?: string
+}
+
+/** A project section's media: the clip slot plus up to four 3D models. */
+export interface DemoSectionMedia extends DemoMedia {
+  models?: DemoModel3D[]
+}
+
 /** A project section below LEGION's: the `legion` shape plus the anchor `id` and a media slot. */
 export interface DemoProjectSection extends DemoLegion {
   id: string
-  media?: DemoMedia
+  media?: DemoSectionMedia
 }
 
 export interface DemoContent {

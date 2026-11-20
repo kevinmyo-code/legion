@@ -100,6 +100,7 @@ def test_a_second_turn_right_after_an_interrupt_waits_for_the_first_and_is_accep
         holder.join()
 
 
+@pytest.mark.django_db(transaction=True)
 def test_a_turn_cancelled_mid_round_makes_no_further_paid_call_and_releases_its_slot(
     visitor, visitor_user, engine
 ):
@@ -107,7 +108,9 @@ def test_a_turn_cancelled_mid_round_makes_no_further_paid_call_and_releases_its_
 
     class CancelledDuringRound(FakeModel):
         def stream(self, req):
-            # The cancel arrives while the first round streams (another worker wrote it).
+            # The cancel arrives while the first round streams (another worker wrote it). The round
+            # is read on the model reader thread (`cascade.Ticking`), so this write is on another
+            # connection, as another worker's is: the visitor must be committed for it to see them.
             TurnCancel.objects.create(turn_id=turn_id, user=visitor_user)
             yield from super().stream(req)
 
@@ -206,3 +209,36 @@ def test_the_cancel_route_is_also_limited_per_address(member, visitor, monkeypat
     assert visitor.post("/api/assistant/turn/cancel", body, format="json").status_code == 204
     third = visitor.post("/api/assistant/turn/cancel", body, format="json")
     assert third.status_code == 429
+
+
+def _sessions() -> int:
+    other = connections.create_connection("default")
+    try:
+        with other.cursor() as cur:
+            cur.execute("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()")
+            return cur.fetchone()[0]
+    finally:
+        other.close()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_model_reader_thread_leaves_no_database_session_open(visitor, visitor_user, engine):
+    """A round read on its own thread (`cascade.Ticking`) closes any database connection that
+    thread opened: nothing on the model's path should touch the database, and if it ever does, no
+    session may outlive the read (found 2026-11-19: this test file's own fake wrote there)."""
+    from household.models import User
+
+    class TouchesTheDatabase(FakeModel):
+        def stream(self, req):
+            User.objects.filter(pk=visitor_user.pk).exists()
+            yield from super().stream(req)
+
+    before = _sessions()
+    engine.model = TouchesTheDatabase([say("Yes?")])
+    events = _events(_post(visitor, audio=PCM))
+    assert [s["text"] for s in _of(events, "sentence")] == ["Yes?"]
+    deadline = time.monotonic() + 5
+    while any(t.name == "legion-model-read" for t in threading.enumerate()):
+        assert time.monotonic() < deadline, "the reader thread did not end"
+        time.sleep(0.05)
+    assert _sessions() == before

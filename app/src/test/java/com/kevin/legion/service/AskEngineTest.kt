@@ -176,6 +176,8 @@ class AskEngineTest {
         ).ask("add dentist", wantsWrite = true, touchedReadThroughTool = false)
         assertTrue(answer.message, answer.success)
         assertEquals("Added the dentist.", answer.message)
+        // 2026-11-19: a committed write says so in a field, which the phone's done line reads.
+        assertTrue(answer.toJson().getBoolean("changed"))
     }
 
     @Test
@@ -196,6 +198,7 @@ class AskEngineTest {
         ).ask("what is due", wantsWrite = false, touchedReadThroughTool = false)
         assertEquals(0, callsSent(rec))
         assertTrue(answer.message, answer.success)
+        assertFalse("nothing committed, nothing to confirm", answer.toJson().has("changed"))
     }
 
     @Test

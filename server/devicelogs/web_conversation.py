@@ -296,7 +296,9 @@ EVENT_KINDS: tuple[str, ...] = (
     "latency",
 )
 # `first_audio`: the page's post to the first sound it played (demo stage 2, item 2d); beside the
-# engine's own `tts_first_audio_ms` in the same record, the gap is the network and the page.
+# engine's own `first_sound_ms` in the same record (any sound: the acknowledgement, a lookup's line
+# or the answer), the gap is the network and the page. The engine's `tts_first_audio_ms` is the
+# ANSWER's first audio only (perf/try-faster-first-word review F8).
 LATENCY_METRICS: tuple[str, ...] = ("cold_start", "reply", "first_audio")
 MAX_EVENTS = 500
 

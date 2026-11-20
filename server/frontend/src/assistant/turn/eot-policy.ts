@@ -24,12 +24,19 @@ export const END_PROB = 0.35
 export const CONFIRM_MS = 200
 export const GATE_MS = 192
 export const BASE_MS = 700
+/**
+ * The web's early end (Kevin, 2026-11-19: "700 -> 500"; review F2): at this much silence the turn ends
+ * ONLY when Smart Turn has already said the person is finished. With no verdict yet, or no Smart Turn
+ * at all, the turn ends at BASE_MS (700) as before, so a slow device or a pause never loses time it
+ * had. The phone passes no early end.
+ */
+export const WEB_FINISHED_MS = 500
 export const CAP_MS = 2_500
 export const THRESHOLD = 0.5
 /** The phone's speculation point: transcribe what was said once this much silence has passed. */
 export const EARLY_MS = 300
 
-export type Reason = 'base' | 'extended' | 'cap' | 'fallback'
+export type Reason = 'base' | 'finished' | 'extended' | 'cap' | 'fallback'
 
 export interface Score {
   score: number
@@ -61,10 +68,14 @@ export class EndOfTurnPolicy {
   private inFlightAskedAt = 0
   private scores: Score[] = []
   private earlySent = false
+  private readonly finishedMs: number | null
+  /** Smart Turn said "finished" in this silence (and nothing has held the turn since). */
+  private finished = false
 
-  constructor(smartAvailable: boolean, baseMs: number = BASE_MS) {
+  constructor(smartAvailable: boolean, baseMs: number = BASE_MS, finishedMs: number | null = null) {
     this.smartAvailable = smartAvailable
     this.baseMs = baseMs
+    this.finishedMs = finishedMs
   }
 
   get inActivity(): boolean {
@@ -135,11 +146,14 @@ export class EndOfTurnPolicy {
       this.hold = true
       return [this.request()]
     }
-    if (!this.hold) return []
-    if (done && this.silenceMs < this.baseMs) {
+    if (done && this.silenceMs < this.baseMs && (first || this.hold)) {
+      // Finished before the base: the early end may apply (now, if its time has passed).
       this.hold = false
+      this.finished = true
+      if (this.finishedMs !== null && this.silenceMs >= this.finishedMs) return this.end('finished')
       return []
     }
+    if (!this.hold) return []
     if (done) return this.end('extended')
     return [this.request()]
   }
@@ -188,7 +202,9 @@ export class EndOfTurnPolicy {
       out.push({ type: 'early', silenceMs: this.silenceMs })
     }
     if (this.silenceMs >= CAP_MS) out.push(...this.end('cap'))
-    else if (this.silenceMs >= this.baseMs && !this.hold) {
+    else if (this.finished && !this.hold && this.finishedMs !== null && this.silenceMs >= this.finishedMs && !this.extendedThisTurn) {
+      out.push(...this.end('finished'))
+    } else if (this.silenceMs >= this.baseMs && !this.hold) {
       out.push(...this.end(this.extendedThisTurn ? 'extended' : this.smartAvailable ? 'base' : 'fallback'))
     }
     return out
@@ -227,5 +243,6 @@ export class EndOfTurnPolicy {
     this.anyResult = false
     this.inFlight = null
     this.earlySent = false
+    this.finished = false
   }
 }

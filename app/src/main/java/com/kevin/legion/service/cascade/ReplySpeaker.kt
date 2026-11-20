@@ -90,6 +90,9 @@ internal class ReplySpeaker(
     @Volatile var anyText = false
         private set
 
+    /** Code lines ([line]) waiting to be played to the end, with what to run when one is. */
+    private val lines = java.util.concurrent.ConcurrentHashMap<SpeechClip, () -> Unit>()
+
     @Volatile private var result: Outcome? = null
 
     // Last: the drain reads every field above.
@@ -162,6 +165,37 @@ internal class ReplySpeaker(
         }
         text(if (tagsAllowed) line else TtsTags.strip(line))
         finishText()
+    }
+
+    /**
+     * A line the phone says itself in the middle of a reply (2026-11-19: a completed write's
+     * confirmation, [ScriptedLines.doneLine]): after everything the model has written so far, before
+     * anything it writes next, as its own whole clip. [onPlayed] runs only when that clip played to
+     * its end; cut off, failed, or too late (the reply was already finished) it never runs, so the
+     * caller still owes the line. Not the model's text: [anyText] is unchanged, so a failure line may
+     * still follow it. On a voice that streams text, the stream so far is finished here and the model
+     * goes on in a new one (one reply becomes up to three clips).
+     */
+    fun line(text: String, onPlayed: () -> Unit) {
+        if (interrupted || text.isBlank() || queue.isClosedForSend) return
+        val wasDropped = lead.dropped
+        val held = lead.settle()
+        if (lead.dropped && !wasDropped) onFillerDropped()
+        speakText(held)
+        if (streaming) {
+            tagHold.flush().takeIf { it.isNotEmpty() }?.let { chunker.feed(it) }
+            chunker.flush()?.let { appendStreamed(speakable(it)) }
+            stream?.finish()
+            stream = null
+        } else {
+            splitter.flush()?.let { enqueue(it) }
+        }
+        val clip = tts.speak(normalise(TtsTags.strip(text)))
+        lines[clip] = onPlayed
+        if (queue.trySend(clip).isFailure) {
+            lines.remove(clip)
+            clip.cancel()
+        }
     }
 
     /** Stops now: no more audio from this reply. */
@@ -284,7 +318,7 @@ internal class ReplySpeaker(
                 is TtsOutcome.Failed ->
                     return if (interrupted) Outcome.Interrupted else Outcome.Failed("tts_${o.reason}")
                 TtsOutcome.Cancelled -> return Outcome.Interrupted
-                is TtsOutcome.Done -> Unit
+                is TtsOutcome.Done -> lines.remove(clip)?.invoke()
             }
         }
         return if (interrupted) Outcome.Interrupted else Outcome.Played

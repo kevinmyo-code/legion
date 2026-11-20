@@ -7,6 +7,8 @@ recruiter-demo tickets 07 and 10 (ADR 0068).
 - `GET /api/demo/content`: the page, from `demo.models.RecruiterContent`,
   without `profile` (that is `about_kevin`'s alone).
 - `GET /api/demo/asset/<report|resume|resume_image>`: the stored bytes.
+- `GET /api/demo/media/<name>`: a media file the content names (a model, a still, a video,
+  captions), byte ranges included.
 
 The last two are read by a recruiter's visit AND by a household owner, so
 Kevin can preview the page signed in as himself. A plain member is refused:
@@ -18,6 +20,9 @@ visit is over.
 
 from __future__ import annotations
 
+import re
+
+from django.db.models import BinaryField, F, Func, IntegerField, Value
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -27,8 +32,15 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from demo.content import ASSET_KINDS, public_content
-from demo.models import DemoVisit, RecruiterContent
+from demo.content import (
+    ASSET_KINDS,
+    CAPTIONS_NAME,
+    MODEL_NAME,
+    POSTER_NAME,
+    VIDEO_NAME,
+    public_content,
+)
+from demo.models import DemoVisit, RecruiterContent, RecruiterMediaFile
 from household.models import HouseholdMember, is_recruiter
 from household.permissions import RECRUITER_VISIT_OVER_CODE, IsHouseholdMember
 from legion.client_ip import ClientIpThrottleMixin
@@ -292,6 +304,156 @@ class DemoAssetView(APIView):
         elif kind == "resume":
             response["Content-Disposition"] = f'attachment; filename="{RESUME_DOWNLOAD_NAME}"'
         # `resume_image` is drawn inline by the resume modal: no disposition.
+        return response
+
+
+# =============================================================================
+# GET /api/demo/media/<name>: a media file the content names (`demo.content.MEDIA_TYPES`)
+# =============================================================================
+
+_MEDIA_NAME = re.compile("|".join((MODEL_NAME, POSTER_NAME, VIDEO_NAME, CAPTIONS_NAME)))
+# The most one answer takes from a video's row: bounds the memory and the time a request holds,
+# whatever the file's size. A browser playing or seeking a video asks again from where it is.
+RANGE_CHUNK = 2 * 1024 * 1024
+# At most 15 digits a side (petabytes; a file here is at most 16 MB): a longer number is answered
+# 416, never handed to int(), which refuses more than 4300 digits with a ValueError (a 500).
+_RANGE = re.compile(r"bytes=(\d{0,15})-(\d{0,15})\Z")
+_RANGE_ANY_DIGITS = re.compile(r"bytes=\d*-\d*\Z")
+_UNSATISFIABLE = "unsatisfiable"
+_MEDIA_TYPES_DOC = (
+    "model/gltf-binary",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "text/vtt",
+)
+
+
+def _byte_range(header: str | None, size: int) -> tuple[int, int] | str | None:
+    """(first, last) byte of a single `Range: bytes=...` header, `_UNSATISFIABLE`, or None to
+    send the whole file (no header, several ranges, or one this route does not read)."""
+    value = header.strip() if header else ""
+    match = _RANGE.match(value)
+    if match is None:
+        return _UNSATISFIABLE if _RANGE_ANY_DIGITS.match(value) else None
+    first, last = match.groups()
+    if not first and not last:
+        return None
+    if not first:  # the last N bytes
+        count = int(last)
+        return (max(0, size - count), size - 1) if count > 0 and size > 0 else _UNSATISFIABLE
+    start = int(first)
+    if last and int(last) < start:
+        return None  # not a valid range: RFC 9110 says ignore the header
+    if start >= size:
+        return _UNSATISFIABLE
+    return start, min(int(last), size - 1) if last else size - 1
+
+
+def _read_part(pk: int, start: int, length: int) -> bytes:
+    """`length` bytes of a stored file from `start`, read in Postgres: never the whole row."""
+    part = (
+        RecruiterMediaFile.objects.filter(pk=pk)
+        .annotate(
+            part=Func(
+                F("data"),
+                Value(start + 1),
+                Value(length),
+                function="substr",
+                output_field=BinaryField(),
+            )
+        )
+        .values_list("part", flat=True)
+        .first()
+    )
+    return bytes(part or b"")
+
+
+class DemoMediaView(APIView):
+    """A media file the caller's version of the content names: a model, a poster, or a section's or
+    phone clip's video, poster or captions. Private like the resume: a visit or an owner, never the
+    public. Cached by validator only (`private, no-cache` + the file's hash as ETag): a revisit
+    costs a 304, and a reload of the content is seen at once. Byte ranges (one per request, at most
+    `RANGE_CHUNK`) let a video seek; a video over `RANGE_CHUNK` asked for whole gets its first
+    window as a 206. Everything else is at most 4 MB (`demo.content.MEDIA_MAX_BYTES`) and goes
+    whole."""
+
+    permission_classes = [RecruiterOrOwner]
+    allows_recruiter = True
+
+    @extend_schema(
+        tags=DEMO_TAGS,
+        operation_id="api_demo_media_retrieve",
+        summary="A media file the recruiter page names: a 3D model, a still, a video or captions",
+        parameters=[
+            OpenApiParameter("name", OpenApiTypes.STR, OpenApiParameter.PATH),
+            OpenApiParameter(
+                "Range",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=False,
+                description="One `bytes=first-last`, `bytes=first-` or `bytes=-count` range.",
+            ),
+        ],
+        responses={
+            **{(200, kind): OpenApiResponse(OpenApiTypes.BINARY) for kind in _MEDIA_TYPES_DOC},
+            **{
+                (206, kind): OpenApiResponse(
+                    OpenApiTypes.BINARY,
+                    description="The asked range, at most 2 MiB; Content-Range says which.",
+                )
+                for kind in _MEDIA_TYPES_DOC
+            },
+            304: OpenApiResponse(description="The copy the browser holds is current."),
+            403: OpenApiResponse(
+                DemoRefusalSerializer,
+                description="Neither a recruiter's visit nor a household owner.",
+            ),
+            404: OpenApiResponse(DetailSerializer, description="No such file is loaded."),
+            416: OpenApiResponse(description="The range starts past the end of the file."),
+        },
+    )
+    def get(self, request, name: str):
+        row = RecruiterContent.for_user(request.user)
+        if row is None or not _MEDIA_NAME.fullmatch(name):
+            return Response({"detail": _no_such_asset("such file")}, status=404)
+        meta = (
+            RecruiterMediaFile.objects.filter(content=row, name=name)
+            .annotate(size=Func(F("data"), function="octet_length", output_field=IntegerField()))
+            .values("pk", "sha256", "content_type", "size")
+            .first()
+        )
+        if meta is None:
+            return Response({"detail": _no_such_asset(name)}, status=404)
+        etag, size, kind = f'"{meta["sha256"]}"', meta["size"], meta["content_type"]
+        wanted = None
+        if request.headers.get("If-Range", etag) == etag:
+            wanted = _byte_range(request.headers.get("Range"), size)
+        if wanted is None and kind.startswith("video/") and size > RANGE_CHUNK:
+            # A video asked for whole (no usable Range) gets its first window as a 206, never a
+            # minutes-long whole-file answer on one thread: <video> asks for ranges anyway and
+            # carries on from Content-Range. Models, stills and captions (4 MB at most) go whole.
+            wanted = (0, size - 1)
+        if etag in [tag.strip() for tag in request.headers.get("If-None-Match", "").split(",")]:
+            response = HttpResponse(status=304)
+        elif wanted == _UNSATISFIABLE:
+            response = HttpResponse(status=416)
+            response["Content-Range"] = f"bytes */{size}"
+        elif wanted is not None:
+            start, end = wanted
+            end = min(end, start + RANGE_CHUNK - 1)
+            response = HttpResponse(
+                _read_part(meta["pk"], start, end - start + 1), status=206, content_type=kind
+            )
+            response["Content-Range"] = f"bytes {start}-{end}/{size}"
+        else:
+            response = HttpResponse(_read_part(meta["pk"], 0, size), content_type=kind)
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Accept-Ranges"] = "bytes"
+        response["ETag"] = etag
+        response["Cache-Control"] = "private, no-cache"
         return response
 
 

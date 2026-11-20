@@ -434,4 +434,93 @@ class ReplySpeakerTest {
             assertEquals("Invented.", LeadingFiller.strip("$line Invented."))
         }
     }
+
+    // --- a code line mid-reply (2026-11-19: a completed write is said by code, ScriptedLines.doneLine) ---
+
+    @Test
+    fun `a code line is its own clip between the model's text, and reports played once`() = runBlocking<Unit> {
+        val voice = FakeVoice()
+        val ear = Ear()
+        val s = speaker(voice, ear)
+        var played = 0
+        s.text("Sure. On the list")
+        s.line("Done: added milk to Groceries.") { played++ }
+        s.text("Anything else?")
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("Sure.", "On the list", "Done: added milk to Groceries.", "Anything else?"), voice.asked)
+        assertEquals(1, played)
+        assertEquals("Sure. On the list Done: added milk to Groceries. Anything else?", s.spoken())
+    }
+
+    @Test
+    fun `on a streaming voice the line closes the stream and the model goes on in a new one`() = runBlocking<Unit> {
+        val voice = FakeVoice(streamsText = true)
+        val ear = Ear()
+        val s = speaker(voice, ear)
+        var played = 0
+        s.text("Adding it now. ")
+        s.line("Done: added milk to Groceries.") { played++ }
+        s.text("Anything else?")
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        // Three clips where there was one: the measured cost of a write's line on a streaming voice.
+        assertEquals(listOf("<stream>", "Done: added milk to Groceries.", "<stream>"), voice.asked)
+        assertEquals(listOf("Adding", "it", "now.", "Done:", "added", "milk", "to", "Groceries.", "Anything", "else?"), ear.heard)
+        assertEquals(1, played)
+    }
+
+    @Test
+    fun `a line cut off, failed or never started is never reported played`() = runBlocking<Unit> {
+        // Interrupted while it plays.
+        val slow = FakeVoice(frameDelayMs = 200)
+        val s1 = speaker(slow, Ear())
+        var played1 = 0
+        s1.line("Done: added milk to Groceries.") { played1++ }
+        s1.finishText()
+        delay(250)
+        s1.interrupt()
+        assertEquals(ReplySpeaker.Outcome.Interrupted, withTimeout(2_000) { s1.await() })
+        // Its voice failed.
+        val failing = FakeVoice(failFor = setOf("Done: added milk to Groceries."))
+        val s2 = speaker(failing, Ear())
+        var played2 = 0
+        s2.line("Done: added milk to Groceries.") { played2++ }
+        s2.finishText()
+        assertEquals(ReplySpeaker.Outcome.Failed("tts_internal"), withTimeout(2_000) { s2.await() })
+        // Too late: the reply was already finished.
+        val s3 = speaker(FakeVoice(), Ear())
+        var played3 = 0
+        s3.finishText()
+        s3.line("Done: added milk to Groceries.") { played3++ }
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s3.await() })
+        assertEquals(listOf(0, 0, 0), listOf(played1, played2, played3))
+    }
+
+    @Test
+    fun `a code line is not the model's text, so a failure line may still follow it`() = runBlocking<Unit> {
+        val s = speaker(FakeVoice(), Ear())
+        s.line("Done: added milk to Groceries.") {}
+        assertFalse(s.anyText)
+        s.say("Sorry, that broke.")
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals("Done: added milk to Groceries. Sorry, that broke.", s.spoken())
+    }
+
+    @Test
+    fun `the model's own leading filler before a write is still dropped, never spoken after the line`() = runBlocking<Unit> {
+        val voice = FakeVoice()
+        var dropped = 0
+        val s = ReplySpeaker(
+            tts = voice, scope = scope, play = { true }, firstFrameTimeoutMs = 500,
+            onFirstAudio = { _, _ -> }, onClipStarted = {}, normalise = { it }, onFillerDropped = { dropped++ },
+        )
+        s.text("Checking.")
+        s.line("Done: added milk to Groceries.") {}
+        s.text("Anything else?")
+        s.finishText()
+        assertEquals(ReplySpeaker.Outcome.Played, withTimeout(2_000) { s.await() })
+        assertEquals(listOf("Done: added milk to Groceries.", "Anything else?"), voice.asked)
+        assertEquals(1, dropped)
+    }
 }

@@ -56,7 +56,7 @@ sealed interface DongleCar {
         /** Kevin said which car it is, on this connection. */
         ANSWER,
 
-        /** No VIN could be read; this is the last car Kevin confirmed for this dongle. A default. */
+        /** No VIN could be read; this car's learned fingerprint matched exactly ([CarFingerprint]). A default. */
         ASSUMED,
     }
 
@@ -67,7 +67,7 @@ sealed interface DongleCar {
         /** A VIN was read and more than one car on file has it: a data error, never a pick. */
         SHARED_VIN,
 
-        /** No VIN could be read and Kevin has never said which car this dongle is in. */
+        /** No VIN could be read and no car's fingerprint matched this connect exactly. */
         NO_VIN,
     }
 
@@ -149,15 +149,16 @@ sealed interface DongleCar {
          *  - A VIN on exactly one car on file: that car ([Basis.VIN]), even over a hand pick.
          *  - A VIN on no car: held ([HeldReason.UNKNOWN_VIN]); on two or more: held
          *    ([HeldReason.SHARED_VIN]). Never a guess.
-         *  - No VIN: the last car Kevin confirmed for THIS dongle ([Basis.ASSUMED]) if it is still on
-         *    file, else held ([HeldReason.NO_VIN]).
+         *  - No VIN: the one car on file whose learned fingerprint is exactly this connect's
+         *    ([CarFingerprint], [Basis.ASSUMED]), else held ([HeldReason.NO_VIN]). Nothing is assumed
+         *    from the adapter itself: one adapter moves between cars (Kevin, 2026-11-17).
          * [cars] are the cars on file that are not archived.
          */
         fun decide(
             mac: String,
             vinResult: VinResponse.Result,
             cars: List<CarVin>,
-            lastConfirmedForDongle: String?,
+            fingerprintCar: String?,
             selectedId: String?,
         ): DongleCar {
             val vin = (vinResult as? VinResponse.Result.Vin)?.vin?.let { normalizeVin(it) }
@@ -173,7 +174,7 @@ sealed interface DongleCar {
                     else -> Held(mac, vin, HeldReason.SHARED_VIN)
                 }
             }
-            val last = lastConfirmedForDongle?.takeIf { id -> cars.any { it.carId == id } }
+            val last = fingerprintCar?.takeIf { id -> cars.any { it.carId == id } }
             return if (last != null) OnCar(mac, last, null, Basis.ASSUMED) else Held(mac, null, HeldReason.NO_VIN)
         }
 

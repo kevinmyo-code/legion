@@ -16,10 +16,11 @@
  * `loadTurnDetector` returns null when the models cannot load or run too slowly here
  * (`MAX_SILERO_MS` per window, `MAX_SMART_MS` per check); the page then keeps its energy-threshold
  * `Endpointer` and listens half-duplex. A device fast enough for Silero but not Smart Turn gets
- * silence-only end of turn at the phone's 700 ms base (`smartAvailable` false).
+ * silence-only end of turn at the phone's 700 ms base (`smartAvailable` false). With Smart Turn, a
+ * "finished" verdict ends the turn at 500 ms (`WEB_FINISHED_MS`); no verdict yet keeps the 700 ms base.
  */
 import { BargeInGate, peakLevel, type GateEvent } from './barge-in-gate'
-import { EndOfTurnPolicy, WINDOW_MS, type Action, type Reason } from './eot-policy'
+import { BASE_MS, EndOfTurnPolicy, WEB_FINISHED_MS, WINDOW_MS, type Action, type Reason } from './eot-policy'
 import type { FromWorker, ToWorker } from './turn.worker'
 
 export const WINDOW = 512
@@ -27,7 +28,8 @@ export const WINDOW = 512
 export const PREROLL_WINDOWS = 17
 /** Slower than this per Silero window and the device cannot keep up with 32 ms windows. */
 export const MAX_SILERO_MS = 16
-/** Slower than this per Smart Turn check and it could not hold a turn before the 700 ms base. */
+/** Slower than this per Smart Turn check and it could not hold a turn before the 700 ms base (a slower
+ * "finished" verdict only means the turn ends at 700 ms instead of 500). */
 export const MAX_SMART_MS = 450
 /** The longest turn kept, its newest audio (Smart Turn reads the last 8 s; the engine takes 28 s). */
 export const MAX_TURN_SAMPLES = 28 * 16_000
@@ -134,7 +136,7 @@ class ModelDetector implements TurnDetector {
     this.loadMs = loadMs
     this.sileroMs = sileroMs
     this.smartMs = smartMs
-    this.policy = new EndOfTurnPolicy(smart !== null)
+    this.policy = new EndOfTurnPolicy(smart !== null, BASE_MS, WEB_FINISHED_MS)
     vad.onmessage = (e) => {
       if (e.data.type === 'prob') this.onProb(e.data.seq, e.data.prob)
     }

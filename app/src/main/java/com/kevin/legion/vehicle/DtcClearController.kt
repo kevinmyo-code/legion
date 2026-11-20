@@ -259,6 +259,11 @@ object DtcClearController {
      * persists/logs. Neither caller reimplements a step.
      */
     suspend fun dispatchAndRecord(context: Context, vehicle: Vehicle, confirmed: Boolean): ClearResult {
+        // Voice and the Faults screen alike: never a clear while the adapter's car is unknown, only
+        // recognised, or not decided yet (Kevin, 2026-11-17: one adapter moved between cars).
+        AdapterBinding.clearRefusalNow()?.let {
+            return ClearResult(ClearOutcome.REFUSED, emptyList(), null, "", "", it)
+        }
         val engineRunning = (ObdBluetoothManager.getRpm() ?: 0) > 0
         val result = clearIfParked(
             confirmed = confirmed,

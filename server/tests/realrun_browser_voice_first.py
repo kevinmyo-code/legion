@@ -120,7 +120,7 @@ def _run(live_server, scenario: str, wav: Path, extra: dict) -> dict:
 
 
 def _first_audio_pairs() -> list[dict]:
-    """Item 2d: per spoken turn, the engine's first audio (`tts_first_audio_ms`, from the turn's
+    """Item 2d: per spoken turn, the engine's first sound (`first_sound_ms`, from the turn's
     start on the engine) beside the page's (`first_audio_ms`, from its post to the first sound),
     read from the conversation records this run wrote. Local: no Cloud Run or Cloudflare hop."""
     import re
@@ -131,7 +131,7 @@ def _first_audio_pairs() -> list[dict]:
     out = []
     for row in DeviceLog.objects.order_by("id"):
         text = inflate_capped(bytes(row.body_gz)).decode("utf-8", "replace")
-        engine = [int(m) for m in re.findall(r"tts_first_audio_ms=(-?\d+)", text)]
+        engine = [int(m) for m in re.findall(r"first_sound_ms=(-?\d+)", text)]
         page = [int(m) for m in re.findall(r"first_audio_ms=(\d+)", text.replace("tts_first", "x"))]
         out.append({"engine_ms": engine, "page_ms": page})
     return out
