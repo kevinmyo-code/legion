@@ -300,6 +300,9 @@ object CarLinkWords {
         CarLinkNote.NETWORK_NOT_RECORDED ->
             "Paired, but this phone could not tell which network the head unit is on, so it will send it " +
                 "nothing. Pair again with this phone's hotspot on and the head unit joined to it."
+        CarLinkNote.SERVICE_NO_LOCATION_PERMISSION ->
+            "Android stopped the screen-off sending: LEGION has no location permission right now. Allow " +
+                "location for LEGION (\"While using the app\"), then turn \"Send location\" off and on."
         CarLinkNote.SERVICE_NOT_STARTED ->
             "Android did not let LEGION keep sending with the screen off. Open LEGION with \"Send location\" " +
                 "on to start it."

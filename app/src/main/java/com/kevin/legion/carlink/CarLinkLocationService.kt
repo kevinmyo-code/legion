@@ -39,11 +39,31 @@ class CarLinkLocationService : Service() {
             .build()
         val type =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+        startOrStop(
+            start = { ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type) },
+            stop = { stopSelf() },
+            refused = {
+                (application as? com.kevin.legion.MidnightApplication)?.carLink?.controller
+                    ?.onServiceLostLocationPermission()
+            },
+        )
         return START_NOT_STICKY
     }
 
     companion object {
+        /**
+         * Android 14+ throws when a location-type service starts without location permission at that
+         * moment (revoked, or background only). That is a stop and words on the screen, never a crash.
+         */
+        internal fun startOrStop(start: () -> Unit, stop: () -> Unit, refused: () -> Unit): Boolean = try {
+            start()
+            true
+        } catch (_: SecurityException) {
+            stop()
+            refused()
+            false
+        }
+
         private const val CHANNEL = "car_link"
         private const val NOTIFICATION_ID = 17311
         private const val TAG = "CarLinkService"

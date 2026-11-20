@@ -54,7 +54,7 @@ enum class LinkState { LOADING, NOT_PAIRED, PAIRED, BROKEN }
 enum class CarLinkNote {
     CONFIRMED, REVERTED_QUIET, FORGOT_REVOKE_SENT, FORGOT_NOT_IN_RANGE, FORGET_FAILED, PORT_UNAVAILABLE,
     SETTING_NOT_SAVED, FORGOT_WILL_TELL, NETWORK_NOT_RECORDED, FORGET_TELLING, PORT_TAKEN,
-    NETWORK_CHANGED_HEALING, NETWORK_CHANGED_REPAIR, SERVICE_NOT_STARTED,
+    NETWORK_CHANGED_HEALING, NETWORK_CHANGED_REPAIR, SERVICE_NOT_STARTED, SERVICE_NO_LOCATION_PERMISSION,
 }
 
 /** Everything the Car link screen reads. Not printed anywhere; [PairingStage.DigitsShown] hides its digits. */
@@ -528,6 +528,11 @@ class CarLinkController(
         if (!store.setSendLocation(on)) return _status.update { it.copy(note = CarLinkNote.SETTING_NOT_SAVED) }
         _status.update { it.copy(sendLocation = on) }
         syncService()
+    }
+
+    /** The service could not start for lack of location permission: said in words, not retried. */
+    fun onServiceLostLocationPermission() {
+        _status.update { it.copy(note = CarLinkNote.SERVICE_NO_LOCATION_PERMISSION) }
     }
 
     /** Which of the household's cars this head unit is in (the engine binds its sign-in to one). */

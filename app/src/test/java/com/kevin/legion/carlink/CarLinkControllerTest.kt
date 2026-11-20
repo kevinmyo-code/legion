@@ -431,4 +431,19 @@ class CarLinkControllerTest {
         Thread.sleep(200)
         assertEquals(0, senders)
     }
+
+    // ---- R5-3: a refused location-type start (no location permission) is said, not a crash.
+    @Test fun `a foreground start Android refuses for location stops the service and says why`() {
+        var stopped = false
+        var refused = false
+        val ok = CarLinkLocationService.startOrStop(
+            start = { throw SecurityException("no location permission") },
+            stop = { stopped = true },
+            refused = { refused = true },
+        )
+        assertTrue(!ok && stopped && refused)
+        val c = controller()
+        c.onServiceLostLocationPermission()
+        assertEquals(CarLinkNote.SERVICE_NO_LOCATION_PERMISSION, c.status.value.note)
+    }
 }
