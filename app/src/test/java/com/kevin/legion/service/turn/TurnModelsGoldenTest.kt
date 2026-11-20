@@ -90,6 +90,23 @@ class TurnModelsGoldenTest {
         }
     }
 
+    // The phone runs Smart Turn on SmartTurnModel.INFERENCE_THREADS (4); the tests above run 1 thread.
+    // The decision on the far inputs must not depend on the thread count. The probability may.
+    @Test
+    fun `the decision is the same at one thread and at the phone's thread count`() {
+        val bytes = asset("smart-turn-v3.2-cpu.onnx")
+        SmartTurnModel(env, bytes, threads = 1).use { one ->
+            SmartTurnModel(env, bytes, threads = SmartTurnModel.INFERENCE_THREADS).use { phone ->
+                for (name in listOf("far_high", "far_low")) {
+                    val features = WhisperLogMel().extract(TurnGolden.audio(name))
+                    val single = one.probability(features) >= EndOfTurnPolicy.THRESHOLD
+                    assertEquals(name, single, phone.probability(features) >= EndOfTurnPolicy.THRESHOLD)
+                    assertEquals(name, name == "far_high", single)
+                }
+            }
+        }
+    }
+
     // A SANITY band only, not a golden: "short" (0.67) and "long" (0.48) sit near the threshold, where
     // this quantized model's output moves by about 0.1 between machines. +/-0.2 catches a broken
     // model or wiring (an output pinned at 0 or 1, or a different model), nothing finer.
