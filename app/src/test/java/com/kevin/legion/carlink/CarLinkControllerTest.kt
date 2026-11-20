@@ -67,7 +67,7 @@ class CarLinkControllerTest {
     private fun controller(store: CarLinkStore = this.store) = CarLinkController(
         store = store,
         transport = { _, _ -> null },
-        handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { false }, { null }, {}),
+        handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
         newSender = { ring, onEvent, sendFixes ->
             if (senders > 0) port = BlockingPort()
             senders++
@@ -135,7 +135,7 @@ class CarLinkControllerTest {
         val box = FakeKeystoreStandIn().apply { failOpens = 3 }
         val c = CarLinkController(
             CarLinkStore(box, file) {}, { _, _ -> null },
-            HandoverPlan({ null }, UnitTokenNotYetAvailable(), { false }, { null }, {}),
+            HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
             { _, _, _ -> error("a broken pairing must not start a sender") }, scope, Dispatchers.IO, { 300L }, {},
         )
         c.start()
@@ -159,7 +159,7 @@ class CarLinkControllerTest {
             override fun close() = Unit
         }
         val c = CarLinkController(
-            store, { _, _ -> null }, HandoverPlan({ null }, UnitTokenNotYetAvailable(), { false }, { null }, {}),
+            store, { _, _ -> null }, HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
             { ring, onEvent, sendFixes ->
                 CarLinkSender(
                     Mnai2Feed(ring, { ByteArray(16) }, lan::contains, { null }, onEvent), throwing,

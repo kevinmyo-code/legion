@@ -8,7 +8,6 @@ import android.app.Application
 import android.location.Location
 import android.os.Build
 import android.os.SystemClock
-import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.carlink.protocol.FixSample
 import com.kevin.legion.carlink.protocol.Frames
 import com.kevin.legion.carlink.protocol.Mnai2
@@ -49,10 +48,9 @@ class CarLinkGraph(private val app: Application) {
         CarLinkController(
             store = store,
             transport = TcpPairingTransport(),
-            handover = HandoverPlan(
-                gemini = { CompanionProfile.geminiKey(app) },
+            handover = HandoverPlan.forCar(
+                store = store,
                 tokens = UnitTokenNotYetAvailable(),
-                includeGemini = store::handOverGemini,
                 phoneName = { Build.MODEL },
                 redact = LogcatRedactor::addLiteral,
             ),

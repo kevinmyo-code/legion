@@ -129,7 +129,7 @@ class CarLinkStoreTest {
         store.write(key, old)
         store.setUnitDeviceId("dev-1")
         store.setSendLocation(true)
-        store.setHandOverGemini(true)
+        store.setCarGeminiKey("car-key-for-tests-0002")
         assertTrue(store.write(null, null))
         assertTrue(file.values.isEmpty())
         assertSame(StoredLink.NotPaired, store.load())
@@ -137,7 +137,6 @@ class CarLinkStoreTest {
 
     @Test fun `sending location defaults off`() {
         assertFalse(store.sendLocation())
-        assertFalse(store.handOverGemini())
     }
 
     @Test fun `car_link is excluded from cloud backup, device transfer and legacy backup`() {
@@ -155,7 +154,7 @@ class CarLinkStoreTest {
         assertTrue(excludes("src/main/res/xml/backup_rules.xml", "full-backup-content"))
     }
 
-    @Ignore("red until fix car key") @Test fun `the car's own Gemini key is sealed, read back, and cleared by Forget`() {
+    @Test fun `the car's own Gemini key is sealed, read back, and cleared by Forget`() {
         assertTrue(store.setCarGeminiKey("car-key-for-tests-0001"))
         assertEquals("car-key-for-tests-0001", store.carGeminiKey())
         assertFalse(file.values.values.joinToString().contains("car-key-for-tests-0001"))

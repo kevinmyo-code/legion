@@ -2,11 +2,6 @@ package com.kevin.legion.carlink
 
 import com.kevin.legion.carlink.protocol.HandoverBody
 
-/** Where the transitional Gemini key comes from (3.5, 5.3). Null or blank = none. */
-fun interface GeminiKeySource {
-    fun key(): String?
-}
-
 /** A device token the engine minted FOR the head unit (5.1). Never the phone's own token. */
 class UnitToken(val id: String, val token: String, val userId: String?) {
     override fun toString() = "UnitToken(redacted)"
@@ -30,13 +25,12 @@ class UnitTokenNotYetAvailable : UnitTokenSource {
 /**
  * What the phone hands over (3.5) for one pairing. The unit token is minted only once the unit has
  * proven itself (after a verified `ack`), and revoked again if the pairing then fails. The Gemini key
- * goes only when the person turned that on, because 5.3 wants a separate restricted key for the unit,
- * never the phone's own. Every value is registered with the log redactor before it is used.
+ * is only ever the car's OWN key field (5.3, rev 5: never the phone's own key); empty sends none.
+ * Every value is registered with the log redactor before it is used.
  */
 class HandoverPlan(
-    private val gemini: GeminiKeySource,
+    private val carKey: () -> String?,
     private val tokens: UnitTokenSource,
-    private val includeGemini: () -> Boolean,
     private val phoneName: () -> String?,
     private val redact: (String) -> Unit,
 ) {
@@ -49,7 +43,7 @@ class HandoverPlan(
 
     fun body(): HandoverBody {
         val token = minted
-        val key = if (includeGemini()) gemini.key()?.takeIf { it.isNotBlank() }?.also(redact) else null
+        val key = carKey()?.takeIf { it.isNotBlank() }?.also(redact)
         return HandoverBody(
             engineToken = token?.token,
             engineUserId = token?.userId,
@@ -75,9 +69,9 @@ class HandoverPlan(
     suspend fun revoke(id: String): Boolean = tokens.revoke(id)
 
     companion object {
-        /** STUB (red step). */
+        /** The production wiring: the only Gemini key that can ever go is the car's own key field. */
         fun forCar(store: CarLinkStore, tokens: UnitTokenSource, phoneName: () -> String?, redact: (String) -> Unit) =
-            HandoverPlan({ null }, tokens, { false }, phoneName, redact)
+            HandoverPlan(store::carGeminiKey, tokens, phoneName, redact)
 
         /** 5.1's device name, listed as "Head unit" in the phone's device list. */
         const val UNIT_NAME = "Head unit"

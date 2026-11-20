@@ -70,7 +70,7 @@ class CarLinkStore(
                 if (clearing) {
                     put(UNIT_DEVICE_ID, null)
                     put(SEND_LOCATION, null)
-                    put(HAND_OVER_GEMINI, null)
+                    put(CAR_GEMINI, null)
                 }
             },
         )
@@ -80,9 +80,24 @@ class CarLinkStore(
 
     fun writeRevokeOnly(key: ByteArray, sinceMs: Long): Boolean = false
 
-    fun carGeminiKey(): String? = null
+    /**
+     * The car's OWN Gemini key (5.3, rev 5): a separate, restricted key pasted for the unit, sealed like
+     * the link keys. Never the phone's key, never prefilled, never logged. Null when not set.
+     */
+    fun carGeminiKey(): String? {
+        val blob = file.read()[CAR_GEMINI] ?: return null
+        val plain = openWithRetry(blob) ?: return null
+        return String(plain, Charsets.UTF_8).also { plain.fill(0); redact(it) }
+    }
 
-    fun setCarGeminiKey(key: String?): Boolean = false
+    /** Blank clears it. False = not saved (the Keystore could not seal it; nothing was written). */
+    fun setCarGeminiKey(key: String?): Boolean {
+        val trimmed = key?.trim().orEmpty()
+        if (trimmed.isEmpty()) return file.writeAll(mapOf(CAR_GEMINI to null))
+        redact(trimmed)
+        val sealed = sealed(trimmed.toByteArray(Charsets.UTF_8)) ?: return false
+        return file.writeAll(mapOf(CAR_GEMINI to sealed))
+    }
 
     fun pairingNetwork(): PairingNetwork? = null
 
@@ -95,10 +110,6 @@ class CarLinkStore(
     fun sendLocation(): Boolean = file.read()[SEND_LOCATION] == "1"
 
     fun setSendLocation(on: Boolean): Boolean = file.writeAll(mapOf(SEND_LOCATION to if (on) "1" else null))
-
-    fun handOverGemini(): Boolean = file.read()[HAND_OVER_GEMINI] == "1"
-
-    fun setHandOverGemini(on: Boolean): Boolean = file.writeAll(mapOf(HAND_OVER_GEMINI to if (on) "1" else null))
 
     private fun sealed(plain: ByteArray): String? = box.seal(plain)?.let(LinkCrypto::b64)
 
@@ -119,6 +130,6 @@ class CarLinkStore(
         private const val RESERVE = "link_reserve"
         private const val UNIT_DEVICE_ID = "unit_device_id"
         private const val SEND_LOCATION = "send_location"
-        private const val HAND_OVER_GEMINI = "hand_over_gemini"
+        private const val CAR_GEMINI = "car_gemini_key"
     }
 }

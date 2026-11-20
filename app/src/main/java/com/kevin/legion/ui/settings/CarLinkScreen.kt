@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -50,7 +51,7 @@ fun CarLinkScreen(onBack: () -> Unit) {
             dismiss = viewModel::dismiss,
             forget = viewModel::forget,
             sendLocation = viewModel::setSendLocation,
-            handOverGemini = viewModel::setHandOverGemini,
+            carKey = viewModel::setCarGeminiKey,
         ),
     )
 }
@@ -63,7 +64,7 @@ class CarLinkActions(
     val dismiss: () -> Unit,
     val forget: () -> Unit,
     val sendLocation: (Boolean) -> Unit,
-    val handOverGemini: (Boolean) -> Unit,
+    val carKey: (String?) -> Unit,
 )
 
 @Composable
@@ -98,13 +99,7 @@ fun CarLinkContent(state: CarLinkUiState, onBack: () -> Unit, actions: CarLinkAc
                     onToggle = actions.sendLocation,
                 )
                 Spacer(Modifier.height(8.dp))
-                VoiceTurnRow(
-                    title = "Also hand over the Gemini key",
-                    explanation = "when pairing. The car link plan wants a separate, restricted key for the car, " +
-                        "not this phone's own, so leave this off unless you mean it.",
-                    enabled = state.handOverGemini,
-                    onToggle = actions.handOverGemini,
-                )
+                CarKeyField(state.carKeySet, actions.carKey)
                 if (state.canForget) ForgetButton(actions.forget)
                 Spacer(Modifier.height(16.dp))
                 Text(
@@ -160,6 +155,41 @@ private fun DebugPaste(onPaste: (String) -> Unit) {
     )
     Spacer(Modifier.height(4.dp))
     DeckButton(text = "Pair from pasted code", onClick = { onPaste(text); text = "" }, enabled = text.isNotBlank())
+}
+
+/**
+ * The car's OWN Gemini key (5.3, rev 5): a separate, API-restricted key made for the car. Never
+ * prefilled from this phone's key, never shown back; empty means the car gets no Gemini key.
+ */
+@Composable
+private fun CarKeyField(isSet: Boolean, onSave: (String?) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    Spacer(Modifier.height(16.dp))
+    Text("Car's own Gemini key", style = MaterialTheme.typography.labelLarge)
+    Text(
+        if (isSet) {
+            "Set. It goes to the head unit at the next pairing."
+        } else {
+            "Not set: the head unit gets no Gemini key. Use a separate, restricted key made for the car, " +
+                "never this phone's own."
+        },
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    OutlinedTextField(
+        value = text,
+        onValueChange = { text = it },
+        label = { Text("Paste the car's key") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+    )
+    Row(Modifier.fillMaxWidth()) {
+        DeckButton(text = "Save", onClick = { onSave(text); text = "" }, enabled = text.isNotBlank())
+        if (isSet) {
+            Spacer(Modifier.width(8.dp))
+            DeckButton(text = "Clear", onClick = { onSave(null) })
+        }
+    }
 }
 
 @Composable

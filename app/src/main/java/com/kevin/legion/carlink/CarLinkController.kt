@@ -41,7 +41,7 @@ data class CarLinkStatus(
     val pairing: PairingStage? = null,
     val unitInRange: Boolean = false,
     val sendLocation: Boolean = false,
-    val handOverGemini: Boolean = false,
+    val carKeySet: Boolean = false,
     val note: CarLinkNote? = null,
 )
 
@@ -101,7 +101,7 @@ class CarLinkController(
                     StoredLink.NotPaired -> LinkState.NOT_PAIRED
                 },
                 sendLocation = sendLocation,
-                handOverGemini = runCatching { store.handOverGemini() }.getOrDefault(false),
+                carKeySet = runCatching { store.carGeminiKey() != null }.getOrDefault(false),
             )
         }
     }
@@ -242,9 +242,12 @@ class CarLinkController(
         _status.update { it.copy(sendLocation = on) }
     }
 
-    fun setHandOverGemini(on: Boolean) {
-        if (!store.setHandOverGemini(on)) return _status.update { it.copy(note = CarLinkNote.SETTING_NOT_SAVED) }
-        _status.update { it.copy(handOverGemini = on) }
+    /** The car's own Gemini key field (blank clears it). Sealed on [io]: the Keystore is slow. */
+    fun setCarGeminiKey(key: String?) {
+        scope.launch(io) {
+            if (!store.setCarGeminiKey(key)) return@launch _status.update { it.copy(note = CarLinkNote.SETTING_NOT_SAVED) }
+            _status.update { it.copy(carKeySet = !key.isNullOrBlank()) }
+        }
     }
 
     private fun onRingEvent(e: RingEvent) {

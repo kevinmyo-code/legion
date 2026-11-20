@@ -25,12 +25,11 @@ class HandoverPlanTest {
     }
 
     private val tokens = FakeUnitTokens()
-    private var includeGemini = false
+    private var carKey: String? = null
     private val redacted = mutableListOf<String>()
     private val plan = HandoverPlan(
-        gemini = { "fake-gemini-key-for-tests" },
+        carKey = { carKey },
         tokens = tokens,
-        includeGemini = { includeGemini },
         phoneName = { "Test phone" },
         redact = { redacted += it },
     )
@@ -53,15 +52,15 @@ class HandoverPlanTest {
         assertTrue(redacted.contains("unit-token-for-tests-1"))
     }
 
-    @Test fun `the Gemini key goes only when switched on`() {
-        includeGemini = true
+    @Test fun `the car key goes when it is set`() {
+        carKey = "fake-gemini-key-for-tests"
         val body = fields(plan.body().toJson())
         assertEquals("\"fake-gemini-key-for-tests\"", body["gemini_key"].toString())
         assertTrue(redacted.contains("fake-gemini-key-for-tests"))
     }
 
     @Test fun `no field can carry a URL or anything the document does not list`() = runBlocking {
-        includeGemini = true
+        carKey = "fake-gemini-key-for-tests"
         plan.prepare()
         val json = plan.body().toJson()
         assertTrue(allowed.containsAll(fields(json).keys))
@@ -77,7 +76,7 @@ class HandoverPlanTest {
     }
 
     @Test fun `a long phone name is cut to 40 characters`() {
-        val long = HandoverPlan({ null }, tokens, { false }, { "x".repeat(60) }, {})
+        val long = HandoverPlan({ null }, tokens, { "x".repeat(60) }, {})
         assertEquals(40, long.body().phoneName!!.length)
     }
 
@@ -85,7 +84,7 @@ class HandoverPlanTest {
         assertNull(UnitTokenNotYetAvailable().mint("Head unit"))
     }
 
-    @Ignore("red until fix car key") @Test fun `the Gemini key handed over is only ever the car's own key field, never the phone's`() {
+    @Test fun `the Gemini key handed over is only ever the car's own key field, never the phone's`() {
         val store = CarLinkStore(FakeKeystoreStandIn(), MemoryRecordFile()) {}
         val carPlan = HandoverPlan.forCar(store, tokens, { "Test phone" }, {})
         assertNull(fields(carPlan.body().toJson())["gemini_key"])

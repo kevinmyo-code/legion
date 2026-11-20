@@ -46,7 +46,8 @@ data class CarLinkUiState(
     val digits: String? = null,
     val note: String? = null,
     val sendLocation: Boolean = false,
-    val handOverGemini: Boolean = false,
+    /** Whether the car's own Gemini key is set. The key itself is never shown. */
+    val carKeySet: Boolean = false,
     val canPair: Boolean = true,
     val canCancel: Boolean = false,
     val canForget: Boolean = false,
@@ -110,12 +111,12 @@ class CarLinkViewModel(
 
     fun setSendLocation(on: Boolean) = controller.setSendLocation(on)
 
-    fun setHandOverGemini(on: Boolean) = controller.setHandOverGemini(on)
+    fun setCarGeminiKey(key: String?) = controller.setCarGeminiKey(key)
 
     private fun render(s: CarLinkStatus, scanningNow: Boolean): CarLinkUiState {
         val base = CarLinkUiState(
             sendLocation = s.sendLocation,
-            handOverGemini = s.handOverGemini,
+            carKeySet = s.carKeySet,
             scannerAvailable = scanner.available,
             debugPaste = debugPaste,
             note = s.note?.let(CarLinkWords::note),

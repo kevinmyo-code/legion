@@ -71,7 +71,7 @@ class CarLinkViewModelTest {
     private val controller = CarLinkController(
         store = store,
         transport = { _, _ -> conn },
-        handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { false }, { "Test phone" }, {}),
+        handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { "Test phone" }, {}),
         newSender = { _, _, _ -> null },
         scope = scope,
         io = Dispatchers.Unconfined,
@@ -85,7 +85,7 @@ class CarLinkViewModelTest {
     @Test fun `starts not paired, off by default, with no scanner chosen`() {
         assertEquals(CarLinkPhase.NOT_PAIRED, state().phase)
         assertFalse(state().sendLocation)
-        assertFalse(state().handOverGemini)
+        assertFalse(state().carKeySet)
         assertFalse(state().scannerAvailable)
         assertTrue(state().canPair)
     }
@@ -167,7 +167,7 @@ class CarLinkViewModelTest {
         val unreadable = FakeKeystoreStandIn().apply { failOpens = 3 }
         val brokenController = CarLinkController(
             CarLinkStore(unreadable, file) {}, { _, _ -> null },
-            HandoverPlan({ null }, UnitTokenNotYetAvailable(), { false }, { null }, {}),
+            HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
             { _, _, _ -> null }, scope, Dispatchers.Unconfined, { 300L }, {},
         )
         val broken = CarLinkViewModel(brokenController, NoQrScannerChosen(), debugPaste = false, scope = scope)
