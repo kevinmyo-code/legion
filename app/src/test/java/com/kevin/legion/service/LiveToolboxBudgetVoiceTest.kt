@@ -108,6 +108,22 @@ class LiveToolboxBudgetVoiceTest {
         assertEquals(18_793L, r.getLong("left_cents"))
     }
 
+    // Blind review M3, 2026-11-20: view=total with a category fell through to the month total, which
+    // the model could then say as the category's figure. A named category answers for that category.
+    @Test
+    fun `any view that names a category answers for that category, spoken by code`() {
+        for (view in listOf("total", "top", "left", "category")) {
+            val r = call("view" to view, "category" to "groceries")
+            assertEquals(view, "category", r.getString("view"))
+            assertEquals(view, 41_207L, r.getLong("amount_cents"))
+            assertFalse(view, r.has("total_spent_cents"))
+            assertTrue(view, VerbatimSpeech.of(r)!!.contains(SpokenMoney.amount(41_207)))
+        }
+        val unknown = call("view" to "total", "category" to "yacht upkeep")
+        assertFalse(unknown.getBoolean("success"))
+        assertTrue(unknown.has("valid_categories"))
+    }
+
     @Test
     fun `a category named with no view is the category view, never the month total`() {
         val r = call("category" to "Dining")

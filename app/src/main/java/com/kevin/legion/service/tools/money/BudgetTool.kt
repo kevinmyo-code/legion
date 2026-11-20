@@ -20,15 +20,15 @@ import org.json.JSONObject
 internal object BudgetTool {
 
     /**
-     * The budget view [args] asks for, or null for the `total` view. A category named with no view, or
-     * with `left` ("left in my grocery budget", flash-lite probe 2026-11-19), is the category view: the
-     * month's total or the whole budget's left would answer a different question with a wrong figure.
+     * The budget view [args] asks for, or null for the `total` view. A named category is the category
+     * view whatever the view says ("left in my grocery budget" came as view=left, flash-lite probe
+     * 2026-11-19; view=total with a category, blind review M3 2026-11-20): the month's total or the
+     * whole budget's left would answer a different question with a figure the model could misname.
      */
     fun viewOf(args: JSONObject): String? {
         val view = args.optString("view").trim().lowercase()
-        val named = args.optString("category").isNotBlank()
         return when {
-            named && (view.isEmpty() || view == "left") -> "category"
+            args.optString("category").isNotBlank() -> "category"
             view in setOf("left", "category", "top") -> view
             else -> null
         }
