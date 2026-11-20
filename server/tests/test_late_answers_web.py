@@ -221,3 +221,21 @@ def test_no_line_is_spent_on_a_crisis_or_on_talk_not_for_us(
         events = _events(_post(member, text="pass the salt please"))
     assert "invented ferry" not in str(_of(events, "sentence"))
     assert OwedLine.objects.get().delivered_at is None
+
+
+def test_switched_off_a_web_turn_makes_exactly_the_deployed_queries(member, engine, late_off):
+    """Recheck item 1: with the flag off the web door (a recruiter's visit included: same path)
+    issues the queries it did before the late-answer path. Measured on deployed `2a7e081a` for
+    this typed turn with a `turn_id`: 4 cancel checks, 62 queries in all, none on a late table."""
+    import uuid
+
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    engine.model = FakeModel([say("Nothing is on today.")])
+    with CaptureQueriesContext(connection) as queries:
+        _events(_post(member, text="Anything on today?", turn_id=str(uuid.uuid4())))
+    sql = [q["sql"] for q in queries.captured_queries]
+    assert sum("assistant_turn_cancel" in s for s in sql) == 4
+    assert not any("agents_late" in s or "agents_owed" in s for s in sql)
+    assert len(sql) == 62
