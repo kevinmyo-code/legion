@@ -668,3 +668,24 @@ def test_switched_off_prune_leaves_the_late_tables_alone(household_user, monkeyp
     assert not any("agents_late_task" in q["sql"] or "agents_owed_line" in q["sql"]
                    for q in queries.captured_queries)
     assert LateTask.objects.count() == 1
+
+
+# -- review 2026-11-20, item g: the owner keys delete with the user at the database ---------------
+
+
+@pytest.mark.parametrize("table", ["agents_late_task", "agents_owed_line"])
+def test_the_owner_key_cascades_at_the_database(table):
+    """So a member can be deleted by code that predates these tables (a rollback): Postgres
+    removes their rows itself."""
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            select c.confdeltype from pg_constraint c
+            join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey)
+            where c.contype = 'f' and c.conrelid = %s::regclass and a.attname = 'owner_user_id'
+            """,
+            [f"public.{table}"],
+        )
+        assert [row[0] for row in cursor.fetchall()] == ["c"]
