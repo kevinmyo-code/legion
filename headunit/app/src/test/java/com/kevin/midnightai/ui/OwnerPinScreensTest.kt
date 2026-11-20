@@ -42,8 +42,10 @@ class OwnerPinScreensTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
 
     private class Paired : LinkKeySource {
-        override fun hasRecord() = true
-        override fun keys() = LinkKeys(ByteArray(32) { 1 }, null, LinkStatus.PAIRED)
+        @Volatile var paired = true
+        override fun hasRecord() = paired
+        override fun keys() =
+            if (paired) LinkKeys(ByteArray(32) { 1 }, null, LinkStatus.PAIRED) else LinkKeys(null, null, LinkStatus.NOT_PAIRED)
         override fun commitPending(): String? = null
         override fun dropPending() {}
         override fun forget() {}
@@ -106,12 +108,16 @@ class OwnerPinScreensTest {
 
 
     @Test fun lD_forgetTellsTheOwnerToRemoveTheHeadUnitOnThePhone() {
-        CarLink.store = Paired()
+        val store = Paired()
+        CarLink.store = store
         CarLink.refresh()
         val activity = render(inScaffold = false) { CarLinkSection(it, onBack = {}) }
         node(activity, "HOLD TO FORGET").config[SemanticsActions.OnLongClick].action!!.invoke()
+        store.paired = false // the unit is now unpaired, as a real Forget leaves it (review N-b)
         val shown = waitFor(activity) { t -> t.any { it.contains("Head unit") } }
         assertTrue("no words about the phone: $shown", shown.any { it.contains("remove \"Head unit\"") })
+        // ...and no new pairing listener opened by itself.
+        assertTrue("a pairing pane opened unasked: $shown", shown.none { it.startsWith("Starting") || it.contains("not on Wi-Fi") })
     }
 
     @Test fun lE_theEnginePinPromptGoesAwayWhenTheCarStartsMoving() {

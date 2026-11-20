@@ -47,6 +47,10 @@ class CarLinkScreenRenderTest {
         override fun phoneName(): String? = null
     }
 
+    private companion object {
+        const val PAIR_KEY = "PAIR WITH YOUR PHONE"
+    }
+
     @Before fun reset() = CarLink.resetForTest()
     @After fun after() {
         CarLink.resetForTest()
@@ -63,7 +67,7 @@ class CarLinkScreenRenderTest {
         while (System.currentTimeMillis() < until) {
             ShadowLooper.idleMainLooper(20, java.util.concurrent.TimeUnit.MILLISECONDS)
             texts = texts(activity)
-            if (texts.keys.any { it.startsWith("Paired") || it.startsWith("Starting") }) break
+            if (texts.keys.any { it.startsWith("Paired") || it.startsWith("Starting") || it == PAIR_KEY }) break
             Thread.sleep(20)
         }
         return activity to texts
@@ -80,6 +84,30 @@ class CarLinkScreenRenderTest {
         }
         walk(root.semanticsOwner.unmergedRootSemanticsNode)
         return out
+    }
+
+    /** Taps PAIR WITH YOUR PHONE (review N-b: an unpaired unit opens no listener until asked). */
+    private fun tapPair(activity: ComponentActivity) {
+        fun find(v: View): ViewRootForTest? = (v as? ViewRootForTest)
+            ?: (v as? ViewGroup)?.let { g -> (0 until g.childCount).firstNotNullOfOrNull { find(g.getChildAt(it)) } }
+        val nodes = mutableListOf<SemanticsNode>()
+        fun walk(n: SemanticsNode) {
+            nodes += n
+            n.children.forEach(::walk)
+        }
+        walk(find(activity.window.decorView)!!.semanticsOwner.rootSemanticsNode)
+        nodes.first { n ->
+            n.config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text == PAIR_KEY } &&
+                n.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) != null
+        }.config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!.invoke()
+        repeat(5) { ShadowLooper.idleMainLooper(20, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(20) }
+    }
+
+    /** Review N-b: an unpaired unit shows PAIR and opens no pairing listener until the owner taps it. */
+    @Test fun anUnpairedUnitOpensNoListenerUntilAsked() {
+        val (activity, texts) = render(LinkStatus.NOT_PAIRED)
+        assertTrue("a pairing pane opened unasked: ${texts.keys}", texts.keys.none { it.startsWith("Starting") || it.contains("not on Wi-Fi") })
+        assertOnScreen(activity, "pair key", texts[PAIR_KEY])
     }
 
     private fun assertOnScreen(activity: ComponentActivity, what: String, r: Rect?) {
@@ -99,6 +127,7 @@ class CarLinkScreenRenderTest {
     /** Recheck 2faecc19: the QR goes away if the car starts moving mid-pairing (checked on a 1 s tick). */
     @Test fun startingToDriveMidPairingDropsToParkToPair() {
         val (activity, _) = render(LinkStatus.NOT_PAIRED)
+        tapPair(activity)
         // Let the pane settle in a stable state (no Wi-Fi under Robolectric), so nothing else
         // recomposes it: only the 1 s driving check can take the pairing pane away.
         var now = texts(activity)
@@ -120,8 +149,9 @@ class CarLinkScreenRenderTest {
         assertOnScreen(activity, "park line", now[now.keys.first { it.startsWith("Park to pair") }])
     }
 
-    @Test fun anUnpairedUnitOpensThePairingPane() {
+    @Test fun anUnpairedUnitOpensThePairingPaneWhenAsked() {
         val (activity, _) = render(LinkStatus.NOT_PAIRED)
+        tapPair(activity)
         // "Starting..." or, once its off-thread step has run, why it cannot start (no Wi-Fi here):
         // either is the pairing pane. Let the layout settle before reading where it is.
         repeat(5) { ShadowLooper.idleMainLooper(20, java.util.concurrent.TimeUnit.MILLISECONDS); Thread.sleep(20) }

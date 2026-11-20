@@ -101,6 +101,9 @@ internal fun CarLinkSection(context: Context, onBack: () -> Unit) {
     var asking by remember { mutableStateOf<GuardedAction?>(null) }
     var settingPin by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
+    // Review N-b: after Forget or RESET the words for the phone stay up (above a pairing pane too)
+    // until the owner dismisses them.
+    var forgotten by remember { mutableStateOf(false) }
     // Review B1: known from the first frame. isSet() is a plain prefs lookup (no Keystore), so a long
     // press can never land in a window where a set PIN still reads as "not set".
     var pinSet by remember { mutableStateOf(ownerPin.isSet()) }
@@ -122,8 +125,8 @@ internal fun CarLinkSection(context: Context, onBack: () -> Unit) {
                 DriveLog.breadcrumb(if (action == GuardedAction.RESET) "car link reset" else "car link forgotten")
                 CarLink.changed(context)
                 withContext(Dispatchers.Main) {
-                    // Protocol 5.5: the unit cannot tell the phone or the engine (review L-d).
-                    note = FORGOTTEN_WORDS
+                    // Protocol 5.5: the unit cannot tell the phone or the engine (review L-d, N-b).
+                    forgotten = true
                     facts++
                 }
             }
@@ -139,8 +142,22 @@ internal fun CarLinkSection(context: Context, onBack: () -> Unit) {
     }
     SectionScaffold("Car link", onBack) {
         val waiting = asking
+        if (forgotten) {
+            Text(FORGOTTEN_WORDS, style = RowSubtitle, color = AriaColors.accentText(AriaColors.Amber))
+            OutlinedButton(onClick = { forgotten = false }, modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin)) { Text("OK") }
+            Spacer(Modifier.height(AriaDimens.s3))
+        }
         when {
-            pairing || status == LinkStatus.NOT_PAIRED -> PairingPane(context, store, attempt) { pairing = false; facts++ }
+            pairing -> PairingPane(context, store, attempt) { pairing = false; facts++ }
+            // Review N-b: unpaired, nothing listens until the owner asks (no PIN: a first pairing).
+            status == LinkStatus.NOT_PAIRED -> {
+                Text(CarLinkRules.statusLine(status, null), style = RowTitle, color = AriaColors.TextPrimary)
+                Spacer(Modifier.height(AriaDimens.s3))
+                Button(
+                    onClick = { attempt++; pairing = true },
+                    modifier = Modifier.heightIn(min = AriaDimens.driveTouchMin),
+                ) { Text("PAIR WITH YOUR PHONE") }
+            }
             settingPin -> OwnerPinSetup(ownerPin, onDone = { settingPin = false; facts++; note = "Owner PIN set." }, onCancel = { settingPin = false })
             waiting != null -> OwnerPinPrompt(
                 ownerPin,
