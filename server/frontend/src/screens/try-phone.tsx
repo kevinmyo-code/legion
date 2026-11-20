@@ -66,6 +66,9 @@ export function PhoneSection({ phone, side }: { phone: DemoPhone; side?: OrbSide
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue
+          // A clip the visitor is watching stays put while the page scrolls past other rows
+          // (review 2026-11-20); paused, the rows lead again.
+          if (player.current && !player.current.paused) continue
           const index = steps.current.indexOf(entry.target as HTMLDivElement)
           if (index >= 0) setActive(index)
         }
