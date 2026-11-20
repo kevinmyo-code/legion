@@ -311,6 +311,12 @@ internal class CascadeSession(
     private val backchannelSeq = AtomicInteger(0)
     @Volatile private var backchannelEndAtMs: Long? = null
 
+    /** The utterance whose end scheduled the backchannel: a resume through the clip continues it. */
+    @Volatile private var backchannelUtt: TurnUtterance? = null
+
+    /** His audio through a half-duplex backchannel ([ClipListen]); under [turnLock]. */
+    private var clipListen: ClipListen? = null
+
     /** Any audio of this turn's reply (filler or answer) has started: a backchannel due now is dropped. */
     @Volatile private var turnAudioStarted = false
 
@@ -962,6 +968,7 @@ internal class CascadeSession(
             val u = TurnUtterance(inner, b, keepAudio = true)
             self = u
             currentUtt = u
+            resumeThroughClip(u)
             scope.launch(loop) {
                 onUserTurnStart()
                 if (speculate && b.kind == SpeechBackend.Kind.CLOUD) watchCloudSilence(u)
@@ -1051,6 +1058,7 @@ internal class CascadeSession(
 
     private fun onUserTurnStart() {
         heardSinceOpen = true
+        if (continuesFirstHalf()) return
         uttStartedAtMs = System.currentTimeMillis()
         // Over an audible reply or a turn still in flight: a correction or a merge, never a backchannel.
         uttOverReply = speaking || turnJob?.isActive == true
@@ -1092,6 +1100,46 @@ internal class CascadeSession(
     }
 
     /**
+     * Called from the detector's start, under [turnLock]. A start soon after a half-duplex backchannel
+     * ([ClipListen.resumes]) continues the turn before it, if that turn is still running and called no
+     * write: the new utterance begins with the first half's audio and the audio kept during the clip.
+     */
+    @Suppress("ReturnCount") // nothing held, no first half, not a resume
+    private fun resumeThroughClip(u: TurnUtterance) {
+        val listen = clipListen ?: return
+        clipListen = null
+        val first = backchannelUtt ?: return
+        val firstRunning = turnJob?.isActive == true && turn?.writeCalled != true
+        if (!listen.resumes() || !firstRunning || first === u) return
+        val prefix = listen.prefix(TurnTaker.PRE_ROLL_MS * PCM_BYTES_PER_MS)
+        u.audio(prefix, 0, prefix.size)
+        u.resumedFrom = first
+        LiveLatency.log(LiveLatency.TAG, "backchannel_resume prefix_ms=${prefix.size / PCM_BYTES_PER_MS}")
+    }
+
+    /** A start that resumed through a backchannel ([resumeThroughClip]): the turn goes on, true. */
+    private fun continuesFirstHalf(): Boolean {
+        val first = currentUtt?.resumedFrom ?: return false
+        takeOverFirstHalf(first)
+        uttStartedAtMs = System.currentTimeMillis()
+        uttOverReply = true
+        followUpEvent(FollowUpWindow.Event.UserSpeech)
+        audit.activityStart()
+        if (!speaking) host.phase(Phase.LISTENING, "Listening...")
+        return true
+    }
+
+    /** The first half is not answered on its own: it is in the resumed utterance now. */
+    private fun takeOverFirstHalf(first: TurnUtterance) {
+        turn?.takeIf { it.fromUser }?.merged = true
+        first.cancel()
+        discardDraftOf(first, "resumed")
+        turnJob?.cancel()
+        speaker?.interrupt()
+        LiveLatency.log("LIVE_TURN", "turn_merged reason=resumed_through_backchannel")
+    }
+
+    /**
      * The laptop ended the turn itself (contract 4b, Kyutai's pause head): its final text is already
      * waiting in the utterance. Stop streaming to that id.
      */
@@ -1110,7 +1158,7 @@ internal class CascadeSession(
         LiveLatency.log(LiveLatency.TAG, CascadeLines.eot(source, silence, prob))
         audit.activityEnd()
         host.phase(Phase.THINKING, "...")
-        scheduleBackchannel(eotAtMs)
+        scheduleBackchannel(u, eotAtMs)
         val previous = turnJob
         turnJob = scope.launch(loop) {
             previous?.join()
@@ -1123,8 +1171,9 @@ internal class CascadeSession(
      * says no or the answer's audio is there first. Decided now from signals code already has
      * (his voiced span, the last turn's ask fields, how this turn started, Quiet), never his words.
      */
-    private fun scheduleBackchannel(eotAtMs: Long) {
+    private fun scheduleBackchannel(u: TurnUtterance, eotAtMs: Long) {
         backchannelJob?.cancel()
+        backchannelUtt = u
         turnAudioStarted = false
         backchannelEndAtMs = null
         val seq = backchannelSeq.incrementAndGet()
@@ -1138,6 +1187,8 @@ internal class CascadeSession(
                 startedAtMs = uttStartedAtMs,
                 lastBackchannelAtMs = lastBackchannelAtMs,
                 lastTurnHadOne = lastTurnHadBackchannel,
+                halfDuplex = turnTaker?.bargeIn != true,
+                halfDuplexAllowed = VoiceTurnSettings.backchannelHalfDuplex(ctx),
             ),
         )
         lastTurnHadBackchannel = false
@@ -1166,6 +1217,10 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=answer_first")
             return
         }
+        if (answerTextIn()) {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${Backchannel.Skip.ANSWER_TEXT.token}")
+            return
+        }
         val line = Backchannel.pick(recentBackchannels, backchannelIndex.getAndIncrement()) {
             b.tts.inHand(SpokenText.forSpeech(it))
         }
@@ -1181,6 +1236,7 @@ internal class CascadeSession(
         }
         playGate.withLock {
             if (!due()) return
+            listenThroughClip()
             playbackActive = true
             recentBackchannels.add(line)
             lastBackchannelAtMs = System.currentTimeMillis()
@@ -1207,6 +1263,18 @@ internal class CascadeSession(
             for (frame in clip.frames) out.write(frame)
             out.toByteArray()
         } ?: ByteArray(0).also { clip.cancel() }
+    }
+
+    /**
+     * The answer's text is already in: its first audio is a voice request away, so a clip now would
+     * only hold it up (there is no earlier "first audio is due" signal to key on).
+     */
+    private fun answerTextIn(): Boolean = turn?.let { it.fromUser && it.reply.isNotEmpty() } == true
+
+    /** Half-duplex (only with its setting): his audio is kept through the clip, never dropped ([ClipListen]). */
+    private fun listenThroughClip() {
+        if (turnTaker?.bargeIn == true) return
+        synchronized(turnLock) { clipListen = ClipListen(backchannelUtt?.keptAudio() ?: ByteArray(0)) }
     }
 
     /** A task line never starts within [Backchannel.SPACING_MS] of a backchannel's end (no stacking). */
@@ -2580,7 +2648,7 @@ internal class CascadeSession(
         val hold = UsageHold(::noteUsage)
         val d = TurnDraft(u, "silence", System.currentTimeMillis(), speechAtSnapshotMs = speechAt)
         d.sttHold = hold
-        d.stt = scope.async(Dispatchers.IO) { gemini.transcribe(audio, hold::add) }
+        d.stt = scope.async(Dispatchers.IO) { gemini.transcribe(audio, hold::add, hedged = false) }
         draft = d
         usageLedger.spec(started = 1)
         LiveLatency.log(LiveLatency.TAG, CascadeLines.specStart(d.trigger, u.backend.kind.token, 0))
@@ -2900,6 +2968,11 @@ internal class CascadeSession(
             turnJob?.takeIf { it !== caller }?.cancel()
             currentUtt?.cancel()
             currentUtt = null
+            // His held audio goes with the session (a failed open too: every exit releases).
+            synchronized(turnLock) {
+                backlog = null
+                clipListen = null
+            }
         }
         try {
             micJob?.takeIf { it !== caller }?.cancelAndJoin()
@@ -2976,6 +3049,10 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "open_capture_ms=${System.currentTimeMillis() - openStartedAtMs}")
         }
         synchronized(turnLock) {
+            clipListen?.let { listen ->
+                listen.onFrame(buf, n, playbackActive)
+                if (listen.expired) clipListen = null
+            }
             val taker = turnTaker
             if (taker != null) taker.feed(buf, n, playbackActive) else backlog?.add(buf, n, playbackActive)
         }

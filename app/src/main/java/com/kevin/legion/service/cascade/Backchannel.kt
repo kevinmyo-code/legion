@@ -25,7 +25,11 @@ package com.kevin.legion.service.cascade
  *   waiting;
  * - a backchannel played on the last turn and this one started within [TIC_GAP_MS] of it (a tic);
  * - Quiet mode;
- * - not a turn of his (a proactive line, the greeting).
+ * - not a turn of his (a proactive line, the greeting);
+ * - half-duplex (barge-in off: Bluetooth, a call): the mic is deaf while a clip plays, so a clip
+ *   about a second after his last word would swallow the rest of a sentence he was still saying
+ *   (blind review M1, 2026-11-19). Allowed there only behind [halfDuplexAllowed] (off), which keeps
+ *   his audio through the clip and hands it on ([ClipListen]).
  * Which clip ([pick]): never the one before, and none of the last [ROTATION] (a [RecentLines] window).
  *
  * Pure: no clock, no Android.
@@ -67,11 +71,15 @@ internal object Backchannel {
         val lastBackchannelAtMs: Long,
         /** The turn just before this one played a backchannel. */
         val lastTurnHadOne: Boolean,
+        /** Barge-in is off for this conversation (Bluetooth route, call audio): the mic is deaf during a clip. */
+        val halfDuplex: Boolean = false,
+        /** The setting that lets a half-duplex conversation have one, with [ClipListen] keeping his audio (off). */
+        val halfDuplexAllowed: Boolean = false,
     )
 
     enum class Skip(val token: String) {
         NOT_HIS("not_his"), SHORT("short"), ASKED("answer_to_ask"), OVER_REPLY("over_reply"), TIC("tic"),
-        QUIET("quiet"),
+        QUIET("quiet"), HALF_DUPLEX("half_duplex"), ANSWER_TEXT("answer_text"),
     }
 
     /** Null: play one (if one is in memory and the answer has not started). Otherwise why not. */
@@ -79,6 +87,7 @@ internal object Backchannel {
     fun decide(t: Turn): Skip? {
         if (!t.fromUser) return Skip.NOT_HIS
         if (t.quiet) return Skip.QUIET
+        if (t.halfDuplex && !t.halfDuplexAllowed) return Skip.HALF_DUPLEX
         if (t.overReplyOrTurn) return Skip.OVER_REPLY
         if (t.askedBefore) return Skip.ASKED
         if (t.speechMs < MIN_SPEECH_MS) return Skip.SHORT

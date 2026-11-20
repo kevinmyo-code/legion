@@ -142,4 +142,12 @@ class BackchannelTest {
             assertEquals(line, SpokenText.forSpeech(line))
         }
     }
+
+    @Test
+    fun `half-duplex gets none unless its setting allows it (the mic is deaf during a clip)`() {
+        val half = turn().copy(halfDuplex = true)
+        assertEquals(Backchannel.Skip.HALF_DUPLEX, Backchannel.decide(half))
+        assertNull(Backchannel.decide(half.copy(halfDuplexAllowed = true)))
+        assertNull(Backchannel.decide(turn().copy(halfDuplex = false)))
+    }
 }

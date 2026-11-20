@@ -278,6 +278,19 @@ class CloudSpeechTest {
     }
 
     @Test
+    fun `a speculative draft is not hedged, a slow first request is waited for`() = runBlocking<Unit> {
+        val fake = FakeGemini { _, _, onEvent ->
+            delay(300)
+            onEvent(textEv("Invented draft words."))
+            StreamOutcome.Ok
+        }
+        val stt = GeminiStt(fake, scope, attemptTimeoutMs = { 5_000L }, hedgeAfterMs = { 50L })
+        val r = withTimeout(3_000) { stt.transcribe(pcm(400), hedged = false) }
+        assertEquals("Invented draft words.", (r as SttResult.Text).text)
+        assertEquals(1, fake.calls.size)
+    }
+
+    @Test
     fun `two hung requests end as a timeout well inside the final deadline`() = runBlocking<Unit> {
         val fake = FakeGemini { _, _, _ -> awaitCancellation() }
         val stt = GeminiStt(fake, scope, attemptTimeoutMs = { 150L })

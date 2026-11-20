@@ -312,7 +312,12 @@ internal class GeminiStt(
      * each request's counts (a speculative draft holds them until it is kept or dropped).
      */
     @Suppress("ReturnCount", "CyclomaticComplexMethod") // one exit per outcome; the hung-request retry
-    suspend fun transcribe(pcm: ByteArray, report: (CallUsage) -> Unit = usage): SttResult {
+    suspend fun transcribe(
+        pcm: ByteArray,
+        report: (CallUsage) -> Unit = usage,
+        /** False for a speculative draft: its final is transcribed anyway, so a slow draft is not hedged. */
+        hedged: Boolean = true,
+    ): SttResult {
         val audioMs = pcm.size / BYTES_PER_MS
         if (pcm.size < minAudioBytes) return SttResult.Text("", null, audioMs.toLong(), 0)
         val body = CloudSpeechWire.transcribe(
@@ -326,7 +331,7 @@ internal class GeminiStt(
         // longer audio) is abandoned and the same audio asked again on a fresh call, once. Since
         // 2026-11-19 the second request also starts beside a first that is merely slow ([SttHedge]).
         val deadline = attemptTimeoutMs(audioMs.toLong())
-        val hedge = hedgeAfterMs(audioMs.toLong())
+        val hedge = if (hedged) hedgeAfterMs(audioMs.toLong()) else NO_HEDGE_MS
         val race = SttHedge.race(
             hedgeAfterMs = hedge,
             attemptTimeoutMs = deadline,
@@ -454,6 +459,9 @@ internal class GeminiStt(
             val extraSeconds = ((audioMs - ATTEMPT_BASE_AUDIO_MS).coerceAtLeast(0) + MS_PER_S - 1) / MS_PER_S
             return (ATTEMPT_TIMEOUT_MS + extraSeconds * ATTEMPT_PER_SECOND_MS).coerceAtMost(ATTEMPT_CAP_MS)
         }
+
+        /** Longer than any attempt: the second request starts only on a failure or a hang. */
+        private const val NO_HEDGE_MS = Long.MAX_VALUE
 
         const val ATTEMPT_TIMEOUT_MS = 3_500L
         const val ATTEMPT_CAP_MS = 8_000L

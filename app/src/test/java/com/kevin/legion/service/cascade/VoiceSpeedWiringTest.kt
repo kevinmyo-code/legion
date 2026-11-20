@@ -105,7 +105,7 @@ class VoiceSpeedWiringTest {
     fun `a backchannel is scheduled at the end of his speech and decided by the pure rule`() {
         val s = session()
         val end = bodyOf(s, "onTurnEnd")
-        assertTrue(end.indexOf("scheduleBackchannel(eotAtMs)") in 0 until end.indexOf("runTurn("))
+        assertTrue(end.indexOf("scheduleBackchannel(u, eotAtMs)") in 0 until end.indexOf("runTurn("))
         val schedule = bodyOf(s, "scheduleBackchannel")
         assertTrue(schedule.contains("Backchannel.decide("))
         assertTrue(schedule.contains("askedBefore = lastTurnAsked"))
@@ -164,6 +164,41 @@ class VoiceSpeedWiringTest {
         assertTrue(bodyOf(s, "afterReply").contains("lastReplyEndAtMs = System.currentTimeMillis()"))
         // Every utterance keeps its audio, so the cloud's miss can be measured and sent again.
         assertTrue(s.contains("TurnUtterance(inner, b, keepAudio = true)"))
+    }
+
+    // --- review M1 and follow-ups -------------------------------------------------------------------
+
+    @Test
+    fun `half-duplex backchannels keep his audio through the clip and a resume continues the turn`() {
+        val s = session()
+        val schedule = bodyOf(s, "scheduleBackchannel")
+        assertTrue(schedule.contains("halfDuplex = turnTaker?.bargeIn != true"))
+        assertTrue(schedule.contains("halfDuplexAllowed = VoiceTurnSettings.backchannelHalfDuplex(ctx)"))
+        val play = bodyOf(s, "playBackchannel")
+        assertTrue(play.indexOf("listenThroughClip()") in 0 until play.indexOf("playbackActive = true"))
+        assertTrue(bodyOf(s, "listenThroughClip").contains("clipListen = ClipListen("))
+        val feed = bodyOf(s, "onMicBuffer")
+        assertTrue(feed.indexOf("listen.onFrame(buf, n, playbackActive)") in 0 until feed.indexOf("taker.feed("))
+        val start = s.substring(s.indexOf("override fun sendActivityStart()"))
+        assertTrue(start.indexOf("resumeThroughClip(u)") in start.indexOf("currentUtt = u") until start.indexOf("override fun sendAudio("))
+        val resume = bodyOf(s, "resumeThroughClip")
+        assertTrue(resume.contains("turn?.writeCalled != true"))
+        assertTrue(resume.contains("listen.prefix(TurnTaker.PRE_ROLL_MS"))
+        val take = bodyOf(s, "takeOverFirstHalf")
+        for (step in listOf("merged = true", "first.cancel()", "turnJob?.cancel()")) assertTrue(step, take.contains(step))
+        assertTrue(bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart").contains("if (continuesFirstHalf()) return"))
+        assertTrue(bodyOf(s, "continuesFirstHalf").contains("takeOverFirstHalf(first)"))
+    }
+
+    @Test
+    fun `held audio is cleared at release, drafts are not hedged, a clip waits for no answer text`() {
+        val s = session()
+        val release = bodyOf(s, "releaseNow")
+        assertTrue(release.contains("backlog = null"))
+        assertTrue(release.contains("clipListen = null"))
+        assertTrue(s.contains("gemini.transcribe(audio, hold::add, hedged = false)"))
+        assertTrue(bodyOf(s, "playBackchannel").contains("Backchannel.Skip.ANSWER_TEXT"))
+        assertTrue(bodyOf(s, "answerTextIn").contains("it.reply.isNotEmpty()"))
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
