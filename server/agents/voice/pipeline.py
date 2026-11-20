@@ -34,6 +34,16 @@ fields (the eval runner and the limb contract read them); `heard` follows `turn`
 turn row is made from the transcript; `crisis` is this door's only. The web door's `greeting`,
 `offer`, `tour`, `cost_usd`, `tools_ms` and `words` are the web's alone.
 
+## What a turn's speech may cost (review 2026-11-19, C3)
+
+- Per turn: at most `MAX_TTS_REQUESTS` speech requests (no growth past it, unlike the web door's
+  member turns) and at most `MAX_SPOKEN_CHARS` characters of the answer spoken; past either the
+  rest is shown, not said, and `speech_stopped {reason: "limit"}` is sent once. A `say` line is
+  one request of at most `MAX_SAY_CHARS`.
+- Per day: `agents/voice/allowance.py` (the member cap, or a code default when it is unset).
+- A cancel (`POST /api/agents/turn/<id>/cancel`) or a hang-up stops speech: nothing more is asked
+  for and what is playing is dropped. Speech already paid for is metered, finished or not.
+
 The per-turn record is one `agents_voice_turn` log line of `stage.TIMING_KEYS` (names and numbers,
 never words), and speech is metered on the member's cap (`stage.meter_speech`).
 """
@@ -60,9 +70,40 @@ FEATURE = "agent_turn"
 KINDS = ("user", "greeting", "opener", "check_in", "proactive", "say")
 BUILT_KINDS = frozenset({"user", "say"})
 MAX_SAY_CHARS = 600
+# The most of one answer that is spoken (characters). At about 15 characters a second that is
+# about 100 s of speech, or about 2,500 speech tokens.
+MAX_SPOKEN_CHARS = 1_500
+# How often a turn playing speech asks the database whether it was cancelled.
+CANCEL_EVERY_S = 0.2
 
 # The agents door's filler lines, kept in this process per voice (`FillerAudio`).
 FILLER_AUDIO = FillerAudio()
+
+
+class TurnCancel:
+    """ "Was this turn cancelled?" (`AgentTurn.cancel_requested`, set by the cancel route), for the
+    speaker: no turn yet, no. `often` is the same question at most every `CANCEL_EVERY_S`, for the
+    places asked many times a second. Once true it stays true."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic):
+        self.turn_id: str | None = None
+        self.hit = False
+        self._clock = clock
+        self._asked: float | None = None
+
+    def __call__(self) -> bool:
+        if self.hit or self.turn_id is None:
+            return self.hit
+        from agents.models import AgentTurn
+
+        self._asked = self._clock()
+        self.hit = AgentTurn.objects.filter(pk=self.turn_id, cancel_requested=True).exists()
+        return self.hit
+
+    def often(self) -> bool:
+        if self._asked is not None and self._clock() - self._asked < CANCEL_EVERY_S:
+            return self.hit
+        return self()
 
 
 @dataclass(frozen=True)
@@ -99,6 +140,11 @@ def voice_turn(
     timings: dict = {}
     filler_audio = filler_audio or FILLER_AUDIO
     speaker = Speaker(speech, voice, enabled=utterance.spoken, clock=clock)
+    # Bounded per turn: never more requests than reserved at the start (review C3).
+    speaker.more = lambda n: False
+    cancel = TurnCancel(clock)
+    speaker.cancelled = cancel
+    speaker.cancelled_often = cancel.often
     status = "failed"
     try:
         if utterance.kind == "say":
@@ -153,10 +199,15 @@ def voice_turn(
             filler_audio,
             timings,
             clock,
+            cancel,
         )
     finally:
         speaker.close()
         stage.record_speech(timings, speaker)
+        # Speech cut short by a cancel or a hang-up was still paid for as far as it went.
+        for job in speaker.jobs:
+            timings["tts_prompt_tokens"] += job.stats.prompt_tokens
+            timings["tts_output_tokens"] += job.stats.output_tokens
         timings["turn_ms"] = int((clock() - t0) * 1000)
         timings["tts_requests"] = speaker.requests
         stage.meter_speech(request, timings, FEATURE)
@@ -178,12 +229,15 @@ def _say(speaker: Speaker, text: str) -> Iterator[ev.Event]:
     yield ev.done("say", line, False)
 
 
-def _answer(request, words, heard, model, conversation, speaker, filler_audio, timings, clock):
-    """The agent turn's events, with its sentences spoken as they come and a slow tool's filler
-    line said from memory. Returns the turn's status."""
+def _answer(
+    request, words, heard, model, conversation, speaker, filler_audio, timings, clock, cancel
+):
+    """The agent turn's events, with its sentences spoken as they come (up to the turn's bound)
+    and a slow tool's filler line said from memory. Returns the turn's status."""
     t0 = clock()
     status = "failed"
     sentences = 0
+    spoken_chars = 0
     filler_said = False
     for event in run_turn(request, words, model, conversation=conversation):
         yield from speaker.ready()
@@ -195,8 +249,15 @@ def _answer(request, words, heard, model, conversation, speaker, filler_audio, t
             sentences += 1
             if timings.get("first_sentence_ms") is None:
                 timings["first_sentence_ms"] = int((clock() - t0) * 1000)
+            if speaker.enabled and spoken_chars + len(text) <= MAX_SPOKEN_CHARS:
+                spoken_chars += len(text)
+                # To speech before it is shown, as on the web door: a cancel that lands while it
+                # is shown stops everything after it.
+                speaker.add(tagged, expressive=True, model=True)
+            elif speaker.enabled and not speaker.stopped:
+                speaker.stopped = True
+                yield ev.Event("speech_stopped", {"reason": "limit"})
             yield ev.Event("sentence", {"text": text})
-            speaker.add(tagged, expressive=True, model=True)
             continue
         # A round ended (a tool is next, or the turn): what it said goes to speech now.
         speaker.flush()
@@ -210,6 +271,8 @@ def _answer(request, words, heard, model, conversation, speaker, filler_audio, t
             yield from speaker.drain()
             yield event
             continue
+        if event.type == "turn":
+            cancel.turn_id = event.data.get("turn_id")
         yield event
         if event.type == "turn" and heard is not None:
             yield ev.Event("heard", {"text": words})

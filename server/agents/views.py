@@ -49,7 +49,7 @@ from agents.legion import flags, limbs
 from agents.legion.turn import cancel, open_conversation
 from agents.runtime import events as ev
 from agents.runtime.model import GeminiClient
-from agents.voice import pipeline
+from agents.voice import allowance, pipeline
 from agents.voice.hedge import HedgedSpeech
 from agents.voice.speech import INPUT_RATE, MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS, GeminiSpeech
 from api.schema import DetailSerializer
@@ -85,6 +85,11 @@ class AgentTurnThrottle(SimpleRateThrottle):
         if user is None or not user.is_authenticated:
             return None
         return self.cache_format % {"scope": self.scope, "ident": user.pk}
+
+
+class AgentSayThrottle(AgentTurnThrottle):
+    # `kind=say` speaks a client's own line with no model: its own, lower rate (review C4).
+    scope = "agents_say"
 
 
 class _AgentsView(APIView):
@@ -215,21 +220,26 @@ def _speech_client():
 
 def _stream(request, data, utterance):
     speech = _speech_client() if utterance.spoken else None
+    turn = pipeline.voice_turn(
+        request,
+        utterance,
+        lambda: GeminiClient(key=gemini_key),
+        speech,
+        conversation_for=lambda: open_conversation(
+            request, data.get("conversation_id"), data["client"]
+        ),
+        voice=voice_engine.voice_for(request.user),
+    )
     try:
-        for event in pipeline.voice_turn(
-            request,
-            utterance,
-            lambda: GeminiClient(key=gemini_key),
-            speech,
-            conversation_for=lambda: open_conversation(
-                request, data.get("conversation_id"), data["client"]
-            ),
-            voice=voice_engine.voice_for(request.user),
-        ):
+        for event in turn:
             yield event.sse()
     except Exception:  # noqa: BLE001 - the stream must end in words, always
         log.warning("agents: turn failed", exc_info=True)
         yield ev.error(FAILED_WORDS).sse()
+    finally:
+        # A hang-up closes this stream: the turn's speech stops and is metered now, on this
+        # request, not whenever the generator is collected (review C3).
+        turn.close()
 
 
 def _sse(body) -> StreamingHttpResponse:
@@ -286,7 +296,13 @@ class AgentTurnView(_SwitchedAgentsView):
             return refusal
         if not gemini_key():
             return Response({"detail": KEY_ABSENT}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        if member_cap.over_cap(request.user):
+        if data["kind"] == "say" and not AgentSayThrottle().allow_request(request, self):
+            return _refuse(
+                "Too many spoken lines in a short time.",
+                "throttled",
+                status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if allowance.over_cap(request.user):
             # Before any paid speech-to-text (the route's own cap check runs after it).
             return _refuse(member_cap.USED_UP, "member_cap", status.HTTP_429_TOO_MANY_REQUESTS)
         pcm = None
