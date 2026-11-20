@@ -365,7 +365,24 @@ class CascadeWiringTest {
         val s = session()
         assertTrue(bodyOf(s, "newTextLoop").contains("isMutating = CascadeRules::isWrite"))
         val exec = bodyOf(s, "executorFor")
-        assertTrue(exec.indexOf("record.writeCalled = true") in 0 until exec.indexOf("host.runTool("))
+        assertTrue(exec.indexOf("claimWrite(record, name)") in 0 until exec.indexOf("host.runTool("))
+        assertTrue(bodyOf(s, "claimWrite").contains("record.writeCalled = true"))
+    }
+
+    // Review of 206a8898: a resume taking the turn over and a write starting in it are decided under one
+    // lock, so exactly one wins: a claimed turn runs no write, a turn whose write started is not claimed.
+    @Test
+    fun `a write and a resume takeover are decided atomically under the turn lock`() {
+        val s = session()
+        val exec = bodyOf(s, "executorFor")
+        assertTrue(exec.contains("Superseded by his next words: not run."))
+        val claim = bodyOf(s, "claimWrite")
+        val lock = claim.indexOf("synchronized(turnLock)")
+        assertTrue(lock >= 0)
+        assertTrue(claim.indexOf("record.resumeClaimed") in lock until claim.indexOf("record.writeCalled = true"))
+        // The lock is never held while the write runs: the write is outside claimWrite.
+        assertFalse(claim.contains("host.runTool("))
+        assertTrue(bodyOf(s, "resumeThroughClip").contains("turn?.resumeClaimed = true"))
     }
 
     @Test

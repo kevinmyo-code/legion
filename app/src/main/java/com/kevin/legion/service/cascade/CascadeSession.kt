@@ -413,6 +413,12 @@ internal class CascadeSession(
         /** A write tool was called this turn (set as it starts, before it can run). */
         @Volatile var writeCalled = false
 
+        /**
+         * A resume through a clip took this turn over ([resumeThroughClip]): set under [turnLock], the same
+         * lock a write takes to start, so a write and a takeover never both happen (review of 206a8898).
+         */
+        @Volatile var resumeClaimed = false
+
         /** The turn before asked him something ([LoneWordWriteGuard]); this turn's tools did. */
         @Volatile var askedBefore = false
         @Volatile var asked = false
@@ -1139,6 +1145,8 @@ internal class CascadeSession(
         val first = backchannelUtt ?: return
         val takesOver = ClipListen.takesOver(turnJob?.isActive == true, turn?.writeCalled == true)
         if (!listen.resumes() || !takesOver || first === u) return
+        // Under turnLock (the mic feed holds it): from here no write of the first turn can start.
+        turn?.resumeClaimed = true
         val prefix = listen.prefix(TurnTaker.PRE_ROLL_MS * PCM_BYTES_PER_MS)
         LiveLatency.log(LiveLatency.TAG, ClipListen.joinedLine(listen.keptMs, clipListenKind, clipListenIdx))
         u.audio(prefix, 0, prefix.size)
@@ -2086,14 +2094,35 @@ internal class CascadeSession(
         )
     }
 
+    /**
+     * A write may start in [record]: under [turnLock], the lock a resume takes over a turn with, so the
+     * two never both happen. False when a resume claimed the turn (its merged turn runs the write once).
+     */
+    private fun claimWrite(record: TurnRecord, name: String): Boolean {
+        val mayRun = synchronized(turnLock) {
+            if (record.resumeClaimed) {
+                false
+            } else {
+                record.writeCalled = true
+                true
+            }
+        }
+        if (!mayRun) LiveLatency.log("LIVE_TURN", "write_superseded tool=$name")
+        return mayRun
+    }
+
     private fun executorFor(record: TurnRecord, seq: Long) = TextToolExecutor { name, args, readThrough ->
         // A check-in line calls no tool (its prompt says so); one asked for never runs, and the line drops.
         if (record.holdLine) {
             LiveLatency.log(LiveLatency.TAG, "check_in tool_refused tool=$name")
             return@TextToolExecutor JSONObject().put("success", false).put("message", "No tool for this line.")
         }
-        // Before anything can run: his next words must never carry a write into a second run.
-        if (CascadeRules.isWrite(name, args)) record.writeCalled = true
+        // Before anything can run: his next words must never carry a write into a second run. Decided
+        // with the resume's takeover under one lock (review of 206a8898); the write itself runs outside it.
+        if (CascadeRules.isWrite(name, args) && !claimWrite(record, name)) {
+            return@TextToolExecutor JSONObject().put("success", false)
+                .put("message", "Superseded by his next words: not run. Say nothing about it.")
+        }
         // One heard word changes nothing without his yes (2026-11-19, lone_word_write).
         val held = if (record.fromUser) {
             val asked = record.askedBefore || answersSpokenAsk(name, args, record.heard)
