@@ -231,7 +231,7 @@ def test_a_clip_the_engine_never_sent_is_noise_and_an_empty_transcript_is_no_spe
     class Gate(FakeSpeech):
         def transcribe(self, pcm):
             self.transcribed.append(len(pcm))
-            return Heard("", len(pcm) // 32, 0, 0, 0)  # the loudness or voice gate: nothing sent
+            return Heard("", len(pcm) // 32, 0, gated=True)  # the gate kept it: nothing sent
 
     engine.speech = Gate()
     assert _events(_post(auth_client, audio=_wav()))[-1][1]["ignored"] == "noise"

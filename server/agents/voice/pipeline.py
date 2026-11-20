@@ -294,7 +294,7 @@ def voice_turn(
                 # No speech: silence, no model call, nothing kept. `noise` when no request was
                 # sent at all (the loudness or voice gate), `no_speech` when one heard no words.
                 status = "nothing_heard"
-                ignored = "noise" if not heard.prompt_tokens else "no_speech"
+                ignored = "noise" if heard.gated else "no_speech"
                 yield _done(
                     "nothing_heard", "", False, speaker, marks, origin, clock, ignored=ignored
                 )

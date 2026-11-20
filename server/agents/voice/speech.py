@@ -279,6 +279,9 @@ class Heard:
     ms: int
     prompt_tokens: int = 0
     output_tokens: int = 0
+    # The engine's own noise rule kept the clip back (too short, too quiet, or no voice in it):
+    # nothing was sent, so nothing was heard. The agents door's `ignored: noise` reads it.
+    gated: bool = False
 
 
 @dataclass
@@ -373,10 +376,10 @@ class GeminiSpeech:
     def _transcribe_once(self, pcm: bytes) -> Heard:
         audio_ms = len(pcm) // 32
         if len(pcm) < MIN_AUDIO_BYTES or loudest_100ms(pcm) < LOUDNESS_GATE_RMS:
-            return Heard("", audio_ms, 0)
+            return Heard("", audio_ms, 0, gated=True)
         if not voiced_speech(pcm):
             # Loud enough but no voice in it: never sent, so never invented into words.
-            return Heard("", audio_ms, 0)
+            return Heard("", audio_ms, 0, gated=True)
         started = self._clock()
         text, usage = [], {}
         # Requests actually sent, a retry included: what the turn is charged for (round 3).
