@@ -2,9 +2,9 @@
 the phone until the engine heard the words itself).
 
 A table-driven copy of the phone's `app/src/main/java/com/kevin/legion/ai/CrisisDetector.kt`
-(origin/dev 7ef07024): the same 24 phrases, the same 4 exclusions, the same normalising. It is
-safety text, so it is copied exactly and changed only together with the phone's; the test
-`tests/test_engine_voice_crisis.py` pins it against that file.
+(origin/dev 7ef07024): the same 24 phrases, the same 4 exclusions, the same normalising (matched
+as whole words: see `detect`). It is safety text, so the tables are copied exactly and change only
+together with the phone's; `tests/test_engine_voice_crisis.py` pins them against that file.
 
 Why it is shaped this way is the phone file's own comment, in short: the prompt's crisis clause
 (`assistant/shared_clauses.py` CRISIS) is the first line and reads intent; this is the backstop
@@ -66,22 +66,55 @@ LINE = (
     "In the US, call or text 988 to reach the Suicide and Crisis Lifeline, any time."
 )
 
-_NOT_ALNUM = re.compile(r"[^a-z0-9]+")
+_TOKEN = re.compile(r"[a-z0-9]+|[^a-z0-9\s]")
 
 
-def normalize(text: str) -> str:
-    """Lowercase, apostrophes (straight and curly) dropped so "don't" matches "dont", every other
-    run of non-alphanumerics one space, trimmed: the phone's `normalize`."""
+def _words(text: str) -> tuple[list[str], list[bool]]:
+    """The words of `text` as the phone normalises them (lowercase, apostrophes dropped, so "don't"
+    is "dont"), and for each word whether punctuation stood between it and the word before."""
     lowered = (text or "").lower().replace("'", "").replace("’", "")
-    return _NOT_ALNUM.sub(" ", lowered).strip()
+    words: list[str] = []
+    broken: list[bool] = []
+    gap = False
+    for token in _TOKEN.findall(lowered):
+        if token[0].isalnum() and token.isascii():
+            words.append(token)
+            broken.append(gap)
+            gap = False
+        else:
+            gap = True
+    return words, broken
+
+
+def _at(words: list[str], phrase: list[str], i: int) -> bool:
+    return words[i : i + len(phrase)] == phrase
 
 
 def detect(text: str) -> bool:
-    """True if `text` contains an unambiguous distress phrase (the phone's `detect`)."""
-    normalized = normalize(text)
-    if not normalized:
+    """True if `text` says one of the phone's phrases as whole words.
+
+    Where the engine differs from the phone's `detect` (review 2026-11-19, C2 and C7), on
+    purpose and never with fewer hits on the phrases themselves:
+    - a phrase matches whole words only, so "I want to diet" and "end my lifetime subscription" are
+      not hits ("want to die" and "end my life" inside longer words);
+    - an exclusion hides a hit only when the excluded words cover that hit and were said together,
+      with no punctuation between them: "suicide, door's locked" is a hit, "suicide doors" is not.
+    Kept as hits on the safe side, where whole words cannot tell: "cut myself a check", "hurt
+    myself at the gym", "Suicide Squad", "dont want to live with these fees". A help line said
+    there costs a moment; a miss could cost more.
+    """
+    words, broken = _words(text)
+    if not words:
         return False
-    guarded = normalized
+    hidden: set[int] = set()
     for exclusion in EXCLUSIONS:
-        guarded = guarded.replace(exclusion, " ")
-    return any(phrase in guarded for phrase in PHRASES)
+        shape = exclusion.split()
+        for j in range(len(words) - len(shape) + 1):
+            if _at(words, shape, j) and not any(broken[j + 1 : j + len(shape)]):
+                hidden.update(range(j, j + len(shape)))
+    for phrase in PHRASES:
+        shape = phrase.split()
+        for i in range(len(words) - len(shape) + 1):
+            if _at(words, shape, i) and not set(range(i, i + len(shape))) <= hidden:
+                return True
+    return False
