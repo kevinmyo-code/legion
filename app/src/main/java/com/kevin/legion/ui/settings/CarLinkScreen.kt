@@ -141,7 +141,9 @@ fun CarLinkContent(state: CarLinkUiState, onBack: () -> Unit, actions: CarLinkAc
                 VoiceTurnRow(
                     title = "Send location to the head unit",
                     explanation = "only while paired, and only while this phone is on the network it paired on " +
-                        "(the same hotspot or Wi-Fi, same address range). Off by default.",
+                        "(the same hotspot or Wi-Fi, same address range). Off by default. When this phone is " +
+                        "the car's hotspot, the \"Sending location to the car\" notification stays while the " +
+                        "hotspot is on, even with the car off.",
                     enabled = state.sendLocation,
                     onToggle = actions.sendLocation,
                 )
