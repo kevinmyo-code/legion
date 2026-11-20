@@ -83,10 +83,14 @@ export function diagramLayers(svg: string): Band[] {
   })
 }
 
-/** Width over height, from the diagram's own box; null when it states none. */
+/** Width over height, from the diagram's viewBox, else its own width and height; null for neither. */
 export function diagramAspect(svg: string): number | null {
   const box = /viewBox\s*=\s*["']([^"']+)["']/.exec(svg)?.[1].trim().split(/[\s,]+/).map(Number)
-  return box && box.length === 4 && box[2] > 0 && box[3] > 0 ? box[2] / box[3] : null
+  if (box && box.length === 4 && box[2] > 0 && box[3] > 0) return box[2] / box[3]
+  const root = /<svg\b[^>]*>/i.exec(svg)?.[0] ?? ''
+  const width = Number(/\swidth\s*=\s*["']?([\d.]+)/i.exec(root)?.[1])
+  const height = Number(/\sheight\s*=\s*["']?([\d.]+)/i.exec(root)?.[1])
+  return width > 0 && height > 0 ? width / height : null
 }
 
 /** The layer step `step` of `steps` lights: the same share of the way through. */
