@@ -331,6 +331,7 @@ async function modelsTurnWithScroll(page: Page) {
 const SIZES = [
   { name: 'desk-1440', viewport: { width: 1440, height: 900 }, mobile: false, throttle: 1 },
   { name: 'laptop-1024', viewport: { width: 1024, height: 768 }, mobile: false, throttle: 1 },
+  { name: 'laptop-1366', viewport: { width: 1366, height: 768 }, mobile: false, throttle: 1 },
   { name: 'phone-390', viewport: { width: 390, height: 844 }, mobile: true, throttle: 4 },
 ]
 
@@ -346,8 +347,18 @@ async function context(browser: Browser, size: (typeof SIZES)[number], reduced: 
   })
 }
 
+/**
+ * STORY_HEADED=1: a visible window on the machine's own GPU (real WebGL), for frame numbers that
+ * mean something; headless draws WebGL in software (SwiftShader), which inflates every frame.
+ */
+const HEADED = process.env.STORY_HEADED === '1'
+/** The story may cost this many long frames per hundred more than the plain page does. */
+const LONG_FRAME_BUDGET = Number(process.env.STORY_LONG_BUDGET ?? 5)
+
 test.use({
-  launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--mute-audio'] },
+  launchOptions: HEADED
+    ? { headless: false, args: ['--mute-audio'] }
+    : { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--mute-audio'] },
 })
 test.describe.configure({ timeout: 600_000 })
 
@@ -390,10 +401,39 @@ for (const size of SIZES) {
       const first = document.querySelector('main [data-orb-side]')!
       return Boolean(orb.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING)
     })
-    const numbers = { size: size.name, throttle: size.throttle, ...motion, ...run, orbPlace, orbName, orbFirst }
+    await ctx.close()
+
+    // The plain page (reduced motion), the same scroll, the same meter: the baseline the story's
+    // long frames are held to.
+    const plainCtx = await context(browser, size, true, false)
+    const plainPage = await plainCtx.newPage()
+    if (size.throttle > 1) {
+      const cdp = await plainCtx.newCDPSession(plainPage)
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: size.throttle })
+    }
+    await open(plainPage)
+    const plainMeter = await watch(plainPage)
+    await scrollThrough(plainPage, size.name, places, false)
+    const plain = await plainMeter.read()
+    await plainCtx.close()
+
+    const share = (m: { frames: number; long: number }) => Math.round((1000 * m.long) / Math.max(1, m.frames)) / 10
+    const numbers = {
+      size: size.name,
+      headed: HEADED,
+      throttle: size.throttle,
+      story: { ...motion, longPct: share(motion) },
+      plain: { ...plain, longPct: share(plain) },
+      ...run,
+      orbPlace,
+      orbName,
+      orbFirst,
+    }
     fs.writeFileSync(path.join(OUT, `${size.name}-scroll.json`), JSON.stringify(numbers, null, 2))
     console.log(JSON.stringify(numbers))
-    await ctx.close()
+    expect(share(motion), `long frames per hundred: story vs plain page (+${LONG_FRAME_BUDGET} allowed)`).toBeLessThanOrEqual(
+      share(plain) + LONG_FRAME_BUDGET,
+    )
 
     expect(run.overflow, 'no sideways overflow').toBe(size.viewport.width)
     expect(motion.cls, 'layout shift while scrolling').toBeLessThan(0.01)
@@ -457,10 +497,73 @@ for (const size of SIZES) {
   })
 }
 
+/**
+ * Short screens (review 2026-11-20): what is pinned must fit. A pinned LEGION diagram leaves room
+ * under it for its parts; the phone stage pins only when the whole phone fits; nothing pinned runs
+ * off the foot of the screen.
+ */
+const SHORT = [
+  { name: 'short-1280x720', viewport: { width: 1280, height: 720 }, mobile: false },
+  { name: 'short-1366x768', viewport: { width: 1366, height: 768 }, mobile: false },
+  { name: 'short-1024x768', viewport: { width: 1024, height: 768 }, mobile: false },
+  { name: 'phone-landscape-844x390', viewport: { width: 844, height: 390 }, mobile: true },
+]
+for (const size of SHORT) {
+  test(`${size.name}: short heights, everything pinned fits`, async ({ browser }) => {
+    fs.mkdirSync(OUT, { recursive: true })
+    const ctx = await context(browser, { ...size, throttle: 1 }, false, false)
+    const page = await ctx.newPage()
+    await open(page)
+    const h = size.viewport.height
+    // Into the LEGION scene, past its top, so a pin (if any) is holding.
+    const legion = await page.evaluate((vh) => {
+      const scene = document.querySelector('[data-scene]') as HTMLElement | null
+      if (!scene) return null
+      window.scrollTo(0, scene.getBoundingClientRect().top + window.scrollY + vh * 0.5)
+      return true
+    }, h)
+    await page.waitForTimeout(600)
+    const pin = legion
+      ? await page.evaluate(() => {
+          const el = document.querySelector('.rc-scene-pin') as HTMLElement
+          const r = el.getBoundingClientRect()
+          return { position: getComputedStyle(el).position, bottom: Math.round(r.bottom), top: Math.round(r.top) }
+        })
+      : null
+    await page.screenshot({ path: path.join(OUT, `${size.name}-legion.png`) })
+    const stage = await page.evaluate(() => {
+      const el = document.querySelector('.rc-scrolly') as HTMLElement | null
+      return el?.getAttribute('data-mode') ?? null
+    })
+    let phoneBottom: number | null = null
+    if (stage === 'stage') {
+      await page.evaluate(() => {
+        const steps = document.querySelectorAll('.rc-step')
+        steps[Math.min(2, steps.length - 1)]?.scrollIntoView({ block: 'center' })
+      })
+      await page.waitForTimeout(600)
+      phoneBottom = await page.evaluate(() => Math.round(document.querySelector('.rc-phone')!.getBoundingClientRect().bottom))
+      await page.screenshot({ path: path.join(OUT, `${size.name}-phone.png`) })
+    }
+    const numbers = { size: size.name, pin, stage, phoneBottom, height: h }
+    fs.writeFileSync(path.join(OUT, `${size.name}-short.json`), JSON.stringify(numbers, null, 2))
+    console.log(JSON.stringify(numbers))
+    await ctx.close()
+    if (pin && pin.position === 'sticky') {
+      expect(h, 'pinned only at 700 px tall and up').toBeGreaterThanOrEqual(700)
+      expect(pin.bottom, 'the pinned diagram leaves the lower 40% of the screen for its parts').toBeLessThanOrEqual(h * 0.6)
+    }
+    if (stage === 'stage') expect(phoneBottom!, 'the pinned phone, controls included, fits the screen').toBeLessThanOrEqual(h)
+    if (h < 720) expect(stage, 'no pinned phone under 720 px tall').not.toBe('stage')
+  })
+}
+
 test('the 3D chunk stays lazy and out of the service worker precache', async () => {
   const dist = path.resolve(process.cwd(), '../static/app')
   const sw = fs.readFileSync(path.join(dist, 'sw.js'), 'utf-8')
   const stage = fs.readdirSync(path.join(dist, 'assets')).filter((name) => /^model-stage.*\.js$/.test(name))
   expect(stage.length).toBe(1)
   expect(sw.includes(stage[0])).toBe(false)
+  // Nothing heavy in the precache list: no model, video, captions, WebAssembly or ONNX file.
+  expect(sw.match(/["'][^"']+\.(glb|mp4|webm|vtt|wasm|onnx)["']/g) ?? []).toEqual([])
 })
