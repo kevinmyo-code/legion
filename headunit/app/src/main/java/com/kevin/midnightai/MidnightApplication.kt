@@ -1,4 +1,4 @@
-﻿package com.kevin.midnightai
+package com.kevin.midnightai
 
 import android.app.Application
 import com.google.firebase.FirebaseApp
@@ -33,8 +33,10 @@ class MidnightApplication : Application() {
             runCatching {
                 com.kevin.midnightai.link.CarLink.refresh()
                 linkStore.secretsForRedactor().forEach(com.kevin.midnightai.diag.LogRedactor::addLiteral)
-                com.kevin.midnightai.ai.CompanionProfile.geminiKey(this).takeIf { it.isNotBlank() }
-                    ?.let(com.kevin.midnightai.diag.LogRedactor::addLiteral)
+                listOfNotNull(
+                    com.kevin.midnightai.ai.CompanionProfile.linkGeminiKey(this),
+                    com.kevin.midnightai.ai.CompanionProfile.typedGeminiKey(this).takeIf { it.isNotBlank() },
+                ).forEach(com.kevin.midnightai.diag.LogRedactor::addLiteral)
             }
         }
         // Captured before StartupTrace/Crashlytics exist, then recorded as spans once they do.

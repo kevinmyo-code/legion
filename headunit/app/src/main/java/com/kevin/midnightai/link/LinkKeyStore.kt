@@ -206,6 +206,23 @@ class LinkKeyStore(
         private const val PENDING_UNREADABLE = "the new pairing could not be read right now"
         private const val READ_TRIES = 3
 
+        /** The Gemini slot the car link writes and Forget clears. */
+        fun geminiLinkAccess(context: Context): GeminiAccess {
+            val app = context.applicationContext
+            // Its OWN slot (2026-11-20): the phone's key never overwrites a key typed on the unit,
+            // wins over it while paired, and Forget removes only this slot.
+            return object : GeminiAccess {
+                override fun snapshot() = CompanionProfile.geminiLinkSnapshot(app)
+                override fun restore(snapshot: Map<String, String?>) = CompanionProfile.restoreGemini(app, snapshot)
+                    .also { GeminiKeyProvider.init(app) }
+                override fun saveStrict(key: String) = CompanionProfile.saveGeminiLinkKeyStrict(app, key)
+                    .also { GeminiKeyProvider.init(app) }
+                override fun raw() = CompanionProfile.geminiLinkSnapshot(app).values.firstOrNull()
+                override fun clear() = CompanionProfile.restoreGemini(app, CompanionProfile.geminiLinkSnapshot(app).mapValues { null })
+                    .also { GeminiKeyProvider.init(app) }
+            }
+        }
+
         /** The app's store over the real EngineConfig, CompanionProfile and build constant. */
         fun forApp(context: Context): LinkKeyStore {
             val app = context.applicationContext
@@ -220,16 +237,7 @@ class LinkKeyStore(
                     override fun rawToken() = engineConfig.rawToken()
                     override fun clear() = engineConfig.restore(engineConfig.snapshot().mapValues { (k, v) -> if (k == "base_url") v else null })
                 },
-                gemini = object : GeminiAccess {
-                    override fun snapshot() = CompanionProfile.geminiSnapshot(app)
-                    override fun restore(snapshot: Map<String, String?>) = CompanionProfile.restoreGemini(app, snapshot)
-                        .also { GeminiKeyProvider.init(app) }
-                    override fun saveStrict(key: String) = CompanionProfile.saveGeminiKeyStrict(app, key)
-                        .also { GeminiKeyProvider.init(app) }
-                    override fun raw() = CompanionProfile.geminiSnapshot(app)["gemini_api_key_enc"]
-                    override fun clear() = CompanionProfile.restoreGemini(app, CompanionProfile.geminiSnapshot(app).mapValues { null })
-                        .also { GeminiKeyProvider.init(app) }
-                },
+                gemini = geminiLinkAccess(app),
                 engineConstant = BuildConfig.ENGINE_BASE_URL,
             )
         }

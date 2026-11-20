@@ -1,4 +1,4 @@
-﻿package com.kevin.midnightai.ai
+package com.kevin.midnightai.ai
 
 import android.content.Context
 import com.kevin.midnightai.vehicle.ActiveVehicle
@@ -49,6 +49,8 @@ object CompanionProfile {
     // fallback); KEY_GEMINI_KEY_ENC holds the KeyVault-encrypted blob.
     private const val KEY_GEMINI_KEY = "gemini_api_key"
     private const val KEY_GEMINI_KEY_ENC = "gemini_api_key_enc"
+    /** The key handed over the car link, kept apart from the typed one (2026-11-20). */
+    private const val KEY_GEMINI_LINK_ENC = "gemini_link_key_enc"
     // User-supplied Shelly Cloud "Authorization cloud key" (BYO, required for the
     // garage/gate feature - Shelly app: User Settings -> Authorization cloud key ->
     // Get key). KEY_SHELLY_AUTH_KEY_ENC holds the KeyVault-encrypted blob;
@@ -355,7 +357,21 @@ object CompanionProfile {
      * plaintext migrated to the encrypted slot on first read). Blank if not set
      * (falls back to BuildConfig in [GeminiKeyProvider]).
      */
-    fun geminiKey(context: Context): String {
+    fun geminiKey(context: Context): String = geminiChoice(context).key
+
+    /**
+     * The key in use and where it came from (Kevin, 2026-11-20): the phone's key handed over the
+     * car link wins over one typed on this unit; the typed one is kept as the fallback.
+     */
+    fun geminiChoice(context: Context): GeminiKeyChoice =
+        GeminiKeyChoice.resolve(linkGeminiKey(context), typedGeminiKey(context))
+
+    /** The key the car link handed over (its own slot), or null. Never shown, never logged. */
+    fun linkGeminiKey(context: Context): String? =
+        prefs(context).getString(KEY_GEMINI_LINK_ENC, null)?.let { KeyVault.decrypt(it) }?.takeIf { it.isNotBlank() }
+
+    /** The key typed on this unit (Settings), blank if none. The only key the Settings field shows. */
+    fun typedGeminiKey(context: Context): String {
         val p = prefs(context)
         p.getString(KEY_GEMINI_KEY_ENC, null)?.let { enc ->
             KeyVault.decrypt(enc)?.let { return it }
@@ -385,6 +401,16 @@ object CompanionProfile {
     }
 
     fun hasGeminiKey(context: Context): Boolean = geminiKey(context).isNotBlank()
+
+    /** The car link's own Gemini slot (separate from the typed key, so Forget removes only it). */
+    fun geminiLinkSnapshot(context: Context): Map<String, String?> =
+        mapOf(KEY_GEMINI_LINK_ENC to prefs(context).getString(KEY_GEMINI_LINK_ENC, null))
+
+    /** Encrypted or not at all, into the link slot only. */
+    fun saveGeminiLinkKeyStrict(context: Context, key: String): Boolean {
+        val enc = KeyVault.encrypt(key.trim()) ?: return false
+        return prefs(context).edit().putString(KEY_GEMINI_LINK_ENC, enc).commit()
+    }
 
     // --- Car link (HU-1 T3, review M7): no plaintext fallback, all-or-nothing writes -------------
 

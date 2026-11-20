@@ -1,4 +1,4 @@
-﻿package com.kevin.midnightai.ui
+package com.kevin.midnightai.ui
 
 import android.content.Intent
 import android.net.Uri
@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import com.kevin.midnightai.ai.CompanionProfile
 import com.kevin.midnightai.ai.GeminiKeyProvider
+import com.kevin.midnightai.ai.GeminiKeyChoice
 import com.kevin.midnightai.ai.EntitlementManager
 import com.kevin.midnightai.ui.theme.AriaColors
 
@@ -48,17 +49,14 @@ private const val AI_STUDIO_URL = "https://aistudio.google.com/apikey"
 @Composable
 fun ApiKeyEntry(modifier: Modifier = Modifier, onSaved: () -> Unit = {}) {
     val context = LocalContext.current
-    var key by remember { mutableStateOf(CompanionProfile.geminiKey(context)) }
+    // Only the key typed on this unit is ever put in the field; the phone's key is never shown.
+    var key by remember { mutableStateOf(CompanionProfile.typedGeminiKey(context)) }
     var reveal by remember { mutableStateOf(false) }
     // Bump after a save so the status line re-reads the live key state.
     var statusVersion by remember { mutableIntStateOf(0) }
 
     val status = remember(statusVersion) {
-        when {
-            CompanionProfile.hasGeminiKey(context) -> "Using your key."
-            GeminiKeyProvider.hasKey() -> "Using the app's built-in key."
-            else -> "Paste your key to switch to your own — free forever after."
-        }
+        GeminiKeyChoice.words(CompanionProfile.geminiChoice(context).source, builtIn = GeminiKeyProvider.hasKey())
     }
 
     Column(modifier) {
