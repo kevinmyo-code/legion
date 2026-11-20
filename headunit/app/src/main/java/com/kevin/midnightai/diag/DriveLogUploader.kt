@@ -38,6 +38,13 @@ sealed interface UploadOutcome {
         override val sentence = "Not signed in to the engine, so logs stay on this unit. Nothing was sent."
     }
 
+    /** The car's own sign-in carries drive logs only (protocol 5.2): this kind stays here. */
+    data object NotOnCarSignIn : UploadOutcome {
+        override val sentence =
+            "Conversation logs are not sent on the car's own sign-in: the engine takes only drive logs from it. " +
+                "They stay on this unit until there is a member sign-in under Settings, Engine."
+    }
+
     data class Sent(val batches: Int) : UploadOutcome {
         override val sentence = if (batches == 1) "Uploaded 1 batch." else "Uploaded $batches batches."
     }
@@ -93,6 +100,9 @@ class DriveLogUploader(
 
     private suspend fun run(reason: UploadReason): UploadOutcome {
         if (!http.isUsable()) return UploadOutcome.NoEngine
+        // Protocol rev 8, 5.2: the car's own sign-in may send drive reasons only; anything else
+        // would be refused (403), so it is kept, not sent.
+        if (http.isCarLinkSignIn() && reason !in CAR_SIGN_IN_REASONS) return UploadOutcome.NotOnCarSignIn
         runCatching { snapshot() }
         store.seal()
         val batches = store.pending()
@@ -129,6 +139,9 @@ class DriveLogUploader(
 
     companion object {
         const val PATH = "/api/device-logs/"
+
+        /** The reasons the engine accepts from the car's own sign-in (protocol rev 8, 5.2). */
+        val CAR_SIGN_IN_REASONS = setOf(UploadReason.DRIVE_END, UploadReason.STARTUP, UploadReason.MANUAL, UploadReason.PERIODIC)
         private const val MAX_REASON_CHARS = 200
         private val lock = Mutex()
 

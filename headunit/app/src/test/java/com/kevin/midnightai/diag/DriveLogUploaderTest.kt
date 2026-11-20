@@ -58,6 +58,41 @@ class DriveLogUploaderTest {
         return config
     }
 
+    private fun carLinkUploader(store: DriveLogStore): DriveLogUploader {
+        val c = EngineConfig(
+            context = RuntimeEnvironment.getApplication(),
+            encrypt = { plain -> "ENC($plain)" },
+            decrypt = { blob -> blob.removePrefix("ENC(").removeSuffix(")") },
+        )
+        val base = server.url("/").newBuilder().host("127.0.0.1").build().toString().trimEnd('/')
+        assertTrue(c.saveSessionStrict(base, "hu1_made-up", "u-1", carLink = true, vehicleId = "veh-1"))
+        return DriveLogUploader(store = store, http = EngineHttp(c, OkHttpClient()), meta = UploadMeta("Test unit", "1.0", 7), status = sink)
+    }
+
+    /**
+     * Item 10 (protocol rev 8, 5.2): on the car's own sign-in the engine takes only drive reasons
+     * (drive_end, startup, manual, periodic). A conversation batch is kept on the unit, with words,
+     * and never sent to be refused.
+     */
+    @Test
+    fun `on the car's own sign-in a conversation batch stays on the unit and says why`() = runTest {
+        val store = newStore()
+        store.append(listOf("LIVE_AUDIT made-up line"))
+        val outcome = carLinkUploader(store).upload(UploadReason.CONVERSATION)
+        assertEquals(0, server.requestCount)
+        // Still on the unit: nothing was sealed away or deleted.
+        assertTrue(store.seal() != null)
+        assertTrue(outcome.sentence, outcome.sentence.contains("member sign-in"))
+    }
+
+    @Test
+    fun `on the car's own sign-in a drive log still goes up`() = runTest {
+        val store = newStore()
+        store.append(listOf("plain line"))
+        server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+        assertEquals(UploadOutcome.Sent(1), carLinkUploader(store).upload(UploadReason.DRIVE_END))
+    }
+
     private fun uploader(store: DriveLogStore, signedIn: Boolean = true) = DriveLogUploader(
         store = store,
         http = EngineHttp(config(signedIn), OkHttpClient()),
