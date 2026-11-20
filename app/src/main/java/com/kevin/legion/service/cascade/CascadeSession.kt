@@ -315,6 +315,9 @@ internal class CascadeSession(
     @Volatile private var lastFillerEndAtMs = 0L
     private val saidThisTurn: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
     @Volatile private var answerAudioStarted = false
+
+    /** When this turn's backchannel was skipped for answer text already in; logged with the audio's gap. */
+    @Volatile private var answerTextSkipAtMs: Long? = null
     @Volatile private var fillerSkip: Backchannel.Skip? = null
     private val recentWaitLines = RecentLines(WaitFillers.ROTATION)
     private val waitIndex = AtomicInteger(0)
@@ -1206,6 +1209,7 @@ internal class CascadeSession(
         lastFillerEndAtMs = eotAtMs
         saidThisTurn.clear()
         answerAudioStarted = false
+        answerTextSkipAtMs = null
         val seq = backchannelSeq.incrementAndGet()
         val skip = Backchannel.decide(
             Backchannel.Turn(
@@ -1383,7 +1387,10 @@ internal class CascadeSession(
                 Backchannel.stillDue(turnAudioStarted, speaking && !cueOver(), seq == backchannelSeq.get())
         }
         if (!due()) return skip("answer_first")
-        if (answerTextIn()) return skip(Backchannel.Skip.ANSWER_TEXT.token)
+        if (answerTextIn()) {
+            answerTextSkipAtMs = System.currentTimeMillis()
+            return skip(Backchannel.Skip.ANSWER_TEXT.token)
+        }
         // His turn already read as noise or nothing (no model call happens): nothing to acknowledge.
         // A transcript that comes after the clip's time cannot stop it; that turn still gets one.
         if (backchannelUtt != null && backchannelUtt === noiseUtt) return skip("noise")
@@ -2232,6 +2239,9 @@ internal class CascadeSession(
                 } else {
                     answerAudible = true
                     answerAudioStarted = true
+                    // How long he waited in silence after an answer_text skip (2026-11-20).
+                    answerTextSkipAtMs?.let { LiveLatency.log(LiveLatency.TAG, Backchannel.answerTextGapLine(it, now)) }
+                    answerTextSkipAtMs = null
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
                     LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
                 }

@@ -186,6 +186,12 @@ class BackchannelTest {
     }
 
     @Test
+    fun `an answer_text skip is logged with how long the answer's audio took after it`() {
+        assertEquals("backchannel skip=answer_text gap_ms=850", Backchannel.answerTextGapLine(10_600, 11_450))
+        assertEquals("backchannel skip=answer_text gap_ms=0", Backchannel.answerTextGapLine(10_600, 10_500))
+    }
+
+    @Test
     fun `a phone call gets none, on any route`() {
         assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(turn().copy(onCall = true)))
     }

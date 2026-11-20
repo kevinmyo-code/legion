@@ -196,6 +196,13 @@ internal object Backchannel {
         return if (end - eotAtMs <= MAX_START_AFTER_EOT_MS) end - nowMs else null
     }
 
+    /**
+     * The answer_text skip measured (2026-11-20): the answer's text was in by the clip's time, so no
+     * clip played, and its first audio came [gap] later. Numbers only: how long he waited in silence.
+     */
+    fun answerTextGapLine(skipAtMs: Long, answerAudioAtMs: Long): String =
+        "backchannel skip=answer_text gap_ms=${(answerAudioAtMs - skipAtMs).coerceAtLeast(0)}"
+
     /** Whether a clip of [ms] measured audio may play. */
     fun clipFits(ms: Long): Boolean = ms in MIN_CLIP_MS..MAX_CLIP_MS
 
