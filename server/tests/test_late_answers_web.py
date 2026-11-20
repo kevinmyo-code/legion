@@ -15,22 +15,52 @@ from agents.legion import late
 from agents.legion.flags import LATE_ANSWERS_ENV
 from agents.models import LateTask, OwedLine
 from agents.runtime.model import FakeModel, say
-from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
-    _clean,
-    _events,
-    _kinds,
-    _of,
-    _post,
-    _record,
-    engine,
-    member,
-    visitor,
-    visitor_user,
-)
+from assistant import cascade, views
+from ingest.statements import GEMINI_KEY_ENV
+from tests.test_assistant import browser
+from tests.test_assistant_cascade import KEY, FakeSpeech, _events, _kinds, _of, _post, _record
+from tests.test_recruiter import _recruiter_browser, _visitor_token
 
 pytestmark = pytest.mark.django_db
 
 ASK = "look into the invented ferry times and tell me later"
+
+
+@pytest.fixture(autouse=True)
+def _clean(monkeypatch):
+    # As the cascade suite: no filler audio fetched, the cascade engine for every role.
+    monkeypatch.setattr(cascade, "FILLER_AUDIO", cascade.FillerAudio(spawn=lambda work: None))
+    monkeypatch.setenv(GEMINI_KEY_ENV, KEY)
+    monkeypatch.delenv("LEGION_WEB_VOICE", raising=False)
+    monkeypatch.delenv("LEGION_WEB_VOICE_RECRUITER", raising=False)
+
+
+@pytest.fixture
+def engine(monkeypatch):
+    class Engine:
+        model = FakeModel([say("Nothing is on today.")])
+        speech = FakeSpeech()
+
+    monkeypatch.setattr(views, "_cascade_clients", lambda: (Engine.model, Engine.speech))
+    return Engine
+
+
+@pytest.fixture
+def member(household_user):
+    return browser(household_user)
+
+
+@pytest.fixture
+def visitor(db):
+    from household.models import Household, HouseholdMember, User
+
+    demo = Household.objects.create(name="Demo visit late", is_demo_visit=True)
+    user = User.objects.create_user(email="visitor-late@demo.invalid", first_name="Pat")
+    user.set_unusable_password()
+    user.save()
+    HouseholdMember.objects.create(user=user, household=demo, role=HouseholdMember.RECRUITER)
+    token, _raw = _visitor_token(user)
+    return _recruiter_browser(user, token)
 
 
 @pytest.fixture

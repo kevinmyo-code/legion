@@ -96,8 +96,10 @@ def _owe(user, text="About the made-up museum: it opens at nine.", **extra):
     "words,question",
     [
         (ASK, "the opening hours of the made-up museum"),
-        ("Can you find out when the made-up shop closes, and let me know later.",
-         "when the made-up shop closes"),
+        (
+            "Can you find out when the made-up shop closes, and let me know later.",
+            "when the made-up shop closes",
+        ),
         ("research invented widgets in the background", "invented widgets"),
         ("get back to me on the invented ferry times", "the invented ferry times"),
         ("look into it and tell me when it's ready", "it"),
@@ -129,8 +131,9 @@ def test_switched_off_a_tell_me_later_ask_goes_to_the_model_and_no_row_is_writte
     assert not LateTask.objects.exists() and not OwedLine.objects.exists()
 
 
-def test_switched_off_an_owed_line_is_never_said(auth_client, household_user, door_on, fake_model,
-                                                monkeypatch):
+def test_switched_off_an_owed_line_is_never_said(
+    auth_client, household_user, door_on, fake_model, monkeypatch
+):
     monkeypatch.delenv(LATE_ANSWERS_ENV, raising=False)
     line = _owe(household_user)
     fake_model["rounds"] = [m.say("Hello.")]
@@ -186,8 +189,9 @@ def test_the_daily_count_is_a_cap(auth_client, household_user, door_on, late_on,
     assert LateTask.objects.count() == late.MAX_PER_DAY
 
 
-def test_the_daily_allowance_is_its_own_feature(auth_client, household_user, door_on, late_on,
-                                               fake_model):
+def test_the_daily_allowance_is_its_own_feature(
+    auth_client, household_user, door_on, late_on, fake_model
+):
     from llm import client as llm_client
 
     llm_client.record(
@@ -282,8 +286,9 @@ def test_a_task_whose_lease_ran_out_is_claimed_again_then_given_up(household_use
     task.refresh_from_db()
     assert (task.status, task.attempts) == ("done", 2)
 
-    stuck = _task(household_user, question="invented ferry", status="running", attempts=2,
-                  lease_until=past)
+    stuck = _task(
+        household_user, question="invented ferry", status="running", attempts=2, lease_until=past
+    )
     late.run_due(lambda: pytest.fail("no model after the last attempt"))
     stuck.refresh_from_db()
     assert stuck.status == "failed"
@@ -293,8 +298,12 @@ def test_a_task_whose_lease_ran_out_is_claimed_again_then_given_up(household_use
 
 
 def test_a_running_task_with_a_live_lease_is_left_alone(household_user, late_on):
-    _task(household_user, status="running", attempts=1,
-          lease_until=timezone.now() + timedelta(minutes=1))
+    _task(
+        household_user,
+        status="running",
+        attempts=1,
+        lease_until=timezone.now() + timedelta(minutes=1),
+    )
     assert late.run_due(lambda: pytest.fail("not due")) == 0
 
 
@@ -362,8 +371,12 @@ def test_one_line_a_turn_and_the_rest_are_counted(
     auth_client, household_user, door_on, late_on, fake_model
 ):
     _owe(household_user, text="First made-up answer.", source_id="a")
-    _owe(household_user, text="Second made-up answer.", source_id="b",
-         ready_at=timezone.now() + timedelta(seconds=1))
+    _owe(
+        household_user,
+        text="Second made-up answer.",
+        source_id="b",
+        ready_at=timezone.now() + timedelta(seconds=1),
+    )
     fake_model["rounds"] = [m.say("Hi.")]
     said = _sentences(_turn(auth_client, "hi"))
     assert said[0] == "First made-up answer. 1 more is ready; ask what's pending."
@@ -392,8 +405,9 @@ def test_a_line_is_not_said_while_a_yes_is_awaited(
     assert OwedLine.objects.get().delivered_at is None
 
 
-def test_another_member_never_hears_his_line(household_user, household_a, door_on, late_on,
-                                            fake_model):
+def test_another_member_never_hears_his_line(
+    household_user, household_a, door_on, late_on, fake_model
+):
     from tests.conftest import _client_for, _member
 
     mia_client = _client_for(_member(household_a, "mia@example.com"))
@@ -473,16 +487,19 @@ def test_cancel_that_with_nothing_open_while_switched_off_is_the_models(
 
 
 def test_a_recruiter_is_never_served(late_on):
+    from rest_framework.test import APIClient
+
     from agents.evals.runner import member_request
     from demo.models import DemoCode
     from household.models import User, is_recruiter
-    from rest_framework.test import APIClient
 
     _row, code = DemoCode.rotate()
     browser = APIClient(enforce_csrf_checks=True)
     browser.get("/api/auth/csrf")
-    assert browser.post("/api/demo/enter", {"code": code, "ref": "late"},
-                        format="json").status_code == 201
+    assert (
+        browser.post("/api/demo/enter", {"code": code, "ref": "late"}, format="json").status_code
+        == 201
+    )
     visitor = next(u for u in User.objects.all() if is_recruiter(u))
     request = member_request(visitor)
     assert late.intercept(request, ASK, "web") is None

@@ -261,9 +261,7 @@ def _code_answer(state: TurnState, store: TurnStore, words: str, started: float)
     state.messages = [*state.messages, {"role": "model", "parts": [{"text": words}]}]
     yield ev.sentence(words)
     yield ev.done("done", words, False, honesty_flag=False, pending_confirm=False)
-    store.finish(
-        state, latency_ms=int((time.monotonic() - started) * 1000), first_sentence_ms=0
-    )
+    store.finish(state, latency_ms=int((time.monotonic() - started) * 1000), first_sentence_ms=0)
 
 
 def cancel(request, turn_id) -> bool:

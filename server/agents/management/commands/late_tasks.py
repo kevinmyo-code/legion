@@ -16,7 +16,9 @@ from ingest.statements import gemini_key
 
 
 class Command(BaseCommand):
-    help = "Run the background tasks of the late-answer path that are due (dark unless switched on)."
+    help = (
+        "Run the background tasks of the late-answer path that are due (dark unless switched on)."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("--limit", type=int, default=2)

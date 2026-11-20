@@ -73,8 +73,8 @@ from datetime import UTC, datetime
 from django.db import DatabaseError, transaction
 from django.db import connections as db_connections
 
-from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion import late
+from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
 from agents.legion.lines import (
     CHANGE_MADE,

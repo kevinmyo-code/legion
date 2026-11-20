@@ -101,7 +101,8 @@ _ASKS = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"^\W*(?:(?:can|could|would) you\s+|please\s+)*get back to me (?:on|about)\s+(?P<q>.+?)\W*$",
+        r"^\W*(?:(?:can|could|would) you\s+|please\s+)*"
+        r"get back to me (?:on|about)\s+(?P<q>.+?)\W*$",
         re.IGNORECASE,
     ),
 )
@@ -122,12 +123,7 @@ def enabled() -> bool:
 
 def _eligible(request) -> bool:
     user = getattr(request, "user", None)
-    return (
-        enabled()
-        and user is not None
-        and user.is_authenticated
-        and not is_recruiter(user)
-    )
+    return enabled() and user is not None and user.is_authenticated and not is_recruiter(user)
 
 
 def ask_of(words: str) -> str | None:
@@ -234,9 +230,9 @@ def _cancel(request) -> str:
     )
     if task is None:
         return NOTHING_TO_CANCEL
-    changed = LateTask.objects.filter(
-        pk=task.pk, status__in=(LATE_QUEUED, LATE_RUNNING)
-    ).update(status=LATE_CANCELLED, finished_at=dj_timezone.now())
+    changed = LateTask.objects.filter(pk=task.pk, status__in=(LATE_QUEUED, LATE_RUNNING)).update(
+        status=LATE_CANCELLED, finished_at=dj_timezone.now()
+    )
     if changed and task.run_conversation:
         # A running task's turn stops at its next round or tool call (the loop's own check).
         AgentTurn.objects.filter(conversation_id=task.run_conversation).update(
@@ -264,9 +260,7 @@ def claim(request, client: str) -> tuple[OwedLine | None, str]:
             line.delivered_at = now
             others = waiting.exclude(pk=line.pk).count()
             log.warning("late_owed delivered=1 waiting=%d", others)
-            more = (
-                MORE.format(n=others, are="is" if others == 1 else "are") if others else ""
-            )
+            more = MORE.format(n=others, are="is" if others == 1 else "are") if others else ""
             return line, more
     return None, ""
 
@@ -365,7 +359,12 @@ def _run_one(task: LateTask, model) -> str:
         )
         LateTask.objects.filter(pk=task.pk).update(run_conversation=conversation.pk)
         gen = run_turn(
-            request, task.question, model, conversation=conversation, agent=SPEC, feature=FEATURE,
+            request,
+            task.question,
+            model,
+            conversation=conversation,
+            agent=SPEC,
+            feature=FEATURE,
             do_prune=False,
         )
         try:
