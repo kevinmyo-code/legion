@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.net.InetAddress
 import java.net.SocketException
@@ -60,12 +61,14 @@ class CarLinkControllerTest {
     private val lan = PairingNetwork("ap-test0", "10.0.0.0", 24)
 
     private var look: NetworkLook = NetworkLook.Present
+    private var hotspotNow = true
+    private var transport = com.kevin.legion.carlink.protocol.PairingTransport { _, _ -> null }
     private var wallNow = 1_000_000_000_000L
     private var senders = 0
 
     private fun controller(store: CarLinkStore = this.store) = CarLinkController(
         store = store,
-        transport = { _, _ -> null },
+        transport = { h, p -> transport.connect(h, p) },
         handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
         newSender = { ring, onEvent, sendFixes, mode ->
             if (senders > 0) port = BlockingPort()
@@ -91,6 +94,7 @@ class CarLinkControllerTest {
         network = { look },
         wallClock = { wallNow },
         revokeSilenceMs = 1_500L,
+        ownHotspotNow = { hotspotNow },
     )
 
     private fun waitFor(what: String, cond: () -> Boolean) {
@@ -245,6 +249,51 @@ class CarLinkControllerTest {
         look = NetworkLook.Absent
         controller().start()
         Thread.sleep(300)
+        assertEquals(0, senders)
+    }
+
+    // ---- C1: a pairing pauses the revoke-only listener, and a failed pairing resumes it.
+    @Test fun `the revoke-only listener pauses while a pairing runs and resumes if it fails`() = runBlocking {
+        assertTrue(store.writeRevokeOnly(key, wallNow))
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        transport = com.kevin.legion.carlink.protocol.PairingTransport { _, _ -> gate.await(); null }
+        val c = controller()
+        c.start()
+        waitFor("the revoke listener") { senders == 1 }
+        val listening = port
+        c.pair(com.kevin.legion.carlink.protocol.CarLinkVectors.qrText())
+        waitFor("the listener paused for the pairing") { listening.closed }
+        gate.complete(Unit)
+        waitFor("the listener back after the failed pairing") { senders == 2 }
+        assertTrue(store.revokeOnlyPending())
+    }
+
+    // ---- C2: silence counts only after a REVOKE answered a HELLO the listener heard.
+    @Ignore("red until fix C2") @Test fun `walking away right after an in-range Forget never shows Forgotten`() = runBlocking {
+        assertTrue(store.write(key, null))
+        val c = controller()
+        c.start()
+        port.inbox.put(FakeUnit(key).hello(intervalMs = 1000))
+        waitFor("the unit in range") { c.status.value.unitInRange }
+        c.forget()
+        // The REVOKE sent at Forget may be lost; no HELLO follows (the phone walked away).
+        // Longer than the silence plus the listener's 5 s idle wait.
+        Thread.sleep(7_000)
+        assertTrue("the record must wait", store.revokeOnlyPending())
+        assertTrue(c.status.value.note != CarLinkNote.FORGOT_REVOKE_SENT)
+    }
+
+    // ---- C3: the own-hotspot test runs again at heal time.
+    @Ignore("red until fix C3") @Test fun `a changed network whose interface is no longer the phone's hotspot is never healed`() {
+        assertTrue(store.write(key, null))
+        assertTrue(store.setPairingNetwork(PairingNetwork("ap-test0", "10.0.0.0", 24, ownHotspot = true)))
+        hotspotNow = false
+        look = NetworkLook.Changed(LocalIface("ap-test0", InetAddress.getByName("10.9.9.1") as java.net.Inet4Address, 24))
+        val c = controller()
+        c.start()
+        waitFor("the re-pair words") { c.status.value.note != null }
+        assertEquals(CarLinkNote.NETWORK_CHANGED_REPAIR, c.status.value.note)
+        Thread.sleep(200)
         assertEquals(0, senders)
     }
 

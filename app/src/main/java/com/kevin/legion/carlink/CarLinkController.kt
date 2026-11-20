@@ -81,6 +81,8 @@ class CarLinkController(
     private val wallClock: () -> Long = System::currentTimeMillis,
     /** R1: a revoke-only record is wiped after this long with no HELLO under its key. */
     private val revokeSilenceMs: Long = 30_000L,
+    /** STUB (red step). */
+    private val ownHotspotNow: (String) -> Boolean = { false },
 ) {
     private val _status = MutableStateFlow(CarLinkStatus())
     val status: StateFlow<CarLinkStatus> = _status.asStateFlow()
@@ -94,6 +96,9 @@ class CarLinkController(
     @Volatile private var sender: CarLinkSender? = null
     // The forgotten pairing's key while a revoke-only record waits for the unit (5.4, rev 5).
     @Volatile private var revokeKey: ByteArray? = null
+    // A pairing session is running: the revoke-only listener pauses (C1). Its REVOKE under the old
+    // key would make a unit holding the new pairing as PENDING forget that too.
+    @Volatile private var pairingOpen = false
     // Forget sent a REVOKE itself before handing over to the revoke-only listener.
     @Volatile private var revokeSentAtForget = false
 
@@ -159,6 +164,7 @@ class CarLinkController(
     @Synchronized private fun startFeed() {
         if (feedJob?.isActive == true) return
         val revokeOnly = ring.current == null
+        if (revokeOnly && pairingOpen) return
         val feedRing = if (!revokeOnly) ring else revokeRing() ?: return
         feedJob = scope.launch(io) {
             var keepGoing = true
@@ -293,6 +299,8 @@ class CarLinkController(
             ensureLoaded()
             val ring = ring
             ring.sessionOpen = true
+            pairingOpen = true
+            if (ring.current == null) stopFeed()
             val client = PairingClient(qr, P256.generate(), ring, handover::body)
             val runner = PairingRunner(transport, jitterMs, sleep) { stage ->
                 _status.update { it.copy(pairing = stage) }
@@ -304,6 +312,7 @@ class CarLinkController(
             } finally {
                 // Also on a cancel: one after `stored` still leaves the new key current (Paired).
                 ring.sessionOpen = false
+                pairingOpen = false
                 withContext(NonCancellable) {
                     if (client.stage !is PairingStage.Paired) handover.discard()
                     finish(client.stage, qr.host)
