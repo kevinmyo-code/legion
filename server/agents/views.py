@@ -37,6 +37,7 @@ import time
 import uuid
 import wave
 
+from django.db import connection
 from django.http import StreamingHttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_field
@@ -55,7 +56,7 @@ from agents.voice import allowance, pipeline, stage, streaming
 from agents.voice.hedge import HedgedSpeech
 from agents.voice.speech import INPUT_RATE, MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS, GeminiSpeech
 from api.schema import DetailSerializer
-from assistant import voice_engine
+from assistant import turn_slots, voice_engine
 from headunit_signin import scope as headunit_scope
 from headunit_signin import spend as unit_spend
 from headunit_signin.authentication import HeadUnitTokenAuthentication
@@ -448,6 +449,7 @@ class AgentTurnStreamView(_SwitchedAgentsView):
             200: OpenApiResponse(description="text/event-stream, or the probe's JSON."),
             400: DetailSerializer,
             404: OpenApiResponse(DetailSerializer, description="A switch is off."),
+            408: DetailSerializer,
             409: DetailSerializer,
             413: DetailSerializer,
             429: DetailSerializer,
@@ -456,11 +458,33 @@ class AgentTurnStreamView(_SwitchedAgentsView):
     )
     def post(self, request):
         arrived = time.monotonic()
+        # One open stream per member, taken before a byte is read (review 1120, finding 4).
+        held = _hold_stream(request.user)
+        if held is None:
+            return _refuse(streaming.STREAM_BUSY, "stream_busy", status.HTTP_409_CONFLICT)
         try:
             length = int(request.META.get("CONTENT_LENGTH") or "")
         except ValueError:
             length = None
-        reader = streaming.FrameReader(request.META.get("wsgi.input"), length)
+        reader = streaming.FrameReader(
+            request.META.get("wsgi.input"), length, sock=request.META.get("gunicorn.socket")
+        )
+        try:
+            response = self._take(request, reader, arrived)
+        except BaseException:
+            held.release()
+            raise
+        finally:
+            # The body is read: the socket's own timeout again before anything is written.
+            reader.release()
+        if isinstance(response, StreamingHttpResponse):
+            # The answer's stream holds the lock until it closes, however it ends.
+            response._resource_closers.append(held.release)
+        else:
+            held.release()
+        return response
+
+    def _take(self, request, reader, arrived):
         try:
             first = reader.next()
             if first is None or first[0] != b"M":
@@ -512,7 +536,21 @@ class AgentTurnStreamView(_SwitchedAgentsView):
         return _sse(_stream(request, data, utterance, arrived))
 
 
-_FRAME_STATUS = {"too_long": status.HTTP_413_REQUEST_ENTITY_TOO_LARGE}
+_FRAME_STATUS = {
+    "too_long": status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+    "stalled": status.HTTP_408_REQUEST_TIMEOUT,
+}
+
+
+def _hold_stream(user) -> turn_slots.Held | None:
+    """The member's one open stream (`streaming.STREAM_LOCK_NS`), or None while another is open.
+    No advisory locks on a local SQLite run: nothing is limited there."""
+    if connection.vendor != "postgresql":
+        return turn_slots.Held()
+    key = turn_slots._key(f"stream:{user.pk}")
+    if not turn_slots._try(streaming.STREAM_LOCK_NS, key):
+        return None
+    return turn_slots.Held(locks=[(streaming.STREAM_LOCK_NS, key)])
 
 
 def _stream_meta(meta: dict) -> tuple[dict, Response | None]:

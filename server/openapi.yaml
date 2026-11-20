@@ -371,6 +371,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: A switch is off.
+        '408':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
         '409':
           content:
             application/json:

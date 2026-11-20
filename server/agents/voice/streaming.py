@@ -27,8 +27,11 @@ under the 32 MiB HTTP/1 cap (a 28 s utterance is 0.9 MB).
 
 ## The rules
 
-- Every refusal that costs nothing comes first: the switches, authentication, the metadata, the
-  key, the member's allowance. Only then is a session opened.
+- Every refusal that costs nothing comes first: the switches, authentication, the member's one
+  open stream, the metadata, the member's allowance, the key. Only then is a session opened (or
+  the probe reads on).
+- A client that stops sending is refused (`stalled`) after `FIRST_FRAME_S` before the metadata
+  frame or `IDLE_S` between later reads; the whole upload is bounded by `UPLOAD_WALL_MS`.
 - The audio is kept in this request's memory (never stored) for the batch fallback and the gates.
 - No `E` frame (the client hung up, or the connection broke): nothing runs.
 - `E` names how many audio bytes were sent; fewer arrived means a gap: nothing runs, the client
@@ -56,8 +59,7 @@ from agents.voice.live_stt import LiveSocket, StreamFailure, TranscribeSession
 
 HEADER = struct.Struct(">cI")
 # The longest an utterance's upload may run (the 28 s utterance cap plus slack for a slow network),
-# checked between frames. A client that stops sending altogether is bounded only by the request
-# timeout (300 s): a blocking read cannot be interrupted from here.
+# checked between frames.
 UPLOAD_WALL_MS = 45_000
 MAX_FRAME_BYTES = 64 * 1024
 MAX_META_BYTES = 4 * 1024
@@ -65,6 +67,23 @@ MAX_META_BYTES = 4 * 1024
 # 20 ms frames is 1,400, plus a stamp before each in the probe. Without a cap, 5-byte frames would
 # make a 32 MiB body millions of objects.
 MAX_FRAMES = 3_000
+# A client that stops sending (review 1120, finding 4). Each read of the body waits at most this
+# long for its next bytes, by a timeout on the connection's own socket (gunicorn hands it over as
+# `environ["gunicorn.socket"]`): the metadata frame must start within `FIRST_FRAME_S` of the view
+# starting, and every later read within `IDLE_S` (a client sends audio every 100 ms or so while he
+# speaks). A stall is refused as `stalled`, so a silent client holds a thread for at most about
+# 10 s, not the 300 s request timeout. The timeout is per read: a client dripping a byte at a time
+# is bounded by the 45 s upload wall instead, and by the per-member lock to one thread at a time.
+FIRST_FRAME_S = 5.0
+IDLE_S = 10.0
+# One open stream per member (review 1120, finding 4): a Postgres advisory lock in this namespace,
+# keyed by the member, held from before the first read until the answer's stream closes. It holds
+# across workers and instances (one database); a crashed process releases it with its connection.
+STREAM_LOCK_NS = 0x5354  # "ST"
+STREAM_BUSY = (
+    "Nothing was answered: another spoken turn of yours is still streaming in or being answered. "
+    "Wait for it to finish, then speak again."
+)
 
 
 def socket_for(key: str) -> LiveSocket:
@@ -84,14 +103,23 @@ class FrameError(Exception):
 class FrameReader:
     """Frames off a raw `wsgi.input`, read as they arrive. `None` at the end of the body."""
 
-    def __init__(self, stream, length: int | None = None):
+    def __init__(self, stream, length: int | None = None, sock=None):
         # `length`: the declared Content-Length, when the client sent one (a chunked upload,
-        # the normal case, has none and is read to its end).
+        # the normal case, has none and is read to its end). `sock`: the connection's socket,
+        # when the server hands it over, for the read deadlines; `release()` restores it.
         self.stream = stream
         self.left = length
         self.buffer = b""
         self.eof = False
         self.broken = False
+        self.stalled = False
+        self.sock = sock
+        self._restore = None
+        if sock is not None:
+            try:
+                self._restore = (sock.gettimeout(),)
+            except Exception:  # noqa: BLE001 - no socket to time, no deadline
+                self.sock = None
         self.frames = 0
 
     def _fill(self, wanted: int) -> bool:
@@ -102,8 +130,14 @@ class FrameReader:
             size = wanted - len(self.buffer)
             if self.left is not None:
                 size = min(size, self.left)
+            self._deadline()
             try:
                 chunk = self.stream.read(size) if size and hasattr(self.stream, "read") else b""
+            except TimeoutError:
+                # The client stopped sending for longer than the deadline (`socket.timeout` is
+                # `TimeoutError`).
+                chunk = b""
+                self.stalled = True
             except Exception:  # noqa: BLE001 - a dropped connection mid-body is a hang-up
                 chunk = b""
                 self.broken = True
@@ -115,8 +149,27 @@ class FrameReader:
                     self.left -= len(chunk)
         return len(self.buffer) >= wanted
 
+    def _deadline(self) -> None:
+        if self.sock is not None:
+            try:
+                self.sock.settimeout(FIRST_FRAME_S if self.frames == 0 else IDLE_S)
+            except Exception:  # noqa: BLE001 - a closed socket fails its read next
+                pass
+
+    def release(self) -> None:
+        """Puts the socket's own timeout back (None: blocking), before the answer is written.
+        Idempotent."""
+        if self.sock is not None and self._restore is not None:
+            try:
+                self.sock.settimeout(self._restore[0])
+            except Exception:  # noqa: BLE001
+                pass
+            self._restore = None
+
     def next(self) -> tuple[bytes, bytes] | None:
         if not self._fill(HEADER.size):
+            if self.stalled:
+                raise FrameError("stalled", "The client stopped sending: nothing was run.")
             if self.buffer:
                 raise FrameError("hung_up", "The body ended inside a frame.")
             return None
@@ -131,6 +184,8 @@ class FrameReader:
         if self.frames > MAX_FRAMES:
             raise FrameError("too_long", f"A body carries at most {MAX_FRAMES} frames.")
         if not self._fill(HEADER.size + length):
+            if self.stalled:
+                raise FrameError("stalled", "The client stopped sending: nothing was run.")
             raise FrameError("hung_up", "The body ended inside a frame.")
         payload = self.buffer[HEADER.size : HEADER.size + length]
         self.buffer = self.buffer[HEADER.size + length :]

@@ -159,3 +159,55 @@ def test_the_probe_stops_at_the_upload_wall():
     with pytest.raises(streaming.FrameError) as caught:
         streaming.probe(reader, arrived_at=0.0, clock=clock)
     assert caught.value.code == "too_long"
+
+
+# ---- review 1120 finding 4: a client that stops sending ------------------------------------------
+
+
+class TimingSocket:
+    """The connection's socket as gunicorn hands it over (`environ["gunicorn.socket"]`): the
+    reader sets a timeout on it before each read and puts the old one back when done."""
+
+    def __init__(self):
+        self.timeouts: list = []
+        self.current = None
+
+    def gettimeout(self):
+        return self.current
+
+    def settimeout(self, value):
+        self.timeouts.append(value)
+        self.current = value
+
+
+class StalledBody:
+    """Sends `data`, then nothing: the next read waits out the socket's timeout."""
+
+    def __init__(self, data: bytes):
+        self.data = data
+
+    def read(self, size: int) -> bytes:
+        if not self.data:
+            raise TimeoutError("timed out")
+        out, self.data = self.data[:size], self.data[size:]
+        return out
+
+
+def test_the_first_frame_has_a_short_deadline_and_later_reads_an_idle_timeout():
+    sock = TimingSocket()
+    reader = streaming.FrameReader(_body(meta() + audio(b"\x10\x00" * 1_600)), sock=sock)
+    reader.next()
+    reader.next()
+    assert sock.timeouts[:1] == [streaming.FIRST_FRAME_S]
+    assert set(sock.timeouts[1:-1]) == {streaming.IDLE_S}
+    assert streaming.FIRST_FRAME_S <= 5 and streaming.IDLE_S <= 10
+    reader.release()
+    assert sock.current is None  # gunicorn's own blocking socket again, for the answer
+
+
+def test_a_client_that_stops_sending_is_refused_as_stalled_not_held():
+    reader = streaming.FrameReader(StalledBody(meta()), sock=TimingSocket())
+    reader.next()
+    with pytest.raises(streaming.FrameError) as caught:
+        reader.next()
+    assert caught.value.code == "stalled"

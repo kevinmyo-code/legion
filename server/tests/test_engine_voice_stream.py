@@ -234,6 +234,66 @@ def test_over_the_daily_allowance_the_probe_is_refused_before_it_reads_on(
     assert response.status_code == 429 and response.data["code"] == "member_cap"
 
 
+# ---- review 1120 finding 4: one open stream per member ---------------------------------------
+
+
+@pytest.fixture
+def other_session():
+    """A second database session, as another worker or instance would hold."""
+    from django.db import connections
+
+    conn = connections.create_connection("default")
+    yield conn
+    conn.close()
+
+
+def _stream_lock_free(conn, user) -> bool:
+    from agents.voice import streaming
+    from assistant import turn_slots
+
+    key = turn_slots._key(f"stream:{user.pk}")
+    with conn.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+        free = cur.fetchone()[0]
+        if free:
+            cur.execute("SELECT pg_advisory_unlock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+    return free
+
+
+def test_a_second_stream_from_the_same_member_is_refused_while_one_is_open(
+    auth_client, stream, household_user, other_session
+):
+    from agents.voice import streaming
+    from assistant import turn_slots
+
+    key = turn_slots._key(f"stream:{household_user.pk}")
+    with other_session.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+        assert cur.fetchone()[0]
+    response = _post(auth_client, utterance())
+    assert response.status_code == 409 and response.data["code"] == "stream_busy"
+    assert stream.opened == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(lambda: utterance(), id="answered"),
+        pytest.param(lambda: meta(probe=True) + end(0), id="probe"),
+        pytest.param(lambda: audio(SECOND), id="refused"),
+        pytest.param(lambda: meta() + audio(SECOND), id="hung_up"),
+    ],
+)
+def test_the_member_stream_lock_is_free_again_after_every_exit(
+    auth_client, stream, household_user, other_session, body
+):
+    response = _post(auth_client, body())
+    if response.status_code == 200 and hasattr(response, "streaming_content"):
+        b"".join(response.streaming_content)
+        response.close()
+    assert _stream_lock_free(other_session, household_user)
+
+
 # ---- the head unit (merge with main's head-unit sign-in) ---------------------------------------
 
 
