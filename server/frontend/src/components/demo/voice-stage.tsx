@@ -69,6 +69,27 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   // beside whichever is in view instead of docking at the foot. Same control, same tap path.
   const glide = useStoryGlide()
   const place = useOrbPlace()
+  // The chips under the stage orb have their own watcher (any of the row on screen): they stay the
+  // ones to tap until they themselves scroll away, though the orb above them is half gone (review
+  // recheck 2026-11-20: tying them to the orb made visible chips dead to a tap).
+  const chipsRoomRef = useRef<HTMLDivElement>(null)
+  const [chipsSeen, setChipsSeen] = useState(true)
+  useEffect(() => {
+    const el = chipsRoomRef.current
+    if (!glide || !el || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const latest = entries[entries.length - 1]
+        if (latest) setChipsSeen(latest.isIntersecting)
+      },
+      { threshold: 0 },
+    )
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      setChipsSeen(true)
+    }
+  }, [glide])
   useEffect(() => {
     if (!docked || glide) return
     const el = dockRef.current
@@ -84,7 +105,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   }, [docked, glide])
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
-  const sideChips = Boolean(glide && docked && !place.pinned && cascade && cascade.chips.length > 0)
+  const sideChips = Boolean(glide && docked && !chipsSeen && !place.pinned && cascade && cascade.chips.length > 0)
   const mode = orbMode(state)
   const speaking = state.activity === 'speaking'
   // What the orb's tap interrupts.
@@ -169,6 +190,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       {/* The chips sit right under the orb (Kevin, 2026-11-19: "make them float at the bottom of the
           orb"); the row's height is kept while there are none, so chips arriving never push the page. */}
       <div
+        ref={chipsRoomRef}
         data-stage="chips-room"
         // While the side orb carries the chips, this off-screen copy leaves the tree: one group of
         // suggested questions for a screen reader and the keyboard, never two (review 2026-11-20).
