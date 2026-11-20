@@ -42,6 +42,8 @@ data class CarLinkStatus(
     val unitInRange: Boolean = false,
     val sendLocation: Boolean = false,
     val carKeySet: Boolean = false,
+    /** A forgotten pairing whose unit will be told at the next contact (5.4, rev 5). */
+    val revokePending: Boolean = false,
     val note: CarLinkNote? = null,
 )
 
@@ -55,7 +57,7 @@ class CarLinkController(
     private val store: CarLinkStore,
     private val transport: PairingTransport,
     private val handover: HandoverPlan,
-    private val newSender: (LinkKeyRing, (RingEvent) -> Unit, () -> Boolean) -> CarLinkSender?,
+    private val newSender: (LinkKeyRing, (RingEvent) -> Unit, () -> Boolean, Boolean) -> CarLinkSender?,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
     private val jitterMs: () -> Long,
@@ -73,6 +75,8 @@ class CarLinkController(
     private var pairingJob: Job? = null
     private var feedJob: Job? = null
     @Volatile private var sender: CarLinkSender? = null
+    // The forgotten pairing's key while a revoke-only record waits for the unit (5.4, rev 5).
+    @Volatile private var revokeKey: ByteArray? = null
 
     /**
      * Reads the stored keys once, on [io] (Keystore decrypts with retries can be slow). A store that
@@ -88,6 +92,7 @@ class CarLinkController(
             StoredLink.Broken
         }
         if (result is StoredLink.Paired) ring = LinkKeyRing(result.current, result.reserve, store)
+        if (result is StoredLink.NotPaired) loadRevokeOnly()
         val sendLocation = try {
             store.sendLocation()
         } catch (e: RuntimeException) {
@@ -117,23 +122,53 @@ class CarLinkController(
         }
     }
 
+    /** A revoke-only record younger than 90 days is kept for one REVOKE; an older one expires unused. */
+    private fun loadRevokeOnly() {
+        if (!store.revokeOnlyPending()) return
+        val since = store.revokeOnlySince()
+        if (since == null || wallClock() - since > REVOKE_ONLY_MAX_MS) {
+            store.clearRevokeOnly()
+            return
+        }
+        revokeKey = store.revokeOnlyKey()
+        _status.update { it.copy(revokePending = true) }
+    }
+
+    /**
+     * Runs the sender: the full feed when paired, or, for a revoke-only record, a listener that can
+     * do one thing: recognise that unit's HELLO and send it REVOKE (no fixes, no zone, no hand-over).
+     */
     @Synchronized private fun startFeed() {
-        if (ring.current == null || feedJob?.isActive == true) return
+        if (feedJob?.isActive == true) return
+        val revokeOnly = ring.current == null
+        val feedRing = if (!revokeOnly) {
+            ring
+        } else {
+            revokeKey?.let { LinkKeyRing(it.copyOf(), null) { _, _ -> false } } ?: return
+        }
         feedJob = scope.launch(io) {
-            val s = newSender(ring, ::onRingEvent) { _status.value.sendLocation }
+            val s = newSender(feedRing, ::onRingEvent, { !revokeOnly && _status.value.sendLocation }, revokeOnly)
             if (s == null) {
-                _status.update { it.copy(note = CarLinkNote.PORT_UNAVAILABLE) }
+                // A revoke-only listener keeps Forget's own words on screen.
+                if (!revokeOnly) _status.update { it.copy(note = CarLinkNote.PORT_UNAVAILABLE) }
                 return@launch
             }
             sender = s
             try {
-                while (isActive && ring.current != null) {
+                while (isActive && feedRing.current != null) {
                     if (!stepContained(s)) break
                     val inRange = s.inRange()
-                    if (inRange != _status.value.unitInRange) _status.update { it.copy(unitInRange = inRange) }
+                    if (revokeOnly) {
+                        if (inRange && s.revoke()) {
+                            revokeDelivered()
+                            break
+                        }
+                    } else if (inRange != _status.value.unitInRange) {
+                        _status.update { it.copy(unitInRange = inRange) }
+                    }
                 }
             } finally {
-                sender = null
+                if (sender === s) sender = null
                 s.close()
                 _status.update { it.copy(unitInRange = false) }
             }
@@ -192,10 +227,24 @@ class CarLinkController(
         }
     }
 
+    private fun revokeDelivered() {
+        store.clearRevokeOnly()
+        revokeKey?.fill(0)
+        revokeKey = null
+        _status.update { it.copy(revokePending = false, note = CarLinkNote.FORGOT_REVOKE_SENT) }
+    }
+
     private fun finish(end: PairingStage) {
         if (end is PairingStage.Paired) {
             store.setUnitDeviceId(handover.mintedId())
             handover.keep()
+            // A new pairing replaces any revoke-only record (its key is no longer the unit's current one).
+            if (revokeKey != null) {
+                stopFeed()
+                store.clearRevokeOnly()
+                revokeKey = null
+                _status.update { it.copy(revokePending = false) }
+            }
         }
         val link = when {
             ring.current != null -> LinkState.PAIRED
@@ -224,17 +273,32 @@ class CarLinkController(
         ensureLoaded()
         val sentRevoke = sender?.revoke() == true
         store.unitDeviceId()?.let { handover.revoke(it) }
-        if (!ring.forget()) {
+        val key = ring.current?.copyOf()
+        // Out of range with a key: keep a REVOKE-only record so the unit is told at the next contact.
+        val keepForRevoke = !sentRevoke && key != null
+        val forgotten = if (keepForRevoke) {
+            store.writeRevokeOnly(key!!, wallClock()).also { if (it) ring.dropFromMemory() }
+        } else {
+            ring.forget()
+        }
+        if (!forgotten) {
             _status.update { it.copy(note = CarLinkNote.FORGET_FAILED) }
             return@withContext
         }
         stopFeed()
+        revokeKey = if (keepForRevoke) key else null
         _status.update {
             CarLinkStatus(
                 link = LinkState.NOT_PAIRED,
-                note = if (sentRevoke) CarLinkNote.FORGOT_REVOKE_SENT else CarLinkNote.FORGOT_NOT_IN_RANGE,
+                revokePending = keepForRevoke,
+                note = when {
+                    sentRevoke -> CarLinkNote.FORGOT_REVOKE_SENT
+                    keepForRevoke -> CarLinkNote.FORGOT_WILL_TELL
+                    else -> CarLinkNote.FORGOT_NOT_IN_RANGE
+                },
             )
         }
+        if (keepForRevoke) startFeed()
     }
 
     fun setSendLocation(on: Boolean) {
@@ -269,5 +333,8 @@ class CarLinkController(
 
     private companion object {
         const val LOOP_BACKOFF_MS = 1_000L
+
+        /** 5.4 rev 5: a revoke-only record waits about 90 days, then expires unused. */
+        const val REVOKE_ONLY_MAX_MS = 90L * 24 * 60 * 60 * 1000
     }
 }

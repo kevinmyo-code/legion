@@ -72,7 +72,7 @@ class CarLinkViewModelTest {
         store = store,
         transport = { _, _ -> conn },
         handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { "Test phone" }, {}),
-        newSender = { _, _, _ -> null },
+        newSender = { _, _, _, _ -> null },
         scope = scope,
         io = Dispatchers.Unconfined,
         jitterMs = { 300L },
@@ -168,7 +168,7 @@ class CarLinkViewModelTest {
         val brokenController = CarLinkController(
             CarLinkStore(unreadable, file) {}, { _, _ -> null },
             HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
-            { _, _, _ -> null }, scope, Dispatchers.Unconfined, { 300L }, {},
+            { _, _, _, _ -> null }, scope, Dispatchers.Unconfined, { 300L }, {},
         )
         val broken = CarLinkViewModel(brokenController, NoQrScannerChosen(), debugPaste = false, scope = scope)
         assertEquals(CarLinkPhase.BROKEN, broken.state.value.phase)

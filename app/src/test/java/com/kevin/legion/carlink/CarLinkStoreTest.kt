@@ -172,7 +172,7 @@ class CarLinkStoreTest {
         assertEquals(24, n.prefix)
     }
 
-    @Ignore("red until fix revoke-only") @Test fun `a revoke-only record keeps one sealed key and its date, and nothing else`() {
+    @Test fun `a revoke-only record keeps one sealed key and its date, and nothing else`() {
         store.write(key, old)
         store.setSendLocation(true)
         assertTrue(store.writeRevokeOnly(key, 123L))

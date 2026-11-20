@@ -71,14 +71,38 @@ class CarLinkStore(
                     put(UNIT_DEVICE_ID, null)
                     put(SEND_LOCATION, null)
                     put(CAR_GEMINI, null)
+                    put(REVOKE_ONLY, null)
+                    put(REVOKE_SINCE, null)
                 }
             },
         )
     }
 
-    fun revokeOnlyPending(): Boolean = false
+    /** A REVOKE-only record exists (5.4, rev 5): a forgotten pairing whose unit was not yet told. */
+    fun revokeOnlyPending(): Boolean = file.read().containsKey(REVOKE_ONLY)
 
-    fun writeRevokeOnly(key: ByteArray, sinceMs: Long): Boolean = false
+    /** When the revoke-only record was made (wall clock, for its 90-day expiry), or null. */
+    fun revokeOnlySince(): Long? = file.read()[REVOKE_SINCE]?.toLongOrNull()
+
+    /** The forgotten pairing's link key, used for nothing but one REVOKE. Null if none or unreadable. */
+    fun revokeOnlyKey(): ByteArray? = file.read()[REVOKE_ONLY]?.let(::openWithRetry)?.also(::register)
+
+    /**
+     * Forget while the unit is out of range: in one write, every pairing value goes and only the
+     * sealed link key stays, marked forgotten, with the time. False = nothing changed.
+     */
+    fun writeRevokeOnly(key: ByteArray, sinceMs: Long): Boolean {
+        val blob = sealed(key) ?: return false
+        register(key)
+        return file.writeAll(
+            mapOf(
+                CURRENT to null, RESERVE to null, UNIT_DEVICE_ID to null, SEND_LOCATION to null, CAR_GEMINI to null,
+                REVOKE_ONLY to blob, REVOKE_SINCE to sinceMs.toString(),
+            ),
+        )
+    }
+
+    fun clearRevokeOnly(): Boolean = file.writeAll(mapOf(REVOKE_ONLY to null, REVOKE_SINCE to null))
 
     /**
      * The car's OWN Gemini key (5.3, rev 5): a separate, restricted key pasted for the unit, sealed like
@@ -131,5 +155,7 @@ class CarLinkStore(
         private const val UNIT_DEVICE_ID = "unit_device_id"
         private const val SEND_LOCATION = "send_location"
         private const val CAR_GEMINI = "car_gemini_key"
+        private const val REVOKE_ONLY = "revoke_only_key"
+        private const val REVOKE_SINCE = "revoke_only_since"
     }
 }

@@ -90,6 +90,15 @@ class LinkKeyRing(
         return true
     }
 
+    /** The store already rewrote the record (Forget into a revoke-only record): drop the keys from memory. */
+    @Synchronized fun dropFromMemory() {
+        current?.fill(0)
+        reserve?.fill(0)
+        current = null
+        reserve = null
+        oldOnlySince = null
+    }
+
     /**
      * An authenticated, non-replayed HELLO opened under [slot] at [nowMs].
      * - CURRENT: proof the unit holds the new key; the reserve is deleted.

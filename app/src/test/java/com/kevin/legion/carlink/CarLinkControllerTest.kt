@@ -68,7 +68,7 @@ class CarLinkControllerTest {
         store = store,
         transport = { _, _ -> null },
         handover = HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
-        newSender = { ring, onEvent, sendFixes ->
+        newSender = { ring, onEvent, sendFixes, _ ->
             if (senders > 0) port = BlockingPort()
             senders++
             CarLinkSender(
@@ -114,16 +114,17 @@ class CarLinkControllerTest {
         assertTrue("loop errors: $errors", errors.isEmpty())
     }
 
-    @Test fun `forget with the unit out of range says so and still clears the keys`() = runBlocking {
+    @Test fun `forget with the unit out of range says so and clears every pairing value`() = runBlocking {
         assertTrue(store.write(key, null))
         val c = controller()
         c.start()
         waitFor("the listener") { senders > 0 }
+        val first = port
         c.forget()
-        assertEquals(CarLinkNote.FORGOT_NOT_IN_RANGE, c.status.value.note)
+        assertEquals(CarLinkNote.FORGOT_WILL_TELL, c.status.value.note)
         assertEquals(StoredLink.NotPaired, store.load())
-        assertTrue(port.sent.isEmpty())
-        waitFor("the port closed") { port.closed }
+        assertTrue(first.sent.isEmpty())
+        waitFor("the port closed") { first.closed }
         Thread.sleep(100)
         assertTrue("loop errors: $errors", errors.isEmpty())
     }
@@ -136,7 +137,7 @@ class CarLinkControllerTest {
         val c = CarLinkController(
             CarLinkStore(box, file) {}, { _, _ -> null },
             HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
-            { _, _, _ -> error("a broken pairing must not start a sender") }, scope, Dispatchers.IO, { 300L }, {},
+            { _, _, _, _ -> error("a broken pairing must not start a sender") }, scope, Dispatchers.IO, { 300L }, {},
         )
         c.start()
         waitFor("the load") { c.status.value.link != LinkState.LOADING }
@@ -160,7 +161,7 @@ class CarLinkControllerTest {
         }
         val c = CarLinkController(
             store, { _, _ -> null }, HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),
-            { ring, onEvent, sendFixes ->
+            { ring, onEvent, sendFixes, _ ->
                 CarLinkSender(
                     Mnai2Feed(ring, { ByteArray(16) }, lan::contains, { null }, onEvent), throwing,
                     { System.nanoTime() / 1_000_000 },
@@ -202,7 +203,7 @@ class CarLinkControllerTest {
     }
 
     // ---- Forget out of range: a REVOKE-only record.
-    @Ignore("red until fix revoke-only") @Test fun `forget out of range keeps a revoke-only record, sends REVOKE once the unit is back, then wipes it`() =
+    @Test fun `forget out of range keeps a revoke-only record, sends REVOKE once the unit is back, then wipes it`() =
         runBlocking {
             assertTrue(store.write(key, null))
             val c = controller()
@@ -220,7 +221,7 @@ class CarLinkControllerTest {
             waitFor("the record wiped") { !store.revokeOnlyPending() }
         }
 
-    @Ignore("red until fix revoke-only") @Test fun `a revoke-only record younger than 90 days is listened for, an older one expires unused`() {
+    @Test fun `a revoke-only record younger than 90 days is listened for, an older one expires unused`() {
         assertTrue(store.writeRevokeOnly(key, wallNow - 89L * DAY))
         controller().start()
         waitFor("a listener for the young record") { senders == 1 }

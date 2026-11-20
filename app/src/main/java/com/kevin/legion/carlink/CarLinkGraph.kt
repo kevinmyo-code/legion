@@ -54,14 +54,15 @@ class CarLinkGraph(private val app: Application) {
                 phoneName = { Build.MODEL },
                 redact = LogcatRedactor::addLiteral,
             ),
-            newSender = { ring, onEvent, sendFixes ->
+            newSender = { ring, onEvent, sendFixes, revokeOnly ->
                 UdpPort.open()?.let { port ->
                     CarLinkSender(
                         feed = Mnai2Feed(
                             ring = ring,
                             newSession = ::newSession,
                             onLan = LocalSubnets.system()::contains,
-                            zoneId = { TimeZone.getDefault().id },
+                            // A revoke-only listener sends nothing but REVOKE: no zone.
+                            zoneId = { if (revokeOnly) null else TimeZone.getDefault().id },
                             onRingEvent = onEvent,
                         ),
                         port = port,

@@ -163,6 +163,10 @@ class CarLinkViewModel(
                 headline = if (p == PairingStage.Paired) "Paired with the head unit." else "Paired with a head unit.",
                 detail = if (s.unitInRange) "The head unit is in range." else "The head unit is out of range now.",
             )
+            s.revokePending -> base.copy(
+                detail = "The head unit will be told to forget this phone the next time this phone is in " +
+                    "the car (for up to 90 days). Until then this phone sends it nothing else.",
+            )
             else -> base
         }
     }
@@ -227,6 +231,8 @@ object CarLinkWords {
         CarLinkNote.FORGET_FAILED -> "Could not forget the head unit: this phone could not change its saved pairing."
         CarLinkNote.PORT_UNAVAILABLE -> "Could not open the car link port, so no location goes to the head unit."
         CarLinkNote.SETTING_NOT_SAVED -> "That setting could not be saved."
-        CarLinkNote.FORGOT_WILL_TELL -> "STUB"
+        CarLinkNote.FORGOT_WILL_TELL ->
+            "Forgotten on this phone. The head unit was not in range, so it will be told to forget this " +
+                "phone the next time this phone is in the car (for up to 90 days)."
     }
 }
