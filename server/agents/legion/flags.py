@@ -27,3 +27,11 @@ STT_HEDGE_ENV = "LEGION_AGENTS_STT_HEDGE"
 
 def stt_hedge_enabled() -> bool:
     return os.environ.get(STT_HEDGE_ENV, "").strip().lower() == "on"
+
+# Streaming speech-to-text on the agents door (`agents/voice/streaming.py`): one long request per
+# utterance, its audio streamed in while he speaks. Off unless `on`; on top of LEGION_AGENTS_TURN.
+STREAM_STT_ENV = "LEGION_AGENTS_STREAM_STT"
+
+
+def stream_stt_enabled() -> bool:
+    return os.environ.get(STREAM_STT_ENV, "").strip().lower() == "on"

@@ -331,6 +331,68 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/agents/turn/stream:
+    post:
+      operationId: api_agents_turn_stream_create
+      description: 'The body is frames, `<type: 1 byte><length: 4 bytes big-endian><payload>`:
+        `M` metadata JSON first (conversation_id, client, contract_version, probe),
+        then `A` audio (16 kHz 16-bit mono PCM) as it is spoken, then `E` the client''s
+        end of turn, JSON {"bytes": audio total}. The events are those of `POST /api/agents/turn`.
+        With `probe: true` (and `T` frames, JSON {"client_ms"}) the answer is JSON
+        listing when each audio frame arrived: no model, no cost. The audio is never
+        stored; the transcript is kept on the turn row.'
+      summary: 'One spoken turn streamed in while it is spoken, answered as Server-Sent
+        Events (dark: off unless both switches are on)'
+      tags:
+      - agents
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: text/event-stream, or the probe's JSON.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: A switch is off.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/assistant/companion:
     get:
       operationId: api_assistant_companion_retrieve

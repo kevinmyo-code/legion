@@ -42,9 +42,7 @@ URL = (
     "wss://generativelanguage.googleapis.com/ws/"
     "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 )
-# Prices per million tokens (official pricing page, 2026-11-20). ESTIMATES like every cost here.
-PRICE_IN = 3.50
-PRICE_OUT = 21.00
+# Its prices are `stage.PRICE_LIVE_STT_IN` / `_OUT`, where every speech price lives.
 # When the server sends no usage block: about 25 audio tokens a second, and text at about four
 # characters a token. Estimates.
 AUDIO_TOKENS_PER_S = 25

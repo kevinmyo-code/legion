@@ -238,6 +238,8 @@ class Utterance:
     text: str | None = None
     # A `transcript` turn answered aloud too (an `audio` or `say` turn always is).
     speak: bool = False
+    # The streamed door's result (`streaming.Streamed`): its transcript, usage and marks.
+    streamed: object | None = None
 
     @property
     def spoken(self) -> bool:
@@ -283,8 +285,20 @@ def voice_turn(
         if utterance.audio is not None:
             # The first event, before the transcription it would otherwise wait on (review).
             yield ev.waiting()
+            streamed = utterance.streamed
+            if streamed is not None:
+                # The streamed door's words (`agents/voice/streaming.py`): the stream's final
+                # transcript, or None when its session failed and the batch path takes the clip.
+                marks.update(streamed.marks)
+                marks["stt_fallback"] = streamed.fallback
+                timings["stt_stream_prompt_tokens"] = streamed.stream_prompt_tokens
+                timings["stt_stream_output_tokens"] = streamed.stream_output_tokens
             try:
-                heard = stage.transcribe(speech, utterance.audio, timings)
+                if streamed is not None and streamed.heard is not None:
+                    heard = streamed.heard
+                    timings.update(audio_ms=heard.audio_ms, stt_ms=heard.ms)
+                else:
+                    heard = stage.transcribe(speech, utterance.audio, timings)
             except SpeechFailure as exc:
                 timings["stt_failed"] = str(exc)
                 status = "stt_failed"
@@ -294,7 +308,7 @@ def voice_turn(
                 yield ev.error(STT_FAILED)
                 return
             words = heard.text
-            marks["stt_done_ms"] = _ms(clock, origin)
+            marks.setdefault("stt_done_ms", _ms(clock, origin))
             if not words:
                 # No speech: silence, no model call, nothing kept. `noise` when no request was
                 # sent at all (the loudness or voice gate), `no_speech` when one heard no words.

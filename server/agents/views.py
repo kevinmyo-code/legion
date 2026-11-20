@@ -34,6 +34,7 @@ from __future__ import annotations
 import io
 import logging
 import time
+import uuid
 import wave
 
 from django.http import StreamingHttpResponse
@@ -41,7 +42,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_field
 from rest_framework import exceptions, serializers, status
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.parsers import BaseParser, FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
@@ -50,7 +51,7 @@ from agents.legion import flags, limbs
 from agents.legion.turn import cancel, open_conversation
 from agents.runtime import events as ev
 from agents.runtime.model import GeminiClient
-from agents.voice import allowance, pipeline
+from agents.voice import allowance, pipeline, stage, streaming
 from agents.voice.hedge import HedgedSpeech
 from agents.voice.speech import INPUT_RATE, MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS, GeminiSpeech
 from api.schema import DetailSerializer
@@ -370,6 +371,134 @@ class AgentTurnView(_SwitchedAgentsView):
             speak=bool(data.get("speak")),
         )
         return _sse(_stream(request, data, utterance, arrived))
+
+
+STREAM_OFF_WORDS = (
+    "Nothing was answered: streamed speech-to-text is switched off on this server "
+    "(LEGION_AGENTS_STREAM_STT is not on)."
+)
+
+
+class _UnreadBody(BaseParser):
+    # Accepts any body and reads none of it: the stream door reads its own frames.
+    media_type = "*/*"
+
+    def parse(self, stream, media_type=None, parser_context=None):
+        return {}
+
+
+class AgentTurnStreamView(_SwitchedAgentsView):
+    # One utterance as one long request (`agents/voice/streaming.py`): the body is framed audio,
+    # sent while he speaks; the answer streams back as Server-Sent Events after the end frame.
+    throttle_classes = [AgentTurnThrottle]
+    # The body is read raw, frame by frame (`streaming.FrameReader`); DRF never parses it.
+    parser_classes = [_UnreadBody]
+
+    def throttled(self, request, wait):
+        raise _TurnThrottled(wait)
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if not flags.stream_stt_enabled():
+            raise exceptions.NotFound(STREAM_OFF_WORDS)
+
+    @extend_schema(
+        tags=AGENTS_TAGS,
+        operation_id="api_agents_turn_stream_create",
+        summary=(
+            "One spoken turn streamed in while it is spoken, answered as Server-Sent Events "
+            "(dark: off unless both switches are on)"
+        ),
+        description=(
+            "The body is frames, `<type: 1 byte><length: 4 bytes big-endian><payload>`: `M` "
+            "metadata JSON first (conversation_id, client, contract_version, probe), then `A` "
+            "audio (16 kHz 16-bit mono PCM) as it is spoken, then `E` the client's end of turn, "
+            'JSON {"bytes": audio total}. The events are those of `POST /api/agents/turn`. With '
+            '`probe: true` (and `T` frames, JSON {"client_ms"}) the answer is JSON listing when '
+            "each audio frame arrived: no model, no cost. The audio is never stored; the "
+            "transcript is kept on the turn row."
+        ),
+        request={"application/octet-stream": OpenApiTypes.BINARY},
+        responses={
+            200: OpenApiResponse(description="text/event-stream, or the probe's JSON."),
+            400: DetailSerializer,
+            404: OpenApiResponse(DetailSerializer, description="A switch is off."),
+            409: DetailSerializer,
+            413: DetailSerializer,
+            429: DetailSerializer,
+            503: DetailSerializer,
+        },
+    )
+    def post(self, request):
+        arrived = time.monotonic()
+        try:
+            length = int(request.META.get("CONTENT_LENGTH") or "")
+        except ValueError:
+            length = None
+        reader = streaming.FrameReader(request.META.get("wsgi.input"), length)
+        try:
+            first = reader.next()
+            if first is None or first[0] != b"M":
+                return _refuse("The first frame must be the metadata.", "bad_request", 400)
+            meta = streaming.json_payload(first[1])
+        except streaming.FrameError as exc:
+            return _refuse(exc.detail, exc.code, _FRAME_STATUS.get(exc.code, 400))
+        version = meta.get("contract_version")
+        if version is not None and version not in SERVED_VERSIONS:
+            return _refuse(
+                f"This engine serves voice contract {limbs.CONTRACT_VERSION}; this client speaks "
+                f"{version}. Update the app.",
+                limbs.CODE_UNSUPPORTED,
+                status.HTTP_409_CONFLICT,
+            )
+        if meta.get("probe") is True:
+            try:
+                return Response(streaming.probe(reader, arrived_at=arrived))
+            except streaming.FrameError as exc:
+                return _refuse(exc.detail, exc.code, _FRAME_STATUS.get(exc.code, 400))
+        data, refusal = _stream_meta(meta)
+        if refusal is not None:
+            return refusal
+        key = gemini_key()
+        if not key:
+            return Response(
+                {"detail": KEY_ABSENT, "code": "no_key"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if allowance.over_cap(request.user):
+            return _refuse(member_cap.USED_UP, "member_cap", status.HTTP_429_TOO_MANY_REQUESTS)
+        try:
+            streamed = streaming.take_utterance(
+                reader, key=key, max_audio_bytes=MAX_AUDIO_BYTES, arrived_at=arrived
+            )
+        except streaming.FrameError as exc:
+            prompt, output = getattr(exc, "spent", (0, 0))
+            if prompt or output:
+                stage.meter_speech(
+                    request,
+                    {"stt_stream_prompt_tokens": prompt, "stt_stream_output_tokens": output},
+                    pipeline.FEATURE,
+                )
+            return _refuse(exc.detail, exc.code, _FRAME_STATUS.get(exc.code, 400))
+        utterance = pipeline.Utterance(kind="user", audio=streamed.pcm, streamed=streamed)
+        return _sse(_stream(request, data, utterance, arrived))
+
+
+_FRAME_STATUS = {"too_long": status.HTTP_413_REQUEST_ENTITY_TOO_LARGE}
+
+
+def _stream_meta(meta: dict) -> tuple[dict, Response | None]:
+    """The metadata frame's fields, checked as the form door checks them."""
+    client = meta.get("client", "phone")
+    if client not in ("phone", "web", "headunit"):
+        return {}, _refuse("`client` is phone, web or headunit.", "bad_request", 400)
+    conversation = meta.get("conversation_id")
+    if conversation is not None:
+        try:
+            conversation = uuid.UUID(str(conversation))
+        except ValueError:
+            return {}, _refuse("`conversation_id` is not an id.", "bad_request", 400)
+    return {"client": client, "conversation_id": conversation}, None
 
 
 class AgentCancelView(_SwitchedAgentsView):
