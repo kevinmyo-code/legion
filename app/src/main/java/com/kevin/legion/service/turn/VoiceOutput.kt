@@ -12,16 +12,16 @@ import kotlinx.coroutines.flow.asStateFlow
  * Where Alfred's voice comes out when nothing plugged in decides it: the loudspeaker, or the earpiece
  * with the phone held to the ear like a call.
  */
-internal enum class OutputChoice { SPEAKER, CALL }
+enum class OutputChoice { SPEAKER, CALL }
 
 /** Where his voice actually goes in a conversation, after headsets, Bluetooth and phone calls have their say. */
-internal enum class VoiceOutlet { LOUDSPEAKER, EARPIECE, WIRED, BLUETOOTH, PHONE_CALL }
+enum class VoiceOutlet { LOUDSPEAKER, EARPIECE, WIRED, BLUETOOTH, PHONE_CALL }
 
 /**
  * The toggle beside the orb. [enabled] is false when a headset, Bluetooth or a phone call decides the
  * route; [label] then says which, so the toggle never claims a route it does not have.
  */
-internal data class OutputToggle(
+data class OutputToggle(
     val choice: OutputChoice,
     val outlet: VoiceOutlet,
     val enabled: Boolean,
