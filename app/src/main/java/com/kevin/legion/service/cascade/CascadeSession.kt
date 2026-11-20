@@ -1213,31 +1213,7 @@ internal class CascadeSession(
     private suspend fun playBackchannel(seq: Int, eotAtMs: Long) {
         val b = backend ?: return
         val p = player ?: return
-        // The open's chime or cue still playing: wait for its end if the clip can still start in time.
-        val cueWait = Backchannel.cueWaitMs(System.currentTimeMillis(), eotAtMs, openingCueEndsAtMs)
-        if (cueWait == null) {
-            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=over_cue")
-            return
-        }
-        if (cueWait > 0) delay(cueWait)
-        // The cue counts as audible (onReplyAudible) until its job ends; past its end it is not.
-        val cueOver = { openingCueEndsAtMs?.let { System.currentTimeMillis() >= it } ?: false }
-        fun due() = !closing.get() &&
-            Backchannel.stillDue(turnAudioStarted, speaking && !cueOver(), seq == backchannelSeq.get())
-        if (!due()) {
-            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=answer_first")
-            return
-        }
-        if (answerTextIn()) {
-            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${Backchannel.Skip.ANSWER_TEXT.token}")
-            return
-        }
-        // His turn already read as noise or nothing (no model call happens): nothing to acknowledge.
-        // A transcript that comes after the clip's time cannot stop it; that turn still gets one.
-        if (backchannelUtt != null && backchannelUtt === noiseUtt) {
-            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=noise")
-            return
-        }
+        val due = backchannelStillDue(seq, eotAtMs) ?: return
         // A clip that fails the length gate is swapped for another word; silent only if none fits.
         var pcm = ByteArray(0)
         val chosen = Backchannel.choose(
@@ -1275,6 +1251,34 @@ internal class CascadeSession(
         delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
         if (!speaking && !turnAudioStarted) playbackActive = false
         backchannelEndAtMs = System.currentTimeMillis()
+    }
+
+    /**
+     * The checks a due backchannel passes before a clip is chosen, each skip logged with its reason.
+     * Returns the "still due" check to repeat under [playGate], or null when the clip is skipped.
+     */
+    @Suppress("ReturnCount") // one worded skip per reason
+    private suspend fun backchannelStillDue(seq: Int, eotAtMs: Long): (() -> Boolean)? {
+        fun skip(reason: String): (() -> Boolean)? {
+            LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=$reason")
+            return null
+        }
+        // The open's chime or cue still playing: wait for its end if the clip can still start in time.
+        val cueWait = Backchannel.cueWaitMs(System.currentTimeMillis(), eotAtMs, openingCueEndsAtMs)
+            ?: return skip("over_cue")
+        if (cueWait > 0) delay(cueWait)
+        // The cue counts as audible (onReplyAudible) until its job ends; past its end it is not.
+        val cueOver = { openingCueEndsAtMs?.let { System.currentTimeMillis() >= it } ?: false }
+        val due = {
+            !closing.get() &&
+                Backchannel.stillDue(turnAudioStarted, speaking && !cueOver(), seq == backchannelSeq.get())
+        }
+        if (!due()) return skip("answer_first")
+        if (answerTextIn()) return skip(Backchannel.Skip.ANSWER_TEXT.token)
+        // His turn already read as noise or nothing (no model call happens): nothing to acknowledge.
+        // A transcript that comes after the clip's time cannot stop it; that turn still gets one.
+        if (backchannelUtt != null && backchannelUtt === noiseUtt) return skip("noise")
+        return due
     }
 
     /** [line]'s whole audio if it comes within [BACKCHANNEL_FETCH_MS] (it is from memory), else empty. */

@@ -201,7 +201,7 @@ class VoiceSpeedWiringTest {
         assertTrue(release.contains("backlog = null"))
         assertTrue(release.contains("clipListen = null"))
         assertTrue(s.contains("gemini.transcribe(audio, hold::add, hedged = false)"))
-        assertTrue(bodyOf(s, "playBackchannel").contains("Backchannel.Skip.ANSWER_TEXT"))
+        assertTrue(bodyOf(s, "backchannelStillDue").contains("Backchannel.Skip.ANSWER_TEXT"))
         assertTrue(bodyOf(s, "answerTextIn").contains("it.reply.isNotEmpty()"))
     }
 
@@ -256,7 +256,8 @@ class VoiceSpeedWiringTest {
         val s = session()
         val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
         assertTrue(start.contains("Backchannel.overReply("))
-        assertTrue(bodyOf(s, "playBackchannel").contains("Backchannel.cueWaitMs("))
+        assertTrue(bodyOf(s, "playBackchannel").contains("backchannelStillDue(seq, eotAtMs)"))
+        assertTrue(bodyOf(s, "backchannelStillDue").contains("Backchannel.cueWaitMs("))
     }
 
     @Test
@@ -273,8 +274,7 @@ class VoiceSpeedWiringTest {
 
     @Test
     fun `a turn already known to be noise gets no clip`() {
-        val play = bodyOf(session(), "playBackchannel")
-        assertTrue(play.contains("noiseUtt"))
+        assertTrue(bodyOf(session(), "backchannelStillDue").contains("noiseUtt"))
     }
 
     private companion object {
