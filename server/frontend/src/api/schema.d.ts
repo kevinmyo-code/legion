@@ -141,6 +141,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/turn/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * One spoken turn streamed in while it is spoken, answered as Server-Sent Events (dark: off unless both switches are on)
+         * @description The body is frames, `<type: 1 byte><length: 4 bytes big-endian><payload>`: `M` metadata JSON first (conversation_id, client, contract_version, probe), then `A` audio (16 kHz 16-bit mono PCM) as it is spoken, then `E` the client's end of turn, JSON {"bytes": audio total}. The events are those of `POST /api/agents/turn`. With `probe: true` (and `T` frames, JSON {"client_ms"}) the answer is JSON listing when each audio frame arrived: no model, no cost. The audio is never stored; the transcript is kept on the turn row.
+         */
+        post: operations["api_agents_turn_stream_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/assistant/companion": {
         parameters: {
             query?: never;
@@ -11735,6 +11755,8 @@ export interface components {
             conversation_id?: string | null;
             /** @default phone */
             client: components["schemas"]["ClientEnum"];
+            /** @description The voice contract the client speaks (wire v1: 1). Another version is refused with `contract_unsupported`. */
+            contract_version?: number;
         };
         /**
          * @description * `user` - user
@@ -12607,6 +12629,85 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_agents_turn_stream_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description text/event-stream, or the probe's JSON. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description A switch is off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

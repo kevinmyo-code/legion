@@ -117,3 +117,122 @@ def test_an_exclusion_split_by_punctuation_does_not_hide_the_hit():
     # the exclusion "suicide doors" is not what was said.
     assert crisis.detect("I keep thinking about suicide, door's locked")
     assert not crisis.detect("the coupe has suicide doors, sadly")
+
+
+# ---- recheck 2026-11-20: inflected hits come back; unpunctuated exclusions swallow nothing ------
+
+
+def _phone_detect(text: str) -> bool:
+    """The phone's `CrisisDetector.detect`, line for line: lowercase, drop straight and curly
+    apostrophes, every run of non [a-z0-9] one space, exclusions blanked, then a substring test."""
+    normalized = re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "").replace("’", ""))
+    normalized = normalized.strip()
+    if not normalized:
+        return False
+    for exclusion in crisis.EXCLUSIONS:
+        normalized = normalized.replace(exclusion, " ")
+    return any(phrase in normalized for phrase in crisis.PHRASES)
+
+
+# The generated list (review v1b, 2026-11-20): every phrase with endings and prefixes the engine
+# does not choose, in every case and wrapping, plus car talk before each exclusion. What the PHONE
+# hits is computed by `_phone_detect` above, never by the engine's own rules.
+ENDINGS = ("", "s", "es", "'s", "ly", "ally", "ity", "ality", "y", "t", "time", "line", "ie")
+PREFIXES = ("", "pre", "non")
+_CASES = (str.lower, str.upper, str.title)
+_WRAPS = ("{x}", "{x}.", "well, {x}!", '"{x}"', "I think {x} today", "honestly... {x}?")
+_CAR_TALK = ("has", "a", "with", "the", "rear", "got")
+
+
+def _generated():
+    for phrase in crisis.PHRASES:
+        head, _, last = phrase.rpartition(" ")
+        for prefix in PREFIXES if not head else ("",):
+            for ending in ENDINGS:
+                spoken = f"{head} {prefix}{last}{ending}".strip().replace("dont", "don't")
+                for case in _CASES:
+                    for wrap in _WRAPS:
+                        yield phrase, prefix + ending, wrap.format(x=case(spoken))
+    for exclusion in crisis.EXCLUSIONS:
+        for lead in _CAR_TALK:
+            for tail in ("", ", I want to die", " and I want to die"):
+                yield exclusion, "car", f"it {lead} {exclusion}{tail}"
+
+
+def _deliberately_quiet(phrase: str, change: str) -> bool:
+    """The engine's one deliberate narrowing of the phone: a phrase of several words matches its
+    last word whole ("diet", "lifetime", "deadly", "life's savings" are other words)."""
+    return " " in phrase and change not in ("", "car")
+
+
+def test_every_string_the_phone_hits_is_a_hit_here_but_other_words_after_a_phrase():
+    missed, quiet = [], []
+    for phrase, change, said in _generated():
+        if not _phone_detect(said):
+            continue
+        if _deliberately_quiet(phrase, change):
+            if crisis.detect(said):
+                quiet.append(said)
+            continue
+        if not crisis.detect(said):
+            missed.append(said)
+    assert missed == []
+    assert quiet == []
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "I've been thinking about suicides",
+        "thinking about suicide's appeal",
+        "I feel suicidally low",
+        "my suicidality is back",
+    ],
+)
+def test_inflected_hits_the_phone_caught_are_hits(said):
+    assert crisis.detect(said)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        # Speech-to-text often writes no punctuation: the exclusion's words are there, but not as
+        # a car part (review recheck, C7).
+        "im thinking about suicide door is locked",
+        "i keep thinking about suicide doors are locked anyway",
+        "thinking of suicide knob in my head",
+    ],
+)
+def test_unpunctuated_speech_does_not_let_an_exclusion_swallow_the_hit(said):
+    assert crisis.detect(said)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "Does it have suicide doors?",
+        "the coupe has suicide doors",
+        "my old truck had a suicide knob",
+        "Does the old coupe come with suicide doors?",
+        "it's got rear suicide doors",
+    ],
+)
+def test_car_talk_about_the_parts_stays_quiet(said):
+    assert not crisis.detect(said)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "I want to be deadly at poker",
+        "that would end my life's savings",
+        "you could take my own life's savings",
+    ],
+)
+def test_a_longer_word_after_a_phrase_is_not_a_hit(said):
+    assert not crisis.detect(said)
+
+
+@pytest.mark.parametrize("said", ["I feel presuicidal", "I've been feeling kind of suicidey"])
+def test_other_forms_of_the_single_word_stems_are_hits_on_the_safe_side(said):
+    assert crisis.detect(said)

@@ -29,6 +29,15 @@ def stt_hedge_enabled() -> bool:
     return os.environ.get(STT_HEDGE_ENV, "").strip().lower() == "on"
 
 
+# Streaming speech-to-text on the agents door (`agents/voice/streaming.py`): one long request per
+# utterance, its audio streamed in while he speaks. Off unless `on`; on top of LEGION_AGENTS_TURN.
+STREAM_STT_ENV = "LEGION_AGENTS_STREAM_STT"
+
+
+def stream_stt_enabled() -> bool:
+    return os.environ.get(STREAM_STT_ENV, "").strip().lower() == "on"
+
+
 # The late-answer path (`agents/legion/late.py`, design 2026-11-20): background tasks and the lines
 # Alfred owes at the next turn. Off unless `on`: with it off no door reads or writes a late-answer
 # row and `manage.py late_tasks` does nothing. Not in `deploy/cloudrun/flags.yaml` or `_common.py`

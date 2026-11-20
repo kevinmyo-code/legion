@@ -54,7 +54,7 @@ def test_a_crisis_hit_says_the_card_line_once_and_shows_the_card(auth_client, en
     engine.speech = FakeSpeech(heard="Honestly I want to die")
     events = _events(_post(auth_client, audio=_wav()))
     kinds = [k for k, _ in events]
-    assert [d for k, d in events if k == "sentence"] == [{"text": line}]
+    assert [d["text"] for k, d in events if k == "sentence"] == [line]
     assert [d for k, d in events if k == "crisis"] == [{"text": line}]
     assert [text for text, _ in engine.speech.spoken] == [line]
     assert any(k == "audio" for k in kinds)
@@ -69,7 +69,7 @@ def test_a_typed_crisis_gets_the_same_line_in_text(auth_client, engine):
         auth_client.post("/api/agents/turn", {"transcript": "I'm suicidal"}, format="json")
     )
     assert [d for k, d in events if k == "crisis"] == [{"text": _card_words()}]
-    assert [d for k, d in events if k == "sentence"] == [{"text": _card_words()}]
+    assert [d["text"] for k, d in events if k == "sentence"] == [_card_words()]
     assert engine.models == []
 
 

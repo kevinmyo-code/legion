@@ -353,7 +353,7 @@ def test_the_owed_line_is_said_first_once_and_kept_out_of_the_model(
     sentences = [(d["text"], d.get("role")) for k, d in events if k == "sentence"]
     assert sentences == [
         ("About the made-up museum: it opens at nine.", "late"),
-        ("Hello again.", None),
+        ("Hello again.", "answer"),
     ]
     late_event = next(d for k, d in events if k == "sentence" and d.get("role") == "late")
     assert late_event["owed_id"] == str(line.pk)

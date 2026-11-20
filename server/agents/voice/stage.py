@@ -94,13 +94,36 @@ def meter_speech(request, timings: dict, feature: str) -> None:
         value = timings.get(key)
         return value if isinstance(value, int) and value > 0 else 0
 
+    # A streamed turn's transcription session (the agents door, `agents/voice/streaming.py`) is
+    # counted in the same "stt" row as a batch transcription of the same turn, at its own price.
+    # The web door never sets these keys, so its rows are as they were.
+    live_in, live_out = g("stt_stream_prompt_tokens"), g("stt_stream_output_tokens")
+    live_cost = live_in * PRICE_LIVE_STT_IN + live_out * PRICE_LIVE_STT_OUT
     parts = (
-        ("stt", g("stt_prompt_tokens"), g("stt_output_tokens"), PRICE_TEXT_IN, PRICE_TEXT_OUT),
-        ("tts", g("tts_prompt_tokens"), g("tts_output_tokens"), PRICE_TTS_IN, PRICE_TTS_OUT),
+        (
+            "stt",
+            g("stt_prompt_tokens") + live_in,
+            g("stt_output_tokens") + live_out,
+            PRICE_TEXT_IN,
+            PRICE_TEXT_OUT,
+            live_cost,
+            live_in,
+            live_out,
+        ),
+        (
+            "tts",
+            g("tts_prompt_tokens"),
+            g("tts_output_tokens"),
+            PRICE_TTS_IN,
+            PRICE_TTS_OUT,
+            0,
+            0,
+            0,
+        ),
     )
     try:
         with transaction.atomic():
-            for model, prompt, out, price_in, price_out in parts:
+            for model, prompt, out, price_in, price_out, extra, extra_in, extra_out in parts:
                 if not (prompt or out):
                     continue
                 llm_client.record(
@@ -113,7 +136,10 @@ def meter_speech(request, timings: dict, feature: str) -> None:
                         "output_tokens": out,
                         "total_tokens": prompt + out,
                     },
-                    cost_estimate_micro_usd=int(prompt * price_in + out * price_out) + 1,
+                    cost_estimate_micro_usd=int(
+                        (prompt - extra_in) * price_in + (out - extra_out) * price_out + extra
+                    )
+                    + 1,
                 )
     except DatabaseError:
         log.warning("assistant cascade: speech meter rows failed", exc_info=True)
@@ -126,6 +152,9 @@ PRICE_TEXT_CACHED = 0.03
 PRICE_TEXT_OUT = 2.50
 PRICE_TTS_IN = 0.50
 PRICE_TTS_OUT = 9.00
+# gemini-3.5-transcribe-live (official pricing page, read 2026-11-20).
+PRICE_LIVE_STT_IN = 3.50
+PRICE_LIVE_STT_OUT = 21.00
 
 
 def turn_cost_usd(timings: dict, spoken: list | None = None) -> float:
