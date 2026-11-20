@@ -288,7 +288,7 @@ internal fun uSp(u: Dp, factor: Float, floor: TextUnit): TextUnit {
     return if (v.value < floor.value) floor else v
 }
 
-/** T1's NAV face: no navigation yet. T5 replaces it through [MiddlePanel.install]. */
+/** The NAV face until navigation lands: says so plainly. T5 replaces it through [MiddlePanel.install]. */
 object NoTripNavHost : NavPanelHost {
     @Composable
     override fun Content(modifier: Modifier) {
@@ -298,13 +298,13 @@ object NoTripNavHost : NavPanelHost {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                "No trip.",
+                MiddlePanelText.NAV_PLACEHOLDER_TITLE,
                 style = AriaType.readout.copy(fontSize = 22.sp, letterSpacing = 0.sp, fontWeight = DeckBold),
                 color = AriaColors.TextPrimary,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Say: navigate to ...",
+                MiddlePanelText.NAV_PLACEHOLDER_LINE,
                 style = AriaType.readout.copy(fontSize = 15.sp, letterSpacing = 0.sp),
                 color = AriaColors.TextDim,
                 textAlign = TextAlign.Center,

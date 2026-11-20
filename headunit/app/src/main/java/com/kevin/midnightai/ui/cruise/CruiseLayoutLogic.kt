@@ -53,6 +53,13 @@ internal object MiddlePanelText {
     /** Older than this and the readout says the fix is lost (plan: "lost Ns" after 3 s). */
     const val STALE_MS = 3_000L
 
+    /**
+     * The NAV face until navigation lands (review M4, 2026-11-20): no voice prompt, because no
+     * navigate tool exists yet and Moose would refuse or improvise. T5 replaces the host.
+     */
+    const val NAV_PLACEHOLDER_TITLE = "No navigation yet."
+    const val NAV_PLACEHOLDER_LINE = "Navigation arrives in a later update."
+
     /** `LocationManager.GPS_PROVIDER`, copied so this object needs no Android runtime. */
     const val GPS_PROVIDER = "gps"
 

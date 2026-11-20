@@ -116,6 +116,11 @@ class CruiseLayoutLogicTest {
         assertEquals(null, MiddlePanelText.speedMph(28.6f, null))
     }
 
+    @Test fun theNavPlaceholderInvitesNoVoiceCommandThatDoesNotExist() {
+        val text = (MiddlePanelText.NAV_PLACEHOLDER_TITLE + " " + MiddlePanelText.NAV_PLACEHOLDER_LINE).lowercase()
+        assertTrue(text, "say" !in text && "navigate to" !in text)
+    }
+
     @Test fun noFixSaysSo() {
         assertEquals(MiddlePanelText.Gps("No GPS", "no fix yet", stale = true), MiddlePanelText.gps(null, null, beacon))
     }
