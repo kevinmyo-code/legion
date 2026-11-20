@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-17
+amended: 2026-11-19
 decided-by: Kevin
 source: "[[decisions#2026-11-17 - Alfred's brain moves to the engine; the phone becomes a thin limb (Kevin)]]"
 tags: [adr]
@@ -9,6 +10,8 @@ tags: [adr]
 # 98. Limbs: one device contract, and a relay for what only a device can do
 
 ## Standing
+
+**AMENDED 2026-11-19 by [[0104-one-voice-speech-on-the-engine-shared-voice-module]]:** voice turns ride this contract (`docs/contracts/voice-client-v1.md`). The crisis pre-check moves to the engine: it runs right after the transcript, before the model; with no network the limb has no words to check, so no crisis detection is possible offline (a known gap, ADR 0104), and it plays the generic "can't reach the engine" clip. Until a limb's engine voice client ships, its own pre-check stays, as below. Versioning: for a voice client, a contract version older than N-1 gets `contract_unsupported` (409) instead of the "text-only turns" in the Decision below, which a voice client cannot use.
 
 **The engine is the hub. Every device that attaches to it is a limb on one contract.** The phone is the first limb, and the head unit ([[0059-headunit-is-a-limb-in-this-repo]]) and the web app follow.
 

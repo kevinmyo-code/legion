@@ -64,7 +64,9 @@ device model in a prompt had three separate agents reporting work on a phone tha
   **aspects** of life. Not a commercial product. **The car head unit has its own client in this
   repo, `headunit/` (Kevin, 2026-10-14, ADR 0059):** the former Midnight AI app, a head-unit-only
   limb of the engine. It is a separate Gradle project with its own rules in `headunit/CLAUDE.md`;
-  it shares nothing with `app/` but the engine's API. **It MAY be the phone's
+  it shares nothing with `app/` but the engine's API and **one shared voice module, `voice/` at
+  the repo root (Kevin, 2026-11-19, ADR 0104)**. That module does not exist yet; until it is
+  extracted, the two apps share no code. **It MAY be the phone's
   home app** (Kevin, 2026-09-27, ADR 0050), opt-in through Android's own Settings. A home app owes
   the user every other app and never a dead tap.
 - **The one-line identity (Kevin, 2026-08-24): a personal-life ERP, queryable and CRUD-able by a
@@ -150,7 +152,7 @@ None of these is re-openable without Kevin. Full record in `memory/library/decis
 | **Commercial model is DEAD** | No billing, tiers, broker, trial, store listing, pricing, or positioning work. `billing/` was dropped entirely. Do not reintroduce it or reason about conversion. |
 | **Clone-and-run is a HARD requirement** | A stranger clones, sideloads, signs in, and it works. This, not cost, is what rules out Firestore. It is also why `gradle.properties` must never hardcode `org.gradle.java.home`. |
 | **Drive-BYO is the only store** | SUPERSEDED 2026-08-25 (Supabase, ADR 0038), 2026-09-05 morning (Django as second client, ADR 0043), and 2026-09-05 evening (**Django is the engine, ADR 0044**: one household-hosted server owns the data, Android and a web app are its clients, Supabase retires). Kept here because the row's REASON survives: nothing Kevin-hosted for other people. The household hosts its own. No Firestore, ever. |
-| **One global assistant identity** | Cars are data, not identities. Per-car `CompanionProfile` keying and Midnight AI's `CompanionIdentity` Zero-vs-car-self split are both dead. |
+| **One global assistant identity** | Cars are data, not identities. Per-car `CompanionProfile` keying and Midnight AI's `CompanionIdentity` Zero-vs-car-self split are both dead. **Persona by surface (Kevin, 2026-11-19, ADR 0104):** the companion is the profile's own (ADR 0020), except on a surface with a fixed persona: Moose on the head unit, the guide on a recruiter's visit. As data, never per car. |
 | **The city-pop design language is DEAD** | With it: the mascot Zero, all generated art, `AvatarStudio`, `OccasionStylist`, `WallpaperPresets`, the two-identities decision. `ui/` is a deliberate clean slate, not a gap. **The live language is Typeset (Kevin, 2026-11-09, ADR 0081)**: paper and ink, Source Serif 4, square, one accent for flags only, with a night edition. It replaces soft Material and mission control screen by screen. |
 | **LLM ingestion is ALLOWED, behind a reconciliation gate** | See §4. This reverses Midnight AI's "no LLM extraction" posture. |
 | **Carry-over inventory ruled on (5 calls, 2026-07-31)** | Music: Spotify App Remote kept, no UI, mixtapes retired. Garage: kept, voice-only. Spend gate: retired, no ledger replacement yet. Fleet build/mod photos: retired (photo storage is pantry-ingestion-only). Tagged places: kept as-is. |
@@ -179,14 +181,23 @@ specifically so the earlier loss cannot repeat. Commit map and ticket changes li
 
 ## 3. Tech Stack
 
-Kotlin + Compose, single `app` module, Room as the phone's replica, a cascade voice (speech-to-text,
+Kotlin + Compose, one `app` module plus the shared `voice/` module once it is extracted (ADR 0104;
+not yet in the build), Room as the phone's replica, a cascade voice (speech-to-text,
 a Gemini text model with tools, text-to-speech; Gemini Live retired on the phone, ADR 0092),
 and the household's Django engine over Postgres as the system of record (§7, ADR 0044). **Alfred's
 brain moves to the engine (Kevin, 2026-11-17, ADR 0095):** the prompt, the router, the specialist
 agents (ADR 0096) and the model-plus-tools loop run on the engine; the phone is a thin limb (ADR
 0098) that keeps wake word, speech-to-text, text-to-speech, barge-in, the crisis pre-check, the
 confirm UI, phone-only tools through the relay and the ID vault, with **no fallback brain**. Until
-the switch ships (`.scratch/engine-brain/`), the phone's cascade loop still answers. **Read
+the switch ships (`.scratch/engine-brain/`), the phone's cascade loop still answers. **Speech moves
+to the engine too (Kevin, 2026-11-19, ADR 0104):** speech-to-text and text-to-speech run on the
+engine for the phone, the head unit and the web, on one client contract
+(`docs/contracts/voice-client-v1.md`). From then the phone keeps the mic, end of speech, barge-in,
+playback, the wake word, the confirm UI, phone-only tools and the ID vault; **the crisis pre-check
+moves to the engine**, right after the transcript and before the model. With no network the phone
+has no words to check: no crisis detection is possible offline (a known gap, ADR 0104), and it plays
+the generic "can't reach the engine" clip. Until the phone's engine voice client ships, the phone still runs its
+own speech-to-text, text-to-speech and crisis pre-check, as listed above. **Read
 `build.gradle.kts` and `gradle/libs.versions.toml` for what is actually in the build** - a list
 here would be wrong within a month, and has been.
 
@@ -524,7 +535,8 @@ here.
     deadline, or its next action, and may never characterise how long it went unattended.
   - **Memory stays anchored to external falsifiable facts** about the car, the statements, the
     receipts. A persona may be fond of the driver; it may not invent unfalsifiable history with them.
-  - **Genuine distress still routes to `ai/CrisisDetector.kt`:** surface real resources and STOP
+  - **Genuine distress still routes to `ai/CrisisDetector.kt`** (on the engine once ADR 0104's
+    step ships for a client): surface real resources and STOP
     performing the character. Never counsel, never simulate a professional. This one is not a matter
     of taste - it is the case where staying in character can actually hurt someone.
     **Known gap: the crisis resource is US-only (988).**
@@ -652,7 +664,10 @@ Hilt.** The morning's text is in `library/decisions.md` 2026-09-05; this is the 
 - **No use-case layer.** ADR 0042 puts business rules in Postgres; controllers already ARE the
   application layer. A `FooUseCase` that calls one controller method is ceremony.
 - **Modules later, on a trigger:** when a clean `compileDebugKotlin` is intolerable. First split is
-  `:core:data`. Not before.
+  `:core:data`. Not before. **One exception by ruling (Kevin, 2026-11-19, ADR 0104):** the shared
+  voice module `voice/`, a source project at the repo root included by both the phone and the head
+  unit builds. Keeping Hilt, Room and Compose out of it is the plan's default, not yet ruled
+  (`docs/contracts/voice-client-v1.md` section 15).
 
 **Migration order, and it is an order:** (1) Room kapt to KSP; (2) Hilt plugin, `@HiltAndroidApp`,
 entry points; (3) bind the backend interfaces; (4) the three busiest screens (calendar, ledger,
@@ -662,7 +677,8 @@ compiling; (6) modules on the trigger above. The ticket is `.scratch/architectur
 
 **Still never for this app:** Circuit, Decompose, MVI frameworks, Flutter, React Native, KMP.
 `app/` is phone-only. `headunit/` is a separate Gradle project that talks to the engine, not to
-`app/`'s code, so there is still nothing to share through KMP or a module.
+`app/`'s code. The one thing the two share is the `voice/` source module (ADR 0104), included by
+both builds; nothing is shared through KMP.
 
 **Code health, decided the same day:** **detekt joins the build** (Kevin: *"1000 lines, add
 detekt"*), with a baseline for what exists today so the build goes red only on new debt. A hook

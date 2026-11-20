@@ -63,7 +63,7 @@ Format and the test for whether something deserves an ADR:
 | 0056 | [[0056-the-household-key-serves-the-web-assistant\|The household's key serves the web assistant, and never reaches a browser]] | accepted | 2026-10-04 | - |
 | 0057 | [[0057-the-bank-feed-is-the-ledgers-truth\|The bank's own feed is the ledger's truth for the accounts it covers]] | accepted | 2026-10-09 | - |
 | 0058 | [[0058-retro-games-launcher\|Retro games are a HOME launcher, read through a folder grant, with cached box art]] | accepted | 2026-10-11 | - |
-| 0059 | [[0059-headunit-is-a-limb-in-this-repo\|The head unit is a limb of the engine, and it lives in this repo]] | accepted | 2026-10-14 | - |
+| 0059 | [[0059-headunit-is-a-limb-in-this-repo\|The head unit is a limb of the engine, and it lives in this repo]] | accepted | 2026-10-14 | 2026-11-19 |
 | 0060 | [[0060-tetris-race-through-the-engine\|Built-in Tetris, and a household score race held transiently by the engine]] | accepted | 2026-10-18 | - |
 | 0061 | [[0061-books-launcher\|Books are a HOME launcher with LEGION's own reader, read from a folder grant]] | accepted | 2026-10-19 | - |
 | 0062 | [[0062-dumb-phone-mode\|Dumb phone mode is a manual switch that shrinks HOME, holds notifications and silences strangers]] | accepted | 2026-10-22 | - |
@@ -96,18 +96,19 @@ Format and the test for whether something deserves an ADR:
 | 0089 | [[0089-receipts-retired\|Receipt photos are retired]] | accepted | 2026-11-12 | - |
 | 0090 | [[0090-no-write-after-third-party-text\|No write tool runs in a turn that read third-party text]] | accepted | 2026-11-13 | 2026-11-17 |
 | 0091 | [[0091-alfred-greets-from-your-real-day\|Alfred greets like a person, from facts about your real day]] | accepted | 2026-11-13 | - |
-| 0092 | [[0092-phone-voice-is-a-cascade-live-retired\|The phone's voice is a cascade; Gemini Live is retired]] | accepted | 2026-11-15 | 2026-11-17 |
+| 0092 | [[0092-phone-voice-is-a-cascade-live-retired\|The phone's voice is a cascade; Gemini Live is retired]] | accepted | 2026-11-15 | 2026-11-19 |
 | 0093 | [[0093-voice-agenda-block-is-a-bounded-push-exception\|Today's agenda rides in the voice turn: a bounded exception to pull-based tools]] | accepted | 2026-11-16 | 2026-11-17 |
 | 0094 | [[0094-net-cash\|Net cash: checking minus every card, pending counted as spent]] | accepted | 2026-11-16 | - |
-| 0095 | [[0095-alfreds-brain-runs-on-the-engine\|Alfred's model loop runs on the engine; the phone is a thin limb]] | accepted | 2026-11-17 | - |
+| 0095 | [[0095-alfreds-brain-runs-on-the-engine\|Alfred's model loop runs on the engine; the phone is a thin limb]] | accepted | 2026-11-17 | 2026-11-19 |
 | 0096 | [[0096-agent-graph-router-and-specialists\|The agent graph: a code router, a specialist per domain, a generalist for misses]] | accepted | 2026-11-17 | - |
 | 0097 | [[0097-router-run-reads\|Router-run reads: code may run the read a question plainly asks for]] | accepted | 2026-11-17 | - |
-| 0098 | [[0098-limbs-device-contract-and-relay\|Limbs: one device contract, and a relay for what only a device can do]] | accepted | 2026-11-17 | - |
+| 0098 | [[0098-limbs-device-contract-and-relay\|Limbs: one device contract, and a relay for what only a device can do]] | accepted | 2026-11-17 | 2026-11-19 |
 | 0099 | [[0099-engine-mail-read-draft-send\|The engine reads, drafts and sends Kevin's mail, read-through only]] | accepted | 2026-11-17 | - |
 | 0100 | [[0100-agent-runtime-traces-and-eval-gates\|The agent runtime is a reusable package; traces and eval suites gate every release]] | accepted | 2026-11-17 | - |
 | 0101 | [[0101-derived-knowledge-baselines-and-changes\|Derived knowledge: baselines and changes, computed by code, never raw data in memory]] | accepted | 2026-11-17 | - |
 | 0102 | [[0102-web-assistant-voice-on-the-engine-cascade\|The web assistant's voice runs on the engine's cascade, with the phone's behaviour]] | accepted | 2026-11-17 | - |
 | 0103 | [[0103-demo-voice-first-and-browser-turn-taking\|The demo is voice-first, and the browser takes turns the way the phone does]] | accepted | 2026-11-17 | - |
+| 0104 | [[0104-one-voice-speech-on-the-engine-shared-voice-module\|One voice: speech on the engine, a shared Android voice module, persona by surface]] | accepted | 2026-11-19 | - |
 
 ## Superseded
 

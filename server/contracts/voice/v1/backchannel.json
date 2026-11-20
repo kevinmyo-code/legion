@@ -1,0 +1,86 @@
+{
+  "contract_version": 1,
+  "kind": "backchannel",
+  "about": "Whether a backchannel plays at the end of the person's speech, and when the task line may follow it. docs/contracts/voice-client-v1.md section 4.",
+  "sources": [
+    "app/src/test/java/com/kevin/legion/service/cascade/BackchannelTest.kt (dev 679f7c15)",
+    "app/src/main/java/com/kevin/legion/service/cascade/Backchannel.kt at the same commit"
+  ],
+  "constants": {
+    "delay_ms": 600,
+    "min_speech_ms": 1200,
+    "tic_gap_ms": 20000,
+    "spacing_ms": 400,
+    "rotation": 5,
+    "takes": 2,
+    "min_clip_ms": 120,
+    "max_clip_ms": 700,
+    "lines": ["Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright."]
+  },
+  "skip_order": ["not_his", "quiet", "half_duplex", "over_reply", "answer_to_ask", "short", "tic"],
+  "decide": {
+    "about": "Inputs not named in a case take these defaults. Expect is 'play' or the skip token.",
+    "defaults": {
+      "from_user": true,
+      "speech_ms": 2500,
+      "asked_before": false,
+      "over_reply_or_turn": false,
+      "quiet": false,
+      "started_at_ms": 100000,
+      "last_backchannel_at_ms": 0,
+      "last_turn_had_one": false,
+      "half_duplex": false,
+      "half_duplex_allowed": false
+    },
+    "cases": [
+      {"name": "an ordinary turn of his", "source": "BackchannelTest.kt:29", "input": {}, "expect": "play"},
+      {"name": "speech one ms under the minimum", "source": "BackchannelTest.kt:35", "input": {"speech_ms": 1199}, "expect": "short"},
+      {"name": "speech at the minimum", "source": "BackchannelTest.kt:36", "input": {"speech_ms": 1200}, "expect": "play"},
+      {"name": "the turn before asked him something", "source": "BackchannelTest.kt:37", "input": {"asked_before": true}, "expect": "answer_to_ask"},
+      {"name": "he started over a reply or a running turn", "source": "BackchannelTest.kt:38", "input": {"over_reply_or_turn": true}, "expect": "over_reply"},
+      {"name": "Quiet mode", "source": "BackchannelTest.kt:39", "input": {"quiet": true}, "expect": "quiet"},
+      {"name": "not a turn of his", "source": "BackchannelTest.kt:40", "input": {"from_user": false}, "expect": "not_his"},
+      {"name": "the last turn had one, this turn starts 19,999 ms after it", "source": "BackchannelTest.kt:45", "input": {"started_at_ms": 110000, "last_backchannel_at_ms": 90001, "last_turn_had_one": true}, "expect": "tic"},
+      {"name": "the last turn had one, this turn starts 20,000 ms after it", "source": "BackchannelTest.kt:47", "input": {"started_at_ms": 200000, "last_backchannel_at_ms": 180000, "last_turn_had_one": true}, "expect": "play"},
+      {"name": "the turn before had none; an older one does not count", "source": "BackchannelTest.kt:49", "input": {"started_at_ms": 110000, "last_backchannel_at_ms": 105000, "last_turn_had_one": false}, "expect": "play"},
+      {"name": "half-duplex with the setting off", "source": "BackchannelTest.kt:149", "input": {"half_duplex": true}, "expect": "half_duplex"},
+      {"name": "half-duplex with the setting on", "source": "BackchannelTest.kt:150", "input": {"half_duplex": true, "half_duplex_allowed": true}, "expect": "play"},
+      {"name": "full duplex", "source": "BackchannelTest.kt:151", "input": {"half_duplex": false}, "expect": "play"}
+    ]
+  },
+  "clip_fits": {
+    "about": "Whether a clip of measured length ms may play.",
+    "cases": [
+      {"source": "BackchannelTest.kt:72", "ms": 0, "expect": false},
+      {"source": "BackchannelTest.kt:73", "ms": 119, "expect": false},
+      {"source": "BackchannelTest.kt:74", "ms": 300, "expect": true},
+      {"source": "BackchannelTest.kt:75", "ms": 701, "expect": false}
+    ]
+  },
+  "still_due": {
+    "about": "At the timer: play only if the answer's audio has not started, nothing else is audible, and it is the same turn.",
+    "cases": [
+      {"source": "BackchannelTest.kt:80", "answer_started": false, "something_audible": false, "same_turn": true, "expect": true},
+      {"source": "BackchannelTest.kt:81", "answer_started": true, "something_audible": false, "same_turn": true, "expect": false},
+      {"source": "BackchannelTest.kt:82", "answer_started": false, "something_audible": true, "same_turn": true, "expect": false},
+      {"source": "BackchannelTest.kt:83", "answer_started": false, "something_audible": false, "same_turn": false, "expect": false}
+    ]
+  },
+  "spacing_wait_ms": {
+    "about": "How long the task line waits so it never starts within spacing_ms of a backchannel's end (null: no backchannel played).",
+    "cases": [
+      {"source": "BackchannelTest.kt:88", "now_ms": 5000, "backchannel_end_at_ms": null, "expect": 0},
+      {"source": "BackchannelTest.kt:89", "now_ms": 5000, "backchannel_end_at_ms": 5000, "expect": 400},
+      {"source": "BackchannelTest.kt:90", "now_ms": 5250, "backchannel_end_at_ms": 5000, "expect": 150},
+      {"source": "BackchannelTest.kt:91", "now_ms": 9000, "backchannel_end_at_ms": 5000, "expect": 0}
+    ]
+  },
+  "pick": {
+    "about": "Which clip. Properties, not a fixed sequence: the index rule inside the rotation is each client's own.",
+    "cases": [
+      {"source": "BackchannelTest.kt:53-63", "name": "20 picks with every line in memory", "picks": 20, "in_memory": ["Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright."], "expect": {"never_twice_running": true, "never_in_last": 5, "min_distinct": 6}},
+      {"source": "BackchannelTest.kt:64", "name": "nothing in memory", "recent": [], "in_memory": [], "expect": null},
+      {"source": "BackchannelTest.kt:66-67", "name": "only the line just said is in memory", "recent": ["Mm."], "in_memory": ["Mm."], "expect": null}
+    ]
+  }
+}

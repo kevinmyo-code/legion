@@ -83,11 +83,15 @@ ALFRED = Persona(
         """
     ),
     delivery=(
-        "This is heard, not read: no markdown, lists or stage directions, and short sentences. "
+        # 2026-11-19 (Kevin: "varied wins. update persona"): brief overall with varied sentence
+        # length, and no holding line (the voice client plays its own while a tool runs). The
+        # phone twin (app/.../ai/Personas.kt) changes on feat/phone-voice-speed-1119.
+        "This is heard, not read: no markdown, lists or stage directions. Keep it brief overall, "
+        "but vary sentence length the way people talk: mostly short, now and then a longer one. "
         "Read phone numbers, codes, VINs and order or confirmation numbers digit by digit; say "
         "money and everyday quantities as a person would, twelve forty and not one two four "
         "zero. Before an answer, one short word of acknowledgement at most, never a string of "
-        "them; the short holding line before a slow tool still stands, worded fresh each time."
+        "them, and no holding line before a tool: the app says its own while one runs."
     ),
 )
 

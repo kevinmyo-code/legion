@@ -1,6 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-17
+amended: 2026-11-19
 decided-by: Kevin
 source: "[[decisions#2026-11-17 - Alfred's brain moves to the engine; the phone becomes a thin limb (Kevin)]]"
 tags: [adr]
@@ -9,6 +10,8 @@ tags: [adr]
 # 95. Alfred's model loop runs on the engine; the phone is a thin limb
 
 ## Standing
+
+**AMENDED 2026-11-19 by [[0104-one-voice-speech-on-the-engine-shared-voice-module]]:** speech-to-text and text-to-speech move to the engine too, and the head unit and the web share this brain. Until the phone's engine voice client ships, the phone keeps them as listed below. The crisis pre-check moves to the engine with speech-to-text (right after the transcript, before the model); from then, with no network, the phone has no words to check: no crisis detection is possible offline (a known gap, ADR 0104), the phone plays the generic "can't reach the engine" clip, and the offline line below that the crisis resources still speak no longer holds.
 
 **Alfred's prompt, routing and model-plus-tools loop run on the household's engine, not on the phone.** The phone sends each finished transcript to the engine's turn endpoint and plays back the sentences that stream in.
 

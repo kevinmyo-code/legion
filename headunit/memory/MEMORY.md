@@ -31,6 +31,9 @@ rather than rules.
 **The two repos share a CONTRACT, never code.** `openapi/legion-schema.yaml` here is a vendored copy
 of the engine's schema; models are generated from it. There is no shared module and there will not
 be one - the two codebases share class names from the 2026-07-31 seed and no longer share meanings.
+**AMENDED 2026-11-19 (Kevin, root ADR 0104):** one exception, the shared voice module `voice/` at the
+repo root, included by this build and the phone's. It is not extracted yet; until HU-2 adopts it, this
+app shares no code with the phone.
 
 ### Where the work is
 

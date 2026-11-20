@@ -14,7 +14,7 @@ written down in one place, so the migration and the fallback cannot disagree.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from django.db.models.functions import Now
 
@@ -75,14 +75,29 @@ def resolve(row: Companion | None, user, *, persona_key: str | None = None) -> R
 
 
 RECRUITER_PERSONA = personas.ALFRED.key
+# The recruiter demo's own copy of Alfred's delivery text, FROZEN at what `ALFRED.delivery` was at
+# 679f7c15 (byte for byte). Members follow `personas.ALFRED` (the phone's twin, changed 2026-11-19);
+# the public demo's prompt does not change until Kevin has heard the new text and said so
+# (tests/test_profile_live_unchanged.py pins the live demo prompt). To change it: on Kevin's word,
+# edit this constant and that test's pinned snapshot together.
+RECRUITER_DELIVERY_FROZEN = (
+    "This is heard, not read: no markdown, lists or stage directions, and short sentences. "
+    "Read phone numbers, codes, VINs and order or confirmation numbers digit by digit; say "
+    "money and everyday quantities as a person would, twelve forty and not one two four "
+    "zero. Before an answer, one short word of acknowledgement at most, never a string of "
+    "them; the short holding line before a slow tool still stands, worded fresh each time."
+)
 
 
 def recruiter_companion() -> ResolvedCompanion:
     """A recruiter's companion (recruiter-demo ticket 05, Kevin 2026-11-02:
     "same name, same voice as the phone"). Alfred, built exactly as the web
     builds Kevin's when no row overrides it: the persona's own name and its
-    suggested voice. Fixed by role; a visitor has no row and cannot get one."""
-    return resolve(None, None, persona_key=RECRUITER_PERSONA)
+    suggested voice. Fixed by role; a visitor has no row and cannot get one. Its delivery text
+    is the demo's frozen copy (`RECRUITER_DELIVERY_FROZEN`)."""
+    return replace(
+        resolve(None, None, persona_key=RECRUITER_PERSONA), delivery=RECRUITER_DELIVERY_FROZEN
+    )
 
 
 def companion_for(user) -> ResolvedCompanion:

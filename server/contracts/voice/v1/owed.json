@@ -1,0 +1,133 @@
+{
+  "contract_version": 1,
+  "kind": "owed",
+  "about": "Write facts and how far playback got in, the owed line out. In v1 the engine holds this ledger (docs/contracts/voice-wire-v1.md section 5a); the client only reports which line ids played whole and whether the turn was cut off, and the engine maps line ids to the fact ids each line covers. Fact ids here are the wire's fact_id; `played` lists the facts whose line played to the end.",
+  "sources": [
+    "app/src/test/java/com/kevin/legion/service/cascade/OwedWritesTest.kt (dev 679f7c15)",
+    "app/src/main/java/com/kevin/legion/service/cascade/OwedWrites.kt and CascadeRules.kt ScriptedLines.doneLine at the same commit"
+  ],
+  "rules": {
+    "said": "ok and changed and not silent: code says a line for it",
+    "unconfirmed": "no result came back (confirmed false) and not silent; a relayed call the engine timed out is one",
+    "owed_when": "said and its line did not play to the end; or, on a cut-off turn only, unconfirmed",
+    "never_owed": "a failed or refused write (ok false with a result), a write with changed false",
+    "identity": "facts are matched by id: two identical writes are two debts; a fact once heard is never owed again",
+    "line": "'Done: ' + clauses joined by '; ' + '.', at most 80 characters, the rest counted as 'and N more'; 'That change went through.' for a write with no phrase; 'I couldn't confirm that <title> went through.' for one unconfirmed write"
+  },
+  "ops": {
+    "owe": "a turn ended and the client's next report arrived: `turn` lists the turn's facts by id, `played` the facts whose line played to the end, `cut_off` whether playback was stopped",
+    "due": "what is owed now: expect the line, or null; with no expect the step only takes the due line for a later pay_due",
+    "pay_due": "the line from the last `due` played to the end: its facts are heard",
+    "pay": "these fact ids are heard",
+    "write_down": "the conversation closes with no further turn: what is owed plus every unconfirmed fact not heard (cut off or not) is written to the record once; expect that line, or null"
+  },
+  "cases": [
+    {
+      "name": "a write whose line played is not owed, one whose line did not play is",
+      "source": "OwedWritesTest.kt:24",
+      "facts": {
+        "milk": {"tool": "manage_item", "action": "add", "result": {"item": "milk", "list": "Groceries"}, "ok": true, "confirmed": true},
+        "eggs": {"tool": "manage_item", "action": "add", "result": {"item": "eggs", "list": "Groceries"}, "ok": true, "confirmed": true}
+      },
+      "steps": [
+        {"op": "owe", "turn": ["milk", "eggs"], "played": ["milk"], "cut_off": false},
+        {"op": "due", "expect": "Done: added eggs to Groceries."},
+        {"op": "due", "expect": "Done: added eggs to Groceries."},
+        {"op": "pay_due"},
+        {"op": "due", "expect": null}
+      ]
+    },
+    {
+      "name": "two identical writes are two debts, and owing the same fact twice counts it once",
+      "source": "OwedWritesTest.kt:39",
+      "facts": {
+        "a": {"tool": "manage_item", "action": "add", "result": {"item": "milk", "list": "Groceries"}, "ok": true, "confirmed": true},
+        "b": {"tool": "manage_item", "action": "add", "result": {"item": "milk", "list": "Groceries"}, "ok": true, "confirmed": true}
+      },
+      "steps": [
+        {"op": "owe", "turn": ["a", "b"], "played": [], "cut_off": false},
+        {"op": "owe", "turn": ["a", "b"], "played": [], "cut_off": false},
+        {"op": "due", "expect": "Done: added milk to Groceries; added milk to Groceries."},
+        {"op": "pay", "ids": ["a"]},
+        {"op": "due", "expect": "Done: added milk to Groceries."}
+      ]
+    },
+    {
+      "name": "a failed or unchanged write is never owed; an unconfirmed one only after a cut-off",
+      "source": "OwedWritesTest.kt:51",
+      "facts": {
+        "failed": {"tool": "manage_item", "action": "add", "result": {"title": "essay"}, "ok": false, "confirmed": true},
+        "same": {"tool": "manage_item", "action": "add", "result": {"changed": false, "item": "x"}, "ok": true, "confirmed": true},
+        "timed_out": {"tool": "manage_item", "action": "add", "result": {"item": "stamps"}, "ok": false, "confirmed": false}
+      },
+      "steps": [
+        {"op": "owe", "turn": ["failed", "same", "timed_out"], "played": [], "cut_off": false},
+        {"op": "due", "expect": null},
+        {"op": "owe", "turn": ["failed", "same", "timed_out"], "played": [], "cut_off": true},
+        {"op": "due", "expect": "I couldn't confirm that stamps went through."}
+      ]
+    },
+    {
+      "name": "a fact once heard is never owed again, and a close writes the rest down once",
+      "source": "OwedWritesTest.kt:63",
+      "facts": {
+        "milk": {"tool": "manage_item", "action": "add", "result": {"item": "milk", "list": "Groceries"}, "ok": true, "confirmed": true},
+        "eggs": {"tool": "manage_item", "action": "add", "result": {"item": "eggs", "list": "Groceries"}, "ok": true, "confirmed": true}
+      },
+      "steps": [
+        {"op": "owe", "turn": ["milk"], "played": [], "cut_off": true},
+        {"op": "due"},
+        {"op": "pay_due"},
+        {"op": "owe", "turn": ["milk"], "played": [], "cut_off": true},
+        {"op": "due", "expect": null},
+        {"op": "owe", "turn": ["eggs"], "played": [], "cut_off": true},
+        {"op": "write_down", "expect": "Done: added eggs to Groceries."},
+        {"op": "write_down", "expect": null}
+      ]
+    },
+    {
+      "name": "after a write tool timed out, a further call of that tool in the turn, with other arguments, is refused and never owed",
+      "source": "voice-wire-v1.md section 8 (a rule with no code yet; it lands with the relay, E2)",
+      "status": "rule_without_code",
+      "facts": {
+        "stamps": {"tool": "manage_item", "action": "add", "result": {"item": "stamps"}, "ok": false, "confirmed": false},
+        "envelopes_refused": {"tool": "manage_item", "action": "add", "result": {"title": "envelopes"}, "ok": false, "confirmed": true}
+      },
+      "steps": [
+        {"op": "owe", "turn": ["stamps", "envelopes_refused"], "played": [], "cut_off": false},
+        {"op": "due", "expect": null},
+        {"op": "owe", "turn": ["stamps", "envelopes_refused"], "played": [], "cut_off": true},
+        {"op": "due", "expect": "I couldn't confirm that stamps went through."}
+      ]
+    },
+    {
+      "name": "the round's last call timed out and the client gave up: the close puts the write on the record as unconfirmed",
+      "source": "voice-wire-v1.md sections 5a and 8 (a rule with no code yet; it lands with the relay, E2)",
+      "status": "rule_without_code",
+      "facts": {
+        "stamps": {"tool": "manage_item", "action": "add", "result": {"item": "stamps"}, "ok": false, "confirmed": false}
+      },
+      "steps": [
+        {"op": "owe", "turn": ["stamps"], "played": [], "cut_off": false},
+        {"op": "due", "expect": null},
+        {"op": "write_down", "expect": "I couldn't confirm that stamps went through."},
+        {"op": "write_down", "expect": null}
+      ]
+    },
+    {
+      "name": "a debt paid while a new one arrives keeps the new one",
+      "source": "OwedWritesTest.kt:77",
+      "facts": {
+        "milk": {"tool": "manage_item", "action": "add", "result": {"item": "milk", "list": "Groceries"}, "ok": true, "confirmed": true},
+        "eggs": {"tool": "manage_item", "action": "add", "result": {"item": "eggs", "list": "Groceries"}, "ok": true, "confirmed": true}
+      },
+      "steps": [
+        {"op": "owe", "turn": ["milk"], "played": [], "cut_off": true},
+        {"op": "due", "expect": "Done: added milk to Groceries."},
+        {"op": "owe", "turn": ["eggs"], "played": [], "cut_off": true},
+        {"op": "pay_due"},
+        {"op": "due", "expect": "Done: added eggs to Groceries."}
+      ]
+    }
+  ]
+}
