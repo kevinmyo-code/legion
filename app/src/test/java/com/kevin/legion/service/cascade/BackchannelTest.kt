@@ -54,17 +54,17 @@ class BackchannelTest {
         val recent = RecentLines(Backchannel.ROTATION)
         val said = mutableListOf<String>()
         repeat(20) { i ->
-            val line = Backchannel.pick(recent, i) { true }!!
+            val line = Backchannel.pick(recent, i) { _, _ -> true }!!.first
             if (said.isNotEmpty()) assertFalse("twice running at $i", said.last() == line)
             assertFalse("within the last ${Backchannel.ROTATION} at $i", recent.contains(line))
             recent.add(line)
             said += line
         }
         assertTrue(said.toSet().size >= Backchannel.ROTATION + 1)
-        assertNull(Backchannel.pick(RecentLines(Backchannel.ROTATION), 0) { false })
+        assertNull(Backchannel.pick(RecentLines(Backchannel.ROTATION), 0) { _, _ -> false })
         // Only one in memory and it was just said: nothing, rather than a repeat.
         val one = RecentLines(Backchannel.ROTATION).apply { add("Mm.") }
-        assertNull(Backchannel.pick(one, 0) { it == "Mm." })
+        assertNull(Backchannel.pick(one, 0) { w, _ -> w == "Mm." })
     }
 
     @Test
@@ -94,7 +94,8 @@ class BackchannelTest {
     @Test
     fun `the clips are short, content-free and kept like the fillers`() {
         for (line in Backchannel.LINES) {
-            assertTrue(line, line.split(' ').size == 1)
+            // One word, or "Let's see." (2026-11-19 variety): two words, still a sound of listening.
+            assertTrue(line, line.split(' ').size <= 2)
             assertTrue(line, line in ScriptedLines.KEEP)
             assertFalse("a backchannel is not a filler the model's text is checked against", line in ScriptedLines.FILLERS)
         }

@@ -297,7 +297,8 @@ internal class CascadeSession(
     private val speechSpeed: Float = VoiceEngineSettings.speechSpeed(ctx)
 
     /** Backchannels said lately ([Backchannel.pick] skips them) and a rotating index. */
-    private val recentBackchannels = RecentLines(Backchannel.ROTATION)
+    private val recentBackchannels =
+        RecentLines(Backchannel.ROTATION, listOfNotNull(VoiceEngineSettings.lastBackchannel(ctx)))
     private val backchannelIndex = AtomicInteger(0)
     @Volatile private var lastBackchannelAtMs = 0L
     @Volatile private var lastTurnHadBackchannel = false
@@ -1221,14 +1222,15 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${Backchannel.Skip.ANSWER_TEXT.token}")
             return
         }
-        val line = Backchannel.pick(recentBackchannels, backchannelIndex.getAndIncrement()) {
-            b.tts.inHand(SpokenText.forSpeech(it))
+        val picked = Backchannel.pick(recentBackchannels, backchannelIndex.getAndIncrement()) { w, t ->
+            b.tts.inHandTake(SpokenText.forSpeech(w), t)
         }
-        if (line == null) {
+        if (picked == null) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=not_in_memory")
             return
         }
-        val pcm = clipFromMemory(b.tts, line)
+        val (line, take) = picked
+        val pcm = Backchannel.trimSilence(clipFromMemory(b.tts, line, take), b.tts.sampleRate)
         val ms = pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
         if (!Backchannel.clipFits(ms)) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=clip_ms_$ms")
@@ -1239,6 +1241,7 @@ internal class CascadeSession(
             listenThroughClip()
             playbackActive = true
             recentBackchannels.add(line)
+            VoiceEngineSettings.setLastBackchannel(ctx, line)
             lastBackchannelAtMs = System.currentTimeMillis()
             lastTurnHadBackchannel = true
             LiveLatency.log(
@@ -1256,8 +1259,8 @@ internal class CascadeSession(
     }
 
     /** [line]'s whole audio if it comes within [BACKCHANNEL_FETCH_MS] (it is from memory), else empty. */
-    private suspend fun clipFromMemory(tts: TextToSpeech, line: String): ByteArray {
-        val clip = tts.speak(SpokenText.forSpeech(line))
+    private suspend fun clipFromMemory(tts: TextToSpeech, line: String, take: Int): ByteArray {
+        val clip = tts.speakTake(SpokenText.forSpeech(line), take)
         return withTimeoutOrNull(BACKCHANNEL_FETCH_MS) {
             val out = java.io.ByteArrayOutputStream()
             for (frame in clip.frames) out.write(frame)
@@ -2196,6 +2199,8 @@ internal class CascadeSession(
         if (fillersWarmedFor === b) return
         fillersWarmedFor = b
         b.tts.warm(FILLERS_SPOKEN)
+        // The backchannels' second renders, kept apart ([Backchannel.TAKES]).
+        b.tts.warmTakes(Backchannel.LINES.map { SpokenText.forSpeech(it) }, 1)
     }
 
     /** Tap or barge-in: stop the reply now. A tool already running finishes and is reported. */

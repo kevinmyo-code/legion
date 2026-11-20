@@ -30,7 +30,15 @@ package com.kevin.legion.service.cascade
  *   about a second after his last word would swallow the rest of a sentence he was still saying
  *   (blind review M1, 2026-11-19). Allowed there only behind [halfDuplexAllowed] (off), which keeps
  *   his audio through the clip and hands it on ([ClipListen]).
- * Which clip ([pick]): never the one before, and none of the last [ROTATION] (a [RecentLines] window).
+ * Which clip ([pick]): none of the last [ROTATION] words (a [RecentLines] window, seeded with the last
+ * word of the last conversation so it is not the first of the next), and of that word one of its
+ * [TAKES] renders (the cloud voice renders the same word differently each time; measured 2026-11-19).
+ *
+ * **What may be a backchannel ([LINES]), and why:** it plays about a second after his last word,
+ * before the transcript exists, so it must promise nothing and claim nothing. "Got it.", "I see.",
+ * "Sure.", "On it." or "One sec." would be wrong before a "didn't catch that" or a refusal; only
+ * neutral sounds of listening go here ("Let's see." included: it claims no result and starts no task).
+ * The same skips apply to every word.
  *
  * Pure: no clock, no Android.
  */
@@ -48,13 +56,26 @@ internal object Backchannel {
     const val SPACING_MS = 400L
 
     /** No clip twice within this many backchannels. */
-    const val ROTATION = 3
+    const val ROTATION = 5
+
+    /** Renders kept per word, played in turn. */
+    const val TAKES = 2
 
     /** A clip outside this measured length is not played (the voice may render "Mm." as nothing, or as a sigh). */
     const val MIN_CLIP_MS = 120L
     const val MAX_CLIP_MS = 700L
 
-    val LINES = listOf("Mm.", "Right.", "Yeah.", "Hmm.", "Okay.")
+    val LINES = listOf("Mm.", "Right.", "Yeah.", "Hmm.", "Okay.", "Mhm.", "Uh-huh.", "Alright.", "Let's see.")
+
+    /**
+     * The cloud voice pads a one-word render with 80 to 520 ms of silence each side (measured
+     * 2026-11-19: 760 to 1,680 ms raw for 230 to 1,040 ms of voice), so every raw clip failed the
+     * length gate. The clip is trimmed to its voice ([trimSilence]) with this much kept each side.
+     */
+    const val EDGE_PAD_MS = 40L
+
+    /** A 16-bit sample louder than this is voice, for [trimSilence]. */
+    private const val SILENCE_LEVEL = 600
 
     /** What the session knows about his turn at the end of his speech. */
     data class Turn(
@@ -97,12 +118,38 @@ internal object Backchannel {
         return null
     }
 
-    /** The clip: one of [LINES] not in [recent] (falling back to anything but the last), only if [inHand]. */
-    fun pick(recent: RecentLines, index: Int, inHand: (String) -> Boolean): String? {
-        val ready = LINES.filter(inHand)
+    /**
+     * The clip: a word of [LINES] not in [recent] (falling back to anything but the last) and one of
+     * its takes, only what is in memory ([inHand] of word and take). Null: nothing to play.
+     */
+    fun pick(recent: RecentLines, index: Int, inHand: (String, Int) -> Boolean): Pair<String, Int>? {
+        val takes = LINES.associateWith { w -> (0 until TAKES).filter { inHand(w, it) } }
+        val ready = LINES.filter { takes.getValue(it).isNotEmpty() }
         val options = ready.filterNot { recent.contains(it) }.ifEmpty { ready.filter { it != recent.last() } }
-        return if (options.isEmpty()) null else options[Math.floorMod(index, options.size)]
+        if (options.isEmpty()) return null
+        val word = options[Math.floorMod(index, options.size)]
+        val own = takes.getValue(word)
+        return word to own[Math.floorMod(index, own.size)]
     }
+
+    /** [pcm] (16-bit mono at [sampleRate]) cut to its voice plus [EDGE_PAD_MS] each side; empty when silent. */
+    fun trimSilence(pcm: ByteArray, sampleRate: Int): ByteArray {
+        val samples = pcm.size / 2
+        fun loud(i: Int): Boolean {
+            val sample = (pcm[2 * i].toInt() and BYTE_MASK) or (pcm[2 * i + 1].toInt() shl BITS)
+            return kotlin.math.abs(sample) > SILENCE_LEVEL
+        }
+        val first = (0 until samples).firstOrNull(::loud) ?: return ByteArray(0)
+        val last = (samples - 1 downTo 0).first(::loud)
+        val pad = (EDGE_PAD_MS * sampleRate / MS_PER_S).toInt()
+        val from = (first - pad).coerceAtLeast(0)
+        val to = (last + pad).coerceAtMost(samples - 1)
+        return pcm.copyOfRange(2 * from, 2 * (to + 1))
+    }
+
+    private const val BYTE_MASK = 0xff
+    private const val BITS = 8
+    private const val MS_PER_S = 1_000L
 
     /** Whether a clip of [ms] measured audio may play. */
     fun clipFits(ms: Long): Boolean = ms in MIN_CLIP_MS..MAX_CLIP_MS
