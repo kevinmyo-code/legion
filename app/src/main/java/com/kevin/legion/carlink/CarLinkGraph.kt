@@ -58,12 +58,13 @@ class CarLinkGraph(private val app: Application) {
                 val revokeOnly = mode.revokeOnly
                 // Only HELLOs from inside the network the phone paired on count (4.3, rev 5).
                 val net = store.pairingNetwork()
-                UdpPort.open()?.let { port ->
+                val own = PairingNetwork.systemInterfaces()
+                UdpPort.open().let { port ->
                     CarLinkSender(
                         feed = Mnai2Feed(
                             ring = ring,
                             newSession = ::newSession,
-                            onLan = { net?.contains(it) == true },
+                            onLan = { net?.acceptsHelloFrom(it, own) == true },
                             // A revoke-only listener sends nothing but REVOKE: no zone.
                             zoneId = { if (revokeOnly) null else TimeZone.getDefault().id },
                             onRingEvent = onEvent,
@@ -115,10 +116,20 @@ class UdpPort private constructor(private val socket: DatagramSocket) : Datagram
     override fun close() = socket.close()
 
     companion object {
-        fun open(port: Int = Mnai2.PORT): UdpPort? = try {
-            UdpPort(DatagramSocket(null).apply { reuseAddress = true; bind(InetSocketAddress(port)) })
-        } catch (_: IOException) {
-            null
+        /**
+         * Never shared: SO_REUSEADDR stays off, so another app cannot co-bind 17311 and take the HELLOs.
+         * A taken port throws [java.net.BindException]; there is no fallback port.
+         */
+        fun open(port: Int = Mnai2.PORT): UdpPort {
+            val socket = DatagramSocket(null)
+            try {
+                socket.reuseAddress = false
+                socket.bind(InetSocketAddress(port))
+            } catch (e: IOException) {
+                socket.close()
+                throw e
+            }
+            return UdpPort(socket)
         }
     }
 }

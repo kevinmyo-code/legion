@@ -1,14 +1,13 @@
 package com.kevin.legion.carlink
 
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import java.net.BindException
 import java.net.DatagramSocket
 
 /** R3: the car link's UDP port is never shared: a second bind must fail, not co-bind. */
 class UdpPortTest {
-    @Ignore("red until fix R3") @Test fun `a second bind of the same port fails instead of sharing it`() {
+    @Test fun `a second bind of the same port fails instead of sharing it`() {
         val free = DatagramSocket(0).use { it.localPort }
         val first = UdpPort.open(free)
         try {

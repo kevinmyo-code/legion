@@ -284,7 +284,7 @@ class CarLinkControllerTest {
         assertEquals(0, revokes(port))
     }
 
-    @Ignore("red until fix R3") @Test fun `a taken port is said in words and nothing falls back`() {
+    @Test fun `a taken port is said in words and nothing falls back`() {
         assertTrue(store.write(key, null))
         val c = CarLinkController(
             store, { _, _ -> null }, HandoverPlan({ null }, UnitTokenNotYetAvailable(), { null }, {}),

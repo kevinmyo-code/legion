@@ -38,7 +38,7 @@ class PairingNetworkTest {
         assertFalse(n.contains(ip("10.99.0.8")))
     }
 
-    @Ignore("red until fix R3") @Test fun `a HELLO from one of this phone's own addresses is refused`() {
+    @Test fun `a HELLO from one of this phone's own addresses is refused`() {
         val n = PairingNetwork("ap-test0", "10.20.30.0", 24)
         assertFalse(n.acceptsHelloFrom(ip("10.20.30.1"), listOf(hotspot)))
         assertTrue(n.acceptsHelloFrom(ip("10.20.30.44"), listOf(hotspot)))

@@ -173,12 +173,7 @@ class CarLinkController(
 
     /** One socket's life. False = stop for good (no port, or the REVOKE went); true = the network left. */
     private suspend fun runSender(feedRing: LinkKeyRing, revokeOnly: Boolean): Boolean {
-        val s = newSender(feedRing, ::onRingEvent, { !revokeOnly && _status.value.sendLocation }, FeedMode(revokeOnly, null))
-        if (s == null) {
-            // A revoke-only listener keeps Forget's own words on screen.
-            if (!revokeOnly) _status.update { it.copy(note = CarLinkNote.PORT_UNAVAILABLE) }
-            return false
-        }
+        val s = openSender(feedRing, revokeOnly) ?: return false
         sender = s
         var delivered = false
         try {
@@ -198,6 +193,22 @@ class CarLinkController(
             _status.update { it.copy(unitInRange = false) }
         }
         return !delivered
+    }
+
+    /** A sender, or null with the reason said in words (a taken port is never worked around). */
+    private fun openSender(feedRing: LinkKeyRing, revokeOnly: Boolean): CarLinkSender? {
+        val note = try {
+            newSender(feedRing, ::onRingEvent, { !revokeOnly && _status.value.sendLocation }, FeedMode(revokeOnly, null))
+                ?.let { return it }
+            CarLinkNote.PORT_UNAVAILABLE
+        } catch (_: java.net.BindException) {
+            CarLinkNote.PORT_TAKEN
+        } catch (_: IOException) {
+            CarLinkNote.PORT_UNAVAILABLE
+        }
+        // A revoke-only listener keeps Forget's own words on screen unless the port is taken.
+        if (!revokeOnly || note == CarLinkNote.PORT_TAKEN) _status.update { it.copy(note = note) }
+        return null
     }
 
     private suspend fun keepListening(feedRing: LinkKeyRing): Boolean =

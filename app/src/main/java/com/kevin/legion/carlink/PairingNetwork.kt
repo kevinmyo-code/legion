@@ -36,8 +36,12 @@ class PairingNetwork(val name: String, val base: String, val prefix: Int, val ow
     fun contains(addr: InetAddress): Boolean =
         addr is Inet4Address && QrPayload.isPrivateIpv4(addr.hostAddress ?: "") && sameSubnet(addr)
 
-    /** STUB (red step). */
-    fun acceptsHelloFrom(addr: InetAddress, ifaces: List<LocalIface>): Boolean = contains(addr)
+    /**
+     * A HELLO's source counts only inside the recorded subnet and never when it is one of this phone's
+     * own addresses (R3: a datagram looped back from the phone itself is not the car).
+     */
+    fun acceptsHelloFrom(addr: InetAddress, ifaces: List<LocalIface>): Boolean =
+        contains(addr) && ifaces.none { it.address == addr }
 
     /** STUB (red step). */
     fun look(ifaces: List<LocalIface>): NetworkLook = if (present(ifaces)) NetworkLook.Present else NetworkLook.Absent
