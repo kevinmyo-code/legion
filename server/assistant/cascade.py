@@ -74,6 +74,7 @@ from django.db import DatabaseError, transaction
 from django.db import connections as db_connections
 
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
+from agents.legion import late
 from agents.legion.guards import claims_unbacked_outcome
 from agents.legion.lines import (
     CHANGE_MADE,
@@ -1182,8 +1183,28 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("robotic", ROBOTIC_ACK, False)
         return
+    # The late-answer path (`agents/legion/late.py`): None and nothing read or written unless
+    # LEGION_LATE_ANSWERS=on, and never for a recruiter. Code answers "look into X and tell me
+    # later", "anything pending?" and "cancel that" with no model round; otherwise the one line
+    # owed from earlier is said first, kept out of this turn's model context.
+    late_words = late.intercept(request, words, "web")
+    if late_words is not None:
+        record_user()
+        report.said.append(late_words)
+        speaker.add(late_words)
+        yield ev.Event("sentence", {"text": late_words})
+        yield from speaker.drain()
+        yield ev.done("done", late_words, False)
+        return
+    owed, more = late.claim(request, "web")
+    if owed is not None:
+        owed_line = late.late_event(owed, more)
+        report.said.append(owed_line.data["text"])
+        speaker.add(owed_line.data["text"], model=True)
+        speaker.flush()
+        yield owed_line
     acked = False
-    if speak and turn_input.heard_before == 0 and needs_work(words):
+    if owed is None and speak and turn_input.heard_before == 0 and needs_work(words):
         # First sound within about a second (section 8.2): a short acknowledgement from memory
         # while the model's first round runs. Only on the first utterance after the tap, which is
         # for the assistant by construction (round 2 speech review 5): on any later turn nothing
