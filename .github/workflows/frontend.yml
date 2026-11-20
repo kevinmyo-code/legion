@@ -69,6 +69,15 @@ jobs:
       - name: API types match openapi.yaml
         run: npm run check:api
 
+      # The production build exactly as the engine image runs it (`server/Dockerfile` stage 1), and the
+      # checks the laptop ship scripts ran on its output: the service worker precaches no .wasm/.onnx/.glb,
+      # no new .wasm/.onnx/.glb in the output, the /try 3D chunk lazy and not precached, no three.js in
+      # the main or a precached chunk. Ships trust this run instead of building the web app locally.
+      - name: Production build as the image runs it, and its checks
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: bash server/frontend/scripts/check_build.sh
+
       - name: Upload the JUnit XML
         if: always()
         uses: actions/upload-artifact@v4
