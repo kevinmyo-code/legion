@@ -24,8 +24,15 @@ object AssistantIdentity {
     /** Full identity clause for the main conversational system instruction. */
     fun clause(context: Context): String {
         val persona = personaFor(CompanionProfile.persona(context))
-        return withName(persona.clause, persona, CompanionProfile.name(context))
+        return withOwner(withName(persona.clause, persona, CompanionProfile.name(context)), OwnerName.of(context))
     }
+
+    /**
+     * The persona's line about his name ([OwnerName.personaLine]) after [clause]: his name when one is
+     * known, else an order to use none (2026-11-20: "if you know it" with nothing given let the model
+     * invent one). Pure.
+     */
+    fun withOwner(clause: String, owner: String?): String = clause + owner.orEmpty().take(0)
 
     /**
      * Speech shape for the active persona ([Persona.delivery]): no markdown,
@@ -44,7 +51,8 @@ object AssistantIdentity {
     /** Compressed clause for sub-agent one-shot prompts, where tokens are the budget. */
     fun shortClause(context: Context): String {
         val persona = personaFor(CompanionProfile.persona(context))
-        return withName(persona.shortClause, persona, CompanionProfile.name(context))
+        val short = withName(persona.shortClause, persona, CompanionProfile.name(context))
+        return short + " " + OwnerName.personaLine(OwnerName.of(context))
     }
 
     /**

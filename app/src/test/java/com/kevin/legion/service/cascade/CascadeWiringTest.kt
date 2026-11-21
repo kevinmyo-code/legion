@@ -509,23 +509,24 @@ class CascadeWiringTest {
     private fun controller() = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
 
     @Test
-    fun `the greeting is held whole and name-checked before any of it is spoken`() {
+    fun `the greeting is held whole and gated before any of it is spoken`() {
         val g = bodyOf(session(), "speakGreeting")
         // Nothing streams to the speaker as it arrives.
         assertFalse(g.contains("reply.text(delta)"))
         val join = g.indexOf("GreetingBudget.WHOLE_LINE_MS")
-        val check = g.indexOf("greetingNamesHim(")
+        val gate = g.indexOf("greetingGate(whole, written.toString(), plan.name)")
         val speak = g.indexOf("reply.text(written.toString())")
-        val kept = g.indexOf("noteOpened(")
-        assertTrue("$join $check $speak $kept", join in 0 until check && check < speak && speak < kept)
-        // A named line falls to the scripted hello and is not kept.
-        val blocked = g.substring(check, speak)
-        assertTrue(blocked.contains("speakScripted(ackLines.next())"))
+        val kept = g.indexOf("noteOpened(plan, GreetingWords.of(written.toString(), plan.name))")
+        assertTrue("$join $gate $speak $kept", join in 0 until gate && gate < speak && speak < kept)
+        // Any gate but SPEAK says nothing of the model's line and keeps nothing; only some play the scripted hello.
+        val blocked = g.substring(gate, speak)
+        assertTrue(blocked.contains("if (gate.scripted) speakScripted(ackLines.next())"))
+        assertTrue(blocked.contains("gate.logLine?.let"))
         assertTrue(blocked.contains("return@launch"))
         assertFalse(blocked.contains("noteOpened("))
-        val backstop = bodyOf(session(), "greetingNamesHim")
-        assertTrue(backstop.contains("GreetingWords.namesHim(written)"))
-        assertTrue(backstop.contains("\"greeting_name_blocked\""))
+        // The gate reads his speech the moment it decides, and the name check gets his name.
+        val decide = bodyOf(session(), "greetingGate")
+        assertTrue(decide.contains("GreetingGate.decide(heardSinceOpen, whole, whole && GreetingWords.namesHim(written, name))"))
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())

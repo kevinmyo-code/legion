@@ -49,7 +49,7 @@ object GreetingPrompt {
           it happened before, and say no day count or timing the facts do not give.
         - About money or a workout not done: no shame, no nagging, no telling him what he should do.{topic_rule}
         - At most one question, and it may be none.
-        ${GreetingNames.RULE}
+        {name_rule}
 
         Rules, all of them binding:
         - Mention nothing else: no other item, no other budget, nothing that is not in the facts below.
@@ -99,13 +99,14 @@ object GreetingPrompt {
         - Friendly, never curt or bossy: no command to him. Not a stock one-word hello: give it a
           little character.
         - It may hand the floor to him, or not. At most one question.{avoid_rule}
-        ${GreetingNames.RULE}
+        {name_rule}
         - Never mention his absence, how long it has been, a streak, or his use of this app.
         - Do not call any tool, and do not say you did anything. Then stop and listen.)
     """.trimIndent()
 
     /** [block] is [GreetingBlock.render] with [lead] marked; [lead] is [GreetingBlock.lead]'s topic. */
-    fun build(block: String, lead: GreetingBlock.Lead): String = BUILD
+    fun build(block: String, lead: GreetingBlock.Lead, name: String? = null): String = BUILD
+        .replace("{name_rule}", GreetingNames.rule(name))
         .replace("{subject}", subject(lead))
         .replace("{lead_mark}", GreetingBlock.LEAD_MARK)
         .replace("{topic_rule}", topicRule(lead))
@@ -127,14 +128,27 @@ object GreetingPrompt {
      * [avoid] is the last hellos' words ([GreetingBlock.History.hellos]), handed over as wording not
      * to reuse so back-to-back opens differ (the tone check found about three phrasings in five).
      */
-    fun hello(avoid: List<String> = emptyList()): String = HELLO.replace("{avoid_rule}", avoidRule(avoid))
+    fun hello(avoid: List<String> = emptyList(), name: String? = null): String = HELLO
+        .replace("{avoid_rule}", avoidRule(avoid, name))
+        .replace("{name_rule}", GreetingNames.rule(name) + lastUsedName(avoid, name))
+
+    /**
+     * "Now and then", made concrete: when the newest kept hello used his name, this one is asked to
+     * leave it out, so the do-not-reuse list cannot push the name into every hello.
+     */
+    private fun lastUsedName(avoid: List<String>, name: String?): String =
+        if (avoid.lastOrNull()?.let { GreetingNames.mentions(it, name) } == avoid.isEmpty()) {
+            "\n- The last hello used his name, so leave it out of this one."
+        } else {
+            ""
+        }
 
     /** Quote marks and line breaks are stripped and each line cut short, so a kept line cannot break the prompt. */
-    private fun avoidRule(avoid: List<String>): String {
+    private fun avoidRule(avoid: List<String>, name: String?): String {
         // A kept line that calls him by a name is dropped: quoting it back would put the name in front
         // of the model (a line kept before the name check may still hold one).
         val lines = avoid.map { it.replace("\"", "").replace('\n', ' ').trim().take(MAX_AVOID_CHARS) }
-            .filter { it.isNotEmpty() && !GreetingNames.addresses(it) }
+            .filter { it.isNotEmpty() && !GreetingNames.addresses(it, name) }
         if (lines.isEmpty()) return ""
         return "\n- Do not reuse this wording or its shape: " + lines.joinToString("; ") { "\"$it\"" } + "."
     }

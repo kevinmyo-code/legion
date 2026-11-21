@@ -309,16 +309,43 @@ class GreetingBlockTest {
         val p = parsed(pack(due = facts(due)))
         val lead = GreetingBlock.lead(p, noPlace, 8)!!
         val personal = GreetingPrompt.build(GreetingBlock.render(p, noPlace, morning, lead.item), lead)
-        assertTrue(personal.contains(GreetingNames.RULE))
-        assertTrue(GreetingPrompt.hello().contains(GreetingNames.RULE))
+        assertTrue(personal.contains(GreetingNames.rule(null)))
+        assertTrue(GreetingPrompt.hello().contains(GreetingNames.rule(null)))
         // Five kept hellos (the most kept) do not crowd it out: it comes after them, whole.
         val five = listOf("Go on then.", "Well, look who it is.", "Ready when you are.", "Fire away.", "All ears.")
         val hello = GreetingPrompt.hello(five).lines()
         val avoidAt = hello.indexOfFirst { it.startsWith("- Do not reuse this wording") }
-        val ruleAt = hello.indexOf(GreetingNames.RULE)
+        val ruleAt = hello.indexOf(GreetingNames.rule(null))
         assertTrue(avoidAt >= 0)
         assertTrue("$avoidAt < $ruleAt", ruleAt > avoidAt)
         five.forEach { assertTrue(it, hello[avoidAt].contains(it)) }
+    }
+
+    @Test fun `with his name known, both prompts allow that name only`() {
+        val p = parsed(pack(due = facts(due)))
+        val lead = GreetingBlock.lead(p, noPlace, 8)!!
+        val personal = GreetingPrompt.build(GreetingBlock.render(p, noPlace, morning, lead.item), lead, "Sam")
+        val hello = GreetingPrompt.hello(name = "Sam")
+        listOf(personal, hello).forEach { prompt ->
+            assertTrue(prompt.contains(GreetingNames.rule("Sam")))
+            assertFalse(prompt.contains(GreetingNames.rule(null)))
+            assertFalse(prompt.contains("{name_rule}"))
+        }
+        val rule = GreetingNames.rule("Sam")
+        listOf("no name other than Sam", "now and then", "invented name", "nickname", "title", "character name")
+            .forEach { assertTrue(it, rule.contains(it)) }
+    }
+
+    @Test fun `a name in the last kept hello keeps it out of the next one`() {
+        val used = GreetingPrompt.hello(listOf("Go on then.", "Morning, Sam. What's first?"), name = "Sam")
+        assertTrue(used, used.contains("The last hello used his name, so leave it out of this one."))
+        // His own name is not dropped from the avoid list: the model sees how it was used.
+        assertTrue(used.lines().single { it.startsWith("- Do not reuse") }.contains("Sam"))
+        // Only the newest counts: an older one with the name, or no name known, adds nothing.
+        val older = GreetingPrompt.hello(listOf("Morning, Sam. What's first?", "Go on then."), name = "Sam")
+        assertFalse(older.contains("The last hello used his name"))
+        assertFalse(GreetingPrompt.hello(listOf("Go on then."), name = "Sam").contains("The last hello used his name"))
+        assertFalse(GreetingPrompt.hello(listOf("Morning, Sam.")).contains("The last hello used his name"))
     }
 
     @Test fun `a kept hello that names him is never quoted back`() {

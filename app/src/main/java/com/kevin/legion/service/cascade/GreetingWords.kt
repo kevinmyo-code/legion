@@ -18,11 +18,14 @@ internal object GreetingWords {
         LeadingFiller.strip(TtsTags.strip(written).trim()).trim().ifEmpty { null }
 
     /**
-     * The line to keep, or null. A line that calls him by a name ([GreetingNames]) is never kept:
-     * the session speaks the scripted hello instead, and a kept one would be quoted back to the model.
+     * The line to keep, or null. A line that calls him by any name but [allowed] ([GreetingNames]) is
+     * never kept: the session speaks the scripted hello instead, and a kept one would be quoted back.
+     * A line with his own name is kept, so the next hello can be asked to leave it out.
      */
-    fun of(written: String): String? = spoken(written)?.takeUnless { GreetingNames.addresses(it) }
+    fun of(written: String, allowed: String? = null): String? =
+        spoken(written)?.takeUnless { GreetingNames.addresses(it, allowed) }
 
-    /** True when the hello calls him by a name: the session speaks the scripted line instead. */
-    fun namesHim(written: String): Boolean = spoken(written)?.let { GreetingNames.addresses(it) } ?: false
+    /** True when the hello calls him by any name but [allowed]: the session speaks the scripted line. */
+    fun namesHim(written: String, allowed: String? = null): Boolean =
+        spoken(written)?.let { GreetingNames.addresses(it, allowed) } ?: false
 }

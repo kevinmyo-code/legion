@@ -25,6 +25,14 @@ class GreetingWordsTest {
     }
 
     @Test
+    fun `a hello with his own name is spoken and kept, any other name is not`() {
+        assertEquals("Morning, Sam. What's first?", GreetingWords.of("Morning, Sam. What's first?", "Sam"))
+        assertFalse(GreetingWords.namesHim("Morning, Sam. What's first?", "Sam"))
+        assertTrue(GreetingWords.namesHim("Morning, Marcus. What's first?", "Sam"))
+        assertNull(GreetingWords.of("Morning, Marcus. What's first?", "Sam"))
+    }
+
+    @Test
     fun `nothing left is nothing kept`() {
         assertNull(GreetingWords.of(""))
         assertNull(GreetingWords.of("  <sigh>  "))

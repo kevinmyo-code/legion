@@ -2601,11 +2601,13 @@ internal class CascadeSession(
                 withTimeoutOrNull((deadline - System.currentTimeMillis()).coerceAtLeast(1L)) { firstText.await() }
                 val whole = written.isNotBlank() &&
                     withTimeoutOrNull(GreetingBudget.WHOLE_LINE_MS) { call.join() } != null
-                if (!whole || greetingNamesHim(written.toString())) {
+                val gate = greetingGate(whole, written.toString(), plan.name)
+                if (gate != GreetingGate.SPEAK) {
                     call.cancel()
                     reply.interrupt()
-                    if (!whole) LiveLatency.log(LiveLatency.TAG, "greeting model_slow scripted")
-                    speakScripted(ackLines.next())
+                    gate.logLine?.let { LiveLatency.log(LiveLatency.TAG, it) }
+                    // He spoke: his own turn carries on and its reply opens the window; nothing is said.
+                    if (gate.scripted) speakScripted(ackLines.next())
                     return@launch
                 }
                 reply.text(written.toString())
@@ -2614,7 +2616,7 @@ internal class CascadeSession(
                 // model's text, whole now: what was heard ([ReplySpeaker.spoken]) is still empty here,
                 // since the stream ends before the clip starts, and the avoid list never filled (11-19
                 // drive: most hellos were one line).
-                if (test == null) greeting?.noteOpened(plan, GreetingWords.of(written.toString()))
+                if (test == null) greeting?.noteOpened(plan, GreetingWords.of(written.toString(), plan.name))
                 when (val o = reply.await()) {
                     ReplySpeaker.Outcome.Played -> {
                         // So his answer is understood: the greeting is the first exchange.
@@ -2634,15 +2636,12 @@ internal class CascadeSession(
     }
 
     /**
-     * The backstop for the greeting's no-name rule ([com.kevin.legion.greeting.GreetingNames]): a line
-     * that calls him by a name is not spoken and not kept; the scripted hello plays instead. The log
-     * line carries no text.
+     * The held greeting's fate ([GreetingGate]), read the moment before any of it would be spoken: he
+     * spoke since the open ([heardSinceOpen]), it was not whole in time, or it calls him by a name
+     * that is not [name] ([com.kevin.legion.greeting.GreetingNames]).
      */
-    private fun greetingNamesHim(written: String): Boolean {
-        val named = GreetingWords.namesHim(written)
-        if (named) LiveLatency.log(LiveLatency.TAG, "greeting_name_blocked")
-        return named
-    }
+    private fun greetingGate(whole: Boolean, written: String, name: String?): GreetingGate =
+        GreetingGate.decide(heardSinceOpen, whole, whole && GreetingWords.namesHim(written, name))
 
     private suspend fun endByVoice() {
         sayOwed()
