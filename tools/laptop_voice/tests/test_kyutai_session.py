@@ -9,6 +9,7 @@ Run from tools/:  python -m pytest laptop_voice/tests -q   (skipped where torch/
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -95,12 +96,13 @@ def test_no_maybe_before_any_words():
     assert ("eot_pending", "hi") in ev
 
 
-def test_both_kyutai_engines_name_the_one_gpu_lock_for_keep_warm():
-    """Keep-warm try-acquires engine.gpu_lock; a missing or different lock would let a warm pass run
-    beside a real model step (the CUDA graph capture crash GPU_LOCK exists to prevent)."""
+def test_kyutai_stt_names_the_one_gpu_lock_for_keep_warm():
+    """Keep-warm's STT half try-acquires stt.gpu_lock; a missing or different lock would let a warm
+    pass run beside a real model step (the CUDA graph capture crash GPU_LOCK exists to prevent). The
+    TTS half goes through KyutaiTts.try_warm instead (engine lock first, test below)."""
     from laptop_voice import kyutai as K
     assert K.KyutaiStt.gpu_lock is core.GPU_LOCK
-    assert K.KyutaiTts.gpu_lock is core.GPU_LOCK
+    assert hasattr(K.KyutaiTts, "try_warm")
 
 
 def test_tts_codebooks_come_from_the_launcher_flag_only_when_set(monkeypatch):
@@ -113,3 +115,93 @@ def test_tts_codebooks_come_from_the_launcher_flag_only_when_set(monkeypatch):
     monkeypatch.setenv("LEGION_VOICE_KYUTAI_TTS_NQ", "16")
     K.KyutaiTts()
     assert seen["n_q"] == 16
+
+
+class _Watched:
+    """A real lock that reports each acquire, and turns a blocking wait over 2 s into a recorded
+    deadlock instead of a hung test."""
+
+    def __init__(self, name, inner, on_acquire, stuck):
+        self.name, self.inner, self.on_acquire, self.stuck = name, inner, on_acquire, stuck
+
+    def acquire(self, blocking=True, timeout=-1):
+        if blocking and timeout < 0:
+            ok = self.inner.acquire(timeout=2)
+            if not ok:
+                self.stuck.append((self.name, threading.current_thread().name))
+                raise RuntimeError(f"waited over 2 s for {self.name}: deadlock")
+        else:
+            ok = self.inner.acquire(blocking, timeout)
+        if ok:
+            self.on_acquire(self)
+        return ok
+
+    def release(self):
+        self.inner.release()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc):
+        self.release()
+
+
+def test_tts_warm_takes_the_engine_lock_before_the_gpu_lock_and_never_waits():
+    """Review F1 (2026-11-20). Real streamed speech runs on its own thread and takes the engine lock,
+    then the GPU lock per step. The warm pass must take them in that same order: if it held the GPU
+    lock and then waited for the engine lock, a stream starting in between would wait on the GPU
+    lock forever and the whole service would hang. The barrier forces exactly that interleaving: the
+    stream thread grabs the engine lock right after the warm pass takes its FIRST lock."""
+    from laptop_voice import keep_warm as W
+
+    stuck, warm_started, stream_has_engine = [], threading.Event(), threading.Event()
+    fired = []
+
+    def on_acquire(lock):
+        me = threading.current_thread().name
+        if me == "stream" and lock.name == "engine":
+            stream_has_engine.set()
+        if me == "warm" and not fired:
+            fired.append(lock.name)
+            warm_started.set()
+            stream_has_engine.wait(0.3)  # give the stream its chance at the engine lock
+
+    eng = core.KyutaiTts.__new__(core.KyutaiTts)  # no model: only the locking code is real
+    eng.lock = _Watched("engine", threading.Lock(), on_acquire, stuck)
+    eng.default_voice = "dev"
+    gpu = _Watched("gpu", threading.RLock(), on_acquire, stuck)
+    eng.gpu_lock = gpu
+
+    def held(text_iter, voice, speed):  # stands in for the model loop: GPU lock per step
+        for _ in text_iter:
+            for _ in range(2):
+                with gpu:
+                    pass
+                yield np.zeros(1920, np.int16)
+
+    eng._synth_held = held
+    results = {}
+
+    def stream():
+        warm_started.wait(2)
+        try:
+            results["stream_chunks"] = len(list(eng.synth_stream(["hello there"])))
+        except RuntimeError as exc:
+            results["stream_error"] = str(exc)
+
+    def warm():
+        try:
+            results["warm"] = W.tts_half(eng)
+        except RuntimeError as exc:
+            results["warm_error"] = str(exc)
+
+    threads = [threading.Thread(target=stream, name="stream"), threading.Thread(target=warm, name="warm")]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert stuck == [], f"a thread waited on a lock the other held: {stuck}"
+    assert fired == ["engine"], "the warm pass's first lock is the engine lock"
+    assert results.get("stream_chunks") == 2
+    assert "warm" in results

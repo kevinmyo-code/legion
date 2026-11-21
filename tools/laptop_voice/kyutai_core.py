@@ -418,8 +418,31 @@ class KyutaiTts:
         `second_stream_ahead` words queued beyond the one being spoken, so audio starts after
         ~2-3 words and stalls (no audio, client buffer underruns) if the LLM falls behind speech.
         For a queue.Queue, pass iter(q.get, None) and put None at the end."""
+        with self.lock:
+            yield from self._synth_held(text_iter, voice, speed)
+
+    def try_warm(self, text: str = "Ready.") -> bool:
+        """Keep-warm: one synthesis with the default voice up to its first audio chunk, or False at
+        once when another synthesis holds the engine. It takes the engine lock (without waiting)
+        before any GPU lock, the same order as every real path: holding the GPU lock while waiting
+        for the engine lock could deadlock against a streamed line on its own thread."""
+        if not self.lock.acquire(blocking=False):
+            return False
+        try:
+            gen = self._synth_held([text], self.default_voice, 1.0)
+            try:
+                next(gen, None)
+            finally:
+                gen.close()
+        finally:
+            self.lock.release()
+        return True
+
+    def _synth_held(self, text_iter: tp.Iterable[str], voice: str | None,
+                    speed: float) -> tp.Iterator[np.ndarray]:
+        """synth_stream's body; the caller holds self.lock."""
         voice = voice or self.default_voice
-        with self.lock, torch.no_grad(), contextlib.ExitStack() as es:
+        with torch.no_grad(), contextlib.ExitStack() as es:
             m = self.m
             with GPU_LOCK:  # setup touches CUDA (resets, conditioning tensors, in-place voice swap)
                 if not self.persistent:

@@ -34,7 +34,6 @@ class CountingStt(E.FakeStreamingStt):
     def __init__(self, fail: int = 0, delay_s: float = 0.0):
         super().__init__()
         self.opened, self.fed_ms, self.fail, self.delay_s = 0, 0, fail, delay_s
-        self.lock = threading.Lock()  # like the Kyutai engine's own lock
 
     def open_stream(self, lang):
         if self.fail:
@@ -54,13 +53,28 @@ class CountingStt(E.FakeStreamingStt):
 
 
 class CountingTts(E.FakeTts):
+    """Has an engine lock like Kyutai's: real speech holds it for a whole line, and try_warm takes it
+    without waiting (the real try_warm is tested in test_kyutai_session.py)."""
+
     def __init__(self):
         super().__init__()
         self.calls: list[tuple[str, str]] = []
+        self.lock = threading.Lock()
 
     def synth(self, text, voice, speed):
         self.calls.append((text, voice))
         yield from super().synth(text, voice, speed)
+
+    def try_warm(self, text):
+        if not self.lock.acquire(blocking=False):
+            return False
+        try:
+            gen = self.synth(text, self.default_voice, 1.0)
+            next(gen, None)
+            gen.close()
+        finally:
+            self.lock.release()
+        return True
 
 
 def service(stt=None, tts=None, lock=None, **kw) -> S.Service:
@@ -89,7 +103,7 @@ def hold_in_other_thread(lock) -> threading.Event:
 async def test_pass_runs_both_models_when_idle():
     svc = service(lock=threading.RLock())
     done = await W.warm_once(svc)
-    assert done is not None and done.stt_ms >= 0 and done.tts_ms >= 0
+    assert done.stt_ms >= 0 and done.tts_ms >= 0 and done.skipped is None
     assert svc.stt.opened == 1 and 0 < svc.stt.fed_ms <= 1000  # a short burst, not an utterance
     assert svc.tts.calls == [(W.TTS_WARM_TEXT, svc.tts.default_voice)]
 
@@ -98,7 +112,7 @@ async def test_pass_runs_both_models_when_idle():
 async def test_skipped_while_a_conversation_is_open():
     svc = service()
     svc.connections = 1
-    assert await W.warm_once(svc) is None
+    assert await W.warm_once(svc) == W.Pass(skipped=W.CONVERSATION)
     assert svc.stt.opened == 0 and svc.tts.calls == []
 
 
@@ -106,7 +120,7 @@ async def test_skipped_while_a_conversation_is_open():
 async def test_skipped_while_a_conversation_is_starting():
     svc = service()
     svc.last_conversation = time.monotonic()  # a socket just passed the token check
-    assert await W.warm_once(svc) is None
+    assert await W.warm_once(svc) == W.Pass(skipped=W.CONVERSATION)
     assert svc.stt.opened == 0 and svc.tts.calls == []
 
 
@@ -114,7 +128,7 @@ async def test_skipped_while_a_conversation_is_starting():
 async def test_skipped_while_loading():
     svc = service()
     svc.loading = True
-    assert await W.warm_once(svc) is None
+    assert await W.warm_once(svc) == W.Pass(skipped=W.LOADING)
     assert svc.stt.opened == 0
 
 
@@ -125,7 +139,7 @@ async def test_skipped_without_waiting_when_the_gpu_lock_is_busy():
     release = hold_in_other_thread(lock)
     try:
         t0 = time.perf_counter()
-        assert await W.warm_once(svc) is None
+        assert await W.warm_once(svc) == W.Pass(skipped=W.GPU_BUSY)
         assert time.perf_counter() - t0 < 1.0, "try-acquire: never waits for the lock"
         assert svc.stt.opened == 0 and svc.tts.calls == []
     finally:
@@ -133,14 +147,17 @@ async def test_skipped_without_waiting_when_the_gpu_lock_is_busy():
 
 
 @pytest.mark.asyncio
-async def test_skipped_when_an_engine_is_inside_a_call():
-    """The real paths take the engine's own lock before the GPU lock: a pass that held the GPU lock and
-    then waited on the engine lock could deadlock, so a held engine lock means skip."""
+async def test_tts_half_skipped_without_waiting_while_speech_holds_the_engine():
+    """A line still speaking (its thread holds the TTS engine lock) means the TTS half skips at once;
+    the STT half still ran."""
     svc = service(lock=threading.RLock())
-    release = hold_in_other_thread(svc.stt.lock)
+    release = hold_in_other_thread(svc.tts.lock)
     try:
-        assert await W.warm_once(svc) is None
-        assert svc.stt.opened == 0 and svc.tts.calls == []
+        t0 = time.perf_counter()
+        p = await W.warm_once(svc)
+        assert time.perf_counter() - t0 < 1.0
+        assert p.stt_ms is not None and p.tts_ms is None and p.skipped == W.TTS_BUSY
+        assert svc.tts.calls == []
     finally:
         release.set()
 
@@ -188,6 +205,29 @@ async def test_slow_pass_and_hourly_summary_are_logged(caplog):
     assert any(m.startswith("keep-warm on: every 0.01 s") for m in msgs)
     assert any(m.startswith("keep-warm slow: stt_ms=") for m in msgs)
     assert any(m.startswith("keep-warm summary: passes=") and "median_ms=" in m and "max_ms=" in m for m in msgs)
+
+
+@pytest.mark.asyncio
+async def test_summary_says_why_passes_were_skipped(caplog):
+    """A lock that never frees (e.g. a speech thread left holding the TTS engine) must be visible."""
+    svc = service(lock=threading.RLock())
+    kw = W.KeepWarm(svc, interval_s=0.01, summary_s=3600)
+    release = hold_in_other_thread(svc.tts.lock)
+    try:
+        await kw.tick()
+        await kw.tick()
+        svc.connections = 1
+        await kw.tick()
+    finally:
+        release.set()
+    kw.next_summary = 0  # the hour is up
+    with caplog.at_level(logging.INFO, logger="laptop_voice"):
+        svc.connections = 0
+        await kw.tick()
+    line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("keep-warm summary"))
+    assert "passes=3" in line  # the STT half ran three times (twice beside a busy TTS, once at the end)
+    assert "skip_tts_busy=2" in line and "skip_conversation_open=1" in line
+    assert "skip_gpu_busy=0" in line and "skip_loading=0" in line
 
 
 @pytest.mark.asyncio
