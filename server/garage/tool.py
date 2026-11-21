@@ -18,6 +18,7 @@ match, the result lists them and the model asks, then calls again with the id it
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from engine_mcp.tools import (
@@ -158,6 +159,15 @@ def _card(part: m.Part, fastener: m.Fastener | None, table: _Table) -> dict:
     }
 
 
+_DIGIT_WORDS = {"1": "one", "2": "two", "3": "three", "4": "four", "5": "five"}
+
+
+def _in_words(text: str) -> str:
+    """A candidate's name as code says it: small numbers in words ("frame bolt two of three"), so
+    nothing spoken in the question reads as a figure and the answer resolves (`resolve.tokens`)."""
+    return re.sub(r"\b[1-5]\b", lambda x: _DIGIT_WORDS[x.group(0)], text)
+
+
 def _ambiguous(match: r.Match) -> ToolResult:
     listed = []
     for c in match.candidates:
@@ -166,11 +176,28 @@ def _ambiguous(match: r.Match) -> ToolResult:
         else:
             side = f", {c.side} side" if c.side else ""
             listed.append({"part_id": c.id, "name": f"{c.name}{side}"})
-    names = "; ".join(f"{x['name']} ({x.get('fastener_id') or x.get('part_id')})" for x in listed)
+    said = [_in_words(x["name"]) for x in listed]
+    choices = ", ".join(said[:-1]) + f", or {said[-1]}" if len(said) > 2 else " or ".join(said)
+    ids = "; ".join(f"{x['name']} ({x.get('fastener_id') or x.get('part_id')})" for x in listed)
+    # Code asks the question itself and the turn ends there: the model's own wording of the
+    # choices could carry numbers ("frame bolt 2 of 3") that the torque guard would then drop,
+    # leaving no answer at all (re-check, 2026-11-20).
     return ok(
-        "Nothing is on the screen yet: more than one thing on the model matches. Ask which one "
-        f"they mean, in plain words, then call show_part again with its id. They are: {names}.",
-        {"match": r.AMBIGUOUS, "candidates": listed},
+        "Nothing is on the screen yet: more than one thing on the model matches, and code has "
+        f"asked which one. When they answer, call show_part with that id. They are: {ids}.",
+        {
+            "match": r.AMBIGUOUS,
+            "candidates": listed,
+            SPEAK_VERBATIM: [f"Which one do you mean: {choices}?"],
+            SPEAK_EXACT: True,
+            ENDS_TURN: True,
+            FOR_MODEL: (
+                "More than one thing on the model matches; code has asked which one, and that "
+                f"was the whole answer. When they answer, call show_part with that id: {ids}. "
+                "Say no figure."
+            ),
+            SPOKEN_FIGURES: [],
+        },
     )
 
 
@@ -228,7 +255,7 @@ def _fastener(match: r.Match, table: _Table) -> ToolResult:
             lines.append(size)
         if "castle" in f.kind.lower():
             lines.append(specs.CASTLE)
-        spoken = sorted(specs.spoken_numbers(spec, table.truck))
+        spoken = sorted(specs.spoken_numbers(spec))
     return ok(
         "On screen now: the fastener, highlighted.",
         {

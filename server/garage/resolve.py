@@ -63,8 +63,16 @@ def _token(word: str) -> str:
     return word
 
 
+# Small numbers said as words name the same joint as digits ("frame bolt two" is "frame bolt 2"):
+# code says the candidates in words, so the answer comes back in words.
+_COUNT_WORDS = {
+    "one": "1", "two": "2", "three": "3", "first": "1", "second": "2", "third": "3",
+}  # fmt: skip
+
+
 def tokens(text: str) -> list[str]:
-    return [_token(w) for w in re.split(r"[^a-z0-9]+", (text or "").lower().replace("'", "")) if w]
+    words = re.split(r"[^a-z0-9]+", (text or "").lower().replace("'", ""))
+    return [_COUNT_WORDS.get(w, _token(w)) for w in words if w]
 
 
 def _contains(words: list[str], phrase: list[str]) -> bool:

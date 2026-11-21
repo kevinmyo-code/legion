@@ -303,16 +303,15 @@ def _num(value) -> str:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
-def spoken_numbers(spec, truck: Truck | None = None) -> set[str]:
-    """Every number the spoken lines say for this row (the torque guard's backing)."""
+def spoken_numbers(spec) -> set[str]:
+    """The torque and size values the spoken lines say from this row: the torque guard's
+    backing. Never the truck's descriptive numbers (its year, an axle's model number): a model
+    sentence repeating those is not a checked figure."""
     out = {_num(spec.torque_min)}
     if spec.torque_max is not None:
         out.add(_num(spec.torque_max))
     for text in (spec.socket, spec.thread):
         out |= {_num(n) for n in re.findall(r"\d+(?:\.\d+)?", text or "")}
-    if truck is not None:
-        out |= {str(truck.year), *(_num(n) for n in re.findall(r"\d+(?:\.\d+)?", truck.engine))}
-        out |= {_num(n) for n in re.findall(r"\d+(?:\.\d+)?", truck.axle)}
     return out
 
 

@@ -879,6 +879,8 @@ def _meets() -> dict[str, tuple[str, ...]]:
         "xj.susp.track_bar@frame_bracket_support_bolts": (_FRAME,),
         "xj.steer.stabilizer@axle_end": (_HOUSING,),
         "xj.steer.stabilizer@drag_link_end": ("xj.steer.drag_link",),
+        "xj.steer.tie_rod_sleeve@clamps": ("xj.steer.tie_rod",),
+        "xj.steer.drag_link_sleeve@clamps": ("xj.steer.drag_link",),
     }
     for i in (1, 2, 3):
         out[f"xj.steer.box@frame_bolt_{i}"] = (_FRAME,)
@@ -896,6 +898,7 @@ def _meets() -> dict[str, tuple[str, ...]]:
             f"xj.axle.ball_joint_upper.{side}@stud_nut": (f"xj.axle.knuckle.{side}",),
             f"xj.axle.ball_joint_lower.{side}@stud_nut": (f"xj.axle.knuckle.{side}",),
             f"xj.axle.hub.{side}@hub_bolts": (f"xj.axle.knuckle.{side}",),
+            f"xj.axle.hub.{side}@axle_nut": (f"xj.axle.knuckle.{side}",),
         }
     return out
 
