@@ -83,12 +83,17 @@ class CloseCueTest {
     @Test
     fun `the audit line is numbers and fixed tokens`() {
         assertEquals(
-            "close_cue played ms=430 reason=sleep_phrase route=speaker by=timestamp latency_ms=140 base=9000",
-            CloseCue.playedLine("sleep_phrase", "speaker", CloseCue.Heard(CloseCue.By.TIMESTAMP, 430, 9_000), chimeMs = 290),
+            "close_cue played ms=430 reason=sleep_phrase route=speaker by=timestamp latency_ms=140 base=9000 consumed_frames=6960 of=6960 drained=1",
+            CloseCue.playedLine("sleep_phrase", "speaker", CloseCue.Heard(CloseCue.By.TIMESTAMP, 430, 9_000, 6_960, 6_960), chimeMs = 290),
         )
         assertEquals(
-            "close_cue played ms=540 reason=sleep_phrase route=bt by=floor latency_ms=none base=none",
+            "close_cue played ms=540 reason=sleep_phrase route=bt by=floor latency_ms=none base=none consumed_frames=-1 of=0 drained=0",
             CloseCue.playedLine("sleep_phrase", "bt", CloseCue.Heard(CloseCue.By.FLOOR, 540, null), chimeMs = 290),
+        )
+        // The 14:42 shape: the wait ended on the floor and the mixer took none of it. The line says so.
+        assertEquals(
+            "close_cue played ms=546 reason=sleep_phrase route=speaker by=floor latency_ms=none base=0 consumed_frames=0 of=6960 drained=0",
+            CloseCue.playedLine("sleep_phrase", "speaker", CloseCue.Heard(CloseCue.By.FLOOR, 546, 0, 0, 6_960), chimeMs = 290),
         )
         assertEquals(
             "close_cue skipped reason=quiet close=new_conversation",

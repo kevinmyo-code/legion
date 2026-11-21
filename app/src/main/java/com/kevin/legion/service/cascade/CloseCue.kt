@@ -97,8 +97,12 @@ internal object CloseCue {
         else -> null
     }
 
-    /** What decided the chime's wait, how long it took from the write, and the timestamp's baseline. */
-    data class Heard(val by: By, val ms: Long, val base: Long?)
+    /**
+     * What decided the chime's wait, how long it took from the write, the timestamp's baseline, and
+     * how many of the chime's [of] frames the mixer actually took ([consumed], from the head position;
+     * -1 when unknown). Fewer than [of] means it was not all played, whatever [by] says.
+     */
+    data class Heard(val by: By, val ms: Long, val base: Long?, val consumed: Long = -1, val of: Long = 0)
 
     /**
      * Reads the device's presented frame as the baseline, writes the chime, and waits until [heardBy]
@@ -137,13 +141,16 @@ internal object CloseCue {
 
     /**
      * `close_cue played ms=<n> reason=<close> route=<speaker|earpiece|bt|wired> by=<timestamp|floor|cap>
-     * latency_ms=<n|none> base=<n|none>`: no text. The latency is measured (the time to the last frame
-     * presented, less the chime's length) only when the timestamp decided; base is its baseline frame.
+     * latency_ms=<n|none> base=<n|none> consumed_frames=<n> of=<n> drained=<1|0>`: no text. drained=0 is a
+     * chime the mixer did not take whole (2026-11-21: a log said "played" for a chime never heard).
+     * The latency is measured (the time to the last frame presented, less the chime's length) only
+     * when the timestamp decided; base is its baseline frame.
      */
     fun playedLine(reason: String, route: String, heard: Heard, chimeMs: Long): String {
         val latency = if (heard.by == By.TIMESTAMP) "${(heard.ms - chimeMs).coerceAtLeast(0)}" else "none"
         return "close_cue played ms=${heard.ms} reason=${token(reason)} route=$route by=${heard.by.token} " +
-            "latency_ms=$latency base=${heard.base ?: "none"}"
+            "latency_ms=$latency base=${heard.base ?: "none"} consumed_frames=${heard.consumed} of=${heard.of} " +
+            "drained=${if (heard.of > 0 && heard.consumed >= heard.of) 1 else 0}"
     }
 
     /** `close_cue skipped reason=<why> close=<close>`: no text. */

@@ -194,6 +194,10 @@ class LaptopVoiceConnection(
 
     private inner class Utterance(override val id: Int, val onServiceEnd: () -> Unit) : SttUtterance {
         val result = CompletableDeferred<SttResult>()
+
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        override fun finalText(): String? =
+            (result.takeIf { it.isCompleted }?.getCompleted() as? SttResult.Text)?.text
         val ended = AtomicBoolean(false)
         @Volatile var deferred = false
         private val held = ArrayList<ByteArray>()

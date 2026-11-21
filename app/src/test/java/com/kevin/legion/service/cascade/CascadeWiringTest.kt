@@ -154,7 +154,7 @@ class CascadeWiringTest {
         assertTrue(bodyOf(s, "releaseNow").contains("playCloseCue(reason)"))
         // F4, 2026-11-21: a farewell ends the acknowledgement, and cuts it if it is playing ([playAckClip]).
         val stop = bodyOf(s, "endByStop")
-        assertTrue(stop.indexOf("fillerJobs.endTurn()") in 0 until stop.indexOf("endByVoice()"))
+        assertTrue(stop.indexOf("cutAck()") in 0 until stop.indexOf("endByVoice()"))
         assertFalse(stop.contains("if (!playbackActive) fillerJobs.endTurn()"))
         // F2: the hand-over's release carries the reason the chime rule knows.
         assertTrue(bodyOf(s, "handOver").contains("release(CloseCue.voiceFailedReason(reason, VoiceEngineSettings.LIVE_RETIRED, quiet))"))
@@ -587,7 +587,9 @@ class CascadeWiringTest {
         assertTrue(schedule.contains("fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }"))
         val words = bodyOf(s, "ackWordsSkip")
         assertTrue(words.contains("heardSoFar?.takeIf { it.first == u.id }?.second"))
-        assertTrue(words.contains("WakePhrases.isSleepPhrase(it, CompanionProfile.name(ctx))"))
+        // The final when the voice has it at end of turn, and the stop rule's own goodbye test.
+        assertTrue(words.contains("u.finalText() ?: heardSoFar?.takeIf { it.first == u.id }?.second"))
+        assertTrue(words.contains("goodbye = ::endsConversation"))
         assertTrue(words.contains("CrisisDetector::detect"))
         // The running transcript is kept with the speculation setting off too.
         val wire = bodyOf(s, "wireEarlySignals")
@@ -595,10 +597,14 @@ class CascadeWiringTest {
         // A cancelled acknowledgement is flushed at once: his speech (onUserTurnStart) and a stop end its job.
         val clip = bodyOf(s, "playAckClip")
         assertTrue(clip.contains("catch (e: CancellationException)"))
-        assertTrue(clip.contains("if (p.generation() == gen) p.flush()"))
+        // The cut is made at once by whoever ends it (cutAck), never later from the cancelled clip.
+        assertFalse(clip.contains("p.flush()"))
+        assertTrue(clip.contains("ackPlaying = false"))
+        val cut = bodyOf(s, "cutAck")
+        assertTrue(cut.indexOf("fillerJobs.endTurn()") in 0 until cut.indexOf("player?.flush()"))
         assertTrue(s.substring(s.indexOf("private fun ackSteps(")).take(1_500).contains("clipPlayback.during { playAckClip(p, pcm) }"))
         val turnStart = s.substring(s.indexOf("private fun onUserTurnStart()")).take(800)
-        assertTrue(turnStart.contains("fillerJobs.endTurn()"))
+        assertTrue(turnStart.contains("cutAck()"))
     }
 
     @Test
@@ -644,6 +650,24 @@ class CascadeWiringTest {
         val due = bodyOf(s, "backchannelStillDue")
         val reasons = due.split("skip(\"").drop(1).map { it.substringBefore("\"") }.toSet()
         assertEquals(setOf("over_cue", "answer_first", "noise"), reasons)
+    }
+
+    @Test
+    fun `every short clip is written so it starts at once, and the chime's consumption is measured`() {
+        val s = session()
+        // No short clip goes to a track raw: each is made startable ([ShortClip]).
+        for (raw in listOf("p.write(ListenCue.earconPcm(), gen)", "p.write(cue.pcm, gen)", "chime.write(earcon, ")) {
+            assertFalse(raw, s.contains(raw))
+        }
+        assertEquals(6, s.split("p.write(p.startable(").size - 1)
+        assertTrue(s.contains("chime.write(chime.startable(earcon), chime.generation())"))
+        val cue = bodyOf(s, "playCloseCue")
+        assertTrue(cue.indexOf("val head0 = p.headFrames() ?: 0L") in 0 until cue.indexOf("CloseCue.playHeard("))
+        assertTrue(cue.contains("p.write(p.startable(pcm), p.generation())"))
+        assertTrue(cue.contains("played.copy(consumed = ((p.headFrames() ?: head0) - head0).coerceAtLeast(0), of = chimeFrames)"))
+        // The track starts at one frame where it can.
+        val player = File(sourceRoot(), "service/cascade/ReplyPlayer.kt").readText()
+        assertTrue(player.contains("setStartThresholdInFrames("))
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())

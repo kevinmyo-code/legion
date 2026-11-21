@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.PlaybackParams
+import android.os.Build
 import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -32,6 +33,9 @@ internal class ReplyPlayer(
     @Volatile private var framesWritten = 0L
     private val generation = AtomicInteger(0)
     @Volatile private var released = false
+
+    /** The track's buffer in frames (its default start threshold before API 31, [ShortClip]). */
+    @Volatile private var bufferFrames = sampleRate / 2
 
     /** The generation a writer must carry; a [flush] in between makes its writes no-ops. */
     fun generation(): Int = generation.get()
@@ -116,6 +120,18 @@ internal class ReplyPlayer(
      * count (it may not reset on a flush: compare only with an earlier reading); null when the
      * track gives no timestamp (none yet, not playing, or unsupported).
      */
+    /**
+     * [pcm] as a short clip must be written so it starts at once ([ShortClip.startable]): unchanged
+     * from API 31, where the track starts at one frame; padded with silence to the buffer below it.
+     */
+    fun startable(pcm: ByteArray): ByteArray = ShortClip.startable(pcm, bufferFrames, Build.VERSION.SDK_INT)
+
+    /** Frames the mixer has taken since the track was built or last flushed; null with no track playing. */
+    fun headFrames(): Long? = synchronized(lock) {
+        val t = track?.takeIf { it.playState == AudioTrack.PLAYSTATE_PLAYING } ?: return@synchronized null
+        runCatching { t.playbackHeadPosition.toLong() and HEAD_MASK }.getOrNull()
+    }
+
     fun presentedFrame(): Long? = synchronized(lock) {
         val t = track?.takeIf { it.playState == AudioTrack.PLAYSTATE_PLAYING } ?: return@synchronized null
         val ts = android.media.AudioTimestamp()
@@ -154,6 +170,11 @@ internal class ReplyPlayer(
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
         t.setVolume(AudioTrack.getMaxVolume())
+        bufferFrames = runCatching { t.bufferSizeInFrames }.getOrDefault(bufferFrames)
+        // A short clip plays at once, even right after a start, a flush or an underrun ([ShortClip]).
+        if (Build.VERSION.SDK_INT >= ShortClip.THRESHOLD_API) {
+            ShortClip.startThreshold(Build.VERSION.SDK_INT)?.let { runCatching { t.setStartThresholdInFrames(it) } }
+        }
         val rate = VoiceEngineSettings.clampSpeed(speed())
         if (rate != 1f) {
             // Time-stretched, pitch kept. A device that refuses plays at normal speed rather than not at all.
