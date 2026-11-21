@@ -176,9 +176,10 @@ internal object EngineResponses {
                     reader.line(line)?.let { out.trySend(it) }
                     line = source?.readUtf8Line()
                 }
-            } catch (e: IOException) {
-                // A dropped stream: the channel closes with no `done`, and the relay recovers.
-                out.close(e)
+            } catch (ignored: IOException) {
+                // A dropped or closed stream: the channel ends with no `done` (closed without a cause,
+                // so no reader rethrows it), and the relay recovers or the turn ends in words.
+                out.close()
             } finally {
                 out.close()
                 response.close()

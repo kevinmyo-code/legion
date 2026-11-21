@@ -6,7 +6,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicInteger
@@ -84,8 +83,10 @@ internal class EngineBrain(
      * when the phone transcribes it.
      */
     fun utterance(cloudVoice: Boolean): EngineUtterance? {
-        val on = state == State.ON || state == State.ATTACHING
-        return if (!on || !cloudVoice) {
+        // Decided before any audio goes: a turn the phone will keep (the engine still attaching, or
+        // his answer to a line the phone just spoke) is never started on the engine, so nothing
+        // there can act before a cancel lands. Its words go as a transcript if the engine answers.
+        return if (state != State.ON || !cloudVoice || afterPhoneLine) {
             null
         } else {
             EngineUtterance(ids.incrementAndGet(), wire, scope, meta(), !streamOff, ::switchedOff, now)
@@ -145,6 +146,11 @@ internal class EngineBrain(
         executor: TextToolExecutor,
         listener: GeminiTextLoop.Listener,
     ): GeminiTextLoop.Result {
+        // Device actions from a turn whose reply never played: answered `not_run`, never run late.
+        val unplayed = deviceActions
+        deviceActions = emptyList()
+        val previous = relay
+        if (previous != null && unplayed.isNotEmpty()) scope.launch { previous.runAfterReply(unplayed, run = false) }
         this.executor = executor
         val turn = EngineTurnSink(listener, now)
         val r = EngineRelay(wire, calls, turn, poster)
@@ -152,7 +158,8 @@ internal class EngineBrain(
         val end = try {
             r.follow(start(), EngineBrainRules.FIRST_EVENT_MS)
         } catch (e: CancellationException) {
-            withContext(NonCancellable) { r.cancel() }
+            // Detached: his next turn must not wait for a running call or the network.
+            scope.launch(NonCancellable) { r.cancel() }
             log(EngineTimings.line(utt, turn, "cancelled", r.turnId != null))
             throw e
         }

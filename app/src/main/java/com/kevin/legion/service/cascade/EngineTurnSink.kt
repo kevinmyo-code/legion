@@ -56,9 +56,11 @@ internal class EngineTurnSink(
         val line = said.trim()
         if (line.isEmpty()) return
         if (firstSentenceAtMs == 0L) firstSentenceAtMs = now()
-        val delta = if (text.isEmpty()) line else " $line"
-        text.append(delta)
-        listener.onText(delta)
+        if (text.isNotEmpty()) text.append(' ')
+        text.append(line)
+        // The trailing space ends the sentence for the reply speaker's splitter now, so speech starts
+        // on this sentence, not on the next one (or on `done`, which waits for the engine's speech).
+        listener.onText("$line ")
     }
 
     override fun toolsStarting(calls: List<EngineCall>) {

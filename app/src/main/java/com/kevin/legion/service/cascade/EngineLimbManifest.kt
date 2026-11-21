@@ -31,10 +31,13 @@ internal object EngineLimbManifest {
     const val VEHICLE = "vehicle"
     const val PLACE = "place"
     const val WEB = "web"
+    const val CALENDAR = "calendar"
 
     /** The engine's `relay.PLAIN_CLASSES` and `relay.OUTSIDE_CLASSES`. */
     val PLAIN_CLASSES = setOf(DEVICE, VEHICLE, PLACE, "household")
-    val OUTSIDE_CLASSES = setOf(WEB, "notifications", "contacts", "clipboard", "screen_text", "camera", "files")
+    val OUTSIDE_CLASSES = setOf(
+        WEB, CALENDAR, "notifications", "contacts", "clipboard", "screen_text", "camera", "files",
+    )
 
     /** `confirm: limb`: the phone runs its own gate, or the action is one he plainly asked for now. */
     const val LIMB = "limb"
@@ -56,6 +59,7 @@ internal object EngineLimbManifest {
      * - `device`: the phone's own state (timers, music, volume, its screens);
      * - `vehicle`: the car through the OBD adapter;
      * - `place`: the phone's own trip state;
+     * - `calendar`: his agenda on screen carries invites other people wrote (outside text);
      * - `web`: map search results (a destination or the place he is at is named by a map service,
      *   text other people wrote): every call taints the turn.
      * `confirm: limb` on every write or action the phone gates or he asked for in the same breath:
@@ -70,7 +74,7 @@ internal object EngineLimbManifest {
         "get_music_queue" to Relay(DEVICE, ENGINE),
         "browse_my_music" to Relay(DEVICE, ENGINE),
         "show_app" to Relay(DEVICE, LIMB, SCREEN),
-        "show_agenda_modal" to Relay(DEVICE, LIMB, SCREEN),
+        "show_agenda_modal" to Relay(CALENDAR, LIMB, SCREEN),
         "show_saved_places" to Relay(DEVICE, LIMB, SCREEN),
         "navigate" to Relay(WEB, LIMB, listOf("screen")),
         "change_trip" to Relay(WEB, LIMB, listOf("screen")),

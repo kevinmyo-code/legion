@@ -220,10 +220,14 @@ internal class EngineRelay(
      * played, through the phone's own after-read guard ([calls]' runner passes the turn's mark), and
      * its result is posted like any call (the engine answers 200 `late`).
      */
-    suspend fun runAfterReply(actions: List<EngineCall>) {
+    suspend fun runAfterReply(actions: List<EngineCall>, run: Boolean = true) {
         for (call in actions) {
-            val outcome = calls.result(call)
-            sink.toolEnded(call, outcome)
+            val outcome = if (run) {
+                calls.result(call).also { sink.toolEnded(call, it) }
+            } else {
+                CallOutcome(CallOutcome.NOT_RUN, null, "The reply was cut off: ${call.name} was not run.", 0)
+                    .also { calls.record(call.callId, it) }
+            }
             poster.post(turnId ?: call.turnId, call, outcome)
         }
     }

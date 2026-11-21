@@ -3,6 +3,7 @@ package com.kevin.legion.service.cascade
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
@@ -84,7 +85,9 @@ internal class EngineUtterance(
         if (!ended.compareAndSet(false, true)) return
         endAtMs = now()
         val pcm = synchronized(clip) { clip.toByteArray() }
-        if (SttGuard.voicedMs(pcm) < SttGuard.MIN_VOICED_MS) {
+        // No voice at all: nothing goes to the engine. Anything voiced goes (the engine gates noise
+        // too); the phone's one-word rule needs words, which only the engine has now.
+        if (SttGuard.voicedMs(pcm) == 0L) {
             upload?.abort()
             route = ROUTE_NONE
             answer.complete(NOISE)
@@ -105,14 +108,34 @@ internal class EngineUtterance(
         }
         if (streamed != null && !EngineBrainRules.streamFallsBack(streamed)) return streamed
         if (streamed != null && EngineBrainRules.switchedOff(streamed)) onSwitchedOff(true)
+        return postClip(pcm)
+    }
+
+    /**
+     * The whole clip on `POST /api/agents/turn` (client contract section 9): `busy` waits its
+     * `retry_ms` and tries again for up to [EngineBrainRules.BUSY_RETRY_MS]; `no_conversation` is
+     * posted once more with no conversation id.
+     */
+    private suspend fun postClip(pcm: ByteArray): WireReply {
         route = ROUTE_BATCH
         val fields = mutableMapOf("kind" to "user", "client" to meta.optString("client", "phone"))
         fields["contract_version"] = EngineBrainRules.CONTRACT_VERSION.toString()
         meta.optString("conversation_id").takeIf { it.isNotBlank() }?.let { fields["conversation_id"] = it }
+        val wav = CloudSpeechWire.wav(pcm, SAMPLE_RATE)
         postedAtMs = now()
-        val batch = wire.turnClip(fields, CloudSpeechWire.wav(pcm, SAMPLE_RATE))
-        if (EngineBrainRules.switchedOff(batch)) onSwitchedOff(false)
-        return batch
+        var reply = wire.turnClip(fields, wav)
+        var waited = 0L
+        var wait = EngineBrainRules.busyWaitMs(reply)
+        while (wait != null && waited < EngineBrainRules.BUSY_RETRY_MS) {
+            delay(wait)
+            waited += wait
+            reply = wire.turnClip(fields, wav)
+            wait = EngineBrainRules.busyWaitMs(reply)
+        }
+        val lostConversation = (reply as? WireReply.Json)?.code == "no_conversation"
+        if (lostConversation && fields.remove("conversation_id") != null) reply = wire.turnClip(fields, wav)
+        if (EngineBrainRules.switchedOff(reply)) onSwitchedOff(false)
+        return reply
     }
 
     override fun cancel() {
@@ -179,8 +202,15 @@ internal class EngineUtterance(
         val out = Channel<EngineEvent>(Channel.UNLIMITED)
         prelude.forEach { out.trySend(it) }
         scope.launch {
-            for (e in s.events) out.send(e)
-            out.close()
+            try {
+                var next = s.events.receiveCatching().getOrNull()
+                while (next != null) {
+                    out.send(next)
+                    next = s.events.receiveCatching().getOrNull()
+                }
+            } finally {
+                out.close()
+            }
         }
         return WireReply.Events(out) { s.close() }
     }
@@ -191,8 +221,9 @@ internal class EngineUtterance(
      */
     fun release() {
         if (!claimed.compareAndSet(false, true)) return
-        val s = stream
         scope.launch {
+            // The answer may still be on its way: wait for it, so its turn is cancelled too.
+            val s = stream ?: withTimeoutOrNull(EngineBrainRules.FIRST_EVENT_MS) { answer.await() } as? WireReply.Events
             val id = turnId ?: s?.let { firstTurnId(it) }
             s?.close()
             if (id != null && !finished) wire.cancel(id)
@@ -202,11 +233,10 @@ internal class EngineUtterance(
     private suspend fun firstTurnId(s: WireReply.Events): String? =
         withTimeoutOrNull(EngineBrainRules.FIRST_EVENT_MS) {
             var id: String? = null
-            for (e in s.events) {
-                if (e is EngineEvent.Turn) {
-                    id = e.turnId
-                    break
-                }
+            var next = s.events.receiveCatching().getOrNull()
+            while (id == null && next != null) {
+                if (next is EngineEvent.Turn) id = next.turnId
+                next = if (id == null) s.events.receiveCatching().getOrNull() else null
             }
             id
         }

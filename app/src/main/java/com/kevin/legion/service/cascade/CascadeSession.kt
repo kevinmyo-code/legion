@@ -465,7 +465,9 @@ internal class CascadeSession(
         }
         val config = VoiceEngineSettings.laptop(ctx)
         CascadeWarmup.conversationOpen = true
-        if (listens) {
+        // Never for a test conversation: the engine has no test mode yet, and its own writes would
+        // pass by the phone's TestTurnPolicy.
+        if (listens && test == null) {
             engineBrain = EngineBrainOpen.open(ctx, scope, opening != OpeningRule.Opening.CHIME) {
                 scope.launch(loop) { engineLost(EngineBrainRules.UNREACHABLE_LINE) }
             }

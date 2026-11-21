@@ -223,9 +223,22 @@ internal object EngineBrainRules {
     fun streamFallsBack(reply: WireReply): Boolean = when (reply) {
         is WireReply.Unreachable -> true
         is WireReply.Events -> false
-        is WireReply.Json -> reply.status == HTTP_NOT_FOUND || reply.code == "audio_gap" ||
-            reply.code == "hung_up" || reply.code == "stalled"
+        is WireReply.Json -> reply.status == HTTP_NOT_FOUND || reply.code in STREAM_FALLBACK_CODES
     }
+
+    /** Stream refusals the batch route answers instead: a gap, a broken upload, the one stream busy. */
+    private val STREAM_FALLBACK_CODES = setOf("audio_gap", "hung_up", "stalled", "stream_busy", "busy")
+
+    /** How long the batch route's `busy` asks to wait (`retry_ms`), else null: not busy. */
+    fun busyWaitMs(reply: WireReply): Long? = (reply as? WireReply.Json)
+        ?.takeIf { it.code == "busy" || it.code == "stream_busy" }
+        ?.let { it.body.optLong("retry_ms", DEFAULT_BUSY_MS).coerceIn(MIN_BUSY_MS, MAX_BUSY_MS) }
+
+    /** `busy` is retried for at most this long (client contract section 9). */
+    const val BUSY_RETRY_MS = 6_000L
+    private const val DEFAULT_BUSY_MS = 500L
+    private const val MIN_BUSY_MS = 100L
+    private const val MAX_BUSY_MS = 2_000L
 
     /** The engine's turn routes are switched off (404): this conversation goes back to the phone loop. */
     fun switchedOff(reply: WireReply): Boolean = reply is WireReply.Json && reply.status == HTTP_NOT_FOUND

@@ -4,6 +4,7 @@ import com.kevin.legion.service.cascade.FakeEngineWire.Companion.event
 import com.kevin.legion.service.cascade.FakeEngineWire.Companion.json
 import com.kevin.legion.service.cascade.FakeEngineWire.Companion.sse
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -139,6 +140,41 @@ class EngineUtteranceTest {
         u.end()
         assertEquals(SttResult.Failed(EngineUtterance.SWITCHED_OFF), u.result(1_000))
         assertEquals(listOf(false), switched)
+    }
+
+    @Test
+    fun `the one stream busy goes to the batch route, which waits out busy and answers`() = runBlocking {
+        wire.streamAnswers.add(json(409, """{"code": "stream_busy"}"""))
+        wire.clipAnswers.add(json(409, """{"code": "busy", "retry_ms": 100}"""))
+        wire.clipAnswers.add(heardStream)
+        val u = utterance(this)
+        val pcm = voice()
+        u.audio(pcm, 0, pcm.size)
+        u.end()
+        assertEquals("start a timer for five minutes", (u.result(1_000) as SttResult.Text).text)
+        assertEquals(2, wire.clips.size)
+    }
+
+    @Test
+    fun `a stream closed with an error mid-turn hands the turn what it had, then ends`() = runBlocking {
+        val broken = Channel<EngineEvent>(Channel.UNLIMITED)
+        broken.trySend(EngineEvent.Turn("t9", "c1", 2, 1))
+        broken.trySend(EngineEvent.Heard("what time is it"))
+        broken.close(java.io.IOException("connection reset"))
+        wire.streamAnswers.add(WireReply.Events(broken) {})
+        val u = utterance(this)
+        val pcm = voice()
+        u.audio(pcm, 0, pcm.size)
+        u.end()
+        assertEquals("what time is it", (u.result(1_000) as SttResult.Text).text)
+        val rest = checkNotNull(u.takeTurn())
+        val seen = mutableListOf<EngineEvent>()
+        var next = rest.events.receiveCatching().getOrNull()
+        while (next != null) {
+            seen.add(next)
+            next = rest.events.receiveCatching().getOrNull()
+        }
+        assertEquals(2, seen.size)
     }
 
     @Test

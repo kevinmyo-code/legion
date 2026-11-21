@@ -32,7 +32,7 @@ class EngineLimbManifestTest {
         "get_music_queue" to ("device" to "engine"),
         "browse_my_music" to ("device" to "engine"),
         "show_app" to ("device" to "limb"),
-        "show_agenda_modal" to ("device" to "limb"),
+        "show_agenda_modal" to ("calendar" to "limb"),
         "show_saved_places" to ("device" to "limb"),
         "navigate" to ("web" to "limb"),
         "change_trip" to ("web" to "limb"),
@@ -99,6 +99,7 @@ class EngineLimbManifestTest {
             val cls = t.getString("tool_class")
             assertTrue("$name has an unknown class $cls", cls in PLAIN || cls in OUTSIDE)
             if (OUTSIDE_NAME.containsMatchIn(name)) assertTrue("$name sounds outside", cls in OUTSIDE)
+            if (name in OUTSIDE_ACTIONS) assertTrue("$name is outside by the engine's word", cls in OUTSIDE)
         }
     }
 
@@ -127,9 +128,15 @@ class EngineLimbManifestTest {
 
     private companion object {
         val PLAIN = setOf("device", "vehicle", "place", "household")
-        val OUTSIDE = setOf("web", "notifications", "contacts", "clipboard", "screen_text", "camera", "files")
+        val OUTSIDE = setOf(
+            "web", "notifications", "contacts", "clipboard", "screen_text", "camera", "files", "calendar",
+        )
 
-        /** The engine's `relay.MAIL_CLASS`, `_MAIL_NAME` and `_OUTSIDE_NAME` (relay branch 562410af), copied. */
+        /**
+         * The engine's `relay.MAIL_CLASS`, `OUTSIDE_ACTIONS`, `_MAIL_NAME` and `_OUTSIDE_NAME`, copied
+         * from the relay branch at 07a6c557. Kept in step by hand until both suites read one shared
+         * list (P1 report, section 5).
+         */
         val ENGINE_MAIL_CLASS = setOf(
             "ask_mail", "search_mail", "read_mail", "email", "gmail", "get_sitrep", "track_package", "flight_status",
         )
@@ -140,8 +147,14 @@ class EngineLimbManifestTest {
         )
         val OUTSIDE_NAME = Regex(
             "(^|_)(notification|notifications|clipboard|contact|contacts|browser|web|page|pages|" +
-                "screen_text|ocr|camera|look|photo|photos|file|files|feed|news)(_|$)",
+                "screen_text|ocr|camera|look|photo|photos|file|files|feed|news|calendar|agenda|invite|" +
+                "invites|search|caller|callers|call_log)(_|$)",
             RegexOption.IGNORE_CASE,
+        )
+
+        val OUTSIDE_ACTIONS = setOf(
+            "read_calendar", "calendar", "agenda", "get_agenda", "invites", "search_places", "place_search",
+            "nearby", "caller_id", "call_log", "recent_calls", "who_called",
         )
 
         /** The phone's own mail-reading tools (`ToolReads`): never relayed. */

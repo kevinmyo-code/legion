@@ -183,6 +183,33 @@ class EngineRelayTest {
         assertTrue(wire.posts.isEmpty())
     }
 
+    @Test
+    fun `device actions after the reply run once and post, and an unplayed reply posts not_run`() = runBlocking {
+        val r = relay(this)
+        r.follow(stream(turn, doneOk))
+        val action = EngineEventParse.call(
+            JSONObject().put("turn_id", "t1").put("call_id", "d1").put("name", "control_music"),
+            afterReply = true,
+        )
+        r.runAfterReply(listOf(action))
+        r.runAfterReply(listOf(action))
+        assertEquals("run once, posted twice", listOf("d1"), ran)
+        assertEquals(listOf("ok", "ok"), wire.posts.map { it.second.getString("outcome") })
+        val skipped = action.copy(callId = "d2")
+        r.runAfterReply(listOf(skipped), run = false)
+        assertEquals("not_run", wire.posts.last().second.getString("outcome"))
+        assertEquals(listOf("d1"), ran)
+    }
+
+    @Test
+    fun `a stream that breaks with an error ends quietly, never a crash`() = runBlocking {
+        val broken = Channel<EngineEvent>(Channel.UNLIMITED)
+        broken.trySend(EngineEvent.Turn("t1", "c1", 1, 1))
+        broken.close(java.io.IOException("connection reset"))
+        val end = relay(this).follow(WireReply.Events(broken) {})
+        assertEquals(EngineBrainRules.STOPPED_LINE, end.words)
+    }
+
     private companion object {
         const val LATE_MS = 150L
     }

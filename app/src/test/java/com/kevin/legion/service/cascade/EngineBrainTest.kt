@@ -105,7 +105,9 @@ class EngineBrainTest {
         assertEquals(listOf("clock"), ran)
         assertEquals("ok", wire.posts.single().second.getString("outcome"))
         assertEquals("Timer set for ten minutes.", result.text)
-        assertEquals("Timer set for ten minutes.", heardText.toString())
+        // Each sentence reaches the reply speaker with its ending space: the splitter releases it at once.
+        assertEquals("Timer set for ten minutes. ", heardText.toString())
+        assertEquals(listOf("Timer set for ten minutes."), SentenceSplitter().feed(heardText.toString()))
         assertTrue(logs.any { it.startsWith("engine_turn route=stream") && it.contains("relayed=1") })
         assertFalse("no words in the timing line", logs.any { it.startsWith("engine_turn") && it.contains("timer") })
     }
