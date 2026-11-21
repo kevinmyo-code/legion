@@ -30,12 +30,8 @@ from dataclasses import dataclass, field
 from agents.legion import closing, done_lines
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
-from agents.legion.speech_rules import (
-    backed_cents,
-    backed_torque,
-    is_filler,
-    is_stop_utterance,
-)
+from agents.legion.speech_rules import backed_cents, backed_torque, is_stop_utterance
+from agents.legion.trailing_filler import is_wait_line
 from agents.runtime import events as ev
 from agents.runtime.budget import over
 from agents.runtime.loop import AWAITING_LIMB, NO_ANSWER_WORDS
@@ -182,7 +178,10 @@ class SpokenTurn:
                     yield event
                     yield from self._verbatim(event)
                 elif event.type == "done" and event.data.get("status") != AWAITING_LIMB:
-                    yield from self._end()
+                    if event.data.get("status") != "cancelled":
+                        # After a cancel nothing more is said (the web door's rule); the phone
+                        # says its own "Done:" line under a stop.
+                        yield from self._end()
                     yield self._done(event)
                 else:
                     yield event
@@ -219,8 +218,10 @@ class SpokenTurn:
 
     def _sentence(self, event):
         tagged = event.data.get("text", "")
-        if self.state.status != "running":
-            # Code's own line, said by `finish_node` once the turn's status is set.
+        if self.state.status not in ("running", AWAITING_LIMB):
+            # Code's own line, said by `finish_node` once the turn's status is set. A relay's
+            # continuation starts from the paused state (`awaiting_limb`): its model sentences
+            # come before the status is set again, and are checked like any.
             yield self._say(tagged)
             return
         text = speech_tags.untagged(tagged)
@@ -231,7 +232,7 @@ class SpokenTurn:
             verbatim_said=m.verbatim_said,
             max_spoken=MAX_SPOKEN_SENTENCES,
         )
-        if verdict == gates.SAY and m.said and is_filler(text):
+        if verdict == gates.SAY and m.said and is_wait_line(text):
             # The phone's `TrailingFiller`: once the answer has begun, a filler line is not said.
             m.trailing_dropped += 1
         elif verdict == gates.SAY:
@@ -335,6 +336,9 @@ class SpokenTurn:
         return self.memory.end or bool(getattr(self.gateway, "end_requested", False))
 
 
+NOT_RUN_RESPONSE = {"success": False, "message": "Not run: the turn ended before this call."}
+
+
 def answered(messages: list[dict], calls) -> list[dict]:
     """`messages` with the last model turn's calls answered, when a round ended on code's own
     answer (`ends_turn`: the loop asks no further round, so it sent no responses): each call gets
@@ -344,7 +348,7 @@ def answered(messages: list[dict], calls) -> list[dict]:
     asked = [p["functionCall"] for p in messages[-1].get("parts") or [] if "functionCall" in p]
     if not asked:
         return messages
-    pool = list(calls)
+    pool = list(calls)[-len(asked) :]
     parts = []
     for fc in asked:
         found = next(
@@ -357,7 +361,9 @@ def answered(messages: list[dict], calls) -> list[dict]:
         )
         if found is not None:
             pool.remove(found)
-        response = found.response if found is not None and found.response else {}
+        response = (
+            found.response if found is not None and found.response else dict(NOT_RUN_RESPONSE)
+        )
         part = {"name": fc.get("name"), "response": response}
         if fc.get("id"):
             part["id"] = fc["id"]

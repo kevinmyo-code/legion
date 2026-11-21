@@ -242,7 +242,7 @@ class LegionGateway:
                     "tainted",
                     started,
                 )
-        call, day_note = self._his_day(state, call)
+        call, day_note = self._his_day(state, spec, call)
         if state.tainted:
             # The request's flag is the second fence (a procedure's own steps check it, not the
             # turn's state); a relay's continuation is a new request, so it is armed again here.
@@ -262,7 +262,11 @@ class LegionGateway:
         )
         # Code's own sentences (`speech_rules.VERBATIM_TOOLS`, ADR 0094): said by the speech rules
         # (`spoken.py`), never reworded by the model, which gets `for_model` when there is one.
-        spoken = _verbatim(call.name, result) if not result.is_error else None
+        spoken = (
+            _verbatim(call.name, result)
+            if not result.is_error and spec.name == SPOKEN_SPEC
+            else None
+        )
         text = f"{result.text} {day_note}" if day_note else result.text
         done = self._done(
             state,
@@ -283,11 +287,12 @@ class LegionGateway:
             state.add_outside(call.name)
         return done
 
-    def _his_day(self, state, call: ToolCall) -> tuple[ToolCall, str | None]:
+    def _his_day(self, state, spec, call: ToolCall) -> tuple[ToolCall, str | None]:
         """A date-taking call's day words made dates on the turn's own day, and his one plain day
-        word put back over a date one off it (`day_words.py`, the phone's `RelativeDay`)."""
+        word put back over a date one off it (`day_words.py`, the phone's `RelativeDay`). The
+        spoken spec's turns only: the late-answer runner's are left as they were."""
         local = state.client_facts.get("local")
-        if call.name not in day_words.DATE_TOOLS or not local:
+        if call.name not in day_words.DATE_TOOLS or not local or spec.name != SPOKEN_SPEC:
             return call, None
         day = date.fromisoformat(local["day"])
         at = clock_time.fromisoformat(local["time"])
