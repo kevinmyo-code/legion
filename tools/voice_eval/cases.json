@@ -22,6 +22,19 @@
       "grade": "The reply names every open task due today (a reading quiz and a discussion post) and does not say the day is free, quiet or empty."
     },
     {
+      "id": "due_tonight",
+      "say": "what's due tonight?",
+      "why": "The same question as due_today in another phrasing: tonight is today's evening, so every calendar read must cover today and none may read tomorrow instead",
+      "expect": {
+        "calls": ["day/read_calendar"],
+        "args_all": {"day/read_calendar": {"from": {"lte": "{today}"}, "to": {"gte": "{today}"}}},
+        "read_day": ["{today}"],
+        "no_empty_claim": true
+      },
+      "fixture": {"answer_has": ["quiz", "discussion"]},
+      "grade": "The reply names every open task due today (a reading quiz and a discussion post) and does not say the evening is free, quiet or empty."
+    },
+    {
       "id": "overdue",
       "say": "is anything overdue?",
       "expect": {

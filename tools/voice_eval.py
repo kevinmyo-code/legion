@@ -327,7 +327,21 @@ def matches(call: ToolCall, spec: str) -> bool:
     return False
 
 
-RELATIVE_DAYS = {"today": 0, "tomorrow": 1, "yesterday": -1}
+RELATIVE_DAYS = {"today": 0, "tonight": 0, "tomorrow": 1, "yesterday": -1}
+
+
+def window_args(c: ToolCall) -> dict:
+    """A calendar read's arguments as the phone resolves its window (`LiveToolbox.parseCalendarWindow`):
+    no `from` is today and no `to` is `from`. So `args`, `args_all` and `read_day` judge the window
+    the phone read, not which keys the model sent; every other call's arguments are as sent."""
+    if "read_calendar" not in (c.name, c.action):
+        return c.args
+    a = dict(c.args)
+    if not str(a.get("from") or "").strip():
+        a["from"] = "today"
+    if not str(a.get("to") or "").strip():
+        a["to"] = a["from"]
+    return a
 
 
 def arg_ok(value, matcher, today: datetime.date) -> bool:
@@ -372,14 +386,14 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
         cands = [c for c in turn.calls if matches(c, spec)]
         if not cands:
             continue  # already reported by calls
-        if not any(all(arg_ok(c.args.get(k), mt, today) for k, mt in params.items()) for c in cands):
+        if not any(all(arg_ok(window_args(c).get(k), mt, today) for k, mt in params.items()) for c in cands):
             got = "; ".join(json.dumps(c.args, sort_keys=True) for c in cands)
             fails.append(f"{spec} args {json.dumps(params)} not met (today {today}); got {got}")
     # `args_all`: EVERY matching call must fit, so a wrong first call that the model later corrects
     # still fails (2026-11-15: "and tomorrow?" asked for today+2 first, then today+1).
     for spec, params in expect.get("args_all", {}).items():
         for c in (c for c in turn.calls if matches(c, spec)):
-            if not all(arg_ok(c.args.get(k), mt, today) for k, mt in params.items()):
+            if not all(arg_ok(window_args(c).get(k), mt, today) for k, mt in params.items()):
                 fails.append(f"{spec} call {json.dumps(c.args, sort_keys=True)} misses {json.dumps(params)} (today {today})")
     answer = turn.answer
     # Reply length bounds (2026-11-19, T13): varied, never long.
@@ -412,7 +426,7 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
             if not reads:
                 fails.append(f"no calendar call; wanted {want}")
             for c in reads:
-                span = [_arg_day(c.args.get(k), today) for k in ("from", "to")]
+                span = [_arg_day(window_args(c).get(k), today) for k in ("from", "to")]
                 if not (span[0] and span[1] and span[0] <= want <= span[1]):
                     fails.append(f"a calendar call asked for {json.dumps(c.args, sort_keys=True)}, not {want}")
             continue
@@ -488,11 +502,10 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
 
 
 def _arg_day(value, today: datetime.date) -> str | None:
-    """A date argument as the phone resolves it: yyyy-MM-dd, or today / tomorrow / yesterday."""
+    """A date argument as the phone resolves it: yyyy-MM-dd, or today / tonight / tomorrow / yesterday."""
     v = str(value or "").strip().lower()
-    words = {"today": 0, "tomorrow": 1, "yesterday": -1}
-    if v in words:
-        return str(today + datetime.timedelta(days=words[v]))
+    if v in RELATIVE_DAYS:
+        return str(today + datetime.timedelta(days=RELATIVE_DAYS[v]))
     return v if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v) else None
 
 

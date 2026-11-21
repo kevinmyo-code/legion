@@ -55,11 +55,11 @@ def _dig(args: dict, path: str):
 
 
 def _day(value, today: date) -> str | None:
-    """The YYYY-MM-DD a value names: a date prefix, or today / tomorrow / yesterday."""
+    """The YYYY-MM-DD a value names: a date prefix, or today / tonight / tomorrow / yesterday."""
     if not isinstance(value, str):
         return None
     word = value.strip().lower()
-    named = {"today": 0, "tomorrow": 1, "yesterday": -1}
+    named = {"today": 0, "tonight": 0, "tomorrow": 1, "yesterday": -1}
     if word in named:
         return (today + timedelta(days=named[word])).isoformat()
     m = re.match(r"\d{4}-\d{2}-\d{2}", word)
