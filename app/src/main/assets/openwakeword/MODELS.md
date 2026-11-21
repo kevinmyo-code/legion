@@ -6,8 +6,8 @@ missing or its sha256 differs.
 
 | File | Bytes | SHA-256 | Source | Changed? |
 |---|---|---|---|---|
-| `melspectrogram.onnx` | 1,087,958 | `ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f` | openWakeWord release v0.5.1, github.com/dscripka/openWakeWord | Not changed by this project (same size as the v0.5.1 release asset; GitHub lists no digest for that release to compare) |
-| `embedding_model.onnx` | 1,326,578 | `70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f` | same release | Not changed by this project (same size as the v0.5.1 release asset; GitHub lists no digest for that release to compare) |
+| `melspectrogram.onnx` | 1,087,958 | `ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f` | openWakeWord release v0.5.1, github.com/dscripka/openWakeWord | Not changed by this project: same sha256 as the v0.5.1 release asset (an independent review downloaded and hashed it, 2026-11-20) |
+| `embedding_model.onnx` | 1,326,578 | `70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f` | same release | Not changed by this project: same sha256 as the v0.5.1 release asset (an independent review downloaded and hashed it, 2026-11-20) |
 | `hey_alfred.onnx` | 205,430 | `07084c22a8b9ec148f92faa1f45bbdb669bebbfd9e3848d40129d99abbcfdef4` | trained for this project with openWakeWord's `train.py` | New work: a head trained for the phrase "hey alfred" |
 
 ## Licence
@@ -19,8 +19,14 @@ Attribution-NonCommercial-ShareAlike 4.0 International licence (CC BY-NC-SA 4.0)
 https://creativecommons.org/licenses/by-nc-sa/4.0/
 
 - `melspectrogram.onnx` and `embedding_model.onnx` are those models, unmodified, under CC BY-NC-SA
-  4.0. (The README says the embedding re-implements a Google TFHub speech embedding; this repo
-  follows the README's blanket licence statement for it.)
+  4.0.
+- `embedding_model.onnx` also carries Google's work. openWakeWord's README says this backbone is
+  Google's speech embedding model (https://tfhub.dev/google/speech_embedding/1, paper
+  arXiv:2002.01322), provided by Google as a TFHub module under the Apache License 2.0, and
+  re-implemented by openWakeWord. Notice: the speech_embedding model is copyright Google LLC,
+  licensed under the Apache License, Version 2.0; the licence text is in
+  `assets/licenses/Apache-2.0.txt`. It is distributed on an "AS IS" basis, without warranties or
+  conditions of any kind. openWakeWord's CC BY-NC-SA 4.0 terms apply to its release on top.
 - `hey_alfred.onnx` was trained with openWakeWord's tooling on openWakeWord's precomputed negative
   features, which are published under CC BY-NC-SA 4.0
   (huggingface.co/datasets/davidscripka/openwakeword_features). It is therefore treated as an
