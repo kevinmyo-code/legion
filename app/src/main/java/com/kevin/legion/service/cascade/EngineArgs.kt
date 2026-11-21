@@ -30,18 +30,26 @@ internal object EngineArgs {
         }
     }
 
+    /** The schema types this check knows, and what fits each; any other type fails closed. */
+    private val KINDS: Map<String, (Any) -> Boolean> = mapOf(
+        "string" to { v -> v is String },
+        "integer" to { v -> v is Number && v.toDouble() % 1.0 == 0.0 },
+        "number" to { v -> v is Number },
+        "boolean" to { v -> v is Boolean },
+        "object" to { v -> v is JSONObject },
+        "array" to { v -> v is JSONArray },
+    )
+
     private fun valueProblem(path: String, prop: JSONObject, value: Any, depth: Int): String? {
-        val allowed = prop.optJSONArray("enum")
-        val wrongKind = "the wrong kind of value for ${EngineCallGate.safeName(path)}"
-        return when (prop.optString("type").lowercase()) {
-            "string" -> if (value is String) null else wrongKind
-            "integer" -> if (value is Number && value.toDouble() % 1.0 == 0.0) null else wrongKind
-            "number" -> if (value is Number) null else wrongKind
-            "boolean" -> if (value is Boolean) null else wrongKind
-            "object" -> if (value is JSONObject) objectProblem("$path.", prop, value, depth) else wrongKind
-            "array" -> if (value is JSONArray) arrayProblem(path, prop, value, depth) else wrongKind
-            else -> "a value of a kind this phone does not check for ${EngineCallGate.safeName(path)}"
-        } ?: enumProblem(path, allowed, value)
+        val name = EngineCallGate.safeName(path)
+        val fits = KINDS[prop.optString("type").lowercase()]
+            ?: return "a value of a kind this phone does not check for $name"
+        return when {
+            !fits(value) -> "the wrong kind of value for $name"
+            value is JSONObject -> objectProblem("$path.", prop, value, depth)
+            value is JSONArray -> arrayProblem(path, prop, value, depth)
+            else -> enumProblem(path, prop.optJSONArray("enum"), value)
+        }
     }
 
     private fun arrayProblem(path: String, prop: JSONObject, value: JSONArray, depth: Int): String? {
