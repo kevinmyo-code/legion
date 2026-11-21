@@ -2608,9 +2608,12 @@ internal class CascadeSession(
                 if (gate != GreetingGate.SPEAK) {
                     call.cancel()
                     reply.interrupt()
-                    gate.logLine?.let { LiveLatency.log(LiveLatency.TAG, it) }
-                    // He spoke: his own turn carries on and its reply opens the window; nothing is said.
+                    val earcon = gate == GreetingGate.HE_SPOKE &&
+                        GreetingGate.earconAfterDrop(System.currentTimeMillis(), lastLocalSpeechAtMs)
+                    gate.logLine(earcon)?.let { LiveLatency.log(LiveLatency.TAG, it) }
+                    // He spoke: his own turn carries on and its reply opens the window; no line is said.
                     if (gate.scripted) speakScripted(ackLines.next())
+                    if (earcon) playDropEarcon()
                     return@launch
                 }
                 reply.text(written.toString())
@@ -2636,6 +2639,17 @@ internal class CascadeSession(
                 throw e
             }
         }.also { job -> job.invokeOnCompletion { voice.tts.holdWarm(false) } }
+    }
+
+    /**
+     * The listen earcon after a dropped greeting when he is not talking now ([GreetingGate.earconAfterDrop]):
+     * the wake is still acknowledged if the speech that dropped it was not his. Nothing else changes.
+     */
+    private suspend fun playDropEarcon() {
+        val p = player ?: return
+        if (backend?.tts?.sampleRate != ListenCue.SAMPLE_RATE) return
+        val gen = p.generation()
+        withContext(Dispatchers.IO) { p.write(ListenCue.earconPcm(), gen) }
     }
 
     /**
@@ -3263,6 +3277,9 @@ internal class CascadeSession(
             specPollJob?.cancel()
             discardDraft("closed")
             speaker?.interrupt()
+            // A stop mid-reply: what is still buffered goes now, so the chime is not queued behind it
+            // (and neither is cut at the chime's cap). The chime takes the new generation.
+            player?.flush()
             turnJob?.takeIf { it !== caller }?.cancel()
             currentUtt?.cancel()
             currentUtt = null
