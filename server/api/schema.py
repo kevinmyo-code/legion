@@ -108,6 +108,25 @@ class HeadUnitTokenScheme(OpenApiAuthenticationExtension):
         }
 
 
+class BoardWriterScheme(OpenApiAuthenticationExtension):
+    """`Authorization: Token bw1_<key>`: the laptop's board writer token. Registered by import."""
+
+    target_class = "board.authentication.BoardWriterAuthentication"
+    name = "boardWriterToken"
+
+    def get_security_definition(self, auto_schema) -> dict:
+        return {
+            "type": "apiKey",
+            "in": "header",
+            "name": "Authorization",
+            "description": (
+                "The laptop's board writer token, sent as `Token bw1_<key>`. It reaches only "
+                "PUT /api/board; every other route and method refuses it. Minted by "
+                "POST /api/board/writer from a member's signed-in session."
+            ),
+        }
+
+
 class DetailSerializer(serializers.Serializer):
     """`{"detail": "..."}` - the shape every hand-written refusal in this API
     uses, and the shape DRF itself uses for 401/403/404/405. The strings are
