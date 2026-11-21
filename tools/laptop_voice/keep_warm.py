@@ -37,7 +37,7 @@ except ImportError:  # run as a script
 
 log = logging.getLogger("laptop_voice")
 
-STT_WARM_MS = 480          # 6 Kyutai model steps of silence: every layer runs, no flush
+STT_WARM_MS = 500          # 6 Kyutai model steps of silence (the resampler holds 2 ms back): no flush
 STARTUP_STT_MS = 1000
 TTS_WARM_TEXT = "Ready."
 QUIET_S = 5.0              # a conversation started or ended this recently counts as open
@@ -67,7 +67,7 @@ def tts_pass(tts, text: str = TTS_WARM_TEXT) -> None:
 def _try_locked(engine, fn, *args) -> float | None:
     """On the engine's worker thread: run fn holding the GPU lock, or return None without waiting."""
     own = getattr(engine, "lock", None)
-    if own is not None and own.locked():
+    if own is not None and getattr(own, "locked", lambda: False)():
         return None
     gpu = getattr(engine, "gpu_lock", None)
     if gpu is not None and not gpu.acquire(blocking=False):

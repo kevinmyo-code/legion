@@ -55,6 +55,11 @@ at the end-of-turn crossing, before the flush (contract 4b).
 `--tts-nq` (8 to 32, default 32) runs the voice with fewer codebooks per frame: faster to first
 audio, lower quality for the whole line. Not measured on the 4060; leave it off until it is
 (`bench_tts.py` with each value, then listen).
+`--keep-warm-s` (default 45, 0 = off): while no conversation is open, a tiny pass through both models
+this often (half a second of silence through STT, one word of TTS to its first chunk), so the first
+request after a long idle does not pay to bring the models back (`keep_warm.py`). It never waits for
+the GPU lock and never runs with a conversation open or starting; a pass over 1,500 ms is logged, with
+an hourly summary.
 
 ## Test
 

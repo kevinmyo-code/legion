@@ -14,6 +14,7 @@ import threading
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 from aiohttp.test_utils import TestServer
 
@@ -235,6 +236,33 @@ async def test_service_runs_it_sends_no_frame_and_shutdown_cancels_it(monkeypatc
     finally:
         await server.close()
     assert task.done()
+
+
+@pytest.mark.asyncio
+async def test_conversation_arriving_mid_pass_waits_for_the_stt_half_only_and_is_heard():
+    """A client connects while the STT half runs: its stream queues behind that half (never alongside
+    it), the TTS half is skipped, and the utterance comes back whole."""
+    stt, tts = CountingStt(delay_s=0.3), CountingTts()
+    svc = service(stt=stt, tts=tts, lock=threading.RLock())
+    server, url = await start(svc)
+    c = VoiceClient(url, TOKEN)
+    try:
+        warm = asyncio.create_task(W.warm_once(svc))
+        await asyncio.sleep(0.05)  # the STT half is on the pool now
+        await c.connect()
+        await c.stream_utterance(1, tone(0.5), end=True)
+        ev = await c.next_event("stt.final", timeout=5)
+        assert ev["type"] == "stt.final" and ev["text"] == stt.text
+        p = await warm
+        assert p is not None and p.tts_ms is None, "TTS half skipped once a conversation began"
+        assert tts.calls == []
+    finally:
+        await c.close(); await server.close()
+
+
+def tone(seconds: float) -> np.ndarray:
+    t = np.arange(int(16000 * seconds)) / 16000
+    return (np.sin(2 * np.pi * 300 * t) * 5000).astype(np.int16)
 
 
 @pytest.mark.asyncio
