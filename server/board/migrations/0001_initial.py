@@ -41,6 +41,21 @@ def guard(apps, schema_editor):
         attach_guard(cursor, TABLE)
 
 
+# Both keys delete with their parent AT THE DATABASE, the way `agents/migrations/0003` does it:
+# Django's CASCADE is emulated in Python, and code that predates this table (a rollback, or the
+# deployed code while this ships dark) would not know to delete a board row, so a NO ACTION key
+# would block deleting that member or household. The fields say `db_constraint=False`, so these
+# are the only constraints. The one-to-one's unique index on owner_user_id stays.
+_CASCADES = (
+    f"alter table public.{TABLE} add constraint {TABLE}_owner_user_cascade foreign key "
+    "(owner_user_id) references household_user (id) on delete cascade "
+    "deferrable initially deferred; "
+    f"alter table public.{TABLE} add constraint {TABLE}_household_cascade foreign key "
+    "(household_id) references household_household (id) on delete cascade "
+    "deferrable initially deferred;"
+)
+
+
 def unguard(apps, schema_editor):
     from household.visibility_sql import GUARD_TRIGGER
 
@@ -82,6 +97,7 @@ class Migration(migrations.Migration):
                 (
                     "household",
                     models.ForeignKey(
+                        db_constraint=False,
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="+",
                         to="household.household",
@@ -90,6 +106,7 @@ class Migration(migrations.Migration):
                 (
                     "owner_user",
                     models.OneToOneField(
+                        db_constraint=False,
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="+",
                         to=settings.AUTH_USER_MODEL,
@@ -99,5 +116,6 @@ class Migration(migrations.Migration):
             options={"db_table": "board_snapshots"},
         ),
         migrations.RunPython(guard, unguard),
+        migrations.RunSQL(sql=_CASCADES, reverse_sql=migrations.RunSQL.noop),
         _DJANGO_FIRST,
     ]

@@ -43,8 +43,16 @@ def hash_token(raw: str) -> str:
 
 class BoardSnapshot(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    household = models.ForeignKey("household.Household", on_delete=models.CASCADE, related_name="+")
-    owner_user = models.OneToOneField("household.User", on_delete=models.CASCADE, related_name="+")
+    # Both keys delete with their parent AT THE DATABASE (migration 0001 adds them, ON DELETE
+    # CASCADE): Django's CASCADE is emulated in Python, and code that predates this table (a
+    # rollback) would not know to delete its row, so a NO ACTION key would block deleting that
+    # member or household. `db_constraint=False`: Django makes no constraint of its own.
+    household = models.ForeignKey(
+        "household.Household", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
+    owner_user = models.OneToOneField(
+        "household.User", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
     # The cleaned cards (`board.cards.clean_board`), never the raw upload.
     cards = models.JSONField(default=list, blank=True)
     build_slot = models.TextField(default="", blank=True)

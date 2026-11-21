@@ -6499,6 +6499,12 @@ export interface components {
             /** @description Lines a voice says word for word, built by code. */
             spoken: string[];
         };
+        BoardAnswer: {
+            choice: string;
+            text: string;
+            at: string;
+            by: string;
+        };
         BoardCard: {
             id: string;
             col: components["schemas"]["ColEnum"];
@@ -6508,6 +6514,15 @@ export interface components {
             waiting: string;
             owner: string;
             ask: string;
+            project: components["schemas"]["ProjectEnum"];
+            /** @description An ask's choices. */
+            options: string[];
+            /** @description A typed answer is allowed. */
+            free_text: boolean;
+            /** @description `choice`, `approval` (answered in chat only), or blank. */
+            ask_kind: string;
+            say: string;
+            answer: components["schemas"]["BoardAnswer"] | null;
             /** @description Minutes since the card changed, as of now. */
             age_min: number;
             stale: boolean;
@@ -6522,6 +6537,16 @@ export interface components {
          * @enum {string}
          */
         BoardCardKindEnum: "agent" | "ship" | "build" | "cloud" | "decision" | "session";
+        BoardProject: {
+            id: string;
+            title: string;
+            open: number;
+            needs: number;
+        };
+        BoardRemoved: {
+            card: string;
+            field: string;
+        };
         BoardSnapshot: {
             /**
              * Format: date-time
@@ -6538,6 +6563,8 @@ export interface components {
                 [key: string]: number;
             };
             needs_kevin: string[];
+            answered_waiting: string[];
+            projects: components["schemas"]["BoardProject"][];
             cards: components["schemas"]["BoardCard"][];
         };
         BoardStored: {
@@ -6545,6 +6572,8 @@ export interface components {
             bytes: number;
             /** Format: date-time */
             received_at: string;
+            /** @description Fields blanked as key, token or email shaped: card and field only. */
+            removed: components["schemas"]["BoardRemoved"][];
         };
         BoardWriterInfo: {
             /** Format: date-time */
@@ -10501,6 +10530,18 @@ export interface components {
             /** @description Optional. The live board, 220 characters (see `Player.board`); left as it was when omitted. */
             board?: string;
         };
+        /**
+         * @description * `phone` - phone
+         *     * `headunit` - headunit
+         *     * `engine` - engine
+         *     * `web` - web
+         *     * `jeep` - jeep
+         *     * `infra` - infra
+         *     * `home` - home
+         *     * `other` - other
+         * @enum {string}
+         */
+        ProjectEnum: "phone" | "headunit" | "engine" | "web" | "jeep" | "infra" | "home" | "other";
         Proposal: {
             /** Format: uuid */
             id: string;

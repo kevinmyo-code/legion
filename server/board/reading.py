@@ -55,13 +55,15 @@ def snapshot_for(request) -> BoardSnapshot | None:
 
 
 def _laptop_seen_at(row: BoardSnapshot | None):
+    """The latest heartbeat of the member's OWN full-scope laptop: a machine whose worker token
+    is his (`ClaudeMachine.token`). A housemate's laptop never makes his board say "on"."""
     if row is None:
         return None
     from claude_session.models import SCOPE_FULL, ClaudeMachine
 
-    return ClaudeMachine.objects.filter(household_id=row.household_id, scope=SCOPE_FULL).aggregate(
-        seen=Max("last_seen_at")
-    )["seen"]
+    return ClaudeMachine.objects.filter(
+        household_id=row.household_id, scope=SCOPE_FULL, token__user_id=row.owner_user_id
+    ).aggregate(seen=Max("last_seen_at"))["seen"]
 
 
 def read(request, now=None) -> Reading:
@@ -119,11 +121,24 @@ def freshness_line(request, reading: Reading) -> str:
 
 def counts_line(cards: list[dict]) -> str:
     n = board_cards.counts(cards)
-    waiting = len(board_cards.needs_kevin(cards))
+    waiting = len(open_asks(cards))
     return (
         f"{n['working']} working, {n['testing']} testing or shipping, {waiting} waiting on you, "
         f"{n['queued']} queued, {n['done']} done."
     )
+
+
+def projects_line(cards: list[dict]) -> str:
+    """Per project, how many questions wait on him (project names are code's own words)."""
+    parts = []
+    for project in board_cards.projects(open_asks(cards)):
+        parts.append(f"{project['needs']} on {project['title']}")
+    return f"Waiting on you: {', '.join(parts)}." if parts else ""
+
+
+def open_asks(cards: list[dict]) -> list[dict]:
+    """Questions still waiting on him: answered ones are waiting on the card's owner instead."""
+    return [c for c in board_cards.needs_kevin(cards) if not c.get("answer")]
 
 
 def _titles(cards: list[dict], limit: int) -> str:
@@ -139,12 +154,24 @@ def spoken_lines(request, reading: Reading) -> list[str]:
         return [first]
     cards = cards_now(reading)
     lines = [first, counts_line(cards)]
-    needs = board_cards.needs_kevin(cards)
+    by_project = projects_line(cards)
+    if by_project:
+        lines.append(by_project)
+    needs = open_asks(cards)
     for card in needs[:SAY_NEEDS]:
-        detail = card.get("ask") or card.get("status") or ""
-        lines.append(f"Waiting on you: {card['title']}. {detail}".strip())
+        # Framed as the card's words, not Alfred's: an agent wrote them.
+        detail = card.get("say") or card.get("ask") or card.get("status") or ""
+        choices = f" Choices: {', '.join(card['options'])}." if card.get("options") else ""
+        project = board_cards.PROJECTS.get(card.get("project", "other"), "Other")
+        lines.append(f"A card for {project} asks: {card['title']}. {detail}{choices}".strip())
     if len(needs) > SAY_NEEDS:
         lines.append(f"And {len(needs) - SAY_NEEDS} more waiting on you.")
+    answered = board_cards.answered_waiting(cards)
+    for card in answered[:SAY_NEEDS]:
+        said = card["answer"].get("choice") or card["answer"].get("text") or ""
+        lines.append(f"You answered {card['title']}: {said}. Waiting for it to be picked up.")
+    if len(answered) > SAY_NEEDS:
+        lines.append(f"And {len(answered) - SAY_NEEDS} more answers waiting to be picked up.")
     for col, label, limit in (
         ("testing", "Testing or shipping", SAY_TESTING),
         ("working", "Working", SAY_WORKING),
@@ -164,4 +191,6 @@ def model_lines(request, reading: Reading) -> list[str]:
     first = freshness_line(request, reading)
     if reading.row is None or reading.row.received_at is None:
         return [first]
-    return [first, counts_line(cards_now(reading))]
+    cards = cards_now(reading)
+    by_project = projects_line(cards)
+    return [first, counts_line(cards)] + ([by_project] if by_project else [])

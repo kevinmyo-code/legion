@@ -82,6 +82,25 @@ class MintThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": request.user.pk}
 
 
+class BoardAnswerSerializer(serializers.Serializer):
+    choice = serializers.CharField(allow_blank=True)
+    text = serializers.CharField(allow_blank=True)
+    at = serializers.CharField(allow_blank=True)
+    by = serializers.CharField(allow_blank=True)
+
+
+class BoardProjectSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    title = serializers.CharField()
+    open = serializers.IntegerField()
+    needs = serializers.IntegerField()
+
+
+class BoardRemovedSerializer(serializers.Serializer):
+    card = serializers.CharField()
+    field = serializers.CharField()
+
+
 class BoardCardSerializer(serializers.Serializer):
     id = serializers.CharField()
     col = serializers.ChoiceField(choices=list(board_cards.COLS))
@@ -91,6 +110,14 @@ class BoardCardSerializer(serializers.Serializer):
     waiting = serializers.CharField(allow_blank=True)
     owner = serializers.CharField(allow_blank=True)
     ask = serializers.CharField(allow_blank=True)
+    project = serializers.ChoiceField(choices=list(board_cards.PROJECTS))
+    options = serializers.ListField(child=serializers.CharField(), help_text="An ask's choices.")
+    free_text = serializers.BooleanField(help_text="A typed answer is allowed.")
+    ask_kind = serializers.CharField(
+        allow_blank=True, help_text="`choice`, `approval` (answered in chat only), or blank."
+    )
+    say = serializers.CharField(allow_blank=True)
+    answer = BoardAnswerSerializer(allow_null=True)
     age_min = serializers.IntegerField(help_text="Minutes since the card changed, as of now.")
     stale = serializers.BooleanField()
 
@@ -103,6 +130,8 @@ class BoardSnapshotSerializer(serializers.Serializer):
     build_slot = serializers.CharField(allow_blank=True)
     counts = serializers.DictField(child=serializers.IntegerField())
     needs_kevin = serializers.ListField(child=serializers.CharField())
+    answered_waiting = serializers.ListField(child=serializers.CharField())
+    projects = BoardProjectSerializer(many=True)
     cards = BoardCardSerializer(many=True)
 
 
@@ -127,6 +156,9 @@ class BoardStoredSerializer(serializers.Serializer):
     cards = serializers.IntegerField()
     bytes = serializers.IntegerField()
     received_at = serializers.DateTimeField()
+    removed = BoardRemovedSerializer(
+        many=True, help_text="Fields blanked as key, token or email shaped: card and field only."
+    )
 
 
 class BoardWriterIssuedSerializer(serializers.Serializer):
@@ -146,6 +178,8 @@ def _payload(request, now=None) -> dict:
             "build_slot": row.build_slot,
             "counts": board_cards.counts(cards),
             "needs_kevin": [c["id"] for c in board_cards.needs_kevin(cards)],
+            "answered_waiting": [c["id"] for c in board_cards.answered_waiting(cards)],
+            "projects": board_cards.projects(cards),
             "cards": cards,
         }
     writer = None
@@ -220,8 +254,20 @@ class BoardView(_OffBeforeAnything):
             received_at=now,
             size_bytes=len(raw),
         )
-        logger.info("board push stored: %d bytes, %d cards", len(raw), len(clean.cards))
-        return Response({"cards": len(clean.cards), "bytes": len(raw), "received_at": now})
+        logger.info(
+            "board push stored: %d bytes, %d cards, %d fields blanked",
+            len(raw),
+            len(clean.cards),
+            len(clean.removed),
+        )
+        return Response(
+            {
+                "cards": len(clean.cards),
+                "bytes": len(raw),
+                "received_at": now,
+                "removed": clean.removed,
+            }
+        )
 
 
 class BoardWriterView(_OffBeforeAnything):
@@ -249,9 +295,12 @@ class BoardWriterView(_OffBeforeAnything):
             row, raw = BoardSnapshot.mint_writer(
                 household=household_of(request), owner_user=request.user
             )
-        return Response(
+        response = Response(
             {"token": raw, "created_at": row.writer_created_at}, status=status.HTTP_201_CREATED
         )
+        # The raw token is in this body: no cache may keep it.
+        response["Cache-Control"] = "no-store"
+        return response
 
     @extend_schema(
         operation_id="api_board_writer_destroy",

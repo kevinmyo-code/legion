@@ -203,12 +203,149 @@ def test_push_keeps_known_fields_only_and_counts_on_the_engine(on, auth_client):
         "bw1_" + "Q" * 20,
     ],
 )
-def test_key_shapes_and_emails_are_refused_without_echoing(on, auth_client, text):
+def test_a_key_shaped_field_is_blanked_and_named_never_echoed(
+    on, auth_client, household_user, text
+):
     raw = _writer(auth_client)
     response = _push(raw, _board(_card("x", "working", "Invented", status=text)))
-    assert response.status_code == 400
+    assert response.status_code == 200
     assert text not in response.content.decode()
-    assert "Card x, field status" in response.json()["detail"]
+    assert response.json()["removed"] == [{"card": "x", "field": "status"}]
+    stored = BoardSnapshot.objects.get(owner_user=household_user).cards[0]
+    assert stored["status"] == board_cards.REMOVED and stored["title"] == "Invented"
+
+
+def test_one_poisoned_card_among_many_leaves_the_rest_stored(on, auth_client):
+    raw = _writer(auth_client)
+    poisoned = _card(
+        "poison",
+        "needs_kevin",
+        "Looks fine",
+        ask="mail someone@example.com",
+        options=["ok", "ghp_" + "a1B2" * 9],
+    )
+    body = _board(*SAMPLE["cards"], poisoned)
+    response = _push(raw, body)
+    assert response.status_code == 200
+    assert response.json()["removed"] == [
+        {"card": "poison", "field": "ask"},
+        {"card": "poison", "field": "options[1]"},
+    ]
+    snap = auth_client.get(BOARD).json()["snapshot"]
+    assert len(snap["cards"]) == len(SAMPLE["cards"]) + 1
+    card = next(c for c in snap["cards"] if c["id"] == "poison")
+    assert card["ask"] == board_cards.REMOVED and card["options"] == ["ok", board_cards.REMOVED]
+
+
+def test_a_zero_width_character_cannot_hide_a_token():
+    assert board_cards.looks_secret(
+        board_cards._INVISIBLE.sub("", "ghp" + chr(0x200B) + "_" + "a1B2" * 9)
+    )
+
+
+def test_projects_options_and_answers_survive(on, auth_client, household_user):
+    raw = _writer(auth_client)
+    body = _board(
+        _card(
+            "pot",
+            "needs_kevin",
+            "Pick a teapot",
+            project="home",
+            ask="Blue or green?",
+            options=["Blue", "Green"],
+            free_text=False,
+            ask_kind="choice",
+            say="Blue or green teapot?",
+        ),
+        _card(
+            "ship",
+            "needs_kevin",
+            "Ship the kettle",
+            project="engine",
+            ask="Ship it?",
+            ask_kind="approval",
+        ),
+        _card(
+            "jam",
+            "needs_kevin",
+            "Jam labels",
+            project="home",
+            ask="Which font?",
+            options=["Serif"],
+            ask_kind="choice",
+            answer={
+                "choice": "Serif",
+                "text": "",
+                "at": "2031-04-02T10:05:00+00:00",
+                "by": "phone",
+            },
+        ),
+        _card("x", "working", "Mystery", project="spaceship"),
+    )
+    assert _push(raw, body).status_code == 200
+    got = auth_client.get(BOARD).json()
+    cards = {c["id"]: c for c in got["snapshot"]["cards"]}
+    assert cards["pot"]["options"] == ["Blue", "Green"] and cards["pot"]["free_text"] is False
+    assert cards["ship"]["ask_kind"] == "approval" and cards["x"]["project"] == "other"
+    assert cards["jam"]["answer"]["choice"] == "Serif"
+    assert got["snapshot"]["answered_waiting"] == ["jam"]
+    assert {p["id"]: p["needs"] for p in got["snapshot"]["projects"]} == {
+        "engine": 1,
+        "home": 2,
+        "other": 0,
+    }
+    spoken = got["spoken"]
+    assert "Waiting on you: 1 on LEGION engine, 1 on Home." in spoken
+    assert any(
+        line.startswith("A card for Home asks: Pick a teapot. Blue or green teapot?")
+        and "Choices: Blue, Green." in line
+        for line in spoken
+    )
+    assert "You answered Jam labels: Serif. Waiting for it to be picked up." in spoken
+    result = board_status(_request(household_user), {})
+    assert "1 on LEGION engine, 1 on Home" in result.structured[FOR_MODEL]
+    assert "teapot" not in result.structured[FOR_MODEL]
+
+
+def test_mint_response_is_never_cached(on, auth_client):
+    response = auth_client.post(WRITER)
+    assert response["Cache-Control"] == "no-store"
+
+
+def test_a_housemates_laptop_never_makes_my_board_say_on(
+    on, auth_client, household_user, household_a
+):
+    from claude_session.models import SCOPE_FULL, ClaudeMachine
+    from household.models import DeviceToken
+
+    _push(_writer(auth_client))
+    BoardSnapshot.objects.filter(owner_user=household_user).update(
+        received_at=timezone.now() - timedelta(hours=1)
+    )
+    housemate = _member(household_a, "housemate@example.com")
+    their_token, _ = DeviceToken.issue(housemate, "claude-session-Theirs")
+    ClaudeMachine.objects.create(
+        household=household_a,
+        name="Their laptop",
+        scope=SCOPE_FULL,
+        last_seen_at=timezone.now(),
+        token=their_token,
+    )
+    assert auth_client.get(BOARD).json()["laptop_on"] is False
+
+
+def test_deleting_the_member_at_the_database_deletes_the_board(household_a):
+    from django.db import connection
+
+    from household.models import HouseholdMember
+
+    member = _member(household_a, "leaver@example.com")
+    BoardSnapshot.mint_writer(household=household_a, owner_user=member)
+    HouseholdMember.objects.filter(user=member).delete()
+    with connection.cursor() as cursor:
+        # What code that predates the table does: it knows nothing of board_snapshots.
+        cursor.execute("delete from household_user where id = %s", [member.pk])
+    assert not BoardSnapshot.objects.filter(owner_user_id=member.pk).exists()
 
 
 @pytest.mark.parametrize(
@@ -274,8 +411,15 @@ def test_old_snapshot_with_the_laptop_on_says_when_it_was_sent(
     BoardSnapshot.objects.filter(owner_user=household_user).update(
         received_at=timezone.now() - timedelta(hours=1)
     )
+    from household.models import DeviceToken
+
+    mine, _ = DeviceToken.issue(household_user, "claude-session-Mine")
     ClaudeMachine.objects.create(
-        household=household_a, name="Invented laptop", scope=SCOPE_FULL, last_seen_at=timezone.now()
+        household=household_a,
+        name="Invented laptop",
+        scope=SCOPE_FULL,
+        last_seen_at=timezone.now(),
+        token=mine,
     )
     body = auth_client.get(BOARD).json()
     assert body["laptop_on"] is True

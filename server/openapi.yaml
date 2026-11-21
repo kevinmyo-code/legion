@@ -15254,6 +15254,22 @@ components:
       - snapshot
       - spoken
       - writer
+    BoardAnswer:
+      type: object
+      properties:
+        choice:
+          type: string
+        text:
+          type: string
+        at:
+          type: string
+        by:
+          type: string
+      required:
+      - at
+      - by
+      - choice
+      - text
     BoardCard:
       type: object
       properties:
@@ -15273,6 +15289,25 @@ components:
           type: string
         ask:
           type: string
+        project:
+          $ref: '#/components/schemas/ProjectEnum'
+        options:
+          type: array
+          items:
+            type: string
+          description: An ask's choices.
+        free_text:
+          type: boolean
+          description: A typed answer is allowed.
+        ask_kind:
+          type: string
+          description: '`choice`, `approval` (answered in chat only), or blank.'
+        say:
+          type: string
+        answer:
+          allOf:
+          - $ref: '#/components/schemas/BoardAnswer'
+          nullable: true
         age_min:
           type: integer
           description: Minutes since the card changed, as of now.
@@ -15280,11 +15315,17 @@ components:
           type: boolean
       required:
       - age_min
+      - answer
       - ask
+      - ask_kind
       - col
+      - free_text
       - id
       - kind
+      - options
       - owner
+      - project
+      - say
       - stale
       - status
       - title
@@ -15305,6 +15346,32 @@ components:
         * `cloud` - cloud
         * `decision` - decision
         * `session` - session
+    BoardProject:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        open:
+          type: integer
+        needs:
+          type: integer
+      required:
+      - id
+      - needs
+      - open
+      - title
+    BoardRemoved:
+      type: object
+      properties:
+        card:
+          type: string
+        field:
+          type: string
+      required:
+      - card
+      - field
     BoardSnapshot:
       type: object
       properties:
@@ -15327,16 +15394,26 @@ components:
           type: array
           items:
             type: string
+        answered_waiting:
+          type: array
+          items:
+            type: string
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardProject'
         cards:
           type: array
           items:
             $ref: '#/components/schemas/BoardCard'
       required:
+      - answered_waiting
       - build_slot
       - cards
       - counts
       - generated_at
       - needs_kevin
+      - projects
       - received_at
     BoardStored:
       type: object
@@ -15348,10 +15425,17 @@ components:
         received_at:
           type: string
           format: date-time
+        removed:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardRemoved'
+          description: 'Fields blanked as key, token or email shaped: card and field
+            only.'
       required:
       - bytes
       - cards
       - received_at
+      - removed
     BoardWriterInfo:
       type: object
       properties:
@@ -23727,6 +23811,26 @@ components:
       - level
       - lines
       - score
+    ProjectEnum:
+      enum:
+      - phone
+      - headunit
+      - engine
+      - web
+      - jeep
+      - infra
+      - home
+      - other
+      type: string
+      description: |-
+        * `phone` - phone
+        * `headunit` - headunit
+        * `engine` - engine
+        * `web` - web
+        * `jeep` - jeep
+        * `infra` - infra
+        * `home` - home
+        * `other` - other
     Proposal:
       type: object
       properties:
