@@ -6,13 +6,14 @@ import type { Line } from '@/assistant/live-client'
 import { notePoppedModalEntry, popModalEntry, pushModalEntry } from '@/lib/modal-entry'
 
 import { DiagramBody } from './diagram'
+import { PartBody } from './part3d'
 import { PresenterContext } from './presenter-context'
 import { DownloadPdf, ResumeBody } from './resume'
 import { ToolCard } from './card'
 import { isModalCard, type Card, type ModalCard } from './types'
 
 /**
- * The cards that open over the whole page: a diagram and the resume (demo-modals, Kevin
+ * The cards that open over the whole page: a diagram, the resume and a Jeep part in 3D (demo-modals, Kevin
  * 2026-11-05: "the diagrams should kinda like pop up over the whole page as a modal", "asking
  * for the resume should pop up a modal thats scrollable").
  *
@@ -117,7 +118,7 @@ function ScreenModal({ card, footer, onClose }: { card: Card | null; footer?: Re
         <DialogPrimitive.Overlay data-modal="backdrop" className="fixed inset-0 z-[60] bg-black/60" />
         <DialogPrimitive.Content
           data-modal={card?.card ?? 'closed'}
-          aria-describedby={card?.card === 'diagram' ? 'screen-modal-caption' : undefined}
+          aria-describedby={card?.card === 'diagram' || card?.card === 'part3d' ? 'screen-modal-caption' : undefined}
           // The phone's keyboard must not rise, and the X must not grab the eye: focus the box.
           onOpenAutoFocus={(event) => {
             event.preventDefault()
@@ -132,9 +133,9 @@ function ScreenModal({ card, footer, onClose }: { card: Card | null; footer?: Re
                 <div className="min-w-0 flex-1">
                   {card.scope && <p className="text-[0.75rem] tracking-wide text-muted-foreground uppercase">{card.scope}</p>}
                   <DialogPrimitive.Title className="text-base leading-tight font-semibold sm:text-lg">{card.title}</DialogPrimitive.Title>
-                  {card.card === 'diagram' && (
+                  {(card.card === 'diagram' || card.card === 'part3d') && (
                     <DialogPrimitive.Description id="screen-modal-caption" className="mt-0.5 line-clamp-3 text-[0.8125rem] text-muted-foreground sm:line-clamp-none">
-                      {card.caption}
+                      {card.card === 'diagram' ? card.caption : card.where}
                     </DialogPrimitive.Description>
                   )}
                 </div>
@@ -150,6 +151,8 @@ function ScreenModal({ card, footer, onClose }: { card: Card | null; footer?: Re
                 <DiagramBody card={card} />
               ) : card.card === 'resume' ? (
                 <ResumeBody card={card} />
+              ) : card.card === 'part3d' ? (
+                <PartBody card={card} />
               ) : (
                 // Any other card, drawn as the conversation draws it, while the modal is open.
                 <div data-modal="card" className="min-h-0 flex-1 overflow-auto">
