@@ -3514,20 +3514,17 @@ internal class CascadeSession(
         val cap = CloseCue.waitCapMs(chimeMs, settle)
         // Released only once the device says the chime's last frame was presented (review K1), with the
         // chime plus a fixed latency as the floor when it gives no timestamp, and the cap over both.
-        val (by, ms) = CloseCue.playHeard(
-            write = {
-                withContext(Dispatchers.IO) { p.write(pcm, p.generation()) }
-                p.writtenFrames()
-            },
+        val heard = CloseCue.playHeard(
+            write = { withContext(Dispatchers.IO) { p.write(pcm, p.generation()) } },
             presented = p::presentedFrame,
-            floorMs = CloseCue.minPlayMs(chimeMs),
-            capMs = cap,
+            spec = CloseCue.Spec(pcm.size / PCM_BYTES_PER_SAMPLE.toLong(), chimeMs, CloseCue.minPlayMs(chimeMs), cap),
         )
         // A Bluetooth sink plays its own buffer past what the phone presented: its tail, inside the cap.
-        if (by != CloseCue.By.CAP && route == AudioRoute.BLUETOOTH) delay(minOf(settle, cap - ms).coerceAtLeast(0))
+        val tail = minOf(settle, cap - heard.ms).coerceAtLeast(0)
+        if (heard.by != CloseCue.By.CAP && route == AudioRoute.BLUETOOTH) delay(tail)
         val routeToken = CloseCue.routeToken(route, earpiece = earpiece.wantsEarpiece() && callAudio?.isActive == true)
-        LiveLatency.log(LiveLatency.TAG, CloseCue.playedLine(reason, ms, routeToken, by, chimeMs))
-        return by != CloseCue.By.CAP
+        LiveLatency.log(LiveLatency.TAG, CloseCue.playedLine(reason, routeToken, heard, chimeMs))
+        return heard.by != CloseCue.By.CAP
     }
 
     /** The conversation's usage summary at its close, and the prompt cache's listener let go. */

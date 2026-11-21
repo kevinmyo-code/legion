@@ -77,35 +77,41 @@ internal object CloseCue {
 
     private const val POLL_MS = 10L
 
-    /** The chime's wait: its last frame in the head position's count, the floor and the cap, in ms from its write. */
-    data class Window(val lastFrame: Long, val floorMs: Long, val capMs: Long)
+    /** The chime: its frames and its length, and the floor and the cap, in ms from its write. */
+    data class Spec(val chimeFrames: Long, val chimeMs: Long, val floorMs: Long, val capMs: Long)
 
     /**
-     * Whether the chime has been heard, [elapsedMs] after its write began: the device's presented
-     * frame ([presented]) reached the chime's last frame; or the cap passed; or, with no timestamp or
-     * one stalled for [stalledMs] >= [STALL_MS], the floor passed. Null: keep waiting. Pure.
+     * Whether the chime has been heard, [elapsedMs] after its write began (closing confirm T1,
+     * 2026-11-21). The device's presented frame is compared with its own reading [base] taken just
+     * before the write, never with the player's written count: on some devices the timestamp does not
+     * reset on flush, so the two counts are not alike. The timestamp decides once the frames presented
+     * since [base] cover the chime AND at least the chime's own length has passed (it cannot have been
+     * heard sooner). With no [base], no timestamp, or one stalled for [STALL_MS], the floor decides.
+     * The cap over all. Null: keep waiting. Pure.
      */
-    fun heardBy(elapsedMs: Long, presented: Long?, stalledMs: Long, w: Window): By? = when {
-        presented != null && presented >= w.lastFrame -> By.TIMESTAMP
-        elapsedMs >= w.capMs -> By.CAP
-        elapsedMs >= w.floorMs && (presented == null || stalledMs >= STALL_MS) -> By.FLOOR
+    fun heardBy(elapsedMs: Long, presented: Long?, base: Long?, stalledMs: Long, spec: Spec): By? = when {
+        base != null && presented != null && presented >= spec.chimeFrames -> By.TIMESTAMP
+        elapsedMs >= spec.capMs -> By.CAP
+        elapsedMs >= spec.floorMs && (base == null || presented == null || stalledMs >= STALL_MS) -> By.FLOOR
         else -> null
     }
 
+    /** What decided the chime's wait, how long it took from the write, and the timestamp's baseline. */
+    data class Heard(val by: By, val ms: Long, val base: Long?)
+
     /**
-     * Writes the chime and waits until [heardBy] says it has been heard, polling [presented]. Returns
-     * what decided and the time it took from the write's start.
+     * Reads the device's presented frame as the baseline, writes the chime, and waits until [heardBy]
+     * says it has been heard, polling [presented].
      */
     suspend fun playHeard(
-        write: suspend () -> Long,
+        write: suspend () -> Unit,
         presented: () -> Long?,
-        floorMs: Long,
-        capMs: Long,
+        spec: Spec,
         now: () -> Long = System::currentTimeMillis,
-    ): Pair<By, Long> {
+    ): Heard {
+        val base = presented()
         val start = now()
-        val lastFrame = withTimeoutOrNull(capMs) { write() } ?: return By.CAP to now() - start
-        val window = Window(lastFrame, floorMs, capMs)
+        withTimeoutOrNull(spec.capMs) { write() } ?: return Heard(By.CAP, now() - start, base)
         var seen: Long? = null
         var movedAt = now()
         while (true) {
@@ -115,7 +121,7 @@ internal object CloseCue {
                 seen = p
                 movedAt = t
             }
-            heardBy(t - start, p, t - movedAt, window)?.let { return it to t - start }
+            heardBy(t - start, p, base, t - movedAt, spec)?.let { return Heard(it, t - start, base) }
             delay(POLL_MS)
         }
     }
@@ -130,12 +136,13 @@ internal object CloseCue {
 
     /**
      * `close_cue played ms=<n> reason=<close> route=<speaker|earpiece|bt|wired> by=<timestamp|floor|cap>
-     * latency_ms=<n|none>`: no text. The latency is measured (the time to the last frame presented, less
-     * the chime's length) only when the timestamp decided.
+     * latency_ms=<n|none> base=<n|none>`: no text. The latency is measured (the time to the last frame
+     * presented, less the chime's length) only when the timestamp decided; base is its baseline frame.
      */
-    fun playedLine(reason: String, ms: Long, route: String, by: By, chimeMs: Long): String {
-        val latency = if (by == By.TIMESTAMP) "${(ms - chimeMs).coerceAtLeast(0)}" else "none"
-        return "close_cue played ms=$ms reason=${token(reason)} route=$route by=${by.token} latency_ms=$latency"
+    fun playedLine(reason: String, route: String, heard: Heard, chimeMs: Long): String {
+        val latency = if (heard.by == By.TIMESTAMP) "${(heard.ms - chimeMs).coerceAtLeast(0)}" else "none"
+        return "close_cue played ms=${heard.ms} reason=${token(reason)} route=$route by=${heard.by.token} " +
+            "latency_ms=$latency base=${heard.base ?: "none"}"
     }
 
     /** `close_cue skipped reason=<why> close=<close>`: no text. */
