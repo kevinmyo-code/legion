@@ -523,3 +523,20 @@ def test_a_relayed_write_that_never_came_back_is_said_as_not_confirmed():
     state.actions.append({"name": "set_timer", "writes": True, "ok": False, "outcome": "timed_out"})
     said, _ = _run(state, [S("The timer is ringing soon.")])
     assert said == ["The timer is ringing soon.", UNCONFIRMED_ONE]
+
+
+# ---- the voice clause: both brains are told the same (inventory row 19) ----------------------
+
+
+def test_the_generalist_prompt_carries_the_phones_voice_clause_word_for_word():
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    rules = root / "app/src/main/java/com/kevin/legion/service/cascade/CascadeRules.kt"
+    kotlin = rules.read_text(encoding="utf-8")
+    block = kotlin.split("const val VOICE_CLAUSE =", 1)[1].split("\n\n", 1)[0]
+    # The Kotlin string's pieces: its clause holds no quote or backslash.
+    clause = "".join(re.findall(r'"([^"]*)"', block))
+    prompt = (root / "server/agents/specs/generalist.md").read_text(encoding="utf-8")
+    assert clause and " ".join(clause.split()) in " ".join(prompt.split())
