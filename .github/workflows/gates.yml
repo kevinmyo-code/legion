@@ -2,7 +2,7 @@
 # (laptop harness, invented data) and the money specialist eval, and the engine's realrun gate plus one
 # real chip turn. The same commands the laptop ship templates run in their "live gate" steps.
 #
-# workflow_dispatch ONLY, never on a push, a pull request or a fork; `sha` must be on dev or a ship/**
+# workflow_dispatch ONLY, never on a push, a pull request or a fork; `sha` must be on dev
 # branch of this repo. Jobs run in the `gates` environment, whose one secret is GEMINI_API_KEY.
 # Without that secret every job FAILS at its first step (it never skips, and a skip is never a pass).
 # The key is written to a file only the job's user can read, handed over as LEGION_GEMINI_KEY_FILE
@@ -34,7 +34,7 @@ on:
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit to gate (full 40-hex sha, on dev or a ship/** branch)"
+        description: "Commit to gate (full 40-hex sha, on dev)"
         required: true
         type: string
       which:
