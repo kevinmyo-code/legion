@@ -23,7 +23,6 @@ internal object EngineBrainOpen {
     fun open(
         ctx: Context,
         scope: CoroutineScope,
-        openedWithLine: Boolean,
         wireFor: (EngineConfig) -> EngineWire = { EngineWireHttp(it::baseUrl, it::token, scope) },
     ): EngineBrain? {
         val config = if (EngineBrainSettings.on(ctx)) EngineConfig(ctx) else null
@@ -33,7 +32,7 @@ internal object EngineBrainOpen {
             null
         } else {
             val log: (String) -> Unit = { LiveLatency.log(LiveLatency.TAG, it) }
-            EngineBrain(wireFor(config), scope, { deviceState(ctx) }, log, openedWithLine)
+            EngineBrain(wireFor(config), scope, { deviceState(ctx) }, log)
                 .also { it.attach { EngineLimbManifest.offer(BuildConfig.VERSION_NAME) } }
         }
     }

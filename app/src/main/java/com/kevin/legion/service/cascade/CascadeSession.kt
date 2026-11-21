@@ -471,7 +471,7 @@ internal class CascadeSession(
         // Never for a test conversation: the engine has no test mode yet, and its own writes would
         // pass by the phone's TestTurnPolicy.
         if (listens && test == null) {
-            engineBrain = EngineBrainOpen.open(ctx, scope, opening != OpeningRule.Opening.CHIME)
+            engineBrain = EngineBrainOpen.open(ctx, scope)
         }
         // The laptop is probed and connected while the mic and the turn models get ready (a wake
         // word's onset may have started it already); [tryLaptop] takes it.
@@ -1612,7 +1612,6 @@ internal class CascadeSession(
             EngineBrain.RouteFacts(
                 test = test != null,
                 fromUser = record.fromUser,
-                carryMarked = record.startMarked,
                 // Streamed audio, a merged turn's words, or the laptop voice's words may go to the engine.
                 engineHeard = record.engineHeard || backend?.kind == SpeechBackend.Kind.LAPTOP,
             ),
@@ -1744,6 +1743,8 @@ internal class CascadeSession(
             // Interrupted (tap, barge-in) or merged into the next turn: keep only what was heard.
             withContext(NonCancellable) {
                 reply.interrupt()
+                // An engine reply cut off: the engine is told how much he heard, on its next turn.
+                engineBrain?.context?.cutOff(reply.spoken().length)
                 // A write that finished and was not heard is said at the next thing said ([owed]).
                 owe(record, cutOff = true)
                 if (!record.merged && (carry.isBlank() || record.toolsRan.isNotEmpty())) {
@@ -2131,6 +2132,7 @@ internal class CascadeSession(
             }
             is SpokenLanguages.Decision.To -> {
                 conversationLanguage = d.language
+                engineBrain?.context?.language = d.language.name
                 SttHintStore.instruction = SpokenLanguages.sttInstruction(languages, d.language)
                 LiveLatency.log(LiveLatency.TAG, "language_switch to=${d.language.name.lowercase().replace(' ', '_')}")
                 true
@@ -2701,6 +2703,7 @@ internal class CascadeSession(
                         // So his answer is understood: the greeting is the first exchange.
                         history.add(ChatTurn(fromUser = true, text = OPENED_NOTE))
                         history.add(ChatTurn(fromUser = false, text = reply.spoken()))
+                        engineBrain?.context?.recorded("", reply.spoken(), readThrough = false, fromUser = false)
                         afterReply()
                     }
                     // The greeting is not said twice: the next voice opens with the scripted line.
@@ -2763,6 +2766,8 @@ internal class CascadeSession(
         seq: Long = turnSeq.getAndIncrement(),
         fromUser: Boolean = true,
     ) {
+        // A turn the phone answered goes to the engine's next turn as context ([EnginePhoneContext]).
+        engineBrain?.context?.recorded(heard, said, readThrough, fromUser)
         if (heard.isNotBlank()) history.add(ChatTurn(fromUser = true, text = heard))
         if (fromUser && said.isNotBlank()) readThroughCarry.answered()
         // A read-through reply (mail, web) is never kept as history or in the record in clear.

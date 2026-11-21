@@ -51,11 +51,19 @@ internal class EngineTurnSink(
             }
             is EngineEvent.Sentence -> sentence(event.text)
             is EngineEvent.Crisis -> crisis = true
-            is EngineEvent.Working -> listener.onToolsStarting(listOf(event.tool to JSONObject()))
+            // Contract v2 `kind`: a local tool gets no holding line; slow, write and relay calls do.
+            is EngineEvent.Working -> if (event.kind != KIND_LOCAL) {
+                listener.onToolsStarting(listOf(event.tool to JSONObject()))
+            }
             is EngineEvent.Tool -> {
                 touchedOutside = true
                 synchronized(toolsRan) { toolsRan.add(event.name) }
                 listener.onToolCalls(listOf(event.name))
+                // A write that went through, engine's or relayed: its "Done:" line under a stop.
+                event.writeFact?.let { f ->
+                    val shown = JSONObject().put("title", f.optString("title")).put("list", f.optString("list"))
+                    listener.onWriteFact(ScriptedLines.writeFact(f.optString("tool", event.name), "", shown, ok = true))
+                }
             }
             else -> Unit
         }
@@ -91,6 +99,10 @@ internal class EngineTurnSink(
             .put("success", ok)
             .put("message", outcome.words)
         listener.onToolResult(call.name, call.args, response, outcome.ms, ok && call.writes)
+    }
+
+    private companion object {
+        const val KIND_LOCAL = "local"
     }
 
     /** The turn as the phone loop's result: what was said, and code's words when the engine had none. */

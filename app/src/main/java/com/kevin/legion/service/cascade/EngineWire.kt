@@ -56,6 +56,12 @@ internal interface EngineWire {
     /** `POST /api/agents/turn/<id>/tool_result`. */
     suspend fun toolResult(turnId: String, body: JSONObject): WireReply
 
+    /**
+     * The phone's decision on a held turn (Contract v2, hold): `POST /api/agents/turn/<id>/go` (the
+     * engine answers it) or `.../take` (the phone keeps it; nothing acts, nothing is recorded).
+     */
+    suspend fun decide(turnId: String, go: Boolean): WireReply
+
     /** `POST /api/agents/turn/<id>/cancel`. */
     suspend fun cancel(turnId: String): WireReply
 

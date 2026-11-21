@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
 /** The engine brain's pure decisions. Invented words only. Robolectric only for `org.json`. */
 @RunWith(RobolectricTestRunner::class)
 class EngineBrainRulesTest {
-    private val his = Facts(test = false, fromUser = true, carryMarked = false, afterPhoneLine = false)
+    private val his = Facts(test = false, fromUser = true)
 
     @Test
     fun `K3 as written, the engine unreachable at open says so and answers nothing`() {
@@ -41,11 +41,11 @@ class EngineBrainRulesTest {
     }
 
     @Test
-    fun `what the wire cannot carry yet keeps the turn on the phone`() {
+    fun `a test conversation and a phone prompt stay on the phone`() {
         assertEquals("test", EngineBrainRules.phoneKeeps("hello", his.copy(test = true)))
         assertEquals("prompt", EngineBrainRules.phoneKeeps("hello", his.copy(fromUser = false)))
-        assertEquals("carry", EngineBrainRules.phoneKeeps("and add that", his.copy(carryMarked = true)))
-        assertEquals("after_phone_line", EngineBrainRules.phoneKeeps("yes", his.copy(afterPhoneLine = true)))
+        // A reply to a phone line goes to the engine now, with the line as `prior_line` (Contract v2).
+        assertNull(EngineBrainRules.phoneKeeps("yes", his))
     }
 
     @Test

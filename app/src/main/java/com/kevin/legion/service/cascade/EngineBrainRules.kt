@@ -35,8 +35,11 @@ internal object EngineBrainRules {
     /** Nothing reached the engine: true as said (review B-9). */
     const val UNREACHABLE_LINE = "I couldn't reach the engine, so nothing was answered."
 
-    /** The turn went out and no answer came: the engine may still be running it (review B-9). */
-    const val NO_ANSWER_LINE = "I couldn't get an answer from the engine. It may still finish that."
+    /**
+     * The turn went out and no answer came (review B-9). True as said because every engine-heard turn
+     * is held (Contract v2): without the phone's go nothing acts there.
+     */
+    const val NO_ANSWER_LINE = "I couldn't get an answer from the engine, so nothing was done."
 
     /** The engine speaks a newer contract (409 `contract_unsupported`). */
     const val UPDATE_LINE = "The engine needs a newer version of this app, so nothing was answered."
@@ -75,31 +78,35 @@ internal object EngineBrainRules {
     const val CONTRACT_VERSION = 1
 
     /**
-     * Why the PHONE loop answers this turn though his setting is on (plan 1119 section 4b), or null
-     * for the engine. Every reason is a fact the wire cannot carry yet, or a ruling:
-     * - [Facts.test]: a test conversation. The engine has no `test_mode` yet (slice E3), so its own
-     *   writes would bypass the phone's `TestTurnPolicy`.
+     * Why the PHONE loop answers this turn though the engine is the brain (plan 1119 section 4b), or
+     * null for the engine:
+     * - [Facts.test]: a test conversation (no brain is built for one; kept as the rule's own guard).
      * - not his words: openers, the greeting and check-ins stay phone prompts (4b rule 3).
-     * - [Facts.carryMarked]: the turn after a read-through line; the engine has no `carry_tainted`.
-     * - [Facts.afterPhoneLine]: the turn right after a line the phone loop spoke; the engine has no
-     *   `prior_line`, so "yes" would reach it with no context.
      * - mail words: mail stays on the phone until ticket 05.
+     * A line the phone spoke, a read-through line and the phone's own turns no longer hold his next
+     * turn: the engine is told them (`prior_line`, `carry_tainted`, `phone_turns`, [EnginePhoneContext]).
      */
     fun phoneKeeps(words: String, facts: Facts): String? = when {
+        !facts.engineHeard -> PHONE_HEARD
+        !facts.on -> OFF
         facts.test -> "test"
         !facts.fromUser -> "prompt"
-        facts.carryMarked -> "carry"
-        facts.afterPhoneLine -> "after_phone_line"
         MAIL_WORDS.containsMatchIn(words) -> "mail"
         else -> null
     }
 
-    data class Facts(
-        val test: Boolean,
-        val fromUser: Boolean,
-        val carryMarked: Boolean,
-        val afterPhoneLine: Boolean,
-    )
+    /**
+     * [engineHeard]: the engine heard the turn (or may get its words: the laptop voice, a merge);
+     * false, the phone transcribed it and its own loop answers, drafts and all. [on]: the engine is
+     * this conversation's brain.
+     */
+    data class Facts(val test: Boolean, val fromUser: Boolean, val engineHeard: Boolean = true, val on: Boolean = true)
+
+    const val PHONE_HEARD = "phone_heard"
+    const val OFF = "off"
+
+    /** Reasons worth a log line (the others are every turn of a phone conversation). */
+    val LOGGED_KEEPS = setOf("test", "prompt", "mail")
 
     /**
      * His words about mail and what the phone reads from mail (the brief's mail sections, parcels
@@ -216,10 +223,11 @@ internal object EngineBrainRules {
     }
 
     /** A non-stream answer where the turn's stream was due, as the words he hears (null: say nothing more). */
-    fun wordsFor(reply: WireReply): String? = if ((reply as? WireReply.Json)?.code == "contract_unsupported") {
-        UPDATE_LINE
-    } else {
-        when (afterPost(reply)) {
+    fun wordsFor(reply: WireReply): String? = when ((reply as? WireReply.Json)?.code) {
+        "contract_unsupported" -> UPDATE_LINE
+        // The engine had this turn already (a re-post after a lost answer); held, nothing acted.
+        "duplicate" -> NO_ANSWER_LINE
+        else -> when (afterPost(reply)) {
             AfterPost.RECORDED -> null
             AfterPost.MEMBER_CAP -> (reply as? WireReply.Json)?.detail?.ifBlank { null } ?: STOPPED_LINE
             AfterPost.REVOKED -> REVOKED_LINE
@@ -249,8 +257,12 @@ internal object EngineBrainRules {
     /** Stream refusals the batch route answers instead: a gap, a broken upload, the one stream busy. */
     private val STREAM_FALLBACK_CODES = setOf("audio_gap", "hung_up", "stalled", "stream_busy")
 
-    /** The engine's turn routes are switched off (404): this conversation goes back to the phone loop. */
-    fun switchedOff(reply: WireReply): Boolean = reply is WireReply.Json && reply.status == HTTP_NOT_FOUND
+    /**
+     * The engine's turn routes are switched off (404), or this device's brain resolves to the phone
+     * (409 `brain_phone`): this conversation goes back to the phone loop.
+     */
+    fun switchedOff(reply: WireReply): Boolean =
+        reply is WireReply.Json && (reply.status == HTTP_NOT_FOUND || reply.code == "brain_phone")
 
     const val HTTP_ACCEPTED = 202
     const val HTTP_UNAUTHORIZED = 401

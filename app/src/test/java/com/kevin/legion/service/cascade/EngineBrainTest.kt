@@ -34,7 +34,7 @@ class EngineBrainTest {
     private val ran = CopyOnWriteArrayList<String>()
     private val outsideMarks = CopyOnWriteArrayList<String>()
     private val open = EngineBrainRules.DeviceState(locked = false, screenOn = true)
-    private val his = EngineBrain.RouteFacts(test = false, fromUser = true, carryMarked = false, engineHeard = true)
+    private val his = EngineBrain.RouteFacts(test = false, fromUser = true, engineHeard = true)
 
     /** The phone's offer for the tests: real relayed tools, a small invented schema each. */
     private fun offer(): EngineLimbManifest.Offer {
@@ -45,8 +45,8 @@ class EngineBrainTest {
         return EngineLimbManifest.Offer(JSONObject(), tools, names.associateWith { schema })
     }
 
-    private fun brain(scope: CoroutineScope, state: EngineBrainRules.DeviceState = open, line: Boolean = false) =
-        EngineBrain(wire, scope, { state }, { logs.add(it) }, line, tail = scope)
+    private fun brain(scope: CoroutineScope, state: EngineBrainRules.DeviceState = open) =
+        EngineBrain(wire, scope, { state }, { logs.add(it) }, tail = scope)
 
     private suspend fun attached(b: EngineBrain): EngineBrain {
         b.attach { offer() }
@@ -87,41 +87,79 @@ class EngineBrainTest {
         val u = checkNotNull(b.utterance(cloudVoice = true))
         speak(u)
         assertEquals("it went out: it may still finish", EngineBrainRules.NO_ANSWER_LINE, EngineBrain.lostWords(u))
-        assertTrue("never posted again after the end frame", wire.clips.isEmpty())
+        assertEquals("posted again only under the same turn id", u.turnId, wire.clips.single()["turn_id"])
     }
 
     @Test
-    fun `mail words go to the phone loop and the engine's turn is cancelled`() = runBlocking {
+    fun `mail words go to the phone loop and the held turn is taken back`() = runBlocking {
         wire.streamAnswers.add(heard("read my email"))
         val b = attached(brain(this))
         val u = checkNotNull(b.utterance(cloudVoice = true))
         speak(u)
         assertNull(b.route(u, "read my email", his))
         delay(20)
-        assertEquals(listOf("t1"), wire.cancels)
+        assertEquals("take, never go", listOf("take:${u.turnId}"), wire.decisions)
         assertTrue(logs.any { it == "engine_route brain=phone reason=mail" })
     }
 
     @Test
-    fun `after a phone-spoken line his answer is transcribed on the phone, then his turns stream`() = runBlocking {
-        val b = attached(brain(this, line = true))
-        assertNull("never started on the engine", b.utterance(cloudVoice = true))
-        assertNull(b.route(null, "yes please", his.copy(engineHeard = false)))
-        assertNotNull(b.utterance(cloudVoice = true))
+    fun `a reply to a phone line streams held, with the line, the clock and no speech in the metadata`() =
+        runBlocking {
+            wire.streamAnswers.add(heard("yes please"))
+            val b = attached(brain(this))
+            b.context.recorded("", "Want me to read the list?", readThrough = false, fromUser = false)
+            val u = checkNotNull(b.utterance(cloudVoice = true))
+            speak(u)
+            val meta = wire.uploads.single().meta
+            assertEquals(false, meta.getBoolean("go"))
+            assertEquals(false, meta.getBoolean("speak"))
+            assertEquals(u.turnId, meta.getString("turn_id"))
+            val facts = meta.getJSONObject("client_facts")
+            assertEquals("Want me to read the list?", facts.getString("prior_line"))
+            assertTrue(facts.has("utc_offset_minutes"))
+        }
+
+    @Test
+    fun `a phone-kept read-through turn goes blanked, with carry, and the engine's turn clears them`() =
+        runBlocking {
+            val b = attached(brain(this))
+            b.context.recorded("read my mail", "Two new messages from work.", readThrough = true, fromUser = true)
+            val facts = b.context.facts()
+            assertTrue(facts.getBoolean("carry_tainted"))
+            assertFalse("never a read-through line as prior_line", facts.has("prior_line"))
+            val turn = facts.getJSONArray("phone_turns").getJSONObject(0)
+            assertEquals("read my mail", turn.getString("said"))
+            assertEquals("", turn.getString("answer"))
+            assertTrue(turn.getBoolean("tainted"))
+            b.context.engineAnswering()
+            assertFalse(b.context.facts().has("phone_turns"))
+        }
+
+    @Test
+    fun `a cut-off engine reply is reported on the next turn as heard_until`() = runBlocking {
+        val b = attached(brain(this))
+        val turnEvent = event("turn", """{"turn_id": "t7", "seq": 1}""")
+        wire.textAnswers.add(stream(turnEvent, sentence("A long answer."), doneEvent))
+        b.answer(checkNotNull(b.route(null, "tell me a story", his)), null, executor(), listener())
+        b.context.cutOff(4)
+        val heard = b.context.facts().getJSONObject("heard_until")
+        assertEquals("t7", heard.getString("turn_id"))
+        assertEquals(4, heard.getInt("chars"))
     }
 
     @Test
-    fun `an opener spoken while the engine attaches still holds his reply on the phone`() = runBlocking {
+    fun `while the engine attaches the phone transcribes and answers, then his turns stream`() = runBlocking {
         val gate = CompletableDeferred<WireReply>()
         val slow = object : EngineWire by wire {
             override suspend fun attach(manifest: JSONObject): WireReply = gate.await()
         }
-        val late = EngineBrain(slow, this, { open }, { logs.add(it) }, false, tail = this)
+        val late = EngineBrain(slow, this, { open }, { logs.add(it) }, tail = this)
         late.attach { offer() }
+        assertNull("the phone transcribes", late.utterance(cloudVoice = true))
         assertNull(late.route(null, "brief me", his.copy(fromUser = false, engineHeard = false)))
         gate.complete(json(200, """{"brain": "engine"}"""))
         while (late.state == EngineBrain.State.ATTACHING) delay(1)
-        assertNull("his reply to the opener stays on the phone", late.utterance(cloudVoice = true))
+        assertNotNull("the engine is the brain now", late.utterance(cloudVoice = true))
     }
 
     @Test
@@ -141,6 +179,7 @@ class EngineBrainTest {
         relayed("set a timer", request("k1", "clock", args = """{"action": "set"}"""), heardText = heardText)
         assertEquals(listOf("clock"), ran)
         assertEquals("ok", wire.posts.single().second.getString("outcome"))
+        assertTrue("the phone's go was posted", wire.decisions.single().startsWith("go:"))
         // Each sentence reaches the reply speaker with its ending space: the splitter releases it at once.
         assertEquals("Timer set. ", heardText.toString())
         assertEquals(listOf("Timer set."), SentenceSplitter().feed(heardText.toString()))
@@ -216,14 +255,65 @@ class EngineBrainTest {
     }
 
     @Test
+    fun `a tool the engine dropped at attach is never run here either`() = runBlocking {
+        val answer = """{"brain": "engine", "dropped": [{"name": "clock", "reason": "engine_tool"}]}"""
+        wire.attachAnswer = json(200, answer)
+        relayed("set a timer", request("k1", "clock", args = """{"action": "set"}"""))
+        assertTrue(ran.isEmpty())
+        assertEquals("refused", wire.posts.single().second.getString("outcome"))
+        assertTrue(logs.any { it.startsWith("engine_attach dropped=1 tools=clock") })
+    }
+
+    @Test
+    fun `brain_phone on a turn sends that turn and the conversation to the phone`() = runBlocking {
+        wire.streamAnswers.add(json(409, """{"code": "brain_phone"}"""))
+        wire.clipAnswers.add(json(409, """{"code": "brain_phone"}"""))
+        val b = attached(brain(this))
+        val u = checkNotNull(b.utterance(cloudVoice = true))
+        val pcm = ByteArray(32_000) { i -> if (i in 8_000 until 24_000) ((i * 37) % 200 - 100).toByte() else 0 }
+        u.audio(pcm, 0, pcm.size)
+        u.end()
+        assertEquals(SttResult.Failed(EngineUtterance.SWITCHED_OFF), u.result(1_000))
+        assertEquals(EngineBrain.State.OFF, b.state)
+    }
+
+    @Test
+    fun `an engine write's fact reaches the done line, and a local tool gets no holding line`() = runBlocking {
+        val facts = CopyOnWriteArrayList<String>()
+        val started = CopyOnWriteArrayList<String>()
+        val l = object : GeminiTextLoop.Listener {
+            override fun onWriteFact(fact: ScriptedLines.WriteFact) {
+                facts.add(fact.title)
+            }
+
+            override fun onToolsStarting(calls: List<Pair<String, JSONObject>>) {
+                started.addAll(calls.map { it.first })
+            }
+        }
+        val b = attached(brain(this))
+        val fact = """{"tool": "add_checklist_item", "title": "stamps", "list": "To-do"}"""
+        wire.textAnswers.add(
+            stream(
+                event("working", """{"tool": "get_time", "kind": "local"}"""),
+                event("working", """{"tool": "add_checklist_item", "kind": "write"}"""),
+                event("tool", """{"name": "add_checklist_item", "ok": true, "outcome": "ok", "write_fact": $fact}"""),
+                doneEvent,
+            ),
+        )
+        b.answer(checkNotNull(b.route(null, "add stamps", his)), null, executor(), l)
+        assertEquals(listOf("add_checklist_item"), started)
+        assertEquals(listOf("stamps"), facts)
+    }
+
+    @Test
     fun `with the switch off nothing is built and no transport is ever made`() {
         val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
         EngineBrainSettings.setOn(ctx, false)
         val scope = CoroutineScope(kotlinx.coroutines.Dispatchers.Unconfined)
-        assertNull(EngineBrainOpen.open(ctx, scope, openedWithLine = false) { error("no transport: switch off") })
+        assertNull(EngineBrainOpen.open(ctx, scope) { error("no transport: switch off") })
         // On, but this phone is not signed in to an engine: still nothing.
         EngineBrainSettings.setOn(ctx, true)
-        assertNull(EngineBrainOpen.open(ctx, scope, openedWithLine = false) { error("no transport: signed out") })
+        assertNull(EngineBrainOpen.open(ctx, scope) { error("no transport: signed out") })
         EngineBrainSettings.setOn(ctx, false)
     }
 

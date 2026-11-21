@@ -33,8 +33,16 @@ internal sealed interface EngineEvent {
     data class Turn(val turnId: String, val conversationId: String?, val seq: Int, val streamNo: Int) : EngineEvent
     data class Heard(val text: String) : EngineEvent
     data class Crisis(val text: String) : EngineEvent
-    data class Working(val tool: String) : EngineEvent
-    data class Tool(val name: String, val ok: Boolean, val outcome: String, val guard: String?) : EngineEvent
+    /** A tool starts; [kind] (Contract v2) is `local`, `slow`, `write` or `relay`, or blank. */
+    data class Working(val tool: String, val kind: String = "") : EngineEvent
+    data class Tool(
+        val name: String,
+        val ok: Boolean,
+        val outcome: String,
+        val guard: String?,
+        /** Contract v2: a write that went through, `{tool, title?, list?}`. */
+        val writeFact: JSONObject? = null,
+    ) : EngineEvent
     data class Sentence(val text: String, val lineId: String, val role: String) : EngineEvent
     data class Request(val call: EngineCall) : EngineEvent
 
@@ -113,13 +121,8 @@ internal object EngineEventParse {
         )
         "heard" -> EngineEvent.Heard(j.optString("text"))
         "crisis" -> EngineEvent.Crisis(j.optString("text"))
-        "working" -> EngineEvent.Working(j.optString("tool"))
-        "tool" -> EngineEvent.Tool(
-            j.optString("name"),
-            j.optBoolean("ok"),
-            j.optString("outcome"),
-            j.optString("guard").takeUnless { j.isNull("guard") || it.isBlank() },
-        )
+        "working" -> EngineEvent.Working(j.optString("tool"), j.optString("kind"))
+        "tool" -> tool(j)
         "sentence" -> EngineEvent.Sentence(j.optString("text"), j.optString("line_id"), j.optString("role", "answer"))
         // A request with no call id or name cannot be answered or deduped: never run.
         "tool_request" -> call(j, afterReply = false).takeIf { it.callId.isNotBlank() && it.name.isNotBlank() }
@@ -128,6 +131,14 @@ internal object EngineEventParse {
         "error" -> EngineEvent.Failed(j.optString("words"))
         else -> null
     }
+
+    private fun tool(j: JSONObject) = EngineEvent.Tool(
+        j.optString("name"),
+        j.optBoolean("ok"),
+        j.optString("outcome"),
+        j.optString("guard").takeUnless { j.isNull("guard") || it.isBlank() },
+        j.optJSONObject("write_fact"),
+    )
 
     private fun done(j: JSONObject): EngineEvent.Done {
         val actions = j.optJSONArray("device_actions") ?: JSONArray()

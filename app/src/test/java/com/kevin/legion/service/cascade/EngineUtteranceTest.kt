@@ -31,7 +31,7 @@ class EngineUtteranceTest {
         streamed: Boolean = true,
         tail: CoroutineScope = scope,
         gate: kotlinx.coroutines.Job? = null,
-    ) = EngineUtterance(1, UtteranceSetup(wire, scope, tail, meta, streamed, gate), { switched.add(it) })
+    ) = EngineUtterance(1, UtteranceSetup(wire, scope, tail, { meta }, streamed, gate), { switched.add(it) })
 
     /** One second of a 220 Hz tone over near-silence: voiced by [SttGuard.voicedMs]'s measure. */
     private fun voice(): ByteArray {
@@ -107,6 +107,9 @@ class EngineUtteranceTest {
         val fields = wire.clips.single()
         assertEquals("c1", fields["conversation_id"])
         assertEquals("1", fields["contract_version"])
+        assertEquals("the same turn id as the stream", u.turnId, fields["turn_id"])
+        assertEquals("false", fields["go"])
+        assertEquals("false", fields["speak"])
         assertEquals(EngineUtterance.ROUTE_BATCH, u.route)
     }
 
@@ -123,16 +126,39 @@ class EngineUtteranceTest {
     }
 
     @Test
-    fun `an answer lost after the end frame is never posted again, and is no second brain`() = runBlocking {
+    fun `an answer lost after the end frame is posted again with the same turn id`() = runBlocking {
         wire.streamAnswers.add(WireReply.Unreachable("SocketTimeoutException"))
         wire.clipAnswers.add(heardStream)
         val u = utterance(this)
         val pcm = voice()
         u.audio(pcm, 0, pcm.size)
         u.end()
+        assertEquals("start a timer for five minutes", (u.result(1_000) as SttResult.Text).text)
+        assertEquals(u.turnId, wire.clips.single()["turn_id"])
+    }
+
+    @Test
+    fun `a duplicate means the engine had it, held: no second run, and nothing was done`() = runBlocking {
+        wire.streamAnswers.add(WireReply.Unreachable("SocketTimeoutException"))
+        wire.clipAnswers.add(json(409, """{"code": "duplicate", "status": "running"}"""))
+        val u = utterance(this)
+        val pcm = voice()
+        u.audio(pcm, 0, pcm.size)
+        u.end()
         assertEquals(SttResult.Failed(EngineUtterance.UNREACHABLE), u.result(1_000))
-        assertTrue("the engine may be running it: no double run", wire.clips.isEmpty())
-        assertTrue(u.postedAtMs > 0)
+        assertEquals(EngineBrainRules.NO_ANSWER_LINE, EngineBrain.lostWords(u))
+    }
+
+    @Test
+    fun `a busy conversation is tried once more after 300 ms`() = runBlocking {
+        wire.clipAnswers.add(json(409, """{"code": "conversation_busy"}"""))
+        wire.clipAnswers.add(heardStream)
+        val u = utterance(this, streamed = false)
+        val pcm = voice()
+        u.audio(pcm, 0, pcm.size)
+        u.end()
+        assertEquals("start a timer for five minutes", (u.result(1_000) as SttResult.Text).text)
+        assertEquals(2, wire.clips.size)
     }
 
     @Test
@@ -166,7 +192,7 @@ class EngineUtteranceTest {
         session.coroutineContext[kotlinx.coroutines.Job]?.cancel()
         u.release()
         kotlinx.coroutines.delay(20)
-        assertEquals(listOf("t9"), wire.cancels)
+        assertEquals(listOf("take:${u.turnId}"), wire.decisions)
     }
 
     @Test
@@ -224,7 +250,7 @@ class EngineUtteranceTest {
         u.result(1_000)
         u.release()
         kotlinx.coroutines.delay(20)
-        assertEquals(listOf("t9"), wire.cancels)
+        assertEquals(listOf("take:${u.turnId}"), wire.decisions)
         assertEquals("released: nothing left to answer", null, u.takeTurn())
     }
 }

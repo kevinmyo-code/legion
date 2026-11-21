@@ -52,6 +52,13 @@ internal class FakeEngineWire : EngineWire {
         return resultAnswers.removeFirstOrNull() ?: json(200, """{"recorded": true, "status": "late"}""")
     }
 
+    val decisions = CopyOnWriteArrayList<String>()
+
+    override suspend fun decide(turnId: String, go: Boolean): WireReply {
+        decisions.add("${if (go) "go" else "take"}:$turnId")
+        return json(200, """{"decision": "${if (go) "go" else "take"}"}""")
+    }
+
     override suspend fun cancel(turnId: String): WireReply {
         cancels.add(turnId)
         return json(200, """{"detail": "Cancelled."}""")

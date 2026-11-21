@@ -35,7 +35,6 @@ internal class EngineBrain(
     private val scope: CoroutineScope,
     private val deviceState: () -> EngineBrainRules.DeviceState,
     private val log: (String) -> Unit,
-    openedWithLine: Boolean,
     /** Outlives the session by [EngineBrainRules.TAIL_MS]: cancels that must reach the engine. */
     private val tail: CoroutineScope = TAIL,
 ) {
@@ -46,7 +45,6 @@ internal class EngineBrain(
     @Volatile private var gate: EngineCallGate? = null
     @Volatile private var streamOff = false
     @Volatile private var conversationId: String? = null
-    @Volatile private var afterPhoneLine = openedWithLine
     @Volatile private var executor: TextToolExecutor? = null
     @Volatile private var listener: GeminiTextLoop.Listener? = null
     @Volatile private var relay: EngineRelay? = null
@@ -58,6 +56,9 @@ internal class EngineBrain(
     private val now: () -> Long = System::currentTimeMillis
     private val calls = EngineCalls(scope, ::runCall, ::postLate, now)
     private val poster = EngineResultPoster(wire)
+
+    /** What the engine is told about the turns the phone answered ([EnginePhoneContext]). */
+    val context = EnginePhoneContext(now)
 
     /**
      * `POST /api/agents/limb` with the [offer] it builds, in the background (the chime never waits).
@@ -71,8 +72,17 @@ internal class EngineBrain(
             val o = offer()
             val reply = withTimeoutOrNull(EngineBrainRules.ATTACH_MS) { wire.attach(o.json) }
                 ?: WireReply.Unreachable("timeout")
-            val brain = (reply as? WireReply.Json)?.takeIf { it.status in OK_RANGE }?.body?.optString("brain")
-            if (brain == "engine") gate = EngineCallGate(o)
+            val answer = (reply as? WireReply.Json)?.takeIf { it.status in OK_RANGE }?.body
+            val brain = answer?.optString("brain")
+            // The engine's own refusals (Contract v2 12.5c): never offered, so never run here either.
+            val dropped = answer?.optJSONArray("dropped")
+                ?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("name") } }.orEmpty()
+            if (dropped.isNotEmpty()) {
+                val names = dropped.joinToString(",") { EngineCallGate.safeName(it) }
+                log("engine_attach dropped=${dropped.size} tools=$names")
+            }
+            val offered = EngineLimbManifest.Offer(o.json, o.tools - dropped.toSet(), o.params)
+            if (brain == "engine") gate = EngineCallGate(offered)
             state = if (brain == "engine") State.ON else State.OFF
             val why = (reply as? WireReply.Json)?.let { "http_${it.status}" } ?: (reply as WireReply.Unreachable).reason
             val ms = now() - started
@@ -81,22 +91,24 @@ internal class EngineBrain(
     }
 
     /**
-     * His next utterance, spoken to the engine, or null when the phone transcribes it. Decided before
-     * any audio goes: the engine not (yet) the brain, his answer to a line the phone just spoke, or
-     * the laptop voice (its own transcriber ends turns) -> the phone transcribes, so nothing starts on
-     * the engine for a turn the phone keeps.
+     * His next utterance, spoken to the engine, or null when the phone transcribes it: the engine not
+     * (yet) the brain, or the laptop voice (its own transcriber ends turns). Every engine-heard turn is
+     * held until the phone's go ([EngineUtterance]).
      */
     fun utterance(cloudVoice: Boolean): EngineUtterance? =
-        if (state != State.ON || !cloudVoice || afterPhoneLine) {
+        if (state != State.ON || !cloudVoice) {
             null
         } else {
-            val setup = UtteranceSetup(wire, scope, tail, meta(), !streamOff, lastCancel)
+            val setup = UtteranceSetup(wire, scope, tail, ::meta, !streamOff, lastCancel)
             EngineUtterance(ids.incrementAndGet(), setup, ::switchedOff, { lastCancel = it })
         }
 
+    /** Every turn's metadata: the phone speaks with its own voice (`speak: false`), and its facts. */
     private fun meta(): JSONObject = JSONObject()
         .put("client", "phone")
         .put("contract_version", EngineBrainRules.CONTRACT_VERSION)
+        .put("speak", false)
+        .put("client_facts", context.facts())
         .apply { conversationId?.let { put("conversation_id", it) } }
 
     private fun switchedOff(streamOnly: Boolean) {
@@ -112,24 +124,23 @@ internal class EngineBrain(
      * always the phone's: its drafts and loop run exactly as with the switch off.
      */
     fun route(utt: EngineUtterance?, words: String, facts: RouteFacts): (suspend () -> WireReply)? {
-        val why = when {
-            utt == null && !facts.engineHeard -> "phone_heard"
-            state != State.ON -> "off"
-            else -> EngineBrainRules.phoneKeeps(words, facts.with(afterPhoneLine))
+        val why = EngineBrainRules.phoneKeeps(words, facts.facts(engineHeard = utt != null, on = state == State.ON))
+        if (why != null) {
+            // A turn the phone keeps is taken back: held, nothing of it acts on the engine.
+            utt?.release()
+            context.lastEngineTurn = null
+            if (why in EngineBrainRules.LOGGED_KEEPS) log("engine_route brain=phone reason=$why")
         }
-        // A phone PROMPT (greeting, opener, check-in) holds his next turn on the phone, whatever the
-        // engine's state; his turn answers it; an `off` turn leaves the mark as it was (review B-14).
-        afterPhoneLine = when {
-            !facts.fromUser -> true
-            why == "off" -> afterPhoneLine
-            else -> false
-        }
-        if (why != null) utt?.release()
-        if (why != null && why != "off" && why != "phone_heard") log("engine_route brain=phone reason=$why")
         return when {
             why != null -> null
-            utt != null -> suspend { utt.takeTurn() ?: utt.refusal ?: WireReply.Unreachable("no_stream") }
-            else -> suspend { wire.turnText(meta().put("kind", "user").put("transcript", words)) }
+            utt != null -> suspend {
+                utt.go()
+                utt.takeTurn() ?: utt.refusal ?: WireReply.Unreachable("no_stream")
+            }
+            else -> suspend {
+                val id = java.util.UUID.randomUUID().toString()
+                wire.turnText(meta().put("kind", "user").put("transcript", words).put("turn_id", id))
+            }
         }
     }
 
@@ -137,11 +148,12 @@ internal class EngineBrain(
     data class RouteFacts(
         val test: Boolean,
         val fromUser: Boolean,
-        val carryMarked: Boolean,
         /** The engine heard this turn (streamed audio), or the laptop voice's words may go to it. */
         val engineHeard: Boolean,
     ) {
-        fun with(afterPhoneLine: Boolean) = EngineBrainRules.Facts(test, fromUser, carryMarked, afterPhoneLine)
+        /** [engineHeard]: an utterance streamed to the engine; [on]: the engine is the brain. */
+        fun facts(engineHeard: Boolean, on: Boolean) =
+            EngineBrainRules.Facts(test, fromUser, engineHeard || this.engineHeard, on)
     }
 
     /**
@@ -168,15 +180,18 @@ internal class EngineBrain(
         val turn = EngineTurnSink(listener, now)
         val r = EngineRelay(wire, calls, turn, poster)
         relay = r
+        context.engineAnswering()
         val end = try {
             r.follow(start(), EngineBrainRules.FIRST_EVENT_MS)
         } catch (e: CancellationException) {
+            context.lastEngineTurn = r.turnId ?: utt?.turnId
             if (turn.touchedOutside) listener.onReadThrough(READ_THROUGH_SOURCE)
             lastCancel = tail.launch { withTimeoutOrNull(EngineBrainRules.TAIL_MS) { r.cancel() } }
             log(EngineTimings.line(utt, turn, "cancelled", r.turnId != null))
             throw e
         }
         turn.conversationId?.let { conversationId = it }
+        context.lastEngineTurn = end.turnId ?: utt?.turnId
         crisis = turn.crisis
         if (end.words == null) failures.set(0) else failures.incrementAndGet()
         if (end.tainted) listener.onReadThrough(READ_THROUGH_SOURCE)

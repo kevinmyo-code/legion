@@ -38,14 +38,10 @@ internal class EngineCallGate(private val offer: EngineLimbManifest.Offer) {
     fun decide(call: EngineCall, state: EngineBrainRules.DeviceState): Decision {
         val tool = offer.tools[call.name]
         val taintedBefore = call.tainted || tainted || call.afterReply
-        val writes = call.writes || tool?.writes == true
-        val needs = (call.needs + tool?.relay?.needs.orEmpty()).distinct()
-        val badArgs = tool?.let { EngineArgs.problem(offer.params[it.name] ?: JSONObject(), call.args) }
-        val refusal = when {
-            tool == null -> "$NOT_OFFERED: ${safeName(call.name)} is not a tool this phone offered; nothing ran."
-            badArgs != null -> "Nothing ran: ${tool.name} was asked with $badArgs."
-            taintedBefore && writes -> ReadThroughWriteGuard.WRITE_REFUSAL.format(tool.name)
-            else -> EngineBrainRules.needsRefusal(needs, state)
+        val refusal = if (tool == null) {
+            "$NOT_OFFERED: ${safeName(call.name)} is not a tool this phone offered; nothing ran."
+        } else {
+            refusal(call, tool, taintedBefore, state)
         }
         if (refusal != null || tool == null) {
             return Decision.Refuse((refusal ?: NOT_OFFERED).take(EngineBrainRules.MAX_WORDS_CHARS))
@@ -54,6 +50,22 @@ internal class EngineCallGate(private val offer: EngineLimbManifest.Offer) {
         // From here every later call of the turn is marked: the outside text is on its way to the model.
         if (outside) tainted = true
         return Decision.Run(tool.name, call.args, taintedBefore, outside)
+    }
+
+    /** Why an offered [tool] may not run for [call] now, on the phone's own facts, or null. */
+    private fun refusal(
+        call: EngineCall,
+        tool: EngineLimbManifest.Tool,
+        taintedBefore: Boolean,
+        state: EngineBrainRules.DeviceState,
+    ): String? {
+        val badArgs = EngineArgs.problem(offer.params[tool.name] ?: JSONObject(), call.args)
+        val writes = call.writes || tool.writes
+        return when {
+            badArgs != null -> "Nothing ran: ${tool.name} was asked with $badArgs."
+            taintedBefore && writes -> ReadThroughWriteGuard.WRITE_REFUSAL.format(tool.name)
+            else -> EngineBrainRules.needsRefusal((call.needs + tool.relay.needs).distinct(), state)
+        }
     }
 
     companion object {

@@ -126,36 +126,43 @@ class EngineLimbManifestTest {
         assertEquals(before, LiveToolbox.declarations().toString())
     }
 
+    @Test
+    fun `the phone's class sets are the engine's, from the one shared file`() {
+        assertEquals(PLAIN, EngineLimbManifest.PLAIN_CLASSES)
+        assertEquals(OUTSIDE, EngineLimbManifest.OUTSIDE_CLASSES)
+        assertEquals("one round of relayed calls", 4, SHARED.getInt("max_calls_per_round"))
+    }
+
     private companion object {
-        val PLAIN = setOf("device", "vehicle", "place", "household")
-        val OUTSIDE = setOf(
-            "web", "notifications", "contacts", "clipboard", "screen_text", "camera", "files", "calendar",
-        )
-
         /**
-         * The engine's `relay.MAIL_CLASS`, `OUTSIDE_ACTIONS`, `_MAIL_NAME` and `_OUTSIDE_NAME`, copied
-         * from the relay branch at 07a6c557. Kept in step by hand until both suites read one shared
-         * list (P1 report, section 5).
+         * The engine's own rule file (`server/contracts/limb/v1/tool_classes.json`, read by
+         * `agents/legion/relay.py` at import): one list both suites read, never a hand-kept copy.
          */
-        val ENGINE_MAIL_CLASS = setOf(
-            "ask_mail", "search_mail", "read_mail", "email", "gmail", "get_sitrep", "track_package", "flight_status",
-        )
-        val MAIL_NAME = Regex(
-            "(^|_)(mail|gmail|email|inbox|sms|mms|message|messages|chat|whatsapp|telegram|signal|" +
-                "imessage|dm|dms)(_|$)",
-            RegexOption.IGNORE_CASE,
-        )
-        val OUTSIDE_NAME = Regex(
-            "(^|_)(notification|notifications|clipboard|contact|contacts|browser|web|page|pages|" +
-                "screen_text|ocr|camera|look|photo|photos|file|files|feed|news|calendar|agenda|invite|" +
-                "invites|search|caller|callers|call_log)(_|$)",
+        val SHARED: JSONObject = run {
+            var dir: java.io.File? = java.io.File("").absoluteFile
+            var found: java.io.File? = null
+            while (dir != null && found == null) {
+                found = java.io.File(dir, "server/contracts/limb/v1/tool_classes.json").takeIf { it.isFile }
+                dir = dir.parentFile
+            }
+            JSONObject(checkNotNull(found) { "server/contracts/limb/v1/tool_classes.json not found" }.readText())
+        }
+
+        fun list(key: String): Set<String> =
+            SHARED.getJSONArray(key).let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
+
+        /** A name matches a word when the word is a whole underscore-separated part of it (the file's rule). */
+        fun words(key: String) = Regex(
+            "(^|_)(" + list(key).joinToString("|") { Regex.escape(it) } + ")(_|$)",
             RegexOption.IGNORE_CASE,
         )
 
-        val OUTSIDE_ACTIONS = setOf(
-            "read_calendar", "calendar", "agenda", "get_agenda", "invites", "search_places", "place_search",
-            "nearby", "caller_id", "call_log", "recent_calls", "who_called",
-        )
+        val PLAIN = list("plain_classes")
+        val OUTSIDE = list("outside_classes")
+        val ENGINE_MAIL_CLASS = list("mail_class_names")
+        val MAIL_NAME = words("mail_name_words")
+        val OUTSIDE_NAME = words("outside_name_words")
+        val OUTSIDE_ACTIONS = list("outside_actions")
 
         /** The phone's own mail-reading tools (`ToolReads`): never relayed. */
         val MAIL_ON_PHONE = setOf(

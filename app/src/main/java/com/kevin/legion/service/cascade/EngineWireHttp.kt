@@ -52,6 +52,9 @@ internal class EngineWireHttp(
     override suspend fun toolResult(turnId: String, body: JSONObject): WireReply =
         call(post("$TURN/$turnId/tool_result", body))
 
+    override suspend fun decide(turnId: String, go: Boolean): WireReply =
+        call(post("$TURN/$turnId/${if (go) "go" else "take"}", JSONObject()))
+
     override suspend fun cancel(turnId: String): WireReply = call(post("$TURN/$turnId/cancel", JSONObject()))
 
     override suspend fun status(turnId: String): WireReply = call(request("$TURN/$turnId").get().build())
