@@ -111,7 +111,7 @@ def test_a_turn_with_no_third_party_read_deletes_normally(member, engine):
     assert not _live(event_id)
 
 
-def test_the_next_turn_deletes_when_the_person_asks_again(member, engine):
+def test_the_turn_after_next_deletes_when_the_person_asks_again(member, engine):
     conversation, event_id = _make_event(member, engine)
     _turn(
         member,
@@ -123,6 +123,12 @@ def test_the_next_turn_deletes_when_the_person_asks_again(member, engine):
         ],
         conversation,
     )
+    assert _live(event_id)
+    # The carry (ADR 0090 amended 2026-11-21): the next turn refuses too; the one after deletes.
+    events, _ = _turn(
+        member, engine, [call("delete_event", {"id": event_id}), say("Gone.")], conversation
+    )
+    assert _tools(events)["delete_event"]["ok"] is False
     assert _live(event_id)
     events, _ = _turn(
         member, engine, [call("delete_event", {"id": event_id}), say("Gone.")], conversation
@@ -216,8 +222,16 @@ def test_remember_is_refused_in_the_turn_that_searched_the_web(member, engine):
     assert refused["ok"] is False and refused["text"] == read_through.REFUSAL
 
 
-def test_the_next_turn_may_remember(member, engine):
+def test_the_turn_after_next_may_remember(member, engine):
     _, conversation = _turn(member, engine, [call("web_search", {"query": "pump"}), say("Read.")])
+    # The carry (ADR 0090 amended 2026-11-21): the next turn refuses, in the carried words.
+    events, _ = _turn(
+        member,
+        engine,
+        [call("remember", {"text": "I like oat milk."}), say("Noted.")],
+        conversation,
+    )
+    assert _tools(events)["remember"]["ok"] is False
     events, _ = _turn(
         member,
         engine,
