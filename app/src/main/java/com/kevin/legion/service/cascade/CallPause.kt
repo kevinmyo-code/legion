@@ -138,9 +138,10 @@ internal object CallPause {
     fun closeReason(reason: Reason): String = "paused_${reason.token}"
 
     /**
-     * The same reason read twice in a row fires, once. One reading is not enough: LEGION's own call
-     * audio sets the mode a moment before it marks it as its own, and clears the mark a moment before
-     * it restores the mode ([com.kevin.legion.service.turn.CallAudioMode]).
+     * The same reason read twice in a row fires, once. One reading is not enough: a mode or a call
+     * signal can flicker for one poll. LEGION's own call audio marks the mode as its own before it
+     * enters it and unmarks it only after restoring it ([com.kevin.legion.service.turn.CallAudioMode]),
+     * so its own enter, exit and earpiece switch never read as another app's call.
      */
     class Debounce {
         private var last: Reason? = null

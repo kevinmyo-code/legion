@@ -132,7 +132,6 @@ internal class CallAudioMode(
     fun exit(why: String) {
         if (!active) return
         active = false
-        ownCommActive = false
         val wasSco = bluetoothSco
         bluetoothSco = false
         earpieceOn = false
@@ -151,6 +150,9 @@ internal class CallAudioMode(
             audio.mode = prevMode
             Log.i(TAG, "exited ($why) mode=${audio.mode}")
         }.onFailure { Log.w(TAG, "exit failed ($why): ${it.message}") }
+        // Unmarked only AFTER the mode is restored, the mirror of [enter]: the call watch (CallPause)
+        // never reads LEGION's own communication mode as another app's on the way out either.
+        ownCommActive = false
     }
 
     val isActive: Boolean @Synchronized get() = active
