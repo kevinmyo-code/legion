@@ -31,6 +31,7 @@ import json
 import re
 from dataclasses import dataclass
 
+from agents.legion import carry
 from assistant import read_through
 from assistant.surface import refusal_for
 from engine_mcp.tools import TOOLS_BY_NAME
@@ -81,18 +82,21 @@ def check_call(state, spec, name: str, args: dict, tool, user) -> Verdict:
     if tool.writes and not spec.writes_allowed:
         return Verdict(False, READ_ONLY.format(name=name), "not_allowed")
     if tool.writes and state.tainted:
-        words = (
-            read_through.REFUSAL
-            if name == "remember"
-            else read_through.WRITE_REFUSAL.format(
-                verb="deleted" if tool.destructive else "changed", name=name
-            )
-        )
-        return Verdict(False, words, "tainted")
+        return Verdict(False, tainted_refusal(state, name, tool.destructive), "tainted")
     flagged = name in CONFIRM_FLAG_TOOLS and (args or {}).get("confirm") is True
     if tool.writes and (tool.destructive or name in spec.confirm or flagged):
         return hold_for_yes(state, name, args)
     return ALLOW
+
+
+def tainted_refusal(state, name: str, destructive: bool = False) -> str:
+    """The words a write refuses with in a tainted turn: the carried ones when the only reason is
+    the turn before (`carry.only_carried`), else this turn's (`assistant.read_through`)."""
+    carried = carry.only_carried(state.taint)
+    if name == "remember":
+        return read_through.CARRY_REFUSAL if carried else read_through.REFUSAL
+    template = read_through.CARRY_WRITE_REFUSAL if carried else read_through.WRITE_REFUSAL
+    return template.format(verb="deleted" if destructive else "changed", name=name)
 
 
 def hold_for_yes(state, name: str, args: dict) -> Verdict:

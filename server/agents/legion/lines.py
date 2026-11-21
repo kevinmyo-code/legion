@@ -33,6 +33,12 @@ READ_THROUGH_WAIT = (
     "I haven't changed anything: this turn read text from the web, so changes wait for your next "
     "message. Ask me again and I'll do it."
 )
+# The carry (the owner's ruling, 2026-11-21, ADR 0090 amended): a change refused because the turn
+# BEFORE this one read outside text. True about which turn read it; the same promise.
+READ_THROUGH_WAIT_CARRIED = (
+    "I haven't changed anything: I read text from the web just before this, so changes wait for "
+    "your next message. Ask me again and I'll do it."
+)
 # Said after a claimed change that no write backed and none went through by the end of the turn.
 CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
 # The same, when a write did go through in this turn (a claim made before its own call).

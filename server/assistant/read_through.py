@@ -46,6 +46,12 @@ altogether, and `morning_briefing` calls `brief_latest`.
 - **The web cascade** (`POST /api/assistant/turn`, ADR 0102): one HTTP request is one turn, so
   the request flag `before_tool` sets is the turn's taint; the turn is also marked with its number
   (the count of the person's earlier turns on the record), never None.
+- **The carry (the owner's ruling, 2026-11-21, ADR 0090 amended).** On the web cascade, for a
+  member, the turn AFTER a marked turn refuses every write too, in its own words
+  (`CARRY_WRITE_REFUSAL`, `CARRY_REFUSAL`): `set_turn(..., carry=True)` makes the one check read
+  the previous turn's mark beside this turn's, in the same query. A recruiter's visit keeps the
+  same-turn rule (`CARRY_ON_DEMO`); the Live door, whose turn is the browser's model-turn count,
+  does too.
 - **Fail closed, both ways.** The mark is written BEFORE the third-party tool runs
   (`before_tool`, called by `run_engine_tool`). If that write fails, the tool does not run (no
   web text exists to remember) and the conversation goes into this process's `_UNMARKED`, so
@@ -105,6 +111,23 @@ WRITE_REFUSAL = (
     "so changes wait for their next message. Say so; they can simply ask again."
 )
 
+# The carry (the owner's ruling, 2026-11-21, ADR 0090 amended): the turn AFTER one that read
+# outside text refuses every write too, for one turn, in these words. The same shape as the
+# same-turn ones (code matches "Nothing was" and "read outside text", `closing.guard_refused`),
+# but true about which turn read it.
+CARRY_REFUSAL = (
+    "Not remembered: the turn before this one read text from the web. Ask the user to confirm it "
+    "in their own words next turn."
+)
+CARRY_WRITE_REFUSAL = (
+    "Nothing was {verb}: {name} did not run. The turn before this one read outside text (a web "
+    "search, the brief's news or a GitHub result), which can carry instructions that are not the "
+    "person's, so changes wait for their next message. Say so; they can simply ask again."
+)
+# The public demo (recruiter visits) is frozen: the carry is a member rule until the owner says
+# otherwise (an open decision). The one switch.
+CARRY_ON_DEMO = False
+
 MARK_FAILED = (
     "Nothing was read. The engine could not record that this turn read the web, so it did not "
     "run the search; say it could not be done just now."
@@ -124,10 +147,18 @@ _UNMARKED: set[uuid.UUID] = set()
 class TurnRef:
     conversation_id: uuid.UUID | None
     turn: int | None
+    # The turn before this one counts too (the carry): set by a door whose turn numbers are the
+    # person's own turns (the web cascade, members), never by the Live door's model-turn count.
+    carry: bool = False
 
 
-def set_turn(request, conversation_id, turn: int | None) -> None:
-    setattr(request, _TURN, TurnRef(conversation_id, turn))
+# What `_read_where` answers: this turn read outside text, only the turn before it did, or neither.
+THIS_TURN = "this_turn"
+TURN_BEFORE = "turn_before"
+
+
+def set_turn(request, conversation_id, turn: int | None, *, carry: bool = False) -> None:
+    setattr(request, _TURN, TurnRef(conversation_id, turn, carry and turn is not None))
 
 
 def read_third_party(request) -> bool:
@@ -163,15 +194,22 @@ def _record(row, turn: int) -> None:
     ReadThroughTurn.objects.get_or_create(conversation=row, turn=turn)
 
 
-def _marked(ref: TurnRef, user) -> bool:
+def _marked(ref: TurnRef, user) -> str | None:
+    """`THIS_TURN`, `TURN_BEFORE` (the carry) or None, in one query."""
     from assistant.models import ReadThroughTurn
 
     rows = ReadThroughTurn.objects.filter(
         conversation__batch_id=ref.conversation_id, conversation__user=user
     )
-    if ref.turn is not None:
-        rows = rows.filter(turn__in=(ref.turn, ReadThroughTurn.UNKNOWN_TURN))
-    return rows.exists()
+    if ref.turn is None:
+        return THIS_TURN if rows.exists() else None
+    wanted = [ref.turn, ReadThroughTurn.UNKNOWN_TURN]
+    if ref.carry:
+        wanted.append(ref.turn - 1)
+    turns = set(rows.filter(turn__in=wanted).values_list("turn", flat=True)[:3])
+    if turns & {ref.turn, ReadThroughTurn.UNKNOWN_TURN}:
+        return THIS_TURN
+    return TURN_BEFORE if turns else None
 
 
 def _mark(request) -> bool:
@@ -215,23 +253,28 @@ def mark_turns(request, conversation_id, turns) -> None:
         _UNMARKED.add(conversation_id)
 
 
-def _turn_read_third_party(request) -> bool:
-    """Whether this request, or the turn it belongs to, read third-party text. Fails closed: a
-    conversation whose mark could not be written, or marks that cannot be read, count as read."""
+def _read_where(request) -> str | None:
+    """Whether this request or its turn read third-party text (`THIS_TURN`), only the turn before
+    it did (`TURN_BEFORE`, the carry), or neither (None). Fails closed: a conversation whose mark
+    could not be written, or marks that cannot be read, count as this turn."""
     if read_third_party(request):
         # This same request already ran a third-party tool (a procedure step).
-        return True
+        return THIS_TURN
     ref = getattr(request, _TURN, None)
     if ref is None or ref.conversation_id is None:
-        return False
+        return None
     if ref.conversation_id in _UNMARKED:
-        return True
+        return THIS_TURN
     try:
         with transaction.atomic():
             return _marked(ref, request.user)
     except DatabaseError:
         log.warning("read-through: could not check a turn; refusing", exc_info=True)
-        return True
+        return THIS_TURN
+
+
+def _turn_read_third_party(request) -> bool:
+    return _read_where(request) is not None
 
 
 def remember_refusal(request, text: str) -> str | None:
@@ -241,18 +284,26 @@ def remember_refusal(request, text: str) -> str | None:
     ref = getattr(request, _TURN, None)
     if ref is None or ref.conversation_id is None:
         return CONSTRAINT_REFUSAL if text.strip().startswith(CONSTRAINT_PREFIX) else None
-    return REFUSAL if _turn_read_third_party(request) else None
+    where = _read_where(request)
+    if where is None:
+        return None
+    return CARRY_REFUSAL if where == TURN_BEFORE else REFUSAL
 
 
 def write_refusal(request, name: str, *, destructive: bool = False) -> str | None:
     """The sentence a write tool refuses with in a turn that read third-party text, or None when
     it may run. Called by `run_engine_tool` for every tool whose `writes` is True, before its
-    handler; never for a read. Logs `write_refused after=read_through tool=<tool>`, the tool's
-    name only."""
-    if not _turn_read_third_party(request):
+    handler; never for a read. Logs `write_refused after=read_through tool=<tool> carry=<0|1>`,
+    the tool's name only."""
+    where = _read_where(request)
+    if where is None:
         return None
-    log.warning("write_refused after=read_through tool=%s", name)
+    carried = where == TURN_BEFORE
+    log.warning(
+        "write_refused after=read_through tool=%s carry=%d", name, int(carried)
+    )
     if name == "remember":
         # The phone's own sentence for a memory, which `remember_refusal` also answers with.
-        return REFUSAL
-    return WRITE_REFUSAL.format(verb="deleted" if destructive else "changed", name=name)
+        return CARRY_REFUSAL if carried else REFUSAL
+    template = CARRY_WRITE_REFUSAL if carried else WRITE_REFUSAL
+    return template.format(verb="deleted" if destructive else "changed", name=name)

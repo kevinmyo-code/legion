@@ -29,8 +29,8 @@ from django.utils import timezone as dj_timezone
 
 from agents.graph.nodes import NodeContext, turn_graph
 from agents.graph.state import TurnState
+from agents.legion import carry, guards, late, relay_turn
 from agents.legion import client_facts as facts_of
-from agents.legion import guards, late, relay_turn
 from agents.legion.gateway import LegionGateway
 from agents.legion.hold import TurnHold
 from agents.legion.retention import prune
@@ -249,6 +249,12 @@ def run_turn(
         # The line before this turn read outside text (plan 1119 section 4b rule 5).
         state.add_taint(facts_of.CARRY)
         store.mark_taint(state)
+    previous_taint = _taint_of_turn(conversation, seq - 1)
+    if carry.carries(previous_taint):
+        # The carry (ADR 0090 amended, 2026-11-21): the turn before read outside text, so no
+        # write in this one either; one turn only (`carry.py`).
+        state.add_taint(carry.PREVIOUS_TURN)
+        store.mark_taint(state)
     late_may_run = not facts.get("test_mode") and (not late.enabled() or hold.wait() == "go")
     if agent == "generalist" and not pending and late_may_run:
         # The late-answer path (dark unless LEGION_LATE_ANSWERS=on). Not while a write waits for
@@ -256,7 +262,7 @@ def run_turn(
         # Code's own answer to "look into X and tell me later", "anything pending?" or "cancel
         # that", with no model round; else the one line owed from earlier, said first and kept
         # out of this turn's model context.
-        if late.enabled() and late.CARRY in _taint_of_turn(conversation, seq - 1):
+        if late.enabled() and late.CARRY in previous_taint:
             # The last turn said a line built on web pages: no write in this one either.
             state.add_taint(late.AFTER_CARRY)
         handled = late.intercept(

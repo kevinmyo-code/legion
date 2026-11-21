@@ -94,6 +94,7 @@ from agents.legion.lines import (
     NOTHING_CHANGED,
     READ_THROUGH_WAIT,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT
     READ_THROUGH_WAIT_AFTER_WRITE,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_AFTER_WRITE
+    READ_THROUGH_WAIT_CARRIED,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_CARRIED
     SPOKEN_FAILURES,  # noqa: F401 - read as cascade.SPOKEN_FAILURES
     STT_FAILED,
     TOO_MANY_TOOLS,
@@ -449,7 +450,14 @@ class WebDoor:
         self.addressed: dict[str, bool] = {}
         self._tools = None
         self._declarations = None
-        read_through.set_turn(request, conversation_id, turn)
+        # The carry (ADR 0090 amended, 2026-11-21): the turn after one that read outside text
+        # refuses writes too; a member rule, the demo frozen (`read_through.CARRY_ON_DEMO`).
+        read_through.set_turn(
+            request,
+            conversation_id,
+            turn,
+            carry=not self.recruiter or read_through.CARRY_ON_DEMO,
+        )
 
     def tools(self) -> dict:
         if self._tools is None:
@@ -1521,7 +1529,12 @@ def _answer(
         timings["torque_dropped"] = torque_dropped
     wrote = door.wrote()
     closing_line = closing.closing_line(
-        door.calls, refused=guard_refused, unbacked=unbacked, wrote=wrote, tainted=tainted
+        door.calls,
+        refused=guard_refused,
+        unbacked=unbacked,
+        wrote=wrote,
+        tainted=tainted,
+        carried=closing.refused_by_carry(door.calls),
     )
     if closing_line is not None:
         yield say(closing_line)
@@ -1580,13 +1593,14 @@ def _answer(
 
 
 def _late_read_through(request, door, owed) -> None:
-    """An owed line built on web pages (`late.read_third_party`): this turn and the next may not
-    write (`read_through.mark_turns`), and memory keeps no assistant line from here on (the
-    record's `read_through source=carry`)."""
+    """An owed line built on web pages (`late.read_third_party`): this turn may not write
+    (`read_through.mark_turns`), nor the next (the carry, ADR 0090 amended: it reads this turn's
+    mark, so marking the next turn too would carry a second time), and memory keeps no assistant
+    line from here on (the record's `read_through source=carry`)."""
     if not late.read_third_party(owed):
         return
     conversation_id = conversation_id_of(door)
-    read_through.mark_turns(request, conversation_id, (door.turn, door.turn + 1))
+    read_through.mark_turns(request, conversation_id, (door.turn,))
     web_conversation.record_lines(
         request,
         conversation_id,

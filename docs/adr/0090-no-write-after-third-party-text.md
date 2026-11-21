@@ -1,7 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-13
-amended: 2026-11-17
+amended: 2026-11-21
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-11-13 - Release and deploy from GitHub, no laptop; injection guard (Kevin)]]"
@@ -26,6 +26,36 @@ not run ... they can simply ask again").
   assistant door, in procedures, and within one `/mcp` request. A mark that cannot be read refuses.
 - **Phone:** `/mcp` carries no turn, so `AskEngine` refuses a write once an engine third-party tool
   answered within the same ask; a Live turn already marked read-through sends nothing at all.
+
+## Amendment 2026-11-21: the carry, the turn after too (Kevin)
+
+**A deliberate ruling by the owner on 2026-11-21, made after a live check showed the web assistant
+writing an item in the turn right after a web search: the web door is to be as strict as the
+engine brain after outside text, on every door.** He chose that scope, and kept it strict: no
+early clearing.
+
+- **The rule.** A turn that read outside text taints the person's NEXT turn too.
+  - "Read outside text" means the turn's own read-through mark: a third-party tool, a relayed
+    read-through call, or a late answer built on web pages.
+  - Every write in that next turn refuses in words, including a change he names fully himself.
+    It still reads and answers what it can.
+  - The carry clears after that one turn. A turn tainted only by the carry does not carry again.
+- **The words.** The refusal and the spoken line say which turn read it:
+  - the tool's words are `read_through.CARRY_WRITE_REFUSAL` / `CARRY_REFUSAL`;
+  - the closing line is `lines.READ_THROUGH_WAIT_CARRIED` ("I haven't changed anything: I read
+    text from the web just before this, so changes wait for your next message. Ask me again and
+    I'll do it.").
+  - The same-turn words are unchanged.
+- **Web assistant (the cascade door), members only.** The server decides from its own record:
+  `ReadThroughTurn` holds the previous turn's mark, read in the same single query as this turn's.
+  - The recruiter demo (/try) keeps the same-turn rule: it is frozen. `read_through.CARRY_ON_DEMO`
+    is the one switch, and applying the rule there is an open question for the owner.
+  - The Live fallback door counts model turns, not his turns, so it keeps the same-turn rule.
+- **Engine brain.** `run_turn` reads the previous turn's `taint_sources` and adds `previous_turn`
+  to this turn's taint (`agents/legion/carry.py`).
+- **Phone cascade.** `ReadThroughCarry` today carries only after a read-through opener. It is to
+  carry after any turn that read outside text, his own search included. That is a separate phone
+  slice with its own app update.
 
 ## Amendment 2026-11-17: the phone guard, "Block lasting + outbound" (Kevin)
 

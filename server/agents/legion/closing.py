@@ -20,6 +20,7 @@ from agents.legion.lines import (
     NOTHING_CHANGED,
     READ_THROUGH_WAIT,
     READ_THROUGH_WAIT_AFTER_WRITE,
+    READ_THROUGH_WAIT_CARRIED,
 )
 from assistant import read_through
 
@@ -31,10 +32,30 @@ def guard_refused(calls) -> bool:
         not c.ok
         and (
             (c.text.startswith("Nothing was") and "read outside text" in c.text)
-            or c.text == read_through.REFUSAL
+            or c.text in (read_through.REFUSAL, read_through.CARRY_REFUSAL)
         )
         for c in calls
     )
+
+
+def refused_by_carry(calls) -> bool:
+    """Every ADR 0090 refusal in `calls` was the carry's (the turn BEFORE read outside text), so
+    the closing line says that turn, not this one. False when this turn read outside text too."""
+    refused = [
+        c
+        for c in calls
+        if not c.ok
+        and (
+            (c.text.startswith("Nothing was") and "read outside text" in c.text)
+            or c.text in (read_through.REFUSAL, read_through.CARRY_REFUSAL)
+        )
+    ]
+    return bool(refused) and all(
+        c.text == read_through.CARRY_REFUSAL or _CARRIED in c.text for c in refused
+    )
+
+
+_CARRIED = "The turn before this one read outside text"
 
 
 def closing_line(
@@ -44,9 +65,13 @@ def closing_line(
     unbacked: int,
     wrote: bool,
     tainted: Callable[[], bool],
+    carried: bool = False,
 ) -> str | None:
     """The line about a change, or None. `refused` is `guard_refused(calls)`; `unbacked` the held
-    claims no write backed; `tainted` whether the turn read outside text, asked only when needed."""
+    claims no write backed; `tainted` whether the turn read outside text, asked only when needed;
+    `carried`: the refusals were the carry's (`refused_by_carry`)."""
+    if refused and carried:
+        return READ_THROUGH_WAIT_CARRIED
     if refused:
         return READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT
     if unbacked:
