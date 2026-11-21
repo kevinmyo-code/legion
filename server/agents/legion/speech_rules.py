@@ -173,9 +173,16 @@ _FASTENER_WORD = re.compile(
     r"screws?|fasteners?)\b",
     re.I,
 )
-_TORQUE_WORD = re.compile(r"\b(?:torque\w*|tighten\w*|retorque\w*|snug\w*)\b", re.I)
-# Digits wherever they stand ("27mm", "M7", "3rd" all hold one); number words as whole words.
-_ANY_NUMBER = re.compile(rf"(?<![\d.])\d+(?:\.\d+)?|\b(?:{_WORDS})\b", re.I)
+_TORQUE_WORD = re.compile(
+    r"\b(?:torque\w*|tighten\w*|retorque\w*|snug\w*|tight(?:er|ness)?)\b", re.I
+)
+# Digits wherever they stand ("27mm", "M7", "3rd" all hold one); number words and fraction words
+# ("a half-inch socket", "three-eighths") as whole words.
+_ANY_NUMBER = re.compile(
+    rf"(?<![\d.])\d+(?:\.\d+)?|\b(?:{_WORDS})\b|"
+    r"\b(?:half|halves|quarters?|thirds?|eighths?|sixteenths?)\b",
+    re.I,
+)
 
 
 def plain_number(text: str) -> str:
@@ -196,8 +203,8 @@ def torque_figures(sentence: str) -> list[str]:
 
 
 def sentence_numbers(sentence: str) -> list[str]:
-    """Every number in `sentence`, digits or words. A lone "one" is a pronoun ("which one"),
-    not a figure; "one eighty-five" still counts through its other words."""
+    """Every number in `sentence`: digits, number words, fraction words. A lone "one" is a
+    pronoun ("which one"), not a figure; "one eighty-five" still counts through its other words."""
     return [
         m.group(0)
         for m in _ANY_NUMBER.finditer(sentence or "")
