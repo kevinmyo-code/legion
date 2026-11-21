@@ -50,9 +50,24 @@ class PacedClipTest {
         val (end, p) = playLine(lineMs = 1_200, answerAtMs = 300)
         assertEquals(PacedClip.End.CUT, end)
         // What still plays after the cut: at most the lead plus one slice.
-        assertTrue("ahead ${p.ahead()}", p.ahead() <= PacedClip.LEAD_MS + PacedClip.SLICE_MS)
+        // What still plays after the cut: at most the lead, one slice and the fade.
+        assertTrue("ahead ${p.ahead()}", p.ahead() <= PacedClip.LEAD_MS + PacedClip.SLICE_MS + PacedClip.FADE_MS)
         assertTrue("cut near 300 ms, at ${p.now()}", p.now() in 300L..340L)
         assertTrue(p.writtenMs < 1_200)
+    }
+
+    @Test
+    fun `a cut ends on a short fade to silence, not mid-waveform (D1)`() {
+        val loud = ByteArray(bytesPerMs * 100) { i -> (if (i % 2 == 0) 0x00 else 0x40).toByte() } // 0x4000 each sample
+        val fade = PacedClip.fadeOut(loud, offset = 400, bytes = (PacedClip.FADE_MS * bytesPerMs).toInt())
+        assertEquals(PacedClip.FADE_MS * bytesPerMs, fade.size.toLong())
+        fun sample(i: Int) = (fade[2 * i].toInt() and 0xFF) or (fade[2 * i + 1].toInt() shl 8)
+        val n = fade.size / 2
+        assertTrue(sample(0) > 0x3F00)
+        assertEquals(0, sample(n - 1))
+        for (i in 1 until n) assertTrue(sample(i) <= sample(i - 1))
+        // Near the end of the line: only what is left.
+        assertEquals(10, PacedClip.fadeOut(loud, offset = loud.size - 10, bytes = 384).size)
     }
 
     @Test

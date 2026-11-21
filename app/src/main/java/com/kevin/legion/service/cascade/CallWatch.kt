@@ -1,6 +1,7 @@
 package com.kevin.legion.service.cascade
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
@@ -31,6 +32,7 @@ internal class CallWatch(
     @Volatile private var silenced = false
     @Volatile private var focusLost = false
     private var job: Job? = null
+    @Volatile private var startedAtMs = 0L
     private var recording: AudioManager.AudioRecordingCallback? = null
     private val debounce = CallPause.Debounce()
 
@@ -49,6 +51,7 @@ internal class CallWatch(
 
     fun start(scope: CoroutineScope) {
         if (job != null) return
+        startedAtMs = System.currentTimeMillis()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val cb = object : AudioManager.AudioRecordingCallback() {
                 override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>) {
@@ -74,6 +77,7 @@ internal class CallWatch(
     }
 
     private fun read(): CallPause.Signals = signals(ctx, audio).copy(
+        sinceStartMs = System.currentTimeMillis() - startedAtMs,
         micSilenced = silenced,
         focusLost = focusLost,
         otherCallCapture = focusLost && otherCallCapture(),
@@ -94,16 +98,39 @@ internal class CallWatch(
             MediaRecorder.AudioSource.VOICE_CALL,
         )
 
+        /** Another app's communication mode with no call in it, across the door and every watch. */
+        private val staleComm = CallPause.StaleComm()
+
         /** The call signals any moment can read, with no conversation open. */
-        fun signals(ctx: Context, audio: AudioManager?): CallPause.Signals = CallPause.Signals(
-            cellularCall = TelephonyController.isInCall,
-            ringing = TelephonyController.isRinging,
+        fun signals(ctx: Context, audio: AudioManager?): CallPause.Signals {
             // Needs READ_PHONE_STATE; refused, telecom simply says nothing.
-            telecomCall = runCatching { ctx.getSystemService(TelecomManager::class.java)?.isInCall == true }
-                .getOrDefault(false),
-            audioMode = audio?.mode ?: AudioManager.MODE_NORMAL,
-            ownComm = CallAudioMode.ownCommActive,
-        )
+            val telecom = runCatching { ctx.getSystemService(TelecomManager::class.java) }.getOrNull()
+            val read = CallPause.Signals(
+                cellularCall = TelephonyController.isInCall,
+                ringing = TelephonyController.isRinging,
+                telecomCall = runCatching { telecom?.isInCall == true }.getOrDefault(false),
+                audioMode = audio?.mode ?: AudioManager.MODE_NORMAL,
+                ownComm = CallAudioMode.ownCommActive,
+                telecomRinging = runCatching { telecom?.isRinging == true }.getOrDefault(false),
+                otherCallAudio = callAudioPlaying(audio),
+            )
+            return read.copy(commStale = staleComm.feed(System.currentTimeMillis(), read))
+        }
+
+        /**
+         * Something plays on the voice-call usage: the other side of a call. Ours only while LEGION holds
+         * call audio itself, when the mode test does not count it anyway. Unreadable: assume a call.
+         */
+        private fun callAudioPlaying(audio: AudioManager?): Boolean =
+            if (audio == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                true
+            } else {
+                runCatching {
+                    audio.activePlaybackConfigurations.any {
+                        it.audioAttributes.usage == AudioAttributes.USAGE_VOICE_COMMUNICATION
+                    }
+                }.getOrDefault(true)
+            }
 
         /**
          * The open's door (a tap, the wake word, the test door): a cellular or VoIP call is up. Replaces

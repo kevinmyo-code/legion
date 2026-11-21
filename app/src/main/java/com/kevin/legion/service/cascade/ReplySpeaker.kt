@@ -94,6 +94,15 @@ internal class ReplySpeaker(
     @Volatile var anyText = false
         private set
 
+    /** When this reply's first answer clip was asked of the voice (its `tts_first_ms` counts from here). */
+    @Volatile var firstAskedAtMs: Long? = null
+        private set
+
+    private fun asked() {
+        if (firstAskedAtMs == null) firstAskedAtMs = System.currentTimeMillis()
+        onAnswerAsked()
+    }
+
     /** Code lines ([line]) waiting to be played to the end, with what to run when one is. */
     private val lines = java.util.concurrent.ConcurrentHashMap<SpeechClip, () -> Unit>()
 
@@ -195,7 +204,7 @@ internal class ReplySpeaker(
             splitter.flush()?.let { enqueue(it) }
         }
         val clip = tts.speak(normalise(TtsTags.strip(text)))
-        onAnswerAsked()
+        asked()
         lines[clip] = onPlayed
         if (queue.trySend(clip).isFailure) {
             lines.remove(clip)
@@ -239,7 +248,7 @@ internal class ReplySpeaker(
         val s = stream ?: tts.openStream().also {
             stream = it
             streamChars = 0
-            onAnswerAsked()
+            asked()
             queue.trySend(it)
         }
         s.append(chunk)
@@ -262,7 +271,7 @@ internal class ReplySpeaker(
         val tagged = if (tts.performsTags) TtsTags.forSpeech(sentence, tagBudget, plain) else TtsTags.strip(sentence)
         val line = normalise(tagged)
         if (TtsTags.strip(line).isBlank()) return
-        onAnswerAsked()
+        asked()
         queue.trySend(tts.speak(line))
     }
 

@@ -21,10 +21,28 @@ import android.media.AudioManager
  * capture, or a focus loss while another app captures for a call (VOICE_COMMUNICATION or VOICE_CALL).
  * A bare focus loss (music, a navigation prompt, an alarm) closes nothing.
  *
- * Ringing is not a call: "answer it" is said while the phone rings ([Signals.ringing]). Pure.
+ * Ringing is not a call: "answer it" is said while the phone rings ([Signals.ringing]), and a VoIP
+ * call ringing through telecom ([Signals.telecomRinging]) closes nothing until it is answered.
+ *
+ * Review of 264baf63 (2026-11-21), each a way to hang up on him for nothing:
+ * - The capture signals (silenced, focus + another call capture) count only [CAPTURE_GRACE_MS] after
+ *   the watch started: the wake word's own VOICE_COMMUNICATION recorder hands the mic over a moment
+ *   after the open, and it cannot be told from another app's by its session id.
+ * - Another app's communication mode with no sign of a call ([Signals.otherCallAudio] false, telecom
+ *   quiet) for [STALE_COMM_MS] is stale ([StaleComm]), as a crashed VoIP app leaves it: it no longer
+ *   counts, so it cannot refuse every open forever. A real VoIP call plays its other side on the
+ *   voice-call usage the whole time, so it is never stale.
+ *
+ * Pure.
  */
 internal object CallPause {
     enum class Reason(val token: String) { CALL("call"), VOIP("voip"), MIC_SILENCED("mic_silenced"), FOCUS("focus") }
+
+    /** The capture signals are ignored this long after the watch started (the wake word's hand-over). */
+    const val CAPTURE_GRACE_MS = 1_500L
+
+    /** Another app's communication mode with no call audio and no telecom call this long: stale. */
+    const val STALE_COMM_MS = 10_000L
 
     /** One reading of the phone. */
     data class Signals(
@@ -35,8 +53,16 @@ internal object CallPause {
         /** TelecomManager says a call is up (any app's, ringing included). */
         val telecomCall: Boolean,
         val audioMode: Int,
-        /** LEGION holds MODE_IN_COMMUNICATION itself ([com.kevin.legion.service.turn.CallAudioMode.ownCommActive]). */
+        /** LEGION holds MODE_IN_COMMUNICATION itself (CallAudioMode.ownCommActive). */
         val ownComm: Boolean,
+        /** TelecomManager says a call is ringing (a VoIP app's ring included). */
+        val telecomRinging: Boolean = false,
+        /** Another app plays on the voice-call usage (the other side of a call). */
+        val otherCallAudio: Boolean = true,
+        /** Another app's communication mode has looked stale for [STALE_COMM_MS] ([StaleComm]). */
+        val commStale: Boolean = false,
+        /** Since the watch started; the capture signals wait [CAPTURE_GRACE_MS]. */
+        val sinceStartMs: Long = Long.MAX_VALUE,
         /** The platform silences this conversation's own capture. */
         val micSilenced: Boolean = false,
         /** Audio focus lost (not a duck) and not regained since. */
@@ -46,6 +72,7 @@ internal object CallPause {
     )
 
     fun reason(s: Signals): Reason? = callReason(s) ?: when {
+        s.sinceStartMs < CAPTURE_GRACE_MS -> null
         s.micSilenced -> Reason.MIC_SILENCED
         s.focusLost && s.otherCallCapture -> Reason.FOCUS
         else -> null
@@ -56,9 +83,33 @@ internal object CallPause {
 
     private fun callReason(s: Signals): Reason? = when {
         s.cellularCall || s.audioMode == AudioManager.MODE_IN_CALL -> Reason.CALL
-        Backchannel.callOnLine(telephonyInCall = false, audioMode = s.audioMode, ownComm = s.ownComm) -> Reason.VOIP
-        s.telecomCall && !s.ringing && s.audioMode != AudioManager.MODE_RINGTONE -> Reason.VOIP
+        othersComm(s) && !s.commStale -> Reason.VOIP
+        s.telecomCall && !ringing(s) -> Reason.VOIP
         else -> null
+    }
+
+    private fun ringing(s: Signals): Boolean =
+        s.ringing || s.telecomRinging || s.audioMode == AudioManager.MODE_RINGTONE
+
+    private fun othersComm(s: Signals): Boolean =
+        Backchannel.callOnLine(telephonyInCall = false, audioMode = s.audioMode, ownComm = s.ownComm)
+
+    /**
+     * How long another app's communication mode has looked like no call at all (no voice-call audio,
+     * no telecom call, no cellular call). Any sign of a call, or the mode going, starts it again.
+     * One per process: the door and the watch feed the same one.
+     */
+    class StaleComm {
+        private var since: Long? = null
+
+        /** True once [s] has looked stale for [STALE_COMM_MS], counting from the first such reading. */
+        @Synchronized
+        fun feed(nowMs: Long, s: Signals): Boolean {
+            val signOfCall = s.otherCallAudio || s.telecomCall || s.cellularCall
+            val looks = othersComm(s) && !signOfCall
+            since = if (looks) since ?: nowMs else null
+            return since?.let { nowMs - it >= STALE_COMM_MS } == true
+        }
     }
 
     /** `conversation_paused reason=<token>`: a fixed token, nothing personal. */

@@ -60,6 +60,10 @@ internal class CallAudioMode(private val audio: AudioManager) {
             prevMode = audio.mode
             @Suppress("DEPRECATION")
             prevSpeaker = audio.isSpeakerphoneOn
+            // Marked ours BEFORE the mode changes, as in [enter]: the call watch (CallPause) reads the
+            // mode while the hands-free device is being selected, which can take a while.
+            active = true
+            ownCommActive = true
             audio.mode = AudioManager.MODE_IN_COMMUNICATION
             val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val target = pickHandsFree(audio)
@@ -71,9 +75,7 @@ internal class CallAudioMode(private val audio: AudioManager) {
                 audio.isBluetoothScoOn = true
                 true
             }
-            active = true
             bluetoothSco = ok
-            ownCommActive = true
             if (!ok) {
                 // No hands-free device took: back to normal so the phone mic carries on as before.
                 exit("bluetooth mic unavailable")

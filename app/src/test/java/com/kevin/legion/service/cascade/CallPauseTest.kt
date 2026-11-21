@@ -98,6 +98,59 @@ class CallPauseTest {
         }
     }
 
+    // --- review of 264baf63 ---------------------------------------------------------------------------
+
+    @Test
+    fun `a VoIP call ringing through telecom, ignored, closes nothing and blocks no open (C2)`() {
+        val ring = signals().copy(telecomCall = true, telecomRinging = true)
+        assertNull(CallPause.reason(ring))
+        assertFalse(CallPause.blocksOpen(ring))
+        // Answered: the ring is over, the call is up.
+        assertEquals(CallPause.Reason.VOIP, CallPause.reason(ring.copy(telecomRinging = false)))
+    }
+
+    @Test
+    fun `the capture signals wait out the wake word's hand-over after the open (C3)`() {
+        val grace = CallPause.CAPTURE_GRACE_MS
+        val silenced = signals().copy(micSilenced = true)
+        assertNull(CallPause.reason(silenced.copy(sinceStartMs = 0)))
+        assertNull(CallPause.reason(silenced.copy(sinceStartMs = grace - 1)))
+        assertEquals(CallPause.Reason.MIC_SILENCED, CallPause.reason(silenced.copy(sinceStartMs = grace)))
+        val focus = signals().copy(focusLost = true, otherCallCapture = true)
+        assertNull(CallPause.reason(focus.copy(sinceStartMs = 200)))
+        assertEquals(CallPause.Reason.FOCUS, CallPause.reason(focus.copy(sinceStartMs = grace)))
+        // A real call is not held back by the grace.
+        assertEquals(CallPause.Reason.CALL, CallPause.reason(signals().copy(cellularCall = true, sinceStartMs = 0)))
+    }
+
+    @Test
+    fun `a silenced capture closes with its own token and leaves the next open free (C4)`() {
+        assertEquals("paused_mic_silenced", CallPause.closeReason(CallPause.Reason.MIC_SILENCED))
+        assertEquals("conversation_paused reason=mic_silenced", CallPause.line(CallPause.Reason.MIC_SILENCED))
+        // The door reads no capture signal: the wake word after it opens at once.
+        assertFalse(CallPause.blocksOpen(signals().copy(micSilenced = true, sinceStartMs = 5_000)))
+    }
+
+    @Test
+    fun `a communication mode left behind with no call in it stops blocking after 10 s (C5)`() {
+        val stale = CallPause.StaleComm()
+        val left = signals(mode = comm).copy(otherCallAudio = false)
+        assertFalse(stale.feed(0, left))
+        assertFalse(stale.feed(CallPause.STALE_COMM_MS - 1, left))
+        assertTrue(stale.feed(CallPause.STALE_COMM_MS, left))
+        assertTrue(CallPause.blocksOpen(left))
+        assertFalse(CallPause.blocksOpen(left.copy(commStale = true)))
+        assertNull(CallPause.reason(left.copy(commStale = true, sinceStartMs = 5_000)))
+        // Any sign of a call starts the count again: call audio, a telecom call.
+        assertFalse(stale.feed(CallPause.STALE_COMM_MS + 1, left.copy(otherCallAudio = true)))
+        assertFalse(stale.feed(CallPause.STALE_COMM_MS + 2, left))
+        assertFalse(stale.feed(2 * CallPause.STALE_COMM_MS, left.copy(telecomCall = true)))
+        // Our own mode is never "left behind".
+        val ours = CallPause.StaleComm()
+        assertFalse(ours.feed(0, signals(mode = comm, ownComm = true).copy(otherCallAudio = false)))
+        assertFalse(ours.feed(60_000, signals(mode = comm, ownComm = true).copy(otherCallAudio = false)))
+    }
+
     private companion object {
         val LINE = Regex("conversation_paused reason=(call|voip|mic_silenced|focus)")
     }

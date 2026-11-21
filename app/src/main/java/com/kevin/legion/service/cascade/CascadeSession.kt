@@ -2505,7 +2505,6 @@ internal class CascadeSession(
         val b = backend!!
         val p = player!!
         val gen = p.generation()
-        var ttsAskedAtMs = System.currentTimeMillis()
         var audible = false
         var answerAudible = false
         var self: ReplySpeaker? = null
@@ -2522,7 +2521,7 @@ internal class CascadeSession(
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
                 } else {
                     answerAudible = true
-                    answerAudioIn(eotAtMs, now, ttsAskedAtMs)
+                    answerAudioIn(eotAtMs, now, self?.firstAskedAtMs)
                 }
                 if (!audible || !filler) {
                     // The answer after a filler the mic reopened for ([onFillerPlayed]): playing again.
@@ -2532,7 +2531,6 @@ internal class CascadeSession(
                 }
             },
             onClipStarted = { text ->
-                ttsAskedAtMs = System.currentTimeMillis()
                 lastClipText = text
                 audit.assistant(text, readThrough = turn?.readThrough == true)
                 // The voice sheet and the talk strip read the caption, as for Live's subtitles.
@@ -2575,7 +2573,7 @@ internal class CascadeSession(
      * of his ([eotAtMs]), the bench's gap line ([TurnGap]) and this session's ask-to-audio time for the
      * next turn's estimate ([DeadAir.expectedFirstAudioMs]).
      */
-    private fun answerAudioIn(eotAtMs: Long?, now: Long, ttsAskedAtMs: Long) {
+    private fun answerAudioIn(eotAtMs: Long?, now: Long, askedAtMs: Long?) {
         answerAudioStarted = true
         eotAtMs?.let {
             LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}")
@@ -2583,7 +2581,9 @@ internal class CascadeSession(
             answerAskedAtMs?.let { asked -> lastFirstAudioMs = now - asked }
             turnGap?.line(now)?.let { line -> LiveLatency.log(LiveLatency.TAG, line) }
         }
-        LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
+        // From the reply's first clip asked of the voice (it was timed from the clip's own first
+        // audio, so it read about 0); a clip queued behind a task line counts that wait too.
+        askedAtMs?.let { LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - it}") }
     }
 
     /** A turn of his ([eotAtMs]): its first answer clip was asked of the voice now ([DeadAir]). */
@@ -3594,11 +3594,11 @@ internal class CascadeSession(
     // --- microphone ([CascadeMic], a trimmed copy of Live's micLoop) ---------------------------------
 
     private fun startMic(chime: Boolean = false) {
-        // From the first buffer on, a call or a silenced capture closes the conversation ([CallPause]).
-        callWatch.start(scope)
         micJob = scope.launch(Dispatchers.IO) {
             // The car's hands-free link, when it was asked for, carries the route before capture.
             audioRoute.awaitBluetoothMic()
+            // Once the route is in: a call or a silenced capture closes the conversation ([CallPause]).
+            callWatch.start(scope)
             if (routeLogged.compareAndSet(false, true)) {
                 LiveLatency.log(LiveLatency.TAG, "open_route_ms=${System.currentTimeMillis() - openStartedAtMs}")
             }

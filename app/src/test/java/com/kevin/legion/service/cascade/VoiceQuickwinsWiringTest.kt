@@ -42,7 +42,9 @@ class VoiceQuickwinsWiringTest {
         val speaker = bodyOf(s, "newSpeaker")
         assertTrue(speaker.contains("onAnswerAsked = { answerAsked(eotAtMs) }"))
         assertTrue(bodyOf(s, "answerAsked").contains("answerAskedAtMs == null"))
-        assertTrue(speaker.contains("answerAudioIn(eotAtMs, now, ttsAskedAtMs)"))
+        // tts_first_ms counts from the reply's first clip asked, not from that clip's own first audio.
+        assertTrue(speaker.contains("answerAudioIn(eotAtMs, now, self?.firstAskedAtMs)"))
+        assertFalse(speaker.contains("ttsAskedAtMs"))
         val audio = bodyOf(s, "answerAudioIn")
         assertTrue(audio.indexOf("answerAudioStarted = true") in 0 until audio.indexOf("turnGap?.line(now)"))
         assertTrue(bodyOf(s, "answerGotGate").contains("answer_hold_ms="))
@@ -95,11 +97,23 @@ class VoiceQuickwinsWiringTest {
     fun `the watch runs with the mic, knows our capture, hears focus, and stops at release`() {
         val s = session()
         val mic = bodyOf(s, "startMic")
-        assertTrue(mic.indexOf("callWatch.start(scope)") in 0 until mic.indexOf("CascadeMic(ctx).run("))
+        // Only once the route is in (review C1): a Bluetooth enter is never read as someone's call.
+        val watch = mic.indexOf("callWatch.start(scope)")
+        assertTrue(watch in mic.indexOf("audioRoute.awaitBluetoothMic()") until mic.indexOf("CascadeMic(ctx).run("))
         assertTrue(mic.contains("callWatch.ourCapture(id)"))
         assertTrue(bodyOf(s, "requestFocus").contains("setOnAudioFocusChangeListener(callWatch.focusListener)"))
         assertEquals(1, Regex("callWatch\\.stop\\(\\)").findAll(bodyOf(s, "releaseNow")).count())
         assertTrue(s.contains("CallWatch(ctx, audioManager) { reason -> scope.launch(loop) { pauseForCall(reason) } }"))
+    }
+
+    @Test
+    fun `call audio is marked ours before the mode changes, on every enter (C1)`() {
+        val mode = stripComments(File(sourceRoot(), "service/turn/CallAudioMode.kt").readText())
+        for (enter in listOf("enter", "enterBluetooth")) {
+            val body = bodyOf(mode, enter)
+            val mark = body.indexOf("ownCommActive = true")
+            assertTrue(enter, mark in 0 until body.indexOf("audio.mode = AudioManager.MODE_IN_COMMUNICATION"))
+        }
     }
 
     @Test
