@@ -26,6 +26,11 @@ internal data class UtteranceSetup(
     val streamed: Boolean,
     /** The last cancel still on its way: the new stream opens after it (or after a short cap). */
     val gate: Job?,
+    /**
+     * The conversation's turns whose go went early and that no turn has read yet (review round 4):
+     * every close and every stop cancels them all ([EngineBrain.earlyTurns]).
+     */
+    val early: MutableSet<EngineUtterance> = java.util.concurrent.ConcurrentHashMap.newKeySet(),
 )
 
 /**
@@ -77,8 +82,13 @@ internal class EngineUtterance(
     /** The go posted as soon as his words were in ([goNow]); its answer, kept for [go]. */
     @Volatile private var earlyGo: WireReply? = null
 
-    /** The go went before this turn was reached (review round 3, R2): its route is final. */
-    val goPosted: Boolean get() = earlyGo != null
+    /** The go went (or is going) before this turn was reached (review round 3, R2): its route is final. */
+    val goPosted: Boolean get() = goSent.get()
+    private val goSent = AtomicBoolean(false)
+
+    /** Released after its go went: cancelled on the engine; the turn says nothing at all. */
+    @Volatile var cancelled = false
+        private set
 
     /** What the turn needs after [result]: the events read so far, and the rest of the stream. */
     @Volatile private var stream: WireReply.Events? = null
@@ -253,6 +263,7 @@ internal class EngineUtterance(
     suspend fun go(): WireReply {
         val s = stream
         if (s == null || !claimed.compareAndSet(false, true)) return refusal ?: WireReply.Unreachable("no_stream")
+        setup.early.remove(this)
         val decided = earlyGo ?: wire.decide(turnId, go = true)
         val over = (decided as? WireReply.Json)?.takeIf { it.code == EngineBrainRules.TURN_OVER }
         if (over != null) s.close()
@@ -278,7 +289,10 @@ internal class EngineUtterance(
      * buffered, unread, until this turn is reached and [go] hands it over.
      */
     suspend fun goNow() {
-        if (earlyGo == null && !claimed.get() && stream != null) earlyGo = wire.decide(turnId, go = true)
+        if (claimed.get() || stream == null || !goSent.compareAndSet(false, true)) return
+        // Registered first: a close that lands while the go is on its way still cancels it.
+        setup.early.add(this)
+        earlyGo = wire.decide(turnId, go = true)
     }
 
     /**
@@ -288,10 +302,19 @@ internal class EngineUtterance(
      */
     fun release() {
         if (!claimed.compareAndSet(false, true)) return
+        setup.early.remove(this)
         val sent = postedAtMs > 0
+        val gone = goSent.get()
+        cancelled = gone
         val job = setup.tail.launch {
             withTimeoutOrNull(EngineBrainRules.TAIL_MS) {
                 stream?.close()
+                // Its go already went (review round 4): a take would be answered `already_go` and the
+                // engine would act on; only a cancel stops it. Nothing of it is ever spoken.
+                if (gone) {
+                    wire.cancel(turnId)
+                    return@withTimeoutOrNull
+                }
                 // Held: a take means nothing acts. Before its row exists the engine answers 404; then
                 // once more when the answer comes (and the engine's own 5 s silence covers the rest).
                 val taken = if (sent && !finished) wire.decide(turnId, go = false) else null

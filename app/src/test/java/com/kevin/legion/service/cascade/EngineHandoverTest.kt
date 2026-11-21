@@ -172,9 +172,54 @@ class EngineHandoverTest {
             }
             val executor = com.kevin.legion.service.TextToolExecutor { _, _, _ -> JSONObject() }
             b.answer(start, u, executor, listener)
-            assertEquals("It's sunny. ", said.toString())
+            assertEquals("spoken once", "It's sunny. ", said.toString())
             assertEquals(listOf("go:${u.turnId}"), wire.decisions)
+            assertTrue("reached normally: never cancelled", wire.cancels.isEmpty())
+            assertTrue("read: no longer an open early turn", b.earlyTurns.isEmpty())
         }
+
+    // --- round 4: an early go nobody reads is cancelled ---------------------------------------------
+
+    /** One utterance, its early go posted, its stream's close recorded in [closed]. */
+    private suspend fun earlyGone(b: EngineBrain, closed: MutableList<String>): EngineUtterance {
+        val events = heard("add milk to the list")
+        val u = checkNotNull(b.utterance(cloudVoice = true))
+        wire.streamAnswers.add(WireReply.Events(events.events) { closed.add(u.turnId) })
+        speak(u)
+        u.goNow()
+        return u
+    }
+
+    @Test
+    fun `an early go then a stop over it, cancel posted, stream closed, nothing said`() = runBlocking {
+        val b = brain(this)
+        val closed = mutableListOf<String>()
+        val u = earlyGone(b, closed)
+        assertEquals(setOf(u), b.earlyTurns)
+        // The stop (or a close) releases every early turn nobody has read.
+        b.earlyTurns.forEach { it.release() }
+        delay(20)
+        assertEquals("a cancel, never a take after a go", listOf(u.turnId), wire.cancels)
+        assertTrue(wire.decisions.none { it.startsWith("take:") })
+        assertEquals(listOf(u.turnId), closed)
+        assertTrue("the turn says nothing at all", u.cancelled)
+        assertTrue(b.earlyTurns.isEmpty())
+        assertNull("routed later, it is not answered by the engine", b.route(u, "add milk to the list", his))
+    }
+
+    @Test
+    fun `two early turns queued are both cancelled when the conversation closes`() = runBlocking {
+        val b = brain(this)
+        val closed = mutableListOf<String>()
+        val first = earlyGone(b, closed)
+        val second = earlyGone(b, closed)
+        assertEquals(setOf(first, second), b.earlyTurns)
+        b.earlyTurns.forEach { it.release() }
+        delay(20)
+        assertEquals(setOf(first.turnId, second.turnId), wire.cancels.toSet())
+        assertEquals(setOf(first.turnId, second.turnId), closed.toSet())
+        assertTrue(first.cancelled && second.cancelled)
+    }
 
     // --- R3 and R5: what the engine is told of phone turns ------------------------------------------
 

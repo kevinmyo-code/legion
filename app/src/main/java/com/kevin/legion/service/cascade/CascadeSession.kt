@@ -1506,6 +1506,8 @@ internal class CascadeSession(
 
     @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
     private suspend fun runTurn(u: TurnUtterance, eotAtMs: Long) {
+        // An engine turn cancelled after its early go (a stop or goodbye over it, round 4): never said.
+        if (u.engine?.cancelled == true) return
         // The cloud draft's transcript, when the phone confirmed the turn on the same audio.
         val fromDraft = draft?.takeIf { it.utt === u && it.audioConfirmed }
         val stt = fromDraft?.let { draftTranscript(it, u.backend.sttFinalTimeoutMs) }
@@ -2121,6 +2123,8 @@ internal class CascadeSession(
         val facts = EngineBrainRules.Facts(test != null, true, true, brain.state == EngineBrain.State.ON, awaits)
         val unsettled = toolsInFlight.get() > 0 || carry.isNotBlank()
         val phoneOnly = unsettled || stt == null || phoneOnlyNow(stt)
+        // A stop or goodbye said over a reply: every turn whose go went early is cancelled too.
+        if (endsConversation(words)) brain.earlyTurns.forEach { it.release() }
         if (phoneOnly || EngineBrainRules.phoneKeeps(words, facts) != null) e.release() else e.goNow()
         LiveLatency.log(LiveLatency.TAG, "engine_early go=${if (e.goPosted) 1 else 0} for=u${u.id}")
     }
@@ -3408,6 +3412,8 @@ internal class CascadeSession(
     private suspend fun releaseNow(reason: String, caller: Job?) {
         val releaseStartMs = System.currentTimeMillis()
         isOpen = false
+        // Engine turns whose go went early and that no turn read: cancelled on the engine (round 4).
+        engineBrain?.earlyTurns?.forEach { it.release() }
         // A clear-codes question belongs to this conversation: a "yes" in the next one answers nothing.
         step("clear_question") { DtcClearController.forgetClearQuestion() }
         step("jobs") {

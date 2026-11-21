@@ -52,6 +52,13 @@ internal class EngineBrain(
     @Volatile private var crisis = false
     @Volatile private var lastCancel: Job? = null
     private val failures = AtomicInteger()
+    private val early: MutableSet<EngineUtterance> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /**
+     * Turns whose go went early and that no turn has read yet (review round 4). A stop, a goodbye and
+     * every close release them all: each is cancelled on the engine, never spoken, never recorded.
+     */
+    val earlyTurns: Set<EngineUtterance> get() = early.toSet()
     private val ids = AtomicInteger()
     private val now: () -> Long = System::currentTimeMillis
     private val calls = EngineCalls(scope, ::runCall, ::postLate, now)
@@ -99,7 +106,7 @@ internal class EngineBrain(
         if (state != State.ON || !cloudVoice || awaits != null) {
             null
         } else {
-            val setup = UtteranceSetup(wire, scope, tail, ::meta, !streamOff, lastCancel)
+            val setup = UtteranceSetup(wire, scope, tail, ::meta, !streamOff, lastCancel, early)
             EngineUtterance(ids.incrementAndGet(), setup, ::switchedOff, { lastCancel = it })
         }
 
