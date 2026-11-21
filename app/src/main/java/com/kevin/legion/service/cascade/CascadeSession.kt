@@ -1291,7 +1291,9 @@ internal class CascadeSession(
         answerAskedAtMs = null
         answerInHandAtMs = null
         turnEndsConversation = false
-        turnGap = TurnGap(eotAtMs)
+        // The last turn's first-sound line if it ended with nothing heard, then this turn's tracker.
+        turnGap?.silentLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
+        turnGap = TurnGap(eotAtMs, lastLocalSpeechAtMs)
         val seq = backchannelSeq.incrementAndGet()
         val skip = Backchannel.decide(
             Backchannel.Turn(
@@ -1304,6 +1306,7 @@ internal class CascadeSession(
         fillerSkip = skip
         if (skip != null) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${skip.token}")
+            turnGap?.noteSkip(skip.token)
             return
         }
         fillerJobs.startBackchannel {
@@ -1331,19 +1334,14 @@ internal class CascadeSession(
         val p = player ?: return
         val due = backchannelStillDue(seq, eotAtMs) ?: return
         // A clip that fails the length gate is swapped for another word; silent only if none fits.
-        var pcm = ByteArray(0)
-        val chosen = Backchannel.choose(
-            recentBackchannels,
-            backchannelIndex.getAndIncrement(),
-            inHand = { w, t -> b.tts.inHandTake(SpokenText.forSpeech(w), t) },
-        ) { w, t ->
-            pcm = Backchannel.trimSilence(clipFromMemory(b.tts, w, t), b.tts.sampleRate)
-            pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
-        }
-        if (chosen == null) {
+        val picked = AckClips.pick(b.tts, recentBackchannels, backchannelIndex.getAndIncrement())
+        if (picked == null) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=no_clip_fits")
+            turnGap?.noteSkip("no_clip_fits")
             return
         }
+        val chosen = picked.chosen
+        val pcm = picked.pcm
         val line = chosen.word
         val ms = chosen.ms
         playGate.withLock {
@@ -1363,6 +1361,7 @@ internal class CascadeSession(
             )
             audit.filler("backchannel", line)
             val sound = turnGap?.started(TurnGap.BACKCHANNEL, System.currentTimeMillis())
+            logFirstSound()
             clipPlayback.during { playAckClip(p, pcm) }
             sound?.let { turnGap?.ended(it, System.currentTimeMillis()) }
         }
@@ -1370,6 +1369,11 @@ internal class CascadeSession(
         clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         backchannelEndAtMs = System.currentTimeMillis()
         lastFillerEndAtMs = System.currentTimeMillis()
+    }
+
+    /** This turn's first-sound line ([TurnGap.firstSoundLine]) the moment there is a first sound. */
+    private fun logFirstSound() {
+        turnGap?.firstSoundLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
     }
 
     /**
@@ -1408,6 +1412,7 @@ internal class CascadeSession(
     private fun noteTaskFiller(text: String) {
         taskLinePlaying = true
         toolSound = turnGap?.started(TurnGap.TOOL, System.currentTimeMillis()) ?: -1
+        logFirstSound()
         audit.filler("task", text)
         turnFillers.incrementAndGet()
         saidThisTurn.add(text)
@@ -1479,8 +1484,9 @@ internal class CascadeSession(
             waitIndex.getAndIncrement(),
             inHand = { line, take -> b.tts.inHandTake(SpokenText.forSpeech(line), take) },
         ) { line, take ->
-            pcm = Backchannel.trimSilence(clipFromMemory(b.tts, line, take), b.tts.sampleRate)
-            pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
+            val (audio, ms) = AckClips.trimmed(b.tts, line, take)
+            pcm = audio
+            ms
         }
         if (chosen == null) {
             LiveLatency.log(LiveLatency.TAG, "filler_skip kind=wait reason=no_clip_fits")
@@ -1522,6 +1528,7 @@ internal class CascadeSession(
      */
     private suspend fun playPacedWait(p: ReplyPlayer, pcm: ByteArray, sampleRate: Int) {
         val sound = turnGap?.started(TurnGap.WAIT, System.currentTimeMillis())
+        logFirstSound()
         val gen = p.generation()
         val end = PacedClip.play(
             pcm,
@@ -1543,6 +1550,7 @@ internal class CascadeSession(
     private suspend fun backchannelStillDue(seq: Int, eotAtMs: Long): (() -> Boolean)? {
         fun skip(reason: String): (() -> Boolean)? {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=$reason")
+            turnGap?.noteSkip(reason)
             return null
         }
         // The open's chime or cue still playing: wait for its end if the clip can still start in time.
@@ -1562,16 +1570,6 @@ internal class CascadeSession(
         // A transcript that comes after the clip's time cannot stop it; that turn still gets one.
         if (backchannelUtt != null && backchannelUtt === noiseUtt) return skip("noise")
         return due
-    }
-
-    /** [line]'s whole audio if it comes within [BACKCHANNEL_FETCH_MS] (it is from memory), else empty. */
-    private suspend fun clipFromMemory(tts: TextToSpeech, line: String, take: Int): ByteArray {
-        val clip = tts.speakTake(SpokenText.forSpeech(line), take)
-        return withTimeoutOrNull(BACKCHANNEL_FETCH_MS) {
-            val out = java.io.ByteArrayOutputStream()
-            for (frame in clip.frames) out.write(frame)
-            out.toByteArray()
-        } ?: ByteArray(0).also { clip.cancel() }
     }
 
     /**
@@ -2607,6 +2605,8 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}")
             answerInHandAtMs = now
             answerAskedAtMs?.let { asked -> lastFirstAudioMs = now - asked }
+            turnGap?.answerHeard(now)
+            logFirstSound()
             turnGap?.line(now)?.let { line -> LiveLatency.log(LiveLatency.TAG, line) }
         }
         // From the reply's first clip asked of the voice (it was timed from the clip's own first
@@ -2666,6 +2666,8 @@ internal class CascadeSession(
 
     private fun backToListening() {
         if (closing.get()) return
+        // A turn that ended with nothing heard still gets its first-sound line (kind=none).
+        turnGap?.silentLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
         // The turn's wait is over (answered, noise, a dropped transcript, a failed voice): no more fillers.
         fillerJobs.endTurn()
         warmFillers()
@@ -3573,6 +3575,7 @@ internal class CascadeSession(
 
     private suspend fun releaseNow(reason: String, caller: Job?) {
         val releaseStartMs = System.currentTimeMillis()
+        turnGap?.silentLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
         isOpen = false
         // A clear-codes question belongs to this conversation: a "yes" in the next one answers nothing.
         step("clear_question") { DtcClearController.forgetClearQuestion() }
@@ -3887,7 +3890,6 @@ internal class CascadeSession(
         private const val WAIT_POLL_MS = 250L
 
         /** A backchannel's audio must be in hand within this, or it is skipped (it is from memory). */
-        private const val BACKCHANNEL_FETCH_MS = 300L
         private const val PCM_BYTES_PER_SAMPLE = 2
 
         /** How long the phone's own read of today may take at open (normally well under 100 ms). */

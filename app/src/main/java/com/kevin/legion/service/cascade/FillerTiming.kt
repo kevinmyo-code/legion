@@ -19,8 +19,12 @@ internal object FillerTiming {
     /** The acknowledgement starts as soon as his turn is decided over. */
     const val ACK_DELAY_MS = 0L
 
-    /** What "instant" means for the acknowledgement's start, from eot; logged against, not enforced. */
-    const val ACK_START_TARGET_MS = 150L
+    /**
+     * The latest the acknowledgement's first sample may reach the player, from eot: what "instant"
+     * means. Guarded by `AckTimingTest` (the whole end-of-turn path, timed) and read off every turn's
+     * `first_sound_ms` line ([TurnGap]).
+     */
+    const val ACK_MAX_START_MS = 150L
 
     /** The first wait line: this long after the last filler ended (or eot, with none). */
     const val FIRST_WAIT_GAP_MS = 1_500L

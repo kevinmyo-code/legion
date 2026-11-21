@@ -34,7 +34,8 @@ class BackchannelTest {
         assertNull(Backchannel.decide(turn()))
         assertEquals(
             // 2026-11-20 (Kevin's phone test): answer text in but no answer audio yet still gets a clip.
-            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET"),
+            // 2026-11-21: and what the words heard so far rule out at end of turn (wordsSkip).
+            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET", "NOISE", "GOODBYE", "CRISIS"),
             Backchannel.Skip.entries.map { it.name },
         )
     }

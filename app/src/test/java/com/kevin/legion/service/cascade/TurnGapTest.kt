@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures read best on one line
+
 package com.kevin.legion.service.cascade
 
 import org.junit.Assert.assertEquals
@@ -49,5 +51,30 @@ class TurnGapTest {
             "gap_max_ms=1500 gap_after=backchannel fillers=backchannel+wait answer_ms=3000 first_sound_ms=40",
             g.line(3_000),
         )
+    }
+
+    @Test
+    fun `every turn gets one first-sound line, from end of turn and from his last voiced frame`() {
+        val ack = TurnGap(eotAtMs = 10_700, speechEndAtMs = 10_000)
+        ack.started(TurnGap.BACKCHANNEL, 10_740)
+        assertEquals("first_sound_ms=40 first_sound_after_speech_ms=740 kind=ack skip=-", ack.firstSoundLine())
+        assertNull("once a turn", ack.firstSoundLine())
+        assertNull(ack.silentLine())
+
+        val wait = TurnGap(eotAtMs = 0, speechEndAtMs = 0)
+        wait.noteSkip("no_clip_fits")
+        wait.started(TurnGap.WAIT, 1_500)
+        assertEquals("first_sound_ms=1500 first_sound_after_speech_ms=none kind=wait skip=no_clip_fits", wait.firstSoundLine())
+
+        val answer = TurnGap(eotAtMs = 0, speechEndAtMs = 0)
+        answer.noteSkip("answer_first")
+        answer.answerHeard(900)
+        assertEquals("first_sound_ms=900 first_sound_after_speech_ms=none kind=answer skip=answer_first", answer.firstSoundLine())
+
+        val none = TurnGap(eotAtMs = 0)
+        none.noteSkip("goodbye")
+        assertNull(none.firstSoundLine())
+        assertEquals("first_sound_ms=none first_sound_after_speech_ms=none kind=none skip=goodbye", none.silentLine())
+        assertNull(none.silentLine())
     }
 }
