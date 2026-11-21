@@ -308,7 +308,8 @@ class LaptopVoiceConnection(
     /** Under [warmLock]: the next line's render started, or null when nothing may start now. */
     @Suppress("ReturnCount") // one exit per reason a warm does not start
     private fun nextWarm(): Clip? {
-        if (warming != null || warmHeld || dropped.get() || realOpen()) return null
+        val idle = warming == null && !warmHeld && !dropped.get()
+        if (!idle || realOpen()) return null
         while (true) {
             val text = warmQueue.removeFirstOrNull() ?: return null
             if (kept[keyOf(text)] == null) return liveClip(text, warm = true).also { warming = it }

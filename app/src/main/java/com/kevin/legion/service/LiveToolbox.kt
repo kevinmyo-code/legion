@@ -2026,9 +2026,9 @@ object LiveToolbox {
         // never one the model worked out.
         val zone = RelativeDay.clock().zone
         val today = RelativeDay.today()
-        val fromDate = if (from.isBlank()) today else RelativeDay.parse(from, today) ?: return null
-        val toDate = if (to.isBlank()) fromDate else RelativeDay.parse(to, today) ?: return null
-        if (toDate.isBefore(fromDate)) return null
+        val fromDate = if (from.isBlank()) today else RelativeDay.parse(from, today)
+        val toDate = fromDate?.let { if (to.isBlank()) it else RelativeDay.parse(to, today) }
+        if (fromDate == null || toDate == null || toDate.isBefore(fromDate)) return null
         val startMs = fromDate.atStartOfDay(zone).toInstant().toEpochMilli()
         val endMs = toDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
         return startMs to endMs
