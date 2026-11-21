@@ -8,24 +8,37 @@ import android.util.Log
 /**
  * Call-style audio for barge-in (Kevin, 2026-10-27: "sounds fine" on the speaker): while a
  * conversation with barge-in runs, the phone is in MODE_IN_COMMUNICATION with the voice-call route
- * (wired headset if plugged, else the loudspeaker), so the platform AEC has Alfred's audio as its
- * reference. The playback track switches to USAGE_VOICE_COMMUNICATION alongside it.
+ * (wired headset if plugged, else the loudspeaker, or the earpiece in the toggle's CALL choice), so
+ * the platform AEC has Alfred's audio as its reference. The playback track switches to
+ * USAGE_VOICE_COMMUNICATION alongside it.
  *
  * Restored on every exit (park, close, destroy). [ownCommActive] is what lets dumb mode
  * (`DumbBounce`, ADR 0062) tell this mode from a real call. Never entered during a Telecom-owned call
  * (`LegionConnectionService`'s standing warning): the caller checks [route] and the call state.
  */
-internal class CallAudioMode(private val audio: AudioManager) {
+internal class CallAudioMode(
+    private val audio: AudioManager,
+    /**
+     * The communication device the platform routes to now (the readback). A seam: Robolectric always
+     * honours a selection, so a test passes one that refuses the earpiece.
+     */
+    private val routedType: (AudioManager) -> Int? = { currentDeviceType(it) },
+) {
     private var active = false
     private var prevMode = AudioManager.MODE_NORMAL
     private var prevSpeaker = false
     private var bluetoothSco = false
+    private var earpieceOn = false
 
     /** True while this conversation listens through a Bluetooth hands-free mic ([enterBluetooth]). */
     val onBluetoothMic: Boolean @Synchronized get() = active && bluetoothSco
 
+    /**
+     * Call audio on the loudspeaker, or on the earpiece when [earpiece] (the toggle beside the orb in
+     * CALL); a wired headset wins over both ([VoiceOutputRule.device]).
+     */
     @Synchronized
-    fun enter(): String {
+    fun enter(earpiece: Boolean = false): String {
         if (active) return "already active"
         return runCatching {
             prevMode = audio.mode
@@ -34,19 +47,50 @@ internal class CallAudioMode(private val audio: AudioManager) {
             active = true
             ownCommActive = true
             audio.mode = AudioManager.MODE_IN_COMMUNICATION
-            val routed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val devices = audio.availableCommunicationDevices
-                val target = devices.firstOrNull { it.type in WIRED }
-                    ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                "device=${target?.type} ok=${target?.let { audio.setCommunicationDevice(it) } ?: false}"
-            } else {
-                @Suppress("DEPRECATION")
-                audio.isSpeakerphoneOn = !hasWired(audio)
-                "speakerphoneOn=${!hasWired(audio)}"
-            }
-            "entered prevMode=$prevMode mode=${audio.mode} $routed"
+            "entered prevMode=$prevMode mode=${audio.mode} ${select(earpiece)}"
         }.getOrElse { "enter failed: ${it.message}" }.also { Log.i(TAG, it) }
     }
+
+    /**
+     * Moves call audio between the earpiece and the loudspeaker (or onto a wired headset) without
+     * leaving the mode: playback on the voice-communication usage follows the communication device,
+     * so nothing is rebuilt and the reply in flight keeps playing. No-op outside call audio and on
+     * the Bluetooth hands-free link.
+     */
+    @Synchronized
+    fun retarget(earpiece: Boolean): String {
+        if (!active || bluetoothSco) return "retarget skipped: not in call audio"
+        return runCatching { "retarget ${select(earpiece)}" }
+            .getOrElse { "retarget failed: ${it.message}" }.also { Log.i(TAG, it) }
+    }
+
+    /** True while call audio plays through the earpiece (read back from the platform). */
+    val onEarpiece: Boolean @Synchronized get() = active && earpieceOn
+
+    private fun select(earpiece: Boolean): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val devices = audio.availableCommunicationDevices
+            val type = VoiceOutputRule.device(devices.map { it.type }, earpiece)
+            val target = devices.firstOrNull { it.type == type }
+            val ok = target?.let { audio.setCommunicationDevice(it) } ?: false
+            // The readback, only when the earpiece was asked for: what the platform routes to, not
+            // what was asked. Speaker mode reads nothing back and never counts as the earpiece, so a
+            // failed loudspeaker selection the platform turns into the earpiece changes no guard.
+            if (earpiece) {
+                val now = routedType(audio)
+                earpieceOn = now == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                "device=$type ok=$ok now=$now"
+            } else {
+                earpieceOn = false
+                "device=$type ok=$ok"
+            }
+        } else {
+            val wired = hasWired(audio)
+            @Suppress("DEPRECATION")
+            audio.isSpeakerphoneOn = !wired && !earpiece
+            earpieceOn = !wired && earpiece
+            "speakerphoneOn=${!wired && !earpiece}"
+        }
 
     /**
      * Call mode with a Bluetooth hands-free device as the communication device, so the
@@ -91,6 +135,7 @@ internal class CallAudioMode(private val audio: AudioManager) {
         ownCommActive = false
         val wasSco = bluetoothSco
         bluetoothSco = false
+        earpieceOn = false
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audio.clearCommunicationDevice()
@@ -113,16 +158,15 @@ internal class CallAudioMode(private val audio: AudioManager) {
     companion object {
         private const val TAG = "CallAudioMode"
 
+        private fun currentDeviceType(audio: AudioManager): Int? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.communicationDevice?.type else null
+
         /** True while THIS app holds MODE_IN_COMMUNICATION for a conversation, not for a call. */
         @Volatile
         var ownCommActive = false
             private set
 
-        private val WIRED = setOf(
-            AudioDeviceInfo.TYPE_WIRED_HEADSET,
-            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-            AudioDeviceInfo.TYPE_USB_HEADSET,
-        )
+        private val WIRED = VoiceOutputRule.WIRED_TYPES
         private val BLUETOOTH = buildSet {
             add(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
             add(AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
