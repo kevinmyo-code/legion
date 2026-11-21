@@ -97,11 +97,13 @@ from agents.legion.speech_rules import (
     VERBATIM_TOOLS,  # noqa: F401 - read as cascade.VERBATIM_TOOLS
     _verbatim,
     backed_cents,
+    backed_torque,
     decimal_cents,  # noqa: F401 - read as cascade.decimal_cents
     has_money,
     is_filler,
     is_stop_utterance,
     states_unbacked_figure,
+    states_unbacked_torque,
 )
 from agents.runtime import events as ev
 from agents.runtime.budget import BudgetUsed, LoopLimits
@@ -162,6 +164,7 @@ from engine_mcp.tools import (
     run_engine_tool,
     run_tool,
 )
+from garage import flags as garage_flags
 from household.models import is_recruiter
 from household.tenancy import household_of
 from legion import deadline
@@ -1233,6 +1236,11 @@ def _answer(
     filler_dropped = 0
     no_answer = False
     money_dropped = 0
+    # The torque guard (garage, `speech_rules.states_unbacked_torque`): on only while the garage
+    # switch is on, and never on a recruiter's turn; off, `backed_torque` answers None and no
+    # sentence is checked.
+    torque_on = garage_flags.enabled() and not door.recruiter
+    torque_dropped = 0
     sentences = 0
 
     # The first lookup of the turn and when it started; its line waits for FILLER_WAIT_S.
@@ -1407,6 +1415,9 @@ def _answer(
                 ):
                     money_dropped += 1
                     continue
+                if states_unbacked_torque(text, backed_torque(door.calls, torque_on)):
+                    torque_dropped += 1
+                    continue
                 if sentences >= MAX_SPOKEN_SENTENCES:
                     continue
                 if not honest(text):
@@ -1467,6 +1478,9 @@ def _answer(
             if states_unbacked_figure(text, backed_cents(door.calls)):
                 money_dropped += 1
                 continue
+            if states_unbacked_torque(text, backed_torque(door.calls, torque_on)):
+                torque_dropped += 1
+                continue
             if not honest(text):
                 held_claims.append((text, tagged))
                 continue
@@ -1495,12 +1509,17 @@ def _answer(
             # the change is said in its place (round 2, N1): "went through" or "did not".
             money_dropped += 1
             unbacked += 1
+        elif states_unbacked_torque(text, backed_torque(door.calls, torque_on)):
+            torque_dropped += 1
+            unbacked += 1
         elif honest(text):
             yield say(text, tagged)
         else:
             unbacked += 1
     # The final count: the ask-again round's and the held claims' drops included (finding 2).
     timings["money_dropped"] = money_dropped
+    if torque_on:
+        timings["torque_dropped"] = torque_dropped
     wrote = door.wrote()
     if guard_refused:
         yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)

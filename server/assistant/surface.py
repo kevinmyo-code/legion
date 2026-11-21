@@ -267,7 +267,20 @@ def off_registry_tool(name: str, user):
     `refusal_for`, so a caller never reaches here with one it may not run."""
     if is_recruiter(user):
         return RECRUITER_ONLY_TOOLS.get(name)
-    return None
+    return member_only_tools(user).get(name)
+
+
+def member_only_tools(user) -> dict:
+    """The tools a member's web assistant gets that are kept out of the registry, each behind its
+    own switch: today `show_part`, only while `LEGION_JEEP_ASSISTANT=on` (`garage.flags`). Never
+    a recruiter's; never `/mcp`'s, which lists the registry alone. Empty with every switch off."""
+    from garage import flags as garage_flags
+
+    if is_recruiter(user) or not garage_flags.enabled():
+        return {}
+    from garage.tool import SHOW_PART
+
+    return {SHOW_PART.name: SHOW_PART}
 
 
 def tools_for(user):
@@ -289,6 +302,7 @@ def tools_for(user):
             # ticket 01: no Quanex for the LinkedIn version), never one with nothing loaded.
             tool = declared_for(tool, user)
         out.append(tool)
+    out.extend(member_only_tools(user).values())
     return out
 
 
@@ -322,7 +336,7 @@ def refusal_for(name: str, user=None, args: dict | None = None) -> str | None:
     `RECRUITER_TOOLS` (default deny); everyone else against the web surface."""
     if is_recruiter(user):
         return _recruiter_refusal(name, args)
-    if name in WEB_TOOL_NAMES:
+    if name in WEB_TOOL_NAMES or name in member_only_tools(user):
         return None
     if name in TOOLS_BY_NAME:
         return (

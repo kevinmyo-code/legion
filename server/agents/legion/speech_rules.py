@@ -26,7 +26,8 @@ from dataclasses import dataclass
 from engine_mcp.tools import ENDS_TURN, FOR_MODEL, REPLAY_AS, SPEAK_EXACT, SPEAK_VERBATIM
 
 # `about_kevin`: his profile, spoken by code and never by the model (2026-11-18, `demo/tools.py`).
-VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances", "about_kevin"})
+# `show_part`: where a Jeep fastener is and its checked torque (garage, 2026-11-20).
+VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances", "about_kevin", "show_part"})
 
 # The phone's `ScriptedLines.FILLERS` (spec 22): what a reply that opens with only these is
 # stripped of. What the web says while a tool runs is per tool (`assistant/fillers.py`).
@@ -124,6 +125,76 @@ def backed_cents(calls) -> set[int] | None:
 def states_unbacked_figure(sentence: str, backed: set[int] | None) -> bool:
     """True when a money tool ran and `sentence` states a decimal figure none of them returned."""
     return backed is not None and not decimal_cents(sentence) <= backed
+
+
+# ---- torque and fastener sizes (garage, 2026-11-20) -------------------------------------------
+# A torque figure said wrong can loosen a steering joint. So while the garage switch is on
+# (`garage.flags`), on every member turn, a model sentence may state a torque, a socket size or a
+# thread only when `show_part` spoke that very number from the owner's checked table in this
+# turn; otherwise the sentence is not said. A web search or the model's own memory can therefore
+# never put a torque in his ear. Number words are never backed: code speaks digits. Membership
+# only, nothing computed. With the switch off nothing here runs (`backed_torque` answers None).
+
+_WORD_NUMBER = "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True))
+_WORDS = rf"(?:{_WORD_NUMBER})(?:[\s-]+(?:and[\s-]+)?(?:{_WORD_NUMBER}))*"
+_NUM = rf"(?:\d+(?:\.\d+)?|{_WORDS})"
+_RANGE = rf"{_NUM}(?:\s*(?:to|-|–|or|and)\s*{_NUM})?"
+_TORQUE_UNIT = (
+    r"(?:ft\.?[\s-]*lbs?\b\.?|foot[\s-]*pounds?\b|feet[\s-]*pounds?\b|lbs?\.?[\s-]*f(?:ee)?t\b|"
+    r"pounds?[\s-]*(?:feet|foot)\b|newton[\s-]*met(?:er|re)s?\b|n\s?[·.\-]?\s?m\b|"
+    r"in(?:ch)?[\s.-]*(?:lbs?|pounds?)\b)"
+)
+_FIGURES = (
+    re.compile(rf"\b({_RANGE})\s*{_TORQUE_UNIT}", re.I),
+    re.compile(rf"\b({_NUM})\s*(?:mm|millimet(?:er|re)s?|mil)\b", re.I),
+    re.compile(r"\bm(\d{1,2}(?:\s*(?:x|by|×)\s*\d+(?:\.\d+)?)?)\b", re.I),
+    re.compile(rf"\b({_NUM})\s*(?:socket|wrench|spanner)\b", re.I),
+    re.compile(
+        r"\b(\d+\s*/\s*\d+|\d+\s+\d+\s*/\s*\d+|(?:\w+[\s-])?(?:half|quarters?|eighths?|"
+        r"sixteenths?))[\s-]*(?:inch|in\.|\")",
+        re.I,
+    ),
+)
+_DIGITS = re.compile(r"\d+(?:\.\d+)?")
+_HAS_WORD_NUMBER = re.compile(rf"\b(?:{_WORD_NUMBER}|half|quarters?|eighths?|sixteenths?)\b", re.I)
+
+
+def plain_number(text: str) -> str:
+    """'60.0' and '60' alike: the form code and the guard compare in."""
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def torque_figures(sentence: str) -> list[str]:
+    """Every torque, socket-size or thread figure in `sentence`, as said."""
+    found = []
+    for pattern in _FIGURES:
+        found += [m.group(0) for m in pattern.finditer(sentence or "")]
+    return found
+
+
+def backed_torque(calls, on: bool) -> set[str] | None:
+    """The numbers `show_part` spoke from checked rows in this turn, or None when the guard is
+    off (the switch off, or a recruiter's turn)."""
+    if not on:
+        return None
+    backed: set[str] = set()
+    for c in calls:
+        if c.ok and c.name == "show_part" and isinstance(c.data, dict):
+            backed |= {plain_number(str(n)) for n in c.data.get("spoken_figures") or []}
+    return backed
+
+
+def states_unbacked_torque(sentence: str, backed: set[str] | None) -> bool:
+    """True when the guard is on and `sentence` states a torque or size figure code did not say
+    from the checked table this turn."""
+    if backed is None:
+        return False
+    for figure in torque_figures(sentence):
+        if _HAS_WORD_NUMBER.search(figure):
+            return True
+        if not {plain_number(n) for n in _DIGITS.findall(figure)} <= backed:
+            return True
+    return False
 
 
 # The phone's `FillerTurn` (spec 23): a line of at most four words that opens with a filler opener
