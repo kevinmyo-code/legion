@@ -48,8 +48,8 @@ class SherpaSpeakerEmbedder private constructor(
 }
 
 /**
- * Where the model comes from. Not in git: the 3D-Speaker code is Apache-2.0 but no licence for the
- * model weights could be confirmed (`app/src/main/assets/speaker/README.md`). In order:
+ * Where the model comes from. Not in git: `app/speaker-model.pin` pins the file a build ships
+ * (`app/src/main/assets/speaker/README.md`). In order:
  * 1. the app's external files dir, `Android/data/com.kevin.legion/files/speaker/`, by `adb push`;
  * 2. `assets/speaker/`, gitignored, filled on the build machine before `assembleFast`.
  * Neither present: the check reports `model_missing` and the wake word opens as today.
