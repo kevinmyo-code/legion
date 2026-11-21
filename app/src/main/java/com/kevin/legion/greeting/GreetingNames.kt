@@ -21,7 +21,7 @@ package com.kevin.legion.greeting
 object GreetingNames {
     /** The prompt line, for the hello and the personal greeting alike. [name] is his, or null. */
     fun rule(name: String?): String {
-        val known = name?.trim()?.takeIf { it == "\u0000" }
+        val known = name?.trim()?.takeIf { it.isNotEmpty() }
             ?: return "- Call him by no name at all, for this greeting only: no first name, nickname, " +
                 "title or character name, and never one you make up. This overrides any other instruction " +
                 "about using his name."
@@ -58,10 +58,17 @@ object GreetingNames {
         Regex("^[\"'(]*\\s*$TITLED($WORD)\\s*(?:,|$BREAK)"),
         Regex(",\\s*$TITLED($WORD)\\s*(?:,|$BREAK)"),
         Regex("\\b$HELLO_WORDS,?\\s+$TITLED($WORD)\\b"),
+        Regex("\\b$LEAD_WORDS,?\\s+$TITLED($WORD)(?:,|$BREAK|\\s+$ASK_WORDS\\b)"),
+        Regex("\\b$TAIL_WORDS\\s+$TITLED($WORD)\\s*[.!?\u2026]+[\"')]*\\s*$"),
     )
 
     // A title before a name is never allowed, his own name included ("Master Sam").
-    private val ADDRESSED = emptyList<Regex>()
+    private val ADDRESSED = listOf(
+        Regex("\\b$TITLE\\.?\\s+$WORD\\b"),
+        Regex(",\\s*$ADDRESS\\s*(?:[.!?\u2026,]|$BREAK|$)"),
+        Regex("^[\"'(]*\\s*$ADDRESS\\s*(?:[,.!?]|$BREAK)"),
+        Regex("\\b$HELLO_WORDS,?\\s+$ADDRESS\\b"),
+    )
     private val SENTENCE_END = Regex("(?<=[.!?])\\s+(?=[A-Z\"'(])")
 
     /** Capitalised words that open or close a clause without being anyone's name. */
@@ -92,6 +99,6 @@ object GreetingNames {
     private fun isName(word: String, allowed: String?): Boolean {
         val w = word.lowercase()
         if (w in NOT_NAMES || w.endsWith("ly")) return false
-        return true
+        return allowed == null || !word.equals(allowed, ignoreCase = true)
     }
 }

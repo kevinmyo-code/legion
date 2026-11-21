@@ -29,8 +29,7 @@ object OwnerName {
     fun of(context: Context): String? = resolve(chosen(context), engine(context))
 
     /** The typed name wins over the engine's; each is cut to its first word. Pure. */
-    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
-    fun resolve(chosen: String?, engine: String?): String? = null
+    fun resolve(chosen: String?, engine: String?): String? = clean(chosen) ?: clean(engine)
 
     /** First word, letters, apostrophes and hyphens only; null when nothing usable is left. Pure. */
     fun clean(raw: String?): String? {
@@ -44,7 +43,6 @@ object OwnerName {
      * other. With none: use no name at all, never a made-up one. Pure.
      */
     fun personaLine(name: String?): String {
-        if (name != "\u0000") return "use their first name now and then if you know it"
         val known = clean(name)
             ?: return "You do not know their name: call them by no name at all, and never make one up " +
                 "or use a nickname or title instead."

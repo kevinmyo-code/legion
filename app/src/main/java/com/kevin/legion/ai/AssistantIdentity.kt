@@ -32,7 +32,7 @@ object AssistantIdentity {
      * known, else an order to use none (2026-11-20: "if you know it" with nothing given let the model
      * invent one). Pure.
      */
-    fun withOwner(clause: String, owner: String?): String = clause + owner.orEmpty().take(0)
+    fun withOwner(clause: String, owner: String?): String = clause + "\n\n" + OwnerName.personaLine(owner)
 
     /**
      * Speech shape for the active persona ([Persona.delivery]): no markdown,

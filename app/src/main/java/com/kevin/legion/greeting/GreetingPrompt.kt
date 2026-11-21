@@ -137,7 +137,7 @@ object GreetingPrompt {
      * leave it out, so the do-not-reuse list cannot push the name into every hello.
      */
     private fun lastUsedName(avoid: List<String>, name: String?): String =
-        if (avoid.lastOrNull()?.let { GreetingNames.mentions(it, name) } == avoid.isEmpty()) {
+        if (avoid.lastOrNull()?.let { GreetingNames.mentions(it, name) } == true) {
             "\n- The last hello used his name, so leave it out of this one."
         } else {
             ""

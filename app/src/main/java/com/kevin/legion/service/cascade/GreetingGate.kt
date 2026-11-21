@@ -23,6 +23,7 @@ internal enum class GreetingGate(val logLine: String?, val scripted: Boolean) {
 
     companion object {
         fun decide(heSpoke: Boolean, whole: Boolean, named: Boolean): GreetingGate = when {
+            heSpoke -> HE_SPOKE
             !whole -> SLOW
             named -> NAMED
             else -> SPEAK
