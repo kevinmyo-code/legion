@@ -230,6 +230,7 @@ class Conversation:
         self.voice = svc.tts.default_voice if svc.tts else "am_puck"
         self.lang: str | None = None
         self.utts: dict[int, dict] = {}
+        self.dead: set[int] = set()  # utterance ids that got an error: later frames and ends are dropped
         self.decoding: dict[int, dict] = {}
         self.tts_queue: asyncio.Queue = asyncio.Queue()
         self.tts_cancelled: set[int] = set()
@@ -269,6 +270,13 @@ class Conversation:
             u["t0"] = time.perf_counter()
             self.tasks.append(asyncio.create_task(self._stream_stt(uid, u)))
 
+    def _drop(self, uid: int) -> None:
+        """The stream failed and its error names uid. Nothing more may come for that id (contract 5),
+        but the phone keeps sending its audio until the error arrives, then its end: drop those
+        quietly instead of answering every frame with a bad_request."""
+        self.utts.pop(uid, None)
+        self.dead.add(uid)
+
     @property
     def streaming_stt(self) -> bool:
         return bool(getattr(self.svc.stt, "end_of_turn", False)) and hasattr(self.svc.stt, "open_stream")
@@ -278,7 +286,7 @@ class Conversation:
         try:
             sess = await asyncio.wait_for(self.svc.gpu.run(self.svc.stt.open_stream, u["lang"]), STT_BUDGET_S)
         except Exception as exc:  # noqa: BLE001
-            self.utts.pop(uid, None)
+            self._drop(uid)
             if isinstance(exc, asyncio.TimeoutError):
                 log.warning("stt stream open over %.0f s", STT_BUDGET_S)
                 self.svc.strike()
@@ -300,7 +308,7 @@ class Conversation:
                 events, dt = await asyncio.wait_for(self.svc.gpu.run(_timed, sess.feed, item), STT_BUDGET_S)
                 feed_s += dt
             except Exception as exc:  # noqa: BLE001
-                self.utts.pop(uid, None)
+                self._drop(uid)
                 if isinstance(exc, asyncio.TimeoutError):
                     log.warning("stt stream feed over %.0f s (GPU or host memory starved?)", STT_BUDGET_S)
                     self.svc.strike()
@@ -335,7 +343,7 @@ class Conversation:
                                                            STT_BUDGET_S)
                         feed_s += dt
                     except Exception as exc:  # noqa: BLE001
-                        self.utts.pop(uid, None)
+                        self._drop(uid)
                         if isinstance(exc, asyncio.TimeoutError):
                             self.svc.strike()
                             return await self.error("timeout", f"STT flush over {STT_BUDGET_S} s", uid)
@@ -372,7 +380,7 @@ class Conversation:
     def mic(self, uid: int, pcm: bytes) -> str | None:
         u = self.utts.get(uid)
         if u is None:
-            return "audio for an id never started"
+            return None if uid in self.dead else "audio for an id never started"
         if len(pcm) % 2:
             return "odd byte count"
         if len(u["buf"]) + len(pcm) > MAX_UTTERANCE_MS * E.STT_RATE // 1000 * 2:
@@ -391,6 +399,8 @@ class Conversation:
         uid = m.get("id")
         if isinstance(uid, int) and uid in self.utts and "q" in self.utts[uid]:
             self.utts[uid]["q"].put_nowait(None)
+            return
+        if uid in self.dead:
             return
         u = self.utts.pop(uid, None) if isinstance(uid, int) else None
         if u is None:

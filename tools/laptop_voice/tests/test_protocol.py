@@ -487,6 +487,29 @@ async def test_streaming_stt_step_timeout_answers_timeout_and_strikes(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_after_a_step_timeout_nothing_more_comes_for_that_id(monkeypatch):
+    """Contract section 5: after an error that names an id, nothing more comes for that id. The phone
+    keeps streaming mic audio until it hears the error, then ends or cancels: those must be dropped
+    quietly, not answered with a bad_request per frame."""
+    monkeypatch.setattr(S, "STT_BUDGET_S", 0.2)
+    svc, server, url = await start(stt=E.FakeStreamingStt(feed_delay_s=0.5))
+    c = VoiceClient(url, TOKEN)
+    try:
+        await c.connect()
+        await c.stream_utterance(7, tone(0.3), end=False)
+        err = await c.next_event("error", timeout=5)
+        assert err["code"] == "timeout" and err["id"] == 7
+        pcm = tone(0.5).astype("<i2").tobytes()
+        for i in range(0, len(pcm), 3200):  # late mic frames, then the end, as the phone sends them
+            await c.ws.send_bytes(S.HEADER.pack(S.KIND_MIC, 7) + pcm[i:i + 3200])
+        await c.send({"type": "stt.end", "id": 7})
+        await c.send({"type": "ping", "t": 1})
+        assert (await c.next_event("pong", timeout=5))["type"] == "pong", "nothing else came before the pong"
+    finally:
+        await c.close(); await server.close()
+
+
+@pytest.mark.asyncio
 async def test_streaming_stt_refuses_a_second_live_utterance():
     svc, server, url = await start(stt=E.FakeStreamingStt())
     c = VoiceClient(url, TOKEN)
