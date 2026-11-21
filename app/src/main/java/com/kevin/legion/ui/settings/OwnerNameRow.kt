@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.ai.OwnerName
 import com.kevin.legion.ui.common.DeckButton
@@ -67,11 +68,12 @@ fun OwnerNameRow(companionName: String?) {
                 singleLine = true,
                 label = { Text("First name") },
                 placeholder = { engineName?.let { Text(it) } },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("owner-name-field"),
             )
             Spacer(Modifier.height(4.dp))
             DeckButton(
                 text = "Save name",
+                modifier = Modifier.testTag("owner-name-save"),
                 onClick = {
                     OwnerName.setChosen(context, text)
                     status = "Saved."
