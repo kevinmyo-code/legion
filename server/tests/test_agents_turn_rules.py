@@ -1,5 +1,5 @@
 """Characterization tests for the turn rules lifted out of the web door in slice E0
-(`agents/legion/ask_again.py`, `sentence_rules.py`, `closing.py`). They pin what the web door does
+(`agents/legion/ask_again.py`, `sentence_gate.py`, `closing.py`). They pin what the web door does
 today, oddities included, so slice E3 can apply the same rules to the agent turn. Pure functions:
 no database, no model."""
 
@@ -138,6 +138,12 @@ def test_oddity_past_the_cap_a_sentence_is_dropped_but_money_and_torque_still_co
     # Not the first sentence, so filler is no longer dropped as filler: the cap drops it.
     assert _answer(gate, "Checking now.", sentences=12) == gates.OVER_CAP
     assert _answer(gate, "That is 40 dollars.", sentences=12, verbatim_said=True) == gates.MONEY
+    import re
+
+    from agents.legion.speech_rules import TorqueGuard
+
+    guard = TorqueGuard(frozenset({"185"}), re.compile(r"pitman", re.I), whole_turn=False)
+    assert _answer(_gate(torque=guard), "Torque it to 190 ft-lbs.", sentences=12) == gates.TORQUE
 
 
 def test_oddity_a_claim_past_the_cap_is_dropped_not_held():
