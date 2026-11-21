@@ -252,18 +252,35 @@ class KyutaiStt:
 VOICES = {
     "dev": "unmute-prod-website/developer-1.mp3",                       # CC0 (Kyutai's own recording)
     "vctk_p226": "vctk/p226_023.wav",                                   # CC BY 4.0, English male
-    # Kevin's pick by ear, 2026-11-16 ("a more american neutral voice"): Alfred's default voice.
-    # EARS is CC BY-NC 4.0 (non-commercial), like expresso. "American English" is the speaker's
-    # self-reported first language in the EARS speaker statistics.
+    # Kevin's pick by ear, 2026-11-16: Alfred's default voice until 2026-11-20 (one launcher flag back:
+    # --tts-voice ears_p039). EARS is CC BY-NC 4.0 (non-commercial), like expresso. "American English"
+    # is the speaker's self-reported first language in the EARS speaker statistics.
     "ears_p039": "ears/p039/freeform_speech_01.wav",                    # CC BY-NC 4.0, American male
     # Kevin's picks by ear, 2026-11-15 (butler shortlist #13, #5); p279 was the default until 11-16
     "vctk_p279": "vctk/p279_023.wav",                                   # CC BY 4.0, English male
     "vctk_p254": "vctk/p254_023.wav",                                   # CC BY 4.0, English male
-    "ex03_calm": "expresso/ex03-ex01_calm_001_channel1_1143s.wav",     # CC BY-NC 4.0
-    "ex01_calm": "expresso/ex03-ex01_calm_001_channel2_1081s.wav",     # CC BY-NC 4.0
-    # style variants of the same speakers (emotion comes from the reference clip, not from tags)
+    # Alfred's voice from 2026-11-20 (audition A5): Expresso speaker ex03, one reference clip per mood.
+    # Kyutai has no mood tags: the mood IS the clip. Expresso two-speaker files hold speaker A on
+    # channel1 and speaker B on channel2 (exA-exB_style_NNN_channelN), so ex03 is channel1 in ex03-*
+    # files and channel2 in ex04-ex03 files. CC BY-NC 4.0: his own laptop and phone only, never the
+    # recruiter demo or anything public. Left out on purpose: angry, disgusted, desire, child, animal,
+    # nonverbal (wrong for an assistant).
+    "ex03_default": "expresso/ex04-ex03_default_002_channel2_239s.wav",  # neutral: Alfred's default
+    "ex03_calm": "expresso/ex03-ex01_calm_001_channel1_1143s.wav",
     "ex03_happy": "expresso/ex03-ex01_happy_001_channel1_334s.wav",
     "ex03_sympathetic": "expresso/ex03-ex02_sad-sympathetic_001_channel1_454s.wav",
+    "ex03_awe": "expresso/ex03-ex01_awe_001_channel1_1323s.wav",
+    "ex03_sarcastic": "expresso/ex03-ex01_sarcastic_001_channel1_435s.wav",
+    "ex03_whisper": "expresso/ex04-ex03_whisper_002_channel2_266s.wav",
+    "ex03_confused": "expresso/ex03-ex01_confused_001_channel1_909s.wav",
+    "ex03_sleepy": "expresso/ex03-ex01_sleepy_001_channel1_619s.wav",
+    "ex03_laughing": "expresso/ex03-ex01_laughing_001_channel1_188s.wav",
+    "ex03_fast": "expresso/ex04-ex03_fast_001_channel2_25s.wav",
+    "ex03_enunciated": "expresso/ex03-ex01_enunciated_001_channel1_388s.wav",
+    "ex03_projected": "expresso/ex04-ex03_projected_001_channel2_179s.wav",
+    "ex03_narration": "expresso/ex03-ex02_narration_001_channel1_674s.wav",
+    # speaker ex01 (channel2 in ex03-ex01 and ex04-ex01 files), kept from 2026-11-15
+    "ex01_calm": "expresso/ex03-ex01_calm_001_channel2_1081s.wav",     # CC BY-NC 4.0
     "ex01_happy": "expresso/ex03-ex01_happy_001_channel2_257s.wav",
     "ex01_sympathetic": "expresso/ex04-ex01_sad-sympathetic_001_channel2_346s.wav",
 }
@@ -273,7 +290,7 @@ class KyutaiTts:
     name = "kyutai-tts-1.6b-en_fr"
     sample_rate = 24000
 
-    def __init__(self, n_q: int = 32, temp: float = 0.6, cfg_coef: float = 2.0, default_voice: str = "ears_p039",
+    def __init__(self, n_q: int = 32, temp: float = 0.6, cfg_coef: float = 2.0, default_voice: str = "ex03_default",
                  persistent: bool = True):
         """n_q: codebooks generated per 80 ms frame (32 = best audio; 16-24 = faster, see results).
         persistent: keep one LMGen in streaming mode and reset it between utterances, so CUDA graphs

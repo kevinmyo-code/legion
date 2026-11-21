@@ -37,6 +37,14 @@ def test_keep_warm_flag_passes_through_only_when_given_and_is_bounded():
             R.keep_warm_args(bad)
 
 
+def test_tts_voice_flag_passes_a_plain_key_only_when_given():
+    assert "LEGION_VOICE_KYUTAI_VOICE" not in R.tuning_env(None, None)
+    assert R.tuning_env(None, None, tts_voice="ears_p039") == {"LEGION_VOICE_KYUTAI_VOICE": "ears_p039"}
+    for bad in ("", "../x", "ears/p039/freeform_speech_01.wav", "A" * 41):
+        with pytest.raises(SystemExit):
+            R.tuning_env(None, None, tts_voice=bad)
+
+
 def test_tts_codebooks_flag_is_off_by_default_and_bounded():
     assert "LEGION_VOICE_KYUTAI_TTS_NQ" not in R.tuning_env(None, None)
     assert R.tuning_env(None, None, 16) == {"LEGION_VOICE_KYUTAI_TTS_NQ": "16"}

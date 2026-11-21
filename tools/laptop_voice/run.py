@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -68,7 +69,8 @@ def child_env(allow_download: bool, hf_home: str | None = None) -> dict:
     return env
 
 
-def tuning_env(eot_threshold: float | None, maybe_threshold: float | None, tts_nq: int | None = None) -> dict:
+def tuning_env(eot_threshold: float | None, maybe_threshold: float | None, tts_nq: int | None = None,
+               tts_voice: str | None = None) -> dict:
     """Kyutai tuning flags as the child's environment (numbers only); refuses values out of range."""
     env = {}
     if eot_threshold is not None:
@@ -84,6 +86,11 @@ def tuning_env(eot_threshold: float | None, maybe_threshold: float | None, tts_n
         if not 8 <= tts_nq <= 32:
             raise SystemExit("--tts-nq must be 8 to 32")
         env["LEGION_VOICE_KYUTAI_TTS_NQ"] = str(int(tts_nq))
+    if tts_voice is not None:
+        # a key of the engine's allowlist (checked there at start), never a path
+        if not re.fullmatch(r"[a-z0-9_]{1,40}", tts_voice):
+            raise SystemExit("--tts-voice must be a voice key such as ex03_default")
+        env["LEGION_VOICE_KYUTAI_VOICE"] = tts_voice
     return env
 
 
@@ -161,6 +168,9 @@ def main() -> None:
     p.add_argument("--maybe-threshold", type=float, default=None,
                    help="Kyutai: also send stt.maybe_end at this lower pause probability, so the phone can "
                         "start drafting earlier (default: only at the end-of-turn crossing, before the flush)")
+    p.add_argument("--tts-voice", default=None,
+                   help="Kyutai: Alfred's default voice, a key of the allowlist (default ex03_default; "
+                        "ears_p039 was the default until 2026-11-20). A reply may still name another")
     p.add_argument("--keep-warm-s", type=float, default=None,
                    help="while no conversation is open, a tiny pass through both models this often, so the "
                         "first request after a long idle is fast (default 45; 0 = off)")
@@ -180,7 +190,7 @@ def main() -> None:
            str(HERE.parent), "--host", a.host, "--port", a.port, "--stt", a.stt, "--tts", a.tts,
            *keep_warm_args(a.keep_warm_s)]
     env = child_env(a.allow_download, a.hf_home)
-    env.update(tuning_env(a.eot_threshold, a.maybe_threshold, a.tts_nq))
+    env.update(tuning_env(a.eot_threshold, a.maybe_threshold, a.tts_nq, a.tts_voice))
     if os.name == "nt":
         # Put THIS launcher in the job before starting the service, so every process it starts is born
         # inside the job. (A venv's python.exe is a shim that starts the real interpreter as a child;

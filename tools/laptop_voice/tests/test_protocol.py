@@ -562,3 +562,50 @@ async def test_stream_messages_refused_without_text_streaming():
         assert err["code"] == "bad_request"
     finally:
         await c.close(); await server.close()
+
+
+class MoodTts(E.FakeTts):
+    """An engine with its own allowlist (like Kyutai's moods); records the voice of every line."""
+
+    allowlist = ["ex03_default", "ex03_happy", "ex03_sympathetic"]
+    voices = allowlist
+    default_voice = "ex03_default"
+
+    def __init__(self):
+        super().__init__()
+        self.used: list[str] = []
+
+    def synth(self, text, voice, speed):
+        self.used.append(voice)
+        yield from super().synth(text, voice, speed)
+
+
+@pytest.mark.asyncio
+async def test_a_mood_for_one_reply_then_back_to_the_default():
+    tts = MoodTts()
+    svc, server, url = await start(tts=tts)
+    c = VoiceClient(url, TOKEN)
+    try:
+        ready = await c.connect()
+        assert ready["tts"]["default_voice"] == "ex03_default"
+        assert ready["tts"]["voices"] == MoodTts.allowlist
+        await c.speak(10, "Good news.", voice="ex03_happy")
+        assert (await c.next_event("tts.done"))["id"] == 10
+        await c.speak(12, "Next one.")
+        assert (await c.next_event("tts.done"))["id"] == 12
+        assert tts.used == ["ex03_happy", "ex03_default"]
+    finally:
+        await c.close(); await server.close()
+
+
+@pytest.mark.asyncio
+async def test_a_mood_outside_the_allowlist_is_refused():
+    svc, server, url = await start(tts=MoodTts())
+    c = VoiceClient(url, TOKEN)
+    try:
+        await c.connect()
+        await c.speak(14, "Hello.", voice="ex03_angry")
+        err = await c.next_event("tts.done")
+        assert err["type"] == "error" and err["code"] == "bad_request" and err["id"] == 14
+    finally:
+        await c.close(); await server.close()

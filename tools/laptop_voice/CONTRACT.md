@@ -200,3 +200,8 @@ phone  -> {"type":"bye"}
   - NEW `stt.maybe_end {id, text, prob[, end_of_turn]}` (section 4b). An old phone drops it (it ignores unknown types); a new phone on an old service never sees one and answers after `stt.final` as before.
   - The turn ends at the same moment with the same final text as before: the flush only moved after the event.
   - NEW launcher flag `--maybe-threshold` (off by default).
+- **2026-11-20, NO WIRE CHANGE, protocol stays 1 (Alfred's moods):**
+  - Kyutai `ready.tts.default_voice` is now `ex03_default` (Expresso speaker ex03, neutral). It was `ears_p039`; that key stays allowed. The laptop's launcher flag `--tts-voice` picks the default.
+  - NEW Kyutai voice keys, all the SAME speaker (ex03), one per mood: `ex03_default`, `ex03_calm`, `ex03_happy`, `ex03_sympathetic`, `ex03_awe`, `ex03_sarcastic`, `ex03_whisper`, `ex03_confused`, `ex03_sleepy`, `ex03_laughing`, `ex03_fast`, `ex03_enunciated`, `ex03_projected`, `ex03_narration`. Kyutai has no mood tags: the mood is the reference clip.
+  - A mood per reply needs nothing new: send it as the optional `voice` on `tts.speak` / `tts.stream.start` (section 4). A message without `voice` gets the conversation's voice (`hello.voice`, else `default_voice`). A key outside `ready.tts.voices` gets `bad_request`.
+  - Licence: the Expresso clips are CC BY-NC 4.0. Use them on the owner's own laptop and phone only, never in the recruiter demo or a public build.

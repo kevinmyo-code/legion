@@ -205,3 +205,54 @@ def test_tts_warm_takes_the_engine_lock_before_the_gpu_lock_and_never_waits():
     assert fired == ["engine"], "the warm pass's first lock is the engine lock"
     assert results.get("stream_chunks") == 2
     assert "warm" in results
+
+
+# ---- Alfred's moods (2026-11-20): one speaker (Expresso ex03), one reference clip per mood
+EXPRESSO = __import__("re").compile(r"expresso/(ex\d\d)-(ex\d\d)_([a-z-]+)_\d{3}_channel([12])_\d+s\.wav")
+# key mood -> the Expresso style in the file name, where they differ
+STYLE_OF = {"sympathetic": "sad-sympathetic"}
+EX03_MOODS = {"default", "happy", "sympathetic", "calm", "awe", "sarcastic", "whisper", "confused", "sleepy",
+              "laughing", "fast", "enunciated", "projected", "narration"}
+
+
+def test_every_expresso_key_is_its_own_speakers_channel():
+    """Expresso two-speaker files hold speaker A on channel1 and speaker B on channel2 (exA-exB_...):
+    a wrong channel is a different person's voice."""
+    for key, path in core.VOICES.items():
+        m = EXPRESSO.fullmatch(path)
+        if not key.startswith("ex"):
+            assert m is None, key
+            continue
+        assert m, f"{key}: {path} is not an Expresso reference clip"
+        a, b, style, channel = m.groups()
+        speaker, mood = key.split("_", 1)
+        assert (a if channel == "1" else b) == speaker, f"{key}: {path} is the other speaker's channel"
+        assert style == STYLE_OF.get(mood, mood), f"{key}: {path} is style {style}"
+
+
+def test_ex03_has_every_assistant_mood_and_none_that_would_be_wrong():
+    ex03 = {k.split("_", 1)[1] for k in core.VOICES if k.startswith("ex03_")}
+    assert ex03 == EX03_MOODS
+    for wrong in ("angry", "disgusted", "desire", "child", "animal", "nonverbal"):
+        assert not any(wrong in p for k, p in core.VOICES.items() if k.startswith("ex03_")), wrong
+
+
+def test_alfreds_default_voice_is_ex03_default_and_the_old_one_stays_allowed():
+    import inspect
+    assert inspect.signature(core.KyutaiTts.__init__).parameters["default_voice"].default == "ex03_default"
+    assert "ears_p039" in core.VOICES  # switching back is one launcher flag
+
+
+def test_default_voice_comes_from_the_launcher_flag_only_when_set(monkeypatch):
+    from laptop_voice import kyutai as K
+    seen = {}
+    monkeypatch.setattr(core.KyutaiTts, "__init__", lambda self, *a, **kw: seen.update(kw))
+    monkeypatch.delenv("LEGION_VOICE_KYUTAI_VOICE", raising=False)
+    K.KyutaiTts()
+    assert "default_voice" not in seen, "unset: the code default"
+    monkeypatch.setenv("LEGION_VOICE_KYUTAI_VOICE", "ears_p039")
+    K.KyutaiTts()
+    assert seen["default_voice"] == "ears_p039"
+    monkeypatch.setenv("LEGION_VOICE_KYUTAI_VOICE", "ex03_angry")
+    with pytest.raises(SystemExit):
+        K.KyutaiTts()

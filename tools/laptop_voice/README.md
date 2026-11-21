@@ -55,6 +55,9 @@ at the end-of-turn crossing, before the flush (contract 4b).
 `--tts-nq` (8 to 32, default 32) runs the voice with fewer codebooks per frame: faster to first
 audio, lower quality for the whole line. Not measured on the 4060; leave it off until it is
 (`bench_tts.py` with each value, then listen).
+`--tts-voice` (default `ex03_default`) is Alfred's default voice, a key of the allowlist in
+`kyutai_core.py` (`--tts-voice ears_p039` goes back to the voice used until 2026-11-20). The `ex03_*`
+keys are one speaker in different moods; a reply picks one with `voice` (CONTRACT.md, 2026-11-20).
 `--keep-warm-s` (default 45, 0 = off): while no conversation is open, a tiny pass through both models
 this often (half a second of silence through STT, one word of TTS to its first chunk), so the first
 request after a long idle does not pay to bring the models back (`keep_warm.py`). It never waits for

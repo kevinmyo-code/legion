@@ -171,6 +171,12 @@ class KyutaiTts(core.KyutaiTts):
         nq = os.environ.get("LEGION_VOICE_KYUTAI_TTS_NQ")
         if nq:
             kw.setdefault("n_q", int(nq))
+        # Alfred's default voice (launcher --tts-voice, 2026-11-20). Unset: the code default, ex03_default.
+        voice = os.environ.get("LEGION_VOICE_KYUTAI_VOICE")
+        if voice:
+            if voice not in core.VOICES:
+                raise SystemExit(f"--tts-voice {voice!r} is not an allowlisted voice")
+            kw.setdefault("default_voice", voice)
         super().__init__(*a, **kw)
         self.allowlist = list(core.VOICES)   # fixed ids; the engine maps each to one file in kyutai/tts-voices
         self.voices = self.allowlist
