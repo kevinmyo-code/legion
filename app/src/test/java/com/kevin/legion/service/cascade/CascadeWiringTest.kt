@@ -508,6 +508,26 @@ class CascadeWiringTest {
 
     private fun controller() = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
 
+    @Test
+    fun `the greeting is held whole and name-checked before any of it is spoken`() {
+        val g = bodyOf(session(), "speakGreeting")
+        // Nothing streams to the speaker as it arrives.
+        assertFalse(g.contains("reply.text(delta)"))
+        val join = g.indexOf("GreetingBudget.WHOLE_LINE_MS")
+        val check = g.indexOf("greetingNamesHim(")
+        val speak = g.indexOf("reply.text(written.toString())")
+        val kept = g.indexOf("noteOpened(")
+        assertTrue("$join $check $speak $kept", join in 0 until check && check < speak && speak < kept)
+        // A named line falls to the scripted hello and is not kept.
+        val blocked = g.substring(check, speak)
+        assertTrue(blocked.contains("speakScripted(ackLines.next())"))
+        assertTrue(blocked.contains("return@launch"))
+        assertFalse(blocked.contains("noteOpened("))
+        val backstop = bodyOf(session(), "greetingNamesHim")
+        assertTrue(backstop.contains("GreetingWords.namesHim(written)"))
+        assertTrue(backstop.contains("\"greeting_name_blocked\""))
+    }
+
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 
     private fun bodyOf(source: String, name: String): String {

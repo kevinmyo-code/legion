@@ -13,4 +13,8 @@ package com.kevin.legion.service.cascade
 internal object GreetingWords {
     fun of(written: String): String? =
         LeadingFiller.strip(TtsTags.strip(written).trim()).trim().ifEmpty { null }
+
+    /** Placeholder: the name check is not wired yet. */
+    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
+    fun namesHim(written: String): Boolean = false
 }

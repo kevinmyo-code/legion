@@ -305,6 +305,31 @@ class GreetingBlockTest {
         assertFalse(prompt.contains("—"))
     }
 
+    @Test fun `both greetings carry the no-name rule, with or without hellos to avoid`() {
+        val p = parsed(pack(due = facts(due)))
+        val lead = GreetingBlock.lead(p, noPlace, 8)!!
+        val personal = GreetingPrompt.build(GreetingBlock.render(p, noPlace, morning, lead.item), lead)
+        assertTrue(personal.contains(GreetingNames.RULE))
+        assertTrue(GreetingPrompt.hello().contains(GreetingNames.RULE))
+        // Five kept hellos (the most kept) do not crowd it out: it comes after them, whole.
+        val five = listOf("Go on then.", "Well, look who it is.", "Ready when you are.", "Fire away.", "All ears.")
+        val hello = GreetingPrompt.hello(five).lines()
+        val avoidAt = hello.indexOfFirst { it.startsWith("- Do not reuse this wording") }
+        val ruleAt = hello.indexOf(GreetingNames.RULE)
+        assertTrue(avoidAt >= 0)
+        assertTrue("$avoidAt < $ruleAt", ruleAt > avoidAt)
+        five.forEach { assertTrue(it, hello[avoidAt].contains(it)) }
+    }
+
+    @Test fun `a kept hello that names him is never quoted back`() {
+        val hello = GreetingPrompt.hello(listOf("What's up, Marcus?", "Go on then.", "Felix, all ears."))
+        val line = hello.lines().single { it.startsWith("- Do not reuse this wording") }
+        assertTrue(line, line.contains("\"Go on then.\""))
+        assertFalse(line, line.contains("Marcus"))
+        assertFalse(line, line.contains("Felix"))
+        assertFalse(GreetingPrompt.hello(listOf("What's up, Marcus?")).contains("Do not reuse"))
+    }
+
     @Test fun `the hello hands over no facts and forbids every subject`() {
         val hello = GreetingPrompt.hello()
         assertFalse(hello.contains("FACTS PACK"))
