@@ -13,9 +13,11 @@ credential to Google.
 
 - **The loop is the engine runtime's** (`agents.runtime.loop.run_loop`, `GeminiClient`), the same
   generic loop the dark agent turn uses: rounds, the tool-free last round with the phone's nudge,
-  streamed text cut into whole sentences, per-round token counts (spec 6, 7, 8). Nothing of
-  `agents/legion` (its router, specs, confirm gate or turn tables) is used, and
-  `/api/agents/turn` is untouched. No runtime file is changed.
+  streamed text cut into whole sentences, per-round token counts (spec 6, 7, 8). Of
+  `agents/legion` it uses the turn rules both voice doors share (engine-brain switch plan, slice
+  E0: `speech_rules`, `sentence_gate`, `ask_again`, `closing`, `end_conversation`, `lines`), the
+  gateway's declarations, `late` and the honesty check in `guards`; never its router, specs,
+  confirm gate or turn tables, and `/api/agents/turn` is untouched.
 - **The prompt prefix is cached** (`assistant/prompt_cache.py`, spec 9): the stable body plus the
   phone's voice clause (spec 11) and the declarations; the clock and who is speaking ride at the
   head of each turn as the phone's "(Current context ...)" note (spec 10).
