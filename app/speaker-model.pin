@@ -1,19 +1,23 @@
 # The "Only my voice" speaker model is NOT committed (cloud-builds step 4, 2026-11-20).
-# A cloud build fetches the OFFICIAL file from the URL below and checks its size and sha256
-# (.github/scripts/fetch_speaker_model.sh). The laptop's copy is one byte shorter and has another
-# sha256 (c5915837...), so its origin is unproven and it is never committed.
+# A cloud build (.github/scripts/fetch_speaker_model.sh --install) takes ONE of two files:
 #
-# release_ok stays "no" until the official file has been tried on the phone with the enrolled
-# voiceprint (re-enrolled if needed) and found to tell the owner's voice from others as well as the
-# laptop copy does. While it is "no", a cloud APK build stops before building: no APK ships without
-# a speaker model, and none ships with an untried one. Flip it to "yes" in its own reviewed commit.
+#   release_ok=yes  the OFFICIAL file from `url`, checked by `bytes` and `sha256`. It waits on a hand
+#                   test on the phone with the enrolled voiceprint (re-enrolled if needed): it must
+#                   tell the owner's voice from others as well as the copy on the phone today.
+#   release_ok=no   INTERIM: the copy that ships on the phone today (one byte shorter than the
+#                   official file, another sha256, origin unproven), from the owner's private APK
+#                   bucket at `interim_object` (keyless Google sign-in, production environment only),
+#                   checked by `interim_bytes` and `interim_sha256`. Never committed.
 #
-# Source: k2-fsa/sherpa-onnx release "speaker-recongition-models" (sic), the ONNX export of
-# 3D-Speaker's ERes2Net (English, VoxCeleb, 16 kHz). size and sha256 are the ones GitHub reports for
-# that release asset (asset digest, read 2026-11-20; the asset was last updated 2026-11-19).
-# Licence: Apache-2.0 (modelscope/3D-Speaker and k2-fsa/sherpa-onnx); notice in
-# app/src/main/assets/speaker/README.md. The licence text is fetched from 3D-Speaker at a pinned
-# commit and checked by its git blob id (the standard Apache-2.0 text).
+# Either way a cloud APK never builds without a speaker model: a missing or mismatched file stops the
+# build. Flip release_ok to "yes" in its own reviewed commit after the phone test.
+#
+# Official source: k2-fsa/sherpa-onnx release "speaker-recongition-models" (sic), the ONNX export of
+# 3D-Speaker's ERes2Net (English, VoxCeleb, 16 kHz). bytes and sha256 are the ones GitHub reports for
+# that release asset (asset digest, read 2026-11-20; the asset was last updated 2026-11-19), and a CI
+# fetch matched them (speaker-model.yml). Licence: Apache-2.0 (modelscope/3D-Speaker and
+# k2-fsa/sherpa-onnx); notice in app/src/main/assets/speaker/README.md. The licence text is fetched from
+# 3D-Speaker at a pinned commit and checked by its git blob id (the standard Apache-2.0 text).
 path=speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx
 url=https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx
 bytes=26485264
@@ -21,4 +25,7 @@ sha256=c4947caf150b8502fdd75bbe4089b971ab1ec42e90ee3ba547faca2cde44d9ee
 license_path=licenses/3dspeaker-eres2net-Apache-2.0.txt
 license_url=https://raw.githubusercontent.com/modelscope/3D-Speaker/b6ea24f428a178c02b7ef9d6900569050448c8a1/LICENSE
 license_git_blob=261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64
+interim_object=build-assets/speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx
+interim_bytes=26485263
+interim_sha256=c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5
 release_ok=no
