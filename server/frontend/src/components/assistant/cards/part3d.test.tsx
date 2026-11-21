@@ -50,7 +50,7 @@ const CARD: Part3dCard = {
       fastener_id: 'xj.susp.track_bar@frame_bracket_nut',
       name: 'frame bracket nut',
       checked: false,
-      held: 'The checked figure on file is for a different year, engine or axle than your truck, so I won't give it.',
+      held: "The checked figure on file is for a different year, engine or axle than your truck, so I won't give it.",
     },
   ],
 }
