@@ -134,7 +134,7 @@ class CallPauseTest {
     @Test
     fun `a communication mode left behind with no call in it stops blocking after 10 s (C5)`() {
         val stale = CallPause.StaleComm()
-        val left = signals(mode = comm).copy(otherCallAudio = false)
+        val left = signals(mode = comm).copy(otherCallAudio = false, callCapture = false)
         assertFalse(stale.feed(0, left))
         assertFalse(stale.feed(CallPause.STALE_COMM_MS - 1, left))
         assertTrue(stale.feed(CallPause.STALE_COMM_MS, left))
@@ -151,7 +151,39 @@ class CallPauseTest {
         assertFalse(ours.feed(60_000, signals(mode = comm, ownComm = true).copy(otherCallAudio = false)))
     }
 
+    @Test
+    fun `a held call whose app still captures for it is never stale, playback or not (C5 re-check)`() {
+        val held = signals(mode = comm).copy(otherCallAudio = false, callCapture = true)
+        val stale = CallPause.StaleComm()
+        assertFalse(stale.feed(0, held))
+        assertFalse(stale.feed(10 * CallPause.STALE_COMM_MS, held))
+        // No playback, no capture, no telecom, no cellular for 10 s: stale.
+        val left = held.copy(callCapture = false)
+        val clean = CallPause.StaleComm()
+        assertFalse(clean.feed(0, left))
+        assertTrue(clean.feed(CallPause.STALE_COMM_MS, left))
+        // A capture coming back starts the count again.
+        assertFalse(clean.feed(CallPause.STALE_COMM_MS + 1, held))
+    }
+
+    @Test
+    fun `an unreadable recording list reads as a call capture, so never stale`() {
+        assertTrue(CallPause.callCapture(null))
+        assertFalse(CallPause.callCapture(emptyList()))
+        val ours = setOf(7, 9)
+        val wake = CallPause.Capture(sessionId = 9, source = VOICE_COMMUNICATION)
+        val other = CallPause.Capture(sessionId = 12, source = VOICE_COMMUNICATION)
+        val dictation = CallPause.Capture(sessionId = 13, source = VOICE_RECOGNITION)
+        assertFalse("our own recorders", CallPause.callCapture(listOf(wake), ours))
+        assertFalse("not a call source", CallPause.callCapture(listOf(dictation), ours))
+        assertTrue(CallPause.callCapture(listOf(wake, other), ours))
+        assertTrue("a call app's", CallPause.callCapture(listOf(CallPause.Capture(0, VOICE_CALL)), ours))
+    }
+
     private companion object {
+        const val VOICE_COMMUNICATION = android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        const val VOICE_RECOGNITION = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION
+        const val VOICE_CALL = android.media.MediaRecorder.AudioSource.VOICE_CALL
         val LINE = Regex("conversation_paused reason=(call|voip|mic_silenced|focus)")
     }
 }

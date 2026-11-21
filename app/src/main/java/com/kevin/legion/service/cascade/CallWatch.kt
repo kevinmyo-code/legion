@@ -4,12 +4,12 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.AudioRecordingConfiguration
-import android.media.MediaRecorder
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.telecom.TelecomManager
 import com.kevin.legion.service.TelephonyController
+import com.kevin.legion.service.WakeWordEngine
 import com.kevin.legion.service.turn.CallAudioMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -47,6 +47,7 @@ internal class CallWatch(
     /** This conversation's own capture ([CascadeMic]): its silencing is ours, its config is not another's. */
     fun ourCapture(sessionId: Int) {
         ourSession = sessionId
+        conversationSession = sessionId
     }
 
     fun start(scope: CoroutineScope) {
@@ -71,6 +72,7 @@ internal class CallWatch(
     }
 
     fun stop() {
+        conversationSession = 0
         job?.cancel()
         recording?.let { cb -> runCatching { audio.unregisterAudioRecordingCallback(cb) } }
         recording = null
@@ -80,23 +82,15 @@ internal class CallWatch(
         sinceStartMs = System.currentTimeMillis() - startedAtMs,
         micSilenced = silenced,
         focusLost = focusLost,
-        otherCallCapture = focusLost && otherCallCapture(),
+        // The focus rule as before: an unreadable list is no call capture here.
+        otherCallCapture = focusLost && captures(audio)?.let { CallPause.callCapture(it, ours()) } == true,
     )
-
-    /** Another app capturing for a call; anonymised configs keep their source and session id. */
-    private fun otherCallCapture(): Boolean = runCatching {
-        audio.activeRecordingConfigurations.any {
-            it.clientAudioSessionId != ourSession && it.clientAudioSource in CALL_SOURCES
-        }
-    }.getOrDefault(false)
 
     companion object {
         const val POLL_MS = 250L
 
-        private val CALL_SOURCES = setOf(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-            MediaRecorder.AudioSource.VOICE_CALL,
-        )
+        /** This conversation's own capture while one runs (0: none). */
+        @Volatile private var conversationSession = 0
 
         /** Another app's communication mode with no call in it, across the door and every watch. */
         private val staleComm = CallPause.StaleComm()
@@ -115,9 +109,19 @@ internal class CallWatch(
                 ringtone = playing?.contains(AudioAttributes.USAGE_NOTIFICATION_RINGTONE) == true,
                 // Unreadable: assume a call (a stale mode is then never cleared, the old behaviour).
                 otherCallAudio = playing?.contains(AudioAttributes.USAGE_VOICE_COMMUNICATION) ?: true,
+                callCapture = CallPause.callCapture(captures(audio), ours()),
             )
             return read.copy(commStale = staleComm.feed(System.currentTimeMillis(), read))
         }
+
+        /** The captures running now, any app's (anonymised ones keep source and session id); null: unreadable. */
+        private fun captures(audio: AudioManager?): List<CallPause.Capture>? = runCatching {
+            audio?.activeRecordingConfigurations
+                ?.map { CallPause.Capture(it.clientAudioSessionId, it.clientAudioSource) }
+        }.getOrNull()
+
+        /** This conversation's mic and the wake word's, left out of [CallPause.callCapture]. */
+        private fun ours(): Set<Int> = setOf(conversationSession, WakeWordEngine.captureSessionId) - 0
 
         /**
          * The usages playing now, any app's (null: unreadable). The voice-call usage is the other side of

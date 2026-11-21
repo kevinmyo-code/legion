@@ -1,6 +1,7 @@
 package com.kevin.legion.service.cascade
 
 import android.media.AudioManager
+import android.media.MediaRecorder
 
 /**
  * A conversation never listens through someone's phone call (2026-11-21; report
@@ -28,11 +29,12 @@ import android.media.AudioManager
  * Review of 264baf63 (2026-11-21), each a way to hang up on him for nothing:
  * - The capture signals (silenced, focus + another call capture) count only [CAPTURE_GRACE_MS] after
  *   the watch started: the wake word's own VOICE_COMMUNICATION recorder hands the mic over a moment
- *   after the open, and it cannot be told from another app's by its session id.
- * - Another app's communication mode with no sign of a call ([Signals.otherCallAudio] false, telecom
- *   quiet) for [STALE_COMM_MS] is stale ([StaleComm]), as a crashed VoIP app leaves it: it no longer
- *   counts, so it cannot refuse every open forever. A real VoIP call plays its other side on the
- *   voice-call usage the whole time, so it is never stale.
+ *   after the open (its session id is left out of [callCapture] too, once it is known).
+ * - Another app's communication mode with no sign of a call (no voice-call playback, no capture for a
+ *   call, telecom and the cellular state quiet) for [STALE_COMM_MS] is stale ([StaleComm]), as a
+ *   crashed VoIP app leaves it: it no longer counts, so it cannot refuse every open forever. A real
+ *   VoIP call plays its other side or captures for it the whole time, held or muted, so it is never
+ *   stale.
  *
  * Pure.
  */
@@ -60,6 +62,8 @@ internal object CallPause {
         val ringtone: Boolean = false,
         /** Another app plays on the voice-call usage (the other side of a call). */
         val otherCallAudio: Boolean = true,
+        /** Another app captures for a call, focus or not ([callCapture]; unreadable reads as true). */
+        val callCapture: Boolean = true,
         /** Another app's communication mode has looked stale for [STALE_COMM_MS] ([StaleComm]). */
         val commStale: Boolean = false,
         /** Since the watch started; the capture signals wait [CAPTURE_GRACE_MS]. */
@@ -106,12 +110,26 @@ internal object CallPause {
         /** True once [s] has looked stale for [STALE_COMM_MS], counting from the first such reading. */
         @Synchronized
         fun feed(nowMs: Long, s: Signals): Boolean {
-            val signOfCall = s.otherCallAudio || s.telecomCall || s.cellularCall
+            // A call on hold or muted may stop its playback; its capture runs on (re-check of cdfc8934).
+            val signOfCall = s.otherCallAudio || s.callCapture || s.telecomCall || s.cellularCall
             val looks = othersComm(s) && !signOfCall
             since = if (looks) since ?: nowMs else null
             return since?.let { nowMs - it >= STALE_COMM_MS } == true
         }
     }
+
+    /** One running capture, as the platform lists it (another app's is anonymised but keeps these). */
+    data class Capture(val sessionId: Int, val source: Int)
+
+    /**
+     * Another app captures for a call (VOICE_COMMUNICATION or VOICE_CALL), not one of [ours] (this
+     * conversation's mic, the wake word's). An unreadable list ([captures] null) reads as one.
+     */
+    fun callCapture(captures: List<Capture>?, ours: Set<Int> = emptySet()): Boolean =
+        captures?.any { it.sessionId !in ours && it.source in CALL_SOURCES } ?: true
+
+    private val CALL_SOURCES =
+        setOf(MediaRecorder.AudioSource.VOICE_COMMUNICATION, MediaRecorder.AudioSource.VOICE_CALL)
 
     /** `conversation_paused reason=<token>`: a fixed token, nothing personal. */
     fun line(reason: Reason): String = "conversation_paused reason=${reason.token}"
