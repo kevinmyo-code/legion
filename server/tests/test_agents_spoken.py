@@ -621,3 +621,76 @@ def test_heard_until_counts_the_untagged_text_the_history_holds(seeded):
         "role": "model", "parts": [{"text": "Fair enough. Nothing is due today."}]
     }
     assert events[-1].data["final_text"] == turn.final_text
+
+
+# ---- review fixes ------------------------------------------------------------------------------
+
+
+def test_after_a_cancel_no_closing_or_done_line_is_said():
+    state = _state()
+    turn = SpokenTurn(state, _gateway(), on=True)
+
+    def graph():
+        yield ev.Event("tool", {"name": "add_checklist_item", "ok": True,
+                                "write_fact": {"tool": "add_checklist_item", "title": "eggs"}})
+        state.actions.append({"name": "add_checklist_item", "writes": True, "ok": True})
+        yield S("I added eggs and")
+        state.status = "cancelled"
+        yield S("Stopped: the turn was cancelled.")
+        yield ev.done("cancelled", "", True)
+        return state
+
+    said = [e.data["text"] for e in turn.run(graph()) if e.type == "sentence"]
+    assert said == ["I added eggs and", "Stopped: the turn was cancelled."]
+
+
+@pytest.mark.parametrize(
+    "line,wait",
+    [
+        ("Just a second.", True), ("Give me a second on that.", True), ("One sec.", True),
+        ("Hang on.", True), ("Bear with me.", True), ("Checking.", True), ("One moment.", True),
+        ("Let me look.", True), ("Okay, just a moment.", True),
+        ("It is mild.", False), ("Just a second ago it rang.", False),
+        ("Give me the codes.", False), ("One code is stored.", False), ("I missed that.", False),
+        ("Hang on to the receipt.", False),
+    ],
+)
+def test_the_phones_wait_lines_are_filler_answers_are_not(line, wait):
+    from agents.legion.trailing_filler import is_wait_line
+
+    assert is_wait_line(line) is wait
+
+
+def test_after_content_a_wait_line_is_dropped_and_a_leading_one_is_the_opening_rules():
+    said, _ = _run(_state(), [S("I missed that."), S("Give me a second on that.")])
+    assert said == ["I missed that."]
+
+
+def test_the_cap_is_the_web_doors():
+    from assistant import cascade
+
+    assert spoken.MAX_SPOKEN_SENTENCES == cascade.MAX_SPOKEN_SENTENCES
+
+
+def test_answered_gives_a_call_that_never_ran_a_failure_response():
+    from agents.legion.spoken import NOT_RUN_RESPONSE, answered
+
+    msgs = [{"role": "model", "parts": [{"functionCall": {"name": "x", "args": {}}}]}]
+    out = answered(msgs, [])
+    assert out[-1]["parts"][0]["functionResponse"]["response"] == NOT_RUN_RESPONSE
+
+
+@pytest.mark.django_db
+def test_the_background_spec_keeps_its_dates_as_the_model_sent_them(seeded):
+    from agents.legion.gateway import LegionGateway
+    from agents.legion.specs import spec
+    from agents.runtime.tools import ToolCall
+
+    state = _state(transcript="and tomorrow?")
+    state.client_facts["local"] = {"day": "2026-03-10", "time": "21:00"}
+    gw = LegionGateway(member_request(seeded))
+    asked = ToolCall("c", "read_calendar", {"from": "tomorrow", "to": "tomorrow"})
+    kept, note = gw._his_day(state, spec("background"), asked)
+    assert kept.args == asked.args and note is None
+    fixed, _ = gw._his_day(state, spec("generalist"), asked)
+    assert fixed.args == {"from": "2026-03-11", "to": "2026-03-11"}
