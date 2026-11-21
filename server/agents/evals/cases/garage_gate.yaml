@@ -71,3 +71,21 @@ cases:
       - say: "what was that again?"
         expect:
           answer_not: [*no_number]
+  - id: side_follow_up
+    turns:
+      - say: "where's the track bar bolt at the frame?"
+        expect:
+          calls: ["show_part"]
+          answer_not: [*no_number]
+      - say: "and the passenger side?"
+        expect:
+          answer_not: [*no_number]
+  - id: size_follow_up
+    turns:
+      - say: "where's the tie rod end at the knuckle?"
+        expect:
+          calls: ["show_part"]
+          answer_not: [*no_number]
+      - say: "what size is that?"
+        expect:
+          answer_not: [*no_number]

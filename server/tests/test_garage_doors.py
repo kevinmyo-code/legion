@@ -22,7 +22,7 @@ from agents.legion.speech_rules import (
     torque_figures,
 )
 from agents.runtime.model import FakeModel, call, say
-from assistant import cascade, views
+from assistant import cascade, surface, views
 from assistant.surface import (
     RECRUITER_TOOLS,
     WEB_TOOL_NAMES,
@@ -141,15 +141,20 @@ def _checked_row(**extra):
 # =============================================================================
 
 
-def test_off_the_tool_is_in_no_list(owner, visitor_user):
+def test_off_the_tool_is_in_no_list(owner, visitor_user, monkeypatch):
     assert not flags.enabled()
     assert "show_part" not in TOOLS_BY_NAME
     assert "show_part" not in WEB_TOOL_NAMES and "show_part" not in RECRUITER_TOOLS
     assert member_only_tools(owner) == {}
-    assert [t.name for t in tools_for(owner)] == list(WEB_TOOL_NAMES)
+    offered = {who: [t.name for t in tools_for(who)] for who in (owner, visitor_user)}
+    assert all("show_part" not in names for names in offered.values())
     assert off_registry_tool("show_part", owner) is None
     assert refusal_for("show_part", owner) is not None
     assert refusal_for("show_part", visitor_user) is not None
+    # The lists are exactly what they would be without this slice's hook: compared against the
+    # hook removed, never the raw registry, so another slice's dark tool cannot break this.
+    monkeypatch.setattr(surface, "member_only_tools", lambda user: {})
+    assert offered == {who: [t.name for t in tools_for(who)] for who in (owner, visitor_user)}
 
 
 @pytest.mark.parametrize("value", ["", "off", "1", "true", "ON "])
@@ -292,6 +297,19 @@ def test_on_a_common_words_torque_question_answered_without_the_tool_gets_no_num
     assert said == ["Anything else?"]
 
 
+@pytest.mark.parametrize(
+    "asked,answer",
+    [("and the passenger side?", "Same, 95."), ("what size is that?", "21 mm.")],
+)
+def test_on_a_side_or_size_follow_up_gets_no_number(member, engine, switch_on, asked, answer):
+    engine.model = FakeModel([call("show_part", {"words": "track bar frame end"}), say("Done.")])
+    first = _events(_post(member, text="Where's the track bar nut at the frame?"))
+    conversation = _of(first, "turn")[0]["conversation_id"]
+    engine.model = FakeModel([say(f"{answer} Anything else?")])
+    second = _events(_post(member, text=asked, conversation_id=conversation))
+    assert _said(second) == ["Anything else?"]
+
+
 def test_on_a_new_topic_after_a_front_end_reply_keeps_its_numbers(member, engine, switch_on):
     engine.model = FakeModel([call("show_part", {"words": "track bar frame end"}), say("Done.")])
     first = _events(_post(member, text="Where's the track bar nut at the frame?"))
@@ -429,7 +447,17 @@ REPLY = "Track bar, frame end, driver side. The torque for it is not verified ye
 
 @pytest.mark.parametrize(
     "words",
-    ["what was that again?", "and the other side?", "same for this one?", "the second one"],
+    [
+        "what was that again?",
+        "and the other side?",
+        "same for this one?",
+        "the second one",
+        # The confirm's phrasings: a side or a size leans on the reply before.
+        "and the passenger side?",
+        "what size is that?",
+        "and on the left?",
+        "how many mm?",
+    ],
 )
 def test_a_bare_follow_up_to_a_front_end_reply_stays_a_front_end_turn(words):
     assert topic.about_front_end(words, REPLY)
