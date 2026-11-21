@@ -25,9 +25,14 @@
 from __future__ import annotations
 
 import time
+from datetime import date
+from datetime import time as clock_time
 
-from agents.legion import guards, hold, redact, relay
+from agents.legion import day_words, guards, hold, redact, relay
 from agents.legion.client_facts import TEST_MODE_WORDS
+from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
+from agents.legion.speech_rules import _verbatim
+from agents.legion.spoken import SPOKEN_SPEC, TurnCall
 from agents.legion.twins import TWINS
 from agents.runtime.tools import RELAY_ALONE, RELAY_BATCH, ToolCall, ToolOutcome
 from assistant import live, read_through
@@ -111,6 +116,13 @@ class LegionGateway:
         self._tools = None
         self._limb = None
         self._limb_tools = None
+        # Every call of this stream as the speech rules read it (`spoken.py`): name, success, the
+        # result's text and plain data. Never sent anywhere; gone with the stream.
+        self.calls: list[TurnCall] = []
+        # `end_conversation` was called: the limb closes the conversation after the sign-off.
+        self.end_requested = False
+        # Date-taking calls so far in this stream (`day_words.corrected` fixes only the first).
+        self._date_calls = 0
 
     def limb_tools(self) -> dict[str, relay.LimbTool]:
         """The relayable tools of the limb that made this turn (none without one, no query)."""
@@ -172,7 +184,13 @@ class LegionGateway:
             {**decl, "parameters": _rest_schema(decl["parameters"])}
             for decl in map(relay.declaration, self.limb_tools().values())
         ]
-        return rest_declarations(chosen) + limb
+        return rest_declarations(chosen) + limb + ([END_DECLARATION] if self._ends(spec) else [])
+
+    def _ends(self, spec) -> bool:
+        """`end_conversation` (spec 18, the web door's control): offered on the spoken spec's
+        turns, never the late-answer runner's and never a head unit's (it keeps to its own
+        tools)."""
+        return spec.name == SPOKEN_SPEC and not headunit_scope.is_headunit(self.request)
 
     def is_slow(self, name: str) -> bool:
         return name in SLOW_TOOLS
@@ -180,6 +198,10 @@ class LegionGateway:
     def call(self, state, spec, call: ToolCall, deadline_s: float) -> ToolOutcome:
         tool = self.tools().get(call.name)
         started = time.monotonic()
+        if call.name == END_TOOL and tool is None and self._ends(spec):
+            # A control, not a data tool: it reaches nothing; the sign-off follows it.
+            self.end_requested = True
+            return self._done(state, call, None, True, END_INSTRUCTION, "ok", None, started)
         if tool is None and call.name in self.limb_tools():
             return self._relay(state, spec, call, self.limb_tools()[call.name], started)
         if headunit_scope.is_headunit(self.request):
@@ -220,6 +242,7 @@ class LegionGateway:
                     "tainted",
                     started,
                 )
+        call, day_note = self._his_day(state, spec, call)
         if state.tainted:
             # The request's flag is the second fence (a procedure's own steps check it, not the
             # turn's state); a relay's continuation is a new request, so it is armed again here.
@@ -237,22 +260,49 @@ class LegionGateway:
             if tool.writes and not result.is_error
             else None
         )
+        # Code's own sentences (`speech_rules.VERBATIM_TOOLS`, ADR 0094): said by the speech rules
+        # (`spoken.py`), never reworded by the model, which gets `for_model` when there is one.
+        spoken = (
+            _verbatim(call.name, result)
+            if not result.is_error and spec.name == SPOKEN_SPEC
+            else None
+        )
+        text = f"{result.text} {day_note}" if day_note else result.text
         done = self._done(
             state,
             call,
             tool,
             not result.is_error,
-            result.text,
+            text,
             outcome,
             None,
             started,
             outside=outside,
             fact=fact,
+            data=result.structured if not result.is_error else None,
+            spoken=spoken,
         )
         if outside:
             state.add_taint(call.name)
             state.add_outside(call.name)
         return done
+
+    def _his_day(self, state, spec, call: ToolCall) -> tuple[ToolCall, str | None]:
+        """A date-taking call's day words made dates on the turn's own day, and his one plain day
+        word put back over a date one off it (`day_words.py`, the phone's `RelativeDay`). The
+        spoken spec's turns only: the late-answer runner's are left as they were."""
+        local = state.client_facts.get("local")
+        if call.name not in day_words.DATE_TOOLS or not local or spec.name != SPOKEN_SPEC:
+            return call, None
+        day = date.fromisoformat(local["day"])
+        at = clock_time.fromisoformat(local["time"])
+        only = self._date_calls == 0
+        self._date_calls += int(day_words.is_date_call(call.name, call.args))
+        args = day_words.resolved(call.args, day)
+        fixed = day_words.corrected(call.name, args, state.transcript, day, at, only)
+        if fixed is not None:
+            return ToolCall(call.id, call.name, fixed[0]), fixed[1]
+        return ToolCall(call.id, call.name, args), None
 
     def _relay(self, state, spec, call, tool, started) -> ToolOutcome:
         """A limb tool's call: refused here in words, kept as a device action for after the reply
@@ -305,9 +355,26 @@ class LegionGateway:
         where="engine",
         outside=False,
         fact=None,
+        data=None,
+        spoken=None,
     ) -> ToolOutcome:
         ms = int((time.monotonic() - started) * 1000)
         writes = bool(tool is not None and tool.writes)
+        response = model_response(ok, spoken.for_model if spoken and spoken.for_model else text)
+        self.calls.append(
+            TurnCall(
+                call.name,
+                ok,
+                text,
+                writes,
+                data,
+                ends_turn=bool(spoken and spoken.ends_turn),
+                verbatim=spoken.lines if spoken else None,
+                replay=spoken.replay if spoken else None,
+                response=response,
+                call_id=call.id,
+            )
+        )
         if self.recorder is not None:
             self.recorder.tool_call(
                 state,
@@ -336,12 +403,13 @@ class LegionGateway:
         return ToolOutcome(
             name=call.name,
             ok=ok,
-            response=model_response(ok, text),
+            response=response,
             writes=writes,
             outcome=outcome,
             guard=guard,
             ms=ms,
             fact=fact,
+            ends_turn=bool(spoken and spoken.ends_turn),
         )
 
 
