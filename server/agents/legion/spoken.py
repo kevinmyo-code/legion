@@ -77,7 +77,6 @@ class _Memory:
     said: list[str] = field(default_factory=list)
     # What the history keeps of each said sentence: itself, or a code line's replay marker.
     heard: list[str] = field(default_factory=list)
-    model_said: int = 0
     held: list[list[str]] = field(default_factory=list)
     filler_dropped: int = 0
     trailing_dropped: int = 0
@@ -92,7 +91,6 @@ class _Memory:
 
     def to_json(self, with_words: bool) -> dict:
         out = {
-            "model_said": self.model_said,
             "filler_dropped": self.filler_dropped,
             "trailing_dropped": self.trailing_dropped,
             "money_dropped": self.money_dropped,
@@ -117,7 +115,6 @@ class _Memory:
         return cls(
             said=list(raw.get("said") or []),
             heard=list(raw.get("heard") or []),
-            model_said=int(raw.get("model_said") or 0),
             held=[list(h) for h in raw.get("held") or []],
             filler_dropped=int(raw.get("filler_dropped") or 0),
             trailing_dropped=int(raw.get("trailing_dropped") or 0),
@@ -230,15 +227,14 @@ class SpokenTurn:
         m = self.memory
         verdict = self.gate.in_answer(
             text,
-            sentences=m.model_said,
+            sentences=len(m.said),
             verbatim_said=m.verbatim_said,
             max_spoken=MAX_SPOKEN_SENTENCES,
         )
-        if verdict == gates.SAY and m.model_said and is_filler(text):
+        if verdict == gates.SAY and m.said and is_filler(text):
             # The phone's `TrailingFiller`: once the answer has begun, a filler line is not said.
             m.trailing_dropped += 1
         elif verdict == gates.SAY:
-            m.model_said += 1
             yield self._say(text, tagged)
         elif verdict == gates.NO_ANSWER:
             m.no_answer = True
@@ -260,7 +256,7 @@ class SpokenTurn:
         if self.again is not None and asks_again(
             failed=state.status != "done",
             status=state.status,
-            sentences=m.model_said,
+            sentences=len(m.said),
             filler_only=bool(m.filler_dropped or m.no_answer),
             tools_ran=bool(state.actions),
             ending=self._ending(),
@@ -277,9 +273,8 @@ class SpokenTurn:
                 elif verdict == gates.HOLD:
                     m.held.append([text, tagged])
                 elif verdict == gates.SAY:
-                    m.model_said += 1
                     yield self._say(text, tagged)
-        if m.no_answer and not m.model_said and state.status == "done":
+        if m.no_answer and not m.said and state.status == "done":
             # The runtime's own line for a turn with no words, held until now.
             yield self._say(NO_ANSWER_WORDS)
         unbacked = 0
@@ -292,7 +287,6 @@ class SpokenTurn:
                 m.torque_dropped += 1
                 unbacked += 1
             elif verdict == gates.SAY:
-                m.model_said += 1
                 yield self._say(text, tagged)
             else:
                 unbacked += 1
