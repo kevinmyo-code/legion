@@ -127,12 +127,11 @@ def _solid(shape: m.Shape):
     return _ball(a, shape.r * m.INCH)
 
 
-def _marker(pos_in):
-    c = tuple(x * m.INCH for x in pos_in)
+def _marker():
+    """One hex marker centred on its node's origin: each fastener node places it (`translation`),
+    so the screen can scale a marker about its own centre."""
     half = MARKER_HEIGHT_IN * m.INCH / 2
-    return _cylinder(
-        (c[0], c[1] - half, c[2]), (c[0], c[1] + half, c[2]), MARKER_RADIUS_IN * m.INCH, 6
-    )
+    return _cylinder((0.0, -half, 0.0), (0.0, half, 0.0), MARKER_RADIUS_IN * m.INCH, 6)
 
 
 def _merge(solids):
@@ -241,12 +240,14 @@ def build() -> bytes:
         )
     materials.append(_material("fastener", MARKER))
     marker_material = len(materials) - 1
+    meshes.append(w.mesh([_marker()], marker_material, "fastener"))
+    marker_mesh = len(meshes) - 1
     for f in m.FASTENERS:
-        meshes.append(w.mesh([_marker(f.pos)], marker_material, f.id))
         nodes.append(
             {
                 "name": _node_name(f.id),
-                "mesh": len(meshes) - 1,
+                "mesh": marker_mesh,
+                "translation": [round(v, 6) for v in m.position_m(f)],
                 "extras": {"legion": {"id": f.id, "kind": "fastener", "part": f.part}},
             }
         )
