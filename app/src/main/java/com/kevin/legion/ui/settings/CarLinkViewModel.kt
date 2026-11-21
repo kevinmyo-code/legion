@@ -92,6 +92,8 @@ class CarLinkViewModel(
 
     /** Scan tapped: the screen asks for the camera (only now) and shows the camera pane. */
     fun scan() {
+        // Not before the screen can say what the car will receive.
+        if (!controller.status.value.screenFactsLoaded) return
         controller.dismiss()
         scanUi.value = ScanUi(scanning = true)
     }
@@ -123,7 +125,7 @@ class CarLinkViewModel(
 
     /** Debug builds only: the pasted `mnai-pair:` text stands in for a scan. */
     fun pasteCode(text: String) {
-        if (!debugPaste) return
+        if (!debugPaste || !controller.status.value.screenFactsLoaded) return
         controller.dismiss()
         controller.pair(text)
     }
@@ -146,6 +148,8 @@ class CarLinkViewModel(
     private fun render(s: CarLinkStatus, u: ScanUi): CarLinkUiState {
         val base = CarLinkUiState(
             sendLocation = s.sendLocation,
+            // Pairing waits until the screen can say what the car will receive.
+            canPair = s.screenFactsLoaded,
             // Neither line is true before the facts are read: say nothing until then.
             handsOver = if (s.screenFactsLoaded) CarLinkWords.handsOver(s.gaps) else "",
             vehicles = s.vehicles,

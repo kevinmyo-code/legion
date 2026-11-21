@@ -22,11 +22,20 @@ class ScanBindGate {
  * the exception's class name only (never its message) and no client comes back, so a phone whose
  * ML Kit cannot start shows words instead of crashing when Scan is tapped.
  */
-@Suppress("TooGenericExceptionCaught") // any failure inside ML Kit's start must not crash the app
 fun <T> openScanner(init: () -> Unit, client: () -> T, failed: (String) -> Unit): T? =
-    try {
+    startOrReport({
         init()
         client()
+    }, failed)
+
+/**
+ * Runs one start-up [step] of the scan pane (ML Kit's start, or binding the camera). If it throws,
+ * [failed] gets the exception's class name only (never its message) and null comes back.
+ */
+@Suppress("TooGenericExceptionCaught") // any failure while starting the scanner must not crash the app
+fun <T> startOrReport(step: () -> T, failed: (String) -> Unit): T? =
+    try {
+        step()
     } catch (e: Exception) {
         failed(e.javaClass.simpleName)
         null
@@ -35,3 +44,20 @@ fun <T> openScanner(init: () -> Unit, client: () -> T, failed: (String) -> Unit)
         failed(e.javaClass.simpleName)
         null
     }
+
+/** The back camera when the phone has one, otherwise the first other camera, otherwise none. */
+fun <S : Any> pickCamera(back: S, hasBack: Boolean, others: List<S>): S? = if (hasBack) back else others.firstOrNull()
+
+/**
+ * The camera use cases this pane bound, so leaving it unbinds those and nothing else (not another
+ * screen's camera use). [release] hands them over once.
+ */
+class PaneCameraUses<T> {
+    private var uses: List<T> = emptyList()
+
+    @Synchronized fun record(bound: List<T>) {
+        uses = bound
+    }
+
+    @Synchronized fun release(): List<T> = uses.also { uses = emptyList() }
+}
