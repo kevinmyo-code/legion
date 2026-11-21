@@ -111,7 +111,7 @@ internal class EarpieceRoute(
      * outside it an entry. Bluetooth and a phone call: hands off.
      */
     suspend fun reapply(callAudio: () -> CallAudioMode?, enterCallAudio: suspend () -> Unit) {
-        if (isStopped()) return
+        if (synchronized(this) { stopped }) return
         val mode = callAudio()
         val wanted = wantsEarpiece()
         if (wanted || mode?.onEarpiece == true) {
@@ -136,7 +136,12 @@ internal class EarpieceRoute(
         if (stopped) return
         val on = mode?.onEarpiece == true
         val wanted = wantsEarpiece()
-        if (on && wanted) takeProximity() else releaseProximity()
+        if (!on || !wanted) {
+            releaseProximity()
+        } else if (proximity == null) {
+            proximity = newProximityLock()?.also { it.acquire(PROXIMITY_CAP_MS) }
+            Log.i(TAG, "proximity lock ${if (proximity != null) "held" else "unsupported"}")
+        }
         val inCallAudio = mode != null && mode.isActive && !mode.onBluetoothMic
         VoiceOutput.publish(LiveOutput(onEarpiece = on, refused = wanted && inCallAudio && !on))
     }
@@ -153,9 +158,6 @@ internal class EarpieceRoute(
         VoiceOutput.publish(null)
     }
 
-    @Synchronized
-    private fun isStopped(): Boolean = stopped
-
     /** Registered only once the earpiece is involved, so SPEAKER registers nothing. */
     @Synchronized
     private fun watchDevices() {
@@ -169,12 +171,6 @@ internal class EarpieceRoute(
         }
         deviceWatch = watch
         runCatching { audio.registerAudioDeviceCallback(watch, Handler(Looper.getMainLooper())) }
-    }
-
-    private fun takeProximity() {
-        if (proximity != null) return
-        proximity = newProximityLock()?.also { it.acquire(PROXIMITY_CAP_MS) }
-        Log.i(TAG, "proximity lock ${if (proximity != null) "held" else "unsupported"}")
     }
 
     private fun releaseProximity() {

@@ -84,23 +84,25 @@ internal object VoiceOutputRule {
         hasEarpiece: Boolean,
         live: LiveOutput? = null,
     ): OutputToggle? {
-        if (!hasEarpiece) return null
         val outlet = outlet(choice, route, inCall, hasEarpiece)
-        if (outlet == VoiceOutlet.EARPIECE && live != null && !live.onEarpiece) {
-            return if (live.refused) {
+        val notOnEarpiece = outlet == VoiceOutlet.EARPIECE && live != null && !live.onEarpiece
+        return when {
+            !hasEarpiece -> null
+            notOnEarpiece && live?.refused == true ->
                 OutputToggle(OutputChoice.CALL, VoiceOutlet.LOUDSPEAKER, true, "Earpiece unavailable", REFUSED)
-            } else {
-                OutputToggle(OutputChoice.SPEAKER, VoiceOutlet.LOUDSPEAKER, true, "Speaker", SPEAKER_NOW)
-            }
+            notOnEarpiece -> OutputToggle(OutputChoice.SPEAKER, VoiceOutlet.LOUDSPEAKER, true, "Speaker", SPEAKER_NOW)
+            else -> face(choice, outlet)
         }
-        return when (outlet) {
+    }
+
+    private fun face(choice: OutputChoice, outlet: VoiceOutlet): OutputToggle =
+        when (outlet) {
             VoiceOutlet.LOUDSPEAKER -> OutputToggle(choice, outlet, true, "Speaker", SPEAKER)
             VoiceOutlet.EARPIECE -> OutputToggle(choice, outlet, true, "Call", EARPIECE)
             VoiceOutlet.WIRED -> OutputToggle(choice, outlet, false, "Headphones", WIRED)
             VoiceOutlet.BLUETOOTH -> OutputToggle(choice, outlet, false, "Bluetooth", BLUETOOTH)
             VoiceOutlet.PHONE_CALL -> OutputToggle(choice, outlet, false, "On a call", PHONE_CALL)
         }
-    }
 
     /** What a tap on the toggle saves: the other choice from the one it shows. */
     fun flipped(shown: OutputChoice): OutputChoice =
