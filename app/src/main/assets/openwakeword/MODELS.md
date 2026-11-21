@@ -6,8 +6,8 @@ missing or its sha256 differs.
 
 | File | Bytes | SHA-256 | Source | Changed? |
 |---|---|---|---|---|
-| `melspectrogram.onnx` | 1,087,958 | `ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f` | openWakeWord release v0.5.1, github.com/dscripka/openWakeWord | No, byte for byte as released |
-| `embedding_model.onnx` | 1,326,578 | `70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f` | same release | No, byte for byte as released |
+| `melspectrogram.onnx` | 1,087,958 | `ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f` | openWakeWord release v0.5.1, github.com/dscripka/openWakeWord | Not changed by this project (same size as the v0.5.1 release asset; GitHub lists no digest for that release to compare) |
+| `embedding_model.onnx` | 1,326,578 | `70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f` | same release | Not changed by this project (same size as the v0.5.1 release asset; GitHub lists no digest for that release to compare) |
 | `hey_alfred.onnx` | 205,430 | `07084c22a8b9ec148f92faa1f45bbdb669bebbfd9e3848d40129d99abbcfdef4` | trained for this project with openWakeWord's `train.py` | New work: a head trained for the phrase "hey alfred" |
 
 ## Licence
