@@ -1,5 +1,7 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.greeting.GreetingNames
+
 /**
  * The words of a model-written hello, as the greeting's "do not reuse" list keeps them
  * ([com.kevin.legion.greeting.GreetingOpening.noteOpened]): the model's whole text once its stream
@@ -11,10 +13,16 @@ package com.kevin.legion.service.cascade
  * empty and the list never filled (phone audit 1119, item i). Pure.
  */
 internal object GreetingWords {
-    fun of(written: String): String? =
+    /** What the speaker would say of [written]; [of] and the name check ([namesHim]) both read it. */
+    fun spoken(written: String): String? =
         LeadingFiller.strip(TtsTags.strip(written).trim()).trim().ifEmpty { null }
 
-    /** Placeholder: the name check is not wired yet. */
-    @Suppress("UNUSED_PARAMETER", "FunctionOnlyReturningConstant")
-    fun namesHim(written: String): Boolean = false
+    /**
+     * The line to keep, or null. A line that calls him by a name ([GreetingNames]) is never kept:
+     * the session speaks the scripted hello instead, and a kept one would be quoted back to the model.
+     */
+    fun of(written: String): String? = spoken(written)?.takeUnless { GreetingNames.addresses(it) }
+
+    /** True when the hello calls him by a name: the session speaks the scripted line instead. */
+    fun namesHim(written: String): Boolean = spoken(written)?.let { GreetingNames.addresses(it) } ?: false
 }

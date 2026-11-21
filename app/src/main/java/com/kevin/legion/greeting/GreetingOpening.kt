@@ -33,6 +33,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 object GreetingBudget {
     const val PACK_MS = 1_500L
     const val FIRST_OUTPUT_MS = 2_500L
+
+    /**
+     * From the first text to the model's whole greeting. The line is held until it is whole, so the
+     * name check reads all of it before any is spoken ([GreetingNames]); past this, the scripted line.
+     */
+    const val WHOLE_LINE_MS = 3_000L
 }
 
 /** What a tap opens with. */

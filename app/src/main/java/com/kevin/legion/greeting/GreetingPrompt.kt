@@ -49,6 +49,7 @@ object GreetingPrompt {
           it happened before, and say no day count or timing the facts do not give.
         - About money or a workout not done: no shame, no nagging, no telling him what he should do.{topic_rule}
         - At most one question, and it may be none.
+        ${GreetingNames.RULE}
 
         Rules, all of them binding:
         - Mention nothing else: no other item, no other budget, nothing that is not in the facts below.
@@ -98,6 +99,7 @@ object GreetingPrompt {
         - Friendly, never curt or bossy: no command to him. Not a stock one-word hello: give it a
           little character.
         - It may hand the floor to him, or not. At most one question.{avoid_rule}
+        ${GreetingNames.RULE}
         - Never mention his absence, how long it has been, a streak, or his use of this app.
         - Do not call any tool, and do not say you did anything. Then stop and listen.)
     """.trimIndent()
@@ -129,8 +131,10 @@ object GreetingPrompt {
 
     /** Quote marks and line breaks are stripped and each line cut short, so a kept line cannot break the prompt. */
     private fun avoidRule(avoid: List<String>): String {
+        // A kept line that calls him by a name is dropped: quoting it back would put the name in front
+        // of the model (a line kept before the name check may still hold one).
         val lines = avoid.map { it.replace("\"", "").replace('\n', ' ').trim().take(MAX_AVOID_CHARS) }
-            .filter { it.isNotEmpty() }
+            .filter { it.isNotEmpty() && !GreetingNames.addresses(it) }
         if (lines.isEmpty()) return ""
         return "\n- Do not reuse this wording or its shape: " + lines.joinToString("; ") { "\"$it\"" } + "."
     }

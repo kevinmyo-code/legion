@@ -2569,7 +2569,9 @@ internal class CascadeSession(
             }
             val reply = newSpeaker(null)
             val firstText = CompletableDeferred<Unit>()
-            // The model's whole hello as written, for the "do not reuse" list ([GreetingOpening.noteOpened]).
+            // The model's whole hello as written. It is held, not streamed: the name check
+            // ([GreetingWords.namesHim]) reads the whole line before any of it is spoken, and it is
+            // what the "do not reuse" list keeps ([GreetingOpening.noteOpened]).
             val written = StringBuffer()
             val call = launch(Dispatchers.IO) {
                 try {
@@ -2583,8 +2585,7 @@ internal class CascadeSession(
                         object : GeminiTextLoop.Listener {
                             override fun onText(delta: String) {
                                 written.append(delta)
-                                reply.text(delta)
-                                firstText.complete(Unit)
+                                if (written.isNotBlank()) firstText.complete(Unit)
                             }
 
                             override fun onFirstPart(round: Int, ms: Long) {
@@ -2598,14 +2599,16 @@ internal class CascadeSession(
             }
             try {
                 withTimeoutOrNull((deadline - System.currentTimeMillis()).coerceAtLeast(1L)) { firstText.await() }
-                if (!reply.anyText) {
+                val whole = written.isNotBlank() &&
+                    withTimeoutOrNull(GreetingBudget.WHOLE_LINE_MS) { call.join() } != null
+                if (!whole || greetingNamesHim(written.toString())) {
                     call.cancel()
                     reply.interrupt()
-                    LiveLatency.log(LiveLatency.TAG, "greeting model_slow scripted")
+                    if (!whole) LiveLatency.log(LiveLatency.TAG, "greeting model_slow scripted")
                     speakScripted(ackLines.next())
                     return@launch
                 }
-                call.join()
+                reply.text(written.toString())
                 reply.finishText()
                 // A test open (adb) does not use up the topic for his real greetings. The words are the
                 // model's text, whole now: what was heard ([ReplySpeaker.spoken]) is still empty here,
@@ -2628,6 +2631,17 @@ internal class CascadeSession(
                 throw e
             }
         }
+    }
+
+    /**
+     * The backstop for the greeting's no-name rule ([com.kevin.legion.greeting.GreetingNames]): a line
+     * that calls him by a name is not spoken and not kept; the scripted hello plays instead. The log
+     * line carries no text.
+     */
+    private fun greetingNamesHim(written: String): Boolean {
+        val named = GreetingWords.namesHim(written)
+        if (named) LiveLatency.log(LiveLatency.TAG, "greeting_name_blocked")
+        return named
     }
 
     private suspend fun endByVoice() {
