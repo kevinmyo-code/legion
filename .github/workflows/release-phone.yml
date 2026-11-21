@@ -22,8 +22,8 @@
 #   - the keystore's fingerprint is checked against deploy/release/signer.sha256 before building,
 #     and Gradle is handed it explicitly (android.injected.signing.*), so AGP cannot fall back to a
 #     key of its own;
-#   - the three models come from gs://$LEGION_APK_BUCKET/build-assets/openwakeword/ (private), so
-#     the Google login now runs for dry runs too.
+#   - the three openWakeWord models were fetched from the private bucket; since 2026-11-20 they are
+#     committed (app/models.sha256, checked by the build's verifyModels task), so that step is gone.
 #
 # One-time setup (environment `production`, the same one ship.yml uses; deploy/cloudrun/README.md
 # "Shipping from GitHub" and `deploy/cloudrun/github_setup.sh` do the Google side):
@@ -115,17 +115,6 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Wake word models (gitignored; from the private APK bucket)
-        env:
-          BUCKET: ${{ vars.LEGION_APK_BUCKET }}
-        run: |
-          set -euo pipefail
-          dst=app/src/main/assets/openwakeword
-          gcloud storage cp "gs://${BUCKET}/build-assets/openwakeword/*.onnx" "$dst/"
-          n=$(ls "$dst"/*.onnx | wc -l)
-          [ "$n" -eq 3 ] || { echo "::error::Expected 3 openWakeWord models in gs://${BUCKET}/build-assets/openwakeword/, got $n. Nothing was built or published."; exit 1; }
-          ls -l "$dst"
-
       - name: Build the fast APK
         env:
           MAPBOX_TOKEN: ${{ vars.MAPBOX_ACCESS_TOKEN }}
@@ -162,6 +151,6 @@ jobs:
           [ "$DRY" = "true" ] && args+=(--dry-run)
           python tools/release_apk.py "${args[@]}"
 
-      - name: Forget the signing key and the models
+      - name: Forget the signing key
         if: always()
-        run: rm -f "$HOME/.android/debug.keystore" app/src/main/assets/openwakeword/*.onnx
+        run: rm -f "$HOME/.android/debug.keystore"

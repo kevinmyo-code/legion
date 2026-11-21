@@ -1,0 +1,8 @@
+# Model files committed under app/src/main/assets/, pinned by sha256 (cloud-builds step 3, 2026-11-20).
+# The `verifyModels` Gradle task (app/build.gradle.kts) runs before every build of app/ and fails when a
+# listed file is missing or its sha256 differs. Format: `<sha256>  <path under app/src/main/assets/>`.
+# Sources and licences: app/src/main/assets/openwakeword/MODELS.md. Change a line here only together
+# with that table, in the same commit.
+ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f  openwakeword/melspectrogram.onnx
+70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f  openwakeword/embedding_model.onnx
+07084c22a8b9ec148f92faa1f45bbdb669bebbfd9e3848d40129d99abbcfdef4  openwakeword/hey_alfred.onnx

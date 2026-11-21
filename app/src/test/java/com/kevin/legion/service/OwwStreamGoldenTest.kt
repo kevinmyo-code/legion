@@ -3,7 +3,7 @@ package com.kevin.legion.service
 import ai.onnxruntime.OrtEnvironment
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assume.assumeTrue
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 import java.io.File
 import java.nio.ByteBuffer
@@ -16,9 +16,10 @@ import java.security.MessageDigest
  * every 80 ms frame, and the head's score per frame, fed both in Python's 1280-sample frames and in
  * the phone's 3200-sample reads.
  *
- * The three model files are not in git (licence: app/src/main/assets/openwakeword/README.md), so a
- * clean clone SKIPS this test; the build machine that fills that directory runs it. The score half
- * also skips when the head there is not the one the vectors were made with (sha256 in golden.json).
+ * The three model files are committed (licence: app/src/main/assets/openwakeword/MODELS.md) and pinned
+ * by app/models.sha256, so this test RUNS everywhere, CI included: a missing file or a model other than
+ * the one the vectors were made with (sha256 in golden.json) is a failure, never a skip (until
+ * 2026-11-20 the files were gitignored and every clean clone skipped it).
  */
 class OwwStreamGoldenTest {
     private val dir = listOf(File("src/main/assets/openwakeword"), File("app/src/main/assets/openwakeword"))
@@ -71,14 +72,21 @@ class OwwStreamGoldenTest {
         val mel = model(OwwModelFiles.MEL)
         val emb = model(OwwModelFiles.EMBEDDING)
         val head = model("hey_alfred.onnx")
-        assumeTrue(
-            "openWakeWord models not on this machine (gitignored); golden test skipped",
-            mel != null && emb != null && head != null,
-        )
+        assertNotNull("melspectrogram.onnx missing from src/main/assets/openwakeword (it is committed)", mel)
+        assertNotNull("embedding_model.onnx missing from src/main/assets/openwakeword (it is committed)", emb)
+        assertNotNull("hey_alfred.onnx missing from src/main/assets/openwakeword (it is committed)", head)
         val m = mel!!
         val e = emb!!
-        assumeTrue("base models differ from the ones the vectors were made with",
-            sha256(m) == meta.getString("mel_sha256") && sha256(e) == meta.getString("embedding_sha256"))
+        assertEquals(
+            "melspectrogram.onnx is not the one the vectors were made with",
+            meta.getString("mel_sha256"),
+            sha256(m),
+        )
+        assertEquals(
+            "embedding_model.onnx is not the one the vectors were made with",
+            meta.getString("embedding_sha256"),
+            sha256(e),
+        )
         return Triple(m, e, head!!)
     }
 
@@ -104,9 +112,10 @@ class OwwStreamGoldenTest {
     @Test
     fun `scores match python from the first frame free of start-up rows`() {
         val (mel, emb, head) = requireModels()
-        assumeTrue(
+        assertEquals(
             "hey_alfred.onnx is not the head the vectors were made with",
-            sha256(head) == meta.getString("head_sha256"),
+            meta.getString("head_sha256"),
+            sha256(head),
         )
         val want = meta.getJSONArray("scores")
         val from = meta.getInt("first_comparable_frame")
