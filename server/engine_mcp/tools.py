@@ -2435,6 +2435,10 @@ def _household_or_none(request):
 # round 4 R1): the reservation, and whether the caller should give it back.
 PREPAID_SEARCH = "_legion_prepaid_web_search"
 PREPAID_RELEASE = "_legion_prepaid_web_search_release"
+# The `llm_usage` feature a search is filed under when the caller set it on the request (the
+# late-answer runner, `agents/legion/late.py`, so its searches count toward its own caps); else
+# `web_search`. One row per search either way.
+SEARCH_FEATURE_ATTR = "_legion_search_feature"
 
 
 def _web_search(request, args) -> ToolResult:
@@ -2473,7 +2477,7 @@ def _web_search(request, args) -> ToolResult:
         # household gets no row it did not ask for (`tests/test_recruiter_isolation.py`).
         llm_client.record(
             household=_household_or_none(request),
-            feature="web_search",
+            feature=getattr(request, SEARCH_FEATURE_ATTR, None) or "web_search",
             model=found.model,
             usage=found.usage,
             user=user,

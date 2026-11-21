@@ -108,6 +108,12 @@ class MidnightApplication : Application() {
     /** The `browser` voice tool over [browser]; holds the last page's numbers and the ask-first token. */
     val browserTool: com.kevin.legion.browser.BrowserTool by lazy { com.kevin.legion.browser.BrowserTool(browser) }
 
+    /**
+     * The car link to the head unit (pairing, location feed, Forget). Built by hand like [dumb] until
+     * Hilt lands; this property is the injection point.
+     */
+    val carLink: com.kevin.legion.carlink.CarLinkGraph by lazy { com.kevin.legion.carlink.CarLinkGraph(this) }
+
     /** The mode's state machine, kept as its own name because the tile and the screens read only this. */
     val dumbMode: com.kevin.legion.dumb.DumbModeController get() = dumb.controller
 
@@ -291,6 +297,10 @@ class MidnightApplication : Application() {
         // StateFlow on every app-start/stop, so it must be live before the first one can fire, not
         // seeded lazily by whoever happens to open MirrorSyncActivity first.
         MirrorFolderPreferences.init(this)
+        // The car link (head unit pairing and location feed): registers its keys with the log redactor
+        // and, if paired, starts listening for the unit's HELLOs. Gated off under Robolectric, whose
+        // Android Keystore does not exist.
+        if (!isRunningUnderRobolectric()) runCatching { carLink.controller.start() }
         // The conversation log's spool and engine upload (conversation-records ticket 03): live before
         // the first Live session, and anything an earlier run left is sent once the network is up.
         // Gated off under Robolectric like the lines above: every test runs this onCreate.

@@ -39,3 +39,9 @@ server/assistant/docs_corpus.json text eol=lf
 
 # Model files are read byte-for-byte by native code; never normalise line endings.
 app/src/main/assets/wake-kws/* -text
+app/src/main/assets/openwakeword/*.onnx -text
+
+# Car link known-answer vectors, copied byte for byte from the head unit branch; a test pins
+# their SHA-256, so they must never be checked out with CRLF.
+app/src/test/resources/carlink/vectors.json text eol=lf
+app/src/test/resources/carlink/vectors-rev8.json text eol=lf

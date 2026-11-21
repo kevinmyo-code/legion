@@ -13,16 +13,20 @@ name: Frontend
 
 on:
   push:
-    branches: [dev, main, 'up/**', 'integrate/**']
+    branches: [dev, main, 'up/**', 'integrate/**', 'ship/**']
     paths:
       - 'server/frontend/**'
       - 'server/openapi.yaml'
+      - 'shared/**'
+      - 'server/tests/fixtures/recurrence_vectors.json'
       - '.github/workflows/frontend.yml'
       - '.github/scripts/junit_totals.py'
   pull_request:
     paths:
       - 'server/frontend/**'
       - 'server/openapi.yaml'
+      - 'shared/**'
+      - 'server/tests/fixtures/recurrence_vectors.json'
       - '.github/workflows/frontend.yml'
       - '.github/scripts/junit_totals.py'
   workflow_dispatch:
@@ -44,9 +48,9 @@ jobs:
         working-directory: server/frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: npm
@@ -69,9 +73,18 @@ jobs:
       - name: API types match openapi.yaml
         run: npm run check:api
 
+      # The production build exactly as the engine image runs it (`server/Dockerfile` stage 1), and the
+      # checks the laptop ship scripts ran on its output: the service worker precaches no .wasm/.onnx/.glb,
+      # no new .wasm/.onnx/.glb in the output, the /try 3D chunk lazy and not precached, no three.js in
+      # the main or a precached chunk. Ships trust this run instead of building the web app locally.
+      - name: Production build as the image runs it, and its checks
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: bash server/frontend/scripts/check_build.sh
+
       - name: Upload the JUnit XML
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: frontend-junit-xml
           path: server/frontend/junit.xml

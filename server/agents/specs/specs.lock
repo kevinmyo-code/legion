@@ -1,4 +1,8 @@
 {
+  "background": {
+    "sha256": "057b1476a0bdbe8d9c4137f69a2a3ff7fb6b214f2ee1592df284e2aadca36dcb",
+    "version": 1
+  },
   "generalist": {
     "sha256": "85cebdc09051c50a86ecd5cdad36e1c157d7677758ed66942e7837054476269d",
     "version": 5

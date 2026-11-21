@@ -1,0 +1,150 @@
+package com.kevin.legion.carlink
+
+import com.kevin.legion.carlink.protocol.LinkCrypto
+import com.kevin.legion.carlink.protocol.LinkKeyPersistence
+
+/** Encrypts and decrypts with a key that never leaves the device. Null = the Keystore failed. */
+interface SecretBox {
+    fun seal(plain: ByteArray): ByteArray?
+    fun open(blob: ByteArray): ByteArray?
+}
+
+/** One prefs file written all at once: a null value removes the key. False = nothing changed. */
+interface RecordFile {
+    fun read(): Map<String, String>
+    fun writeAll(values: Map<String, String?>): Boolean
+}
+
+/** What [CarLinkStore.load] found. Not data classes: they hold keys. */
+sealed interface StoredLink {
+    object NotPaired : StoredLink
+    class Paired(val current: ByteArray, val reserve: ByteArray?) : StoredLink {
+        override fun toString() = "Paired"
+    }
+    /** A record exists but its key cannot be read: send nothing, ask to pair again (3.7). */
+    object Broken : StoredLink
+}
+
+/**
+ * The phone's car link record, `car_link.xml`: the current link key, the reserve key (3.7), the unit
+ * token's engine id for revocation (5.4) and two switches. Excluded from backup and device transfer.
+ *
+ * Every secret is sealed with the Android Keystore before anything is written; if any value cannot
+ * be sealed nothing is written at all, and there is no plaintext fallback. Reads are tried three
+ * times, and a read failure never deletes anything. Each key is registered with the log redactor
+ * ([redact]) when it is read and when it is written.
+ */
+// One record file: link keys, the revoke-only record, the car's key, the pairing network, the switches.
+@Suppress("TooManyFunctions")
+class CarLinkStore(
+    private val box: SecretBox,
+    private val file: RecordFile,
+    private val redact: (String) -> Unit,
+) : LinkKeyPersistence {
+
+    fun load(): StoredLink {
+        val values = file.read()
+        // The retired "Car's own Gemini key" field (5.3 rev 8) and its earlier switch: removed once.
+        if (RETIRED.any(values::containsKey)) file.writeAll(RETIRED.associateWith { null })
+        val curBlob = values[CURRENT]
+        val current = curBlob?.let(::openWithRetry)
+        // An unreadable reserve is not "broken": the current key rules, the reserve only serves a revert.
+        val reserve = current?.let { values[RESERVE]?.let(::openWithRetry) }
+        current?.let(::register)
+        reserve?.let(::register)
+        return when {
+            current != null -> StoredLink.Paired(current, reserve)
+            curBlob != null || values.containsKey(RESERVE) -> StoredLink.Broken
+            else -> StoredLink.NotPaired
+        }
+    }
+
+    override fun write(current: ByteArray?, reserve: ByteArray?): Boolean {
+        val cur = current?.let(::sealed)
+        val res = reserve?.let(::sealed)
+        // All or nothing: a value the Keystore could not seal means nothing is written.
+        if (!sealedOk(current, cur) || !sealedOk(reserve, res)) return false
+        current?.let(::register)
+        reserve?.let(::register)
+        val clearing = current == null
+        return file.writeAll(
+            buildMap {
+                put(CURRENT, cur)
+                put(RESERVE, res)
+                if (clearing) {
+                    put(UNIT_DEVICE_ID, null)
+                    put(SEND_LOCATION, null)
+                    put(REVOKE_ONLY, null)
+                    put(REVOKE_SINCE, null)
+                    put(PAIRING_NET, null)
+                }
+            },
+        )
+    }
+
+    /** A REVOKE-only record exists (5.4, rev 5): a forgotten pairing whose unit was not yet told. */
+    fun revokeOnlyPending(): Boolean = file.read().containsKey(REVOKE_ONLY)
+
+    /** When the revoke-only record was made (wall clock, for its 90-day expiry), or null. */
+    fun revokeOnlySince(): Long? = file.read()[REVOKE_SINCE]?.toLongOrNull()
+
+    /** The forgotten pairing's link key, used for nothing but one REVOKE. Null if none or unreadable. */
+    fun revokeOnlyKey(): ByteArray? = file.read()[REVOKE_ONLY]?.let(::openWithRetry)?.also(::register)
+
+    /**
+     * Forget while the unit is out of range: in one write, every pairing value goes and only the
+     * sealed link key stays, marked forgotten, with the time. False = nothing changed.
+     */
+    fun writeRevokeOnly(key: ByteArray, sinceMs: Long): Boolean {
+        val blob = sealed(key) ?: return false
+        register(key)
+        return file.writeAll(
+            mapOf(
+                CURRENT to null, RESERVE to null, UNIT_DEVICE_ID to null, SEND_LOCATION to null,
+                REVOKE_ONLY to blob, REVOKE_SINCE to sinceMs.toString(),
+            ),
+        )
+    }
+
+    fun clearRevokeOnly(): Boolean = file.writeAll(mapOf(REVOKE_ONLY to null, REVOKE_SINCE to null))
+
+    /** The network the phone paired on (4.3, rev 5). Kept by a revoke-only record, cleared by Forget. */
+    fun pairingNetwork(): PairingNetwork? = PairingNetwork.decode(file.read()[PAIRING_NET])
+
+    fun setPairingNetwork(n: PairingNetwork?): Boolean = file.writeAll(mapOf(PAIRING_NET to n?.encode()))
+
+    fun unitDeviceId(): String? = file.read()[UNIT_DEVICE_ID]
+
+    fun setUnitDeviceId(id: String?): Boolean = file.writeAll(mapOf(UNIT_DEVICE_ID to id))
+
+    fun sendLocation(): Boolean = file.read()[SEND_LOCATION] == "1"
+
+    fun setSendLocation(on: Boolean): Boolean = file.writeAll(mapOf(SEND_LOCATION to if (on) "1" else null))
+
+    private fun sealedOk(plain: ByteArray?, sealed: String?) = plain == null || sealed != null
+
+    private fun sealed(plain: ByteArray): String? = box.seal(plain)?.let(LinkCrypto::b64)
+
+    private fun openWithRetry(blob: String): ByteArray? {
+        val bytes = LinkCrypto.unb64(blob) ?: return null
+        return (1..READ_TRIES).firstNotNullOfOrNull { box.open(bytes) }
+    }
+
+    private fun register(key: ByteArray) {
+        redact(LinkCrypto.b64(key))
+        redact(key.joinToString("") { "%02x".format(it) })
+    }
+
+    companion object {
+        const val FILE = "car_link"
+        const val READ_TRIES = 3
+        private const val CURRENT = "link_current"
+        private const val RESERVE = "link_reserve"
+        private const val UNIT_DEVICE_ID = "unit_device_id"
+        private const val SEND_LOCATION = "send_location"
+        private const val REVOKE_ONLY = "revoke_only_key"
+        private const val REVOKE_SINCE = "revoke_only_since"
+        private const val PAIRING_NET = "pairing_network"
+        private val RETIRED = listOf("car_gemini_key", "hand_over_gemini")
+    }
+}

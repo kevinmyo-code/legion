@@ -30,13 +30,27 @@ name: Server
 
 on:
   push:
-    branches: [dev, main, 'up/**', 'integrate/**']
+    branches: [dev, main, 'up/**', 'integrate/**', 'ship/**']
     paths:
       - 'server/**'
       - '!server/frontend/**'
       - '.github/workflows/server.yml'
       - '.github/scripts/junit_totals.py'
       - '.github/known-failures/server.txt'
+      - 'app/src/main/java/**'
+      - 'app/src/main/assets/dtc_descriptions_seed.json'
+      - 'app/src/test/resources/gate-corpus.json'
+      - 'app/src/test/java/com/kevin/legion/ledger/**'
+      - 'app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt'
+      - 'headunit/app/src/main/java/com/kevin/midnightai/ui/CrisisCard.kt'
+      - 'shared/cards/fixtures.json'
+      - 'deploy/crontab'
+      - 'deploy/cloudrun/_common.py'
+      - 'tools/connect_session.py'
+      - 'tools/claude_session/test_fixtures/workflows/match_cases.json'
+      - 'docs/**'
+      - 'README.md'
+      - '.gitignore'
   pull_request:
     paths:
       - 'server/**'
@@ -44,6 +58,20 @@ on:
       - '.github/workflows/server.yml'
       - '.github/scripts/junit_totals.py'
       - '.github/known-failures/server.txt'
+      - 'app/src/main/java/**'
+      - 'app/src/main/assets/dtc_descriptions_seed.json'
+      - 'app/src/test/resources/gate-corpus.json'
+      - 'app/src/test/java/com/kevin/legion/ledger/**'
+      - 'app/src/test/java/com/kevin/legion/notes/RecurrenceTest.kt'
+      - 'headunit/app/src/main/java/com/kevin/midnightai/ui/CrisisCard.kt'
+      - 'shared/cards/fixtures.json'
+      - 'deploy/crontab'
+      - 'deploy/cloudrun/_common.py'
+      - 'tools/connect_session.py'
+      - 'tools/claude_session/test_fixtures/workflows/match_cases.json'
+      - 'docs/**'
+      - 'README.md'
+      - '.gitignore'
   workflow_dispatch:
 
 permissions:
@@ -97,10 +125,10 @@ jobs:
         working-directory: server
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           enable-cache: true
 
@@ -158,7 +186,7 @@ jobs:
 
       - name: Upload the JUnit XML
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: server-junit-xml
           path: server/junit.xml
