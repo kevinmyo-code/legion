@@ -74,6 +74,7 @@ from django.db import DatabaseError, transaction
 from django.db import connections as db_connections
 
 from agents.legion import late
+from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
 from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
@@ -102,18 +103,15 @@ from agents.legion.speech_rules import (
     backed_cents,
     backed_torque,
     decimal_cents,  # noqa: F401 - read as cascade.decimal_cents
-    has_money,
-    is_filler,
+    has_money,  # noqa: F401 - read as cascade.has_money
+    is_filler,  # noqa: F401 - read as cascade.is_filler
     is_stop_utterance,
-    states_unbacked_figure,
-    states_unbacked_torque,
 )
 from agents.runtime import events as ev
 from agents.runtime.budget import BudgetUsed, LoopLimits
 from agents.runtime.loop import (
     BUDGET_WORDS,
     MODEL_WORDS,
-    NO_ANSWER_WORDS,
     TIMEOUT_WORDS,
     LoopHooks,
     SentenceSplitter,
@@ -1247,11 +1245,13 @@ def _answer(
     torque_topic = garage_topic.SENTENCE if torque_on else None
     about_front_end = torque_on and garage_topic.about_front_end(words, last_reply)
     torque_dropped = 0
-
-    def torque_unbacked(text: str) -> bool:
-        return states_unbacked_torque(
-            text, backed_torque(door.calls, torque_topic, about_front_end)
-        )
+    # Which sentences are said, held or dropped (`agents/legion/sentence_gate.py`): asked per
+    # sentence; the counts, speech and events stay here.
+    gate = gates.SentenceGate(
+        backed=lambda: backed_cents(door.calls),
+        torque=lambda: backed_torque(door.calls, torque_topic, about_front_end),
+        actions=door.actions,
+    )
 
     sentences = 0
 
@@ -1288,13 +1288,6 @@ def _answer(
 
     def tainted() -> bool:
         return read_through.read_third_party(door.request)
-
-    def honest(text: str) -> bool:
-        """False for a sentence that claims a change when no write has gone through in this turn
-        yet (`agents.legion.guards.claims_unbacked_outcome`, the runtime's own check; CLAUDE.md
-        section 7). Such a sentence is held and decided at the end of the turn. Nothing else is
-        rewritten from the model's words (findings 4 and 10): when in doubt its sentence stays."""
-        return not claims_unbacked_outcome(text, door.actions())
 
     def say(
         text: str, tagged: str | None = None, replay: str | None = None, exact_text: bool = False
@@ -1412,30 +1405,25 @@ def _answer(
                 tagged = event.data["text"]
                 # Every check below reads the sentence without its tags (`speech_tags`).
                 text = speech_tags.untagged(tagged)
-                if not text:
-                    continue
-                if text == NO_ANSWER_WORDS:
-                    # The runtime's line for a turn with no words. Held: after tools, the turn is
-                    # asked once more (below); else the phone's own line is said (spec 31).
+                verdict = gate.in_answer(
+                    text,
+                    sentences=sentences,
+                    verbatim_said=verbatim_said,
+                    max_spoken=MAX_SPOKEN_SENTENCES,
+                )
+                if verdict == gates.NO_ANSWER:
+                    # Held: after tools, the turn is asked once more (below).
                     no_answer = True
-                    continue
-                if sentences == 0 and is_filler(text):
+                elif verdict == gates.FILLER:
                     filler_dropped += 1
-                    continue
-                if (verbatim_said and has_money(text)) or states_unbacked_figure(
-                    text, backed_cents(door.calls)
-                ):
+                elif verdict == gates.MONEY:
                     money_dropped += 1
-                    continue
-                if torque_unbacked(text):
+                elif verdict == gates.TORQUE:
                     torque_dropped += 1
-                    continue
-                if sentences >= MAX_SPOKEN_SENTENCES:
-                    continue
-                if not honest(text):
+                elif verdict == gates.HOLD:
                     held_claims.append((text, tagged))
-                    continue
-                yield say(text, tagged)
+                elif verdict == gates.SAY:
+                    yield say(text, tagged)
                 continue
             yield event
     finally:
@@ -1492,18 +1480,15 @@ def _answer(
             rounds,
         ):
             text = speech_tags.untagged(tagged)
-            if not text or is_filler(text) or (verbatim_said and has_money(text)):
-                continue
-            if states_unbacked_figure(text, backed_cents(door.calls)):
+            verdict = gate.in_ask_again(text, verbatim_said=verbatim_said)
+            if verdict == gates.MONEY:
                 money_dropped += 1
-                continue
-            if torque_unbacked(text):
+            elif verdict == gates.TORQUE:
                 torque_dropped += 1
-                continue
-            if not honest(text):
+            elif verdict == gates.HOLD:
                 held_claims.append((text, tagged))
-                continue
-            yield say(text, tagged)
+            elif verdict == gates.SAY:
+                yield say(text, tagged)
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
         _meter(request, model_name, rounds[-1:])
@@ -1522,16 +1507,17 @@ def _answer(
     speaker.closing = True
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
     for text, tagged in held_claims:
-        if states_unbacked_figure(text, backed_cents(door.calls)):
+        verdict = gate.held(text)
+        if verdict == gates.MONEY:
             # Held before the money tool ran; its figures are checked now, like every sentence's
             # (blind review finding 3). It was still a claim of a change, so the closing line about
             # the change is said in its place (round 2, N1): "went through" or "did not".
             money_dropped += 1
             unbacked += 1
-        elif torque_unbacked(text):
+        elif verdict == gates.TORQUE:
             torque_dropped += 1
             unbacked += 1
-        elif honest(text):
+        elif verdict == gates.SAY:
             yield say(text, tagged)
         else:
             unbacked += 1

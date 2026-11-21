@@ -5,7 +5,7 @@ tools ran but whose answer was only filler, or nothing, is asked once more, tool
 Lifted unchanged from the web door (`assistant/cascade.py`, ADR 0102), which calls it; the agent
 turn picks it up in slice E3. The door passes what is its own (its declarations, its round
 timeout, its list of metered rounds), so nothing here reads a request or a database. Which of the
-round's sentences are said is the door's own sentence checks.
+round's sentences are said is `SentenceGate.in_ask_again` (`agents/legion/sentence_gate.py`).
 """
 
 from __future__ import annotations
