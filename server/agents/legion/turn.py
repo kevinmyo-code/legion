@@ -88,9 +88,9 @@ def cost_of(usage: Usage) -> int:
     return -(-hundredths // 100)
 
 
-def context_line(request, now: datetime, device_offset: int | None = None) -> str:
-    """`device_offset`: the device's own UTC offset in minutes (`client_facts`), which wins over
-    the household's zone for "today" and "tomorrow"; the time itself is the engine's clock."""
+def local_now(request, now: datetime, device_offset: int | None = None):
+    """`now` on the turn's local clock: `(local, offset, from_household)`. `device_offset`: the
+    device's own UTC offset in minutes (`client_facts`), which wins over the household's zone."""
     household = household_of(request)
     zone_name = getattr(household, "timezone", None)
     zone = zone_named(zone_name)
@@ -100,6 +100,13 @@ def context_line(request, now: datetime, device_offset: int | None = None) -> st
     if device_offset is not None:
         offset, from_household = device_offset, False
         local = now.astimezone(dt_timezone(timedelta(minutes=device_offset)))
+    return local, offset, from_household
+
+
+def context_line(request, now: datetime, device_offset: int | None = None) -> str:
+    """`device_offset`: the device's own UTC offset in minutes (`client_facts`), which wins over
+    the household's zone for "today" and "tomorrow"; the time itself is the engine's clock."""
+    local, offset, from_household = local_now(request, now, device_offset)
     today = local.date()
     tomorrow = today + timedelta(days=1)
     # T3b review B4: a head unit's turn is not told the member's name; whoever holds the unit may
@@ -230,6 +237,9 @@ def run_turn(
         transcript=transcript,
         client_facts={
             "history_from": len(history),
+            # The turn's own day and time, the context line's: what his day words mean
+            # (`day_words.py`, read by the gateway for a date-taking call).
+            "local": _local_fact(request, now, facts.get("utc_offset_minutes")),
             **({"voice": voice} if voice else {}),
             **({"test_mode": True} if facts.get("test_mode") else {}),
         },
@@ -353,6 +363,11 @@ def context(
         honesty=lambda s: guards.claims_unbacked_outcome(s.final_text, s.actions),
         suspend=relay_turn.suspender(store, request),
     )
+
+
+def _local_fact(request, now: datetime, device_offset: int | None) -> dict:
+    local = local_now(request, now, device_offset)[0]
+    return {"day": local.date().isoformat(), "time": local.strftime("%H:%M")}
 
 
 def _last_model_text(history: list[dict]) -> str:

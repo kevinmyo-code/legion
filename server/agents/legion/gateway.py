@@ -25,8 +25,10 @@
 from __future__ import annotations
 
 import time
+from datetime import date
+from datetime import time as clock_time
 
-from agents.legion import guards, hold, redact, relay
+from agents.legion import day_words, guards, hold, redact, relay
 from agents.legion.client_facts import TEST_MODE_WORDS
 from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
 from agents.legion.speech_rules import _verbatim
@@ -119,6 +121,8 @@ class LegionGateway:
         self.calls: list[TurnCall] = []
         # `end_conversation` was called: the limb closes the conversation after the sign-off.
         self.end_requested = False
+        # Date-taking calls so far in this stream (`day_words.corrected` fixes only the first).
+        self._date_calls = 0
 
     def limb_tools(self) -> dict[str, relay.LimbTool]:
         """The relayable tools of the limb that made this turn (none without one, no query)."""
@@ -238,6 +242,7 @@ class LegionGateway:
                     "tainted",
                     started,
                 )
+        call, day_note = self._his_day(state, call)
         if state.tainted:
             # The request's flag is the second fence (a procedure's own steps check it, not the
             # turn's state); a relay's continuation is a new request, so it is armed again here.
@@ -258,12 +263,13 @@ class LegionGateway:
         # Code's own sentences (`speech_rules.VERBATIM_TOOLS`, ADR 0094): said by the speech rules
         # (`spoken.py`), never reworded by the model, which gets `for_model` when there is one.
         spoken = _verbatim(call.name, result) if not result.is_error else None
+        text = f"{result.text} {day_note}" if day_note else result.text
         done = self._done(
             state,
             call,
             tool,
             not result.is_error,
-            result.text,
+            text,
             outcome,
             None,
             started,
@@ -276,6 +282,22 @@ class LegionGateway:
             state.add_taint(call.name)
             state.add_outside(call.name)
         return done
+
+    def _his_day(self, state, call: ToolCall) -> tuple[ToolCall, str | None]:
+        """A date-taking call's day words made dates on the turn's own day, and his one plain day
+        word put back over a date one off it (`day_words.py`, the phone's `RelativeDay`)."""
+        local = state.client_facts.get("local")
+        if call.name not in day_words.DATE_TOOLS or not local:
+            return call, None
+        day = date.fromisoformat(local["day"])
+        at = clock_time.fromisoformat(local["time"])
+        only = self._date_calls == 0
+        self._date_calls += int(day_words.is_date_call(call.name, call.args))
+        args = day_words.resolved(call.args, day)
+        fixed = day_words.corrected(call.name, args, state.transcript, day, at, only)
+        if fixed is not None:
+            return ToolCall(call.id, call.name, fixed[0]), fixed[1]
+        return ToolCall(call.id, call.name, args), None
 
     def _relay(self, state, spec, call, tool, started) -> ToolOutcome:
         """A limb tool's call: refused here in words, kept as a device action for after the reply
