@@ -7,10 +7,11 @@ One file goes in this directory before an APK build. It is not committed (see `.
 | `3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` (official) | 26,485,264 | `c4947caf150b8502fdd75bbe4089b971ab1ec42e90ee3ba547faca2cde44d9ee` | github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models: sherpa-onnx's ONNX export of 3D-Speaker's ERes2Net (English, VoxCeleb, 16 kHz). Size and sha256 as GitHub reports them for the release asset |
 | the same name (laptop copy, in today's phone builds) | 26,485,263 | `c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5` | unproven: one byte shorter than the official file. Never committed |
 
-`app/speaker-model.pin` holds the official URL, size and sha256. A cloud build fetches the
-official file with `.github/scripts/fetch_speaker_model.sh` and checks it; it refuses to build an
-APK until the pin says `release_ok=yes`, which waits on a hand test of the official file on the
-phone with the enrolled voiceprint. Laptop builds still use the laptop copy until then.
+`app/speaker-model.pin` holds both files' size and sha256. A cloud build puts one in place with
+`.github/scripts/fetch_speaker_model.sh --install`: while the pin says `release_ok=no` it is the
+copy on the phone today, from the owner's private APK bucket (interim); once the official file has
+passed a hand test on the phone with the enrolled voiceprint, `release_ok=yes` switches cloud builds
+to the official download. A missing or mismatched file stops the build either way.
 
 Loaded by `service/speaker/SherpaSpeakerEmbedder.kt` through sherpa-onnx's
 `SpeakerEmbeddingExtractor`, on the sherpa-onnx the wake word already ships. No new runtime.
