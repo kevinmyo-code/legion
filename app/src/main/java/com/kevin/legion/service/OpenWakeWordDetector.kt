@@ -122,10 +122,10 @@ class OpenWakeWordDetector internal constructor(
 }
 
 /**
- * Where the three model files come from. None is in git (licences: the report). In order:
+ * Where the three model files come from. In order:
  * 1. the app's external files dir, `Android/data/com.kevin.legion/files/openwakeword/`, so a head
  *    retrained on the laptop can be dropped in with `adb push` and no rebuild;
- * 2. `assets/openwakeword/`, gitignored, filled on the build machine before `assembleFast`.
+ * 2. `assets/openwakeword/`, committed and pinned by `app/models.sha256` (licence: MODELS.md there).
  * Both are private to this app. A missing file is a refusal in words, never a silent deaf engine.
  */
 object OwwModelFiles {

@@ -1,0 +1,31 @@
+name: background
+version: 1
+# The late-answer path (design 2026-11-20, `agents/legion/late.py`): a question he asked to be told
+# about later, run by `manage.py late_tasks` in its own conversation. Research only and READ ONLY:
+# `writes: none` makes the guard refuse every write (`agents/legion/guards.py`), so a background
+# task never changes anything, confirmed or not. No ledger or money reads (figures are spoken by
+# code, and that table reaches the agents door only in slice E3), no mail, no memory.
+aspects: []
+model: gemini-3.5-flash-lite
+prompt: background.md
+tools:
+  engine:
+    - web_search
+    - check_conditions
+    - github_status
+    - legion_docs
+  relay: []
+writes: none
+confirm: []
+# web_search and github_status read text other people wrote.
+taint_ok: true
+limits:
+  # 45 s in all: one task fits a tick call inside the scheduler's 60 s attempt deadline.
+  max_rounds: 4
+  round_timeout_s: 12.0
+  tool_timeout_s: 12.0
+  turn_timeout_s: 45.0
+  max_input_tokens: 200000
+  max_cost_micro_usd: 30000
+router:
+  terms: []

@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -304,6 +305,41 @@ androidComponents {
         }
     }
 }
+
+// Cloud-builds step 3 (2026-11-20): the model files committed under src/main/assets are pinned by
+// sha256 in `app/models.sha256`. A missing or changed file fails every build of app/ (compile, unit
+// tests, APK) before anything else runs, so an APK can never ship without its wake word models or
+// with a swapped one. Plain Kotlin, no shell or python, so clone-and-run on Windows still works.
+val verifyModels = tasks.register("verifyModels") {
+    group = "verification"
+    description = "Fails when a model listed in app/models.sha256 is missing or its sha256 differs."
+    val manifest = file("models.sha256")
+    val assetsRoot = file("src/main/assets")
+    inputs.file(manifest)
+    doLast {
+        val lines = manifest.readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        if (lines.isEmpty()) throw GradleException("$manifest lists no model file.")
+        val problems = lines.mapNotNull { line ->
+            val parts = line.split(Regex("\\s+"), limit = 2)
+            if (parts.size != 2 || !parts[0].matches(Regex("[0-9a-f]{64}"))) {
+                return@mapNotNull "unreadable line: $line"
+            }
+            val (want, rel) = parts
+            val f = File(assetsRoot, rel.removePrefix("*"))
+            if (!f.isFile) return@mapNotNull "missing: src/main/assets/$rel"
+            val got = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            if (got != want) "sha256 differs: src/main/assets/$rel (got $got, pinned $want)" else null
+        }
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                "Model check failed against app/models.sha256 (nothing was built):\n  " + problems.joinToString("\n  "),
+            )
+        }
+        logger.lifecycle("verifyModels: ${lines.size} model files match app/models.sha256")
+    }
+}
+tasks.named("preBuild") { dependsOn(verifyModels) }
 
 // backend-erp Phase 2 (2026-08-26): the Compose `resolutionStrategy.force` that used to live here
 // is GONE, and the compose-bom moved forward instead. Recorded because the removed block was

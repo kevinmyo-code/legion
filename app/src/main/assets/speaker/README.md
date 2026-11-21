@@ -1,23 +1,42 @@
 # "Only my voice" speaker model
 
-One file goes in this directory before building, and it is not committed (see `.gitignore`):
+One file goes in this directory before an APK build. It is not committed (see `.gitignore`).
 
 | File | Bytes | SHA-256 | Source |
 |---|---|---|---|
-| `3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` | 26,485,263 | `c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5` | 3D-Speaker's ERes2Net (English, VoxCeleb, 16 kHz) in sherpa-onnx's ONNX export; believed to be the k2-fsa/sherpa-onnx `speaker-recongition-models` release asset, NOT verified. Check the SHA-256 |
+| `3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx` (official) | 26,485,264 | `c4947caf150b8502fdd75bbe4089b971ab1ec42e90ee3ba547faca2cde44d9ee` | github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models: sherpa-onnx's ONNX export of 3D-Speaker's ERes2Net (English, VoxCeleb, 16 kHz). Size and sha256 as GitHub reports them for the release asset |
+| the same name (laptop copy, in today's phone builds) | 26,485,263 | `c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5` | unproven: one byte shorter than the official file. Never committed |
+
+`app/speaker-model.pin` holds both files' size and sha256. A cloud build puts one in place with
+`.github/scripts/fetch_speaker_model.sh --install`: while the pin says `release_ok=no` it is the
+copy on the phone today, from the owner's private APK bucket (interim); once the official file has
+passed a hand test on the phone with the enrolled voiceprint, `release_ok=yes` switches cloud builds
+to the official download. A missing or mismatched file stops the build either way.
 
 Loaded by `service/speaker/SherpaSpeakerEmbedder.kt` through sherpa-onnx's
 `SpeakerEmbeddingExtractor`, on the sherpa-onnx the wake word already ships. No new runtime.
 
-Why it stays out of git: the 3D-Speaker code is Apache-2.0, but no licence for the model weights
-themselves was confirmed (the ModelScope card could not be read). Bundle it only once that is
-settled.
+## Licence (Apache-2.0)
 
-Without it the app still builds and runs: no voiceprint can be built (the screen says the model is
-not on the phone), so every wake hit logs `speaker_check ... result=no_voiceprint` and the wake word
-opens as it always did. If a voiceprint exists but the model is gone, the log says `model_missing`
-and the wake word still opens.
+The model comes from 3D-Speaker (github.com/modelscope/3D-Speaker, Apache License 2.0; ModelScope
+lists the model `iic/speech_eres2net_sv_en_voxceleb_16k` as Apache License 2.0), exported to ONNX by
+the sherpa-onnx project (github.com/k2-fsa/sherpa-onnx, Apache License 2.0). This repo does not
+change the file. 3D-Speaker ships no NOTICE file.
+
+Notice: the ERes2Net speaker model, copyright the 3D-Speaker authors, is licensed under the Apache
+License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). It is distributed on an "AS IS"
+basis, without warranties or conditions of any kind. A cloud build puts the full licence text next
+to the other notices in the APK, at `assets/licenses/3dspeaker-eres2net-Apache-2.0.txt`.
+
+The model was trained on VoxCeleb; its data terms were not checked here.
+
+## Without it
+
+The app still builds and runs: no voiceprint can be built (the screen says the model is not on
+the phone), so every wake hit logs `speaker_check ... result=no_voiceprint` and the wake word opens
+as it always did. If a voiceprint exists but the model is gone, the log says `model_missing` and
+the wake word still opens.
 
 It can be dropped on the phone without a rebuild: push the file to
-`/sdcard/Android/data/com.kevin.legion/files/speaker/`, which is checked first. Pressing "Build voiceprint"
-retries the load; a wake check picks up a newly pushed model after the app restarts.
+`/sdcard/Android/data/com.kevin.legion/files/speaker/`, which is checked first. Pressing "Build
+voiceprint" retries the load; a wake check picks up a newly pushed model after the app restarts.
