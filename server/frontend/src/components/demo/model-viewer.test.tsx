@@ -20,7 +20,7 @@ type Callback = (entries: { isIntersecting: boolean }[]) => void
 let observers: { cb: Callback; options?: IntersectionObserverInit }[] = []
 
 function fakeStage(): Stage {
-  return { setActive: vi.fn(), setVisible: vi.fn(), turn: vi.fn(), reset: vi.fn(), dispose: vi.fn() }
+  return { setActive: vi.fn(), setVisible: vi.fn(), turn: vi.fn(), reset: vi.fn(), focus: vi.fn(), highlight: vi.fn(), dispose: vi.fn() }
 }
 
 beforeEach(() => {
