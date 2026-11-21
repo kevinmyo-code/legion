@@ -3412,10 +3412,10 @@ internal class CascadeSession(
     private suspend fun releaseNow(reason: String, caller: Job?) {
         val releaseStartMs = System.currentTimeMillis()
         isOpen = false
-        // Engine turns whose go went early and that no turn read: cancelled on the engine (round 4).
-        engineBrain?.earlyTurns?.forEach { it.release() }
         // A clear-codes question belongs to this conversation: a "yes" in the next one answers nothing.
         step("clear_question") { DtcClearController.forgetClearQuestion() }
+        // Engine turns whose go went early and that no turn read: cancelled on the engine (round 4).
+        engineBrain?.earlyTurns?.forEach { it.release() }
         step("jobs") {
             followUpJob?.cancel()
             uttCapJob?.cancel()
