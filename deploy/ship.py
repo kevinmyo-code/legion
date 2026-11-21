@@ -610,6 +610,19 @@ class Ship:
         )
         self.say(f"job {a.job}: image {self.live_job_image}")
         self.say(f"runtime account {self.sa}")
+        # The ship templates pin LIVE_CODE (what the schema rehearsal ran as the OLD code) and the dark
+        # switches: a run whose live engine is not that code, or has a switch set, stops here.
+        if a.expect_live_sha and self.live_sha != a.expect_live_sha:
+            raise Stop(
+                f"the live engine runs {self.live_sha[:8] or 'unknown'}, not the pinned "
+                f"--expect-live-sha {a.expect_live_sha[:8]} (the rehearsal's old code); stop"
+            )
+        for side, live in (("service", self.live_svc_env), ("job", self.live_job_env)):
+            on = sorted(set(a.must_be_unset) & live)
+            if on:
+                raise Stop(f"switch(es) {' '.join(on)} are set on the live {side}; they must be unset; stop")
+        if a.must_be_unset:
+            self.say(f"switches unset on the live service and job: {' '.join(a.must_be_unset)}")
 
     # ------------------------------------------------------------ worker
     def check_worker(self) -> None:
@@ -778,6 +791,9 @@ class Ship:
         self.plain_env = c.plain_env_from(fp.values)
         self.secret_names = c.secret_names_for(fp.values)
         will = set(self.plain_env) | set(self.secret_names)
+        on = sorted(set(self.a.must_be_unset) & will)
+        if on:
+            raise Stop(f"the deploy would set switch(es) {' '.join(on)}, which must stay unset; stop")
         for name, val in fp.on.items():
             self.say(f"flag {name}={val}")
             for sec, switch in c.OPTIONAL_SECRET_ENV_VARS.items():
@@ -1230,7 +1246,7 @@ class Ship:
             for name, val in self.fp.on.items():
                 if env.get(name) != val:
                     raise Stop(f"{name} is {env.get(name, '<unset>')} on the {side}, not {val}")
-            for name in self.fp.off:
+            for name in [*self.fp.off, *a.must_be_unset]:
                 if name in env:
                     raise Stop(f"{name} is set on the {side}; it must stay unset")
             self.say(
@@ -1371,8 +1387,21 @@ def parse_args(argv=None):
         help="where rollback and shipped records go (outside the repo)",
     )
     p.add_argument("--force", action="store_true", help="redeploy even when nothing changed")
+    p.add_argument(
+        "--expect-live-sha",
+        default="",
+        help="stop unless the live engine runs this commit (the rehearsal's old code)",
+    )
+    p.add_argument(
+        "--must-be-unset",
+        default="",
+        help="env names (space or comma separated) that must be unset before and after",
+    )
     p.add_argument("--dry-run", action="store_true")
     a = p.parse_args(argv)
+    a.must_be_unset = [n for n in re.split(r"[\s,]+", a.must_be_unset) if n]
+    if a.expect_live_sha and not re.fullmatch(r"[0-9a-f]{40}", a.expect_live_sha):
+        p.error("--expect-live-sha must be a full 40-hex sha")
     for name in ("deploy_tree", "worker_tree", "apk", "records"):
         if getattr(a, name):
             setattr(a, name, str(Path(getattr(a, name)).resolve()))
