@@ -467,7 +467,7 @@ against both failure modes (attachment delusion / hallucinated finance).
 - Plan with a strong model (Fable/Opus) in plan mode; execute approved plans with Sonnet.
 - Plans are execution-specs: exact hex, dp sizes, file names, layout element-by-element, edge cases, verification section. No taste calls left to execution.
 - During execution: follow the plan exactly. Unexpected surface (weird device behavior, design question the plan doesn't answer, architectural fork) = STOP and surface, don't improvise. Goes back to a planning pass.
-- One logical change per commit. `gradlew assembleDebug` + unit tests green before each commit.
+- One logical change per commit. Unit tests green in CI (`headunit.yml`, on the pushed commit) before the work is called done; see the root `CLAUDE.md` section 6 for the commands.
 - Subagent roster and cadence: see `TEAM.md` (`.claude/agents/` holds project specialists).
 
 ### Dispatch is the default, not an escalation (STANDING, Kevin 2026-07-28)
@@ -748,8 +748,10 @@ app/src/main/java/com/kevin/midnightai/
 - `fast` and `release` take versionCode `yyDDDHHmm` UTC (the updater installs only a higher one);
   `debug` is 1 and never updates itself. Publish with `tools/release_apk.py --app headunit` (ticket 09).
 - `-Pnokey` bakes an empty Gemini key.
-- `gradlew testDebugUnitTest` - JVM unit tests (`app/src/test`). Read totals from the JUnit XML
-  under `app/build/test-results/`, not the console.
+- `gradlew testDebugUnitTest` - JVM unit tests (`app/src/test`). They run in GitHub Actions
+  (`headunit.yml`, artifact `headunit-test-results`) on a pushed branch, not on the machine you work
+  on (root `CLAUDE.md` section 6); locally at most one test class while writing a fix. Read totals
+  from the JUnit XML, not the console.
 - `gradlew connectedDebugAndroidTest` - device/emulator tests, incl. `MigrationTest` (needs a
   connected device/emulator; not runnable in a headless dev shell).
 - Every Kotlin compile depends on `openApiGenerate` (engine models into `build/openapi-generated/`).

@@ -380,6 +380,7 @@ python3 .github/scripts/junit_totals.py '<dir>/*.xml'
 Read test totals from the JUnit XML, never the console summary, and never call an unpushed change
 tested. Locally, only while writing a fix: one test class
 (`./gradlew :app:testDebugUnitTest --tests 'pkg.Class' -Pnokey`), never a full suite or detekt.
+`./gradlew assembleDebug` builds a debug APK: a heavy local build, only when the brief asks for one.
 
 **The phone's daily driver is `./gradlew assembleFast` (Kevin, 2026-10-11).** `fast` is release
 signed with the debug key: non-debuggable, so ART compiles it, and it installs over a debug build
