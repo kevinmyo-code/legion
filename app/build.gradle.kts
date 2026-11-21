@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -326,7 +327,7 @@ val verifyModels = tasks.register("verifyModels") {
             val (want, rel) = parts
             val f = File(assetsRoot, rel.removePrefix("*"))
             if (!f.isFile) return@mapNotNull "missing: src/main/assets/$rel"
-            val got = java.security.MessageDigest.getInstance("SHA-256").digest(f.readBytes())
+            val got = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
                 .joinToString("") { "%02x".format(it) }
             if (got != want) "sha256 differs: src/main/assets/$rel (got ${got.take(12)}..., pinned ${want.take(12)}...)" else null
         }
