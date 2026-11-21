@@ -1,52 +1,176 @@
-# Ship one commit of the engine from GitHub, by hand only (architecture review Q6).
+# Ship one commit of the engine from GitHub, by hand only (architecture review Q6; made at least as safe
+# as the laptop's ship_engine_template.sh in cloud-builds plan step 7, 2026-11-20).
 #
-# workflow_dispatch ONLY: nothing ships on a push. Kevin clicks "Run workflow", gives the commit,
-# and leaves "dry run" ticked for the plan or unticks it to ship. Same tool as the laptop:
-# deploy/ship.py, with --no-worker (the Claude worker lives on the laptop) and no APK (the phone
-# build is made and published on the laptop).
+# workflow_dispatch ONLY, from `dev` only: nothing ships on a push, a pull request or a fork. Dry run
+# (the default) runs every check and the plan and changes nothing; untick it to ship.
 #
-# Auth is Workload Identity Federation: no JSON key exists anywhere. The setup Kevin does once is in
-# deploy/cloudrun/README.md, "Shipping from GitHub (Workload Identity Federation)". Until it is
-# done this workflow fails at the auth step and changes nothing.
+# Job `checks` (no environment, no secret, read-only token), each a stop:
+#   - inputs: `sha` and `live_sha` are full shas; this run was dispatched from dev;
+#   - `sha` is on dev or a ship/** branch of this repo (never a fork's or a pull request's commit);
+#   - CI is green on `sha` itself: the newest push or dispatch run of server.yml and of frontend.yml with
+#     head sha == `sha` concluded success;
+#   - the live gates passed on `sha`: a successful gates.yml run titled "Gates all|engine <sha>"
+#     (the realrun web-cascade gate and one real chip turn, needing the Gemini key in `gates`);
+#   - the schema rehearsal (deploy/rehearse_old_on_new.sh) on a throwaway postgres:16: `live_sha`'s code
+#     keeps serving on `sha`'s schema, makemigrations --check, the member delete, the old tests, the
+#     reverse migration.
+# Job `ship` (environment `production`, after `checks`): deploy/ship.py from THIS run's dev checkout (the
+# reviewed tool), building the `sha` checkout; with --no-worker (the Claude worker lives on the laptop),
+# --expect-live-sha (stop unless the live engine runs `live_sha`, the rehearsal's old code) and
+# --must-be-unset (the dark switches, checked on the live service and job before, in the plan, and after).
+# Then, on a real run, deploy/post_deploy_probes.sh: health, /try and its bundle, the service worker,
+# the no-session probes and 0 error-level log lines on the new revision.
+#
+# What ship.py does on a real run, in order: refs (dev and main must fast-forward to `sha`); the live
+# service, job and runtime account (read); flags and env (no live env name dropped); rollback facts
+# recorded once (kept as this run's artifact); dev and main pushed to `sha` (fast-forward only); image
+# server:<sha> built with Cloud Build; the job moved to it by digest and `migrate` run as a job execution
+# BEFORE the service; the service deployed by digest; service and job confirmed; showmigrations; the
+# scheduler synced; /health. A dry run does the reads and prints every change it would make.
+#
+# Auth is Workload Identity Federation: no JSON key exists. Service account: vars.GCP_SHIP_SERVICE_ACCOUNT
+# (legion-ship, roles in deploy/cloudrun/github_setup.sh). The provider trusts only this repo's
+# `production` environment.
 name: Ship
 
 on:
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit to ship (full 40-hex SHA; must fast-forward dev and main)"
+        description: "Commit to ship (full 40-hex sha; on dev or a ship/** branch; dev and main must fast-forward to it)"
         required: true
         type: string
+      live_sha:
+        description: "The commit the live engine runs now (full sha; the rehearsal's OLD code; ship.py stops if it differs)"
+        required: true
+        type: string
+      must_be_unset:
+        description: "Dark switches that must stay unset (space separated env names)"
+        required: false
+        default: "LEGION_HEADUNIT_SIGNIN LEGION_AGENTS_TURN LEGION_AGENTS_STT_HEDGE LEGION_AGENTS_STREAM_STT LEGION_SKIP_MIGRATE LEGION_WEB_EARLY_TRANSCRIPTS LEGION_WEB_AUDIO_FIRST_ROUND"
+        type: string
       dry_run:
-        description: "Dry run: read-only checks and the plan, nothing changes"
+        description: "Dry run: every check and the plan; nothing changes"
         required: true
         default: true
         type: boolean
 
 permissions:
-  contents: write   # fast-forward push of dev and main to the shipped commit
-  id-token: write   # the OIDC token Workload Identity Federation exchanges
+  contents: read
 
 concurrency:
   group: ship
   cancel-in-progress: false
 
 jobs:
-  ship:
+  checks:
     runs-on: ubuntu-latest
-    environment: production   # protection rules (required reviewer) live on this environment
-    timeout-minutes: 45
-    steps:
-      - name: Check the input is a full SHA
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read   # read the CI and gate runs for `sha`
+    services:
+      postgres:
+        image: postgres:16
         env:
-          SHA: ${{ inputs.sha }}
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: legion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      SHA: ${{ inputs.sha }}
+      LIVE_SHA: ${{ inputs.live_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Inputs, and where this run comes from
+        env:
+          UNSET: ${{ inputs.must_be_unset }}
         run: |
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha must be 40 lowercase hex characters"; exit 1; }
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
+          [[ "$LIVE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::live_sha must be 40 lowercase hex characters"; exit 1; }
+          [[ "$UNSET" =~ ^[A-Z0-9_\ ]*$ ]] || { echo "::error::must_be_unset must be env names separated by spaces"; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF)."; exit 1; }
+          [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
 
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
+
+      - name: The commit is on dev or a ship/** branch
+        run: |
+          set -euo pipefail
+          on=$(git branch -r --contains "$SHA" --format='%(refname:short)' | grep -E '^origin/(dev|ship/.+)$' || true)
+          [ -n "$on" ] || { echo "::error::$SHA is on neither origin/dev nor an origin/ship/** branch"; exit 1; }
+          git merge-base --is-ancestor "$LIVE_SHA" "$SHA" || { echo "::error::live_sha is not an ancestor of sha"; exit 1; }
+
+      - name: CI is green on the exact commit (server, frontend)
+        run: |
+          set -euo pipefail
+          for wf in server.yml frontend.yml; do
+            # The newest push or dispatch run whose head sha is SHA decides (a newer failure beats an older pass).
+            row=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/runs?head_sha=$SHA&per_page=50" \
+              --jq '[.workflow_runs[] | select(.event=="push" or .event=="workflow_dispatch") | select(.head_repository.full_name=="'"$GITHUB_REPOSITORY"'")] | sort_by(.created_at) | reverse | .[0] | [.id, .status, .conclusion] | @tsv')
+            read -r id st concl <<<"${row:-- - -}"
+            [ "$st" = completed ] && [ "$concl" = success ] || { echo "::error::$wf on $SHA: newest run ${id} is ${st}/${concl}. Start it (ci.sh run) and wait."; exit 1; }
+            echo "GREEN $wf: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$id"
+          done
+
+      - name: The live gates passed on the exact commit (gates.yml)
+        run: |
+          set -euo pipefail
+          row=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/gates.yml/runs?branch=dev&per_page=50" \
+            --jq '[.workflow_runs[] | select(.display_title=="Gates all '"$SHA"'" or .display_title=="Gates engine '"$SHA"'") | select(.event=="workflow_dispatch")] | sort_by(.created_at) | reverse | .[0] | [.id, .status, .conclusion] | @tsv' || true)
+          read -r id st concl <<<"${row:-- - -}"
+          [ "$st" = completed ] && [ "$concl" = success ] || { echo "::error::no successful gates.yml run (all or engine) for $SHA (newest: ${id} ${st}/${concl}). Dispatch gates.yml with this sha first."; exit 1; }
+          echo "GATES PASSED: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$id"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Server environment (sha's pinned requirements)
+        working-directory: server
+        run: |
+          uv venv --python 3.13
+          uv pip install -r requirements.txt
+
+      - name: Schema rehearsal (live_sha's code on sha's schema, throwaway Postgres)
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y -qq postgresql-client >/dev/null 2>&1 || true
+          PY="$GITHUB_WORKSPACE/server/.venv/bin/python" bash deploy/rehearse_old_on_new.sh "$LIVE_SHA" "$SHA"
+
+  ship:
+    needs: checks
+    runs-on: ubuntu-latest
+    environment: production   # protection rules (reviewer, dev-only branch policy) live on this environment
+    timeout-minutes: 60
+    permissions:
+      contents: write   # fast-forward push of dev and main to the shipped commit
+      id-token: write   # the OIDC token Workload Identity Federation exchanges
+    env:
+      SHA: ${{ inputs.sha }}
+    steps:
+      # The tool comes from this run's ref (dev): reviewed code, not the commit being shipped. ship.py
+      # reads the deploy code (deploy/cloudrun, flags.yaml, crontab) from `sha` itself.
+      - uses: actions/checkout@v4
+        with:
+          path: tool
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          path: deploy-tree
 
       - uses: google-github-actions/auth@v2
         with:
@@ -67,19 +191,31 @@ jobs:
           CLOUDRUN_ENV: ${{ secrets.CLOUDRUN_ENV }}
         run: |
           [ -n "$CLOUDRUN_ENV" ] || { echo "environment secret CLOUDRUN_ENV is not set; see deploy/cloudrun/README.md"; exit 1; }
-          printf '%s\n' "$CLOUDRUN_ENV" > deploy/cloudrun/.env
+          printf '%s\n' "$CLOUDRUN_ENV" > deploy-tree/deploy/cloudrun/.env
 
       - name: Ship
         env:
-          SHA: ${{ inputs.sha }}
           DRY: ${{ inputs.dry_run }}
+          LIVE_SHA: ${{ inputs.live_sha }}
+          UNSET: ${{ inputs.must_be_unset }}
           GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          args=(--sha "$SHA" --deploy-tree . --no-worker --records "$RUNNER_TEMP/ships")
+          git -C deploy-tree config user.name "github-actions[bot]"
+          git -C deploy-tree config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          args=(--sha "$SHA" --deploy-tree deploy-tree --no-worker --records "$RUNNER_TEMP/ships"
+                --expect-live-sha "$LIVE_SHA" --must-be-unset "$UNSET")
           [ "$DRY" = "true" ] && args+=(--dry-run)
-          python deploy/ship.py "${args[@]}"
+          python tool/deploy/ship.py "${args[@]}"
+
+      - name: Post-deploy probes (real run only)
+        if: ${{ !inputs.dry_run }}
+        env:
+          ENGINE_URL: ${{ vars.LEGION_ENGINE_URL }}
+          SERVICE: legion
+          REGION: us-south1
+          PROJECT: ${{ vars.GCP_PROJECT }}
+          MUST_BE_UNSET: ${{ inputs.must_be_unset }}
+        run: bash tool/deploy/post_deploy_probes.sh
 
       - name: Keep the rollback record
         if: always()
