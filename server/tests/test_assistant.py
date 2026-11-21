@@ -19,7 +19,7 @@ from assistant.models import AssistantCall, Companion
 from assistant.surface import WEB_TOOL_NAMES
 from assistant.views import KEY_ABSENT, AssistantSessionThrottle, AssistantToolThrottle
 from engine_mcp.models import Outcome
-from engine_mcp.tools import TOOLS_BY_NAME
+from engine_mcp.tools import TOOLS_BY_NAME, dark_tools
 from ingest.drive import Response
 from ingest.statements import GEMINI_KEY_ENV
 from tests.conftest import _client_for, _member
@@ -224,7 +224,10 @@ def test_the_token_locks_the_whole_setup(kevin_web, google):
     [tools] = setup["tools"]
     assert set(tools) == {"functionDeclarations"}, "no googleSearch on the web surface"
     declarations = tools["functionDeclarations"]
-    assert [d["name"] for d in declarations] == list(WEB_TOOL_NAMES)
+    # A dark tool (its switch off) is declared to no one.
+    assert [d["name"] for d in declarations] == [
+        name for name in WEB_TOOL_NAMES if name not in dark_tools()
+    ]
     assert {d["behavior"] for d in declarations} == {"BLOCKING"}
     for declaration in declarations:
         assert "device token" not in declaration["description"], declaration["name"]
