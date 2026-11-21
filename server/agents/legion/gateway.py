@@ -136,7 +136,14 @@ class LegionGateway:
         return "write" if tool is not None and tool.writes else "local"
 
     def _acts(self, tool, name: str) -> bool:
-        # A procedure's steps may write (`run_procedure` is `writes=False` on purpose).
+        """What waits for the phone's go: a write, a procedure (its steps may write;
+        `run_procedure` is `writes=False` on purpose), and a read that sends his words out of the
+        engine (`relay.leaves_engine`: a web search, a weather or recall service, GitHub)."""
+        if tool is None:
+            return False
+        return tool.writes or name == PROCEDURE_TOOL or relay.leaves_engine(name)
+
+    def _writes(self, tool, name: str) -> bool:
         return bool(tool is not None and (tool.writes or name == PROCEDURE_TOOL))
 
     def _held(self, state, call, tool, started, where="engine") -> ToolOutcome | None:
@@ -191,7 +198,7 @@ class LegionGateway:
                 state, call, tool, False, verdict.words, "refused", verdict.guard, started
             )
         if self._acts(tool, call.name):
-            if state.client_facts.get("test_mode"):
+            if state.client_facts.get("test_mode") and self._writes(tool, call.name):
                 words = TEST_MODE_WORDS.format(name=call.name)
                 return self._done(
                     state, call, tool, False, words, "refused", "not_allowed", started

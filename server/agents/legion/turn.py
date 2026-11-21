@@ -193,7 +193,8 @@ def run_turn(
                 owner_user_id=conversation.owner_user_id,
                 conversation=conversation,
                 seq=seq,
-                transcript=transcript,
+                # A held turn's words are written at the phone's go (`store.py`), never on a take.
+                transcript="" if not go else transcript,
                 graph_version=graph_version(),
             )
     except IntegrityError:
@@ -202,7 +203,9 @@ def run_turn(
         return None
     store = TurnStore(turn)
     hold = TurnHold(turn.pk, needed=not go)
-    store.held = hold
+    if hold.needed:
+        store.held = hold
+        store.transcript = transcript
     history: list[dict] = []
     for earlier in conversation.turns.filter(seq__lt=seq).order_by("seq"):
         history.extend(earlier.history or [])

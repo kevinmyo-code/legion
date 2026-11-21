@@ -56,6 +56,7 @@ names); the manifest's flags can only add taint.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -69,15 +70,43 @@ from assistant import read_through
 from household.models import DeviceToken
 from household.tenancy import household_of
 
+log = logging.getLogger(__name__)
+
 # The engine's classes and word lists: ONE file, read by the server's tests and the phone's
 # manifest test alike (`server/contracts/limb/v1/tool_classes.json`).
 CLASSES_FILE = (
     Path(__file__).resolve().parents[2] / "contracts" / "limb" / "v1" / "tool_classes.json"
 )
-_LISTS = json.loads(CLASSES_FILE.read_text(encoding="utf-8"))
+# If the file is missing or broken, the RELAY fails closed (no class is known, so no limb tool
+# is offered, and every engine read that could leave the engine is held) and nothing else breaks:
+# `gateway.py` imports this module, and the live web door imports `gateway`.
+_CLOSED = {
+    "plain_classes": [],
+    "outside_classes": [],
+    "mail_class_names": [],
+    "mail_name_words": [],
+    "outside_name_words": [],
+    "outside_actions": [],
+    "max_calls_per_round": 0,
+    "engine_tools_leaving_engine": None,
+}
+
+
+def _load() -> dict:
+    try:
+        raw = json.loads(CLASSES_FILE.read_text(encoding="utf-8"))
+        return {key: raw[key] for key in _CLOSED}
+    except (OSError, ValueError, KeyError, TypeError):
+        log.warning("agents relay: %s is missing or broken; the relay fails closed", CLASSES_FILE)
+        return dict(_CLOSED)
+
+
+_LISTS = _load()
 
 
 def _words(key: str) -> re.Pattern:
+    if not _LISTS[key]:
+        return re.compile(r"(?!x)x")  # matches nothing
     words = "|".join(re.escape(w) for w in sorted(_LISTS[key], key=len, reverse=True))
     return re.compile(rf"(^|_)({words})(_|$)", re.IGNORECASE)
 
@@ -97,6 +126,19 @@ OUTSIDE_ACTIONS = frozenset(_LISTS["outside_actions"])
 MAIL_CLASS = frozenset(_LISTS["mail_class_names"])
 _MAIL_NAME = _words("mail_name_words")
 _OUTSIDE_NAME = _words("outside_name_words")
+# ENGINE tools whose call sends his words, or his place, out of the engine (a search provider, a
+# weather service, GitHub, a recall database): held until the phone's go like a write
+# (`hold.py`). None when the file is broken: then every engine read is held (fail closed).
+LEAVES_ENGINE = (
+    None
+    if _LISTS["engine_tools_leaving_engine"] is None
+    else frozenset(_LISTS["engine_tools_leaving_engine"])
+)
+
+
+def leaves_engine(name: str) -> bool:
+    return True if LEAVES_ENGINE is None else name in LEAVES_ENGINE
+
 
 # DECISION K1 (open, the owner's; plan 1119 "Decisions for Kevin"): the limb tools that may still
 # act in a turn that read outside text, as the phone allows navigation, timers, music, volume and

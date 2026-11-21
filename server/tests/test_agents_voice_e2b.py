@@ -219,7 +219,7 @@ def test_an_audio_turn_with_speak_false_makes_no_speech(auth_client, engine, mon
     engine.rounds = [m.say("Nothing is on today. Enjoy it.")]
     response = auth_client.post(
         "/api/agents/turn",
-        {"audio": SimpleUploadedFile("u.wav", _wav(), "audio/wav"), "speak": "false"},
+        {"audio": SimpleUploadedFile("u.wav", _wav(), "audio/wav"), "speak": "false", "go": "true"},
         format="multipart",
     )
     events = events_of(response)
@@ -271,13 +271,15 @@ def test_a_carried_turn_refuses_writes(auth_client, engine):
     assert AgentTurn.objects.get().tainted
 
 
-def test_test_mode_refuses_writes_and_reaches_the_engine_whatever_the_brain(
-    auth_client, engine, limb
-):
+def test_test_mode_refuses_writes_and_never_bypasses_the_brain(auth_client, engine, limb):
     from agents.models import Limb
 
+    # Test mode never opens the engine to a device the server sends to the phone (review H5).
     Limb.objects.update(manifest={**Limb.objects.get().manifest, "brain_asked": "phone"})
     assert turn(auth_client, "hello").status_code == 409
+    refused = turn(auth_client, "hello", client_facts={"test_mode": True})
+    assert refused.status_code == 409 and refused.data["code"] == "brain_phone"
+    Limb.objects.update(manifest={**Limb.objects.get().manifest, "brain_asked": "engine"})
     engine.rounds = [m.call(*WRITE), m.call("set_timer", {"seconds": 5}), m.say("Test only.")]
     events = events_of(turn(auth_client, client_facts={"test_mode": True}))
     assert _wrote() == 0 and not of(events, "tool_request")
@@ -519,3 +521,331 @@ def test_phone_turns_are_bounded(auth_client, engine):
     assert turn(auth_client, client_facts={"phone_turns": many}).status_code == 400
     big = [{"said": "x" * 500, "answer": "y" * 1000}] * 3
     assert turn(auth_client, client_facts={"phone_turns": big}).status_code == 400
+
+
+# ---- review 1121 (H1-H8) -------------------------------------------------------------------------
+
+MARKER = "MARKER-91f2"
+
+
+def _no_marker_anywhere(caplog) -> None:
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            select table_name, column_name from information_schema.columns
+            where table_schema = 'public' and table_name like 'agents\\_%%'
+              and data_type in ('text', 'jsonb', 'json', 'character varying')
+            """
+        )
+        for table, column in cursor.fetchall():
+            cursor.execute(
+                f'select count(*) from "{table}" where "{column}"::text like %s',  # noqa: S608
+                [f"%{MARKER}%"],
+            )
+            assert cursor.fetchone()[0] == 0, f"{table}.{column}"
+    assert MARKER not in caplog.text
+
+
+@pytest.mark.parametrize("decision", [hold.TAKE, None], ids=["take", "timeout"])
+def test_a_taken_or_silent_turn_leaves_none_of_his_words(
+    auth_client, engine, phone, monkeypatch, caplog, decision
+):
+    import logging
+
+    caplog.set_level(logging.DEBUG)
+    seen = {}
+
+    def watch(seconds):
+        # While held and undecided, nothing holding his words is written yet.
+        row = AgentTurn.objects.filter(status="running").first()
+        if row is not None and "transcript" not in seen:
+            from agents.models import AgentCheckpoint
+
+            seen["transcript"] = row.transcript
+            seen["checkpoints"] = AgentCheckpoint.objects.filter(turn=row).count()
+            seen["tool_calls"] = AgentToolCall.objects.filter(turn=row).count()
+        if decision is not None:
+            AgentTurn.objects.filter(pk=row.pk).update(
+                pending_relay={"go": decision}, cancel_requested=True
+            )
+
+    monkeypatch.setattr(hold, "_pause", watch)
+    monkeypatch.setattr(hold, "HOLD_TIMEOUT_S", 0.0 if decision is None else 2.0)
+    engine.rounds = [
+        m.call("read_list", {"name": MARKER}),
+        m.say(f"Your list {MARKER} is empty."),
+    ]
+    events = events_of(turn(auth_client, f"read my {MARKER} list", go=False))
+    assert MARKER in str(of(events, "sentence")), "the live answer streamed"
+    if decision is not None:
+        assert seen == {"transcript": "", "checkpoints": 0, "tool_calls": 0}
+    row = AgentTurn.objects.get()
+    assert row.status == "cancelled" and row.transcript == "" and row.history == []
+    from agents.models import AgentCheckpoint
+
+    assert not AgentCheckpoint.objects.filter(turn=row).exists()
+    _no_marker_anywhere(caplog)
+
+
+def test_a_go_writes_what_waited(auth_client, engine, phone):
+    from agents.models import AgentCheckpoint
+
+    phone.decision = hold.GO
+    engine.rounds = [m.call("read_list", {}), m.call(*WRITE), m.say("Made it.")]
+    events_of(turn(auth_client, "make me an errands list", go=False))
+    row = AgentTurn.objects.get()
+    assert row.transcript == "make me an errands list" and row.status == "done"
+    assert AgentCheckpoint.objects.filter(turn=row).exists()
+    assert AgentToolCall.objects.filter(turn=row, tool="read_list").exists()
+
+
+def test_a_read_that_leaves_the_engine_waits_for_the_go(auth_client, engine, phone, monkeypatch):
+    from agents.legion import gateway
+    from engine_mcp.tools import ok
+
+    ran = []
+
+    def fake(request, tool, args):
+        ran.append(tool.name)
+        return ok("Invented result.")
+
+    monkeypatch.setattr(gateway, "run_engine_tool", fake)
+    monkeypatch.setattr(hold, "HOLD_TIMEOUT_S", 0.0)
+    engine.rounds = [m.call("web_search", {"query": "invented ferry"}), m.say("Ask again.")]
+    events = events_of(turn(auth_client, "search the invented ferry", go=False))
+    assert ran == [] and of(events, "tool")[0]["guard"] == "cancelled"
+    phone.decision = hold.GO
+    monkeypatch.setattr(hold, "HOLD_TIMEOUT_S", 2.0)
+    engine.rounds = [m.call("web_search", {"query": "invented ferry"}), m.say("Noon.")]
+    events_of(turn(auth_client, "search the invented ferry", go=False))
+    assert ran == ["web_search"]
+
+
+def test_an_engine_local_read_never_waits(auth_client, engine, phone, monkeypatch):
+    monkeypatch.setattr(hold, "HOLD_TIMEOUT_S", 0.0)
+    engine.rounds = [m.call("read_list", {}), m.say("Empty.")]
+    events = events_of(turn(auth_client, "what is on my lists", go=False))
+    assert of(events, "tool")[0]["ok"] is True
+
+
+def _stream_setup(monkeypatch):
+    from agents.legion.flags import STREAM_STT_ENV
+    from tests.test_engine_voice_live_stt import DONE, FakeSocket, _final
+
+    monkeypatch.setenv(STREAM_STT_ENV, "on")
+    monkeypatch.setattr(
+        "agents.voice.streaming.socket_for",
+        lambda key: FakeSocket(after_end=[_final("Make me an errands list."), DONE]),
+    )
+    monkeypatch.setattr("agents.voice.speech.voiced_speech", lambda pcm: True)
+    monkeypatch.setattr("agents.voice.speech.LOUDNESS_GATE_RMS", 0)
+    cache.clear()
+
+
+def test_on_the_stream_route_an_absent_go_holds(auth_client, engine, monkeypatch):
+    from tests.test_engine_voice_stream import SECOND, audio, end, meta
+
+    _stream_setup(monkeypatch)
+    monkeypatch.setattr(hold, "HOLD_TIMEOUT_S", 0.0)
+    engine.rounds = [m.call(*WRITE), m.say("Made it.")]
+    body = meta(speak=False) + audio(SECOND) + end(len(SECOND))
+    url = "/api/agents/turn/stream"
+    events = events_of(auth_client.post(url, body, content_type="application/octet-stream"))
+    assert _wrote() == 0 and of(events, "tool")[0]["guard"] == "cancelled"
+
+
+def test_on_the_form_route_an_absent_go_holds_a_clip_but_not_a_transcript(
+    auth_client, engine, monkeypatch
+):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from tests.test_engine_voice_turn import _wav
+
+    monkeypatch.setattr("agents.voice.speech.voiced_speech", lambda pcm: True)
+    monkeypatch.setattr("agents.voice.speech.LOUDNESS_GATE_RMS", 0)
+    monkeypatch.setattr(hold, "HOLD_TIMEOUT_S", 0.0)
+    engine.rounds = [m.call(*WRITE), m.say("Made it.")]
+    clip = {"audio": SimpleUploadedFile("u.wav", _wav(), "audio/wav"), "speak": "false"}
+    events_of(auth_client.post("/api/agents/turn", clip, format="multipart"))
+    assert _wrote() == 0
+    engine.rounds = [m.call(*WRITE), m.say("Made it.")]
+    events_of(turn(auth_client))
+    assert _wrote() == 1
+
+
+def test_a_go_after_the_timeout_is_turn_over(auth_client, engine, phone, monkeypatch):
+    monkeypatch.setattr(hold, "HOLD_TIMEOUT_S", 0.0)
+    engine.rounds = [m.call(*WRITE), m.say("Made it.")]
+    events = events_of(turn(auth_client, go=False))
+    late = auth_client.post(f"/api/agents/turn/{events[0][1]['turn_id']}/go")
+    assert late.status_code == 409 and late.data["code"] == "turn_over"
+
+
+def test_the_stream_route_holds_the_conversation_too(
+    auth_client, engine, other_session, monkeypatch
+):
+    from agents import turn_locks
+    from agents.voice import streaming
+    from assistant import turn_slots
+    from tests.test_engine_voice_stream import utterance
+
+    _stream_setup(monkeypatch)
+    engine.rounds = [m.say("Hello.")]
+    first = events_of(turn(auth_client, "hello"))
+    conversation = first[0][1]["conversation_id"]
+    monkeypatch.setattr(turn_locks, "WAIT_S", 0.1)
+    key = turn_slots._key(f"conversation:{conversation}")
+    with other_session.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+    body = utterance(conversation_id=conversation, speak=False)
+    busy = auth_client.post(
+        "/api/agents/turn/stream", body, content_type="application/octet-stream"
+    )
+    assert busy.status_code == 409 and busy.data["code"] == "stream_busy"
+    with other_session.cursor() as cur:
+        cur.execute("SELECT pg_advisory_unlock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+
+
+def test_the_lists_hold_at_least_todays_words_and_classes():
+    """A snapshot of the MINIMUM set: removing a word or class from tool_classes.json fails here;
+    adding one is a deliberate edit of this test too."""
+    lists = json.loads(relay_module().CLASSES_FILE.read_text(encoding="utf-8"))
+    minimum = {
+        "plain_classes": {"device", "household", "place", "vehicle"},
+        "outside_classes": {
+            "calendar",
+            "camera",
+            "clipboard",
+            "contacts",
+            "files",
+            "notifications",
+            "screen_text",
+            "web",
+        },
+        "mail_class_names": {
+            "ask_mail",
+            "email",
+            "flight_status",
+            "get_sitrep",
+            "gmail",
+            "read_mail",
+            "search_mail",
+            "track_package",
+        },
+        "mail_name_words": {
+            "chat",
+            "dm",
+            "dms",
+            "email",
+            "gmail",
+            "imessage",
+            "inbox",
+            "mail",
+            "message",
+            "messages",
+            "mms",
+            "signal",
+            "sms",
+            "telegram",
+            "whatsapp",
+        },
+        "outside_name_words": {
+            "agenda",
+            "browser",
+            "calendar",
+            "call_log",
+            "caller",
+            "callers",
+            "camera",
+            "clipboard",
+            "contact",
+            "contacts",
+            "feed",
+            "file",
+            "files",
+            "invite",
+            "invites",
+            "look",
+            "news",
+            "notification",
+            "notifications",
+            "ocr",
+            "page",
+            "pages",
+            "photo",
+            "photos",
+            "screen_text",
+            "search",
+            "web",
+        },
+        "outside_actions": {
+            "agenda",
+            "call_log",
+            "calendar",
+            "caller_id",
+            "get_agenda",
+            "invites",
+            "nearby",
+            "place_search",
+            "read_calendar",
+            "recent_calls",
+            "search_places",
+            "who_called",
+        },
+        "engine_tools_leaving_engine": {
+            "check_conditions",
+            "github_status",
+            "vehicle_recalls",
+            "web_search",
+        },
+    }
+    for key, words in minimum.items():
+        assert words <= set(lists[key]), (key, sorted(words - set(lists[key])))
+    # The plain classes must not grow into outside ones by accident.
+    assert set(lists["plain_classes"]) <= minimum["plain_classes"]
+    assert lists["max_calls_per_round"] <= 4
+
+
+def relay_module():
+    from agents.legion import relay
+
+    return relay
+
+
+def test_a_missing_or_broken_lists_file_fails_closed_for_the_relay_only(tmp_path, monkeypatch):
+    relay = relay_module()
+    for content in (None, "{not json", json.dumps({"plain_classes": []})):
+        path = tmp_path / "tool_classes.json"
+        if content is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(content, encoding="utf-8")
+        monkeypatch.setattr(relay, "CLASSES_FILE", path)
+        closed = relay._load()
+        assert closed["plain_classes"] == [] and closed["outside_classes"] == []
+        assert closed["engine_tools_leaving_engine"] is None
+
+
+def test_a_head_unit_sends_no_client_facts(auth_client, engine, monkeypatch):
+    from tests.test_headunit_signin import SIGNIN_ENV, _paired, unit_client
+
+    monkeypatch.setenv(SIGNIN_ENV, "on")
+    _id, raw = _paired(auth_client)
+    body = {"transcript": "hello", "client_facts": {"language": "Spanish"}}
+    response = unit_client(raw).post("/api/agents/turn", body, format="json")
+    assert response.status_code == 403 and response.data["code"] == "headunit_client_facts"
+
+
+def test_a_repeated_heard_until_changes_nothing_more(auth_client, engine):
+    engine.rounds = [m.say("The first part. The second part he never heard.")]
+    first = events_of(turn(auth_client, "tell me two things"))
+    turn_id = first[0][1]["turn_id"]
+    conversation = first[0][1]["conversation_id"]
+    facts = {"heard_until": {"turn_id": turn_id, "chars": len("The first part.")}}
+    for _ in range(2):
+        engine.rounds = [m.say("Go on.")]
+        events_of(turn(auth_client, "wait", conversation_id=conversation, client_facts=facts))
+    history = json.dumps(AgentTurn.objects.get(pk=turn_id).history)
+    assert history.count("He cut in here") == 1 and "The first part." in history

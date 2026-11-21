@@ -11,6 +11,9 @@ frame, or the form route's field) is HELD. While held the engine thinks and read
 model round, engine read tools, sentences streamed as they come: the first sentence is not
 delayed), but performs nothing that acts or leaves the engine until the phone's decision:
 - no engine WRITE tool and no `run_procedure` (its steps may write);
+- no engine read that sends his words out of the engine (`relay.leaves_engine`: web search,
+  weather, recalls, GitHub; the list is `server/contracts/limb/v1/tool_classes.json`). A search
+  turn therefore waits for the go: about one round trip if the model asks before it arrives;
 - no relay request to a limb and no K1 device action;
 - no late-answer start or owed-line claim (`late.py`), when that path is on;
 - and the turn's record is not written until the decision (so a turn the phone takes leaves no
@@ -20,15 +23,17 @@ never held: no extra hop.
 
 **The decision** (`decide`): `POST /api/agents/turn/<id>/go` (the turn is the engine's) or
 `POST /api/agents/turn/<id>/take` (the phone keeps it: the turn is cancelled, nothing acts,
-nothing is recorded as said). Stored on the turn row (`pending_relay = {"go": decision}`; no
-migration: the row is not paused while held, and a pause needs the go first) and read by polling
+and none of his words or the engine's are kept: `store.py` blanks them). Stored on the turn row
+(`pending_relay = {"go": decision}`; no migration: the row is not paused while held, and a pause
+needs the go first) and read by polling
 (`POLL_S`); one engine instance may stream while another takes the post.
 
 **Silence is a cancel.** No decision `HOLD_TIMEOUT_S` (5 s) after the turn began: nothing acts; a
-waiting write is refused in words and the turn is cancelled. Why 5 s: the phone sends its decision
-right after `heard`, one small round trip (about 0.15-0.3 s measured from the laptop, unmeasured
-on mobile), so 5 s is far past a live phone and short enough that a lost phone does not leave the
-model waiting on a write.
+waiting write is refused in words, the turn is cancelled and stored as a take is (nothing of its
+words kept); a go that comes after that answers 409 `turn_over`. Why 5 s: the phone sends its
+decision right after `heard`, one small round trip (about 0.15-0.3 s measured from the laptop,
+unmeasured on mobile), so 5 s is far past a live phone and short enough that a lost phone does
+not leave the model waiting on a write.
 
 **Added latency** [reasoned]: a read-only turn adds none (it never waits; only its record waits
 for the decision, after `done` went out). A write turn waits only if the model asks for the write
@@ -65,7 +70,7 @@ def _decision(turn_id) -> str | None:
         return TAKE
     pending, cancelled = found
     decided = (pending or {}).get("go") if isinstance(pending, dict) else None
-    if decided in (GO, TAKE):
+    if decided in (GO, TAKE, TIMEOUT):
         return decided
     if "loop" in (pending or {}):
         return GO  # a pause needs the go first
@@ -98,6 +103,10 @@ class TurnHold:
         while self.peek() is None:
             if self._clock() >= self._deadline:
                 self.decision = TIMEOUT
+                # Recorded, so a go that comes later is told the turn is over (409 `turn_over`).
+                AgentTurn.objects.filter(pk=self.turn_id, pending_relay__isnull=True).update(
+                    cancel_requested=True, pending_relay={"go": TIMEOUT}
+                )
                 AgentTurn.objects.filter(pk=self.turn_id).update(cancel_requested=True)
                 break
             _pause(POLL_S)
@@ -131,8 +140,13 @@ def decide(request, turn_id, decision: str) -> dict:
             raise HoldRefusal(404, "no_turn", "No turn of yours with that id; nothing decided.")
         pending = turn.pending_relay if isinstance(turn.pending_relay, dict) else {}
         current = pending.get("go") or (GO if "loop" in pending else None)
+        if current == TIMEOUT or (current is None and turn.cancel_requested):
+            # Silence ran out, or the turn was cancelled: nothing acted and nothing will.
+            raise HoldRefusal(
+                409, "turn_over", "That turn already ended on the engine (no go in time)."
+            )
         if turn.status not in (TURN_RUNNING, TURN_AWAITING_LIMB):
-            if decision == GO:
+            if decision == GO and turn.status != "cancelled":
                 return {"decision": GO, "status": turn.status}
             raise HoldRefusal(
                 409, "turn_over", "That turn already ended on the engine; it cannot be taken back."

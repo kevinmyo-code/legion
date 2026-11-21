@@ -74,14 +74,43 @@ class TurnStore:
     def __init__(self, turn: AgentTurn, agent: str = "generalist"):
         self.turn = turn
         self.agent = agent
-        # The turn's hold (`hold.py`), when it has one: a turn the phone took is recorded as
-        # cancelled with nothing said and nothing waiting (`finish`).
+        # The turn's hold (`hold.py`), when it has one. While it waits for the phone's word,
+        # nothing holding his words or the model's is written (`_waiting`): checkpoints and tool
+        # call rows wait in memory and are written at the go, or never (a take or a timeout,
+        # `finish`). His words (`transcript`) are written at the go too.
         self.held = None
+        self.transcript = None
+        self._deferred: list = []
         self._owner = {"household_id": turn.household_id, "owner_user_id": turn.owner_user_id}
 
-    # The graph's checkpointer.
-    @_safe("checkpoint")
+    def _waiting(self) -> bool:
+        """True while the turn's hold has no decision yet; at a go, what waited is written."""
+        if self.held is None:
+            return False
+        decision = self.held.peek()
+        if decision is None:
+            return True
+        if self.held.go and self._deferred:
+            deferred, self._deferred = self._deferred, []
+            for write in deferred:
+                write()
+        return not self.held.go
+
     def save(self, state, node: str, step: int, events) -> None:
+        if self._waiting():
+            # Built now (the state moves on), written at the go.
+            row = self._checkpoint_row(state, node, step, events)
+            self._deferred.append(lambda: self._write_checkpoint(row))
+            return
+        if self.held is not None and not self.held.go:
+            return  # taken or timed out: never written
+        self._write_checkpoint(self._checkpoint_row(state, node, step, events))
+
+    @_safe("checkpoint")
+    def _write_checkpoint(self, row: dict) -> None:
+        AgentCheckpoint.objects.create(turn=self.turn, **row, **self._owner)
+
+    def _checkpoint_row(self, state, node: str, step: int, events) -> dict:
         raw = json.loads(json.dumps(state.to_json(), default=str))
         raw["messages"] = redact.history_for_storage(raw.get("messages") or [], state.outside)
         kept = [e.to_json() for e in events]
@@ -93,14 +122,7 @@ class TurnStore:
                 for a in raw.get("after_turn") or []
             ]
             kept = [_without_words(e) for e in kept]
-        AgentCheckpoint.objects.create(
-            turn=self.turn,
-            step=step,
-            node=node,
-            state=raw,
-            events=kept,
-            **self._owner,
-        )
+        return {"step": step, "node": node, "state": raw, "events": kept}
 
     @_safe("model call")
     def model_call(self, row: dict) -> None:
@@ -120,8 +142,16 @@ class TurnStore:
             **self._owner,
         )
 
-    @_safe("tool call")
     def tool_call(self, state, **row) -> None:
+        if self._waiting():
+            self._deferred.append(lambda: self._write_tool_call(row))
+            return
+        if self.held is not None and not self.held.go:
+            return
+        self._write_tool_call(row)
+
+    @_safe("tool call")
+    def _write_tool_call(self, row: dict) -> None:
         AgentToolCall.objects.create(
             turn=self.turn,
             call_id=row["call_id"] or "",
@@ -147,8 +177,10 @@ class TurnStore:
             # The loop's pause is beside the state, not inside it twice.
             raw["pending_relay"] = None
             relay = {**state.pending_relay, "state": raw}
+            words = {"transcript": self.transcript} if self.transcript is not None else {}
             with transaction.atomic():
                 AgentTurn.objects.filter(pk=self.turn.pk).update(
+                    **words,
                     status=TURN_AWAITING_LIMB,
                     pending_relay=relay,
                     tainted=state.tainted,
@@ -189,23 +221,32 @@ class TurnStore:
                 latency_ms=latency_ms, first_sentence_ms=first_sentence_ms
             )
             return
-        if self.held is not None and self.held.taken:
-            # The phone kept this turn: nothing of it is recorded as said, no yes waits, no
-            # history (the phone's own loop answers it).
+        if self.held is not None and not self.held.go:
+            # Taken, or no go in time: the phone answers it (or nobody does). None of his words
+            # and none of the engine's stay: no transcript, final text, history, checkpoint,
+            # tool-call arguments or results. Only ids, times, sizes, the decision and the
+            # usage numbers (`agents_model_call`, `llm_usage`) are kept.
+            self._deferred = []
             AgentTurn.objects.filter(pk=self.turn.pk).update(
                 status="cancelled",
+                transcript="",
                 final_text="",
                 history=[],
                 pending_relay=None,
                 latency_ms=latency_ms,
                 cost_micro_usd=state.budget.cost_micro_usd,
             )
+            AgentCheckpoint.objects.filter(turn=self.turn).delete()
+            AgentToolCall.objects.filter(turn=self.turn).update(args_redacted={}, result_trimmed="")
             return
+        self._waiting()  # a go that came at the very end: write what waited for it
         status = (
             state.status if state.status in ("done", "cancelled", "failed", "refused") else "failed"
         )
         # Never lowered: a relayed write recorded before this stream stays recorded.
         wrote = {"writes_ran": True} if state.writes_ran else {}
+        if self.transcript is not None:
+            AgentTurn.objects.filter(pk=self.turn.pk).update(transcript=self.transcript)
         AgentTurn.objects.filter(pk=self.turn.pk).update(
             # A relayed turn's last stream ends its pause (null already on any other turn); a K1
             # device action keeps its call on the row so its result is recorded after the reply.

@@ -12032,11 +12032,8 @@ export interface components {
             conversation_id?: string | null;
             /** @default phone */
             client: components["schemas"]["ClientEnum"];
-            /**
-             * @description False: hold the turn until `POST .../go` (`agents/legion/hold.py`).
-             * @default true
-             */
-            go: boolean;
+            /** @description False: hold the turn until `POST .../go` (`agents/legion/hold.py`). Absent: go for a `transcript`, hold for an `audio` clip. */
+            go?: boolean | null;
             /** @description What the limb says about the turn (`client_facts.py`). */
             client_facts?: unknown;
             /**

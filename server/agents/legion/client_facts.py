@@ -145,6 +145,8 @@ def trim_heard(conversation, facts: dict) -> bool:
     )
     if last is None:
         return False
+    if any(p.get("text") == CUT_IN_NOTE for p in history[last].get("parts") or []):
+        return False  # already cut: a repeated `heard_until` changes nothing
     budget = int(heard["chars"])
     parts = []
     cut = False

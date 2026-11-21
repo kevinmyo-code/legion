@@ -184,8 +184,12 @@ class TurnRequestSerializer(serializers.Serializer):
     client = serializers.ChoiceField(choices=["phone", "web", "headunit"], default="phone")
     go = serializers.BooleanField(
         required=False,
-        default=True,
-        help_text="False: hold the turn until `POST .../go` (`agents/legion/hold.py`).",
+        allow_null=True,
+        default=None,
+        help_text=(
+            "False: hold the turn until `POST .../go` (`agents/legion/hold.py`). Absent: go "
+            "for a `transcript`, hold for an `audio` clip."
+        ),
     )
     client_facts = serializers.JSONField(
         required=False, help_text="What the limb says about the turn (`client_facts.py`)."
@@ -380,8 +384,11 @@ class AgentTurnView(_SwitchedAgentsView):
                 "speak": data.get("speak"),
                 "client_facts": data.get("client_facts"),
                 "turn_id": data.get("turn_id"),
-            }
+            },
+            default_go=data.get("audio") is None,
         )
+        if refusal is None:
+            refusal = turn_options.headunit_refusal(request, options)
         if refusal is None:
             refusal = turn_options.brain_refusal(request, options)
         if refusal is None:
@@ -510,19 +517,25 @@ class AgentTurnStreamView(_SwitchedAgentsView):
         reader = streaming.FrameReader(
             request.META.get("wsgi.input"), length, sock=request.META.get("gunicorn.socket")
         )
+        self._conversation_held = None
         try:
             response = self._take(request, reader, arrived)
         except BaseException:
             held.release()
+            if self._conversation_held is not None:
+                self._conversation_held.release()
             raise
         finally:
             # The body is read: the socket's own timeout again before anything is written.
             reader.release()
+        locks = [held] + ([self._conversation_held] if self._conversation_held else [])
         if isinstance(response, StreamingHttpResponse):
-            # The answer's stream holds the lock until it closes, however it ends.
-            response._resource_closers.append(held.release)
+            # The answer's stream holds the locks until it closes, however it ends.
+            for lock in locks:
+                response._resource_closers.append(lock.release)
         else:
-            held.release()
+            for lock in locks:
+                lock.release()
         return response
 
     def _take(self, request, reader, arrived):
@@ -554,7 +567,10 @@ class AgentTurnStreamView(_SwitchedAgentsView):
         data, refusal = _stream_meta(meta)
         if refusal is not None:
             return refusal
-        options, refusal = turn_options.read(meta)
+        # The engine hears these words itself: an absent `go` holds (review 1121, H3).
+        options, refusal = turn_options.read(meta, default_go=False)
+        if refusal is None:
+            refusal = turn_options.headunit_refusal(request, options)
         if refusal is None:
             refusal = turn_options.brain_refusal(request, options)
         if refusal is None:
@@ -580,6 +596,12 @@ class AgentTurnStreamView(_SwitchedAgentsView):
                     pipeline.FEATURE,
                 )
             return _refuse(exc.detail, exc.code, _FRAME_STATUS.get(exc.code, 400))
+        # One turn at a time in a conversation, on this route too (review 1121, H6); held, with
+        # the member's stream lock, until the answer's response closes.
+        conversation_held = turn_locks.hold_conversation(data.get("conversation_id"))
+        if conversation_held is None:
+            return _refuse(streaming.STREAM_BUSY, "stream_busy", status.HTTP_409_CONFLICT)
+        self._conversation_held = conversation_held
         utterance = pipeline.Utterance(
             kind="user",
             audio=streamed.pcm,

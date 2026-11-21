@@ -48,6 +48,9 @@ def end(total: int) -> bytes:
 
 
 def utterance(pcm: bytes = SECOND, **fields) -> bytes:
+    # An absent `go` holds a streamed turn (E2b): these tests say go up front; the hold has its own
+    # tests (`test_agents_voice_e2b.py`).
+    fields.setdefault("go", True)
     return meta(**fields) + audio(pcm) + end(len(pcm))
 
 

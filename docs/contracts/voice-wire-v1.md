@@ -209,6 +209,15 @@ Answers:
 - **`client_facts`** (object): `language`, `carry_tainted`, `prior_line` (max 300), `test_mode`, `utc_offset_minutes` (-840..840), `heard_until {turn_id, chars}` (what he heard of an earlier answer before he cut in; that turn's stored answer is cut there).
 - **The brain at the turn doors:** a device whose resolved brain is `phone` gets 409 `brain_phone` (not on a `test_mode` turn). The attach now stores `brain_asked` with the manifest.
 - **Contract v2 additions (BUILT dark on `feat/engine-voice-e2b`):** every engine-STT turn sends `go: false` (after `heard` nothing acts until `go`; `take` covers every phone takeover: noise, language, crisis, backchannel, stop, mail, mixed conversation). A client `turn_id` (UUID) on both routes; a repeat answers 409 `{code: duplicate, turn_id, status}` and the turn is readable at `GET /api/agents/turn/<turn_id>`. The batch route holds a per-conversation lock (wait 1.5 s, then 409 `conversation_busy`); the stream route waits 1.5 s for the member's previous stream before 409 `stream_busy`. The attach answers `dropped: [{name, reason}]` (`engine_tool`, `mail_like`, `unknown_class`, `outside_name_plain_class`); the lists are `server/contracts/limb/v1/tool_classes.json`. `client_facts.phone_turns` (max 6, 4,000 chars): `[{said, answer, tainted}]`, kept as marked device-supplied context; a tainted answer is blanked.
+- **Review 1121 fixes:**
+  - An absent `go` holds on the stream route and for an `audio` clip on the batch route; it means go only for a `transcript`.
+  - The hold also covers engine reads that leave the engine (`engine_tools_leaving_engine` in `server/contracts/limb/v1/tool_classes.json`).
+  - A take or a timeout keeps none of the turn's words: transcript, final text, history, checkpoints and tool-call text are never written or are blanked.
+  - A go after the timeout answers 409 `turn_over`.
+  - `test_mode` never bypasses the brain.
+  - A head unit gets 403 `headunit_client_facts`.
+  - The stream route also takes the per-conversation lock (`stream_busy`).
+  - The phone reuses its `turn_id` on a stream-to-batch fallback, and drops everything streamed for a turn it takes.
 - **Events:** `working {tool, kind}` for every call on the agents door (`kind`: `local`, `slow`, `write`, `relay`); `tool` carries `write_fact {tool, title?, list?}` for a write that went through (engine or relayed).
 
 ### 8a. Idle close
