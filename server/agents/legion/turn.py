@@ -162,8 +162,10 @@ def run_turn(
     if do_prune:
         prune()
     seq = (conversation.turns.aggregate(m=Max("seq"))["m"] or 0) + 1
-    # A turn of this conversation still paused on a limb is over now: his next turn began.
+    # A turn of this conversation still paused on a limb is over now: his next turn began. And any
+    # of his relayed turns elsewhere that went stale (`relay_turn.close_stale`).
     relay_turn.close_paused(conversation, seq)
+    relay_turn.close_stale(conversation.household_id, conversation.owner_user_id)
     turn = AgentTurn.objects.create(
         household_id=conversation.household_id,
         owner_user_id=conversation.owner_user_id,

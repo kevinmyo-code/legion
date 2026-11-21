@@ -124,6 +124,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/turn/{turn_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A relayed turn's status and the calls still waited for, for the device asked */
+        get: operations["api_agents_turn_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/turn/{turn_id}/cancel": {
         parameters: {
             query?: never;
@@ -8844,6 +8861,8 @@ export interface components {
             mail_when?: {
                 [key: string]: string[];
             };
+            /** @default  */
+            tool_class: string;
             /** @default 20000 */
             deadline_ms: number;
         };
@@ -11781,6 +11800,15 @@ export interface components {
             call_id: string;
             /** @description The tool the limb ran; if sent, it must be the call's own. */
             name?: string;
+            /**
+             * @description `not_run`: the limb never started it (a cancel came first, a locked screen).
+             *
+             *     * `ok` - ok
+             *     * `failed` - failed
+             *     * `refused` - refused
+             *     * `timed_out` - timed_out
+             *     * `not_run` - not_run
+             */
             outcome: components["schemas"]["ToolResultOutcomeEnum"];
             /** @description The tool's output, when `ok`. */
             result?: {
@@ -11797,9 +11825,10 @@ export interface components {
          *     * `failed` - failed
          *     * `refused` - refused
          *     * `timed_out` - timed_out
+         *     * `not_run` - not_run
          * @enum {string}
          */
-        ToolResultOutcomeEnum: "ok" | "failed" | "refused" | "timed_out";
+        ToolResultOutcomeEnum: "ok" | "failed" | "refused" | "timed_out" | "not_run";
         TopUp: {
             available: boolean;
             reason?: string;
@@ -12812,6 +12841,34 @@ export interface operations {
             };
         };
     };
+    api_agents_turn_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON {turn_id, seq, status, stream_no, calls: [tool_request data], waiting_for: [call ids], recorded: [call ids]}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_agents_turn_cancel: {
         parameters: {
             query?: never;
@@ -12858,7 +12915,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description text/event-stream: the rest of the turn (as `POST /api/agents/turn`), or JSON {recorded, status} when nothing more streams. */
+            /** @description text/event-stream: the rest of the turn (as `POST /api/agents/turn`), or JSON {recorded, status, detail} when nothing more streams. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -12896,7 +12953,23 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
+            411: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

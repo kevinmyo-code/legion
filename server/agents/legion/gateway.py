@@ -47,6 +47,8 @@ SLOW_TOOLS = frozenset(
     }
 )
 
+# A K1 device action's outcome in the turn's `tool` event: it runs after the reply.
+AFTER = "after_reply"
 # The one engine tool whose own steps may read third-party text (`procedures/runner.py`).
 PROCEDURE_TOOL = "run_procedure"
 
@@ -214,9 +216,16 @@ class LegionGateway:
             v = decision.verdict
             return self._done(state, call, tool, False, v.words, "refused", v.guard, started, where)
         if decision.after_turn:
-            state.after_turn.append({"name": tool.name, "args": dict(call.args)})
+            # K1: run by the limb once the reply ends, with a call id and a result post like any
+            # relayed call; its trace row is written when that result comes (`relay_turn.py`).
+            request = relay.request(state, tool, call, state.tainted)
+            request.update(limb_id=where, after_reply=True)
+            state.after_turn.append(request)
             words = relay.AFTER_TURN_WORDS.format(name=tool.name)
-            return self._done(state, call, tool, False, words, "refused", "tainted", started, where)
+            response = {**model_response(False, words), "call_id": request["call_id"]}
+            return ToolOutcome(
+                name=tool.name, ok=False, response=response, writes=tool.writes, outcome=AFTER
+            )
         tainted_before = state.tainted
         if relay.reads_outside(tool, call.args):
             # Taint before the request leaves (ADR 0098), saved or the request never goes.

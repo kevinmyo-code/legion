@@ -19,7 +19,7 @@ from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from agents.graph.state import OUTSIDE_REPLY_STUB
-from agents.legion import redact
+from agents.legion import redact, relay
 from agents.models import (
     TURN_AWAITING_LIMB,
     AgentCheckpoint,
@@ -35,13 +35,19 @@ log = logging.getLogger(__name__)
 _WORD_FIELDS = ("text", "final_text", "words", "args")
 
 
+def _issued(after_turn: list[dict]) -> dict | None:
+    return relay.issued_record(after_turn) if after_turn else None
+
+
 def _without_words(event: dict) -> dict:
     data = {
         k: (OUTSIDE_REPLY_STUB if k in _WORD_FIELDS else v)
         for k, v in (event.get("data") or {}).items()
     }
     if "device_actions" in data:
-        data["device_actions"] = [{"name": a.get("name")} for a in data["device_actions"]]
+        data["device_actions"] = [
+            {"name": a.get("name"), "call_id": a.get("call_id")} for a in data["device_actions"]
+        ]
     return {**event, "data": data}
 
 
@@ -77,7 +83,10 @@ class TurnStore:
         if state.outside:
             # The node's words may carry the outside text on: none are kept (plan 1119 s5).
             raw["final_text"] = raw["words"] = OUTSIDE_REPLY_STUB
-            raw["after_turn"] = [{"name": a.get("name")} for a in raw.get("after_turn") or []]
+            raw["after_turn"] = [
+                {"name": a.get("name"), "call_id": a.get("call_id")}
+                for a in raw.get("after_turn") or []
+            ]
             kept = [_without_words(e) for e in kept]
         AgentCheckpoint.objects.create(
             turn=self.turn,
@@ -130,6 +139,8 @@ class TurnStore:
         try:
             raw = json.loads(json.dumps(state.to_json(), default=str))
             raw["messages"] = redact.history_for_storage(raw.get("messages") or [])
+            # The loop's pause is beside the state, not inside it twice.
+            raw["pending_relay"] = None
             relay = {**state.pending_relay, "state": raw}
             with transaction.atomic():
                 AgentTurn.objects.filter(pk=self.turn.pk).update(
@@ -176,15 +187,18 @@ class TurnStore:
         status = (
             state.status if state.status in ("done", "cancelled", "failed", "refused") else "failed"
         )
+        # Never lowered: a relayed write recorded before this stream stays recorded.
+        wrote = {"writes_ran": True} if state.writes_ran else {}
         AgentTurn.objects.filter(pk=self.turn.pk).update(
-            # A relayed turn's last stream ends its pause (null already on any other turn).
-            pending_relay=None,
+            # A relayed turn's last stream ends its pause (null already on any other turn); a K1
+            # device action keeps its call on the row so its result is recorded after the reply.
+            pending_relay=_issued(state.after_turn),
+            **wrote,
             route_agents=list((state.route or {}).get("agents") or []),
             route_reason=(state.route or {}).get("reason", ""),
             status=status,
             tainted=state.tainted,
             taint_sources=list(state.taint),
-            writes_ran=state.writes_ran,
             final_text=(OUTSIDE_REPLY_STUB if state.outside else (state.final_text or state.words)),
             honesty_flag=state.honesty_flag,
             latency_ms=latency_ms,

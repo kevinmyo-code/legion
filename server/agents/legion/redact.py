@@ -78,10 +78,12 @@ def trim_result(name: str, text: str, outside: bool = False) -> str:
 
 
 def _stub_response(resp: dict, note: str) -> dict:
+    # A relayed call's id stays (an engine-made uuid, no text), so a later result can find it.
+    cid = (resp.get("response") or {}).get("call_id") if isinstance(resp, dict) else None
     return {
         "functionResponse": {
             **{k: v for k, v in resp.items() if k != "response"},
-            "response": {"note": note},
+            "response": {"note": note, **({"call_id": cid} if isinstance(cid, str) else {})},
         }
     }
 

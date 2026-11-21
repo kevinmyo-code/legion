@@ -136,6 +136,15 @@ def test_a_relayed_read_through_result_is_stubbed_everywhere(auth_client, limb, 
     turn = AgentTurn.objects.get(pk=turn_id)
     assert turn.final_text == "[reply after an outside read: not kept]"
     assert turn.pending_relay is None
+    # The scan cannot pass on rows never written: the stubbed rows are there.
+    from agents.legion.redact import OUTSIDE_STUB
+    from agents.models import AgentCheckpoint, AgentToolCall
+
+    assert AgentToolCall.objects.get(call_id=call_id).result_trimmed == OUTSIDE_STUB
+    assert AgentToolCall.objects.filter(turn=turn, tool="set_timer", guard="tainted").exists()
+    resumed = AgentCheckpoint.objects.filter(turn=turn, node="finish").order_by("-id").first()
+    assert resumed.state["final_text"] == "[reply after an outside read: not kept]"
+    assert any("functionResponse" in p for c in turn.history for p in c["parts"])
 
 
 @pytest.mark.parametrize("tool", ["web_search", "brief_latest"])
@@ -184,7 +193,8 @@ def test_with_k1_permissive_the_device_action_is_emitted_live_and_never_stored(
         m.say("Navigation starts after this."),
     ]
     events = say_turn(auth_client, "find the depot and take me there")
-    assert events[-1][1]["device_actions"] == [{"name": "navigate", "args": {"to": CANARY}}]
+    (action,) = events[-1][1]["device_actions"]
+    assert action["name"] == "navigate" and action["args"] == {"to": CANARY}
     assert _scan() == []
 
 

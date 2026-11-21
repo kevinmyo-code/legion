@@ -303,6 +303,33 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No Gemini key on this engine.
+  /api/agents/turn/{turn_id}:
+    get:
+      operationId: api_agents_turn_status
+      summary: A relayed turn's status and the calls still waited for, for the device
+        asked
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: 'JSON {turn_id, seq, status, stream_no, calls: [tool_request
+            data], waiting_for: [call ids], recorded: [call ids]}.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/agents/turn/{turn_id}/cancel:
     post:
       operationId: api_agents_turn_cancel
@@ -365,7 +392,7 @@ paths:
       responses:
         '200':
           description: 'text/event-stream: the rest of the turn (as `POST /api/agents/turn`),
-            or JSON {recorded, status} when nothing more streams.'
+            or JSON {recorded, status, detail} when nothing more streams.'
         '202':
           description: 'JSON {waiting_for: [call ids]}.'
         '400':
@@ -386,7 +413,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+        '411':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
         '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
           content:
             application/json:
               schema:
@@ -20348,6 +20387,10 @@ components:
               type: string
               maxLength: 64
             maxItems: 32
+        tool_class:
+          type: string
+          default: ''
+          maxLength: 32
         deadline_ms:
           type: integer
           maximum: 120000
@@ -26568,7 +26611,16 @@ components:
           description: The tool the limb ran; if sent, it must be the call's own.
           pattern: ^[a-z][a-z0-9_]{0,63}$
         outcome:
-          $ref: '#/components/schemas/ToolResultOutcomeEnum'
+          allOf:
+          - $ref: '#/components/schemas/ToolResultOutcomeEnum'
+          description: |-
+            `not_run`: the limb never started it (a cancel came first, a locked screen).
+
+            * `ok` - ok
+            * `failed` - failed
+            * `refused` - refused
+            * `timed_out` - timed_out
+            * `not_run` - not_run
         result:
           type: object
           additionalProperties: {}
@@ -26597,12 +26649,14 @@ components:
       - failed
       - refused
       - timed_out
+      - not_run
       type: string
       description: |-
         * `ok` - ok
         * `failed` - failed
         * `refused` - refused
         * `timed_out` - timed_out
+        * `not_run` - not_run
     TopUp:
       type: object
       properties:

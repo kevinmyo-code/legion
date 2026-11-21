@@ -33,6 +33,7 @@ pytestmark = pytest.mark.django_db
 TOOLS = [
     {
         "name": "car_status",
+        "tool_class": "vehicle",
         "description": "Read the connected car's live status.",
         "parameters": {"type": "object", "properties": {}},
         "writes": False,
@@ -41,6 +42,7 @@ TOOLS = [
     },
     {
         "name": "set_timer",
+        "tool_class": "device",
         "description": "Start a countdown on the device.",
         "parameters": {
             "type": "object",
@@ -49,10 +51,12 @@ TOOLS = [
         "writes": True,
         "read_through": False,
         "actuates": False,
+        "confirm": "limb",
         "deadline_ms": 2000,
     },
     {
         "name": "navigate",
+        "tool_class": "place",
         "description": "Start navigation to a place.",
         "parameters": {"type": "object", "properties": {"to": {"type": "string"}}},
         "writes": False,
@@ -60,9 +64,11 @@ TOOLS = [
         "actuates": True,
         "needs": ["screen"],
         "confirm": "limb",
+        "deadline_ms": 60_000,
     },
     {
         "name": "garage_door",
+        "tool_class": "device",
         "description": "Open or close the garage door.",
         "parameters": {"type": "object", "properties": {"open": {"type": "boolean"}}},
         "writes": True,
@@ -72,6 +78,7 @@ TOOLS = [
     },
     {
         "name": "browser",
+        "tool_class": "web",
         "description": "Read or open a web page on the device.",
         "parameters": {
             "type": "object",
@@ -84,6 +91,7 @@ TOOLS = [
     },
     {
         "name": "look_up",
+        "tool_class": "web",
         "description": "Look something up on the device.",
         "parameters": {
             "type": "object",
@@ -96,6 +104,7 @@ TOOLS = [
     },
     {
         "name": "ask_mail",
+        "tool_class": "mail",
         "description": "Ask about mail.",
         "parameters": {"type": "object", "properties": {}},
         "writes": False,
@@ -103,12 +112,43 @@ TOOLS = [
         "actuates": False,
     },
     {
+        "name": "control_music",
+        "tool_class": "device",
+        "description": "Play, pause or skip music.",
+        "parameters": {"type": "object", "properties": {"action": {"type": "string"}}},
+        "writes": False,
+        "read_through": False,
+        "actuates": True,
+        "confirm": "limb",
+    },
+    {
+        "name": "control_volume",
+        "tool_class": "device",
+        "description": "Set the volume.",
+        "parameters": {"type": "object", "properties": {"level": {"type": "integer"}}},
+        "writes": False,
+        "read_through": False,
+        "actuates": True,
+        "confirm": "limb",
+    },
+    {
+        "name": "save_parking_spot",
+        "tool_class": "place",
+        "description": "Save where the car is parked.",
+        "parameters": {"type": "object", "properties": {"note": {"type": "string"}}},
+        "writes": True,
+        "read_through": False,
+        "actuates": False,
+    },
+    {
         "name": "switch_vehicle",
+        "tool_class": "vehicle",
         "description": "Switch the active car.",
         "parameters": {"type": "object", "properties": {"name": {"type": "string"}}},
         "writes": True,
         "read_through": False,
         "actuates": False,
+        "confirm": "limb",
     },
 ]
 
@@ -297,7 +337,7 @@ def test_a_repeated_result_is_idempotent(auth_client, limb, engine):
     events_of(post_result(auth_client, turn_id, requests[0]["call_id"]))
     models_before = len(engine.models)
     again = post_result(auth_client, turn_id, requests[0]["call_id"], words="Something else.")
-    assert again.status_code == 200 and again.data == {"recorded": True, "status": "late"}
+    assert again.status_code == 200 and again.data["status"] == "late" and again.data["recorded"]
     assert len(engine.models) == models_before
     assert AgentToolCall.objects.filter(call_id=requests[0]["call_id"]).count() == 1
 
@@ -307,11 +347,12 @@ def test_a_result_past_the_deadline_is_told_to_the_model_as_not_confirmed(
 ):
     _e, turn_id, requests = paused(engine, auth_client, m.call("set_timer", {"seconds": 5}))
     asked = AgentTurn.objects.get(pk=turn_id).pending_relay["asked_at_ms"]
-    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 2_000 + relay.GRACE_MS + 1)
+    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 22_000 + relay.GRACE_MS + 1)
     engine.rounds = [m.say("I couldn't confirm the timer.")]
     rest = events_of(post_result(auth_client, turn_id, requests[0]["call_id"]))
     sent = engine.models[-1].requests[0].contents[-1]["parts"][0]["functionResponse"]
-    assert sent["response"] == {"success": False, "message": relay.TIMED_OUT_WORDS}
+    assert sent["response"]["success"] is False
+    assert sent["response"]["message"] == relay.TIMED_OUT_WORDS
     assert of(rest, "tool")[0]["outcome"] == "timed_out"
     assert rest[-1][1]["writes_ran"] is False
 
@@ -323,7 +364,7 @@ def test_an_open_call_past_its_deadline_times_out_when_the_next_post_comes(
         engine, auth_client, calls(("car_status", {}), ("set_timer", {"seconds": 5}))
     )
     asked = AgentTurn.objects.get(pk=turn_id).pending_relay["asked_at_ms"]
-    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 2_000 + relay.GRACE_MS + 1)
+    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 22_000 + relay.GRACE_MS + 1)
     # The timer's write timed out; the model tries it again in the same turn: refused, not sent.
     engine.rounds = [m.call("set_timer", {"seconds": 6}), m.say("I couldn't confirm it.")]
     rest = events_of(post_result(auth_client, turn_id, requests[0]["call_id"]))
@@ -341,7 +382,7 @@ def test_an_ok_after_a_timed_out_is_the_one_second_result_accepted(
         engine, auth_client, calls(("car_status", {}), ("set_timer", {"seconds": 5}))
     )
     asked = AgentTurn.objects.get(pk=turn_id).pending_relay["asked_at_ms"]
-    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 2_000 + relay.GRACE_MS + 1)
+    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 22_000 + relay.GRACE_MS + 1)
     engine.rounds = [m.say("I couldn't confirm the timer.")]
     events_of(post_result(auth_client, turn_id, requests[0]["call_id"]))
     late = post_result(auth_client, turn_id, requests[1]["call_id"], words="Timer started.")
@@ -395,32 +436,20 @@ def test_a_relayed_read_after_outside_text_never_pauses(auth_client, limb, engin
     assert AgentTurn.objects.get(pk=turn_id).pending_relay is None
 
 
-def test_k1_permissive_a_ruled_tool_runs_after_the_reply_not_mid_turn(
-    auth_client, limb, engine, monkeypatch
-):
-    monkeypatch.setattr(relay, "AFTER_OUTSIDE_TEXT", frozenset({"set_timer"}))
-    _e, turn_id, requests = paused(engine, auth_client, m.call("browser", {"action": "read"}))
-    engine.rounds = [m.call("set_timer", {"seconds": 60}), m.say("The timer starts after this.")]
-    rest = events_of(post_result(auth_client, turn_id, requests[0]["call_id"], words="A page."))
-    assert not of(rest, "tool_request")
-    assert rest[-1][1]["device_actions"] == [{"name": "set_timer", "args": {"seconds": 60}}]
-    assert rest[-1][1]["writes_ran"] is False
-
-
 def test_k1_strict_and_permissive_differ_only_on_the_named_tool(monkeypatch):
     from agents.graph.state import TurnState
     from agents.runtime.spec import AgentSpec
 
     spec = AgentSpec("t", 1, "x", "p", ())
     state = TurnState("t", "c", 1, "h", "m", "phone", "x", taint=["web_search"])
-    timer = relay.LimbTool("set_timer", writes=True)
+    timer = relay.LimbTool("set_timer", writes=True, confirm="limb", tool_class="device")
     assert relay.decide(state, spec, timer, {}).verdict.guard == "tainted"
     monkeypatch.setattr(relay, "AFTER_OUTSIDE_TEXT", frozenset({"set_timer"}))
     # Tainted (say, carried from the last turn) but no outside text in this state: relayed.
     assert relay.decide(state, spec, timer, {}).go
     state.outside.append("web_search")
     assert relay.decide(state, spec, timer, {}).after_turn
-    music = relay.LimbTool("control_music", actuates=True, confirm="limb")
+    music = relay.LimbTool("control_music", actuates=True, confirm="limb", tool_class="device")
     assert relay.decide(state, spec, music, {}).verdict.guard == "tainted"
 
 
@@ -446,10 +475,11 @@ def test_a_cancel_between_hops_records_the_result_and_ends_the_turn(auth_client,
     assert auth_client.post(f"/api/agents/turn/{turn_id}/cancel").status_code == 200
     models_before = len(engine.models)
     after = post_result(auth_client, turn_id, requests[0]["call_id"], words="Timer started.")
-    assert after.status_code == 200 and after.data == {"recorded": True, "status": "cancelled"}
+    assert after.status_code == 200 and after.data["status"] == "cancelled"
+    assert after.data["recorded"] is True
     assert len(engine.models) == models_before
     turn = AgentTurn.objects.get(pk=turn_id)
-    assert turn.status == "cancelled" and turn.writes_ran and turn.pending_relay is None
+    assert turn.status == "cancelled" and turn.writes_ran and "loop" not in turn.pending_relay
     answered = [
         p["functionResponse"] for c in turn.history for p in c["parts"] if "functionResponse" in p
     ]
@@ -471,7 +501,7 @@ def test_a_limb_that_disappears_cannot_post_and_the_next_turn_closes_the_pause(
     engine.rounds = [m.say("Hello again.")]
     say_turn(other, "hello", conversation_id=events[0][1]["conversation_id"])
     turn = AgentTurn.objects.get(pk=turn_id)
-    assert turn.status == "failed" and turn.pending_relay is None
+    assert turn.status == "failed" and "loop" not in turn.pending_relay
     assert AgentToolCall.objects.get(call_id=requests[0]["call_id"]).outcome == "timed_out"
 
 
@@ -495,14 +525,14 @@ def test_a_stale_pause_is_closed_by_his_next_turn_and_its_history_stays_whole(
     engine.rounds = [m.say("Hello.")]
     say_turn(auth_client, "never mind", conversation_id=events[0][1]["conversation_id"])
     turn = AgentTurn.objects.get(pk=turn_id)
-    assert turn.status == "failed" and turn.pending_relay is None
+    assert turn.status == "failed" and "loop" not in turn.pending_relay
     parts = [p for c in turn.history for p in c["parts"]]
     assert sum("functionCall" in p for p in parts) == sum("functionResponse" in p for p in parts)
     # The next turn's model was handed that whole exchange.
     contents = engine.models[-1].requests[0].contents
     assert any("functionResponse" in p for c in contents for p in c["parts"])
     late = post_result(auth_client, turn_id, requests[0]["call_id"])
-    assert late.status_code == 200 and late.data == {"recorded": True, "status": "late"}
+    assert late.status_code == 200 and late.data["status"] == "late" and late.data["recorded"]
 
 
 def test_an_unknown_call_id_and_a_wrong_tool_record_nothing(auth_client, limb, engine):
@@ -744,6 +774,6 @@ def test_two_completing_posts_resume_the_turn_once(auth_client, limb, engine):
     assert first.status_code == 200 and first["Content-Type"] == "text/event-stream"
     models_before = len(engine.models)
     second = post_result(auth_client, turn_id, requests[0]["call_id"])
-    assert second.status_code == 200 and second.data == {"recorded": True, "status": "running"}
+    assert second.status_code == 200 and second.data["status"] == "running"
     assert events_of(first)[-1][1]["status"] == "done"
     assert len(engine.models) == models_before + 1

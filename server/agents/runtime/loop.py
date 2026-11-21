@@ -177,10 +177,12 @@ def abandoned_round(suspension: Suspension, words: str, answered: dict | None = 
     answered = answered or {}
     failed = {"success": False, "message": words}
     parts = [_response_part(_call_of(d["call"]), d["response"]) for d in suspension.done]
-    parts += [
-        _response_part(_call_of(item["call"]), answered.get(item["request"]["call_id"], failed))
-        for item in suspension.relay
-    ]
+    for item in suspension.relay:
+        # The limb call's id rides inside its response, so a result that comes after the close
+        # can replace it on the record.
+        cid = item["request"]["call_id"]
+        response = {**answered.get(cid, failed), "call_id": cid}
+        parts.append(_response_part(_call_of(item["call"]), response))
     parts += [_response_part(_call_of(raw), failed) for raw in suspension.deferred]
     return {"role": "user", "parts": parts}
 

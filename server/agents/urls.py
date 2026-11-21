@@ -1,6 +1,6 @@
 from django.urls import path
 
-from agents.relay_views import AgentToolResultView
+from agents.relay_views import AgentToolResultView, AgentTurnStatusView
 from agents.views import (
     AgentCancelView,
     AgentLimbView,
@@ -13,6 +13,7 @@ from agents.views import (
 urlpatterns = [
     path("turn", AgentTurnView.as_view(), name="agents-turn"),
     path("turn/stream", AgentTurnStreamView.as_view(), name="agents-turn-stream"),
+    path("turn/<uuid:turn_id>", AgentTurnStatusView.as_view(), name="agents-turn-status"),
     path("turn/<uuid:turn_id>/cancel", AgentCancelView.as_view(), name="agents-turn-cancel"),
     path(
         "turn/<uuid:turn_id>/tool_result",

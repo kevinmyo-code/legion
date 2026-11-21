@@ -420,6 +420,11 @@ def voice_resume(
             origin,
         )
     finally:
+        # A hang-up closes this stream; the turn's own events are closed with it, now, so the
+        # relayed turn is finished at once (`relay_resume`), not whenever it is collected.
+        close = getattr(events, "close", None)
+        if close is not None:
+            close()
         _close_speech(request, speaker, timings, t0, clock, status, " relay=1")
 
 

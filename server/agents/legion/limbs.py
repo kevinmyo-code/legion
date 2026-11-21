@@ -126,6 +126,10 @@ class LimbToolSerializer(serializers.Serializer):
         child=serializers.ListField(child=serializers.CharField(max_length=64), max_length=32),
         default=dict,
     )
+    # - `tool_class`: what its results are (`relay.PLAIN_CLASSES`, `relay.OUTSIDE_CLASSES`). Stored
+    #   as sent: the engine offers only a tool whose class it knows (deny by default), so an
+    #   unknown class drops that tool, never the manifest.
+    tool_class = serializers.CharField(max_length=32, required=False, default="", allow_blank=True)
     deadline_ms = serializers.IntegerField(
         min_value=MIN_DEADLINE_MS, max_value=MAX_DEADLINE_MS, default=DEFAULT_DEADLINE_MS
     )

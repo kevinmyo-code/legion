@@ -26,6 +26,7 @@ pages) still opens it, as before. One of those doors is
 conversation record there, matched to the caller and the visit, and reads
 nothing. `/api/device-logs/` stays denied below.
 """
+
 from __future__ import annotations
 
 RECRUITER_ALLOWED: frozenset[str] = frozenset(
@@ -254,6 +255,7 @@ RECRUITER_DENIED: dict[str, str] = {
     "agents.views.AgentTurnStreamView": _AGENTS,
     "agents.views.AgentCancelView": _AGENTS,
     "agents.relay_views.AgentToolResultView": _AGENTS,
+    "agents.relay_views.AgentTurnStatusView": _AGENTS,
     "agents.views.AgentLimbView": _AGENTS,
     "agents.views.AgentWarmView": _AGENTS,
     "agents.views.AgentProbeSseView": _AGENTS,
