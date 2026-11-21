@@ -21,9 +21,14 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
     private var heardUntil: JSONObject? = null
     private var engineTurnRecorded = false
     private var keepPrivate = false
+    private var privateContinues = false
 
-    /** The phone's own last answer (its loop, or an opener) ended on a question ([EngineBrainRules.phoneAwaits]). */
-    @Volatile var phoneAsked = false
+    /**
+     * The phone is in a mail exchange (review round 3, R3): its last turn was kept for mail, or was a
+     * follow-up that still holds mail state (a draft or a send waiting for his yes). His next words
+     * stay on the phone ([EngineBrainRules.phoneAwaits]) and reach the engine only as the placeholder.
+     */
+    @Volatile var mailExchange = false
         private set
 
     /** The engine turn whose reply is (or was last) playing, for `heard_until`; null after a phone turn. */
@@ -40,7 +45,7 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
         carryTainted = false
         heardUntil = null
         engineTurnRecorded = true
-        phoneAsked = false
+        mailExchange = false
     }
 
     /**
@@ -55,18 +60,20 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
 
     /**
      * The phone keeps this turn for a reason that keeps his words off the engine (mail, review R3):
-     * it goes as a blanked record, so the engine knows a turn happened and nothing of it.
+     * it goes as a blanked record, so the engine knows a turn happened and nothing of it. [continues]:
+     * the mail exchange goes on after it (mail words, or phone state still waiting on his yes); a
+     * follow-up that leaves no state ends it, so the exchange never chains on its own.
      */
     @Synchronized
-    fun keptPrivately() {
+    fun keptPrivately(continues: Boolean) {
         keepPrivate = true
+        privateContinues = continues
     }
 
-    /** The greeting the phone spoke: the engine's `prior_line`, never a question he must answer here. */
+    /** The greeting the phone spoke: the engine's `prior_line`, never phone state his reply answers. */
     @Synchronized
     fun greeted(line: String) {
         if (line.isNotBlank()) priorLine = line.take(MAX_PRIOR_CHARS)
-        phoneAsked = false
     }
 
     /** [chars] of the engine's last reply were heard before he cut in (a barge-in, a tap). */
@@ -89,10 +96,10 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
         }
         val private = keepPrivate
         keepPrivate = false
+        if (fromUser) mailExchange = private && privateContinues
         if (answer.isNotBlank()) {
             priorLine = if (readThrough || private) null else answer.take(MAX_PRIOR_CHARS)
-            carryTainted = readThrough
-            phoneAsked = answer.trim().endsWith("?")
+            carryTainted = readThrough || private
         }
         if (fromUser && said.isNotBlank()) {
             turns.addLast(

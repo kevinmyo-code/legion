@@ -74,6 +74,12 @@ internal class EngineUtterance(
     /** Answered or taken back: the engine gets no go for this turn any more. */
     val released: Boolean get() = claimed.get()
 
+    /** The go posted as soon as his words were in ([goNow]); its answer, kept for [go]. */
+    @Volatile private var earlyGo: WireReply? = null
+
+    /** The go went before this turn was reached (review round 3, R2): its route is final. */
+    val goPosted: Boolean get() = earlyGo != null
+
     /** What the turn needs after [result]: the events read so far, and the rest of the stream. */
     @Volatile private var stream: WireReply.Events? = null
     private val prelude = mutableListOf<EngineEvent>()
@@ -247,7 +253,8 @@ internal class EngineUtterance(
     suspend fun go(): WireReply {
         val s = stream
         if (s == null || !claimed.compareAndSet(false, true)) return refusal ?: WireReply.Unreachable("no_stream")
-        val over = (wire.decide(turnId, go = true) as? WireReply.Json)?.takeIf { it.code == EngineBrainRules.TURN_OVER }
+        val decided = earlyGo ?: wire.decide(turnId, go = true)
+        val over = (decided as? WireReply.Json)?.takeIf { it.code == EngineBrainRules.TURN_OVER }
         if (over != null) s.close()
         val out = Channel<EngineEvent>(Channel.UNLIMITED)
         prelude.forEach { out.trySend(it) }
@@ -263,6 +270,15 @@ internal class EngineUtterance(
             }
         }
         return over ?: WireReply.Events(out) { s.close() }
+    }
+
+    /**
+     * The engine answers this turn, decided as soon as his words came while an earlier turn still
+     * plays (review round 3, R2): the go goes now, inside the engine's hold; the stream stays
+     * buffered, unread, until this turn is reached and [go] hands it over.
+     */
+    suspend fun goNow() {
+        if (earlyGo == null && !claimed.get() && stream != null) earlyGo = wire.decide(turnId, go = true)
     }
 
     /**

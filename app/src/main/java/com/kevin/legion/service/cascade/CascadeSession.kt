@@ -1013,7 +1013,7 @@ internal class CascadeSession(
             // Waiting on his answer to the phone's own question: the phone hears and answers it (R1).
             val awaits = engineBrain?.let {
                 val checkIn = checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING
-                EngineBrainRules.phoneAwaits(checkIn, lastTurnAsked, it.context.phoneAsked)
+                EngineBrainRules.phoneAwaits(checkIn, lastTurnAsked, it.context.mailExchange)
             }
             val inner = engineBrain?.utterance(b.kind == SpeechBackend.Kind.CLOUD, awaits) ?: b.stt.begin {
                 val utt = self ?: return@begin
@@ -1228,14 +1228,9 @@ internal class CascadeSession(
         scheduleBackchannel(u, eotAtMs)
         scheduleWaitFillers(eotAtMs)
         val previous = turnJob
-        // A turn queued behind one still running: its decision would wait for that one, past the
-        // engine's 5 s hold. It is the phone's, taken back as soon as its words are in (review R2).
-        u.engine?.takeIf { previous?.isActive == true }?.let { e ->
-            scope.launch(loop) {
-                e.result(0)
-                e.release()
-            }
-        }
+        // A turn queued behind one still running is decided as soon as its words are in, not when
+        // the queue reaches it: the engine's 5 s hold would not wait that long (review R2, round 3).
+        u.engine?.takeIf { previous?.isActive == true }?.let { e -> scope.launch(loop) { decideEarly(u, e) } }
         turnJob = scope.launch(loop) {
             previous?.join()
             try {
@@ -2108,6 +2103,35 @@ internal class CascadeSession(
     }
 
     /** Whether [stt]'s words are believed ([SttGuard]), for his languages and the names on the phone. */
+    /**
+     * His turn ended while the last one still plays (barge-in off: Bluetooth, a call). As soon as his
+     * words are in, the same checks and route as [runTurn] decide: the engine's go now (its stream
+     * waits, unread, until this turn is reached), or a take. While a tool of the last turn still runs
+     * (it may leave state his words answer) this waits, at most [EARLY_WAIT_MS]; still running then,
+     * the phone takes the turn. Words carried from a merged turn are the phone's too.
+     */
+    private suspend fun decideEarly(u: TurnUtterance, e: EngineUtterance) {
+        val brain = engineBrain ?: return
+        val stt = e.result(0) as? SttResult.Text
+        withTimeoutOrNull(EARLY_WAIT_MS) { while (toolsInFlight.get() > 0) delay(EARLY_POLL_MS) }
+        val words = stt?.text.orEmpty()
+        val checkIn = checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING
+        val asked = turn?.asked == true || lastTurnAsked
+        val awaits = EngineBrainRules.phoneAwaits(checkIn, asked, brain.context.mailExchange)
+        val cloud = backend?.kind == SpeechBackend.Kind.CLOUD
+        val language = SpokenLanguages.decide(words, languages, conversationLanguage, cloud, CompanionProfile.name(ctx))
+        val phoneOnly = when {
+            stt == null || words.isBlank() -> true
+            toolsInFlight.get() > 0 || carry.isNotBlank() -> true
+            endsConversation(words) || CrisisDetector.detect(words) -> true
+            verdictOf(stt) is SttGuard.Verdict.Drop -> true
+            else -> language != SpokenLanguages.Decision.Stay
+        }
+        val facts = EngineBrainRules.Facts(test != null, true, true, brain.state == EngineBrain.State.ON, awaits)
+        if (phoneOnly || EngineBrainRules.phoneKeeps(words, facts) != null) e.release() else e.goNow()
+        LiveLatency.log(LiveLatency.TAG, "engine_early go=${if (e.goPosted) 1 else 0} for=u${u.id}")
+    }
+
     private fun verdictOf(stt: SttResult.Text): SttGuard.Verdict =
         SttGuard.verdict(stt.text, stt.voicedMs, SttHintStore.known, languages)
 
@@ -3591,6 +3615,10 @@ internal class CascadeSession(
 
         /** The text model (design doc: fastest measured, cheapest, no scheduled price change). */
         const val MODEL = "gemini-3.5-flash-lite"
+
+        /** An early engine decision waits at most this long for the last turn's running tool (R2). */
+        private const val EARLY_WAIT_MS = 2_000L
+        private const val EARLY_POLL_MS = 50L
 
 
         /** The loop's own backstop; the controller's runner already applies each tool's real ceiling. */

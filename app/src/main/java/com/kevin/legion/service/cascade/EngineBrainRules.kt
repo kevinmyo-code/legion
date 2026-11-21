@@ -111,18 +111,20 @@ internal object EngineBrainRules {
     )
 
     /**
-     * Why his next turn answers a question the PHONE asked, so only the phone can act on it (review
-     * R1), or null. Decided before any audio goes, so such a turn never starts on the engine:
+     * Why his next turn answers STATE the phone holds, so only the phone can act on it (review R1,
+     * narrowed in round 3), or null. Keyed on the state, never on punctuation: a line that merely ends
+     * on a question (an opener, "Anything else?") holds nothing, and his answer goes to the engine
+     * with the line as `prior_line`; a stateful question ending in a full stop still counts.
      * - [checkIn]: a check-in line is waiting for his reply (its rules live on the phone);
-     * - [toolAsked]: a phone tool's result asked him something (a confirm read-back, a mail draft, the
-     *   clear-codes warning, a first step that needs his yes: `LoneWordWriteGuard.asks`);
-     * - [phoneQuestion]: the phone's own last answer (its loop, or an opener) ended on a question.
-     * A plain greeting is none of these.
+     * - [toolAsked]: a phone tool's result asked him something and holds it (`needs_answer`,
+     *   `needs_confirmation`, `draft_id`, a write's first step: `LoneWordWriteGuard.asks`);
+     * - [mailExchange]: the phone's mail exchange is open (mail is the phone's until ticket 05).
+     * It cannot chain: each is state a turn must leave anew (a tool result, a check-in, a mail turn).
      */
-    fun phoneAwaits(checkIn: Boolean, toolAsked: Boolean, phoneQuestion: Boolean): String? = when {
+    fun phoneAwaits(checkIn: Boolean, toolAsked: Boolean, mailExchange: Boolean): String? = when {
         checkIn -> "check_in"
         toolAsked -> "phone_confirm"
-        phoneQuestion -> "phone_question"
+        mailExchange -> "mail_follow_up"
         else -> null
     }
 
@@ -136,7 +138,21 @@ internal object EngineBrainRules {
     const val OFF = "off"
 
     /** Reasons worth a log line (the others are every turn of a phone conversation). */
-    val LOGGED_KEEPS = setOf("test", "prompt", "mail", "check_in", "phone_confirm", "phone_question")
+    val LOGGED_KEEPS = setOf("test", "prompt", "mail", "check_in", "phone_confirm", "mail_follow_up")
+
+    /**
+     * Whether a turn the phone keeps for [why] with [words] reaches the engine only as the placeholder
+     * (review R3), and whether the mail exchange goes on after it; null: not private. Mail words make
+     * it private and open the exchange; inside an open exchange ([mailExchange]) a follow-up is
+     * private, and the exchange goes on only while phone state still waits on him (`phone_confirm`).
+     */
+    fun privateKeep(why: String, words: String, mailExchange: Boolean): Boolean? = when {
+        MAIL_WORDS.containsMatchIn(words) -> true
+        mailExchange && why in FOLLOW_UPS -> why == "phone_confirm"
+        else -> null
+    }
+
+    private val FOLLOW_UPS = setOf("phone_confirm", "mail_follow_up", "check_in")
 
     /**
      * His words about mail and what the phone reads from mail (the brief's mail sections, parcels

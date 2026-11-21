@@ -127,13 +127,14 @@ internal class EngineBrain(
         context.newTurn()
         // A turn already taken back (it waited behind another, review R2) is the phone's.
         val live = utt?.takeIf { !it.released }
-        val why = if (utt?.released == true) {
-            EngineBrainRules.TAKEN
-        } else {
-            EngineBrainRules.phoneKeeps(words, facts.facts(engineHeard = live != null, on = state == State.ON))
+        val why = when {
+            utt?.released == true -> EngineBrainRules.TAKEN
+            // A go already posted when his words came (review round 3, R2) is final.
+            live?.goPosted == true -> null
+            else -> EngineBrainRules.phoneKeeps(words, facts.facts(engineHeard = live != null, on = state == State.ON))
         }
-        // His mail words never reach the engine, not even as a phone-kept turn's record (review R3).
-        if (why != null && EngineBrainRules.MAIL_WORDS.containsMatchIn(words)) context.keptPrivately()
+        // His mail exchange never reaches the engine but as the placeholder (review R3).
+        why?.let { EngineBrainRules.privateKeep(it, words, context.mailExchange) }?.let { context.keptPrivately(it) }
         if (why != null) {
             // A turn the phone keeps is taken back: held, nothing of it acts on the engine.
             utt?.release()

@@ -57,27 +57,58 @@ class EngineHandoverTest {
     // --- R1: the phone's own question --------------------------------------------------------------
 
     @Test
-    fun `each kind of phone question keeps his answer on the phone, a plain greeting does not`() {
-        // (checkIn, toolAsked, phoneQuestion)
+    fun `each kind of phone state keeps his answer on the phone, punctuation and the greeting never do`() {
+        // (checkIn, toolAsked, mailExchange): state the phone holds, whatever its line ended with.
         assertEquals("check_in", EngineBrainRules.phoneAwaits(true, false, false))
         assertEquals("phone_confirm", EngineBrainRules.phoneAwaits(false, true, false))
-        assertEquals("phone_question", EngineBrainRules.phoneAwaits(false, false, true))
+        assertEquals("mail_follow_up", EngineBrainRules.phoneAwaits(false, false, true))
         assertNull(EngineBrainRules.phoneAwaits(false, false, false))
         val waiting = EngineBrainRules.Facts(test = false, fromUser = true, awaits = "phone_confirm")
         assertEquals("phone_confirm", EngineBrainRules.phoneKeeps("yes send it", waiting))
     }
 
     @Test
-    fun `the phone's own question is tracked from what it said, the greeting never counts`() {
-        val c = EnginePhoneContext()
-        c.greeted("Morning. Anything I can do?")
-        assertFalse(c.phoneAsked)
-        c.recorded("draft a note to the plumber", "Here's the draft. Send it?", readThrough = false, fromUser = true)
-        assertTrue(c.phoneAsked)
-        c.recorded("", "Your check-in: did the run go well?", readThrough = false, fromUser = false)
-        assertTrue(c.phoneAsked)
-        c.engineAnswering()
-        assertFalse("the engine answered since", c.phoneAsked)
+    fun `an opener or a reply ending in a question holds no state, so his answer goes to the engine`() =
+        runBlocking {
+            val b = brain(this)
+            b.context.greeted("Morning. Anything I can do?")
+            b.context.recorded("", "Want a look at today?", readThrough = false, fromUser = false)
+            b.context.recorded("what's the weather", "Sunny. Anything else?", readThrough = false, fromUser = true)
+            assertFalse(b.context.mailExchange)
+            val awaits = EngineBrainRules.phoneAwaits(false, false, b.context.mailExchange)
+            assertNull(awaits)
+            assertNotNull("his answer streams to the engine", b.utterance(cloudVoice = true, awaits = awaits))
+            assertEquals("Sunny. Anything else?", b.context.facts().getString("prior_line"))
+        }
+
+    @Test
+    fun `the mail exchange does not chain, a follow-up that leaves no state ends it`() = runBlocking {
+        val b = brain(this)
+        assertNull(b.route(null, "any new email", his))
+        b.context.recorded("any new email", "Two new ones.", readThrough = true, fromUser = true)
+        assertTrue("a mail turn opens the exchange", b.context.mailExchange)
+        // "read the first": kept only because the exchange is open, and it leaves no state behind.
+        assertNull(b.route(null, "read the first", his.copy(awaits = "mail_follow_up")))
+        b.context.recorded("read the first", "It says the meeting moved.", readThrough = true, fromUser = true)
+        assertFalse("ended: the next turn may go to the engine", b.context.mailExchange)
+        assertNull(EngineBrainRules.phoneAwaits(false, false, b.context.mailExchange))
+    }
+
+    @Test
+    fun `a send confirm inside the mail exchange reaches the engine only as the placeholder`() = runBlocking {
+        val b = brain(this)
+        assertNull(b.route(null, "email the plumber that I'm late", his))
+        b.context.recorded("email the plumber that I'm late", "Draft ready. Send it?", false, true)
+        // "yes, send it": no mail word; kept by the phone's draft state, private by the open exchange.
+        assertNull(b.route(null, "yes, send it", his.copy(awaits = "phone_confirm")))
+        b.context.recorded("yes, send it", "Sent your reply to the plumber.", readThrough = false, fromUser = true)
+        val turns = b.context.facts().getJSONArray("phone_turns")
+        for (i in 0 until turns.length()) {
+            assertEquals(EnginePhoneContext.KEPT_PRIVATE, turns.getJSONObject(i).getString("said"))
+            assertEquals("", turns.getJSONObject(i).getString("answer"))
+        }
+        assertFalse(b.context.facts().toString().contains("plumber"))
+        assertTrue("the send's state kept the exchange open", b.context.mailExchange)
     }
 
     @Test
@@ -107,6 +138,42 @@ class EngineHandoverTest {
             assertNull(b.route(u, words.text, his))
             assertEquals("and the weather", words.text)
             assertEquals(listOf("take:${u.turnId}"), wire.decisions)
+        }
+
+    @Test
+    fun `barge-in off, he talks over a reply, the go goes at once and the answer waits for the reply to end`() =
+        runBlocking {
+            val sentence = event("sentence", """{"text": "It's sunny.", "line_id": "1.1.1"}""")
+            wire.streamAnswers.add(
+                sse(
+                    listOf(
+                        event("turn", """{"turn_id": "t1", "seq": 1}"""),
+                        event("heard", """{"text": "and the weather"}"""),
+                        sentence,
+                        event("done", """{"status": "done"}"""),
+                    ).joinToString("\n"),
+                ),
+            )
+            val b = brain(this)
+            val u = checkNotNull(b.utterance(cloudVoice = true))
+            speak(u)
+            // The session's early step while the previous reply still plays: the route says engine.
+            u.goNow()
+            assertEquals("go at once, inside the hold", listOf("go:${u.turnId}"), wire.decisions)
+            assertTrue(u.goPosted)
+            delay(SLOW_PREVIOUS_MS)
+            // The previous reply ended; this turn is reached now. The go is final and not posted again.
+            val start = checkNotNull(b.route(u, "and the weather", his.copy(awaits = "phone_confirm")))
+            val said = StringBuilder()
+            val listener = object : GeminiTextLoop.Listener {
+                override fun onText(delta: String) {
+                    said.append(delta)
+                }
+            }
+            val executor = com.kevin.legion.service.TextToolExecutor { _, _, _ -> JSONObject() }
+            b.answer(start, u, executor, listener)
+            assertEquals("It's sunny. ", said.toString())
+            assertEquals(listOf("go:${u.turnId}"), wire.decisions)
         }
 
     // --- R3 and R5: what the engine is told of phone turns ------------------------------------------
