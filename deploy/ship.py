@@ -611,11 +611,13 @@ class Ship:
         self.say(f"job {a.job}: image {self.live_job_image}")
         self.say(f"runtime account {self.sa}")
         # The ship templates pin LIVE_CODE (what the schema rehearsal ran as the OLD code) and the dark
-        # switches: a run whose live engine is not that code, or has a switch set, stops here.
-        if a.expect_live_sha and self.live_sha != a.expect_live_sha:
+        # switches: a run whose live engine is not that code, or has a switch set, stops here. The
+        # target itself is accepted too, so a run that failed after the service deploy can be re-run.
+        if a.expect_live_sha and self.live_sha not in (a.expect_live_sha, a.sha):
             raise Stop(
-                f"the live engine runs {self.live_sha[:8] or 'unknown'}, not the pinned "
-                f"--expect-live-sha {a.expect_live_sha[:8]} (the rehearsal's old code); stop"
+                f"the live engine runs {self.live_sha[:8] or 'unknown'}, neither the pinned "
+                f"--expect-live-sha {a.expect_live_sha[:8]} (the rehearsal's old code) nor the "
+                f"target {a.sha[:8]} (a re-run); stop"
             )
         for side, live in (("service", self.live_svc_env), ("job", self.live_job_env)):
             on = sorted(set(a.must_be_unset) & live)
