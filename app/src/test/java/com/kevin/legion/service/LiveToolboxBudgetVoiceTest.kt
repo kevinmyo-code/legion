@@ -86,7 +86,7 @@ class LiveToolboxBudgetVoiceTest {
     // get_balance's net cash; the budget view is only for a budget he names.
     @Test
     fun `a bare what's left is net cash, the budget view only when he names a budget`() {
-        val decls = LiveToolbox.sourceDeclarationsForTest()
+        val decls = LiveToolbox.sourceDeclarations()
         val byName = (0 until decls.length()).map { decls.getJSONObject(it) }.associateBy { it.getString("name") }
         val spend = byName.getValue("get_monthly_spend").getString("description")
         val balance = byName.getValue("get_balance").getString("description")
