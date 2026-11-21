@@ -2564,6 +2564,20 @@ def _check_conditions(request, args) -> ToolResult:
 # =============================================================================
 
 
+def _board_status(request, args) -> ToolResult:
+    from board.tool import board_status
+
+    return board_status(request, args)
+
+
+def dark_tools() -> frozenset[str]:
+    """Registry tools left out of every tool list while their switch is off, so a dark feature
+    changes no declaration anyone is sent."""
+    from board.flags import board_enabled
+
+    return frozenset() if board_enabled() else frozenset({"board_status"})
+
+
 def _github_status(request, args) -> ToolResult:
     from engine_mcp import github_status as gh
 
@@ -3569,6 +3583,20 @@ TOOLS: tuple[EngineTool, ...] = (
             ("aspect",),
         ),
         handler=_github_status,
+        writes=False,
+    ),
+    # The factory board (`board/tool.py`): what is in flight on the member's laptop, spoken by
+    # code. DARK: left out of every list unless LEGION_BOARD=on (`dark_tools`).
+    EngineTool(
+        name="board_status",
+        title="Factory board",
+        description=(
+            "What is in flight on the member's laptop: agents working, ships and tests, and what "
+            "is waiting on him. Code reads the board aloud and shows it; that is the answer and "
+            "the turn ends there. Say nothing about the board yourself: you are never shown it."
+        ),
+        input_schema=_object({}),
+        handler=_board_status,
         writes=False,
     ),
     # Memory v2 (ADR 0075, memory-and-vault ticket 02).

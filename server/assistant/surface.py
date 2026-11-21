@@ -43,7 +43,7 @@ from __future__ import annotations
 import dataclasses
 
 from demo.tools import ABOUT_KEVIN, SHOW_RESUME
-from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME, WRITE_SCOPE_SENTENCE
+from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME, WRITE_SCOPE_SENTENCE, dark_tools
 from household.models import is_recruiter
 from household.recruiter_routes import RECRUITER_DENIED
 
@@ -161,6 +161,8 @@ RECRUITER_EXCLUDED: dict[str, str] = {
         "it reads the owner's GitHub repos through the owner's own token, which is not part of "
         "a demo visit"
     ),
+    # The factory board is a real member's laptop status; a visit has none.
+    "board_status": "it reads a real member's laptop board, which is not part of a demo visit",
     "list_tables": (
         "its answer names every table, body and memory included, as readable and writable; "
         "for a recruiter that is false. The record tools' own table enums, narrowed below, "
@@ -280,8 +282,11 @@ def tools_for(user):
     from procedures.listing import tool_for
 
     tools = recruiter_tools() if is_recruiter(user) else web_tools()
+    dark = dark_tools()
     out = []
     for tool in tools:
+        if tool.name in dark:
+            continue
         if tool.name == "run_procedure":
             tool = tool_for(tool, user, user.household)
         elif tool.name == "show_diagram":

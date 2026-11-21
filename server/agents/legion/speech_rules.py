@@ -26,7 +26,8 @@ from dataclasses import dataclass
 from engine_mcp.tools import ENDS_TURN, FOR_MODEL, REPLAY_AS, SPEAK_EXACT, SPEAK_VERBATIM
 
 # `about_kevin`: his profile, spoken by code and never by the model (2026-11-18, `demo/tools.py`).
-VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances", "about_kevin"})
+# `board_status`: the factory board, spoken by code; the model never sees a card (`board/tool.py`).
+VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances", "about_kevin", "board_status"})
 
 # The phone's `ScriptedLines.FILLERS` (spec 22): what a reply that opens with only these is
 # stripped of. What the web says while a tool runs is per tool (`assistant/fillers.py`).
