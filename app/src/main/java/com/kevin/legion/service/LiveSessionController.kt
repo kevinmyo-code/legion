@@ -29,6 +29,7 @@ import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.look.LookController
 import com.kevin.legion.look.LookRules
+import com.kevin.legion.service.cascade.CallWatch
 import com.kevin.legion.service.cascade.CascadeBridge
 import com.kevin.legion.service.cascade.CascadeOpener
 import com.kevin.legion.service.cascade.CascadeSession
@@ -422,7 +423,7 @@ class LiveSessionController(context: Context) {
         dismissAfterTurn = false
         oneShotGate.start(false)
         retriedColdConnectThisTap = false
-        if (TelephonyController.isInCall) { refuse(VoiceRefusal.ON_A_CALL); return }
+        if (CallWatch.isInCallNow(appContext)) { refuse(VoiceRefusal.ON_A_CALL); return }
         if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
         if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
         if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
@@ -430,14 +431,14 @@ class LiveSessionController(context: Context) {
     }
 
     @Suppress("ReturnCount") // one early exit per tap state; folding them is riskier than the rule is worth
-    fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false) {
+    fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false, inHand: Boolean = false) {
         // Ticket 11: never let a dismissal armed by a previous turn survive into this one. If the
         // driver tapped stop, or the socket died, between the tool call and TurnComplete, the flag
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
         // assistant finished its first sentence, which would be indistinguishable from a bug.
         dismissAfterTurn = false
         // The cascade's own conversation takes the tap (interrupt a reply, else end it).
-        if (cascadeOwnsTap()) { onTapCascade(fromWakeWord, oneShot); return }
+        if (cascadeOwnsTap()) { onTapCascade(fromWakeWord, oneShot, inHand); return }
         // Set before anything async can emit MicOpened; a plain tap always clears it.
         oneShotGate.start(oneShot)
         val s = session
@@ -471,7 +472,7 @@ class LiveSessionController(context: Context) {
         // (2026-08-21): isInCall used to be set true on RINGING, so the one moment Kevin wants to
         // say "answer it" was the moment this returned early and showed "ON A CALL". Answering by
         // voice is impossible without this distinction.
-        if (TelephonyController.isInCall) { refuse(VoiceRefusal.ON_A_CALL); return }
+        if (CallWatch.isInCallNow(appContext)) { refuse(VoiceRefusal.ON_A_CALL); return }
         // BYO-key only, no tiers (commercial model retired 2026-07-31).
         if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
         // Added 2026-09-07, and it is a spend fix as much as an honesty one. Without it a tap with
@@ -492,7 +493,7 @@ class LiveSessionController(context: Context) {
         // cascade; Live is reachable only if LIVE_RETIRED is flipped back (it reads as Cloud).
         val engine = VoiceEngineSettings.engine(appContext)
         if (engine != VoiceEngine.LIVE) {
-            openCascade(fromWakeWord, oneShot, laptopFirst = engine == VoiceEngine.LAPTOP)
+            openCascade(fromWakeWord, oneShot, laptopFirst = engine == VoiceEngine.LAPTOP, inHand = inHand)
             return
         }
 
@@ -784,7 +785,7 @@ class LiveSessionController(context: Context) {
         oneShotGate.start(false)
         retriedColdConnectThisTap = false
         val refusal = when {
-            TelephonyController.isInCall -> VoiceRefusal.ON_A_CALL
+            CallWatch.isInCallNow(appContext) -> VoiceRefusal.ON_A_CALL
             !GeminiKeyProvider.hasKey() -> VoiceRefusal.NO_KEY
             !hasMicPermission() -> VoiceRefusal.NO_MIC_PERMISSION
             !isOnline() -> VoiceRefusal.OFFLINE
@@ -832,13 +833,15 @@ class LiveSessionController(context: Context) {
      * A speak-only proactive line has no mic to go back to: it is ended and the tap opens a
      * conversation once it has let go, as a tap over a Live proactive line did.
      */
-    private fun onTapCascade(fromWakeWord: Boolean, oneShot: Boolean) {
+    private fun onTapCascade(fromWakeWord: Boolean, oneShot: Boolean, inHand: Boolean) {
         val c = cascade ?: return
         // A test conversation (adb) gives way at once to real use, as a speak-only line does: it
         // ends, then this tap runs.
         val test = testDriver.owns(c)
         if (test || !c.listensForReply) {
-            endCascadeThen(if (test) "test_real_tap" else "tap over a proactive line") { onTap(fromWakeWord, oneShot) }
+            endCascadeThen(if (test) "test_real_tap" else "tap over a proactive line") {
+                onTap(fromWakeWord, oneShot, inHand)
+            }
             return
         }
         // The session says which it did ("Listening", or "Ended the chat").
@@ -860,7 +863,7 @@ class LiveSessionController(context: Context) {
             if (!open.say(line)) refuse(VoiceRefusal.CONNECT_IN_FLIGHT)
             return
         }
-        if (TelephonyController.isInCall) { refuse(VoiceRefusal.ON_A_CALL); return }
+        if (CallWatch.isInCallNow(appContext)) { refuse(VoiceRefusal.ON_A_CALL); return }
         if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
         if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
         if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
@@ -918,6 +921,7 @@ class LiveSessionController(context: Context) {
         opener: CascadeOpener? = null,
         micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
         test: TestSession? = null,
+        inHand: Boolean = false,
     ) {
         supersede("cascade")
         if (opener?.listen != false) ConversationCards.begin()
@@ -969,6 +973,7 @@ class LiveSessionController(context: Context) {
             opener = opener,
             micClaimant = micClaimant,
             test = test,
+            inHand = inHand,
         )
         cascadeBridge = bridge
         cascade = c
@@ -1011,7 +1016,7 @@ class LiveSessionController(context: Context) {
     @Suppress("ReturnCount") // one worded refusal per guard
     private fun openTestCascade(t: TestSession): String? {
         if (destroyed) return "service_not_running"
-        if (TelephonyController.isInCall) return "on_a_call"
+        if (CallWatch.isInCallNow(appContext)) return "on_a_call"
         if (!GeminiKeyProvider.hasKey()) return "no_key"
         if (!isOnline()) return "offline"
         val engine = VoiceEngineSettings.engine(appContext)

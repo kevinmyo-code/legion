@@ -1,5 +1,7 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.service.turn.AudioRoute
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
@@ -50,16 +52,103 @@ internal object CloseCue {
         return null
     }
 
-    /** The chime plus the route's tail (Bluetooth buffers past the head position), never past [HARD_CAP_MS]. */
-    fun waitCapMs(chimeMs: Long, settleMs: Long): Long = minOf(chimeMs + settleMs, HARD_CAP_MS)
+    /**
+     * How far the sound heard lags the track's head position, and an idle track's restart (2026-11-21,
+     * the chime not heard after "bye bye"): the head position says a frame was handed on, not that it
+     * was heard. The wait was the chime plus the route's settle only (350 ms on the speaker for a
+     * 290 ms chime), so the release's pause and flush could cut the chime before it was heard.
+     */
+    const val OUTPUT_LATENCY_MS = 250L
 
-    /** Writes the chime and waits for it to drain, cut at [capMs] however long the drain takes. True: done in time. */
-    suspend fun playBounded(capMs: Long, write: suspend () -> Unit, drained: suspend () -> Unit): Boolean =
-        withTimeoutOrNull(capMs) {
-            write()
-            drained()
-            true
-        } ?: false
+    /** The chime, its output latency and the route's tail (Bluetooth buffers more), never past [HARD_CAP_MS]. */
+    fun waitCapMs(chimeMs: Long, settleMs: Long): Long = minOf(chimeMs + OUTPUT_LATENCY_MS + settleMs, HARD_CAP_MS)
+
+    /**
+     * The floor from the chime's write to the player's release when the device gives no presented-frame
+     * timestamp, or it stalls: the chime's length plus [OUTPUT_LATENCY_MS] (reasoned, not measured).
+     */
+    fun minPlayMs(chimeMs: Long): Long = chimeMs + OUTPUT_LATENCY_MS
+
+    /** What ended the wait for the chime to be heard (review K1, 2026-11-21). */
+    enum class By(val token: String) { TIMESTAMP("timestamp"), FLOOR("floor"), CAP("cap") }
+
+    /** A presented-frame position that has not moved for this long has stalled. */
+    const val STALL_MS = 200L
+
+    private const val POLL_MS = 10L
+
+    /** The chime: its frames and its length, and the floor and the cap, in ms from its write. */
+    data class Spec(val chimeFrames: Long, val chimeMs: Long, val floorMs: Long, val capMs: Long)
+
+    /**
+     * Whether the chime has been heard, [elapsedMs] after its write began (closing confirm T1,
+     * 2026-11-21). The device's presented frame is compared with its own reading [base] taken just
+     * before the write, never with the player's written count: on some devices the timestamp does not
+     * reset on flush, so the two counts are not alike. The timestamp decides once the frames presented
+     * since [base] cover the chime AND at least the chime's own length has passed (it cannot have been
+     * heard sooner). With no [base], no timestamp, or one stalled for [STALL_MS], the floor decides.
+     * The cap over all. Null: keep waiting. Pure.
+     */
+    fun heardBy(elapsedMs: Long, presented: Long?, base: Long?, stalledMs: Long, spec: Spec): By? = when {
+        base != null && presented != null && elapsedMs >= spec.chimeMs &&
+            presented - base >= spec.chimeFrames -> By.TIMESTAMP
+        elapsedMs >= spec.capMs -> By.CAP
+        elapsedMs >= spec.floorMs && (base == null || presented == null || stalledMs >= STALL_MS) -> By.FLOOR
+        else -> null
+    }
+
+    /** What decided the chime's wait, how long it took from the write, and the timestamp's baseline. */
+    data class Heard(val by: By, val ms: Long, val base: Long?)
+
+    /**
+     * Reads the device's presented frame as the baseline, writes the chime, and waits until [heardBy]
+     * says it has been heard, polling [presented].
+     */
+    suspend fun playHeard(
+        write: suspend () -> Unit,
+        presented: () -> Long?,
+        spec: Spec,
+        now: () -> Long = System::currentTimeMillis,
+    ): Heard {
+        val base = presented()
+        val start = now()
+        withTimeoutOrNull(spec.capMs) { write() } ?: return Heard(By.CAP, now() - start, base)
+        var seen: Long? = null
+        var movedAt = now()
+        while (true) {
+            val p = presented()
+            val t = now()
+            if (p != seen) {
+                seen = p
+                movedAt = t
+            }
+            heardBy(t - start, p, base, t - movedAt, spec)?.let { return Heard(it, t - start, base) }
+            delay(POLL_MS)
+        }
+    }
+
+    /** The route the chime went out on, for its audit line. */
+    fun routeToken(route: AudioRoute, earpiece: Boolean): String = when {
+        route == AudioRoute.BLUETOOTH -> "bt"
+        earpiece -> "earpiece"
+        route == AudioRoute.WIRED_HEADSET -> "wired"
+        else -> "speaker"
+    }
+
+    /**
+     * `close_cue played ms=<n> reason=<close> route=<speaker|earpiece|bt|wired> by=<timestamp|floor|cap>
+     * latency_ms=<n|none> base=<n|none>`: no text. The latency is measured (the time to the last frame
+     * presented, less the chime's length) only when the timestamp decided; base is its baseline frame.
+     */
+    fun playedLine(reason: String, route: String, heard: Heard, chimeMs: Long): String {
+        val latency = if (heard.by == By.TIMESTAMP) "${(heard.ms - chimeMs).coerceAtLeast(0)}" else "none"
+        return "close_cue played ms=${heard.ms} reason=${token(reason)} route=$route by=${heard.by.token} " +
+            "latency_ms=$latency base=${heard.base ?: "none"}"
+    }
+
+    /** `close_cue skipped reason=<why> close=<close>`: no text. */
+    fun skippedLine(reason: String, skip: Skip): String =
+        "close_cue skipped reason=${skip.token} close=${token(reason)}"
 
     /**
      * The reason a voice failure's release is given (review of 546cce67, F2): with Live retired the
@@ -78,8 +167,5 @@ internal object CloseCue {
             "route_released_ms=$routeReleasedMs"
 
     /** `close_cue played=<0|1> reason=<token> skipped=<why>`: fixed tokens only. */
-    fun auditLine(reason: String, skip: Skip?): String =
-        "close_cue played=${if (skip == null) 1 else 0} reason=${token(reason)} skipped=${skip?.token ?: "none"}"
-
     private fun token(reason: String) = reason.lowercase(Locale.US).replace(Regex("[^a-z0-9_]"), "_")
 }

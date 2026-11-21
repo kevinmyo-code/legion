@@ -65,7 +65,9 @@ class VoiceSpeedWiringTest {
             assertFalse("the chime must not touch $reply", chime.contains(reply))
         }
         // Played once capture has started; the listening window after it, unless he already spoke.
-        assertTrue(bodyOf(s, "startMic").contains("onRecording = recording"))
+        // 2026-11-21: the record's session id goes to the call watch first ([CallWatch]).
+        val mic = bodyOf(s, "startMic")
+        assertTrue(mic.indexOf("callWatch.ourCapture(id)") in 0 until mic.lastIndexOf("recording()"))
         val after = bodyOf(s, "listenAfterChime")
         assertTrue(after.contains("turnJob = scope.launch(loop)"))
         assertTrue(after.contains("if (!heardSinceOpen) backToListening()"))
@@ -112,7 +114,8 @@ class VoiceSpeedWiringTest {
         assertFalse(schedule.contains("askedBefore"))
         assertFalse(schedule.contains("speechMs"))
         assertTrue(schedule.contains("quiet = QuietMode.isOn(ctx)"))
-        assertTrue(schedule.contains("Backchannel.DELAY_MS"))
+        // The wait from end of turn is AckRun's (Backchannel.DELAY_MS), the code the session runs.
+        assertTrue(schedule.contains("fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }"))
         // New speech cancels a pending one, and notes whether it started over a reply or a turn.
         val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
         assertTrue(start.contains("fillerJobs.endTurn()"))
@@ -122,19 +125,24 @@ class VoiceSpeedWiringTest {
     @Test
     fun `a backchannel is never a reply and never overlaps the answer`() {
         val s = session()
-        val play = bodyOf(s, "playBackchannel")
+        val play = ackCode(s)
         for (reply in listOf("speaking = true", "onReplyAudible(", "lastClipText", "history.add", "followUpEvent(", "setCaption(", "audit.assistant(")) {
             assertFalse("a backchannel must not touch $reply", play.contains(reply))
         }
-        assertTrue(play.contains("playGate.withLock"))
-        // The length gate now runs inside Backchannel.choose (pinned in BackchannelTest).
-        assertTrue(play.contains("Backchannel.choose("))
+        // The clip takes the play gate (in AckRun, the code the session runs) before the answer can.
+        assertTrue(play.contains("AckRun(System::currentTimeMillis, playGate, "))
+        assertTrue(File(sourceRoot(), "service/cascade/AckRun.kt").readText().contains("gate.withLock"))
+        // The length gate runs inside Backchannel.choose (pinned in BackchannelTest), through AckClips
+        // (2026-11-21: the pick moved out so the end-of-turn path can be timed whole, AckTimingTest).
+        assertTrue(play.contains("AckClips.pick(b.tts, recentBackchannels"))
         assertTrue(play.contains("audit.filler(\"backchannel\", line)"))
-        assertTrue(play.contains("b.tts.inHandTake("))
-        assertTrue(play.contains("Backchannel.trimSilence("))
+        val clips = File(sourceRoot(), "service/cascade/AckClips.kt").readText()
+        assertTrue(clips.contains("Backchannel.choose(recent, index, inHand)"))
+        assertTrue(clips.contains("tts.inHandTake("))
+        assertTrue(clips.contains("Backchannel.trimSilence("))
         // The answer's writes take the same gate; its first audio marks the turn as answered.
         val speaker = bodyOf(s, "newSpeaker")
-        assertTrue(speaker.contains("play = { pcm -> playGate.withLock { p.write(pcm, gen) } }"))
+        assertTrue(speaker.contains("play = { pcm -> playGate.withLock { answerGotGate(); p.write(pcm, gen) } }"))
         assertTrue(speaker.contains("turnAudioStarted = true"))
         // The task line is audited, and counts toward the turn's fillers and its said words (WaitFillers).
         assertTrue(speaker.contains("onFillerStarted = { text -> noteTaskFiller(text) }"))
@@ -183,8 +191,10 @@ class VoiceSpeedWiringTest {
         // 2026-11-20: no half-duplex skip any more; his audio is kept through every filler clip instead.
         assertFalse(schedule.contains("halfDuplex"))
         assertTrue(bodyOf(s, "playWaitFiller").contains("listenThroughClip(\"wait\""))
-        val play = bodyOf(s, "playBackchannel")
-        assertTrue(play.indexOf("listenThroughClip(\"backchannel\"") in 0 until play.indexOf("clipPlayback.during"))
+        // The clip's audio is kept from its start: started() (listenThroughClip) runs before play() in AckRun.
+        assertTrue(bodyOf(s, "noteAckStarted").contains("listenThroughClip(\"backchannel\""))
+        val run = File(sourceRoot(), "service/cascade/AckRun.kt").readText()
+        assertTrue(run.indexOf("steps.started(picked)") in 0 until run.indexOf("steps.play(picked.pcm)"))
         assertTrue(bodyOf(s, "listenThroughClip").contains("clipListen = ClipListen("))
         val feed = bodyOf(s, "onMicBuffer")
         assertTrue(feed.indexOf("listen.onFrame(buf, n, playbackActive)") in 0 until feed.indexOf("taker.feed("))
@@ -221,6 +231,11 @@ class VoiceSpeedWiringTest {
         assertTrue(bodyOf(s, "scheduleBackchannel").contains("warmFillers()"))
         assertFalse(bodyOf(s, "warmFillers").contains("fillersWarmedFor"))
     }
+
+
+    /** The acknowledgement's code in the session: playBackchannel, its AckRun steps and its audit (2026-11-21). */
+    private fun ackCode(s: String): String =
+        s.substring(s.indexOf("private suspend fun playBackchannel("), s.indexOf("private fun logFirstSound("))
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 
@@ -263,8 +278,8 @@ class VoiceSpeedWiringTest {
 
     @Test
     fun `a clip that fails the length gate is replaced by another word, never silence`() {
-        val play = bodyOf(session(), "playBackchannel")
-        assertTrue(play.contains("Backchannel.choose("))
+        val play = ackCode(session())
+        assertTrue(play.contains("AckClips.pick("))
         assertFalse("one failed clip no longer ends the turn's backchannel", play.contains("if (!Backchannel.clipFits(ms))"))
     }
 
@@ -273,7 +288,7 @@ class VoiceSpeedWiringTest {
         val s = session()
         val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
         assertTrue(start.contains("Backchannel.overReply("))
-        assertTrue(bodyOf(s, "playBackchannel").contains("backchannelStillDue(seq, eotAtMs)"))
+        assertTrue(ackCode(s).contains("backchannelStillDue(seq, eotAtMs)"))
         assertTrue(bodyOf(s, "backchannelStillDue").contains("Backchannel.cueWaitMs("))
     }
 
@@ -286,7 +301,7 @@ class VoiceSpeedWiringTest {
 
     @Test
     fun `the audit line carries the chosen word as a number`() {
-        val play = bodyOf(session(), "playBackchannel")
+        val play = ackCode(session())
         assertTrue(play.contains("word=${'$'}{Backchannel.LINES.indexOf(line)}"))
     }
 
@@ -313,7 +328,9 @@ class VoiceSpeedWiringTest {
         val play = bodyOf(s, "playWaitFiller")
         assertTrue(play.contains("playGate.withLock"))
         assertTrue(play.contains("filler kind=wait at_ms="))
-        assertTrue(play.contains("answerTextIn()"))
+        // 2026-11-21: keyed on the answer's audio ([DeadAir]), no longer on its first text.
+        assertTrue(play.contains("DeadAir.waitLine("))
+        assertFalse(play.contains("answerTextIn()"))
     }
 
     private companion object {

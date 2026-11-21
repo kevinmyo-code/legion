@@ -2,6 +2,9 @@
 
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.service.ListenCue
+import com.kevin.legion.service.turn.AudioRoute
+import com.kevin.legion.service.turn.MicReopen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -79,25 +82,89 @@ class CloseCueTest {
 
     @Test
     fun `the audit line is numbers and fixed tokens`() {
-        assertEquals("close_cue played=1 reason=follow_up skipped=none", CloseCue.auditLine("follow_up", null))
         assertEquals(
-            "close_cue played=0 reason=new_conversation skipped=quiet",
-            CloseCue.auditLine("new conversation", CloseCue.Skip.QUIET),
+            "close_cue played ms=430 reason=sleep_phrase route=speaker by=timestamp latency_ms=140 base=9000",
+            CloseCue.playedLine("sleep_phrase", "speaker", CloseCue.Heard(CloseCue.By.TIMESTAMP, 430, 9_000), chimeMs = 290),
         )
+        assertEquals(
+            "close_cue played ms=540 reason=sleep_phrase route=bt by=floor latency_ms=none base=none",
+            CloseCue.playedLine("sleep_phrase", "bt", CloseCue.Heard(CloseCue.By.FLOOR, 540, null), chimeMs = 290),
+        )
+        assertEquals(
+            "close_cue skipped reason=quiet close=new_conversation",
+            CloseCue.skippedLine("new conversation", CloseCue.Skip.QUIET),
+        )
+        assertEquals("bt", CloseCue.routeToken(AudioRoute.BLUETOOTH, earpiece = true))
+        assertEquals("earpiece", CloseCue.routeToken(AudioRoute.PHONE_SPEAKER, earpiece = true))
+        assertEquals("speaker", CloseCue.routeToken(AudioRoute.PHONE_SPEAKER, earpiece = false))
+        assertEquals("wired", CloseCue.routeToken(AudioRoute.WIRED_HEADSET, earpiece = false))
     }
 
     @Test
-    fun `the wait is the chime plus the route's tail, never past the hard cap`() {
-        assertEquals(290L + 60L, CloseCue.waitCapMs(chimeMs = 290, settleMs = 60))
-        assertEquals(290L + 700L, CloseCue.waitCapMs(chimeMs = 290, settleMs = 700))
+    fun `the wait covers the chime, its output latency and the route's tail, never past the hard cap`() {
+        assertEquals(290L + CloseCue.OUTPUT_LATENCY_MS + 60L, CloseCue.waitCapMs(chimeMs = 290, settleMs = 60))
+        assertEquals(CloseCue.HARD_CAP_MS, CloseCue.waitCapMs(chimeMs = 290, settleMs = 700))
         assertEquals(CloseCue.HARD_CAP_MS, CloseCue.waitCapMs(chimeMs = 900, settleMs = 900))
+        // On the speaker the cap leaves room to release only after the chime was heard (2026-11-21: the
+        // shipped cap was the chime plus a 60 ms settle, and the release cut it).
+        val chime = ListenCue.durationMs(ListenCue.closeChimePcm())
+        assertTrue(CloseCue.waitCapMs(chime, MicReopen.SETTLE_MS) >= CloseCue.minPlayMs(chime) + MicReopen.SETTLE_MS)
+        assertTrue(CloseCue.waitCapMs(chime, MicReopen.BLUETOOTH_TAIL_MS) >= CloseCue.minPlayMs(chime))
     }
 
     @Test
-    fun `a playback that never drains is cut at the cap, a normal one completes`() = runTest {
-        val start = testScheduler.currentTime
-        assertFalse(CloseCue.playBounded(500, write = {}, drained = { delay(60_000) }))
-        assertEquals(500L, testScheduler.currentTime - start)
-        assertTrue(CloseCue.playBounded(500, write = {}, drained = { delay(300) }))
+    fun `the timestamp decides only on frames presented since its own baseline, never before the chime's length`() {
+        val spec = CloseCue.Spec(chimeFrames = 6_960, chimeMs = 290, floorMs = 540, capMs = 600)
+        // Resets on flush (baseline 0): not yet, then the chime's frames presented decides, before the floor.
+        assertNull(CloseCue.heardBy(elapsedMs = 200, presented = 3_000, base = 0, stalledMs = 0, spec = spec))
+        assertEquals(CloseCue.By.TIMESTAMP, CloseCue.heardBy(elapsedMs = 400, presented = 6_960, base = 0, stalledMs = 0, spec = spec))
+        // Does NOT reset on flush (closing confirm T1): far above the chime's count from the start, it still
+        // waits for base + chimeFrames, and never accepts before the chime's own length.
+        val base = 5_000_000L
+        assertNull(CloseCue.heardBy(elapsedMs = 10, presented = base + 100, base = base, stalledMs = 0, spec = spec))
+        assertNull(CloseCue.heardBy(elapsedMs = 100, presented = base + 7_000, base = base, stalledMs = 0, spec = spec))
+        assertEquals(CloseCue.By.TIMESTAMP, CloseCue.heardBy(elapsedMs = 290, presented = base + 6_960, base = base, stalledMs = 0, spec = spec))
+        // No baseline: the floor, even if a timestamp appears later.
+        assertNull(CloseCue.heardBy(elapsedMs = 500, presented = 9_999_999, base = null, stalledMs = 0, spec = spec))
+        assertEquals(CloseCue.By.FLOOR, CloseCue.heardBy(elapsedMs = 540, presented = 9_999_999, base = null, stalledMs = 0, spec = spec))
+        // None at all: the floor.
+        assertEquals(CloseCue.By.FLOOR, CloseCue.heardBy(elapsedMs = 540, presented = null, base = 0, stalledMs = 0, spec = spec))
+        // Stalled short of the end: the floor once it has not moved for STALL_MS.
+        assertNull(CloseCue.heardBy(elapsedMs = 560, presented = 5_000, base = 0, stalledMs = 100, spec = spec))
+        assertEquals(CloseCue.By.FLOOR, CloseCue.heardBy(elapsedMs = 560, presented = 5_000, base = 0, stalledMs = CloseCue.STALL_MS, spec = spec))
+        // Moving but slow: the cap.
+        assertEquals(CloseCue.By.CAP, CloseCue.heardBy(elapsedMs = 600, presented = 6_000, base = 0, stalledMs = 0, spec = spec))
+    }
+
+    @Test
+    fun `the wait follows a fake device timestamp, reset or not, stalled or missing`() = runTest {
+        val now = { testScheduler.currentTime }
+        val chime = ListenCue.durationMs(ListenCue.closeChimePcm())
+        val frames = ListenCue.closeChimePcm().size / 2L
+        val spec = CloseCue.Spec(frames, chime, CloseCue.minPlayMs(chime), CloseCue.waitCapMs(chime, MicReopen.SETTLE_MS))
+        // A source that presents 24 frames a ms after 100 ms of output latency, from [offset].
+        fun source(offset: Long): () -> Long? {
+            val start = now()
+            return { offset + ((now() - start - 100).coerceAtLeast(0) * 24) }
+        }
+        // Resets on flush: done when the chime's last frame is presented.
+        val reset = CloseCue.playHeard(write = {}, presented = source(0), spec = spec, now = now)
+        assertEquals(CloseCue.By.TIMESTAMP, reset.by)
+        assertTrue("${reset.ms}", reset.ms in chime + 100..chime + 100 + 20)
+        // Does not reset on flush: starts far above the chime's count, and still waits the same.
+        val kept = CloseCue.playHeard(write = {}, presented = source(5_000_000), spec = spec, now = now)
+        assertEquals(CloseCue.By.TIMESTAMP, kept.by)
+        assertEquals(5_000_000L, kept.base)
+        assertTrue("${kept.ms}", kept.ms >= chime && kept.ms in chime + 100..chime + 100 + 20)
+        // Missing: the floor.
+        val none = CloseCue.playHeard(write = {}, presented = { null }, spec = spec, now = now)
+        assertEquals(CloseCue.By.FLOOR, none.by)
+        assertTrue("${none.ms}", none.ms in spec.floorMs..spec.floorMs + 20)
+        // Stalled: the floor, once it has stopped moving.
+        assertEquals(CloseCue.By.FLOOR, CloseCue.playHeard(write = {}, presented = { 42L }, spec = spec, now = now).by)
+        // A write that never returns: the cap.
+        val cap = CloseCue.playHeard(write = { delay(60_000) }, presented = { null }, spec = spec, now = now)
+        assertEquals(CloseCue.By.CAP, cap.by)
+        assertEquals(spec.capMs, cap.ms)
     }
 }

@@ -45,12 +45,14 @@ import com.kevin.legion.service.TextToolExecutor
 import com.kevin.legion.service.WakePhrases
 import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.conversationlog.ConversationLog
+import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.BargeInGate
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.TurnModels
 import com.kevin.legion.service.turn.TurnTaker
+import com.kevin.legion.service.turn.VoiceOutputRule
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
 import com.kevin.legion.service.testturn.TestTurns
@@ -135,6 +137,8 @@ internal class CascadeSession(
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
     /** A test conversation from a computer ([TestSession]): test mic, logcat audit, no records kept. */
     private val test: TestSession? = null,
+    /** Opened by a tap in the app (phone in hand): only then may the earpiece apply ([EarpieceRoute]). */
+    private val inHand: Boolean = false,
 ) {
     private val ctx = context.applicationContext
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -240,6 +244,11 @@ internal class CascadeSession(
 
     /** Focus, the car's hands-free mic, and the Bluetooth watch ([CascadeAudio]). */
     private val audioRoute = CascadeAudio(ctx, audioManager)
+    private val earpiece = EarpieceRoute(ctx, audioManager)
+
+    /** A call or a silenced capture mid-conversation ([CallPause]); [callPaused] once it has fired. */
+    private val callWatch = CallWatch(ctx, audioManager) { reason -> scope.launch(loop) { pauseForCall(reason) } }
+    @Volatile private var callPaused = false
     private var player: ReplyPlayer? = null
     private var callAudio: CallAudioMode? = null
     private var micJob: Job? = null
@@ -256,7 +265,13 @@ internal class CascadeSession(
     /** True while a reply is audible (or its tail is still settling): what [TurnTaker.feed] calls `playing`. */
     @Volatile private var playbackActive = false
     @Volatile private var currentUtt: TurnUtterance? = null
+
+    /** The engine as the brain ([EngineBrain]); null with Settings' "Answer on the engine" off. */
+    @Volatile private var engineBrain: EngineBrain? = null
     @Volatile private var lastLocalSpeechAtMs = 0L
+
+    /** The laptop's running transcript, by utterance id: what the acknowledgement can tell at end of turn. */
+    @Volatile private var heardSoFar: Pair<Int, String>? = null
 
     private var turnJob: Job? = null
     private var speaker: ReplySpeaker? = null
@@ -316,6 +331,21 @@ internal class CascadeSession(
 
     /** A task line has started and not yet ended: no wait line starts meanwhile (F5). */
     @Volatile private var taskLinePlaying = false
+
+    /**
+     * This turn's answer as [DeadAir] reads it: when its first clip was asked of the voice, whether
+     * the turn ends the conversation (a stop), the session's last ask-to-audio time, the turn's sound
+     * timeline for the bench ([TurnGap]) and when the answer's first audio came into hand.
+     */
+    @Volatile private var answerAskedAtMs: Long? = null
+    @Volatile private var turnEndsConversation = false
+    @Volatile private var lastFirstAudioMs: Long? = null
+    @Volatile private var turnGap: TurnGap? = null
+    @Volatile private var answerInHandAtMs: Long? = null
+    @Volatile private var toolSound = -1
+
+    /** The model's greeting while it is held and spoken: no wait line plays over it. */
+    @Volatile private var greetingJob: Job? = null
 
     @Volatile private var fillerSkip: Backchannel.Skip? = null
     private val recentWaitLines = RecentLines(WaitFillers.ROTATION)
@@ -427,6 +457,15 @@ internal class CascadeSession(
 
         /** A check-in line: held until whole, checked ([CheckInRules.lineRejection]), then said or dropped. */
         @Volatile var holdLine = false
+
+        /** The engine heard this turn ([EngineUtterance]): it answers unless the phone keeps it. */
+        @Volatile var engineUtt: EngineUtterance? = null
+
+        /** The engine heard this turn's audio, even if its stream was released for a merge. */
+        @Volatile var engineHeard = false
+
+        /** The phone was waiting on his answer to its own question ([EngineBrainRules.phoneAwaits]). */
+        @Volatile var awaits: String? = null
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -459,6 +498,11 @@ internal class CascadeSession(
         }
         val config = VoiceEngineSettings.laptop(ctx)
         CascadeWarmup.conversationOpen = true
+        // Never for a test conversation: the engine has no test mode yet, and its own writes would
+        // pass by the phone's TestTurnPolicy.
+        if (listens && test == null) {
+            engineBrain = EngineBrainOpen.open(ctx, scope)
+        }
         // The laptop is probed and connected while the mic and the turn models get ready (a wake
         // word's onset may have started it already); [tryLaptop] takes it.
         if (laptopFirst) LaptopPrewarm.start(ctx, "open")
@@ -993,7 +1037,12 @@ internal class CascadeSession(
         override fun sendActivityStart() {
             val b = backend ?: return
             var self: TurnUtterance? = null
-            val inner = b.stt.begin {
+            // Waiting on his answer to the phone's own question: the phone hears and answers it (R1).
+            val awaits = engineBrain?.let {
+                val checkIn = checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING
+                EngineBrainRules.phoneAwaits(checkIn, lastTurnAsked, it.context.mailExchange)
+            }
+            val inner = engineBrain?.utterance(b.kind == SpeechBackend.Kind.CLOUD, awaits) ?: b.stt.begin {
                 val utt = self ?: return@begin
                 scope.launch(loop) { onServiceEnd(utt) }
             }
@@ -1001,12 +1050,14 @@ internal class CascadeSession(
             // cloud, a cloud transcript that never came is measured for voice and asked again
             // ([MissedLine]), and a speculative draft is transcribed from them.
             val u = TurnUtterance(inner, b, keepAudio = true)
+            u.awaits = awaits
             self = u
             currentUtt = u
             resumeThroughClip(u)
             scope.launch(loop) {
                 onUserTurnStart()
-                if (speculate && b.kind == SpeechBackend.Kind.CLOUD) watchCloudSilence(u)
+                // No drafts for a turn the engine hears (plan 1119 row 25); the phone's own turns keep them.
+                if (speculate && b.kind == SpeechBackend.Kind.CLOUD && u.engine == null) watchCloudSilence(u)
                 // A wall-clock cap under the service's 30 s: in steady noise the silence cap never
                 // fires, and a turn must still end.
                 uttCapJob?.cancel()
@@ -1061,6 +1112,8 @@ internal class CascadeSession(
         override fun onBargeInDisabled(selfInterrupts: Int) {
             host.notice("Interrupting turned off for this conversation")
             scope.launch(loop) {
+                // On the earpiece call audio is the route itself, not only barge-in: it stays.
+                if (callAudio?.onEarpiece == true) return@launch
                 callAudio?.let { if (it.isActive) it.exit("self-interrupts") }
                 player?.rebuild()
             }
@@ -1204,9 +1257,17 @@ internal class CascadeSession(
         scheduleBackchannel(u, eotAtMs)
         scheduleWaitFillers(eotAtMs)
         val previous = turnJob
+        // A turn queued behind one still running is decided as soon as its words are in, not when
+        // the queue reaches it: the engine's 5 s hold would not wait that long (review R2, round 3).
+        u.engine?.takeIf { previous?.isActive == true }?.let { e -> scope.launch(loop) { decideEarly(u, e) } }
         turnJob = scope.launch(loop) {
             previous?.join()
-            runTurn(u, eotAtMs)
+            try {
+                runTurn(u, eotAtMs)
+            } finally {
+                // Not answered by the engine (a stop, noise, the phone loop took it): its turn is cancelled.
+                u.engine?.release()
+            }
         }
     }
 
@@ -1228,6 +1289,12 @@ internal class CascadeSession(
         saidThisTurn.clear()
         answerAudioStarted = false
         taskLinePlaying = false
+        answerAskedAtMs = null
+        answerInHandAtMs = null
+        turnEndsConversation = false
+        // The last turn's first-sound line if it ended with nothing heard, then this turn's tracker.
+        turnGap?.silentLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
+        turnGap = TurnGap(eotAtMs, lastLocalSpeechAtMs)
         val seq = backchannelSeq.incrementAndGet()
         val skip = Backchannel.decide(
             Backchannel.Turn(
@@ -1236,17 +1303,22 @@ internal class CascadeSession(
                 quiet = QuietMode.isOn(ctx),
                 onCall = callOnLine(),
             ),
-        )
+        ) ?: ackWordsSkip(u)
         fillerSkip = skip
         if (skip != null) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${skip.token}")
+            turnGap?.noteSkip(skip.token)
             return
         }
-        fillerJobs.startBackchannel {
-            delay((eotAtMs + Backchannel.DELAY_MS - System.currentTimeMillis()).coerceAtLeast(0))
-            playBackchannel(seq, eotAtMs)
-        }
+        fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }
     }
+
+    /** What the words heard so far already rule out ([Backchannel.wordsSkip]); null with none heard yet. */
+    private fun ackWordsSkip(u: TurnUtterance): Backchannel.Skip? = Backchannel.wordsSkip(
+        heardSoFar?.takeIf { it.first == u.id }?.second,
+        goodbye = { WakePhrases.isSleepPhrase(it, CompanionProfile.name(ctx)) },
+        crisis = CrisisDetector::detect,
+    )
 
     /**
      * The backchannel itself: from memory only, measured before it plays ([Backchannel.clipFits]),
@@ -1254,53 +1326,80 @@ internal class CascadeSession(
      * mic never takes it for him; never a reply (no caption, no history, no follow-up event), but its
      * own audit line so the next drive audit can count it.
      */
-    @Suppress("ReturnCount") // one worded skip per reason
     private suspend fun playBackchannel(seq: Int, eotAtMs: Long) {
         val b = backend ?: return
         val p = player ?: return
-        val due = backchannelStillDue(seq, eotAtMs) ?: return
+        AckRun(System::currentTimeMillis, playGate, ackSteps(seq, eotAtMs, b, p)).run(eotAtMs)
+    }
+
+    /** The session's side of [AckRun]: its checks, its clip, its audit and its marks. */
+    private fun ackSteps(seq: Int, eotAtMs: Long, b: SpeechBackend, p: ReplyPlayer) = object : AckRun.Steps {
+        override suspend fun stillDue() = backchannelStillDue(seq, eotAtMs)
+
         // A clip that fails the length gate is swapped for another word; silent only if none fits.
-        var pcm = ByteArray(0)
-        val chosen = Backchannel.choose(
-            recentBackchannels,
-            backchannelIndex.getAndIncrement(),
-            inHand = { w, t -> b.tts.inHandTake(SpokenText.forSpeech(w), t) },
-        ) { w, t ->
-            pcm = Backchannel.trimSilence(clipFromMemory(b.tts, w, t), b.tts.sampleRate)
-            pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
-        }
-        if (chosen == null) {
+        override suspend fun pick() = AckClips.pick(b.tts, recentBackchannels, backchannelIndex.getAndIncrement())
+
+        override fun noClip() {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=no_clip_fits")
-            return
+            turnGap?.noteSkip("no_clip_fits")
         }
+
+        override fun started(picked: AckClips.Picked) = noteAckStarted(picked, eotAtMs)
+
+        override suspend fun play(pcm: ByteArray) {
+            val sound = turnGap?.started(TurnGap.BACKCHANNEL, System.currentTimeMillis())
+            logFirstSound()
+            clipPlayback.during { playAckClip(p, pcm) }
+            sound?.let { turnGap?.ended(it, System.currentTimeMillis()) }
+        }
+
+        override suspend fun after() {
+            // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
+            clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
+            backchannelEndAtMs = System.currentTimeMillis()
+            lastFillerEndAtMs = System.currentTimeMillis()
+        }
+    }
+
+    /** The acknowledgement plays: its rotation, its count and its audit line (numbers only). */
+    private fun noteAckStarted(picked: AckClips.Picked, eotAtMs: Long) {
+        val chosen = picked.chosen
         val line = chosen.word
-        val ms = chosen.ms
-        playGate.withLock {
-            if (!due()) return
-            listenThroughClip("backchannel", Backchannel.LINES.indexOf(line))
-            recentBackchannels.add(line)
-            VoiceEngineSettings.setLastBackchannel(ctx, line)
-            turnFillers.incrementAndGet()
-            LiveLatency.log(
-                LiveLatency.TAG,
-                // The word as its index in Backchannel.LINES (a number, never the word), and how many
-                // words' clips failed the length gate before it.
-                "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=$ms " +
-                    "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected} " +
-                    // 1: the answer's text was already in, so the answer waits for this clip.
-                    "answer_text=${if (answerTextIn()) 1 else 0}",
-            )
-            audit.filler("backchannel", line)
-            clipPlayback.during {
-                val gen = p.generation()
-                withContext(Dispatchers.IO) { p.write(pcm, gen) }
-                p.awaitDrained()
-            }
+        listenThroughClip("backchannel", Backchannel.LINES.indexOf(line))
+        recentBackchannels.add(line)
+        VoiceEngineSettings.setLastBackchannel(ctx, line)
+        turnFillers.incrementAndGet()
+        LiveLatency.log(
+            LiveLatency.TAG,
+            // The word as its index in Backchannel.LINES (a number, never the word), and how many
+            // words' clips failed the length gate before it.
+            "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=${chosen.ms} " +
+                "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected} " +
+                // 1: the answer's text was already in, so the answer waits for this clip.
+                "answer_text=${if (answerTextIn()) 1 else 0}",
+        )
+        audit.filler("backchannel", line)
+    }
+
+    /** This turn's first-sound line ([TurnGap.firstSoundLine]) the moment there is a first sound. */
+    private fun logFirstSound() {
+        turnGap?.firstSoundLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
+    }
+
+    /**
+     * The acknowledgement's audio, cut at once when its job is cancelled (he spoke again, a stop, a
+     * goodbye found in his words): it never plays on over him. Only its own audio is flushed: the
+     * answer waits for this clip under [playGate], so nothing else is in the track.
+     */
+    private suspend fun playAckClip(p: ReplyPlayer, pcm: ByteArray) {
+        val gen = p.generation()
+        try {
+            withContext(Dispatchers.IO) { p.write(pcm, gen) }
+            p.awaitDrained()
+        } catch (e: CancellationException) {
+            if (p.generation() == gen) p.flush()
+            throw e
         }
-        // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
-        clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
-        backchannelEndAtMs = System.currentTimeMillis()
-        lastFillerEndAtMs = System.currentTimeMillis()
     }
 
     /** The clip whose audio [clipListen] keeps: its kind and line index, for [ClipListen.joinedLine]. */
@@ -1316,10 +1415,14 @@ internal class CascadeSession(
     private fun noteTaskFillerEnded() {
         lastFillerEndAtMs = System.currentTimeMillis()
         taskLinePlaying = false
+        // All of it is with the player now; it ends when what is queued has played.
+        turnGap?.ended(toolSound, lastFillerEndAtMs + (player?.aheadMs() ?: 0L))
     }
 
     private fun noteTaskFiller(text: String) {
         taskLinePlaying = true
+        toolSound = turnGap?.started(TurnGap.TOOL, System.currentTimeMillis()) ?: -1
+        logFirstSound()
         audit.filler("task", text)
         turnFillers.incrementAndGet()
         saidThisTurn.add(text)
@@ -1327,9 +1430,10 @@ internal class CascadeSession(
 
     /**
      * His speech ended: the wait lines ([WaitFillers]) for this turn. Each is due [WaitFillers.FIRST_GAP_MS]
-     * or [WaitFillers.NEXT_GAP_MS] after the last filler of any kind ended, while no answer audio or
-     * text has started, up to [WaitFillers.MAX_PER_TURN] fillers in all. Re-read every
-     * [WAIT_POLL_MS], so a backchannel or task line that ends later moves the next one back.
+     * or [WaitFillers.NEXT_GAP_MS] after the last filler of any kind ended, until the answer's AUDIO is
+     * in hand ([DeadAir]: the first text alone no longer ends them), up to [WaitFillers.MAX_PER_TURN]
+     * fillers in all. Re-read every [WAIT_POLL_MS], so a backchannel or task line that ends later moves
+     * the next one back.
      */
     private fun scheduleWaitFillers(eotAtMs: Long) {
         val seq = backchannelSeq.get()
@@ -1353,10 +1457,26 @@ internal class CascadeSession(
         }
     }
 
+    /** This turn's wait, now, as [DeadAir] reads it. */
+    private fun deadAir(seq: Int) = DeadAir.State(
+        nowMs = System.currentTimeMillis(),
+        answerAudioReady = answerAudioStarted,
+        answerAskedAtMs = answerAskedAtMs,
+        expectedFirstAudioMs = DeadAir.expectedFirstAudioMs(
+            cloud = backend?.kind == SpeechBackend.Kind.CLOUD,
+            measuredMs = lastFirstAudioMs,
+        ),
+        closing = closing.get(),
+        stopped = seq != backchannelSeq.get(),
+        goodbye = turnEndsConversation,
+        greetingHeld = greetingJob?.isActive == true,
+    )
+
     /**
-     * One wait line, from memory, under [playGate] like the backchannel: never once the answer's text
-     * or audio has started, never over it (the answer's writes take the same gate, so an answer ready
-     * during the line follows it). False: none played, and none will this turn.
+     * One wait line, from memory, under [playGate] like the backchannel. [DeadAir] decides: never once
+     * the answer's audio is in hand, and after its first clip was asked for only a line that ends by its
+     * expected audio. A line playing when the answer's audio arrives is cut if more than
+     * [DeadAir.FINISH_MAX_MS] of it is left ([playPacedWait]); the answer's writes wait on the same gate.
      */
     private enum class WaitPlay { PLAYED, NOT_YET, STOP }
 
@@ -1364,9 +1484,9 @@ internal class CascadeSession(
     private suspend fun playWaitFiller(seq: Int, eotAtMs: Long, said: Int): WaitPlay {
         val b = backend ?: return WaitPlay.STOP
         val p = player ?: return WaitPlay.STOP
-        fun due() = !closing.get() && seq == backchannelSeq.get() && !answerAudioStarted && !answerTextIn() &&
-            !QuietMode.isOn(ctx) && !callOnLine()
-        if (!due()) return WaitPlay.STOP
+        fun over() = QuietMode.isOn(ctx) || callOnLine() ||
+            DeadAir.waitLine(deadAir(seq), 0L)?.let(DeadAir::endsWait) == true
+        if (over()) return WaitPlay.STOP
         var pcm = ByteArray(0)
         val chosen = WaitFillers.choose(
             recentWaitLines,
@@ -1374,15 +1494,18 @@ internal class CascadeSession(
             waitIndex.getAndIncrement(),
             inHand = { line, take -> b.tts.inHandTake(SpokenText.forSpeech(line), take) },
         ) { line, take ->
-            pcm = Backchannel.trimSilence(clipFromMemory(b.tts, line, take), b.tts.sampleRate)
-            pcm.size.toLong() * MS_PER_S / (b.tts.sampleRate * PCM_BYTES_PER_SAMPLE)
+            val (audio, ms) = AckClips.trimmed(b.tts, line, take)
+            pcm = audio
+            ms
         }
         if (chosen == null) {
             LiveLatency.log(LiveLatency.TAG, "filler_skip kind=wait reason=no_clip_fits")
             return WaitPlay.STOP
         }
         playGate.withLock {
-            if (!due()) return WaitPlay.STOP
+            if (over()) return WaitPlay.STOP
+            // Too long to end before the answer's expected audio: asked again at the next poll.
+            if (DeadAir.waitLine(deadAir(seq), chosen.ms) != null) return WaitPlay.NOT_YET
             // A task line queued on the gate, or one that just ended, moves this one back (F5).
             val now = System.currentTimeMillis()
             if (!WaitFillers.dueNow(now, lastFillerEndAtMs, said, turnFillers.get(), taskLinePlaying)) {
@@ -1394,21 +1517,39 @@ internal class CascadeSession(
             LiveLatency.log(
                 LiveLatency.TAG,
                 "filler kind=wait at_ms=${System.currentTimeMillis() - eotAtMs} " +
-                    "idx=${WaitFillers.LINES.indexOf(chosen.line)}",
+                    "idx=${WaitFillers.LINES.indexOf(chosen.line)} " +
+                    "answer_asked=${if (answerAskedAtMs != null) 1 else 0}",
             )
             audit.filler("wait", chosen.line)
             // Half-duplex (Bluetooth): his audio through the line is kept and handed on, as for a backchannel.
             listenThroughClip("wait", WaitFillers.LINES.indexOf(chosen.line))
-            clipPlayback.during {
-                val gen = p.generation()
-                withContext(Dispatchers.IO) { p.write(pcm, gen) }
-                p.awaitDrained()
-            }
+            clipPlayback.during { playPacedWait(p, pcm, b.tts.sampleRate) }
         }
         // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
         clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         lastFillerEndAtMs = System.currentTimeMillis()
         return WaitPlay.PLAYED
+    }
+
+    /**
+     * A wait line's audio, a slice at a time ([PacedClip]), cut between slices once the answer's audio
+     * is in hand and more than [DeadAir.FINISH_MAX_MS] of the line is left. Never a flush: the answer's
+     * writes carry the generation its speaker was made with.
+     */
+    private suspend fun playPacedWait(p: ReplyPlayer, pcm: ByteArray, sampleRate: Int) {
+        val sound = turnGap?.started(TurnGap.WAIT, System.currentTimeMillis())
+        logFirstSound()
+        val gen = p.generation()
+        val end = PacedClip.play(
+            pcm,
+            sampleRate,
+            write = { slice -> withContext(Dispatchers.IO) { p.write(slice, gen) } },
+            aheadMs = { p.aheadMs() },
+            cut = { left -> DeadAir.cutPlaying(answerAudioStarted, left) },
+        )
+        if (end == PacedClip.End.WHOLE) p.awaitDrained()
+        if (end == PacedClip.End.CUT) LiveLatency.log(LiveLatency.TAG, "filler_cut kind=wait")
+        sound?.let { turnGap?.ended(it, System.currentTimeMillis() + p.aheadMs()) }
     }
 
     /**
@@ -1419,6 +1560,7 @@ internal class CascadeSession(
     private suspend fun backchannelStillDue(seq: Int, eotAtMs: Long): (() -> Boolean)? {
         fun skip(reason: String): (() -> Boolean)? {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=$reason")
+            turnGap?.noteSkip(reason)
             return null
         }
         // The open's chime or cue still playing: wait for its end if the clip can still start in time.
@@ -1438,16 +1580,6 @@ internal class CascadeSession(
         // A transcript that comes after the clip's time cannot stop it; that turn still gets one.
         if (backchannelUtt != null && backchannelUtt === noiseUtt) return skip("noise")
         return due
-    }
-
-    /** [line]'s whole audio if it comes within [BACKCHANNEL_FETCH_MS] (it is from memory), else empty. */
-    private suspend fun clipFromMemory(tts: TextToSpeech, line: String, take: Int): ByteArray {
-        val clip = tts.speakTake(SpokenText.forSpeech(line), take)
-        return withTimeoutOrNull(BACKCHANNEL_FETCH_MS) {
-            val out = java.io.ByteArrayOutputStream()
-            for (frame in clip.frames) out.write(frame)
-            out.toByteArray()
-        } ?: ByteArray(0).also { clip.cancel() }
     }
 
     /**
@@ -1474,6 +1606,8 @@ internal class CascadeSession(
 
     @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod") // one exit per way a turn ends
     private suspend fun runTurn(u: TurnUtterance, eotAtMs: Long) {
+        // An engine turn cancelled after its early go (a stop or goodbye over it, round 4): never said.
+        if (u.engine?.cancelled == true) return
         // The cloud draft's transcript, when the phone confirmed the turn on the same audio.
         val fromDraft = draft?.takeIf { it.utt === u && it.audioConfirmed }
         val stt = fromDraft?.let { draftTranscript(it, u.backend.sttFinalTimeoutMs) }
@@ -1485,6 +1619,10 @@ internal class CascadeSession(
             is SttResult.Failed -> {
                 discardDraftOf(u, "stt_failed")
                 if (stt.reason == "cancelled") return
+                // The engine could not answer: said so, never a second brain ([EngineUtterance.SWITCHED_OFF]
+                // is the server's own rollback, and the phone's transcriber and loop take that turn).
+                val lost = u.engine?.takeIf { stt.reason != EngineUtterance.SWITCHED_OFF }
+                if (lost != null) return engineFailed(lost, stt.reason == EngineUtterance.MISSED)
                 val recovered = recoverWords(u, stt.reason) ?: return
                 if (endsConversation(recovered)) return endByStop(u, recovered)
                 recovered
@@ -1552,6 +1690,11 @@ internal class CascadeSession(
             return
         }
         val record = TurnRecord(heard, voicedMs = (stt as? SttResult.Text)?.voicedMs)
+        // Words carried from a dropped turn are not in this audio: the engine gets them as a transcript.
+        record.engineUtt = u.engine?.takeIf { heard == words.trim() }
+        record.engineHeard = u.engine != null
+        record.awaits = u.awaits
+        if (record.engineUtt == null) u.engine?.release()
         answerTurn(heard, eotAtMs, record, takeDraft(u, heard))
     }
 
@@ -1577,7 +1720,20 @@ internal class CascadeSession(
             audit.readThrough(GeminiLiveSession.READ_THROUGH_CARRY)
         }
         val seq = turnSeq.getAndIncrement()
-        val pfx = try {
+        val brain = engineBrain
+        val engineStart = brain?.route(
+            record.engineUtt,
+            heard,
+            EngineBrain.RouteFacts(
+                test = test != null,
+                fromUser = record.fromUser,
+                // Streamed audio, a merged turn's words, or the laptop voice's words may go to the engine.
+                engineHeard = record.engineHeard || backend?.kind == SpeechBackend.Kind.LAPTOP,
+                awaits = record.awaits,
+            ),
+        )
+        // The engine answers without the phone's prompt; only the phone loop waits for it.
+        val pfx = if (engineStart != null) null else try {
             awaitPrompt()
         } catch (e: CancellationException) {
             // Interrupted or merged while the prompt was still building: no stale turn, and his
@@ -1600,12 +1756,21 @@ internal class CascadeSession(
         try {
             // A confirmed draft replays what it held (text, marks) and only now may run its tools.
             val result = drafted?.adopt(executorFor(record, seq), listenerFor(record, reply))
+                ?: engineStart?.let {
+                    brain?.answer(it, record.engineUtt, executorFor(record, seq), listenerFor(record, reply))
+                }
                 ?: textLoop!!.answer(
-                    pfx,
+                    checkNotNull(pfx),
                     turnContentsFor(heard),
                     executorFor(record, seq),
                     listenerFor(record, reply),
                 )
+            if (brain?.takeCrisis() == true) {
+                reply.interrupt()
+                shutdown("crisis")
+                host.crisis()
+                return
+            }
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
             // A tool turn that ended on filler was asked once more ([FillerTurn]): counts only.
             if (result.fillerContinued > 0) LiveLatency.log(LiveLatency.TAG, "reply_filler_continued n=1")
@@ -1694,6 +1859,8 @@ internal class CascadeSession(
             // Interrupted (tap, barge-in) or merged into the next turn: keep only what was heard.
             withContext(NonCancellable) {
                 reply.interrupt()
+                // An engine reply cut off: the engine is told how much he heard, on its next turn.
+                engineBrain?.context?.cutOff(reply.spoken().length)
                 // A write that finished and was not heard is said at the next thing said ([owed]).
                 owe(record, cutOff = true)
                 if (!record.merged && (carry.isBlank() || record.toolsRan.isNotEmpty())) {
@@ -1945,13 +2112,40 @@ internal class CascadeSession(
      * done and never said).
      */
     private suspend fun endByStop(u: TurnUtterance, words: String) {
-        // No "Mm." before "Goodbye." (review F4): a backchannel not yet started is dropped. At this point
-        // nothing but that clip can be playing, so playback means it started: it finishes.
-        if (!playbackActive) fillerJobs.endTurn()
+        // No "Mm." before "Goodbye." (review F4): the acknowledgement, which now starts at end of turn,
+        // is dropped, and cut if it is playing ([playAckClip]).
+        turnEndsConversation = true
+        fillerJobs.endTurn()
         discardDraftOf(u, "not_answered")
         carry = ""
         recordTurn(words, owed.due()?.line.orEmpty())
         endByVoice()
+    }
+
+    /**
+     * The engine, this conversation's brain, could not answer [utt] (client contract section 9): no
+     * second brain answers. Its words are said, true as said ([EngineBrain.lostWords]); he may say it
+     * again. After [EngineBrainRules.FAILURE_BUDGET] such turns in a row the conversation closes (K3).
+     * A transcript the engine missed ([missed]) is the missed line.
+     */
+    private suspend fun engineFailed(utt: EngineUtterance, missed: Boolean) {
+        val close = engineBrain?.failed(missed) == true
+        val words = if (missed) MISSED_LINE else EngineBrain.lostWords(utt)
+        LiveLatency.log(LiveLatency.TAG, "engine_lost close=${if (close) 1 else 0} missed=${if (missed) 1 else 0}")
+        if (close) engineLost(words) else sayMissedLine(words)
+    }
+
+    /** K3: [words] are said, shown, and the conversation closes. */
+    private suspend fun engineLost(words: String) {
+        if (!closing.get() && backend != null && player != null) {
+            val reply = newSpeaker(null)
+            reply.say(words)
+            val played = withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() } == ReplySpeaker.Outcome.Played
+            if (played) player?.awaitDrained()
+        }
+        host.notice(words)
+        shutdown("engine_unreachable")
+        host.closed("engine_unreachable")
     }
 
     /** [record]'s writes that went through and were not heard are owed; a cut-off turn's unconfirmed ones too. */
@@ -2012,6 +2206,42 @@ internal class CascadeSession(
     }
 
     /** Whether [stt]'s words are believed ([SttGuard]), for his languages and the names on the phone. */
+    /**
+     * His turn ended while the last one still plays (barge-in off: Bluetooth, a call). As soon as his
+     * words are in, the same checks and route as [runTurn] decide: the engine's go now (its stream
+     * waits, unread, until this turn is reached), or a take. While a tool of the last turn still runs
+     * (it may leave state his words answer) this waits, at most [EARLY_WAIT_MS]; still running then,
+     * the phone takes the turn. Words carried from a merged turn are the phone's too.
+     */
+    private suspend fun decideEarly(u: TurnUtterance, e: EngineUtterance) {
+        val brain = engineBrain ?: return
+        val stt = e.result(0) as? SttResult.Text
+        withTimeoutOrNull(EARLY_WAIT_MS) { while (toolsInFlight.get() > 0) delay(EARLY_POLL_MS) }
+        val words = stt?.text.orEmpty()
+        val checkIn = checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING
+        val asked = turn?.asked == true || lastTurnAsked
+        val awaits = EngineBrainRules.phoneAwaits(checkIn, asked, brain.context.mailExchange)
+        val facts = EngineBrainRules.Facts(test != null, true, true, brain.state == EngineBrain.State.ON, awaits)
+        val unsettled = toolsInFlight.get() > 0 || carry.isNotBlank()
+        val phoneOnly = unsettled || stt == null || phoneOnlyNow(stt)
+        // A stop or goodbye said over a reply: every turn whose go went early is cancelled too.
+        if (endsConversation(words)) brain.earlyTurns.forEach { it.release() }
+        if (phoneOnly || EngineBrainRules.phoneKeeps(words, facts) != null) e.release() else e.goNow()
+        LiveLatency.log(LiveLatency.TAG, "engine_early go=${if (e.goPosted) 1 else 0} for=u${u.id}")
+    }
+
+    /** [runTurn]'s own word checks, before any routing: nothing heard, stop, crisis, the guard, language. */
+    private fun phoneOnlyNow(stt: SttResult.Text): Boolean {
+        val words = stt.text
+        val cloud = backend?.kind == SpeechBackend.Kind.CLOUD
+        val language = SpokenLanguages.decide(words, languages, conversationLanguage, cloud, CompanionProfile.name(ctx))
+        return when {
+            words.isBlank() || endsConversation(words) || CrisisDetector.detect(words) -> true
+            verdictOf(stt) is SttGuard.Verdict.Drop -> true
+            else -> language != SpokenLanguages.Decision.Stay
+        }
+    }
+
     private fun verdictOf(stt: SttResult.Text): SttGuard.Verdict =
         SttGuard.verdict(stt.text, stt.voicedMs, SttHintStore.known, languages)
 
@@ -2055,6 +2285,7 @@ internal class CascadeSession(
             }
             is SpokenLanguages.Decision.To -> {
                 conversationLanguage = d.language
+                engineBrain?.context?.language = d.language.name
                 SttHintStore.instruction = SpokenLanguages.sttInstruction(languages, d.language)
                 LiveLatency.log(LiveLatency.TAG, "language_switch to=${d.language.name.lowercase().replace(' ', '_')}")
                 true
@@ -2310,14 +2541,13 @@ internal class CascadeSession(
         val b = backend!!
         val p = player!!
         val gen = p.generation()
-        var ttsAskedAtMs = System.currentTimeMillis()
         var audible = false
         var answerAudible = false
         var self: ReplySpeaker? = null
         return ReplySpeaker(
             tts = b.tts,
             scope = scope,
-            play = { pcm -> playGate.withLock { p.write(pcm, gen) } },
+            play = { pcm -> playGate.withLock { answerGotGate(); p.write(pcm, gen) } },
             firstFrameTimeoutMs = b.ttsFirstAudioTimeoutMs,
             onFirstAudio = { _, filler ->
                 turnAudioStarted = true
@@ -2327,9 +2557,7 @@ internal class CascadeSession(
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
                 } else {
                     answerAudible = true
-                    answerAudioStarted = true
-                    eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
-                    LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
+                    answerAudioIn(eotAtMs, now, self?.firstAskedAtMs)
                 }
                 if (!audible || !filler) {
                     // The answer after a filler the mic reopened for ([onFillerPlayed]): playing again.
@@ -2339,7 +2567,6 @@ internal class CascadeSession(
                 }
             },
             onClipStarted = { text ->
-                ttsAskedAtMs = System.currentTimeMillis()
                 lastClipText = text
                 audit.assistant(text, readThrough = turn?.readThrough == true)
                 // The voice sheet and the talk strip read the caption, as for Live's subtitles.
@@ -2348,6 +2575,8 @@ internal class CascadeSession(
             // Count only, never the words.
             onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
             onFillerStarted = { text -> noteTaskFiller(text) },
+            // Only a turn of his has a wait to fill ([DeadAir]): its first answer clip asked of the voice.
+            onAnswerAsked = { answerAsked(eotAtMs) },
             onFillerPlayed = {
                 noteTaskFillerEnded()
                 // Half-duplex: the filler is over, the answer is not here yet. Listen again once it
@@ -2375,6 +2604,38 @@ internal class CascadeSession(
         }
     }
 
+    /**
+     * The answer's first audio is in hand at [now]: no wait line starts from here ([DeadAir]). On a turn
+     * of his ([eotAtMs]), the bench's gap line ([TurnGap]) and this session's ask-to-audio time for the
+     * next turn's estimate ([DeadAir.expectedFirstAudioMs]).
+     */
+    private fun answerAudioIn(eotAtMs: Long?, now: Long, askedAtMs: Long?) {
+        answerAudioStarted = true
+        eotAtMs?.let {
+            LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}")
+            answerInHandAtMs = now
+            answerAskedAtMs?.let { asked -> lastFirstAudioMs = now - asked }
+            turnGap?.answerHeard(now)
+            logFirstSound()
+            turnGap?.line(now)?.let { line -> LiveLatency.log(LiveLatency.TAG, line) }
+        }
+        // From the reply's first clip asked of the voice (it was timed from the clip's own first
+        // audio, so it read about 0); a clip queued behind a task line counts that wait too.
+        askedAtMs?.let { LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - it}") }
+    }
+
+    /** A turn of his ([eotAtMs]): its first answer clip was asked of the voice now ([DeadAir]). */
+    private fun answerAsked(eotAtMs: Long?) {
+        if (eotAtMs != null && answerAskedAtMs == null) answerAskedAtMs = System.currentTimeMillis()
+    }
+
+    /** The answer's first write got the play gate: how long a filler clip held it (0 when none). */
+    private fun answerGotGate() {
+        val at = answerInHandAtMs ?: return
+        answerInHandAtMs = null
+        LiveLatency.log(LiveLatency.TAG, "answer_hold_ms=${System.currentTimeMillis() - at}")
+    }
+
     private fun onReplyAudible() {
         if (closing.get()) return
         if (!firstAudioLogged && openStartedAtMs > 0) {
@@ -2391,6 +2652,7 @@ internal class CascadeSession(
     /** The reply played to the end: drain, settle, listen again (or hang up if he asked). */
     private suspend fun afterReply() {
         player?.awaitDrained()
+        engineBrain?.runDeviceActions()
         lastReplyEndAtMs = System.currentTimeMillis()
         delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
         speaking = false
@@ -2414,6 +2676,8 @@ internal class CascadeSession(
 
     private fun backToListening() {
         if (closing.get()) return
+        // A turn that ended with nothing heard still gets its first-sound line (kind=none).
+        turnGap?.silentLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
         // The turn's wait is over (answered, noise, a dropped transcript, a failed voice): no more fillers.
         fillerJobs.endTurn()
         warmFillers()
@@ -2624,6 +2888,7 @@ internal class CascadeSession(
                         // So his answer is understood: the greeting is the first exchange.
                         history.add(ChatTurn(fromUser = true, text = OPENED_NOTE))
                         history.add(ChatTurn(fromUser = false, text = reply.spoken()))
+                        engineBrain?.context?.greeted(reply.spoken())
                         afterReply()
                     }
                     // The greeting is not said twice: the next voice opens with the scripted line.
@@ -2634,7 +2899,10 @@ internal class CascadeSession(
                 withContext(NonCancellable) { reply.interrupt() }
                 throw e
             }
-        }.also { job -> job.invokeOnCompletion { voice.tts.holdWarm(false) } }
+        }.also { job ->
+            greetingJob = job
+            job.invokeOnCompletion { voice.tts.holdWarm(false) }
+        }
     }
 
     /**
@@ -2686,6 +2954,8 @@ internal class CascadeSession(
         seq: Long = turnSeq.getAndIncrement(),
         fromUser: Boolean = true,
     ) {
+        // A turn the phone answered goes to the engine's next turn as context ([EnginePhoneContext]).
+        engineBrain?.context?.recorded(heard, said, readThrough, fromUser)
         if (heard.isNotBlank()) history.add(ChatTurn(fromUser = true, text = heard))
         if (fromUser && said.isNotBlank()) readThroughCarry.answered()
         // A read-through reply (mail, web) is never kept as history or in the record in clear.
@@ -2780,8 +3050,10 @@ internal class CascadeSession(
      */
     private fun onBluetoothConnected() {
         scope.launch(loop) {
-            val tt = turnTaker?.takeIf { it.bargeIn } ?: return@launch
-            tt.disableBargeIn()
+            val tt = turnTaker?.takeIf { it.bargeIn }
+            // Call audio entered for the earpiece alone (barge-in off) leaves for Bluetooth too.
+            if (tt == null && callAudio?.onEarpiece != true) return@launch
+            tt?.disableBargeIn()
             LiveLatency.log(TurnTaker.BARGE_TAG, "off for this session: Bluetooth connected (cascade)")
             audioRoute.stopWatching()
             callAudio?.let { if (it.isActive) it.exit("bluetooth connected") }
@@ -2830,9 +3102,15 @@ internal class CascadeSession(
             LiveLatency.TAG,
             "spec_config on=$speculate backend=${b.kind.token} maybe_end=${c?.sendsMaybeEnd ?: false}",
         )
-        if (!speculate || c == null) return
+        if (c == null) return
+        // The running transcript is kept for the acknowledgement's word gate ([Backchannel.wordsSkip])
+        // with the setting off too; the drafts use it only with it on.
+        c.onPartial = { id, text ->
+            heardSoFar = id to text
+            if (speculate) scope.launch(loop) { onPartialText(id, text) }
+        }
+        if (!speculate) return
         c.onMaybeEnd = { id, text, atEnd -> scope.launch(loop) { onMaybeEnd(id, text, atEnd) } }
-        c.onPartial = { id, text -> scope.launch(loop) { onPartialText(id, text) } }
     }
 
     /** Why no draft may start now, or null. */
@@ -3095,7 +3373,7 @@ internal class CascadeSession(
         }
         if (!p.config.bargeIn) {
             // The barge-in call mode goes; the car's hands-free link (no barge-in) stays.
-            callAudio?.takeUnless { it.onBluetoothMic }?.let {
+            callAudio?.takeUnless { it.onBluetoothMic || it.onEarpiece }?.let {
                 if (it.isActive) {
                     it.exit("swap to ${b.kind.token}")
                     player?.rebuild()
@@ -3224,20 +3502,29 @@ internal class CascadeSession(
             alreadyPlayed = closeCuePlayed,
             rateMatches = backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE,
         )
-        LiveLatency.log(LiveLatency.TAG, CloseCue.auditLine(reason, skip))
-        if (skip != null || p == null) return false
+        if (skip != null || p == null) {
+            LiveLatency.log(LiveLatency.TAG, CloseCue.skippedLine(reason, skip ?: CloseCue.Skip.NO_AUDIO))
+            return false
+        }
         closeCuePlayed = true
         val pcm = ListenCue.closeChimePcm()
-        val settle = MicReopen.settleMs(CallAudioMode.route(audioManager))
-        val cap = CloseCue.waitCapMs(ListenCue.durationMs(pcm), settle)
-        return CloseCue.playBounded(
-            cap,
+        val route = CallAudioMode.route(audioManager)
+        val settle = MicReopen.settleMs(route)
+        val chimeMs = ListenCue.durationMs(pcm)
+        val cap = CloseCue.waitCapMs(chimeMs, settle)
+        // Released only once the device says the chime's last frame was presented (review K1), with the
+        // chime plus a fixed latency as the floor when it gives no timestamp, and the cap over both.
+        val heard = CloseCue.playHeard(
             write = { withContext(Dispatchers.IO) { p.write(pcm, p.generation()) } },
-            drained = {
-                p.awaitDrained()
-                delay(settle)
-            },
+            presented = p::presentedFrame,
+            spec = CloseCue.Spec(pcm.size / PCM_BYTES_PER_SAMPLE.toLong(), chimeMs, CloseCue.minPlayMs(chimeMs), cap),
         )
+        // A Bluetooth sink plays its own buffer past what the phone presented: its tail, inside the cap.
+        val tail = minOf(settle, cap - heard.ms).coerceAtLeast(0)
+        if (heard.by != CloseCue.By.CAP && route == AudioRoute.BLUETOOTH) delay(tail)
+        val routeToken = CloseCue.routeToken(route, earpiece = earpiece.wantsEarpiece() && callAudio?.isActive == true)
+        LiveLatency.log(LiveLatency.TAG, CloseCue.playedLine(reason, routeToken, heard, chimeMs))
+        return heard.by != CloseCue.By.CAP
     }
 
     /** The conversation's usage summary at its close, and the prompt cache's listener let go. */
@@ -3247,6 +3534,25 @@ internal class CascadeSession(
             LiveLatency.log(LiveLatency.TAG, usageLedger.summary(engines, turnsAnswered.get()))
         }
         CACHE?.onCreated = null
+    }
+
+    /**
+     * Someone's call, or the platform silencing our capture ([CallPause]): nothing more is heard or
+     * said. The reply stops now, no audio goes on to any speech-to-text, the engine's turn in progress
+     * is taken back through its release, and the conversation closes with no words and no chime
+     * (the close reason is not one [CloseCue] plays for). Closing, not pausing: a call can run for an
+     * hour, and a conversation resumed after it would answer a question from before it.
+     */
+    private suspend fun pauseForCall(reason: CallPause.Reason) {
+        if (closing.get() || callPaused) return
+        callPaused = true
+        LiveLatency.log(LiveLatency.TAG, CallPause.line(reason))
+        fillerJobs.endTurn()
+        speaker?.interrupt()
+        player?.flush()
+        currentUtt?.engine?.release()
+        shutdown(CallPause.closeReason(reason))
+        host.closed(CallPause.closeReason(reason))
     }
 
     /** Idempotent full release. */
@@ -3277,9 +3583,12 @@ internal class CascadeSession(
 
     private suspend fun releaseNow(reason: String, caller: Job?) {
         val releaseStartMs = System.currentTimeMillis()
+        turnGap?.silentLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
         isOpen = false
         // A clear-codes question belongs to this conversation: a "yes" in the next one answers nothing.
         step("clear_question") { DtcClearController.forgetClearQuestion() }
+        // Engine turns whose go went early and that no turn read: cancelled on the engine (round 4).
+        engineBrain?.earlyTurns?.forEach { it.release() }
         step("jobs") {
             followUpJob?.cancel()
             uttCapJob?.cancel()
@@ -3304,6 +3613,7 @@ internal class CascadeSession(
             Log.w(TAG, "mic join: ${e.message}")
         }
         step("turn") { turnTaker?.reset() }
+        step("call_watch") { callWatch.stop() }
         // The mic is closed: its claim goes now, so the wake word re-arms without waiting on the chime.
         step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
         micClaimed = false
@@ -3318,6 +3628,7 @@ internal class CascadeSession(
         val chimeEndMs = if (chimed) System.currentTimeMillis() - releaseStartMs else null
         step("player") { player?.release() }
         step("route_watch") { audioRoute.stopWatching() }
+        step("earpiece") { earpiece.stop() }
         step("call_audio") { callAudio?.let { if (it.isActive) it.exit("cascade $reason") } }
         val routeReleasedMs = System.currentTimeMillis() - releaseStartMs
         LiveLatency.log(LiveLatency.TAG, CloseCue.orderLine(micReleasedMs, chimeEndMs, routeReleasedMs))
@@ -3345,6 +3656,8 @@ internal class CascadeSession(
         micJob = scope.launch(Dispatchers.IO) {
             // The car's hands-free link, when it was asked for, carries the route before capture.
             audioRoute.awaitBluetoothMic()
+            // Once the route is in: a call or a silenced capture closes the conversation ([CallPause]).
+            callWatch.start(scope)
             if (routeLogged.compareAndSet(false, true)) {
                 LiveLatency.log(LiveLatency.TAG, "open_route_ms=${System.currentTimeMillis() - openStartedAtMs}")
             }
@@ -3365,7 +3678,10 @@ internal class CascadeSession(
                     chimeDone.complete(Unit)
                     scope.launch(loop) { handOver(currentMoment(), "mic", reason, phoneFault = true) }
                 },
-                onRecording = recording,
+                onRecording = { id ->
+                    callWatch.ourCapture(id)
+                    recording()
+                },
             )
         }
     }
@@ -3375,6 +3691,8 @@ internal class CascadeSession(
      * Under [turnLock]: a backend swap, or the backlog's drain, never lands inside a feed.
      */
     private fun onMicBuffer(buf: ByteArray, n: Int) {
+        // A call came: nothing more reaches any speech-to-text, from this buffer on ([pauseForCall]).
+        if (callPaused) return
         if (micBufferSeen.compareAndSet(false, true)) {
             LiveLatency.log(LiveLatency.TAG, "open_capture_ms=${System.currentTimeMillis() - openStartedAtMs}")
         }
@@ -3403,17 +3721,42 @@ internal class CascadeSession(
         startMic(chime = true)
     }
 
-    /** Call audio for barge-in (with the Bluetooth watch), else the car's hands-free mic when there is one. */
+    /**
+     * Call audio for barge-in or the earpiece (with the Bluetooth watch), else the car's hands-free mic
+     * when there is one. Then [earpiece] follows the toggle and headset changes until release.
+     */
     private fun enterRoute(barge: Boolean, token: String) {
-        if (barge) {
-            val mode = CallAudioMode(audioManager)
-            LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter()} (cascade, $token)")
-            callAudio = mode
-            audioRoute.watchForBluetooth { onBluetoothConnected() }
+        // The earpiece only for a conversation he started by a tap in the app (EarpieceRoute's doc).
+        earpiece.begin(VoiceOutputRule.opening(inHand, fromWakeWord, opener != null, test != null))
+        val onEarpiece = earpiece.wantsEarpiece()
+        if (VoiceOutputRule.callAudio(barge, onEarpiece)) {
+            enterCallAudio(onEarpiece, token)
         } else {
             // In the car: the car's own hands-free mic, as Live did (Kevin, 2026-11-10).
             callAudio = audioRoute.enterBluetoothMic(token)
         }
+        earpiece.follow(scope, loop, { callAudio }) { enterEarpieceMidway() }
+    }
+
+    private fun enterCallAudio(onEarpiece: Boolean, token: String) {
+        val mode = CallAudioMode(audioManager)
+        LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter(onEarpiece)} (cascade, $token)")
+        callAudio = mode
+        audioRoute.watchForBluetooth { onBluetoothConnected() }
+    }
+
+    /**
+     * The toggle went to CALL while outside call audio (barge-in off): the reply or clip in flight (a
+     * filler sets only [playbackActive]) finishes on the loudspeaker, then call audio is entered and the
+     * player rebuilt on its usage, so no word is cut.
+     */
+    private suspend fun enterEarpieceMidway() {
+        while ((speaking || playbackActive) && !closing.get()) delay(MIDWAY_POLL_MS)
+        if (closing.get() || callAudio?.isActive == true) return
+        // He may have flipped back, or plugged headphones in, while the reply finished.
+        if (!earpiece.wantsEarpiece()) return
+        enterCallAudio(onEarpiece = true, token = "earpiece")
+        player?.rebuild()
     }
 
     /**
@@ -3474,6 +3817,8 @@ internal class CascadeSession(
                     .build(),
             )
             .setWillPauseWhenDucked(false)
+            // A loss to a call's capture closes the conversation ([CallWatch]); a bare loss does nothing.
+            .setOnAudioFocusChangeListener(callWatch.focusListener)
             .build()
         focus = req
         runCatching { audioManager.requestAudioFocus(req) }
@@ -3491,6 +3836,10 @@ internal class CascadeSession(
         /** The text model (design doc: fastest measured, cheapest, no scheduled price change). */
         const val MODEL = "gemini-3.5-flash-lite"
 
+        /** An early engine decision waits at most this long for the last turn's running tool (R2). */
+        private const val EARLY_WAIT_MS = 2_000L
+        private const val EARLY_POLL_MS = 50L
+
 
         /** The loop's own backstop; the controller's runner already applies each tool's real ceiling. */
         const val TOOL_BACKSTOP_MS = 47_000L
@@ -3498,6 +3847,7 @@ internal class CascadeSession(
         /** A test turn waits this long (beyond the turn models) for the open to start its first line. */
         private const val OPEN_WAIT_MS = 20_000L
         private const val TEST_POLL_MS = 50L
+        private const val MIDWAY_POLL_MS = 50L
 
 
         private const val CAPTION_CHARS = 160
@@ -3548,7 +3898,6 @@ internal class CascadeSession(
         private const val WAIT_POLL_MS = 250L
 
         /** A backchannel's audio must be in hand within this, or it is skipped (it is from memory). */
-        private const val BACKCHANNEL_FETCH_MS = 300L
         private const val PCM_BYTES_PER_SAMPLE = 2
 
         /** How long the phone's own read of today may take at open (normally well under 100 ms). */

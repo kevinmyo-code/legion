@@ -56,7 +56,7 @@ class CascadeWritesTest {
      */
     @Test
     fun `every tool and action the surface can call is classified for the done line`() {
-        val all = LiveToolbox.sourceDeclarationsForTest()
+        val all = LiveToolbox.sourceDeclarations()
         val rows = sortedMapOf<String, String>()
         for (i in 0 until all.length()) {
             val d = all.getJSONObject(i)

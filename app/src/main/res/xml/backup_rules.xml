@@ -14,6 +14,8 @@
     <exclude domain="sharedpref" path="dongle_car.xml" />
     <!-- The car link: the head unit link keys (Keystore-sealed) and its switches stay on this phone. -->
     <exclude domain="sharedpref" path="car_link.xml" />
+    <!-- Engine brain P1: the developer switch is this phone's alone, never restored onto another. -->
+    <exclude domain="sharedpref" path="engine_brain.xml" />
     <!-- ADR 0080: files a Claude task brought to the phone (a scan may be an ID). -->
     <exclude domain="file" path="claude_files/" />
     <!-- Recordings of his voice stay on the phone: never in a backup. -->

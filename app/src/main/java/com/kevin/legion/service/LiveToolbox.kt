@@ -350,7 +350,7 @@ object LiveToolbox {
      * for a folded tool that wording now reaches a router's sub-agent or nobody, and the live
      * model sees the action tool's hint instead (`LiveSurfaceTest` pins those).
      */
-    internal fun sourceDeclarationsForTest(): JSONArray {
+    internal fun sourceDeclarations(): JSONArray {
         val out = JSONArray()
         val seen = mutableSetOf<String>()
         for (arr in listOf(surfaceCandidates(), allDeclarations())) {

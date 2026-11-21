@@ -48,14 +48,17 @@ package com.kevin.legion.service.cascade
 // One object for every backchannel rule (when, which clip, the gates, its log lines); split, they drift.
 @Suppress("TooManyFunctions")
 internal object Backchannel {
-    /** After his speech ends: the end-of-speech wait (~0.7 s) is already behind him, so ~1.3 s after his last word. */
-    const val DELAY_MS = 600L
+    /**
+     * At the end-of-turn decision itself ([FillerTiming.ACK_DELAY_MS], 2026-11-21: Kevin wants the first
+     * sound at once). It was 600 ms, and when no clip played the first sound was a wait line at 1.8 s.
+     */
+    const val DELAY_MS = FillerTiming.ACK_DELAY_MS
 
     /** The latest a clip may start after his end of speech when it waits for the open's chime or cue. */
     const val MAX_START_AFTER_EOT_MS = 900L
 
     /** The task line waits this long after a backchannel's end: never two clips back to back. */
-    const val SPACING_MS = 400L
+    const val SPACING_MS = FillerTiming.SPACING_MS
 
     /** No clip twice within this many backchannels. */
     const val ROTATION = 5
@@ -95,6 +98,22 @@ internal object Backchannel {
 
     enum class Skip(val token: String) {
         NOT_HIS("not_his"), ON_CALL("on_call"), OVER_REPLY("over_reply"), QUIET("quiet"),
+        NOISE("noise"), GOODBYE("goodbye"), CRISIS("crisis"),
+    }
+
+    /**
+     * The words heard so far at end of turn, when the voice gives them then (the laptop's running
+     * transcript; null when there are none yet): the acknowledgement now plays at once, before the
+     * final transcript, so what can be told from them already keeps it silent. No words heard
+     * ([NOISE]), a stop or goodbye ([GOODBYE], the farewell is said instead), distress ([CRISIS],
+     * the character stops). With no words yet it plays; a goodbye or crisis found later cuts it.
+     */
+    fun wordsSkip(words: String?, goodbye: (String) -> Boolean, crisis: (String) -> Boolean): Skip? = when {
+        words == null -> null
+        words.isBlank() -> Skip.NOISE
+        crisis(words) -> Skip.CRISIS
+        goodbye(words) -> Skip.GOODBYE
+        else -> null
     }
 
     /** Null: play one (if one is in memory and the answer has not started). Otherwise why not. */
@@ -202,7 +221,8 @@ internal object Backchannel {
      * mode a call sets, which needs no permission and also covers a VoIP call. MODE_IN_CALL is never
      * LEGION's; MODE_IN_COMMUNICATION is LEGION's own while [ownComm]
      * ([com.kevin.legion.service.turn.CallAudioMode.ownCommActive], dumb mode's same test). If a VoIP
-     * call takes that mode while LEGION holds it too, the two cannot be told apart: that one is missed.
+     * call takes that mode while LEGION holds it too, the mode cannot tell them apart; [CallPause] reads
+     * the other signals that can (telecom, a silenced capture, a focus loss to a call's capture).
      */
     fun callOnLine(telephonyInCall: Boolean, audioMode: Int, ownComm: Boolean): Boolean =
         telephonyInCall ||
