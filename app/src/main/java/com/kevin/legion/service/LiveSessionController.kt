@@ -1422,7 +1422,7 @@ class LiveSessionController(context: Context) {
             // raises no error notice and drops the resume handle; this is the part the person sees
             // and hears, so a conversation never ends by silently disappearing.
             is LiveEvent.FollowUpExpired -> {
-                playClosingTone()
+                playCloseChime()
                 CompanionPhase.showNotice("Conversation closed")
             }
             is LiveEvent.SpeakingStarted -> {
@@ -1683,18 +1683,37 @@ class LiveSessionController(context: Context) {
     @Volatile private var dismissAfterTurn = false
 
     /**
-     * Ticket 17: the short tone that accompanies "Conversation closed". There was no earcon in the
-     * codebase to reuse, so this is the platform's own ACK tone, ~150 ms, on the music stream at
-     * low volume. Best-effort: a ToneGenerator that cannot be created is a missing beep, never a
-     * reason to fail the close.
+     * Ticket 17's close sound on the Live path, which is now the cascade's closing chime
+     * ([ListenCue.closeChimePcm]; 2026-11-20: one closing sound, the chime, on every path). It was
+     * the platform's ACK tone. Live is retired ([com.kevin.legion.service.cascade.VoiceEngineSettings.LIVE_RETIRED]),
+     * so this runs only on a rollback. Best-effort: a track that cannot be made is a missing chime,
+     * never a reason to fail the close.
      */
-    private fun playClosingTone() {
+    private fun playCloseChime() {
+        val pcm = ListenCue.closeChimePcm()
         runCatching {
-            val tone = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, CLOSING_TONE_VOLUME)
-            tone.startTone(android.media.ToneGenerator.TONE_PROP_ACK, CLOSING_TONE_MS)
+            val track = android.media.AudioTrack.Builder()
+                .setAudioAttributes(
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build(),
+                )
+                .setAudioFormat(
+                    android.media.AudioFormat.Builder()
+                        .setSampleRate(ListenCue.SAMPLE_RATE)
+                        .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO)
+                        .build(),
+                )
+                .setTransferMode(android.media.AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(pcm.size)
+                .build()
+            track.write(pcm, 0, pcm.size)
+            track.play()
             scope.launch {
-                delay(CLOSING_TONE_RELEASE_DELAY_MS)
-                tone.release()
+                delay(ListenCue.durationMs(pcm) + CLOSE_CHIME_RELEASE_PAD_MS)
+                track.release()
             }
         }
     }
@@ -2095,11 +2114,8 @@ class LiveSessionController(context: Context) {
         internal const val END_CONVERSATION_INSTRUCTION =
             "Sign off now with one dry line in your own register, about this conversation, then " +
                 "stop. The conversation ends when you finish speaking."
-        // Ticket 17's closing tone: ToneGenerator volume (0-100), length, and how long to wait
-        // before releasing the generator.
-        private const val CLOSING_TONE_VOLUME = 50
-        private const val CLOSING_TONE_MS = 150
-        private const val CLOSING_TONE_RELEASE_DELAY_MS = 500L
+        // How long past the closing chime's end its track is kept before release.
+        private const val CLOSE_CHIME_RELEASE_PAD_MS = 300L
 
         /**
          * The sentence a [VoiceRefusal] puts in front of the person who asked.
