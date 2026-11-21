@@ -22,7 +22,7 @@ credential to Google.
 - **The tools are the web tool door's**, called the way `POST /api/assistant/tool` calls them
   (`WebDoor` below): `tools_for(user)` declares them (a recruiter's `RECRUITER_TOOLS`, narrowed
   tables, its own procedures and diagrams), `refusal_for` fences each call (default deny for a
-  recruiter), `recruiter_only_tool` / `run_engine_tool` runs it under the caller's own
+  recruiter), `off_registry_tool` / `run_engine_tool` runs it under the caller's own
   `visible()`, every call is audited (`AssistantCall`) and written to the conversation record, and
   a card goes to the screen, never to the model. So a recruiter's fence on this path is the Live
   path's fence, the same code. **One addition, for every role: `end_conversation`** (spec 18), a
@@ -150,7 +150,7 @@ from agents.voice.stage import (  # noqa: F401 - prices read as cascade.X
 )
 from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
-from assistant.surface import recruiter_only_tool, refusal_for, tools_for
+from assistant.surface import off_registry_tool, refusal_for, tools_for
 from demo import suggestions
 from demo.budget import tester_visit
 from demo.tools import spoken_for as about_kevin_spoken_for
@@ -494,7 +494,7 @@ class WebDoor:
         if self.not_for_me and self._writes(name):
             return False
         return (
-            recruiter_only_tool(name, self.user) is not None
+            off_registry_tool(name, self.user) is not None
             or refusal_for(name, self.user, {}) is None
         )
 
@@ -566,7 +566,7 @@ class WebDoor:
                 ok, outcome, text = False, Outcome.REFUSED, refusal
                 guard = "recruiter" if self.recruiter else "not_allowed"
             else:
-                only_here = recruiter_only_tool(name, self.user)
+                only_here = off_registry_tool(name, self.user)
                 if only_here is not None and name == "about_kevin":
                     only_here = self.tools()[name]
                 if only_here is not None:

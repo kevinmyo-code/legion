@@ -261,10 +261,10 @@ def recruiter_tools():
     return [_recruiter_tool(_any_tool(name)) for name in RECRUITER_TOOLS]
 
 
-def recruiter_only_tool(name: str, user):
-    """The recruiter-only tool `name`, when `user` is a recruiter and it is
-    one; else None, and the door runs the registry's tool by name. Checked
-    after `refusal_for`, so a member never reaches here with one."""
+def off_registry_tool(name: str, user):
+    """The tool `name` this caller may run that is kept OUT of the registry, or None, and the
+    door runs the registry's tool by name: a recruiter-only tool for a recruiter. Checked after
+    `refusal_for`, so a caller never reaches here with one it may not run."""
     if is_recruiter(user):
         return RECRUITER_ONLY_TOOLS.get(name)
     return None
