@@ -28,6 +28,15 @@ def test_out_of_range_values_stop_the_launcher(eot, maybe):
         R.tuning_env(eot, maybe)
 
 
+def test_keep_warm_flag_passes_through_only_when_given_and_is_bounded():
+    assert R.keep_warm_args(None) == [], "unset: the service's own default"
+    assert R.keep_warm_args(0) == ["--keep-warm-s", "0"], "0 turns it off"
+    assert R.keep_warm_args(30) == ["--keep-warm-s", "30"]
+    for bad in (-1, 5, 7200):
+        with pytest.raises(SystemExit):
+            R.keep_warm_args(bad)
+
+
 def test_tts_codebooks_flag_is_off_by_default_and_bounded():
     assert "LEGION_VOICE_KYUTAI_TTS_NQ" not in R.tuning_env(None, None)
     assert R.tuning_env(None, None, 16) == {"LEGION_VOICE_KYUTAI_TTS_NQ": "16"}

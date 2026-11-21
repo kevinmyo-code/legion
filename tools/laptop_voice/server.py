@@ -30,8 +30,10 @@ from aiohttp import WSMsgType, web
 
 try:
     from . import engines as E
+    from . import keep_warm as W
 except ImportError:  # run as a script
     import engines as E  # type: ignore
+    import keep_warm as W  # type: ignore
 
 PROTOCOL = 1
 VERSION = "0.1.0"
@@ -60,6 +62,8 @@ TOKEN_FILE_DEFAULT = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expandu
 log = logging.getLogger("laptop_voice")
 SVC = web.AppKey("svc", object)
 SAMPLER = web.AppKey("sampler", asyncio.Task)
+KEEP_WARM = web.AppKey("keep_warm", asyncio.Task)
+KEEP_WARM_S_DEFAULT = 45.0
 
 
 def _timed(fn, *args):
@@ -118,6 +122,8 @@ class Service:
     sample: bool = True  # tests switch off host sampling so the real machine's RAM cannot flip them busy
     auth_fails: list = field(default_factory=list)
     locked_until: float = 0.0
+    keep_warm_s: float = 0.0  # 0 = off; main() turns it on (tests stay free of background passes)
+    last_conversation: float = 0.0  # monotonic time a conversation last started or ended (keep-warm)
 
     def strike(self) -> None:
         self.slow_strikes += 1
@@ -699,6 +705,7 @@ async def conversation(request: web.Request) -> web.StreamResponse:
     refused = await svc.gate(request)
     if refused is not None:
         return refused
+    svc.last_conversation = time.monotonic()  # starting: keep-warm stands aside from here
     ws = web.WebSocketResponse(heartbeat=30, max_msg_size=MAX_FRAME_BYTES)
     await ws.prepare(request)
     if svc.status() != "ready" or svc.connections >= svc.max_conversations:
@@ -709,6 +716,7 @@ async def conversation(request: web.Request) -> web.StreamResponse:
         await Conversation(svc, ws).run()
     finally:
         svc.connections -= 1
+        svc.last_conversation = time.monotonic()
         log_vram()
     return ws
 
@@ -723,10 +731,16 @@ def make_app(svc: Service) -> web.Application:
     async def start_bg(app_: web.Application):
         if svc.sample:
             app_[SAMPLER] = asyncio.create_task(sample_host(svc))
+        if svc.keep_warm_s > 0:
+            app_[KEEP_WARM] = asyncio.create_task(W.KeepWarm(svc, svc.keep_warm_s).run())
 
     async def stop_bg(app_: web.Application):
         if SAMPLER in app_:
             app_[SAMPLER].cancel()
+        if KEEP_WARM in app_:
+            app_[KEEP_WARM].cancel()
+            # A pass already on a worker thread finishes there and releases its lock; only the wait ends.
+            await asyncio.gather(app_[KEEP_WARM], return_exceptions=True)
 
     app.on_startup.append(start_bg)
     app.on_cleanup.append(stop_bg)
@@ -747,6 +761,8 @@ def main() -> None:
     p.add_argument("--stt", default=os.environ.get("LEGION_VOICE_STT", "whisper"),
                    choices=["whisper", "parakeet", "kyutai", "fake"])
     p.add_argument("--tts", default=os.environ.get("LEGION_VOICE_TTS", "kokoro"), choices=["kokoro", "kyutai", "fake"])
+    p.add_argument("--keep-warm-s", type=float, default=KEEP_WARM_S_DEFAULT,
+                   help="while no conversation is open, a tiny pass through both models this often (0 = off)")
     a = p.parse_args()
     addr = ipaddress.ip_address(a.host)
     if addr.is_unspecified or addr.is_multicast:
@@ -763,15 +779,14 @@ def main() -> None:
     t0 = time.perf_counter()
     stt, tts = build_engines(a.stt, a.tts)
     log.info("models loaded in %.1f s: stt=%s tts=%s", time.perf_counter() - t0, stt.name, tts.name)
-    # warm both paths so the first conversation does not pay CUDA start-up
-    stt.transcribe(np.zeros(E.STT_RATE, dtype=np.int16), "en")
-    for _ in tts.synth("Ready.", tts.default_voice, 1.0):
-        pass
+    # warm both paths so the first conversation does not pay CUDA start-up (keep-warm repeats this pass)
+    W.stt_pass(stt, W.STARTUP_STT_MS)
+    W.tts_pass(tts)
     log_vram(device=True)
     if not addr.is_loopback:
         log.warning("bound to %s (not loopback): only do this for the private link interface", a.host)
-    web.run_app(make_app(Service(stt=stt, tts=tts, token=token)), host=a.host, port=a.port, print=None,
-                access_log=None)
+    svc = Service(stt=stt, tts=tts, token=token, keep_warm_s=max(0.0, a.keep_warm_s))
+    web.run_app(make_app(svc), host=a.host, port=a.port, print=None, access_log=None)
 
 
 if __name__ == "__main__":

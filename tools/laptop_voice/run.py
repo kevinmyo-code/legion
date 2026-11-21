@@ -87,6 +87,16 @@ def tuning_env(eot_threshold: float | None, maybe_threshold: float | None, tts_n
     return env
 
 
+def keep_warm_args(seconds: float | None) -> list[str]:
+    """The service's keep-warm interval, passed on only when given (unset: the service default, 45 s).
+    0 turns it off; otherwise 10 s to 1 hour."""
+    if seconds is None:
+        return []
+    if seconds != 0 and not 10 <= seconds <= 3600:
+        raise SystemExit("--keep-warm-s must be 0 (off) or 10 to 3600")
+    return ["--keep-warm-s", f"{seconds:g}"]
+
+
 # ---- Windows Job Object (memory cap, kill on close) ----
 class IO_COUNTERS(ctypes.Structure):
     _fields_ = [(n, ctypes.c_ulonglong) for n in ("ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
@@ -151,6 +161,9 @@ def main() -> None:
     p.add_argument("--maybe-threshold", type=float, default=None,
                    help="Kyutai: also send stt.maybe_end at this lower pause probability, so the phone can "
                         "start drafting earlier (default: only at the end-of-turn crossing, before the flush)")
+    p.add_argument("--keep-warm-s", type=float, default=None,
+                   help="while no conversation is open, a tiny pass through both models this often, so the "
+                        "first request after a long idle is fast (default 45; 0 = off)")
     a = p.parse_args()
     if a.command == "token-path":
         print(ensure_token())
@@ -164,7 +177,8 @@ def main() -> None:
     # -I ignores PYTHON* variables, the user site and the cwd; a tiny bootstrap puts tools/ on the path.
     cmd = [sys.executable, "-I", "-c",
            "import sys; sys.path.insert(0, sys.argv[1]); from laptop_voice import server; sys.argv = sys.argv[1:]; server.main()",
-           str(HERE.parent), "--host", a.host, "--port", a.port, "--stt", a.stt, "--tts", a.tts]
+           str(HERE.parent), "--host", a.host, "--port", a.port, "--stt", a.stt, "--tts", a.tts,
+           *keep_warm_args(a.keep_warm_s)]
     env = child_env(a.allow_download, a.hf_home)
     env.update(tuning_env(a.eot_threshold, a.maybe_threshold, a.tts_nq))
     if os.name == "nt":

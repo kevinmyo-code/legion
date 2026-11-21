@@ -69,6 +69,7 @@ class KyutaiStt(core.KyutaiStt):
     maybe_end = True          # sends stt.maybe_end before the end-of-turn flush (contract 4b, 2026-11-15)
     max_sessions = 1          # batch size 1: one live stream at a time
     languages = "en,fr"
+    gpu_lock = core.GPU_LOCK  # keep-warm try-acquires this (keep_warm.py)
 
     def __init__(self, *a, **kw):
         # tuning knobs from the launcher (numbers only): pause threshold and extra flush
@@ -160,6 +161,7 @@ class _TextStream:
 class KyutaiTts(core.KyutaiTts):
     text_streaming = True
     max_sessions = 1
+    gpu_lock = core.GPU_LOCK  # keep-warm try-acquires this (keep_warm.py)
 
     def __init__(self, *a, **kw):
         # Codebooks per 80 ms frame (launcher --tts-nq, 2026-11-15). Unset: the model's full 32. Fewer

@@ -95,6 +95,14 @@ def test_no_maybe_before_any_words():
     assert ("eot_pending", "hi") in ev
 
 
+def test_both_kyutai_engines_name_the_one_gpu_lock_for_keep_warm():
+    """Keep-warm try-acquires engine.gpu_lock; a missing or different lock would let a warm pass run
+    beside a real model step (the CUDA graph capture crash GPU_LOCK exists to prevent)."""
+    from laptop_voice import kyutai as K
+    assert K.KyutaiStt.gpu_lock is core.GPU_LOCK
+    assert K.KyutaiTts.gpu_lock is core.GPU_LOCK
+
+
 def test_tts_codebooks_come_from_the_launcher_flag_only_when_set(monkeypatch):
     from laptop_voice import kyutai as K
     seen = {}
