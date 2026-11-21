@@ -7,13 +7,11 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -31,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import com.kevin.legion.R
 import com.kevin.legion.service.TelephonyController
 import com.kevin.legion.service.turn.CallAudioMode
-import com.kevin.legion.service.turn.OutputChoice
 import com.kevin.legion.service.turn.OutputToggle
 import com.kevin.legion.service.turn.VoiceOutlet
 import com.kevin.legion.service.turn.VoiceOutput
@@ -41,56 +38,32 @@ import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.TypesetType
 
 /**
- * The orb with the SPEAKER / CALL toggle at the end of its row: the same height as the orb alone, so
- * [FitTiers] lays the page out exactly as before. Null [output] (a tablet: no earpiece) draws the orb only.
- */
-@Composable
-internal fun OrbWithOutput(output: OutputToggle?, onFlip: () -> Unit, orb: @Composable () -> Unit) {
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        orb()
-        if (output != null) OutputToggleButton(output, onFlip, Modifier.align(Alignment.CenterEnd))
-    }
-}
-
-/**
- * Where Alfred's voice comes out, as an icon over a word: "Speaker" or "Call" (the phone held to the
- * ear). A tap flips it, mid-conversation too. While headphones, Bluetooth or a phone call decide the
- * route it says which and does not respond.
+ * Where Alfred's voice comes out, as an icon and a word: "Speaker", "Call" (the phone held to the
+ * ear), or what actually holds the route. A tap flips it, mid-conversation too. While headphones,
+ * Bluetooth or a phone call decide the route it says which and does not respond. It sits in the line
+ * under the orb, 48dp tall like "Type", so it never covers the orb and changes no fit tier.
  */
 @Composable
 internal fun OutputToggleButton(toggle: OutputToggle, onFlip: () -> Unit, modifier: Modifier = Modifier) {
     val ink = if (toggle.enabled) SoftColors.text2 else SoftColors.text3
-    val description = outputDescription(toggle)
-    Column(
-        modifier.widthIn(min = TapTarget).heightIn(min = TapTarget)
+    Row(
+        modifier.heightIn(min = TapTarget)
             .clickable(enabled = toggle.enabled, role = Role.Button, onClick = onFlip)
-            .semantics { contentDescription = description }
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .semantics { contentDescription = toggle.detail }
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         val icon = if (toggle.outlet == VoiceOutlet.EARPIECE) R.drawable.ms_smartphone else R.drawable.ms_nav_unmute
         MsIcon(icon, contentDescription = null, tint = ink, size = 20.dp)
+        Spacer(Modifier.width(4.dp))
         Text(toggle.label, style = TypesetType.small, color = ink, maxLines = 1)
     }
 }
 
-/** What TalkBack says: where the voice is now and what a tap does, or what holds the route. */
-internal fun outputDescription(t: OutputToggle): String = when (t.outlet) {
-    VoiceOutlet.LOUDSPEAKER -> "Alfred's voice on the speaker. Tap for call mode, phone at your ear"
-    VoiceOutlet.EARPIECE -> "Alfred's voice on the earpiece, call mode. Tap for the speaker"
-    VoiceOutlet.WIRED -> "Alfred's voice on headphones. Speaker or call mode applies when they are unplugged"
-    VoiceOutlet.BLUETOOTH -> "Alfred's voice on Bluetooth. Speaker or call mode applies when it disconnects"
-    VoiceOutlet.PHONE_CALL -> "On a phone call. Speaker or call mode applies after it"
-}
-
-/** The other choice: what a tap on the toggle saves. */
-internal fun flipped(choice: OutputChoice): OutputChoice =
-    if (choice == OutputChoice.SPEAKER) OutputChoice.CALL else OutputChoice.SPEAKER
-
 /**
- * The toggle's live state: the saved choice, what is connected (re-read on every device change) and
- * the call state (re-read with [key], the voice phase). Null on a phone with no earpiece.
+ * The toggle's live state: the saved choice, what is connected (re-read on every device change), the
+ * call state (re-read with [key], the voice phase) and what an open conversation actually does
+ * ([VoiceOutput.live], the platform's readback). Null on a phone with no earpiece.
  */
 @Composable
 internal fun rememberOutputToggle(key: Any?): OutputToggle? {
@@ -98,6 +71,7 @@ internal fun rememberOutputToggle(key: Any?): OutputToggle? {
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     remember { VoiceOutput.choice(context) }
     val choice by VoiceOutput.flow.collectAsState()
+    val live by VoiceOutput.live.collectAsState()
     val devices = remember { mutableIntStateOf(0) }
     DisposableEffect(audio) {
         val watch = object : AudioDeviceCallback() {
@@ -108,12 +82,13 @@ internal fun rememberOutputToggle(key: Any?): OutputToggle? {
         onDispose { runCatching { audio.unregisterAudioDeviceCallback(watch) } }
     }
     val tick = devices.intValue
-    return remember(choice, tick, key) {
+    return remember(choice, live, tick, key) {
         VoiceOutputRule.toggle(
             choice,
             CallAudioMode.route(audio),
             TelephonyController.isInCall,
             VoiceOutput.hasEarpiece(audio),
+            live,
         )
     }
 }

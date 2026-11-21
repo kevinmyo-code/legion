@@ -323,22 +323,25 @@ private fun Answering(
         Column(Modifier.fillMaxSize()) {
             Masthead(answering = true, night, actions)
             Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                OrbWithOutput(output, actions.onFlipOutput) {
-                    Box(
-                        Modifier.size(orb).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
-                            .semantics { contentDescription = "Talk to Alfred" },
-                    ) {
-                        TypesetOrb(phase, Modifier.size(orb))
-                    }
+                Box(
+                    Modifier.size(orb).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
+                        .semantics { contentDescription = "Talk to Alfred" },
+                ) {
+                    TypesetOrb(phase, Modifier.size(orb))
                 }
-                Text(
-                    status,
-                    style = TypesetType.small.copy(fontWeight = TypesetType.bodyStrong.fontWeight),
-                    color = SoftColors.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
+                // The speaker / call toggle sits in the line under the orb, never over it.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        status,
+                        style = TypesetType.small.copy(fontWeight = TypesetType.bodyStrong.fontWeight),
+                        color = SoftColors.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    output?.let { OutputToggleButton(it, actions.onFlipOutput, Modifier.padding(start = 12.dp)) }
+                }
             }
             CardStage(
                 cards,
@@ -378,16 +381,16 @@ private fun Voice(
 ) {
     Column(Modifier.fillMaxWidth().padding(top = tier.gap), horizontalAlignment = Alignment.CenterHorizontally) {
         val size: Dp = orb
-        // Not in the measuring passes: the toggle is never taller than the orb, and it would be one
-        // more copy of the same control in the semantics tree.
-        OrbWithOutput(output.takeUnless { measuring }, actions.onFlipOutput) {
-            Box(
-                Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
-                    .semantics { contentDescription = "Talk to Alfred" },
-            ) {
-                if (!measuring) TypesetOrb(phase, Modifier.size(size))
-            }
+        Box(
+            Modifier.size(size).clip(CircleShape).clickable(role = Role.Button, onClick = actions.onTalk)
+                .semantics { contentDescription = "Talk to Alfred" },
+        ) {
+            if (!measuring) TypesetOrb(phase, Modifier.size(size))
         }
+        // The speaker / call toggle sits beside "Type" under the orb: never over the orb, and no taller
+        // than "Type" (both 48dp), so no fit tier changes. Left out of the measuring passes, which stay
+        // in the semantics tree and would hold a second copy of the control.
+        val toggle = output.takeUnless { measuring }
         if (tier.statusOwnLine) {
             Text(
                 status,
@@ -397,7 +400,10 @@ private fun Voice(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )
-            TypeButton(actions)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TypeButton(actions)
+                toggle?.let { OutputToggleButton(it, actions.onFlipOutput, Modifier.padding(start = 12.dp)) }
+            }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -409,6 +415,7 @@ private fun Voice(
                     modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp),
                 )
                 TypeButton(actions)
+                toggle?.let { OutputToggleButton(it, actions.onFlipOutput, Modifier.padding(start = 12.dp)) }
             }
         }
     }
