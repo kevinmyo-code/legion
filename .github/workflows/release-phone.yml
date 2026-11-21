@@ -1,130 +1,147 @@
-# Build, sign and publish a phone release from GitHub, so an update reaches the phone with no
-# laptop (Kevin, 2026-11-13: "yes to all4"). workflow_dispatch ONLY: nothing releases on a push.
-# Kevin clicks "Run workflow" (or Claude starts it), writes the notes the phone will show, and leaves
-# "dry run" ticked for a build plus every check, or unticks it to publish.
+# Build, check and publish a phone release from GitHub (cloud-builds plan step 5, 2026-11-20; blind
+# review fixes B1-B3 the same day). workflow_dispatch ONLY: nothing builds, signs or publishes on a
+# push, a pull request or a fork. Each mode is ONE job in the `production` environment, so each run asks
+# for one approval tap, and the run's title says which mode and which commit it is.
 #
-# What it does, in order:
-#   1. builds `assembleFast` with NO Gemini or AirNow key baked in. The Mapbox `pk.` token is public
-#      by design and is passed in from the MAPBOX_ACCESS_TOKEN variable so navigation keeps working.
-#      The phone uses the Gemini key pasted in Settings (GeminiKeyProvider prefers it).
-#   2. signs it with the key in PHONE_DEBUG_KEYSTORE_B64: the same debug key as the laptop's `fast`
-#      builds, or the phone refuses the update (Android only installs an update signed by the key
-#      the installed app was signed with).
-#   3. runs `tools/release_apk.py`, the same tool as the laptop: signer pin
-#      (`deploy/release/signer.sha256`), package name, no baked keys, versionCode higher than the
-#      newest release, sha256; then uploads to the APK bucket and records the release on the engine.
-#      The phone then offers "Install" on its next check (alfred-ota, ADR 0072).
-#   4. keeps NO run artifact: the repo is public, so an artifact is downloadable by any signed-in
-#      GitHub user, and the APK carries the openWakeWord models (CC BY-NC-SA, not redistributed).
+# DRY RUN (dry_run ticked, the default), job `build`:
+#   - builds ONLY the commit this run was dispatched on: `sha` must equal the dev tip at dispatch
+#     (GITHUB_SHA). So the workflow file, the scripts that check and the code that is built are one
+#     reviewed dev commit (review B1 (a)+(b): no ship/** or other commit is built for now).
+#   - fetches the speaker model app/speaker-model.pin names (release_ok=yes since the owner's phone
+#     test on 2026-11-20: the OFFICIAL file from its public release URL, checked by bytes and sha256,
+#     no sign-in), checks the committed models (verifyModels), checks the keystore against deploy/release/signer.sha256 before Gradle sees
+#     it, builds `assembleFast` with --no-daemon and stops any daemon after, then checks the APK
+#     (.github/scripts/check_phone_apk.py: pinned models byte for byte, speaker sha, Mapbox pk. token and
+#     no sk. token, versionName ends with the sha; release_apk.py --dry-run: signer, package, no baked
+#     keys) and keeps it plus its sha256 as the artifact `phone-apk-<sha>` (1 day). It prints
+#     `PHONE_APK_SHA256=<hash>` in its log: the publish compares against that line.
+#   - can reach: the debug keystore only. No OIDC token (no `id-token` permission), no Google login, no
+#     engine token. Uploads nothing to the bucket, records nothing on the engine. (If the pin ever goes
+#     back to release_ok=no, the interim file needs the bucket and this job would need id-token again:
+#     fetch_speaker_model.sh then fails closed here, with no gcloud login.)
+#     The versionCode-above-newest check needs the engine token, so it runs in the publish (and in the
+#     laptop ship template), not here.
 #
-# Fixed 2026-11-15 after the first dry run (43688052490) built an APK signed by a fresh runner key
-# (71c06839...) instead of the pinned debug key, and without the gitignored openWakeWord models:
-#   - the keystore's fingerprint is checked against deploy/release/signer.sha256 before building,
-#     and Gradle is handed it explicitly (android.injected.signing.*), so AGP cannot fall back to a
-#     key of its own;
-#   - the three models come from gs://$LEGION_APK_BUCKET/build-assets/openwakeword/ (private), so
-#     the Google login now runs for dry runs too.
+# PUBLISH (dry_run unticked, `dry_run_id` required), job `publish`:
+#   - checks out dev (this run's ref) only and never runs the built commit's tree: release_apk.py and
+#     check_phone_apk.py come from dev; the built commit's model manifest and speaker pin are read as data
+#     with `git show <sha>:...`.
+#   - verifies through the API that run `dry_run_id` is this workflow file, event workflow_dispatch, head
+#     repository this repo, branch dev, head sha == `sha`, conclusion success; reads the APK sha256 from
+#     that run's `build` job log (PHONE_APK_SHA256=); downloads `phone-apk-<sha>` from that run only;
+#     the APK's sha256 must equal the logged one. Then the checks again, the newest release (GET), and
+#     tools/release_apk.py uploads and records it.
+#   - can reach: the engine owner token, the OIDC token (bucket upload) and the artifact. No keystore,
+#     no Gradle, no code from the built commit.
 #
-# One-time setup (environment `production`, the same one ship.yml uses; deploy/cloudrun/README.md
-# "Shipping from GitHub" and `deploy/cloudrun/github_setup.sh` do the Google side):
-#   variables: GCP_WIF_PROVIDER, GCP_SHIP_SERVICE_ACCOUNT, LEGION_ENGINE_URL, LEGION_APK_BUCKET,
-#              MAPBOX_ACCESS_TOKEN (the pk. token from the laptop's local.properties)
-#   secret PHONE_DEBUG_KEYSTORE_B64, on the laptop (PowerShell):
-#       [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\.android\debug.keystore")) | Set-Clipboard
-#   secret LEGION_ENGINE_TOKEN, an owner device token named for this job, minted once from any shell
-#   (it prints the token once; paste it into the secret and nowhere else):
-#       read -rp "email: " E; read -rsp "password: " P; echo
-#       curl -sS -X POST "$URL/api/auth/login" -H 'Content-Type: application/json' \
-#         -d "{\"email\":\"$E\",\"password\":\"$P\",\"device_name\":\"GitHub release-phone\"}"
-#   Revoke it any time from the web's devices list; the next run then fails at the engine step.
+# Setup (environment `production`; deploy/cloudrun/github_setup.sh does the Google side), unchanged:
+# variables GCP_WIF_PROVIDER, GCP_SHIP_SERVICE_ACCOUNT, LEGION_ENGINE_URL, LEGION_APK_BUCKET,
+# MAPBOX_ACCESS_TOKEN; secrets PHONE_DEBUG_KEYSTORE_B64, LEGION_ENGINE_TOKEN.
+# Third-party actions are pinned to full commit shas (the tag they had on 2026-11-20 in the comment).
+#
+# The artifact is public to signed-in GitHub users for its 1 day: it holds the committed models, the
+# official speaker model (Apache-2.0, notice and licence text inside) and the public Mapbox pk. token;
+# no key. A signed APK does not reveal the signing key.
 name: Release phone
+run-name: "Release phone ${{ inputs.dry_run && 'DRY RUN' || 'PUBLISH' }} ${{ inputs.sha }}${{ !inputs.dry_run && format(' from dry run {0}', inputs.dry_run_id) || '' }}"
 
 on:
   workflow_dispatch:
     inputs:
-      notes:
-        description: "What the phone shows in the update offer"
+      sha:
+        description: "Commit to build: the current dev tip (full 40-hex sha)"
         required: true
         type: string
       dry_run:
-        description: "Dry run: build and check everything, publish nothing"
+        description: "Dry run: build, check, keep the APK as an artifact; publish nothing"
         required: true
         default: true
         type: boolean
+      dry_run_id:
+        description: "Publish only: the run id of the successful dry run of this sha"
+        required: false
+        default: ""
+        type: string
+      notes:
+        description: "Publish only: what the phone shows in the update offer"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
-  id-token: write   # the OIDC token Workload Identity Federation exchanges
 
 concurrency:
   group: release-phone
   cancel-in-progress: false
 
 jobs:
-  release:
+  build:
+    if: inputs.dry_run
     runs-on: ubuntu-latest
-    environment: production   # its protection rules (required reviewer) apply here too
+    environment: production
     timeout-minutes: 60
+    permissions:
+      contents: read
     env:
       JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
+      SHA: ${{ inputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Build only the commit this run was dispatched on (dev tip)
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters. Nothing was built."; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF). Nothing was built."; exit 1; }
+          [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
+          [ "$SHA" = "$GITHUB_SHA" ] || { echo "::error::sha must be the dev tip this run was dispatched on ($GITHUB_SHA). Nothing was built."; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Checkout is the dispatched commit
+        run: '[ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "::error::checkout is not at $SHA"; exit 1; }'
+
+      - name: Speaker model (the official file from its public release URL; a missing or wrong one stops here)
+        run: bash .github/scripts/fetch_speaker_model.sh --install
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # local.properties is gitignored; the runner ships the Android SDK. Only sdk.dir goes in, so
-      # no Gemini or AirNow key can be baked.
+      # local.properties is gitignored; the runner ships the Android SDK. Only sdk.dir goes in, so no
+      # Gemini or AirNow key can be baked.
       - name: Point local.properties at the runner's SDK
         run: |
           set -euo pipefail
           sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
           echo "sdk.dir=${sdk}" > local.properties
+          chmod +x gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4 (v4.4.3)
+        with:
+          cache-read-only: true
+
+      - name: Committed models match app/models.sha256
+        run: ./gradlew :app:verifyModels --no-daemon
 
       - name: Signing key
         env:
           KEYSTORE_B64: ${{ secrets.PHONE_DEBUG_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
-          [ -n "$KEYSTORE_B64" ] || { echo "::error::Secret PHONE_DEBUG_KEYSTORE_B64 is not set. Nothing was built or published; see this file's header."; exit 1; }
+          [ -n "$KEYSTORE_B64" ] || { echo "::error::Secret PHONE_DEBUG_KEYSTORE_B64 is not set. Nothing was built."; exit 1; }
           mkdir -p "$HOME/.android"
+          umask 077
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
           # The debug key's passwords are Android's public defaults; only the key itself is secret.
           got=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey \
             | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | tr -d ':' | tr 'A-F' 'a-f')
           want=$(tr -d '[:space:]' < deploy/release/signer.sha256)
-          [ "$got" = "$want" ] || { echo "::error::The keystore in PHONE_DEBUG_KEYSTORE_B64 is not the pinned key (got ${got:0:12}..., want ${want:0:12}...). Nothing was built or published."; exit 1; }
+          [ "$got" = "$want" ] || { echo "::error::The keystore is not the pinned key (got ${got:0:12}..., want ${want:0:12}...). Nothing was built."; exit 1; }
           echo "signing key matches deploy/release/signer.sha256"
-
-      - name: Make the Gradle wrapper executable
-        run: chmod +x gradlew
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: true
-
-      - uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-
-      - name: Wake word models (gitignored; from the private APK bucket)
-        env:
-          BUCKET: ${{ vars.LEGION_APK_BUCKET }}
-        run: |
-          set -euo pipefail
-          dst=app/src/main/assets/openwakeword
-          gcloud storage cp "gs://${BUCKET}/build-assets/openwakeword/*.onnx" "$dst/"
-          n=$(ls "$dst"/*.onnx | wc -l)
-          [ "$n" -eq 3 ] || { echo "::error::Expected 3 openWakeWord models in gs://${BUCKET}/build-assets/openwakeword/, got $n. Nothing was built or published."; exit 1; }
-          ls -l "$dst"
 
       - name: Build the fast APK
         env:
@@ -142,26 +159,146 @@ jobs:
             echo "::warning::MAPBOX_ACCESS_TOKEN is not set: navigation will say it is not set up unless a token is pasted on the phone."
           fi
           ./gradlew "${args[@]}"
-          ls -l app/build/outputs/apk/fast/
+          mkdir -p out
+          cp app/build/outputs/apk/fast/app-fast.apk "out/legion-phone-${SHA}.apk"
 
-      - uses: actions/setup-python@v5
+      - name: Forget the signing key; stop anything Gradle left running
+        if: always()
+        run: |
+          rm -f "$HOME/.android/debug.keystore"
+          ./gradlew --stop >/dev/null 2>&1 || true
+          pkill -f 'GradleDaemon|KotlinCompileDaemon' || true
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
-      - name: Check and publish (tools/release_apk.py)
+      - name: APK checks (models, speaker, Mapbox token, version name)
+        run: python .github/scripts/check_phone_apk.py --apk "out/legion-phone-${SHA}.apk" --sha "$SHA"
+
+      - name: Signer pin, package, no baked keys (release_apk.py --dry-run; nothing uploaded)
+        run: python tools/release_apk.py --app phone --apk "out/legion-phone-${SHA}.apk" --notes "dry run" --dry-run
+
+      - name: The APK's sha256 (the publish compares against this log line)
+        run: |
+          set -euo pipefail
+          h=$(sha256sum "out/legion-phone-${SHA}.apk" | cut -c1-64)
+          echo "$h  legion-phone-${SHA}.apk" > "out/legion-phone-${SHA}.apk.sha256"
+          echo "PHONE_APK_SHA256=$h"
+          echo "Dry run of \`$SHA\`: APK sha256 \`$h\`. Publish with dry_run_id=$GITHUB_RUN_ID." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phone-apk-${{ inputs.sha }}
+          path: |
+            out/legion-phone-${{ inputs.sha }}.apk
+            out/legion-phone-${{ inputs.sha }}.apk.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read     # read the dry run, its log and its artifact
+      id-token: write   # the bucket upload
+    env:
+      SHA: ${{ inputs.sha }}
+      DRY_RUN_ID: ${{ inputs.dry_run_id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Inputs and where this run comes from
         env:
           NOTES: ${{ inputs.notes }}
-          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters. Nothing was published."; exit 1; }
+          [[ "$DRY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::dry_run_id must be the numeric run id of the dry run. Nothing was published."; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF). Nothing was published."; exit 1; }
+          [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
+          [ -n "${NOTES// /}" ] || { echo "::error::A publish needs notes. Nothing was published."; exit 1; }
+
+      # dev only: the tools and checks come from here, never from the built commit's tree.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: sha is on dev
+        run: |
+          git merge-base --is-ancestor "$SHA" HEAD || { echo "::error::$SHA is not on dev. Nothing was published."; exit 1; }
+
+      - name: The named dry run is a dispatch of this workflow, from this repo, of this sha, and passed
+        run: |
+          set -euo pipefail
+          read -r path event repo branch head concl < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID" \
+            --jq '[.path, .event, .head_repository.full_name, .head_branch, .head_sha, .conclusion] | @tsv')
+          [ "$path" = .github/workflows/release-phone.yml ] || { echo "::error::run $DRY_RUN_ID is $path, not release-phone.yml"; exit 1; }
+          [ "$event" = workflow_dispatch ] || { echo "::error::run $DRY_RUN_ID is a $event run, not a dispatch"; exit 1; }
+          [ "$repo" = "$GITHUB_REPOSITORY" ] || { echo "::error::run $DRY_RUN_ID comes from $repo"; exit 1; }
+          [ "$branch" = dev ] || { echo "::error::run $DRY_RUN_ID ran on $branch, not dev"; exit 1; }
+          [ "$head" = "$SHA" ] || { echo "::error::run $DRY_RUN_ID built $head, not $SHA"; exit 1; }
+          [ "$concl" = success ] || { echo "::error::run $DRY_RUN_ID concluded $concl"; exit 1; }
+          job=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID/jobs" --jq '[.jobs[] | select(.name == "build")] | .[0].id')
+          [ -n "$job" ] && [ "$job" != null ] || { echo "::error::run $DRY_RUN_ID has no build job"; exit 1; }
+          logged=$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$job/logs" | grep -oE 'PHONE_APK_SHA256=[0-9a-f]{64}' | grep -v '\$' | tail -1 | cut -d= -f2)
+          [[ "$logged" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::no PHONE_APK_SHA256 line in the dry run's build log"; exit 1; }
+          echo "LOGGED_SHA256=$logged" >> "$GITHUB_ENV"
+          echo "dry run $DRY_RUN_ID: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID; logged APK sha256 $logged"
+
+      - name: Take that run's APK and match it to the logged sha256
+        run: |
+          set -euo pipefail
+          gh run download "$DRY_RUN_ID" -R "$GITHUB_REPOSITORY" -n "phone-apk-${SHA}" -D out
+          got=$(sha256sum "out/legion-phone-${SHA}.apk" | cut -c1-64)
+          [ "$got" = "$LOGGED_SHA256" ] || { echo "::error::the artifact's APK is $got, the dry run logged $LOGGED_SHA256. Nothing was published."; exit 1; }
+          echo "APK sha256 $got = the dry run's logged value"
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Newest published phone release (read only)
+        env:
           LEGION_ENGINE_URL: ${{ vars.LEGION_ENGINE_URL }}
-          LEGION_APK_BUCKET: ${{ vars.LEGION_APK_BUCKET }}
           LEGION_ENGINE_TOKEN: ${{ secrets.LEGION_ENGINE_TOKEN }}
         run: |
           set -euo pipefail
-          apk=app/build/outputs/apk/fast/app-fast.apk
-          args=(--app phone --apk "$apk" --notes "$NOTES")
-          [ "$DRY" = "true" ] && args+=(--dry-run)
-          python tools/release_apk.py "${args[@]}"
+          [ -n "$LEGION_ENGINE_URL" ] && [ -n "$LEGION_ENGINE_TOKEN" ] || { echo "::error::LEGION_ENGINE_URL or LEGION_ENGINE_TOKEN is not set. Nothing was published."; exit 1; }
+          code=$(curl -sS -o latest.json -w '%{http_code}' -H "Authorization: Token $LEGION_ENGINE_TOKEN" "$LEGION_ENGINE_URL/api/releases/latest?app=phone")
+          case "$code" in
+            200) vc=$(python -c "import json;print(int(json.load(open('latest.json'))['version_code']))");;
+            404) vc=0;;
+            *) echo "::error::the engine answered $code for the newest release. Nothing was published."; exit 1;;
+          esac
+          rm -f latest.json
+          echo "newest published phone versionCode: $vc"
+          echo "NEWEST_VC=$vc" >> "$GITHUB_ENV"
 
-      - name: Forget the signing key and the models
-        if: always()
-        run: rm -f "$HOME/.android/debug.keystore" app/src/main/assets/openwakeword/*.onnx
+      - name: APK checks against the built commit's pins (read as data)
+        run: |
+          set -euo pipefail
+          mkdir -p atsha/app
+          git show "$SHA:app/models.sha256" > atsha/app/models.sha256
+          git show "$SHA:app/speaker-model.pin" > atsha/app/speaker-model.pin
+          python .github/scripts/check_phone_apk.py --apk "out/legion-phone-${SHA}.apk" --sha "$SHA" --newest-vc "$NEWEST_VC" --tree atsha
+
+      - name: Signer pin, package, no baked keys (release_apk.py --dry-run)
+        run: python tools/release_apk.py --app phone --apk "out/legion-phone-${SHA}.apk" --notes "dry run" --dry-run
+
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+
+      - name: Publish (tools/release_apk.py)
+        env:
+          NOTES: ${{ inputs.notes }}
+          LEGION_ENGINE_URL: ${{ vars.LEGION_ENGINE_URL }}
+          LEGION_APK_BUCKET: ${{ vars.LEGION_APK_BUCKET }}
+          LEGION_ENGINE_TOKEN: ${{ secrets.LEGION_ENGINE_TOKEN }}
+        run: python tools/release_apk.py --app phone --apk "out/legion-phone-${SHA}.apk" --notes "$NOTES"
