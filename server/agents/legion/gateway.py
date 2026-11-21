@@ -28,8 +28,9 @@ import time
 
 from agents.legion import guards, hold, redact, relay
 from agents.legion.client_facts import TEST_MODE_WORDS
+from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
 from agents.legion.speech_rules import _verbatim
-from agents.legion.spoken import TurnCall
+from agents.legion.spoken import SPOKEN_SPEC, TurnCall
 from agents.legion.twins import TWINS
 from agents.runtime.tools import RELAY_ALONE, RELAY_BATCH, ToolCall, ToolOutcome
 from assistant import live, read_through
@@ -116,6 +117,8 @@ class LegionGateway:
         # Every call of this stream as the speech rules read it (`spoken.py`): name, success, the
         # result's text and plain data. Never sent anywhere; gone with the stream.
         self.calls: list[TurnCall] = []
+        # `end_conversation` was called: the limb closes the conversation after the sign-off.
+        self.end_requested = False
 
     def limb_tools(self) -> dict[str, relay.LimbTool]:
         """The relayable tools of the limb that made this turn (none without one, no query)."""
@@ -177,7 +180,13 @@ class LegionGateway:
             {**decl, "parameters": _rest_schema(decl["parameters"])}
             for decl in map(relay.declaration, self.limb_tools().values())
         ]
-        return rest_declarations(chosen) + limb
+        return rest_declarations(chosen) + limb + ([END_DECLARATION] if self._ends(spec) else [])
+
+    def _ends(self, spec) -> bool:
+        """`end_conversation` (spec 18, the web door's control): offered on the spoken spec's
+        turns, never the late-answer runner's and never a head unit's (it keeps to its own
+        tools)."""
+        return spec.name == SPOKEN_SPEC and not headunit_scope.is_headunit(self.request)
 
     def is_slow(self, name: str) -> bool:
         return name in SLOW_TOOLS
@@ -185,6 +194,10 @@ class LegionGateway:
     def call(self, state, spec, call: ToolCall, deadline_s: float) -> ToolOutcome:
         tool = self.tools().get(call.name)
         started = time.monotonic()
+        if call.name == END_TOOL and tool is None and self._ends(spec):
+            # A control, not a data tool: it reaches nothing; the sign-off follows it.
+            self.end_requested = True
+            return self._done(state, call, None, True, END_INSTRUCTION, "ok", None, started)
         if tool is None and call.name in self.limb_tools():
             return self._relay(state, spec, call, self.limb_tools()[call.name], started)
         if headunit_scope.is_headunit(self.request):

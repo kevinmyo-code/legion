@@ -425,3 +425,42 @@ def test_a_whole_answer_by_code_ends_the_turn_and_the_history_stays_whole(seeded
     ]
     assert responses[-1]["response"]["message"] == "(two cards; read aloud by code)"
     assert history[-1] == {"role": "model", "parts": [{"text": "(Read the board aloud.)"}]}
+
+
+# ---- end_conversation (spec 18, inventory row 28) --------------------------------------------
+
+
+@pytest.mark.django_db
+def test_end_conversation_signs_off_and_tells_the_limb_to_close(seeded):
+    from agents.legion.end_conversation import END_INSTRUCTION, END_TOOL
+
+    model = m.FakeModel([m.call(END_TOOL, {}), m.say("Very well.")])
+    events, _s, _c = _turn(seeded, "never mind", model)
+    assert [e.data["text"] for e in events if e.type == "sentence"] == ["Very well."]
+    assert events[-1].data["end"] is True
+    response = model.requests[1].contents[-1]["parts"][0]["functionResponse"]["response"]
+    assert response == {"success": True, "message": END_INSTRUCTION}
+    assert END_TOOL in {d["name"] for d in model.requests[0].declarations}
+
+
+@pytest.mark.django_db
+def test_a_stop_phrase_closes_even_when_the_model_only_signs_off(seeded):
+    events, _s, _c = _turn(seeded, "That will be all, thanks", m.FakeModel([m.say("Very well.")]))
+    assert events[-1].data["end"] is True
+
+
+@pytest.mark.django_db
+def test_an_ordinary_turn_carries_no_end(seeded):
+    events, _s, _c = _turn(seeded, "hello", m.FakeModel([m.say("Hello.")]))
+    assert "end" not in events[-1].data
+
+
+@pytest.mark.django_db
+def test_end_conversation_is_never_offered_to_the_background_spec(seeded):
+    from agents.legion.end_conversation import END_TOOL
+    from agents.legion.gateway import LegionGateway
+    from agents.legion.specs import spec
+
+    gw = LegionGateway(member_request(seeded))
+    assert END_TOOL in {d["name"] for d in gw.declarations(spec("generalist"))}
+    assert END_TOOL not in {d["name"] for d in gw.declarations(spec("background"))}

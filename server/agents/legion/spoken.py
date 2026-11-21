@@ -30,7 +30,12 @@ from dataclasses import dataclass, field
 from agents.legion import closing
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
-from agents.legion.speech_rules import backed_cents, backed_torque, is_filler
+from agents.legion.speech_rules import (
+    backed_cents,
+    backed_torque,
+    is_filler,
+    is_stop_utterance,
+)
 from agents.runtime import events as ev
 from agents.runtime.budget import over
 from agents.runtime.loop import AWAITING_LIMB, NO_ANSWER_WORDS
@@ -81,6 +86,7 @@ class _Memory:
     no_answer: bool = False
     verbatim_said: bool = False
     backed: list[int] | None = None
+    end: bool = False
 
     def to_json(self, with_words: bool) -> dict:
         out = {
@@ -92,6 +98,7 @@ class _Memory:
             "no_answer": self.no_answer,
             "verbatim_said": self.verbatim_said,
             "backed": self.backed,
+            "end": self.end,
         }
         if with_words:
             out.update(
@@ -114,6 +121,7 @@ class _Memory:
             no_answer=bool(raw.get("no_answer")),
             verbatim_said=bool(raw.get("verbatim_said")),
             backed=list(raw["backed"]) if raw.get("backed") is not None else None,
+            end=bool(raw.get("end")),
         )
 
 
@@ -144,6 +152,7 @@ class SpokenTurn:
         return (now or set()) | set(before or ())
 
     def _keep(self) -> None:
+        self.memory.end = self.memory.end or bool(getattr(self.gateway, "end_requested", False))
         backed = backed_cents(self.gateway.calls)
         if backed is not None:
             self.memory.backed = sorted(backed | set(self.memory.backed or ()))
@@ -246,7 +255,7 @@ class SpokenTurn:
             sentences=m.model_said,
             filler_only=bool(m.filler_dropped or m.no_answer),
             tools_ran=bool(state.actions),
-            ending=bool(getattr(self.gateway, "end_requested", False)),
+            ending=self._ending(),
         ):
             # Spec 23: the tools ran and the answer was only filler, or nothing: asked once more,
             # tool-free, with the phone's note; whatever it says is the answer.
@@ -289,7 +298,7 @@ class SpokenTurn:
         )
         if line is not None:
             yield self._say(line)
-        if not m.said and state.status == "done":
+        if not m.said and state.status == "done" and not self._ending():
             yield self._say(closing.nothing_said_line(state.writes_ran))
 
     def _done(self, event) -> ev.Event:
@@ -303,7 +312,15 @@ class SpokenTurn:
         data = dict(event.data)
         if not self.state.outside:
             data["final_text"] = said
+        if self._ending() or is_stop_utterance(self.state.transcript):
+            # The limb closes the conversation once this answer is said (`done.end`, the web
+            # door's `end`): the model called `end_conversation`, or his words were only a stop
+            # phrase. The phone decides its own stop words before sending; this covers the rest.
+            data["end"] = True
         return ev.Event("done", data)
+
+    def _ending(self) -> bool:
+        return self.memory.end or bool(getattr(self.gateway, "end_requested", False))
 
 
 def answered(messages: list[dict], calls) -> list[dict]:
