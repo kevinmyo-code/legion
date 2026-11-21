@@ -56,8 +56,13 @@ class TurnCall:
     text: str
     writes: bool
     data: dict | None = None
-    # The turn's whole answer was code's (`closing.closing_line` reads it).
+    # Code's own sentences for this result (`speech_rules._verbatim`), said as they are; whether
+    # they are the turn's whole answer; what the history keeps instead of them; what the model got.
     ends_turn: bool = False
+    verbatim: tuple[str, ...] | None = None
+    replay: str | None = None
+    response: dict | None = None
+    call_id: str = ""
 
 
 @dataclass
@@ -65,6 +70,8 @@ class _Memory:
     """The turn's speech so far, kept across a pause on a limb."""
 
     said: list[str] = field(default_factory=list)
+    # What the history keeps of each said sentence: itself, or a code line's replay marker.
+    heard: list[str] = field(default_factory=list)
     model_said: int = 0
     held: list[list[str]] = field(default_factory=list)
     filler_dropped: int = 0
@@ -87,7 +94,9 @@ class _Memory:
             "backed": self.backed,
         }
         if with_words:
-            out.update(said=list(self.said), held=[list(h) for h in self.held])
+            out.update(
+                said=list(self.said), heard=list(self.heard), held=[list(h) for h in self.held]
+            )
         return out
 
     @classmethod
@@ -95,6 +104,7 @@ class _Memory:
         raw = raw or {}
         return cls(
             said=list(raw.get("said") or []),
+            heard=list(raw.get("heard") or []),
             model_said=int(raw.get("model_said") or 0),
             held=[list(h) for h in raw.get("held") or []],
             filler_dropped=int(raw.get("filler_dropped") or 0),
@@ -154,6 +164,9 @@ class SpokenTurn:
                     yield event
                 elif event.type == "sentence":
                     yield from self._sentence(event)
+                elif event.type == "tool":
+                    yield event
+                    yield from self._verbatim(event)
                 elif event.type == "done" and event.data.get("status") != AWAITING_LIMB:
                     yield from self._end()
                     yield self._done(event)
@@ -165,9 +178,30 @@ class SpokenTurn:
             # A hang-up closes this generator: the graph's own is closed with it, at once.
             events.close()
 
-    def _say(self, text: str, tagged: str | None = None) -> ev.Event:
+    def _say(self, text: str, tagged: str | None = None, replay: str | None = None) -> ev.Event:
         self.memory.said.append(text)
+        self.memory.heard.append(text if replay is None else replay)
         return ev.sentence(tagged if tagged is not None else text)
+
+    def _verbatim(self, event):
+        """Code's own sentences for a `VERBATIM_TOOLS` result, said as they are (ADR 0094): his
+        whole answer (`ends_turn`) always; a money line once per turn, and only it holds back the
+        model's later money sentences."""
+        call = next(
+            (c for c in reversed(self.gateway.calls) if c.name == event.data.get("name")), None
+        )
+        if call is None or not call.ok or not call.verbatim:
+            return
+        m = self.memory
+        if not (call.ends_turn or not m.verbatim_said):
+            return
+        if not call.ends_turn:
+            m.verbatim_said = True
+        for i, line in enumerate(call.verbatim):
+            marker = None
+            if call.replay is not None:
+                marker = call.replay if i == 0 else ""
+            yield self._say(line, replay=marker)
 
     def _sentence(self, event):
         tagged = event.data.get("text", "")
@@ -260,14 +294,46 @@ class SpokenTurn:
 
     def _done(self, event) -> ev.Event:
         said = " ".join(self.memory.said).strip()
+        heard = " ".join(h for h in self.memory.heard if h).strip()
         self.state.final_text = said
+        messages = answered(self.state.messages, self.gateway.calls)
         self.state.messages = as_heard(
-            self.state.messages, int(self.state.client_facts.get("history_from", 0)), said
+            messages, int(self.state.client_facts.get("history_from", 0)), heard
         )
         data = dict(event.data)
         if not self.state.outside:
             data["final_text"] = said
         return ev.Event("done", data)
+
+
+def answered(messages: list[dict], calls) -> list[dict]:
+    """`messages` with the last model turn's calls answered, when a round ended on code's own
+    answer (`ends_turn`: the loop asks no further round, so it sent no responses): each call gets
+    the response the model would have had. Unchanged otherwise."""
+    if not messages or messages[-1].get("role") != "model":
+        return messages
+    asked = [p["functionCall"] for p in messages[-1].get("parts") or [] if "functionCall" in p]
+    if not asked:
+        return messages
+    pool = list(calls)
+    parts = []
+    for fc in asked:
+        found = next(
+            (
+                c
+                for c in pool
+                if c.name == fc.get("name") and (not fc.get("id") or c.call_id == fc.get("id"))
+            ),
+            None,
+        )
+        if found is not None:
+            pool.remove(found)
+        response = found.response if found is not None and found.response else {}
+        part = {"name": fc.get("name"), "response": response}
+        if fc.get("id"):
+            part["id"] = fc["id"]
+        parts.append({"functionResponse": part})
+    return [*messages, {"role": "user", "parts": parts}]
 
 
 def as_heard(messages: list[dict], start: int, said: str) -> list[dict]:

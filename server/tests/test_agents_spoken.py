@@ -357,3 +357,71 @@ def test_an_ask_again_that_fails_ends_in_the_no_answer_line(seeded):
     model = m.FakeModel([m.call("read_list", {}), m.say("")])
     events, _s, _c = _turn(seeded, "list?", model)
     assert [e.data["text"] for e in events if e.type == "sentence"] == [NO_ANSWER_WORDS]
+
+
+# ---- money spoken by code (ADR 0094, inventory row 17) ---------------------------------------
+
+
+def _verbatim_tool(monkeypatch, name, structured, text="code's own text"):
+    from agents.legion import gateway
+    from engine_mcp.tools import ToolResult
+
+    real = gateway.run_engine_tool
+
+    def run(request, tool, args):
+        if tool.name == name:
+            return ToolResult(text=text, structured=structured)
+        return real(request, tool, args)
+
+    monkeypatch.setattr(gateway, "run_engine_tool", run)
+
+
+@pytest.mark.django_db
+def test_a_money_line_is_said_by_code_and_model_money_after_it_is_dropped(seeded, monkeypatch):
+    _verbatim_tool(
+        monkeypatch,
+        "account_balances",
+        {"speak_verbatim": "Net cash is 1,962.48 dollars.", "net_cents": 196248},
+    )
+    model = m.FakeModel(
+        [
+            m.call("account_balances", {}),
+            m.say("You have about two thousand dollars. Anything else?"),
+        ]
+    )
+    events, _s, conversation = _turn(seeded, "how much cash?", model)
+    said = [e.data["text"] for e in events if e.type == "sentence"]
+    assert said == ["Net cash is 1,962.48 dollars.", "Anything else?"]
+    # The model was handed the result as before (no for_model in this result).
+    response = model.requests[1].contents[-1]["parts"][0]["functionResponse"]["response"]
+    assert response == {"success": True, "message": "code's own text"}
+
+
+@pytest.mark.django_db
+def test_a_whole_answer_by_code_ends_the_turn_and_the_history_stays_whole(seeded, monkeypatch):
+    # The shape `board_status` returns; a tool every member is offered stands in for it.
+    _verbatim_tool(
+        monkeypatch,
+        "account_balances",
+        {
+            "speak_verbatim": ["Two cards are in flight.", "One waits on review."],
+            "speak_exact": True,
+            "ends_turn": True,
+            "for_model": "(two cards; read aloud by code)",
+            "replay_as": "(Read the board aloud.)",
+        },
+    )
+    model = m.FakeModel([m.call("account_balances", {})])
+    events, _s, conversation = _turn(seeded, "what's on the board?", model)
+    said = [e.data["text"] for e in events if e.type == "sentence"]
+    assert said == ["Two cards are in flight.", "One waits on review."]
+    assert len(model.requests) == 1  # no further round: the answer is code's
+    turn = AgentTurn.objects.get(conversation=conversation)
+    assert turn.final_text == "Two cards are in flight. One waits on review."
+    history = turn.history
+    responses = [
+        p["functionResponse"] for c in history for p in c.get("parts") or []
+        if "functionResponse" in p
+    ]
+    assert responses[-1]["response"]["message"] == "(two cards; read aloud by code)"
+    assert history[-1] == {"role": "model", "parts": [{"text": "(Read the board aloud.)"}]}

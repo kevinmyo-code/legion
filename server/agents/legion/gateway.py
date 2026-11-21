@@ -28,6 +28,7 @@ import time
 
 from agents.legion import guards, hold, redact, relay
 from agents.legion.client_facts import TEST_MODE_WORDS
+from agents.legion.speech_rules import _verbatim
 from agents.legion.spoken import TurnCall
 from agents.legion.twins import TWINS
 from agents.runtime.tools import RELAY_ALONE, RELAY_BATCH, ToolCall, ToolOutcome
@@ -241,6 +242,9 @@ class LegionGateway:
             if tool.writes and not result.is_error
             else None
         )
+        # Code's own sentences (`speech_rules.VERBATIM_TOOLS`, ADR 0094): said by the speech rules
+        # (`spoken.py`), never reworded by the model, which gets `for_model` when there is one.
+        spoken = _verbatim(call.name, result) if not result.is_error else None
         done = self._done(
             state,
             call,
@@ -253,6 +257,7 @@ class LegionGateway:
             outside=outside,
             fact=fact,
             data=result.structured if not result.is_error else None,
+            spoken=spoken,
         )
         if outside:
             state.add_taint(call.name)
@@ -311,10 +316,25 @@ class LegionGateway:
         outside=False,
         fact=None,
         data=None,
+        spoken=None,
     ) -> ToolOutcome:
         ms = int((time.monotonic() - started) * 1000)
         writes = bool(tool is not None and tool.writes)
-        self.calls.append(TurnCall(call.name, ok, text, writes, data))
+        response = model_response(ok, spoken.for_model if spoken and spoken.for_model else text)
+        self.calls.append(
+            TurnCall(
+                call.name,
+                ok,
+                text,
+                writes,
+                data,
+                ends_turn=bool(spoken and spoken.ends_turn),
+                verbatim=spoken.lines if spoken else None,
+                replay=spoken.replay if spoken else None,
+                response=response,
+                call_id=call.id,
+            )
+        )
         if self.recorder is not None:
             self.recorder.tool_call(
                 state,
@@ -343,12 +363,13 @@ class LegionGateway:
         return ToolOutcome(
             name=call.name,
             ok=ok,
-            response=model_response(ok, text),
+            response=response,
             writes=writes,
             outcome=outcome,
             guard=guard,
             ms=ms,
             fact=fact,
+            ends_turn=bool(spoken and spoken.ends_turn),
         )
 
 
