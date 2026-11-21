@@ -8,8 +8,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The earpiece toggle's decisions: which way Alfred's voice goes for each choice, connected device
- * and call state, what the toggle beside the orb shows, and which device call audio selects.
+ * The earpiece toggle's decisions: which conversations may use the earpiece, which way Alfred's voice
+ * goes for each choice, connected device and call state, what the toggle shows (the real route), and
+ * which device call audio selects.
  */
 class VoiceOutputRuleTest {
 
@@ -18,8 +19,31 @@ class VoiceOutputRuleTest {
         route: AudioRoute = AudioRoute.PHONE_SPEAKER,
         inCall: Boolean = false,
         earpiece: Boolean = true,
-    ) =
-        VoiceOutputRule.outlet(choice, route, inCall, earpiece)
+    ) = VoiceOutputRule.outlet(choice, route, inCall, earpiece)
+
+    @Test
+    fun `every opening kind is named from what the session knows`() {
+        fun op(hand: Boolean = false, wake: Boolean = false, opener: Boolean = false, test: Boolean = false) =
+            VoiceOutputRule.opening(inHand = hand, fromWakeWord = wake, hasOpener = opener, test = test)
+        assertEquals(Opening.APP_TAP, op(hand = true))
+        assertEquals(Opening.WAKE_WORD, op(wake = true))
+        // Brief me, a check-in, a proactive line that listens, the incoming-call announcement.
+        assertEquals(Opening.LINE, op(opener = true))
+        // A car media button, a notification's Talk, a quick start: a tap, but not in the app.
+        assertEquals(Opening.OTHER_TAP, op())
+        assertEquals(Opening.TEST, op(test = true))
+        // An opener always wins over a flag that came with it.
+        assertEquals(Opening.LINE, op(hand = true, opener = true))
+    }
+
+    @Test
+    fun `only a tap in the app with the screen on may use the earpiece`() {
+        for (opening in Opening.entries) {
+            val allowed = VoiceOutputRule.earpieceAllowed(opening, true)
+            assertEquals("$opening, screen on", opening == Opening.APP_TAP, allowed)
+            assertFalse("$opening, screen off", VoiceOutputRule.earpieceAllowed(opening, false))
+        }
+    }
 
     @Test
     fun `call mode puts him on the earpiece, speaker mode on the loudspeaker`() {
@@ -51,12 +75,9 @@ class VoiceOutputRuleTest {
 
     @Test
     fun `call audio is entered for barge-in as before, and for the earpiece even with barge-in off`() {
-        assertTrue(VoiceOutputRule.callAudio(barge = true, VoiceOutlet.LOUDSPEAKER))
-        assertTrue(VoiceOutputRule.callAudio(barge = false, VoiceOutlet.EARPIECE))
-        assertFalse(VoiceOutputRule.callAudio(barge = false, VoiceOutlet.LOUDSPEAKER))
-        assertFalse(VoiceOutputRule.callAudio(barge = false, VoiceOutlet.WIRED))
-        assertFalse(VoiceOutputRule.callAudio(barge = false, VoiceOutlet.BLUETOOTH))
-        assertFalse(VoiceOutputRule.callAudio(barge = false, VoiceOutlet.PHONE_CALL))
+        assertTrue(VoiceOutputRule.callAudio(barge = true, earpiece = false))
+        assertTrue(VoiceOutputRule.callAudio(barge = false, earpiece = true))
+        assertFalse(VoiceOutputRule.callAudio(barge = false, earpiece = false))
     }
 
     @Test
@@ -68,6 +89,8 @@ class VoiceOutputRuleTest {
         assertTrue(call.enabled)
         assertEquals("Call", call.label)
         assertEquals(OutputChoice.CALL, call.choice)
+        assertEquals(OutputChoice.CALL, VoiceOutputRule.flipped(OutputChoice.SPEAKER))
+        assertEquals(OutputChoice.SPEAKER, VoiceOutputRule.flipped(OutputChoice.CALL))
     }
 
     @Test
@@ -83,6 +106,33 @@ class VoiceOutputRuleTest {
             assertEquals(words, t.label)
             assertEquals("the saved choice is kept underneath", case.third, t.choice)
         }
+    }
+
+    @Test
+    fun `a refused earpiece reads Earpiece unavailable on the speaker, and a tap gives speaker mode`() {
+        val live = LiveOutput(onEarpiece = false, refused = true)
+        val t = VoiceOutputRule.toggle(OutputChoice.CALL, AudioRoute.PHONE_SPEAKER, false, true, live)!!
+        assertEquals("Earpiece unavailable", t.label)
+        assertEquals(VoiceOutlet.LOUDSPEAKER, t.outlet)
+        assertTrue(t.detail.contains("speaker"))
+        assertEquals("a tap stops asking for the earpiece", OutputChoice.SPEAKER, VoiceOutputRule.flipped(t.choice))
+    }
+
+    @Test
+    fun `CALL saved in a conversation not on the earpiece shows Speaker, and a tap moves it`() {
+        val live = LiveOutput(onEarpiece = false, refused = false)
+        val t = VoiceOutputRule.toggle(OutputChoice.CALL, AudioRoute.PHONE_SPEAKER, false, true, live)!!
+        assertEquals("Speaker", t.label)
+        assertEquals(OutputChoice.SPEAKER, t.choice)
+        val next = VoiceOutputRule.flipped(t.choice)
+        assertEquals("a tap saves CALL and moves this conversation", OutputChoice.CALL, next)
+    }
+
+    @Test
+    fun `on the earpiece in a conversation the toggle says Call`() {
+        val live = LiveOutput(onEarpiece = true, refused = false)
+        val t = VoiceOutputRule.toggle(OutputChoice.CALL, AudioRoute.PHONE_SPEAKER, false, true, live)!!
+        assertEquals("Call", t.label)
     }
 
     @Test

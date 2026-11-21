@@ -83,6 +83,24 @@ class CallAudioModeEarpieceTest {
     }
 
     @Test
+    fun `a phone that refuses the earpiece is read back as not on it`() {
+        // The readback seam: this phone keeps routing to the loudspeaker whatever is asked.
+        val mode = CallAudioMode(audio) { AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+        mode.enter(earpiece = true)
+        assertFalse(mode.onEarpiece)
+        assertTrue(mode.isActive)
+        mode.exit("test")
+    }
+
+    @Test
+    fun `speaker mode never counts as the earpiece, even if the platform falls back to it`() {
+        val mode = CallAudioMode(audio) { AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
+        mode.enter()
+        assertFalse(mode.onEarpiece)
+        mode.exit("test")
+    }
+
+    @Test
     fun `retarget outside call audio touches nothing`() {
         val mode = CallAudioMode(audio)
         mode.retarget(earpiece = true)

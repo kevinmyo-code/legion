@@ -25,7 +25,11 @@ class EarpieceWiringTest {
     @Test
     fun `call audio is entered for barge-in or the earpiece, and the follower starts with the route`() {
         val enter = bodyOf(session(), "enterRoute")
-        assertTrue(enter.contains("VoiceOutputRule.callAudio(barge, outlet)"))
+        val opening = "VoiceOutputRule.opening(inHand, fromWakeWord, opener != null, test != null)"
+        val begin = enter.indexOf("earpiece.begin($opening)")
+        assertTrue("the opening kind is set first", begin >= 0)
+        assertTrue(begin < enter.indexOf("earpiece.wantsEarpiece()"))
+        assertTrue(enter.contains("VoiceOutputRule.callAudio(barge, onEarpiece)"))
         assertTrue(enter.contains("earpiece.follow("))
         assertTrue(bodyOf(session(), "enterCallAudio").contains("mode.enter(onEarpiece)"))
     }
@@ -44,12 +48,32 @@ class EarpieceWiringTest {
     @Test
     fun `a midway entry never cuts the reply in flight`() {
         val midway = bodyOf(session(), "enterEarpieceMidway")
-        val wait = midway.indexOf("while (speaking")
-        assertTrue(wait >= 0)
+        val wait = midway.indexOf("while ((speaking || playbackActive)")
+        assertTrue("waits for a reply and for a filler clip", wait >= 0)
         assertTrue("waits before it rebuilds the player", wait < midway.indexOf("player?.rebuild()"))
-        val recheck = midway.indexOf("earpiece.outlet() != VoiceOutlet.EARPIECE")
+        val recheck = midway.indexOf("if (!earpiece.wantsEarpiece()) return")
         assertTrue("re-reads the choice after the wait (a flip back while he spoke)", recheck > wait)
         assertTrue(recheck < midway.indexOf("enterCallAudio("))
+    }
+
+    @Test
+    fun `only the app's own taps say the phone is in hand`() {
+        val hand = "AriaForegroundService.EXTRA_IN_HAND, true"
+        for (inApp in listOf("ui/assistant/AssistantVoice.kt", "ui/dumb/DumbHomeScreen.kt", "ui/dumb/MatrixTalk.kt")) {
+            assertTrue(inApp, File(sourceRoot(), inApp).readText().contains(hand))
+        }
+        val elsewhere = listOf(
+            "service/WakeWordEngine.kt",
+            "service/speaker/SpeakerAskNotifier.kt",
+            "car/LegionMediaLibraryService.kt",
+        )
+        for (other in elsewhere) assertFalse(other, File(sourceRoot(), other).readText().contains("EXTRA_IN_HAND"))
+        val service = stripComments(File(sourceRoot(), "service/AriaForegroundService.kt").readText())
+        assertTrue(service.contains("inHand = intent.getBooleanExtra(EXTRA_IN_HAND, false)"))
+        val controller = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
+        val tapOpen = "openCascade(fromWakeWord, oneShot, laptopFirst = engine == VoiceEngine.LAPTOP, inHand = inHand)"
+        assertTrue("a tap passes it on", bodyOf(controller, "onTap").contains(tapOpen))
+        assertTrue("and it reaches the session", bodyOf(controller, "openCascade").contains("inHand = inHand,"))
     }
 
     @Test
