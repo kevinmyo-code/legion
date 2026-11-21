@@ -444,3 +444,31 @@ def test_tool_speaks_cards_by_code_and_hands_the_model_counts_only(on, auth_clie
     assert "1 waiting on you" in result.structured[FOR_MODEL]
     # Only the cascade speaks; a door that cannot is never told anything was said.
     assert "read aloud" not in result.text and "1 waiting on you" in result.text
+
+
+# ---- registering a laptop-made token by its hash ------------------------------------------------
+
+
+def test_board_writer_hash_registers_a_laptop_made_token(on, household_user, auth_client):
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    raw = TOKEN_PREFIX + "L" * 43
+    out = StringIO()
+    call_command(
+        "board_writer_hash", email=household_user.email, sha256=hash_token(raw), stdout=out
+    )
+    assert household_user.email not in out.getvalue()
+    assert _push(raw).status_code == 200
+    assert auth_client.get(BOARD).json()["snapshot"] is not None
+
+
+def test_board_writer_hash_refuses_a_bad_hash_or_a_stranger(household_user):
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    with pytest.raises(CommandError):
+        call_command("board_writer_hash", email=household_user.email, sha256="nope")
+    with pytest.raises(CommandError):
+        call_command("board_writer_hash", email="nobody@example.com", sha256="a" * 64)
