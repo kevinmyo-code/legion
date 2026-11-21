@@ -77,7 +77,7 @@ class EngineUtteranceTest {
     }
 
     @Test
-    fun `noise is decided from the audio before the end frame: nothing runs on the engine`() = runBlocking {
+    fun `noise is decided from the audio before the end frame, nothing runs on the engine`() = runBlocking {
         wire.streamAnswers.add(heardStream)
         val u = utterance(this)
         val hum = ByteArray(32_000) { (it % 3).toByte() }
@@ -131,7 +131,7 @@ class EngineUtteranceTest {
     }
 
     @Test
-    fun `the agents routes switched off is the server's rollback: the phone takes the turn`() = runBlocking {
+    fun `the agents routes switched off is the server's rollback, the phone takes the turn`() = runBlocking {
         wire.clipAnswers.add(json(404, """{"detail": "switched off"}"""))
         val u = utterance(this, streamed = false)
         val pcm = voice()

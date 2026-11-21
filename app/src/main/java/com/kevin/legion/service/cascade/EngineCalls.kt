@@ -51,18 +51,25 @@ internal class EngineCalls(
      * [call]'s result: the stored one for a call id seen before, else it runs now, bounded by its
      * own deadline. Never runs the same call id twice, even when two requests race.
      */
-    suspend fun result(call: EngineCall): CallOutcome {
-        stored[call.callId]?.let { return it }
+    suspend fun result(call: EngineCall): CallOutcome = stored[call.callId] ?: runOnce(call)
+
+    private suspend fun runOnce(call: EngineCall): CallOutcome {
         val started = now()
         // The job stores its own result: a turn cancelled while it runs still has it to post.
         val job = running.computeIfAbsent(call.callId) {
             scope.async { runner(call).also { stored.putIfAbsent(call.callId, it) } }
         }
         val done = withTimeoutOrNull(call.deadlineMs) { job.await() }
-        if (done != null) {
+        return if (done != null) {
             running.remove(call.callId)
-            return stored.putIfAbsent(call.callId, done) ?: done
+            stored.putIfAbsent(call.callId, done) ?: done
+        } else {
+            gaveUp(call, job, started)
         }
+    }
+
+    /** Past its deadline: `timed_out` now; a write that lands later posts `ok` (relay contract 7). */
+    private fun gaveUp(call: EngineCall, job: Deferred<CallOutcome>, started: Long): CallOutcome {
         val gaveUp = CallOutcome(
             CallOutcome.TIMED_OUT,
             null,

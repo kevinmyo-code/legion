@@ -18,7 +18,7 @@ class EngineBrainRulesTest {
     private val his = Facts(test = false, fromUser = true, carryMarked = false, afterPhoneLine = false)
 
     @Test
-    fun `K3 as written: the engine unreachable at open says so and answers nothing`() {
+    fun `K3 as written, the engine unreachable at open says so and answers nothing`() {
         assertEquals(EngineBrainRules.WhenUnreachable.SAY_AND_CLOSE, EngineBrainRules.UNREACHABLE_AT_OPEN)
     }
 
@@ -96,7 +96,7 @@ class EngineBrainRulesTest {
     }
 
     @Test
-    fun `retries: three after Retry-After when throttled, one after 5 s for no_key, none else`() {
+    fun `retries, three after Retry-After when throttled, one after 5 s for no_key, none else`() {
         val throttled = json(429, """{"code": "throttled"}""", retryAfterS = 2)
         assertEquals(2_000L, EngineBrainRules.retryWaitMs(throttled, 0))
         assertEquals(2_000L, EngineBrainRules.retryWaitMs(throttled, 2))

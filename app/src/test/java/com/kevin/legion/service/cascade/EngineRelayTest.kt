@@ -92,7 +92,7 @@ class EngineRelayTest {
     }
 
     @Test
-    fun `a call id asked again is never run twice: its stored result is posted again`() = runBlocking {
+    fun `a call id asked again is never run twice, its stored result is posted again`() = runBlocking {
         wire.resultAnswers.add(stream(request("k1"), awaiting("k1")))
         wire.resultAnswers.add(stream(sentence("Done."), doneOk))
         relay(this).follow(stream(turn, request("k1"), awaiting("k1")))
@@ -144,7 +144,7 @@ class EngineRelayTest {
     }
 
     @Test
-    fun `a throttled post is retried after Retry-After; a revoked token ends the turn in words`() = runBlocking {
+    fun `a throttled post is retried after Retry-After, a revoked token ends the turn in words`() = runBlocking {
         wire.resultAnswers.add(json(429, """{"code": "throttled"}""", retryAfterS = 1))
         wire.resultAnswers.add(json(401, """{"detail": "Invalid token."}"""))
         val end = relay(this).follow(stream(turn, request("k1"), awaiting("k1")))

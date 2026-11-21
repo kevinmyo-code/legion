@@ -1573,7 +1573,9 @@ internal class CascadeSession(
             return
         }
         val record = TurnRecord(heard, voicedMs = (stt as? SttResult.Text)?.voicedMs)
-        record.engineUtt = u.engine
+        // Words carried from a dropped turn are not in this audio: the engine gets them as a transcript.
+        record.engineUtt = u.engine?.takeIf { heard == words.trim() }
+        if (record.engineUtt == null) u.engine?.release()
         answerTurn(heard, eotAtMs, record, takeDraft(u, heard))
     }
 
@@ -2003,7 +2005,8 @@ internal class CascadeSession(
         if (!closing.get() && backend != null && player != null) {
             val reply = newSpeaker(null)
             reply.say(words)
-            if (withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() } == ReplySpeaker.Outcome.Played) player?.awaitDrained()
+            val played = withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() } == ReplySpeaker.Outcome.Played
+            if (played) player?.awaitDrained()
         }
         host.notice(words)
         shutdown("engine_unreachable")

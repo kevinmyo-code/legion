@@ -42,7 +42,7 @@ class EngineBrainTest {
     }
 
     @Test
-    fun `brain engine turns it on; brain phone or a switched-off engine leaves the phone loop`() = runBlocking {
+    fun `brain engine turns it on, brain phone or a switched-off engine leaves the phone loop`() = runBlocking {
         assertEquals(EngineBrain.State.ON, attached(brain(this)).state)
         wire.attachAnswer = json(200, """{"brain": "phone", "brain_reason": "default"}""")
         val phone = attached(brain(this))
@@ -53,7 +53,7 @@ class EngineBrainTest {
     }
 
     @Test
-    fun `unreachable at open follows K3: say so and close, no phone loop`() = runBlocking {
+    fun `unreachable at open follows K3, say so and close, no phone loop`() = runBlocking {
         wire.attachAnswer = WireReply.Unreachable("ConnectException")
         var lost = 0
         val b = attached(brain(this)) { lost++ }
@@ -75,7 +75,7 @@ class EngineBrainTest {
     }
 
     @Test
-    fun `the turn after a phone-spoken line stays on the phone: the engine has no prior line yet`() = runBlocking {
+    fun `the turn after a phone-spoken line stays on the phone, the engine has no prior line yet`() = runBlocking {
         val b = attached(brain(this, line = true))
         assertNull(b.route(null, "yes please", his))
         assertNotNull("then his own turns go to the engine", b.route(null, "what time is it", his))
@@ -93,7 +93,7 @@ class EngineBrainTest {
     }
 
     @Test
-    fun `a whole relayed turn: request, the phone's executor, result, the resumed sentence`() = runBlocking {
+    fun `a whole relayed turn, request, the phone's executor, result, the resumed sentence`() = runBlocking {
         wire.streamAnswers.add(heard("set a timer for ten minutes", request("k1", "clock")))
         wire.resultAnswers.add(stream(sentence("Timer set for ten minutes."), doneEvent))
         val b = attached(brain(this))

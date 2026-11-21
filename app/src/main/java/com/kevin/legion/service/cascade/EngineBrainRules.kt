@@ -50,6 +50,9 @@ internal object EngineBrainRules {
     /** The engine's `MAX_RESULT_BYTES` for one result (16 KiB). */
     const val MAX_RESULT_BYTES = 16 * 1024
 
+    /** A cut result keeps this much of its message (a quarter of the cap: room for any encoding). */
+    const val TRIMMED_MESSAGE_CHARS = MAX_RESULT_BYTES / 4
+
     /** `words` is kept short: the engine stores it and hands it to the model. */
     const val MAX_WORDS_CHARS = 500
 
@@ -128,7 +131,7 @@ internal object EngineBrainRules {
     /** [response] as the posted `result`, or its message alone when it is over the engine's cap. */
     fun boundedResult(response: JSONObject): JSONObject {
         if (response.toString().toByteArray(Charsets.UTF_8).size <= MAX_RESULT_BYTES) return response
-        val message = response.optString("message").take(MAX_RESULT_BYTES / 4)
+        val message = response.optString("message").take(TRIMMED_MESSAGE_CHARS)
         return JSONObject().put("success", response.optBoolean("success")).put("trimmed", true).put("message", message)
     }
 
@@ -235,5 +238,7 @@ internal object EngineBrainRules {
     const val HTTP_TOO_MANY = 429
     const val HTTP_SERVER_ERROR = 500
     const val HTTP_UNAVAILABLE = 503
-    private val HTTP_OK_RANGE = 200..299
+    const val HTTP_OK = 200
+    const val HTTP_OK_LAST = 299
+    private val HTTP_OK_RANGE = HTTP_OK..HTTP_OK_LAST
 }

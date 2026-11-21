@@ -174,8 +174,8 @@ internal class EngineUtterance(
      * it; null when there is none or it was already taken.
      */
     fun takeTurn(): WireReply.Events? {
-        val s = stream ?: return null
-        if (!claimed.compareAndSet(false, true)) return null
+        val s = stream
+        if (s == null || !claimed.compareAndSet(false, true)) return null
         val out = Channel<EngineEvent>(Channel.UNLIMITED)
         prelude.forEach { out.trySend(it) }
         scope.launch {
