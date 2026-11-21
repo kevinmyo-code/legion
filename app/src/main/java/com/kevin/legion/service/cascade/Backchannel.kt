@@ -202,7 +202,8 @@ internal object Backchannel {
      * mode a call sets, which needs no permission and also covers a VoIP call. MODE_IN_CALL is never
      * LEGION's; MODE_IN_COMMUNICATION is LEGION's own while [ownComm]
      * ([com.kevin.legion.service.turn.CallAudioMode.ownCommActive], dumb mode's same test). If a VoIP
-     * call takes that mode while LEGION holds it too, the two cannot be told apart: that one is missed.
+     * call takes that mode while LEGION holds it too, the mode cannot tell them apart; [CallPause] reads
+     * the other signals that can (telecom, a silenced capture, a focus loss to a call's capture).
      */
     fun callOnLine(telephonyInCall: Boolean, audioMode: Int, ownComm: Boolean): Boolean =
         telephonyInCall ||

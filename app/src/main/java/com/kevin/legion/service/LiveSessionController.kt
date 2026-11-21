@@ -29,6 +29,7 @@ import com.kevin.legion.data.local.record
 import com.kevin.legion.data.local.auditContent
 import com.kevin.legion.look.LookController
 import com.kevin.legion.look.LookRules
+import com.kevin.legion.service.cascade.CallWatch
 import com.kevin.legion.service.cascade.CascadeBridge
 import com.kevin.legion.service.cascade.CascadeOpener
 import com.kevin.legion.service.cascade.CascadeSession
@@ -422,7 +423,7 @@ class LiveSessionController(context: Context) {
         dismissAfterTurn = false
         oneShotGate.start(false)
         retriedColdConnectThisTap = false
-        if (TelephonyController.isInCall) { refuse(VoiceRefusal.ON_A_CALL); return }
+        if (CallWatch.isInCallNow(appContext)) { refuse(VoiceRefusal.ON_A_CALL); return }
         if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
         if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
         if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
@@ -471,7 +472,7 @@ class LiveSessionController(context: Context) {
         // (2026-08-21): isInCall used to be set true on RINGING, so the one moment Kevin wants to
         // say "answer it" was the moment this returned early and showed "ON A CALL". Answering by
         // voice is impossible without this distinction.
-        if (TelephonyController.isInCall) { refuse(VoiceRefusal.ON_A_CALL); return }
+        if (CallWatch.isInCallNow(appContext)) { refuse(VoiceRefusal.ON_A_CALL); return }
         // BYO-key only, no tiers (commercial model retired 2026-07-31).
         if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
         // Added 2026-09-07, and it is a spend fix as much as an honesty one. Without it a tap with
@@ -784,7 +785,7 @@ class LiveSessionController(context: Context) {
         oneShotGate.start(false)
         retriedColdConnectThisTap = false
         val refusal = when {
-            TelephonyController.isInCall -> VoiceRefusal.ON_A_CALL
+            CallWatch.isInCallNow(appContext) -> VoiceRefusal.ON_A_CALL
             !GeminiKeyProvider.hasKey() -> VoiceRefusal.NO_KEY
             !hasMicPermission() -> VoiceRefusal.NO_MIC_PERMISSION
             !isOnline() -> VoiceRefusal.OFFLINE
@@ -860,7 +861,7 @@ class LiveSessionController(context: Context) {
             if (!open.say(line)) refuse(VoiceRefusal.CONNECT_IN_FLIGHT)
             return
         }
-        if (TelephonyController.isInCall) { refuse(VoiceRefusal.ON_A_CALL); return }
+        if (CallWatch.isInCallNow(appContext)) { refuse(VoiceRefusal.ON_A_CALL); return }
         if (!GeminiKeyProvider.hasKey()) { refuse(VoiceRefusal.NO_KEY); return }
         if (!hasMicPermission()) { refuse(VoiceRefusal.NO_MIC_PERMISSION); return }
         if (!isOnline()) { refuse(VoiceRefusal.OFFLINE); return }
@@ -1011,7 +1012,7 @@ class LiveSessionController(context: Context) {
     @Suppress("ReturnCount") // one worded refusal per guard
     private fun openTestCascade(t: TestSession): String? {
         if (destroyed) return "service_not_running"
-        if (TelephonyController.isInCall) return "on_a_call"
+        if (CallWatch.isInCallNow(appContext)) return "on_a_call"
         if (!GeminiKeyProvider.hasKey()) return "no_key"
         if (!isOnline()) return "offline"
         val engine = VoiceEngineSettings.engine(appContext)

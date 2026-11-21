@@ -240,6 +240,10 @@ internal class CascadeSession(
 
     /** Focus, the car's hands-free mic, and the Bluetooth watch ([CascadeAudio]). */
     private val audioRoute = CascadeAudio(ctx, audioManager)
+
+    /** A call or a silenced capture mid-conversation ([CallPause]); [callPaused] once it has fired. */
+    private val callWatch = CallWatch(ctx, audioManager) { reason -> scope.launch(loop) { pauseForCall(reason) } }
+    @Volatile private var callPaused = false
     private var player: ReplyPlayer? = null
     private var callAudio: CallAudioMode? = null
     private var micJob: Job? = null
@@ -3470,6 +3474,25 @@ internal class CascadeSession(
         CACHE?.onCreated = null
     }
 
+    /**
+     * Someone's call, or the platform silencing our capture ([CallPause]): nothing more is heard or
+     * said. The reply stops now, no audio goes on to any speech-to-text, the engine's turn in progress
+     * is taken back through its release, and the conversation closes with no words and no chime
+     * (the close reason is not one [CloseCue] plays for). Closing, not pausing: a call can run for an
+     * hour, and a conversation resumed after it would answer a question from before it.
+     */
+    private suspend fun pauseForCall(reason: CallPause.Reason) {
+        if (closing.get() || callPaused) return
+        callPaused = true
+        LiveLatency.log(LiveLatency.TAG, CallPause.line(reason))
+        fillerJobs.endTurn()
+        speaker?.interrupt()
+        player?.flush()
+        currentUtt?.engine?.release()
+        shutdown(CallPause.closeReason(reason))
+        host.closed(CallPause.closeReason(reason))
+    }
+
     /** Idempotent full release. */
     private suspend fun shutdown(reason: String) {
         if (!closing.compareAndSet(false, true)) return
@@ -3527,6 +3550,7 @@ internal class CascadeSession(
             Log.w(TAG, "mic join: ${e.message}")
         }
         step("turn") { turnTaker?.reset() }
+        step("call_watch") { callWatch.stop() }
         // The mic is closed: its claim goes now, so the wake word re-arms without waiting on the chime.
         step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
         micClaimed = false
@@ -3565,6 +3589,8 @@ internal class CascadeSession(
     // --- microphone ([CascadeMic], a trimmed copy of Live's micLoop) ---------------------------------
 
     private fun startMic(chime: Boolean = false) {
+        // From the first buffer on, a call or a silenced capture closes the conversation ([CallPause]).
+        callWatch.start(scope)
         micJob = scope.launch(Dispatchers.IO) {
             // The car's hands-free link, when it was asked for, carries the route before capture.
             audioRoute.awaitBluetoothMic()
@@ -3588,7 +3614,10 @@ internal class CascadeSession(
                     chimeDone.complete(Unit)
                     scope.launch(loop) { handOver(currentMoment(), "mic", reason, phoneFault = true) }
                 },
-                onRecording = recording,
+                onRecording = { id ->
+                    callWatch.ourCapture(id)
+                    recording()
+                },
             )
         }
     }
@@ -3598,6 +3627,8 @@ internal class CascadeSession(
      * Under [turnLock]: a backend swap, or the backlog's drain, never lands inside a feed.
      */
     private fun onMicBuffer(buf: ByteArray, n: Int) {
+        // A call came: nothing more reaches any speech-to-text, from this buffer on ([pauseForCall]).
+        if (callPaused) return
         if (micBufferSeen.compareAndSet(false, true)) {
             LiveLatency.log(LiveLatency.TAG, "open_capture_ms=${System.currentTimeMillis() - openStartedAtMs}")
         }
@@ -3697,6 +3728,8 @@ internal class CascadeSession(
                     .build(),
             )
             .setWillPauseWhenDucked(false)
+            // A loss to a call's capture closes the conversation ([CallWatch]); a bare loss does nothing.
+            .setOnAudioFocusChangeListener(callWatch.focusListener)
             .build()
         focus = req
         runCatching { audioManager.requestAudioFocus(req) }
