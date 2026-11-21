@@ -410,10 +410,9 @@ class AriaForegroundService : Service() {
 
         // Cruise screen's "tap avatar to talk" - toggles a hands-free turn.
         if (intent?.action == ACTION_TALK) {
-            sessionController.onTap(
-                fromWakeWord = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false),
-                inHand = intent.getBooleanExtra(EXTRA_IN_HAND, false),
-            )
+            val wake = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false)
+            val inHand = intent.getBooleanExtra(EXTRA_IN_HAND, false)
+            sessionController.onTap(fromWakeWord = wake, inHand = inHand)
         }
 
         // The alarm ring screen's Brief me (alfred-clock ticket 07): a tap, never an alarm firing.
