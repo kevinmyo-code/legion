@@ -1,48 +1,63 @@
-# Build, check and publish a head unit release from GitHub (cloud-builds plan step 8, 2026-11-20),
-# modelled on release-phone.yml. workflow_dispatch ONLY, from `dev` only (the production environment's
-# branch policy, and checked again below): nothing builds, signs or publishes on a push, a pull request
-# or a fork. The head unit has no ADB: it installs an update by OTA from the engine's release record.
+# Build, check and publish a head unit release from GitHub (cloud-builds plan step 8, 2026-11-20; review
+# fixes the same day), modelled on release-phone.yml. workflow_dispatch ONLY: nothing builds, signs or
+# publishes on a push, a pull request or a fork. The head unit has no ADB: it installs an update by OTA.
+# Each mode is ONE job in `production` (one approval tap); the run's title names the mode and the commit.
 #
-# Two runs, in this order (dry run first, always):
-#   1. DRY RUN (dry_run ticked, the default). Builds `headunit/` at commit `sha` as `assembleFast
-#      -Pnokey`, signed with the pinned debug key (the same key and pin as the phone), runs the checks,
-#      and keeps the chosen ABI's APK and its sha256 as the artifact `headunit-apk-<abi>-<sha>` (1 day).
-#      It uploads nothing to the APK bucket and records nothing on the engine; its one network read is
-#      a GET of the newest head unit release. `sha` may be on dev or a ship/** branch of this repo.
-#   2. PUBLISH (dry_run unticked). Builds nothing and touches no key: it takes the artifact of the
-#      newest successful dry run for the same `sha` and ABI, checks its sha256, repeats the checks,
-#      then `tools/release_apk.py --app headunit` uploads it and records the release. `sha` must be on dev.
+# DRY RUN (dry_run ticked, the default), job `build`:
+#   - builds ONLY the commit this run was dispatched on (`sha` == the dev tip, GITHUB_SHA): the workflow,
+#     the checks and the built code are one reviewed dev commit.
+#   - writes google-services.json from HEADUNIT_GOOGLE_SERVICES_B64 (0600, checked for a
+#     com.kevin.midnightai client), checks the keystore against deploy/release/signer.sha256 before
+#     Gradle, builds `headunit assembleFast -Pnokey` (--no-daemon, daemons stopped after), checks
+#     versionName `1.0+<sha prefix>` and release_apk.py --dry-run (signer, package, baked keys), logs
+#     HEADUNIT_APK_SHA256=<hash>.
+#   - keeps the APK as an artifact ONLY when `keep_apk` is ticked (1 day): the APK carries the
+#     compiled-in Firebase config values, and an artifact on a public repo is downloadable by any
+#     signed-in GitHub user. A publish needs a dry run with keep_apk.
+#   - can reach: google-services.json and the debug keystore. No OIDC token, no Google login, no engine
+#     token. Uploads nothing.
+# PUBLISH (dry_run unticked, `dry_run_id` required), job `publish`: checks out dev only (never the built
+#   tree); verifies through the API that the named run is this file, a workflow_dispatch from this repo
+#   on dev, head sha == `sha`, success; downloads its artifact; the APK sha256 must equal the
+#   HEADUNIT_APK_SHA256 line in that run's build log; versionCode above the newest head unit release
+#   (GET); release_apk.py publishes. Can reach: the engine owner token, the OIDC token (bucket upload),
+#   the artifact. No keystore, no Gradle, no built-tree code.
 #
-# Checks: the inputs; `sha` on dev or ship/**; HEADUNIT_GOOGLE_SERVICES_B64 present and a JSON file for
-# package com.kevin.midnightai; the keystore's fingerprint against deploy/release/signer.sha256 before
-# Gradle sees it; on the APK: signer pin, package com.kevin.midnightai, no baked Gemini/AirNow key
-# (release_apk.py --dry-run), versionName `1.0+<sha prefix>`, versionCode above the newest published
-# head unit release.
-#
-# Setup (environment `production`). Existing and unchanged: GCP_WIF_PROVIDER, GCP_SHIP_SERVICE_ACCOUNT,
-# LEGION_ENGINE_URL, LEGION_APK_BUCKET (variables); PHONE_DEBUG_KEYSTORE_B64, LEGION_ENGINE_TOKEN
-# (secrets). NEW, added by Kevin only: secret HEADUNIT_GOOGLE_SERVICES_B64, the laptop's
-# headunit/app/google-services.json in base64. Without it every run fails at its first step.
+# Setup (environment `production`): variables GCP_WIF_PROVIDER, GCP_SHIP_SERVICE_ACCOUNT,
+# LEGION_ENGINE_URL, LEGION_APK_BUCKET; secrets PHONE_DEBUG_KEYSTORE_B64, LEGION_ENGINE_TOKEN and
+# HEADUNIT_GOOGLE_SERVICES_B64 (added by Kevin). Without the last, a dry run fails at its first step.
+# Third-party actions are pinned to full commit shas (the tag they had on 2026-11-20 in the comment).
 name: Release head unit
+run-name: "Release head unit ${{ inputs.dry_run && 'DRY RUN' || 'PUBLISH' }} ${{ inputs.abi }} ${{ inputs.sha }}${{ !inputs.dry_run && format(' from dry run {0}', inputs.dry_run_id) || '' }}"
 
 on:
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit to build (full 40-hex sha, on dev or a ship/** branch; on dev to publish)"
+        description: "Commit to build: the current dev tip (full 40-hex sha)"
         required: true
         type: string
       abi:
-        description: "Which ABI split ships (the laptop ships arm64-v8a)"
+        description: "Which ABI split ships (headunit/CLAUDE.md: publish the arm64 one)"
         required: true
         default: arm64-v8a
         type: choice
         options: [arm64-v8a, armeabi-v7a]
       dry_run:
-        description: "Dry run: build, check, keep the APK as an artifact; publish nothing"
+        description: "Dry run: build and check; publish nothing"
         required: true
         default: true
         type: boolean
+      keep_apk:
+        description: "Dry run only: keep the APK as a 1-day artifact (needed for a publish; it holds the Firebase config values)"
+        required: true
+        default: false
+        type: boolean
+      dry_run_id:
+        description: "Publish only: the run id of the successful dry run (with keep_apk) of this sha"
+        required: false
+        default: ""
+        type: string
       notes:
         description: "Publish only: what the head unit shows in the update offer"
         required: false
@@ -51,54 +66,39 @@ on:
 
 permissions:
   contents: read
-  actions: read     # the publish run reads the dry run's artifact
-  id-token: write   # Workload Identity Federation (publish only)
 
 concurrency:
   group: release-headunit
   cancel-in-progress: false
 
 jobs:
-  release:
+  build:
+    if: inputs.dry_run
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 60
+    permissions:
+      contents: read
     env:
       JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
       SHA: ${{ inputs.sha }}
       ABI: ${{ inputs.abi }}
-      DRY: ${{ inputs.dry_run }}
       APK: out/legion-headunit-${{ inputs.abi }}-${{ inputs.sha }}.apk
     steps:
-      - name: Inputs, the google-services secret, and where this run comes from (fail closed)
+      - name: Inputs, the google-services secret, and only the dispatched dev commit (fail closed)
         env:
-          NOTES: ${{ inputs.notes }}
           GS_B64: ${{ secrets.HEADUNIT_GOOGLE_SERVICES_B64 }}
         run: |
           set -euo pipefail
-          [ -n "$GS_B64" ] || { echo "::error::Secret HEADUNIT_GOOGLE_SERVICES_B64 is not set in the production environment. Nothing was built or published (see this file's header)."; exit 1; }
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters. Nothing was built or published."; exit 1; }
-          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF). Nothing was built or published."; exit 1; }
+          [ -n "$GS_B64" ] || { echo "::error::Secret HEADUNIT_GOOGLE_SERVICES_B64 is not set in production. Nothing was built."; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters. Nothing was built."; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF). Nothing was built."; exit 1; }
           [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
-          if [ "$DRY" != "true" ] && [ -z "${NOTES// /}" ]; then echo "::error::A publish needs notes. Nothing was published."; exit 1; fi
+          [ "$SHA" = "$GITHUB_SHA" ] || { echo "::error::sha must be the dev tip this run was dispatched on ($GITHUB_SHA). Nothing was built."; exit 1; }
 
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.sha }}
-          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: The commit is on dev or a ship/** branch (on dev to publish)
-        run: |
-          set -euo pipefail
-          on=$(git branch -r --contains "$SHA" --format='%(refname:short)' | grep -E '^origin/(dev|ship/.+)$' || true)
-          [ -n "$on" ] || { echo "::error::$SHA is on neither origin/dev nor an origin/ship/** branch. Nothing was built or published."; exit 1; }
-          if [ "$DRY" != "true" ]; then
-            git merge-base --is-ancestor "$SHA" origin/dev || { echo "::error::A publish needs $SHA on dev first. Nothing was published."; exit 1; }
-          fi
-
-      # ---------------------------------------------------------------- dry run: build and check
       - name: google-services.json from the secret (never printed)
-        if: inputs.dry_run
         env:
           GS_B64: ${{ secrets.HEADUNIT_GOOGLE_SERVICES_B64 }}
         run: |
@@ -115,14 +115,12 @@ jobs:
           EOF
 
       - name: Set up JDK 17
-        if: inputs.dry_run
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Point local.properties at the runner's SDK (no key baked)
-        if: inputs.dry_run
         working-directory: headunit
         run: |
           set -euo pipefail
@@ -132,28 +130,26 @@ jobs:
           chmod +x gradlew
 
       - name: Set up Gradle
-        if: inputs.dry_run
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
         with:
           cache-read-only: true
 
       - name: Signing key
-        if: inputs.dry_run
         env:
           KEYSTORE_B64: ${{ secrets.PHONE_DEBUG_KEYSTORE_B64 }}
         run: |
           set -euo pipefail
-          [ -n "$KEYSTORE_B64" ] || { echo "::error::Secret PHONE_DEBUG_KEYSTORE_B64 is not set. Nothing was built or published."; exit 1; }
+          [ -n "$KEYSTORE_B64" ] || { echo "::error::Secret PHONE_DEBUG_KEYSTORE_B64 is not set. Nothing was built."; exit 1; }
           mkdir -p "$HOME/.android"
+          umask 077
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
           got=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey \
             | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | tr -d ':' | tr 'A-F' 'a-f')
           want=$(tr -d '[:space:]' < deploy/release/signer.sha256)
-          [ "$got" = "$want" ] || { echo "::error::The keystore is not the pinned key (got ${got:0:12}..., want ${want:0:12}...). Nothing was built or published."; exit 1; }
+          [ "$got" = "$want" ] || { echo "::error::The keystore is not the pinned key (got ${got:0:12}..., want ${want:0:12}...). Nothing was built."; exit 1; }
           echo "signing key matches deploy/release/signer.sha256"
 
       - name: Build the fast APKs (-Pnokey)
-        if: inputs.dry_run
         working-directory: headunit
         run: |
           set -euo pipefail
@@ -166,37 +162,118 @@ jobs:
           mkdir -p ../out
           cp "app/build/outputs/apk/fast/app-${ABI}-fast.apk" "../$APK"
 
-      - name: Forget the signing key and google-services.json
+      - name: Forget the signing key and google-services.json; stop anything Gradle left running
         if: always()
-        run: rm -f "$HOME/.android/debug.keystore" headunit/app/google-services.json
-
-      # ---------------------------------------------------------------- publish: the dry run's APK
-      - name: Take the APK from the newest successful dry run of this commit and ABI
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          name="headunit-apk-${ABI}-${SHA}"
-          run_id=""
-          for id in $(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=20" \
-                        --jq '.artifacts | sort_by(.created_at) | reverse | .[] | select(.expired | not) | .workflow_run.id'); do
-            read -r path branch concl < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" --jq '[.path, .head_branch, .conclusion] | @tsv')
-            if [ "$path" = .github/workflows/release-headunit.yml ] && [ "$branch" = dev ] && [ "$concl" = success ]; then
-              run_id=$id; break
-            fi
-          done
-          [ -n "$run_id" ] || { echo "::error::No successful dry run of $SHA ($ABI) with an unexpired $name artifact. Run the dry run first. Nothing was published."; exit 1; }
-          echo "dry run $run_id: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id"
-          gh run download "$run_id" -R "$GITHUB_REPOSITORY" -n "$name" -D out
-          (cd out && sha256sum -c "$(basename "$APK").sha256") || { echo "::error::the artifact's APK does not match its sha256 file. Nothing was published."; exit 1; }
+          rm -f "$HOME/.android/debug.keystore" headunit/app/google-services.json
+          (cd headunit && ./gradlew --stop >/dev/null 2>&1) || true
+          pkill -f 'GradleDaemon|KotlinCompileDaemon' || true
 
-      # ---------------------------------------------------------------- both: the checks on the APK
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
-      - name: Newest published head unit release (read only), versionCode and versionName
+      - name: versionName names the commit
+        run: |
+          python - "$APK" "$SHA" <<'EOF'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "tools")
+          import release_apk
+          apk, sha = Path(sys.argv[1]), sys.argv[2]
+          vc, vname = release_apk.parse_badging(release_apk.aapt2_output(apk))
+          print(f"version {vc} ({vname})")
+          short = vname.removeprefix("1.0+")
+          if not (vname.startswith("1.0+") and len(short) >= 7 and sha.startswith(short)):
+              sys.exit(f"versionName {vname} is not 1.0+<a prefix of {sha}>")
+          EOF
+
+      - name: Signer pin, package, no baked keys (release_apk.py --dry-run; nothing uploaded)
+        run: python tools/release_apk.py --app headunit --apk "$APK" --notes "dry run" --dry-run
+
+      - name: The APK's sha256 (the publish compares against this log line)
+        run: |
+          set -euo pipefail
+          h=$(sha256sum "$APK" | cut -c1-64)
+          echo "$h  $(basename "$APK")" > "$APK.sha256"
+          echo "HEADUNIT_APK_SHA256=$h"
+          echo "Dry run of \`$SHA\` ($ABI): APK sha256 \`$h\`." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: inputs.keep_apk
+        with:
+          name: headunit-apk-${{ inputs.abi }}-${{ inputs.sha }}
+          path: |
+            out/legion-headunit-${{ inputs.abi }}-${{ inputs.sha }}.apk
+            out/legion-headunit-${{ inputs.abi }}-${{ inputs.sha }}.apk.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read     # read the dry run, its log and its artifact
+      id-token: write   # the bucket upload
+    env:
+      SHA: ${{ inputs.sha }}
+      ABI: ${{ inputs.abi }}
+      DRY_RUN_ID: ${{ inputs.dry_run_id }}
+      APK: out/legion-headunit-${{ inputs.abi }}-${{ inputs.sha }}.apk
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Inputs and where this run comes from
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters. Nothing was published."; exit 1; }
+          [[ "$DRY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::dry_run_id must be the numeric run id of the dry run. Nothing was published."; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF). Nothing was published."; exit 1; }
+          [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
+          [ -n "${NOTES// /}" ] || { echo "::error::A publish needs notes. Nothing was published."; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: sha is on dev
+        run: git merge-base --is-ancestor "$SHA" HEAD || { echo "::error::$SHA is not on dev. Nothing was published."; exit 1; }
+
+      - name: The named dry run is a dispatch of this workflow, from this repo, of this sha, and passed
+        run: |
+          set -euo pipefail
+          read -r path event repo branch head concl < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID" \
+            --jq '[.path, .event, .head_repository.full_name, .head_branch, .head_sha, .conclusion] | @tsv')
+          [ "$path" = .github/workflows/release-headunit.yml ] || { echo "::error::run $DRY_RUN_ID is $path"; exit 1; }
+          [ "$event" = workflow_dispatch ] || { echo "::error::run $DRY_RUN_ID is a $event run"; exit 1; }
+          [ "$repo" = "$GITHUB_REPOSITORY" ] || { echo "::error::run $DRY_RUN_ID comes from $repo"; exit 1; }
+          [ "$branch" = dev ] || { echo "::error::run $DRY_RUN_ID ran on $branch"; exit 1; }
+          [ "$head" = "$SHA" ] || { echo "::error::run $DRY_RUN_ID built $head, not $SHA"; exit 1; }
+          [ "$concl" = success ] || { echo "::error::run $DRY_RUN_ID concluded $concl"; exit 1; }
+          job=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID/jobs" --jq '[.jobs[] | select(.name == "build")] | .[0].id')
+          [ -n "$job" ] && [ "$job" != null ] || { echo "::error::run $DRY_RUN_ID has no build job"; exit 1; }
+          logged=$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$job/logs" | grep -oE 'HEADUNIT_APK_SHA256=[0-9a-f]{64}' | tail -1 | cut -d= -f2)
+          [[ "$logged" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::no HEADUNIT_APK_SHA256 line in the dry run's build log"; exit 1; }
+          echo "LOGGED_SHA256=$logged" >> "$GITHUB_ENV"
+          echo "dry run $DRY_RUN_ID: logged APK sha256 $logged"
+
+      - name: Take that run's APK and match it to the logged sha256
+        run: |
+          set -euo pipefail
+          gh run download "$DRY_RUN_ID" -R "$GITHUB_REPOSITORY" -n "headunit-apk-${ABI}-${SHA}" -D out \
+            || { echo "::error::that dry run kept no APK (tick keep_apk on the dry run). Nothing was published."; exit 1; }
+          got=$(sha256sum "$APK" | cut -c1-64)
+          [ "$got" = "$LOGGED_SHA256" ] || { echo "::error::the artifact's APK is $got, the dry run logged $LOGGED_SHA256. Nothing was published."; exit 1; }
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: versionName and versionCode above the newest head unit release (read only)
         env:
           LEGION_ENGINE_URL: ${{ vars.LEGION_ENGINE_URL }}
           LEGION_ENGINE_TOKEN: ${{ secrets.LEGION_ENGINE_TOKEN }}
@@ -223,38 +300,19 @@ jobs:
               sys.exit(f"versionName {vname} is not 1.0+<a prefix of {sha}>")
           if vc <= newest:
               sys.exit(f"versionCode {vc} is not above the newest published {newest}")
-          print("ok versionName names the commit; versionCode above the newest")
           EOF
 
-      - name: Signer pin, package, no baked keys (release_apk.py --dry-run; nothing uploaded)
+      - name: Signer pin, package, no baked keys (release_apk.py --dry-run)
         run: python tools/release_apk.py --app headunit --apk "$APK" --notes "dry run" --dry-run
 
-      - name: Keep the APK and its sha256 (the dry run's output)
-        if: inputs.dry_run
-        run: (cd out && sha256sum "$(basename "$APK")" > "$(basename "$APK").sha256" && cat "$(basename "$APK").sha256")
-
-      - uses: actions/upload-artifact@v4
-        if: inputs.dry_run
-        with:
-          name: headunit-apk-${{ inputs.abi }}-${{ inputs.sha }}
-          path: |
-            out/legion-headunit-${{ inputs.abi }}-${{ inputs.sha }}.apk
-            out/legion-headunit-${{ inputs.abi }}-${{ inputs.sha }}.apk.sha256
-          if-no-files-found: error
-          retention-days: 1
-
-      # ---------------------------------------------------------------- publish only
-      - uses: google-github-actions/auth@v2
-        if: ${{ !inputs.dry_run }}
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
 
-      - uses: google-github-actions/setup-gcloud@v2
-        if: ${{ !inputs.dry_run }}
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
       - name: Publish (tools/release_apk.py)
-        if: ${{ !inputs.dry_run }}
         env:
           NOTES: ${{ inputs.notes }}
           LEGION_ENGINE_URL: ${{ vars.LEGION_ENGINE_URL }}
