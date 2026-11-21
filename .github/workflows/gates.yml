@@ -18,6 +18,8 @@
 # Cost per full run: about $0.10 to $0.20 of Gemini (the phone eval about $0.10, the engine gate capped
 # at REALRUN_BUDGET_USD=0.09, the chip turn about half a cent). Runner minutes are free (public repo).
 name: Gates
+# ship.yml finds the gate run for a commit by this title (a dispatch run's head sha is dev's, not `sha`).
+run-name: "Gates ${{ inputs.which }} ${{ inputs.sha }}"
 
 on:
   workflow_dispatch:
