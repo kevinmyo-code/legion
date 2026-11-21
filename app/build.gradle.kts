@@ -329,7 +329,9 @@ val verifyModels = tasks.register("verifyModels") {
             if (!f.isFile) return@mapNotNull "missing: src/main/assets/$rel"
             val got = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
                 .joinToString("") { "%02x".format(it) }
-            if (got != want) "sha256 differs: src/main/assets/$rel (got ${got.take(12)}..., pinned ${want.take(12)}...)" else null
+            if (got != want) "sha256 differs: src/main/assets/$rel
+    got    $got
+    pinned $want" else null
         }
         if (problems.isNotEmpty()) {
             throw GradleException(
