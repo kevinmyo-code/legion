@@ -5,14 +5,42 @@ rules (`assistant/cascade.py`, lifted in slice E0) applied to the agent turn's e
 continuation (`relay_resume.py`), so every sentence of the reply passes the same checks the web
 door's do before the limb hears it. Only the generalist's turns: the late-answer runner's
 background turns are passed through as they are.
+
+- **Each model sentence** goes through `SentenceGate.in_answer` (`sentence_gate.py`): a first
+  sentence that is only filler, money after code spoke a money line or a figure no money tool
+  returned, an unbacked torque figure, anything past the cap: dropped; a claim of a change no write
+  backs yet: held to the end of the turn. One rule more than the web door (inventory row 10, the
+  phone's `TrailingFiller`): a filler sentence AFTER the answer has begun is dropped too.
+- **A line code says** (a timeout, a refusal, the loop's failure words: `finish_node` says them
+  once the turn's status is set) is never checked: it goes out as it is.
+- **At the end of the turn** (`done`, never at a pause on a limb): the held claims are decided
+  (`SentenceGate.held`), then one closing line (`closing.py`); a turn that said nothing says so.
+- **What is stored is what was said**: `done.final_text` and the turn's history carry the sentences
+  the limb was sent (`as_heard`), so `heard_until` cuts what he heard. Outside text keeps its stub.
+- **Across a pause on a limb** the turn's speech so far rides in `client_facts["speech"]`
+  (counts always; sentence text only while no outside text is in the turn: that dict is not
+  redacted in a checkpoint, and a turn holding outside text never pauses).
 """
 
 from __future__ import annotations
 
 from collections.abc import Generator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from agents.legion import closing
+from agents.legion import sentence_gate as gates
+from agents.legion.speech_rules import backed_cents, backed_torque, is_filler
 from agents.runtime import events as ev
+from agents.runtime.loop import AWAITING_LIMB, NO_ANSWER_WORDS
+from assistant import speech_tags
+from garage import topic as garage_topic
+
+# The web door's cap (`assistant.cascade.MAX_SPOKEN_SENTENCES`), copied: the web module is never
+# imported from here.
+MAX_SPOKEN_SENTENCES = 12
+SPEECH_KEY = "speech"
+# The spec whose turns are spoken by these rules; the late-answer runner's `background` is not.
+SPOKEN_SPEC = "generalist"
 
 
 @dataclass(frozen=True)
@@ -25,13 +53,86 @@ class TurnCall:
     text: str
     writes: bool
     data: dict | None = None
+    # The turn's whole answer was code's (`closing.closing_line` reads it).
+    ends_turn: bool = False
+
+
+@dataclass
+class _Memory:
+    """The turn's speech so far, kept across a pause on a limb."""
+
+    said: list[str] = field(default_factory=list)
+    model_said: int = 0
+    held: list[list[str]] = field(default_factory=list)
+    filler_dropped: int = 0
+    trailing_dropped: int = 0
+    money_dropped: int = 0
+    torque_dropped: int = 0
+    no_answer: bool = False
+    verbatim_said: bool = False
+    backed: list[int] | None = None
+
+    def to_json(self, with_words: bool) -> dict:
+        out = {
+            "model_said": self.model_said,
+            "filler_dropped": self.filler_dropped,
+            "trailing_dropped": self.trailing_dropped,
+            "money_dropped": self.money_dropped,
+            "torque_dropped": self.torque_dropped,
+            "no_answer": self.no_answer,
+            "verbatim_said": self.verbatim_said,
+            "backed": self.backed,
+        }
+        if with_words:
+            out.update(said=list(self.said), held=[list(h) for h in self.held])
+        return out
+
+    @classmethod
+    def from_json(cls, raw: dict | None) -> _Memory:
+        raw = raw or {}
+        return cls(
+            said=list(raw.get("said") or []),
+            model_said=int(raw.get("model_said") or 0),
+            held=[list(h) for h in raw.get("held") or []],
+            filler_dropped=int(raw.get("filler_dropped") or 0),
+            trailing_dropped=int(raw.get("trailing_dropped") or 0),
+            money_dropped=int(raw.get("money_dropped") or 0),
+            torque_dropped=int(raw.get("torque_dropped") or 0),
+            no_answer=bool(raw.get("no_answer")),
+            verbatim_said=bool(raw.get("verbatim_said")),
+            backed=list(raw["backed"]) if raw.get("backed") is not None else None,
+        )
 
 
 class SpokenTurn:
-    def __init__(self, state, gateway, *, on: bool):
+    def __init__(self, state, gateway, *, on: bool, torque_topic=None, about_front_end=False):
         self.state = state
         self.gateway = gateway
         self.on = on
+        self.memory = _Memory.from_json(state.client_facts.get(SPEECH_KEY))
+        self.gate = gates.SentenceGate(
+            backed=self._backed,
+            torque=lambda: backed_torque(self.gateway.calls, torque_topic, about_front_end),
+            actions=lambda: self.state.actions,
+        )
+
+    # ---- inputs ---------------------------------------------------------------------------
+
+    def _backed(self) -> set[int] | None:
+        """The money figures this turn's tools returned, this stream's and any before a pause."""
+        now = backed_cents(self.gateway.calls)
+        before = self.memory.backed
+        if now is None and before is None:
+            return None
+        return (now or set()) | set(before or ())
+
+    def _keep(self) -> None:
+        backed = backed_cents(self.gateway.calls)
+        if backed is not None:
+            self.memory.backed = sorted(backed | set(self.memory.backed or ()))
+        self.state.client_facts[SPEECH_KEY] = self.memory.to_json(not self.state.outside)
+
+    # ---- the stream -----------------------------------------------------------------------
 
     def run(self, events) -> Generator[ev.Event, None, object]:
         """`events`: the graph's run (a generator returning the final state). Yields what the
@@ -42,16 +143,149 @@ class SpokenTurn:
                     event = next(events)
                 except StopIteration as stop:
                     return stop.value
-                yield event
+                if not self.on:
+                    yield event
+                elif event.type == "sentence":
+                    yield from self._sentence(event)
+                elif event.type == "done" and event.data.get("status") != AWAITING_LIMB:
+                    yield from self._end()
+                    yield self._done(event)
+                else:
+                    yield event
+                if self.on:
+                    self._keep()
         finally:
             # A hang-up closes this generator: the graph's own is closed with it, at once.
             events.close()
 
+    def _say(self, text: str, tagged: str | None = None) -> ev.Event:
+        self.memory.said.append(text)
+        return ev.sentence(tagged if tagged is not None else text)
 
-# The spec whose turns are spoken by these rules; the late-answer runner's `background` is not.
-SPOKEN_SPEC = "generalist"
+    def _sentence(self, event):
+        tagged = event.data.get("text", "")
+        if self.state.status != "running":
+            # Code's own line, said by `finish_node` once the turn's status is set.
+            yield self._say(tagged)
+            return
+        text = speech_tags.untagged(tagged)
+        m = self.memory
+        verdict = self.gate.in_answer(
+            text,
+            sentences=m.model_said,
+            verbatim_said=m.verbatim_said,
+            max_spoken=MAX_SPOKEN_SENTENCES,
+        )
+        if verdict == gates.SAY and m.model_said and is_filler(text):
+            # The phone's `TrailingFiller`: once the answer has begun, a filler line is not said.
+            m.trailing_dropped += 1
+        elif verdict == gates.SAY:
+            m.model_said += 1
+            yield self._say(text, tagged)
+        elif verdict == gates.NO_ANSWER:
+            m.no_answer = True
+        elif verdict == gates.FILLER:
+            m.filler_dropped += 1
+        elif verdict == gates.MONEY:
+            m.money_dropped += 1
+        elif verdict == gates.TORQUE:
+            m.torque_dropped += 1
+        elif verdict == gates.HOLD:
+            m.held.append([text, tagged])
+
+    # ---- the end of the turn --------------------------------------------------------------
+
+    def _end(self):
+        """What code says once the model is done (`assistant.cascade._answer`'s closing half)."""
+        m = self.memory
+        state = self.state
+        if m.no_answer and not m.model_said and state.status == "done":
+            # The runtime's own line for a turn with no words, held until now.
+            yield self._say(NO_ANSWER_WORDS)
+        unbacked = 0
+        for text, tagged in m.held:
+            verdict = self.gate.held(text)
+            if verdict == gates.MONEY:
+                m.money_dropped += 1
+                unbacked += 1
+            elif verdict == gates.TORQUE:
+                m.torque_dropped += 1
+                unbacked += 1
+            elif verdict == gates.SAY:
+                m.model_said += 1
+                yield self._say(text, tagged)
+            else:
+                unbacked += 1
+        m.held = []
+        line = closing.closing_line(
+            self.gateway.calls,
+            refused=closing.guard_refused(self.gateway.calls),
+            unbacked=unbacked,
+            wrote=state.writes_ran,
+            tainted=lambda: state.tainted,
+        )
+        if line is not None:
+            yield self._say(line)
+        if not m.said and state.status == "done":
+            yield self._say(closing.nothing_said_line(state.writes_ran))
+
+    def _done(self, event) -> ev.Event:
+        said = " ".join(self.memory.said).strip()
+        self.state.final_text = said
+        self.state.messages = as_heard(
+            self.state.messages, int(self.state.client_facts.get("history_from", 0)), said
+        )
+        data = dict(event.data)
+        if not self.state.outside:
+            data["final_text"] = said
+        return ev.Event("done", data)
+
+
+def as_heard(messages: list[dict], start: int, said: str) -> list[dict]:
+    """`messages` with this turn's model words (from `start` on) made what was said: unchanged when
+    they already are; else every text part of this turn's model turns is taken out (calls and
+    their order stay), and one model turn with the said words ends the turn."""
+    mine = messages[start:]
+    model_text = " ".join(
+        p["text"].strip()
+        for c in mine
+        if c.get("role") == "model"
+        for p in c.get("parts") or []
+        if isinstance(p.get("text"), str) and p["text"].strip()
+    )
+    if " ".join(model_text.split()) == " ".join(said.split()):
+        return messages
+    kept = []
+    for content in mine:
+        if content.get("role") == "model":
+            parts = [p for p in content.get("parts") or [] if "text" not in p]
+            if parts:
+                kept.append({**content, "parts": parts})
+        else:
+            kept.append(content)
+    if said:
+        kept.append({"role": "model", "parts": [{"text": said}]})
+    return [*messages[:start], *kept]
 
 
 def spoken_turn(state, ctx, agent: str) -> SpokenTurn:
-    """The turn's speech, over the graph context `ctx` (`turn.context`)."""
-    return SpokenTurn(state, ctx.gateway, on=agent == SPOKEN_SPEC)
+    """The turn's speech, over the graph context `ctx` (`turn.context`). The torque guard is on
+    exactly when `show_part` is offered to this turn, as on the web door."""
+    on = agent == SPOKEN_SPEC
+    offered = on and "show_part" in ctx.spec(agent).tools and "show_part" in ctx.gateway.tools()
+    words = state.transcript or ""
+    return SpokenTurn(
+        state,
+        ctx.gateway,
+        on=on,
+        torque_topic=garage_topic.SENTENCE if offered else None,
+        about_front_end=offered and garage_topic.about_front_end(words, _last_reply(state)),
+    )
+
+
+def _last_reply(state) -> str:
+    start = int(state.client_facts.get("history_from", 0))
+    for content in reversed(state.messages[:start]):
+        if content.get("role") == "model":
+            return " ".join(p.get("text", "") for p in content.get("parts") or []).strip()
+    return ""
