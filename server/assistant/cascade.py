@@ -74,6 +74,7 @@ from django.db import DatabaseError, transaction
 from django.db import connections as db_connections
 
 from agents.legion import late
+from agents.legion.ask_again import ask_again, asks_again
 from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
@@ -95,7 +96,7 @@ from agents.legion.lines import (
     TOO_MANY_TOOLS,
 )
 from agents.legion.speech_rules import (
-    FILLER_NOTE,
+    FILLER_NOTE,  # noqa: F401 - read as cascade.FILLER_NOTE
     VERBATIM_TOOLS,  # noqa: F401 - read as cascade.VERBATIM_TOOLS
     _verbatim,
     backed_cents,
@@ -1469,20 +1470,27 @@ def _answer(
         return
     report.status = result.status if result is not None else "cancelled"
     failure = _failure_words(result, door)
-    if (
-        failure is None
-        and result is not None
-        and result.status == "done"
-        and sentences == 0
-        and (filler_dropped or no_answer)
-        and door.calls
-        and not door.end_requested
+    if result is not None and asks_again(
+        failed=failure is not None,
+        status=result.status,
+        sentences=sentences,
+        filler_only=bool(filler_dropped or no_answer),
+        tools_ran=bool(door.calls),
+        ending=door.end_requested,
     ):
         # Spec 23: the tools ran and the answer was only filler, or nothing at all (measured
         # 2026-11-17: a write refused after a web search left the last round empty, and the person
         # heard neither the search's answer nor the refusal). Asked once more, tool-free, with the
         # phone's note; whatever it says is the answer.
-        for tagged in _ask_again(model, model_name, system, state.messages, door, rounds):
+        for tagged in ask_again(
+            model,
+            model_name,
+            system,
+            state.messages,
+            door.declarations(),
+            LIMITS.round_timeout_s,
+            rounds,
+        ):
             text = speech_tags.untagged(tagged)
             if not text or is_filler(text) or (verbatim_said and has_money(text)):
                 continue
@@ -1636,39 +1644,6 @@ def _not_for_me(request, door, speaker, report, timings):
     yield from speaker.drain()
     extra = {"words": UNSURE_CUE} if decision == "unsure" else {}
     yield ev.done(decision, "", False, ignored=decision, **extra)
-
-
-def _ask_again(model, model_name, system, messages, door, rounds) -> list[str]:
-    """One tool-free round after a filler-only answer (spec 23). [] on any failure."""
-    req = ModelRequest(
-        model=model_name,
-        system=system,
-        contents=[*messages, {"role": "user", "parts": [{"text": FILLER_NOTE}]}],
-        declarations=door.declarations(),
-        allow_tools=False,
-        timeout_s=LIMITS.round_timeout_s,
-    )
-    splitter = SentenceSplitter()
-    out: list[str] = []
-    usage = Usage()
-    try:
-        for item in model.stream(req):
-            if isinstance(item, TextDelta):
-                out.extend(splitter.feed(item.text))
-            elif isinstance(item, Usage):
-                usage = item
-    except ModelFailure:
-        return []
-    finally:
-        rounds.append(
-            {
-                "prompt_tokens": usage.prompt_tokens,
-                "cached_tokens": usage.cached_tokens,
-                "output_tokens": usage.output_tokens,
-            }
-        )
-    out.extend(splitter.flush())
-    return out
 
 
 def conversation_id_of(door: WebDoor):
