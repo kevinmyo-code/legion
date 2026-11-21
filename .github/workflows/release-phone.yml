@@ -36,7 +36,8 @@
 #
 # Setup (environment `production`; deploy/cloudrun/github_setup.sh does the Google side), unchanged:
 # variables GCP_WIF_PROVIDER, GCP_SHIP_SERVICE_ACCOUNT, LEGION_ENGINE_URL, LEGION_APK_BUCKET,
-# MAPBOX_ACCESS_TOKEN; secrets PHONE_DEBUG_KEYSTORE_B64, LEGION_ENGINE_TOKEN.
+# MAPBOX_ACCESS_TOKEN (to move to a secret of the same name, so it is masked in logs); secrets
+# PHONE_DEBUG_KEYSTORE_B64, LEGION_ENGINE_TOKEN.
 # Third-party actions are pinned to full commit shas (the tag they had on 2026-11-20 in the comment).
 #
 # The artifact is public to signed-in GitHub users for its 1 day: it holds the committed models, the
@@ -147,7 +148,10 @@ jobs:
 
       - name: Build the fast APK
         env:
-          MAPBOX_TOKEN: ${{ vars.MAPBOX_ACCESS_TOKEN }}
+          # The public pk. token. Read from the SECRET of the same name when it exists, so the log masks it
+          # (a variable's value is printed in every step's env block); the variable is only the fallback
+          # until the secret is added (then the variable can be deleted).
+          MAPBOX_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN || vars.MAPBOX_ACCESS_TOKEN }}
         # Same tasks as the laptop (`:app:assembleFast`, lint-vital included). Only the heap differs: the
         # repo's gradle.properties keeps -Xmx2048m for the laptop (which runs one worker at a time); on the
         # 16 GB runner, with two workers, lint-vital ran out of heap at 2 GB (dry run 44856938727, "GC
