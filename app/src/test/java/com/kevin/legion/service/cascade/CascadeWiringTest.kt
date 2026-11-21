@@ -584,7 +584,7 @@ class CascadeWiringTest {
         val s = session()
         val schedule = bodyOf(s, "scheduleBackchannel")
         assertTrue(schedule.contains("?: ackWordsSkip(u)"))
-        assertTrue(schedule.contains("Backchannel.DELAY_MS"))
+        assertTrue(schedule.contains("fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }"))
         val words = bodyOf(s, "ackWordsSkip")
         assertTrue(words.contains("heardSoFar?.takeIf { it.first == u.id }?.second"))
         assertTrue(words.contains("WakePhrases.isSleepPhrase(it, CompanionProfile.name(ctx))"))
@@ -596,7 +596,7 @@ class CascadeWiringTest {
         val clip = bodyOf(s, "playAckClip")
         assertTrue(clip.contains("catch (e: CancellationException)"))
         assertTrue(clip.contains("if (p.generation() == gen) p.flush()"))
-        assertTrue(bodyOf(s, "playBackchannel").contains("clipPlayback.during { playAckClip(p, pcm) }"))
+        assertTrue(s.substring(s.indexOf("private fun ackSteps(")).take(1_500).contains("clipPlayback.during { playAckClip(p, pcm) }"))
         val turnStart = s.substring(s.indexOf("private fun onUserTurnStart()")).take(800)
         assertTrue(turnStart.contains("fillerJobs.endTurn()"))
     }

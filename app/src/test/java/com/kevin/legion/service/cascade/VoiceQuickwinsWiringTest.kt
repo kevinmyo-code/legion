@@ -57,7 +57,7 @@ class VoiceQuickwinsWiringTest {
             assertTrue(reset, schedule.indexOf(reset) in 0 until schedule.indexOf("Backchannel.decide("))
         }
         // Each filler kind marks its own sound.
-        assertTrue(bodyOf(s, "playBackchannel").contains("turnGap?.started(TurnGap.BACKCHANNEL"))
+        assertTrue(ackCode(s).contains("turnGap?.started(TurnGap.BACKCHANNEL"))
         assertTrue(bodyOf(s, "noteTaskFiller").contains("turnGap?.started(TurnGap.TOOL"))
         assertTrue(bodyOf(s, "playPacedWait").contains("turnGap?.started(TurnGap.WAIT"))
     }
@@ -130,6 +130,11 @@ class VoiceQuickwinsWiringTest {
         val door = watch.substring(watch.indexOf("fun isInCallNow("))
         assertTrue(door.contains("CallPause.blocksOpen(signals(ctx,"))
     }
+
+
+    /** The acknowledgement's code in the session: playBackchannel, its AckRun steps and its audit (2026-11-21). */
+    private fun ackCode(s: String): String =
+        s.substring(s.indexOf("private suspend fun playBackchannel("), s.indexOf("private fun logFirstSound("))
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 
