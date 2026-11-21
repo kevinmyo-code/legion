@@ -189,7 +189,7 @@ class EngineBrainTest {
 
     @Test
     fun `a tool the phone never offered is refused as not_offered and nothing runs`() = runBlocking {
-        relayed("check my mail", request("k1", "read_mail"))
+        relayed("look that up", request("k1", "read_mail"))
         relayed("do it", request("k2", "manage_item", writes = true))
         assertTrue("never ran", ran.isEmpty())
         for ((_, post) in wire.posts) {

@@ -183,7 +183,7 @@ class EngineUtteranceTest {
     @Test
     fun `a cancel goes on the tail scope, so a closed conversation still cancels the engine's turn`() = runBlocking {
         wire.streamAnswers.add(heardStream)
-        val session = CoroutineScope(kotlinx.coroutines.SupervisorJob() + coroutineContext)
+        val session = CoroutineScope(coroutineContext + kotlinx.coroutines.SupervisorJob())
         val u = utterance(session, tail = this)
         val pcm = voice()
         u.audio(pcm, 0, pcm.size)
