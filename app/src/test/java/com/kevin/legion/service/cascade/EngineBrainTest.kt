@@ -255,6 +255,18 @@ class EngineBrainTest {
     }
 
     @Test
+    fun `a go after the engine's hold ran out ends the turn in true words, nothing acted`() = runBlocking {
+        wire.goAnswer = json(409, """{"code": "turn_over"}""")
+        wire.streamAnswers.add(heard("what's on today"))
+        val b = attached(brain(this))
+        val u = checkNotNull(b.utterance(cloudVoice = true))
+        speak(u)
+        val result = b.answer(checkNotNull(b.route(u, "what's on today", his)), u, executor(), listener())
+        assertEquals(EngineBrainRules.NO_ANSWER_LINE, result.failureWords)
+        assertEquals("", result.text)
+    }
+
+    @Test
     fun `a tool the engine dropped at attach is never run here either`() = runBlocking {
         val answer = """{"brain": "engine", "dropped": [{"name": "clock", "reason": "engine_tool"}]}"""
         wire.attachAnswer = json(200, answer)

@@ -133,10 +133,7 @@ internal class EngineBrain(
         }
         return when {
             why != null -> null
-            utt != null -> suspend {
-                utt.go()
-                utt.takeTurn() ?: utt.refusal ?: WireReply.Unreachable("no_stream")
-            }
+            utt != null -> suspend { utt.go() }
             else -> suspend {
                 val id = java.util.UUID.randomUUID().toString()
                 wire.turnText(meta().put("kind", "user").put("transcript", words).put("turn_id", id))

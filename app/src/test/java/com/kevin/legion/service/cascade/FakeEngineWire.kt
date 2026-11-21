@@ -54,9 +54,12 @@ internal class FakeEngineWire : EngineWire {
 
     val decisions = CopyOnWriteArrayList<String>()
 
+    /** The answer to a go (a 409 `turn_over` when the hold ran out); null: 200. */
+    var goAnswer: WireReply? = null
+
     override suspend fun decide(turnId: String, go: Boolean): WireReply {
         decisions.add("${if (go) "go" else "take"}:$turnId")
-        return json(200, """{"decision": "${if (go) "go" else "take"}"}""")
+        return goAnswer?.takeIf { go } ?: json(200, """{"decision": "${if (go) "go" else "take"}"}""")
     }
 
     override suspend fun cancel(turnId: String): WireReply {

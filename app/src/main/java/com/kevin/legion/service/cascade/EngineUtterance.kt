@@ -227,8 +227,17 @@ internal class EngineUtterance(
         return outcome
     }
 
-    /** The engine answers this turn: its held writes and relays may act from now (Contract v2). */
-    suspend fun go(): WireReply = wire.decide(turnId, go = true)
+    /**
+     * The engine answers this turn: the phone's go (its held writes, relays and outside reads may act
+     * from now, Contract v2), then the rest of its stream. A go after the engine's 5 s hold ran out,
+     * or on a cancelled turn, is 409 `turn_over`: nothing acted, and that answer is the turn's.
+     */
+    suspend fun go(): WireReply {
+        val over = (wire.decide(turnId, go = true) as? WireReply.Json)?.takeIf { it.code == EngineBrainRules.TURN_OVER }
+        val turn = takeTurn()
+        if (over != null) turn?.close?.invoke()
+        return over ?: turn ?: refusal ?: WireReply.Unreachable("no_stream")
+    }
 
     /**
      * The rest of this turn's stream (everything read so far first), for the one turn that answers

@@ -102,6 +102,9 @@ internal object EngineBrainRules {
      */
     data class Facts(val test: Boolean, val fromUser: Boolean, val engineHeard: Boolean = true, val on: Boolean = true)
 
+    /** A go after the hold ran out, or on a cancelled turn (Contract v2 12.6). */
+    const val TURN_OVER = "turn_over"
+
     const val PHONE_HEARD = "phone_heard"
     const val OFF = "off"
 
@@ -227,6 +230,8 @@ internal object EngineBrainRules {
         "contract_unsupported" -> UPDATE_LINE
         // The engine had this turn already (a re-post after a lost answer); held, nothing acted.
         "duplicate" -> NO_ANSWER_LINE
+        // The go came after the engine's hold ran out: held, nothing acted.
+        TURN_OVER -> NO_ANSWER_LINE
         else -> when (afterPost(reply)) {
             AfterPost.RECORDED -> null
             AfterPost.MEMBER_CAP -> (reply as? WireReply.Json)?.detail?.ifBlank { null } ?: STOPPED_LINE
