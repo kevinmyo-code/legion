@@ -114,11 +114,12 @@ jobs:
           print("google-services.json: a client for com.kevin.midnightai")
           EOF
 
-      - name: Set up JDK 17
+      # JDK 25: the laptop builds release APKs with Android Studio's JBR 25 (the test workflows stay on 17).
+      - name: Set up JDK 25
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
 
       - name: Point local.properties at the runner's SDK (no key baked)
         working-directory: headunit
@@ -151,9 +152,14 @@ jobs:
 
       - name: Build the fast APKs (-Pnokey)
         working-directory: headunit
+        # Same tasks as the laptop; only the heap differs (headunit/gradle.properties keeps -Xmx2048m for the
+        # laptop). The phone's release build ran out of heap in lint-vital at 2 GB on the runner (dry run
+        # 44856938727); the same 6 GB is proven for this build by release-build-smoke.yml's headunit job.
         run: |
           set -euo pipefail
+          free -m | sed -n '1,2p'
           ./gradlew :app:assembleFast -Pnokey --no-daemon \
+            "-Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -Dfile.encoding=UTF-8" \
             "-Pandroid.injected.signing.store.file=$HOME/.android/debug.keystore" \
             -Pandroid.injected.signing.store.password=android \
             -Pandroid.injected.signing.key.alias=androiddebugkey \
