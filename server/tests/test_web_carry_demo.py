@@ -156,3 +156,24 @@ def test_no_bleed_between_two_visitors_on_the_same_invite(visitor, engine, db):
     )
     events = _events(_post(other, text="Add a museum visit."))
     assert _tools(events)[0]["ok"] is True
+
+
+def test_a_visitor_turn_asks_once_whether_it_is_carried_and_makes_no_paid_call(visitor, engine):
+    """Cost: no extra model or speech call; one read of the read-through marks per visit turn,
+    inside a savepoint (3 queries; `read_through.carried_turn`), as on a member's turn."""
+    import uuid
+
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    engine.model = FakeModel([say("Nothing is on today.")])
+    with CaptureQueriesContext(connection) as queries:
+        _events(_post(visitor, text="Anything on today?", turn_id=str(uuid.uuid4())))
+    sql = [q["sql"] for q in queries.captured_queries]
+    assert sum("assistant_read_through_turns" in s for s in sql) == 1
+    assert len(engine.model.requests) == 1
+    assert len(sql) == RECRUITER_TURN_QUERIES
+
+
+# Measured on this branch for the turn above; 3 more than before the demo had the carry.
+RECRUITER_TURN_QUERIES = 75

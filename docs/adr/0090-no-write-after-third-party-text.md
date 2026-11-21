@@ -60,10 +60,12 @@ early clearing. The same day he ruled how it meets a same-turn refusal (option A
     text from the web just before this, so changes wait for your next message. Ask me again and
     I'll do it.").
   - The same-turn words are unchanged where he asked for the change, and true again under A2.
-- **Web assistant (the cascade door), members only.** The server decides from its own record:
-  `ReadThroughTurn` holds the previous turn's mark, read in the same single query as this turn's.
-  - The recruiter demo (/try) keeps the same-turn rule: it is frozen. `read_through.CARRY_ON_DEMO`
-    is the one switch, and applying the rule there is an open question for the owner.
+- **Web assistant (the cascade door), members and demo visits.** The server decides from its own
+  record: `ReadThroughTurn` holds the previous turn's mark, read in the same single query as this
+  turn's.
+  - The recruiter demo (/try) gets the same rule, by the owner's word on 2026-11-21. That word
+    covers this change only; the rest of the demo stays frozen. The marks are per conversation
+    and per visitor, so no visitor's search reaches another's turn.
   - The Live fallback door counts model turns, not his turns, so it keeps the same-turn rule.
 - **Engine brain.** `run_turn` reads the previous turn's `taint_sources` and adds `previous_turn`
   to this turn's taint (`agents/legion/carry.py`).

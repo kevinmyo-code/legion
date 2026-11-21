@@ -470,8 +470,8 @@ here.
   clears once that turn is answered. A turn that refused, in its own read, a change his own words
   asked for (and so told him to ask again) does not carry: his next message may write. A change
   the page or the model asked for never lifts the carry. On every door (the web
-  assistant for members, the engine brain, the phone in its own slice); the recruiter demo keeps
-  the same-turn rule until he says.
+  assistant for members and, by his word the same day, the recruiter demo; the engine brain; the
+  phone in its own slice).
 - **Memory lives on the engine, private to the member it is about (Kevin, 2026-11-05, ADR 0075).**
   *"centralized memory"*. One store (`member_memories`) for the phone, the web and the Claude
   worker on the Alienware (*"claude can write too."*); never a recruiter, never the work laptop.

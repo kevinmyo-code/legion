@@ -452,13 +452,8 @@ class WebDoor:
         self._tools = None
         self._declarations = None
         # The carry (ADR 0090 amended, 2026-11-21): the turn after one that read outside text
-        # refuses writes too; a member rule, the demo frozen (`read_through.CARRY_ON_DEMO`).
-        read_through.set_turn(
-            request,
-            conversation_id,
-            turn,
-            carry=not self.recruiter or read_through.CARRY_ON_DEMO,
-        )
+        # refuses writes too; members and, by the owner's word the same day, demo visits.
+        read_through.set_turn(request, conversation_id, turn, carry=True)
 
     def tools(self) -> dict:
         if self._tools is None:
