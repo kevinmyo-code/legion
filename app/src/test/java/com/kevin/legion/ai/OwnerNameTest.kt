@@ -8,6 +8,16 @@ import org.junit.Test
 
 /** What the assistant calls him (2026-11-20). The names are made up for the test; none is his. */
 class OwnerNameTest {
+    private fun engineCopy(): String {
+        var dir: java.io.File? = java.io.File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (dir != null) {
+            val f = java.io.File(dir, "server/assistant/personas.py")
+            if (f.isFile) return f.readText()
+            dir = dir.parentFile
+        }
+        error("server/assistant/personas.py not found")
+    }
+
     @Test
     fun `the name he typed wins over the engine's, and only the first word is used`() {
         assertEquals("Sam", OwnerName.resolve("Sam", "Robin Ames"))
@@ -33,10 +43,10 @@ class OwnerNameTest {
         assertTrue(known, known.contains("now and then, not in every reply"))
         assertTrue(known, known.contains("never any other name, nickname or title"))
         val none = OwnerName.personaLine(null)
-        assertTrue(none, none.contains("call them by no name at all"))
+        assertTrue(none, none.startsWith("You do not know their name."))
+        assertTrue(none, none.contains("Call them by no name at all"))
         assertTrue(none, none.contains("never make one up"))
         assertEquals(none, OwnerName.personaLine("  "))
-        assertFalse(none.contains("if you know it"))
     }
 
     @Test
@@ -46,12 +56,17 @@ class OwnerNameTest {
     }
 
     @Test
-    fun `the identity clause ends with the name line, and the persona no longer says if you know it`() {
+    fun `the identity clause ends with the name line, after the persona text the engine shares`() {
         val withName = AssistantIdentity.withOwner("CLAUSE", "Sam")
         assertTrue(withName.startsWith("CLAUSE\n\n"))
         assertTrue(withName.endsWith(OwnerName.personaLine("Sam")))
         assertTrue(AssistantIdentity.withOwner("CLAUSE", null).endsWith(OwnerName.personaLine(null)))
-        assertFalse(ALFRED.clause.contains("if you know it"))
-        assertTrue(ALFRED.clause.contains("no nickname or title for them"))
+        // The persona text is the engine's twin, unchanged (the engine copy pins the frozen demo prompt);
+        // the appended line comes later and settles its "if you know it" either way.
+        val line = "use their first name now and then if you know it"
+        assertTrue(ALFRED.clause.contains(line))
+        assertTrue(engineCopy().contains(line))
+        val full = AssistantIdentity.withOwner(ALFRED.clause, null)
+        assertTrue(full.indexOf(line) < full.indexOf("You do not know their name."))
     }
 }

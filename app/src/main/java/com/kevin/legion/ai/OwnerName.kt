@@ -44,8 +44,8 @@ object OwnerName {
      */
     fun personaLine(name: String?): String {
         val known = clean(name)
-            ?: return "You do not know their name: call them by no name at all, and never make one up " +
-                "or use a nickname or title instead."
+            ?: return "You do not know their name. Call them by no name at all; never make one up, and no " +
+                "nickname or title."
         return "Their first name is $known. Use it now and then, not in every reply, and never any other " +
             "name, nickname or title for them."
     }
