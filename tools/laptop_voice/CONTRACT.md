@@ -137,7 +137,7 @@ Some voice models (Kyutai TTS) can start speaking while the text is still arrivi
 
 | `code` | When | What the phone does |
 |---|---|---|
-| `bad_request` | malformed JSON, unknown type, frame for an id never started, odd byte count, text empty or too long | fix; do not retry |
+| `bad_request` | malformed JSON, unknown type, frame for an id never started, odd byte count, text empty or too long (mic frames and `stt.end` for an id that already got an error, e.g. `timeout`, are dropped silently: section 5) | fix; do not retry |
 | `protocol` | `hello` missing or `protocol` unsupported | fall back to the phone path |
 | `too_long` | utterance over 30 s of audio (the laptop decodes the first 30 s and sends `stt.final` too; on a streaming backend it also closes the utterance, section 4b) | none needed |
 | `busy` | GPU queue full when a job is submitted | phone path for that stage |
