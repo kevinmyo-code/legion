@@ -273,10 +273,14 @@ def off_registry_tool(name: str, user):
 def member_only_tools(user) -> dict:
     """The tools a member's web assistant gets that are kept out of the registry, each behind its
     own switch: today `show_part`, only while `LEGION_JEEP_ASSISTANT=on` (`garage.flags`). Never
-    a recruiter's; never `/mcp`'s, which lists the registry alone. Empty with every switch off."""
+    a recruiter's; never `/mcp`'s, which lists the registry alone. Empty with every switch off.
+    Cascade only: on the Live fallback nothing speaks code's lines and no torque guard runs."""
+    from assistant import voice_engine
     from garage import flags as garage_flags
 
     if is_recruiter(user) or not garage_flags.enabled():
+        return {}
+    if voice_engine.engine_for(user) != voice_engine.CASCADE:
         return {}
     from garage.tool import SHOW_PART
 

@@ -139,13 +139,17 @@ _WORD_NUMBER = "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True))
 _WORDS = rf"(?:{_WORD_NUMBER})(?:[\s-]+(?:and[\s-]+)?(?:{_WORD_NUMBER}))*"
 _NUM = rf"(?:\d+(?:\.\d+)?|{_WORDS})"
 _RANGE = rf"{_NUM}(?:\s*(?:to|-|–|or|and)\s*{_NUM})?"
+_SEP = r"[\s.\-·⋅/]*"
+_FT = r"(?:ft|foot|feet)"
+_LB = r"(?:lbf|lbs|lb|pounds|pound)"
 _TORQUE_UNIT = (
-    r"(?:ft\.?[\s-]*lbs?\b\.?|foot[\s-]*pounds?\b|feet[\s-]*pounds?\b|lbs?\.?[\s-]*f(?:ee)?t\b|"
-    r"pounds?[\s-]*(?:feet|foot)\b|newton[\s-]*met(?:er|re)s?\b|n\s?[·.\-]?\s?m\b|"
-    r"in(?:ch)?[\s.-]*(?:lbs?|pounds?)\b)"
+    rf"(?:{_FT}{_SEP}{_LB}|{_LB}{_SEP}{_FT}|newton{_SEP}met(?:er|re)s?|n{_SEP}m|"
+    rf"in(?:ch)?(?:es)?{_SEP}{_LB}|kg{_SEP}m)\b"
 )
-_FIGURES = (
-    re.compile(rf"\b({_RANGE})\s*{_TORQUE_UNIT}", re.I),
+# A torque unit stands alone; a size (mm, an inch fraction, a metric thread, "a 13 socket")
+# counts only beside a fastener word, so "12 mm of rain" or "the M25" is ordinary speech.
+_TORQUE = re.compile(rf"\b({_RANGE})\s*{_TORQUE_UNIT}", re.I)
+_SIZES = (
     re.compile(rf"\b({_NUM})\s*(?:mm|millimet(?:er|re)s?|mil)\b", re.I),
     re.compile(r"\bm(\d{1,2}(?:\s*(?:x|by|×)\s*\d+(?:\.\d+)?)?)\b", re.I),
     re.compile(rf"\b({_NUM})\s*(?:socket|wrench|spanner)\b", re.I),
@@ -155,6 +159,15 @@ _FIGURES = (
         re.I,
     ),
 )
+_FASTENER_WORD = re.compile(
+    r"\b(?:sockets?|wrench(?:es)?|spanners?|bolts?|nuts?|threads?|studs?|hex|allen|castle|"
+    r"screws?|fasteners?)\b",
+    re.I,
+)
+# A sentence about torquing: any number in it is a figure ("torque it to 60", "60 pounds of
+# torque"), whatever unit it is said in or without one.
+_TORQUE_WORD = re.compile(r"\b(?:torque\w*|tighten\w*|retorque\w*)\b", re.I)
+_ANY_NUMBER = re.compile(rf"\b(?:\d+(?:\.\d+)?|{_WORDS})\b", re.I)
 _DIGITS = re.compile(r"\d+(?:\.\d+)?")
 _HAS_WORD_NUMBER = re.compile(rf"\b(?:{_WORD_NUMBER}|half|quarters?|eighths?|sixteenths?)\b", re.I)
 
@@ -166,9 +179,13 @@ def plain_number(text: str) -> str:
 
 def torque_figures(sentence: str) -> list[str]:
     """Every torque, socket-size or thread figure in `sentence`, as said."""
-    found = []
-    for pattern in _FIGURES:
-        found += [m.group(0) for m in pattern.finditer(sentence or "")]
+    text = sentence or ""
+    found = [m.group(0) for m in _TORQUE.finditer(text)]
+    if _TORQUE_WORD.search(text):
+        found += [m.group(0) for m in _ANY_NUMBER.finditer(text)]
+    if _FASTENER_WORD.search(text):
+        for pattern in _SIZES:
+            found += [m.group(0) for m in pattern.finditer(text)]
     return found
 
 
