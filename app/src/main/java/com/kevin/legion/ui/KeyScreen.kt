@@ -33,6 +33,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import com.kevin.legion.BuildConfig
+import com.kevin.legion.ai.OwnerName
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.MidnightApplication
 import com.kevin.legion.ai.GeminiKeyProvider
@@ -179,6 +180,8 @@ fun KeyScreen(onBack: () -> Unit) {
         } else {
             null
         }
+        // The engine's name for his account is what the assistant calls him by default (OwnerName).
+        (engineState as? MeResult.Ok)?.let { OwnerName.noteEngine(context, it.name) }
     }
 
     LaunchedEffect(engineConfigured) {

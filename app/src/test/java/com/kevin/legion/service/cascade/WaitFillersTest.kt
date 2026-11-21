@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures read best on one line
+
 package com.kevin.legion.service.cascade
 
 import kotlinx.coroutines.runBlocking
@@ -16,29 +18,49 @@ class WaitFillersTest {
     private val clip = 800L
 
     @Test
-    fun `a 10 s wait gets the backchannel and two wait lines at their offsets, and no more`() {
+    fun `a 10 s wait gets the backchannel and three wait lines at their offsets, and no more`() {
         val starts = WaitFillers.timeline(backchannelEnd, fillersBefore = 1, answerAtMs = 10_000, clipMs = clip)
-        // 1,000 + 3,500 = 4,500; it ends at 5,300; 5,300 + 4,000 = 9,300. Then the cap (3) is reached.
-        assertEquals(listOf(4_500L, 9_300L), starts)
+        // Kevin's ruling, 2026-11-20 (his phone log: 3 to 4 s of silence after the backchannel on most turns):
+        // 1,000 + 1,800 = 2,800; it ends at 3,600; 3,600 + 2,500 = 6,100; it ends at 6,900; 6,900 + 2,500 = 9,400.
+        assertEquals(listOf(2_800L, 6_100L, 9_400L), starts)
         val forever = WaitFillers.timeline(backchannelEnd, fillersBefore = 1, answerAtMs = 60_000, clipMs = clip)
-        assertEquals("the cap holds however long the wait", 2, forever.size)
+        // Every wait line once at most in a turn, and never more than the hard cap of fillers.
+        assertEquals(minOf(WaitFillers.LINES.size, WaitFillers.MAX_PER_TURN - 1), forever.size)
+        // No silence longer than the gap rule while lines are left.
+        val gaps = listOf(forever.first() - backchannelEnd) + forever.zipWithNext { a, b -> b - (a + clip) }
+        assertTrue(gaps.toString(), gaps.all { it <= WaitFillers.NEXT_GAP_MS })
     }
 
     @Test
     fun `an answer during the first wait line cancels the second, a 2 s wait gets none`() {
-        // The answer is ready at 5,000, while the first line (4,500 to 5,300) plays: no second line;
+        // The answer is ready at 3,000, while the first line (2,800 to 3,600) plays: no second line;
         // the answer waits for the line to end (the session's play gate).
-        assertEquals(listOf(4_500L), WaitFillers.timeline(backchannelEnd, 1, answerAtMs = 5_000, clipMs = clip))
+        assertEquals(listOf(2_800L), WaitFillers.timeline(backchannelEnd, 1, answerAtMs = 3_000, clipMs = clip))
         assertTrue(WaitFillers.timeline(backchannelEnd, 1, answerAtMs = 2_000, clipMs = clip).isEmpty())
+    }
+
+    // Review of 546cce67 (F5): a wait line due while a task line was queued played right after it.
+    // Under the play lock it is due only FIRST_GAP_MS after the END of the last filler of any kind.
+    @Test
+    fun `a wait line is due only after the gap from the last filler's end, never during a task line`() {
+        // A task line ended at 4,000: not before 5,800.
+        assertFalse(WaitFillers.dueNow(nowMs = 4_100, lastFillerEndAtMs = 4_000, waitSaid = 0, fillersSaid = 2, fillerPlaying = false))
+        assertTrue(WaitFillers.dueNow(nowMs = 5_800, lastFillerEndAtMs = 4_000, waitSaid = 0, fillersSaid = 2, fillerPlaying = false))
+        // A task line still playing: never.
+        assertFalse(WaitFillers.dueNow(nowMs = 9_000, lastFillerEndAtMs = 1_000, waitSaid = 0, fillersSaid = 2, fillerPlaying = true))
+        // The cap: never.
+        assertFalse(WaitFillers.dueNow(nowMs = 60_000, lastFillerEndAtMs = 0, waitSaid = 0, fillersSaid = WaitFillers.MAX_PER_TURN, fillerPlaying = false))
     }
 
     @Test
     fun `the cap counts every kind of filler`() {
-        // Backchannel and a task line already played: one wait line at most.
-        assertEquals(1, WaitFillers.timeline(3_000, fillersBefore = 2, answerAtMs = 60_000, clipMs = clip).size)
+        // Backchannel and a task line already played: up to the hard cap of 6 fillers in all.
+        assertEquals(4, WaitFillers.timeline(3_000, fillersBefore = 2, answerAtMs = 60_000, clipMs = clip).size)
         assertNull(WaitFillers.nextAtMs(3_000, waitSaid = 0, fillersSaid = WaitFillers.MAX_PER_TURN))
+        // Never a wait line twice in a turn: once every line was said, none more.
+        assertNull(WaitFillers.nextAtMs(3_000, waitSaid = WaitFillers.LINES.size, fillersSaid = 1))
         // No backchannel (a skip): the first wait line counts from his end of speech.
-        assertEquals(3_500L, WaitFillers.nextAtMs(0, waitSaid = 0, fillersSaid = 0))
+        assertEquals(1_800L, WaitFillers.nextAtMs(0, waitSaid = 0, fillersSaid = 0))
     }
 
     @Test

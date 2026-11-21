@@ -171,6 +171,39 @@ object ListenCue {
         return out.array()
     }
 
+    /**
+     * The closing chime (Kevin, 2026-11-20: hear that the conversation has stopped). Original, made here
+     * like [earconPcm] and its counterpart: the opening earcon rises a fifth (660 then 990 Hz), this
+     * falls a fifth from a different pair (740 then 494 Hz), with a longer, softer last note. About
+     * 290 ms, 24 kHz mono PCM16, the same gain, raised-cosine edges so it never clicks.
+     */
+    @Suppress("MagicNumber") // the cosine envelope's 0.5s are the shape, not tunables
+    fun closeChimePcm(): ByteArray {
+        val tones = listOf(CLOSE_HIGH_HZ to CLOSE_HIGH_SEC, 0.0 to CLOSE_GAP_SEC, CLOSE_LOW_HZ to CLOSE_LOW_SEC)
+        val samples = tones.sumOf { (it.second * SAMPLE_RATE).toInt() }
+        val out = ByteBuffer.allocate(samples * 2).order(ByteOrder.LITTLE_ENDIAN)
+        val edge = (CLOSE_EDGE_SEC * SAMPLE_RATE).toInt()
+        for ((freq, secs) in tones) {
+            val n = (secs * SAMPLE_RATE).toInt()
+            for (i in 0 until n) {
+                val env = min(1.0, min(i, n - 1 - i).toDouble() / edge).let { 0.5 - 0.5 * kotlin.math.cos(PI * it) }
+                val v = if (freq == 0.0) 0.0 else sin(2 * PI * freq * i / SAMPLE_RATE) * env * EARCON_GAIN
+                out.putShort((v * Short.MAX_VALUE).toInt().toShort())
+            }
+        }
+        return out.array()
+    }
+
+    /** The closing chime's notes: a falling fifth, F#5 then B4, and the gap between them. */
+    const val CLOSE_HIGH_HZ = 740.0
+    const val CLOSE_HIGH_SEC = 0.10
+    const val CLOSE_GAP_SEC = 0.04
+    const val CLOSE_LOW_HZ = 494.0
+    const val CLOSE_LOW_SEC = 0.15
+
+    /** Each closing note fades in and out over this long. */
+    const val CLOSE_EDGE_SEC = 0.02
+
     /** A clip longer than this plays the earcon instead: an opening line is a few words. */
     const val MAX_CLIP_MS = 2_500L
 

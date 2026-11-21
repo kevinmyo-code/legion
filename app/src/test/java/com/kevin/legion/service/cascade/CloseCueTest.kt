@@ -1,0 +1,103 @@
+@file:Suppress("MaxLineLength") // test fixtures read best on one line
+
+package com.kevin.legion.service.cascade
+
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** [CloseCue]: which closes chime, the skips, once only, and the bounded wait (Kevin, 2026-11-20). */
+class CloseCueTest {
+    private fun decide(
+        reason: String,
+        quiet: Boolean = false,
+        onCall: Boolean = false,
+        audioOpened: Boolean = true,
+        played: Boolean = false,
+        rateMatches: Boolean = true,
+    ) = CloseCue.decide(reason, quiet, onCall, audioOpened, played, rateMatches)
+
+    @Test
+    fun `each way a conversation ends chimes exactly once`() {
+        // goodbye (Farewells), end_conversation, the follow-up window, a tap, noise, two misses,
+        // an unanswered check-in, a new conversation, and a failed voice with no fallback (Live retired).
+        listOf(
+            "sleep_phrase", "dismissed", "follow_up", "stopped", "noise", "missed_twice", "check_in_no_reply",
+            "new conversation", CloseCue.voiceFailedReason("cloud_down", liveRetired = true, background = false),
+        ).forEach { reason ->
+            assertNull(reason, CloseCue.decide(reason, false, false, true, alreadyPlayed = false, rateMatches = true))
+            assertEquals(reason, CloseCue.Skip.PLAYED, CloseCue.decide(reason, false, false, true, alreadyPlayed = true, rateMatches = true))
+        }
+    }
+
+    @Test
+    fun `every close of a conversation he was in chimes`() {
+        for (r in listOf("stopped", "sleep_phrase", "follow_up", "dismissed", "noise", "missed_twice",
+            "check_in_no_reply", "new conversation", "voice_failed_tts")) {
+            assertNull(r, decide(r))
+        }
+    }
+
+    @Test
+    fun `teardown, a takeover, a reopen and lines he was not in do not`() {
+        for (r in listOf("destroyed", "preempted", "crisis", "mic_held", "ring stopped", "spoken",
+            "check_in_statement", "check_in_dropped", "brief", "look", "test_real_tap", "tap over a proactive line")) {
+            assertEquals(r, CloseCue.Skip.NOT_A_CLOSE, decide(r))
+        }
+    }
+
+    @Test
+    fun `Quiet, a call, no audio, a wrong rate and a second time skip it`() {
+        assertEquals(CloseCue.Skip.QUIET, decide("stopped", quiet = true))
+        assertEquals(CloseCue.Skip.ON_CALL, decide("stopped", onCall = true))
+        assertEquals(CloseCue.Skip.NO_AUDIO, decide("stopped", audioOpened = false))
+        assertEquals(CloseCue.Skip.RATE, decide("stopped", rateMatches = false))
+        assertEquals(CloseCue.Skip.PLAYED, decide("stopped", played = true))
+    }
+
+    // Review of 546cce67 (F2): the hand-over released with the raw reason, so a failed voice closed in
+    // silence. The release now gets the reason the chime rule knows, unless it was a background line.
+    @Test
+    fun `a failed voice's close chimes, a background line's does not`() {
+        val r = CloseCue.voiceFailedReason("tts", liveRetired = true, background = false)
+        assertEquals("voice_failed_tts", r)
+        assertNull(decide(r))
+        assertEquals(CloseCue.Skip.NOT_A_CLOSE, decide(CloseCue.voiceFailedReason("tts", liveRetired = true, background = true)))
+        assertEquals("tts", CloseCue.voiceFailedReason("tts", liveRetired = false, background = false))
+    }
+
+    // Review of 546cce67 (F3): the order of the close, in numbers, for the Bluetooth check in the car.
+    @Test
+    fun `the close's order is logged in ms from the release's start`() {
+        assertEquals("close_order mic_released_ms=12 chime_end_ms=1004 route_released_ms=1030", CloseCue.orderLine(12, 1004, 1030))
+        assertEquals("close_order mic_released_ms=12 chime_end_ms=none route_released_ms=40", CloseCue.orderLine(12, null, 40))
+    }
+
+    @Test
+    fun `the audit line is numbers and fixed tokens`() {
+        assertEquals("close_cue played=1 reason=follow_up skipped=none", CloseCue.auditLine("follow_up", null))
+        assertEquals(
+            "close_cue played=0 reason=new_conversation skipped=quiet",
+            CloseCue.auditLine("new conversation", CloseCue.Skip.QUIET),
+        )
+    }
+
+    @Test
+    fun `the wait is the chime plus the route's tail, never past the hard cap`() {
+        assertEquals(290L + 60L, CloseCue.waitCapMs(chimeMs = 290, settleMs = 60))
+        assertEquals(290L + 700L, CloseCue.waitCapMs(chimeMs = 290, settleMs = 700))
+        assertEquals(CloseCue.HARD_CAP_MS, CloseCue.waitCapMs(chimeMs = 900, settleMs = 900))
+    }
+
+    @Test
+    fun `a playback that never drains is cut at the cap, a normal one completes`() = runTest {
+        val start = testScheduler.currentTime
+        assertFalse(CloseCue.playBounded(500, write = {}, drained = { delay(60_000) }))
+        assertEquals(500L, testScheduler.currentTime - start)
+        assertTrue(CloseCue.playBounded(500, write = {}, drained = { delay(300) }))
+    }
+}

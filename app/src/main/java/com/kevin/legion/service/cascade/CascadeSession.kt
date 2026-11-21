@@ -34,6 +34,7 @@ import com.kevin.legion.service.GeminiLiveSession
 import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveLatency
 import com.kevin.legion.service.LiveSessionController
+import com.kevin.legion.service.Farewells
 import com.kevin.legion.service.ListenCue
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.MicArbiter
@@ -215,9 +216,6 @@ internal class CascadeSession(
 
     /** When this conversation first called a write: the agenda read before it is withdrawn. */
     @Volatile private var agendaChangedAt: LocalTime? = null
-
-    /** The voice the filler lines were last warmed on ([warmFillers]). */
-    private var fillersWarmedFor: SpeechBackend? = null
     private var plan: CascadeRules.TurnPlan? = null
     @Volatile private var turnTaker: TurnTaker? = null
 
@@ -316,8 +314,9 @@ internal class CascadeSession(
     private val saidThisTurn: MutableSet<String> = java.util.Collections.synchronizedSet(mutableSetOf())
     @Volatile private var answerAudioStarted = false
 
-    /** When this turn's backchannel was skipped for answer text already in; logged with the audio's gap. */
-    @Volatile private var answerTextSkipAtMs: Long? = null
+    /** A task line has started and not yet ended: no wait line starts meanwhile (F5). */
+    @Volatile private var taskLinePlaying = false
+
     @Volatile private var fillerSkip: Backchannel.Skip? = null
     private val recentWaitLines = RecentLines(WaitFillers.ROTATION)
     private val waitIndex = AtomicInteger(0)
@@ -1220,13 +1219,15 @@ internal class CascadeSession(
         // A new turn's wait starts: the last one's timers are over.
         fillerJobs.endTurn()
         backchannelUtt = u
+        // What is not in memory yet is asked for again (a warm that failed, the first session after an update).
+        warmFillers()
         turnAudioStarted = false
         backchannelEndAtMs = null
         turnFillers.set(0)
         lastFillerEndAtMs = eotAtMs
         saidThisTurn.clear()
         answerAudioStarted = false
-        answerTextSkipAtMs = null
+        taskLinePlaying = false
         val seq = backchannelSeq.incrementAndGet()
         val skip = Backchannel.decide(
             Backchannel.Turn(
@@ -1285,7 +1286,9 @@ internal class CascadeSession(
                 // The word as its index in Backchannel.LINES (a number, never the word), and how many
                 // words' clips failed the length gate before it.
                 "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=$ms " +
-                    "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected}",
+                    "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected} " +
+                    // 1: the answer's text was already in, so the answer waits for this clip.
+                    "answer_text=${if (answerTextIn()) 1 else 0}",
             )
             audit.filler("backchannel", line)
             clipPlayback.during {
@@ -1300,13 +1303,6 @@ internal class CascadeSession(
         lastFillerEndAtMs = System.currentTimeMillis()
     }
 
-    /** The answer's own first audio: no more fillers, and the answer_text skip's gap logged (2026-11-20). */
-    private fun onAnswerAudioStarted(nowMs: Long) {
-        answerAudioStarted = true
-        answerTextSkipAtMs?.let { LiveLatency.log(LiveLatency.TAG, Backchannel.answerTextGapLine(it, nowMs)) }
-        answerTextSkipAtMs = null
-    }
-
     /** The clip whose audio [clipListen] keeps: its kind and line index, for [ClipListen.joinedLine]. */
     @Volatile private var clipListenKind = ""
     @Volatile private var clipListenIdx = -1
@@ -1316,7 +1312,14 @@ internal class CascadeSession(
         Backchannel.callOnLine(TelephonyController.isInCall, audioManager.mode, CallAudioMode.ownCommActive)
 
     /** A task line started: audited, and counted toward this turn's fillers and its said words. */
+    /** A task line played to its end: the next wait line counts from now (F5). */
+    private fun noteTaskFillerEnded() {
+        lastFillerEndAtMs = System.currentTimeMillis()
+        taskLinePlaying = false
+    }
+
     private fun noteTaskFiller(text: String) {
+        taskLinePlaying = true
         audit.filler("task", text)
         turnFillers.incrementAndGet()
         saidThisTurn.add(text)
@@ -1341,8 +1344,11 @@ internal class CascadeSession(
                     delay(minOf(wait, WAIT_POLL_MS))
                     continue
                 }
-                if (!playWaitFiller(seq, eotAtMs)) return@startWait
-                said++
+                when (playWaitFiller(seq, eotAtMs, said)) {
+                    WaitPlay.PLAYED -> said++
+                    WaitPlay.NOT_YET -> delay(WAIT_POLL_MS)
+                    WaitPlay.STOP -> return@startWait
+                }
             }
         }
     }
@@ -1352,13 +1358,15 @@ internal class CascadeSession(
      * or audio has started, never over it (the answer's writes take the same gate, so an answer ready
      * during the line follows it). False: none played, and none will this turn.
      */
+    private enum class WaitPlay { PLAYED, NOT_YET, STOP }
+
     @Suppress("ReturnCount") // one worded skip per reason
-    private suspend fun playWaitFiller(seq: Int, eotAtMs: Long): Boolean {
-        val b = backend ?: return false
-        val p = player ?: return false
+    private suspend fun playWaitFiller(seq: Int, eotAtMs: Long, said: Int): WaitPlay {
+        val b = backend ?: return WaitPlay.STOP
+        val p = player ?: return WaitPlay.STOP
         fun due() = !closing.get() && seq == backchannelSeq.get() && !answerAudioStarted && !answerTextIn() &&
             !QuietMode.isOn(ctx) && !callOnLine()
-        if (!due()) return false
+        if (!due()) return WaitPlay.STOP
         var pcm = ByteArray(0)
         val chosen = WaitFillers.choose(
             recentWaitLines,
@@ -1371,10 +1379,15 @@ internal class CascadeSession(
         }
         if (chosen == null) {
             LiveLatency.log(LiveLatency.TAG, "filler_skip kind=wait reason=no_clip_fits")
-            return false
+            return WaitPlay.STOP
         }
         playGate.withLock {
-            if (!due()) return false
+            if (!due()) return WaitPlay.STOP
+            // A task line queued on the gate, or one that just ended, moves this one back (F5).
+            val now = System.currentTimeMillis()
+            if (!WaitFillers.dueNow(now, lastFillerEndAtMs, said, turnFillers.get(), taskLinePlaying)) {
+                return WaitPlay.NOT_YET
+            }
             recentWaitLines.add(chosen.line)
             saidThisTurn.add(chosen.line)
             turnFillers.incrementAndGet()
@@ -1395,7 +1408,7 @@ internal class CascadeSession(
         // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
         clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         lastFillerEndAtMs = System.currentTimeMillis()
-        return true
+        return WaitPlay.PLAYED
     }
 
     /**
@@ -1419,10 +1432,8 @@ internal class CascadeSession(
                 Backchannel.stillDue(turnAudioStarted, speaking && !cueOver(), seq == backchannelSeq.get())
         }
         if (!due()) return skip("answer_first")
-        if (answerTextIn()) {
-            answerTextSkipAtMs = System.currentTimeMillis()
-            return skip(Backchannel.Skip.ANSWER_TEXT.token)
-        }
+        // The answer's text being in is no reason for silence (Kevin, 2026-11-20: a filler every
+        // time); only its audio having started is. The answer then waits for the clip (<= its length).
         // His turn already read as noise or nothing (no model call happens): nothing to acknowledge.
         // A transcript that comes after the clip's time cannot stop it; that turn still gets one.
         if (backchannelUtt != null && backchannelUtt === noiseUtt) return skip("noise")
@@ -1769,7 +1780,7 @@ internal class CascadeSession(
         val reply = newSpeaker(null)
         reply.say(ClosingLines.next(ctx), tagsAllowed = true)
         val o = withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() }
-        if (o == ReplySpeaker.Outcome.Played) player?.awaitDrained() else host.closingTone()
+        if (o == ReplySpeaker.Outcome.Played) player?.awaitDrained()
         shutdown("check_in_no_reply")
         host.closed("check_in_no_reply")
     }
@@ -1910,7 +1921,6 @@ internal class CascadeSession(
         if (++missedInARow > MAX_MISSED_IN_A_ROW) {
             LiveLatency.log(LiveLatency.TAG, "stt_missed_close n=$missedInARow")
             sayOwed()
-            host.closingTone()
             shutdown("missed_twice")
             host.closed("missed_twice")
             return
@@ -1935,6 +1945,9 @@ internal class CascadeSession(
      * done and never said).
      */
     private suspend fun endByStop(u: TurnUtterance, words: String) {
+        // No "Mm." before "Goodbye." (review F4): a backchannel not yet started is dropped. At this point
+        // nothing but that clip can be playing, so playback means it started: it finishes.
+        if (!playbackActive) fillerJobs.endTurn()
         discardDraftOf(u, "not_answered")
         carry = ""
         recordTurn(words, owed.due()?.line.orEmpty())
@@ -1968,12 +1981,31 @@ internal class CascadeSession(
         if (reply.await() == ReplySpeaker.Outcome.Played) player?.awaitDrained()
     }
 
+    private val farewellIndex = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * His farewell closes the conversation with a short line of code's own ([Farewells.SPOKEN],
+     * 2026-11-20): from memory only, at most [CLOSER_MAX_MS]; not in memory, it is skipped and logged.
+     */
+    @Suppress("ReturnCount") // no voice, no player, not in memory
+    private suspend fun sayFarewell() {
+        val b = backend ?: return
+        if (player == null) return
+        val line = Farewells.SPOKEN[Math.floorMod(farewellIndex.getAndIncrement(), Farewells.SPOKEN.size)]
+        if (!b.tts.inHand(SpokenText.forSpeech(line))) {
+            LiveLatency.log(LiveLatency.TAG, "farewell_skip reason=not_in_memory")
+            return
+        }
+        val reply = newSpeaker(null)
+        reply.say(line)
+        if (withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() } == ReplySpeaker.Outcome.Played) player?.awaitDrained()
+    }
+
     /** One more silent turn (noise, or no voice at all); the [MAX_NOISE_IN_A_ROW]th closes with the tone. */
     private suspend fun closedOnNoise(): Boolean {
         if (++noiseInARow < MAX_NOISE_IN_A_ROW) return false
         LiveLatency.log(LiveLatency.TAG, "stt_noise_close n=$noiseInARow")
         sayOwed()
-        host.closingTone()
         shutdown("noise")
         host.closed("noise")
         return true
@@ -2295,7 +2327,7 @@ internal class CascadeSession(
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
                 } else {
                     answerAudible = true
-                    onAnswerAudioStarted(now)
+                    answerAudioStarted = true
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
                     LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
                 }
@@ -2317,7 +2349,7 @@ internal class CascadeSession(
             onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
             onFillerStarted = { text -> noteTaskFiller(text) },
             onFillerPlayed = {
-                lastFillerEndAtMs = System.currentTimeMillis()
+                noteTaskFillerEnded()
                 // Half-duplex: the filler is over, the answer is not here yet. Listen again once it
                 // has drained (and its Bluetooth tail settled), so he can still add to his turn.
                 if (turnTaker?.bargeIn != true) {
@@ -2373,7 +2405,6 @@ internal class CascadeSession(
         val oneShotDone = (oneShot || oneShotRequested) && answeredOnce
         if (dismissAfterReply || oneShotDone) {
             sayOwed()
-            host.closingTone()
             shutdown("dismissed")
             host.closed("dismissed")
             return
@@ -2397,8 +2428,7 @@ internal class CascadeSession(
      */
     private fun warmFillers() {
         val b = backend ?: return
-        if (fillersWarmedFor === b) return
-        fillersWarmedFor = b
+        // Only what is missing is fetched (a kept line in memory, or one already in flight, is skipped).
         b.tts.warm(FILLERS_SPOKEN)
         // The backchannels' and the wait lines' second renders, kept apart ([Backchannel.TAKES]).
         b.tts.warmTakes((Backchannel.LINES + WaitFillers.LINES).map { SpokenText.forSpeech(it) }, 1)
@@ -2528,6 +2558,9 @@ internal class CascadeSession(
             return
         }
         val voice = backend!!
+        // No background line fetch while the greeting is held and spoken: on the laptop it would sit
+        // ahead of the greeting ([TextToSpeech.holdWarm]). Released when the greeting's job ends.
+        voice.tts.holdWarm(true)
         turnJob = scope.launch(loop) {
             // One budget for the whole greeting, prompt build included: past it, the scripted line.
             val deadline = System.currentTimeMillis() + GreetingBudget.FIRST_OUTPUT_MS
@@ -2540,7 +2573,9 @@ internal class CascadeSession(
             }
             val reply = newSpeaker(null)
             val firstText = CompletableDeferred<Unit>()
-            // The model's whole hello as written, for the "do not reuse" list ([GreetingOpening.noteOpened]).
+            // The model's whole hello as written. It is held, not streamed: the name check
+            // ([GreetingWords.namesHim]) reads the whole line before any of it is spoken, and it is
+            // what the "do not reuse" list keeps ([GreetingOpening.noteOpened]).
             val written = StringBuffer()
             val call = launch(Dispatchers.IO) {
                 try {
@@ -2554,8 +2589,7 @@ internal class CascadeSession(
                         object : GeminiTextLoop.Listener {
                             override fun onText(delta: String) {
                                 written.append(delta)
-                                reply.text(delta)
-                                firstText.complete(Unit)
+                                if (written.isNotBlank()) firstText.complete(Unit)
                             }
 
                             override fun onFirstPart(round: Int, ms: Long) {
@@ -2569,20 +2603,22 @@ internal class CascadeSession(
             }
             try {
                 withTimeoutOrNull((deadline - System.currentTimeMillis()).coerceAtLeast(1L)) { firstText.await() }
-                if (!reply.anyText) {
+                val whole = written.isNotBlank() &&
+                    withTimeoutOrNull(GreetingBudget.WHOLE_LINE_MS) { call.join() } != null
+                val gate = greetingGate(whole, written.toString(), plan.name)
+                if (gate != GreetingGate.SPEAK) {
                     call.cancel()
                     reply.interrupt()
-                    LiveLatency.log(LiveLatency.TAG, "greeting model_slow scripted")
-                    speakScripted(ackLines.next())
+                    greetingNotSpoken(gate)
                     return@launch
                 }
-                call.join()
+                reply.text(written.toString())
                 reply.finishText()
                 // A test open (adb) does not use up the topic for his real greetings. The words are the
                 // model's text, whole now: what was heard ([ReplySpeaker.spoken]) is still empty here,
                 // since the stream ends before the clip starts, and the avoid list never filled (11-19
                 // drive: most hellos were one line).
-                if (test == null) greeting?.noteOpened(plan, GreetingWords.of(written.toString()))
+                if (test == null) greeting?.noteOpened(plan, GreetingWords.of(written.toString(), plan.name))
                 when (val o = reply.await()) {
                     ReplySpeaker.Outcome.Played -> {
                         // So his answer is understood: the greeting is the first exchange.
@@ -2598,12 +2634,44 @@ internal class CascadeSession(
                 withContext(NonCancellable) { reply.interrupt() }
                 throw e
             }
-        }
+        }.also { job -> job.invokeOnCompletion { voice.tts.holdWarm(false) } }
     }
+
+    /**
+     * The model's greeting was not spoken ([gate] is not [GreetingGate.SPEAK]): logged; the scripted
+     * hello for a slow or wrongly named line; for a drop because he spoke, his own turn carries on and
+     * only the earcon may play ([GreetingGate.earconAfterDrop]).
+     */
+    private suspend fun greetingNotSpoken(gate: GreetingGate) {
+        val earcon = gate == GreetingGate.HE_SPOKE &&
+            GreetingGate.earconAfterDrop(System.currentTimeMillis(), lastLocalSpeechAtMs)
+        gate.logLine(earcon)?.let { LiveLatency.log(LiveLatency.TAG, it) }
+        if (gate.scripted) speakScripted(ackLines.next())
+        if (earcon) playDropEarcon()
+    }
+
+    /**
+     * The listen earcon after a dropped greeting when he is not talking now ([GreetingGate.earconAfterDrop]):
+     * the wake is still acknowledged if the speech that dropped it was not his. Nothing else changes.
+     */
+    private suspend fun playDropEarcon() {
+        val p = player ?: return
+        if (backend?.tts?.sampleRate != ListenCue.SAMPLE_RATE) return
+        val gen = p.generation()
+        withContext(Dispatchers.IO) { p.write(ListenCue.earconPcm(), gen) }
+    }
+
+    /**
+     * The held greeting's fate ([GreetingGate]), read the moment before any of it would be spoken: he
+     * spoke since the open ([heardSinceOpen]), it was not whole in time, or it calls him by a name
+     * that is not [name] ([com.kevin.legion.greeting.GreetingNames]).
+     */
+    private fun greetingGate(whole: Boolean, written: String, name: String?): GreetingGate =
+        GreetingGate.decide(heardSinceOpen, whole, whole && GreetingWords.namesHim(written, name))
 
     private suspend fun endByVoice() {
         sayOwed()
-        host.closingTone()
+        sayFarewell()
         shutdown("sleep_phrase")
         host.notice("Conversation closed")
         host.closed("sleep_phrase")
@@ -2698,7 +2766,6 @@ internal class CascadeSession(
         scope.launch(loop) {
             LiveLatency.log("LIVE_FOLLOWUP", "expired engine=${engineToken()}")
             sayOwed()
-            host.closingTone()
             shutdown("follow_up")
             host.notice("Conversation closed")
             host.closed("follow_up")
@@ -3100,12 +3167,11 @@ internal class CascadeSession(
             VoiceEngineSettings.noteStatus(ctx, said)
             // A background line nobody asked for fails quietly on screen; Settings still says why.
             if (!quiet) host.notice(failedNotice(moment, said, from, phoneFault))
-            release(reason)
+            release(CloseCue.voiceFailedReason(reason, VoiceEngineSettings.LIVE_RETIRED, quiet))
         } finally {
             if (VoiceEngineSettings.LIVE_RETIRED) {
                 // Live is retired (Kevin, 2026-11-15): never opened behind his back. The failure is
                 // said in words above and the conversation ends with the closing tone.
-                if (!quiet) host.closingTone()
                 host.closed("voice_failed_$reason")
             } else {
                 // Whatever happened above, Live is opened: never a dead assistant.
@@ -3140,6 +3206,49 @@ internal class CascadeSession(
         }
     }
 
+    /** The closing chime has played for this session's close ([CloseCue]: once only). */
+    @Volatile private var closeCuePlayed = false
+
+    /**
+     * The closing chime ([ListenCue.closeChimePcm], [CloseCue]): through Alfred's own track, after the
+     * mic has closed and before the route is released, waited for at most the chime plus the route's
+     * tail ([CloseCue.waitCapMs]). Logged either way.
+     */
+    private suspend fun playCloseCue(reason: String): Boolean {
+        val p = player
+        val skip = CloseCue.decide(
+            reason,
+            quiet = QuietMode.isOn(ctx),
+            onCall = callOnLine(),
+            audioOpened = p != null,
+            alreadyPlayed = closeCuePlayed,
+            rateMatches = backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE,
+        )
+        LiveLatency.log(LiveLatency.TAG, CloseCue.auditLine(reason, skip))
+        if (skip != null || p == null) return false
+        closeCuePlayed = true
+        val pcm = ListenCue.closeChimePcm()
+        val settle = MicReopen.settleMs(CallAudioMode.route(audioManager))
+        val cap = CloseCue.waitCapMs(ListenCue.durationMs(pcm), settle)
+        return CloseCue.playBounded(
+            cap,
+            write = { withContext(Dispatchers.IO) { p.write(pcm, p.generation()) } },
+            drained = {
+                p.awaitDrained()
+                delay(settle)
+            },
+        )
+    }
+
+    /** The conversation's usage summary at its close, and the prompt cache's listener let go. */
+    private fun logUsageAtClose() {
+        if (auditStarted) {
+            val engines = enginesUsed.joinToString(">")
+            LiveLatency.log(LiveLatency.TAG, usageLedger.summary(engines, turnsAnswered.get()))
+        }
+        CACHE?.onCreated = null
+    }
+
     /** Idempotent full release. */
     private suspend fun shutdown(reason: String) {
         if (!closing.compareAndSet(false, true)) return
@@ -3167,6 +3276,7 @@ internal class CascadeSession(
     }
 
     private suspend fun releaseNow(reason: String, caller: Job?) {
+        val releaseStartMs = System.currentTimeMillis()
         isOpen = false
         // A clear-codes question belongs to this conversation: a "yes" in the next one answers nothing.
         step("clear_question") { DtcClearController.forgetClearQuestion() }
@@ -3176,6 +3286,9 @@ internal class CascadeSession(
             specPollJob?.cancel()
             discardDraft("closed")
             speaker?.interrupt()
+            // A stop mid-reply: what is still buffered goes now, so the chime is not queued behind it
+            // (and neither is cut at the chime's cap). The chime takes the new generation.
+            player?.flush()
             turnJob?.takeIf { it !== caller }?.cancel()
             currentUtt?.cancel()
             currentUtt = null
@@ -3191,21 +3304,27 @@ internal class CascadeSession(
             Log.w(TAG, "mic join: ${e.message}")
         }
         step("turn") { turnTaker?.reset() }
+        // The mic is closed: its claim goes now, so the wake word re-arms without waiting on the chime.
+        step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
+        micClaimed = false
+        val micReleasedMs = System.currentTimeMillis() - releaseStartMs
+        // The closing chime, before the player and the route go (Bluetooth would cut it off).
+        val chimed = try {
+            playCloseCue(reason)
+        } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+            Log.w(TAG, "close cue: ${e.message}")
+            false
+        }
+        val chimeEndMs = if (chimed) System.currentTimeMillis() - releaseStartMs else null
         step("player") { player?.release() }
         step("route_watch") { audioRoute.stopWatching() }
         step("call_audio") { callAudio?.let { if (it.isActive) it.exit("cascade $reason") } }
+        val routeReleasedMs = System.currentTimeMillis() - releaseStartMs
+        LiveLatency.log(LiveLatency.TAG, CloseCue.orderLine(micReleasedMs, chimeEndMs, routeReleasedMs))
         step("focus") { abandonFocus() }
         step("caption") { CompanionPhase.setCaption("") }
-        step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
-        micClaimed = false
         step("socket") { backend?.close(reason) }
-        step("usage") {
-            if (auditStarted) {
-                val engines = enginesUsed.joinToString(">")
-                LiveLatency.log(LiveLatency.TAG, usageLedger.summary(engines, turnsAnswered.get()))
-            }
-            CACHE?.onCreated = null
-        }
+        step("usage") { logUsageAtClose() }
         step("audit") { if (auditStarted) audit.sessionEnd(reason) }
         step("warmup") {
             CascadeWarmup.conversationOpen = false
@@ -3421,7 +3540,7 @@ internal class CascadeSession(
         private val FILLERS_SPOKEN =
             (
                 ToolFillers.GENERIC + ScriptedLines.MISSED + ScriptedLines.VOICE_LOST + Backchannel.LINES +
-                    WaitFillers.LINES + ScriptedLines.GENERIC_DONE
+                    WaitFillers.LINES + Farewells.SPOKEN + ScriptedLines.GENERIC_DONE
                 )
                 .distinct().map { SpokenText.forSpeech(it) }
 

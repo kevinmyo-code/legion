@@ -33,7 +33,8 @@ class BackchannelTest {
     fun `short speech, an answer to an ask and a quick next turn each get one`() {
         assertNull(Backchannel.decide(turn()))
         assertEquals(
-            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET", "ANSWER_TEXT"),
+            // 2026-11-20 (Kevin's phone test): answer text in but no answer audio yet still gets a clip.
+            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET"),
             Backchannel.Skip.entries.map { it.name },
         )
     }
@@ -183,12 +184,6 @@ class BackchannelTest {
         for (line in Backchannel.LINES + ScriptedLines.FIXED_DONE_LINES + ToolFillers.GENERIC) {
             assertEquals(line, SpokenText.forSpeech(line))
         }
-    }
-
-    @Test
-    fun `an answer_text skip is logged with how long the answer's audio took after it`() {
-        assertEquals("backchannel skip=answer_text gap_ms=850", Backchannel.answerTextGapLine(10_600, 11_450))
-        assertEquals("backchannel skip=answer_text gap_ms=0", Backchannel.answerTextGapLine(10_600, 10_500))
     }
 
     // Review of aed1c786 (#5): a VoIP call or a denied phone-state permission was missed. The audio

@@ -95,7 +95,6 @@ internal object Backchannel {
 
     enum class Skip(val token: String) {
         NOT_HIS("not_his"), ON_CALL("on_call"), OVER_REPLY("over_reply"), QUIET("quiet"),
-        ANSWER_TEXT("answer_text"),
     }
 
     /** Null: play one (if one is in memory and the answer has not started). Otherwise why not. */
@@ -197,13 +196,6 @@ internal object Backchannel {
         val end = cueEndsAtMs?.takeIf { it > nowMs } ?: return 0L
         return if (end - eotAtMs <= MAX_START_AFTER_EOT_MS) end - nowMs else null
     }
-
-    /**
-     * The answer_text skip measured (2026-11-20): the answer's text was in by the clip's time, so no
-     * clip played, and its first audio came [gap] later. Numbers only: how long he waited in silence.
-     */
-    fun answerTextGapLine(skipAtMs: Long, answerAudioAtMs: Long): String =
-        "backchannel skip=answer_text gap_ms=${(answerAudioAtMs - skipAtMs).coerceAtLeast(0)}"
 
     /**
      * A call is on the line for a filler (review of aed1c786): the phone's call state, or the audio

@@ -25,7 +25,6 @@ class CascadeBridge(
     ) -> JSONObject,
     private val transcript: (heard: String, said: String) -> Unit,
     private val onCrisis: () -> Unit,
-    private val tone: () -> Unit,
     private val toLive: (fromWakeWord: Boolean, opener: String?) -> Unit,
     private val onClosed: (reason: String) -> Unit,
 ) : CascadeHost {
@@ -51,8 +50,6 @@ class CascadeBridge(
         attached = false
         onCrisis()
     }
-
-    override fun closingTone() = ifAttached { tone() }
 
     override fun handOverToLive(fromWakeWord: Boolean, opener: String?) = ifAttached {
         attached = false

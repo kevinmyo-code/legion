@@ -133,10 +133,11 @@ class WakePhrasesTest {
 
     @Test
     fun `after a question only a hard stop ends it, the soft ones may be his answer`() {
-        for (p in listOf("Stop.", "Goodbye.", "Good bye, Alfred.", "Bye.", "Bye bye.", "Go away.", "Stand down.")) {
+        // Kevin, 2026-11-20: a goodbye ends the conversation reliably, after a question too ([Farewells]).
+        for (p in listOf("Stop.", "Goodbye.", "Good bye, Alfred.", "Bye.", "Bye bye.", "Go away.", "Stand down.", "Thanks, bye.")) {
             assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred", afterQuestion = true))
         }
-        for (p in listOf("That's it.", "That's all.", "Never mind.", "We're done.", "I'm done.", "That will be all.", "Thanks, bye.")) {
+        for (p in listOf("That's it.", "That's all.", "Never mind.", "We're done.", "I'm done.", "That will be all.")) {
             assertFalse(p, WakePhrases.isSleepPhrase(p, "Alfred", afterQuestion = true))
             assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred"))
         }

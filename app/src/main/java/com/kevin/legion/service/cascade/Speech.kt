@@ -78,6 +78,9 @@ interface TextToSpeech {
     /** Fetches the audio of those [lines] not yet kept, for next time; the number asked for. */
     fun warm(lines: Collection<String>): Int = 0
 
+    /** Holds background fetching ([warm]) while [held]; a voice whose warm cannot delay speech ignores it. */
+    fun holdWarm(held: Boolean) = Unit
+
     /**
      * Another render ([take] > 0) of a kept line, kept apart from the first ([Backchannel.TAKES]). A
      * voice that keeps one render answers with its only one.

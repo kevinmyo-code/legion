@@ -71,6 +71,20 @@ class GreetingOpeningTest {
         assertFalse(plan.prompt.contains("Essay"))
     }
 
+    @Test fun `his name reaches the hello's prompt and plan, read at the tap`() = runBlocking {
+        val spent = parsed(pack(due = facts(item("due:1", "Essay is due Friday.")), said = listOf("due:1")))
+        var name: String? = "Sam"
+        val backend = FakeGreetingBackend { GreetingOutcome.Ok(spent) }
+        val o = GreetingOpening(backend, atHome, scope, 500L, ownerName = { name })
+        val plan = o.prepare(morning) as GreetingPlan.Hello
+        assertEquals("Sam", plan.name)
+        assertTrue(plan.prompt.contains(GreetingNames.rule("Sam")))
+        name = null
+        val none = o.prepare(morning) as GreetingPlan.Hello
+        assertEquals(null, none.name)
+        assertTrue(none.prompt.contains(GreetingNames.rule(null)))
+    }
+
     @Test fun `a spoken hello records no topic on the engine, a personal greeting records its own`() = runBlocking {
         val backend = FakeGreetingBackend { GreetingOutcome.Ok(good) }
         val o = opening(backend)

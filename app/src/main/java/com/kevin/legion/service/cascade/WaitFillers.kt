@@ -17,13 +17,17 @@ package com.kevin.legion.service.cascade
  */
 internal object WaitFillers {
     /** The first wait line: this long after the last filler ended (or his end of speech, with none). */
-    const val FIRST_GAP_MS = 3_500L
+    // Kevin ruled on 2026-11-20 for 1.8 s, then every 2.5 s, at most 6 fillers a turn. From his phone log
+    // that day (15 turns): a backchannel at 0.6 s, then 3 to 4 s of silence before the answer (median
+    // 4.25 s); the old 3.5 s / 4 s / cap 3 left 10 of 15 turns with a gap over 2 s and one of 6.4 s. Replayed
+    // on those turns, 1.8 s / 2.5 s / 6 leaves one gap over 2 s (2.5 s, on the 13.8 s turn) and 14 wait lines.
+    const val FIRST_GAP_MS = 1_800L
 
     /** Each further wait line: this long after the one before it ended. */
-    const val NEXT_GAP_MS = 4_000L
+    const val NEXT_GAP_MS = 2_500L
 
-    /** Fillers of every kind in one turn (backchannel, task line, wait lines). */
-    const val MAX_PER_TURN = 3
+    /** Fillers of every kind in one turn (backchannel, task line, wait lines): a hard cap. */
+    const val MAX_PER_TURN = 6
 
     /** No wait line again within this many wait lines. */
     const val ROTATION = 5
@@ -39,12 +43,21 @@ internal object WaitFillers {
 
     /**
      * When the next wait line is due: [FIRST_GAP_MS] after [lastFillerEndAtMs] for the first,
-     * [NEXT_GAP_MS] for any later one. Null once [fillersSaid] reached [MAX_PER_TURN].
+     * [NEXT_GAP_MS] for any later one. Null once [fillersSaid] reached [MAX_PER_TURN] or every line was said.
      */
     fun nextAtMs(lastFillerEndAtMs: Long, waitSaid: Int, fillersSaid: Int): Long? {
-        if (fillersSaid >= MAX_PER_TURN) return null
+        // Every wait line at most once a turn, and the hard cap on all fillers.
+        if (fillersSaid >= MAX_PER_TURN || waitSaid >= LINES.size) return null
         return lastFillerEndAtMs + if (waitSaid == 0) FIRST_GAP_MS else NEXT_GAP_MS
     }
+
+    /**
+     * A wait line may start now (checked under the play lock, review of 546cce67 F5): no filler is
+     * playing ([fillerPlaying], a task line queued or running) and its gap from the last filler's END has
+     * passed ([nextAtMs]).
+     */
+    fun dueNow(nowMs: Long, lastFillerEndAtMs: Long, waitSaid: Int, fillersSaid: Int, fillerPlaying: Boolean): Boolean =
+        !fillerPlaying && nextAtMs(lastFillerEndAtMs, waitSaid, fillersSaid)?.let { nowMs >= it } == true
 
     fun clipFits(ms: Long): Boolean = ms in MIN_CLIP_MS..MAX_CLIP_MS
 
