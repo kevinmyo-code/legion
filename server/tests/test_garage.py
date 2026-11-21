@@ -157,6 +157,29 @@ def test_naming_a_part_asks_about_every_fastener_that_joins_it(fastener, part):
     assert fastener in {c.id for c in found.candidates}
 
 
+def test_the_sleeve_clamps_and_the_axle_nuts_are_among_the_choices():
+    tie_rod = {c.id for c in r.resolve("the tie rod fastener").candidates}
+    assert "xj.steer.tie_rod_sleeve@clamps" in tie_rod
+    drag_link = {c.id for c in r.resolve("the drag link nut").candidates}
+    assert "xj.steer.drag_link_sleeve@clamps" in drag_link
+    knuckle = {c.id for c in r.resolve("the driver knuckle nut").candidates}
+    assert "xj.axle.hub.driver@axle_nut" in knuckle
+
+
+@pytest.mark.django_db
+def test_two_matches_are_asked_by_code_in_words_and_the_answer_in_words_resolves():
+    result = _run(words="steering box bolt torque")
+    data = result.structured
+    assert data["match"] == r.AMBIGUOUS and data[ENDS_TURN] is True
+    question = data[SPEAK_VERBATIM][0]
+    assert question.startswith("Which one do you mean:")
+    assert "frame bolt one of three" in question and "frame bolt three of three" in question
+    assert not any(ch.isdigit() for ch in question) and torque_figures(question) == []
+    assert data[SPOKEN_FIGURES] == []
+    answer = r.resolve("steering box frame bolt two")
+    assert answer.fastener.id == "xj.steer.box@frame_bolt_2"
+
+
 @pytest.mark.parametrize("words", ["the nut", "that bolt", "the stud nut"])
 def test_a_bare_nut_or_bolt_picks_nothing(words):
     assert r.resolve(words).kind == r.NONE
@@ -417,7 +440,8 @@ def test_a_checked_fastener_is_said_with_the_truck_it_fits_and_its_source():
     )
     assert "January 2" in line
     assert "socket 10 mm" in data[SPEAK_VERBATIM][2]
-    assert {"12", "14", "10"} <= set(data[SPOKEN_FIGURES])
+    # Only the row's torque and size values back a number; never the truck's year or axle.
+    assert set(data[SPOKEN_FIGURES]) == {"12", "14", "10"}
 
 
 @pytest.mark.parametrize(

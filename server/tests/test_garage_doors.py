@@ -282,6 +282,35 @@ def test_on_a_figure_repeated_from_the_history_is_not_said(member, engine, switc
     assert _said(second) == ["Anything else?"]
 
 
+@pytest.mark.parametrize("asked", ["how tight is the hub?", "what about the shock?"])
+def test_on_a_common_words_torque_question_answered_without_the_tool_gets_no_number(
+    member, engine, switch_on, asked
+):
+    # The re-check's case: no tool ran, the model answers from memory. His words mark the turn.
+    engine.model = FakeModel([say("About 175, give or take. Anything else?")])
+    said = _said(_events(_post(member, text=asked)))
+    assert said == ["Anything else?"]
+
+
+def test_on_a_new_topic_after_a_front_end_reply_keeps_its_numbers(member, engine, switch_on):
+    engine.model = FakeModel([call("show_part", {"words": "track bar frame end"}), say("Done.")])
+    first = _events(_post(member, text="Where's the track bar nut at the frame?"))
+    conversation = _of(first, "turn")[0]["conversation_id"]
+    engine.model = FakeModel([say("It's 3:15.")])
+    second = _events(_post(member, text="What time is it?", conversation_id=conversation))
+    assert _said(second) == ["It's 3:15."]
+
+
+def test_on_the_steering_box_question_code_asks_which_bolt_in_words(member, engine, switch_on):
+    engine.model = FakeModel(
+        [call("show_part", {"words": "steering box bolt torque"}), say("Bolt 2 is 33 ft-lb.")]
+    )
+    said = _said(_events(_post(member, text="What's the torque on the steering box bolt?")))
+    assert len(said) == 1 and said[0].startswith("Which one do you mean:")
+    assert "frame bolt two of three" in said[0]
+    assert not any(ch.isdigit() for ch in said[0])
+
+
 def test_on_the_tool_door_runs_it_for_the_owner(member, switch_on):
     response = _tool(member, "show_part", {"words": "where is the alternator"})
     assert response.status_code == 200, response.data
@@ -315,6 +344,8 @@ FRONT_END_TURN = TorqueGuard(frozenset(), topic.SENTENCE, whole_turn=True)
         "Use a 13 mm socket.",
         "It's an M7 x 1.0 bolt.",
         "Grab a 5/8 inch socket.",
+        "Use a half-inch socket.",
+        "Grab the three-eighths wrench.",
         "A three-quarter inch wrench.",
         "Twenty two foot pounds.",
         "29 in-lbs on the cover.",
@@ -377,12 +408,39 @@ def test_which_one_is_said_even_in_a_front_end_turn():
     assert not states_unbacked_torque("Which one do you mean, driver or passenger?", FRONT_END_TURN)
 
 
-def test_the_turn_is_about_the_front_end_from_his_words_or_the_reply_before():
-    assert topic.about_front_end("what torque for the pitman nut again?", "")
-    assert topic.about_front_end("what was that again?", "Track bar, frame end, driver side.")
-    # Common words that are also aliases do not make a turn about the truck.
-    assert not topic.about_front_end("what's the weather this spring?", "")
-    assert not topic.about_front_end("how far is the drive in the frame of a day?", "")
+@pytest.mark.parametrize(
+    "words",
+    [
+        # The re-check's phrasings: common part words and "tight" mark the turn.
+        "how tight is the hub?",
+        "what about the shock?",
+        "how much on the axle?",
+        "what do I crank the frame bolt to?",
+        "snug it to what?",
+        "what torque for the pitman nut again?",
+    ],
+)
+def test_his_words_about_hardware_make_a_front_end_turn(words):
+    assert topic.about_front_end(words, "")
+
+
+REPLY = "Track bar, frame end, driver side. The torque for it is not verified yet."
+
+
+@pytest.mark.parametrize(
+    "words",
+    ["what was that again?", "and the other side?", "same for this one?", "the second one"],
+)
+def test_a_bare_follow_up_to_a_front_end_reply_stays_a_front_end_turn(words):
+    assert topic.about_front_end(words, REPLY)
+
+
+@pytest.mark.parametrize(
+    "words", ["what time is it?", "what's the weather tomorrow?", "remind me at 5 to call mum"]
+)
+def test_a_new_topic_after_a_front_end_reply_ends_the_carry_over(words):
+    assert not topic.about_front_end(words, REPLY)
+    assert not topic.about_front_end(words, "")
 
 
 class _Call:
