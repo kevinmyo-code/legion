@@ -364,9 +364,22 @@ weeks and was wrong again within days each time. `Glob` and `Grep` are current; 
 For structure, read the tree. For how it fits together and what is binding, read `docs/architecture/`
 (C4 levels 1-3) and `docs/adr/`.
 
-**Build:** `./gradlew compileDebugKotlin -Pnokey` (the honest no-baked-key path),
-`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`. Read test totals from the JUnit XML under
-`app/build/test-results/`, never the console summary.
+**Build and test in CI (Kevin, 2026-11-20).** Suites run in GitHub Actions, never on the machine
+you work on: `android.yml` (`./gradlew compileDebugKotlin testDebugUnitTest -Pnokey`, the honest
+no-baked-key path, plus detekt), `headunit.yml`, `server.yml`, `frontend.yml`. Push your branch, then:
+
+```
+gh workflow run android.yml --ref <your-branch>
+gh run list --workflow android.yml --commit <full-sha> --json databaseId -q '.[0].databaseId'
+gh run watch <run-id> --exit-status
+gh run download <run-id> -n android-test-results -D <dir>
+python3 .github/scripts/junit_totals.py '<dir>/*.xml'
+```
+
+(artifacts: `android-test-results`, `headunit-test-results`, `server-junit-xml`, `frontend-junit-xml`).
+Read test totals from the JUnit XML, never the console summary, and never call an unpushed change
+tested. Locally, only while writing a fix: one test class
+(`./gradlew :app:testDebugUnitTest --tests 'pkg.Class' -Pnokey`), never a full suite or detekt.
 
 **The phone's daily driver is `./gradlew assembleFast` (Kevin, 2026-10-11).** `fast` is release
 signed with the debug key: non-debuggable, so ART compiles it, and it installs over a debug build
@@ -585,7 +598,8 @@ here.
   taste calls left to execution.
 - During execution: follow the plan exactly. Unexpected surface (design question the plan does not
   answer, architectural fork) means STOP and surface, not improvise.
-- One logical change per commit. `compileDebugKotlin` + `testDebugUnitTest` green before each commit.
+- One logical change per commit. `compileDebugKotlin` + `testDebugUnitTest` green in CI on the
+  pushed commit before the work is called done (section 6).
 - Subagent roster and cadence: see `TEAM.md` (`.claude/agents/` holds project specialists).
 
 ### Dispatch is the default, not an escalation (STANDING, Kevin 2026-07-28)

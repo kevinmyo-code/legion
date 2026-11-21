@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Run LEGION's full pre-commit verification in one pass - compile with no baked key, detekt against its baseline, the unit suite with totals read from the JUnit XML, the docs, voice-guide, decision-debt and SQL checks - and print READY or NOT READY with the failing step named. Use before claiming work is done, before a commit, and before merging dev into main.
+description: Run LEGION's full verification in one pass - compile with no baked key, detekt against its baseline and the unit suite in GitHub Actions on the pushed commit with totals read from the JUnit XML, the docs, voice-guide, decision-debt and SQL checks - and print READY or NOT READY with the failing step named. Use before claiming work is done, before a commit, and before merging dev into main.
 ---
 
 <!--
@@ -11,84 +11,59 @@ PASS/FAIL, ending in a READY / NOT READY verdict with the failures listed. What 
 step. Upstream's phases are TypeScript/Python build, type check, lint, tests with an 80% coverage
 target, a secrets grep and a diff review. LEGION's are the commands CLAUDE.md sections 6 and 8
 already name, the JUnit-XML rule, the docs/voice/decision-debt/SQL checks, and the
-one-Gradle-writer precondition. No coverage number: a percentage here rewards Robolectric churn.
+pushed-commit precondition (the suites run in CI). No coverage number: a percentage here rewards Robolectric churn.
 See `.claude/skills/ATTRIBUTION.md`.
 -->
 
 # Verify
 
-CLAUDE.md section 8: `compileDebugKotlin` + `testDebugUnitTest` green before each commit. Section 6:
-read test totals from the JUnit XML, never the console summary. This skill is that sentence as a
-procedure, so "green" means the same thing every time someone says it.
+CLAUDE.md section 8: `compileDebugKotlin` + `testDebugUnitTest` green before the work is called
+done. Section 6: they run in GitHub Actions on the pushed commit, and test totals are read from the
+JUnit XML, never the console summary. This skill is that sentence as a procedure, so "green" means
+the same thing every time someone says it.
 
 Run every step. Do not stop at the first failure - the report lists all of them. Do not skip a step
 because "nothing in that area changed"; the docs check exists because a rename three directories away
 breaks a path in `docs/`.
 
-## 0. Precondition: one Gradle writer
+## 0. Precondition: the commit is pushed
 
-Only one agent may run Gradle in this tree at a time. Two concurrent runs corrupt each other and an
-empty or missing test-results file reads exactly like a pass to anything that only checks an exit
-code. Before step 1:
+CI tests only what is on the remote, so an unpushed change is "not tested", whatever ran locally.
 
 ```
 git status --short
+git rev-parse HEAD
+git push origin HEAD:<your-branch>
 ```
 
-Unfamiliar dirty files, or a `.gradle`/`app/build` lock error on the first command, means another
-agent is building here. Take a worktree or wait. Never report a verdict from a contended run.
+Use a branch of your own: one run per workflow per branch, and a newer run on the same branch
+cancels the older one. A cancelled run is never green.
 
-## 1. Compile, honest path
-
-```
-./gradlew compileDebugKotlin -Pnokey
-```
-
-`-Pnokey` is the no-baked-key path, the one a stranger's clone takes. A compile that only passes
-with a key in `local.properties` is not green.
-
-## 2. detekt, baseline-gated
+## 1-3. Compile with no baked key, detekt, the unit suite: one CI run
 
 ```
-./gradlew :app:detekt
+gh workflow run android.yml --ref <your-branch>
+gh run list --workflow android.yml --commit <full-sha> --json databaseId -q '.[0].databaseId'
+gh run watch <run-id> --exit-status
 ```
 
-CLAUDE.md's "Code health" ruling (Kevin, 2026-09-05): detekt joins the build with a baseline, so
-this goes red only on debt that was NOT already there the day the baseline was cut
-(`config/detekt/baseline.xml`). A failure here names real rule violations in the diff - paste the
-rule name and file:line verbatim, same as a compiler error. Regenerating the baseline
-(`./gradlew :app:detektBaseline`) to make a new finding disappear is amnesty, not a fix, and is not
-this skill's call to make.
-
-## 3. Unit suite, totals from the XML
-
-Record the time, then run:
-
-```
-./gradlew testDebugUnitTest
-```
+`android.yml` runs `./gradlew compileDebugKotlin testDebugUnitTest -Pnokey` (the no-baked-key path,
+the one a stranger's clone takes) and `:app:detekt` against its baseline
+(`config/detekt/baseline.xml`; CLAUDE.md's "Code health" ruling): the detekt job fails only on
+findings past the baseline's ceiling. A new finding is fixed, never hidden by regenerating the
+baseline. Check that the run's head sha is the commit you pushed.
 
 Then read the totals from the XML, never from Gradle's summary line:
 
 ```
-python - <<'EOF'
-import glob, os, time, xml.etree.ElementTree as ET
-files = glob.glob('app/build/test-results/testDebugUnitTest/*.xml')
-t = f = e = s = 0
-newest = 0
-for p in files:
-    a = ET.parse(p).getroot().attrib
-    t += int(a.get('tests', 0)); f += int(a.get('failures', 0))
-    e += int(a.get('errors', 0)); s += int(a.get('skipped', 0))
-    newest = max(newest, os.path.getmtime(p))
-print(f"files={len(files)} tests={t} failures={f} errors={e} skipped={s}")
-print("newest result written:", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(newest)))
-EOF
+gh run download <run-id> -n android-test-results -D <dir>
+python3 .github/scripts/junit_totals.py '<dir>/*.xml'
 ```
 
-Three things make this step FAIL: `failures + errors > 0`; `files == 0`; or the newest result is
-older than the run you just started (a stale directory from a previous run reads as a pass). Name
-the failing test classes from the XML (`<testcase>` elements with a `<failure>` child).
+FAIL when the run did not conclude `success` on your sha, `failures + errors > 0`, or no XML came
+back (an empty results directory reads like a pass). Name the failing test classes from the XML.
+Head unit, server and web changes use `headunit.yml`, `server.yml` and `frontend.yml` the same way
+(artifacts `headunit-test-results`, `server-junit-xml`, `frontend-junit-xml`).
 
 ## 4. Docs paths and ADR links
 
@@ -144,9 +119,10 @@ Every file listed is one you meant to change. A generated file (`docs/index.html
 
 ```
 VERIFY
-  1 compile -Pnokey        PASS | FAIL
-  2 detekt                 PASS | FAIL
-  3 testDebugUnitTest      PASS | FAIL   files=N tests=N failures=N errors=N skipped=N   newest=<time>
+  0 pushed                 <branch> <full sha>
+  1 compile -Pnokey        PASS | FAIL   CI run <id> on <sha>
+  2 detekt                 PASS | FAIL   CI run <id>
+  3 testDebugUnitTest      PASS | FAIL   files=N tests=N failures=N errors=N skipped=N   (CI run <id>)
   4 docs_check             PASS | FAIL
   5 voice_guide --check    PASS | FAIL
   6 decision_debt          PASS | FAIL

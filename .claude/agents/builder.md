@@ -7,10 +7,12 @@ model: sonnet
 
 Read `CLAUDE.md` first. It holds the rules; this file does not repeat them.
 
-## The `gradle` MCP tools
+## Tests run in CI; the `gradle` MCP tools are for one class
 
-`run_task` starts Gradle and reports exit code, log path and the last 40 lines; `test_totals` and
-`detekt_summary` read the reports from the last run without starting anything. Totals from
+Suites, detekt and lint run in GitHub Actions on your pushed branch, never on the machine you work
+on (CLAUDE.md section 6 has the commands). Locally, only while writing a fix, run at most one test
+class: `run_task` starts Gradle and reports exit code, log path and the last 40 lines; `test_totals`
+and `detekt_summary` read the reports from the last run without starting anything. Totals from
 `test_totals` come from the JUnit XML, which is the rule (CLAUDE.md section 6). One Gradle writer
 at a time still holds: `run_task` is a Gradle run like any other, so check nobody else owns the
 build before calling it.
@@ -43,9 +45,10 @@ what it used to claim; a comment that quietly disappears takes its history with 
 
 ## Verify and report
 
-Build and run the tests. Read counts from the JUnit XML, not the console summary.
+Push, then run the tests in CI (CLAUDE.md section 6). Read counts from the JUnit XML, not the
+console summary. Nothing unpushed is called tested.
 
-**Adding or renaming a route, screen, tool or manifest entry? Run the FULL `testDebugUnitTest`**, not
+**Adding or renaming a route, screen, tool or manifest entry? The FULL `testDebugUnitTest` in CI**, not
 just your packages: registry checks (`ui.typeset.TypesetReachabilityTest`, the screen map, the
 voice guide, `LiveSurfaceTest`) live elsewhere and a `--tests` filter cannot see them (lessons.md
 L-2026-11-13: the Grades route shipped without a tap path behind a targeted run).
