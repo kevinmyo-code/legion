@@ -16,7 +16,14 @@ import android.util.Log
  * (`DumbBounce`, ADR 0062) tell this mode from a real call. Never entered during a Telecom-owned call
  * (`LegionConnectionService`'s standing warning): the caller checks [route] and the call state.
  */
-internal class CallAudioMode(private val audio: AudioManager) {
+internal class CallAudioMode(
+    private val audio: AudioManager,
+    /**
+     * The communication device the platform routes to now (the readback). A seam: Robolectric always
+     * honours a selection, so a test passes one that refuses the earpiece.
+     */
+    private val routedType: (AudioManager) -> Int? = { currentDeviceType(it) },
+) {
     private var active = false
     private var prevMode = AudioManager.MODE_NORMAL
     private var prevSpeaker = false
@@ -66,10 +73,17 @@ internal class CallAudioMode(private val audio: AudioManager) {
             val type = VoiceOutputRule.device(devices.map { it.type }, earpiece)
             val target = devices.firstOrNull { it.type == type }
             val ok = target?.let { audio.setCommunicationDevice(it) } ?: false
-            // The readback: what the platform routes to, not what was asked for.
-            val now = audio.communicationDevice?.type
-            earpieceOn = now == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-            "device=$type ok=$ok now=$now"
+            // The readback, only when the earpiece was asked for: what the platform routes to, not
+            // what was asked. Speaker mode reads nothing back and never counts as the earpiece, so a
+            // failed loudspeaker selection the platform turns into the earpiece changes no guard.
+            if (earpiece) {
+                val now = routedType(audio)
+                earpieceOn = now == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                "device=$type ok=$ok now=$now"
+            } else {
+                earpieceOn = false
+                "device=$type ok=$ok"
+            }
         } else {
             val wired = hasWired(audio)
             @Suppress("DEPRECATION")
@@ -141,6 +155,9 @@ internal class CallAudioMode(private val audio: AudioManager) {
 
     companion object {
         private const val TAG = "CallAudioMode"
+
+        private fun currentDeviceType(audio: AudioManager): Int? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audio.communicationDevice?.type else null
 
         /** True while THIS app holds MODE_IN_COMMUNICATION for a conversation, not for a call. */
         @Volatile

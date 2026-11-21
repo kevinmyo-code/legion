@@ -410,7 +410,10 @@ class AriaForegroundService : Service() {
 
         // Cruise screen's "tap avatar to talk" - toggles a hands-free turn.
         if (intent?.action == ACTION_TALK) {
-            sessionController.onTap(fromWakeWord = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false))
+            sessionController.onTap(
+                fromWakeWord = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false),
+                inHand = intent.getBooleanExtra(EXTRA_IN_HAND, false),
+            )
         }
 
         // The alarm ring screen's Brief me (alfred-clock ticket 07): a tap, never an alarm firing.
@@ -1176,6 +1179,9 @@ class AriaForegroundService : Service() {
         // is indistinguishable from not having heard. This extra tells the two apart. Absent
         // means a tap, which keeps every existing sender correct without touching it.
         const val EXTRA_FROM_WAKE_WORD = "com.kevin.legion.FROM_WAKE_WORD"
+
+        /** Set by a tap in the app itself (phone in hand): only such a conversation may use the earpiece. */
+        const val EXTRA_IN_HAND = "com.kevin.legion.IN_HAND"
 
         // Start-intent actions: show / hide the floating companion badge. Show
         // is fired right after LiveToolbox opens nav/music fullscreen; hide is

@@ -194,7 +194,8 @@ fun MatrixTalkBar(onOpenSettings: () -> Unit) {
     val talk: () -> Unit = {
         if (hasRecordAudio(context)) {
             context.startService(
-                Intent(context, AriaForegroundService::class.java).setAction(AriaForegroundService.ACTION_TALK),
+                Intent(context, AriaForegroundService::class.java).setAction(AriaForegroundService.ACTION_TALK)
+                    .putExtra(AriaForegroundService.EXTRA_IN_HAND, true),
             )
         } else {
             onOpenSettings()

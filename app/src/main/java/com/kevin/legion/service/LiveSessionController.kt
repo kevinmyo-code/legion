@@ -430,14 +430,14 @@ class LiveSessionController(context: Context) {
     }
 
     @Suppress("ReturnCount") // one early exit per tap state; folding them is riskier than the rule is worth
-    fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false) {
+    fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false, inHand: Boolean = false) {
         // Ticket 11: never let a dismissal armed by a previous turn survive into this one. If the
         // driver tapped stop, or the socket died, between the tool call and TurnComplete, the flag
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
         // assistant finished its first sentence, which would be indistinguishable from a bug.
         dismissAfterTurn = false
         // The cascade's own conversation takes the tap (interrupt a reply, else end it).
-        if (cascadeOwnsTap()) { onTapCascade(fromWakeWord, oneShot); return }
+        if (cascadeOwnsTap()) { onTapCascade(fromWakeWord, oneShot, inHand); return }
         // Set before anything async can emit MicOpened; a plain tap always clears it.
         oneShotGate.start(oneShot)
         val s = session
@@ -492,7 +492,7 @@ class LiveSessionController(context: Context) {
         // cascade; Live is reachable only if LIVE_RETIRED is flipped back (it reads as Cloud).
         val engine = VoiceEngineSettings.engine(appContext)
         if (engine != VoiceEngine.LIVE) {
-            openCascade(fromWakeWord, oneShot, laptopFirst = engine == VoiceEngine.LAPTOP)
+            openCascade(fromWakeWord, oneShot, laptopFirst = engine == VoiceEngine.LAPTOP, inHand = inHand)
             return
         }
 
@@ -832,13 +832,15 @@ class LiveSessionController(context: Context) {
      * A speak-only proactive line has no mic to go back to: it is ended and the tap opens a
      * conversation once it has let go, as a tap over a Live proactive line did.
      */
-    private fun onTapCascade(fromWakeWord: Boolean, oneShot: Boolean) {
+    private fun onTapCascade(fromWakeWord: Boolean, oneShot: Boolean, inHand: Boolean) {
         val c = cascade ?: return
         // A test conversation (adb) gives way at once to real use, as a speak-only line does: it
         // ends, then this tap runs.
         val test = testDriver.owns(c)
         if (test || !c.listensForReply) {
-            endCascadeThen(if (test) "test_real_tap" else "tap over a proactive line") { onTap(fromWakeWord, oneShot) }
+            endCascadeThen(if (test) "test_real_tap" else "tap over a proactive line") {
+                onTap(fromWakeWord, oneShot, inHand)
+            }
             return
         }
         // The session says which it did ("Listening", or "Ended the chat").
@@ -918,6 +920,7 @@ class LiveSessionController(context: Context) {
         opener: CascadeOpener? = null,
         micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
         test: TestSession? = null,
+        inHand: Boolean = false,
     ) {
         supersede("cascade")
         if (opener?.listen != false) ConversationCards.begin()
@@ -970,6 +973,7 @@ class LiveSessionController(context: Context) {
             opener = opener,
             micClaimant = micClaimant,
             test = test,
+            inHand = inHand,
         )
         cascadeBridge = bridge
         cascade = c

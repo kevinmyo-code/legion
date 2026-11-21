@@ -18,15 +18,30 @@ enum class OutputChoice { SPEAKER, CALL }
 enum class VoiceOutlet { LOUDSPEAKER, EARPIECE, WIRED, BLUETOOTH, PHONE_CALL }
 
 /**
- * The toggle beside the orb. [enabled] is false when a headset, Bluetooth or a phone call decides the
- * route; [label] then says which, so the toggle never claims a route it does not have.
+ * The toggle under the orb. [choice] is the choice a tap flips from, [outlet] where the voice
+ * goes, [enabled] false when a headset, Bluetooth or a phone call decides the route; [label] and
+ * [detail] (what TalkBack says) name the real route, so the toggle never claims one it does not have.
  */
 data class OutputToggle(
     val choice: OutputChoice,
     val outlet: VoiceOutlet,
     val enabled: Boolean,
     val label: String,
+    val detail: String,
 )
+
+/**
+ * How a conversation opened. Only a tap in the app (phone in hand, screen on) may use the earpiece:
+ * a wake word from across the room, Brief me, a check-in, the incoming-call announcement, a car or
+ * notification start would otherwise speak into an earpiece nobody is holding.
+ */
+internal enum class Opening { APP_TAP, WAKE_WORD, LINE, OTHER_TAP, TEST }
+
+/**
+ * What an open conversation's audio actually does, from the platform's readback: on the earpiece, or
+ * [refused] (the earpiece was asked for inside call audio and the phone did not route to it).
+ */
+internal data class LiveOutput(val onEarpiece: Boolean, val refused: Boolean)
 
 /** The pure decisions behind the earpiece toggle: no Android types, so every case is a unit test. */
 internal object VoiceOutputRule {
@@ -40,26 +55,72 @@ internal object VoiceOutputRule {
         else -> VoiceOutlet.LOUDSPEAKER
     }
 
-    /** The toggle's face; null hides it (a tablet: no earpiece to choose). */
-    fun toggle(choice: OutputChoice, route: AudioRoute, inCall: Boolean, hasEarpiece: Boolean): OutputToggle? {
+    /**
+     * The opening kind from what the session knows: a test door, a line it was asked for first (Brief
+     * me, a check-in, a proactive line, the incoming-call announcement), the wake word, a tap in the
+     * app, else another tap (car, notification, media button).
+     */
+    fun opening(inHand: Boolean, fromWakeWord: Boolean, hasOpener: Boolean, test: Boolean): Opening = when {
+        test -> Opening.TEST
+        hasOpener -> Opening.LINE
+        fromWakeWord -> Opening.WAKE_WORD
+        inHand -> Opening.APP_TAP
+        else -> Opening.OTHER_TAP
+    }
+
+    /** CALL applies only to a conversation he started by a tap in the app with the screen on. */
+    fun earpieceAllowed(opening: Opening, screenOn: Boolean): Boolean = opening == Opening.APP_TAP && screenOn
+
+    /**
+     * The toggle's face; null hides it (a tablet: no earpiece to choose). With a conversation open
+     * ([live] not null) it shows what the audio does: CALL that is not on the earpiece reads
+     * "Earpiece unavailable" when the phone refused it, else "Speaker" (a conversation he did not
+     * start by a tap, or one still waiting to move).
+     */
+    fun toggle(
+        choice: OutputChoice,
+        route: AudioRoute,
+        inCall: Boolean,
+        hasEarpiece: Boolean,
+        live: LiveOutput? = null,
+    ): OutputToggle? {
         if (!hasEarpiece) return null
         val outlet = outlet(choice, route, inCall, hasEarpiece)
-        val label = when (outlet) {
-            VoiceOutlet.LOUDSPEAKER -> "Speaker"
-            VoiceOutlet.EARPIECE -> "Call"
-            VoiceOutlet.WIRED -> "Headphones"
-            VoiceOutlet.BLUETOOTH -> "Bluetooth"
-            VoiceOutlet.PHONE_CALL -> "On a call"
+        if (outlet == VoiceOutlet.EARPIECE && live != null && !live.onEarpiece) {
+            return if (live.refused) {
+                OutputToggle(OutputChoice.CALL, VoiceOutlet.LOUDSPEAKER, true, "Earpiece unavailable", REFUSED)
+            } else {
+                OutputToggle(OutputChoice.SPEAKER, VoiceOutlet.LOUDSPEAKER, true, "Speaker", SPEAKER_NOW)
+            }
         }
-        val enabled = outlet == VoiceOutlet.LOUDSPEAKER || outlet == VoiceOutlet.EARPIECE
-        return OutputToggle(choice, outlet, enabled, label)
+        return when (outlet) {
+            VoiceOutlet.LOUDSPEAKER -> OutputToggle(choice, outlet, true, "Speaker", SPEAKER)
+            VoiceOutlet.EARPIECE -> OutputToggle(choice, outlet, true, "Call", EARPIECE)
+            VoiceOutlet.WIRED -> OutputToggle(choice, outlet, false, "Headphones", WIRED)
+            VoiceOutlet.BLUETOOTH -> OutputToggle(choice, outlet, false, "Bluetooth", BLUETOOTH)
+            VoiceOutlet.PHONE_CALL -> OutputToggle(choice, outlet, false, "On a call", PHONE_CALL)
+        }
     }
+
+    /** What a tap on the toggle saves: the other choice from the one it shows. */
+    fun flipped(shown: OutputChoice): OutputChoice =
+        if (shown == OutputChoice.SPEAKER) OutputChoice.CALL else OutputChoice.SPEAKER
 
     /**
      * Whether the conversation enters call audio ([CallAudioMode]): for barge-in as before, and for the
      * earpiece, which only exists as a communication route.
      */
-    fun callAudio(barge: Boolean, outlet: VoiceOutlet): Boolean = barge || outlet == VoiceOutlet.EARPIECE
+    fun callAudio(barge: Boolean, earpiece: Boolean): Boolean = barge || earpiece
+
+    private const val SPEAKER = "Alfred's voice on the speaker. Tap for call mode, phone at your ear"
+    private const val EARPIECE = "Alfred's voice on the earpiece, call mode. Tap for the speaker"
+    private const val SPEAKER_NOW =
+        "Alfred's voice on the speaker for this conversation. Tap to move it to the earpiece"
+    private const val REFUSED =
+        "Earpiece unavailable: this phone kept Alfred's voice on the speaker. Tap for speaker mode"
+    private const val WIRED = "Alfred's voice on headphones. Speaker or call mode applies when they are unplugged"
+    private const val BLUETOOTH = "Alfred's voice on Bluetooth. Speaker or call mode applies when it disconnects"
+    private const val PHONE_CALL = "On a phone call. Speaker or call mode applies after it"
 
     /**
      * The communication device type to select from [available] types: a wired headset first, then the
@@ -90,6 +151,26 @@ internal object VoiceOutput {
 
     /** The live choice. Read [choice] once first so it holds the saved value. */
     val flow: StateFlow<OutputChoice> = state.asStateFlow()
+
+    private val tapCount = MutableStateFlow(0)
+
+    /** Counts taps on the toggle: an open conversation applies the choice on each one, either way. */
+    val taps: StateFlow<Int> = tapCount.asStateFlow()
+
+    private val liveState = MutableStateFlow<LiveOutput?>(null)
+
+    /** What the open conversation's audio does; null with none open (set by its earpiece follower). */
+    val live: StateFlow<LiveOutput?> = liveState.asStateFlow()
+
+    fun publish(output: LiveOutput?) {
+        liveState.value = output
+    }
+
+    /** A tap on the toggle: saves the other choice from the one [shown], and tells the conversation. */
+    fun flip(context: Context, shown: OutputChoice) {
+        set(context, VoiceOutputRule.flipped(shown))
+        tapCount.value += 1
+    }
 
     fun choice(context: Context): OutputChoice {
         if (!loaded) {

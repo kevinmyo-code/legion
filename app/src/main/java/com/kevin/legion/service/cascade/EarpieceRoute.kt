@@ -10,47 +10,79 @@ import android.os.PowerManager
 import android.util.Log
 import com.kevin.legion.service.TelephonyController
 import com.kevin.legion.service.turn.CallAudioMode
+import com.kevin.legion.service.turn.LiveOutput
+import com.kevin.legion.service.turn.Opening
+import com.kevin.legion.service.turn.OutputChoice
 import com.kevin.legion.service.turn.VoiceOutlet
 import com.kevin.legion.service.turn.VoiceOutput
 import com.kevin.legion.service.turn.VoiceOutputRule
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /**
- * The conversation's side of the SPEAKER / CALL toggle beside the orb: which outlet applies now, a
- * flip or a headset plugged or pulled mid-conversation re-applied without restarting anything, and
- * the proximity wake lock (screen off against the ear, as a phone call does) held exactly while the
- * earpiece is the live route.
+ * The conversation's side of the SPEAKER / CALL toggle: whether this conversation may use the
+ * earpiece, a tap on the toggle or a headset plugged or pulled mid-conversation re-applied without
+ * restarting anything, the readback published for the toggle ([VoiceOutput.live]), and the proximity
+ * wake lock (screen off against the ear, as a phone call does) held exactly while the platform routes
+ * to the earpiece.
+ *
+ * Which conversations: only one he started by a tap in the app with the screen on
+ * ([VoiceOutputRule.earpieceAllowed]); any other opening stays on the normal route until he taps the
+ * toggle in it. Speak-only lines (a proactive line that does not listen) never get here: they enter
+ * no call audio, so they play on the assistant usage through the loudspeaker even in CALL, because
+ * nobody is holding the phone to the ear for a line he did not ask for.
  *
  * It never sets the audio mode or a device itself: every route change goes through the session's
  * [CallAudioMode], so [CallAudioMode.ownCommActive] stays true for LEGION's own mode and the fillers'
  * and dumb mode's "another app holds the call mode" rule never mistakes this conversation for a call.
- * Bluetooth and a phone call on the line are left to the session's existing handling (hands off).
+ * With SPEAKER chosen and the toggle untouched it makes no audio or binder call at all: the speaker
+ * route is exactly what it was before the toggle existed.
  */
 internal class EarpieceRoute(
     private val ctx: Context,
     private val audio: AudioManager,
     private val inCall: () -> Boolean = { TelephonyController.isInCall },
+    private val screenOn: () -> Boolean = { isInteractive(ctx) },
 ) {
-    private var job: Job? = null
+    private val work = SupervisorJob()
+    private var opening = Opening.OTHER_TAP
+    private var openingAllows: Boolean? = null
+    @Volatile private var tapped = false
+    private var stopped = false
+    private var following = false
     private var deviceWatch: AudioDeviceCallback? = null
+    private var onDevices: (() -> Unit)? = null
     private var proximity: PowerManager.WakeLock? = null
 
-    /** Where his voice goes now, from the saved choice and what is connected. */
-    fun outlet(): VoiceOutlet = VoiceOutputRule.outlet(
-        VoiceOutput.choice(ctx),
-        CallAudioMode.route(audio),
-        inCall(),
-        VoiceOutput.hasEarpiece(audio),
-    )
+    /** How this conversation opened; read when the earpiece is first asked about. */
+    fun begin(opening: Opening) {
+        this.opening = opening
+        openingAllows = null
+    }
 
     /**
-     * Until [stop]: toggle flips and headset changes re-apply the route on [loop]. [enterCallAudio]
-     * is asked to enter call audio when the earpiece is wanted and the conversation is outside it
-     * (barge-in off); the session decides when that is safe for the reply in flight.
+     * True when this conversation should be on the earpiece now. Reads the in-memory choice first, so
+     * SPEAKER costs no system call.
+     */
+    fun wantsEarpiece(): Boolean {
+        if (VoiceOutput.choice(ctx) != OutputChoice.CALL) return false
+        val allowed = tapped || (openingAllows ?: VoiceOutputRule.earpieceAllowed(opening, screenOn()).also {
+            openingAllows = it
+        })
+        return allowed && outlet(OutputChoice.CALL) == VoiceOutlet.EARPIECE
+    }
+
+    private fun outlet(choice: OutputChoice): VoiceOutlet =
+        VoiceOutputRule.outlet(choice, CallAudioMode.route(audio), inCall(), VoiceOutput.hasEarpiece(audio))
+
+    /**
+     * Until [stop]: taps on the toggle and (once the earpiece is involved) headset changes re-apply the
+     * route on [loop]. [enterCallAudio] is asked to enter call audio when the earpiece is wanted and the
+     * conversation is outside it (barge-in off); the session decides when that is safe for audio in
+     * flight.
      */
     fun follow(
         scope: CoroutineScope,
@@ -58,57 +90,91 @@ internal class EarpieceRoute(
         callAudio: () -> CallAudioMode?,
         enterCallAudio: suspend () -> Unit,
     ) {
-        if (job != null) return
-        job = scope.launch(loop) { VoiceOutput.flow.drop(1).collect { reapply(callAudio, enterCallAudio) } }
-        val watch = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) = changed(added)
-            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) = changed(removed)
-            private fun changed(devices: Array<out AudioDeviceInfo>) {
-                if (devices.none { it.isSink }) return
-                scope.launch(loop) { reapply(callAudio, enterCallAudio) }
+        synchronized(this) {
+            if (following || stopped) return
+            following = true
+            onDevices = { scope.launch(loop + work) { reapply(callAudio, enterCallAudio) } }
+        }
+        scope.launch(loop + work) {
+            VoiceOutput.taps.drop(1).collect {
+                tapped = true
+                reapply(callAudio, enterCallAudio)
             }
         }
-        deviceWatch = watch
-        runCatching { audio.registerAudioDeviceCallback(watch, Handler(Looper.getMainLooper())) }
+        if (callAudio()?.onEarpiece == true) watchDevices()
         sync(callAudio())
     }
 
     /**
-     * One re-application: inside call audio a device switch (no track rebuild, the reply keeps
-     * playing); outside it, entry only for the earpiece. Bluetooth and a phone call: hands off.
+     * One re-application. Nothing is touched unless the earpiece is involved (wanted now, or the route
+     * is on it): then inside call audio a device switch (no track rebuild, the reply keeps playing),
+     * outside it an entry. Bluetooth and a phone call: hands off.
      */
     suspend fun reapply(callAudio: () -> CallAudioMode?, enterCallAudio: suspend () -> Unit) {
-        val outlet = outlet()
+        if (isStopped()) return
         val mode = callAudio()
-        when {
-            outlet == VoiceOutlet.PHONE_CALL || outlet == VoiceOutlet.BLUETOOTH -> Unit
-            mode != null && mode.isActive && !mode.onBluetoothMic -> mode.retarget(outlet == VoiceOutlet.EARPIECE)
-            outlet == VoiceOutlet.EARPIECE -> enterCallAudio()
+        val wanted = wantsEarpiece()
+        if (wanted || mode?.onEarpiece == true) {
+            watchDevices()
+            val outlet = outlet(VoiceOutput.choice(ctx))
+            when {
+                outlet == VoiceOutlet.PHONE_CALL || outlet == VoiceOutlet.BLUETOOTH -> Unit
+                mode != null && mode.isActive && !mode.onBluetoothMic -> mode.retarget(wanted)
+                wanted -> enterCallAudio()
+            }
         }
         // Read again: an entry above made a new call audio, and the lock follows that one.
-        sync(callAudio(), outlet)
+        sync(callAudio())
     }
 
-    /** Holds the proximity lock exactly while the earpiece is the live route; releases it otherwise. */
+    /**
+     * Holds the proximity lock exactly while the platform routes to the earpiece and the earpiece is
+     * wanted; publishes the readback for the toggle. Never after [stop].
+     */
     @Synchronized
-    fun sync(mode: CallAudioMode?, outlet: VoiceOutlet = outlet()) {
-        val want = mode?.onEarpiece == true && outlet == VoiceOutlet.EARPIECE
-        if (want && proximity == null) {
-            proximity = newProximityLock()?.also { it.acquire(PROXIMITY_CAP_MS) }
-            Log.i(TAG, "proximity lock ${if (proximity != null) "held" else "unsupported"}")
-        } else if (!want) {
-            releaseProximity()
-        }
+    fun sync(mode: CallAudioMode?) {
+        if (stopped) return
+        val on = mode?.onEarpiece == true
+        val wanted = wantsEarpiece()
+        if (on && wanted) takeProximity() else releaseProximity()
+        val inCallAudio = mode != null && mode.isActive && !mode.onBluetoothMic
+        VoiceOutput.publish(LiveOutput(onEarpiece = on, refused = wanted && inCallAudio && !on))
     }
 
-    /** Every exit: the watch, the follower and the proximity lock go. Idempotent. */
+    /** Every exit: the follower, its device jobs, the watch and the proximity lock go. Idempotent. */
     @Synchronized
     fun stop() {
-        job?.cancel()
-        job = null
+        stopped = true
+        work.cancel()
+        onDevices = null
         deviceWatch?.let { runCatching { audio.unregisterAudioDeviceCallback(it) } }
         deviceWatch = null
         releaseProximity()
+        VoiceOutput.publish(null)
+    }
+
+    @Synchronized
+    private fun isStopped(): Boolean = stopped
+
+    /** Registered only once the earpiece is involved, so SPEAKER registers nothing. */
+    @Synchronized
+    private fun watchDevices() {
+        if (stopped || deviceWatch != null) return
+        val watch = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) = changed(added)
+            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) = changed(removed)
+            private fun changed(devices: Array<out AudioDeviceInfo>) {
+                if (devices.any { it.isSink }) synchronized(this@EarpieceRoute) { onDevices }?.invoke()
+            }
+        }
+        deviceWatch = watch
+        runCatching { audio.registerAudioDeviceCallback(watch, Handler(Looper.getMainLooper())) }
+    }
+
+    private fun takeProximity() {
+        if (proximity != null) return
+        proximity = newProximityLock()?.also { it.acquire(PROXIMITY_CAP_MS) }
+        Log.i(TAG, "proximity lock ${if (proximity != null) "held" else "unsupported"}")
     }
 
     private fun releaseProximity() {
@@ -132,5 +198,9 @@ internal class EarpieceRoute(
 
         /** A ceiling, not a timer: [stop] releases on every exit; this bounds a lock nothing released. */
         private const val PROXIMITY_CAP_MS = 60 * 60 * 1000L
+
+        private fun isInteractive(ctx: Context): Boolean =
+            runCatching { (ctx.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive }
+                .getOrDefault(false)
     }
 }

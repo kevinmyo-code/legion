@@ -50,7 +50,6 @@ import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.TurnModels
 import com.kevin.legion.service.turn.TurnTaker
-import com.kevin.legion.service.turn.VoiceOutlet
 import com.kevin.legion.service.turn.VoiceOutputRule
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
@@ -136,6 +135,8 @@ internal class CascadeSession(
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
     /** A test conversation from a computer ([TestSession]): test mic, logcat audit, no records kept. */
     private val test: TestSession? = null,
+    /** Opened by a tap in the app (phone in hand): only then may the earpiece apply ([EarpieceRoute]). */
+    private val inHand: Boolean = false,
 ) {
     private val ctx = context.applicationContext
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -3296,9 +3297,11 @@ internal class CascadeSession(
      * when there is one. Then [earpiece] follows the toggle and headset changes until release.
      */
     private fun enterRoute(barge: Boolean, token: String) {
-        val outlet = earpiece.outlet()
-        if (VoiceOutputRule.callAudio(barge, outlet)) {
-            enterCallAudio(outlet == VoiceOutlet.EARPIECE, token)
+        // The earpiece only for a conversation he started by a tap in the app (EarpieceRoute's doc).
+        earpiece.begin(VoiceOutputRule.opening(inHand, fromWakeWord, opener != null, test != null))
+        val onEarpiece = earpiece.wantsEarpiece()
+        if (VoiceOutputRule.callAudio(barge, onEarpiece)) {
+            enterCallAudio(onEarpiece, token)
         } else {
             // In the car: the car's own hands-free mic, as Live did (Kevin, 2026-11-10).
             callAudio = audioRoute.enterBluetoothMic(token)
@@ -3314,14 +3317,15 @@ internal class CascadeSession(
     }
 
     /**
-     * The toggle went to CALL while outside call audio (barge-in off): the reply in flight finishes on
-     * the loudspeaker, then call audio is entered and the player rebuilt on its usage, so no word is cut.
+     * The toggle went to CALL while outside call audio (barge-in off): the reply or clip in flight (a
+     * filler sets only [playbackActive]) finishes on the loudspeaker, then call audio is entered and the
+     * player rebuilt on its usage, so no word is cut.
      */
     private suspend fun enterEarpieceMidway() {
-        while (speaking && !closing.get()) delay(MIDWAY_POLL_MS)
+        while ((speaking || playbackActive) && !closing.get()) delay(MIDWAY_POLL_MS)
         if (closing.get() || callAudio?.isActive == true) return
         // He may have flipped back, or plugged headphones in, while the reply finished.
-        if (earpiece.outlet() != VoiceOutlet.EARPIECE) return
+        if (!earpiece.wantsEarpiece()) return
         enterCallAudio(onEarpiece = true, token = "earpiece")
         player?.rebuild()
     }
