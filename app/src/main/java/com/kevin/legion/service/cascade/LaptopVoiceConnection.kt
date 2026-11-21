@@ -250,17 +250,101 @@ class LaptopVoiceConnection(
 
     // --- TextToSpeech --------------------------------------------------------------------------
 
+    /**
+     * True only when [text]'s audio is already kept on the phone for this voice (2026-11-20): the
+     * laptop's first audio takes 0.7 to 1.5 s, so a backchannel or wait line asked for live never
+     * made its 300 ms window, was cancelled, and so was never kept, on every turn.
+     */
+    override fun inHand(text: String): Boolean = text in keepLines && kept[keyOf(text)] != null
+
+    /**
+     * Queues the [lines] not yet kept for this voice and fetches them one at a time, only while no
+     * real speech is open ([scheduleWarm]); the number queued. A render lands in the kept lines and
+     * its audio is never played.
+     */
+    override fun warm(lines: Collection<String>): Int {
+        if (dropped.get()) return 0
+        val added = synchronized(warmLock) {
+            val todo = lines.filter {
+                it in keepLines && kept[keyOf(it)] == null && it !in warmQueue && warming?.text != it
+            }.distinct()
+            warmQueue.addAll(todo)
+            todo.size
+        }
+        // Not at once: a warm is asked for as his turn ends, when the reply is about to open. After
+        // the gap, a reply already speaking keeps it out ([nextWarm]).
+        if (added > 0) scheduleWarm(WARM_RESUME_MS)
+        return added
+    }
+
+    /**
+     * Holds warming while [held] (the greeting's wait: its line is held whole before it is spoken, and
+     * a warm render then would sit ahead of it on the laptop). Released, warming resumes after
+     * [WARM_RESUME_MS].
+     */
+    override fun holdWarm(held: Boolean) {
+        warmHeld = held
+        if (held) yieldWarm() else scheduleWarm(WARM_RESUME_MS)
+    }
+
+    private val warmQueue = ArrayDeque<String>() // guarded by warmLock
+    private val warmLock = Any()
+    @Volatile private var warming: Clip? = null
+    @Volatile private var warmHeld = false
+
+    private fun realOpen(): Boolean = clips.values.any { !it.warm }
+
+    /** The next warm render after [delayMs], if the connection is idle then: no real clip, no hold. */
+    private fun scheduleWarm(delayMs: Long) {
+        scope.launch {
+            if (delayMs > 0) delay(delayMs)
+            val clip = synchronized(warmLock) { nextWarm() } ?: return@launch
+            clip.outcome()
+            synchronized(warmLock) { if (warming === clip) warming = null }
+            scheduleWarm(0)
+        }
+    }
+
+    /** Under [warmLock]: the next line's render started, or null when nothing may start now. */
+    @Suppress("ReturnCount") // one exit per reason a warm does not start
+    private fun nextWarm(): Clip? {
+        if (warming != null || warmHeld || dropped.get() || realOpen()) return null
+        while (true) {
+            val text = warmQueue.removeFirstOrNull() ?: return null
+            if (kept[keyOf(text)] == null) return liveClip(text, warm = true).also { warming = it }
+        }
+    }
+
+    /** Real speech starts: the warm in flight goes back to the front of the queue and is cancelled. */
+    private fun yieldWarm() {
+        val w = synchronized(warmLock) {
+            warming?.also {
+                warmQueue.addFirst(it.text)
+                warming = null
+            }
+        }
+        w?.cancel()
+    }
+
     override fun speak(text: String): SpeechClip {
-        val id = nextTts.addAndGet(2)
-        val clip = Clip(id, streamed = false)
-        clip.sent.append(text)
         val cached = if (text in keepLines) kept[keyOf(text)] else null
         if (cached != null && !dropped.get()) {
-            // Played from memory: nothing goes to the laptop.
+            // Played from memory: nothing goes to the laptop, and warming carries on.
+            val clip = Clip(nextTts.addAndGet(2), streamed = false)
+            clip.sent.append(text)
             clip.push(cached)
             clip.finish(TtsOutcome.Done(cached.size.toLong() / TTS_BYTES_PER_MS, 0))
             return clip
         }
+        yieldWarm()
+        return liveClip(text, warm = false)
+    }
+
+    /** [text] asked of the laptop. A [warm] clip only fills the kept lines; its frames are never read. */
+    private fun liveClip(text: String, warm: Boolean): Clip {
+        val id = nextTts.addAndGet(2)
+        val clip = Clip(id, streamed = false, warm = warm)
+        clip.sent.append(text)
         if (text in keepLines) clip.keepAs = keyOf(text)
         clips[id] = clip
         when {
@@ -276,6 +360,7 @@ class LaptopVoiceConnection(
     }
 
     override fun openStream(): StreamingSpeechClip {
+        yieldWarm()
         val id = nextTts.addAndGet(2)
         val clip = Clip(id, streamed = true)
         clips[id] = clip
@@ -289,7 +374,11 @@ class LaptopVoiceConnection(
         return clip
     }
 
-    private inner class Clip(override val id: Int, val streamed: Boolean) : StreamingSpeechClip {
+    private inner class Clip(
+        override val id: Int,
+        val streamed: Boolean,
+        val warm: Boolean = false,
+    ) : StreamingSpeechClip {
         override val frames = Channel<ByteArray>(Channel.UNLIMITED)
         private val outcome = CompletableDeferred<TtsOutcome>()
         val cancelled = AtomicBoolean(false)
@@ -323,7 +412,7 @@ class LaptopVoiceConnection(
         fun push(pcm: ByteArray) {
             if (cancelled.get() || outcome.isCompleted) return
             if (keepAs != null) synchronized(whole) { whole.write(pcm) }
-            frames.trySend(pcm)
+            if (!warm) frames.trySend(pcm)
         }
 
         fun finish(o: TtsOutcome) {
@@ -333,6 +422,9 @@ class LaptopVoiceConnection(
             }
             if (outcome.complete(o)) frames.close()
             clips.remove(id)
+            // The last real clip is over: warming resumes after a gap, so it stays out of the space
+            // between two clips of one reply.
+            if (!warm && !realOpen()) scheduleWarm(WARM_RESUME_MS)
         }
 
         override fun cancel() {
@@ -489,6 +581,9 @@ class LaptopVoiceConnection(
         const val REASON_END_OF_TURN = "end_of_turn"
         const val NORMAL_CLOSE = 1000
         const val BUSY_CLOSE = 1013
+
+        /** After the last real clip, how long warming waits before its next render. */
+        const val WARM_RESUME_MS = 1_500L
 
         /** Under the service's 120 s idle close, with room for a slow network. */
         const val PING_EVERY_MS = 30_000L
