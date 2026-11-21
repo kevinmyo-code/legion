@@ -141,6 +141,8 @@ export interface PartFact {
   source?: string
   page?: string
   verified_on?: string
+  /** Why a stored figure is not shown for his truck, in words (never a number). */
+  held?: string
 }
 
 export interface Part3dCard extends Common {
@@ -288,7 +290,8 @@ function part3dOk(value: Record<string, unknown>): boolean {
         typeof f.fastener_id === 'string' &&
         typeof f.name === 'string' &&
         typeof f.checked === 'boolean' &&
-        (f.figure === undefined || (f.checked === true && typeof f.figure === 'string')),
+        (f.figure === undefined || (f.checked === true && typeof f.figure === 'string')) &&
+        (f.held === undefined || (f.checked === false && typeof f.held === 'string' && !/\d/.test(f.held))),
     )
   )
 }

@@ -23,19 +23,32 @@ function reducedMotion(): boolean {
 
 function Facts({ card }: { card: Part3dCard }) {
   if (!card.facts.length) return null
+  // The fastener asked about first and set apart; the part's other fasteners folded away, so a
+  // neighbour's line is never read for the one in hand (blind review 2026-11-20).
+  const asked = card.facts.find((fact) => fact.fastener_id === card.fastener_id)
+  const others = card.facts.filter((fact) => fact !== asked)
   return (
-    <ul data-card="part-facts" className="m-0 flex list-none flex-col gap-1.5 p-0 text-[0.875rem]">
-      {card.facts.map((fact) => (
-        <li
-          key={fact.fastener_id}
-          data-fastener={fact.fastener_id}
-          aria-current={fact.fastener_id === card.fastener_id ? 'true' : undefined}
-          className="rounded-md border border-outline-variant px-2.5 py-1.5 aria-[current=true]:border-primary"
-        >
-          <FactLine fact={fact} />
-        </li>
-      ))}
-    </ul>
+    <div data-card="part-facts" className="flex flex-col gap-1.5 text-[0.875rem]">
+      {asked && (
+        <div data-fastener={asked.fastener_id} data-asked="true" aria-current="true" className="rounded-md border-2 border-primary px-2.5 py-1.5">
+          <FactLine fact={asked} />
+        </div>
+      )}
+      {others.length > 0 && (
+        <details data-card="part-others" open={!asked}>
+          <summary className="cursor-pointer py-1 text-[0.8125rem] text-muted-foreground">
+            {asked ? `Other fasteners on this part (${others.length})` : `Fasteners on this part (${others.length})`}
+          </summary>
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+            {others.map((fact) => (
+              <li key={fact.fastener_id} data-fastener={fact.fastener_id} className="rounded-md border border-outline-variant px-2.5 py-1.5">
+                <FactLine fact={fact} />
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
   )
 }
 
@@ -54,7 +67,10 @@ function FactLine({ fact }: { fact: PartFact }) {
           </span>
         </>
       ) : (
-        <span className="block text-muted-foreground">Torque: {NOT_VERIFIED}</span>
+        <>
+          <span className="block text-muted-foreground">Torque: {NOT_VERIFIED}</span>
+          {fact.held && <span className="block text-[0.8125rem] text-muted-foreground">{fact.held}</span>}
+        </>
       )}
     </>
   )
