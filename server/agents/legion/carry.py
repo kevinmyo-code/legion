@@ -17,9 +17,9 @@ read outside text taints the NEXT turn of the conversation too, for that one tur
 from __future__ import annotations
 
 PREVIOUS_TURN = "previous_turn"
-# This turn told him the change waits for his next message (a write refused in its own read, or the
-# spoken wait line), so it does not carry (the owner's ruling, option A2). A carry-type name: it
-# never carries by itself.
+# This turn refused a change HIS words asked for, in its own read, and told him to ask again, so it
+# does not carry (the owner's ruling, option A2; re-check R1). A carry-type name: it never carries
+# by itself.
 REFUSED_HERE = "write_refused"
 # Every taint source that is a carry, not a read of this turn's own (`client_facts.CARRY`: the
 # phone's last line read outside text; `late.AFTER_CARRY`). Kept as names here, so the guards need
@@ -35,9 +35,15 @@ def carries(previous_taint) -> bool:
     return any(source not in CARRY_SOURCES for source in taint)
 
 
-def note_refused(state) -> None:
-    """This turn told him the change waits for his next message (`REFUSED_HERE`)."""
+def note_refused(state) -> bool:
+    """A write refused in this turn's own read: `REFUSED_HERE` only when his words in the turn
+    asked for a change (`write_intent.asks_for_change` over the transcript alone). True if set."""
+    from assistant.write_intent import asks_for_change
+
+    if not asks_for_change(state.transcript):
+        return False
     state.add_taint(REFUSED_HERE)
+    return True
 
 
 def only_carried(taint) -> bool:

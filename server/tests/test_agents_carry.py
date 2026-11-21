@@ -192,12 +192,15 @@ def test_search_and_write_in_one_turn_then_the_next_message_writes(seeded):
     assert tool["ok"] is True
 
 
-def test_a_claim_held_back_by_the_read_also_lets_the_next_message_write(seeded):
+def test_c_a_claim_held_back_by_the_read_sets_no_mark_and_promises_nothing(seeded):
+    from agents.legion.lines import READ_THROUGH_NOTHING_CHANGED
+
     model = m.FakeModel([m.call("web_search", {"query": "x"}), m.say("I added it to your list.")])
     events, state, conversation = _turn(seeded, "look it up and add it", model)
-    assert carry.REFUSED_HERE in state.taint
+    assert carry.REFUSED_HERE not in state.taint
+    assert _said(events)[-1] == READ_THROUGH_NOTHING_CHANGED
     tool, _state = _add(seeded, conversation)
-    assert tool["ok"] is True
+    assert tool["ok"] is False
 
 
 def test_a_carried_engine_turn_that_refuses_carries_no_further(seeded):
@@ -206,3 +209,31 @@ def test_a_carried_engine_turn_that_refuses_carries_no_further(seeded):
     assert tool["ok"] is False and state.taint == [carry.PREVIOUS_TURN]
     tool, _state = _add(seeded, conversation)
     assert tool["ok"] is True
+
+
+def test_b_a_write_the_page_asked_for_sets_no_mark_and_his_next_ok_does_not_write(seeded):
+    from agents.legion.lines import READ_THROUGH_NOTHING_CHANGED
+
+    model = m.FakeModel(
+        [m.call("web_search", {"query": "x"}), m.call("add_checklist_item", ADD), m.say("Nine.")]
+    )
+    events, state, conversation = _turn(seeded, "when does the invented museum open", model)
+    assert carry.REFUSED_HERE not in state.taint
+    assert _response(state, "add_checklist_item")["message"] == (
+        read_through.WRITE_REFUSAL_UNASKED.format(verb="changed", name="add_checklist_item")
+    )
+    assert _said(events)[-1] == READ_THROUGH_NOTHING_CHANGED
+    tool, _state = _add(seeded, conversation, "ok")
+    assert tool["ok"] is False
+    tool, _state = _add(seeded, conversation, "add made-up stamps to my list")
+    assert tool["ok"] is True
+
+
+def test_d_an_empty_transcript_fails_closed(seeded):
+    model = m.FakeModel(
+        [m.call("web_search", {"query": "x"}), m.call("add_checklist_item", ADD), m.say("Nine.")]
+    )
+    _e, state, conversation = _turn(seeded, "", model)
+    assert carry.REFUSED_HERE not in state.taint
+    tool, _state = _add(seeded, conversation, "ok")
+    assert tool["ok"] is False

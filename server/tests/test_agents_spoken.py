@@ -108,12 +108,14 @@ def test_a_claim_made_before_its_own_write_is_said_at_the_end():
     assert said == ["I added milk to your list."]
 
 
-def test_a_claim_in_a_tainted_turn_with_no_write_gets_the_read_through_wait():
-    from agents.legion.lines import READ_THROUGH_WAIT
+def test_a_claim_in_a_tainted_turn_with_no_write_promises_nothing():
+    # Re-check R1 (ADR 0090 amended): the unbacked-claim path never sets the carry's exception, so
+    # the next turn is carried and "ask me again" would be false.
+    from agents.legion.lines import READ_THROUGH_NOTHING_CHANGED
 
     state = _state(taint=["web_search"])
     said, _ = _run(state, [S("I added it to your calendar.")])
-    assert said == [READ_THROUGH_WAIT]
+    assert said == [READ_THROUGH_NOTHING_CHANGED]
 
 
 def test_a_write_refused_for_outside_text_gets_its_line():
@@ -122,7 +124,9 @@ def test_a_write_refused_for_outside_text_gets_its_line():
 
     refusal = read_through.WRITE_REFUSAL.format(verb="changed", name="add_event")
     gw = _gateway([TurnCall("add_event", False, refusal, True)])
-    said, _ = _run(_state(taint=["web_search"]), [S("The fair is on Saturday.")], gw)
+    # His words asked for the change, so the exception's mark is set and the promise holds (R1).
+    state = _state(taint=["web_search", "write_refused"])
+    said, _ = _run(state, [S("The fair is on Saturday.")], gw)
     assert said == ["The fair is on Saturday.", READ_THROUGH_WAIT]
 
 

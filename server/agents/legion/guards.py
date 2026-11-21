@@ -93,11 +93,15 @@ def tainted_refusal(state, name: str, destructive: bool = False) -> str:
     """The words a write refuses with in a tainted turn: the carried ones when the only reason is
     the turn before (`carry.only_carried`), else this turn's (`assistant.read_through`)."""
     carried = carry.only_carried(state.taint)
-    if not carried:
-        carry.note_refused(state)
+    asked = carried or carry.note_refused(state)
     if name == "remember":
-        return read_through.CARRY_REFUSAL if carried else read_through.REFUSAL
-    template = read_through.CARRY_WRITE_REFUSAL if carried else read_through.WRITE_REFUSAL
+        if carried:
+            return read_through.CARRY_REFUSAL
+        return read_through.REFUSAL if asked else read_through.REFUSAL_UNASKED
+    if carried:
+        template = read_through.CARRY_WRITE_REFUSAL
+    else:
+        template = read_through.WRITE_REFUSAL if asked else read_through.WRITE_REFUSAL_UNASKED
     return template.format(verb="deleted" if destructive else "changed", name=name)
 
 

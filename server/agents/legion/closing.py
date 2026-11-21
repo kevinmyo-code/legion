@@ -18,6 +18,8 @@ from agents.legion.lines import (
     CHANGE_NOT_MADE,
     NO_TEXT,
     NOTHING_CHANGED,
+    READ_THROUGH_NOTHING_CHANGED,
+    READ_THROUGH_NOTHING_MORE,
     READ_THROUGH_WAIT,
     READ_THROUGH_WAIT_AFTER_WRITE,
     READ_THROUGH_WAIT_CARRIED,
@@ -36,11 +38,6 @@ def guard_refused(calls) -> bool:
         )
         for c in calls
     )
-
-
-# The lines that tell him the change waits for his next message: a turn that said one does not
-# carry, so the promise holds (the owner's ruling 2026-11-21, A2; `read_through.note_refused`).
-WAIT_LINES = frozenset({READ_THROUGH_WAIT, READ_THROUGH_WAIT_AFTER_WRITE})
 
 
 def refused_by_carry(calls) -> bool:
@@ -71,19 +68,23 @@ def closing_line(
     wrote: bool,
     tainted: Callable[[], bool],
     carried: bool = False,
+    promise: bool = True,
 ) -> str | None:
     """The line about a change, or None. `refused` is `guard_refused(calls)`; `unbacked` the held
     claims no write backed; `tainted` whether the turn read outside text, asked only when needed;
-    `carried`: the refusals were the carry's (`refused_by_carry`)."""
+    `carried`: the refusals were the carry's (`refused_by_carry`); `promise`: the turn may say
+    "ask me again" (False where the carry will refuse his next message: re-check R1)."""
     if refused and carried:
         return READ_THROUGH_WAIT_CARRIED
     if refused:
-        return READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT
+        if wrote:
+            return READ_THROUGH_WAIT_AFTER_WRITE if promise else READ_THROUGH_NOTHING_MORE
+        return READ_THROUGH_WAIT if promise else READ_THROUGH_NOTHING_CHANGED
     if unbacked:
         if wrote:
             return CHANGE_MADE
         if tainted():
-            return READ_THROUGH_WAIT
+            return READ_THROUGH_WAIT if promise else READ_THROUGH_NOTHING_CHANGED
         return CHANGE_NOT_MADE
     if wrote and any(c.ends_turn for c in calls):
         # The turn ended on code's own answer (his profile) in the round that also made a change:

@@ -39,6 +39,13 @@ READ_THROUGH_WAIT_CARRIED = (
     "I haven't changed anything: I read text from the web just before this, so changes wait for "
     "your next message. Ask me again and I'll do it."
 )
+# Where the carry is on and his words did not ask for the change (re-check R1): what happened, with
+# no promise, because his next message is carried too.
+READ_THROUGH_NOTHING_CHANGED = "I haven't changed anything: this turn read text from the web."
+READ_THROUGH_NOTHING_MORE = (
+    "The first change went through. Nothing else was changed, because this turn read text from "
+    "the web."
+)
 # Said after a claimed change that no write backed and none went through by the end of the turn.
 CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
 # The same, when a write did go through in this turn (a claim made before its own call).

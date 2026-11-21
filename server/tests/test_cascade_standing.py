@@ -78,6 +78,8 @@ def test_github_then_delete_in_one_turn_is_refused_and_nothing_is_deleted(member
             say("Done."),
         ],
         conversation,
+        # His own words ask for the change (the carry's exception reads them: ADR 0090, R1).
+        words="Check GitHub, then delete that event.",
     )
     refused = _tools(events)["delete_event"]
     assert refused["ok"] is False
@@ -122,6 +124,7 @@ def test_the_next_turn_deletes_when_the_person_asks_again(member, engine):
             say("x"),
         ],
         conversation,
+        words="Check GitHub, then delete that event.",
     )
     assert _live(event_id)
     events, _ = _turn(
@@ -211,6 +214,7 @@ def test_remember_is_refused_in_the_turn_that_searched_the_web(member, engine):
             call("remember", {"text": "The pump is great."}),
             say("Ok."),
         ],
+        words="Look up the pump and remember that it is great.",
     )
     refused = _tools(events)["remember"]
     assert refused["ok"] is False and refused["text"] == read_through.REFUSAL

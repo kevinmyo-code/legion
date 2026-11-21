@@ -92,6 +92,7 @@ from agents.legion.lines import (
     NOT_ANSWERED_MODEL,
     NOT_ANSWERED_TIMEOUT,
     NOTHING_CHANGED,
+    READ_THROUGH_NOTHING_CHANGED,  # noqa: F401 - read as cascade.READ_THROUGH_NOTHING_CHANGED
     READ_THROUGH_WAIT,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT
     READ_THROUGH_WAIT_AFTER_WRITE,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_AFTER_WRITE
     READ_THROUGH_WAIT_CARRIED,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_CARRIED
@@ -1143,6 +1144,8 @@ def _answer(
         if turn_input.spoken:
             yield ev.Event("heard", {"text": words})
     report.heard = words
+    # Whether HIS words ask for a change (the carry's exception, ADR 0090 amended 2026-11-21).
+    read_through.heard(request, words)
     speaker.exact = spoken_figures.wants_exact(words)
     heard_at = datetime.now(UTC)
     user_recorded = False
@@ -1539,10 +1542,8 @@ def _answer(
         wrote=wrote,
         tainted=tainted,
         carried=closing.refused_by_carry(door.calls),
+        promise=read_through.promised(request),
     )
-    if closing_line in closing.WAIT_LINES:
-        # It promised his next message may write: that message is not carried (A2).
-        read_through.note_refused(request)
     if closing_line is not None:
         yield say(closing_line)
     timings["wait_reason"] = int(guard_refused)

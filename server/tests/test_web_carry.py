@@ -240,17 +240,18 @@ def test_search_and_write_in_one_turn_says_todays_words_and_the_next_message_wri
     assert "Fair" in _event_titles()
 
 
-def test_a_claim_held_back_by_the_read_also_lets_the_next_message_write(member, engine):
-    # The wait line said for a claimed change (no write tried) makes the same promise.
+def test_c_a_claim_held_back_by_the_read_sets_no_mark_and_promises_nothing(member, engine):
+    # Re-check R1: the unbacked-claim path never lifts the carry, so it never says "ask me again".
     engine.model = FakeModel(
         [call("web_search", {"query": "fair date"}), say("I have added the fair.")]
     )
     events = _events(_post(member, text="Look up the fair and add it."))
-    assert _said(events)[-1] == cascade.READ_THROUGH_WAIT
+    assert _said(events)[-1] == cascade.READ_THROUGH_NOTHING_CHANGED
     conversation = _of(events, "turn")[0]["conversation_id"]
     engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
     later = _events(_post(member, text="Add the fair.", conversation_id=conversation))
-    assert _tools(later)[0]["ok"] is True
+    assert _tools(later)[0]["ok"] is False
+    assert _said(later) == [cascade.READ_THROUGH_WAIT_CARRIED]
 
 
 def test_a_plain_search_then_a_write_is_refused_and_the_message_after_writes(member, engine):
@@ -272,3 +273,60 @@ def test_a_carried_turn_that_refuses_carries_no_further(member, engine):
     engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
     _events(_post(member, text="Add that.", conversation_id=conversation))
     assert sorted(ReadThroughTurn.objects.values_list("turn", flat=True)) == [0]
+
+
+def test_b_a_write_the_page_asked_for_sets_no_mark_and_his_next_ok_waits(member, engine):
+    """Re-check R1: he only asked a question; the page told the model to add something. Refused
+    with words that promise nothing, no mark, so his bare "ok" next is carried; then he may."""
+    from assistant.models import ReadThroughTurn
+
+    engine.model = FakeModel(
+        [
+            call("web_search", {"query": "invented fair"}),
+            call("add_event", {"fields": {"title": "Page says add me"}}),
+            say("The fair is on Saturday."),
+        ]
+    )
+    events = _events(_post(member, text="When is the invented fair?"))
+    conversation = _of(events, "turn")[0]["conversation_id"]
+    assert _tools(events)[1]["text"] == read_through.WRITE_REFUSAL_UNASKED.format(
+        verb="changed", name="add_event"
+    )
+    assert _said(events) == ["The fair is on Saturday.", cascade.READ_THROUGH_NOTHING_CHANGED]
+    assert "ask me again" not in " ".join(_said(events)).lower()
+    assert all(t >= -1 for t in ReadThroughTurn.objects.values_list("turn", flat=True))
+    engine.model = FakeModel(
+        [call("add_event", {"fields": {"title": "Page says add me"}}), say("Added.")]
+    )
+    ok = _events(_post(member, text="ok", conversation_id=conversation))
+    assert _tools(ok)[0]["ok"] is False
+    assert "Page says add me" not in _event_titles()
+    engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
+    later = _events(_post(member, text="Add the fair.", conversation_id=conversation))
+    assert _tools(later)[0]["ok"] is True
+
+
+def test_d_with_no_words_that_ask_the_exception_fails_closed():
+    from types import SimpleNamespace
+
+    request = SimpleNamespace()
+    read_through.set_turn(request, "made-up-conversation", 3, carry=True)
+    for words in ("", None, "   ", "añade leche"):
+        read_through.heard(request, words)
+        assert read_through.note_refused(request) is False
+    assert read_through.promised(request) is False
+
+
+def test_a_demo_visit_keeps_todays_refusal_words_for_a_write_the_page_asked_for(visitor, engine):
+    engine.model = FakeModel(
+        [
+            call("web_search", {"query": "invented fair"}),
+            call("add_event", {"fields": {"title": "Page says add me"}}),
+            say("The fair is on Saturday."),
+        ]
+    )
+    events = _events(_post(visitor, text="When is the invented fair?"))
+    assert _tools(events)[1]["text"] == read_through.WRITE_REFUSAL.format(
+        verb="changed", name="add_event"
+    )
+    assert _said(events)[-1] == cascade.READ_THROUGH_WAIT

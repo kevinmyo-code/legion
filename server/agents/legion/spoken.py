@@ -308,10 +308,9 @@ class SpokenTurn:
             # text from the web" would be false (ADR 0090 amended 2026-11-21).
             tainted=lambda: state.tainted and not carry.only_carried(state.taint),
             carried=closing.refused_by_carry(self.gateway.calls),
+            # "Ask me again" only when the exception's mark was written (re-check R1).
+            promise=carry.REFUSED_HERE in state.taint,
         )
-        if line in closing.WAIT_LINES:
-            # It promised his next message may write: that message is not carried (A2).
-            carry.note_refused(state)
         if line is not None:
             yield self._say(line)
         else:

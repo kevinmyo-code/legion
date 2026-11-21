@@ -40,19 +40,26 @@ early clearing. The same day he ruled how it meets a same-turn refusal (option A
   - Every write in that next turn refuses in words, including a change he names fully himself.
     It still reads and answers what it can.
   - The carry clears after that one turn. A turn tainted only by the carry does not carry again.
-  - **Except after a same-turn refusal (A2):** a turn that already told him the change waits for
-    his next message does not carry, so that promise is true. "Told him" means one of two things:
-    - a write refused in its own read (the same-turn refusal);
-    - the spoken wait line about a change held back by the read.
-    Code keeps a marker for it: on the web, a `ReadThroughTurn` row at
-    `read_through.refused_mark(turn)`; on the engine, the `write_refused` taint source. A plain
-    read with no such refusal still carries.
+  - **Except after a same-turn refusal of a change HE asked for (A2):** a turn whose own read
+    refused a write, when his own words in that turn asked for a change, does not carry. It told
+    him to ask again, and that promise is true.
+    - His words decide, never the model's text, a tool's output or the page: one shared check over
+      the turn's transcript (`assistant/write_intent.py`).
+    - It fails closed: no words, words it cannot read, or no request for a change all mean no
+      exception, so the next turn is carried.
+    - Code keeps a marker for it: on the web, a `ReadThroughTurn` row at
+      `read_through.refused_mark(turn)`; on the engine, the `write_refused` taint source.
+    - A model's claim of a change with no write call never sets it.
+    - When his words did not ask, the refusal promises nothing (`WRITE_REFUSAL_UNASKED` for the
+      model; the spoken line is "I haven't changed anything: this turn read text from the web."),
+      and the next turn is carried.
+    - A plain read with no refusal still carries.
 - **The words.** The refusal and the spoken line say which turn read it:
   - the tool's words are `read_through.CARRY_WRITE_REFUSAL` / `CARRY_REFUSAL`;
   - the closing line is `lines.READ_THROUGH_WAIT_CARRIED` ("I haven't changed anything: I read
     text from the web just before this, so changes wait for your next message. Ask me again and
     I'll do it.").
-  - The same-turn words are unchanged, and true again under A2.
+  - The same-turn words are unchanged where he asked for the change, and true again under A2.
 - **Web assistant (the cascade door), members only.** The server decides from its own record:
   `ReadThroughTurn` holds the previous turn's mark, read in the same single query as this turn's.
   - The recruiter demo (/try) keeps the same-turn rule: it is frozen. `read_through.CARRY_ON_DEMO`
