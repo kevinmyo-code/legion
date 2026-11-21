@@ -1,0 +1,270 @@
+# Live gates that need a real Gemini key (cloud-builds plan step 6, 2026-11-20): the phone's voice eval
+# (laptop harness, invented data) and the money specialist eval, and the engine's realrun gate plus one
+# real chip turn. The same commands the laptop ship templates run in their "live gate" steps.
+#
+# workflow_dispatch ONLY, never on a push, a pull request or a fork; `sha` must be on dev or a ship/**
+# branch of this repo. Jobs run in the `gates` environment, whose one secret is GEMINI_API_KEY.
+# Without that secret every job FAILS at its first step (it never skips, and a skip is never a pass).
+# The key is written to a file only the job's user can read, handed over as LEGION_GEMINI_KEY_FILE
+# like on the laptop, never printed, and deleted at the end. It builds, signs, publishes and deploys
+# nothing; it holds no other secret and no Google sign-in.
+#
+# One-time setup, done by Kevin only (agents never create environments or secrets):
+#   Settings > Environments > New environment "gates"; Deployment branches: selected branches, "dev"
+#   (dispatch from dev; `sha` picks the commit); no required reviewer. Add secret GEMINI_API_KEY: a key
+#   used only here, with a budget cap on its Google Cloud project. Until then do NOT dispatch this file:
+#   GitHub creates a missing environment on a job's first run, with no protection rules.
+#
+# Cost per full run: about $0.10 to $0.20 of Gemini (the phone eval about $0.10, the engine gate capped
+# at REALRUN_BUDGET_USD=0.09, the chip turn about half a cent). Runner minutes are free (public repo).
+name: Gates
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to gate (full 40-hex sha, on dev or a ship/** branch)"
+        required: true
+        type: string
+      which:
+        description: "Which gates"
+        required: true
+        default: all
+        type: choice
+        options: [all, phone, engine]
+      phone_cases:
+        description: "Phone voice eval case ids (comma list); the phone ship template's gate set by default"
+        required: false
+        default: "due_open,due_today,calendar_tomorrow,reminders,todo_read,cars,time_now,then_tomorrow,goodbye_ends,short_answer_kept,write_todo,write_reminder,write_complete,tick_todo,multi_write_two,multi_write_mixed,dependent_two_step,lone_word_then_yes,lone_word_no_context,guard_mail_injection,guard_mail_then_timer,filler_specialist,filler_calendar,filler_web,no_filler_after_answer,tags_never_on_money,stt_audio_cars,stt_audio_switch,len_octopus,len_basil,len_turbo,len_latte,len_sleep,len_moon,len_warmup,len_bread"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gates-${{ inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  phone:
+    if: inputs.which == 'all' || inputs.which == 'phone'
+    name: phone voice eval + money specialist eval
+    runs-on: ubuntu-latest
+    environment: gates
+    timeout-minutes: 60
+    env:
+      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
+      SHA: ${{ inputs.sha }}
+      CASES: ${{ inputs.phone_cases }}
+    steps:
+      - name: The key exists (fail closed)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          [ -n "$GEMINI_API_KEY" ] || { echo "::error::Secret GEMINI_API_KEY is not set in the gates environment. Nothing ran; this is a FAIL, not a skip (see this file's header)."; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
+          [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be a comma list of case ids"; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      - name: The commit is on dev or a ship/** branch
+        run: |
+          set -euo pipefail
+          on=$(git branch -r --contains "$SHA" --format='%(refname:short)' | grep -E '^origin/(dev|ship/.+)$' || true)
+          [ -n "$on" ] || { echo "::error::$SHA is on neither origin/dev nor an origin/ship/** branch"; exit 1; }
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Point local.properties at the runner's SDK (no key baked)
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
+          echo "sdk.dir=${sdk}" > local.properties
+          chmod +x gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Key file (never printed)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$GEMINI_API_KEY" > "$RUNNER_TEMP/gk.txt"
+          echo "LEGION_GEMINI_KEY_FILE=$RUNNER_TEMP/gk.txt" >> "$GITHUB_ENV"
+
+      # voice_eval.py exits 0 only when every named case ran and passed; a VoiceEvalRun that skipped
+      # writes no run log, which voice_eval.py reports as a failure. Rule fail_twice (the phone ship's):
+      # a failed case runs once more alone and fails the gate only if it fails again.
+      - name: Phone voice eval (laptop harness, invented data)
+        env:
+          LEGION_GRADLE: ./gradlew -Pnokey --no-daemon
+        run: |
+          set -uo pipefail
+          mkdir -p gate-out
+          python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
+            --only "$CASES" --json gate-out/voice.json > gate-out/voice.txt 2>&1
+          rc=$?
+          grep -E '^VOICE EVAL|^lengths ' gate-out/voice.txt || true
+          [ "$rc" = 0 ] && { echo "voice eval passed: every case, first run"; exit 0; }
+          [ -f gate-out/voice.json ] || { tail -40 gate-out/voice.txt; echo "::error::the voice eval run broke (exit $rc, no scorecard): nothing to retry"; exit 1; }
+          failed=$(python - "$CASES" <<'EOF'
+          import json, sys
+          s = json.load(open("gate-out/voice.json", encoding="utf-8"))
+          ran = {r["id"] for r in s["cases"]}
+          bad = [r["id"] for r in s["cases"] if not r["pass"] and not r["known_limit"] and not r["proves_nothing"]]
+          bad += [c for c in sys.argv[1].split(",") if c and c not in ran]
+          print(" ".join(bad))
+          EOF
+          )
+          [ -n "$failed" ] || { echo "::error::the voice eval exited $rc but names no failed case"; exit 1; }
+          twice=""
+          for c in $failed; do
+            python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
+              --only "$c" > "gate-out/retry-$c.txt" 2>&1 && echo "retry $c: passed" || { echo "retry $c: failed again"; twice="$twice $c"; }
+          done
+          [ -z "$twice" ] || { echo "::error::failed twice:$twice"; exit 1; }
+          echo "voice eval passed under fail_twice (retried: $failed)"
+
+      - name: Money specialist eval
+        run: |
+          set -euo pipefail
+          ./gradlew -Pnokey --no-daemon :app:testDebugUnitTest --tests com.kevin.legion.service.MoneySpecialistEvalCasesTest --rerun -q
+          python tools/money_specialist_eval.py --key-file "$LEGION_GEMINI_KEY_FILE" | tee gate-out/money.txt
+
+      - name: Forget the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gk.txt"
+
+      - name: Keep the scorecards (invented data only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gates-phone-${{ inputs.sha }}
+          path: gate-out/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  engine:
+    if: inputs.which == 'all' || inputs.which == 'engine'
+    name: engine realrun gate + one chip turn
+    runs-on: ubuntu-latest
+    environment: gates
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: legion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      SHA: ${{ inputs.sha }}
+      # Throwaway values for a throwaway database, as in server.yml; not secrets.
+      SECRET_KEY: ci-only-not-a-real-secret-key-0000000000
+      DJANGO_DEBUG: 'false'
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      MEDIA_ROOT: /tmp/legion-media
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/legion
+    steps:
+      - name: The key exists (fail closed)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          [ -n "$GEMINI_API_KEY" ] || { echo "::error::Secret GEMINI_API_KEY is not set in the gates environment. Nothing ran; this is a FAIL, not a skip (see this file's header)."; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      - name: The commit is on dev or a ship/** branch
+        run: |
+          set -euo pipefail
+          on=$(git branch -r --contains "$SHA" --format='%(refname:short)' | grep -E '^origin/(dev|ship/.+)$' || true)
+          [ -n "$on" ] || { echo "::error::$SHA is on neither origin/dev nor an origin/ship/** branch"; exit 1; }
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Environment from the pinned requirements (as server.yml)
+        working-directory: server
+        run: |
+          uv venv --python 3.13
+          uv pip install -r requirements.txt
+
+      - name: Key file (never printed)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$GEMINI_API_KEY" > "$RUNNER_TEMP/gk.txt"
+          echo "LEGION_GEMINI_KEY_FILE=$RUNNER_TEMP/gk.txt" >> "$GITHUB_ENV"
+
+      - name: Realrun gate (web cascade, budget $0.09)
+        working-directory: server
+        env:
+          REALRUN_OUT: ${{ runner.temp }}/realrun-out
+          REALRUN_BUDGET_USD: '0.09'
+        run: uv run --no-sync pytest -q -p no:cacheprovider tests/realrun_web_cascade.py -k realrun_gate -s --junitxml=gate-realrun.xml
+
+      - name: One real chip turn
+        working-directory: server
+        run: uv run --no-sync pytest -q -p no:cacheprovider tests/realrun_demo_suggestions.py -s --junitxml=gate-chip.xml
+
+      # A realrun test SKIPS without the key or past its budget; a skip must never read as a pass.
+      - name: Every gate test ran and passed (JUnit XML, skips fail)
+        if: always()
+        run: |
+          python3 - server/gate-realrun.xml server/gate-chip.xml <<'EOF'
+          import sys, xml.etree.ElementTree as ET
+          bad = False
+          for path in sys.argv[1:]:
+              try:
+                  root = ET.parse(path).getroot()
+              except (OSError, ET.ParseError) as exc:
+                  print(f"{path}: unreadable ({exc}): not a pass"); bad = True; continue
+              suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+              t = sum(int(s.get("tests", 0)) for s in suites)
+              f = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) for s in suites)
+              k = sum(int(s.get("skipped", 0)) for s in suites)
+              print(f"{path}: tests={t} failed={f} skipped={k}")
+              if t == 0 or f or k:
+                  bad = True
+          sys.exit("a gate test failed, skipped or did not run" if bad else 0)
+          EOF
+
+      - name: Forget the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gk.txt"
+
+      - name: Keep the turns (invented data only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gates-engine-${{ inputs.sha }}
+          path: ${{ runner.temp }}/realrun-out
+          if-no-files-found: ignore
+          retention-days: 7
