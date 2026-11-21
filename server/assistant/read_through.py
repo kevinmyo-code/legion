@@ -190,6 +190,24 @@ def _mark(request) -> bool:
     return True
 
 
+def mark_turns(request, conversation_id, turns) -> None:
+    """Marks these turns of the caller's own conversation as having read third-party text, so
+    every write in them refuses (the late-answer path: a turn that said a line built on web pages,
+    and the turn after it, `agents/legion/late.py`). A failed write joins `_UNMARKED`, which
+    refuses writes for the whole conversation (fail closed)."""
+    from devicelogs import web_conversation
+
+    try:
+        with transaction.atomic():
+            row = web_conversation.owned(request, conversation_id)
+            if row is not None:
+                for turn in turns:
+                    _record(row, turn)
+    except DatabaseError:
+        log.warning("read-through: could not mark a turn; refusing writes", exc_info=True)
+        _UNMARKED.add(conversation_id)
+
+
 def _turn_read_third_party(request) -> bool:
     """Whether this request, or the turn it belongs to, read third-party text. Fails closed: a
     conversation whose mark could not be written, or marks that cannot be read, count as read."""

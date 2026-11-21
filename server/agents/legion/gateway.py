@@ -84,8 +84,11 @@ def model_response(ok: bool, text: str) -> dict:
 
 
 class LegionGateway:
-    def __init__(self, request, recorder=None, observe=None):
+    def __init__(self, request, recorder=None, observe=None, limit=None):
         self.request = request
+        # A caller's own cap on calls (the late-answer runner's, `late.py`): (state, call) ->
+        # refusal words, or None to go on. A refusal is recorded with guard `budget`.
+        self.limit = limit
         self.user = request.user
         self.recorder = recorder
         # The eval runner's ear: every call's name, arguments, outcome and full result text.
@@ -122,6 +125,10 @@ class LegionGateway:
                     state, call, tool, False, refusal, "refused", "headunit", started
                 )
             call = ToolCall(call.id, call.name, args)
+        if self.limit is not None:
+            words = self.limit(state, call)
+            if words is not None:
+                return self._done(state, call, tool, False, words, "refused", "budget", started)
         verdict = guards.check_call(state, spec, call.name, call.args, tool, self.user)
         if not verdict.allow:
             return self._done(

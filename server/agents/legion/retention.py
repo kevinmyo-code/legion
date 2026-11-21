@@ -2,6 +2,7 @@
 
 - Turns, conversations and tool calls: `TURN_RETENTION_DAYS` (30).
 - Checkpoints (full state, for resume and replay): `CHECKPOINT_RETENTION_DAYS` (7).
+- Late-answer tasks and owed lines (`late.py`): `TURN_RETENTION_DAYS` (30), deleted whole.
 - Model-call numbers: `METRIC_RETENTION_DAYS` (90). A model-call row belongs to its turn, so a
   turn past 30 days whose numbers are still inside 90 is kept as a shell: its words are blanked
   (transcript, final text, history) and its tool calls deleted, and the row itself goes at 90.
@@ -17,6 +18,7 @@ import datetime
 
 from django.utils import timezone
 
+from agents.legion import flags
 from agents.models import (
     CHECKPOINT_RETENTION_DAYS,
     METRIC_RETENTION_DAYS,
@@ -25,6 +27,8 @@ from agents.models import (
     AgentConversation,
     AgentToolCall,
     AgentTurn,
+    LateTask,
+    OwedLine,
 )
 
 
@@ -49,6 +53,11 @@ def prune(now: datetime.datetime | None = None) -> dict[str, int]:
         .delete()[1]
         .get("agents.AgentTurn", 0)
     )
+    if flags.late_answers_enabled():
+        # Switched off, no query at all: no rows are made while off (rows left from a time it was
+        # on wait for the next prune with it on).
+        out["late_tasks"] = LateTask.objects.filter(created_at__lt=content_cutoff).delete()[0]
+        out["owed_lines"] = OwedLine.objects.filter(created_at__lt=content_cutoff).delete()[0]
     out["conversations"] = AgentConversation.objects.filter(
         last_turn_at__lt=content_cutoff, turns__isnull=True
     ).delete()[0]

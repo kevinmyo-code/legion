@@ -1,0 +1,30 @@
+# Checks that the official speaker model and its licence text still match app/speaker-model.pin
+# (cloud-builds step 4). Fetches both from their official sources, checks size and hashes, keeps
+# nothing: no artifact, no secret, no environment, read-only token. It builds and publishes nothing.
+name: Speaker model pin
+
+on:
+  push:
+    branches: [dev, main, 'up/**', 'integrate/**', 'ship/**']
+    paths:
+      - 'app/speaker-model.pin'
+      - '.github/scripts/fetch_speaker_model.sh'
+      - '.github/workflows/speaker-model.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: fetch and check the official speaker model
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Fetch and check (nothing kept)
+        run: bash .github/scripts/fetch_speaker_model.sh --check
