@@ -1,5 +1,7 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.service.turn.AudioRoute
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
@@ -50,16 +52,55 @@ internal object CloseCue {
         return null
     }
 
-    /** The chime plus the route's tail (Bluetooth buffers past the head position), never past [HARD_CAP_MS]. */
-    fun waitCapMs(chimeMs: Long, settleMs: Long): Long = minOf(chimeMs + settleMs, HARD_CAP_MS)
+    /**
+     * How far the sound heard lags the track's head position, and an idle track's restart (2026-11-21,
+     * the chime not heard after "bye bye"): the head position says a frame was handed on, not that it
+     * was heard. The wait was the chime plus the route's settle only (350 ms on the speaker for a
+     * 290 ms chime), so the release's pause and flush could cut the chime before it was heard.
+     */
+    const val OUTPUT_LATENCY_MS = 0L
 
-    /** Writes the chime and waits for it to drain, cut at [capMs] however long the drain takes. True: done in time. */
-    suspend fun playBounded(capMs: Long, write: suspend () -> Unit, drained: suspend () -> Unit): Boolean =
-        withTimeoutOrNull(capMs) {
-            write()
-            drained()
-            true
-        } ?: false
+    /** The chime, its output latency and the route's tail (Bluetooth buffers more), never past [HARD_CAP_MS]. */
+    fun waitCapMs(chimeMs: Long, settleMs: Long): Long = minOf(chimeMs + OUTPUT_LATENCY_MS + settleMs, HARD_CAP_MS)
+
+    /** The least time from the chime's write to the player's release: its length plus [OUTPUT_LATENCY_MS]. */
+    fun minPlayMs(chimeMs: Long): Long = 0L + OUTPUT_LATENCY_MS * chimeMs
+
+    /**
+     * Writes the chime, waits for it to drain and for at least [minMs] from the write's start (a head
+     * position that runs ahead never releases it early), cut at [capMs] however long the drain takes.
+     * True: done in time.
+     */
+    suspend fun playBounded(
+        capMs: Long,
+        minMs: Long,
+        write: suspend () -> Unit,
+        drained: suspend () -> Unit,
+        now: () -> Long = System::currentTimeMillis,
+    ): Boolean = withTimeoutOrNull(capMs) {
+        val start = now()
+        write()
+        drained()
+        val left = minMs - (now() - start)
+        if (left > 0) delay(left)
+        true
+    } ?: false
+
+    /** The route the chime went out on, for its audit line. */
+    fun routeToken(route: AudioRoute, earpiece: Boolean): String = when {
+        route == AudioRoute.BLUETOOTH -> "bt"
+        earpiece -> "earpiece"
+        route == AudioRoute.WIRED_HEADSET -> "wired"
+        else -> "speaker"
+    }
+
+    /** `close_cue played ms=<n> reason=<close> route=<speaker|earpiece|bt|wired> drained=<1|0>`: no text. */
+    fun playedLine(reason: String, ms: Long, route: String, drained: Boolean): String =
+        "close_cue played ms=$ms reason=${token(reason)} route=$route drained=${if (drained) 1 else 0}"
+
+    /** `close_cue skipped reason=<why> close=<close>`: no text. */
+    fun skippedLine(reason: String, skip: Skip): String =
+        "close_cue skipped reason=${skip.token} close=${token(reason)}"
 
     /**
      * The reason a voice failure's release is given (review of 546cce67, F2): with Live retired the
@@ -78,8 +119,5 @@ internal object CloseCue {
             "route_released_ms=$routeReleasedMs"
 
     /** `close_cue played=<0|1> reason=<token> skipped=<why>`: fixed tokens only. */
-    fun auditLine(reason: String, skip: Skip?): String =
-        "close_cue played=${if (skip == null) 1 else 0} reason=${token(reason)} skipped=${skip?.token ?: "none"}"
-
     private fun token(reason: String) = reason.lowercase(Locale.US).replace(Regex("[^a-z0-9_]"), "_")
 }

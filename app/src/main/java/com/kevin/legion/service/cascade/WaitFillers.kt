@@ -23,13 +23,15 @@ internal object WaitFillers {
     // that day (15 turns): a backchannel at 0.6 s, then 3 to 4 s of silence before the answer (median
     // 4.25 s); the old 3.5 s / 4 s / cap 3 left 10 of 15 turns with a gap over 2 s and one of 6.4 s. Replayed
     // on those turns, 1.8 s / 2.5 s / 6 leaves one gap over 2 s (2.5 s, on the 13.8 s turn) and 14 wait lines.
-    const val FIRST_GAP_MS = 1_800L
+    // 2026-11-21: the acknowledgement now plays at end of turn ([FillerTiming]); 1.5 s after its end puts
+    // the first wait line at about 2.0 s, so nothing doubles up in the first 2 s.
+    const val FIRST_GAP_MS = FillerTiming.FIRST_WAIT_GAP_MS
 
     /** Each further wait line: this long after the one before it ended. */
-    const val NEXT_GAP_MS = 2_500L
+    const val NEXT_GAP_MS = FillerTiming.NEXT_WAIT_GAP_MS
 
     /** Fillers of every kind in one turn (backchannel, task line, wait lines): a hard cap. */
-    const val MAX_PER_TURN = 6
+    const val MAX_PER_TURN = FillerTiming.MAX_PER_TURN
 
     /** No wait line again within this many wait lines. */
     const val ROTATION = 5

@@ -213,4 +213,28 @@ class BackchannelTest {
         assertNull(Backchannel.decide(turn()))
         assertFalse(Backchannel.Skip.entries.any { it.token == "half_duplex" })
     }
+
+    @Test
+    fun `the acknowledgement is at end of turn, and the first wait line not before 2 s after a usual one`() {
+        assertEquals(0L, Backchannel.DELAY_MS)
+        // A usual acknowledgement is 300 to 700 ms: the first wait line 1.5 s after its end lands at 1.8 to 2.2 s.
+        for (ackMs in listOf(300L, 500L, 700L)) {
+            val first = WaitFillers.nextAtMs(lastFillerEndAtMs = ackMs, waitSaid = 0, fillersSaid = 1)!!
+            assertTrue("$ackMs -> $first", first >= 1_800L && first - ackMs >= Backchannel.SPACING_MS)
+        }
+        // With no acknowledgement (nothing in memory), the first sound is a wait line at 1.5 s, not 1.8 s.
+        assertEquals(1_500L, WaitFillers.nextAtMs(lastFillerEndAtMs = 0, waitSaid = 0, fillersSaid = 0))
+        assertEquals(6, FillerTiming.MAX_PER_TURN)
+    }
+
+    @Test
+    fun `the words heard so far keep it silent for noise, a goodbye or distress, and let it play otherwise`() {
+        val goodbye = { w: String -> w.trim().lowercase().startsWith("bye") }
+        val crisis = { w: String -> w.contains("invented distress") }
+        assertNull("no words yet: it plays", Backchannel.wordsSkip(null, goodbye, crisis))
+        assertEquals(Backchannel.Skip.NOISE, Backchannel.wordsSkip("  ", goodbye, crisis))
+        assertEquals(Backchannel.Skip.GOODBYE, Backchannel.wordsSkip("bye bye", goodbye, crisis))
+        assertEquals(Backchannel.Skip.CRISIS, Backchannel.wordsSkip("some invented distress", goodbye, crisis))
+        assertNull(Backchannel.wordsSkip("what's on tomorrow", goodbye, crisis))
+    }
 }

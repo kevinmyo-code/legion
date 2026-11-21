@@ -269,6 +269,9 @@ internal class CascadeSession(
     @Volatile private var engineBrain: EngineBrain? = null
     @Volatile private var lastLocalSpeechAtMs = 0L
 
+    /** The laptop's running transcript, by utterance id: what the acknowledgement can tell at end of turn. */
+    @Volatile private var heardSoFar: Pair<Int, String>? = null
+
     private var turnJob: Job? = null
     private var speaker: ReplySpeaker? = null
     @Volatile private var speaking = false
@@ -1297,7 +1300,7 @@ internal class CascadeSession(
                 quiet = QuietMode.isOn(ctx),
                 onCall = callOnLine(),
             ),
-        )
+        ) ?: ackWordsSkip(u)
         fillerSkip = skip
         if (skip != null) {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=${skip.token}")
@@ -1308,6 +1311,13 @@ internal class CascadeSession(
             playBackchannel(seq, eotAtMs)
         }
     }
+
+    /** What the words heard so far already rule out ([Backchannel.wordsSkip]); null with none heard yet. */
+    private fun ackWordsSkip(u: TurnUtterance): Backchannel.Skip? = Backchannel.wordsSkip(
+        heardSoFar?.takeIf { it.first == u.id }?.second,
+        goodbye = { WakePhrases.isSleepPhrase(it, CompanionProfile.name(ctx)) },
+        crisis = CrisisDetector::detect,
+    )
 
     /**
      * The backchannel itself: from memory only, measured before it plays ([Backchannel.clipFits]),
@@ -1353,17 +1363,29 @@ internal class CascadeSession(
             )
             audit.filler("backchannel", line)
             val sound = turnGap?.started(TurnGap.BACKCHANNEL, System.currentTimeMillis())
-            clipPlayback.during {
-                val gen = p.generation()
-                withContext(Dispatchers.IO) { p.write(pcm, gen) }
-                p.awaitDrained()
-            }
+            clipPlayback.during { playAckClip(p, pcm) }
             sound?.let { turnGap?.ended(it, System.currentTimeMillis()) }
         }
         // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
         clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         backchannelEndAtMs = System.currentTimeMillis()
         lastFillerEndAtMs = System.currentTimeMillis()
+    }
+
+    /**
+     * The acknowledgement's audio, cut at once when its job is cancelled (he spoke again, a stop, a
+     * goodbye found in his words): it never plays on over him. Only its own audio is flushed: the
+     * answer waits for this clip under [playGate], so nothing else is in the track.
+     */
+    private suspend fun playAckClip(p: ReplyPlayer, pcm: ByteArray) {
+        val gen = p.generation()
+        try {
+            withContext(Dispatchers.IO) { p.write(pcm, gen) }
+            p.awaitDrained()
+        } catch (e: CancellationException) {
+            if (p.generation() == gen) p.flush()
+            throw e
+        }
     }
 
     /** The clip whose audio [clipListen] keeps: its kind and line index, for [ClipListen.joinedLine]. */
@@ -2082,10 +2104,10 @@ internal class CascadeSession(
      * done and never said).
      */
     private suspend fun endByStop(u: TurnUtterance, words: String) {
-        // No "Mm." before "Goodbye." (review F4): a backchannel not yet started is dropped. At this point
-        // nothing but that clip can be playing, so playback means it started: it finishes.
+        // No "Mm." before "Goodbye." (review F4): the acknowledgement, which now starts at end of turn,
+        // is dropped, and cut if it is playing ([playAckClip]).
         turnEndsConversation = true
-        if (!playbackActive) fillerJobs.endTurn()
+        fillerJobs.endTurn()
         discardDraftOf(u, "not_answered")
         carry = ""
         recordTurn(words, owed.due()?.line.orEmpty())
@@ -3068,9 +3090,15 @@ internal class CascadeSession(
             LiveLatency.TAG,
             "spec_config on=$speculate backend=${b.kind.token} maybe_end=${c?.sendsMaybeEnd ?: false}",
         )
-        if (!speculate || c == null) return
+        if (c == null) return
+        // The running transcript is kept for the acknowledgement's word gate ([Backchannel.wordsSkip])
+        // with the setting off too; the drafts use it only with it on.
+        c.onPartial = { id, text ->
+            heardSoFar = id to text
+            if (speculate) scope.launch(loop) { onPartialText(id, text) }
+        }
+        if (!speculate) return
         c.onMaybeEnd = { id, text, atEnd -> scope.launch(loop) { onMaybeEnd(id, text, atEnd) } }
-        c.onPartial = { id, text -> scope.launch(loop) { onPartialText(id, text) } }
     }
 
     /** Why no draft may start now, or null. */
@@ -3462,20 +3490,31 @@ internal class CascadeSession(
             alreadyPlayed = closeCuePlayed,
             rateMatches = backend?.tts?.sampleRate == ListenCue.SAMPLE_RATE,
         )
-        LiveLatency.log(LiveLatency.TAG, CloseCue.auditLine(reason, skip))
-        if (skip != null || p == null) return false
+        if (skip != null || p == null) {
+            LiveLatency.log(LiveLatency.TAG, CloseCue.skippedLine(reason, skip ?: CloseCue.Skip.NO_AUDIO))
+            return false
+        }
         closeCuePlayed = true
         val pcm = ListenCue.closeChimePcm()
-        val settle = MicReopen.settleMs(CallAudioMode.route(audioManager))
-        val cap = CloseCue.waitCapMs(ListenCue.durationMs(pcm), settle)
-        return CloseCue.playBounded(
-            cap,
+        val route = CallAudioMode.route(audioManager)
+        val settle = MicReopen.settleMs(route)
+        val chimeMs = ListenCue.durationMs(pcm)
+        val startMs = System.currentTimeMillis()
+        val drained = CloseCue.playBounded(
+            CloseCue.waitCapMs(chimeMs, settle),
+            CloseCue.minPlayMs(chimeMs),
             write = { withContext(Dispatchers.IO) { p.write(pcm, p.generation()) } },
             drained = {
                 p.awaitDrained()
                 delay(settle)
             },
         )
+        val routeToken = CloseCue.routeToken(route, earpiece = earpiece.wantsEarpiece() && callAudio?.isActive == true)
+        LiveLatency.log(
+            LiveLatency.TAG,
+            CloseCue.playedLine(reason, System.currentTimeMillis() - startMs, routeToken, drained),
+        )
+        return drained
     }
 
     /** The conversation's usage summary at its close, and the prompt cache's listener let go. */

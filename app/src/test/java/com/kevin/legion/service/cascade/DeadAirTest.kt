@@ -22,7 +22,7 @@ class DeadAirTest {
         // Backchannel ended at 1,000; the model's first sentence went to the voice at 2,600 (expected
         // audio 3,400). The old rule: text in, no wait line, silence from 1,000 to the audio.
         val due = WaitFillers.nextAtMs(lastFillerEndAtMs = 1_000, waitSaid = 0, fillersSaid = 1)!!
-        assertEquals(2_800L, due)
+        assertEquals(1_000 + WaitFillers.FIRST_GAP_MS, due)
         // Due at 2,800: a 600 ms line ends at 3,400, by the expected audio (300 ms of slack allowed).
         assertNull(DeadAir.waitLine(at(2_800, asked = 2_600), clipMs = 600))
         // Its audio comes in early, with 450 ms of the line left: the line is cut, the answer is not held.
