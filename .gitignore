@@ -77,6 +77,9 @@ app/src/main/assets/openwakeword/*
 # committed. See app/src/main/assets/speaker/README.md.
 app/src/main/assets/speaker/*
 !app/src/main/assets/speaker/README.md
+# The speaker model's licence text, installed next to the other notices by fetch_speaker_model.sh at
+# build time (it comes with the model, which is not committed either).
+app/src/main/assets/licenses/3dspeaker-eres2net-Apache-2.0.txt
 # An enrolled voiceprint is personal data, never a model: never committed, wherever it lands.
 voiceprint*.bin
 
