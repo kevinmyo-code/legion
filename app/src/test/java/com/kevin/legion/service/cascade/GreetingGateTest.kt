@@ -9,7 +9,7 @@ import org.junit.Test
 /** The held greeting's fate, read just before any of it is spoken. */
 class GreetingGateTest {
     @Test
-    fun `he spoke while it was held: dropped, nothing said over him, whatever the line was`() {
+    fun `he spoke while it was held, so it is dropped and nothing is said over him`() {
         listOf(true to false, false to false, true to true).forEach { (whole, named) ->
             assertEquals(GreetingGate.HE_SPOKE, GreetingGate.decide(heSpoke = true, whole = whole, named = named))
         }
@@ -18,7 +18,7 @@ class GreetingGateTest {
     }
 
     @Test
-    fun `not whole in time or a wrong name: the scripted hello`() {
+    fun `not whole in time or a wrong name plays the scripted hello`() {
         assertEquals(GreetingGate.SLOW, GreetingGate.decide(heSpoke = false, whole = false, named = false))
         assertEquals(GreetingGate.NAMED, GreetingGate.decide(heSpoke = false, whole = true, named = true))
         assertTrue(GreetingGate.SLOW.scripted)
