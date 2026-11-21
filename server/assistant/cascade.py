@@ -74,6 +74,7 @@ from django.db import DatabaseError, transaction
 from django.db import connections as db_connections
 
 from agents.legion import late
+from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
 from agents.legion.lines import (
@@ -245,8 +246,6 @@ def mark_robotic(request, conversation_id, turn: int, *, source: str) -> None:
     )
 
 
-# The phone's `end_conversation` (spec 18): the description and the sign-off instruction, with
-# "he" made "they" (the web serves every member and a visitor).
 # Knowing when it is being spoken to (voice-persona section 10, Kevin 2026-11-17: "yes all four").
 # A third outcome besides answering and calling a tool: the sentence was not for the assistant
 # (a visitor turning to someone else). A no-data control like `end_conversation`.
@@ -296,28 +295,6 @@ def addressed_decision(signals: dict[str, bool], model_says_not: bool) -> str:
     if signals.get("answers_question") or signals.get("second_person"):
         return "unsure"
     return "not_addressed"
-
-
-END_TOOL = "end_conversation"
-END_DECLARATION = {
-    "name": END_TOOL,
-    "description": (
-        "End the conversation when they are DONE with you: 'never mind', 'nothing', "
-        "'I'm good', 'that's all', 'go away'. 'That will be all' ALWAYS means this, "
-        "however politely. 'Go to sleep', 'sleep', 'go dormant', 'stand down' mean this "
-        "too: about YOU going quiet, not their bedtime; no goodnight. Say one dry sign-off "
-        "line in your own register in the same turn; it closes when you finish. Do NOT "
-        "call this when they are answering 'no' to something you offered, declining a "
-        "suggestion, or pausing."
-    ),
-    "parameters": {"type": "object", "properties": {}},
-}
-
-END_INSTRUCTION = (
-    "Sign off now with one dry line in your own register (a <chuckle> before it is fine), "
-    "about this conversation, then "
-    "stop. The conversation ends when you finish speaking."
-)
 
 
 def failure_audio(voice: str, wrote: bool) -> ev.Event | None:
