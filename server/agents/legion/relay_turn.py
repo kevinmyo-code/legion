@@ -36,8 +36,17 @@ call it asked, so a result that comes after the close (a write the device made) 
 `call_id` each relayed response carries), so his next turn's model sees it. A K1 device action
 (`done.device_actions`) is recorded the same way. `retention.py` nulls this with the turn's words.
 
+**A time limit on late results** (`LATE_RESULT_MS`, 24 hours from the request): after it, 410
+`too_late`, nothing recorded. A device that comes back online the next morning still gets its write
+on the record; a week-old replay does not. A late result rewrites the closed turn's stored history
+(the one response it answers, found by `call_id`) at the moment it arrives, and MARKS it: the
+response says "Reported by the device after this turn ended" and carries `reported_late: true`, so
+a later turn that reads it again knows it changed after that turn ended.
+
 **Stale** (`close_stale`, on the member's next turn and on `GET /api/agents/turn/<id>`): a turn
-still `awaiting_limb` `IDLE_CLOSE_MS` after its request (10 minutes, the wire's idle close), or
+still `awaiting_limb` after `IDLE_CLOSE_MS` (10 minutes, the wire's idle close) AND after its
+round's last call deadline plus the grace (whichever is later: a slow round is never closed while
+the device may still be working on it; `relay.MAX_CALLS_PER_ROUND` keeps that inside 10 minutes), or
 `running` a continuation `RUNNING_STALE_MS` after its resume began (2 minutes: the turn's own
 budget is 30 s; a process that died mid-stream), closes as failed with what is known. His next
 turn in the same conversation closes a pause at once (`close_paused`).
@@ -72,12 +81,16 @@ RESULT_OUTCOMES = ("ok", "failed", "refused", "timed_out", "not_run")
 # What the model is handed of one result, at most (the trace keeps `redact.RESULT_CHARS`).
 MAX_MODEL_CHARS = 8_000
 IDLE_CLOSE_MS = 10 * 60 * 1000
+LATE_RESULT_MS = 24 * 60 * 60 * 1000
+LATE_REPORT = "Reported by the device after this turn ended: "
+
 RUNNING_STALE_MS = 2 * 60 * 1000
 LATE = "late"
 DROPPED_WORDS = (
     "That answer stopped before it was done. Nothing is claimed beyond what is on the record."
 )
 NO_TURN = "No turn of yours with that id; nothing recorded."
+TOO_LATE = "That result came more than 24 hours after it was asked; nothing recorded."
 UNKNOWN_CALL = "That call id was not asked of this device; nothing recorded."
 
 
@@ -249,6 +262,9 @@ def _record_late(turn: AgentTurn, request, body: dict) -> Recorded:
         return _record_repeat(turn, limb, body)
     if limb is None or str(limb.pk) != meta.get("limb_id"):
         raise RelayRefusal(409, "unknown_call", UNKNOWN_CALL)
+    asked = meta.get("asked_at_ms") or int(turn.created_at.timestamp() * 1000)
+    if _now_ms() > int(asked) + LATE_RESULT_MS:
+        raise RelayRefusal(410, "too_late", TOO_LATE)
     _same_tool({**meta, "call_id": call_id}, body)
     prior, by = meta.get("recorded"), meta.get("by")
     takes = prior is None or by == "engine" or (prior == "timed_out" and body["outcome"] == "ok")
@@ -281,6 +297,8 @@ def _record_repeat(turn: AgentTurn, limb, body: dict) -> Recorded:
     row = rows.first()
     if row is None or limb is None or str(limb.pk) != row.where:
         raise RelayRefusal(409, "unknown_call", UNKNOWN_CALL)
+    if _now_ms() > int(turn.created_at.timestamp() * 1000) + LATE_RESULT_MS:
+        raise RelayRefusal(410, "too_late", TOO_LATE)
     if row.outcome == "timed_out" and body["outcome"] == "ok":
         rows.update(outcome="ok")
     status = turn.status if turn.status in (TURN_CANCELLED, TURN_RUNNING) else LATE
@@ -288,9 +306,11 @@ def _record_repeat(turn: AgentTurn, limb, body: dict) -> Recorded:
 
 
 def _history_response(req: dict, row: dict) -> dict:
+    """The closed turn's response, rewritten for a late result: marked as reported late."""
     if req.get("read_through"):
-        return {"note": redact.OUTSIDE_STUB, "call_id": req["call_id"]}
-    return outcome_of(req, row).response
+        return {"note": redact.OUTSIDE_STUB, "call_id": req["call_id"], "reported_late": True}
+    response = outcome_of(req, row).response
+    return {**response, "message": LATE_REPORT + response["message"], "reported_late": True}
 
 
 def _patch_history(turn: AgentTurn, call_id: str, response: dict) -> None:
@@ -369,7 +389,9 @@ def close_stale(household, user, now_ms: int | None = None) -> int:
     ).values_list("pk", "status", "pending_relay")
     for pk, status, paused in rows:
         if status == TURN_AWAITING_LIMB:
-            stale = now_ms - int(paused.get("asked_at_ms") or 0) > IDLE_CLOSE_MS
+            asked = int(paused.get("asked_at_ms") or 0)
+            last_deadline = max(deadlines(paused).values(), default=asked)
+            stale = now_ms > max(asked + IDLE_CLOSE_MS, last_deadline)
         else:
             stale = now_ms - int(paused.get("resumed_at_ms") or 0) > RUNNING_STALE_MS
         if stale:
@@ -410,7 +432,7 @@ def _close(turn: AgentTurn, paused: dict, status: str, words: str) -> None:
             wrote = wrote or (outcome.ok and outcome.writes)
     state.messages.append(abandoned_round(suspension, words, answered))
     turn.status = status
-    turn.pending_relay = relay.issued_record(requests, results)
+    turn.pending_relay = relay.issued_record(requests, results, paused.get("asked_at_ms"))
     turn.writes_ran = turn.writes_ran or state.writes_ran or wrote
     turn.final_text = " ".join(suspension.spoken).strip() or words
     turn.history = redact.history_for_storage(

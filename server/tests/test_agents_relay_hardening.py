@@ -386,3 +386,96 @@ def test_two_completing_posts_at_once_resume_once(auth_client, limb, engine, mon
     kinds = sorted(k for k, _s in answers)
     assert kinds == ["json", "stream"], answers
     assert len(engine.models) == models_before + 1
+
+
+# ---- re-check 1121: idle close vs deadlines, calls per round, late-result window, classes -------
+
+
+def test_a_round_gets_at_most_four_device_calls(auth_client, limb, engine):
+    _e, _t, requests = paused(engine, auth_client, calls(*[("car_status", {})] * 5))
+    assert len(requests) == relay.MAX_CALLS_PER_ROUND == 4
+    # 4 calls at the manifest's longest deadline still end before the idle close.
+    assert 4 * 120_000 + relay.GRACE_MS < relay_turn.IDLE_CLOSE_MS
+
+
+def test_the_idle_close_waits_for_the_rounds_last_deadline(auth_client, engine, monkeypatch):
+    cache.clear()
+    slow = [dict(t, deadline_ms=120_000) if t["name"] == "car_status" else t for t in TOOLS]
+    attach(auth_client, slow)
+    monkeypatch.setattr(relay_turn, "IDLE_CLOSE_MS", 1_000)
+    _e, turn_id, _r = paused(engine, auth_client, calls(("car_status", {}), ("car_status", {})))
+    asked = AgentTurn.objects.get(pk=turn_id).pending_relay["asked_at_ms"]
+    url = f"/api/agents/turn/{turn_id}"
+    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 200_000)
+    assert auth_client.get(url).data["status"] == "awaiting_limb"
+    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 240_000 + relay.GRACE_MS + 1)
+    assert auth_client.get(url).data["status"] == "failed"
+
+
+def test_a_late_result_is_marked_in_history_and_refused_after_24_hours(
+    auth_client, limb, engine, monkeypatch
+):
+    _e, turn_id, requests = paused(
+        engine, auth_client, calls(("car_status", {}), ("set_timer", {"seconds": 60}))
+    )
+    auth_client.post(f"/api/agents/turn/{turn_id}/cancel")
+    post_result(auth_client, turn_id, requests[0]["call_id"])
+    asked = AgentTurn.objects.get(pk=turn_id).pending_relay["issued"][requests[1]["call_id"]][
+        "asked_at_ms"
+    ]
+    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + relay_turn.LATE_RESULT_MS + 1)
+    gone = post_result(auth_client, turn_id, requests[1]["call_id"], words="Timer started.")
+    assert gone.status_code == 410 and gone.data["code"] == "too_late"
+    assert AgentToolCall.objects.get(call_id=requests[1]["call_id"]).outcome == "timed_out"
+    monkeypatch.setattr(relay_turn, "_now_ms", lambda: asked + 60_000)
+    post_result(auth_client, turn_id, requests[1]["call_id"], words="Timer started.")
+    turn = AgentTurn.objects.get(pk=turn_id)
+    timer = [r for r in _responses(turn) if r["name"] == "set_timer"][0]["response"]
+    assert timer["reported_late"] is True
+    assert timer["message"].startswith(relay_turn.LATE_REPORT)
+
+
+@pytest.mark.parametrize(
+    ("tool", "args"),
+    [
+        ({"name": "day", "tool_class": "household"}, {"action": "read_calendar"}),
+        ({"name": "find_place", "tool_class": "web"}, {"query": "coffee"}),
+        ({"name": "phone_lookup", "tool_class": "household"}, {"action": "caller_id"}),
+        ({"name": "invites_today", "tool_class": "calendar"}, {}),
+    ],
+    ids=["calendar-in-day", "place-search", "caller-id", "calendar-class"],
+)
+def test_text_other_people_wrote_taints_the_turn(auth_client, engine, tool, args):
+    cache.clear()
+    entry = {
+        "description": "Invented.",
+        "parameters": {"type": "object", "properties": {"action": {"type": "string"}}},
+        "writes": False,
+        "read_through": False,
+        "actuates": False,
+        **tool,
+    }
+    attach(auth_client, [*TOOLS, entry])
+    _e, turn_id, requests = paused(engine, auth_client, m.call(tool["name"], args))
+    assert requests[0]["read_through"] is True
+    assert AgentTurn.objects.get(pk=turn_id).tainted
+
+
+def test_a_day_read_of_lists_stays_plain_and_a_place_search_must_say_web(auth_client, engine):
+    cache.clear()
+    day = {
+        "name": "day",
+        "tool_class": "household",
+        "description": "The day.",
+        "parameters": {"type": "object", "properties": {"action": {"type": "string"}}},
+        "writes": False,
+        "read_through": False,
+        "actuates": False,
+    }
+    search = {**day, "name": "search_places", "tool_class": "place"}
+    attach(auth_client, [*TOOLS, day, search])
+    _e, turn_id, requests = paused(engine, auth_client, m.call("day", {"action": "read_list"}))
+    assert requests[0]["read_through"] is False
+    assert not AgentTurn.objects.get(pk=turn_id).tainted
+    offered = {d["name"] for d in engine.models[-1].requests[0].declarations}
+    assert "search_places" not in offered  # an outside-sounding name with a plain class

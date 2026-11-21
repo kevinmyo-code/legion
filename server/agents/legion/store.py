@@ -36,7 +36,9 @@ _WORD_FIELDS = ("text", "final_text", "words", "args")
 
 
 def _issued(after_turn: list[dict]) -> dict | None:
-    return relay.issued_record(after_turn) if after_turn else None
+    if not after_turn:
+        return None
+    return relay.issued_record(after_turn, asked_at_ms=int(timezone.now().timestamp() * 1000))
 
 
 def _without_words(event: dict) -> dict:

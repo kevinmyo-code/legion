@@ -220,6 +220,7 @@ class LegionGateway:
             # relayed call; its trace row is written when that result comes (`relay_turn.py`).
             request = relay.request(state, tool, call, state.tainted)
             request.update(limb_id=where, after_reply=True)
+            relay.count_call(state)
             state.after_turn.append(request)
             words = relay.AFTER_TURN_WORDS.format(name=tool.name)
             response = {**model_response(False, words), "call_id": request["call_id"]}
@@ -238,6 +239,7 @@ class LegionGateway:
                 )
         request = relay.request(state, tool, call, tainted_before)
         request["limb_id"] = where
+        relay.count_call(state)
         return ToolOutcome(name=tool.name, ok=False, response={}, writes=tool.writes, relay=request)
 
     def _done(

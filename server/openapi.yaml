@@ -413,6 +413,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: '`too_late`: over 24 hours after it was asked.'
         '411':
           content:
             application/json:

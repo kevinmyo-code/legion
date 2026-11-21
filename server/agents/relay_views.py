@@ -14,7 +14,8 @@ Answers:
   already resumed by another post: `running`);
 - 503 `no_key` / 429 `member_cap` with `recorded: true`: recorded, the rest not run (`no_key`:
   the turn keeps waiting, post the same result again later; `member_cap`: the turn is closed);
-- nothing recorded: 404 `no_turn`, 409 `unknown_call` / `wrong_tool`, 411 `length_required`,
+- nothing recorded: 404 `no_turn`, 409 `unknown_call` / `wrong_tool`, 410 `too_late` (over 24
+  hours after the call was asked), 411 `length_required`,
   413 `result_too_large`, 400 `bad_request`.
 
 `GET /api/agents/turn/<id>`: the turn's status and the calls still waited for, whole, for the
@@ -130,6 +131,9 @@ class AgentToolResultView(views._SwitchedAgentsView):
             400: DetailSerializer,
             404: DetailSerializer,
             409: DetailSerializer,
+            410: OpenApiResponse(
+                DetailSerializer, description="`too_late`: over 24 hours after it was asked."
+            ),
             411: DetailSerializer,
             413: DetailSerializer,
             429: DetailSerializer,

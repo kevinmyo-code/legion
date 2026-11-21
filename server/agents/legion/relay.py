@@ -12,18 +12,30 @@ rebuilt request have no limb, so they are offered none and nothing here queries 
   look). No class, or one not listed (`mail`, `messages`, anything new), and it is dropped;
 - it is not mail-like by name (`_MAIL_NAME`: mail, sms, messages, chat, ...), whatever it declares:
   mail is never relayed by the engine until ticket 05;
-- a name that sounds like outside text (`_OUTSIDE_NAME`) carries an outside class: a manifest that
-  under-declares is refused, never trusted;
+- a name that sounds like outside text (`_OUTSIDE_NAME`) carries an outside class: a tool whose
+  NAME gives it away and whose class says otherwise is refused;
 - no engine tool has its name (the engine's own tool wins).
 So a new `read_sms` or `read_notifications` is refused with no code change. A folded tool keeps
 its declaration, but mail values are removed from its enums.
 
+**The trust boundary, plainly.** The manifest comes from the owner's own app, signed in with his
+own device token, which can already read and write everything he can. `tool_class` is the app's
+own claim; the engine checks it only against names (the patterns above) and against its own
+action table (`OUTSIDE_ACTIONS`). A mail reader the app named `summary` and classed `household`
+would be offered, untainted. These checks catch the app's honest mistakes and a new tool nobody
+classified; they do not defend against a hostile manifest. A third-party limb (a device or app
+not his) would need the engine to own each tool's class itself (an engine-side registry keyed by
+tool, not by the manifest's word) before it could attach (ADR 0098, "Trust boundary").
+
 **Taint is the engine's** (`reads_outside`): an outside class taints every call of the tool,
-whatever the manifest's `read_through` says; the manifest's flags can only add taint.
+whatever the manifest's `read_through` says; so does any call that names one of the engine's
+`OUTSIDE_ACTIONS` (a folded tool's calendar read with others' invites, a place search, caller
+names); the manifest's flags can only add taint.
 
 **Whether a call may go** (`decide`), in order:
 1. mail class (the tool, a declared mail action, or any argument naming one): refused;
-2. relay hops past `MAX_RELAY_HOPS` in this turn: refused;
+2. relay hops past `MAX_RELAY_HOPS` in this turn, or limb calls past `MAX_CALLS_PER_ROUND` in
+   one round: refused;
 3. a write of a tool whose earlier write in this turn timed out: refused (it may still land; a
    retry would be the double run the wire contract forbids, section 8);
 4. a write in a read-only spec: refused;
@@ -57,7 +69,27 @@ from household.tenancy import household_of
 PLAIN_CLASSES = frozenset({"device", "vehicle", "place", "household"})
 # Results that are text other people wrote: relayable, and every call taints the turn.
 OUTSIDE_CLASSES = frozenset(
-    {"web", "notifications", "contacts", "clipboard", "screen_text", "camera", "files"}
+    {"web", "notifications", "contacts", "clipboard", "screen_text", "camera", "files", "calendar"}
+)
+# Calls that read text other people wrote, by the ENGINE's own word, whatever the manifest says:
+# a call whose name, or any string argument (a folded tool's action), is one of these taints the
+# turn. The phone's `day` tool is split this way: its calendar read carries invite titles and
+# descriptions other people wrote (tainted); its lists and timers do not (plain).
+OUTSIDE_ACTIONS = frozenset(
+    {
+        "read_calendar",
+        "calendar",
+        "agenda",
+        "get_agenda",
+        "invites",
+        "search_places",
+        "place_search",
+        "nearby",
+        "caller_id",
+        "call_log",
+        "recent_calls",
+        "who_called",
+    }
 )
 
 # The phone tools whose results carry mail (`ask_mail`, the brief's `get_sitrep` with its mail
@@ -82,7 +114,8 @@ _MAIL_NAME = re.compile(
 )
 _OUTSIDE_NAME = re.compile(
     r"(^|_)(notification|notifications|clipboard|contact|contacts|browser|web|page|pages|"
-    r"screen_text|ocr|camera|look|photo|photos|file|files|feed|news)(_|$)",
+    r"screen_text|ocr|camera|look|photo|photos|file|files|feed|news|calendar|agenda|invite|"
+    r"invites|search|caller|callers|call_log)(_|$)",
     re.IGNORECASE,
 )
 
@@ -101,10 +134,18 @@ GRACE_MS = 5_000
 # Pauses one turn may make. The loop's rounds already bound it (4 rounds, the last tool-free: at
 # most 3); this keeps the bound if a spec ever raises `max_rounds`.
 MAX_RELAY_HOPS = 3
+# Limb calls one round may ask. The limb runs them one at a time, so a round's whole time is the
+# sum of their deadlines: 4 x the 120 s manifest maximum + the grace stays under the 10 minute idle
+# close, so a slow round is never closed while the device is still working on it.
+MAX_CALLS_PER_ROUND = 4
 
 MAIL_REFUSED = (
     "Nothing was read: {name} would read mail or messages through the device, and that is not "
     "done here yet. Say so plainly."
+)
+ROUND_REFUSED = (
+    "Nothing was done: this round already asked the device {calls} things, the most one round "
+    "may. Ask for the rest after these answers."
 )
 HOPS_REFUSED = (
     "Nothing was done: this turn already asked the device {hops} times, the most one turn may. "
@@ -204,8 +245,12 @@ def relayable(tool: LimbTool) -> bool:
 def reads_outside(tool: LimbTool, args: dict) -> bool:
     """The call's result is outside text (ADR 0090): the engine's class first; the manifest's own
     flags can only add to it."""
+    named = tool.name in OUTSIDE_ACTIONS or any(
+        isinstance(v, str) and v in OUTSIDE_ACTIONS for v in (args or {}).values()
+    )
     return (
         tool.tool_class in OUTSIDE_CLASSES
+        or named
         or tool.read_through
         or _matches(tool.read_through_when, args)
     )
@@ -268,6 +313,8 @@ def decide(state, spec, tool: LimbTool, args: dict) -> Decision:
     hops = int(state.client_facts.get("stream_no", 1)) - 1
     if hops >= MAX_RELAY_HOPS:
         return _refused(HOPS_REFUSED.format(hops=hops), "budget")
+    if calls_this_round(state) >= MAX_CALLS_PER_ROUND:
+        return _refused(ROUND_REFUSED.format(calls=MAX_CALLS_PER_ROUND), "budget")
     if tool.writes and name in (state.client_facts.get("relay_timed_out_writes") or []):
         return _refused(TIMED_OUT_REFUSED.format(name=name), "not_allowed")
     if tool.writes and not spec.writes_allowed:
@@ -285,6 +332,18 @@ def decide(state, spec, tool: LimbTool, args: dict) -> Decision:
             return Decision(after_turn=True)
         return _refused(OUTSIDE_REFUSED.format(name=name), "tainted")
     return GO
+
+
+def calls_this_round(state) -> int:
+    """Limb calls already sent in the model round now running (`budget.rounds` counts rounds)."""
+    facts = state.client_facts.get("relay_round_calls") or {}
+    return int(facts.get(str(state.budget.rounds), 0))
+
+
+def count_call(state) -> None:
+    facts = state.client_facts.setdefault("relay_round_calls", {})
+    key = str(state.budget.rounds)
+    facts[key] = int(facts.get(key, 0)) + 1
 
 
 def request(state, tool: LimbTool, call, tainted_before: bool) -> dict:
@@ -306,7 +365,9 @@ def request(state, tool: LimbTool, call, tainted_before: bool) -> dict:
     }
 
 
-def issued_record(requests: list[dict], recorded: dict | None = None) -> dict:
+def issued_record(
+    requests: list[dict], recorded: dict | None = None, asked_at_ms: int | None = None
+) -> dict:
     """`pending_relay` of a turn that is over but may still get results: every call it asked
     (no arguments: they may carry outside text), so a late result is recorded
     (`relay_turn._record_late`)."""
@@ -321,5 +382,6 @@ def issued_record(requests: list[dict], recorded: dict | None = None) -> dict:
             "limb_id": req.get("limb_id"),
             "recorded": row.get("outcome"),
             "by": row.get("by"),
+            "asked_at_ms": asked_at_ms,
         }
     return {"issued": issued}

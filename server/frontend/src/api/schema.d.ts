@@ -12953,6 +12953,15 @@ export interface operations {
                     "application/json": components["schemas"]["Detail"];
                 };
             };
+            /** @description `too_late`: over 24 hours after it was asked. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
             411: {
                 headers: {
                     [name: string]: unknown;
