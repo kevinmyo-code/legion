@@ -232,6 +232,16 @@ def test_on_the_tool_door_runs_it_for_a_member(member, switch_on):
         "Twenty two foot pounds.",
         "29 in-lbs on the cover.",
         "The axle nut is 27mm.",
+        "Do 33 foot-lbs.",
+        "Do 33 ft-pounds.",
+        "Do 33 ft·lb.",
+        "Do 33 lb·ft.",
+        "Do 33 lbf ft.",
+        "About 77 N⋅m.",
+        "Use 33 ft/lbs.",
+        "Give it 33 pounds of torque.",
+        "Torque it to 33 lbs.",
+        "Torque it to 33.",
     ],
 )
 def test_a_figure_with_no_table_behind_it_is_unbacked(sentence):
@@ -247,6 +257,11 @@ def test_a_figure_with_no_table_behind_it_is_unbacked(sentence):
         "That is bolt 2 of 3.",
         "It's on the driver side.",
         "Check the cotter pin.",
+        "We got 12 mm of rain.",
+        "There is 1/2 inch of snow.",
+        "Take the M25 north.",
+        "It weighs 40 pounds.",
+        "The trip is 30 feet.",
     ],
 )
 def test_ordinary_numbers_are_not_torque(sentence):
@@ -272,3 +287,22 @@ def test_only_show_parts_spoken_figures_back_a_number():
 def test_the_guard_off_checks_nothing():
     assert backed_torque([_Call("show_part", {"spoken_figures": ["33"]})], False) is None
     assert not states_unbacked_torque("It is 47 ft-lb.", None)
+
+
+def test_on_the_live_fallback_does_not_get_it(household_user, monkeypatch, switch_on):
+    # Live speaks no code lines and runs no guard: the tool stays off there.
+    monkeypatch.setenv("LEGION_WEB_VOICE", "live")
+    assert member_only_tools(household_user) == {}
+    assert refusal_for("show_part", household_user) is not None
+
+
+def test_on_the_agents_door_refuses_it_outside_a_spec(household_user, switch_on):
+    from types import SimpleNamespace
+
+    from agents.legion.guards import check_call
+    from garage.tool import SHOW_PART
+
+    verdict = check_call(
+        None, SimpleNamespace(tools=frozenset()), "show_part", {}, SHOW_PART, household_user
+    )
+    assert verdict.allow is False and verdict.guard == "not_allowed"
