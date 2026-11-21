@@ -112,18 +112,24 @@ internal object EngineLimbManifest {
     fun tools(): List<Tool> = RELAYED.map { (name, relay) -> tool(name, relay) }
 
     /**
-     * The upload body. [declarations] are the phone's own (by name); a relayed name with none is
-     * left out rather than offered without a description.
+     * What this phone offers for one conversation: the upload body, and the tools and their
+     * parameter schemas as sent, which are all the phone will ever run for the engine
+     * ([EngineCallGate]). A relayed name with no declaration of its own is left out.
      */
-    fun manifest(appVersion: String, declarations: Map<String, JSONObject> = sourceDeclarations()): JSONObject {
-        val tools = JSONArray()
-        for (t in tools()) {
-            val decl = declarations[t.name] ?: continue
-            tools.put(
+    class Offer(val json: JSONObject, val tools: Map<String, Tool>, val params: Map<String, JSONObject>)
+
+    fun offer(appVersion: String, declarations: Map<String, JSONObject> = sourceDeclarations()): Offer {
+        val sent = tools().filter { declarations.containsKey(it.name) }
+        val params = sent.associate { t ->
+            t.name to (declarations.getValue(t.name).optJSONObject("parameters") ?: JSONObject())
+        }
+        val list = JSONArray()
+        for (t in sent) {
+            list.put(
                 JSONObject()
                     .put("name", t.name)
-                    .put("description", decl.optString("description").take(MAX_DESCRIPTION_CHARS))
-                    .put("parameters", decl.optJSONObject("parameters") ?: JSONObject())
+                    .put("description", describe(declarations.getValue(t.name)))
+                    .put("parameters", params.getValue(t.name))
                     .put("writes", t.writes)
                     .put("read_through", t.readThrough)
                     .put("actuates", t.actuates)
@@ -133,14 +139,22 @@ internal object EngineLimbManifest {
                     .put("tool_class", t.relay.toolClass),
             )
         }
-        return JSONObject()
+        val json = JSONObject()
             .put("contract_version", EngineBrainRules.CONTRACT_VERSION)
             .put("kind", "phone")
             .put("app_version", appVersion.take(MAX_APP_VERSION_CHARS))
             .put("brain_asked", "engine")
-            .put("tools", tools)
+            .put("tools", list)
             .put("streams", JSONArray())
+        return Offer(json, sent.associateBy { it.name }, params)
     }
+
+    private fun describe(declaration: JSONObject): String =
+        declaration.optString("description").take(MAX_DESCRIPTION_CHARS)
+
+    /** The upload body alone ([offer]). */
+    fun manifest(appVersion: String, declarations: Map<String, JSONObject> = sourceDeclarations()): JSONObject =
+        offer(appVersion, declarations).json
 
     fun sourceDeclarations(): Map<String, JSONObject> {
         val all = LiveToolbox.sourceDeclarations()

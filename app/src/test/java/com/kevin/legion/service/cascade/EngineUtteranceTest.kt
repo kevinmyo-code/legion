@@ -8,7 +8,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,8 +26,12 @@ class EngineUtteranceTest {
     private val switched = mutableListOf<Boolean>()
     private val meta = JSONObject().put("client", "phone").put("contract_version", 1).put("conversation_id", "c1")
 
-    private fun utterance(scope: CoroutineScope, streamed: Boolean = true) =
-        EngineUtterance(1, wire, scope, meta, streamed, { switched.add(it) })
+    private fun utterance(
+        scope: CoroutineScope,
+        streamed: Boolean = true,
+        tail: CoroutineScope = scope,
+        gate: kotlinx.coroutines.Job? = null,
+    ) = EngineUtterance(1, UtteranceSetup(wire, scope, tail, meta, streamed, gate), { switched.add(it) })
 
     /** One second of a 220 Hz tone over near-silence: voiced by [SttGuard.voicedMs]'s measure. */
     private fun voice(): ByteArray {
@@ -86,8 +89,7 @@ class EngineUtteranceTest {
         u.end()
         val r = u.result(1_000) as SttResult.Text
         assertEquals("", r.text)
-        assertTrue(wire.uploads.single().aborted)
-        assertFalse(wire.uploads.single().finished)
+        assertTrue("no stream was even opened", wire.uploads.isEmpty())
         assertTrue(wire.clips.isEmpty())
     }
 
@@ -121,14 +123,50 @@ class EngineUtteranceTest {
     }
 
     @Test
-    fun `both routes unreachable is the engine unreachable, never a second brain`() = runBlocking {
-        wire.streamAnswers.add(WireReply.Unreachable("ConnectException"))
-        wire.clipAnswers.add(WireReply.Unreachable("ConnectException"))
+    fun `an answer lost after the end frame is never posted again, and is no second brain`() = runBlocking {
+        wire.streamAnswers.add(WireReply.Unreachable("SocketTimeoutException"))
+        wire.clipAnswers.add(heardStream)
         val u = utterance(this)
         val pcm = voice()
         u.audio(pcm, 0, pcm.size)
         u.end()
         assertEquals(SttResult.Failed(EngineUtterance.UNREACHABLE), u.result(1_000))
+        assertTrue("the engine may be running it: no double run", wire.clips.isEmpty())
+        assertTrue(u.postedAtMs > 0)
+    }
+
+    @Test
+    fun `a new stream opens only after the last cancel went, and sends the audio held meanwhile`() = runBlocking {
+        wire.streamAnswers.add(heardStream)
+        val cancel = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val u = utterance(this, gate = cancel)
+        val pcm = voice()
+        u.audio(pcm, 0, pcm.size / 2)
+        kotlinx.coroutines.delay(20)
+        assertTrue("held while the cancel is on its way", wire.uploads.isEmpty())
+        cancel.complete(Unit)
+        kotlinx.coroutines.delay(20)
+        u.audio(pcm, pcm.size / 2, pcm.size / 2)
+        u.end()
+        assertEquals("start a timer for five minutes", (u.result(1_000) as SttResult.Text).text)
+        val body = wire.uploads.single().body.toByteArray()
+        val endFrame = EngineFrames.end(pcm.size.toLong())
+        assertTrue(body.copyOfRange(body.size - endFrame.size, body.size).contentEquals(endFrame))
+    }
+
+    @Test
+    fun `a cancel goes on the tail scope, so a closed conversation still cancels the engine's turn`() = runBlocking {
+        wire.streamAnswers.add(heardStream)
+        val session = CoroutineScope(kotlinx.coroutines.SupervisorJob() + coroutineContext)
+        val u = utterance(session, tail = this)
+        val pcm = voice()
+        u.audio(pcm, 0, pcm.size)
+        u.end()
+        u.result(1_000)
+        session.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        u.release()
+        kotlinx.coroutines.delay(20)
+        assertEquals(listOf("t9"), wire.cancels)
     }
 
     @Test
@@ -143,16 +181,15 @@ class EngineUtteranceTest {
     }
 
     @Test
-    fun `the one stream busy goes to the batch route, which waits out busy and answers`() = runBlocking {
+    fun `the one stream busy goes to the batch route in the same turn`() = runBlocking {
         wire.streamAnswers.add(json(409, """{"code": "stream_busy"}"""))
-        wire.clipAnswers.add(json(409, """{"code": "busy", "retry_ms": 100}"""))
         wire.clipAnswers.add(heardStream)
         val u = utterance(this)
         val pcm = voice()
         u.audio(pcm, 0, pcm.size)
         u.end()
         assertEquals("start a timer for five minutes", (u.result(1_000) as SttResult.Text).text)
-        assertEquals(2, wire.clips.size)
+        assertEquals(1, wire.clips.size)
     }
 
     @Test
@@ -186,7 +223,7 @@ class EngineUtteranceTest {
         u.end()
         u.result(1_000)
         u.release()
-        kotlinx.coroutines.yield()
+        kotlinx.coroutines.delay(20)
         assertEquals(listOf("t9"), wire.cancels)
         assertEquals("released: nothing left to answer", null, u.takeTurn())
     }

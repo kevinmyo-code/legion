@@ -101,6 +101,10 @@ internal class EngineWireHttp(
         private fun body() = object : RequestBody() {
             override fun contentType() = OCTET
             override fun contentLength() = -1L
+
+            // Written once, from a queue that drains: OkHttp must never retry it on a fresh
+            // connection, which would send the engine a body with no metadata frame (review B-6).
+            override fun isOneShot() = true
             override fun writeTo(sink: BufferedSink) {
                 var frame = frames.take()
                 while (frame !== EOF) {

@@ -433,6 +433,9 @@ internal class CascadeSession(
 
         /** The engine heard this turn ([EngineUtterance]): it answers unless the phone keeps it. */
         @Volatile var engineUtt: EngineUtterance? = null
+
+        /** The engine heard this turn's audio, even if its stream was released for a merge. */
+        @Volatile var engineHeard = false
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -468,9 +471,7 @@ internal class CascadeSession(
         // Never for a test conversation: the engine has no test mode yet, and its own writes would
         // pass by the phone's TestTurnPolicy.
         if (listens && test == null) {
-            engineBrain = EngineBrainOpen.open(ctx, scope, opening != OpeningRule.Opening.CHIME) {
-                scope.launch(loop) { engineLost(EngineBrainRules.UNREACHABLE_LINE) }
-            }
+            engineBrain = EngineBrainOpen.open(ctx, scope, opening != OpeningRule.Opening.CHIME)
         }
         // The laptop is probed and connected while the mic and the turn models get ready (a wake
         // word's onset may have started it already); [tryLaptop] takes it.
@@ -531,8 +532,7 @@ internal class CascadeSession(
         greetingLoop = newTextLoop(cache, CallUsage.GREETING)
         cacheStore = cache
         enginesUsed.add(b.kind.token)
-        // No drafts on the engine brain (plan 1119 row 25): the engine hears the audio itself.
-        speculate = listens && VoiceEngineSettings.speculate(ctx) && engineBrain == null
+        speculate = listens && VoiceEngineSettings.speculate(ctx)
         wireEarlySignals(b)
 
         val smartReady = models?.smartTurn != null && TurnModels.smartTurnBroken == null
@@ -1020,7 +1020,8 @@ internal class CascadeSession(
             resumeThroughClip(u)
             scope.launch(loop) {
                 onUserTurnStart()
-                if (speculate && b.kind == SpeechBackend.Kind.CLOUD) watchCloudSilence(u)
+                // No drafts for a turn the engine hears (plan 1119 row 25); the phone's own turns keep them.
+                if (speculate && b.kind == SpeechBackend.Kind.CLOUD && u.engine == null) watchCloudSilence(u)
                 // A wall-clock cap under the service's 30 s: in steady noise the silence cap never
                 // fires, and a turn must still end.
                 uttCapJob?.cancel()
@@ -1507,7 +1508,7 @@ internal class CascadeSession(
                 // The engine could not answer: said so, never a second brain ([EngineUtterance.SWITCHED_OFF]
                 // is the server's own rollback, and the phone's transcriber and loop take that turn).
                 val lost = u.engine?.takeIf { stt.reason != EngineUtterance.SWITCHED_OFF }
-                if (lost != null) return engineLost(EngineBrain.lostWords(lost), stt.reason == EngineUtterance.MISSED)
+                if (lost != null) return engineFailed(lost, stt.reason == EngineUtterance.MISSED)
                 val recovered = recoverWords(u, stt.reason) ?: return
                 if (endsConversation(recovered)) return endByStop(u, recovered)
                 recovered
@@ -1577,6 +1578,7 @@ internal class CascadeSession(
         val record = TurnRecord(heard, voicedMs = (stt as? SttResult.Text)?.voicedMs)
         // Words carried from a dropped turn are not in this audio: the engine gets them as a transcript.
         record.engineUtt = u.engine?.takeIf { heard == words.trim() }
+        record.engineHeard = u.engine != null
         if (record.engineUtt == null) u.engine?.release()
         answerTurn(heard, eotAtMs, record, takeDraft(u, heard))
     }
@@ -1607,7 +1609,13 @@ internal class CascadeSession(
         val engineStart = brain?.route(
             record.engineUtt,
             heard,
-            EngineBrain.RouteFacts(test = test != null, fromUser = record.fromUser, carryMarked = record.startMarked),
+            EngineBrain.RouteFacts(
+                test = test != null,
+                fromUser = record.fromUser,
+                carryMarked = record.startMarked,
+                // Streamed audio, a merged turn's words, or the laptop voice's words may go to the engine.
+                engineHeard = record.engineHeard || backend?.kind == SpeechBackend.Kind.LAPTOP,
+            ),
         )
         // The engine answers without the phone's prompt; only the phone loop waits for it.
         val pfx = if (engineStart != null) null else try {
@@ -1997,13 +2005,20 @@ internal class CascadeSession(
     }
 
     /**
-     * The engine could not answer (client contract section 9, decision K3): [words] are said, shown,
-     * and the conversation closes; no second brain answers. A transcript the engine missed ([missed])
-     * is the missed line instead, and he may say it again.
+     * The engine, this conversation's brain, could not answer [utt] (client contract section 9): no
+     * second brain answers. Its words are said, true as said ([EngineBrain.lostWords]); he may say it
+     * again. After [EngineBrainRules.FAILURE_BUDGET] such turns in a row the conversation closes (K3).
+     * A transcript the engine missed ([missed]) is the missed line.
      */
-    private suspend fun engineLost(words: String, missed: Boolean = false) {
-        if (missed) return sayMissedLine()
-        LiveLatency.log(LiveLatency.TAG, "engine_lost close=1")
+    private suspend fun engineFailed(utt: EngineUtterance, missed: Boolean) {
+        val close = engineBrain?.failed(missed) == true
+        val words = if (missed) MISSED_LINE else EngineBrain.lostWords(utt)
+        LiveLatency.log(LiveLatency.TAG, "engine_lost close=${if (close) 1 else 0} missed=${if (missed) 1 else 0}")
+        if (close) engineLost(words) else sayMissedLine(words)
+    }
+
+    /** K3: [words] are said, shown, and the conversation closes. */
+    private suspend fun engineLost(words: String) {
         if (!closing.get() && backend != null && player != null) {
             val reply = newSpeaker(null)
             reply.say(words)

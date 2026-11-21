@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,7 +23,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -37,7 +35,6 @@ import com.kevin.legion.service.AssistantIgnition
 import com.kevin.legion.service.WakeEngineKind
 import com.kevin.legion.service.WakeWordEngine
 import com.kevin.legion.service.WakeWordPreferences
-import com.kevin.legion.service.cascade.EngineBrainSettings
 import com.kevin.legion.service.cascade.VoiceEngineSettings
 import com.kevin.legion.service.conversationlog.ConversationLog
 import com.kevin.legion.service.testturn.TestTurnSettings
@@ -104,7 +101,6 @@ fun AssistantSettingsScreen(
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
     var speculate by remember { mutableStateOf(VoiceEngineSettings.speculate(context)) }
-    var answerOnEngine by remember { mutableStateOf(EngineBrainSettings.on(context)) }
     var bluetoothMic by remember { mutableStateOf(VoiceTurnSettings.bluetoothMic(context)) }
     var localCommands by remember { mutableStateOf(VoiceTurnSettings.localCommands(context)) }
     var asyncLookups by remember { mutableStateOf(VoiceTurnSettings.asyncLookups(context)) }
@@ -259,24 +255,6 @@ fun AssistantSettingsScreen(
                         speculate = on
                     },
                 )
-
-                // Engine-brain P1 (2026-11-21): the engine answers instead of the phone. Off by default.
-                Spacer(Modifier.height(8.dp))
-                Box(Modifier.testTag("engine-brain-switch")) {
-                    VoiceTurnRow(
-                        title = "Answer on the engine",
-                        explanation = "your words go to the household's engine as you speak, and it " +
-                            "answers; ${activeName ?: "the assistant"} still speaks, and phone actions " +
-                            "run here with the usual checks. Mail stays on the phone. If the engine " +
-                            "can't be reached, the conversation says so and ends. Applies from the next " +
-                            "conversation.",
-                        enabled = answerOnEngine,
-                        onToggle = { on ->
-                            EngineBrainSettings.setOn(context, on)
-                            answerOnEngine = on
-                        },
-                    )
-                }
 
                 Spacer(Modifier.height(8.dp))
                 VoiceTurnRow(

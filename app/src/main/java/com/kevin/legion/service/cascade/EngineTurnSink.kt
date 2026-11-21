@@ -31,6 +31,14 @@ internal class EngineTurnSink(
     @Volatile var relayed = 0
         private set
 
+    /**
+     * The turn may have outside text in it: an engine tool ran (its kind is not on the wire), or a
+     * relayed call reads outside text or came tainted. A cut-off turn with this set is stored
+     * blanked, as a finished tainted turn is (review B-13).
+     */
+    @Volatile var touchedOutside = false
+        private set
+
     /** The engine's crisis check fired (`crisis` event): the phone tears down as on its own check. */
     @Volatile var crisis = false
         private set
@@ -45,6 +53,7 @@ internal class EngineTurnSink(
             is EngineEvent.Crisis -> crisis = true
             is EngineEvent.Working -> listener.onToolsStarting(listOf(event.tool to JSONObject()))
             is EngineEvent.Tool -> {
+                touchedOutside = true
                 synchronized(toolsRan) { toolsRan.add(event.name) }
                 listener.onToolCalls(listOf(event.name))
             }
@@ -65,6 +74,11 @@ internal class EngineTurnSink(
 
     override fun toolsStarting(calls: List<EngineCall>) {
         relayed += calls.size
+        // The engine says outside text is in play: marked now, not only at `done.tainted`.
+        if (calls.any { it.readThrough || it.tainted }) {
+            touchedOutside = true
+            listener.onReadThrough(EngineBrain.READ_THROUGH_SOURCE)
+        }
         listener.onToolCalls(calls.map { it.name })
         listener.onToolsStarting(calls.map { it.name to it.args })
     }

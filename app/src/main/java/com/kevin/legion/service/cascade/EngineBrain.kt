@@ -1,24 +1,27 @@
 package com.kevin.legion.service.cascade
 
-import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextToolExecutor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The engine as Alfred's brain for one conversation (engine-brain ticket 04, slice P1), behind
- * Settings > Assistant "Answer on the engine" ([EngineBrainSettings], read at open, default off).
- * With the setting off nothing here is built: the cascade is untouched.
+ * The engine as Alfred's brain for one conversation (engine-brain ticket 04, slice P1), behind the
+ * developer switch [EngineBrainSettings] (read at open, default off). With it off nothing here is
+ * built: the cascade is untouched. With it on and the engine not the brain (dark, `brain: phone`,
+ * unreachable at attach), every turn is the phone's own, exactly as with it off.
  *
  * What stays on the phone (plan 1119 section 1): the mic, its end of turn, the noise rule, stop and
  * goodbye, the crisis check (as well as the engine's), barge-in, the fillers, speech (the phone's own
  * voice says the engine's sentences), the confirm gates, and every relayed tool through the ONE
- * tool runner with its guards and `TestTurnPolicy` (the turn's own [TextToolExecutor]).
+ * tool runner with its guards and `TestTurnPolicy` (the turn's own [TextToolExecutor]), after the
+ * phone's own gate on what it offered ([EngineCallGate]).
  *
  * What moves: speech-to-text (streamed while he speaks, [EngineUtterance]) and the model with its
  * tools. A turn the phone must keep ([EngineBrainRules.phoneKeeps]) goes to the phone loop.
@@ -33,65 +36,63 @@ internal class EngineBrain(
     private val deviceState: () -> EngineBrainRules.DeviceState,
     private val log: (String) -> Unit,
     openedWithLine: Boolean,
-    private val now: () -> Long = System::currentTimeMillis,
+    /** Outlives the session by [EngineBrainRules.TAIL_MS]: cancels that must reach the engine. */
+    private val tail: CoroutineScope = TAIL,
 ) {
-    enum class State { ATTACHING, ON, OFF, UNREACHABLE }
+    enum class State { ATTACHING, ON, OFF }
 
     @Volatile var state = State.ATTACHING
         private set
+    @Volatile private var gate: EngineCallGate? = null
     @Volatile private var streamOff = false
     @Volatile private var conversationId: String? = null
     @Volatile private var afterPhoneLine = openedWithLine
     @Volatile private var executor: TextToolExecutor? = null
+    @Volatile private var listener: GeminiTextLoop.Listener? = null
     @Volatile private var relay: EngineRelay? = null
     @Volatile private var deviceActions: List<EngineCall> = emptyList()
     @Volatile private var crisis = false
+    @Volatile private var lastCancel: Job? = null
+    private val failures = AtomicInteger()
     private val ids = AtomicInteger()
+    private val now: () -> Long = System::currentTimeMillis
     private val calls = EngineCalls(scope, ::runCall, ::postLate, now)
     private val poster = EngineResultPoster(wire)
 
     /**
-     * `POST /api/agents/limb` with the [manifest] it builds, in the background (the chime never waits). The
-     * engine's answer decides: `brain: engine` turns it on; `phone`, a switched-off engine (404) or
-     * any refusal turns it off silently (the phone loop answers); unreachable follows
-     * [EngineBrainRules.UNREACHABLE_AT_OPEN] (K3) and calls [onUnreachable] to say so and close.
+     * `POST /api/agents/limb` with the [offer] it builds, in the background (the chime never waits).
+     * Only `brain: engine` makes the engine this conversation's brain; anything else (`phone`, a
+     * switched-off engine, a refusal, no answer in [EngineBrainRules.ATTACH_MS]) leaves every turn
+     * on the phone, silently (logged). K3 never fires here: the engine was never the brain.
      */
-    fun attach(manifest: () -> JSONObject, onUnreachable: () -> Unit) {
+    fun attach(offer: () -> EngineLimbManifest.Offer) {
         val started = now()
         scope.launch {
-            val reply = withTimeoutOrNull(EngineBrainRules.ATTACH_MS) { wire.attach(manifest()) }
+            val o = offer()
+            val reply = withTimeoutOrNull(EngineBrainRules.ATTACH_MS) { wire.attach(o.json) }
                 ?: WireReply.Unreachable("timeout")
-            val lost = reply is WireReply.Unreachable ||
-                (reply is WireReply.Json && reply.status >= EngineBrainRules.HTTP_SERVER_ERROR)
             val brain = (reply as? WireReply.Json)?.takeIf { it.status in OK_RANGE }?.body?.optString("brain")
-            state = when {
-                brain == "engine" -> State.ON
-                lost && EngineBrainRules.UNREACHABLE_AT_OPEN == EngineBrainRules.WhenUnreachable.SAY_AND_CLOSE ->
-                    State.UNREACHABLE
-                else -> State.OFF
-            }
+            if (brain == "engine") gate = EngineCallGate(o)
+            state = if (brain == "engine") State.ON else State.OFF
             val why = (reply as? WireReply.Json)?.let { "http_${it.status}" } ?: (reply as WireReply.Unreachable).reason
             val ms = now() - started
             log("engine_attach state=${state.name.lowercase()} brain=${brain ?: "none"} why=$why ms=$ms")
-            if (state == State.UNREACHABLE) onUnreachable()
         }
     }
 
     /**
-     * His next utterance, spoken to the engine (cloud voice only: the laptop voice keeps its own
-     * transcriber, which ends turns itself, and its words go to the engine as a transcript), or null
-     * when the phone transcribes it.
+     * His next utterance, spoken to the engine, or null when the phone transcribes it. Decided before
+     * any audio goes: the engine not (yet) the brain, his answer to a line the phone just spoke, or
+     * the laptop voice (its own transcriber ends turns) -> the phone transcribes, so nothing starts on
+     * the engine for a turn the phone keeps.
      */
-    fun utterance(cloudVoice: Boolean): EngineUtterance? {
-        // Decided before any audio goes: a turn the phone will keep (the engine still attaching, or
-        // his answer to a line the phone just spoke) is never started on the engine, so nothing
-        // there can act before a cancel lands. Its words go as a transcript if the engine answers.
-        return if (state != State.ON || !cloudVoice || afterPhoneLine) {
+    fun utterance(cloudVoice: Boolean): EngineUtterance? =
+        if (state != State.ON || !cloudVoice || afterPhoneLine) {
             null
         } else {
-            EngineUtterance(ids.incrementAndGet(), wire, scope, meta(), !streamOff, ::switchedOff, now)
+            val setup = UtteranceSetup(wire, scope, tail, meta(), !streamOff, lastCancel)
+            EngineUtterance(ids.incrementAndGet(), setup, ::switchedOff, { lastCancel = it })
         }
-    }
 
     private fun meta(): JSONObject = JSONObject()
         .put("client", "phone")
@@ -107,21 +108,24 @@ internal class EngineBrain(
     /**
      * Who answers this turn: the engine's turn (its first answer, opened by [utt] or posted now as a
      * transcript), or null for the phone loop. A turn the phone keeps releases [utt] (the engine's
-     * turn is cancelled).
+     * turn is cancelled). A turn the phone transcribed itself ([RouteFacts.engineHeard] false) is
+     * always the phone's: its drafts and loop run exactly as with the switch off.
      */
     fun route(utt: EngineUtterance?, words: String, facts: RouteFacts): (suspend () -> WireReply)? {
         val why = when {
-            state != State.ON && utt == null -> "off"
-            state == State.OFF || state == State.UNREACHABLE -> "off"
+            utt == null && !facts.engineHeard -> "phone_heard"
+            state != State.ON -> "off"
             else -> EngineBrainRules.phoneKeeps(words, facts.with(afterPhoneLine))
         }
-        // Only a phone PROMPT (a greeting, an opener, a check-in) holds his next turn on the phone: a
-        // turn of his the phone kept is his own words, and a mail turn's follow-up is held by its carry.
-        afterPhoneLine = why == "prompt"
-        if (why != null) {
-            utt?.release()
-            if (why != "off") log("engine_route brain=phone reason=$why")
+        // A phone PROMPT (greeting, opener, check-in) holds his next turn on the phone, whatever the
+        // engine's state; his turn answers it; an `off` turn leaves the mark as it was (review B-14).
+        afterPhoneLine = when {
+            !facts.fromUser -> true
+            why == "off" -> afterPhoneLine
+            else -> false
         }
+        if (why != null) utt?.release()
+        if (why != null && why != "off" && why != "phone_heard") log("engine_route brain=phone reason=$why")
         return when {
             why != null -> null
             utt != null -> suspend { utt.takeTurn() ?: utt.refusal ?: WireReply.Unreachable("no_stream") }
@@ -130,15 +134,22 @@ internal class EngineBrain(
     }
 
     /** What [route] needs from the session besides the words. */
-    data class RouteFacts(val test: Boolean, val fromUser: Boolean, val carryMarked: Boolean) {
+    data class RouteFacts(
+        val test: Boolean,
+        val fromUser: Boolean,
+        val carryMarked: Boolean,
+        /** The engine heard this turn (streamed audio), or the laptop voice's words may go to it. */
+        val engineHeard: Boolean,
+    ) {
         fun with(afterPhoneLine: Boolean) = EngineBrainRules.Facts(test, fromUser, carryMarked, afterPhoneLine)
     }
 
     /**
      * The engine answers the turn [start] opened: its sentences to [listener] as they arrive (the
-     * reply speaker says each), its relayed calls through [executor] (the phone's guards in the path),
-     * as the phone loop's own result. Cancelled (a tap, barge-in, a merge): the engine's turn is
-     * cancelled and the round's unstarted calls are posted `not_run`.
+     * reply speaker says each), its relayed calls through [EngineCallGate] then [executor] (the phone's
+     * guards in the path), as the phone loop's own result. Cancelled (a tap, barge-in, a merge): the
+     * engine's turn is cancelled on the tail scope and the round's unstarted calls are posted
+     * `not_run`; a turn that had touched outside text is marked read-through first (review B-13).
      */
     suspend fun answer(
         start: suspend () -> WireReply,
@@ -150,27 +161,42 @@ internal class EngineBrain(
         val unplayed = deviceActions
         deviceActions = emptyList()
         val previous = relay
-        if (previous != null && unplayed.isNotEmpty()) scope.launch { previous.runAfterReply(unplayed, run = false) }
+        if (previous != null && unplayed.isNotEmpty()) tail.launch { previous.runAfterReply(unplayed, run = false) }
         this.executor = executor
+        this.listener = listener
+        gate?.newTurn()
         val turn = EngineTurnSink(listener, now)
         val r = EngineRelay(wire, calls, turn, poster)
         relay = r
         val end = try {
             r.follow(start(), EngineBrainRules.FIRST_EVENT_MS)
         } catch (e: CancellationException) {
-            // Detached: his next turn must not wait for a running call or the network.
-            scope.launch(NonCancellable) { r.cancel() }
+            if (turn.touchedOutside) listener.onReadThrough(READ_THROUGH_SOURCE)
+            lastCancel = tail.launch { withTimeoutOrNull(EngineBrainRules.TAIL_MS) { r.cancel() } }
             log(EngineTimings.line(utt, turn, "cancelled", r.turnId != null))
             throw e
         }
         turn.conversationId?.let { conversationId = it }
         crisis = turn.crisis
+        if (end.words == null) failures.set(0) else failures.incrementAndGet()
         if (end.tainted) listener.onReadThrough(READ_THROUGH_SOURCE)
         // The engine closed the conversation (`done.end`): armed as the model's own end is.
         if (end.end) executor.run(END_CONVERSATION, JSONObject(), false)
         deviceActions = end.deviceActions
         log(EngineTimings.line(utt, turn, end.status, end.turnId != null))
         return turn.result(end)
+    }
+
+    /**
+     * An engine turn failed before it could answer (no words came). True when the conversation
+     * closes now (K3, after [EngineBrainRules.FAILURE_BUDGET] in a row); false: say so and listen.
+     * A transcript the engine missed is not a failure of the engine.
+     */
+    fun failed(missed: Boolean): Boolean {
+        if (missed) return false
+        val inARow = failures.incrementAndGet()
+        return inARow >= EngineBrainRules.FAILURE_BUDGET &&
+            EngineBrainRules.UNREACHABLE_AT_OPEN == EngineBrainRules.WhenUnreachable.SAY_AND_CLOSE
     }
 
     /** The last turn's engine crisis check fired: true once, then false. */
@@ -184,35 +210,34 @@ internal class EngineBrain(
     }
 
     /**
-     * One relayed call on this phone: a write in a tainted turn is refused (relay contract 3), a
-     * `needs` the phone cannot meet is refused at once, else the turn's own executor runs it (the
-     * one tool runner: the read-through guard, `TestTurnPolicy`, the lone-word guard, the audit).
+     * One relayed call: the phone's own gate first ([EngineCallGate]: offered tools only, its own
+     * flags, argument schema, taint across the turn, `needs`), then the turn's own executor (the one
+     * tool runner: the read-through guard, `TestTurnPolicy`, the lone-word guard, the audit).
      */
     private suspend fun runCall(call: EngineCall): CallOutcome {
         val started = now()
-        val refused = when {
-            call.tainted && call.writes -> ReadThroughWriteGuard.WRITE_REFUSAL.format(call.name)
-            else -> EngineBrainRules.needsRefusal(call.needs, deviceState())
-        }
         val run = executor
+        val decision = gate?.decide(call, deviceState())
+            ?: EngineCallGate.Decision.Refuse("${EngineCallGate.NOT_OFFERED}: this phone offered no tools.")
         val outcome = when {
-            refused != null -> CallOutcome(CallOutcome.REFUSED, null, refused.take(EngineBrainRules.MAX_WORDS_CHARS), 0)
+            decision is EngineCallGate.Decision.Refuse -> CallOutcome(CallOutcome.REFUSED, null, decision.words, 0)
             run == null -> CallOutcome(CallOutcome.NOT_RUN, null, "No turn to run ${call.name} in.", 0)
-            else -> EngineBrainRules.outcomeOf(
-                // After an outside read (a tainted turn, or a device action after the reply) the phone's
-                // own after-read guard decides, as on the phone loop.
-                run.run(call.name, call.args, call.tainted || call.afterReply),
-                now() - started,
-            )
+            else -> {
+                val go = decision as EngineCallGate.Decision.Run
+                // Outside text is on its way: the turn is marked now, before any cut-off (review B-13).
+                if (go.outside) listener?.onReadThrough(READ_THROUGH_SOURCE)
+                EngineBrainRules.outcomeOf(run.run(go.name, go.args, go.readThrough), now() - started)
+            }
         }
-        log("engine_relay tool=${call.name} outcome=${outcome.outcome} tool_result_ms=${outcome.ms}")
+        val name = EngineCallGate.safeName(call.name)
+        log("engine_relay tool=$name outcome=${outcome.outcome} tool_result_ms=${outcome.ms}")
         return outcome
     }
 
     /** A write reported `timed_out` landed after all: `ok` for the same call id (relay contract 7). */
     private suspend fun postLate(call: EngineCall, outcome: CallOutcome) {
         poster.post(call.turnId, call, outcome)
-        log("engine_relay tool=${call.name} outcome=late_ok")
+        log("engine_relay tool=${EngineCallGate.safeName(call.name)} outcome=late_ok")
     }
 
     companion object {
@@ -220,8 +245,14 @@ internal class EngineBrain(
         private const val END_CONVERSATION = "end_conversation"
         private val OK_RANGE = 200..299
 
-        /** The words for a turn the engine could not answer at all ([EngineUtterance] lost it). */
-        fun lostWords(utt: EngineUtterance): String =
-            utt.refusal?.let { EngineBrainRules.wordsFor(it) } ?: EngineBrainRules.UNREACHABLE_LINE
+        /** Process-wide: a cancel must outlive the session that sent it, for a bounded time. */
+        private val TAIL = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        /**
+         * The words for a turn the engine could not answer at all ([EngineUtterance] lost it), true
+         * as said: nothing reached it, or it went and no answer came (it may still finish).
+         */
+        fun lostWords(utt: EngineUtterance): String = utt.refusal?.let { EngineBrainRules.wordsFor(it) }
+            ?: if (utt.postedAtMs > 0) EngineBrainRules.NO_ANSWER_LINE else EngineBrainRules.UNREACHABLE_LINE
     }
 }

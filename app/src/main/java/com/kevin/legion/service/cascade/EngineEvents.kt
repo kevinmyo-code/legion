@@ -41,10 +41,8 @@ internal sealed interface EngineEvent {
     /** The stream's last event. [calls] is set when [status] is [AWAITING_LIMB]. */
     data class Done(
         val status: String,
-        val writesRan: Boolean,
         val tainted: Boolean,
         val end: Boolean,
-        val pendingConfirm: Boolean,
         val calls: List<String>,
         val ignored: String?,
         val deviceActions: List<EngineCall>,
@@ -123,7 +121,9 @@ internal object EngineEventParse {
             j.optString("guard").takeUnless { j.isNull("guard") || it.isBlank() },
         )
         "sentence" -> EngineEvent.Sentence(j.optString("text"), j.optString("line_id"), j.optString("role", "answer"))
-        "tool_request" -> EngineEvent.Request(call(j, afterReply = false))
+        // A request with no call id or name cannot be answered or deduped: never run.
+        "tool_request" -> call(j, afterReply = false).takeIf { it.callId.isNotBlank() && it.name.isNotBlank() }
+            ?.let { EngineEvent.Request(it) }
         "done" -> done(j)
         "error" -> EngineEvent.Failed(j.optString("words"))
         else -> null
@@ -133,14 +133,12 @@ internal object EngineEventParse {
         val actions = j.optJSONArray("device_actions") ?: JSONArray()
         return EngineEvent.Done(
             status = j.optString("status", "done"),
-            writesRan = j.optBoolean("writes_ran"),
             tainted = j.optBoolean("tainted"),
             end = j.optBoolean("end"),
-            pendingConfirm = j.optBoolean("pending_confirm"),
             calls = strings(j.optJSONArray("calls")),
             ignored = j.optString("ignored").ifBlank { null },
             deviceActions = (0 until actions.length()).mapNotNull { i ->
-                actions.optJSONObject(i)?.let { call(it, afterReply = true) }
+                actions.optJSONObject(i)?.let { call(it, afterReply = true) }?.takeIf { it.callId.isNotBlank() }
             },
         )
     }

@@ -2,41 +2,57 @@ package com.kevin.legion.service.cascade
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** What one [EngineUtterance] needs from its conversation. */
+internal data class UtteranceSetup(
+    val wire: EngineWire,
+    /** The session's scope: the turn's own work. */
+    val scope: CoroutineScope,
+    /** A scope that outlives the session by a bounded time: cancels that must reach the engine. */
+    val tail: CoroutineScope,
+    val meta: JSONObject,
+    val streamed: Boolean,
+    /** The last cancel still on its way: the new stream opens after it (or after a short cap). */
+    val gate: Job?,
+)
+
 /**
  * One of his turns spoken to the engine: the [SttUtterance] the cascade feeds, so the phone's own
  * end of turn, noise rule, stop words and its own crisis check run on it unchanged ([CascadeSession.runTurn]).
  *
- * - [audio] streams `A` frames to `POST /api/agents/turn/stream` while he speaks (the `M` frame went
- *   at [begin]), and keeps the clip (28 s cap) for the batch route.
- * - [end] is the phone's end of turn. Noise is decided first, from the audio alone
- *   ([SttGuard.voicedMs]): a clip with no voice is dropped and nothing runs on the engine (no `E`).
- *   Otherwise the `E` frame with the byte total, and the body ends.
- * - A stream refusal the contract names (`audio_gap`, the stream switch off, a broken upload) sends
- *   the held clip to `POST /api/agents/turn` in the same turn ([EngineBrainRules.streamFallsBack]).
+ * - The stream (`POST /api/agents/turn/stream`, `M` frame first) opens once the previous turn's
+ *   cancel has gone (review B-11: one stream per member), at most [GATE_MS] after he starts; audio
+ *   captured meanwhile is held and sent first. Then [audio] streams `A` frames while he speaks.
+ * - [end] is the phone's end of turn. A clip with no voice at all sends nothing (no `E`: nothing
+ *   runs on the engine). Otherwise the `E` frame with the byte total, and the body ends.
+ * - A stream refusal the contract names (`audio_gap`, the stream switch off, `stream_busy`, a broken
+ *   upload BEFORE `E`) sends the held clip to `POST /api/agents/turn` in the same turn. A lost
+ *   answer AFTER `E` is never re-posted (review B-7: the engine may be running that turn).
  * - [result] is the engine's `heard` words. The rest of the stream is kept for the turn ([takeTurn]);
  *   the engine's own crisis line comes after `heard`, so the turn sees it ([EngineTurnSink.crisis]).
  */
 internal class EngineUtterance(
     override val id: Int,
-    private val wire: EngineWire,
-    private val scope: CoroutineScope,
-    private val meta: JSONObject,
-    streamed: Boolean,
+    private val setup: UtteranceSetup,
     private val onSwitchedOff: (streamOnly: Boolean) -> Unit,
+    /** A cancel this utterance sent on its way ([release]): the next stream waits for it. */
+    private val onCancelling: (Job) -> Unit = {},
     private val now: () -> Long = System::currentTimeMillis,
 ) : SttUtterance {
+    private val wire = setup.wire
     private val clip = ByteArrayOutputStream()
-    private var upload: EngineUpload? = if (streamed) wire.openStream(meta) else null
+    @Volatile private var upload: EngineUpload? = null
+    @Volatile private var dropped = false
     @Volatile private var sentBytes = 0L
     @Volatile private var uploadBroken = false
+    private val opening: Job? = if (setup.streamed) setup.scope.launch { open() } else null
     private val answer = CompletableDeferred<WireReply>()
     private val ended = AtomicBoolean(false)
     private val claimed = AtomicBoolean(false)
@@ -52,10 +68,10 @@ internal class EngineUtterance(
         private set
 
     /** The route this turn took, for the timing line: `stream`, `batch`, or `none` (noise, cancel). */
-    @Volatile var route = if (streamed) ROUTE_STREAM else ROUTE_BATCH
+    @Volatile var route = if (setup.streamed) ROUTE_STREAM else ROUTE_BATCH
         private set
 
-    /** Timing marks (epoch ms), for [EngineTimings]. */
+    /** Timing marks (epoch ms), for [EngineTimings]. [postedAtMs] > 0: the engine may be running it. */
     @Volatile var endAtMs = 0L
         private set
     @Volatile var postedAtMs = 0L
@@ -64,6 +80,18 @@ internal class EngineUtterance(
         private set
     @Volatile var heardAtMs = 0L
         private set
+
+    private suspend fun open() {
+        setup.gate?.let { g -> withTimeoutOrNull(GATE_MS) { g.join() } }
+        synchronized(clip) {
+            if (dropped) return
+            val up = wire.openStream(setup.meta)
+            upload = up
+            val held = clip.toByteArray()
+            val sent = EngineFrames.audio(held, 0, held.size).all { up.send(it) }
+            if (sent) sentBytes = held.size.toLong() else uploadBroken = true
+        }
+    }
 
     override fun audio(pcm: ByteArray, offset: Int, length: Int) {
         if (ended.get() || length <= 0) return
@@ -88,58 +116,52 @@ internal class EngineUtterance(
         // No voice at all: nothing goes to the engine. Anything voiced goes (the engine gates noise
         // too); the phone's one-word rule needs words, which only the engine has now.
         if (SttGuard.voicedMs(pcm) == 0L) {
+            synchronized(clip) { dropped = true }
+            opening?.cancel()
             upload?.abort()
             route = ROUTE_NONE
             answer.complete(NOISE)
             return
         }
-        scope.launch { answer.complete(send(pcm)) }
+        setup.scope.launch { answer.complete(send(pcm)) }
     }
 
     private suspend fun send(pcm: ByteArray): WireReply {
+        opening?.join()
         val up = upload
-        val streamed = if (up != null && !uploadBroken && up.send(EngineFrames.end(sentBytes))) {
-            up.finish()
+        val endSent = up != null && !uploadBroken && up.send(EngineFrames.end(sentBytes))
+        val streamed = if (endSent) {
+            up?.finish()
             postedAtMs = now()
-            up.reply()
+            up?.reply()
         } else {
             up?.abort()
             null
         }
-        if (streamed != null && !EngineBrainRules.streamFallsBack(streamed)) return streamed
+        // After `E`, a lost answer is the engine's to finish: never posted again (review B-7).
+        if (streamed != null && (streamed is WireReply.Unreachable || !EngineBrainRules.streamFallsBack(streamed))) {
+            return streamed
+        }
         if (streamed != null && EngineBrainRules.switchedOff(streamed)) onSwitchedOff(true)
         return postClip(pcm)
     }
 
-    /**
-     * The whole clip on `POST /api/agents/turn` (client contract section 9): `busy` waits its
-     * `retry_ms` and tries again for up to [EngineBrainRules.BUSY_RETRY_MS]; `no_conversation` is
-     * posted once more with no conversation id.
-     */
+    /** The whole clip on `POST /api/agents/turn` (multipart), the stream route's fallback. */
     private suspend fun postClip(pcm: ByteArray): WireReply {
         route = ROUTE_BATCH
-        val fields = mutableMapOf("kind" to "user", "client" to meta.optString("client", "phone"))
+        val fields = mutableMapOf("kind" to "user", "client" to setup.meta.optString("client", "phone"))
         fields["contract_version"] = EngineBrainRules.CONTRACT_VERSION.toString()
-        meta.optString("conversation_id").takeIf { it.isNotBlank() }?.let { fields["conversation_id"] = it }
-        val wav = CloudSpeechWire.wav(pcm, SAMPLE_RATE)
+        setup.meta.optString("conversation_id").takeIf { it.isNotBlank() }?.let { fields["conversation_id"] = it }
         postedAtMs = now()
-        var reply = wire.turnClip(fields, wav)
-        var waited = 0L
-        var wait = EngineBrainRules.busyWaitMs(reply)
-        while (wait != null && waited < EngineBrainRules.BUSY_RETRY_MS) {
-            delay(wait)
-            waited += wait
-            reply = wire.turnClip(fields, wav)
-            wait = EngineBrainRules.busyWaitMs(reply)
-        }
-        val lostConversation = (reply as? WireReply.Json)?.code == "no_conversation"
-        if (lostConversation && fields.remove("conversation_id") != null) reply = wire.turnClip(fields, wav)
+        val reply = wire.turnClip(fields, CloudSpeechWire.wav(pcm, SAMPLE_RATE))
         if (EngineBrainRules.switchedOff(reply)) onSwitchedOff(false)
         return reply
     }
 
     override fun cancel() {
         if (ended.compareAndSet(false, true)) {
+            synchronized(clip) { dropped = true }
+            opening?.cancel()
             upload?.abort()
             route = ROUTE_NONE
             answer.complete(CANCELLED)
@@ -178,18 +200,14 @@ internal class EngineUtterance(
                     turnId = event.turnId
                     null
                 }
-                is EngineEvent.Heard -> heardNow(event.text, voiced)
-                is EngineEvent.Done -> heardNow("", voiced).also { finished = true }
+                is EngineEvent.Heard -> SttResult.Text(event.text, null, null, null, voiced)
+                is EngineEvent.Done -> SttResult.Text("", null, null, null, voiced).also { finished = true }
                 is EngineEvent.Failed -> SttResult.Failed(MISSED)
                 else -> null
             }
         }
+        if (outcome is SttResult.Text) heardAtMs = now()
         return outcome
-    }
-
-    private fun heardNow(text: String, voiced: Long): SttResult {
-        heardAtMs = now()
-        return SttResult.Text(text, null, null, null, voiced)
     }
 
     /**
@@ -201,7 +219,7 @@ internal class EngineUtterance(
         if (s == null || !claimed.compareAndSet(false, true)) return null
         val out = Channel<EngineEvent>(Channel.UNLIMITED)
         prelude.forEach { out.trySend(it) }
-        scope.launch {
+        setup.scope.launch {
             try {
                 var next = s.events.receiveCatching().getOrNull()
                 while (next != null) {
@@ -217,17 +235,22 @@ internal class EngineUtterance(
 
     /**
      * This turn will not be answered by the engine (a stop, noise, the phone loop took it): the
-     * engine's turn is cancelled and its stream closed. Nothing happens once [takeTurn] claimed it.
+     * engine's turn is cancelled and its stream closed, on the tail scope so a close of the whole
+     * conversation does not lose it (review B-8). Nothing happens once [takeTurn] claimed it.
      */
     fun release() {
         if (!claimed.compareAndSet(false, true)) return
-        scope.launch {
-            // The answer may still be on its way: wait for it, so its turn is cancelled too.
-            val s = stream ?: withTimeoutOrNull(EngineBrainRules.FIRST_EVENT_MS) { answer.await() } as? WireReply.Events
-            val id = turnId ?: s?.let { firstTurnId(it) }
-            s?.close()
-            if (id != null && !finished) wire.cancel(id)
+        val job = setup.tail.launch {
+            withTimeoutOrNull(EngineBrainRules.TAIL_MS) {
+                // The answer may still be on its way: wait for it, so its turn is cancelled too.
+                val came = stream ?: withTimeoutOrNull(EngineBrainRules.FIRST_EVENT_MS) { answer.await() }
+                val s = came as? WireReply.Events
+                val id = turnId ?: s?.let { firstTurnId(it) }
+                s?.close()
+                if (id != null && !finished) wire.cancel(id)
+            }
         }
+        onCancelling(job)
     }
 
     private suspend fun firstTurnId(s: WireReply.Events): String? =
@@ -249,6 +272,9 @@ internal class EngineUtterance(
         const val ROUTE_BATCH = "batch"
         const val ROUTE_NONE = "none"
         private const val SAMPLE_RATE = 16_000
+
+        /** The longest a new stream waits for the last turn's cancel to go (review B-11). */
+        const val GATE_MS = 1_500L
 
         /** The engine's `MAX_UTTERANCE_SECONDS` (28 s) of 16 kHz PCM16. */
         const val MAX_AUDIO_BYTES = 28 * 32_000

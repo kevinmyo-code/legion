@@ -8,7 +8,11 @@ import org.json.JSONObject
  */
 internal object EngineBrainRules {
 
-    /** What the phone does when his setting is on and the engine cannot be reached at open. */
+    /**
+     * What the phone does when the engine IS this conversation's brain (it answered `brain: engine`)
+     * and stops being reachable. An attach that fails is not this case: the engine never became the
+     * brain, so the phone loop answers that conversation as with the switch off (review A-3).
+     */
     enum class WhenUnreachable {
         /** Say so, answer nothing, close the conversation (ADR 0095: no fallback brain). */
         SAY_AND_CLOSE,
@@ -18,19 +22,30 @@ internal object EngineBrainRules {
     }
 
     /**
-     * DECISION K3 (the owner's, default given in plan 1119 section 4b): with his flag on and the
-     * engine unreachable, the phone says so and answers nothing. His ruling is a change to this line.
+     * DECISION K3 (the owner's, default given in plan 1119 section 4b): with the engine as the brain
+     * and unreachable, the phone says so and answers nothing. His ruling is a change to this line.
+     * It closes only after [FAILURE_BUDGET] failed turns in a row (review B-10): one blip says so and
+     * listens again.
      */
     val UNREACHABLE_AT_OPEN = WhenUnreachable.SAY_AND_CLOSE
 
-    /** What he hears when the engine cannot answer (client contract section 9's words, spoken). */
-    const val UNREACHABLE_LINE = "I can't reach the engine right now, so nothing was answered."
+    /** Failed engine turns in a row before K3 closes the conversation. */
+    const val FAILURE_BUDGET = 2
+
+    /** Nothing reached the engine: true as said (review B-9). */
+    const val UNREACHABLE_LINE = "I couldn't reach the engine, so nothing was answered."
+
+    /** The turn went out and no answer came: the engine may still be running it (review B-9). */
+    const val NO_ANSWER_LINE = "I couldn't get an answer from the engine. It may still finish that."
+
+    /** The engine speaks a newer contract (409 `contract_unsupported`). */
+    const val UPDATE_LINE = "The engine needs a newer version of this app, so nothing was answered."
 
     /** No first event this long after the end frame: unreachable (client contract section 9). */
     const val FIRST_EVENT_MS = 20_000L
 
-    /** A whole engine turn longer than this: unreachable (client contract section 9). */
-    const val TURN_MS = 75_000L
+    /** A cancel the conversation sent is given this long to reach the engine after a close (review B-8). */
+    const val TAIL_MS = 25_000L
 
     /** How long the limb attach may take before the conversation is called unreachable. */
     const val ATTACH_MS = 6_000L
@@ -201,12 +216,16 @@ internal object EngineBrainRules {
     }
 
     /** A non-stream answer where the turn's stream was due, as the words he hears (null: say nothing more). */
-    fun wordsFor(reply: WireReply): String? = when (afterPost(reply)) {
-        AfterPost.RECORDED -> null
-        AfterPost.MEMBER_CAP -> (reply as? WireReply.Json)?.detail?.ifBlank { null } ?: STOPPED_LINE
-        AfterPost.REVOKED -> REVOKED_LINE
-        AfterPost.UNREACHABLE, AfterPost.NO_KEY -> UNREACHABLE_LINE
-        else -> STOPPED_LINE
+    fun wordsFor(reply: WireReply): String? = if ((reply as? WireReply.Json)?.code == "contract_unsupported") {
+        UPDATE_LINE
+    } else {
+        when (afterPost(reply)) {
+            AfterPost.RECORDED -> null
+            AfterPost.MEMBER_CAP -> (reply as? WireReply.Json)?.detail?.ifBlank { null } ?: STOPPED_LINE
+            AfterPost.REVOKED -> REVOKED_LINE
+            AfterPost.UNREACHABLE, AfterPost.NO_KEY -> UNREACHABLE_LINE
+            else -> STOPPED_LINE
+        }
     }
 
     private const val MS_PER_S = 1000L
@@ -217,8 +236,9 @@ internal object EngineBrainRules {
 
     /**
      * Whether a stream-route refusal sends the held clip to the batch route in the same turn: the
-     * stream switch is off (404), or not all the audio arrived (`audio_gap`). Also a stream that
-     * never got its answer (the upload broke): the batch route decides then.
+     * stream switch is off (404), not all the audio arrived (`audio_gap`), the body broke before `E`
+     * (`hung_up`, `stalled`), or the member's one stream is still held (`stream_busy`). A lost answer
+     * after `E` is not one of these: [EngineUtterance] never posts that clip again.
      */
     fun streamFallsBack(reply: WireReply): Boolean = when (reply) {
         is WireReply.Unreachable -> true
@@ -227,18 +247,7 @@ internal object EngineBrainRules {
     }
 
     /** Stream refusals the batch route answers instead: a gap, a broken upload, the one stream busy. */
-    private val STREAM_FALLBACK_CODES = setOf("audio_gap", "hung_up", "stalled", "stream_busy", "busy")
-
-    /** How long the batch route's `busy` asks to wait (`retry_ms`), else null: not busy. */
-    fun busyWaitMs(reply: WireReply): Long? = (reply as? WireReply.Json)
-        ?.takeIf { it.code == "busy" || it.code == "stream_busy" }
-        ?.let { it.body.optLong("retry_ms", DEFAULT_BUSY_MS).coerceIn(MIN_BUSY_MS, MAX_BUSY_MS) }
-
-    /** `busy` is retried for at most this long (client contract section 9). */
-    const val BUSY_RETRY_MS = 6_000L
-    private const val DEFAULT_BUSY_MS = 500L
-    private const val MIN_BUSY_MS = 100L
-    private const val MAX_BUSY_MS = 2_000L
+    private val STREAM_FALLBACK_CODES = setOf("audio_gap", "hung_up", "stalled", "stream_busy")
 
     /** The engine's turn routes are switched off (404): this conversation goes back to the phone loop. */
     fun switchedOff(reply: WireReply): Boolean = reply is WireReply.Json && reply.status == HTTP_NOT_FOUND

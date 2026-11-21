@@ -21,7 +21,6 @@ internal data class EngineTurnEnd(
     val turnId: String?,
     val tainted: Boolean = false,
     val end: Boolean = false,
-    val writesRan: Boolean = false,
     val words: String? = null,
     val deviceActions: List<EngineCall> = emptyList(),
 ) {
@@ -102,7 +101,7 @@ internal class EngineRelay(
                 over = true
                 Hop.End(
                     EngineTurnEnd(
-                        done.status, turnId, done.tainted, done.end, done.writesRan, read.failure, done.deviceActions,
+                        done.status, turnId, done.tainted, done.end, read.failure, done.deviceActions,
                     ),
                 )
             }
