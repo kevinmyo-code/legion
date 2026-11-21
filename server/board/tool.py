@@ -5,8 +5,10 @@ The result follows the cascade's code-spoken contract (`engine_mcp.tools.SPEAK_V
 shown word for word and end the turn. The model is handed `FOR_MODEL` only: freshness and counts,
 written by code, never a card's text. History replays the same. So card text, which agents write
 and which could carry words planted by a web page an agent read, never enters the model's context
-on this path. The tool is also in `assistant.read_through.THIRD_PARTY_TOOLS`: a turn that read the
-board may not write.
+on this path, so it is NOT in `assistant.read_through.THIRD_PARTY_TOOLS`: that set is the phone's
+list too (`AskEngineReadThroughTest` pins them equal), and the write guard exists for text a model
+reads, which this tool never hands one. If a later slice lets a model read card text, add it there
+together with the phone's list in one phone update.
 
 Not on `/mcp` (`engine_mcp.server.NOT_ON_MCP`): its structured result carries the card text, and a
 `/mcp` client's model could read it. The phone reads `GET /api/board` and speaks `spoken` itself.

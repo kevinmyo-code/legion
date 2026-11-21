@@ -472,3 +472,39 @@ def test_board_writer_hash_refuses_a_bad_hash_or_a_stranger(household_user):
         call_command("board_writer_hash", email=household_user.email, sha256="nope")
     with pytest.raises(CommandError):
         call_command("board_writer_hash", email="nobody@example.com", sha256="a" * 64)
+
+
+# ---- dark means unchanged ---------------------------------------------------------------------
+
+
+def test_off_the_offered_tool_list_is_byte_identical_to_the_registry_without_the_board(
+    household_user, monkeypatch
+):
+    """How a dark tool is hidden: `board_status` stays IN the registry (`TOOLS`, `TOOLS_BY_NAME`,
+    `WEB_TOOL_NAMES`) and is left out of every OFFERED list (`surface.tools_for`, which the web
+    cascade, Live and the agents gateway read, and `/mcp`'s tools/list) while `LEGION_BOARD` is
+    off. So with the switch off, what any model is declared is exactly the registry minus it,
+    which is what the engine offered before this slice."""
+    from agents.legion.gateway import rest_declarations
+    from assistant.surface import WEB_TOOL_NAMES
+    from engine_mcp.tools import TOOLS_BY_NAME
+
+    assert "board_status" in TOOLS_BY_NAME and "board_status" in WEB_TOOL_NAMES
+    offered = tools_for(household_user)
+    monkeypatch.setenv(BOARD_ENV, "on")
+    # The same per-member list with the switch on, less the one tool: only the board differs.
+    before = [t for t in tools_for(household_user) if t.name != "board_status"]
+    monkeypatch.delenv(BOARD_ENV)
+    assert [t.name for t in offered] == [t.name for t in before]
+    assert json.dumps(rest_declarations(offered), sort_keys=True) == json.dumps(
+        rest_declarations(before), sort_keys=True
+    )
+    mcp = {t.name for t in _tools_for_request(_request(household_user))}
+    assert "board_status" not in mcp
+
+
+def test_the_board_never_taints_a_turn():
+    """Not third-party: the model is never handed card text (the phone's list must match too)."""
+    from assistant.read_through import THIRD_PARTY_TOOLS
+
+    assert "board_status" not in THIRD_PARTY_TOOLS

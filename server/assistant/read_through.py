@@ -23,8 +23,6 @@ modes are the ones below, unchanged.
   (`brief/models.py`), the engine's twin of the phone's `get_sitrep`.
 - `github_status` (round 5, 2026-11-10): issue and pull request titles on a public repo may be
   written by anyone, so a turn that read them may not `remember`.
-- `board_status`: the factory board's cards are written by agents on the laptop, and an agent
-  may have read a web page; their words are never an instruction to write.
 - `run_procedure` is not listed but is covered: a procedure step goes through
   `run_engine_tool` with the same request, which marks the turn before the tool runs
   (`before_tool`), so `morning_briefing` (it calls `brief_latest`) taints its turn and
@@ -84,9 +82,7 @@ from django.db import DatabaseError, transaction
 
 log = logging.getLogger(__name__)
 
-THIRD_PARTY_TOOLS: frozenset[str] = frozenset(
-    {"web_search", "brief_latest", "github_status", "board_status"}
-)
+THIRD_PARTY_TOOLS: frozenset[str] = frozenset({"web_search", "brief_latest", "github_status"})
 
 # The phone's `GoalPlanAgent.CONSTRAINT_PREFIX`, without its trailing space.
 CONSTRAINT_PREFIX = "Plan constraint:"
