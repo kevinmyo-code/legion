@@ -549,6 +549,32 @@ class CascadeWiringTest {
         assertEquals(1, Regex("playCloseCue\\(").findAll(release).count())
     }
 
+    @Test
+    fun `a dropped greeting acknowledges the wake with the earcon unless he is talking now`() {
+        val g = bodyOf(session(), "speakGreeting")
+        val gate = g.substring(g.indexOf("if (gate != GreetingGate.SPEAK)"), g.indexOf("reply.text(written.toString())"))
+        assertTrue(gate.contains("GreetingGate.earconAfterDrop(System.currentTimeMillis(), lastLocalSpeechAtMs)"))
+        assertTrue(gate.contains("gate.logLine(earcon)"))
+        assertTrue(gate.contains("if (earcon) playDropEarcon()"))
+        assertTrue(gate.indexOf("if (earcon) playDropEarcon()") < gate.indexOf("return@launch"))
+        assertTrue(bodyOf(session(), "playDropEarcon").contains("ListenCue.earconPcm()"))
+    }
+
+    @Test
+    fun `a stop mid-reply flushes the buffered speech before the chime, and the chime itself is not flushed`() {
+        val release = bodyOf(session(), "releaseNow")
+        val interrupt = release.indexOf("speaker?.interrupt()")
+        val flush = release.indexOf("player?.flush()")
+        val chime = release.indexOf("playCloseCue(reason)")
+        assertTrue("$interrupt $flush $chime", interrupt in 0 until flush && flush < chime)
+        assertEquals(1, release.split("player?.flush()").size - 1)
+        // The chime is written under the generation read after that flush, and nothing flushes it.
+        val cue = bodyOf(session(), "playCloseCue")
+        assertFalse(cue.contains("flush("))
+        assertTrue(cue.contains("p.write(pcm, p.generation())"))
+        assertTrue(release.indexOf("player?.release()") > chime)
+    }
+
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 
     private fun bodyOf(source: String, name: String): String {
