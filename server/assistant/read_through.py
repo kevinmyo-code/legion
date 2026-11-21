@@ -134,6 +134,13 @@ def read_third_party(request) -> bool:
     return bool(getattr(request, _READ, False))
 
 
+def flag_request(request) -> None:
+    """Flags a request whose turn already read third-party text in an EARLIER request (the
+    engine's agent turn resumed after a limb's hop), so `write_refusal` refuses here too. Marks
+    nothing: the turn's own state holds that taint."""
+    setattr(request, _READ, True)
+
+
 def before_tool(request, name: str) -> str | None:
     """Called for every tool `run_engine_tool` runs, a procedure's steps included, before its
     handler. For a third-party tool: flags the request and marks its turn. Returns the refusal

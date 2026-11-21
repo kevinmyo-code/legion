@@ -1,10 +1,11 @@
 """The tool gateway: every tool call of an agent turn, through the guards, as the member.
 
-- **One request per turn.** Every engine tool runs through `engine_mcp.tools.run_engine_tool`
-  with the turn's own request: the write-scope fence, the table fence, the schema, and the
-  handler under the member's `visible()` (ADR 0045, 0052), exactly as `/mcp` and the web door run
-  them. Because it is one request, `assistant.read_through`'s per-request flag is a second fence
-  behind the taint in the turn state.
+- **One request per stream.** Every engine tool runs through `engine_mcp.tools.run_engine_tool`
+  with the request of the stream it runs in: the write-scope fence, the table fence, the schema,
+  and the handler under the member's `visible()` (ADR 0045, 0052), exactly as `/mcp` and the web
+  door run them. `assistant.read_through`'s per-request flag is a second fence behind the taint
+  in the turn state; a relay's continuation is a new request, so the flag is armed again there
+  from the turn's taint before any engine tool runs.
 - **Declarations** are the web assistant's own (`assistant.surface.tools_for(user)`, so
   `run_procedure` and `show_diagram` list only what this member may use), narrowed to the spec's
   allowlist, plus the read twins.
@@ -45,6 +46,9 @@ SLOW_TOOLS = frozenset(
         "legion_docs",
     }
 )
+
+# The one engine tool whose own steps may read third-party text (`procedures/runner.py`).
+PROCEDURE_TOOL = "run_procedure"
 
 _OUTCOMES = {
     Outcome.OK: "ok",
@@ -173,14 +177,17 @@ class LegionGateway:
                     "tainted",
                     started,
                 )
-        read_before = read_through.read_third_party(self.request)
+        if state.tainted:
+            # The request's flag is the second fence (a procedure's own steps check it, not the
+            # turn's state); a relay's continuation is a new request, so it is armed again here.
+            read_through.flag_request(self.request)
         result: ToolResult = run_engine_tool(self.request, tool, dict(call.args))
         # The deadline is soft (budget.py): a late tool is not interrupted; its `ms` says so.
         outcome = _OUTCOMES.get(result.outcome, "failed" if result.is_error else "ok")
-        # Its result is outside text by class: a third-party tool, or one whose run read one (a
-        # procedure step calling `brief_latest` flags the request, `read_through.before_tool`).
+        # Its result is outside text by class: a third-party tool, or a procedure run while the
+        # request is flagged (a step read one, `read_through.before_tool`, or the turn had).
         outside = guards.needs_taint(call.name) or (
-            not read_before and read_through.read_third_party(self.request)
+            call.name == PROCEDURE_TOOL and read_through.read_third_party(self.request)
         )
         done = self._done(
             state,

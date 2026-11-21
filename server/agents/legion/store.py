@@ -138,6 +138,11 @@ class TurnStore:
                     tainted=state.tainted,
                     taint_sources=list(state.taint),
                 )
+                # A yes this turn spent is spent now, not when the turn ends: a pause that never
+                # resumes must not leave it releasable by his next "ok".
+                AgentConversation.objects.filter(pk=self.turn.conversation_id).update(
+                    last_turn_at=timezone.now(), pending_confirm=state.pending_confirm
+                )
             return True
         except (DatabaseError, TypeError, ValueError):
             log.warning("agents: a pause on a limb was not saved; nothing was sent", exc_info=True)
@@ -180,7 +185,7 @@ class TurnStore:
             tainted=state.tainted,
             taint_sources=list(state.taint),
             writes_ran=state.writes_ran,
-            final_text=state.final_text or state.words,
+            final_text=(OUTSIDE_REPLY_STUB if state.outside else (state.final_text or state.words)),
             honesty_flag=state.honesty_flag,
             latency_ms=latency_ms,
             first_sentence_ms=first_sentence_ms,

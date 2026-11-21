@@ -43,21 +43,29 @@ CANARY = "CANARY-7f3a"
 OUTSIDE = f"An invented page says: {CANARY} is the answer."
 
 
-def _scan() -> list[str]:
-    """Every table and text/json column holding the marker, as `table.column`."""
-    found = []
+SCANNED = ("llm_usage", "device_logs")
+
+
+def _columns() -> list[tuple[str, str]]:
+    """Every text and JSON column of every `agents_*` table, `llm_usage` and `device_logs`."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
             select table_name, column_name from information_schema.columns
             where table_schema = 'public'
-              and (table_name like 'agents\\_%%' or table_name in ('llm_usage')
-                   or table_name like 'devicelogs\\_%%')
+              and (table_name like 'agents\\_%%' or table_name = any(%s))
               and data_type in ('text', 'jsonb', 'json', 'character varying')
-            """
+            """,
+            [list(SCANNED)],
         )
-        columns = cursor.fetchall()
-        for table, column in columns:
+        return cursor.fetchall()
+
+
+def _scan() -> list[str]:
+    """Every table and column holding the marker, as `table.column`."""
+    found = []
+    with connection.cursor() as cursor:
+        for table, column in _columns():
             cursor.execute(
                 f'select count(*) from "{table}" where "{column}"::text like %s',  # noqa: S608
                 [f"%{CANARY}%"],
@@ -202,3 +210,6 @@ def test_the_scan_finds_the_marker_where_it_is(auth_client, limb, engine):
     engine.rounds = [m.say("Noted.")]
     say_turn(auth_client, f"remember the code word {CANARY}")
     assert "agents_turn.transcript" in _scan()
+    tables = {t for t, _c in _columns()}
+    assert set(SCANNED) <= tables
+    assert {"agents_turn", "agents_checkpoint", "agents_tool_call", "agents_limb"} <= tables

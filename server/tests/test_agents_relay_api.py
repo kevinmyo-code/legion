@@ -686,3 +686,64 @@ def test_a_web_turn_with_a_limb_attached_is_unchanged(household_user, monkeypatc
     assert len(sql) == 62
     offered = {d["name"] for d in model.requests[0].declarations}
     assert not offered & {t["name"] for t in TOOLS}
+
+
+# ---- review fixes: a spent yes, the request flag across hops, the resume claim ------------------
+
+
+def test_a_yes_spent_on_a_relayed_call_is_not_released_again_after_a_stale_pause(
+    auth_client, limb, engine
+):
+    engine.rounds = [m.call("garage_door", {"open": True}), m.say("Open the garage door?")]
+    events = say_turn(auth_client, "open the garage")
+    conversation = events[0][1]["conversation_id"]
+    engine.rounds = [m.call("garage_door", {"open": True})]
+    yes = say_turn(auth_client, "yes", conversation_id=conversation)
+    assert [r["name"] for r in of(yes, "tool_request")] == ["garage_door"]
+    # The device never answers; he says "ok" to something else: the yes was spent.
+    engine.rounds = [m.call("garage_door", {"open": True}), m.say("Open it again?")]
+    again = say_turn(auth_client, "ok", conversation_id=conversation)
+    assert not of(again, "tool_request")
+    assert of(again, "tool")[0]["guard"] == "needs_confirm"
+
+
+def test_after_a_relayed_read_the_continuation_still_refuses_engine_writes(
+    auth_client, limb, engine
+):
+    _e, turn_id, requests = paused(engine, auth_client, m.call("browser", {"action": "read"}))
+    engine.rounds = [
+        m.call("add_checklist_item", {"checklist": "Errands", "text": "invented stamps"}),
+        m.say("I can add that next time."),
+    ]
+    rest = events_of(post_result(auth_client, turn_id, requests[0]["call_id"], words="A page."))
+    added = [t for t in of(rest, "tool") if t["name"] == "add_checklist_item"][0]
+    assert added["ok"] is False and added["guard"] == "tainted"
+
+
+def test_a_continuation_arms_the_request_flag_from_the_turns_taint(household_user):
+    """A procedure's steps check the request's own flag, not the turn's state: a relay's
+    continuation is a new request, so the gateway arms it before any engine tool runs."""
+    from agents.evals.runner import member_request
+    from agents.graph.state import TurnState
+    from agents.legion import specs
+    from agents.legion.gateway import LegionGateway
+    from agents.runtime.tools import ToolCall
+    from assistant import read_through
+
+    request = member_request(household_user)
+    state = TurnState("t", "c", 1, "h", "m", "phone", "x", taint=["browser"])
+    assert not read_through.read_third_party(request)
+    LegionGateway(request).call(state, specs.spec("generalist"), ToolCall("", "read_list", {}), 6)
+    assert read_through.read_third_party(request)
+
+
+def test_two_completing_posts_resume_the_turn_once(auth_client, limb, engine):
+    _e, turn_id, requests = paused(engine, auth_client, m.call("car_status", {}))
+    engine.rounds = [m.say("All fine.")]
+    first = post_result(auth_client, turn_id, requests[0]["call_id"])
+    assert first.status_code == 200 and first["Content-Type"] == "text/event-stream"
+    models_before = len(engine.models)
+    second = post_result(auth_client, turn_id, requests[0]["call_id"])
+    assert second.status_code == 200 and second.data == {"recorded": True, "status": "running"}
+    assert events_of(first)[-1][1]["status"] == "done"
+    assert len(engine.models) == models_before + 1

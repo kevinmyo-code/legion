@@ -137,15 +137,16 @@ def finish_node(state: TurnState, ctx: NodeContext):
     state.honesty_flag = bool(state.final_text) and ctx.honesty(state)
     if state.words and state.status != "done":
         yield ev.sentence(state.words)
-    if state.outside:
-        # Checked above on the real words; from here only the stub is sent or kept.
-        state.final_text = OUTSIDE_REPLY_STUB
+    # Once outside text was read, `done` carries the stub, never the words (they went out as
+    # `sentence` events only); the state keeps them for its caller (the late-answer runner, the
+    # eval graders), and the store keeps the stub (`store.py`).
+    final = OUTSIDE_REPLY_STUB if state.outside else (state.final_text or state.words)
     extra = {"tainted": state.tainted}
     if state.after_turn:
         extra["device_actions"] = list(state.after_turn)
     yield ev.done(
         state.status,
-        state.final_text or state.words,
+        final,
         state.writes_ran,
         honesty_flag=state.honesty_flag,
         pending_confirm=bool(state.pending_confirm),
