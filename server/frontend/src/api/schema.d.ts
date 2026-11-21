@@ -8042,6 +8042,18 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
         };
+        DroppedTool: {
+            name: string;
+            reason: components["schemas"]["DroppedToolReasonEnum"];
+        };
+        /**
+         * @description * `engine_tool` - engine_tool
+         *     * `mail_like` - mail_like
+         *     * `unknown_class` - unknown_class
+         *     * `outside_name_plain_class` - outside_name_plain_class
+         * @enum {string}
+         */
+        DroppedToolReasonEnum: "engine_tool" | "mail_like" | "unknown_class" | "outside_name_plain_class";
         Energy: {
             /** @description Always true: every figure is an estimate. */
             estimate: boolean;
@@ -8851,6 +8863,8 @@ export interface components {
             contract_version: number;
             brain: components["schemas"]["AgentBrainEnum"];
             brain_reason: components["schemas"]["AgentBrainReasonEnum"];
+            /** @description Manifest tools the engine will not offer, and why: engine_tool, mail_like, unknown_class, outside_name_plain_class (`server/contracts/limb/v1/tool_classes.json`). */
+            dropped: components["schemas"]["DroppedTool"][];
         };
         LimbManifest: {
             contract_version: number;
@@ -12025,6 +12039,11 @@ export interface components {
             go: boolean;
             /** @description What the limb says about the turn (`client_facts.py`). */
             client_facts?: unknown;
+            /**
+             * Format: uuid
+             * @description The client's own id for this turn: a re-post of it answers 409 `duplicate`.
+             */
+            turn_id?: string;
             /** @description The voice contract the client speaks (wire v1: 1). Another version is refused with `contract_unsupported`. */
             contract_version?: number;
         };

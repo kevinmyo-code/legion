@@ -37,7 +37,6 @@ import time
 import uuid
 import wave
 
-from django.db import connection
 from django.http import StreamingHttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_field
@@ -48,7 +47,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
-from agents import turn_options
+from agents import turn_locks, turn_options
 from agents.legion import flags, limbs
 from agents.legion.turn import cancel, open_conversation
 from agents.runtime import events as ev
@@ -57,7 +56,7 @@ from agents.voice import allowance, pipeline, stage, streaming
 from agents.voice.hedge import HedgedSpeech
 from agents.voice.speech import INPUT_RATE, MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS, GeminiSpeech
 from api.schema import DetailSerializer
-from assistant import turn_slots, voice_engine
+from assistant import voice_engine
 from headunit_signin import scope as headunit_scope
 from headunit_signin import spend as unit_spend
 from headunit_signin.authentication import HeadUnitTokenAuthentication
@@ -190,6 +189,10 @@ class TurnRequestSerializer(serializers.Serializer):
     )
     client_facts = serializers.JSONField(
         required=False, help_text="What the limb says about the turn (`client_facts.py`)."
+    )
+    turn_id = serializers.UUIDField(
+        required=False,
+        help_text="The client's own id for this turn: a re-post of it answers 409 `duplicate`.",
     )
     contract_version = serializers.IntegerField(
         required=False,
@@ -376,10 +379,13 @@ class AgentTurnView(_SwitchedAgentsView):
                 "go": data.get("go"),
                 "speak": data.get("speak"),
                 "client_facts": data.get("client_facts"),
+                "turn_id": data.get("turn_id"),
             }
         )
         if refusal is None:
             refusal = turn_options.brain_refusal(request, options)
+        if refusal is None:
+            refusal = turn_options.duplicate_refusal(request, options)
         if refusal is not None:
             return refusal
         if not gemini_key():
@@ -419,8 +425,19 @@ class AgentTurnView(_SwitchedAgentsView):
             speak=options["speak"],
             go=options["go"],
             client_facts=options["client_facts"],
+            turn_id=options["turn_id"],
         )
-        return _sse(_stream(request, data, utterance, arrived))
+        # One turn at a time in a conversation (`agents/turn_locks.py`), held while it streams.
+        held = turn_locks.hold_conversation(data.get("conversation_id"))
+        if held is None:
+            return _refuse(
+                "Another turn of this conversation is still answering.",
+                "conversation_busy",
+                status.HTTP_409_CONFLICT,
+            )
+        response = _sse(_stream(request, data, utterance, arrived))
+        response._resource_closers.append(held.release)
+        return response
 
 
 STREAM_OFF_WORDS = (
@@ -483,7 +500,7 @@ class AgentTurnStreamView(_SwitchedAgentsView):
     def post(self, request):
         arrived = time.monotonic()
         # One open stream per member, taken before a byte is read (review 1120, finding 4).
-        held = _hold_stream(request.user)
+        held = turn_locks.hold_stream(request.user)
         if held is None:
             return _refuse(streaming.STREAM_BUSY, "stream_busy", status.HTTP_409_CONFLICT)
         try:
@@ -540,6 +557,8 @@ class AgentTurnStreamView(_SwitchedAgentsView):
         options, refusal = turn_options.read(meta)
         if refusal is None:
             refusal = turn_options.brain_refusal(request, options)
+        if refusal is None:
+            refusal = turn_options.duplicate_refusal(request, options)
         if refusal is not None:
             return refusal
         key = gemini_key()
@@ -568,6 +587,7 @@ class AgentTurnStreamView(_SwitchedAgentsView):
             speak=options["speak"],
             go=options["go"],
             client_facts=options["client_facts"],
+            turn_id=options["turn_id"],
         )
         return _sse(_stream(request, data, utterance, arrived))
 
@@ -576,17 +596,6 @@ _FRAME_STATUS = {
     "too_long": status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
     "stalled": status.HTTP_408_REQUEST_TIMEOUT,
 }
-
-
-def _hold_stream(user) -> turn_slots.Held | None:
-    """The member's one open stream (`streaming.STREAM_LOCK_NS`), or None while another is open.
-    No advisory locks on a local SQLite run: nothing is limited there."""
-    if connection.vendor != "postgresql":
-        return turn_slots.Held()
-    key = turn_slots._key(f"stream:{user.pk}")
-    if not turn_slots._try(streaming.STREAM_LOCK_NS, key):
-        return None
-    return turn_slots.Held(locks=[(streaming.STREAM_LOCK_NS, key)])
 
 
 def _stream_meta(meta: dict) -> tuple[dict, Response | None]:

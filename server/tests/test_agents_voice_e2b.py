@@ -334,3 +334,188 @@ def test_working_names_every_calls_kind(auth_client, limb, engine):
     _ = manifest  # the relay tests' manifest carries `brain_asked: engine`
     _ = TOOLS
     _ = post_result
+
+
+# ---- contract v2 additions (review of the phone client, 1121) ---------------------------------
+
+
+def test_a_client_turn_id_runs_once_and_is_readable_by_that_id(auth_client, engine):
+    import uuid
+
+    turn_id = str(uuid.uuid4())
+    engine.rounds = [m.call(*WRITE), m.say("Made it.")]
+    events = events_of(turn(auth_client, turn_id=turn_id))
+    assert events[0][1]["turn_id"] == turn_id and _wrote() == 1
+    again = turn(auth_client, turn_id=turn_id)
+    assert again.status_code == 409 and again.data["code"] == "duplicate"
+    assert again.data["status"] == "done" and _wrote() == 1
+    got = auth_client.get(f"/api/agents/turn/{turn_id}")
+    assert got.status_code == 200 and got.data["status"] == "done"
+
+
+def test_another_members_turn_id_is_a_duplicate_with_no_status(auth_client, engine, household_a):
+    import uuid
+
+    from household.models import HouseholdMember, User
+
+    turn_id = str(uuid.uuid4())
+    engine.rounds = [m.say("Hello.")]
+    events_of(turn(auth_client, "hello", turn_id=turn_id))
+    stranger = User.objects.create_user(email="other-e2b2@example.invalid", first_name="Sam")
+    HouseholdMember.objects.create(user=stranger, household=household_a)
+    response = turn(device_client(stranger), "hello", turn_id=turn_id)
+    assert response.status_code == 409 and response.data["code"] == "duplicate"
+    assert "status" not in response.data
+
+
+def test_the_stream_route_takes_a_client_turn_id(auth_client, engine, monkeypatch):
+    import uuid
+
+    from agents.legion.flags import STREAM_STT_ENV
+    from tests.test_engine_voice_live_stt import DONE, FakeSocket, _final
+    from tests.test_engine_voice_stream import utterance
+
+    monkeypatch.setenv(STREAM_STT_ENV, "on")
+    monkeypatch.setattr(
+        "agents.voice.streaming.socket_for",
+        lambda key: FakeSocket(after_end=[_final("What is on today?"), DONE]),
+    )
+    monkeypatch.setattr("agents.voice.speech.voiced_speech", lambda pcm: True)
+    monkeypatch.setattr("agents.voice.speech.LOUDNESS_GATE_RMS", 0)
+    cache.clear()
+    turn_id = str(uuid.uuid4())
+    engine.rounds = [m.say("Nothing today.")]
+    url = "/api/agents/turn/stream"
+    body = utterance(turn_id=turn_id, speak=False)
+    events = events_of(auth_client.post(url, body, content_type="application/octet-stream"))
+    assert of(events, "turn")[0]["turn_id"] == turn_id
+    again = auth_client.post(url, body, content_type="application/octet-stream")
+    assert again.status_code == 409 and again.data["code"] == "duplicate"
+
+
+@pytest.fixture
+def other_session():
+    from django.db import connections
+
+    conn = connections.create_connection("default")
+    yield conn
+    conn.close()
+
+
+def test_the_form_route_holds_one_turn_per_conversation(
+    auth_client, engine, other_session, monkeypatch
+):
+    from agents import turn_locks
+    from agents.voice import streaming
+    from assistant import turn_slots
+
+    engine.rounds = [m.say("Hello.")]
+    first = events_of(turn(auth_client, "hello"))
+    conversation = first[0][1]["conversation_id"]
+    monkeypatch.setattr(turn_locks, "WAIT_S", 0.1)
+    key = turn_slots._key(f"conversation:{conversation}")
+    with other_session.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+        assert cur.fetchone()[0]
+    busy = turn(auth_client, "again", conversation_id=conversation)
+    assert busy.status_code == 409 and busy.data["code"] == "conversation_busy"
+    with other_session.cursor() as cur:
+        cur.execute("SELECT pg_advisory_unlock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+    engine.rounds = [m.say("Again.")]
+    assert turn(auth_client, "again", conversation_id=conversation).status_code == 200
+
+
+def test_a_taker_waits_for_the_previous_stream_to_release(other_session, household_user):
+    """Cancel, then open: the old stream's lock is released while the new one waits."""
+    import threading
+
+    from agents import turn_locks
+    from agents.voice import streaming
+    from assistant import turn_slots
+
+    key = turn_slots._key(f"stream:{household_user.pk}")
+    with other_session.cursor() as cur:
+        cur.execute("SELECT pg_try_advisory_lock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+
+    def release():
+        with other_session.cursor() as cur:
+            cur.execute("SELECT pg_advisory_unlock(%s, %s)", [streaming.STREAM_LOCK_NS, key])
+
+    other_session.inc_thread_sharing()  # the release runs on the timer's thread
+    timer = threading.Timer(0.3, release)
+    timer.start()
+    held = turn_locks.hold_stream(household_user)
+    timer.join()
+    other_session.dec_thread_sharing()
+    assert held is not None
+    held.release()
+
+
+def test_the_attach_answer_names_what_the_engine_dropped_and_why(auth_client, engine):
+    cache.clear()
+    extra = [
+        {"name": "read_sms", "tool_class": "device"},
+        {"name": "phone_widget", "tool_class": "gizmo"},
+        {"name": "read_notifications", "tool_class": "device"},
+        {"name": "read_list", "tool_class": "household"},
+    ]
+    tools = [*TOOLS] + [
+        {
+            "description": "Invented.",
+            "parameters": {"type": "object", "properties": {}},
+            "writes": False,
+            "read_through": False,
+            "actuates": False,
+            **e,
+        }
+        for e in extra
+    ]
+    response = auth_client.post("/api/agents/limb", manifest(tools), format="json")
+    reasons = {d["name"]: d["reason"] for d in response.data["dropped"]}
+    assert reasons == {
+        "ask_mail": "mail_like",
+        "read_sms": "mail_like",
+        "phone_widget": "unknown_class",
+        "read_notifications": "outside_name_plain_class",
+        "read_list": "engine_tool",
+    }
+
+
+def test_the_lists_file_is_the_engines_rule():
+    from agents.legion import relay
+
+    lists = json.loads(relay.CLASSES_FILE.read_text(encoding="utf-8"))
+    assert relay.PLAIN_CLASSES == frozenset(lists["plain_classes"])
+    assert relay.OUTSIDE_CLASSES == frozenset(lists["outside_classes"])
+    assert relay.OUTSIDE_ACTIONS == frozenset(lists["outside_actions"])
+    assert relay.MAIL_CLASS == frozenset(lists["mail_class_names"])
+    assert relay.MAX_CALLS_PER_ROUND == lists["max_calls_per_round"]
+    for word in lists["mail_name_words"]:
+        assert relay.is_mail_class(relay.LimbTool(f"read_{word}", tool_class="device"))
+    for word in lists["outside_name_words"]:
+        tool = relay.LimbTool(f"get_{word}", tool_class="device")
+        assert relay.drop_reason(tool) in ("outside_name_plain_class", "mail_like")
+
+
+def test_turns_the_phone_answered_reach_the_engine_marked_and_tainted_ones_blanked(
+    auth_client, engine
+):
+    engine.rounds = [m.say("Noted.")]
+    facts = {
+        "phone_turns": [
+            {"said": "set a timer for the invented pasta", "answer": "Timer set for ten."},
+            {"said": "read me that page", "answer": "It says CANARY-3b1c.", "tainted": True},
+        ]
+    }
+    events_of(turn(auth_client, "and how long is left", client_facts=facts))
+    sent = _contents(engine)
+    assert "not verified by the engine" in sent and "Timer set for ten." in sent
+    assert "CANARY-3b1c" not in sent and "blanked" in sent
+    assert "CANARY-3b1c" not in json.dumps(AgentTurn.objects.get().history)
+
+
+def test_phone_turns_are_bounded(auth_client, engine):
+    many = [{"said": "x", "answer": "y"}] * 7
+    assert turn(auth_client, client_facts={"phone_turns": many}).status_code == 400
+    big = [{"said": "x" * 500, "answer": "y" * 1000}] * 3
+    assert turn(auth_client, client_facts={"phone_turns": big}).status_code == 400

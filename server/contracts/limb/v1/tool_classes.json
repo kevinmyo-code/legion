@@ -1,0 +1,11 @@
+{
+  "_about": "The engine's limb tool classes and word lists (agents/legion/relay.py loads this file; it IS the rule). The phone's manifest test reads the same file. A name matches a word list when the word is a whole underscore-separated part of it (case-insensitive).",
+  "version": 1,
+  "plain_classes": ["device", "household", "place", "vehicle"],
+  "outside_classes": ["calendar", "camera", "clipboard", "contacts", "files", "notifications", "screen_text", "web"],
+  "mail_class_names": ["ask_mail", "email", "flight_status", "get_sitrep", "gmail", "read_mail", "search_mail", "track_package"],
+  "mail_name_words": ["chat", "dm", "dms", "email", "gmail", "imessage", "inbox", "mail", "message", "messages", "mms", "signal", "sms", "telegram", "whatsapp"],
+  "outside_name_words": ["agenda", "browser", "calendar", "call_log", "caller", "callers", "camera", "clipboard", "contact", "contacts", "feed", "file", "files", "invite", "invites", "look", "news", "notification", "notifications", "ocr", "page", "pages", "photo", "photos", "screen_text", "search", "web"],
+  "outside_actions": ["agenda", "call_log", "calendar", "caller_id", "get_agenda", "invites", "nearby", "place_search", "read_calendar", "recent_calls", "search_places", "who_called"],
+  "max_calls_per_round": 4
+}

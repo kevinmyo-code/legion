@@ -23,6 +23,7 @@ from datetime import timezone as dt_timezone
 from functools import cache
 from pathlib import Path
 
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.utils import timezone as dj_timezone
 
@@ -49,6 +50,7 @@ from llm import cap as member_cap
 from llm import client as llm_client
 
 FEATURE = "agent_turn"
+DUPLICATE_WORDS = "Nothing was run again: this turn was already posted."
 RECRUITER_REFUSAL = (
     "Nothing was answered: the engine's agent turn is not open to a demo visit. The demo's "
     "assistant has its own door."
@@ -161,6 +163,7 @@ def run_turn(
     voice: dict | None = None,
     go: bool = True,
     client_facts: dict | None = None,
+    turn_id=None,
 ):
     """Yields the turn's events; returns its final `TurnState`. `agent` and `feature` are the
     spec that answers and the `llm_usage` feature it is metered under: the late-answer runner
@@ -182,14 +185,21 @@ def run_turn(
     facts = dict(client_facts or {})
     # What he heard of an earlier answer, before that history is read into this turn.
     facts_of.trim_heard(conversation, facts)
-    turn = AgentTurn.objects.create(
-        household_id=conversation.household_id,
-        owner_user_id=conversation.owner_user_id,
-        conversation=conversation,
-        seq=seq,
-        transcript=transcript,
-        graph_version=graph_version(),
-    )
+    try:
+        with transaction.atomic():
+            turn = AgentTurn.objects.create(
+                **({"id": turn_id} if turn_id else {}),
+                household_id=conversation.household_id,
+                owner_user_id=conversation.owner_user_id,
+                conversation=conversation,
+                seq=seq,
+                transcript=transcript,
+                graph_version=graph_version(),
+            )
+    except IntegrityError:
+        # The same client turn id raced in twice (`agents/turn_options.py`): it ran once.
+        yield ev.error(DUPLICATE_WORDS)
+        return None
     store = TurnStore(turn)
     hold = TurnHold(turn.pk, needed=not go)
     store.held = hold

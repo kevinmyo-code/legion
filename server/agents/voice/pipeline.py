@@ -246,6 +246,8 @@ class Utterance:
     # The hold (`agents/legion/hold.py`) and the limb's facts (`client_facts.py`).
     go: bool = True
     client_facts: dict | None = None
+    # The client's own turn id (`agents/turn_options.py`): the turn row is made with it.
+    turn_id: object | None = None
     # The streamed door's result (`streaming.Streamed`): its transcript, usage and marks.
     streamed: object | None = None
 
@@ -361,6 +363,7 @@ def voice_turn(
             voice={"spoken": speaker.enabled, "exact": speaker.exact},
             go=utterance.go,
             client_facts=utterance.client_facts,
+            turn_id=utterance.turn_id,
         )
         status = yield from _answer(
             request,

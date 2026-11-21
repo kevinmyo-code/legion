@@ -12,6 +12,10 @@ phone client's gap G3): `client_facts` in the turn request or the stream's metad
   is refused in words; reads run. Also skips the late-answer path (a background task is a write).
 - `utc_offset_minutes`: the device's own clock offset, used for "today" and "tomorrow" (the
   household's zone otherwise). The engine's own clock stays the time: only the offset is taken.
+- `phone_turns`: the turns the PHONE answered itself since the engine's last turn here (at most
+  `MAX_PHONE_TURNS`, `MAX_PHONE_TURN_CHARS` in all): `[{said, answer, tainted}]`. Kept as context
+  marked as the device's, never as the engine's own model turns; a tainted turn's answer is
+  blanked whatever was sent (it was built on outside text).
 - `heard_until`: `{turn_id, chars}`: how much of an EARLIER turn's reply he actually heard before
   he barged in (inventory row 23). That turn's stored history keeps only those characters of its
   last answer and says he cut in; so the next turn's model knows what he heard, not what it wrote.
@@ -36,6 +40,17 @@ TEST_MODE_WORDS = (
 _LANGUAGE = re.compile(r"^[A-Za-z][A-Za-z \-]{0,31}$")
 
 
+MAX_PHONE_TURNS = 6
+MAX_PHONE_TURN_CHARS = 4_000
+BLANKED = "[blanked: it was built on outside text]"
+
+
+class PhoneTurnSerializer(serializers.Serializer):
+    said = serializers.CharField(max_length=500, trim_whitespace=True)
+    answer = serializers.CharField(max_length=1_000, allow_blank=True, trim_whitespace=True)
+    tainted = serializers.BooleanField(default=False)
+
+
 class HeardUntilSerializer(serializers.Serializer):
     turn_id = serializers.UUIDField()
     chars = serializers.IntegerField(min_value=0, max_value=100_000)
@@ -50,6 +65,15 @@ class ClientFactsSerializer(serializers.Serializer):
     test_mode = serializers.BooleanField(required=False, default=False)
     utc_offset_minutes = serializers.IntegerField(min_value=-840, max_value=840, required=False)
     heard_until = HeardUntilSerializer(required=False)
+    phone_turns = PhoneTurnSerializer(many=True, required=False, max_length=MAX_PHONE_TURNS)
+
+    def validate_phone_turns(self, turns):
+        size = sum(len(t["said"]) + len(t["answer"]) for t in turns)
+        if size > MAX_PHONE_TURN_CHARS:
+            raise serializers.ValidationError(
+                f"`phone_turns` hold {size} characters; the most is {MAX_PHONE_TURN_CHARS}."
+            )
+        return turns
 
 
 def parse(raw) -> tuple[dict, str | None]:
@@ -67,7 +91,19 @@ def parse(raw) -> tuple[dict, str | None]:
             "turn_id": str(facts["heard_until"]["turn_id"]),
             "chars": facts["heard_until"]["chars"],
         }
-    if "\x00" in (facts.get("prior_line") or ""):
+    if "phone_turns" in facts:
+        facts["phone_turns"] = [
+            {
+                "said": t["said"],
+                "answer": BLANKED if t["tainted"] else t["answer"],
+                "tainted": t["tainted"],
+            }
+            for t in facts["phone_turns"]
+        ]
+    texts = [facts.get("prior_line") or ""] + [
+        t[k] for t in facts.get("phone_turns") or [] for k in ("said", "answer")
+    ]
+    if any("\x00" in text for text in texts):
         return {}, "`prior_line` may not hold a NUL character."
     return facts, None
 
@@ -75,6 +111,15 @@ def parse(raw) -> tuple[dict, str | None]:
 def context_notes(facts: dict) -> list[str]:
     """The parts added to his turn's user content, after the engine's own context line."""
     notes = []
+    if facts.get("phone_turns"):
+        lines = [
+            f'He said: "{t["said"]}" / The device answered: "{t["answer"]}"'
+            for t in facts["phone_turns"]
+        ]
+        notes.append(
+            "[Context from the device, not verified by the engine: earlier in this "
+            "conversation the device answered these turns itself.\n" + "\n".join(lines) + "]"
+        )
     if facts.get("prior_line"):
         notes.append(
             f'[Context, not said by the person: the device just said: "{facts["prior_line"]}"]'

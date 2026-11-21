@@ -8,6 +8,10 @@
   nothing metered as speech, `done` as soon as the text is complete). Unset keeps each door's
   default: an audio turn is spoken, a transcript turn is not.
 - `client_facts` (object, `agents/legion/client_facts.py`).
+- `turn_id` (UUID, made by the client): the turn row is made with it, so a re-post of the same
+  turn (a lost response, a retry) never runs twice: it answers 409 `duplicate` with the turn's
+  status, and `GET /api/agents/turn/<turn_id>` reads it (`duplicate_refusal`). A `turn_id` that
+  is another member's answers the same 409, with no status.
 - **The brain** (`brain_refusal`): a device whose resolved brain is `phone` (the server's force or
   override, the member's Settings choice as last attached, the server default) gets 409
   `brain_phone` and its phone answers. Not on a `test_mode` turn (the phone's test door may reach
@@ -18,6 +22,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 from rest_framework import status
 from rest_framework.response import Response
@@ -45,7 +50,12 @@ def read(raw: dict) -> tuple[dict, Response | None]:
     facts, problem = client_facts.parse(facts_raw)
     if problem:
         return {}, _refuse(problem, "bad_request", 400)
-    out = {"go": True, "speak": None, "client_facts": facts}
+    out = {"go": True, "speak": None, "client_facts": facts, "turn_id": None}
+    if raw.get("turn_id") not in (None, ""):
+        try:
+            out["turn_id"] = uuid.UUID(str(raw["turn_id"]))
+        except ValueError:
+            return {}, _refuse("`turn_id` is not a UUID.", "bad_request", 400)
     for name in ("go", "speak"):
         value = raw.get(name)
         if isinstance(value, str):
@@ -56,6 +66,25 @@ def read(raw: dict) -> tuple[dict, Response | None]:
             return {}, _refuse(f"`{name}` is true or false.", "bad_request", 400)
         out[name] = value
     return out, None
+
+
+def duplicate_refusal(request, options: dict) -> Response | None:
+    turn_id = options.get("turn_id")
+    if turn_id is None:
+        return None
+    from agents.models import AgentTurn
+
+    row = AgentTurn.objects.filter(pk=turn_id).values("owner_user_id", "status").first()
+    if row is None:
+        return None
+    body = {
+        "detail": "Nothing was run again: this turn was already posted.",
+        "code": "duplicate",
+        "turn_id": str(turn_id),
+    }
+    if row["owner_user_id"] == request.user.pk:
+        body["status"] = row["status"]
+    return Response(body, status=status.HTTP_409_CONFLICT)
 
 
 def brain_refusal(request, options: dict) -> Response | None:

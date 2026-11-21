@@ -55,9 +55,11 @@ names); the manifest's flags can only add taint.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from agents.legion import guards, redact
 from agents.legion.client_facts import TEST_MODE_WORDS
@@ -67,59 +69,34 @@ from assistant import read_through
 from household.models import DeviceToken
 from household.tenancy import household_of
 
-# Results that are the household's own or the device's state: relayable, untainted.
-PLAIN_CLASSES = frozenset({"device", "vehicle", "place", "household"})
-# Results that are text other people wrote: relayable, and every call taints the turn.
-OUTSIDE_CLASSES = frozenset(
-    {"web", "notifications", "contacts", "clipboard", "screen_text", "camera", "files", "calendar"}
+# The engine's classes and word lists: ONE file, read by the server's tests and the phone's
+# manifest test alike (`server/contracts/limb/v1/tool_classes.json`).
+CLASSES_FILE = (
+    Path(__file__).resolve().parents[2] / "contracts" / "limb" / "v1" / "tool_classes.json"
 )
+_LISTS = json.loads(CLASSES_FILE.read_text(encoding="utf-8"))
+
+
+def _words(key: str) -> re.Pattern:
+    words = "|".join(re.escape(w) for w in sorted(_LISTS[key], key=len, reverse=True))
+    return re.compile(rf"(^|_)({words})(_|$)", re.IGNORECASE)
+
+
+# Results that are the household's own or the device's state: relayable, untainted.
+PLAIN_CLASSES = frozenset(_LISTS["plain_classes"])
+# Results that are text other people wrote: relayable, and every call taints the turn.
+OUTSIDE_CLASSES = frozenset(_LISTS["outside_classes"])
 # Calls that read text other people wrote, by the ENGINE's own word, whatever the manifest says:
 # a call whose name, or any string argument (a folded tool's action), is one of these taints the
 # turn. The phone's `day` tool is split this way: its calendar read carries invite titles and
 # descriptions other people wrote (tainted); its lists and timers do not (plain).
-OUTSIDE_ACTIONS = frozenset(
-    {
-        "read_calendar",
-        "calendar",
-        "agenda",
-        "get_agenda",
-        "invites",
-        "search_places",
-        "place_search",
-        "nearby",
-        "caller_id",
-        "call_log",
-        "recent_calls",
-        "who_called",
-    }
-)
-
+OUTSIDE_ACTIONS = frozenset(_LISTS["outside_actions"])
 # The phone tools whose results carry mail (`ask_mail`, the brief's `get_sitrep` with its mail
 # sections, parcel and flight status read from mail): matched against a call's name AND every
 # string argument, so a folded call (`look_up` with `domain: ask_mail`) is caught.
-MAIL_CLASS = frozenset(
-    {
-        "ask_mail",
-        "search_mail",
-        "read_mail",
-        "email",
-        "gmail",
-        "get_sitrep",
-        "track_package",
-        "flight_status",
-    }
-)
-_MAIL_NAME = re.compile(
-    r"(^|_)(mail|gmail|email|inbox|sms|mms|message|messages|chat|whatsapp|telegram|signal|"
-    r"imessage|dm|dms)(_|$)",
-    re.IGNORECASE,
-)
-_OUTSIDE_NAME = re.compile(
-    r"(^|_)(notification|notifications|clipboard|contact|contacts|browser|web|page|pages|"
-    r"screen_text|ocr|camera|look|photo|photos|file|files|feed|news|calendar|agenda|invite|"
-    r"invites|search|caller|callers|call_log)(_|$)",
-    re.IGNORECASE,
-)
+MAIL_CLASS = frozenset(_LISTS["mail_class_names"])
+_MAIL_NAME = _words("mail_name_words")
+_OUTSIDE_NAME = _words("outside_name_words")
 
 # DECISION K1 (open, the owner's; plan 1119 "Decisions for Kevin"): the limb tools that may still
 # act in a turn that read outside text, as the phone allows navigation, timers, music, volume and
@@ -139,7 +116,7 @@ MAX_RELAY_HOPS = 3
 # Limb calls one round may ask. The limb runs them one at a time, so a round's whole time is the
 # sum of their deadlines: 4 x the 120 s manifest maximum + the grace stays under the 10 minute idle
 # close, so a slow round is never closed while the device is still working on it.
-MAX_CALLS_PER_ROUND = 4
+MAX_CALLS_PER_ROUND = int(_LISTS["max_calls_per_round"])
 
 MAIL_REFUSED = (
     "Nothing was read: {name} would read mail or messages through the device, and that is not "
@@ -235,13 +212,20 @@ def is_mail_class(tool: LimbTool, args: dict | None = None) -> bool:
     return bool(tool.mail or named or passed or _matches(tool.mail_when, args))
 
 
+def drop_reason(tool: LimbTool) -> str | None:
+    """Why the engine will not offer this tool (the attach answer's `dropped`), or None."""
+    if is_mail_class(tool):
+        return "mail_like"
+    if tool.tool_class not in PLAIN_CLASSES | OUTSIDE_CLASSES:
+        return "unknown_class"
+    if _OUTSIDE_NAME.search(tool.name) and tool.tool_class not in OUTSIDE_CLASSES:
+        return "outside_name_plain_class"
+    return None
+
+
 def relayable(tool: LimbTool) -> bool:
     """Deny by default (module docstring)."""
-    if is_mail_class(tool):
-        return False
-    if tool.tool_class not in PLAIN_CLASSES | OUTSIDE_CLASSES:
-        return False
-    return not (_OUTSIDE_NAME.search(tool.name) and tool.tool_class not in OUTSIDE_CLASSES)
+    return drop_reason(tool) is None
 
 
 def reads_outside(tool: LimbTool, args: dict) -> bool:
@@ -256,6 +240,18 @@ def reads_outside(tool: LimbTool, args: dict) -> bool:
         or tool.read_through
         or _matches(tool.read_through_when, args)
     )
+
+
+def dropped(manifest: dict, engine_names) -> list[dict]:
+    """Every manifest tool the engine will not offer, and why (`drop_reason`, or `engine_tool`
+    when an engine tool has its name)."""
+    out = []
+    for raw in manifest.get("tools") or []:
+        tool = LimbTool.from_manifest(raw)
+        reason = "engine_tool" if tool.name in engine_names else drop_reason(tool)
+        if reason:
+            out.append({"name": tool.name, "reason": reason})
+    return out
 
 
 def tools_of(limb: Limb | None, engine_names) -> dict[str, LimbTool]:

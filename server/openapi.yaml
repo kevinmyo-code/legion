@@ -18659,6 +18659,28 @@ components:
       - to_at
       - updated_at
       - vehicle_id
+    DroppedTool:
+      type: object
+      properties:
+        name:
+          type: string
+        reason:
+          $ref: '#/components/schemas/DroppedToolReasonEnum'
+      required:
+      - name
+      - reason
+    DroppedToolReasonEnum:
+      enum:
+      - engine_tool
+      - mail_like
+      - unknown_class
+      - outside_name_plain_class
+      type: string
+      description: |-
+        * `engine_tool` - engine_tool
+        * `mail_like` - mail_like
+        * `unknown_class` - unknown_class
+        * `outside_name_plain_class` - outside_name_plain_class
     Energy:
       type: object
       properties:
@@ -20348,10 +20370,17 @@ components:
           $ref: '#/components/schemas/AgentBrainEnum'
         brain_reason:
           $ref: '#/components/schemas/AgentBrainReasonEnum'
+        dropped:
+          type: array
+          items:
+            $ref: '#/components/schemas/DroppedTool'
+          description: 'Manifest tools the engine will not offer, and why: engine_tool,
+            mail_like, unknown_class, outside_name_plain_class (`server/contracts/limb/v1/tool_classes.json`).'
       required:
       - brain
       - brain_reason
       - contract_version
+      - dropped
       - limb_id
     LimbManifest:
       type: object
@@ -27017,6 +27046,11 @@ components:
           description: 'False: hold the turn until `POST .../go` (`agents/legion/hold.py`).'
         client_facts:
           description: What the limb says about the turn (`client_facts.py`).
+        turn_id:
+          type: string
+          format: uuid
+          description: 'The client''s own id for this turn: a re-post of it answers
+            409 `duplicate`.'
         contract_version:
           type: integer
           description: 'The voice contract the client speaks (wire v1: 1). Another

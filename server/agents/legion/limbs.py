@@ -65,6 +65,7 @@ MIN_DEADLINE_MS = 500
 MAX_DEADLINE_MS = 120_000
 CONFIRMS = ("engine", "limb")
 BRAIN_REASONS = ("forced", "override", "asked", "default")
+DROP_REASONS = ("engine_tool", "mail_like", "unknown_class", "outside_name_plain_class")
 # The `code` beside every refusal's `detail`, so a client can branch without parsing words.
 CODE_INVALID = "manifest_invalid"
 CODE_UNSUPPORTED = "contract_unsupported"
@@ -169,6 +170,11 @@ class LimbManifestSerializer(serializers.Serializer):
         return attrs
 
 
+class DroppedToolSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    reason = serializers.ChoiceField(choices=DROP_REASONS)
+
+
 class LimbAnswerSerializer(serializers.Serializer):
     """What the upload answers (documented in `openapi.yaml`)."""
 
@@ -176,6 +182,14 @@ class LimbAnswerSerializer(serializers.Serializer):
     contract_version = serializers.IntegerField()
     brain = serializers.ChoiceField(choices=BRAINS)
     brain_reason = serializers.ChoiceField(choices=BRAIN_REASONS)
+    dropped = DroppedToolSerializer(
+        many=True,
+        help_text=(
+            "Manifest tools the engine will not offer, and why: engine_tool, mail_like, "
+            "unknown_class, outside_name_plain_class "
+            "(`server/contracts/limb/v1/tool_classes.json`)."
+        ),
+    )
 
 
 class LimbRefusalSerializer(serializers.Serializer):
@@ -234,9 +248,15 @@ def attach(request, attrs) -> dict:
         },
     )
     brain, why = resolve_brain(limb, attrs.get("brain_asked"))
+    # What the engine will not offer, so word-list drift shows at attach, not as a missing tool.
+    from agents.legion.gateway import LegionGateway
+    from agents.legion.relay import dropped
+
+    refused = dropped(limb.manifest, set(LegionGateway(request).tools()))
     return {
         "limb_id": limb.pk,
         "contract_version": CONTRACT_VERSION,
         "brain": brain,
         "brain_reason": why,
+        "dropped": refused,
     }
