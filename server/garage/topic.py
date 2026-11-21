@@ -29,7 +29,9 @@ _NOT_HEADS = frozenset({"end", "assembly", "stop"})
 # A bare follow-up: words that lean on the reply before. Ends with any new topic.
 _FOLLOW_UP = re.compile(
     r"\b(?:other side|both sides|again|same|that one|this one|the other one|which one|"
-    r"(?:first|second|third|last) one|repeat|say that|the rest|what was that)\b",
+    r"(?:first|second|third|last) one|repeat|say that|the rest|what was that|"
+    # A side or a size leans on the part just shown ("and the passenger side?", "what size?").
+    r"driver|passenger|left|right|sides?|size|mm|millimet(?:er|re)s?|inch(?:es)?)\b",
     re.I,
 )
 
