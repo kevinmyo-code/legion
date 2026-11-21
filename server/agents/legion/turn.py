@@ -27,7 +27,7 @@ from django.utils import timezone as dj_timezone
 
 from agents.graph.nodes import NodeContext, turn_graph
 from agents.graph.state import TurnState
-from agents.legion import guards
+from agents.legion import guards, late
 from agents.legion.gateway import LegionGateway
 from agents.legion.retention import prune
 from agents.legion.specs import spec as spec_named
@@ -105,13 +105,13 @@ def system_for(spec, state) -> str:
     return f"{LOCKED}\n\n{spec.prompt}"
 
 
-def route(request):
+def route(request, agent: str = "generalist"):
     def decide(state: TurnState) -> dict:
         if is_recruiter(request.user):
             return {"agents": [], "reason": "recruiter", "refusal": RECRUITER_REFUSAL}
         if member_cap.over_cap(request.user):
             return {"agents": [], "reason": "member_cap", "refusal": member_cap.USED_UP}
-        return {"agents": ["generalist"], "reason": "single_spec"}
+        return {"agents": [agent], "reason": "single_spec"}
 
     return decide
 
@@ -146,8 +146,14 @@ def run_turn(
     now: datetime | None = None,
     do_prune: bool = True,
     observe=None,
+    agent: str = "generalist",
+    feature: str = FEATURE,
+    tool_limit=None,
 ):
-    """Yields the turn's events; returns its final `TurnState`."""
+    """Yields the turn's events; returns its final `TurnState`. `agent` and `feature` are the
+    spec that answers and the `llm_usage` feature it is metered under: the late-answer runner
+    (`late.py`) passes its read-only `background` spec and its own feature, and `tool_limit`, its
+    cap on calls (`LegionGateway.limit`)."""
     started = time.monotonic()
     now = now or dj_timezone.now()
     if do_prune:
@@ -189,12 +195,35 @@ def run_turn(
     yield ev.Event(
         "turn", {"turn_id": str(turn.pk), "conversation_id": str(conversation.pk), "seq": seq}
     )
+    if agent == "generalist" and not pending:
+        # The late-answer path (dark unless LEGION_LATE_ANSWERS=on). Not while a write waits for
+        # his yes: that turn is his answer to it ("cancel that" then drops the write, as today).
+        # Code's own answer to "look into X and tell me later", "anything pending?" or "cancel
+        # that", with no model round; else the one line owed from earlier, said first and kept
+        # out of this turn's model context.
+        if late.enabled() and late.CARRY in _taint_of_turn(conversation, seq - 1):
+            # The last turn said a line built on web pages: no write in this one either.
+            state.add_taint(late.AFTER_CARRY)
+        handled = late.intercept(
+            request, transcript, conversation.client, last_reply=_last_model_text(history)
+        )
+        if handled is not None:
+            if handled.owed is not None and late.read_third_party(handled.owed):
+                state.add_taint(late.CARRY)
+            yield from _code_answer(state, store, handled.text, started, handled.history)
+            return state
+        line, more = late.claim(request, conversation.client)
+        if line is not None:
+            if late.read_third_party(line):
+                state.add_taint(late.CARRY)
+                store.mark_taint(state)
+            yield late.late_event(line, more)
 
     def on_model_call(row: dict) -> None:
         store.model_call(row)
         llm_client.record(
             household=request.user.household,
-            feature=FEATURE,
+            feature=feature,
             model=row["model"],
             user=request.user,
             usage={
@@ -207,8 +236,8 @@ def run_turn(
 
     ctx = NodeContext(
         model=model,
-        gateway=LegionGateway(request, recorder=store, observe=observe),
-        route=route(request),
+        gateway=LegionGateway(request, recorder=store, observe=observe, limit=tool_limit),
+        route=route(request, agent),
         spec=spec_named,
         system_for=system_for,
         hooks=LoopHooks(
@@ -233,6 +262,35 @@ def run_turn(
         first_sentence_ms=first_sentence_ms,
     )
     return state
+
+
+def _last_model_text(history: list[dict]) -> str:
+    """The text of the last model turn in the conversation's history ("" when none)."""
+    for item in reversed(history):
+        if item.get("role") == "model":
+            return " ".join(p.get("text", "") for p in item.get("parts") or []).strip()
+    return ""
+
+
+def _taint_of_turn(conversation: AgentConversation, seq: int) -> list:
+    row = conversation.turns.filter(seq=seq).values_list("taint_sources", flat=True).first()
+    return list(row or [])
+
+
+def _code_answer(
+    state: TurnState, store: TurnStore, words: str, started: float, history: bool = True
+):
+    """A turn answered by code alone: one sentence, `done`, the turn row finished. The words join
+    the conversation's history as the model's, so the next turn's model knows what was said;
+    never when they carry an owed line (`history=False`): that text was not the model's."""
+    state.route = {"agents": [], "reason": "late_answer"}
+    state.status = "done"
+    state.final_text = words
+    if history:
+        state.messages = [*state.messages, {"role": "model", "parts": [{"text": words}]}]
+    yield ev.sentence(words)
+    yield ev.done("done", words, False, honesty_flag=False, pending_confirm=False)
+    store.finish(state, latency_ms=int((time.monotonic() - started) * 1000), first_sentence_ms=0)
 
 
 def cancel(request, turn_id) -> bool:

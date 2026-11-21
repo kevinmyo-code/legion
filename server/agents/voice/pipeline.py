@@ -24,8 +24,9 @@ from the web door's and are listed under "Differences".
   follows.
 - `tool` {name, ok, outcome, guard}: a tool call ended (agents shape: never its text).
 - `sentence` {text, line_id, role}: one finished sentence of the reply, tags removed, exact
-  figures. `role` is `answer` here (the model's words, the crisis line, a `say` line); wire v1's
-  `write` and `owed` lines come with the write ledger.
+  figures. `role` is `answer` here (the model's words, the crisis line, a `say` line), or `late`
+  with `owed_id` for a line owed from a background task (`agents/legion/late.py`, dark behind
+  LEGION_LATE_ANSWERS); wire v1's `write` and `owed` lines come with the write ledger.
 - `audio` {pcm, rate, line_id, filler?}: base64 16-bit mono PCM at `rate` (24000); `line_id` is the
   line it speaks (one speech request per line on this door, so every chunk belongs to one line);
   `filler` true on a filler's audio. Only on a spoken turn (`audio` in, `speak` set, or `say`).
@@ -498,7 +499,11 @@ def _answer(
             elif speaker.enabled and not speaker.stopped:
                 speaker.stopped = True
                 yield ev.Event("speech_stopped", {"reason": "limit"})
-            yield _sentence(text, line_id)
+            sentence = _sentence(text, line_id)
+            if event.data.get("role") == "late":
+                # A late-answer line keeps its role and owed id (`agents/legion/late.py`).
+                sentence.data.update(role="late", owed_id=event.data.get("owed_id"))
+            yield sentence
             continue
         # A round ended (a tool is next, or the turn): what it said goes to speech now.
         speaker.flush()
