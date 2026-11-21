@@ -19,7 +19,8 @@
 # engine gate is capped by REALRUN_BUDGET_USD=0.09 (its tests stop at the cap and that counts as a
 # fail); the chip turn is about half a cent; job time limits 45 and 30 minutes. One run at a time for
 # the whole workflow (a queue), and job `cap` stops a run when this workflow already ran more than
-# MAX_RUNS_PER_DAY = 6 times today (UTC): four ships plus two re-runs. Worst case per full run, in model
+# MAX_RUNS_PER_DAY = 6 attempts today (UTC; re-runs count): four ships plus two re-runs. Each job that
+# holds the key also refuses attempt 3 or later of its run (at most 2 attempts per run). Worst case per full run, in model
 # calls (estimate): about 40 voice turns x up to 4 rounds = 160, plus 2 speech cases (2 TTS + 2 STT),
 # plus at most 5 retried cases (about 20), plus 7 money calls, plus the engine gate (stops at $0.09)
 # and 1-3 chip calls: under about 200 calls, about $0.20. With the cap: under about 1,200 calls and
@@ -52,7 +53,9 @@ on:
 permissions:
   contents: read
 
-# One queue for the whole workflow (review G2): runs wait, none is cancelled, never two at once.
+# One group for the whole workflow (review G2): never two runs at once. With cancel-in-progress false a
+# running run is never cancelled, but GitHub keeps only ONE pending run per group: a newer dispatch
+# cancels the older pending one. So at most one runs and one waits.
 concurrency:
   group: gates
   cancel-in-progress: false
@@ -79,9 +82,10 @@ jobs:
           [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF)."; exit 1; }
           [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
           today=$(date -u +%F)
-          n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/gates.yml/runs?created=>=$today&per_page=100" --jq '.total_count')
-          echo "gates runs today (UTC $today), this one included: $n of at most $MAX_RUNS_PER_DAY"
-          [ "$n" -le "$MAX_RUNS_PER_DAY" ] || { echo "::error::daily cap reached ($n runs today, cap $MAX_RUNS_PER_DAY): the key is Kevin's main key. Nothing ran."; exit 1; }
+          # Attempts, not runs: a re-run keeps its run id, so each run counts its run_attempt.
+          n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/gates.yml/runs?created=>=$today&per_page=100" --jq '[.workflow_runs[].run_attempt] | add // 0')
+          echo "gates attempts today (UTC $today), this one included: $n of at most $MAX_RUNS_PER_DAY"
+          [ "$n" -le "$MAX_RUNS_PER_DAY" ] || { echo "::error::daily cap reached ($n attempts today, cap $MAX_RUNS_PER_DAY): the key is Kevin's main key. Nothing ran."; exit 1; }
 
   phone:
     needs: cap
@@ -95,10 +99,12 @@ jobs:
       SHA: ${{ inputs.sha }}
       CASES: ${{ inputs.phone_cases }}
     steps:
-      - name: The key exists (fail closed)
+      - name: The key exists (fail closed); at most 2 attempts of this run
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          # "Re-run failed jobs" does not re-run `cap`, so this job counts its own attempts.
+          [ "$GITHUB_RUN_ATTEMPT" -le 2 ] || { echo "::error::attempt $GITHUB_RUN_ATTEMPT of this run: at most 2 attempts spend the key. Dispatch a new run (the daily cap counts it). Nothing ran."; exit 1; }
           [ -n "$GEMINI_API_KEY" ] || { echo "::error::Secret GEMINI_API_KEY is not set in the gates environment. Nothing ran; this is a FAIL, not a skip (see this file's header)."; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be a comma list of case ids"; exit 1; }
@@ -107,6 +113,12 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
+
+      # This run's own commit (the dev tip it was dispatched on): the scrub comes from here, never from
+      # the commit under test.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: trusted
 
       - name: The commit is on dev (review G3; it runs with Kevin's main key)
         run: |
@@ -127,7 +139,7 @@ jobs:
           chmod +x gradlew
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4 (v4.4.3)
         with:
           cache-read-only: true
 
@@ -194,6 +206,7 @@ jobs:
       # Only counts, case ids and pass/fail go up (review G1): artifacts on a public repo are readable by
       # any signed-in user and are not masked.
       - name: Scorecard only, then scrub (allow-list of names; any key-like text fails the job)
+        id: scrub
         if: always()
         run: |
           set -euo pipefail
@@ -209,10 +222,12 @@ jobs:
           EOF
           fi
           if [ -f "$raw/money.txt" ]; then tail -1 "$raw/money.txt" | grep -E '^[0-9]+/[0-9]+ right' > gate-out/money-summary.txt || true; fi
-          bash .github/scripts/scrub_gate_out.sh gate-out voice-scorecard.json money-summary.txt
+          s=trusted/.github/scripts/scrub_gate_out.sh
+          [ -f "$s" ] || { echo "::error::no scrub script at $s: nothing is uploaded"; rm -rf gate-out; exit 1; }
+          bash "$s" gate-out voice-scorecard.json money-summary.txt
 
-      - name: Keep the scorecard
-        if: always()
+      - name: Keep the scorecard (only after a successful scrub)
+        if: always() && steps.scrub.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gates-phone-${{ inputs.sha }}
@@ -250,10 +265,12 @@ jobs:
       MEDIA_ROOT: /tmp/legion-media
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/legion
     steps:
-      - name: The key exists (fail closed)
+      - name: The key exists (fail closed); at most 2 attempts of this run
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          # "Re-run failed jobs" does not re-run `cap`, so this job counts its own attempts.
+          [ "$GITHUB_RUN_ATTEMPT" -le 2 ] || { echo "::error::attempt $GITHUB_RUN_ATTEMPT of this run: at most 2 attempts spend the key. Dispatch a new run (the daily cap counts it). Nothing ran."; exit 1; }
           [ -n "$GEMINI_API_KEY" ] || { echo "::error::Secret GEMINI_API_KEY is not set in the gates environment. Nothing ran; this is a FAIL, not a skip (see this file's header)."; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
 
@@ -261,6 +278,12 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
+
+      # This run's own commit (the dev tip it was dispatched on): the scrub comes from here, never from
+      # the commit under test.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: trusted
 
       - name: The commit is on dev (review G3; it runs with Kevin's main key)
         run: |
@@ -321,6 +344,7 @@ jobs:
 
       # The turns (realrun-out) stay on the runner; only the counts go up (review G1).
       - name: Scorecard only, then scrub
+        id: scrub
         if: always()
         run: |
           set -euo pipefail
@@ -338,10 +362,12 @@ jobs:
                   print(f"{c.get('name')}: {state}")
           EOF
           done
-          bash .github/scripts/scrub_gate_out.sh gate-out realrun-summary.txt chip-summary.txt
+          s=trusted/.github/scripts/scrub_gate_out.sh
+          [ -f "$s" ] || { echo "::error::no scrub script at $s: nothing is uploaded"; rm -rf gate-out; exit 1; }
+          bash "$s" gate-out realrun-summary.txt chip-summary.txt
 
-      - name: Keep the scorecard
-        if: always()
+      - name: Keep the scorecard (only after a successful scrub)
+        if: always() && steps.scrub.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gates-engine-${{ inputs.sha }}
