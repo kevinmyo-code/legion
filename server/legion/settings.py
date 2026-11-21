@@ -183,6 +183,9 @@ INSTALLED_APPS = [
     # arch-diagrams ticket 01 (Kevin, 2026-11-05): `show_diagram`'s catalogue and the private
     # projects' pre-rendered diagrams (`diagrams.RecruiterDiagram`), never in the repo.
     "diagrams",
+    # Garage assistant (option B, 2026-11-20): `show_part`'s checked fastener specs
+    # (`public.garage_fastener_specs`), loaded from the owner's private sheet, never in the repo.
+    "garage",
     # memory-and-vault map (ADR 0075): memory v2, one store on the engine for every member's
     # memories (`public.member_memories`), and the consolidation job's ledger.
     "member_memory",
