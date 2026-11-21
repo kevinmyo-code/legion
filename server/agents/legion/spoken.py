@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from dataclasses import dataclass, field
 
-from agents.legion import closing
+from agents.legion import closing, done_lines
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
 from agents.legion.speech_rules import (
@@ -87,6 +87,8 @@ class _Memory:
     verbatim_said: bool = False
     backed: list[int] | None = None
     end: bool = False
+    # The writes that went through (`tool.write_fact`), for the done line.
+    facts: list[dict] = field(default_factory=list)
 
     def to_json(self, with_words: bool) -> dict:
         out = {
@@ -102,7 +104,10 @@ class _Memory:
         }
         if with_words:
             out.update(
-                said=list(self.said), heard=list(self.heard), held=[list(h) for h in self.held]
+                said=list(self.said),
+                heard=list(self.heard),
+                held=[list(h) for h in self.held],
+                facts=list(self.facts),
             )
         return out
 
@@ -122,6 +127,7 @@ class _Memory:
             verbatim_said=bool(raw.get("verbatim_said")),
             backed=list(raw["backed"]) if raw.get("backed") is not None else None,
             end=bool(raw.get("end")),
+            facts=list(raw.get("facts") or []),
         )
 
 
@@ -174,6 +180,8 @@ class SpokenTurn:
                 elif event.type == "sentence":
                     yield from self._sentence(event)
                 elif event.type == "tool":
+                    if event.data.get("ok") and event.data.get("write_fact"):
+                        self.memory.facts.append(dict(event.data["write_fact"]))
                     yield event
                     yield from self._verbatim(event)
                 elif event.type == "done" and event.data.get("status") != AWAITING_LIMB:
@@ -298,6 +306,16 @@ class SpokenTurn:
         )
         if line is not None:
             yield self._say(line)
+        else:
+            # Plan 1119 section 2: a write the reply never named is said by code.
+            done = done_lines.done_line(m.facts, " ".join(m.said))
+            if done is not None:
+                yield self._say(done)
+        unsure = done_lines.unconfirmed_line(
+            sum(1 for a in state.actions if a.get("writes") and a.get("outcome") == "timed_out")
+        )
+        if unsure is not None:
+            yield self._say(unsure)
         if not m.said and state.status == "done" and not self._ending():
             yield self._say(closing.nothing_said_line(state.writes_ran))
 

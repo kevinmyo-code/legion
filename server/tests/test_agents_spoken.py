@@ -464,3 +464,62 @@ def test_end_conversation_is_never_offered_to_the_background_spec(seeded):
     gw = LegionGateway(member_request(seeded))
     assert END_TOOL in {d["name"] for d in gw.declarations(spec("generalist"))}
     assert END_TOOL not in {d["name"] for d in gw.declarations(spec("background"))}
+
+
+# ---- the unconfirmed write (plan 1119 section 2) ---------------------------------------------
+
+
+def _add_stamps():
+    return m.call(
+        "add_checklist_item", {"checklist_id": str(fixture.rid("Todo")), "text": "made-up stamps"}
+    )
+
+
+@pytest.mark.django_db
+def test_gate_case_1_a_write_the_reply_never_names_is_said_by_code(seeded):
+    events, state, _c = _turn(seeded, "stamps", m.FakeModel([_add_stamps(), m.say("Okay.")]))
+    said = [e.data["text"] for e in events if e.type == "sentence"]
+    assert state.writes_ran
+    assert said[0] == "Okay." and said[1].startswith("Done: added made-up stamps")
+    assert len(said) == 2
+
+
+@pytest.mark.django_db
+def test_gate_case_1_variant_a_reply_that_names_the_item_gets_no_extra_line(seeded):
+    model = m.FakeModel([_add_stamps(), m.say("Made-up stamps is on your list.")])
+    events, _s, _c = _turn(seeded, "stamps", model)
+    assert [e.data["text"] for e in events if e.type == "sentence"] == [
+        "Made-up stamps is on your list."
+    ]
+
+
+def test_the_done_line_names_each_write_and_counts_the_rest():
+    from agents.legion.done_lines import done_line
+
+    facts = [
+        {"tool": "add_checklist_item", "title": "eggs", "list": "Groceries"},
+        {"tool": "log_meal", "title": "lunch"},
+        {"tool": "tick_checklist_item", "title": "rent"},
+        {"tool": "add_event", "title": "dentist"},
+    ]
+    assert done_line(facts, "Sure.") == (
+        "Done: added eggs to Groceries; logged lunch; ticked off rent; and 1 more."
+    )
+    assert done_line(facts[:1], "Eggs are on Groceries.") is None
+
+
+def test_a_write_with_no_certain_verb_gets_the_generic_line_only_when_nothing_was_claimed():
+    from agents.legion.done_lines import GENERIC_DONE, done_line
+
+    fact = [{"tool": "update_event"}]
+    assert done_line(fact, "Okay.") == GENERIC_DONE
+    assert done_line(fact, "I marked it done.") is None
+
+
+def test_a_relayed_write_that_never_came_back_is_said_as_not_confirmed():
+    from agents.legion.done_lines import UNCONFIRMED_ONE
+
+    state = _state()
+    state.actions.append({"name": "set_timer", "writes": True, "ok": False, "outcome": "timed_out"})
+    said, _ = _run(state, [S("The timer is ringing soon.")])
+    assert said == ["The timer is ringing soon.", UNCONFIRMED_ONE]
