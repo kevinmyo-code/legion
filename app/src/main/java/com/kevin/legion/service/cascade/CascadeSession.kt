@@ -320,6 +320,21 @@ internal class CascadeSession(
     /** A task line has started and not yet ended: no wait line starts meanwhile (F5). */
     @Volatile private var taskLinePlaying = false
 
+    /**
+     * This turn's answer as [DeadAir] reads it: when its first clip was asked of the voice, whether
+     * the turn ends the conversation (a stop), the session's last ask-to-audio time, the turn's sound
+     * timeline for the bench ([TurnGap]) and when the answer's first audio came into hand.
+     */
+    @Volatile private var answerAskedAtMs: Long? = null
+    @Volatile private var turnEndsConversation = false
+    @Volatile private var lastFirstAudioMs: Long? = null
+    @Volatile private var turnGap: TurnGap? = null
+    @Volatile private var answerInHandAtMs: Long? = null
+    @Volatile private var toolSound = -1
+
+    /** The model's greeting while it is held and spoken: no wait line plays over it. */
+    @Volatile private var greetingJob: Job? = null
+
     @Volatile private var fillerSkip: Backchannel.Skip? = null
     private val recentWaitLines = RecentLines(WaitFillers.ROTATION)
     private val waitIndex = AtomicInteger(0)
@@ -1260,6 +1275,10 @@ internal class CascadeSession(
         saidThisTurn.clear()
         answerAudioStarted = false
         taskLinePlaying = false
+        answerAskedAtMs = null
+        answerInHandAtMs = null
+        turnEndsConversation = false
+        turnGap = TurnGap(eotAtMs)
         val seq = backchannelSeq.incrementAndGet()
         val skip = Backchannel.decide(
             Backchannel.Turn(
@@ -1323,11 +1342,13 @@ internal class CascadeSession(
                     "answer_text=${if (answerTextIn()) 1 else 0}",
             )
             audit.filler("backchannel", line)
+            val sound = turnGap?.started(TurnGap.BACKCHANNEL, System.currentTimeMillis())
             clipPlayback.during {
                 val gen = p.generation()
                 withContext(Dispatchers.IO) { p.write(pcm, gen) }
                 p.awaitDrained()
             }
+            sound?.let { turnGap?.ended(it, System.currentTimeMillis()) }
         }
         // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
         clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
@@ -1348,10 +1369,13 @@ internal class CascadeSession(
     private fun noteTaskFillerEnded() {
         lastFillerEndAtMs = System.currentTimeMillis()
         taskLinePlaying = false
+        // All of it is with the player now; it ends when what is queued has played.
+        turnGap?.ended(toolSound, lastFillerEndAtMs + (player?.aheadMs() ?: 0L))
     }
 
     private fun noteTaskFiller(text: String) {
         taskLinePlaying = true
+        toolSound = turnGap?.started(TurnGap.TOOL, System.currentTimeMillis()) ?: -1
         audit.filler("task", text)
         turnFillers.incrementAndGet()
         saidThisTurn.add(text)
@@ -1359,9 +1383,10 @@ internal class CascadeSession(
 
     /**
      * His speech ended: the wait lines ([WaitFillers]) for this turn. Each is due [WaitFillers.FIRST_GAP_MS]
-     * or [WaitFillers.NEXT_GAP_MS] after the last filler of any kind ended, while no answer audio or
-     * text has started, up to [WaitFillers.MAX_PER_TURN] fillers in all. Re-read every
-     * [WAIT_POLL_MS], so a backchannel or task line that ends later moves the next one back.
+     * or [WaitFillers.NEXT_GAP_MS] after the last filler of any kind ended, until the answer's AUDIO is
+     * in hand ([DeadAir]: the first text alone no longer ends them), up to [WaitFillers.MAX_PER_TURN]
+     * fillers in all. Re-read every [WAIT_POLL_MS], so a backchannel or task line that ends later moves
+     * the next one back.
      */
     private fun scheduleWaitFillers(eotAtMs: Long) {
         val seq = backchannelSeq.get()
@@ -1385,10 +1410,26 @@ internal class CascadeSession(
         }
     }
 
+    /** This turn's wait, now, as [DeadAir] reads it. */
+    private fun deadAir(seq: Int) = DeadAir.State(
+        nowMs = System.currentTimeMillis(),
+        answerAudioReady = answerAudioStarted,
+        answerAskedAtMs = answerAskedAtMs,
+        expectedFirstAudioMs = DeadAir.expectedFirstAudioMs(
+            cloud = backend?.kind == SpeechBackend.Kind.CLOUD,
+            measuredMs = lastFirstAudioMs,
+        ),
+        closing = closing.get(),
+        stopped = seq != backchannelSeq.get(),
+        goodbye = turnEndsConversation,
+        greetingHeld = greetingJob?.isActive == true,
+    )
+
     /**
-     * One wait line, from memory, under [playGate] like the backchannel: never once the answer's text
-     * or audio has started, never over it (the answer's writes take the same gate, so an answer ready
-     * during the line follows it). False: none played, and none will this turn.
+     * One wait line, from memory, under [playGate] like the backchannel. [DeadAir] decides: never once
+     * the answer's audio is in hand, and after its first clip was asked for only a line that ends by its
+     * expected audio. A line playing when the answer's audio arrives is cut if more than
+     * [DeadAir.FINISH_MAX_MS] of it is left ([playPacedWait]); the answer's writes wait on the same gate.
      */
     private enum class WaitPlay { PLAYED, NOT_YET, STOP }
 
@@ -1396,9 +1437,9 @@ internal class CascadeSession(
     private suspend fun playWaitFiller(seq: Int, eotAtMs: Long, said: Int): WaitPlay {
         val b = backend ?: return WaitPlay.STOP
         val p = player ?: return WaitPlay.STOP
-        fun due() = !closing.get() && seq == backchannelSeq.get() && !answerAudioStarted && !answerTextIn() &&
-            !QuietMode.isOn(ctx) && !callOnLine()
-        if (!due()) return WaitPlay.STOP
+        fun over() = QuietMode.isOn(ctx) || callOnLine() ||
+            DeadAir.waitLine(deadAir(seq), 0L)?.let(DeadAir::endsWait) == true
+        if (over()) return WaitPlay.STOP
         var pcm = ByteArray(0)
         val chosen = WaitFillers.choose(
             recentWaitLines,
@@ -1414,7 +1455,9 @@ internal class CascadeSession(
             return WaitPlay.STOP
         }
         playGate.withLock {
-            if (!due()) return WaitPlay.STOP
+            if (over()) return WaitPlay.STOP
+            // Too long to end before the answer's expected audio: asked again at the next poll.
+            if (DeadAir.waitLine(deadAir(seq), chosen.ms) != null) return WaitPlay.NOT_YET
             // A task line queued on the gate, or one that just ended, moves this one back (F5).
             val now = System.currentTimeMillis()
             if (!WaitFillers.dueNow(now, lastFillerEndAtMs, said, turnFillers.get(), taskLinePlaying)) {
@@ -1426,21 +1469,38 @@ internal class CascadeSession(
             LiveLatency.log(
                 LiveLatency.TAG,
                 "filler kind=wait at_ms=${System.currentTimeMillis() - eotAtMs} " +
-                    "idx=${WaitFillers.LINES.indexOf(chosen.line)}",
+                    "idx=${WaitFillers.LINES.indexOf(chosen.line)} " +
+                    "answer_asked=${if (answerAskedAtMs != null) 1 else 0}",
             )
             audit.filler("wait", chosen.line)
             // Half-duplex (Bluetooth): his audio through the line is kept and handed on, as for a backchannel.
             listenThroughClip("wait", WaitFillers.LINES.indexOf(chosen.line))
-            clipPlayback.during {
-                val gen = p.generation()
-                withContext(Dispatchers.IO) { p.write(pcm, gen) }
-                p.awaitDrained()
-            }
+            clipPlayback.during { playPacedWait(p, pcm, b.tts.sampleRate) }
         }
         // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
         clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
         lastFillerEndAtMs = System.currentTimeMillis()
         return WaitPlay.PLAYED
+    }
+
+    /**
+     * A wait line's audio, a slice at a time ([PacedClip]), cut between slices once the answer's audio
+     * is in hand and more than [DeadAir.FINISH_MAX_MS] of the line is left. Never a flush: the answer's
+     * writes carry the generation its speaker was made with.
+     */
+    private suspend fun playPacedWait(p: ReplyPlayer, pcm: ByteArray, sampleRate: Int) {
+        val sound = turnGap?.started(TurnGap.WAIT, System.currentTimeMillis())
+        val gen = p.generation()
+        val end = PacedClip.play(
+            pcm,
+            sampleRate,
+            write = { slice -> withContext(Dispatchers.IO) { p.write(slice, gen) } },
+            aheadMs = { p.aheadMs() },
+            cut = { left -> DeadAir.cutPlaying(answerAudioStarted, left) },
+        )
+        if (end == PacedClip.End.WHOLE) p.awaitDrained()
+        if (end == PacedClip.End.CUT) LiveLatency.log(LiveLatency.TAG, "filler_cut kind=wait")
+        sound?.let { turnGap?.ended(it, System.currentTimeMillis() + p.aheadMs()) }
     }
 
     /**
@@ -2014,6 +2074,7 @@ internal class CascadeSession(
     private suspend fun endByStop(u: TurnUtterance, words: String) {
         // No "Mm." before "Goodbye." (review F4): a backchannel not yet started is dropped. At this point
         // nothing but that clip can be playing, so playback means it started: it finishes.
+        turnEndsConversation = true
         if (!playbackActive) fillerJobs.endTurn()
         discardDraftOf(u, "not_answered")
         carry = ""
@@ -2447,7 +2508,7 @@ internal class CascadeSession(
         return ReplySpeaker(
             tts = b.tts,
             scope = scope,
-            play = { pcm -> playGate.withLock { p.write(pcm, gen) } },
+            play = { pcm -> playGate.withLock { answerGotGate(); p.write(pcm, gen) } },
             firstFrameTimeoutMs = b.ttsFirstAudioTimeoutMs,
             onFirstAudio = { _, filler ->
                 turnAudioStarted = true
@@ -2457,9 +2518,7 @@ internal class CascadeSession(
                     eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "filler_first_ms=${now - it}") }
                 } else {
                     answerAudible = true
-                    answerAudioStarted = true
-                    eotAtMs?.let { LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}") }
-                    LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
+                    answerAudioIn(eotAtMs, now, ttsAskedAtMs)
                 }
                 if (!audible || !filler) {
                     // The answer after a filler the mic reopened for ([onFillerPlayed]): playing again.
@@ -2478,6 +2537,8 @@ internal class CascadeSession(
             // Count only, never the words.
             onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
             onFillerStarted = { text -> noteTaskFiller(text) },
+            // Only a turn of his has a wait to fill ([DeadAir]): its first answer clip asked of the voice.
+            onAnswerAsked = { eotAtMs?.let { answerAskedAtMs = answerAskedAtMs ?: System.currentTimeMillis() } },
             onFillerPlayed = {
                 noteTaskFillerEnded()
                 // Half-duplex: the filler is over, the answer is not here yet. Listen again once it
@@ -2503,6 +2564,29 @@ internal class CascadeSession(
             // ([owed]), and stays owed until its line played to the end.
             owed.open(it)
         }
+    }
+
+    /**
+     * The answer's first audio is in hand at [now]: no wait line starts from here ([DeadAir]). On a turn
+     * of his ([eotAtMs]), the bench's gap line ([TurnGap]) and this session's ask-to-audio time for the
+     * next turn's estimate ([DeadAir.expectedFirstAudioMs]).
+     */
+    private fun answerAudioIn(eotAtMs: Long?, now: Long, ttsAskedAtMs: Long) {
+        answerAudioStarted = true
+        eotAtMs?.let {
+            LiveLatency.log(LiveLatency.TAG, "eot_reply_ms=${now - it}")
+            answerInHandAtMs = now
+            answerAskedAtMs?.let { asked -> lastFirstAudioMs = now - asked }
+            turnGap?.line(now)?.let { line -> LiveLatency.log(LiveLatency.TAG, line) }
+        }
+        LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
+    }
+
+    /** The answer's first write got the play gate: how long a filler clip held it (0 when none). */
+    private fun answerGotGate() {
+        val at = answerInHandAtMs ?: return
+        answerInHandAtMs = null
+        LiveLatency.log(LiveLatency.TAG, "answer_hold_ms=${System.currentTimeMillis() - at}")
     }
 
     private fun onReplyAudible() {
@@ -2766,7 +2850,10 @@ internal class CascadeSession(
                 withContext(NonCancellable) { reply.interrupt() }
                 throw e
             }
-        }.also { job -> job.invokeOnCompletion { voice.tts.holdWarm(false) } }
+        }.also { job ->
+            greetingJob = job
+            job.invokeOnCompletion { voice.tts.holdWarm(false) }
+        }
     }
 
     /**

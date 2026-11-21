@@ -134,7 +134,7 @@ class VoiceSpeedWiringTest {
         assertTrue(play.contains("Backchannel.trimSilence("))
         // The answer's writes take the same gate; its first audio marks the turn as answered.
         val speaker = bodyOf(s, "newSpeaker")
-        assertTrue(speaker.contains("play = { pcm -> playGate.withLock { p.write(pcm, gen) } }"))
+        assertTrue(speaker.contains("play = { pcm -> playGate.withLock { answerGotGate(); p.write(pcm, gen) } }"))
         assertTrue(speaker.contains("turnAudioStarted = true"))
         // The task line is audited, and counts toward the turn's fillers and its said words (WaitFillers).
         assertTrue(speaker.contains("onFillerStarted = { text -> noteTaskFiller(text) }"))
@@ -313,7 +313,9 @@ class VoiceSpeedWiringTest {
         val play = bodyOf(s, "playWaitFiller")
         assertTrue(play.contains("playGate.withLock"))
         assertTrue(play.contains("filler kind=wait at_ms="))
-        assertTrue(play.contains("answerTextIn()"))
+        // 2026-11-21: keyed on the answer's audio ([DeadAir]), no longer on its first text.
+        assertTrue(play.contains("DeadAir.waitLine("))
+        assertFalse(play.contains("answerTextIn()"))
     }
 
     private companion object {

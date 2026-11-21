@@ -12,8 +12,10 @@ package com.kevin.legion.service.cascade
  * from memory or not at all. No line twice in one turn, none of the last [ROTATION] wait lines.
  *
  * When not: the same rules as the backchannel ([Backchannel.decide]: not over Alfred's own audio, not
- * on a call, not in Quiet; Bluetooth too, his audio kept through the line), and never once the answer's text or audio
- * has started. A line already playing finishes; the answer follows it, never over it. Pure.
+ * on a call, not in Quiet; Bluetooth too, his audio kept through the line), and the dead-air rule
+ * ([DeadAir], 2026-11-21): never once the answer's AUDIO is in hand; after its first clip was asked
+ * for, only a line that ends by that clip's expected audio. A line playing when the answer's audio is
+ * in finishes if short, else is cut; the answer never plays over it. Pure.
  */
 internal object WaitFillers {
     /** The first wait line: this long after the last filler ended (or his end of speech, with none). */

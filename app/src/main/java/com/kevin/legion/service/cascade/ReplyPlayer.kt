@@ -104,6 +104,13 @@ internal class ReplyPlayer(
         }
     }
 
+    /** Audio written and not yet played, in ms of the source (0 with no playing track). */
+    fun aheadMs(): Long = synchronized(lock) {
+        val t = track?.takeIf { it.playState == AudioTrack.PLAYSTATE_PLAYING } ?: return@synchronized 0L
+        val head = runCatching { t.playbackHeadPosition.toLong() and HEAD_MASK }.getOrElse { framesWritten }
+        (framesWritten - head).coerceAtLeast(0L) * MS_PER_S / sampleRate
+    }
+
     fun release() = synchronized(lock) {
         released = true
         generation.incrementAndGet()
@@ -151,5 +158,6 @@ internal class ReplyPlayer(
         private const val POLL_MS = 20L
         private const val DRAIN_TIMEOUT_MS = 4_000L
         private const val HEAD_MASK = 0xFFFF_FFFFL
+        private const val MS_PER_S = 1_000L
     }
 }

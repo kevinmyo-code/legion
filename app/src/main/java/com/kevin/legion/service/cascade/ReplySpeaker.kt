@@ -58,6 +58,8 @@ internal class ReplySpeaker(
     private val onFillerPlayed: () -> Unit = {},
     /** A scripted filler's first audio (its words, for the audit's own filler line; never captions or history). */
     private val onFillerStarted: (clipText: String) -> Unit = {},
+    /** An answer clip (not a scripted filler) was asked of the voice: its audio is on the way ([DeadAir]). */
+    private val onAnswerAsked: () -> Unit = {},
 ) {
     sealed interface Outcome {
         data object Played : Outcome
@@ -193,6 +195,7 @@ internal class ReplySpeaker(
             splitter.flush()?.let { enqueue(it) }
         }
         val clip = tts.speak(normalise(TtsTags.strip(text)))
+        onAnswerAsked()
         lines[clip] = onPlayed
         if (queue.trySend(clip).isFailure) {
             lines.remove(clip)
@@ -236,6 +239,7 @@ internal class ReplySpeaker(
         val s = stream ?: tts.openStream().also {
             stream = it
             streamChars = 0
+            onAnswerAsked()
             queue.trySend(it)
         }
         s.append(chunk)
@@ -258,6 +262,7 @@ internal class ReplySpeaker(
         val tagged = if (tts.performsTags) TtsTags.forSpeech(sentence, tagBudget, plain) else TtsTags.strip(sentence)
         val line = normalise(tagged)
         if (TtsTags.strip(line).isBlank()) return
+        onAnswerAsked()
         queue.trySend(tts.speak(line))
     }
 
