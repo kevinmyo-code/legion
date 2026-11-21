@@ -123,6 +123,25 @@ class CarLinkControllerTest {
         }
     }
 
+    /**
+     * Like a real head unit, which says HELLO every interval: one HELLO every 200 ms into whichever
+     * port is current, until [cond] holds. A single HELLO could land in a port a stopping listener
+     * was about to drop, and the test would then wait for an answer that can never come.
+     */
+    private fun helloUntil(what: String, hello: () -> ByteArray, cond: () -> Boolean) {
+        var next = 0L
+        waitFor(what) {
+            cond() || run {
+                val now = System.currentTimeMillis()
+                if (now >= next) {
+                    port.inbox.put(hello())
+                    next = now + 200
+                }
+                false
+            }
+        }
+    }
+
     @Test fun `forget sends REVOKE before the keys go, and the blocked loop ends without an error`() = runBlocking {
         assertTrue(store.write(key, null))
         val c = controller()
@@ -241,11 +260,13 @@ class CarLinkControllerTest {
             assertTrue(store.revokeOnlyPending())
             assertEquals(LinkState.NOT_PAIRED, c.status.value.link)
             waitFor("a listener for the revoke-only record") { senders > 1 }
-            port.inbox.put(FakeUnit(key).hello(intervalMs = 1000))
+            val unit = FakeUnit(key)
             val p2u = DirectionKeys(key).p2u
-            waitFor("REVOKE sent") { port.sent.any { Mnai2.openFromPhone(p2u, it)?.type == Mnai2.REVOKE } }
-            val types = port.sent.mapNotNull { Mnai2.openFromPhone(DirectionKeys(key).p2u, it)?.type }
-            assertEquals("only a REVOKE, nothing else", listOf(Mnai2.REVOKE), types)
+            helloUntil("REVOKE sent", { unit.hello(intervalMs = 1000) }) {
+                port.sent.any { Mnai2.openFromPhone(p2u, it)?.type == Mnai2.REVOKE }
+            }
+            val types = port.sent.mapNotNull { Mnai2.openFromPhone(p2u, it)?.type }
+            assertTrue("only REVOKEs, nothing else: $types", types.isNotEmpty() && types.all { it == Mnai2.REVOKE })
             waitFor("the record wiped") { !store.revokeOnlyPending() }
         }
 
