@@ -142,8 +142,13 @@ def test_homes_covers_every_ticket_03_tool():
 
 # Suites written but not yet recorded live: their replay is skipped with this reason, never
 # faked. An explicit map, so a deleted cassette of a recorded suite still fails loudly instead of
-# skipping. Empty now: `records` (ticket 15) was recorded live on 2026-11-17 (27/27).
-UNRECORDED_SUITES: dict[str, str] = {}
+# skipping. `records` (ticket 15) was recorded live on 2026-11-17 (27/27).
+UNRECORDED_SUITES: dict[str, str] = {
+    "garage_gate": (
+        "the web cascade's live gate for show_part (switch off until it passes); this runner "
+        "drives the agents door, which never declares show_part"
+    ),
+}
 SUITES = sorted(p.stem for p in runner.CASES.glob("*.yaml"))
 
 
