@@ -391,6 +391,23 @@
             android:authorities="${applicationId}.mlkitinitprovider"
             tools:node="remove" />
 
+        <!-- ML Kit's usage reporting is stripped by Kevin's ruling (2026-11-20): keep ML Kit for the
+             scanner, but nothing leaves the phone that he did not ask for. ML Kit's terms say its APIs
+             send usage and performance metrics to Google; they go through Google's data-transport
+             library, whose three components are removed here. With no upload backend registered the
+             library refuses each event and schedules no upload. This relies on library internals, so
+             every ML Kit upgrade must re-check it (CarLinkNoUsageReportingTest and the ML Kit pin
+             test in CarLinkScanBindGateTest fail first). -->
+        <service
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="remove" />
+        <service
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+            tools:node="remove" />
+        <receiver
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver"
+            tools:node="remove" />
+
         <service
             android:name=".carlink.CarLinkLocationService"
             android:enabled="true"
