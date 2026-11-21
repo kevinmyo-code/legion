@@ -59,15 +59,9 @@ class CarLinkScanBindGateTest {
     }
 
     @Test fun `ML Kit stays pinned at the version whose sdkinternal start was checked`() {
-        // initializeIfNeeded lives in ML Kit's sdkinternal package, and the manifest strips ML Kit's usage
-        // reporting by removing library internals: an upgrade must re-check both.
+        // initializeIfNeeded lives in ML Kit's sdkinternal package: an upgrade must re-check it.
         fun read(path: String) = listOf(java.io.File("../$path"), java.io.File(path)).first { it.exists() }.readText()
-        assertTrue(
-            "ML Kit changed version: re-check the lazy MlKitContext start in CarLinkQrScanPane AND that the " +
-                "data-transport removals in AndroidManifest.xml still stop all usage reporting " +
-                "(CarLinkNoUsageReportingTest), then update this pin",
-            mlKitPinned(read("gradle/libs.versions.toml")),
-        )
+        assertTrue(mlKitPinned(read("gradle/libs.versions.toml")))
         assertTrue("com.google.mlkit:" !in read("app/build.gradle.kts"))
     }
 
