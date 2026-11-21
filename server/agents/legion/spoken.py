@@ -31,6 +31,7 @@ from agents.legion import closing, done_lines
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
 from agents.legion.speech_rules import backed_cents, backed_torque, is_stop_utterance
+from agents.legion.spelled_money import states_unbacked_spelled
 from agents.legion.trailing_filler import is_wait_line
 from agents.runtime import events as ev
 from agents.runtime.budget import over
@@ -232,7 +233,9 @@ class SpokenTurn:
             verbatim_said=m.verbatim_said,
             max_spoken=MAX_SPOKEN_SENTENCES,
         )
-        if verdict == gates.SAY and m.said and is_wait_line(text):
+        if verdict == gates.SAY and states_unbacked_spelled(text, self._backed()):
+            m.money_dropped += 1
+        elif verdict == gates.SAY and m.said and is_wait_line(text):
             # The phone's `TrailingFiller`: once the answer has begun, a filler line is not said.
             m.trailing_dropped += 1
         elif verdict == gates.SAY:
@@ -267,6 +270,8 @@ class SpokenTurn:
             for tagged in self.again(state):
                 text = speech_tags.untagged(tagged)
                 verdict = self.gate.in_ask_again(text, verbatim_said=m.verbatim_said)
+                if verdict == gates.SAY and states_unbacked_spelled(text, self._backed()):
+                    verdict = gates.MONEY
                 if verdict == gates.MONEY:
                     m.money_dropped += 1
                 elif verdict == gates.TORQUE:
@@ -281,6 +286,8 @@ class SpokenTurn:
         unbacked = 0
         for text, tagged in m.held:
             verdict = self.gate.held(text)
+            if verdict == gates.SAY and states_unbacked_spelled(text, self._backed()):
+                verdict = gates.MONEY
             if verdict == gates.MONEY:
                 m.money_dropped += 1
                 unbacked += 1

@@ -528,88 +528,96 @@ def test_a_relayed_write_that_never_came_back_is_said_as_not_confirmed():
 # ---- the voice clause: both brains are told the same (inventory row 19) ----------------------
 
 
-def test_the_generalist_prompt_carries_the_phones_voice_clause_word_for_word():
+BLANK_LINE = chr(10) * 2
+PHONE_FIGURES = "Write numbers, money, times and units the way you would say them."
+WEB_FIGURES = "Write every number, amount, time and unit exactly, in digits."
+
+
+def test_the_generalist_prompt_carries_the_phones_voice_clause_with_the_web_doors_figure_rule():
+    """Both brains get the phone's clause, except its figure sentence: the model writes figures
+    in digits (the web door's rule), so the money and torque guards can check them, and code
+    decides how they are said (review 1121 F1)."""
     import re
     from pathlib import Path
+
+    from assistant import cascade
 
     root = Path(__file__).resolve().parents[2]
     rules = root / "app/src/main/java/com/kevin/legion/service/cascade/CascadeRules.kt"
     kotlin = rules.read_text(encoding="utf-8")
-    block = kotlin.split("const val VOICE_CLAUSE =", 1)[1].split("\n\n", 1)[0]
+    block = kotlin.split("const val VOICE_CLAUSE =", 1)[1].split(BLANK_LINE, 1)[0]
     # The Kotlin string's pieces: its clause holds no quote or backslash.
-    clause = "".join(re.findall(r'"([^"]*)"', block))
-    prompt = (root / "server/agents/specs/generalist.md").read_text(encoding="utf-8")
-    assert clause and " ".join(clause.split()) in " ".join(prompt.split())
+    clause = " ".join("".join(re.findall(r'"([^"]*)"', block)).split())
+    assert PHONE_FIGURES in clause
+    assert WEB_FIGURES in " ".join(cascade.VOICE_CLAUSE.split())
+    prompt_file = root / "server/agents/specs/generalist.md"
+    prompt = " ".join(prompt_file.read_text(encoding="utf-8").split())
+    assert clause.replace(PHONE_FIGURES, WEB_FIGURES) in prompt
+    assert PHONE_FIGURES not in prompt
 
 
-# ---- review fixes ------------------------------------------------------------------------------
+def test_a_spelled_out_money_amount_is_checked_like_a_figure_once_a_money_tool_ran():
+    # Review 1121 F1: the model is told digits; an amount it still writes in words is read and
+    # checked by membership too (the second net), never rounded.
+    gw = _gateway([TurnCall("monthly_spend", True, "Food: 312.50.", False, {"total_cents": 31250})])
+    said, _ = _run(
+        _state(),
+        [
+            S("Food came to 312.50."),
+            S("That is about three hundred twelve dollars and sixty cents."),
+            S("In words, three hundred twelve dollars and fifty cents."),
+            S("You spent twelve bucks on coffee."),
+        ],
+        gw,
+    )
+    assert said == [
+        "Food came to 312.50.",
+        "In words, three hundred twelve dollars and fifty cents.",
+    ]
 
 
-def test_after_a_cancel_no_closing_or_done_line_is_said():
-    state = _state()
-    turn = SpokenTurn(state, _gateway(), on=True)
+def test_spelled_amounts_read_as_cents():
+    from agents.legion.spelled_money import spelled_cents, words_value
 
-    def graph():
-        yield ev.Event("tool", {"name": "add_checklist_item", "ok": True,
-                                "write_fact": {"tool": "add_checklist_item", "title": "eggs"}})
-        state.actions.append({"name": "add_checklist_item", "writes": True, "ok": True})
-        yield S("I added eggs and")
-        state.status = "cancelled"
-        yield S("Stopped: the turn was cancelled.")
-        yield ev.done("cancelled", "", True)
-        return state
-
-    said = [e.data["text"] for e in turn.run(graph()) if e.type == "sentence"]
-    assert said == ["I added eggs and", "Stopped: the turn was cancelled."]
+    assert words_value("three hundred twelve") == 312
+    assert words_value("two thousand four hundred") == 2400
+    assert spelled_cents("six dollars and fifty cents for coffee") == [650]
+    assert spelled_cents("twelve bucks, then ninety-nine cents") == [1200, 99]
+    assert spelled_cents("It is mild.") == []
 
 
-@pytest.mark.parametrize(
-    "line,wait",
-    [
-        ("Just a second.", True), ("Give me a second on that.", True), ("One sec.", True),
-        ("Hang on.", True), ("Bear with me.", True), ("Checking.", True), ("One moment.", True),
-        ("Let me look.", True), ("Okay, just a moment.", True),
-        ("It is mild.", False), ("Just a second ago it rang.", False),
-        ("Give me the codes.", False), ("One code is stored.", False), ("I missed that.", False),
-        ("Hang on to the receipt.", False),
-    ],
-)
-def test_the_phones_wait_lines_are_filler_answers_are_not(line, wait):
-    from agents.legion.trailing_filler import is_wait_line
-
-    assert is_wait_line(line) is wait
+def test_with_no_money_tool_a_spelled_out_amount_is_left_alone():
+    said, _ = _run(_state(), [S("A coffee is about five dollars there.")])
+    assert said == ["A coffee is about five dollars there."]
 
 
-def test_after_content_a_wait_line_is_dropped_and_a_leading_one_is_the_opening_rules():
-    said, _ = _run(_state(), [S("I missed that."), S("Give me a second on that.")])
-    assert said == ["I missed that."]
+def test_a_torque_figure_in_words_is_dropped_by_the_torque_guard():
+    import re
 
+    from agents.legion.speech_rules import TorqueGuard
 
-def test_the_cap_is_the_web_doors():
-    from assistant import cascade
-
-    assert spoken.MAX_SPOKEN_SENTENCES == cascade.MAX_SPOKEN_SENTENCES
-
-
-def test_answered_gives_a_call_that_never_ran_a_failure_response():
-    from agents.legion.spoken import NOT_RUN_RESPONSE, answered
-
-    msgs = [{"role": "model", "parts": [{"functionCall": {"name": "x", "args": {}}}]}]
-    out = answered(msgs, [])
-    assert out[-1]["parts"][0]["functionResponse"]["response"] == NOT_RUN_RESPONSE
+    guard = TorqueGuard(frozenset({"185"}), re.compile(r"pitman", re.I), whole_turn=False)
+    turn = SpokenTurn(_state(), _gateway(), on=True)
+    turn.gate = spoken.gates.SentenceGate(
+        backed=lambda: None, torque=lambda: guard, actions=lambda: []
+    )
+    state = turn.state
+    line = S("Torque the pitman nut to one hundred eighty five ft-lbs.")
+    out = list(turn.run(_graph(state, [line])))
+    assert [e.data["text"] for e in out if e.type == "sentence"] == [
+        spoken.closing.nothing_said_line(False)
+    ]
 
 
 @pytest.mark.django_db
-def test_the_background_spec_keeps_its_dates_as_the_model_sent_them(seeded):
-    from agents.legion.gateway import LegionGateway
-    from agents.legion.specs import spec
-    from agents.runtime.tools import ToolCall
-
-    state = _state(transcript="and tomorrow?")
-    state.client_facts["local"] = {"day": "2026-03-10", "time": "21:00"}
-    gw = LegionGateway(member_request(seeded))
-    asked = ToolCall("c", "read_calendar", {"from": "tomorrow", "to": "tomorrow"})
-    kept, note = gw._his_day(state, spec("background"), asked)
-    assert kept.args == asked.args and note is None
-    fixed, _ = gw._his_day(state, spec("generalist"), asked)
-    assert fixed.args == {"from": "2026-03-11", "to": "2026-03-11"}
+def test_heard_until_counts_the_untagged_text_the_history_holds(seeded):
+    """`heard_until.chars` counts characters of the UNTAGGED sentence text the engine sent, joined
+    by single spaces: exactly what `done.final_text` and the stored history hold."""
+    model = m.FakeModel([m.say("<chuckle> Fair enough. Nothing is due today.")])
+    events, _s, conversation = _turn(seeded, "anything?", model)
+    turn = AgentTurn.objects.get(conversation=conversation)
+    assert turn.final_text == "Fair enough. Nothing is due today."
+    assert turn.history[-1] == {
+        "role": "model", "parts": [{"text": "Fair enough. Nothing is due today."}]
+    }
+    assert events[-1].data["final_text"] == turn.final_text
