@@ -9,14 +9,16 @@
 # like on the laptop, never printed, and deleted at the end. It builds, signs, publishes and deploys
 # nothing; it holds no other secret and no Google sign-in.
 #
-# One-time setup, done by Kevin only (agents never create environments or secrets):
-#   Settings > Environments > New environment "gates"; Deployment branches: selected branches, "dev"
-#   (dispatch from dev; `sha` picks the commit); no required reviewer. Add secret GEMINI_API_KEY: a key
-#   used only here, with a budget cap on its Google Cloud project. Until then do NOT dispatch this file:
-#   GitHub creates a missing environment on a job's first run, with no protection rules.
+# Setup: the `gates` environment exists (deployment branches: dev; no reviewer). Kevin adds the secret
+# GEMINI_API_KEY himself; agents never place keys. He chose his EXISTING Gemini key, not a separate
+# capped one, so nothing outside this file caps the spend: this file bounds it itself (below). Do not
+# dispatch it until `gh secret list --env gates` shows the key (it would only fail at its first step).
 #
-# Cost per full run: about $0.10 to $0.20 of Gemini (the phone eval about $0.10, the engine gate capped
-# at REALRUN_BUDGET_USD=0.09, the chip turn about half a cent). Runner minutes are free (public repo).
+# Spend, bounded here: about $0.10 to $0.20 of Gemini per full run. The phone eval runs the 36 named
+# cases once, retries at most 5 failed cases once each (more than 5 failures = fail, no retry); the
+# engine gate is capped by REALRUN_BUDGET_USD=0.09 (its tests stop at the cap and that counts as a
+# fail); the chip turn is about half a cent; job time limits 45 and 30 minutes. One run per commit at
+# a time (concurrency). Runner minutes are free (public repo).
 name: Gates
 # ship.yml finds the gate run for a commit by this title (a dispatch run's head sha is dev's, not `sha`).
 run-name: "Gates ${{ inputs.which }} ${{ inputs.sha }}"
@@ -53,7 +55,7 @@ jobs:
     name: phone voice eval + money specialist eval
     runs-on: ubuntu-latest
     environment: gates
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
       SHA: ${{ inputs.sha }}
@@ -134,6 +136,8 @@ jobs:
           EOF
           )
           [ -n "$failed" ] || { echo "::error::the voice eval exited $rc but names no failed case"; exit 1; }
+          n=$(echo $failed | wc -w)
+          [ "$n" -le 5 ] || { echo "::error::$n cases failed ($failed): more than 5, so no retries (spend bound)"; exit 1; }
           twice=""
           for c in $failed; do
             python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
