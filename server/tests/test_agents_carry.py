@@ -145,3 +145,60 @@ def test_a_carried_turn_cut_off_before_its_answer_does_not_spend_the_carry(seede
     assert tool["ok"] is False
     tool, _state = _add(seeded, conversation)
     assert tool["ok"] is True
+
+
+# ---- with the E3 speech rules on the agent turn (review 1121) ---------------------------------
+
+
+def _said(events) -> list[str]:
+    return [e.data["text"] for e in events if e.type == "sentence"]
+
+
+def test_a_carried_engine_turn_says_the_carried_line_and_is_marked_tainted(seeded):
+    from agents.legion.lines import READ_THROUGH_WAIT_CARRIED
+
+    _e, _s, conversation = _search(seeded)
+    model = m.FakeModel([m.call("add_checklist_item", ADD), m.say("Okay.")])
+    events, _state, _c = _turn(seeded, "add that to my list", model, conversation)
+    assert _said(events)[-1] == READ_THROUGH_WAIT_CARRIED
+    done = events[-1]
+    assert done.type == "done" and done.data["tainted"] is True  # the phone marks its record
+
+
+def test_an_unbacked_claim_on_a_carried_turn_never_says_this_turn_read_the_web(seeded):
+    from agents.legion.lines import CHANGE_NOT_MADE, READ_THROUGH_WAIT
+
+    _e, _s, conversation = _search(seeded)
+    model = m.FakeModel([m.say("I added it to your list.")])
+    events, _state, _c = _turn(seeded, "add that", model, conversation)
+    assert READ_THROUGH_WAIT not in _said(events)
+    assert _said(events) == [CHANGE_NOT_MADE]
+
+
+def test_option_a1_on_the_engine(seeded, monkeypatch):
+    from agents.legion.lines import READ_THROUGH_WAIT_UNTIL_AFTER
+
+    monkeypatch.setattr(read_through, "HONEST_SAME_TURN_WORDS", True)
+    model = m.FakeModel(
+        [m.call("web_search", {"query": "x"}), m.call("add_checklist_item", ADD), m.say("Nine.")]
+    )
+    events, state, _c = _turn(seeded, "look it up and add it", model)
+    assert _response(state, "add_checklist_item")["message"] == (
+        read_through.WRITE_REFUSAL_UNTIL_AFTER.format(verb="changed", name="add_checklist_item")
+    )
+    assert _said(events)[-1] == READ_THROUGH_WAIT_UNTIL_AFTER
+
+
+def test_option_a2_on_the_engine(seeded, monkeypatch):
+    monkeypatch.setattr(read_through, "CARRY_AFTER_REFUSAL", False)
+    model = m.FakeModel(
+        [m.call("web_search", {"query": "x"}), m.call("add_checklist_item", ADD), m.say("Nine.")]
+    )
+    _e, state, conversation = _turn(seeded, "look it up and add it", model)
+    assert carry.REFUSED_HERE in state.taint
+    tool, _state = _add(seeded, conversation)
+    assert tool["ok"] is True
+    # A plain read still carries under A2.
+    _e, _s, conversation = _search(seeded)
+    tool, _state = _add(seeded, conversation)
+    assert tool["ok"] is False

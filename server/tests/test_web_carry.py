@@ -151,3 +151,110 @@ def test_a_nothing_heard_request_between_neither_spends_nor_breaks_the_carry(mem
     events = _events(_post(member, text="Add that.", conversation_id=conversation))
     assert _tools(events)[0]["ok"] is False
     assert _said(events) == [cascade.READ_THROUGH_WAIT_CARRIED]
+
+
+# ---- review 1121: the record line, the cut-off turn, the two word options --------------------
+
+
+def test_a_carried_turn_writes_the_carry_record_line_and_a_plain_turn_does_not(member, engine):
+    from tests.test_assistant_cascade import _record
+
+    conversation = _search_turn(member, engine)
+    engine.model = FakeModel([say("Nothing is on today.")])
+    _events(_post(member, text="What's on today?", conversation_id=conversation))
+    record = _record(conversation)
+    assert record.count("read_through source=carry") == 1
+    # The line sits after his carried words, so consolidation drops that turn.
+    assert record.index("read_through source=carry") > record.index("What's on today?")
+    engine.model = FakeModel([say("Still nothing.")])
+    _events(_post(member, text="And now?", conversation_id=conversation))
+    assert _record(conversation).count("read_through source=carry") == 1
+
+
+def test_a_demo_visit_writes_no_carry_record_line(visitor, engine):
+    from tests.test_assistant_cascade import _record
+
+    conversation = _search_turn(visitor, engine)
+    engine.model = FakeModel([say("Nothing is on today.")])
+    _events(_post(visitor, text="What's on today?", conversation_id=conversation))
+    assert "read_through source=carry" not in _record(conversation)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_carried_turn_cut_off_before_its_answer_does_not_spend_the_carry(
+    member, engine, household_user
+):
+    import uuid
+
+    from assistant.models import TurnCancel
+
+    conversation = _search_turn(member, engine)
+    turn_id = uuid.uuid4()
+
+    class CutOff(FakeModel):
+        def stream(self, req):
+            TurnCancel.objects.create(turn_id=turn_id, user=household_user)
+            yield from super().stream(req)
+
+    engine.model = CutOff([say("This answer is never heard.")])
+    cut = _events(
+        _post(member, text="What's on today?", conversation_id=conversation, turn_id=str(turn_id))
+    )
+    assert _of(cut, "done")[0]["status"] == "cancelled"
+    engine.model = FakeModel(
+        [call("add_event", {"fields": {"title": "Museum visit"}}), say("Added it.")]
+    )
+    events = _events(_post(member, text="Add that.", conversation_id=conversation))
+    assert _tools(events)[0]["ok"] is False
+    assert _said(events) == [cascade.READ_THROUGH_WAIT_CARRIED]
+    engine.model = FakeModel(
+        [call("add_event", {"fields": {"title": "Museum visit"}}), say("Added it.")]
+    )
+    events = _events(_post(member, text="Add it now.", conversation_id=conversation))
+    assert _tools(events)[0]["ok"] is True
+
+
+def _search_and_write_turn(client, engine):
+    engine.model = FakeModel(
+        [
+            call("web_search", {"query": "fair date"}),
+            call("add_event", {"fields": {"title": "Fair"}}),
+            say("The fair is on Saturday."),
+        ]
+    )
+    events = _events(_post(client, text="Look up the fair and add it."))
+    return events, _of(events, "turn")[0]["conversation_id"]
+
+
+def test_option_a1_the_same_turn_words_say_after_his_next_message(member, engine, monkeypatch):
+    monkeypatch.setattr(read_through, "HONEST_SAME_TURN_WORDS", True)
+    events, _c = _search_and_write_turn(member, engine)
+    assert _tools(events)[1]["text"] == read_through.WRITE_REFUSAL_UNTIL_AFTER.format(
+        verb="changed", name="add_event"
+    )
+    assert _said(events) == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT_UNTIL_AFTER]
+
+
+def test_option_a1_keeps_the_old_words_on_the_demo(visitor, engine, monkeypatch):
+    monkeypatch.setattr(read_through, "HONEST_SAME_TURN_WORDS", True)
+    events, _c = _search_and_write_turn(visitor, engine)
+    assert _said(events)[-1] == cascade.READ_THROUGH_WAIT
+
+
+def test_option_a2_a_turn_that_refused_in_its_own_read_does_not_carry(
+    member, engine, monkeypatch
+):
+    monkeypatch.setattr(read_through, "CARRY_AFTER_REFUSAL", False)
+    events, conversation = _search_and_write_turn(member, engine)
+    assert _said(events)[-1] == cascade.READ_THROUGH_WAIT  # true again under A2
+    engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
+    later = _events(_post(member, text="Add the fair.", conversation_id=conversation))
+    assert _tools(later)[0]["ok"] is True
+
+
+def test_option_a2_a_plain_read_still_carries(member, engine, monkeypatch):
+    monkeypatch.setattr(read_through, "CARRY_AFTER_REFUSAL", False)
+    conversation = _search_turn(member, engine)
+    engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
+    later = _events(_post(member, text="Add that.", conversation_id=conversation))
+    assert _tools(later)[0]["ok"] is False

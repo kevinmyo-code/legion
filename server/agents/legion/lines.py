@@ -39,6 +39,16 @@ READ_THROUGH_WAIT_CARRIED = (
     "I haven't changed anything: I read text from the web just before this, so changes wait for "
     "your next message. Ask me again and I'll do it."
 )
+# Option A1 (`read_through.HONEST_SAME_TURN_WORDS`): the same-turn lines where the carry refuses
+# his next message too, so the promise is the one after it. Not said until the owner chooses A1.
+READ_THROUGH_WAIT_UNTIL_AFTER = (
+    "I haven't changed anything: this turn read text from the web, so changes wait until after "
+    "your next message."
+)
+READ_THROUGH_WAIT_AFTER_WRITE_UNTIL_AFTER = (
+    "The first change went through. The next one waits until after your next message, because "
+    "this turn read text from the web."
+)
 # Said after a claimed change that no write backed and none went through by the end of the turn.
 CHANGE_NOT_MADE = "Nothing was changed: that change did not go through, so ask me again for it."
 # The same, when a write did go through in this turn (a claim made before its own call).

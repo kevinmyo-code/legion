@@ -238,4 +238,8 @@ def test_switched_off_a_web_turn_makes_exactly_the_deployed_queries(member, engi
     sql = [q["sql"] for q in queries.captured_queries]
     assert sum("assistant_turn_cancel" in s for s in sql) == 4
     assert not any("agents_late" in s or "agents_owed" in s for s in sql)
-    assert len(sql) == 62
+    # 62 before the carry (ADR 0090 amended 2026-11-21); a member's turn now asks once whether it
+    # runs under the carry (`read_through.carried_turn`): one read of the read-through marks, inside
+    # a savepoint (SAVEPOINT, SELECT, RELEASE), so 3 more. A recruiter's visit does not ask.
+    assert sum("assistant_read_through_turns" in s for s in sql) == 1
+    assert len(sql) == 62 + 3

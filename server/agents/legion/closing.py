@@ -20,7 +20,9 @@ from agents.legion.lines import (
     NOTHING_CHANGED,
     READ_THROUGH_WAIT,
     READ_THROUGH_WAIT_AFTER_WRITE,
+    READ_THROUGH_WAIT_AFTER_WRITE_UNTIL_AFTER,
     READ_THROUGH_WAIT_CARRIED,
+    READ_THROUGH_WAIT_UNTIL_AFTER,
 )
 from assistant import read_through
 
@@ -66,19 +68,26 @@ def closing_line(
     wrote: bool,
     tainted: Callable[[], bool],
     carried: bool = False,
+    until_after: bool = False,
 ) -> str | None:
     """The line about a change, or None. `refused` is `guard_refused(calls)`; `unbacked` the held
     claims no write backed; `tainted` whether the turn read outside text, asked only when needed;
-    `carried`: the refusals were the carry's (`refused_by_carry`)."""
+    `carried`: the refusals were the carry's (`refused_by_carry`); `until_after`: the carry will
+    refuse his next message too (option A1, `read_through.until_after`)."""
+    wait = READ_THROUGH_WAIT_UNTIL_AFTER if until_after else READ_THROUGH_WAIT
     if refused and carried:
         return READ_THROUGH_WAIT_CARRIED
     if refused:
-        return READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT
+        if wrote:
+            return READ_THROUGH_WAIT_AFTER_WRITE_UNTIL_AFTER if until_after else (
+                READ_THROUGH_WAIT_AFTER_WRITE
+            )
+        return wait
     if unbacked:
         if wrote:
             return CHANGE_MADE
         if tainted():
-            return READ_THROUGH_WAIT
+            return wait
         return CHANGE_NOT_MADE
     if wrote and any(c.ends_turn for c in calls):
         # The turn ended on code's own answer (his profile) in the round that also made a change:

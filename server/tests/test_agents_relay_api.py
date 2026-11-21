@@ -714,7 +714,10 @@ def test_a_web_turn_with_a_limb_attached_is_unchanged(household_user, monkeypatc
         _events(_post(member, text="Anything on today?", turn_id=str(uuid.uuid4())))
     sql = [q["sql"] for q in queries.captured_queries]
     assert not any("agents_limb" in s for s in sql)
-    assert len(sql) == 62
+    # 62 measured before the carry; a member's web turn now asks once whether it runs under the
+    # carry (`read_through.carried_turn`): one read inside a savepoint, 3 queries (ADR 0090
+    # amended 2026-11-21, the same +3 as `test_late_answers_web`).
+    assert len(sql) == 62 + 3
     offered = {d["name"] for d in model.requests[0].declarations}
     assert not offered & {t["name"] for t in TOOLS}
 

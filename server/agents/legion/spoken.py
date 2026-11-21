@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from dataclasses import dataclass, field
 
-from agents.legion import closing, done_lines
+from agents.legion import carry, closing, done_lines
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
 from agents.legion.speech_rules import backed_cents, backed_torque, is_stop_utterance
@@ -304,7 +304,11 @@ class SpokenTurn:
             refused=closing.guard_refused(self.gateway.calls),
             unbacked=unbacked,
             wrote=state.writes_ran,
-            tainted=lambda: state.tainted,
+            # A turn tainted only by the carry did not read outside text itself: "this turn read
+            # text from the web" would be false (ADR 0090 amended 2026-11-21).
+            tainted=lambda: state.tainted and not carry.only_carried(state.taint),
+            carried=closing.refused_by_carry(self.gateway.calls),
+            until_after=carry.until_after(),
         )
         if line is not None:
             yield self._say(line)

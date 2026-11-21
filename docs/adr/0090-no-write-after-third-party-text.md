@@ -53,6 +53,17 @@ early clearing.
   - The Live fallback door counts model turns, not his turns, so it keeps the same-turn rule.
 - **Engine brain.** `run_turn` reads the previous turn's `taint_sources` and adds `previous_turn`
   to this turn's taint (`agents/legion/carry.py`).
+- **A turn never answered does not spend the carry.** On the engine that is a cancelled turn that
+  read nothing itself; on the web, a nothing-heard request, or a carried turn cut off before its
+  answer (it marks itself).
+- **The record.** A carried web turn writes `read_through source=carry` to the conversation's
+  record, so memory consolidation keeps none of it. A carried engine turn ends with
+  `done.tainted`, from which the phone writes its own line.
+- **Open: the same-turn words.** Where the carry is on, the same-turn line's "ask me again" now
+  points at a turn the carry refuses too. Two switches in `assistant/read_through.py` hold the
+  owner's two options, and both are off until he chooses:
+  - `HONEST_SAME_TURN_WORDS` (the words say "after your next message");
+  - `CARRY_AFTER_REFUSAL` off (a turn that refused a write in its own read does not carry).
 - **Phone cascade.** `ReadThroughCarry` today carries only after a read-through opener. It is to
   carry after any turn that read outside text, his own search included. That is a separate phone
   slice with its own app update.

@@ -16,16 +16,36 @@ read outside text taints the NEXT turn of the conversation too, for that one tur
 
 from __future__ import annotations
 
+from assistant import read_through
+
 PREVIOUS_TURN = "previous_turn"
+# Option A2 (`read_through.CARRY_AFTER_REFUSAL` off): this turn refused a write in its own read and
+# said so, so it does not carry. A carry-type name: it never carries by itself.
+REFUSED_HERE = "write_refused"
 # Every taint source that is a carry, not a read of this turn's own (`client_facts.CARRY`: the
 # phone's last line read outside text; `late.AFTER_CARRY`). Kept as names here, so the guards need
 # not import the late-answer runner; a test pins them to their owners' constants.
-CARRY_SOURCES = frozenset({"carry", "late_after_carry", PREVIOUS_TURN})
+CARRY_SOURCES = frozenset({"carry", "late_after_carry", PREVIOUS_TURN, REFUSED_HERE})
 
 
 def carries(previous_taint) -> bool:
     """Whether a turn with these taint sources carries into the next one."""
-    return any(source not in CARRY_SOURCES for source in previous_taint or ())
+    taint = previous_taint or ()
+    if not read_through.CARRY_AFTER_REFUSAL and REFUSED_HERE in taint:
+        return False
+    return any(source not in CARRY_SOURCES for source in taint)
+
+
+def note_refused(state) -> None:
+    """Option A2 only: this turn refused a write in its own read (`REFUSED_HERE`)."""
+    if not read_through.CARRY_AFTER_REFUSAL:
+        state.add_taint(REFUSED_HERE)
+
+
+def until_after() -> bool:
+    """Option A1 on the engine (the carry is always on here): the same-turn words say the change
+    waits until after his next message."""
+    return read_through.HONEST_SAME_TURN_WORDS and read_through.CARRY_AFTER_REFUSAL
 
 
 def only_carried(taint) -> bool:
