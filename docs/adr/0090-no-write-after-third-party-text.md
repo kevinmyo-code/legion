@@ -32,7 +32,7 @@ not run ... they can simply ask again").
 **A deliberate ruling by the owner on 2026-11-21, made after a live check showed the web assistant
 writing an item in the turn right after a web search: the web door is to be as strict as the
 engine brain after outside text, on every door.** He chose that scope, and kept it strict: no
-early clearing.
+early clearing. The same day he ruled how it meets a same-turn refusal (option A2, below).
 
 - **The rule.** A turn that read outside text taints the person's NEXT turn too.
   - "Read outside text" means the turn's own read-through mark: a third-party tool, a relayed
@@ -40,12 +40,19 @@ early clearing.
   - Every write in that next turn refuses in words, including a change he names fully himself.
     It still reads and answers what it can.
   - The carry clears after that one turn. A turn tainted only by the carry does not carry again.
+  - **Except after a same-turn refusal (A2):** a turn that already told him the change waits for
+    his next message does not carry, so that promise is true. "Told him" means one of two things:
+    - a write refused in its own read (the same-turn refusal);
+    - the spoken wait line about a change held back by the read.
+    Code keeps a marker for it: on the web, a `ReadThroughTurn` row at
+    `read_through.refused_mark(turn)`; on the engine, the `write_refused` taint source. A plain
+    read with no such refusal still carries.
 - **The words.** The refusal and the spoken line say which turn read it:
   - the tool's words are `read_through.CARRY_WRITE_REFUSAL` / `CARRY_REFUSAL`;
   - the closing line is `lines.READ_THROUGH_WAIT_CARRIED` ("I haven't changed anything: I read
     text from the web just before this, so changes wait for your next message. Ask me again and
     I'll do it.").
-  - The same-turn words are unchanged.
+  - The same-turn words are unchanged, and true again under A2.
 - **Web assistant (the cascade door), members only.** The server decides from its own record:
   `ReadThroughTurn` holds the previous turn's mark, read in the same single query as this turn's.
   - The recruiter demo (/try) keeps the same-turn rule: it is frozen. `read_through.CARRY_ON_DEMO`
@@ -59,11 +66,6 @@ early clearing.
 - **The record.** A carried web turn writes `read_through source=carry` to the conversation's
   record, so memory consolidation keeps none of it. A carried engine turn ends with
   `done.tainted`, from which the phone writes its own line.
-- **Open: the same-turn words.** Where the carry is on, the same-turn line's "ask me again" now
-  points at a turn the carry refuses too. Two switches in `assistant/read_through.py` hold the
-  owner's two options, and both are off until he chooses:
-  - `HONEST_SAME_TURN_WORDS` (the words say "after your next message");
-  - `CARRY_AFTER_REFUSAL` off (a turn that refused a write in its own read does not carry).
 - **Phone cascade.** `ReadThroughCarry` today carries only after a read-through opener. It is to
   carry after any turn that read outside text, his own search included. That is a separate phone
   slice with its own app update.

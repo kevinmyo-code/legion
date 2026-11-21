@@ -467,8 +467,10 @@ here.
   brain the taint lives in the turn's state and every write, engine or relayed, passes one guard
   (ADR 0098, ADR 0100). **AMENDED 2026-11-21 (Kevin, ADR 0090): the taint carries one turn.** The
   person's NEXT turn refuses every write too, a change he names himself included, and the carry
-  clears once that turn is answered; on every door (the web assistant for members, the engine
-  brain, the phone in its own slice); the recruiter demo keeps the same-turn rule until he says.
+  clears once that turn is answered. A turn that already refused a write in its own read (and so
+  told him to ask again) does not carry: his next message may write. On every door (the web
+  assistant for members, the engine brain, the phone in its own slice); the recruiter demo keeps
+  the same-turn rule until he says.
 - **Memory lives on the engine, private to the member it is about (Kevin, 2026-11-05, ADR 0075).**
   *"centralized memory"*. One store (`member_memories`) for the phone, the web and the Claude
   worker on the Alienware (*"claude can write too."*); never a recruiter, never the work laptop.

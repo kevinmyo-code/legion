@@ -97,12 +97,7 @@ def tainted_refusal(state, name: str, destructive: bool = False) -> str:
         carry.note_refused(state)
     if name == "remember":
         return read_through.CARRY_REFUSAL if carried else read_through.REFUSAL
-    if carried:
-        template = read_through.CARRY_WRITE_REFUSAL
-    elif carry.until_after():
-        template = read_through.WRITE_REFUSAL_UNTIL_AFTER
-    else:
-        template = read_through.WRITE_REFUSAL
+    template = read_through.CARRY_WRITE_REFUSAL if carried else read_through.WRITE_REFUSAL
     return template.format(verb="deleted" if destructive else "changed", name=name)
 
 

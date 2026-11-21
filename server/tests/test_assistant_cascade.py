@@ -323,11 +323,7 @@ def test_an_unexpected_error_ends_the_stream_in_words(member, engine, monkeypatc
 # =============================================================================
 
 
-def test_no_write_follows_a_web_search_in_the_same_turn_nor_the_next_and_the_one_after_may(
-    member, engine
-):
-    # The carry (owner's ruling 2026-11-21, ADR 0090 amended): the turn after the search refuses
-    # too; it used to be allowed here.
+def test_no_write_follows_a_web_search_in_the_same_turn_and_the_next_turn_may(member, engine):
     engine.model = FakeModel(
         [
             call("web_search", {"query": "what day is the fair"}),
@@ -343,14 +339,7 @@ def test_no_write_follows_a_web_search_in_the_same_turn_nor_the_next_and_the_one
     conversation = _of(events, "turn")[0]["conversation_id"]
 
     engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
-    carried = _events(_post(member, text="Yes, add it.", conversation_id=conversation))
-    assert _of(carried, "tool")[0]["ok"] is False
-    assert _of(carried, "tool")[0]["text"] == read_through.CARRY_WRITE_REFUSAL.format(
-        verb="changed", name="add_event"
-    )
-
-    engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
-    later = _events(_post(member, text="Yes, add it now.", conversation_id=conversation))
+    later = _events(_post(member, text="Yes, add it.", conversation_id=conversation))
     assert _of(later, "tool")[0]["ok"] is True
 
 

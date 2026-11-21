@@ -95,7 +95,6 @@ from agents.legion.lines import (
     READ_THROUGH_WAIT,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT
     READ_THROUGH_WAIT_AFTER_WRITE,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_AFTER_WRITE
     READ_THROUGH_WAIT_CARRIED,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_CARRIED
-    READ_THROUGH_WAIT_UNTIL_AFTER,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_UNTIL_AFTER
     SPOKEN_FAILURES,  # noqa: F401 - read as cascade.SPOKEN_FAILURES
     STT_FAILED,
     TOO_MANY_TOOLS,
@@ -1540,8 +1539,10 @@ def _answer(
         wrote=wrote,
         tainted=tainted,
         carried=closing.refused_by_carry(door.calls),
-        until_after=read_through.until_after(request),
     )
+    if closing_line in closing.WAIT_LINES:
+        # It promised his next message may write: that message is not carried (A2).
+        read_through.note_refused(request)
     if closing_line is not None:
         yield say(closing_line)
     timings["wait_reason"] = int(guard_refused)

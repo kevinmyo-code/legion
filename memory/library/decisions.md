@@ -8218,3 +8218,9 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Scope:** built on the web assistant (members, live) and the engine brain (dark); the phone cascade follows in its own slice with an app update. The recruiter demo keeps the same-turn rule (frozen); applying it there is open.
 - **Words:** the carried turn says the turn before read outside text, never "this turn".
 - ADR 0090 (amended 2026-11-21).
+
+## 2026-11-21 - After a same-turn refusal, the next message may write (Kevin)
+
+- **Ruling (option A2):** the carry from the earlier entry today does not apply after a turn that already refused a write in its own outside read and told him to ask again. His next message may write, so the spoken promise is true. A plain read with no refused write still carries one turn.
+- **Rejected:** keeping the carry and rewording the promise to "after your next message" (A1).
+- ADR 0090 (amended 2026-11-21).

@@ -175,30 +175,34 @@ def test_an_unbacked_claim_on_a_carried_turn_never_says_this_turn_read_the_web(s
     assert _said(events) == [CHANGE_NOT_MADE]
 
 
-def test_option_a1_on_the_engine(seeded, monkeypatch):
-    from agents.legion.lines import READ_THROUGH_WAIT_UNTIL_AFTER
+def test_search_and_write_in_one_turn_then_the_next_message_writes(seeded):
+    """THE rule (the owner's ruling 2026-11-21, option A2), on the engine."""
+    from agents.legion.lines import READ_THROUGH_WAIT
 
-    monkeypatch.setattr(read_through, "HONEST_SAME_TURN_WORDS", True)
     model = m.FakeModel(
         [m.call("web_search", {"query": "x"}), m.call("add_checklist_item", ADD), m.say("Nine.")]
     )
-    events, state, _c = _turn(seeded, "look it up and add it", model)
-    assert _response(state, "add_checklist_item")["message"] == (
-        read_through.WRITE_REFUSAL_UNTIL_AFTER.format(verb="changed", name="add_checklist_item")
+    events, state, conversation = _turn(seeded, "look it up and add it", model)
+    assert _response(state, "add_checklist_item")["message"] == read_through.WRITE_REFUSAL.format(
+        verb="changed", name="add_checklist_item"
     )
-    assert _said(events)[-1] == READ_THROUGH_WAIT_UNTIL_AFTER
-
-
-def test_option_a2_on_the_engine(seeded, monkeypatch):
-    monkeypatch.setattr(read_through, "CARRY_AFTER_REFUSAL", False)
-    model = m.FakeModel(
-        [m.call("web_search", {"query": "x"}), m.call("add_checklist_item", ADD), m.say("Nine.")]
-    )
-    _e, state, conversation = _turn(seeded, "look it up and add it", model)
+    assert _said(events)[-1] == READ_THROUGH_WAIT
     assert carry.REFUSED_HERE in state.taint
     tool, _state = _add(seeded, conversation)
     assert tool["ok"] is True
-    # A plain read still carries under A2.
-    _e, _s, conversation = _search(seeded)
+
+
+def test_a_claim_held_back_by_the_read_also_lets_the_next_message_write(seeded):
+    model = m.FakeModel([m.call("web_search", {"query": "x"}), m.say("I added it to your list.")])
+    events, state, conversation = _turn(seeded, "look it up and add it", model)
+    assert carry.REFUSED_HERE in state.taint
     tool, _state = _add(seeded, conversation)
-    assert tool["ok"] is False
+    assert tool["ok"] is True
+
+
+def test_a_carried_engine_turn_that_refuses_carries_no_further(seeded):
+    _e, _s, conversation = _search(seeded)
+    tool, state = _add(seeded, conversation)
+    assert tool["ok"] is False and state.taint == [carry.PREVIOUS_TURN]
+    tool, _state = _add(seeded, conversation)
+    assert tool["ok"] is True

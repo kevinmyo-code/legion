@@ -129,23 +129,9 @@ CARRY_WRITE_REFUSAL = (
 # otherwise (an open decision). The one switch.
 CARRY_ON_DEMO = False
 
-# The open decision on the same-turn words (review 1121; the owner chooses, nothing is picked here).
-# Today, where the carry is on, a turn that read outside text and refused a write says "changes
-# wait for your next message", and that next message is refused again by the carry. Two switches,
-# one per option; both off is today's behaviour:
-# - A1 `HONEST_SAME_TURN_WORDS = True`: the same words say the change waits until AFTER his next
-#   message (`WRITE_REFUSAL_UNTIL_AFTER`, `lines.READ_THROUGH_WAIT_UNTIL_AFTER*`).
-# - A2 `CARRY_AFTER_REFUSAL = False`: a turn that refused a write in its own read does not carry,
-#   so the old words are true; a plain read (no refused write) still carries.
-# Where the carry is off (/try, the Live door) the old words stay: they are true there.
-HONEST_SAME_TURN_WORDS = False
-CARRY_AFTER_REFUSAL = True
-
-WRITE_REFUSAL_UNTIL_AFTER = (
-    "Nothing was {verb}: {name} did not run. This turn read outside text (a web search, the "
-    "brief's news or a GitHub result), which can carry instructions that are not the person's, "
-    "so changes wait until after their next message. Say so; they can ask again then."
-)
+# A turn that already told him the change waits for his next message does not carry (the owner's
+# ruling, 2026-11-21, option A2): when it refused a write in its own read, or said the read-through
+# wait line, its words are kept true and his next message may write. A plain read still carries.
 
 MARK_FAILED = (
     "Nothing was read. The engine could not record that this turn read the web, so it did not "
@@ -183,13 +169,6 @@ REFUSED_BASE = -1000
 
 def refused_mark(turn: int) -> int:
     return REFUSED_BASE - turn
-
-
-def until_after(request) -> bool:
-    """Whether this request's same-turn refusal must say the change waits until AFTER his next
-    message (option A1 on, and the carry on for this door)."""
-    ref = getattr(request, _TURN, None)
-    return bool(HONEST_SAME_TURN_WORDS and CARRY_AFTER_REFUSAL and ref is not None and ref.carry)
 
 
 def set_turn(request, conversation_id, turn: int | None, *, carry: bool = False) -> None:
@@ -246,8 +225,8 @@ def _marked(ref: TurnRef, user) -> str | None:
         return THIS_TURN
     if ref.turn - 1 not in turns:
         return None
-    if not CARRY_AFTER_REFUSAL and refused_mark(ref.turn - 1) in turns:
-        # Option A2: the turn before refused a write in its own read and said so; no carry.
+    if refused_mark(ref.turn - 1) in turns:
+        # The turn before refused a write in its own read and said so: no carry (A2).
         return None
     return TURN_BEFORE
 
@@ -343,21 +322,20 @@ def write_refusal(request, name: str, *, destructive: bool = False) -> str | Non
         "write_refused after=read_through tool=%s carry=%d", name, int(carried)
     )
     if not carried:
-        _note_refused(request)
+        note_refused(request)
     if name == "remember":
         # The phone's own sentence for a memory, which `remember_refusal` also answers with.
         return CARRY_REFUSAL if carried else REFUSAL
-    if carried:
-        template = CARRY_WRITE_REFUSAL
-    else:
-        template = WRITE_REFUSAL_UNTIL_AFTER if until_after(request) else WRITE_REFUSAL
+    template = CARRY_WRITE_REFUSAL if carried else WRITE_REFUSAL
     return template.format(verb="deleted" if destructive else "changed", name=name)
 
 
-def _note_refused(request) -> None:
-    """Option A2 only: notes that this turn refused a write in its own read (no carry then)."""
+def note_refused(request) -> None:
+    """Notes that this turn told him the change waits for his next message (a write refused in its
+    own read, or the spoken wait line), so it does not carry (A2): the marker row
+    `refused_mark(turn)`. Only where the carry is on; a repeat changes nothing (`get_or_create`)."""
     ref = getattr(request, _TURN, None)
-    if CARRY_AFTER_REFUSAL or ref is None or not ref.carry or ref.conversation_id is None:
+    if ref is None or not ref.carry or ref.conversation_id is None:
         return
     mark_turns(request, ref.conversation_id, (refused_mark(ref.turn),))
 

@@ -226,35 +226,49 @@ def _search_and_write_turn(client, engine):
     return events, _of(events, "turn")[0]["conversation_id"]
 
 
-def test_option_a1_the_same_turn_words_say_after_his_next_message(member, engine, monkeypatch):
-    monkeypatch.setattr(read_through, "HONEST_SAME_TURN_WORDS", True)
-    events, _c = _search_and_write_turn(member, engine)
-    assert _tools(events)[1]["text"] == read_through.WRITE_REFUSAL_UNTIL_AFTER.format(
+def test_search_and_write_in_one_turn_says_todays_words_and_the_next_message_writes(member, engine):
+    """THE rule (the owner's ruling 2026-11-21, option A2): a turn that refused a write in its own
+    read told him to ask again, so his next message is not carried and writes."""
+    events, conversation = _search_and_write_turn(member, engine)
+    assert _tools(events)[1]["text"] == read_through.WRITE_REFUSAL.format(
         verb="changed", name="add_event"
     )
-    assert _said(events) == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT_UNTIL_AFTER]
+    assert _said(events) == ["The fair is on Saturday.", cascade.READ_THROUGH_WAIT]
+    engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
+    later = _events(_post(member, text="Add the fair.", conversation_id=conversation))
+    assert _tools(later)[0]["ok"] is True
+    assert "Fair" in _event_titles()
 
 
-def test_option_a1_keeps_the_old_words_on_the_demo(visitor, engine, monkeypatch):
-    monkeypatch.setattr(read_through, "HONEST_SAME_TURN_WORDS", True)
-    events, _c = _search_and_write_turn(visitor, engine)
+def test_a_claim_held_back_by_the_read_also_lets_the_next_message_write(member, engine):
+    # The wait line said for a claimed change (no write tried) makes the same promise.
+    engine.model = FakeModel(
+        [call("web_search", {"query": "fair date"}), say("I have added the fair.")]
+    )
+    events = _events(_post(member, text="Look up the fair and add it."))
     assert _said(events)[-1] == cascade.READ_THROUGH_WAIT
-
-
-def test_option_a2_a_turn_that_refused_in_its_own_read_does_not_carry(
-    member, engine, monkeypatch
-):
-    monkeypatch.setattr(read_through, "CARRY_AFTER_REFUSAL", False)
-    events, conversation = _search_and_write_turn(member, engine)
-    assert _said(events)[-1] == cascade.READ_THROUGH_WAIT  # true again under A2
+    conversation = _of(events, "turn")[0]["conversation_id"]
     engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
     later = _events(_post(member, text="Add the fair.", conversation_id=conversation))
     assert _tools(later)[0]["ok"] is True
 
 
-def test_option_a2_a_plain_read_still_carries(member, engine, monkeypatch):
-    monkeypatch.setattr(read_through, "CARRY_AFTER_REFUSAL", False)
+def test_a_plain_search_then_a_write_is_refused_and_the_message_after_writes(member, engine):
     conversation = _search_turn(member, engine)
     engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
-    later = _events(_post(member, text="Add that.", conversation_id=conversation))
-    assert _tools(later)[0]["ok"] is False
+    carried = _events(_post(member, text="Add that.", conversation_id=conversation))
+    assert _tools(carried)[0]["ok"] is False
+    assert _said(carried) == [cascade.READ_THROUGH_WAIT_CARRIED]
+    engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
+    later = _events(_post(member, text="Add the fair.", conversation_id=conversation))
+    assert _tools(later)[0]["ok"] is True
+
+
+def test_a_carried_turn_that_refuses_carries_no_further(member, engine):
+    # No chain: the carried refusal writes no mark of its own read.
+    from assistant.models import ReadThroughTurn
+
+    conversation = _search_turn(member, engine)
+    engine.model = FakeModel([call("add_event", {"fields": {"title": "Fair"}}), say("Added.")])
+    _events(_post(member, text="Add that.", conversation_id=conversation))
+    assert sorted(ReadThroughTurn.objects.values_list("turn", flat=True)) == [0]
