@@ -524,11 +524,29 @@ class Conversation:
 
     async def _speak_stream(self, tid: int, voice: str, speed: float, t_rx: float) -> None:
         st = self.tts_streams[tid]
+        opening = asyncio.ensure_future(self.svc.tts_gpu.run(self.svc.tts.open_text_stream, voice, speed))
         try:
-            sess = await self.svc.tts_gpu.run(self.svc.tts.open_text_stream, voice, speed)
+            sess = await asyncio.shield(opening)
+        except asyncio.CancelledError:
+            opening.add_done_callback(self._abort_when_open)  # the open still finishes on the TTS thread
+            raise
         except Exception as exc:  # noqa: BLE001
             log.exception("tts stream open failed")
             return await self.error("internal", type(exc).__name__, tid)
+        try:
+            await self._stream_line(tid, st, sess, t_rx)
+        except asyncio.CancelledError:
+            # The socket closed mid-line (review F8, 2026-11-20). The speech thread holds the engine
+            # lock until its text ends; without this abort it waited for text forever and every later
+            # line on the engine waited behind it. Submitted, not awaited: this task is being cancelled.
+            self.svc.tts_gpu.pool.submit(sess.abort)
+            raise
+
+    def _abort_when_open(self, opening: asyncio.Future) -> None:
+        if not opening.cancelled() and opening.exception() is None:
+            self.svc.tts_gpu.pool.submit(opening.result().abort)
+
+    async def _stream_line(self, tid: int, st: dict, sess, t_rx: float) -> None:
         first_ms, samples, ended, end_sent = None, 0, False, False
 
         async def send(chunk) -> None:
