@@ -92,7 +92,7 @@ class VoiceSpeedWiringTest {
         val noted = greet.substring(greet.indexOf("greeting?.noteOpened("))
             .lineSequence().first()
         assertFalse("heard is still empty when the stream ends", noted.contains("reply.spoken()"))
-        assertTrue(noted.contains("GreetingWords.of(written.toString())"))
+        assertTrue(noted.contains("GreetingWords.of(written.toString(), plan.name)"))
         assertTrue(greet.contains("written.append(delta)"))
         // When it is noted is unchanged (a topic is marked raised at the same point as before).
         assertTrue(greet.indexOf("call.join()") < greet.indexOf("greeting?.noteOpened("))

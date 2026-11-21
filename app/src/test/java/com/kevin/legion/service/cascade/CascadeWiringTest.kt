@@ -530,7 +530,7 @@ class CascadeWiringTest {
     }
 
     @Test
-    fun `one closing sound, the chime: the old ACK tone is gone from every path`() {
+    fun `one closing sound, the chime, and the old ACK tone is gone from every path`() {
         val root = sourceRoot()
         // The cascade never reaches the old tone: no host hook, no bridge parameter.
         listOf("service/cascade/CascadeSession.kt", "service/cascade/CascadeBridge.kt", "service/cascade/CascadeHost.kt")
@@ -543,10 +543,10 @@ class CascadeWiringTest {
         assertFalse(live.contains("tone = ::"))
         // The Live path (retired, a rollback only) plays the same chime, once, on its window's lapse.
         assertTrue(bodyOf(live, "playCloseChime").contains("ListenCue.closeChimePcm()"))
-        assertEquals(1, Regex("playCloseChime\(\)").findAll(live).count() - 1)
+        assertEquals(1, Regex("playCloseChime\\(\\)").findAll(live).count() - 1)
         // The cascade's chime plays from the one release every close goes through, guarded to once.
         val release = bodyOf(session(), "releaseNow")
-        assertEquals(1, Regex("playCloseCue\(").findAll(release).count())
+        assertEquals(1, Regex("playCloseCue\\(").findAll(release).count())
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
