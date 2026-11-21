@@ -141,6 +141,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/turn/{turn_id}/tool_result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A limb's result for a relayed call; the round's last one streams the rest */
+        post: operations["api_agents_turn_tool_result"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/turn/stream": {
         parameters: {
             query?: never;
@@ -8678,6 +8695,16 @@ export interface components {
             needs?: components["schemas"]["AgentLimbNeedEnum"][];
             /** @default engine */
             confirm: components["schemas"]["AgentLimbConfirmEnum"];
+            read_through_when?: {
+                [key: string]: string[];
+            };
+            /** @default false */
+            mail: boolean;
+            mail_when?: {
+                [key: string]: string[];
+            };
+            /** @default 20000 */
+            deadline_ms: number;
         };
         LinkToken: {
             /** @description Short-lived; hand it to Plaid Link. */
@@ -11597,6 +11624,29 @@ export interface components {
             /** @default USER_REPORTED */
             source: string;
         };
+        ToolResult: {
+            call_id: string;
+            /** @description The tool the limb ran; if sent, it must be the call's own. */
+            name?: string;
+            outcome: components["schemas"]["ToolResultOutcomeEnum"];
+            /** @description The tool's output, when `ok`. */
+            result?: {
+                [key: string]: unknown;
+            };
+            /** @description What did or did not happen, in words. */
+            words: string;
+            ms?: number;
+            played?: string[];
+            cut_off?: boolean;
+        };
+        /**
+         * @description * `ok` - ok
+         *     * `failed` - failed
+         *     * `refused` - refused
+         *     * `timed_out` - timed_out
+         * @enum {string}
+         */
+        ToolResultOutcomeEnum: "ok" | "failed" | "refused" | "timed_out";
         TopUp: {
             available: boolean;
             reason?: string;
@@ -12629,6 +12679,79 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_agents_turn_tool_result: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToolResult"];
+                "application/x-www-form-urlencoded": components["schemas"]["ToolResult"];
+                "multipart/form-data": components["schemas"]["ToolResult"];
+            };
+        };
+        responses: {
+            /** @description text/event-stream: the rest of the turn (as `POST /api/agents/turn`), or JSON {recorded, status} when nothing more streams. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JSON {waiting_for: [call ids]}. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

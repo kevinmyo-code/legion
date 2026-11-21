@@ -27,7 +27,7 @@ from django.utils import timezone as dj_timezone
 
 from agents.graph.nodes import NodeContext, turn_graph
 from agents.graph.state import TurnState
-from agents.legion import guards, late
+from agents.legion import guards, late, relay_turn
 from agents.legion.gateway import LegionGateway
 from agents.legion.retention import prune
 from agents.legion.specs import spec as spec_named
@@ -149,16 +149,21 @@ def run_turn(
     agent: str = "generalist",
     feature: str = FEATURE,
     tool_limit=None,
+    voice: dict | None = None,
 ):
     """Yields the turn's events; returns its final `TurnState`. `agent` and `feature` are the
     spec that answers and the `llm_usage` feature it is metered under: the late-answer runner
     (`late.py`) passes its read-only `background` spec and its own feature, and `tool_limit`, its
-    cap on calls (`LegionGateway.limit`)."""
+    cap on calls (`LegionGateway.limit`). `voice`: how the voice door answers this turn
+    (`{"spoken", "exact"}`), kept with a pause on a limb so the rest of the turn is answered the
+    same way (`relay_turn.py`)."""
     started = time.monotonic()
     now = now or dj_timezone.now()
     if do_prune:
         prune()
     seq = (conversation.turns.aggregate(m=Max("seq"))["m"] or 0) + 1
+    # A turn of this conversation still paused on a limb is over now: his next turn began.
+    relay_turn.close_paused(conversation, seq)
     turn = AgentTurn.objects.create(
         household_id=conversation.household_id,
         owner_user_id=conversation.owner_user_id,
@@ -187,13 +192,19 @@ def run_turn(
         member_id=str(conversation.owner_user_id),
         client=conversation.client,
         transcript=transcript,
-        client_facts={"history_from": len(history)},
+        client_facts={"history_from": len(history), **({"voice": voice} if voice else {})},
         messages=[*history, user_content],
         pending_confirm=pending,
         graph_version=graph_version(),
     )
     yield ev.Event(
-        "turn", {"turn_id": str(turn.pk), "conversation_id": str(conversation.pk), "seq": seq}
+        "turn",
+        {
+            "turn_id": str(turn.pk),
+            "conversation_id": str(conversation.pk),
+            "seq": seq,
+            "stream_no": 1,
+        },
     )
     if agent == "generalist" and not pending:
         # The late-answer path (dark unless LEGION_LATE_ANSWERS=on). Not while a write waits for
@@ -219,32 +230,15 @@ def run_turn(
                 store.mark_taint(state)
             yield late.late_event(line, more)
 
-    def on_model_call(row: dict) -> None:
-        store.model_call(row)
-        llm_client.record(
-            household=request.user.household,
-            feature=feature,
-            model=row["model"],
-            user=request.user,
-            usage={
-                "prompt_tokens": row["prompt_tokens"],
-                "output_tokens": row["output_tokens"],
-                "total_tokens": (row["prompt_tokens"] or 0) + (row["output_tokens"] or 0),
-            },
-            cost_estimate_micro_usd=row["cost_micro_usd"],
-        )
-
-    ctx = NodeContext(
+    ctx = context(
+        request,
+        store,
+        started,
         model=model,
-        gateway=LegionGateway(request, recorder=store, observe=observe, limit=tool_limit),
-        route=route(request, agent),
-        spec=spec_named,
-        system_for=system_for,
-        hooks=LoopHooks(
-            cancelled=store.cancelled, cost_of=cost_of, on_model_call=on_model_call, started=started
-        ),
-        is_yes=guards.is_yes,
-        honesty=lambda s: guards.claims_unbacked_outcome(s.final_text, s.actions),
+        observe=observe,
+        tool_limit=tool_limit,
+        agent=agent,
+        feature=feature,
     )
     first_sentence_ms = None
     gen = turn_graph().run(state, ctx, store)
@@ -262,6 +256,50 @@ def run_turn(
         first_sentence_ms=first_sentence_ms,
     )
     return state
+
+
+def context(
+    request,
+    store: TurnStore,
+    started: float,
+    *,
+    model: ModelClient,
+    observe=None,
+    tool_limit=None,
+    agent: str = "generalist",
+    feature: str = FEATURE,
+) -> NodeContext:
+    """The graph's context for one of this member's turns, first stream or a relay's
+    continuation: the gateway as the member, the route, spend metering and the pause saver."""
+
+    def on_model_call(row: dict) -> None:
+        store.model_call(row)
+        llm_client.record(
+            household=request.user.household,
+            feature=feature,
+            model=row["model"],
+            user=request.user,
+            usage={
+                "prompt_tokens": row["prompt_tokens"],
+                "output_tokens": row["output_tokens"],
+                "total_tokens": (row["prompt_tokens"] or 0) + (row["output_tokens"] or 0),
+            },
+            cost_estimate_micro_usd=row["cost_micro_usd"],
+        )
+
+    return NodeContext(
+        model=model,
+        gateway=LegionGateway(request, recorder=store, observe=observe, limit=tool_limit),
+        route=route(request, agent),
+        spec=spec_named,
+        system_for=system_for,
+        hooks=LoopHooks(
+            cancelled=store.cancelled, cost_of=cost_of, on_model_call=on_model_call, started=started
+        ),
+        is_yes=guards.is_yes,
+        honesty=lambda s: guards.claims_unbacked_outcome(s.final_text, s.actions),
+        suspend=relay_turn.suspender(store, request),
+    )
 
 
 def _last_model_text(history: list[dict]) -> str:

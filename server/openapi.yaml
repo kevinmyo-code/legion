@@ -333,6 +333,71 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/agents/turn/{turn_id}/tool_result:
+    post:
+      operationId: api_agents_turn_tool_result
+      summary: A limb's result for a relayed call; the round's last one streams the
+        rest
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolResult'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ToolResult'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ToolResult'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: 'text/event-stream: the rest of the turn (as `POST /api/agents/turn`),
+            or JSON {recorded, status} when nothing more streams.'
+        '202':
+          description: 'JSON {waiting_for: [call ids]}.'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/agents/turn/stream:
     post:
       operationId: api_agents_turn_stream_create
@@ -19886,6 +19951,30 @@ components:
           allOf:
           - $ref: '#/components/schemas/AgentLimbConfirmEnum'
           default: engine
+        read_through_when:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              maxLength: 64
+            maxItems: 32
+        mail:
+          type: boolean
+          default: false
+        mail_when:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              maxLength: 64
+            maxItems: 32
+        deadline_ms:
+          type: integer
+          maximum: 120000
+          minimum: 500
+          default: 20000
       required:
       - actuates
       - name
@@ -26070,6 +26159,52 @@ components:
           default: USER_REPORTED
       required:
       - day
+    ToolResult:
+      type: object
+      properties:
+        call_id:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          description: The tool the limb ran; if sent, it must be the call's own.
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+        outcome:
+          $ref: '#/components/schemas/ToolResultOutcomeEnum'
+        result:
+          type: object
+          additionalProperties: {}
+          description: The tool's output, when `ok`.
+        words:
+          type: string
+          description: What did or did not happen, in words.
+          maxLength: 2000
+        ms:
+          type: integer
+          minimum: 0
+        played:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+        cut_off:
+          type: boolean
+      required:
+      - call_id
+      - outcome
+      - words
+    ToolResultOutcomeEnum:
+      enum:
+      - ok
+      - failed
+      - refused
+      - timed_out
+      type: string
+      description: |-
+        * `ok` - ok
+        * `failed` - failed
+        * `refused` - refused
+        * `timed_out` - timed_out
     TopUp:
       type: object
       properties:

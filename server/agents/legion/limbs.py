@@ -14,7 +14,7 @@ ticket").
   engine's own confirm-before-write applies; `limb`: the limb runs its own confirm gate, as the
   phone's clear-codes yes rule does). `needs` names what the call needs on the device.
 - `streams`: the data streams the limb can send (unused until ticket 11).
-Nothing here relays a call yet (that is E2); the manifest is stored for it.
+The relay (E2, `agents/legion/relay.py`) offers a turn the tools of the limb that made it.
 
 **Which brain** (plan 1119 section 4, flag precedence), first that is set wins:
 1. `LEGION_AGENTS_BRAIN_FORCE` (phone or engine): every member, whatever the phone asks.
@@ -58,6 +58,11 @@ MAX_DESCRIPTION_CHARS = 4000
 MAX_PARAMETER_DEPTH = 16
 NAME_PATTERN = r"^[a-z][a-z0-9_]{0,63}$"
 NEEDS = ("screen", "unlock", "parked")
+# A relayed call's time on the device (E2). The default is the client contract's 20 s tool hold
+# (`docs/contracts/voice-client-v1.md`); a person reading a confirm screen needs the long end.
+DEFAULT_DEADLINE_MS = 20_000
+MIN_DEADLINE_MS = 500
+MAX_DEADLINE_MS = 120_000
 CONFIRMS = ("engine", "limb")
 BRAIN_REASONS = ("forced", "override", "asked", "default")
 # The `code` beside every refusal's `detail`, so a client can branch without parsing words.
@@ -68,7 +73,7 @@ CODE_TOO_LARGE = "manifest_too_large"
 CODE_LENGTH_REQUIRED = "length_required"
 
 
-def _problem(value, max_depth: int) -> str | None:
+def storable_problem(value, max_depth: int) -> str | None:
     """What makes `value` unstorable, or None. Walked with a stack, not recursion, so a deep value
     is measured rather than crashing the walk.
 
@@ -105,6 +110,25 @@ class LimbToolSerializer(serializers.Serializer):
         child=serializers.ChoiceField(choices=NEEDS), max_length=len(NEEDS), default=list
     )
     confirm = serializers.ChoiceField(choices=CONFIRMS, default="engine")
+    # E2 (the relay), optional, so an E1 manifest still fits (contract version unchanged):
+    # - `read_through_when`: a folded tool's calls whose arguments make them outside text, as
+    #   {argument: [values]} (the phone's `look_up` with `domain: ask_mail`, `browser` `read`);
+    # - `mail` / `mail_when`: the tool, or those calls, read mail: never relayed by the engine
+    #   (`relay.is_mail_class` also checks names itself, so an undeclared mail tool is still
+    #   caught by its name);
+    # - `deadline_ms`: how long the limb may take (the engine waits that plus a grace).
+    read_through_when = serializers.DictField(
+        child=serializers.ListField(child=serializers.CharField(max_length=64), max_length=32),
+        default=dict,
+    )
+    mail = serializers.BooleanField(default=False)
+    mail_when = serializers.DictField(
+        child=serializers.ListField(child=serializers.CharField(max_length=64), max_length=32),
+        default=dict,
+    )
+    deadline_ms = serializers.IntegerField(
+        min_value=MIN_DEADLINE_MS, max_value=MAX_DEADLINE_MS, default=DEFAULT_DEADLINE_MS
+    )
 
 
 class LimbManifestSerializer(serializers.Serializer):
@@ -126,11 +150,11 @@ class LimbManifestSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         for tool in attrs["tools"]:
-            problem = _problem(tool["parameters"], MAX_PARAMETER_DEPTH)
+            problem = storable_problem(tool["parameters"], MAX_PARAMETER_DEPTH)
             if problem:
                 raise serializers.ValidationError(f"Tool {tool['name']}'s parameters: {problem}")
         # Everything else is at most three levels deep; the walk is for U+0000.
-        problem = _problem(_manifest(attrs), MAX_PARAMETER_DEPTH + 4)
+        problem = storable_problem(_manifest(attrs), MAX_PARAMETER_DEPTH + 4)
         if problem:
             raise serializers.ValidationError(problem)
         size = len(json.dumps(_manifest(attrs)).encode())

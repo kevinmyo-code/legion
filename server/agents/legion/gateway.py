@@ -12,16 +12,22 @@
   itself to the turn's taint and the store saves it; if the save fails the tool does not run and
   the turn is refused writes for good (fail closed, ADR 0090).
 - **Every call is recorded** (`AgentToolCall`): redacted arguments, trimmed result, outcome,
-  guard, time. Never a mail tool's content (`redact.py`).
+  guard, time. Never a mail tool's content (`redact.py`), and never outside text, by class: a
+  third-party tool's result (or a procedure's that read one) is stubbed, it marks
+  `TurnState.outside`, and every later call's arguments are stubbed too.
+- **Limb tools** (the relay, slice E2, `relay.py`): the turn's own limb's manifest tools are
+  offered beside the engine's; a call to one is checked by `relay.decide` and comes back as
+  `ToolOutcome(relay=request)`: nothing ran, the loop pauses. Its trace row is written when the
+  limb's result arrives (`relay_turn.py`).
 """
 
 from __future__ import annotations
 
 import time
 
-from agents.legion import guards, redact
+from agents.legion import guards, redact, relay
 from agents.legion.twins import TWINS
-from agents.runtime.tools import ToolCall, ToolOutcome
+from agents.runtime.tools import RELAY_ALONE, RELAY_BATCH, ToolCall, ToolOutcome
 from assistant import live, read_through
 from assistant.surface import tools_for, web_description
 from engine_mcp.models import Outcome
@@ -94,6 +100,21 @@ class LegionGateway:
         # The eval runner's ear: every call's name, arguments, outcome and full result text.
         self.observe = observe
         self._tools = None
+        self._limb = None
+        self._limb_tools = None
+
+    def limb_tools(self) -> dict[str, relay.LimbTool]:
+        """The relayable tools of the limb that made this turn (none without one, no query)."""
+        if self._limb_tools is None:
+            self._limb = relay.limb_of(self.request)
+            self._limb_tools = relay.tools_of(self._limb, set(self.tools()))
+        return self._limb_tools
+
+    def relay_kind(self, call: ToolCall) -> str | None:
+        tool = self.limb_tools().get(call.name)
+        if tool is None:
+            return None
+        return RELAY_ALONE if relay.reads_outside(tool, call.args) else RELAY_BATCH
 
     def tools(self) -> dict:
         if self._tools is None:
@@ -109,7 +130,11 @@ class LegionGateway:
     def declarations(self, spec) -> list[dict]:
         tools = self.tools()
         chosen = [tools[name] for name in spec.tools if name in tools]
-        return rest_declarations(chosen)
+        limb = [
+            {**decl, "parameters": _rest_schema(decl["parameters"])}
+            for decl in map(relay.declaration, self.limb_tools().values())
+        ]
+        return rest_declarations(chosen) + limb
 
     def is_slow(self, name: str) -> bool:
         return name in SLOW_TOOLS
@@ -117,13 +142,13 @@ class LegionGateway:
     def call(self, state, spec, call: ToolCall, deadline_s: float) -> ToolOutcome:
         tool = self.tools().get(call.name)
         started = time.monotonic()
+        if tool is None and call.name in self.limb_tools():
+            return self._relay(state, spec, call, self.limb_tools()[call.name], started)
         if headunit_scope.is_headunit(self.request):
             # T3b review B4: a head unit's turn reads at a point, and its own vehicle only.
             args, refusal = headunit_scope.tool_arguments(self.request, call.name, call.args)
             if refusal is not None:
-                return self._done(
-                    state, call, tool, False, refusal, "refused", "headunit", started
-                )
+                return self._done(state, call, tool, False, refusal, "refused", "headunit", started)
             call = ToolCall(call.id, call.name, args)
         if self.limit is not None:
             words = self.limit(state, call)
@@ -148,14 +173,60 @@ class LegionGateway:
                     "tainted",
                     started,
                 )
+        read_before = read_through.read_third_party(self.request)
         result: ToolResult = run_engine_tool(self.request, tool, dict(call.args))
         # The deadline is soft (budget.py): a late tool is not interrupted; its `ms` says so.
         outcome = _OUTCOMES.get(result.outcome, "failed" if result.is_error else "ok")
-        return self._done(
-            state, call, tool, not result.is_error, result.text, outcome, None, started
+        # Its result is outside text by class: a third-party tool, or one whose run read one (a
+        # procedure step calling `brief_latest` flags the request, `read_through.before_tool`).
+        outside = guards.needs_taint(call.name) or (
+            not read_before and read_through.read_third_party(self.request)
         )
+        done = self._done(
+            state,
+            call,
+            tool,
+            not result.is_error,
+            result.text,
+            outcome,
+            None,
+            started,
+            outside=outside,
+        )
+        if outside:
+            state.add_taint(call.name)
+            state.add_outside(call.name)
+        return done
 
-    def _done(self, state, call, tool, ok, text, outcome, guard, started) -> ToolOutcome:
+    def _relay(self, state, spec, call, tool, started) -> ToolOutcome:
+        """A limb tool's call: refused here in words, kept as a device action for after the reply
+        (K1), or handed to the limb (`ToolOutcome.relay`; the loop pauses)."""
+        where = str(self._limb.pk)
+        decision = relay.decide(state, spec, tool, call.args)
+        if decision.verdict is not None:
+            v = decision.verdict
+            return self._done(state, call, tool, False, v.words, "refused", v.guard, started, where)
+        if decision.after_turn:
+            state.after_turn.append({"name": tool.name, "args": dict(call.args)})
+            words = relay.AFTER_TURN_WORDS.format(name=tool.name)
+            return self._done(state, call, tool, False, words, "refused", "tainted", started, where)
+        tainted_before = state.tainted
+        if relay.reads_outside(tool, call.args):
+            # Taint before the request leaves (ADR 0098), saved or the request never goes.
+            state.add_taint(tool.name)
+            saved = self.recorder.mark_taint(state) if self.recorder is not None else True
+            if not saved:
+                words = read_through.MARK_FAILED
+                return self._done(
+                    state, call, tool, False, words, "refused", "tainted", started, where
+                )
+        request = relay.request(state, tool, call, tainted_before)
+        request["limb_id"] = where
+        return ToolOutcome(name=tool.name, ok=False, response={}, writes=tool.writes, relay=request)
+
+    def _done(
+        self, state, call, tool, ok, text, outcome, guard, started, where="engine", outside=False
+    ) -> ToolOutcome:
         ms = int((time.monotonic() - started) * 1000)
         writes = bool(tool is not None and tool.writes)
         if self.recorder is not None:
@@ -164,11 +235,12 @@ class LegionGateway:
                 call_id=call.id,
                 tool=call.name,
                 writes=writes,
-                args=redact.redact_args(call.name, call.args),
-                result=redact.trim_result(call.name, text),
+                args=redact.redact_args(call.name, call.args, after_outside=bool(state.outside)),
+                result=redact.trim_result(call.name, text, outside=outside or bool(state.outside)),
                 outcome=outcome,
                 guard=guard,
                 ms=ms,
+                where=where,
             )
         if self.observe is not None:
             self.observe(

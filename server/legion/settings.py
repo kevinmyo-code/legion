@@ -637,6 +637,9 @@ REST_FRAMEWORK = {
         "agents_turn": "30/min",
         # `kind=say` on the agents door: a client's own line spoken, no model (review C4).
         "agents_say": "10/min",
+        # A limb's results on a paused agent turn (`agents.relay_views`): one post per relayed
+        # call, a few per turn at most, plus a re-post to recover a dropped stream.
+        "agents_tool_result": "60/min",
         # The browser's half of a conversation record (`POST /api/assistant/conversation`):
         # about one upload per turn and one at the end, per member.
         "assistant_conversation": (

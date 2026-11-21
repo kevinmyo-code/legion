@@ -18,8 +18,10 @@ import logging
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
+from agents.graph.state import OUTSIDE_REPLY_STUB
 from agents.legion import redact
 from agents.models import (
+    TURN_AWAITING_LIMB,
     AgentCheckpoint,
     AgentConversation,
     AgentModelCall,
@@ -28,6 +30,19 @@ from agents.models import (
 )
 
 log = logging.getLogger(__name__)
+
+# The event fields that hold words, blanked in a stored event once outside text was read.
+_WORD_FIELDS = ("text", "final_text", "words", "args")
+
+
+def _without_words(event: dict) -> dict:
+    data = {
+        k: (OUTSIDE_REPLY_STUB if k in _WORD_FIELDS else v)
+        for k, v in (event.get("data") or {}).items()
+    }
+    if "device_actions" in data:
+        data["device_actions"] = [{"name": a.get("name")} for a in data["device_actions"]]
+    return {**event, "data": data}
 
 
 def _safe(what: str):
@@ -57,13 +72,19 @@ class TurnStore:
     @_safe("checkpoint")
     def save(self, state, node: str, step: int, events) -> None:
         raw = json.loads(json.dumps(state.to_json(), default=str))
-        raw["messages"] = redact.history_for_storage(raw.get("messages") or [])
+        raw["messages"] = redact.history_for_storage(raw.get("messages") or [], state.outside)
+        kept = [e.to_json() for e in events]
+        if state.outside:
+            # The node's words may carry the outside text on: none are kept (plan 1119 s5).
+            raw["final_text"] = raw["words"] = OUTSIDE_REPLY_STUB
+            raw["after_turn"] = [{"name": a.get("name")} for a in raw.get("after_turn") or []]
+            kept = [_without_words(e) for e in kept]
         AgentCheckpoint.objects.create(
             turn=self.turn,
             step=step,
             node=node,
             state=raw,
-            events=[e.to_json() for e in events],
+            events=kept,
             **self._owner,
         )
 
@@ -97,8 +118,30 @@ class TurnStore:
             outcome=row["outcome"],
             guard=row["guard"],
             ms=row["ms"],
+            where=row.get("where") or "engine",
             **self._owner,
         )
+
+    def suspend(self, state) -> bool:
+        """Saves a turn paused on a limb (`state.pending_relay`), with the whole state it resumes
+        from, BEFORE any `tool_request` leaves. Like `mark_taint` it fails closed: False and the
+        request never goes out. The state is stored as the checkpointer stores it; it holds no
+        outside text (the gateway refuses a limb call once any was read)."""
+        try:
+            raw = json.loads(json.dumps(state.to_json(), default=str))
+            raw["messages"] = redact.history_for_storage(raw.get("messages") or [])
+            relay = {**state.pending_relay, "state": raw}
+            with transaction.atomic():
+                AgentTurn.objects.filter(pk=self.turn.pk).update(
+                    status=TURN_AWAITING_LIMB,
+                    pending_relay=relay,
+                    tainted=state.tainted,
+                    taint_sources=list(state.taint),
+                )
+            return True
+        except (DatabaseError, TypeError, ValueError):
+            log.warning("agents: a pause on a limb was not saved; nothing was sent", exc_info=True)
+            return False
 
     def mark_taint(self, state) -> bool:
         try:
@@ -119,10 +162,18 @@ class TurnStore:
 
     @_safe("turn")
     def finish(self, state, *, latency_ms: int, first_sentence_ms: int | None) -> None:
+        if state.status == TURN_AWAITING_LIMB:
+            # Paused, not finished: `suspend` wrote the row; only the timings so far are added.
+            AgentTurn.objects.filter(pk=self.turn.pk).update(
+                latency_ms=latency_ms, first_sentence_ms=first_sentence_ms
+            )
+            return
         status = (
             state.status if state.status in ("done", "cancelled", "failed", "refused") else "failed"
         )
         AgentTurn.objects.filter(pk=self.turn.pk).update(
+            # A relayed turn's last stream ends its pause (null already on any other turn).
+            pending_relay=None,
             route_agents=list((state.route or {}).get("agents") or []),
             route_reason=(state.route or {}).get("reason", ""),
             status=status,
@@ -135,7 +186,7 @@ class TurnStore:
             first_sentence_ms=first_sentence_ms,
             cost_micro_usd=state.budget.cost_micro_usd,
             history=redact.history_for_storage(
-                state.messages[state.client_facts.get("history_from", 0) :]
+                state.messages[state.client_facts.get("history_from", 0) :], state.outside
             ),
         )
         AgentConversation.objects.filter(pk=self.turn.conversation_id).update(

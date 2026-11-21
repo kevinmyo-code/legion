@@ -32,6 +32,10 @@ class ToolOutcome:
     # The result IS the turn's answer (code says it): the loop finishes the round's calls and asks
     # the model nothing more.
     ends_turn: bool = False
+    # Set when the call runs on a limb, not here (ADR 0098, the relay): the `tool_request` the
+    # limb is sent (JSON). Nothing ran yet; the loop pauses the round on it (`loop.Suspension`)
+    # and ignores the other fields. A gateway that never relays never sets it.
+    relay: dict | None = None
 
 
 class ToolGateway(Protocol):
@@ -40,3 +44,11 @@ class ToolGateway(Protocol):
     def is_slow(self, name: str) -> bool: ...
 
     def call(self, state, spec, call: ToolCall, deadline_s: float) -> ToolOutcome: ...
+
+
+# Optional on a gateway (read with `getattr`, so a gateway that never relays, such as the web
+# door's, need not define it): `relay_kind(call) -> None | RELAY_BATCH | RELAY_ALONE`, whether a
+# call would go to a limb, asked BEFORE it runs so the loop keeps the round's calls in order.
+# `RELAY_ALONE`: its result is outside text, so it pauses alone (nothing else waits beside it).
+RELAY_BATCH = "batch"
+RELAY_ALONE = "alone"

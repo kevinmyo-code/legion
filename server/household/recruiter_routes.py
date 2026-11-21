@@ -250,6 +250,7 @@ RECRUITER_DENIED: dict[str, str] = {
     "agents.views.AgentTurnView": _AGENTS,
     "agents.views.AgentTurnStreamView": _AGENTS,
     "agents.views.AgentCancelView": _AGENTS,
+    "agents.relay_views.AgentToolResultView": _AGENTS,
     "agents.views.AgentLimbView": _AGENTS,
     "agents.views.AgentWarmView": _AGENTS,
     "agents.views.AgentProbeSseView": _AGENTS,
