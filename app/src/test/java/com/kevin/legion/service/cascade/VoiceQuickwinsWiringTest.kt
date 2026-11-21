@@ -50,7 +50,10 @@ class VoiceQuickwinsWiringTest {
         assertTrue(bodyOf(s, "answerGotGate").contains("answer_hold_ms="))
         // Every turn of his starts a fresh timeline and clears the last turn's marks.
         val schedule = bodyOf(s, "scheduleBackchannel")
-        for (reset in listOf("answerAskedAtMs = null", "turnEndsConversation = false", "turnGap = TurnGap(eotAtMs, lastLocalSpeechAtMs)")) {
+        val resets = listOf(
+            "answerAskedAtMs = null", "turnEndsConversation = false", "turnGap = TurnGap(eotAtMs, lastLocalSpeechAtMs)",
+        )
+        for (reset in resets) {
             assertTrue(reset, schedule.indexOf(reset) in 0 until schedule.indexOf("Backchannel.decide("))
         }
         // Each filler kind marks its own sound.
