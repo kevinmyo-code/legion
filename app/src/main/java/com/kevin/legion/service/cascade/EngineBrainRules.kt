@@ -140,19 +140,6 @@ internal object EngineBrainRules {
     /** Reasons worth a log line (the others are every turn of a phone conversation). */
     val LOGGED_KEEPS = setOf("test", "prompt", "mail", "check_in", "phone_confirm", "mail_follow_up")
 
-    /**
-     * Whether a turn the phone keeps for [why] with [words] reaches the engine only as the placeholder
-     * (review R3), and whether the mail exchange goes on after it; null: not private. Mail words make
-     * it private and open the exchange; inside an open exchange ([mailExchange]) a follow-up is
-     * private, and the exchange goes on only while phone state still waits on him (`phone_confirm`).
-     */
-    fun privateKeep(why: String, words: String, mailExchange: Boolean): Boolean? = when {
-        MAIL_WORDS.containsMatchIn(words) -> true
-        mailExchange && why in FOLLOW_UPS -> why == "phone_confirm"
-        else -> null
-    }
-
-    private val FOLLOW_UPS = setOf("phone_confirm", "mail_follow_up", "check_in")
 
     /**
      * His words about mail and what the phone reads from mail (the brief's mail sections, parcels

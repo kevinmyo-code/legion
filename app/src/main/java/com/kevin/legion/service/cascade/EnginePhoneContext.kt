@@ -59,15 +59,16 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
     }
 
     /**
-     * The phone keeps this turn for a reason that keeps his words off the engine (mail, review R3):
-     * it goes as a blanked record, so the engine knows a turn happened and nothing of it. [continues]:
-     * the mail exchange goes on after it (mail words, or phone state still waiting on his yes); a
-     * follow-up that leaves no state ends it, so the exchange never chains on its own.
+     * The phone keeps this turn for [why] (review R3): with mail words, or inside an open mail exchange
+     * as its follow-up, it goes as a blanked record, so the engine knows a turn happened and nothing
+     * of it. Mail words open (or keep open) the exchange; a follow-up keeps it open only while phone
+     * state still waits on him (`phone_confirm`), so the exchange never chains on its own.
      */
     @Synchronized
-    fun keptPrivately(continues: Boolean) {
-        keepPrivate = true
-        privateContinues = continues
+    fun phoneKept(why: String, words: String) {
+        val mail = EngineBrainRules.MAIL_WORDS.containsMatchIn(words)
+        keepPrivate = mail || (mailExchange && why in FOLLOW_UPS)
+        privateContinues = mail || why == "phone_confirm"
     }
 
     /** The greeting the phone spoke: the engine's `prior_line`, never phone state his reply answers. */
@@ -97,19 +98,22 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
         val private = keepPrivate
         keepPrivate = false
         if (fromUser) mailExchange = private && privateContinues
+        val blank = readThrough || private
         if (answer.isNotBlank()) {
-            priorLine = if (readThrough || private) null else answer.take(MAX_PRIOR_CHARS)
-            carryTainted = readThrough || private
+            priorLine = if (blank) null else answer.take(MAX_PRIOR_CHARS)
+            carryTainted = blank
         }
-        if (fromUser && said.isNotBlank()) {
-            turns.addLast(
-                JSONObject()
-                    .put("said", if (private) KEPT_PRIVATE else said.take(MAX_SAID_CHARS))
-                    .put("answer", if (readThrough || private) "" else answer.take(MAX_ANSWER_CHARS))
-                    .put("tainted", readThrough || private),
-            )
-            while (turns.size > MAX_TURNS || size() > MAX_TOTAL_CHARS) turns.removeFirst()
-        }
+        if (fromUser && said.isNotBlank()) add(if (private) KEPT_PRIVATE else said, if (blank) "" else answer, blank)
+    }
+
+    private fun add(said: String, answer: String, tainted: Boolean) {
+        turns.addLast(
+            JSONObject()
+                .put("said", said.take(MAX_SAID_CHARS))
+                .put("answer", answer.take(MAX_ANSWER_CHARS))
+                .put("tainted", tainted),
+        )
+        while (turns.size > MAX_TURNS || size() > MAX_TOTAL_CHARS) turns.removeFirst()
     }
 
     /** The `client_facts` object for the engine's next turn. */
@@ -139,5 +143,8 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
         /** What the engine gets for a turn the phone kept privately (the engine's `said` may not be blank). */
         const val KEPT_PRIVATE = "[a turn the device answered itself; not shared]"
         private const val MS_PER_MINUTE = 60_000
+
+        /** Reasons a turn is kept as a mail exchange's follow-up ([EngineBrainRules.phoneAwaits]). */
+        private val FOLLOW_UPS = setOf("phone_confirm", "mail_follow_up", "check_in")
     }
 }

@@ -2118,18 +2118,23 @@ internal class CascadeSession(
         val checkIn = checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING
         val asked = turn?.asked == true || lastTurnAsked
         val awaits = EngineBrainRules.phoneAwaits(checkIn, asked, brain.context.mailExchange)
+        val facts = EngineBrainRules.Facts(test != null, true, true, brain.state == EngineBrain.State.ON, awaits)
+        val unsettled = toolsInFlight.get() > 0 || carry.isNotBlank()
+        val phoneOnly = unsettled || stt == null || phoneOnlyNow(stt)
+        if (phoneOnly || EngineBrainRules.phoneKeeps(words, facts) != null) e.release() else e.goNow()
+        LiveLatency.log(LiveLatency.TAG, "engine_early go=${if (e.goPosted) 1 else 0} for=u${u.id}")
+    }
+
+    /** [runTurn]'s own word checks, before any routing: nothing heard, stop, crisis, the guard, language. */
+    private fun phoneOnlyNow(stt: SttResult.Text): Boolean {
+        val words = stt.text
         val cloud = backend?.kind == SpeechBackend.Kind.CLOUD
         val language = SpokenLanguages.decide(words, languages, conversationLanguage, cloud, CompanionProfile.name(ctx))
-        val phoneOnly = when {
-            stt == null || words.isBlank() -> true
-            toolsInFlight.get() > 0 || carry.isNotBlank() -> true
-            endsConversation(words) || CrisisDetector.detect(words) -> true
+        return when {
+            words.isBlank() || endsConversation(words) || CrisisDetector.detect(words) -> true
             verdictOf(stt) is SttGuard.Verdict.Drop -> true
             else -> language != SpokenLanguages.Decision.Stay
         }
-        val facts = EngineBrainRules.Facts(test != null, true, true, brain.state == EngineBrain.State.ON, awaits)
-        if (phoneOnly || EngineBrainRules.phoneKeeps(words, facts) != null) e.release() else e.goNow()
-        LiveLatency.log(LiveLatency.TAG, "engine_early go=${if (e.goPosted) 1 else 0} for=u${u.id}")
     }
 
     private fun verdictOf(stt: SttResult.Text): SttGuard.Verdict =

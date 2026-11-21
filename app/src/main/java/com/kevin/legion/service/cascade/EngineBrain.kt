@@ -134,7 +134,7 @@ internal class EngineBrain(
             else -> EngineBrainRules.phoneKeeps(words, facts.facts(engineHeard = live != null, on = state == State.ON))
         }
         // His mail exchange never reaches the engine but as the placeholder (review R3).
-        why?.let { EngineBrainRules.privateKeep(it, words, context.mailExchange) }?.let { context.keptPrivately(it) }
+        why?.let { context.phoneKept(it, words) }
         if (why != null) {
             // A turn the phone keeps is taken back: held, nothing of it acts on the engine.
             utt?.release()
