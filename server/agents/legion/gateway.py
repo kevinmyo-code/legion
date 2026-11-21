@@ -28,6 +28,7 @@ import time
 
 from agents.legion import guards, hold, redact, relay
 from agents.legion.client_facts import TEST_MODE_WORDS
+from agents.legion.spoken import TurnCall
 from agents.legion.twins import TWINS
 from agents.runtime.tools import RELAY_ALONE, RELAY_BATCH, ToolCall, ToolOutcome
 from assistant import live, read_through
@@ -111,6 +112,9 @@ class LegionGateway:
         self._tools = None
         self._limb = None
         self._limb_tools = None
+        # Every call of this stream as the speech rules read it (`spoken.py`): name, success, the
+        # result's text and plain data. Never sent anywhere; gone with the stream.
+        self.calls: list[TurnCall] = []
 
     def limb_tools(self) -> dict[str, relay.LimbTool]:
         """The relayable tools of the limb that made this turn (none without one, no query)."""
@@ -248,6 +252,7 @@ class LegionGateway:
             started,
             outside=outside,
             fact=fact,
+            data=result.structured if not result.is_error else None,
         )
         if outside:
             state.add_taint(call.name)
@@ -305,9 +310,11 @@ class LegionGateway:
         where="engine",
         outside=False,
         fact=None,
+        data=None,
     ) -> ToolOutcome:
         ms = int((time.monotonic() - started) * 1000)
         writes = bool(tool is not None and tool.writes)
+        self.calls.append(TurnCall(call.name, ok, text, writes, data))
         if self.recorder is not None:
             self.recorder.tool_call(
                 state,

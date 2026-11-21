@@ -35,6 +35,7 @@ from agents.legion.gateway import LegionGateway
 from agents.legion.hold import TurnHold
 from agents.legion.retention import prune
 from agents.legion.specs import spec as spec_named
+from agents.legion.spoken import spoken_turn
 from agents.legion.store import TurnStore
 from agents.models import AgentConversation, AgentTurn
 from agents.runtime import events as ev
@@ -286,7 +287,7 @@ def run_turn(
         turn_hold=hold,
     )
     first_sentence_ms = None
-    gen = turn_graph().run(state, ctx, store)
+    gen = spoken_turn(state, ctx, agent).run(turn_graph().run(state, ctx, store))
     try:
         while True:
             event = next(gen)

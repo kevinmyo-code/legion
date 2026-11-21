@@ -18,6 +18,7 @@ from django.db import transaction
 from agents.graph.nodes import NodeContext, turn_graph
 from agents.graph.state import TurnState
 from agents.legion import relay_turn
+from agents.legion.spoken import spoken_turn
 from agents.legion.store import TurnStore
 from agents.models import TURN_FAILED, TURN_RUNNING, AgentTurn
 from agents.runtime import events as ev
@@ -47,7 +48,8 @@ def resume(request, turn: AgentTurn, paused: dict, model, *, context, fresh=None
     ctx: NodeContext = context(request, store, started)
     ctx.relay_results = outcomes
     first_sentence_ms = None
-    gen = turn_graph().run(state, ctx, store, from_node="agent")
+    agent = ((state.route or {}).get("agents") or ["generalist"])[0]
+    gen = spoken_turn(state, ctx, agent).run(turn_graph().run(state, ctx, store, from_node="agent"))
     try:
         yield ev.Event(
             "turn",
