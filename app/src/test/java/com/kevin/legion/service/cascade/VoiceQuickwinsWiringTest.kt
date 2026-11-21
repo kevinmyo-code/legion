@@ -40,7 +40,8 @@ class VoiceQuickwinsWiringTest {
     fun `the answer's clip ask and first audio feed the rule and the bench line`() {
         val s = session()
         val speaker = bodyOf(s, "newSpeaker")
-        assertTrue(speaker.contains("onAnswerAsked = { eotAtMs?.let { answerAskedAtMs = answerAskedAtMs ?: System."))
+        assertTrue(speaker.contains("onAnswerAsked = { answerAsked(eotAtMs) }"))
+        assertTrue(bodyOf(s, "answerAsked").contains("answerAskedAtMs == null"))
         assertTrue(speaker.contains("answerAudioIn(eotAtMs, now, ttsAskedAtMs)"))
         val audio = bodyOf(s, "answerAudioIn")
         assertTrue(audio.indexOf("answerAudioStarted = true") in 0 until audio.indexOf("turnGap?.line(now)"))
@@ -109,7 +110,8 @@ class VoiceQuickwinsWiringTest {
         val onTap = bodyOf(c, "onTap")
         assertTrue(onTap.indexOf("CallWatch.isInCallNow(appContext)") in 0 until onTap.indexOf("openCascade("))
         val watch = stripComments(File(sourceRoot(), "service/cascade/CallWatch.kt").readText())
-        assertTrue(bodyOf(watch, "isInCallNow").contains("CallPause.blocksOpen("))
+        val door = watch.substring(watch.indexOf("fun isInCallNow("))
+        assertTrue(door.contains("CallPause.blocksOpen(signals(ctx,"))
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())

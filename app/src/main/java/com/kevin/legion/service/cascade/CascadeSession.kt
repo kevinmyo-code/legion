@@ -2542,7 +2542,7 @@ internal class CascadeSession(
             onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
             onFillerStarted = { text -> noteTaskFiller(text) },
             // Only a turn of his has a wait to fill ([DeadAir]): its first answer clip asked of the voice.
-            onAnswerAsked = { eotAtMs?.let { answerAskedAtMs = answerAskedAtMs ?: System.currentTimeMillis() } },
+            onAnswerAsked = { answerAsked(eotAtMs) },
             onFillerPlayed = {
                 noteTaskFillerEnded()
                 // Half-duplex: the filler is over, the answer is not here yet. Listen again once it
@@ -2584,6 +2584,11 @@ internal class CascadeSession(
             turnGap?.line(now)?.let { line -> LiveLatency.log(LiveLatency.TAG, line) }
         }
         LiveLatency.log(LiveLatency.TAG, "tts_first_ms=${now - ttsAskedAtMs}")
+    }
+
+    /** A turn of his ([eotAtMs]): its first answer clip was asked of the voice now ([DeadAir]). */
+    private fun answerAsked(eotAtMs: Long?) {
+        if (eotAtMs != null && answerAskedAtMs == null) answerAskedAtMs = System.currentTimeMillis()
     }
 
     /** The answer's first write got the play gate: how long a filler clip held it (0 when none). */

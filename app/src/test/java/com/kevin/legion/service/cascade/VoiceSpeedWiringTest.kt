@@ -65,7 +65,9 @@ class VoiceSpeedWiringTest {
             assertFalse("the chime must not touch $reply", chime.contains(reply))
         }
         // Played once capture has started; the listening window after it, unless he already spoke.
-        assertTrue(bodyOf(s, "startMic").contains("onRecording = recording"))
+        // 2026-11-21: the record's session id goes to the call watch first ([CallWatch]).
+        val mic = bodyOf(s, "startMic")
+        assertTrue(mic.indexOf("callWatch.ourCapture(id)") in 0 until mic.lastIndexOf("recording()"))
         val after = bodyOf(s, "listenAfterChime")
         assertTrue(after.contains("turnJob = scope.launch(loop)"))
         assertTrue(after.contains("if (!heardSinceOpen) backToListening()"))
