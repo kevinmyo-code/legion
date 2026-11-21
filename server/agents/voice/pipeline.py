@@ -240,13 +240,22 @@ class Utterance:
     # `say`: the line to speak.
     text: str | None = None
     # A `transcript` turn answered aloud too (an `audio` or `say` turn always is).
-    speak: bool = False
+    # True/False: answered aloud or not, whatever the kind (`agents/turn_options.py`); None:
+    # the door's default (audio and `say` are spoken, a transcript is not).
+    speak: bool | None = None
+    # The hold (`agents/legion/hold.py`) and the limb's facts (`client_facts.py`).
+    go: bool = True
+    client_facts: dict | None = None
     # The streamed door's result (`streaming.Streamed`): its transcript, usage and marks.
     streamed: object | None = None
 
     @property
     def spoken(self) -> bool:
-        return self.audio is not None or self.kind == "say" or self.speak
+        if self.kind == "say":
+            return True
+        if self.speak is not None:
+            return self.speak
+        return self.audio is not None
 
 
 def voice_turn(
@@ -350,6 +359,8 @@ def voice_turn(
             model_for(),
             conversation=conversation_for(),
             voice={"spoken": speaker.enabled, "exact": speaker.exact},
+            go=utterance.go,
+            client_facts=utterance.client_facts,
         )
         status = yield from _answer(
             request,

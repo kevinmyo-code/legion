@@ -36,6 +36,9 @@ class ToolOutcome:
     # limb is sent (JSON). Nothing ran yet; the loop pauses the round on it (`loop.Suspension`)
     # and ignores the other fields. A gateway that never relays never sets it.
     relay: dict | None = None
+    # A write that went through, in words a limb may say under a stop ("Done: ..."): `{tool,
+    # title?, list?}` (plan 1119 row 15). Sent on the turn's `tool` event as `write_fact`.
+    fact: dict | None = None
 
 
 class ToolGateway(Protocol):
@@ -51,4 +54,7 @@ class ToolGateway(Protocol):
 # call would go to a limb, asked BEFORE it runs so the loop keeps the round's calls in order.
 # `RELAY_ALONE`: its result is outside text, so it pauses alone (nothing else waits beside it).
 RELAY_BATCH = "batch"
+# Optional too: `working_kind(call) -> str | None`, the class of a call about to run (`slow`,
+# `local`, `write`, `relay`), so a client can pick its filler; with it the loop sends `working`
+# for every call, not only the slow ones.
 RELAY_ALONE = "alone"

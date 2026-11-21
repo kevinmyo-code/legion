@@ -18,6 +18,10 @@ Answers:
   hours after the call was asked), 411 `length_required`,
   413 `result_too_large`, 400 `bad_request`.
 
+`POST /api/agents/turn/<id>/go` and `.../take`: the phone's decision on a held turn
+(`agents/legion/hold.py`): 200 `{decision, status}`; 404 `no_turn`; 409 `already_go`, `taken`,
+`turn_over`.
+
 `GET /api/agents/turn/<id>`: the turn's status and the calls still waited for, whole, for the
 device that was asked (`relay_turn.status_of`): how a limb that lost the stream learns its pending
 calls again.
@@ -34,7 +38,7 @@ from rest_framework import serializers
 from rest_framework.response import Response
 
 from agents import views
-from agents.legion import limbs, relay_resume, relay_turn
+from agents.legion import hold, limbs, relay_resume, relay_turn
 from agents.legion.relay_turn import RESULT_OUTCOMES, RelayRefusal
 from agents.legion.turn import context
 from agents.models import AgentTurn
@@ -254,3 +258,54 @@ def _rest_of_turn(request, turn, recorded, arrived: float):
         yield ev.error(views.FAILED_WORDS).sse()
     finally:
         stream.close()
+
+
+class _DecisionView(views._SwitchedAgentsView):
+    # `POST .../go` and `.../take` (`agents/legion/hold.py`): the phone's word on a held turn.
+    throttle_classes = [AgentToolResultThrottle]
+    decision = ""
+
+    def throttled(self, request, wait):
+        raise views._TurnThrottled(wait)
+
+    def post(self, request, turn_id):
+        try:
+            return Response(hold.decide(request, turn_id, self.decision))
+        except hold.HoldRefusal as refusal:
+            return Response({"detail": refusal.detail, "code": refusal.code}, status=refusal.http)
+
+
+class AgentTurnGoView(_DecisionView):
+    decision = hold.GO
+
+    @extend_schema(
+        tags=views.AGENTS_TAGS,
+        operation_id="api_agents_turn_go",
+        summary="The phone's go on a held turn: the engine may act on it",
+        request=None,
+        responses={
+            200: OpenApiResponse(description="JSON {decision, status}."),
+            404: DetailSerializer,
+            409: DetailSerializer,
+        },
+    )
+    def post(self, request, turn_id):
+        return super().post(request, turn_id)
+
+
+class AgentTurnTakeView(_DecisionView):
+    decision = hold.TAKE
+
+    @extend_schema(
+        tags=views.AGENTS_TAGS,
+        operation_id="api_agents_turn_take",
+        summary="The phone keeps a held turn: cancelled, nothing acts, nothing recorded as said",
+        request=None,
+        responses={
+            200: OpenApiResponse(description="JSON {decision, status}."),
+            404: DetailSerializer,
+            409: DetailSerializer,
+        },
+    )
+    def post(self, request, turn_id):
+        return super().post(request, turn_id)

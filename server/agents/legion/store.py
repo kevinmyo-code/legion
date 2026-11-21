@@ -74,6 +74,9 @@ class TurnStore:
     def __init__(self, turn: AgentTurn, agent: str = "generalist"):
         self.turn = turn
         self.agent = agent
+        # The turn's hold (`hold.py`), when it has one: a turn the phone took is recorded as
+        # cancelled with nothing said and nothing waiting (`finish`).
+        self.held = None
         self._owner = {"household_id": turn.household_id, "owner_user_id": turn.owner_user_id}
 
     # The graph's checkpointer.
@@ -184,6 +187,18 @@ class TurnStore:
             # Paused, not finished: `suspend` wrote the row; only the timings so far are added.
             AgentTurn.objects.filter(pk=self.turn.pk).update(
                 latency_ms=latency_ms, first_sentence_ms=first_sentence_ms
+            )
+            return
+        if self.held is not None and self.held.taken:
+            # The phone kept this turn: nothing of it is recorded as said, no yes waits, no
+            # history (the phone's own loop answers it).
+            AgentTurn.objects.filter(pk=self.turn.pk).update(
+                status="cancelled",
+                final_text="",
+                history=[],
+                pending_relay=None,
+                latency_ms=latency_ms,
+                cost_micro_usd=state.budget.cost_micro_usd,
             )
             return
         status = (

@@ -360,6 +360,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/agents/turn/{turn_id}/go:
+    post:
+      operationId: api_agents_turn_go
+      summary: 'The phone''s go on a held turn: the engine may act on it'
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: JSON {decision, status}.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/agents/turn/{turn_id}/take:
+    post:
+      operationId: api_agents_turn_take
+      summary: 'The phone keeps a held turn: cancelled, nothing acts, nothing recorded
+        as said'
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: JSON {decision, status}.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/agents/turn/{turn_id}/tool_result:
     post:
       operationId: api_agents_turn_tool_result
@@ -26938,7 +27001,7 @@ components:
           maxLength: 600
         speak:
           type: boolean
-          default: false
+          nullable: true
           description: 'With `transcript`: answer aloud too (`audio` events).'
         conversation_id:
           type: string
@@ -26948,6 +27011,12 @@ components:
           allOf:
           - $ref: '#/components/schemas/ClientEnum'
           default: phone
+        go:
+          type: boolean
+          default: true
+          description: 'False: hold the turn until `POST .../go` (`agents/legion/hold.py`).'
+        client_facts:
+          description: What the limb says about the turn (`client_facts.py`).
         contract_version:
           type: integer
           description: 'The voice contract the client speaks (wire v1: 1). Another

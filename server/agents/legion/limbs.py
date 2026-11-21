@@ -227,7 +227,9 @@ def attach(request, attrs) -> dict:
             "kind": attrs["kind"],
             "app_version": attrs["app_version"],
             "contract_version": attrs["contract_version"],
-            "manifest": _manifest(attrs),
+            # The member's Settings choice rides with the manifest, so the turn doors can
+            # resolve the brain the same way the attach did (`agents/turn_options.py`).
+            "manifest": {**_manifest(attrs), "brain_asked": attrs.get("brain_asked")},
             "last_seen_at": timezone.now(),
         },
     )

@@ -158,6 +158,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/turn/{turn_id}/go": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The phone's go on a held turn: the engine may act on it */
+        post: operations["api_agents_turn_go"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/turn/{turn_id}/take": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The phone keeps a held turn: cancelled, nothing acts, nothing recorded as said */
+        post: operations["api_agents_turn_take"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/turn/{turn_id}/tool_result": {
         parameters: {
             query?: never;
@@ -11978,15 +12012,19 @@ export interface components {
             kind: components["schemas"]["TurnRequestKindEnum"];
             /** @description With `kind=say`: the line to speak. */
             text?: string;
-            /**
-             * @description With `transcript`: answer aloud too (`audio` events).
-             * @default false
-             */
-            speak: boolean;
+            /** @description With `transcript`: answer aloud too (`audio` events). */
+            speak?: boolean | null;
             /** Format: uuid */
             conversation_id?: string | null;
             /** @default phone */
             client: components["schemas"]["ClientEnum"];
+            /**
+             * @description False: hold the turn until `POST .../go` (`agents/legion/hold.py`).
+             * @default true
+             */
+            go: boolean;
+            /** @description What the limb says about the turn (`client_facts.py`). */
+            client_facts?: unknown;
             /** @description The voice contract the client speaks (wire v1: 1). Another version is refused with `contract_unsupported`. */
             contract_version?: number;
         };
@@ -12889,6 +12927,78 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_agents_turn_go: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON {decision, status}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_agents_turn_take: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON {decision, status}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

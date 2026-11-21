@@ -62,7 +62,7 @@ from django.db import transaction
 
 from agents.graph.state import TurnState
 from agents.legion import redact, relay
-from agents.legion.gateway import model_response
+from agents.legion.gateway import model_response, write_fact
 from agents.legion.store import TurnStore
 from agents.models import (
     TURN_AWAITING_LIMB,
@@ -358,12 +358,14 @@ def outcome_of(req: dict, result: dict) -> ToolOutcome:
     else:
         ok, outcome = result["outcome"] == "ok", _trace_outcome(result["outcome"])
         text = _model_text(result) or ("Done." if ok else "It did not run.")
+    wrote = ok and bool(req.get("writes"))
     return ToolOutcome(
         name=req["name"],
         ok=ok,
         response={**model_response(ok, text), "call_id": req["call_id"]},
         writes=bool(req.get("writes")),
         outcome=outcome,
+        fact=write_fact(req["name"], result.get("result")) if wrote else None,
     )
 
 

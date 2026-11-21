@@ -158,6 +158,7 @@ def manifest(tools=None) -> dict:
         "contract_version": CONTRACT_VERSION,
         "kind": "phone",
         "app_version": "2026-01-01-test000",
+        "brain_asked": "engine",
         "tools": tools if tools is not None else TOOLS,
         "streams": [],
     }
@@ -265,7 +266,7 @@ def test_a_recruiter_is_denied_the_result_route():
 
 def test_a_relayed_read_pauses_the_turn_and_its_result_streams_the_rest(auth_client, limb, engine):
     events, turn_id, requests = paused(engine, auth_client, m.call("car_status", {}))
-    assert kinds(events) == ["turn", "tool_request", "done"]
+    assert [k for k in kinds(events) if k != "working"] == ["turn", "tool_request", "done"]
     assert events[0][1]["stream_no"] == 1
     req = requests[0]
     assert req["name"] == "car_status" and req["turn_id"] == turn_id

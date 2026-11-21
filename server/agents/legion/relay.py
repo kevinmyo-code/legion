@@ -38,7 +38,8 @@ names); the manifest's flags can only add taint.
    one round: refused;
 3. a write of a tool whose earlier write in this turn timed out: refused (it may still land; a
    retry would be the double run the wire contract forbids, section 8);
-4. a write in a read-only spec: refused;
+4. a write in a read-only spec, or a write or acting call on the phone's test door
+   (`client_facts.test_mode`): refused;
 5. a write or an actuating call in a turn marked tainted (ADR 0090, ADR 0098): refused, unless the
    owner's ruling K1 names the tool in `AFTER_OUTSIDE_TEXT` (open: empty, the strict default);
 6. a write or an actuating call whose manifest says `confirm: engine` (the default): held for his
@@ -59,6 +60,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from agents.legion import guards, redact
+from agents.legion.client_facts import TEST_MODE_WORDS
 from agents.legion.guards import Verdict
 from agents.models import Limb
 from assistant import read_through
@@ -320,6 +322,8 @@ def decide(state, spec, tool: LimbTool, args: dict) -> Decision:
     if tool.writes and not spec.writes_allowed:
         return _refused(guards.READ_ONLY.format(name=name), "not_allowed")
     acts = tool.writes or tool.actuates
+    if acts and state.client_facts.get("test_mode"):
+        return _refused(TEST_MODE_WORDS.format(name=name), "not_allowed")
     ruled = name in AFTER_OUTSIDE_TEXT
     if acts and state.tainted and not ruled:
         return _refused(read_through.WRITE_REFUSAL.format(verb="changed", name=name), "tainted")

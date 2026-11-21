@@ -216,6 +216,7 @@ def run_loop(
     spoken: list[str] = list(resume.spoken) if resume is not None else []
     calls_made: list[dict] = []
     relay_kind = getattr(tools, "relay_kind", None)
+    working_kind = getattr(tools, "working_kind", None)
 
     def result(status: str, words: str = "", rounds: int = 0) -> LoopResult:
         return LoopResult(status, " ".join(spoken).strip(), words, rounds, calls_made)
@@ -233,7 +234,10 @@ def run_loop(
                 "guard": outcome.guard,
             }
         )
-        return ev.tool_ended(call.name, outcome.ok, outcome.outcome, outcome.guard)
+        ended = ev.tool_ended(call.name, outcome.ok, outcome.outcome, outcome.guard)
+        if outcome.fact is not None:
+            ended.data["write_fact"] = outcome.fact
+        return ended
 
     def paused(round_no, outcomes, waiting, deferred) -> LoopResult:
         out = result(AWAITING_LIMB, "", round_no + 1)
@@ -261,7 +265,10 @@ def run_loop(
                 kind = relay_kind(call) if relay_kind is not None else None
                 if kind is None or kind == RELAY_ALONE:
                     return paused(round_no, outcomes, waiting, calls[i:])
-            if tools.is_slow(call.name):
+            kind = working_kind(call) if working_kind is not None else None
+            if kind is not None:
+                yield ev.working(call.name, kind)
+            elif tools.is_slow(call.name):
                 yield ev.working(call.name)
             outcome = tools.call(state, spec, call, limits.tool_timeout_s)
             if outcome.relay is not None:

@@ -201,6 +201,15 @@ Answers:
 
 **A dropped first stream.** The client posts the turn again with the same `turn_id`, the same audio or text and its new `played` report. CHANGE: today the engine answers `duplicate` for a turn it already answered (section 4); in v1 it replays that turn's stream from its first event and continues it live, and never runs the turn twice. Only the caller that owns the turn may re-post it; any other caller gets 404 and nothing is replayed or recorded (the ownership rule of "Results" above).
 
+### 8b. The hold, speech off, client facts (E2b, BUILT dark)
+
+`agents/legion/hold.py`, `agents/legion/client_facts.py`, `agents/turn_options.py`; no migration.
+- **`go`** (bool, default true) on `POST /api/agents/turn` and in the stream's `M` frame. `go: false` HOLDS the turn: the engine streams its thinking and reads at once, but runs no write, no `run_procedure`, no relay request and no late-answer start until `POST /api/agents/turn/<id>/go`; `POST .../take` keeps the turn on the phone (cancelled, nothing acts, nothing recorded as said). Both answer 200 `{decision, status}`; 404 `no_turn`; 409 `already_go`, `taken`, `turn_over`. No decision 5 s after the turn began is a cancel. The turn's record waits for the decision (after `done`).
+- **`speak`** (bool): false makes no speech: no text-to-speech, no `audio` events, nothing metered as speech; unset keeps the door's default (audio spoken, transcript not).
+- **`client_facts`** (object): `language`, `carry_tainted`, `prior_line` (max 300), `test_mode`, `utc_offset_minutes` (-840..840), `heard_until {turn_id, chars}` (what he heard of an earlier answer before he cut in; that turn's stored answer is cut there).
+- **The brain at the turn doors:** a device whose resolved brain is `phone` gets 409 `brain_phone` (not on a `test_mode` turn). The attach now stores `brain_asked` with the manifest.
+- **Events:** `working {tool, kind}` for every call on the agents door (`kind`: `local`, `slow`, `write`, `relay`); `tool` carries `write_fact {tool, title?, list?}` for a write that went through (engine or relayed).
+
 ### 8a. Idle close
 
 NEW. A client that dies posts no close, so the engine closes a conversation itself after **10

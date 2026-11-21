@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import time
 
-from agents.legion import guards, redact, relay
+from agents.legion import guards, hold, redact, relay
+from agents.legion.client_facts import TEST_MODE_WORDS
 from agents.legion.twins import TWINS
 from agents.runtime.tools import RELAY_ALONE, RELAY_BATCH, ToolCall, ToolOutcome
 from assistant import live, read_through
@@ -96,8 +97,10 @@ def model_response(ok: bool, text: str) -> dict:
 
 
 class LegionGateway:
-    def __init__(self, request, recorder=None, observe=None, limit=None):
+    def __init__(self, request, recorder=None, observe=None, limit=None, turn_hold=None):
         self.request = request
+        # The phone's go (`hold.py`): nothing that acts runs before it. None: never held.
+        self.hold = turn_hold
         # A caller's own cap on calls (the late-answer runner's, `late.py`): (state, call) ->
         # refusal words, or None to go on. A refusal is recorded with guard `budget`.
         self.limit = limit
@@ -121,6 +124,28 @@ class LegionGateway:
         if tool is None:
             return None
         return RELAY_ALONE if relay.reads_outside(tool, call.args) else RELAY_BATCH
+
+    def working_kind(self, call: ToolCall) -> str:
+        """The class of a call about to run, for the limb's filler: `relay` (a limb tool),
+        `slow` (`SLOW_TOOLS`), `write`, else `local`."""
+        tool = self.tools().get(call.name)
+        if tool is None and call.name in self.limb_tools():
+            return "relay"
+        if call.name in SLOW_TOOLS:
+            return "slow"
+        return "write" if tool is not None and tool.writes else "local"
+
+    def _acts(self, tool, name: str) -> bool:
+        # A procedure's steps may write (`run_procedure` is `writes=False` on purpose).
+        return bool(tool is not None and (tool.writes or name == PROCEDURE_TOOL))
+
+    def _held(self, state, call, tool, started, where="engine") -> ToolOutcome | None:
+        """None when this acting call may run now; else its refusal (the phone took the turn,
+        or never said go)."""
+        if self.hold is None or self.hold.peek() == hold.GO or self.hold.wait() == hold.GO:
+            return None
+        words = hold.HELD_WORDS.format(name=call.name)
+        return self._done(state, call, tool, False, words, "refused", "cancelled", started, where)
 
     def tools(self) -> dict:
         if self._tools is None:
@@ -165,6 +190,15 @@ class LegionGateway:
             return self._done(
                 state, call, tool, False, verdict.words, "refused", verdict.guard, started
             )
+        if self._acts(tool, call.name):
+            if state.client_facts.get("test_mode"):
+                words = TEST_MODE_WORDS.format(name=call.name)
+                return self._done(
+                    state, call, tool, False, words, "refused", "not_allowed", started
+                )
+            held = self._held(state, call, tool, started)
+            if held is not None:
+                return held
         if guards.needs_taint(call.name):
             state.add_taint(call.name)
             saved = self.recorder.mark_taint(state) if self.recorder is not None else True
@@ -191,6 +225,11 @@ class LegionGateway:
         outside = guards.needs_taint(call.name) or (
             call.name == PROCEDURE_TOOL and read_through.read_third_party(self.request)
         )
+        fact = (
+            write_fact(call.name, result.structured)
+            if tool.writes and not result.is_error
+            else None
+        )
         done = self._done(
             state,
             call,
@@ -201,6 +240,7 @@ class LegionGateway:
             None,
             started,
             outside=outside,
+            fact=fact,
         )
         if outside:
             state.add_taint(call.name)
@@ -215,6 +255,9 @@ class LegionGateway:
         if decision.verdict is not None:
             v = decision.verdict
             return self._done(state, call, tool, False, v.words, "refused", v.guard, started, where)
+        held = self._held(state, call, tool, started, where)
+        if held is not None:
+            return held
         if decision.after_turn:
             # K1: run by the limb once the reply ends, with a call id and a result post like any
             # relayed call; its trace row is written when that result comes (`relay_turn.py`).
@@ -243,7 +286,18 @@ class LegionGateway:
         return ToolOutcome(name=tool.name, ok=False, response={}, writes=tool.writes, relay=request)
 
     def _done(
-        self, state, call, tool, ok, text, outcome, guard, started, where="engine", outside=False
+        self,
+        state,
+        call,
+        tool,
+        ok,
+        text,
+        outcome,
+        guard,
+        started,
+        where="engine",
+        outside=False,
+        fact=None,
     ) -> ToolOutcome:
         ms = int((time.monotonic() - started) * 1000)
         writes = bool(tool is not None and tool.writes)
@@ -280,4 +334,24 @@ class LegionGateway:
             outcome=outcome,
             guard=guard,
             ms=ms,
+            fact=fact,
         )
+
+
+FACT_CHARS = 120
+
+
+def write_fact(tool: str, structured) -> dict:
+    """What a write that went through did, in words a limb may say (`{tool, title?, list?}`):
+    the row's own title or text and its list, never its arguments. Only the tool when the
+    result names neither."""
+    fact = {"tool": tool}
+    found = structured if isinstance(structured, dict) else {}
+    row = found.get("row") if isinstance(found.get("row"), dict) else found
+    for key, names in (("title", ("title", "text", "name")), ("list", ("list", "checklist"))):
+        for name in names:
+            value = row.get(name)
+            if isinstance(value, str) and value.strip():
+                fact[key] = value.strip()[:FACT_CHARS]
+                break
+    return fact

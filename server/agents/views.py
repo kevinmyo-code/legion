@@ -48,6 +48,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
+from agents import turn_options
 from agents.legion import flags, limbs
 from agents.legion.turn import cancel, open_conversation
 from agents.runtime import events as ev
@@ -176,11 +177,20 @@ class TurnRequestSerializer(serializers.Serializer):
     )
     speak = serializers.BooleanField(
         required=False,
-        default=False,
+        allow_null=True,
+        default=None,
         help_text="With `transcript`: answer aloud too (`audio` events).",
     )
     conversation_id = serializers.UUIDField(required=False, allow_null=True)
     client = serializers.ChoiceField(choices=["phone", "web", "headunit"], default="phone")
+    go = serializers.BooleanField(
+        required=False,
+        default=True,
+        help_text="False: hold the turn until `POST .../go` (`agents/legion/hold.py`).",
+    )
+    client_facts = serializers.JSONField(
+        required=False, help_text="What the limb says about the turn (`client_facts.py`)."
+    )
     contract_version = serializers.IntegerField(
         required=False,
         help_text=(
@@ -261,7 +271,8 @@ def _speech_client():
 def _stream(request, data, utterance, arrived_at=None):
     unit = request.auth if headunit_scope.is_headunit(request) else None
     before = unit_spend.member_spent(request.user) if unit is not None else 0
-    speech = _speech_client() if utterance.spoken else None
+    # Speech-to-text needs it for any clip, spoken answer or not (`speak: false`).
+    speech = _speech_client() if utterance.spoken or utterance.audio is not None else None
     turn = pipeline.voice_turn(
         request,
         utterance,
@@ -360,6 +371,17 @@ class AgentTurnView(_SwitchedAgentsView):
         refusal = _shape_refusal(data)
         if refusal is not None:
             return refusal
+        options, refusal = turn_options.read(
+            {
+                "go": data.get("go"),
+                "speak": data.get("speak"),
+                "client_facts": data.get("client_facts"),
+            }
+        )
+        if refusal is None:
+            refusal = turn_options.brain_refusal(request, options)
+        if refusal is not None:
+            return refusal
         if not gemini_key():
             return Response(
                 {"detail": KEY_ABSENT, "code": "no_key"},
@@ -394,7 +416,9 @@ class AgentTurnView(_SwitchedAgentsView):
             audio=pcm,
             transcript=data.get("transcript"),
             text=data.get("text"),
-            speak=bool(data.get("speak")),
+            speak=options["speak"],
+            go=options["go"],
+            client_facts=options["client_facts"],
         )
         return _sse(_stream(request, data, utterance, arrived))
 
@@ -513,6 +537,11 @@ class AgentTurnStreamView(_SwitchedAgentsView):
         data, refusal = _stream_meta(meta)
         if refusal is not None:
             return refusal
+        options, refusal = turn_options.read(meta)
+        if refusal is None:
+            refusal = turn_options.brain_refusal(request, options)
+        if refusal is not None:
+            return refusal
         key = gemini_key()
         if not key:
             return Response(
@@ -532,7 +561,14 @@ class AgentTurnStreamView(_SwitchedAgentsView):
                     pipeline.FEATURE,
                 )
             return _refuse(exc.detail, exc.code, _FRAME_STATUS.get(exc.code, 400))
-        utterance = pipeline.Utterance(kind="user", audio=streamed.pcm, streamed=streamed)
+        utterance = pipeline.Utterance(
+            kind="user",
+            audio=streamed.pcm,
+            streamed=streamed,
+            speak=options["speak"],
+            go=options["go"],
+            client_facts=options["client_facts"],
+        )
         return _sse(_stream(request, data, utterance, arrived))
 
 
