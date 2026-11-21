@@ -129,11 +129,14 @@ class VoiceSpeedWiringTest {
             assertFalse("a backchannel must not touch $reply", play.contains(reply))
         }
         assertTrue(play.contains("playGate.withLock"))
-        // The length gate now runs inside Backchannel.choose (pinned in BackchannelTest).
-        assertTrue(play.contains("Backchannel.choose("))
+        // The length gate runs inside Backchannel.choose (pinned in BackchannelTest), through AckClips
+        // (2026-11-21: the pick moved out so the end-of-turn path can be timed whole, AckTimingTest).
+        assertTrue(play.contains("AckClips.pick(b.tts, recentBackchannels"))
         assertTrue(play.contains("audit.filler(\"backchannel\", line)"))
-        assertTrue(play.contains("b.tts.inHandTake("))
-        assertTrue(play.contains("Backchannel.trimSilence("))
+        val clips = File(sourceRoot(), "service/cascade/AckClips.kt").readText()
+        assertTrue(clips.contains("Backchannel.choose(recent, index, inHand)"))
+        assertTrue(clips.contains("tts.inHandTake("))
+        assertTrue(clips.contains("Backchannel.trimSilence("))
         // The answer's writes take the same gate; its first audio marks the turn as answered.
         val speaker = bodyOf(s, "newSpeaker")
         assertTrue(speaker.contains("play = { pcm -> playGate.withLock { answerGotGate(); p.write(pcm, gen) } }"))
@@ -266,7 +269,7 @@ class VoiceSpeedWiringTest {
     @Test
     fun `a clip that fails the length gate is replaced by another word, never silence`() {
         val play = bodyOf(session(), "playBackchannel")
-        assertTrue(play.contains("Backchannel.choose("))
+        assertTrue(play.contains("AckClips.pick("))
         assertFalse("one failed clip no longer ends the turn's backchannel", play.contains("if (!Backchannel.clipFits(ms))"))
     }
 
