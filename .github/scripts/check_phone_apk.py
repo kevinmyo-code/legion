@@ -29,8 +29,6 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tools"))
 import release_apk  # noqa: E402
 
-MANIFEST = REPO / "app" / "models.sha256"
-SPEAKER_PIN = REPO / "app" / "speaker-model.pin"
 
 
 def manifest_entries(text: str) -> list[tuple[str, str]]:
@@ -54,12 +52,12 @@ def pin_values(text: str) -> dict[str, str]:
     return vals
 
 
-def check(apk: Path, sha: str, speaker_sha: str | None, newest_vc: int | None) -> list[str]:
+def check(apk: Path, sha: str, speaker_sha: str | None, newest_vc: int | None, tree: Path = REPO) -> list[str]:
     problems: list[str] = []
-    models = manifest_entries(MANIFEST.read_text(encoding="utf-8"))
+    models = manifest_entries((tree / "app" / "models.sha256").read_text(encoding="utf-8"))
     if not models:
         problems.append("app/models.sha256 lists no model")
-    pin = pin_values(SPEAKER_PIN.read_text(encoding="utf-8"))
+    pin = pin_values((tree / "app" / "speaker-model.pin").read_text(encoding="utf-8"))
     # The file a cloud build ships: the official one once the pin says release_ok=yes, else the interim copy.
     pinned = pin["sha256"] if pin.get("release_ok") == "yes" else pin["interim_sha256"]
     speaker = (pin["path"], speaker_sha or pinned)
@@ -102,11 +100,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sha", required=True, help="the commit the APK was built from (40 hex)")
     ap.add_argument("--speaker-sha", help="expected speaker model sha256; default the pin's official one")
     ap.add_argument("--newest-vc", type=int, help="the newest published versionCode")
+    ap.add_argument("--tree", default=str(REPO), help="a directory holding the BUILT commit's app/models.sha256 and app/speaker-model.pin (default: this checkout)")
     a = ap.parse_args(argv)
     if not re.fullmatch(r"[0-9a-f]{40}", a.sha):
         print("--sha must be 40 lowercase hex characters", file=sys.stderr)
         return 2
-    problems = check(Path(a.apk), a.sha, a.speaker_sha, a.newest_vc)
+    problems = check(Path(a.apk), a.sha, a.speaker_sha, a.newest_vc, Path(a.tree))
     for p in problems:
         print(f"FAIL {p}")
     print("APK checks: all passed" if not problems else f"APK checks: {len(problems)} failed")
