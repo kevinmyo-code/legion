@@ -74,7 +74,7 @@ class EngineUtteranceTest {
         val tail = body.copyOfRange(body.size - endFrame.size, body.size)
         assertTrue("the body ends with E {bytes: total}", tail.contentEquals(endFrame))
         // The rest of the stream, the events read so far first, for the turn that answers it.
-        val rest = checkNotNull(u.takeTurn())
+        val rest = u.go() as WireReply.Events
         val types = mutableListOf<String>()
         for (e in rest.events) types.add(e.javaClass.simpleName)
         assertEquals(listOf("Waiting", "Turn", "Heard", "Sentence", "Done"), types)
@@ -230,7 +230,7 @@ class EngineUtteranceTest {
         u.audio(pcm, 0, pcm.size)
         u.end()
         assertEquals("what time is it", (u.result(1_000) as SttResult.Text).text)
-        val rest = checkNotNull(u.takeTurn())
+        val rest = u.go() as WireReply.Events
         val seen = mutableListOf<EngineEvent>()
         var next = rest.events.receiveCatching().getOrNull()
         while (next != null) {
@@ -251,6 +251,7 @@ class EngineUtteranceTest {
         u.release()
         kotlinx.coroutines.delay(20)
         assertEquals(listOf("take:${u.turnId}"), wire.decisions)
-        assertEquals("released: nothing left to answer", null, u.takeTurn())
+        assertTrue("released: nothing left to answer", u.released)
+        assertTrue("never a go after a take", wire.decisions.none { it.startsWith("go:") })
     }
 }

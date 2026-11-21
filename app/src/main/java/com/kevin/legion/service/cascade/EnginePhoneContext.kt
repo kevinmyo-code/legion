@@ -20,6 +20,11 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
     private var carryTainted = false
     private var heardUntil: JSONObject? = null
     private var engineTurnRecorded = false
+    private var keepPrivate = false
+
+    /** The phone's own last answer (its loop, or an opener) ended on a question ([EngineBrainRules.phoneAwaits]). */
+    @Volatile var phoneAsked = false
+        private set
 
     /** The engine turn whose reply is (or was last) playing, for `heard_until`; null after a phone turn. */
     @Volatile var lastEngineTurn: String? = null
@@ -35,6 +40,33 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
         carryTainted = false
         heardUntil = null
         engineTurnRecorded = true
+        phoneAsked = false
+    }
+
+    /**
+     * A new turn is being routed: the last turn's own record is in (review R5: a cut-off engine turn
+     * that was never recorded must not make the next phone turn look like the engine's).
+     */
+    @Synchronized
+    fun newTurn() {
+        engineTurnRecorded = false
+        keepPrivate = false
+    }
+
+    /**
+     * The phone keeps this turn for a reason that keeps his words off the engine (mail, review R3):
+     * it goes as a blanked record, so the engine knows a turn happened and nothing of it.
+     */
+    @Synchronized
+    fun keptPrivately() {
+        keepPrivate = true
+    }
+
+    /** The greeting the phone spoke: the engine's `prior_line`, never a question he must answer here. */
+    @Synchronized
+    fun greeted(line: String) {
+        if (line.isNotBlank()) priorLine = line.take(MAX_PRIOR_CHARS)
+        phoneAsked = false
     }
 
     /** [chars] of the engine's last reply were heard before he cut in (a barge-in, a tap). */
@@ -55,16 +87,19 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
             engineTurnRecorded = false
             return
         }
+        val private = keepPrivate
+        keepPrivate = false
         if (answer.isNotBlank()) {
-            priorLine = if (readThrough) null else answer.take(MAX_PRIOR_CHARS)
+            priorLine = if (readThrough || private) null else answer.take(MAX_PRIOR_CHARS)
             carryTainted = readThrough
+            phoneAsked = answer.trim().endsWith("?")
         }
         if (fromUser && said.isNotBlank()) {
             turns.addLast(
                 JSONObject()
-                    .put("said", said.take(MAX_SAID_CHARS))
-                    .put("answer", if (readThrough) "" else answer.take(MAX_ANSWER_CHARS))
-                    .put("tainted", readThrough),
+                    .put("said", if (private) KEPT_PRIVATE else said.take(MAX_SAID_CHARS))
+                    .put("answer", if (readThrough || private) "" else answer.take(MAX_ANSWER_CHARS))
+                    .put("tainted", readThrough || private),
             )
             while (turns.size > MAX_TURNS || size() > MAX_TOTAL_CHARS) turns.removeFirst()
         }
@@ -93,6 +128,9 @@ internal class EnginePhoneContext(private val clock: () -> Long = System::curren
         const val MAX_TOTAL_CHARS = 4_000
         const val MAX_PRIOR_CHARS = 300
         const val MAX_LANGUAGE_CHARS = 32
+
+        /** What the engine gets for a turn the phone kept privately (the engine's `said` may not be blank). */
+        const val KEPT_PRIVATE = "[a turn the device answered itself; not shared]"
         private const val MS_PER_MINUTE = 60_000
     }
 }

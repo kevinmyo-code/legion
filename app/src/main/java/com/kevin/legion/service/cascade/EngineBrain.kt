@@ -95,8 +95,8 @@ internal class EngineBrain(
      * (yet) the brain, or the laptop voice (its own transcriber ends turns). Every engine-heard turn is
      * held until the phone's go ([EngineUtterance]).
      */
-    fun utterance(cloudVoice: Boolean): EngineUtterance? =
-        if (state != State.ON || !cloudVoice) {
+    fun utterance(cloudVoice: Boolean, awaits: String? = null): EngineUtterance? =
+        if (state != State.ON || !cloudVoice || awaits != null) {
             null
         } else {
             val setup = UtteranceSetup(wire, scope, tail, ::meta, !streamOff, lastCancel)
@@ -124,7 +124,16 @@ internal class EngineBrain(
      * always the phone's: its drafts and loop run exactly as with the switch off.
      */
     fun route(utt: EngineUtterance?, words: String, facts: RouteFacts): (suspend () -> WireReply)? {
-        val why = EngineBrainRules.phoneKeeps(words, facts.facts(engineHeard = utt != null, on = state == State.ON))
+        context.newTurn()
+        // A turn already taken back (it waited behind another, review R2) is the phone's.
+        val live = utt?.takeIf { !it.released }
+        val why = if (utt?.released == true) {
+            EngineBrainRules.TAKEN
+        } else {
+            EngineBrainRules.phoneKeeps(words, facts.facts(engineHeard = live != null, on = state == State.ON))
+        }
+        // His mail words never reach the engine, not even as a phone-kept turn's record (review R3).
+        if (why != null && EngineBrainRules.MAIL_WORDS.containsMatchIn(words)) context.keptPrivately()
         if (why != null) {
             // A turn the phone keeps is taken back: held, nothing of it acts on the engine.
             utt?.release()
@@ -133,7 +142,7 @@ internal class EngineBrain(
         }
         return when {
             why != null -> null
-            utt != null -> suspend { utt.go() }
+            live != null -> suspend { live.go() }
             else -> suspend {
                 val id = java.util.UUID.randomUUID().toString()
                 wire.turnText(meta().put("kind", "user").put("transcript", words).put("turn_id", id))
@@ -147,10 +156,12 @@ internal class EngineBrain(
         val fromUser: Boolean,
         /** The engine heard this turn (streamed audio), or the laptop voice's words may go to it. */
         val engineHeard: Boolean,
+        /** The phone was waiting on his answer when he began ([EngineBrainRules.phoneAwaits]). */
+        val awaits: String? = null,
     ) {
         /** [engineHeard]: an utterance streamed to the engine; [on]: the engine is the brain. */
         fun facts(engineHeard: Boolean, on: Boolean) =
-            EngineBrainRules.Facts(test, fromUser, engineHeard || this.engineHeard, on)
+            EngineBrainRules.Facts(test, fromUser, engineHeard || this.engineHeard, on, awaits)
     }
 
     /**

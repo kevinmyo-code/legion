@@ -127,6 +127,21 @@ class EngineLimbManifestTest {
     }
 
     @Test
+    fun `every relayed tool's schema is one the argument check can read, so fail-closed refuses nothing real`() {
+        val known = setOf("string", "integer", "number", "boolean", "object", "array")
+        fun walk(name: String, prop: JSONObject) {
+            val type = prop.optString("type").lowercase()
+            assertTrue("$name has type '$type'", type in known)
+            prop.optJSONObject("properties")?.let { p -> p.keys().forEach { walk("$name.$it", p.getJSONObject(it)) } }
+            if (type == "array") walk("$name[]", checkNotNull(prop.optJSONObject("items")) { "$name has no items" })
+        }
+        for ((name, t) in byName) {
+            val params = t.getJSONObject("parameters")
+            params.optJSONObject("properties")?.let { p -> p.keys().forEach { walk("$name.$it", p.getJSONObject(it)) } }
+        }
+    }
+
+    @Test
     fun `the phone's class sets are the engine's, from the one shared file`() {
         assertEquals(PLAIN, EngineLimbManifest.PLAIN_CLASSES)
         assertEquals(OUTSIDE, EngineLimbManifest.OUTSIDE_CLASSES)

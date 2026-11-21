@@ -89,6 +89,7 @@ internal object EngineBrainRules {
     fun phoneKeeps(words: String, facts: Facts): String? = when {
         !facts.engineHeard -> PHONE_HEARD
         !facts.on -> OFF
+        facts.awaits != null -> facts.awaits
         facts.test -> "test"
         !facts.fromUser -> "prompt"
         MAIL_WORDS.containsMatchIn(words) -> "mail"
@@ -100,16 +101,42 @@ internal object EngineBrainRules {
      * false, the phone transcribed it and its own loop answers, drafts and all. [on]: the engine is
      * this conversation's brain.
      */
-    data class Facts(val test: Boolean, val fromUser: Boolean, val engineHeard: Boolean = true, val on: Boolean = true)
+    data class Facts(
+        val test: Boolean,
+        val fromUser: Boolean,
+        val engineHeard: Boolean = true,
+        val on: Boolean = true,
+        /** The phone waits on his answer to its own question ([phoneAwaits]). */
+        val awaits: String? = null,
+    )
+
+    /**
+     * Why his next turn answers a question the PHONE asked, so only the phone can act on it (review
+     * R1), or null. Decided before any audio goes, so such a turn never starts on the engine:
+     * - [checkIn]: a check-in line is waiting for his reply (its rules live on the phone);
+     * - [toolAsked]: a phone tool's result asked him something (a confirm read-back, a mail draft, the
+     *   clear-codes warning, a first step that needs his yes: `LoneWordWriteGuard.asks`);
+     * - [phoneQuestion]: the phone's own last answer (its loop, or an opener) ended on a question.
+     * A plain greeting is none of these.
+     */
+    fun phoneAwaits(checkIn: Boolean, toolAsked: Boolean, phoneQuestion: Boolean): String? = when {
+        checkIn -> "check_in"
+        toolAsked -> "phone_confirm"
+        phoneQuestion -> "phone_question"
+        else -> null
+    }
 
     /** A go after the hold ran out, or on a cancelled turn (Contract v2 12.6). */
     const val TURN_OVER = "turn_over"
+
+    /** A turn already taken back before it was routed (it waited behind another turn, review R2). */
+    const val TAKEN = "taken"
 
     const val PHONE_HEARD = "phone_heard"
     const val OFF = "off"
 
     /** Reasons worth a log line (the others are every turn of a phone conversation). */
-    val LOGGED_KEEPS = setOf("test", "prompt", "mail")
+    val LOGGED_KEEPS = setOf("test", "prompt", "mail", "check_in", "phone_confirm", "phone_question")
 
     /**
      * His words about mail and what the phone reads from mail (the brief's mail sections, parcels
@@ -251,7 +278,8 @@ internal object EngineBrainRules {
      * Whether a stream-route refusal sends the held clip to the batch route in the same turn: the
      * stream switch is off (404), not all the audio arrived (`audio_gap`), the body broke before `E`
      * (`hung_up`, `stalled`), or the member's one stream is still held (`stream_busy`). A lost answer
-     * after `E` is not one of these: [EngineUtterance] never posts that clip again.
+     * after `E` (unreachable) falls back too: the clip goes again with the SAME `turn_id`, so the
+     * engine answers `duplicate` if it already had the turn (held, nothing acted), never a second run.
      */
     fun streamFallsBack(reply: WireReply): Boolean = when (reply) {
         is WireReply.Unreachable -> true

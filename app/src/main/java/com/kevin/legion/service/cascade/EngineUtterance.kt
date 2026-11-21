@@ -44,7 +44,7 @@ internal data class UtteranceSetup(
  *   300 ms, a broken upload) sends the held clip to `POST /api/agents/turn` in the same turn, with
  *   the same `turn_id`: an answer lost after `E` is posted again only that way, and the engine
  *   answers `duplicate` if it had the turn (review B-7). Held, it acted on nothing.
- * - [result] is the engine's `heard` words. The rest of the stream is kept for the turn ([takeTurn]);
+ * - [result] is the engine's `heard` words. The rest of the stream is kept for the turn ([go]);
  *   the engine's own crisis line comes after `heard`, so the turn sees it ([EngineTurnSink.crisis]).
  */
 internal class EngineUtterance(
@@ -68,6 +68,11 @@ internal class EngineUtterance(
     private val answer = CompletableDeferred<WireReply>()
     private val ended = AtomicBoolean(false)
     private val claimed = AtomicBoolean(false)
+    private val hearing = AtomicBoolean(false)
+    private val heardResult = CompletableDeferred<SttResult>()
+
+    /** Answered or taken back: the engine gets no go for this turn any more. */
+    val released: Boolean get() = claimed.get()
 
     /** What the turn needs after [result]: the events read so far, and the rest of the stream. */
     @Volatile private var stream: WireReply.Events? = null
@@ -190,21 +195,27 @@ internal class EngineUtterance(
     }
 
     /**
-     * The engine's words for this turn. Waits for the answer and then for `heard`, each at most
-     * [EngineBrainRules.FIRST_EVENT_MS] (client contract section 9); [timeoutMs] is the cloud
+     * The engine's words for this turn, read once: a second caller (the early decision, then the
+     * turn itself, review R2) gets the same answer. Waits for the answer and then for `heard`, each at
+     * most [EngineBrainRules.FIRST_EVENT_MS] (client contract section 9); [timeoutMs] is the cloud
      * transcriber's and too short for a turn that also crosses the network.
      */
     override suspend fun result(timeoutMs: Long): SttResult {
-        val reply = withTimeoutOrNull(EngineBrainRules.FIRST_EVENT_MS) { answer.await() }
-        refusal = reply as? WireReply.Json
-        val voiced = SttGuard.voicedMs(synchronized(clip) { clip.toByteArray() })
-        return when {
-            reply === NOISE -> SttResult.Text("", null, null, null, voiced)
-            reply === CANCELLED -> SttResult.Failed("cancelled")
-            reply is WireReply.Events -> heard(reply, voiced)
-            reply is WireReply.Json && EngineBrainRules.switchedOff(reply) -> SttResult.Failed(SWITCHED_OFF)
-            else -> SttResult.Failed(UNREACHABLE)
+        if (hearing.compareAndSet(false, true)) {
+            val reply = withTimeoutOrNull(EngineBrainRules.FIRST_EVENT_MS) { answer.await() }
+            refusal = reply as? WireReply.Json
+            val voiced = SttGuard.voicedMs(synchronized(clip) { clip.toByteArray() })
+            heardResult.complete(
+                when {
+                    reply === NOISE -> SttResult.Text("", null, null, null, voiced)
+                    reply === CANCELLED -> SttResult.Failed("cancelled")
+                    reply is WireReply.Events -> heard(reply, voiced)
+                    reply is WireReply.Json && EngineBrainRules.switchedOff(reply) -> SttResult.Failed(SWITCHED_OFF)
+                    else -> SttResult.Failed(UNREACHABLE)
+                },
+            )
         }
+        return heardResult.await()
     }
 
     private suspend fun heard(reply: WireReply.Events, voiced: Long): SttResult {
@@ -229,23 +240,15 @@ internal class EngineUtterance(
 
     /**
      * The engine answers this turn: the phone's go (its held writes, relays and outside reads may act
-     * from now, Contract v2), then the rest of its stream. A go after the engine's 5 s hold ran out,
-     * or on a cancelled turn, is 409 `turn_over`: nothing acted, and that answer is the turn's.
+     * from now, Contract v2), then the rest of its stream (everything read so far first). A go after
+     * the engine's 5 s hold ran out, or on a cancelled turn, is 409 `turn_over`: nothing acted, and
+     * that answer is the turn's. Once only: a released or already answered turn has nothing to give.
      */
     suspend fun go(): WireReply {
-        val over = (wire.decide(turnId, go = true) as? WireReply.Json)?.takeIf { it.code == EngineBrainRules.TURN_OVER }
-        val turn = takeTurn()
-        if (over != null) turn?.close?.invoke()
-        return over ?: turn ?: refusal ?: WireReply.Unreachable("no_stream")
-    }
-
-    /**
-     * The rest of this turn's stream (everything read so far first), for the one turn that answers
-     * it; null when there is none or it was already taken.
-     */
-    fun takeTurn(): WireReply.Events? {
         val s = stream
-        if (s == null || !claimed.compareAndSet(false, true)) return null
+        if (s == null || !claimed.compareAndSet(false, true)) return refusal ?: WireReply.Unreachable("no_stream")
+        val over = (wire.decide(turnId, go = true) as? WireReply.Json)?.takeIf { it.code == EngineBrainRules.TURN_OVER }
+        if (over != null) s.close()
         val out = Channel<EngineEvent>(Channel.UNLIMITED)
         prelude.forEach { out.trySend(it) }
         setup.scope.launch {
@@ -259,13 +262,13 @@ internal class EngineUtterance(
                 out.close()
             }
         }
-        return WireReply.Events(out) { s.close() }
+        return over ?: WireReply.Events(out) { s.close() }
     }
 
     /**
      * This turn will not be answered by the engine (a stop, noise, the phone loop took it): the
-     * engine's turn is cancelled and its stream closed, on the tail scope so a close of the whole
-     * conversation does not lose it (review B-8). Nothing happens once [takeTurn] claimed it.
+     * engine's turn is taken back and its stream closed, on the tail scope so a close of the whole
+     * conversation does not lose it (review B-8). Nothing happens once [go] claimed it.
      */
     fun release() {
         if (!claimed.compareAndSet(false, true)) return

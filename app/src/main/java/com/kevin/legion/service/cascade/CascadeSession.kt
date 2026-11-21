@@ -436,6 +436,9 @@ internal class CascadeSession(
 
         /** The engine heard this turn's audio, even if its stream was released for a merge. */
         @Volatile var engineHeard = false
+
+        /** The phone was waiting on his answer to its own question ([EngineBrainRules.phoneAwaits]). */
+        @Volatile var awaits: String? = null
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -1007,7 +1010,12 @@ internal class CascadeSession(
         override fun sendActivityStart() {
             val b = backend ?: return
             var self: TurnUtterance? = null
-            val inner = engineBrain?.utterance(b.kind == SpeechBackend.Kind.CLOUD) ?: b.stt.begin {
+            // Waiting on his answer to the phone's own question: the phone hears and answers it (R1).
+            val awaits = engineBrain?.let {
+                val checkIn = checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING
+                EngineBrainRules.phoneAwaits(checkIn, lastTurnAsked, it.context.phoneAsked)
+            }
+            val inner = engineBrain?.utterance(b.kind == SpeechBackend.Kind.CLOUD, awaits) ?: b.stt.begin {
                 val utt = self ?: return@begin
                 scope.launch(loop) { onServiceEnd(utt) }
             }
@@ -1015,6 +1023,7 @@ internal class CascadeSession(
             // cloud, a cloud transcript that never came is measured for voice and asked again
             // ([MissedLine]), and a speculative draft is transcribed from them.
             val u = TurnUtterance(inner, b, keepAudio = true)
+            u.awaits = awaits
             self = u
             currentUtt = u
             resumeThroughClip(u)
@@ -1219,6 +1228,14 @@ internal class CascadeSession(
         scheduleBackchannel(u, eotAtMs)
         scheduleWaitFillers(eotAtMs)
         val previous = turnJob
+        // A turn queued behind one still running: its decision would wait for that one, past the
+        // engine's 5 s hold. It is the phone's, taken back as soon as its words are in (review R2).
+        u.engine?.takeIf { previous?.isActive == true }?.let { e ->
+            scope.launch(loop) {
+                e.result(0)
+                e.release()
+            }
+        }
         turnJob = scope.launch(loop) {
             previous?.join()
             try {
@@ -1579,6 +1596,7 @@ internal class CascadeSession(
         // Words carried from a dropped turn are not in this audio: the engine gets them as a transcript.
         record.engineUtt = u.engine?.takeIf { heard == words.trim() }
         record.engineHeard = u.engine != null
+        record.awaits = u.awaits
         if (record.engineUtt == null) u.engine?.release()
         answerTurn(heard, eotAtMs, record, takeDraft(u, heard))
     }
@@ -1614,6 +1632,7 @@ internal class CascadeSession(
                 fromUser = record.fromUser,
                 // Streamed audio, a merged turn's words, or the laptop voice's words may go to the engine.
                 engineHeard = record.engineHeard || backend?.kind == SpeechBackend.Kind.LAPTOP,
+                awaits = record.awaits,
             ),
         )
         // The engine answers without the phone's prompt; only the phone loop waits for it.
@@ -2703,7 +2722,7 @@ internal class CascadeSession(
                         // So his answer is understood: the greeting is the first exchange.
                         history.add(ChatTurn(fromUser = true, text = OPENED_NOTE))
                         history.add(ChatTurn(fromUser = false, text = reply.spoken()))
-                        engineBrain?.context?.recorded("", reply.spoken(), readThrough = false, fromUser = false)
+                        engineBrain?.context?.greeted(reply.spoken())
                         afterReply()
                     }
                     // The greeting is not said twice: the next voice opens with the scripted line.
