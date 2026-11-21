@@ -138,7 +138,7 @@ class EngineUtteranceTest {
     }
 
     @Test
-    fun `a duplicate means the engine had it, held: no second run, and nothing was done`() = runBlocking {
+    fun `a duplicate means the engine had it held, no second run and nothing was done`() = runBlocking {
         wire.streamAnswers.add(WireReply.Unreachable("SocketTimeoutException"))
         wire.clipAnswers.add(json(409, """{"code": "duplicate", "status": "running"}"""))
         val u = utterance(this)
