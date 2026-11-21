@@ -23,6 +23,21 @@ class EarpieceWiringTest {
     }
 
     @Test
+    fun `release order is chime, player, route watch, earpiece, call audio`() {
+        val release = bodyOf(session(), "releaseNow")
+        val order = listOf(
+            "playCloseCue(reason)",
+            "step(\"player\")",
+            "step(\"route_watch\")",
+            "step(\"earpiece\") { earpiece.stop() }",
+            "step(\"call_audio\")",
+        ).map { it to release.indexOf(it) }
+        for ((text, at) in order) assertTrue("$text is in releaseNow", at >= 0)
+        // The chime plays on the route in use (the earpiece too) before that route is let go.
+        assertEquals(order.sortedBy { it.second }, order)
+    }
+
+    @Test
     fun `call audio is entered for barge-in or the earpiece, and the follower starts with the route`() {
         val enter = bodyOf(session(), "enterRoute")
         val opening = "VoiceOutputRule.opening(inHand, fromWakeWord, opener != null, test != null)"
