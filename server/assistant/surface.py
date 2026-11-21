@@ -291,7 +291,8 @@ def member_only_tools(user) -> dict:
     from assistant import voice_engine
     from garage import flags as garage_flags
 
-    if is_recruiter(user) or not garage_flags.enabled():
+    # The switch first: off, this costs no query (the deployed query count holds).
+    if not garage_flags.enabled() or is_recruiter(user):
         return {}
     if voice_engine.engine_for(user) != voice_engine.CASCADE or not _engine_owner(user):
         return {}
