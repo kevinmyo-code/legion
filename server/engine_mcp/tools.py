@@ -274,7 +274,8 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-_RELATIVE_DAYS = {"today": 0, "tomorrow": 1, "yesterday": -1}
+# "tonight" is today: a word the tools take, so a model never works a date out for it.
+_RELATIVE_DAYS = {"today": 0, "tonight": 0, "tomorrow": 1, "yesterday": -1}
 _WHEN_ARG = (
     "ISO date or date-time, or today/tomorrow. A date (or today) is the household's whole day; "
     "a date-time with no offset is the household's local time."

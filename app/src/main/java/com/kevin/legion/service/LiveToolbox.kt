@@ -2016,15 +2016,18 @@ object LiveToolbox {
         "That's an estimate from reading the email text, not a live status - the calendar or the " +
             "carrier or airline itself may say something different by now."
 
-    /** `from`/`to` (yyyy-MM-dd) into a `[startMs, endMs]` window in [zone] - midnight of `from`
-     * through the START of the day AFTER `to`. Moved inline here from the retired
-     * `calendar/CalendarReadToolLogic.kt` (one-today ticket 01) - the model's own date shape for
-     * `read_calendar`'s `from`/`to` args, unchanged. Null on a malformed date or `to` before `from`. */
-    private fun parseCalendarWindow(from: String, to: String, zone: java.time.ZoneId): Pair<Long, Long>? {
-        // `today`/`tomorrow`/`yesterday` resolve here, on the local date (RelativeDay, 2026-11-16).
-        val today = RelativeDay.today(zone)
-        val fromDate = RelativeDay.parse(from, today) ?: return null
-        val toDate = RelativeDay.parse(to, today) ?: return null
+    /** `from`/`to` (yyyy-MM-dd) into a `[startMs, endMs]` window in [RelativeDay.clock]'s zone - midnight
+     * of `from` through the START of the day AFTER `to`. Moved inline here from the retired
+     * `calendar/CalendarReadToolLogic.kt` (one-today ticket 01). Null on a malformed date or `to`
+     * before `from`. */
+    private fun parseCalendarWindow(from: String, to: String): Pair<Long, Long>? {
+        // `today`/`tonight`/`tomorrow`/`yesterday` resolve here, on the local date (RelativeDay,
+        // 2026-11-16). No `from` is today and no `to` is `from`: a day left out is
+        // never one the model worked out.
+        val zone = RelativeDay.clock().zone
+        val today = RelativeDay.today()
+        val fromDate = if (from.isBlank()) today else RelativeDay.parse(from, today) ?: return null
+        val toDate = if (to.isBlank()) fromDate else RelativeDay.parse(to, today) ?: return null
         if (toDate.isBefore(fromDate)) return null
         val startMs = fromDate.atStartOfDay(zone).toInstant().toEpochMilli()
         val endMs = toDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
@@ -2033,7 +2036,7 @@ object LiveToolbox {
 
     private const val CALENDAR_INVALID_WINDOW_MESSAGE =
         "I need a valid date range to read your calendar - from and to as yyyy-MM-dd or today, " +
-            "tomorrow or yesterday, with to on or after from."
+            "tonight, tomorrow or yesterday, with to on or after from."
 
     /**
      * `complete_task` (2026-10-03). Resolves with [TaskDoneMatcher], writes with
@@ -2057,7 +2060,7 @@ object LiveToolbox {
         var lo: Long? = null
         var hi = now + TASK_WINDOW_AHEAD_MS
         if (dateArg.isNotBlank()) {
-            val window = parseCalendarWindow(dateArg, dateArg, java.time.ZoneId.systemDefault())
+            val window = parseCalendarWindow(dateArg, dateArg)
                 ?: return result(false, "Nothing was changed. $CALENDAR_INVALID_WINDOW_MESSAGE")
             lo = window.first
             hi = window.second
@@ -2092,7 +2095,7 @@ object LiveToolbox {
     }
 
     private const val TASK_WINDOW_AHEAD_MS = 7L * 24 * 60 * 60 * 1000
-    private val RELATIVE_WORDS = setOf("today", "tomorrow", "yesterday")
+    private val RELATIVE_WORDS = setOf("today", "tonight", "tomorrow", "yesterday")
     /**
      * `manage_vehicle switch` once the car is resolved. With the dongle connected this also answers
      * "which car is it in" (2026-11-15), and can refuse (a VIN conflict), so the flag is the
@@ -2196,8 +2199,8 @@ object LiveToolbox {
      * straight into the `meta` field below - same shape the model always saw, sourced differently.
      */
     private suspend fun readCalendar(context: Context, args: JSONObject): JSONObject {
-        val zone = java.time.ZoneId.systemDefault()
-        val window = parseCalendarWindow(args.optString("from"), args.optString("to"), zone)
+        val zone = RelativeDay.clock().zone
+        val window = parseCalendarWindow(args.optString("from"), args.optString("to"))
             ?: return result(false, CALENDAR_INVALID_WINDOW_MESSAGE)
         return readCalendarWindow(context, zone, window, args.optString("city"))
     }
@@ -2236,7 +2239,8 @@ object LiveToolbox {
         // `04:59Z the next day`; the storage handles it. Only the `kind` filter was wrong.
         // One read for the tool and the voice agenda block (ADR 0093, 2026-11-16): the block is what
         // this tool returns for today.
-        val read = com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone)
+        val nowMs = RelativeDay.clock().millis()
+        val read = com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone, nowMs)
         val events = read.events
         ToolCards.publish(PhoneCards.calendar(events, zone, startMs))
         // 2026-11-15: "Quiet on the calendar for today" over two open assignments. Everything due,
@@ -2245,7 +2249,7 @@ object LiveToolbox {
         // rows put open tasks first, so the answer is the first thing in the result.
         val due = read.due
         val arr = JSONArray()
-        for (event in openTasksFirst(events)) {
+        for (event in openTasksFirst(events, zone, nowMs)) {
             val eventStart = event.startsAt ?: continue
             val eventEnd = event.endsAt ?: eventStart
             arr.put(
@@ -2286,6 +2290,9 @@ object LiveToolbox {
         val toDay = java.time.Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate()
         val saidWindow = RelativeDay.label(fromDay) + if (fromDay == toDay) "" else " to ${RelativeDay.label(toDay)}"
         o.put("window", saidWindow)
+        // How that window stands to today, in words: a bare date beside today's is easy for the model
+        // to misread, so a read of another day is never answered as today.
+        o.put("window_is", RelativeDay.windowIs(fromDay, toDay, RelativeDay.today()))
         // Suggestions (2026-10-09) ride in their OWN list, never in `events`: they are things the
         // user could do, not plans, and `count` and the empty-window sentence stay about plans.
         com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone, city)
@@ -2322,11 +2329,17 @@ object LiveToolbox {
         return o
     }
 
-    /** Open tasks first (by time), then everything else (by time): the rows the model reads first. */
-    private fun openTasksFirst(events: List<com.kevin.legion.data.local.Event>) = events.sortedWith(
-        compareBy<com.kevin.legion.data.local.Event> {
-            !(it.kind == EventKind.TASK && !it.done && !DueReader.handedIn(it.structuredMeta))
-        }.thenBy { it.startsAt ?: Long.MAX_VALUE },
+    /**
+     * Open tasks first (by time), then everything else (by time): the rows the model reads first.
+     * "Open" is [DueReader.taskInput]'s, at [nowMs], so the rows and the `due` block agree.
+     */
+    private fun openTasksFirst(
+        events: List<com.kevin.legion.data.local.Event>,
+        zone: java.time.ZoneId,
+        nowMs: Long,
+    ) = events.sortedWith(
+        compareBy<com.kevin.legion.data.local.Event> { DueReader.taskInput(it, zone, nowMs)?.done != false }
+            .thenBy { it.startsAt ?: Long.MAX_VALUE },
     )
 
     private suspend fun withResolvedVehicle(
@@ -5192,8 +5205,8 @@ object LiveToolbox {
      * it is what the doc says it wants the model to say, and it names no city to get wrong.
      */
     private fun getCurrentTime(): JSONObject {
-        val zone = java.time.ZoneId.systemDefault()
-        val now = java.time.ZonedDateTime.now(zone)
+        val now = RelativeDay.now()
+        val zone = now.zone
         val stamp = now.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a"))
         val zoneName = zone.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
         // The day as a date too, with tomorrow's (2026-11-15: no date arithmetic left to the model).

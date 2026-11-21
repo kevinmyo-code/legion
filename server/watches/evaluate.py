@@ -32,6 +32,7 @@ from django.db.models import Q
 from brief.compose import Viewer, clock_words, day_words, money, short_date
 from household.tenancy import scoped, visible
 from household.timezones import zone_named
+from ingest.canvas_meta import handed_in
 from watches.models import (
     KIND_BALANCE_UNDER,
     KIND_BUDGET_PACE,
@@ -268,7 +269,8 @@ def canvas_due(viewer, watch, now) -> list[Fact]:
     out = []
     for row in rows.order_by("starts_at", "title"):
         meta = row.structured_meta or {}
-        if meta.get("canvas_submitted") is True:
+        # A discussion with only its first post in is still due (`handed_in`).
+        if handed_in(meta):
             continue
         said = " Canvas says not submitted." if meta.get("canvas_submitted") is False else ""
         out.append(

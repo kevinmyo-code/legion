@@ -1,9 +1,11 @@
 package com.kevin.legion.service.tools.day
 
+import androidx.annotation.VisibleForTesting
 import org.json.JSONObject
+import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalTime
-import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import java.time.format.TextStyle
@@ -21,13 +23,49 @@ import java.util.Locale
 internal object RelativeDay {
     /** [raw] as a date, or null when it is neither a known word nor `yyyy-MM-dd`. */
     fun parse(raw: String, today: LocalDate): LocalDate? = when (raw.trim().lowercase(Locale.US)) {
-        "today" -> today
+        // "tonight" is today's evening: a word the tool takes, so the model never works a date out for it.
+        "today", "tonight" -> today
         "tomorrow" -> today.plusDays(1)
         "yesterday" -> today.minusDays(1)
         else -> runCatching { LocalDate.parse(raw.trim()) }.getOrNull()
     }
 
-    fun today(zone: ZoneId = ZoneId.systemDefault()): LocalDate = LocalDate.now(zone)
+    /**
+     * The ONE clock the voice day path reads "now", its zone and the local date from: the prompt's
+     * date paragraph, `day read_calendar`'s window and `due` block, `get_current_time`. Always the
+     * phone's own zone, never UTC. Read fresh each call (a zone change applies at once); a test pins
+     * it with [pin].
+     */
+    fun clock(): Clock = pinned ?: Clock.systemDefaultZone()
+
+    /** Now on [clock], in its zone. */
+    fun now(): ZonedDateTime = ZonedDateTime.now(clock())
+
+    /** The local date on [clock]. */
+    fun today(): LocalDate = LocalDate.now(clock())
+
+    @Volatile private var pinned: Clock? = null
+
+    /** Tests only: pin [clock] to [fixed] (null puts the real clock back). */
+    @VisibleForTesting
+    fun pin(fixed: Clock?) {
+        pinned = fixed
+    }
+
+    /**
+     * How [from]..[to] stands to [today], for a read's result: "today", "tomorrow, not today (today is
+     * Tuesday 2027-03-09)", or "not today (today is ...)". Said in words: a bare date beside today's is
+     * easy for the model to misread as today.
+     */
+    fun windowIs(from: LocalDate, to: LocalDate, today: LocalDate): String {
+        val word = if (from == to) WINDOW_WORDS[from.toEpochDay() - today.toEpochDay()] else null
+        return when {
+            from == to && from == today -> "today"
+            !today.isBefore(from) && !today.isAfter(to) -> "a range that includes today, ${label(today)}"
+            word != null -> "$word, not today (today is ${label(today)})"
+            else -> "not today (today is ${label(today)})"
+        }
+    }
 
     /**
      * The one day [words] (his turn) names, or null: exactly one of today, tonight or tomorrow, and
@@ -99,6 +137,7 @@ internal object RelativeDay {
     }
 
     private const val SMALL_HOURS_END = 5
+    private val WINDOW_WORDS = mapOf(1L to "tomorrow", -1L to "yesterday")
     private val DATE_KEYS = listOf("date", "from", "to")
     private val DAY_WORDS = mapOf("today" to 0L, "tonight" to 0L, "tomorrow" to 1L)
     private val BLOCKERS = setOf(

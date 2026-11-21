@@ -367,7 +367,7 @@ internal class CascadeSession(
     private var missedInARow = 0
 
     /** The date the model's prompt states as today ([RelativeDay.TurnDates]). */
-    @Volatile private var promptDay: LocalDate = LocalDate.now()
+    @Volatile private var promptDay: LocalDate = RelativeDay.today()
 
     /** Writes that went through and that he has not heard said yet ([OwedWrites]). */
     private val owed = OwedWrites()
@@ -617,7 +617,7 @@ internal class CascadeSession(
         val base = scope.async(Dispatchers.IO) {
             val t = System.currentTimeMillis()
             // The date the model is given: the prepared prompt's day, or today as it is built now.
-            promptDay = prepared?.day ?: LocalDate.now()
+            promptDay = prepared?.day ?: RelativeDay.today()
             (prepared?.split ?: CascadePrompt.split(brain.buildBaseInstruction())).also {
                 LiveLatency.log(LiveLatency.TAG, "open_base_ms=${System.currentTimeMillis() - t}")
                 // The date paragraph alone until the live context lands.
@@ -665,9 +665,10 @@ internal class CascadeSession(
     private suspend fun loadAgenda(): String {
         if (test != null || opener != null) return ""
         val t = System.currentTimeMillis()
-        val zone = ZoneId.systemDefault()
+        val zone = RelativeDay.clock().zone
         val block = try {
-            val read = withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone) }
+            val nowMs = RelativeDay.clock().millis()
+            val read = withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone, nowMs) }
             if (read == null) {
                 AgendaBlock.unavailable(AgendaBlock.NOT_READ_IN_TIME)
             } else {

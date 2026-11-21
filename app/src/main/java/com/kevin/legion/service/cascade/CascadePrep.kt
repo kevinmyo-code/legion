@@ -4,6 +4,7 @@ import android.content.Context
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.service.LiveLatency
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.tools.day.RelativeDay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -47,12 +48,12 @@ internal object CascadePrep {
         p != null && now - p.builtAtMs < FRESH_MS && p.day == today
 
     /** The prepared prompt if it may be used now, else null. */
-    fun fresh(now: Long = System.currentTimeMillis(), today: LocalDate = LocalDate.now()): Prepared? =
+    fun fresh(now: Long = System.currentTimeMillis(), today: LocalDate = RelativeDay.today()): Prepared? =
         ready?.takeIf { usable(it, now, today) }
 
     /** A conversation built the prompt itself (nothing prepared): kept for the next one. */
     fun offer(split: CascadePrompt.Split, prefix: CascadePrefix) {
-        ready = Prepared(split, prefix, System.currentTimeMillis(), LocalDate.now())
+        ready = Prepared(split, prefix, System.currentTimeMillis(), RelativeDay.today())
     }
 
     /** The base instruction changed (car switch, Alfred pack): the next conversation builds anew. */
@@ -74,7 +75,7 @@ internal object CascadePrep {
                 val declarations = CascadeRules.declarations(LiveToolbox.declarations())
                 val prefix = CascadePrefix(CascadeSession.MODEL, split.cacheable, declarations)
                 val before = ready?.prefix?.key
-                Prepared(split, prefix, System.currentTimeMillis(), LocalDate.now()).also {
+                Prepared(split, prefix, System.currentTimeMillis(), RelativeDay.today()).also {
                     ready = it
                     LiveLatency.log(
                         LiveLatency.TAG,
