@@ -18,6 +18,8 @@ match, the result lists them and the model asks, then calls again with the id it
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from engine_mcp.tools import (
     ENDS_TURN,
     FOR_MODEL,
@@ -66,10 +68,36 @@ INPUT_SCHEMA = {
 }
 
 
-def _checked() -> dict:
-    from garage.models import FastenerSpec
+@dataclass(frozen=True)
+class _Table:
+    """What may be said: the rows that fit the owner's truck, and why each other stored row may
+    not (no profile, another year/engine/axle, a stock figure on kit hardware)."""
 
-    return {s.fastener_id: s for s in FastenerSpec.objects.filter(model=m.MODEL)}
+    truck: specs.Truck | None
+    speakable: dict
+    held: dict
+
+    def line(self, f: m.Fastener) -> str | None:
+        return self.held.get(f.id)
+
+
+def _checked() -> _Table:
+    from garage.models import FastenerSpec, GarageTruck
+
+    row = GarageTruck.objects.filter(model=m.MODEL).first()
+    truck = (
+        specs.Truck(row.year, row.engine, row.axle, row.lift_in, frozenset(row.kit_fasteners))
+        if row is not None
+        else None
+    )
+    speakable, held = {}, {}
+    for spec in FastenerSpec.objects.filter(model=m.MODEL):
+        why = specs.refusal(spec, truck, spec.fastener_id)
+        if why is None:
+            speakable[spec.fastener_id] = spec
+        else:
+            held[spec.fastener_id] = why
+    return _Table(truck, speakable, held)
 
 
 def _side_words(f: m.Fastener) -> str:
@@ -81,23 +109,39 @@ def _label(f: m.Fastener) -> str:
     return f"{m.PARTS_BY_ID[f.part].name}, {f.name}{_side_words(f)}"
 
 
-def _fact(f: m.Fastener, spec) -> dict:
+def _fact(f: m.Fastener, table: _Table) -> dict:
+    spec = table.speakable.get(f.id)
     fact = {"fastener_id": f.id, "name": f.name, "kind": f.kind, "checked": spec is not None}
     if spec is not None:
         fact.update(
             figure=specs.figure_text(spec),
             socket=spec.socket,
             thread=spec.thread,
-            applies_to=spec.applies_to,
+            applies_to=_applies_words(spec, table.truck),
             source=spec.source,
             page=spec.source_page,
             verified_on=spec.verified_on.isoformat(),
         )
+    elif f.id in table.held:
+        fact["held"] = table.held[f.id]
     return fact
 
 
-def _card(part: m.Part, fastener: m.Fastener | None, checked: dict) -> dict:
-    mine = m.fasteners_of(part.id)
+def _applies_words(spec, truck: specs.Truck) -> str:
+    years = (
+        str(spec.year_from)
+        if spec.year_from == spec.year_to
+        else f"{spec.year_from} to {spec.year_to}"
+    )
+    return (
+        f"{years}, engine {spec.engine}, axle {spec.axle}, {specs.hardware_words(spec)}; "
+        f"your truck: {truck.year}, {truck.engine}, {truck.axle}, {truck.lift_in} in lift"
+    )
+
+
+def _card(part: m.Part, fastener: m.Fastener | None, table: _Table) -> dict:
+    # The fastener asked about first; the card sets it apart and folds the rest away.
+    mine = sorted(m.fasteners_of(part.id), key=lambda f: fastener is None or f.id != fastener.id)
     view = (fastener or part).view
     return {
         "card": CARD,
@@ -109,7 +153,7 @@ def _card(part: m.Part, fastener: m.Fastener | None, checked: dict) -> dict:
         "highlight": [part.id] + ([fastener.id] if fastener else []),
         "view": view.as_dict(),
         "where": (fastener or part).where,
-        "facts": [_fact(f, checked.get(f.id)) for f in mine],
+        "facts": [_fact(f, table) for f in mine],
         "note": "Torque is spoken and shown only from rows the owner checked against a source.",
     }
 
@@ -140,7 +184,7 @@ def _none() -> ToolResult:
     )
 
 
-def _part(match: r.Match, checked: dict) -> ToolResult:
+def _part(match: r.Match, table: _Table) -> ToolResult:
     part = match.part
     mine = m.fasteners_of(part.id)
     side = f", {part.side} side" if part.side else ""
@@ -166,25 +210,25 @@ def _part(match: r.Match, checked: dict) -> ToolResult:
             ),
             SPOKEN_FIGURES: [],
         },
-        card=_card(part, None, checked),
+        card=_card(part, None, table),
     )
 
 
-def _fastener(match: r.Match, checked: dict) -> ToolResult:
+def _fastener(match: r.Match, table: _Table) -> ToolResult:
     f = match.fastener
-    spec = checked.get(f.id)
+    spec = table.speakable.get(f.id)
     lines = [f"{_label(f)}. {f.where}"]
     spoken: list[str] = []
     if spec is None:
-        lines.append(specs.NOT_VERIFIED)
+        lines.append(table.line(f) or specs.NOT_VERIFIED)
     else:
-        lines.append(specs.figure_line(spec))
+        lines.append(specs.figure_line(spec, table.truck))
         size = specs.size_line(spec)
         if size:
             lines.append(size)
         if "castle" in f.kind.lower():
             lines.append(specs.CASTLE)
-        spoken = sorted(specs.spoken_numbers(spec))
+        spoken = sorted(specs.spoken_numbers(spec, table.truck))
     return ok(
         "On screen now: the fastener, highlighted.",
         {
@@ -202,7 +246,7 @@ def _fastener(match: r.Match, checked: dict) -> ToolResult:
             ),
             SPOKEN_FIGURES: spoken,
         },
-        card=_card(m.PARTS_BY_ID[f.part], f, checked),
+        card=_card(m.PARTS_BY_ID[f.part], f, table),
     )
 
 
@@ -217,10 +261,10 @@ def show_part(request, args: dict) -> ToolResult:
         return _none()
     if match.kind == r.AMBIGUOUS:
         return _ambiguous(match)
-    checked = _checked()
+    table = _checked()
     if match.kind == r.PART:
-        return _part(match, checked)
-    return _fastener(match, checked)
+        return _part(match, table)
+    return _fastener(match, table)
 
 
 SHOW_PART = EngineTool(

@@ -1,3 +1,3 @@
-fastener_id,where,verified_torque,verified_torque_max,verified_unit,verified_socket,verified_thread,applies_to,source,source_page,verified,verified_on,notes
-example.widget@left_bolt,MADE-UP EXAMPLE: not a real fastener and not a real figure,12,,ft-lb,10 mm,,an example widget,Example manual,Section 0,yes,2000-01-01,Shows a filled and ticked row
-example.widget@right_bolt,MADE-UP EXAMPLE: an unticked row is skipped and never spoken,,,,,,,,,,,Left blank until checked
+fastener_id,where,on_truck,mockup_torque,mockup_torque_source,verified_torque,verified_torque_max,verified_unit,verified_socket,verified_thread,year_from,year_to,engine,axle,hardware,kit_name,source_kind,source,source_page,verified,verified_on,notes
+example.widget@left_bolt,MADE-UP EXAMPLE: not a real fastener and not a real figure,stock,,,12,,ft-lb,10 mm,,1990,2010,any,Example axle,stock,,fsm,Example manual,Section 0,yes,2000-01-01,Shows a filled and ticked row
+example.widget@right_bolt,MADE-UP EXAMPLE: an unticked row is skipped and never spoken,kit,,,,,,,,,,,,,,,,,,,Left blank until checked
