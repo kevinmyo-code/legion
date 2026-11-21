@@ -2608,12 +2608,7 @@ internal class CascadeSession(
                 if (gate != GreetingGate.SPEAK) {
                     call.cancel()
                     reply.interrupt()
-                    val earcon = gate == GreetingGate.HE_SPOKE &&
-                        GreetingGate.earconAfterDrop(System.currentTimeMillis(), lastLocalSpeechAtMs)
-                    gate.logLine(earcon)?.let { LiveLatency.log(LiveLatency.TAG, it) }
-                    // He spoke: his own turn carries on and its reply opens the window; no line is said.
-                    if (gate.scripted) speakScripted(ackLines.next())
-                    if (earcon) playDropEarcon()
+                    greetingNotSpoken(gate)
                     return@launch
                 }
                 reply.text(written.toString())
@@ -2639,6 +2634,19 @@ internal class CascadeSession(
                 throw e
             }
         }.also { job -> job.invokeOnCompletion { voice.tts.holdWarm(false) } }
+    }
+
+    /**
+     * The model's greeting was not spoken ([gate] is not [GreetingGate.SPEAK]): logged; the scripted
+     * hello for a slow or wrongly named line; for a drop because he spoke, his own turn carries on and
+     * only the earcon may play ([GreetingGate.earconAfterDrop]).
+     */
+    private suspend fun greetingNotSpoken(gate: GreetingGate) {
+        val earcon = gate == GreetingGate.HE_SPOKE &&
+            GreetingGate.earconAfterDrop(System.currentTimeMillis(), lastLocalSpeechAtMs)
+        gate.logLine(earcon)?.let { LiveLatency.log(LiveLatency.TAG, it) }
+        if (gate.scripted) speakScripted(ackLines.next())
+        if (earcon) playDropEarcon()
     }
 
     /**

@@ -520,9 +520,11 @@ class CascadeWiringTest {
         assertTrue("$join $gate $speak $kept", join in 0 until gate && gate < speak && speak < kept)
         // Any gate but SPEAK says nothing of the model's line and keeps nothing; only some play the scripted hello.
         val blocked = g.substring(gate, speak)
-        assertTrue(blocked.contains("if (gate.scripted) speakScripted(ackLines.next())"))
-        assertTrue(blocked.contains("gate.logLine?.let"))
+        assertTrue(blocked.contains("greetingNotSpoken(gate)"))
         assertTrue(blocked.contains("return@launch"))
+        val notSpoken = bodyOf(session(), "greetingNotSpoken")
+        assertTrue(notSpoken.contains("if (gate.scripted) speakScripted(ackLines.next())"))
+        assertTrue(notSpoken.contains("gate.logLine(earcon)?.let"))
         assertFalse(blocked.contains("noteOpened("))
         // The gate reads his speech the moment it decides, and the name check gets his name.
         val decide = bodyOf(session(), "greetingGate")
@@ -552,11 +554,12 @@ class CascadeWiringTest {
     @Test
     fun `a dropped greeting acknowledges the wake with the earcon unless he is talking now`() {
         val g = bodyOf(session(), "speakGreeting")
-        val gate = g.substring(g.indexOf("if (gate != GreetingGate.SPEAK)"), g.indexOf("reply.text(written.toString())"))
+        val blocked = g.substring(g.indexOf("if (gate != GreetingGate.SPEAK)"), g.indexOf("reply.text(written.toString())"))
+        assertTrue(blocked.indexOf("greetingNotSpoken(gate)") in 0 until blocked.indexOf("return@launch"))
+        val gate = bodyOf(session(), "greetingNotSpoken")
         assertTrue(gate.contains("GreetingGate.earconAfterDrop(System.currentTimeMillis(), lastLocalSpeechAtMs)"))
         assertTrue(gate.contains("gate.logLine(earcon)"))
         assertTrue(gate.contains("if (earcon) playDropEarcon()"))
-        assertTrue(gate.indexOf("if (earcon) playDropEarcon()") < gate.indexOf("return@launch"))
         assertTrue(bodyOf(session(), "playDropEarcon").contains("ListenCue.earconPcm()"))
     }
 
