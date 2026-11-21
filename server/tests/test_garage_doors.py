@@ -2,19 +2,25 @@
 
 With `LEGION_JEEP_ASSISTANT` unset every door behaves as it did: `show_part` is in no list, no
 declaration and no prompt, a call to it is refused as unknown, and no sentence is checked for a
-torque. On, a member's web assistant gets it and the guard; a recruiter, `/mcp` and the head unit
-never do.
+torque. On, the engine household's OWNER gets it on the web cascade, and the guard with it;
+another member, another household, a recruiter, Live, `/mcp` and the head unit never do.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from django.core.cache import cache
 
-from agents.legion.speech_rules import backed_torque, states_unbacked_torque, torque_figures
+from agents.legion.speech_rules import (
+    TorqueGuard,
+    backed_torque,
+    states_unbacked_torque,
+    torque_figures,
+)
 from agents.runtime.model import FakeModel, call, say
 from assistant import cascade, views
 from assistant.surface import (
@@ -28,9 +34,9 @@ from assistant.surface import (
 from engine_mcp import cards
 from engine_mcp.server import _tools_for_request
 from engine_mcp.tools import TOOLS_BY_NAME
-from garage import flags, specs
+from garage import flags, specs, topic
 from garage import xj_front as m
-from garage.models import FastenerSpec
+from garage.models import FastenerSpec, GarageTruck
 from household.models import Household, HouseholdMember, User
 from ingest.statements import GEMINI_KEY_ENV
 from tests.test_assistant import _tool, browser
@@ -62,8 +68,21 @@ def engine(monkeypatch):
 
 
 @pytest.fixture
-def member(household_user):
-    return browser(household_user)
+def owner(household_user):
+    """`household_user` is the bootstrap (engine) household's owner (`tests/conftest.py`)."""
+    return household_user
+
+
+@pytest.fixture
+def member(owner):
+    return browser(owner)
+
+
+@pytest.fixture
+def plain_member(household_a):
+    user = User.objects.create_user(email="other-member@example.com", password="x-y-z-w-v")
+    HouseholdMember.objects.create(user=user, household=household_a, role=HouseholdMember.MEMBER)
+    return user
 
 
 @pytest.fixture
@@ -95,19 +114,41 @@ def _declared(engine_) -> set[str]:
     return {d["name"] for d in engine_.model.requests[0].declarations}
 
 
+def _checked_row(**extra):
+    GarageTruck.objects.create(
+        model=m.MODEL, year=2000, engine="9.9", axle="Example axle", lift_in=Decimal(0)
+    )
+    got = {
+        "fastener_id": "xj.susp.track_bar@frame_end",
+        "torque_min": Decimal(12),
+        "unit": "ft-lb",
+        "year_from": 1999,
+        "year_to": 2001,
+        "engine": "any",
+        "axle": "any",
+        "hardware": "stock",
+        "source_kind": "fsm",
+        "source": "Example book",
+        "source_page": "Page 1",
+        "verified_on": dt.date(2000, 1, 2),
+        **extra,
+    }
+    return FastenerSpec.objects.create(model=m.MODEL, **got)
+
+
 # =============================================================================
 # Switch off: exactly as before
 # =============================================================================
 
 
-def test_off_the_tool_is_in_no_list(household_user, visitor_user):
+def test_off_the_tool_is_in_no_list(owner, visitor_user):
     assert not flags.enabled()
     assert "show_part" not in TOOLS_BY_NAME
     assert "show_part" not in WEB_TOOL_NAMES and "show_part" not in RECRUITER_TOOLS
-    assert member_only_tools(household_user) == {}
-    assert [t.name for t in tools_for(household_user)] == list(WEB_TOOL_NAMES)
-    assert off_registry_tool("show_part", household_user) is None
-    assert refusal_for("show_part", household_user) is not None
+    assert member_only_tools(owner) == {}
+    assert [t.name for t in tools_for(owner)] == list(WEB_TOOL_NAMES)
+    assert off_registry_tool("show_part", owner) is None
+    assert refusal_for("show_part", owner) is not None
     assert refusal_for("show_part", visitor_user) is not None
 
 
@@ -117,7 +158,7 @@ def test_only_the_word_on_turns_it_on(monkeypatch, value):
     assert flags.enabled() is (value.strip().lower() == "on")
 
 
-def test_off_a_member_turn_declares_what_it_did_and_says_a_torque_unchecked(member, engine):
+def test_off_a_turn_declares_what_it_did_and_says_a_torque_unchecked(member, engine):
     engine.model = FakeModel([say("Tighten it to 33 ft-lb. Anything else?")])
     events = _events(_post(member, text="What torque for the track bar?"))
     assert "show_part" not in _declared(engine)
@@ -131,17 +172,34 @@ def test_off_the_tool_door_refuses_it_as_unknown(member):
 
 
 # =============================================================================
-# Switch on
+# Switch on: the owner only
 # =============================================================================
 
 
-def test_on_a_member_is_declared_it_and_nothing_else_changes(member, engine, switch_on):
+def test_on_the_owner_is_declared_it_and_nothing_else_changes(member, engine, switch_on):
     _events(_post(member, text="Hello."))
     declared = _declared(engine)
     assert "show_part" in declared
     assert declared - {"show_part", cascade.END_TOOL, cascade.NOT_FOR_ME_TOOL} <= set(
         WEB_TOOL_NAMES
-    ) | {"about_kevin"}
+    )
+
+
+def test_on_another_member_of_his_household_does_not_get_it(plain_member, engine, switch_on):
+    assert member_only_tools(plain_member) == {}
+    assert refusal_for("show_part", plain_member) is not None
+    client = browser(plain_member)
+    engine.model = FakeModel([say("Tighten it to 33 ft-lb.")])
+    events = _events(_post(client, text="Track bar torque?"))
+    assert "show_part" not in _declared(engine)
+    # No tool for him, so no guard either: his turn is as before.
+    assert _said(events) == ["Tighten it to 33 ft-lb."]
+    assert _tool(client, "show_part", {"words": "track bar"}).status_code == 400
+
+
+def test_on_another_households_owner_does_not_get_it(user_b, switch_on):
+    assert member_only_tools(user_b) == {}
+    assert refusal_for("show_part", user_b) is not None
 
 
 def test_on_a_visitor_is_declared_exactly_its_allowlist(visitor, engine, switch_on):
@@ -154,8 +212,7 @@ def test_on_a_visitor_cannot_call_it_and_gets_no_guard(visitor, engine, switch_o
     events = _events(_post(visitor, text="Where is the track bar?"))
     assert _of(events, "tool")[0]["ok"] is False
     assert "It is 33 ft-lb." in _said(events)
-    response = _tool(visitor, "show_part", {"words": "track bar"})
-    assert response.status_code == 400
+    assert _tool(visitor, "show_part", {"words": "track bar"}).status_code == 400
 
 
 @pytest.mark.django_db
@@ -167,7 +224,23 @@ def test_on_the_card_kind_never_reaches_a_recruiter():
     assert cards.for_viewer({"card": "part3d", "title": "x"}, True) is None
 
 
-@pytest.mark.django_db
+def test_on_the_live_fallback_does_not_get_it(owner, monkeypatch, switch_on):
+    # Live speaks no code lines and runs no guard: the tool stays off there.
+    monkeypatch.setenv("LEGION_WEB_VOICE", "live")
+    assert member_only_tools(owner) == {}
+    assert refusal_for("show_part", owner) is not None
+
+
+def test_on_the_agents_door_refuses_it_outside_a_spec(owner, switch_on):
+    from agents.legion.guards import check_call
+    from garage.tool import SHOW_PART
+
+    verdict = check_call(
+        None, SimpleNamespace(tools=frozenset()), "show_part", {}, SHOW_PART, owner
+    )
+    assert verdict.allow is False and verdict.guard == "not_allowed"
+
+
 def test_on_an_unchecked_nut_is_said_by_code_with_no_number(member, engine, switch_on):
     engine.model = FakeModel(
         [call("show_part", {"words": "track bar frame end"}), say("It is 33 ft-lb.")]
@@ -184,21 +257,11 @@ def test_on_an_unchecked_nut_is_said_by_code_with_no_number(member, engine, swit
     assert "It is 33 ft-lb." not in said
 
 
-@pytest.mark.django_db
 def test_on_a_checked_nut_is_said_with_its_figure(member, engine, switch_on):
-    FastenerSpec.objects.create(
-        model=m.MODEL,
-        fastener_id="xj.susp.track_bar@frame_end",
-        torque_min=Decimal(12),
-        unit="ft-lb",
-        applies_to="a made-up truck",
-        source="Example book",
-        source_page="Page 1",
-        verified_on=dt.date(2000, 1, 2),
-    )
+    _checked_row()
     engine.model = FakeModel([call("show_part", {"words": "track bar frame end"}), say("Done.")])
     said = _said(_events(_post(member, text="Track bar frame end torque?")))
-    assert any(s.startswith("12 foot-pounds, for a made-up truck.") for s in said)
+    assert any(s.startswith("12 foot-pounds. That's for your 2000") for s in said)
 
 
 def test_on_a_model_torque_with_no_table_behind_it_is_not_said(member, engine, switch_on):
@@ -207,7 +270,19 @@ def test_on_a_model_torque_with_no_table_behind_it_is_not_said(member, engine, s
     assert said == ["It sits on the frame rail."]
 
 
-def test_on_the_tool_door_runs_it_for_a_member(member, switch_on):
+def test_on_a_figure_repeated_from_the_history_is_not_said(member, engine, switch_on):
+    # The blind review's case: code spoke a checked figure last turn; this turn ran no tool, and
+    # the model repeats or moves it ("the other side is also ..."). Not backed THIS turn: dropped.
+    _checked_row()
+    engine.model = FakeModel([call("show_part", {"words": "track bar frame end"}), say("Done.")])
+    first = _events(_post(member, text="Track bar frame end torque?"))
+    conversation = _of(first, "turn")[0]["conversation_id"]
+    engine.model = FakeModel([say("The other side is also 12. Anything else?")])
+    second = _events(_post(member, text="And the other side?", conversation_id=conversation))
+    assert _said(second) == ["Anything else?"]
+
+
+def test_on_the_tool_door_runs_it_for_the_owner(member, switch_on):
     response = _tool(member, "show_part", {"words": "where is the alternator"})
     assert response.status_code == 200, response.data
 
@@ -216,14 +291,26 @@ def test_on_the_tool_door_runs_it_for_a_member(member, switch_on):
 # The guard's own rules
 # =============================================================================
 
+OFF_TOPIC = TorqueGuard(frozenset(), topic.SENTENCE, whole_turn=False)
+FRONT_END_TURN = TorqueGuard(frozenset(), topic.SENTENCE, whole_turn=True)
+
 
 @pytest.mark.parametrize(
     "sentence",
     [
+        # The blind review's phrasings.
+        "Run the track bar bolt up to 95 lbs.",
+        "Snug the pitman nut to about ninety.",
+        "The pitman arm nut takes 185.",
+        "It's 185 pounds on that one.",
+        # Units in every form, words, ranges.
         "Tighten it to 33 ft-lb.",
         "Torque them to sixty-one foot-pounds.",
         "It takes 41 to 43 lb-ft.",
+        "Set the drag link between 40 and 45.",
+        "The tie rod end goes to one eighty-five.",
         "About 77 N·m.",
+        "About 77 N⋅m.",
         "88 Nm is right.",
         "Use a 13 mm socket.",
         "It's an M7 x 1.0 bolt.",
@@ -237,36 +324,65 @@ def test_on_the_tool_door_runs_it_for_a_member(member, switch_on):
         "Do 33 ft·lb.",
         "Do 33 lb·ft.",
         "Do 33 lbf ft.",
-        "About 77 N⋅m.",
         "Use 33 ft/lbs.",
         "Give it 33 pounds of torque.",
         "Torque it to 33 lbs.",
         "Torque it to 33.",
     ],
 )
-def test_a_figure_with_no_table_behind_it_is_unbacked(sentence):
-    assert torque_figures(sentence)
-    assert states_unbacked_torque(sentence, set())
+def test_a_figure_about_front_end_hardware_is_dropped_in_any_turn(sentence):
+    assert states_unbacked_torque(sentence, OFF_TOPIC)
 
 
 @pytest.mark.parametrize(
     "sentence",
     [
+        # The blind review's phrasings that name nothing: dropped when the turn is about the
+        # front end (his words, the reply before, or show_part ran).
+        "Did you mean the 185 one?",
+        "Grab a 19 for that.",
+        "The other side is also 185.",
+        "A three quarter inch on it.",
+        "Same as before, 60.",
+    ],
+)
+def test_any_number_is_dropped_in_a_front_end_turn(sentence):
+    assert states_unbacked_torque(sentence, FRONT_END_TURN)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # No front-end word, no torque or size unit, and the turn is not about the truck. Each is
+        # safe because nothing in it can be read as a fastener figure.
         "Your 1998 Cherokee with the 4.0.",
-        "A 3 inch lift changes the angle.",
-        "That is bolt 2 of 3.",
-        "It's on the driver side.",
-        "Check the cotter pin.",
+        "That is 2 of 3 on your list.",
         "We got 12 mm of rain.",
         "There is 1/2 inch of snow.",
         "Take the M25 north.",
-        "It weighs 40 pounds.",
         "The trip is 30 feet.",
+        "It's 72 degrees today.",
+        "Your car payment of $340 is due on the 3rd.",
+        "You've driven 1,200 miles this month.",
+        "Meeting at 3 pm on November 21.",
+        "Which one do you mean?",
     ],
 )
-def test_ordinary_numbers_are_not_torque(sentence):
-    assert torque_figures(sentence) == []
-    assert not states_unbacked_torque(sentence, set())
+def test_ordinary_numbers_are_said(sentence):
+    assert not states_unbacked_torque(sentence, OFF_TOPIC)
+
+
+def test_which_one_is_said_even_in_a_front_end_turn():
+    # "one" alone is a pronoun; the model must be able to ask which one.
+    assert not states_unbacked_torque("Which one do you mean, driver or passenger?", FRONT_END_TURN)
+
+
+def test_the_turn_is_about_the_front_end_from_his_words_or_the_reply_before():
+    assert topic.about_front_end("what torque for the pitman nut again?", "")
+    assert topic.about_front_end("what was that again?", "Track bar, frame end, driver side.")
+    # Common words that are also aliases do not make a turn about the truck.
+    assert not topic.about_front_end("what's the weather this spring?", "")
+    assert not topic.about_front_end("how far is the drive in the frame of a day?", "")
 
 
 class _Call:
@@ -276,33 +392,15 @@ class _Call:
 
 def test_only_show_parts_spoken_figures_back_a_number():
     calls = [_Call("show_part", {"spoken_figures": ["33"]}), _Call("web_search", {"x": "47"})]
-    backed = backed_torque(calls, True)
-    assert backed == {"33"}
-    assert not states_unbacked_torque("It is 33 ft-lb.", backed)
-    assert states_unbacked_torque("It is 47 ft-lb.", backed)
+    guard = backed_torque(calls, topic.SENTENCE, about_front_end=False)
+    assert guard.numbers == {"33"} and guard.whole_turn is True
+    assert not states_unbacked_torque("It is 33 ft-lb.", guard)
+    assert states_unbacked_torque("It is 47 ft-lb.", guard)
     # Number words are never backed: code speaks digits.
-    assert states_unbacked_torque("It is thirty-three ft-lb.", backed)
+    assert states_unbacked_torque("It is thirty-three ft-lb.", guard)
 
 
 def test_the_guard_off_checks_nothing():
-    assert backed_torque([_Call("show_part", {"spoken_figures": ["33"]})], False) is None
+    calls = [_Call("show_part", {"spoken_figures": ["33"]})]
+    assert backed_torque(calls, None, about_front_end=True) is None
     assert not states_unbacked_torque("It is 47 ft-lb.", None)
-
-
-def test_on_the_live_fallback_does_not_get_it(household_user, monkeypatch, switch_on):
-    # Live speaks no code lines and runs no guard: the tool stays off there.
-    monkeypatch.setenv("LEGION_WEB_VOICE", "live")
-    assert member_only_tools(household_user) == {}
-    assert refusal_for("show_part", household_user) is not None
-
-
-def test_on_the_agents_door_refuses_it_outside_a_spec(household_user, switch_on):
-    from types import SimpleNamespace
-
-    from agents.legion.guards import check_call
-    from garage.tool import SHOW_PART
-
-    verdict = check_call(
-        None, SimpleNamespace(tools=frozenset()), "show_part", {}, SHOW_PART, household_user
-    )
-    assert verdict.allow is False and verdict.guard == "not_allowed"

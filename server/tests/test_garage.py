@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import math
 import re
@@ -17,11 +18,12 @@ from engine_mcp.tools import ENDS_TURN, FOR_MODEL, SPEAK_VERBATIM
 from garage import glb, specs
 from garage import resolve as r
 from garage import xj_front as m
-from garage.models import FastenerSpec
+from garage.models import FastenerSpec, GarageTruck
 from garage.tool import CARD, SHOW_PART, SPOKEN_FIGURES
 
 SERVER = Path(__file__).resolve().parents[1]
 EXAMPLE = SERVER / "garage" / "example_specs.csv"
+EXAMPLE_TRUCK = SERVER / "garage" / "example_truck.csv"
 COMMITTED_GLB = SERVER / "frontend" / "public" / "garage" / f"{m.MODEL}.glb"
 
 PART_ID = re.compile(r"^xj\.[a-z]+\.[a-z_]+(\.(driver|passenger))?$")
@@ -82,8 +84,8 @@ def test_the_manifest_states_no_figure():
         ("tie rod end at the knuckle", "xj.steer.tie_rod@knuckle_end"),
         ("where the tie rod joins the drag link", "xj.steer.tie_rod@drag_link_end"),
         ("tie rod sleeve clamps", "xj.steer.tie_rod_sleeve@clamps"),
-        ("pitman nut", "xj.steer.pitman_arm@shaft_nut"),
-        ("pitman arm nut", "xj.steer.pitman_arm@shaft_nut"),
+        ("pitman arm shaft nut", "xj.steer.pitman_arm@shaft_nut"),
+        ("sector shaft nut", "xj.steer.pitman_arm@shaft_nut"),
         ("driver side axle nut", "xj.axle.hub.driver@axle_nut"),
         ("left lower control arm frame end", "xj.susp.lca.driver@frame_end"),
         ("passenger upper control arm bolt at the axle", "xj.susp.uca.passenger@axle_end"),
@@ -104,6 +106,10 @@ def test_spoken_words_land_on_one_fastener(words, fastener):
 @pytest.mark.parametrize(
     "words,ids",
     [
+        # The blind review's case: the arm's own sector shaft nut, or the drag link's castle nut
+        # at the arm. Their figures differ a lot, so code never picks one.
+        ("pitman arm nut", {"xj.steer.pitman_arm@shaft_nut", "xj.steer.drag_link@pitman_end"}),
+        ("pitman nut", {"xj.steer.pitman_arm@shaft_nut", "xj.steer.drag_link@pitman_end"}),
         (
             "the lower control arm bolt at the axle",
             {"xj.susp.lca.driver@axle_end", "xj.susp.lca.passenger@axle_end"},
@@ -133,6 +139,29 @@ def test_two_matches_are_asked_about_never_guessed(words, ids):
     assert {c.id for c in found.candidates} == ids
 
 
+JOINS = [(f.id, part) for f in m.FASTENERS for part in f.meets]
+
+
+def test_the_joins_table_names_real_ids_and_covers_every_rod_end():
+    assert all(m.PARTS_BY_ID.get(part) for _, part in JOINS)
+    # Every steering joint that lands on another part says which part.
+    for fid in ("xj.steer.drag_link@pitman_end", "xj.steer.tie_rod@drag_link_end"):
+        assert m.FASTENERS_BY_ID[fid].meets
+
+
+@pytest.mark.parametrize("fastener,part", JOINS)
+def test_naming_a_part_asks_about_every_fastener_that_joins_it(fastener, part):
+    # Generated from the manifest: a fastener added to a joint later is covered the same day.
+    found = r.resolve(f"the {m.PARTS_BY_ID[part].aliases[0]} fastener")
+    assert found.kind == r.AMBIGUOUS, (part, found.kind)
+    assert fastener in {c.id for c in found.candidates}
+
+
+@pytest.mark.parametrize("words", ["the nut", "that bolt", "the stud nut"])
+def test_a_bare_nut_or_bolt_picks_nothing(words):
+    assert r.resolve(words).kind == r.NONE
+
+
 def test_a_part_with_no_end_named_lists_its_fasteners():
     found = r.resolve("where is the track bar")
     assert found.kind == r.PART and found.part.id == "xj.susp.track_bar"
@@ -155,106 +184,207 @@ def test_the_side_argument_wins_over_side_words():
 
 
 # =============================================================================
-# The checking sheet (made-up rows)
+# The truck profile and the checking sheet (made-up truck, made-up rows)
 # =============================================================================
 
-HEADER = ",".join(specs.COLUMNS) + "\n"
+TRUCK = specs.Truck(2000, "9.9", "Example axle", Decimal(0))
+TICKED = {
+    "fastener_id": "xj.susp.track_bar@frame_end",
+    "on_truck": "stock",
+    "verified_torque": "12",
+    "verified_torque_max": "",
+    "verified_unit": "ft-lb",
+    "verified_socket": "",
+    "verified_thread": "",
+    "year_from": "1999",
+    "year_to": "2001",
+    "engine": "9.9",
+    "axle": "any",
+    "hardware": "stock",
+    "kit_name": "",
+    "source_kind": "fsm",
+    "source": "Example book",
+    "source_page": "Page 1",
+    "verified": "yes",
+    "verified_on": "2000-01-02",
+}
+MOCK = ("mockup_torque", "mockup_torque_source")
 
 
-def _sheet(tmp_path, *rows: str) -> Path:
+def _row(**change) -> dict:
+    return {**TICKED, **change}
+
+
+def _sheet(tmp_path, *rows: dict) -> Path:
     path = tmp_path / "sheet.csv"
-    path.write_text(HEADER + "".join(row + "\n" for row in rows), encoding="utf-8")
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=[*specs.COLUMNS, *MOCK])
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({**dict.fromkeys(MOCK, ""), **row})
     return path
 
 
-TICKED = (
-    "xj.susp.track_bar@frame_end,12,,ft-lb,,,a made-up truck,Example book,Page 1,yes,2000-01-02"
-)
+def _profile(tmp_path, **change) -> Path:
+    path = tmp_path / "truck.csv"
+    got = {"year": "2000", "engine": "9.9", "axle": "Example axle", "lift_in": "0", **change}
+    path.write_text(",".join(got) + "\n" + ",".join(got.values()) + "\n", encoding="utf-8")
+    return path
 
 
-def test_the_example_sheet_loads_its_ticked_row_and_skips_the_other():
+def _read(tmp_path, *rows: dict):
+    return specs.read_sheet(_sheet(tmp_path, *rows), m.FASTENERS_BY_ID, TRUCK)
+
+
+def test_the_example_sheet_and_truck_load():
+    truck, problems = specs.read_profile(EXAMPLE_TRUCK)
+    assert problems == [] and truck.year == 2000
     known = {"example.widget@left_bolt", "example.widget@right_bolt"}
-    rows, skipped, problems = specs.read_sheet(EXAMPLE, known)
+    rows, skipped, problems, kit = specs.read_sheet(EXAMPLE, known, truck)
     assert problems == []
     assert [x.fastener_id for x in rows] == ["example.widget@left_bolt"] and skipped == 1
+    assert kit == {"example.widget@right_bolt"}
 
 
 def test_a_ticked_row_becomes_a_row(tmp_path):
-    rows, skipped, problems = specs.read_sheet(_sheet(tmp_path, TICKED), m.FASTENERS_BY_ID)
+    rows, skipped, problems, _kit = _read(tmp_path, _row())
     assert problems == [] and skipped == 0
     assert rows[0].torque_min == Decimal(12) and rows[0].unit == "ft-lb"
-    assert rows[0].verified_on == dt.date(2000, 1, 2)
+    assert (rows[0].year_from, rows[0].year_to, rows[0].source_kind) == (1999, 2001, "fsm")
 
 
 def test_an_unticked_row_with_a_figure_is_skipped_so_it_can_never_be_spoken(tmp_path):
-    row = TICKED.replace(",yes,", ",,")
-    rows, skipped, problems = specs.read_sheet(_sheet(tmp_path, row), m.FASTENERS_BY_ID)
+    rows, skipped, problems, _kit = _read(tmp_path, _row(verified=""))
     assert rows == [] and skipped == 1 and problems == []
 
 
 @pytest.mark.parametrize(
-    "row,problem",
+    "change,problem",
     [
-        (TICKED.replace(",ft-lb,", ",,"), "verified_unit"),
-        (TICKED.replace(",12,", ",abc,"), "verified_torque"),
-        (TICKED.replace("Example book", "Some forum thread"), "forum"),
-        (TICKED.replace(",12,", ",450,"), "typo"),
-        (TICKED.replace("Page 1", ""), "source_page is empty"),
-        (TICKED.replace("a made-up truck", ""), "applies_to is empty"),
-        (TICKED.replace("2000-01-02", "Jan 2"), "verified_on"),
-        (TICKED.replace(",12,,", ",12,10,"), "below"),
-        (TICKED.replace("frame_end", "moon_end"), "not a fastener"),
+        ({"verified_unit": ""}, "verified_unit"),
+        ({"verified_unit": "ft"}, "verified_unit"),
+        ({"verified_torque": "abc"}, "verified_torque"),
+        ({"verified_torque": "12.25"}, "more than one decimal"),
+        ({"source_kind": "forum"}, "source_kind"),
+        ({"source_kind": ""}, "source_kind"),
+        ({"verified_torque": "450"}, "typo"),
+        ({"verified_unit": "in-lb", "verified_torque": "4900"}, "typo"),
+        ({"source_page": ""}, "source_page is empty"),
+        ({"engine": ""}, "engine is empty"),
+        ({"year_from": "99"}, "year_from"),
+        ({"year_from": "2001", "year_to": "1999"}, "after"),
+        ({"verified_on": "Jan 2"}, "verified_on"),
+        ({"verified_torque_max": "10"}, "below"),
+        ({"fastener_id": "xj.susp.track_bar@moon_end"}, "not a fastener"),
+        ({"on_truck": ""}, "on_truck"),
+        ({"hardware": "kit"}, "kit_name"),
+        ({"hardware": "kit", "kit_name": "Example kit"}, "kit maker's instructions"),
+        ({"source_kind": "kit_instructions"}, "stock figure comes from"),
+        ({"on_truck": "kit"}, "kit hardware on the truck"),
+        ({"year_from": "2001", "year_to": "2001"}, "do not cover"),
+        ({"engine": "8.8"}, "do not cover"),
+        ({"axle": "Other axle"}, "do not cover"),
+        (
+            {"mockup_torque": "12 ft-lb (16 N-m)", "mockup_torque_source": "Example book"},
+            "mock-up's own",
+        ),
+        ({"source": "copied from the mock-up", "mockup_torque": "12 ft-lb"}, "mock-up's own"),
     ],
 )
-def test_a_bad_ticked_row_is_named_and_nothing_loads(tmp_path, row, problem):
-    rows, _skipped, problems = specs.read_sheet(_sheet(tmp_path, row), m.FASTENERS_BY_ID)
-    assert len(problems) == 1 and problem in problems[0]
+def test_a_bad_ticked_row_is_named_and_nothing_loads(tmp_path, change, problem):
+    rows, _skipped, problems, _kit = _read(tmp_path, _row(**change))
+    assert len(problems) == 1 and problem in problems[0], problems
+
+
+def test_a_kit_figure_from_the_kit_instructions_loads_on_kit_hardware(tmp_path):
+    row = _row(
+        on_truck="kit", hardware="kit", kit_name="Example kit", source_kind="kit_instructions"
+    )
+    rows, _skipped, problems, kit = _read(tmp_path, row)
+    assert problems == [] and rows[0].kit_name == "Example kit"
+    assert kit == {"xj.susp.track_bar@frame_end"}
+
+
+def test_inch_pounds_are_their_own_unit_never_a_default(tmp_path):
+    rows, _skipped, problems, _kit = _read(tmp_path, _row(verified_unit="in-lb"))
+    assert problems == [] and rows[0].unit == "in-lb"
 
 
 def test_the_same_fastener_twice_is_a_problem(tmp_path):
-    _rows, _skipped, problems = specs.read_sheet(
-        _sheet(tmp_path, TICKED, TICKED), m.FASTENERS_BY_ID
-    )
+    _rows, _skipped, problems, _kit = _read(tmp_path, _row(), _row())
     assert "twice" in problems[0]
 
 
+@pytest.mark.parametrize(
+    "change,problem",
+    [({"year": "98"}, "year"), ({"axle": ""}, "axle is empty"), ({"engine": "any"}, "any")],
+)
+def test_a_bad_profile_is_named(tmp_path, change, problem):
+    truck, problems = specs.read_profile(_profile(tmp_path, **change))
+    assert truck is None and any(problem in p for p in problems), problems
+
+
 @pytest.mark.django_db
-def test_the_loader_replaces_the_table_and_loads_nothing_on_a_problem(tmp_path):
-    call_command("load_garage_specs", str(_sheet(tmp_path, TICKED)))
+def test_the_loader_needs_the_count_confirmed_and_replaces_the_table(tmp_path):
+    sheet, truck = _sheet(tmp_path, _row()), _profile(tmp_path)
+    with pytest.raises(CommandError, match="does not match"):
+        call_command("load_garage_specs", str(sheet), "--profile", str(truck), "--confirm", "2")
+    assert not FastenerSpec.objects.exists()
+    call_command("load_garage_specs", str(sheet), "--profile", str(truck), "--confirm", "1")
     assert FastenerSpec.objects.filter(model=m.MODEL).count() == 1
-    bad = _sheet(tmp_path, TICKED.replace(",ft-lb,", ",,"))
+    assert GarageTruck.objects.get(model=m.MODEL).year == 2000
+    bad = _sheet(tmp_path, _row(verified_unit=""))
     with pytest.raises(CommandError, match="Nothing was loaded"):
-        call_command("load_garage_specs", str(bad))
+        call_command("load_garage_specs", str(bad), "--profile", str(truck), "--confirm", "0")
     assert FastenerSpec.objects.filter(model=m.MODEL).count() == 1
     # Un-ticked on the sheet: gone from the table, so no longer spoken.
-    call_command("load_garage_specs", str(_sheet(tmp_path, TICKED.replace(",yes,", ",,"))))
+    unticked = _sheet(tmp_path, _row(verified=""))
+    call_command("load_garage_specs", str(unticked), "--profile", str(truck), "--confirm", "0")
     assert not FastenerSpec.objects.filter(model=m.MODEL).exists()
 
 
 @pytest.mark.django_db
-def test_a_dry_run_stores_nothing(tmp_path):
-    call_command("load_garage_specs", str(_sheet(tmp_path, TICKED)), "--dry-run")
-    assert not FastenerSpec.objects.exists()
+def test_a_dry_run_stores_nothing_and_a_write_without_a_count_is_refused(tmp_path):
+    sheet, truck = _sheet(tmp_path, _row()), _profile(tmp_path)
+    call_command("load_garage_specs", str(sheet), "--profile", str(truck), "--dry-run")
+    assert not FastenerSpec.objects.exists() and not GarageTruck.objects.exists()
+    with pytest.raises(CommandError):
+        call_command("load_garage_specs", str(sheet), "--profile", str(truck))
 
 
 # =============================================================================
-# show_part's results (made-up figures)
+# show_part's results (made-up figures, made-up truck)
 # =============================================================================
+
+
+def _truck(**change):
+    got = {"year": 2000, "engine": "9.9", "axle": "Example axle", "lift_in": Decimal(0)}
+    return GarageTruck.objects.create(model=m.MODEL, **{**got, **change})
 
 
 def _store(fid="xj.susp.track_bar@frame_end", low="12", high=None, **extra):
+    got = {
+        "unit": "ft-lb",
+        "socket": "",
+        "thread": "",
+        "year_from": 1999,
+        "year_to": 2001,
+        "engine": "9.9",
+        "axle": "any",
+        "hardware": "stock",
+        "kit_name": "",
+        "source_kind": "fsm",
+        **extra,
+    }
     return FastenerSpec.objects.create(
         model=m.MODEL,
         fastener_id=fid,
         torque_min=Decimal(low),
         torque_max=Decimal(high) if high else None,
-        unit=extra.get("unit", "ft-lb"),
-        socket=extra.get("socket", ""),
-        thread=extra.get("thread", ""),
-        applies_to="a made-up truck",
         source="Example book",
         source_page="Page 1",
         verified_on=dt.date(2000, 1, 2),
+        **got,
     )
 
 
@@ -264,6 +394,7 @@ def _run(**args):
 
 @pytest.mark.django_db
 def test_an_unchecked_fastener_is_shown_and_said_with_no_number():
+    _truck()
     result = _run(words="track bar frame end")
     data = result.structured
     assert result.card["card"] == CARD
@@ -275,18 +406,49 @@ def test_an_unchecked_fastener_is_shown_and_said_with_no_number():
 
 
 @pytest.mark.django_db
-def test_a_checked_fastener_is_said_with_its_figure_source_and_date():
+def test_a_checked_fastener_is_said_with_the_truck_it_fits_and_its_source():
+    _truck()
     _store(high="14", socket="10 mm")
     data = _run(words="track bar frame end").structured
     line = data[SPEAK_VERBATIM][1]
-    assert line.startswith("12 to 14 foot-pounds, for a made-up truck. From Example book, Page 1")
+    assert line.startswith(
+        "12 to 14 foot-pounds. That's for your 2000, 9.9, Example axle axle, the stock part. "
+        "From Example book, Page 1"
+    )
     assert "January 2" in line
     assert "socket 10 mm" in data[SPEAK_VERBATIM][2]
-    assert set(data[SPOKEN_FIGURES]) == {"12", "14", "10"}
+    assert {"12", "14", "10"} <= set(data[SPOKEN_FIGURES])
+
+
+@pytest.mark.parametrize(
+    "truck,spec,line",
+    [
+        ({}, {"year_from": 2001, "year_to": 2001}, specs.NOT_YOUR_TRUCK),
+        ({"engine": "8.8"}, {}, specs.NOT_YOUR_TRUCK),
+        ({"kit_fasteners": ["xj.susp.track_bar@frame_end"]}, {}, specs.STOCK_ON_KIT),
+    ],
+)
+@pytest.mark.django_db
+def test_a_row_that_does_not_fit_the_truck_is_never_spoken(truck, spec, line):
+    _truck(**truck)
+    _store(**spec)
+    result = _run(words="track bar frame end")
+    assert result.structured[SPEAK_VERBATIM][-1] == line
+    assert result.structured[SPOKEN_FIGURES] == []
+    assert not any(f.get("figure") for f in result.card["facts"])
+
+
+@pytest.mark.django_db
+def test_with_no_truck_profile_nothing_is_spoken():
+    _store()
+    result = _run(words="track bar frame end")
+    assert result.structured[SPEAK_VERBATIM][-1] == specs.NO_TRUCK
+    assert result.structured[SPOKEN_FIGURES] == []
 
 
 @pytest.mark.django_db
 def test_the_model_is_never_handed_a_figure():
+    _truck()
     _store()
     result = _run(words="track bar frame end")
     for text in (result.text, result.structured[FOR_MODEL]):
@@ -295,12 +457,15 @@ def test_the_model_is_never_handed_a_figure():
 
 
 @pytest.mark.django_db
-def test_the_card_shows_both_units_for_a_checked_row_only():
+def test_the_card_puts_the_asked_fastener_first_and_labels_the_conversion():
+    _truck()
     _store()
-    facts = {f["fastener_id"]: f for f in _run(words="track bar frame end").card["facts"]}
-    assert facts["xj.susp.track_bar@frame_end"]["figure"] == "12 ft-lb (16 N·m)"
-    assert facts["xj.susp.track_bar@axle_end"]["checked"] is False
-    assert "figure" not in facts["xj.susp.track_bar@axle_end"]
+    facts = _run(words="track bar frame end").card["facts"]
+    assert facts[0]["fastener_id"] == "xj.susp.track_bar@frame_end"
+    assert facts[0]["figure"] == "12 ft-lb (converted: about 16 N·m)"
+    other = {f["fastener_id"]: f for f in facts[1:]}
+    assert other["xj.susp.track_bar@axle_end"]["checked"] is False
+    assert "figure" not in other["xj.susp.track_bar@axle_end"]
 
 
 @pytest.mark.django_db
@@ -320,6 +485,7 @@ def test_nothing_matched_shows_nothing():
 
 @pytest.mark.django_db
 def test_a_castle_nut_gets_the_cotter_pin_line_only_with_a_figure():
+    _truck()
     _store(fid="xj.steer.tie_rod@knuckle_end")
     lines = _run(fastener_id="xj.steer.tie_rod@knuckle_end").structured[SPEAK_VERBATIM]
     assert lines[-1] == specs.CASTLE

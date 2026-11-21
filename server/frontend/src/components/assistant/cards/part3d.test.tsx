@@ -37,15 +37,21 @@ const CARD: Part3dCard = {
       fastener_id: 'xj.susp.track_bar@frame_end',
       name: 'frame end',
       checked: true,
-      figure: '12 ft-lb (16 N·m)',
+      figure: '12 ft-lb (converted: about 16 N·m)',
       socket: '10 mm',
       thread: '',
-      applies_to: 'a made-up truck',
+      applies_to: '2000, engine any, axle any, the stock part; your truck: 2000, 9.9, Example axle, 0 in lift',
       source: 'Example book',
       page: 'Page 1',
       verified_on: '2000-01-02',
     },
     { fastener_id: 'xj.susp.track_bar@axle_end', name: 'axle end', checked: false },
+    {
+      fastener_id: 'xj.susp.track_bar@frame_bracket_nut',
+      name: 'frame bracket nut',
+      checked: false,
+      held: 'The checked figure on file is for a different year, engine or axle than your truck, so I won't give it.',
+    },
   ],
 }
 
@@ -64,19 +70,36 @@ describe('the card', () => {
     ['a model outside /garage', { model: '/api/demo/media/x.glb' }],
     ['a view that is not a point', { view: { target: [0, 0], from: [1, 1, 1] } }],
     ['a figure on an unchecked row', { facts: [{ fastener_id: 'a', name: 'a', checked: false, figure: '9 ft-lb' }] }],
+    ['a number in a held line', { facts: [{ fastener_id: 'a', name: 'a', checked: false, held: 'It is 9 ft-lb' }] }],
   ])('asCard refuses %s', (_why, change) => {
     expect(asCard({ ...CARD, ...change })).toBeUndefined()
   })
 
-  test('the chat card says the checked figure with its source, and the rest not verified', () => {
+  test('the asked fastener comes first and apart, its conversion labelled; the rest fold away', () => {
     render(<ToolCard card={CARD} />)
-    const checked = document.querySelector('[data-fastener="xj.susp.track_bar@frame_end"]') as HTMLElement
-    expect(checked).toHaveTextContent('Torque: 12 ft-lb (16 N·m)')
-    expect(checked).toHaveTextContent('For a made-up truck. Example book, Page 1. Checked 2000-01-02.')
-    expect(checked).toHaveAttribute('aria-current', 'true')
-    const unchecked = document.querySelector('[data-fastener="xj.susp.track_bar@axle_end"]') as HTMLElement
+    const asked = document.querySelector('[data-asked="true"]') as HTMLElement
+    expect(asked).toHaveAttribute('data-fastener', 'xj.susp.track_bar@frame_end')
+    expect(asked).toHaveAttribute('aria-current', 'true')
+    expect(asked).toHaveTextContent('Torque: 12 ft-lb (converted: about 16 N·m)')
+    expect(asked).toHaveTextContent('Example book, Page 1. Checked 2000-01-02.')
+    const others = document.querySelector('[data-card="part-others"]') as HTMLDetailsElement
+    expect(others.open).toBe(false)
+    expect(others.querySelector('summary')).toHaveTextContent('Other fasteners on this part (2)')
+    expect(others.contains(asked)).toBe(false)
+    const unchecked = others.querySelector('[data-fastener="xj.susp.track_bar@axle_end"]') as HTMLElement
     expect(unchecked).toHaveTextContent(`Torque: ${NOT_VERIFIED}`)
     expect(unchecked.textContent).not.toMatch(/\d/)
+    const held = others.querySelector('[data-fastener="xj.susp.track_bar@frame_bracket_nut"]') as HTMLElement
+    expect(held).toHaveTextContent('different year, engine or axle')
+    expect(held.textContent).not.toMatch(/\d/)
+  })
+
+  test('a part card with no fastener asked shows them all, open', () => {
+    render(<ToolCard card={{ ...CARD, fastener_id: null, highlight: ['xj.susp.track_bar'] }} />)
+    expect(document.querySelector('[data-asked="true"]')).toBeNull()
+    const all = document.querySelector('[data-card="part-others"]') as HTMLDetailsElement
+    expect(all.open).toBe(true)
+    expect(all.querySelectorAll('[data-fastener]').length).toBe(3)
   })
 })
 
@@ -128,6 +151,6 @@ describe('the 3D view over the page', () => {
     rerender(<Harness lines={[tool(1, CARD)]} />)
     const dialog = screen.getByRole('dialog', { name: CARD.title })
     await waitFor(() => expect(within(dialog).getByText(/could not load/)).toBeInTheDocument())
-    expect(within(dialog).getAllByText(/Torque:/).length).toBe(2)
+    expect(within(dialog).getAllByText(/Torque:/).length).toBe(3)
   })
 })
