@@ -394,6 +394,12 @@ def engine_replay_line(at: datetime.datetime, text: str) -> tuple:
     return (at, line(at, TID_ENGINE, AUDIT, f"assistant_replay text={quoted(text, CAP_TURN)}"))
 
 
+def engine_read_through_line(at: datetime.datetime, source: str) -> tuple:
+    """`read_through source=<source>` (`voice_audit`): the conversation said text other people
+    wrote, so memory consolidation keeps none of the assistant's lines from here on. Names only."""
+    return (at, line(at, TID_ENGINE, AUDIT, f"read_through source={source}"))
+
+
 def engine_latency_line(at: datetime.datetime, msg: str) -> tuple:
     """A timing line: numbers and names only, never words."""
     return (at, line(at, TID_ENGINE, LATENCY, msg))

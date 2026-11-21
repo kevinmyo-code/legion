@@ -73,6 +73,7 @@ from datetime import UTC, datetime
 from django.db import DatabaseError, transaction
 from django.db import connections as db_connections
 
+from agents.legion import late
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
 from agents.legion.lines import (
@@ -129,6 +130,7 @@ from agents.runtime.model import (
 )
 from agents.runtime.spec import AgentSpec
 from agents.runtime.tools import ToolCall, ToolOutcome
+from agents.voice import crisis
 from agents.voice import filler_audio as voice_filler_audio
 from agents.voice import speaker as voice_speaker
 from agents.voice.speaker import (  # noqa: F401 - the web door's tuning, read and set as cascade.X
@@ -1185,6 +1187,30 @@ def _answer(
         yield from speaker.drain()
         yield ev.done("robotic", ROBOTIC_ACK, False)
         return
+    # The late-answer path (`agents/legion/late.py`): None and nothing read or written unless
+    # LEGION_LATE_ANSWERS=on, and never for a recruiter. Code answers "look into X and tell me
+    # later", "anything pending?" and "cancel that" with no model round; otherwise the one line
+    # owed from earlier is said first, kept out of this turn's model context.
+    late_reply = late.intercept(
+        request,
+        words,
+        "web",
+        last_reply=next(
+            (c["parts"][0].get("text", "") for c in reversed(history) if c.get("role") == "model"),
+            "",
+        ),
+    )
+    if late_reply is not None:
+        record_user()
+        if late_reply.owed is not None:
+            _late_read_through(request, door, late_reply.owed)
+        # An owed line's text is said and shown but never replayed as the model's own words.
+        report.say(late_reply.text, replay=None if late_reply.history else "")
+        speaker.add(late_reply.text)
+        yield ev.Event("sentence", {"text": late_reply.text})
+        yield from speaker.drain()
+        yield ev.done("done", late_reply.text, False)
+        return
     acked = False
     if speak and turn_input.heard_before == 0 and needs_work(words):
         # First sound within about a second (section 8.2): a short acknowledgement from memory
@@ -1548,6 +1574,19 @@ def _answer(
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
         yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
+    if late.enabled() and not door.cancelled() and not crisis.detect(words):
+        # The late-answer path (`agents/legion/late.py`; switched off, not even the cancel check
+        # runs here): the one owed line, claimed only now, after
+        # the model ruled the words were for the assistant (`_not_for_me` returned before this)
+        # and never on words of distress, so neither room talk nor a crisis spends it. After his
+        # answer on this door; said and shown, never replayed as the model's own words.
+        owed, more = late.claim(request, "web")
+        if owed is not None:
+            _late_read_through(request, door, owed)
+            owed_line = late.late_event(owed, more)
+            report.say(owed_line.data["text"], replay="")
+            speaker.add(owed_line.data["text"], model=True)
+            yield owed_line
     yield from speaker.drain()
     if door.cancelled():
         # Stopped while its speech played out (round 3 N4): the turn ends as cancelled.
@@ -1580,6 +1619,21 @@ def _answer(
         door.wrote(),
         end=door.end_requested,
         **extra,
+    )
+
+
+def _late_read_through(request, door, owed) -> None:
+    """An owed line built on web pages (`late.read_third_party`): this turn and the next may not
+    write (`read_through.mark_turns`), and memory keeps no assistant line from here on (the
+    record's `read_through source=carry`)."""
+    if not late.read_third_party(owed):
+        return
+    conversation_id = conversation_id_of(door)
+    read_through.mark_turns(request, conversation_id, (door.turn, door.turn + 1))
+    web_conversation.record_lines(
+        request,
+        conversation_id,
+        [web_conversation.engine_read_through_line(datetime.now(UTC), "carry")],
     )
 
 
