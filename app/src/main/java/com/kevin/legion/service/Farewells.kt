@@ -77,29 +77,24 @@ object Farewells {
      * [transcript] is a farewell and nothing else ([companionName] may stand at either end). After a
      * question ([afterQuestion]) an [AMBIGUOUS_ALONE] word by itself is taken as his answer instead.
      */
-    @Suppress("ReturnCount") // an ambiguous word after a question, nothing said, then the farewell test
     fun isFarewell(transcript: String, companionName: String = "", afterQuestion: Boolean = false): Boolean {
         if (afterQuestion && normalise(transcript) in AMBIGUOUS_ALONE) return false
-        var w = normalise(transcript).split(' ').filter { it.isNotEmpty() }
-        val name = normalise(companionName).split(' ').filter { it.isNotEmpty() }
-        if (w.isEmpty()) return false
-        var changed = true
-        while (changed && w.isNotEmpty()) {
-            changed = false
-            if (name.isNotEmpty() && w.take(name.size) == name) { w = w.drop(name.size); changed = true }
-            if (name.isNotEmpty() && w.size >= name.size && w.takeLast(name.size) == name) {
-                w = w.dropLast(name.size); changed = true
-            }
-            leadWords.firstOrNull { it.size < w.size && w.take(it.size) == it }?.let {
-                w = w.drop(it.size)
-                changed = true
-            }
-            tailWords.firstOrNull { it.size < w.size && w.takeLast(it.size) == it }?.let {
-                w = w.dropLast(it.size)
-                changed = true
-            }
-        }
+        val w = core(normalise(transcript).split(' ').filter { it.isNotEmpty() }, companionName)
         return w.isNotEmpty() && madeOfFarewells(w)
+    }
+
+    /** [words] without the name at either end, the lead-ins and thanks before, and thanks and tails after. */
+    private fun core(words: List<String>, companionName: String): List<String> {
+        val name = normalise(companionName).split(' ').filter { it.isNotEmpty() }
+        var w = words
+        while (true) {
+            val before = w
+            if (name.isNotEmpty() && w.take(name.size) == name) w = w.drop(name.size)
+            if (name.isNotEmpty() && w.size >= name.size && w.takeLast(name.size) == name) w = w.dropLast(name.size)
+            leadWords.firstOrNull { it.size < w.size && w.take(it.size) == it }?.let { w = w.drop(it.size) }
+            tailWords.firstOrNull { it.size < w.size && w.takeLast(it.size) == it }?.let { w = w.dropLast(it.size) }
+            if (w == before || w.isEmpty()) return w
+        }
     }
 
     /** [w] is one or more [FAREWELLS] back to back. */

@@ -1311,6 +1311,12 @@ internal class CascadeSession(
         Backchannel.callOnLine(TelephonyController.isInCall, audioManager.mode, CallAudioMode.ownCommActive)
 
     /** A task line started: audited, and counted toward this turn's fillers and its said words. */
+    /** A task line played to its end: the next wait line counts from now (F5). */
+    private fun noteTaskFillerEnded() {
+        lastFillerEndAtMs = System.currentTimeMillis()
+        taskLinePlaying = false
+    }
+
     private fun noteTaskFiller(text: String) {
         taskLinePlaying = true
         audit.filler("task", text)
@@ -1980,6 +1986,7 @@ internal class CascadeSession(
      * His farewell closes the conversation with a short line of code's own ([Farewells.SPOKEN],
      * 2026-11-20): from memory only, at most [CLOSER_MAX_MS]; not in memory, it is skipped and logged.
      */
+    @Suppress("ReturnCount") // no voice, no player, not in memory
     private suspend fun sayFarewell() {
         val b = backend ?: return
         if (player == null) return
@@ -2341,8 +2348,7 @@ internal class CascadeSession(
             onFillerDropped = { LiveLatency.log(LiveLatency.TAG, "reply_filler_dropped n=1") },
             onFillerStarted = { text -> noteTaskFiller(text) },
             onFillerPlayed = {
-                lastFillerEndAtMs = System.currentTimeMillis()
-                taskLinePlaying = false
+                noteTaskFillerEnded()
                 // Half-duplex: the filler is over, the answer is not here yet. Listen again once it
                 // has drained (and its Bluetooth tail settled), so he can still add to his turn.
                 if (turnTaker?.bargeIn != true) {
@@ -3195,6 +3201,15 @@ internal class CascadeSession(
         )
     }
 
+    /** The conversation's usage summary at its close, and the prompt cache's listener let go. */
+    private fun logUsageAtClose() {
+        if (auditStarted) {
+            val engines = enginesUsed.joinToString(">")
+            LiveLatency.log(LiveLatency.TAG, usageLedger.summary(engines, turnsAnswered.get()))
+        }
+        CACHE?.onCreated = null
+    }
+
     /** Idempotent full release. */
     private suspend fun shutdown(reason: String) {
         if (!closing.compareAndSet(false, true)) return
@@ -3267,13 +3282,7 @@ internal class CascadeSession(
         step("focus") { abandonFocus() }
         step("caption") { CompanionPhase.setCaption("") }
         step("socket") { backend?.close(reason) }
-        step("usage") {
-            if (auditStarted) {
-                val engines = enginesUsed.joinToString(">")
-                LiveLatency.log(LiveLatency.TAG, usageLedger.summary(engines, turnsAnswered.get()))
-            }
-            CACHE?.onCreated = null
-        }
+        step("usage") { logUsageAtClose() }
         step("audit") { if (auditStarted) audit.sessionEnd(reason) }
         step("warmup") {
             CascadeWarmup.conversationOpen = false

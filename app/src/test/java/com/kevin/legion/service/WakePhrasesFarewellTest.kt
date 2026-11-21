@@ -49,8 +49,9 @@ class WakePhrasesFarewellTest {
     companion object {
         const val NAME = "Jeeves"
 
-        /** The answer words in the table (for the after-question expectation): "see you tomorrow" answers a when. */
-        private val ANSWER_LEADS = setOf("ok", "okay", "alright", "all", "um", "great", "yeah", "yes", "sure", "tomorrow")
+        /** The table's answer words, for the after-question expectation ("see you tomorrow" answers a when). */
+        private val ANSWER_LEADS =
+            setOf("ok", "okay", "alright", "all", "um", "great", "yeah", "yes", "sure", "tomorrow")
 
         val FAREWELLS = listOf(
             "bye", "Bye.", "bye bye", "Bye-bye!", "byebye", "Bye bye bye.", "buh-bye", "bye now", "Goodbye.",

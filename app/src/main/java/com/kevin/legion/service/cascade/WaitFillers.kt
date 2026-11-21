@@ -56,11 +56,8 @@ internal object WaitFillers {
      * playing ([fillerPlaying], a task line queued or running) and its gap from the last filler's END has
      * passed ([nextAtMs]).
      */
-    fun dueNow(nowMs: Long, lastFillerEndAtMs: Long, waitSaid: Int, fillersSaid: Int, fillerPlaying: Boolean): Boolean {
-        if (fillerPlaying) return false
-        val at = nextAtMs(lastFillerEndAtMs, waitSaid, fillersSaid) ?: return false
-        return nowMs >= at
-    }
+    fun dueNow(nowMs: Long, lastFillerEndAtMs: Long, waitSaid: Int, fillersSaid: Int, fillerPlaying: Boolean): Boolean =
+        !fillerPlaying && nextAtMs(lastFillerEndAtMs, waitSaid, fillersSaid)?.let { nowMs >= it } == true
 
     fun clipFits(ms: Long): Boolean = ms in MIN_CLIP_MS..MAX_CLIP_MS
 
