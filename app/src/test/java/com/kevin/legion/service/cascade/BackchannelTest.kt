@@ -238,4 +238,36 @@ class BackchannelTest {
         assertEquals(Backchannel.Skip.CRISIS, Backchannel.wordsSkip("some invented distress", goodbye, crisis))
         assertNull(Backchannel.wordsSkip("what's on tomorrow", goodbye, crisis))
     }
+
+    /**
+     * Every reason the acknowledgement may stay silent, each with why (review K2, 2026-11-21). A new
+     * skip fails [an ordinary turn cannot be skipped] until it is listed here with its reason.
+     */
+    private val allowedSkips = mapOf(
+        "NOT_HIS" to "not a turn of his: the greeting, a proactive line; no one is waiting",
+        "ON_CALL" to "a phone call: the clip would go down the call",
+        "OVER_REPLY" to "he spoke over a reply or a turn in flight: it would play over Alfred's own audio",
+        "QUIET" to "Quiet mode: he asked for silence",
+        "NOISE" to "no words heard: nothing to acknowledge",
+        "GOODBYE" to "a stop or goodbye: the farewell is said instead",
+        "CRISIS" to "distress: the character stops",
+    )
+
+    @Test
+    fun `an ordinary turn cannot be skipped, and every skip reason is a listed one`() {
+        assertEquals(allowedSkips.keys, Backchannel.Skip.entries.map { it.name }.toSet())
+        // Speech of normal length, no stop, no goodbye, no crisis, no call, Quiet off, not over a reply.
+        val ordinary = Backchannel.Turn(fromUser = true, overReplyOrTurn = false, quiet = false, onCall = false)
+        assertNull(Backchannel.decide(ordinary))
+        val goodbye = { w: String -> com.kevin.legion.service.WakePhrases.isSleepPhrase(w, "Jeeves") }
+        val crisis = { w: String -> com.kevin.legion.ai.CrisisDetector.detect(w) }
+        for (words in listOf(null, "what's on tomorrow", "add milk to the list", "how much is left this month")) {
+            assertNull("$words", Backchannel.wordsSkip(words, goodbye, crisis))
+        }
+        // Each skip needs its own condition: one condition on, only that skip.
+        assertEquals(Backchannel.Skip.QUIET, Backchannel.decide(ordinary.copy(quiet = true)))
+        assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(ordinary.copy(onCall = true)))
+        assertEquals(Backchannel.Skip.OVER_REPLY, Backchannel.decide(ordinary.copy(overReplyOrTurn = true)))
+        assertEquals(Backchannel.Skip.NOT_HIS, Backchannel.decide(ordinary.copy(fromUser = false)))
+    }
 }

@@ -45,6 +45,7 @@ import com.kevin.legion.service.TextToolExecutor
 import com.kevin.legion.service.WakePhrases
 import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.conversationlog.ConversationLog
+import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.BargeInGate
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.EndOfTurnPolicy
@@ -1309,10 +1310,7 @@ internal class CascadeSession(
             turnGap?.noteSkip(skip.token)
             return
         }
-        fillerJobs.startBackchannel {
-            delay((eotAtMs + Backchannel.DELAY_MS - System.currentTimeMillis()).coerceAtLeast(0))
-            playBackchannel(seq, eotAtMs)
-        }
+        fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }
     }
 
     /** What the words heard so far already rule out ([Backchannel.wordsSkip]); null with none heard yet. */
@@ -1328,47 +1326,59 @@ internal class CascadeSession(
      * mic never takes it for him; never a reply (no caption, no history, no follow-up event), but its
      * own audit line so the next drive audit can count it.
      */
-    @Suppress("ReturnCount") // one worded skip per reason
     private suspend fun playBackchannel(seq: Int, eotAtMs: Long) {
         val b = backend ?: return
         val p = player ?: return
-        val due = backchannelStillDue(seq, eotAtMs) ?: return
+        AckRun(System::currentTimeMillis, playGate, ackSteps(seq, eotAtMs, b, p)).run(eotAtMs)
+    }
+
+    /** The session's side of [AckRun]: its checks, its clip, its audit and its marks. */
+    private fun ackSteps(seq: Int, eotAtMs: Long, b: SpeechBackend, p: ReplyPlayer) = object : AckRun.Steps {
+        override suspend fun stillDue() = backchannelStillDue(seq, eotAtMs)
+
         // A clip that fails the length gate is swapped for another word; silent only if none fits.
-        val picked = AckClips.pick(b.tts, recentBackchannels, backchannelIndex.getAndIncrement())
-        if (picked == null) {
+        override suspend fun pick() = AckClips.pick(b.tts, recentBackchannels, backchannelIndex.getAndIncrement())
+
+        override fun noClip() {
             LiveLatency.log(LiveLatency.TAG, "backchannel_skip reason=no_clip_fits")
             turnGap?.noteSkip("no_clip_fits")
-            return
         }
-        val chosen = picked.chosen
-        val pcm = picked.pcm
-        val line = chosen.word
-        val ms = chosen.ms
-        playGate.withLock {
-            if (!due()) return
-            listenThroughClip("backchannel", Backchannel.LINES.indexOf(line))
-            recentBackchannels.add(line)
-            VoiceEngineSettings.setLastBackchannel(ctx, line)
-            turnFillers.incrementAndGet()
-            LiveLatency.log(
-                LiveLatency.TAG,
-                // The word as its index in Backchannel.LINES (a number, never the word), and how many
-                // words' clips failed the length gate before it.
-                "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=$ms " +
-                    "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected} " +
-                    // 1: the answer's text was already in, so the answer waits for this clip.
-                    "answer_text=${if (answerTextIn()) 1 else 0}",
-            )
-            audit.filler("backchannel", line)
+
+        override fun started(picked: AckClips.Picked) = noteAckStarted(picked, eotAtMs)
+
+        override suspend fun play(pcm: ByteArray) {
             val sound = turnGap?.started(TurnGap.BACKCHANNEL, System.currentTimeMillis())
             logFirstSound()
             clipPlayback.during { playAckClip(p, pcm) }
             sound?.let { turnGap?.ended(it, System.currentTimeMillis()) }
         }
-        // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
-        clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
-        backchannelEndAtMs = System.currentTimeMillis()
-        lastFillerEndAtMs = System.currentTimeMillis()
+
+        override suspend fun after() {
+            // The Bluetooth tail settles before his audio counts again; the mark clears even if cut.
+            clipPlayback.during { delay(MicReopen.settleMs(CallAudioMode.route(audioManager))) }
+            backchannelEndAtMs = System.currentTimeMillis()
+            lastFillerEndAtMs = System.currentTimeMillis()
+        }
+    }
+
+    /** The acknowledgement plays: its rotation, its count and its audit line (numbers only). */
+    private fun noteAckStarted(picked: AckClips.Picked, eotAtMs: Long) {
+        val chosen = picked.chosen
+        val line = chosen.word
+        listenThroughClip("backchannel", Backchannel.LINES.indexOf(line))
+        recentBackchannels.add(line)
+        VoiceEngineSettings.setLastBackchannel(ctx, line)
+        turnFillers.incrementAndGet()
+        LiveLatency.log(
+            LiveLatency.TAG,
+            // The word as its index in Backchannel.LINES (a number, never the word), and how many
+            // words' clips failed the length gate before it.
+            "backchannel at_ms=${System.currentTimeMillis() - eotAtMs} clip_ms=${chosen.ms} " +
+                "word=${Backchannel.LINES.indexOf(line)} take=${chosen.take} rejected=${chosen.rejected} " +
+                // 1: the answer's text was already in, so the answer waits for this clip.
+                "answer_text=${if (answerTextIn()) 1 else 0}",
+        )
+        audit.filler("backchannel", line)
     }
 
     /** This turn's first-sound line ([TurnGap.firstSoundLine]) the moment there is a first sound. */
@@ -3501,22 +3511,23 @@ internal class CascadeSession(
         val route = CallAudioMode.route(audioManager)
         val settle = MicReopen.settleMs(route)
         val chimeMs = ListenCue.durationMs(pcm)
-        val startMs = System.currentTimeMillis()
-        val drained = CloseCue.playBounded(
-            CloseCue.waitCapMs(chimeMs, settle),
-            CloseCue.minPlayMs(chimeMs),
-            write = { withContext(Dispatchers.IO) { p.write(pcm, p.generation()) } },
-            drained = {
-                p.awaitDrained()
-                delay(settle)
+        val cap = CloseCue.waitCapMs(chimeMs, settle)
+        // Released only once the device says the chime's last frame was presented (review K1), with the
+        // chime plus a fixed latency as the floor when it gives no timestamp, and the cap over both.
+        val (by, ms) = CloseCue.playHeard(
+            write = {
+                withContext(Dispatchers.IO) { p.write(pcm, p.generation()) }
+                p.writtenFrames()
             },
+            presented = p::presentedFrame,
+            floorMs = CloseCue.minPlayMs(chimeMs),
+            capMs = cap,
         )
+        // A Bluetooth sink plays its own buffer past what the phone presented: its tail, inside the cap.
+        if (by != CloseCue.By.CAP && route == AudioRoute.BLUETOOTH) delay(minOf(settle, cap - ms).coerceAtLeast(0))
         val routeToken = CloseCue.routeToken(route, earpiece = earpiece.wantsEarpiece() && callAudio?.isActive == true)
-        LiveLatency.log(
-            LiveLatency.TAG,
-            CloseCue.playedLine(reason, System.currentTimeMillis() - startMs, routeToken, drained),
-        )
-        return drained
+        LiveLatency.log(LiveLatency.TAG, CloseCue.playedLine(reason, ms, routeToken, by, chimeMs))
+        return by != CloseCue.By.CAP
     }
 
     /** The conversation's usage summary at its close, and the prompt cache's listener let go. */

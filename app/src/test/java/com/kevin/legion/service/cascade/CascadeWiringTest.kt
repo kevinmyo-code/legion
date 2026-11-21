@@ -615,6 +615,37 @@ class CascadeWiringTest {
         }
     }
 
+    @Test
+    fun `every turn logs its first-sound line, also when the acknowledgement was skipped`() {
+        val s = session()
+        // Each sound marks the turn and logs the line at once.
+        var at = s.indexOf("turnGap?.started(")
+        var n = 0
+        while (at >= 0) {
+            val next = s.substring(at, minOf(s.length, at + 200))
+            assertTrue("a sound without its line: ${next.take(60)}", next.contains("logFirstSound()"))
+            n++
+            at = s.indexOf("turnGap?.started(", at + 1)
+        }
+        assertEquals("ack, task line and wait line", 3, n)
+        val audio = bodyOf(s, "answerAudioIn")
+        assertTrue(audio.indexOf("turnGap?.answerHeard(now)") in 0 until audio.indexOf("logFirstSound()"))
+        // A turn with no sound still gets one (kind=none): at the next turn, back to listening, and the close.
+        val silent = "turnGap?.silentLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }"
+        val schedule = bodyOf(s, "scheduleBackchannel")
+        assertTrue(schedule.indexOf(silent) in 0 until schedule.indexOf("turnGap = TurnGap(eotAtMs, lastLocalSpeechAtMs)"))
+        assertTrue(bodyOf(s, "backToListening").contains(silent))
+        assertTrue(bodyOf(s, "releaseNow").contains(silent))
+        // Every skip names itself in that line.
+        assertTrue(schedule.contains("turnGap?.noteSkip(skip.token)"))
+        assertTrue(bodyOf(s, "backchannelStillDue").contains("turnGap?.noteSkip(reason)"))
+        assertTrue(s.contains("turnGap?.noteSkip(\"no_clip_fits\")"))
+        // The session's own skips are these, named: a new one fails here until it is listed.
+        val due = bodyOf(s, "backchannelStillDue")
+        val reasons = due.split("skip(\"").drop(1).map { it.substringBefore("\"") }.toSet()
+        assertEquals(setOf("over_cue", "answer_first", "noise"), reasons)
+    }
+
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 
     private fun bodyOf(source: String, name: String): String {

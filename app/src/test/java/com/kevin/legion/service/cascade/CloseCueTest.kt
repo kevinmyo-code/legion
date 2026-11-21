@@ -83,8 +83,12 @@ class CloseCueTest {
     @Test
     fun `the audit line is numbers and fixed tokens`() {
         assertEquals(
-            "close_cue played ms=540 reason=sleep_phrase route=speaker drained=1",
-            CloseCue.playedLine("sleep_phrase", 540, "speaker", drained = true),
+            "close_cue played ms=430 reason=sleep_phrase route=speaker by=timestamp latency_ms=140",
+            CloseCue.playedLine("sleep_phrase", 430, "speaker", CloseCue.By.TIMESTAMP, chimeMs = 290),
+        )
+        assertEquals(
+            "close_cue played ms=540 reason=sleep_phrase route=bt by=floor latency_ms=none",
+            CloseCue.playedLine("sleep_phrase", 540, "bt", CloseCue.By.FLOOR, chimeMs = 290),
         )
         assertEquals(
             "close_cue skipped reason=quiet close=new_conversation",
@@ -109,29 +113,44 @@ class CloseCueTest {
     }
 
     @Test
-    fun `the player is released only after the whole chime has had time to be heard`() = runTest {
-        // A head position that says "drained" at once (it runs ahead of the speaker): the release still waits.
-        val chime = ListenCue.durationMs(ListenCue.closeChimePcm())
-        var written = 0
-        val start = testScheduler.currentTime
-        val done = CloseCue.playBounded(
-            CloseCue.waitCapMs(chime, MicReopen.SETTLE_MS),
-            CloseCue.minPlayMs(chime),
-            write = { written = ListenCue.closeChimePcm().size },
-            drained = {},
-            now = { testScheduler.currentTime },
-        )
-        assertTrue(done)
-        assertEquals(ListenCue.closeChimePcm().size, written)
-        assertTrue(testScheduler.currentTime - start >= chime + CloseCue.OUTPUT_LATENCY_MS)
+    fun `the chime is done when its last frame was presented, by the device's own timestamp`() {
+        val w = CloseCue.Window(lastFrame = 6_960, floorMs = 540, capMs = 600)
+        // Advancing: not yet, then the last frame presented decides, before the floor.
+        assertNull(CloseCue.heardBy(elapsedMs = 200, presented = 3_000, stalledMs = 0, w = w))
+        assertEquals(CloseCue.By.TIMESTAMP, CloseCue.heardBy(elapsedMs = 400, presented = 6_960, stalledMs = 0, w = w))
+        // Unavailable: the floor decides, never before it.
+        assertNull(CloseCue.heardBy(elapsedMs = 500, presented = null, stalledMs = 0, w = w))
+        assertEquals(CloseCue.By.FLOOR, CloseCue.heardBy(elapsedMs = 540, presented = null, stalledMs = 0, w = w))
+        // Stalled short of the end: the floor once it has not moved for STALL_MS.
+        assertNull(CloseCue.heardBy(elapsedMs = 560, presented = 5_000, stalledMs = 100, w = w))
+        assertEquals(CloseCue.By.FLOOR, CloseCue.heardBy(elapsedMs = 560, presented = 5_000, stalledMs = CloseCue.STALL_MS, w = w))
+        // Moving but slow: the cap.
+        assertEquals(CloseCue.By.CAP, CloseCue.heardBy(elapsedMs = 600, presented = 6_000, stalledMs = 0, w = w))
     }
 
     @Test
-    fun `a playback that never drains is cut at the cap, a normal one completes`() = runTest {
-        val start = testScheduler.currentTime
+    fun `the wait follows a fake device timestamp, advancing, stalled or missing`() = runTest {
         val now = { testScheduler.currentTime }
-        assertFalse(CloseCue.playBounded(500, 0, write = {}, drained = { delay(60_000) }, now = now))
-        assertEquals(500L, testScheduler.currentTime - start)
-        assertTrue(CloseCue.playBounded(500, 0, write = {}, drained = { delay(300) }, now = now))
+        val chime = ListenCue.durationMs(ListenCue.closeChimePcm())
+        val floor = CloseCue.minPlayMs(chime)
+        val cap = CloseCue.waitCapMs(chime, MicReopen.SETTLE_MS)
+        val frames = ListenCue.closeChimePcm().size / 2L
+        // Advancing at 24 frames a ms after 100 ms of output latency: done when the last frame is presented.
+        val start = testScheduler.currentTime
+        val advancing = { ((now() - start - 100).coerceAtLeast(0) * 24).takeIf { now() - start >= 100 } }
+        val (by, ms) = CloseCue.playHeard(write = { frames }, presented = advancing, floorMs = floor, capMs = cap, now = now)
+        assertEquals(CloseCue.By.TIMESTAMP, by)
+        assertTrue("$ms", ms in chime + 100..chime + 100 + 20)
+        // Missing: the floor.
+        val (byNone, msNone) = CloseCue.playHeard(write = { frames }, presented = { null }, floorMs = floor, capMs = cap, now = now)
+        assertEquals(CloseCue.By.FLOOR, byNone)
+        assertTrue("$msNone", msNone in floor..floor + 20)
+        // Stalled half way: the floor, once it has stopped moving.
+        val (byStall, _) = CloseCue.playHeard(write = { frames }, presented = { frames / 2 }, floorMs = floor, capMs = cap, now = now)
+        assertEquals(CloseCue.By.FLOOR, byStall)
+        // A write that never returns: the cap.
+        val (byCap, msCap) = CloseCue.playHeard(write = { delay(60_000); frames }, presented = { null }, floorMs = floor, capMs = cap, now = now)
+        assertEquals(CloseCue.By.CAP, byCap)
+        assertEquals(cap, msCap)
     }
 }

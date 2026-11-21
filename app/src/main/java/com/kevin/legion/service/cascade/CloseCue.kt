@@ -63,28 +63,62 @@ internal object CloseCue {
     /** The chime, its output latency and the route's tail (Bluetooth buffers more), never past [HARD_CAP_MS]. */
     fun waitCapMs(chimeMs: Long, settleMs: Long): Long = minOf(chimeMs + OUTPUT_LATENCY_MS + settleMs, HARD_CAP_MS)
 
-    /** The least time from the chime's write to the player's release: its length plus [OUTPUT_LATENCY_MS]. */
+    /**
+     * The floor from the chime's write to the player's release when the device gives no presented-frame
+     * timestamp, or it stalls: the chime's length plus [OUTPUT_LATENCY_MS] (reasoned, not measured).
+     */
     fun minPlayMs(chimeMs: Long): Long = chimeMs + OUTPUT_LATENCY_MS
 
+    /** What ended the wait for the chime to be heard (review K1, 2026-11-21). */
+    enum class By(val token: String) { TIMESTAMP("timestamp"), FLOOR("floor"), CAP("cap") }
+
+    /** A presented-frame position that has not moved for this long has stalled. */
+    const val STALL_MS = 200L
+
+    private const val POLL_MS = 10L
+
+    /** The chime's wait: its last frame in the head position's count, the floor and the cap, in ms from its write. */
+    data class Window(val lastFrame: Long, val floorMs: Long, val capMs: Long)
+
     /**
-     * Writes the chime, waits for it to drain and for at least [minMs] from the write's start (a head
-     * position that runs ahead never releases it early), cut at [capMs] however long the drain takes.
-     * True: done in time.
+     * Whether the chime has been heard, [elapsedMs] after its write began: the device's presented
+     * frame ([presented]) reached the chime's last frame; or the cap passed; or, with no timestamp or
+     * one stalled for [stalledMs] >= [STALL_MS], the floor passed. Null: keep waiting. Pure.
      */
-    suspend fun playBounded(
+    fun heardBy(elapsedMs: Long, presented: Long?, stalledMs: Long, w: Window): By? = when {
+        presented != null && presented >= w.lastFrame -> By.TIMESTAMP
+        elapsedMs >= w.capMs -> By.CAP
+        elapsedMs >= w.floorMs && (presented == null || stalledMs >= STALL_MS) -> By.FLOOR
+        else -> null
+    }
+
+    /**
+     * Writes the chime and waits until [heardBy] says it has been heard, polling [presented]. Returns
+     * what decided and the time it took from the write's start.
+     */
+    suspend fun playHeard(
+        write: suspend () -> Long,
+        presented: () -> Long?,
+        floorMs: Long,
         capMs: Long,
-        minMs: Long,
-        write: suspend () -> Unit,
-        drained: suspend () -> Unit,
         now: () -> Long = System::currentTimeMillis,
-    ): Boolean = withTimeoutOrNull(capMs) {
+    ): Pair<By, Long> {
         val start = now()
-        write()
-        drained()
-        val left = minMs - (now() - start)
-        if (left > 0) delay(left)
-        true
-    } ?: false
+        val lastFrame = withTimeoutOrNull(capMs) { write() } ?: return By.CAP to now() - start
+        val window = Window(lastFrame, floorMs, capMs)
+        var seen: Long? = null
+        var movedAt = now()
+        while (true) {
+            val p = presented()
+            val t = now()
+            if (p != seen) {
+                seen = p
+                movedAt = t
+            }
+            heardBy(t - start, p, t - movedAt, window)?.let { return it to t - start }
+            delay(POLL_MS)
+        }
+    }
 
     /** The route the chime went out on, for its audit line. */
     fun routeToken(route: AudioRoute, earpiece: Boolean): String = when {
@@ -94,9 +128,15 @@ internal object CloseCue {
         else -> "speaker"
     }
 
-    /** `close_cue played ms=<n> reason=<close> route=<speaker|earpiece|bt|wired> drained=<1|0>`: no text. */
-    fun playedLine(reason: String, ms: Long, route: String, drained: Boolean): String =
-        "close_cue played ms=$ms reason=${token(reason)} route=$route drained=${if (drained) 1 else 0}"
+    /**
+     * `close_cue played ms=<n> reason=<close> route=<speaker|earpiece|bt|wired> by=<timestamp|floor|cap>
+     * latency_ms=<n|none>`: no text. The latency is measured (the time to the last frame presented, less
+     * the chime's length) only when the timestamp decided.
+     */
+    fun playedLine(reason: String, ms: Long, route: String, by: By, chimeMs: Long): String {
+        val latency = if (by == By.TIMESTAMP) "${(ms - chimeMs).coerceAtLeast(0)}" else "none"
+        return "close_cue played ms=$ms reason=${token(reason)} route=$route by=${by.token} latency_ms=$latency"
+    }
 
     /** `close_cue skipped reason=<why> close=<close>`: no text. */
     fun skippedLine(reason: String, skip: Skip): String =

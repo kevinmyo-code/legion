@@ -111,6 +111,19 @@ internal class ReplyPlayer(
         (framesWritten - head).coerceAtLeast(0L) * MS_PER_S / sampleRate
     }
 
+    /** Frames written since the track was built or last flushed: the frame the last write ends on. */
+    fun writtenFrames(): Long = framesWritten
+
+    /**
+     * The frame the device says it has PRESENTED ([AudioTrack.getTimestamp]), in the head position's
+     * count; null when the track gives no timestamp (none yet, not playing, or unsupported).
+     */
+    fun presentedFrame(): Long? = synchronized(lock) {
+        val t = track?.takeIf { it.playState == AudioTrack.PLAYSTATE_PLAYING } ?: return@synchronized null
+        val ts = android.media.AudioTimestamp()
+        runCatching { t.getTimestamp(ts) }.getOrDefault(false).takeIf { it }?.let { ts.framePosition }
+    }
+
     fun release() = synchronized(lock) {
         released = true
         generation.incrementAndGet()
