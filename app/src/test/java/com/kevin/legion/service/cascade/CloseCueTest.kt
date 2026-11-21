@@ -22,6 +22,19 @@ class CloseCueTest {
     ) = CloseCue.decide(reason, quiet, onCall, audioOpened, played, rateMatches)
 
     @Test
+    fun `each way a conversation ends chimes exactly once`() {
+        // goodbye (Farewells), end_conversation, the follow-up window, a tap, noise, two misses,
+        // an unanswered check-in, a new conversation, and a failed voice with no fallback (Live retired).
+        listOf(
+            "sleep_phrase", "dismissed", "follow_up", "stopped", "noise", "missed_twice", "check_in_no_reply",
+            "new conversation", CloseCue.voiceFailedReason("cloud_down", liveRetired = true, background = false),
+        ).forEach { reason ->
+            assertNull(reason, CloseCue.decide(reason, false, false, true, alreadyPlayed = false, rateMatches = true))
+            assertEquals(reason, CloseCue.Skip.PLAYED, CloseCue.decide(reason, false, false, true, alreadyPlayed = true, rateMatches = true))
+        }
+    }
+
+    @Test
     fun `every close of a conversation he was in chimes`() {
         for (r in listOf("stopped", "sleep_phrase", "follow_up", "dismissed", "noise", "missed_twice",
             "check_in_no_reply", "new conversation", "voice_failed_tts")) {

@@ -2557,6 +2557,9 @@ internal class CascadeSession(
             return
         }
         val voice = backend!!
+        // No background line fetch while the greeting is held and spoken: on the laptop it would sit
+        // ahead of the greeting ([TextToSpeech.holdWarm]). Released when the greeting's job ends.
+        voice.tts.holdWarm(true)
         turnJob = scope.launch(loop) {
             // One budget for the whole greeting, prompt build included: past it, the scripted line.
             val deadline = System.currentTimeMillis() + GreetingBudget.FIRST_OUTPUT_MS
@@ -2632,7 +2635,7 @@ internal class CascadeSession(
                 withContext(NonCancellable) { reply.interrupt() }
                 throw e
             }
-        }
+        }.also { job -> job.invokeOnCompletion { voice.tts.holdWarm(false) } }
     }
 
     /**

@@ -490,6 +490,9 @@ class LaptopVoiceConnection(
         const val NORMAL_CLOSE = 1000
         const val BUSY_CLOSE = 1013
 
+        /** Placeholder for the red proof: warming is not built yet. */
+        const val WARM_RESUME_MS = 1_500L
+
         /** Under the service's 120 s idle close, with room for a slow network. */
         const val PING_EVERY_MS = 30_000L
         private const val MAX_CLOSE_REASON = 60
