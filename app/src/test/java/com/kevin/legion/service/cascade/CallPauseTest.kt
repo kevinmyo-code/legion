@@ -102,11 +102,11 @@ class CallPauseTest {
 
     @Test
     fun `a VoIP call ringing through telecom, ignored, closes nothing and blocks no open (C2)`() {
-        val ring = signals().copy(telecomCall = true, telecomRinging = true)
+        val ring = signals().copy(telecomCall = true, ringtone = true)
         assertNull(CallPause.reason(ring))
         assertFalse(CallPause.blocksOpen(ring))
         // Answered: the ring is over, the call is up.
-        assertEquals(CallPause.Reason.VOIP, CallPause.reason(ring.copy(telecomRinging = false)))
+        assertEquals(CallPause.Reason.VOIP, CallPause.reason(ring.copy(ringtone = false)))
     }
 
     @Test

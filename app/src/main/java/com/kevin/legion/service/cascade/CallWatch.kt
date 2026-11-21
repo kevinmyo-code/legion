@@ -105,31 +105,30 @@ internal class CallWatch(
         fun signals(ctx: Context, audio: AudioManager?): CallPause.Signals {
             // Needs READ_PHONE_STATE; refused, telecom simply says nothing.
             val telecom = runCatching { ctx.getSystemService(TelecomManager::class.java) }.getOrNull()
+        val playing = playingUsages(audio)
             val read = CallPause.Signals(
                 cellularCall = TelephonyController.isInCall,
                 ringing = TelephonyController.isRinging,
                 telecomCall = runCatching { telecom?.isInCall == true }.getOrDefault(false),
                 audioMode = audio?.mode ?: AudioManager.MODE_NORMAL,
                 ownComm = CallAudioMode.ownCommActive,
-                telecomRinging = runCatching { telecom?.isRinging == true }.getOrDefault(false),
-                otherCallAudio = callAudioPlaying(audio),
+                ringtone = playing?.contains(AudioAttributes.USAGE_NOTIFICATION_RINGTONE) == true,
+                // Unreadable: assume a call (a stale mode is then never cleared, the old behaviour).
+                otherCallAudio = playing?.contains(AudioAttributes.USAGE_VOICE_COMMUNICATION) ?: true,
             )
             return read.copy(commStale = staleComm.feed(System.currentTimeMillis(), read))
         }
 
         /**
-         * Something plays on the voice-call usage: the other side of a call. Ours only while LEGION holds
-         * call audio itself, when the mode test does not count it anyway. Unreadable: assume a call.
+         * The usages playing now, any app's (null: unreadable). The voice-call usage is the other side of
+         * a call (ours only while LEGION holds call audio, when the mode test does not count it); the
+         * ringtone usage is a call ringing.
          */
-        private fun callAudioPlaying(audio: AudioManager?): Boolean =
+        private fun playingUsages(audio: AudioManager?): Set<Int>? =
             if (audio == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-                true
+                null
             } else {
-                runCatching {
-                    audio.activePlaybackConfigurations.any {
-                        it.audioAttributes.usage == AudioAttributes.USAGE_VOICE_COMMUNICATION
-                    }
-                }.getOrDefault(true)
+                runCatching { audio.activePlaybackConfigurations.map { it.audioAttributes.usage }.toSet() }.getOrNull()
             }
 
         /**

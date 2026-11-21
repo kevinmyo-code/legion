@@ -22,7 +22,8 @@ import android.media.AudioManager
  * A bare focus loss (music, a navigation prompt, an alarm) closes nothing.
  *
  * Ringing is not a call: "answer it" is said while the phone rings ([Signals.ringing]), and a VoIP
- * call ringing through telecom ([Signals.telecomRinging]) closes nothing until it is answered.
+ * call ringing ([Signals.ringtone]: a ringtone plays; telecom reports a self-managed VoIP call while
+ * it rings, and has no public "ringing" for it) closes nothing until it is answered.
  *
  * Review of 264baf63 (2026-11-21), each a way to hang up on him for nothing:
  * - The capture signals (silenced, focus + another call capture) count only [CAPTURE_GRACE_MS] after
@@ -55,8 +56,8 @@ internal object CallPause {
         val audioMode: Int,
         /** LEGION holds MODE_IN_COMMUNICATION itself (CallAudioMode.ownCommActive). */
         val ownComm: Boolean,
-        /** TelecomManager says a call is ringing (a VoIP app's ring included). */
-        val telecomRinging: Boolean = false,
+        /** Something plays on the ringtone usage (a VoIP app's ring included). */
+        val ringtone: Boolean = false,
         /** Another app plays on the voice-call usage (the other side of a call). */
         val otherCallAudio: Boolean = true,
         /** Another app's communication mode has looked stale for [STALE_COMM_MS] ([StaleComm]). */
@@ -89,7 +90,7 @@ internal object CallPause {
     }
 
     private fun ringing(s: Signals): Boolean =
-        s.ringing || s.telecomRinging || s.audioMode == AudioManager.MODE_RINGTONE
+        s.ringing || s.ringtone || s.audioMode == AudioManager.MODE_RINGTONE
 
     private fun othersComm(s: Signals): Boolean =
         Backchannel.callOnLine(telephonyInCall = false, audioMode = s.audioMode, ownComm = s.ownComm)
