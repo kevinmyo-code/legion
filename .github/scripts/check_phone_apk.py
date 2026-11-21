@@ -5,8 +5,8 @@
 
 Checks, in order (each failure is named; exit 1 when any failed, 0 when all passed):
   1. every file in app/models.sha256 is in the APK at assets/<path>, byte for byte as pinned;
-  2. the speaker model is in the APK at assets/<path from app/speaker-model.pin> with the pinned
-     official sha256 (or --speaker-sha, for a laptop build that still carries the laptop copy);
+  2. the speaker model is in the APK at assets/<path from app/speaker-model.pin> with the sha256 the
+     pin says a build ships (official when release_ok=yes, else the interim copy), or --speaker-sha;
   3. BuildConfig's MAPBOX_ACCESS_TOKEN is the public `pk.` token or empty, and no entry in the APK
      holds an `sk.eyJ` (Mapbox secret token) string. Only the token's kind is printed, never a value;
   4. versionName ends with `-<first 7 of --sha>`, so the APK is the commit it claims to be;
@@ -60,7 +60,9 @@ def check(apk: Path, sha: str, speaker_sha: str | None, newest_vc: int | None) -
     if not models:
         problems.append("app/models.sha256 lists no model")
     pin = pin_values(SPEAKER_PIN.read_text(encoding="utf-8"))
-    speaker = (pin["path"], speaker_sha or pin["sha256"])
+    # The file a cloud build ships: the official one once the pin says release_ok=yes, else the interim copy.
+    pinned = pin["sha256"] if pin.get("release_ok") == "yes" else pin["interim_sha256"]
+    speaker = (pin["path"], speaker_sha or pinned)
     with zipfile.ZipFile(apk) as z:
         names = set(z.namelist())
         for rel, want in [*models, speaker]:

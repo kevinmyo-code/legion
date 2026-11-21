@@ -7,7 +7,8 @@
 #   1. DRY RUN (dry_run ticked, the default). Builds commit `sha`, signs it with the pinned debug key,
 #      runs every check the laptop ship runs, and keeps the APK and its sha256 as the run artifact
 #      `phone-apk-<sha>`. It uploads NOTHING to the APK bucket and records nothing on the engine; its
-#      only network reads are the speaker model and licence fetch and one GET of the newest release.
+#      only network reads are the speaker model (private bucket or official download, as
+#      app/speaker-model.pin says), the licence text and one GET of the newest release.
 #      `sha` may be on `dev` or on a `ship/**` branch of this repo (so a ship can build before dev
 #      moves), never anywhere else.
 #   2. PUBLISH (dry_run unticked). Builds nothing and touches no signing key: it takes the artifact
@@ -16,18 +17,20 @@
 #      its next check). `sha` must already be on `dev` (the ship moved dev first).
 #
 # Checks (dry run, and again before a publish): the inputs; `sha` reachable from dev or ship/**; the
-# committed models against app/models.sha256 (Gradle `verifyModels`); the official speaker model and
-# its licence text against app/speaker-model.pin (refused while the pin says release_ok=no: no APK is
-# built without a speaker model or with an untried one); the keystore's fingerprint against
+# committed models against app/models.sha256 (Gradle `verifyModels`); the speaker model and its
+# licence text against app/speaker-model.pin (release_ok=no: the INTERIM copy that ships on the phone
+# today, from the private bucket; yes: the official download; no APK builds without one); the
+# keystore's fingerprint against
 # deploy/release/signer.sha256 before Gradle sees it; then on the APK (.github/scripts/
 # check_phone_apk.py and `release_apk.py --dry-run`): signer pin, package, no baked Gemini/AirNow
 # key, the Mapbox token is the public pk. token and no sk. token anywhere, every pinned model in the
 # APK byte for byte, versionName ends with the sha, versionCode above the newest published release.
 #
 # The artifact: the repo is public, so any signed-in GitHub user can download it for its retention
-# (7 days). It holds what the repo already publishes (code, the committed models), the official
-# speaker model (Apache-2.0, notice inside) and the public Mapbox pk. token; no key. It is signed
-# with the debug key, and that is fine to share: a signed APK does not reveal the key.
+# (1 day: a ship takes it within the hour). It holds what the repo already publishes (code, the
+# committed models), the speaker model (while release_ok=no, the interim copy whose origin is
+# unproven: that file is NOT committed, but this artifact does carry it for a day) and the public
+# Mapbox pk. token; no key. It is signed with the debug key; a signed APK does not reveal the key.
 #
 # Setup (environment `production`, the same one ship.yml uses; deploy/cloudrun/README.md
 # "Shipping from GitHub" and deploy/cloudrun/github_setup.sh do the Google side). Unchanged by
@@ -103,9 +106,20 @@ jobs:
             git merge-base --is-ancestor "$SHA" origin/dev || { echo "::error::A publish needs $SHA on dev first (the ship moves dev, then publishes). Nothing was published."; exit 1; }
           fi
 
+      # Keyless Google sign-in (Workload Identity Federation, production environment only): the dry run
+      # reads the interim speaker model from the private bucket, the publish uploads the APK.
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
       # ---------------------------------------------------------------- dry run: build and check
-      - name: Official speaker model (refused while the pin says release_ok=no)
+      - name: Speaker model (app/speaker-model.pin decides which file; a missing or wrong one stops here)
         if: inputs.dry_run
+        env:
+          LEGION_APK_BUCKET: ${{ vars.LEGION_APK_BUCKET }}
         run: bash .github/scripts/fetch_speaker_model.sh --install
 
       - name: Set up JDK 17
@@ -240,18 +254,9 @@ jobs:
             out/legion-phone-${{ inputs.sha }}.apk
             out/legion-phone-${{ inputs.sha }}.apk.sha256
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
 
       # ---------------------------------------------------------------- publish only
-      - uses: google-github-actions/auth@v2
-        if: ${{ !inputs.dry_run }}
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-        if: ${{ !inputs.dry_run }}
-
       - name: Publish (tools/release_apk.py)
         if: ${{ !inputs.dry_run }}
         env:
