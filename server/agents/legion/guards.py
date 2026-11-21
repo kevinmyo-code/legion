@@ -91,17 +91,23 @@ def check_call(state, spec, name: str, args: dict, tool, user) -> Verdict:
         return Verdict(False, words, "tainted")
     flagged = name in CONFIRM_FLAG_TOOLS and (args or {}).get("confirm") is True
     if tool.writes and (tool.destructive or name in spec.confirm or flagged):
-        digest = args_sha256(name, args)
-        if state.confirmed and state.confirmed == digest:
-            state.confirmed = None
-            return ALLOW
-        state.pending_confirm = {
-            "tool": name,
-            "args_sha256": digest,
-            "until_seq": state.seq + CONFIRM_TURNS,
-        }
-        return Verdict(False, NEEDS_CONFIRM.format(name=name), "needs_confirm")
+        return hold_for_yes(state, name, args)
     return ALLOW
+
+
+def hold_for_yes(state, name: str, args: dict) -> Verdict:
+    """Confirm before write: the call runs only when a yes in this turn released exactly these
+    arguments; otherwise it is held (`pending_confirm`) and refused in words for now."""
+    digest = args_sha256(name, args)
+    if state.confirmed and state.confirmed == digest:
+        state.confirmed = None
+        return ALLOW
+    state.pending_confirm = {
+        "tool": name,
+        "args_sha256": digest,
+        "until_seq": state.seq + CONFIRM_TURNS,
+    }
+    return Verdict(False, NEEDS_CONFIRM.format(name=name), "needs_confirm")
 
 
 def needs_taint(name: str) -> bool:
