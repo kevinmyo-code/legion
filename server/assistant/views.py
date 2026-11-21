@@ -57,7 +57,7 @@ from assistant.companions import companion_for
 from assistant.models import AssistantCall
 from assistant.prompt import MAX_OFFSET_MINUTES, MIN_OFFSET_MINUTES, RECRUITER_OPENER
 from assistant.session import system_prompt_parts_for, token_request_for
-from assistant.surface import recruiter_only_tool, refusal_for
+from assistant.surface import off_registry_tool, refusal_for
 from demo import budget as demo_budget
 from demo import suggestions
 from devicelogs import web_conversation
@@ -573,7 +573,7 @@ class AssistantToolView(_AssistantView):
         read_through.set_turn(
             request, body.validated_data["conversation_id"], body.validated_data["turn"]
         )
-        only_here = recruiter_only_tool(name, request.user)
+        only_here = off_registry_tool(name, request.user)
         if only_here is not None:
             result = run_engine_tool(request, only_here, body.validated_data["args"])
         else:

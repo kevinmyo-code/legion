@@ -183,6 +183,9 @@ INSTALLED_APPS = [
     # arch-diagrams ticket 01 (Kevin, 2026-11-05): `show_diagram`'s catalogue and the private
     # projects' pre-rendered diagrams (`diagrams.RecruiterDiagram`), never in the repo.
     "diagrams",
+    # Garage assistant (option B, 2026-11-20): `show_part`'s checked fastener specs
+    # (`public.garage_fastener_specs`), loaded from the owner's private sheet, never in the repo.
+    "garage",
     # memory-and-vault map (ADR 0075): memory v2, one store on the engine for every member's
     # memories (`public.member_memories`), and the consolidation job's ledger.
     "member_memory",
@@ -222,6 +225,9 @@ INSTALLED_APPS = [
     # (`public.headunit_credentials`, private to that member, hashes only). DARK: every route
     # refuses unless LEGION_HEADUNIT_SIGNIN=on.
     "headunit_signin",
+    # The factory board's off-laptop copy (`public.board_snapshots`, one row per member, private).
+    # DARK: every route refuses unless LEGION_BOARD=on (`board/views.py`).
+    "board",
 ]
 
 # alfred-ota ticket 04: the private bucket the APKs live in (`deploy/release/setup_bucket.sh`).
@@ -662,6 +668,10 @@ REST_FRAMEWORK = {
         "headunit_rotate": "6/hour",
         # A head unit's own log uploads, per CREDENTIAL (review B2): periodic every few minutes.
         "headunit_upload": "60/hour",
+        # The factory board (`board/views.py`): the laptop's pushes per WRITER (debounced to about
+        # three a minute on the laptop), and minting its token per MEMBER.
+        "board_push": "10/min",
+        "board_mint": "5/hour",
     },
 }
 

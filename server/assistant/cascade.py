@@ -22,7 +22,7 @@ credential to Google.
 - **The tools are the web tool door's**, called the way `POST /api/assistant/tool` calls them
   (`WebDoor` below): `tools_for(user)` declares them (a recruiter's `RECRUITER_TOOLS`, narrowed
   tables, its own procedures and diagrams), `refusal_for` fences each call (default deny for a
-  recruiter), `recruiter_only_tool` / `run_engine_tool` runs it under the caller's own
+  recruiter), `off_registry_tool` / `run_engine_tool` runs it under the caller's own
   `visible()`, every call is audited (`AssistantCall`) and written to the conversation record, and
   a card goes to the screen, never to the model. So a recruiter's fence on this path is the Live
   path's fence, the same code. **One addition, for every role: `end_conversation`** (spec 18), a
@@ -98,11 +98,13 @@ from agents.legion.speech_rules import (
     VERBATIM_TOOLS,  # noqa: F401 - read as cascade.VERBATIM_TOOLS
     _verbatim,
     backed_cents,
+    backed_torque,
     decimal_cents,  # noqa: F401 - read as cascade.decimal_cents
     has_money,
     is_filler,
     is_stop_utterance,
     states_unbacked_figure,
+    states_unbacked_torque,
 )
 from agents.runtime import events as ev
 from agents.runtime.budget import BudgetUsed, LoopLimits
@@ -152,7 +154,7 @@ from agents.voice.stage import (  # noqa: F401 - prices read as cascade.X
 )
 from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
-from assistant.surface import recruiter_only_tool, refusal_for, tools_for
+from assistant.surface import off_registry_tool, refusal_for, tools_for
 from demo import suggestions
 from demo.budget import tester_visit
 from demo.tools import spoken_for as about_kevin_spoken_for
@@ -164,6 +166,7 @@ from engine_mcp.tools import (
     run_engine_tool,
     run_tool,
 )
+from garage import topic as garage_topic
 from household.models import is_recruiter
 from household.tenancy import household_of
 from legion import deadline
@@ -496,7 +499,7 @@ class WebDoor:
         if self.not_for_me and self._writes(name):
             return False
         return (
-            recruiter_only_tool(name, self.user) is not None
+            off_registry_tool(name, self.user) is not None
             or refusal_for(name, self.user, {}) is None
         )
 
@@ -568,7 +571,7 @@ class WebDoor:
                 ok, outcome, text = False, Outcome.REFUSED, refusal
                 guard = "recruiter" if self.recruiter else "not_allowed"
             else:
-                only_here = recruiter_only_tool(name, self.user)
+                only_here = off_registry_tool(name, self.user)
                 if only_here is not None and name == "about_kevin":
                     only_here = self.tools()[name]
                 if only_here is not None:
@@ -1259,6 +1262,19 @@ def _answer(
     filler_dropped = 0
     no_answer = False
     money_dropped = 0
+    # The torque guard (garage, `speech_rules.states_unbacked_torque`): on exactly when
+    # `show_part` is offered to this caller (the switch on, his account, the cascade); otherwise
+    # `backed_torque` answers None and no sentence is checked.
+    torque_on = "show_part" in door.tools()
+    torque_topic = garage_topic.SENTENCE if torque_on else None
+    about_front_end = torque_on and garage_topic.about_front_end(words, last_reply)
+    torque_dropped = 0
+
+    def torque_unbacked(text: str) -> bool:
+        return states_unbacked_torque(
+            text, backed_torque(door.calls, torque_topic, about_front_end)
+        )
+
     sentences = 0
 
     # The first lookup of the turn and when it started; its line waits for FILLER_WAIT_S.
@@ -1433,6 +1449,9 @@ def _answer(
                 ):
                     money_dropped += 1
                     continue
+                if torque_unbacked(text):
+                    torque_dropped += 1
+                    continue
                 if sentences >= MAX_SPOKEN_SENTENCES:
                     continue
                 if not honest(text):
@@ -1493,6 +1512,9 @@ def _answer(
             if states_unbacked_figure(text, backed_cents(door.calls)):
                 money_dropped += 1
                 continue
+            if torque_unbacked(text):
+                torque_dropped += 1
+                continue
             if not honest(text):
                 held_claims.append((text, tagged))
                 continue
@@ -1521,12 +1543,17 @@ def _answer(
             # the change is said in its place (round 2, N1): "went through" or "did not".
             money_dropped += 1
             unbacked += 1
+        elif torque_unbacked(text):
+            torque_dropped += 1
+            unbacked += 1
         elif honest(text):
             yield say(text, tagged)
         else:
             unbacked += 1
     # The final count: the ask-again round's and the held claims' drops included (finding 2).
     timings["money_dropped"] = money_dropped
+    if torque_on:
+        timings["torque_dropped"] = torque_dropped
     wrote = door.wrote()
     if guard_refused:
         yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)

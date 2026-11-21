@@ -26,7 +26,11 @@ from dataclasses import dataclass
 from engine_mcp.tools import ENDS_TURN, FOR_MODEL, REPLAY_AS, SPEAK_EXACT, SPEAK_VERBATIM
 
 # `about_kevin`: his profile, spoken by code and never by the model (2026-11-18, `demo/tools.py`).
-VERBATIM_TOOLS: frozenset[str] = frozenset({"account_balances", "about_kevin"})
+# `board_status`: the factory board, spoken by code; the model never sees a card (`board/tool.py`).
+# `show_part`: where a Jeep fastener is and its checked torque (garage, 2026-11-20).
+VERBATIM_TOOLS: frozenset[str] = frozenset(
+    {"account_balances", "about_kevin", "board_status", "show_part"}
+)
 
 # The phone's `ScriptedLines.FILLERS` (spec 22): what a reply that opens with only these is
 # stripped of. What the web says while a tool runs is per tool (`assistant/fillers.py`).
@@ -124,6 +128,130 @@ def backed_cents(calls) -> set[int] | None:
 def states_unbacked_figure(sentence: str, backed: set[int] | None) -> bool:
     """True when a money tool ran and `sentence` states a decimal figure none of them returned."""
     return backed is not None and not decimal_cents(sentence) <= backed
+
+
+# ---- torque and fastener sizes (garage, 2026-11-20) -------------------------------------------
+# A torque figure said wrong can loosen a steering joint. So while `show_part` is offered (the
+# garage switch on, his account, the cascade), a model sentence may hold a number only when
+# `show_part` spoke that very number from the owner's checked table in THIS turn, whenever:
+#   - the sentence states a torque, socket or thread figure (`torque_figures`: any foot/pound
+#     form, a bare "lbs" or "pounds", N·m, a number in a "torque/tighten" sentence, a size beside
+#     a fastener word);
+#   - or it names front-end hardware (`topic`, the manifest's aliases and fastener words: "the
+#     pitman arm nut takes 185");
+#   - or the whole turn is about the front end (`whole_turn`: his words or the reply before them
+#     were, or `show_part` ran): then every number counts ("grab a 19 for that", "the other side
+#     is also 185", a figure repeated from the history).
+# Otherwise the sentence is not said. A web search, the history or the model's memory can never
+# put a torque in his ear. Number words are never backed: code speaks digits. Membership only,
+# nothing computed. Guard off: `backed_torque` answers None and nothing here runs.
+
+_WORD_NUMBER = "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True))
+_WORDS = rf"(?:{_WORD_NUMBER})(?:[\s-]+(?:and[\s-]+)?(?:{_WORD_NUMBER}))*"
+_NUM = rf"(?:\d+(?:\.\d+)?|{_WORDS})"
+_RANGE = rf"{_NUM}(?:\s*(?:to|-|–|or|and)\s*{_NUM})?"
+_SEP = r"[\s.\-·⋅/]*"
+_FT = r"(?:ft|foot|feet)"
+_LB = r"(?:lbf|lbs|lb|pounds|pound)"
+# A bare "lbs" or "pounds" counts too: "run it up to 95 lbs" is a torque under a truck.
+_TORQUE_UNIT = (
+    rf"(?:{_FT}{_SEP}{_LB}|{_LB}{_SEP}{_FT}|newton{_SEP}met(?:er|re)s?|n{_SEP}m|"
+    rf"in(?:ch)?(?:es)?{_SEP}{_LB}|kg{_SEP}m|{_LB})\b"
+)
+# A size (mm, an inch fraction, a metric thread, "a 13 socket") counts beside a fastener word,
+# so "12 mm of rain" or "the M25" is ordinary speech outside a front-end turn.
+_TORQUE = re.compile(rf"\b({_RANGE})\s*{_TORQUE_UNIT}", re.I)
+_SIZES = (
+    re.compile(rf"\b({_NUM})\s*(?:mm|millimet(?:er|re)s?|mil)\b", re.I),
+    re.compile(r"\bm(\d{1,2}(?:\s*(?:x|by|×)\s*\d+(?:\.\d+)?)?)\b", re.I),
+    re.compile(rf"\b({_NUM})\s*(?:socket|wrench|spanner)\b", re.I),
+    re.compile(
+        r"\b(\d+\s*/\s*\d+|\d+\s+\d+\s*/\s*\d+|(?:\w+[\s-])?(?:half|quarters?|eighths?|"
+        r"sixteenths?))[\s-]*(?:inch|in\.|\")",
+        re.I,
+    ),
+)
+_FASTENER_WORD = re.compile(
+    r"\b(?:sockets?|wrench(?:es)?|spanners?|bolts?|nuts?|threads?|studs?|hex|allen|castle|"
+    r"screws?|fasteners?)\b",
+    re.I,
+)
+_TORQUE_WORD = re.compile(
+    r"\b(?:torque\w*|tighten\w*|retorque\w*|snug\w*|tight(?:er|ness)?)\b", re.I
+)
+# Digits wherever they stand ("27mm", "M7", "3rd" all hold one); number words and fraction words
+# ("a half-inch socket", "three-eighths") as whole words.
+_ANY_NUMBER = re.compile(
+    rf"(?<![\d.])\d+(?:\.\d+)?|\b(?:{_WORDS})\b|"
+    r"\b(?:half|halves|quarters?|thirds?|eighths?|sixteenths?)\b",
+    re.I,
+)
+
+
+def plain_number(text: str) -> str:
+    """'60.0' and '60' alike: the form code and the guard compare in."""
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def torque_figures(sentence: str) -> list[str]:
+    """Every torque, socket-size or thread figure in `sentence`, as said."""
+    text = sentence or ""
+    found = [m.group(0) for m in _TORQUE.finditer(text)]
+    if _TORQUE_WORD.search(text):
+        found += sentence_numbers(text)
+    if _FASTENER_WORD.search(text):
+        for pattern in _SIZES:
+            found += [m.group(0) for m in pattern.finditer(text)]
+    return found
+
+
+def sentence_numbers(sentence: str) -> list[str]:
+    """Every number in `sentence`: digits, number words, fraction words. A lone "one" is a
+    pronoun ("which one"), not a figure; "one eighty-five" still counts through its other words."""
+    return [
+        m.group(0)
+        for m in _ANY_NUMBER.finditer(sentence or "")
+        if m.group(0).lower() != "one"
+    ]
+
+
+@dataclass(frozen=True)
+class TorqueGuard:
+    """What the guard knows in a turn: the numbers code spoke from the checked table, the words
+    that make a sentence about the front end, and whether the whole turn is."""
+
+    numbers: frozenset[str]
+    topic: re.Pattern
+    whole_turn: bool
+
+
+def backed_torque(calls, topic: re.Pattern | None, about_front_end: bool) -> TorqueGuard | None:
+    """The turn's guard, or None when it is off (`topic` None: show_part is not offered)."""
+    if topic is None:
+        return None
+    numbers: set[str] = set()
+    ran = False
+    for c in calls:
+        if c.ok and c.name == "show_part" and isinstance(c.data, dict):
+            ran = True
+            numbers |= {plain_number(str(n)) for n in c.data.get("spoken_figures") or []}
+    return TorqueGuard(frozenset(numbers), topic, about_front_end or ran)
+
+
+def states_unbacked_torque(sentence: str, guard: TorqueGuard | None) -> bool:
+    """True when the guard is on and `sentence` holds a number code did not speak from the
+    checked table this turn, in a sentence or a turn about front-end hardware."""
+    if guard is None:
+        return False
+    numbers = sentence_numbers(sentence)
+    if not numbers:
+        return False
+    concerned = guard.whole_turn or bool(torque_figures(sentence)) or bool(
+        guard.topic.search(sentence or "")
+    )
+    if not concerned:
+        return False
+    return any(not n[0].isdigit() or plain_number(n) not in guard.numbers for n in numbers)
 
 
 # The phone's `FillerTurn` (spec 23): a line of at most four words that opens with a filler opener

@@ -43,7 +43,7 @@ from __future__ import annotations
 import dataclasses
 
 from demo.tools import ABOUT_KEVIN, SHOW_RESUME
-from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME, WRITE_SCOPE_SENTENCE
+from engine_mcp.tools import READABLE, TOOLS, TOOLS_BY_NAME, WRITE_SCOPE_SENTENCE, dark_tools
 from household.models import is_recruiter
 from household.recruiter_routes import RECRUITER_DENIED
 
@@ -161,6 +161,8 @@ RECRUITER_EXCLUDED: dict[str, str] = {
         "it reads the owner's GitHub repos through the owner's own token, which is not part of "
         "a demo visit"
     ),
+    # The factory board is a real member's laptop status; a visit has none.
+    "board_status": "it reads a real member's laptop board, which is not part of a demo visit",
     "list_tables": (
         "its answer names every table, body and memory included, as readable and writable; "
         "for a recruiter that is false. The record tools' own table enums, narrowed below, "
@@ -261,13 +263,44 @@ def recruiter_tools():
     return [_recruiter_tool(_any_tool(name)) for name in RECRUITER_TOOLS]
 
 
-def recruiter_only_tool(name: str, user):
-    """The recruiter-only tool `name`, when `user` is a recruiter and it is
-    one; else None, and the door runs the registry's tool by name. Checked
-    after `refusal_for`, so a member never reaches here with one."""
+def off_registry_tool(name: str, user):
+    """The tool `name` this caller may run that is kept OUT of the registry, or None, and the
+    door runs the registry's tool by name: a recruiter-only tool for a recruiter. Checked after
+    `refusal_for`, so a caller never reaches here with one it may not run."""
     if is_recruiter(user):
         return RECRUITER_ONLY_TOOLS.get(name)
-    return None
+    return member_only_tools(user).get(name)
+
+
+def _engine_owner(user) -> bool:
+    """An owner of the household that runs this engine: the check `releases.views` uses for
+    publishing. The garage table is one owner's truck, so nobody else is offered it."""
+    from household.models import HouseholdMember
+    from household.tenancy import resolve_default_household
+
+    engine_household = resolve_default_household()
+    return engine_household is not None and HouseholdMember.objects.filter(
+        user=user, household=engine_household, role=HouseholdMember.OWNER
+    ).exists()
+
+
+def member_only_tools(user) -> dict:
+    """The tools a member's web assistant gets that are kept out of the registry, each behind its
+    own switch: today `show_part`, only while `LEGION_JEEP_ASSISTANT=on` (`garage.flags`), and
+    only for the engine household's owner (`_engine_owner`). Never a recruiter's; never `/mcp`'s,
+    which lists the registry alone. Empty with every switch off. Cascade only: on the Live
+    fallback nothing speaks code's lines and no torque guard runs."""
+    from assistant import voice_engine
+    from garage import flags as garage_flags
+
+    # The switch first: off, this costs no query (the deployed query count holds).
+    if not garage_flags.enabled() or is_recruiter(user):
+        return {}
+    if voice_engine.engine_for(user) != voice_engine.CASCADE or not _engine_owner(user):
+        return {}
+    from garage.tool import SHOW_PART
+
+    return {SHOW_PART.name: SHOW_PART}
 
 
 def tools_for(user):
@@ -280,8 +313,11 @@ def tools_for(user):
     from procedures.listing import tool_for
 
     tools = recruiter_tools() if is_recruiter(user) else web_tools()
+    dark = dark_tools()
     out = []
     for tool in tools:
+        if tool.name in dark:
+            continue
         if tool.name == "run_procedure":
             tool = tool_for(tool, user, user.household)
         elif tool.name == "show_diagram":
@@ -289,6 +325,7 @@ def tools_for(user):
             # ticket 01: no Quanex for the LinkedIn version), never one with nothing loaded.
             tool = declared_for(tool, user)
         out.append(tool)
+    out.extend(member_only_tools(user).values())
     return out
 
 
@@ -322,7 +359,7 @@ def refusal_for(name: str, user=None, args: dict | None = None) -> str | None:
     `RECRUITER_TOOLS` (default deny); everyone else against the web surface."""
     if is_recruiter(user):
         return _recruiter_refusal(name, args)
-    if name in WEB_TOOL_NAMES:
+    if name in WEB_TOOL_NAMES or name in member_only_tools(user):
         return None
     if name in TOOLS_BY_NAME:
         return (
