@@ -5,11 +5,23 @@ no database, no model."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pytest
 
+from agents.legion import closing
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import asks_again
+from agents.legion.lines import (
+    CHANGE_MADE,
+    CHANGE_NOT_MADE,
+    NO_TEXT,
+    NOTHING_CHANGED,
+    READ_THROUGH_WAIT,
+    READ_THROUGH_WAIT_AFTER_WRITE,
+)
 from agents.runtime.loop import NO_ANSWER_WORDS
+from assistant import read_through
 
 # ---- ask-again: when a turn is asked once more -----------------------------------------------
 
@@ -189,3 +201,76 @@ def test_inputs_are_asked_lazily_in_the_web_doors_order():
     asked.clear()
     assert _answer(gate, "Your day is clear.", sentences=12) == gates.OVER_CAP
     assert asked == ["backed", "torque"]
+
+
+# ---- the closing line ------------------------------------------------------------------------
+
+
+@dataclass
+class _Call:
+    ok: bool = True
+    text: str = ""
+    ends_turn: bool = False
+
+
+REFUSED = _Call(ok=False, text=read_through.WRITE_REFUSAL.format(verb="changed", name="add_event"))
+
+
+def test_a_write_refused_for_outside_text_counts_as_guard_refused():
+    assert closing.guard_refused([REFUSED]) is True
+    assert closing.guard_refused([_Call(ok=False, text=read_through.REFUSAL)]) is True
+    other = _Call(ok=False, text="Nothing was changed: no such list.")
+    assert closing.guard_refused([other]) is False
+    assert closing.guard_refused([]) is False
+
+
+def test_oddity_guard_refused_matches_the_refusal_by_its_words():
+    # Pinned, not fixed: any failed call whose text opens "Nothing was" and holds "read outside
+    # text" counts, whichever tool wrote it; the same text on a call that succeeded does not.
+    assert closing.guard_refused([_Call(ok=False, text="Nothing was x; read outside text.")])
+    assert not closing.guard_refused([_Call(ok=True, text=REFUSED.text)])
+
+
+def _line(calls=(), refused=False, unbacked=0, wrote=False, tainted=False):
+    asked = []
+
+    def taint():
+        asked.append(1)
+        return tainted
+
+    line = closing.closing_line(
+        list(calls), refused=refused, unbacked=unbacked, wrote=wrote, tainted=taint
+    )
+    return line, bool(asked)
+
+
+@pytest.mark.parametrize(
+    "kwargs,line",
+    [
+        ({}, None),
+        ({"wrote": True}, None),
+        ({"refused": True}, READ_THROUGH_WAIT),
+        ({"refused": True, "wrote": True}, READ_THROUGH_WAIT_AFTER_WRITE),
+        # The refusal wins over unbacked claims.
+        ({"refused": True, "unbacked": 2}, READ_THROUGH_WAIT),
+        ({"unbacked": 1, "wrote": True}, CHANGE_MADE),
+        ({"unbacked": 1, "tainted": True}, READ_THROUGH_WAIT),
+        ({"unbacked": 1}, CHANGE_NOT_MADE),
+        ({"wrote": True, "calls": [_Call(ends_turn=True)]}, CHANGE_MADE),
+        ({"calls": [_Call(ends_turn=True)]}, None),
+    ],
+)
+def test_the_closing_line_is_chosen_from_what_happened(kwargs, line):
+    assert _line(**kwargs)[0] == line
+
+
+def test_outside_text_is_asked_only_for_an_unbacked_claim_with_no_write():
+    assert _line(unbacked=1)[1] is True
+    assert _line(unbacked=1, wrote=True)[1] is False
+    assert _line(refused=True)[1] is False
+    assert _line()[1] is False
+
+
+def test_the_nothing_said_line():
+    assert closing.nothing_said_line(False) == NO_TEXT + NOTHING_CHANGED
+    assert closing.nothing_said_line(True) == NO_TEXT

@@ -14,8 +14,9 @@ no model, no database, no request.
   (`has_money`), and in any turn where a money tool ran, a model sentence stating a decimal figure
   no tool returned is not said (`backed_cents`, `states_unbacked_figure`).
 
-The unbacked-claim block's check is `agents.legion.guards.claims_unbacked_outcome`; the lines code
-says are `agents/legion/lines.py`.
+The unbacked-claim block's check is `agents.legion.guards.claims_unbacked_outcome`; the order the
+checks run in per sentence (said, held or dropped) is `agents/legion/sentence_gate.py`; the closing
+line is chosen by `agents/legion/closing.py`; the lines code says are `agents/legion/lines.py`.
 """
 
 from __future__ import annotations

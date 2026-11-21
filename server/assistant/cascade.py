@@ -73,25 +73,25 @@ from datetime import UTC, datetime
 from django.db import DatabaseError, transaction
 from django.db import connections as db_connections
 
-from agents.legion import late
+from agents.legion import closing, late
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
 from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
 from agents.legion.lines import (
-    CHANGE_MADE,
-    CHANGE_NOT_MADE,
+    CHANGE_MADE,  # noqa: F401 - read as cascade.CHANGE_MADE
+    CHANGE_NOT_MADE,  # noqa: F401 - read as cascade.CHANGE_NOT_MADE
     FAILED_AFTER_WRITE_SPOKEN,
     FAILED_SPOKEN,
     MISSED_LINE,
-    NO_TEXT,
+    NO_TEXT,  # noqa: F401 - read as cascade.NO_TEXT
     NOT_ANSWERED_BUDGET,
     NOT_ANSWERED_MODEL,
     NOT_ANSWERED_TIMEOUT,
     NOTHING_CHANGED,
-    READ_THROUGH_WAIT,
-    READ_THROUGH_WAIT_AFTER_WRITE,
+    READ_THROUGH_WAIT,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT
+    READ_THROUGH_WAIT_AFTER_WRITE,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_AFTER_WRITE
     SPOKEN_FAILURES,  # noqa: F401 - read as cascade.SPOKEN_FAILURES
     STT_FAILED,
     TOO_MANY_TOOLS,
@@ -1492,16 +1492,8 @@ def _answer(
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
         _meter(request, model_name, rounds[-1:])
-    # A change ADR 0090 held back: a write refused by the outside-text rule, or `remember`'s own
-    # refusal (round 2 finding 5: that one was missed, so "Noted." passed with nothing saved).
-    guard_refused = any(
-        not c.ok
-        and (
-            (c.text.startswith("Nothing was") and "read outside text" in c.text)
-            or c.text == read_through.REFUSAL
-        )
-        for c in door.calls
-    )
+    # A change ADR 0090 held back (`agents/legion/closing.py`).
+    guard_refused = closing.guard_refused(door.calls)
     # The answer's own words go to speech first; what follows may use the request kept back.
     speaker.flush()
     speaker.closing = True
@@ -1526,25 +1518,17 @@ def _answer(
     if torque_on:
         timings["torque_dropped"] = torque_dropped
     wrote = door.wrote()
-    if guard_refused:
-        yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)
-    elif unbacked:
-        if wrote:
-            yield say(CHANGE_MADE)
-        elif tainted():
-            yield say(READ_THROUGH_WAIT)
-        else:
-            yield say(CHANGE_NOT_MADE)
-    elif wrote and any(c.ends_turn for c in door.calls):
-        # The turn ended on code's own answer (his profile) in the round that also made a change:
-        # the model never got to confirm it, so code does, in its own words.
-        yield say(CHANGE_MADE)
+    closing_line = closing.closing_line(
+        door.calls, refused=guard_refused, unbacked=unbacked, wrote=wrote, tainted=tainted
+    )
+    if closing_line is not None:
+        yield say(closing_line)
     timings["wait_reason"] = int(guard_refused)
     timings["unbacked"] = unbacked
     if failure is not None:
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
-        yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
+        yield say(closing.nothing_said_line(door.wrote()))
     if late.enabled() and not door.cancelled() and not crisis.detect(words):
         # The late-answer path (`agents/legion/late.py`; switched off, not even the cancel check
         # runs here): the one owed line, claimed only now, after
