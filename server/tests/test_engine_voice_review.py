@@ -77,14 +77,19 @@ def test_a_typed_crisis_gets_the_same_line_in_text(auth_client, engine):
 
 
 def test_a_long_answer_is_spoken_only_up_to_the_turns_bound(auth_client, engine):
-    sentence = "This is one more fairly long sentence of the answer that goes on a while."
+    # Long enough that the turn's sentence cap (12, the web door's, slice E3) still passes more
+    # characters than the speech bound.
+    sentence = (
+        "This is one more fairly long sentence of the answer that goes on a while, and then it "
+        "keeps going with a few more words so that it is long."
+    )
     engine.rounds = [m.say(" ".join([sentence] * 40))]
     events = _events(_post(auth_client, audio=_wav()))
     spoken = "".join(text for text, _ in engine.speech.spoken)
     assert len(spoken) <= 1_500
     assert ("speech_stopped", {"reason": "limit"}) in events
-    # Every sentence is still shown.
-    assert sum(1 for k, _ in events if k == "sentence") == 40
+    # Every sentence the turn says is still shown: up to its cap (`spoken.MAX_SPOKEN_SENTENCES`).
+    assert sum(1 for k, _ in events if k == "sentence") == 12
 
 
 def test_with_no_cap_set_a_member_is_still_bounded_by_a_code_default(
