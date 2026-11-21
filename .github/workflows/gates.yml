@@ -17,8 +17,15 @@
 # Spend, bounded here: about $0.10 to $0.20 of Gemini per full run. The phone eval runs the 36 named
 # cases once, retries at most 5 failed cases once each (more than 5 failures = fail, no retry); the
 # engine gate is capped by REALRUN_BUDGET_USD=0.09 (its tests stop at the cap and that counts as a
-# fail); the chip turn is about half a cent; job time limits 45 and 30 minutes. One run per commit at
-# a time (concurrency). Runner minutes are free (public repo).
+# fail); the chip turn is about half a cent; job time limits 45 and 30 minutes. One run at a time for
+# the whole workflow (a queue), and job `cap` stops a run when this workflow already ran more than
+# MAX_RUNS_PER_DAY = 6 times today (UTC): four ships plus two re-runs. Worst case per full run, in model
+# calls (estimate): about 40 voice turns x up to 4 rounds = 160, plus 2 speech cases (2 TTS + 2 STT),
+# plus at most 5 retried cases (about 20), plus 7 money calls, plus the engine gate (stops at $0.09)
+# and 1-3 chip calls: under about 200 calls, about $0.20. With the cap: under about 1,200 calls and
+# about $1.20 a day. Runner minutes are free (public repo).
+# Only from dev: `sha` must be on origin/dev (review G3). Uploads only scorecards (case ids, pass or
+# fail, counts) after .github/scripts/scrub_gate_out.sh: raw console text stays on the runner (G1).
 name: Gates
 # ship.yml finds the gate run for a commit by this title (a dispatch run's head sha is dev's, not `sha`).
 run-name: "Gates ${{ inputs.which }} ${{ inputs.sha }}"
@@ -45,12 +52,39 @@ on:
 permissions:
   contents: read
 
+# One queue for the whole workflow (review G2): runs wait, none is cancelled, never two at once.
 concurrency:
-  group: gates-${{ inputs.sha }}
+  group: gates
   cancel-in-progress: false
 
 jobs:
+  cap:
+    name: daily cap and inputs (no key)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SHA: ${{ inputs.sha }}
+      CASES: ${{ inputs.phone_cases }}
+      GH_TOKEN: ${{ github.token }}
+      MAX_RUNS_PER_DAY: '6'
+    steps:
+      - name: Inputs, dispatch ref, and at most MAX_RUNS_PER_DAY runs of this workflow today (UTC)
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
+          [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be a comma list of case ids"; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF)."; exit 1; }
+          [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
+          today=$(date -u +%F)
+          n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/gates.yml/runs?created=>=$today&per_page=100" --jq '.total_count')
+          echo "gates runs today (UTC $today), this one included: $n of at most $MAX_RUNS_PER_DAY"
+          [ "$n" -le "$MAX_RUNS_PER_DAY" ] || { echo "::error::daily cap reached ($n runs today, cap $MAX_RUNS_PER_DAY): the key is Kevin's main key. Nothing ran."; exit 1; }
+
   phone:
+    needs: cap
     if: inputs.which == 'all' || inputs.which == 'phone'
     name: phone voice eval + money specialist eval
     runs-on: ubuntu-latest
@@ -69,19 +103,17 @@ jobs:
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be a comma list of case ids"; exit 1; }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
 
-      - name: The commit is on dev or a ship/** branch
+      - name: The commit is on dev (review G3; it runs with Kevin's main key)
         run: |
-          set -euo pipefail
-          on=$(git branch -r --contains "$SHA" --format='%(refname:short)' | grep -E '^origin/(dev|ship/.+)$' || true)
-          [ -n "$on" ] || { echo "::error::$SHA is on neither origin/dev nor an origin/ship/** branch"; exit 1; }
+          git merge-base --is-ancestor "$SHA" origin/dev || { echo "::error::$SHA is not on origin/dev. Nothing ran."; exit 1; }
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
@@ -95,11 +127,11 @@ jobs:
           chmod +x gradlew
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
         with:
           cache-read-only: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -119,16 +151,17 @@ jobs:
           LEGION_GRADLE: ./gradlew -Pnokey --no-daemon
         run: |
           set -uo pipefail
-          mkdir -p gate-out
+          # Raw console text (model replies, tool calls) stays in RUNNER_TEMP and is never uploaded.
+          raw="$RUNNER_TEMP/gate-raw"; mkdir -p "$raw"
           python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
-            --only "$CASES" --json gate-out/voice.json > gate-out/voice.txt 2>&1
+            --only "$CASES" --json "$raw/voice.json" > "$raw/voice.txt" 2>&1
           rc=$?
-          grep -E '^VOICE EVAL|^lengths ' gate-out/voice.txt || true
+          grep -E '^VOICE EVAL|^lengths ' "$raw/voice.txt" || true
           [ "$rc" = 0 ] && { echo "voice eval passed: every case, first run"; exit 0; }
-          [ -f gate-out/voice.json ] || { tail -40 gate-out/voice.txt; echo "::error::the voice eval run broke (exit $rc, no scorecard): nothing to retry"; exit 1; }
-          failed=$(python - "$CASES" <<'EOF'
+          [ -f "$raw/voice.json" ] || { echo "::error::the voice eval run broke (exit $rc, no scorecard): nothing to retry"; exit 1; }
+          failed=$(python - "$CASES" "$raw/voice.json" <<'EOF'
           import json, sys
-          s = json.load(open("gate-out/voice.json", encoding="utf-8"))
+          s = json.load(open(sys.argv[2], encoding="utf-8"))
           ran = {r["id"] for r in s["cases"]}
           bad = [r["id"] for r in s["cases"] if not r["pass"] and not r["known_limit"] and not r["proves_nothing"]]
           bad += [c for c in sys.argv[1].split(",") if c and c not in ran]
@@ -141,7 +174,7 @@ jobs:
           twice=""
           for c in $failed; do
             python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
-              --only "$c" > "gate-out/retry-$c.txt" 2>&1 && echo "retry $c: passed" || { echo "retry $c: failed again"; twice="$twice $c"; }
+              --only "$c" > "$raw/retry-$c.txt" 2>&1 && echo "retry $c: passed" || { echo "retry $c: failed again"; twice="$twice $c"; }
           done
           [ -z "$twice" ] || { echo "::error::failed twice:$twice"; exit 1; }
           echo "voice eval passed under fail_twice (retried: $failed)"
@@ -150,15 +183,37 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew -Pnokey --no-daemon :app:testDebugUnitTest --tests com.kevin.legion.service.MoneySpecialistEvalCasesTest --rerun -q
-          python tools/money_specialist_eval.py --key-file "$LEGION_GEMINI_KEY_FILE" | tee gate-out/money.txt
+          python tools/money_specialist_eval.py --key-file "$LEGION_GEMINI_KEY_FILE" > "$RUNNER_TEMP/gate-raw/money.txt" 2>&1 \
+            || { tail -1 "$RUNNER_TEMP/gate-raw/money.txt"; exit 1; }
+          tail -1 "$RUNNER_TEMP/gate-raw/money.txt"
 
       - name: Forget the key
         if: always()
         run: rm -f "$RUNNER_TEMP/gk.txt"
 
-      - name: Keep the scorecards (invented data only)
+      # Only counts, case ids and pass/fail go up (review G1): artifacts on a public repo are readable by
+      # any signed-in user and are not masked.
+      - name: Scorecard only, then scrub (allow-list of names; any key-like text fails the job)
         if: always()
-        uses: actions/upload-artifact@v4
+        run: |
+          set -euo pipefail
+          mkdir -p gate-out
+          raw="$RUNNER_TEMP/gate-raw"
+          if [ -f "$raw/voice.json" ]; then
+            python3 - "$raw/voice.json" gate-out/voice-scorecard.json <<'EOF'
+          import json, sys
+          s = json.load(open(sys.argv[1], encoding="utf-8"))
+          keep = [{k: c.get(k) for k in ("id", "pass", "known_limit", "proves_nothing")} for c in s.get("cases", [])]
+          out = {"cases": keep, "passed": sum(1 for c in keep if c["pass"]), "total": len(keep)}
+          json.dump(out, open(sys.argv[2], "w", encoding="utf-8"), indent=1)
+          EOF
+          fi
+          if [ -f "$raw/money.txt" ]; then tail -1 "$raw/money.txt" | grep -E '^[0-9]+/[0-9]+ right' > gate-out/money-summary.txt || true; fi
+          bash .github/scripts/scrub_gate_out.sh gate-out voice-scorecard.json money-summary.txt
+
+      - name: Keep the scorecard
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gates-phone-${{ inputs.sha }}
           path: gate-out/
@@ -166,6 +221,7 @@ jobs:
           retention-days: 7
 
   engine:
+    needs: cap
     if: inputs.which == 'all' || inputs.which == 'engine'
     name: engine realrun gate + one chip turn
     runs-on: ubuntu-latest
@@ -201,20 +257,17 @@ jobs:
           [ -n "$GEMINI_API_KEY" ] || { echo "::error::Secret GEMINI_API_KEY is not set in the gates environment. Nothing ran; this is a FAIL, not a skip (see this file's header)."; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
 
-      - name: The commit is on dev or a ship/** branch
+      - name: The commit is on dev (review G3; it runs with Kevin's main key)
         run: |
-          set -euo pipefail
-          on=$(git branch -r --contains "$SHA" --format='%(refname:short)' | grep -E '^origin/(dev|ship/.+)$' || true)
-          [ -n "$on" ] || { echo "::error::$SHA is on neither origin/dev nor an origin/ship/** branch"; exit 1; }
+          git merge-base --is-ancestor "$SHA" origin/dev || { echo "::error::$SHA is not on origin/dev. Nothing ran."; exit 1; }
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
-
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - name: Environment from the pinned requirements (as server.yml)
         working-directory: server
         run: |
@@ -232,7 +285,7 @@ jobs:
       - name: Realrun gate (web cascade, budget $0.09)
         working-directory: server
         env:
-          REALRUN_OUT: ${{ runner.temp }}/realrun-out
+          REALRUN_OUT: ${{ runner.temp }}/gate-raw/realrun-out
           REALRUN_BUDGET_USD: '0.09'
         run: uv run --no-sync pytest -q -p no:cacheprovider tests/realrun_web_cascade.py -k realrun_gate -s --junitxml=gate-realrun.xml
 
@@ -266,11 +319,32 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/gk.txt"
 
-      - name: Keep the turns (invented data only)
+      # The turns (realrun-out) stay on the runner; only the counts go up (review G1).
+      - name: Scorecard only, then scrub
         if: always()
-        uses: actions/upload-artifact@v4
+        run: |
+          set -euo pipefail
+          mkdir -p gate-out
+          for x in realrun chip; do
+            f=server/gate-$x.xml
+            [ -f "$f" ] || continue
+            python3 - "$f" > "gate-out/$x-summary.txt" <<'EOF'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
+          for s in suites:
+              for c in s.iter("testcase"):
+                  state = "failed" if c.find("failure") is not None or c.find("error") is not None else "skipped" if c.find("skipped") is not None else "passed"
+                  print(f"{c.get('name')}: {state}")
+          EOF
+          done
+          bash .github/scripts/scrub_gate_out.sh gate-out realrun-summary.txt chip-summary.txt
+
+      - name: Keep the scorecard
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gates-engine-${{ inputs.sha }}
-          path: ${{ runner.temp }}/realrun-out
+          path: gate-out/
           if-no-files-found: ignore
           retention-days: 7
