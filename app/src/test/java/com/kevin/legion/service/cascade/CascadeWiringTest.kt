@@ -152,9 +152,10 @@ class CascadeWiringTest {
         assertTrue(close.contains("MAX_NOISE_IN_A_ROW"))
         // 2026-11-20: the close's chime is played by the release (playCloseCue), not a stock tone here.
         assertTrue(bodyOf(s, "releaseNow").contains("playCloseCue(reason)"))
-        // F4: a farewell cancels a backchannel that has not started (one already playing finishes).
+        // F4, 2026-11-21: a farewell ends the acknowledgement, and cuts it if it is playing ([playAckClip]).
         val stop = bodyOf(s, "endByStop")
-        assertTrue(stop.indexOf("if (!playbackActive) fillerJobs.endTurn()") in 0 until stop.indexOf("endByVoice()"))
+        assertTrue(stop.indexOf("fillerJobs.endTurn()") in 0 until stop.indexOf("endByVoice()"))
+        assertFalse(stop.contains("if (!playbackActive) fillerJobs.endTurn()"))
         // F2: the hand-over's release carries the reason the chime rule knows.
         assertTrue(bodyOf(s, "handOver").contains("release(CloseCue.voiceFailedReason(reason, VoiceEngineSettings.LIVE_RETIRED, quiet))"))
         assertTrue("a noise drop counts", bodyOf(s, "droppedWords").contains("closedOnNoise()"))
@@ -576,6 +577,42 @@ class CascadeWiringTest {
         assertFalse(cue.contains("flush("))
         assertTrue(cue.contains("p.write(pcm, p.generation())"))
         assertTrue(release.indexOf("player?.release()") > chime)
+    }
+
+    @Test
+    fun `the acknowledgement plays at end of turn from memory, gated by the words heard so far, and is cut when he speaks`() {
+        val s = session()
+        val schedule = bodyOf(s, "scheduleBackchannel")
+        assertTrue(schedule.contains("?: ackWordsSkip(u)"))
+        assertTrue(schedule.contains("Backchannel.DELAY_MS"))
+        val words = bodyOf(s, "ackWordsSkip")
+        assertTrue(words.contains("heardSoFar?.takeIf { it.first == u.id }?.second"))
+        assertTrue(words.contains("WakePhrases.isSleepPhrase(it, CompanionProfile.name(ctx))"))
+        assertTrue(words.contains("CrisisDetector::detect"))
+        // The running transcript is kept with the speculation setting off too.
+        val wire = bodyOf(s, "wireEarlySignals")
+        assertTrue(wire.indexOf("heardSoFar = id to text") in 0 until wire.indexOf("if (!speculate) return"))
+        // A cancelled acknowledgement is flushed at once: his speech (onUserTurnStart) and a stop end its job.
+        val clip = bodyOf(s, "playAckClip")
+        assertTrue(clip.contains("catch (e: CancellationException)"))
+        assertTrue(clip.contains("if (p.generation() == gen) p.flush()"))
+        assertTrue(bodyOf(s, "playBackchannel").contains("clipPlayback.during { playAckClip(p, pcm) }"))
+        val turnStart = s.substring(s.indexOf("private fun onUserTurnStart()")).take(800)
+        assertTrue(turnStart.contains("fillerJobs.endTurn()"))
+    }
+
+    @Test
+    fun `the chime is logged either way and the route stays up until it has played`() {
+        val s = session()
+        val cue = bodyOf(s, "playCloseCue")
+        assertTrue(cue.contains("CloseCue.skippedLine(reason"))
+        assertTrue(cue.contains("CloseCue.playedLine(reason"))
+        assertTrue(cue.contains("CloseCue.minPlayMs(chimeMs)"))
+        val release = bodyOf(s, "releaseNow")
+        val chime = release.indexOf("playCloseCue(reason)")
+        listOf("player?.release()", "earpiece.stop()", "it.exit(\"cascade \$reason\")", "abandonFocus()").forEach {
+            assertTrue(it, release.indexOf(it) > chime)
+        }
     }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())

@@ -41,9 +41,9 @@ class TurnFillerJobsTest {
         val played = mutableListOf<Long>()
         jobs.startWaitLines(played) { testScheduler.currentTime }
         advanceTimeBy(20_000)
-        // Not ended: every wait line of a long wait, 1.8 s then every 2.5 s after each ended (Kevin's
-        // timing, 2026-11-20), until each line was said once.
-        assertEquals(listOf(1_800L, 5_100L, 8_400L, 11_700L, 15_000L), played)
+        // Not ended: every wait line of a long wait, 1.5 s then every 2.5 s after each ended (FillerTiming,
+        // 2026-11-21), until each line was said once.
+        assertEquals(listOf(1_500L, 4_800L, 8_100L, 11_400L, 14_700L), played)
         jobs.endTurn()
     }
 
@@ -55,8 +55,9 @@ class TurnFillerJobsTest {
             val start = testScheduler.currentTime
             jobs.startWaitLines(played) { testScheduler.currentTime - start }
             var backchannels = 0
+            // A clip still to come (it waits for the open's cue): the acknowledgement itself is at end of turn.
             jobs.startBackchannel {
-                delay(Backchannel.DELAY_MS)
+                delay(Backchannel.DELAY_MS + 1_000)
                 backchannels++
             }
             advanceTimeBy(300)

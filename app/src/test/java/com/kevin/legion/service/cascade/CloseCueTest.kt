@@ -2,6 +2,9 @@
 
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.service.ListenCue
+import com.kevin.legion.service.turn.AudioRoute
+import com.kevin.legion.service.turn.MicReopen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -79,25 +82,56 @@ class CloseCueTest {
 
     @Test
     fun `the audit line is numbers and fixed tokens`() {
-        assertEquals("close_cue played=1 reason=follow_up skipped=none", CloseCue.auditLine("follow_up", null))
         assertEquals(
-            "close_cue played=0 reason=new_conversation skipped=quiet",
-            CloseCue.auditLine("new conversation", CloseCue.Skip.QUIET),
+            "close_cue played ms=540 reason=sleep_phrase route=speaker drained=1",
+            CloseCue.playedLine("sleep_phrase", 540, "speaker", drained = true),
         )
+        assertEquals(
+            "close_cue skipped reason=quiet close=new_conversation",
+            CloseCue.skippedLine("new conversation", CloseCue.Skip.QUIET),
+        )
+        assertEquals("bt", CloseCue.routeToken(AudioRoute.BLUETOOTH, earpiece = true))
+        assertEquals("earpiece", CloseCue.routeToken(AudioRoute.PHONE_SPEAKER, earpiece = true))
+        assertEquals("speaker", CloseCue.routeToken(AudioRoute.PHONE_SPEAKER, earpiece = false))
+        assertEquals("wired", CloseCue.routeToken(AudioRoute.WIRED_HEADSET, earpiece = false))
     }
 
     @Test
-    fun `the wait is the chime plus the route's tail, never past the hard cap`() {
-        assertEquals(290L + 60L, CloseCue.waitCapMs(chimeMs = 290, settleMs = 60))
-        assertEquals(290L + 700L, CloseCue.waitCapMs(chimeMs = 290, settleMs = 700))
+    fun `the wait covers the chime, its output latency and the route's tail, never past the hard cap`() {
+        assertEquals(290L + CloseCue.OUTPUT_LATENCY_MS + 60L, CloseCue.waitCapMs(chimeMs = 290, settleMs = 60))
+        assertEquals(CloseCue.HARD_CAP_MS, CloseCue.waitCapMs(chimeMs = 290, settleMs = 700))
         assertEquals(CloseCue.HARD_CAP_MS, CloseCue.waitCapMs(chimeMs = 900, settleMs = 900))
+        // On the speaker the cap leaves room to release only after the chime was heard (2026-11-21: the
+        // shipped cap was the chime plus a 60 ms settle, and the release cut it).
+        val chime = ListenCue.durationMs(ListenCue.closeChimePcm())
+        assertTrue(CloseCue.waitCapMs(chime, MicReopen.SETTLE_MS) >= CloseCue.minPlayMs(chime) + MicReopen.SETTLE_MS)
+        assertTrue(CloseCue.waitCapMs(chime, MicReopen.BLUETOOTH_TAIL_MS) >= CloseCue.minPlayMs(chime))
+    }
+
+    @Test
+    fun `the player is released only after the whole chime has had time to be heard`() = runTest {
+        // A head position that says "drained" at once (it runs ahead of the speaker): the release still waits.
+        val chime = ListenCue.durationMs(ListenCue.closeChimePcm())
+        var written = 0
+        val start = testScheduler.currentTime
+        val done = CloseCue.playBounded(
+            CloseCue.waitCapMs(chime, MicReopen.SETTLE_MS),
+            CloseCue.minPlayMs(chime),
+            write = { written = ListenCue.closeChimePcm().size },
+            drained = {},
+            now = { testScheduler.currentTime },
+        )
+        assertTrue(done)
+        assertEquals(ListenCue.closeChimePcm().size, written)
+        assertTrue(testScheduler.currentTime - start >= chime + CloseCue.OUTPUT_LATENCY_MS)
     }
 
     @Test
     fun `a playback that never drains is cut at the cap, a normal one completes`() = runTest {
         val start = testScheduler.currentTime
-        assertFalse(CloseCue.playBounded(500, write = {}, drained = { delay(60_000) }))
+        val now = { testScheduler.currentTime }
+        assertFalse(CloseCue.playBounded(500, 0, write = {}, drained = { delay(60_000) }, now = now))
         assertEquals(500L, testScheduler.currentTime - start)
-        assertTrue(CloseCue.playBounded(500, write = {}, drained = { delay(300) }))
+        assertTrue(CloseCue.playBounded(500, 0, write = {}, drained = { delay(300) }, now = now))
     }
 }

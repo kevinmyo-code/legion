@@ -5,7 +5,7 @@ package com.kevin.legion.service.cascade
  * clip (backchannel, task line, wait line) from its first write to its drain, then the answer's first
  * audio. [line] is the longest silent stretch in that window and what filled it, numbers and fixed
  * tokens only, in the LIVE_LATENCY style:
- * `gap_max_ms=<n> gap_after=<eot|backchannel|tool|wait> fillers=<kind+kind|none> answer_ms=<n>`.
+ * `gap_max_ms=<n> gap_after=<eot|backchannel|tool|wait> fillers=<kind+kind|none> answer_ms=<n> first_sound_ms=<n>`.
  * A clip still playing when the answer's audio is in covers the time up to it. Thread-safe.
  */
 internal class TurnGap(private val eotAtMs: Long) {
@@ -52,8 +52,12 @@ internal class TurnGap(private val eotAtMs: Long) {
             maxGap = last
             maxAfter = after
         }
-        val fillers = sounds.filter { it.startMs < answerAtMs }.joinToString("+") { it.kind }.ifEmpty { "none" }
-        return "gap_max_ms=$maxGap gap_after=$maxAfter fillers=$fillers answer_ms=${answerAtMs - eotAtMs}"
+        val heard = sounds.filter { it.startMs < answerAtMs }
+        val fillers = heard.joinToString("+") { it.kind }.ifEmpty { "none" }
+        // The first thing he hears after his turn, a filler or the answer itself (2026-11-21).
+        val firstSound = (heard.minOfOrNull { it.startMs } ?: answerAtMs) - eotAtMs
+        return "gap_max_ms=$maxGap gap_after=$maxAfter fillers=$fillers answer_ms=${answerAtMs - eotAtMs} " +
+            "first_sound_ms=$firstSound"
     }
 
     companion object {
