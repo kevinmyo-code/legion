@@ -256,6 +256,9 @@ internal class CascadeSession(
     /** True while a reply is audible (or its tail is still settling): what [TurnTaker.feed] calls `playing`. */
     @Volatile private var playbackActive = false
     @Volatile private var currentUtt: TurnUtterance? = null
+
+    /** The engine as the brain ([EngineBrain]); null with Settings' "Answer on the engine" off. */
+    @Volatile private var engineBrain: EngineBrain? = null
     @Volatile private var lastLocalSpeechAtMs = 0L
 
     private var turnJob: Job? = null
@@ -427,6 +430,9 @@ internal class CascadeSession(
 
         /** A check-in line: held until whole, checked ([CheckInRules.lineRejection]), then said or dropped. */
         @Volatile var holdLine = false
+
+        /** The engine heard this turn ([EngineUtterance]): it answers unless the phone keeps it. */
+        @Volatile var engineUtt: EngineUtterance? = null
     }
 
     // --- open ------------------------------------------------------------------------------------
@@ -459,6 +465,11 @@ internal class CascadeSession(
         }
         val config = VoiceEngineSettings.laptop(ctx)
         CascadeWarmup.conversationOpen = true
+        if (listens) {
+            engineBrain = EngineBrainOpen.open(ctx, scope, opening != OpeningRule.Opening.CHIME) {
+                scope.launch(loop) { engineLost(EngineBrainRules.UNREACHABLE_LINE) }
+            }
+        }
         // The laptop is probed and connected while the mic and the turn models get ready (a wake
         // word's onset may have started it already); [tryLaptop] takes it.
         if (laptopFirst) LaptopPrewarm.start(ctx, "open")
@@ -518,7 +529,8 @@ internal class CascadeSession(
         greetingLoop = newTextLoop(cache, CallUsage.GREETING)
         cacheStore = cache
         enginesUsed.add(b.kind.token)
-        speculate = listens && VoiceEngineSettings.speculate(ctx)
+        // No drafts on the engine brain (plan 1119 row 25): the engine hears the audio itself.
+        speculate = listens && VoiceEngineSettings.speculate(ctx) && engineBrain == null
         wireEarlySignals(b)
 
         val smartReady = models?.smartTurn != null && TurnModels.smartTurnBroken == null
@@ -993,7 +1005,7 @@ internal class CascadeSession(
         override fun sendActivityStart() {
             val b = backend ?: return
             var self: TurnUtterance? = null
-            val inner = b.stt.begin {
+            val inner = engineBrain?.utterance(b.kind == SpeechBackend.Kind.CLOUD) ?: b.stt.begin {
                 val utt = self ?: return@begin
                 scope.launch(loop) { onServiceEnd(utt) }
             }
@@ -1206,7 +1218,12 @@ internal class CascadeSession(
         val previous = turnJob
         turnJob = scope.launch(loop) {
             previous?.join()
-            runTurn(u, eotAtMs)
+            try {
+                runTurn(u, eotAtMs)
+            } finally {
+                // Not answered by the engine (a stop, noise, the phone loop took it): its turn is cancelled.
+                u.engine?.release()
+            }
         }
     }
 
@@ -1485,6 +1502,10 @@ internal class CascadeSession(
             is SttResult.Failed -> {
                 discardDraftOf(u, "stt_failed")
                 if (stt.reason == "cancelled") return
+                // The engine could not answer: said so, never a second brain ([EngineUtterance.SWITCHED_OFF]
+                // is the server's own rollback, and the phone's transcriber and loop take that turn).
+                val lost = u.engine?.takeIf { stt.reason != EngineUtterance.SWITCHED_OFF }
+                if (lost != null) return engineLost(EngineBrain.lostWords(lost), stt.reason == EngineUtterance.MISSED)
                 val recovered = recoverWords(u, stt.reason) ?: return
                 if (endsConversation(recovered)) return endByStop(u, recovered)
                 recovered
@@ -1552,6 +1573,7 @@ internal class CascadeSession(
             return
         }
         val record = TurnRecord(heard, voicedMs = (stt as? SttResult.Text)?.voicedMs)
+        record.engineUtt = u.engine
         answerTurn(heard, eotAtMs, record, takeDraft(u, heard))
     }
 
@@ -1577,7 +1599,14 @@ internal class CascadeSession(
             audit.readThrough(GeminiLiveSession.READ_THROUGH_CARRY)
         }
         val seq = turnSeq.getAndIncrement()
-        val pfx = try {
+        val brain = engineBrain
+        val engineStart = brain?.route(
+            record.engineUtt,
+            heard,
+            EngineBrain.RouteFacts(test = test != null, fromUser = record.fromUser, carryMarked = record.startMarked),
+        )
+        // The engine answers without the phone's prompt; only the phone loop waits for it.
+        val pfx = if (engineStart != null) null else try {
             awaitPrompt()
         } catch (e: CancellationException) {
             // Interrupted or merged while the prompt was still building: no stale turn, and his
@@ -1600,12 +1629,21 @@ internal class CascadeSession(
         try {
             // A confirmed draft replays what it held (text, marks) and only now may run its tools.
             val result = drafted?.adopt(executorFor(record, seq), listenerFor(record, reply))
+                ?: engineStart?.let {
+                    brain?.answer(it, record.engineUtt, executorFor(record, seq), listenerFor(record, reply))
+                }
                 ?: textLoop!!.answer(
-                    pfx,
+                    checkNotNull(pfx),
                     turnContentsFor(heard),
                     executorFor(record, seq),
                     listenerFor(record, reply),
                 )
+            if (brain?.takeCrisis() == true) {
+                reply.interrupt()
+                shutdown("crisis")
+                host.crisis()
+                return
+            }
             LiveLatency.log(LiveLatency.TAG, CascadeLines.usage(MODEL, result.usage))
             // A tool turn that ended on filler was asked once more ([FillerTurn]): counts only.
             if (result.fillerContinued > 0) LiveLatency.log(LiveLatency.TAG, "reply_filler_continued n=1")
@@ -1952,6 +1990,24 @@ internal class CascadeSession(
         carry = ""
         recordTurn(words, owed.due()?.line.orEmpty())
         endByVoice()
+    }
+
+    /**
+     * The engine could not answer (client contract section 9, decision K3): [words] are said, shown,
+     * and the conversation closes; no second brain answers. A transcript the engine missed ([missed])
+     * is the missed line instead, and he may say it again.
+     */
+    private suspend fun engineLost(words: String, missed: Boolean = false) {
+        if (missed) return sayMissedLine()
+        LiveLatency.log(LiveLatency.TAG, "engine_lost close=1")
+        if (!closing.get() && backend != null && player != null) {
+            val reply = newSpeaker(null)
+            reply.say(words)
+            if (withTimeoutOrNull(CLOSER_MAX_MS) { reply.await() } == ReplySpeaker.Outcome.Played) player?.awaitDrained()
+        }
+        host.notice(words)
+        shutdown("engine_unreachable")
+        host.closed("engine_unreachable")
     }
 
     /** [record]'s writes that went through and were not heard are owed; a cut-off turn's unconfirmed ones too. */
@@ -2391,6 +2447,7 @@ internal class CascadeSession(
     /** The reply played to the end: drain, settle, listen again (or hang up if he asked). */
     private suspend fun afterReply() {
         player?.awaitDrained()
+        engineBrain?.runDeviceActions()
         lastReplyEndAtMs = System.currentTimeMillis()
         delay(MicReopen.settleMs(CallAudioMode.route(audioManager)))
         speaking = false

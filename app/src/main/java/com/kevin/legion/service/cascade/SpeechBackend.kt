@@ -87,6 +87,9 @@ internal class TurnUtterance(
         }
     }
 
+    /** The engine hears this utterance ([EngineBrain]), else null (the phone's own transcriber). */
+    val engine: EngineUtterance? get() = inner as? EngineUtterance
+
     /** The audio sent so far, or null when this utterance keeps none. */
     fun keptAudio(): ByteArray? = if (keepAudio) synchronized(kept) { kept.toByteArray() } else null
 

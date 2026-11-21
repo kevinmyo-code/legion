@@ -152,6 +152,7 @@ ROUTES = {
         controls=[
             ("tag", "owner-name-field", "the first name the assistant calls you; blank uses the engine account's"),
             ("tag", "owner-name-save", "saves that name; applies from the next conversation"),
+            ("tag", "engine-brain-switch", "Answer on the engine: the engine answers his turns; off by default"),
         ],
     ),
     "settings/companions": dict(name="Companions", what="Pick and edit the companion persona.",
