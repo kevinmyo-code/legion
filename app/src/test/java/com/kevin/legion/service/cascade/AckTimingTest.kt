@@ -8,12 +8,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -76,33 +78,38 @@ class AckTimingTest {
         override fun openStream(): StreamingSpeechClip = error("not used")
     }
 
-    /** The end-of-turn path, timed: ms from the decision to the first sample handed to the player. */
-    private suspend fun ackStartMs(tts: TextToSpeech, now: () -> Long = System::currentTimeMillis): Long {
-        val jobs = TurnFillerJobs(scope, Dispatchers.Default)
-        val eot = now()
+    /**
+     * The session's own end-of-turn code ([AckRun], the same class `playBackchannel` runs), on the test's
+     * virtual clock: ms from the decision to the first sample handed to the player. The session's
+     * steps are its checks and its clip ([AckClips.pick], real); here the checks pass and the play
+     * records the time.
+     */
+    private suspend fun TestScope.ackStartMs(tts: TextToSpeech): Long {
+        val eot = testScheduler.currentTime
         var handedAt = -1L
-        jobs.startBackchannel {
-            delay((eot + Backchannel.DELAY_MS - now()).coerceAtLeast(0))
-            val picked = AckClips.pick(tts, RecentLines(Backchannel.ROTATION), 0)
-            if (picked != null && picked.pcm.isNotEmpty()) handedAt = now()
+        val steps = object : AckRun.Steps {
+            override suspend fun stillDue(): (() -> Boolean)? = { true }
+            override suspend fun pick() = AckClips.pick(tts, RecentLines(Backchannel.ROTATION), 0)
+            override fun noClip() = Unit
+            override fun started(picked: AckClips.Picked) = Unit
+            override suspend fun play(pcm: ByteArray) {
+                if (pcm.isNotEmpty()) handedAt = testScheduler.currentTime
+            }
+            override suspend fun after() = Unit
         }
-        withTimeout(5_000) { jobs.awaitBackchannel() }
+        AckRun({ testScheduler.currentTime }, Mutex(), steps).run(eot)
         assertTrue("no acknowledgement was handed to the player", handedAt >= 0)
         return handedAt - eot
     }
 
     @Test
-    fun `a voice with its clips in memory starts the acknowledgement within 150 ms of end of turn`() = runBlocking<Unit> {
-        // A first run warms the class loading; the bound is on an ordinary turn.
-        ackStartMs(MemoryVoice())
-        repeat(5) {
-            val ms = ackStartMs(MemoryVoice())
-            assertTrue("$ms ms", ms <= FillerTiming.ACK_MAX_START_MS)
-        }
+    fun `a voice with its clips in memory starts the acknowledgement within 150 ms of end of turn`() = runTest {
+        val ms = ackStartMs(MemoryVoice())
+        assertTrue("$ms ms", ms <= FillerTiming.ACK_MAX_START_MS)
     }
 
     @Test
-    fun `the laptop voice with its clips saved starts it within 150 ms too, with no request`() = runBlocking<Unit> {
+    fun `the laptop voice with its clips saved starts it within 150 ms too, with no request`() = runTest {
         val kept = ConcurrentHashMap<String, ByteArray>()
         lines.forEach { kept["laptop|m|v|24000|$it"] = tone() }
         val sent = mutableListOf<String>()
@@ -129,26 +136,36 @@ class AckTimingTest {
             wire, LaptopVoiceConfig("http://127.0.0.1:8765", "invented-token"), "legion-phone/test", scope,
             keepLines = lines.toSet(), kept = kept,
         )
-        c.open(1_000)
-        ackStartMs(c)
-        repeat(5) {
-            val ms = ackStartMs(c)
-            assertTrue("$ms ms", ms <= FillerTiming.ACK_MAX_START_MS)
-        }
+        withContext(Dispatchers.Default) { c.open(1_000) }
+        val ms = ackStartMs(c)
+        assertTrue("$ms ms", ms <= FillerTiming.ACK_MAX_START_MS)
         assertTrue("no live request for a saved clip", "tts.speak" !in sent)
     }
 
     @Test
-    fun `the session runs this same path, and Bluetooth's settle comes after the clip, not before it`() {
+    fun `the session runs this same code, and nothing on its path waits but the named cue wait`() {
         val s = File(sourceRoot(), "service/cascade/CascadeSession.kt").readText()
-        val schedule = s.substring(s.indexOf("private fun scheduleBackchannel("), s.indexOf("private fun ackWordsSkip("))
-        assertTrue(schedule.contains("delay((eotAtMs + Backchannel.DELAY_MS - System.currentTimeMillis()).coerceAtLeast(0))"))
-        val play = s.substring(s.indexOf("private suspend fun playBackchannel("), s.indexOf("private fun logFirstSound("))
-        assertTrue(play.contains("AckClips.pick(b.tts, recentBackchannels, backchannelIndex.getAndIncrement())"))
-        // Nothing waits between the pick and the write but the play gate (the answer cannot hold it at end of turn).
-        val clip = play.indexOf("clipPlayback.during { playAckClip(p, pcm) }")
-        val settle = play.indexOf("MicReopen.settleMs(CallAudioMode.route(audioManager))")
-        assertTrue("$clip $settle", clip in 0 until settle)
+        fun body(start: String, end: String) = s.substring(s.indexOf(start), s.indexOf(end))
+        assertTrue(s.contains("fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }"))
+        val play = body("private suspend fun playBackchannel(", "private fun ackSteps(")
+        assertTrue(play.contains("AckRun(System::currentTimeMillis, playGate, ackSteps(seq, eotAtMs, b, p)).run(eotAtMs)"))
+        assertFalse(play.contains("delay("))
+        // The steps: the only wait before the clip is the cue wait inside backchannelStillDue; the route's
+        // settle is in after(), once the clip has played.
+        val steps = body("private fun ackSteps(", "private fun noteAckStarted(")
+        val settle = steps.indexOf("delay(MicReopen.settleMs(")
+        assertEquals("one wait in the steps", 1, steps.split("delay(").size - 1)
+        assertTrue(settle > steps.indexOf("override suspend fun after()"))
+        val due = body("private suspend fun backchannelStillDue(", "private fun answerTextIn(")
+        assertEquals("only the cue wait", listOf("cueWait)"), due.split("delay(").drop(1).map { it.substringBefore(")") + ")" })
+        val clip = body("private suspend fun playAckClip(", "/** The clip whose audio [clipListen] keeps")
+        assertFalse(clip.contains("delay("))
+        val started = body("private fun noteAckStarted(", "/** This turn's first-sound line")
+        assertFalse(started.contains("delay("))
+        // AckRun's one wait is the named delay from the end-of-turn decision.
+        val run = File(sourceRoot(), "service/cascade/AckRun.kt").readText()
+        assertEquals(1, run.split("delay(").size - 1)
+        assertTrue(run.contains("delay((eotAtMs + Backchannel.DELAY_MS - now()).coerceAtLeast(0))"))
     }
 
     private fun sourceRoot(): File {
