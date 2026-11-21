@@ -124,6 +124,37 @@ export interface DiagramCard extends Common {
 }
 
 /**
+ * A part of the Jeep front end in 3D (`show_part`, `server/garage/tool.py`): the schematic model at
+ * `model` (only a `/garage/<name>.glb` path), the camera's `view` in the model's own metres, the
+ * part and fastener ids to light up. `facts` are the part's fastening points; a figure is present
+ * only for a row the owner checked against a source, and is shown with that source.
+ */
+export interface PartFact {
+  fastener_id: string
+  name: string
+  kind?: string
+  checked: boolean
+  figure?: string
+  socket?: string
+  thread?: string
+  applies_to?: string
+  source?: string
+  page?: string
+  verified_on?: string
+}
+
+export interface Part3dCard extends Common {
+  card: 'part3d'
+  model: string
+  part_id: string
+  fastener_id: string | null
+  highlight: string[]
+  view: { target: [number, number, number]; from: [number, number, number] }
+  where: string
+  facts: PartFact[]
+}
+
+/**
  * Kevin's one-page resume (`show_resume`, `server/demo/tools.py`, recruiters only). Links, never
  * bytes: `image` is the page as a PNG (Android Chrome draws no PDF in a page), null when only the
  * PDF is loaded; `pdf` is the download. Both are the visitor's own content version's files.
@@ -220,15 +251,46 @@ export type Card =
   | ChecklistCard
   | DiagramCard
   | ResumeCard
+  | Part3dCard
   | ReadingsCard
   | StatusListCard
   | TrendCard
 
 /** The cards that open over the whole page (`screen-modal.tsx`) as well as drawing in the chat. */
-export type ModalCard = DiagramCard | ResumeCard
+export type ModalCard = DiagramCard | ResumeCard | Part3dCard
 
 export function isModalCard(card: Card | undefined): card is ModalCard {
-  return card?.card === 'diagram' || card?.card === 'resume'
+  return card?.card === 'diagram' || card?.card === 'resume' || card?.card === 'part3d'
+}
+
+/** Only this origin's static garage models (`server/frontend/public/garage/`). */
+const GARAGE_MODEL = /^\/garage\/[a-z0-9-]+\.glb$/
+
+const isPoint = (value: unknown) =>
+  Array.isArray(value) && value.length === 3 && value.every((v) => typeof v === 'number' && Number.isFinite(v))
+
+function part3dOk(value: Record<string, unknown>): boolean {
+  const view = value.view
+  return (
+    typeof value.model === 'string' &&
+    GARAGE_MODEL.test(value.model) &&
+    typeof value.part_id === 'string' &&
+    (value.fastener_id === null || typeof value.fastener_id === 'string') &&
+    Array.isArray(value.highlight) &&
+    value.highlight.every((h) => typeof h === 'string') &&
+    isObject(view) &&
+    isPoint(view.target) &&
+    isPoint(view.from) &&
+    typeof value.where === 'string' &&
+    isList(value.facts) &&
+    value.facts.every(
+      (f) =>
+        typeof f.fastener_id === 'string' &&
+        typeof f.name === 'string' &&
+        typeof f.checked === 'boolean' &&
+        (f.figure === undefined || (f.checked === true && typeof f.figure === 'string')),
+    )
+  )
 }
 
 /** Only an engine path: the card's links must stay on this origin's asset door. */
@@ -277,6 +339,8 @@ export function asCard(value: unknown): Card | undefined {
         typeof value.alt === 'string'
         ? (value as unknown as ResumeCard)
         : undefined
+    case 'part3d':
+      return part3dOk(value) ? (value as unknown as Part3dCard) : undefined
     case 'readings':
       return isList(value.items) &&
         value.items.every(isReading) &&
