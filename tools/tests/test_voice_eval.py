@@ -500,3 +500,53 @@ def test_reply_lengths_report_mean_and_spread_and_the_bounds_fail_long_answers()
     fails, _ = ve.check_turn(turn("A b c d e f. G h. I j. K l."), {"max_words": 5, "max_sentences": 3},
                              ve.datetime.date(2026, 1, 1), phone=False, write=False, allow_writes=False)
     assert any("over 5" in f for f in fails) and any("4 sentences, over 3" in f for f in fails)
+
+
+# --------------------------------------------------------------------------- the read window
+
+def _read(args: dict) -> "ve.Turn":
+    call = ve.ToolCall(id="e0", name="day", args={"action": "read_calendar", **args}, success=True)
+    return ve.Turn(user="x", calls=[call], answer_parts=["A quiz and a discussion post."])
+
+
+TODAY_WINDOW = {"calls": ["day/read_calendar"],
+                "args": {"day/read_calendar": {"from": {"lte": "{today}"}, "to": {"gte": "{today}"}}}}
+
+
+def _fails(args: dict, expect: dict = TODAY_WINDOW, phone: bool = True) -> list[str]:
+    fails, _ = ve.check_turn(_read(args), expect, DAY, phone=phone, write=False, allow_writes=False)
+    return fails
+
+
+def test_a_calendar_read_is_judged_on_the_window_the_phone_resolves():
+    # No `from` is today and no `to` is `from` (LiveToolbox.parseCalendarWindow).
+    assert _fails({"to": "today"}) == []
+    assert _fails({}) == []
+    assert _fails({"from": "tonight"}) == []
+    assert _fails({"from": str(DAY), "to": str(DAY)}) == []
+    # A read of another day still fails.
+    assert _fails({"from": "tomorrow"})
+    assert _fails({"from": str(DAY + datetime.timedelta(days=1)), "to": "tomorrow"})
+    assert _fails({"to": "yesterday"})
+    assert _fails({"from": "yesterday", "to": "yesterday"})
+
+
+def test_read_day_and_args_all_use_the_resolved_window_too():
+    tonight = {"calls": ["day/read_calendar"], "read_day": ["{today}"],
+               "args_all": TODAY_WINDOW["args"]}
+    assert _fails({"to": "today"}, tonight) == []
+    assert _fails({"from": "tomorrow", "to": "tomorrow"}, tonight)
+
+
+def test_only_a_calendar_read_gets_the_window_defaults():
+    call = ve.ToolCall(id="e1", name="manage_item", args={"action": "read_list"}, success=True)
+    assert ve.window_args(call) == {"action": "read_list"}
+
+
+def test_the_due_tonight_case_reads_today():
+    cases = json.loads((TOOLS / "voice_eval" / "cases.json").read_text(encoding="utf-8"))["cases"]
+    case = next(c for c in cases if c["id"] == "due_tonight")
+    assert case["expect"]["no_empty_claim"] is True
+    assert case["fixture"]["answer_has"] == ["quiz", "discussion"]
+    assert _fails({"to": "tonight"}, case["expect"]) == []
+    assert _fails({"from": "tomorrow", "to": "tomorrow"}, case["expect"])

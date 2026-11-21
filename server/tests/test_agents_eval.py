@@ -58,6 +58,12 @@ def test_relative_day_words_in_args_count_as_their_dates():
     assert graders.grade_turn(rec, expect, TODAY) == []
 
 
+def test_tonight_in_args_counts_as_today():
+    rec = _record("ok.", [_call("read_calendar", {"from": "tonight", "to": "tonight"})])
+    expect = {"args_all": {"read_calendar": {"from": {"eq": "{today}"}, "to": {"eq": "{today}"}}}}
+    assert graders.grade_turn(rec, expect, TODAY) == []
+
+
 def test_an_empty_claim_over_open_work_fails():
     read = _call("read_calendar", text=json.dumps({"due": {"open": 2}}))
     assert graders.grade_turn(
