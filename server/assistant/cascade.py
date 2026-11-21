@@ -164,7 +164,7 @@ from engine_mcp.tools import (
     run_engine_tool,
     run_tool,
 )
-from garage import flags as garage_flags
+from garage import topic as garage_topic
 from household.models import is_recruiter
 from household.tenancy import household_of
 from legion import deadline
@@ -1236,11 +1236,19 @@ def _answer(
     filler_dropped = 0
     no_answer = False
     money_dropped = 0
-    # The torque guard (garage, `speech_rules.states_unbacked_torque`): on only while the garage
-    # switch is on, and never on a recruiter's turn; off, `backed_torque` answers None and no
-    # sentence is checked.
-    torque_on = garage_flags.enabled() and not door.recruiter
+    # The torque guard (garage, `speech_rules.states_unbacked_torque`): on exactly when
+    # `show_part` is offered to this caller (the switch on, his account, the cascade); otherwise
+    # `backed_torque` answers None and no sentence is checked.
+    torque_on = "show_part" in door.tools()
+    torque_topic = garage_topic.SENTENCE if torque_on else None
+    about_front_end = torque_on and garage_topic.about_front_end(words, last_reply)
     torque_dropped = 0
+
+    def torque_unbacked(text: str) -> bool:
+        return states_unbacked_torque(
+            text, backed_torque(door.calls, torque_topic, about_front_end)
+        )
+
     sentences = 0
 
     # The first lookup of the turn and when it started; its line waits for FILLER_WAIT_S.
@@ -1415,7 +1423,7 @@ def _answer(
                 ):
                     money_dropped += 1
                     continue
-                if states_unbacked_torque(text, backed_torque(door.calls, torque_on)):
+                if torque_unbacked(text):
                     torque_dropped += 1
                     continue
                 if sentences >= MAX_SPOKEN_SENTENCES:
@@ -1478,7 +1486,7 @@ def _answer(
             if states_unbacked_figure(text, backed_cents(door.calls)):
                 money_dropped += 1
                 continue
-            if states_unbacked_torque(text, backed_torque(door.calls, torque_on)):
+            if torque_unbacked(text):
                 torque_dropped += 1
                 continue
             if not honest(text):
@@ -1509,7 +1517,7 @@ def _answer(
             # the change is said in its place (round 2, N1): "went through" or "did not".
             money_dropped += 1
             unbacked += 1
-        elif states_unbacked_torque(text, backed_torque(door.calls, torque_on)):
+        elif torque_unbacked(text):
             torque_dropped += 1
             unbacked += 1
         elif honest(text):
