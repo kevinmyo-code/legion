@@ -29,9 +29,12 @@ from dataclasses import dataclass, field
 
 from agents.legion import closing
 from agents.legion import sentence_gate as gates
+from agents.legion.ask_again import ask_again, asks_again
 from agents.legion.speech_rules import backed_cents, backed_torque, is_filler
 from agents.runtime import events as ev
+from agents.runtime.budget import over
 from agents.runtime.loop import AWAITING_LIMB, NO_ANSWER_WORDS
+from agents.runtime.model import Usage
 from assistant import speech_tags
 from garage import topic as garage_topic
 
@@ -105,10 +108,14 @@ class _Memory:
 
 
 class SpokenTurn:
-    def __init__(self, state, gateway, *, on: bool, torque_topic=None, about_front_end=False):
+    def __init__(
+        self, state, gateway, *, on: bool, torque_topic=None, about_front_end=False, again=None
+    ):
         self.state = state
         self.gateway = gateway
         self.on = on
+        # The ask-again round (`AskAgain`), or None: never asked.
+        self.again = again
         self.memory = _Memory.from_json(state.client_facts.get(SPEECH_KEY))
         self.gate = gates.SentenceGate(
             backed=self._backed,
@@ -199,6 +206,28 @@ class SpokenTurn:
         """What code says once the model is done (`assistant.cascade._answer`'s closing half)."""
         m = self.memory
         state = self.state
+        if self.again is not None and asks_again(
+            failed=state.status != "done",
+            status=state.status,
+            sentences=m.model_said,
+            filler_only=bool(m.filler_dropped or m.no_answer),
+            tools_ran=bool(state.actions),
+            ending=bool(getattr(self.gateway, "end_requested", False)),
+        ):
+            # Spec 23: the tools ran and the answer was only filler, or nothing: asked once more,
+            # tool-free, with the phone's note; whatever it says is the answer.
+            for tagged in self.again(state):
+                text = speech_tags.untagged(tagged)
+                verdict = self.gate.in_ask_again(text, verbatim_said=m.verbatim_said)
+                if verdict == gates.MONEY:
+                    m.money_dropped += 1
+                elif verdict == gates.TORQUE:
+                    m.torque_dropped += 1
+                elif verdict == gates.HOLD:
+                    m.held.append([text, tagged])
+                elif verdict == gates.SAY:
+                    m.model_said += 1
+                    yield self._say(text, tagged)
         if m.no_answer and not m.model_said and state.status == "done":
             # The runtime's own line for a turn with no words, held until now.
             yield self._say(NO_ANSWER_WORDS)
@@ -268,11 +297,68 @@ def as_heard(messages: list[dict], start: int, said: str) -> list[dict]:
     return [*messages[:start], *kept]
 
 
+class AskAgain:
+    """The ask-again round on the agent turn (`ask_again.ask_again`), metered like any round: an
+    `agents_model_call` and `llm_usage` row (`hooks.on_model_call`) and the turn's budget. Not
+    asked once the turn was cancelled, ran out of time or out of budget."""
+
+    def __init__(self, ctx, spec):
+        self.ctx = ctx
+        self.spec = spec
+
+    def __call__(self, state) -> list[str]:
+        hooks, limits = self.ctx.hooks, self.spec.limits
+        started = hooks.started if hooks.started is not None else hooks.clock()
+        if (
+            hooks.cancelled()
+            or hooks.clock() - started > limits.turn_timeout_s
+            or over(limits, state.budget)
+        ):
+            return []
+        rounds: list[dict] = []
+        t0 = hooks.clock()
+        said = ask_again(
+            self.ctx.model,
+            self.spec.model,
+            self.ctx.system_for(self.spec, state),
+            state.messages,
+            self.ctx.gateway.declarations(self.spec),
+            limits.round_timeout_s,
+            rounds,
+        )
+        row = rounds[-1]
+        usage = Usage(
+            row["prompt_tokens"],
+            row["cached_tokens"],
+            row["output_tokens"],
+            row["prompt_tokens"] + row["output_tokens"],
+        )
+        cost = hooks.cost_of(usage)
+        state.budget.rounds += 1
+        state.budget.prompt_tokens += usage.prompt_tokens
+        state.budget.cached_tokens += usage.cached_tokens
+        state.budget.output_tokens += usage.output_tokens
+        state.budget.cost_micro_usd += cost
+        hooks.on_model_call(
+            {
+                "round": state.budget.rounds - 1,
+                "model": self.spec.model,
+                **row,
+                "first_token_ms": None,
+                "total_ms": int((hooks.clock() - t0) * 1000),
+                "cost_micro_usd": cost,
+                "finish_reason": "ask_again",
+            }
+        )
+        return said
+
+
 def spoken_turn(state, ctx, agent: str) -> SpokenTurn:
     """The turn's speech, over the graph context `ctx` (`turn.context`). The torque guard is on
     exactly when `show_part` is offered to this turn, as on the web door."""
     on = agent == SPOKEN_SPEC
-    offered = on and "show_part" in ctx.spec(agent).tools and "show_part" in ctx.gateway.tools()
+    spec = ctx.spec(agent) if on else None
+    offered = on and "show_part" in spec.tools and "show_part" in ctx.gateway.tools()
     words = state.transcript or ""
     return SpokenTurn(
         state,
@@ -280,6 +366,7 @@ def spoken_turn(state, ctx, agent: str) -> SpokenTurn:
         on=on,
         torque_topic=garage_topic.SENTENCE if offered else None,
         about_front_end=offered and garage_topic.about_front_end(words, _last_reply(state)),
+        again=AskAgain(ctx, spec) if on else None,
     )
 
 

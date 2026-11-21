@@ -312,3 +312,48 @@ def test_a_real_write_is_said_and_no_closing_line_follows(seeded):
     assert state.writes_ran, said
     assert said == ["I added made-up stamps to your to-do list."]
     assert CHANGE_MADE not in said
+
+
+# ---- ask-again (spec 23, inventory row 11) ---------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_a_filler_only_answer_after_a_tool_is_asked_once_more_without_tools(seeded):
+    from agents.legion.speech_rules import FILLER_NOTE
+    from agents.models import AgentModelCall
+    from llm.models import LlmUsage
+
+    model = m.FakeModel(
+        [m.call("read_list", {}), m.say("Checking now."), m.say("Milk and eggs are on it.")]
+    )
+    events, _s, conversation = _turn(seeded, "what's on my list?", model)
+    assert [e.data["text"] for e in events if e.type == "sentence"] == ["Milk and eggs are on it."]
+    again = model.requests[-1]
+    assert again.allow_tools is False
+    assert again.contents[-1]["parts"][0]["text"] == FILLER_NOTE
+    turn = AgentTurn.objects.get(conversation=conversation)
+    assert AgentModelCall.objects.filter(turn=turn).count() == 3
+    assert LlmUsage.objects.filter(user=seeded, feature="agent_turn").count() == 3
+    assert turn.final_text == "Milk and eggs are on it."
+
+
+@pytest.mark.django_db
+def test_an_empty_answer_after_a_tool_is_asked_once_more(seeded):
+    model = m.FakeModel([m.call("read_list", {}), m.say(""), m.say("Milk is on it.")])
+    events, _s, _c = _turn(seeded, "list?", model)
+    assert [e.data["text"] for e in events if e.type == "sentence"] == ["Milk is on it."]
+
+
+@pytest.mark.django_db
+def test_with_no_tool_run_a_filler_answer_is_not_asked_again(seeded):
+    model = m.FakeModel([m.say("One moment.")])
+    events, _s, _c = _turn(seeded, "hm", model)
+    assert len(model.requests) == 1
+    assert [e.data["text"] for e in events if e.type == "sentence"] == [NO_TEXT + NOTHING_CHANGED]
+
+
+@pytest.mark.django_db
+def test_an_ask_again_that_fails_ends_in_the_no_answer_line(seeded):
+    model = m.FakeModel([m.call("read_list", {}), m.say("")])
+    events, _s, _c = _turn(seeded, "list?", model)
+    assert [e.data["text"] for e in events if e.type == "sentence"] == [NO_ANSWER_WORDS]
