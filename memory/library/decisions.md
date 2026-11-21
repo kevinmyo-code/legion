@@ -8211,3 +8211,10 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Not a ruling by Kevin.** The orchestrator dropped phone audio-first under his delegation (*"just ship once u thin its ok"*). His earlier words (*"audio first earlier . together with the speed branch."*, *"audio first default at ship"*) could not be met safely.
 - **Why:** the phone build (`feat/phone-audio-first-1119`, not merged) failed blind review: a write could run from audio, a failed transcript could freeze the turn, and the checks ran after the model. The phone already answers from a speculative transcript draft on about 9 turns in 10, so the gain over that baseline was unmeasured and likely small.
 - **Effect:** audio-first is engine-only again and on hold there too, pending five open design decisions (streaming audio while he speaks, the transcription model, a larger-model lane, how late background answers are spoken, a speech-to-speech front on the head unit). ADR 0104.
+
+## 2026-11-21 - The outside-text taint carries into the next turn, on every door (Kevin)
+
+- **Ruling:** a live check showed the web assistant writing an item in the turn after a web search. Kevin chose option A, every door: a turn that read outside text taints his next turn too, and every write there is refused. Kept strict: a change he names fully himself in that turn waits as well; the carry clears once that turn is answered.
+- **Scope:** built on the web assistant (members, live) and the engine brain (dark); the phone cascade follows in its own slice with an app update. The recruiter demo keeps the same-turn rule (frozen); applying it there is open.
+- **Words:** the carried turn says the turn before read outside text, never "this turn".
+- ADR 0090 (amended 2026-11-21).

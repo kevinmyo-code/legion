@@ -36,7 +36,7 @@ from agents.legion.hold import TurnHold
 from agents.legion.retention import prune
 from agents.legion.specs import spec as spec_named
 from agents.legion.store import TurnStore
-from agents.models import AgentConversation, AgentTurn
+from agents.models import TURN_CANCELLED, AgentConversation, AgentTurn
 from agents.runtime import events as ev
 from agents.runtime.loop import LoopHooks
 from agents.runtime.model import ModelClient, Usage
@@ -249,7 +249,7 @@ def run_turn(
         # The line before this turn read outside text (plan 1119 section 4b rule 5).
         state.add_taint(facts_of.CARRY)
         store.mark_taint(state)
-    previous_taint = _taint_of_turn(conversation, seq - 1)
+    previous_taint = _taint_before(conversation, seq)
     if carry.carries(previous_taint):
         # The carry (ADR 0090 amended, 2026-11-21): the turn before read outside text, so no
         # write in this one either; one turn only (`carry.py`).
@@ -368,9 +368,24 @@ def _last_model_text(history: list[dict]) -> str:
     return ""
 
 
-def _taint_of_turn(conversation: AgentConversation, seq: int) -> list:
-    row = conversation.turns.filter(seq=seq).values_list("taint_sources", flat=True).first()
-    return list(row or [])
+# How far back the carry looks past turns that were never answered (one query either way).
+_LOOK_BACK = 5
+
+
+def _taint_before(conversation: AgentConversation, seq: int) -> list:
+    """The taint of the last turn before `seq` that counts: a cancelled turn that read nothing of
+    its own (the phone took it, noise, a barge-in, or a carried turn cut off) was never answered,
+    so it neither spends the carry nor counts as the turn before (`carry.py`)."""
+    rows = (
+        conversation.turns.filter(seq__lt=seq)
+        .order_by("-seq")
+        .values_list("status", "taint_sources")[:_LOOK_BACK]
+    )
+    for status, taint in rows:
+        if status == TURN_CANCELLED and not carry.carries(taint):
+            continue
+        return list(taint or [])
+    return []
 
 
 def _code_answer(

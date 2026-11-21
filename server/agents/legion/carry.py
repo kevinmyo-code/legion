@@ -8,7 +8,10 @@ read outside text taints the NEXT turn of the conversation too, for that one tur
 - **When:** `run_turn` reads the previous turn's sources as the turn starts (one query) and adds
   `PREVIOUS_TURN` to this turn's taint, so every write here refuses (`guards.check_call`, and the
   relay's own check), in the carried words when the carry is the only reason.
-- **Cleared:** after that one turn, whatever he says, whether or not he names the change himself.
+- **Cleared:** after that one turn is answered, whatever he says, whether or not he names the
+  change himself. A turn that was never answered (cancelled: the phone took it, noise, a barge-in)
+  neither spends the carry nor counts as the turn before, unless it read outside text itself
+  (`turn._taint_before`). Per conversation.
 """
 
 from __future__ import annotations

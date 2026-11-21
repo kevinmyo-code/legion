@@ -136,3 +136,18 @@ def test_a_demo_visit_keeps_todays_behaviour(visitor, engine):
     events = _events(_post(visitor, text="Add that.", conversation_id=conversation))
     assert _tools(events)[0]["ok"] is True
     assert _said(events) == ["Added it."]
+
+
+def test_a_nothing_heard_request_between_neither_spends_nor_breaks_the_carry(member, engine):
+    from tests.test_assistant_cascade import PCM, FakeSpeech
+
+    conversation = _search_turn(member, engine)
+    engine.speech = FakeSpeech(heard="")
+    quiet = _events(_post(member, audio=PCM, conversation_id=conversation))
+    assert _of(quiet, "done")[0]["status"] == "nothing_heard"
+    engine.model = FakeModel(
+        [call("add_event", {"fields": {"title": "Museum visit"}}), say("Added it.")]
+    )
+    events = _events(_post(member, text="Add that.", conversation_id=conversation))
+    assert _tools(events)[0]["ok"] is False
+    assert _said(events) == [cascade.READ_THROUGH_WAIT_CARRIED]

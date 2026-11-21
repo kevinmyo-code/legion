@@ -112,3 +112,36 @@ def test_only_carried():
     assert not carry.only_carried([])
     assert carry.carries(["web_search"]) and carry.carries(["late_carry"])
     assert not carry.carries([carry.PREVIOUS_TURN]) and not carry.carries([])
+
+
+def _cancelled_turn(conversation, taint=()):
+    """A turn that was never answered: the phone took it (noise, a stop) or it was cut off."""
+    from django.db.models import Max
+
+    from agents.models import AgentTurn
+
+    seq = (conversation.turns.aggregate(m=Max("seq"))["m"] or 0) + 1
+    AgentTurn.objects.create(
+        household_id=conversation.household_id,
+        owner_user_id=conversation.owner_user_id,
+        conversation=conversation,
+        seq=seq,
+        status="cancelled",
+        taint_sources=list(taint),
+    )
+
+
+def test_a_turn_the_phone_took_between_does_not_spend_the_carry(seeded):
+    _e, _s, conversation = _search(seeded)
+    _cancelled_turn(conversation)
+    tool, _state = _add(seeded, conversation)
+    assert tool["ok"] is False
+
+
+def test_a_carried_turn_cut_off_before_its_answer_does_not_spend_the_carry(seeded):
+    _e, _s, conversation = _search(seeded)
+    _cancelled_turn(conversation, [carry.PREVIOUS_TURN])
+    tool, _state = _add(seeded, conversation)
+    assert tool["ok"] is False
+    tool, _state = _add(seeded, conversation)
+    assert tool["ok"] is True
