@@ -2,9 +2,16 @@
 
 The model passes the person's own words; code finds the id. Longest alias wins ("tie rod sleeve"
 beats "tie rod", "axle nut" beats "axle"); inside the part, the longest joint phrase picks the
-fastener; side words narrow it. When two still match (driver or passenger, upper or lower, which
-end), the result lists them and the model asks. The model only ever names an id a result
-returned (`garage.tool`).
+fastener; side words narrow it. Code never picks silently when more than one fastener fits:
+
+- A bare "nut" or "bolt" picks nothing: joint phrases made only of such words are not evidence.
+- Naming a part also names every other part's fastener that joins it (`xj_front.MEETS`): "the
+  pitman arm nut" may be the arm's shaft nut or the drag link's castle nut at the arm, so both
+  come back and the model asks.
+
+When two or more still fit (driver or passenger, upper or lower, which end, which part), the
+result lists them and the model asks. The model only ever names an id a result returned
+(`garage.tool`).
 """
 
 from __future__ import annotations
@@ -29,6 +36,25 @@ _SIDE_WORDS = {
     "passengers": m.PASSENGER,
     "right": m.PASSENGER,
 }
+# Words that say WHAT KIND of fastener, never WHICH one.
+GENERIC = frozenset({"nut", "bolt", "stud", "screw", "fastener"})
+# Words that say the person wants a fastener, not the part as a whole.
+_FASTENER_INTENT = frozenset(
+    {
+        "nut",
+        "bolt",
+        "stud",
+        "screw",
+        "fastener",
+        "castle",
+        "torque",
+        "socket",
+        "size",
+        "spec",
+        "thread",
+        "tighten",
+    }
+)
 
 
 def _token(word: str) -> str:
@@ -49,6 +75,13 @@ def _contains(words: list[str], phrase: list[str]) -> bool:
 def _best(words: list[str], phrases: tuple[str, ...]) -> int:
     """The token length of the longest phrase found in `words`, or 0."""
     return max((len(p) for p in (tokens(x) for x in phrases) if _contains(words, p)), default=0)
+
+
+def _joint_score(words: list[str], f: m.Fastener) -> int:
+    """How well the words name this fastener's joint; a phrase of only generic words (a bare
+    "nut", "stud nut") counts for nothing."""
+    specific = tuple(j for j in f.joint_words if not set(tokens(j)) <= GENERIC)
+    return _best(words, specific)
 
 
 def side_of(words: list[str]) -> str | None:
@@ -73,19 +106,49 @@ def _fastener_side(f: m.Fastener) -> str | None:
     return f.side or m.PARTS_BY_ID[f.part].side
 
 
+def _narrow(items: list[m.Fastener], side: str | None) -> list[m.Fastener]:
+    return [f for f in items if _side_ok(_fastener_side(f), side)] or items
+
+
 def _pick_fastener(part: m.Part, words: list[str], side: str | None) -> Match:
     mine = m.fasteners_of(part.id)
-    scored = [(f, _best(words, f.joint_words)) for f in mine]
+    scored = [(f, _joint_score(words, f)) for f in mine]
     top = max((s for _, s in scored), default=0)
-    if top == 0:
-        if len(mine) == 1:
+    if top:
+        narrowed = _narrow([f for f, s in scored if s == top], side)
+        if len(narrowed) == 1:
+            return Match(FASTENER, part, narrowed[0], side)
+        return Match(AMBIGUOUS, part, side=side, candidates=narrowed)
+    joining = m.fasteners_meeting(part.id)
+    if not set(words) & _FASTENER_INTENT:
+        # "Where is the track bar": the part itself, its fasteners listed; a part held by one
+        # fastener and joined by no other part's goes straight to it.
+        if len(mine) == 1 and not joining:
             return Match(FASTENER, part, mine[0], side)
         return Match(PART, part, side=side)
-    hits = [f for f, s in scored if s == top]
-    narrowed = [f for f in hits if _side_ok(_fastener_side(f), side)] or hits
-    if len(narrowed) == 1:
-        return Match(FASTENER, part, narrowed[0], side)
-    return Match(AMBIGUOUS, part, side=side, candidates=narrowed)
+    every = _narrow(mine + joining, side)
+    if len(every) == 1:
+        return Match(FASTENER, m.PARTS_BY_ID[every[0].part], every[0], side)
+    if not every:
+        return Match(PART, part, side=side)
+    return Match(AMBIGUOUS, part, side=side, candidates=every)
+
+
+def _flatten(matches: list[Match]) -> list:
+    out, seen = [], set()
+    for x in matches:
+        items = (
+            [x.fastener]
+            if x.kind == FASTENER
+            else x.candidates
+            if x.kind == AMBIGUOUS
+            else [x.part]
+        )
+        for item in items:
+            if item.id not in seen:
+                seen.add(item.id)
+                out.append(item)
+    return out
 
 
 def resolve(words: str, side: str | None = None) -> Match:
@@ -99,7 +162,7 @@ def resolve(words: str, side: str | None = None) -> Match:
         return Match(NONE, side=side)
     fasts = [f for f, s in fast_scores if s == top]
     if fasts:
-        narrowed = [f for f in fasts if _side_ok(_fastener_side(f), side)] or fasts
+        narrowed = _narrow(fasts, side)
         if len(narrowed) == 1:
             f = narrowed[0]
             return Match(FASTENER, m.PARTS_BY_ID[f.part], f, side)
@@ -109,19 +172,20 @@ def resolve(words: str, side: str | None = None) -> Match:
         # A tie between parts goes to the one whose joint words were said too ("the track bar's
         # ball joint end" names the track bar, not a ball joint).
         joint = {
-            p.id: max((_best(said, f.joint_words) for f in m.fasteners_of(p.id)), default=0)
+            p.id: max((_joint_score(said, f) for f in m.fasteners_of(p.id)), default=0)
             for p in parts
         }
         best = max(joint.values())
         parts = [p for p in parts if joint[p.id] == best]
     narrowed = [p for p in parts if _side_ok(p.side, side)] or parts
     if len(narrowed) > 1:
-        # One part per side with the same fastener words: ask "driver or passenger" for the
-        # fastener said, when one was, so the next call lands on the nut itself.
-        picked = [_pick_fastener(p, said, side) for p in narrowed]
-        if all(x.kind == FASTENER for x in picked) and len({x.fastener.id for x in picked}) > 1:
-            return Match(AMBIGUOUS, side=side, candidates=[x.fastener for x in picked])
-        return Match(AMBIGUOUS, side=side, candidates=narrowed)
+        picked = _flatten([_pick_fastener(p, said, side) for p in narrowed])
+        if len(picked) == 1:
+            only = picked[0]
+            if isinstance(only, m.Fastener):
+                return Match(FASTENER, m.PARTS_BY_ID[only.part], only, side)
+            return Match(PART, only, side=side)
+        return Match(AMBIGUOUS, side=side, candidates=picked)
     return _pick_fastener(narrowed[0], said, side)
 
 

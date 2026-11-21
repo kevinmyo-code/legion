@@ -79,6 +79,9 @@ class Fastener:
     pos: tuple[float, float, float]
     where: str
     view: View = field(default=None)  # type: ignore[assignment]
+    # The other parts this fastener joins (`MEETS`): naming one of them makes it a candidate, so
+    # "the pitman arm nut" asks between the arm's shaft nut and the drag link's end at the arm.
+    meets: tuple[str, ...] = ()
 
 
 # ---- hardpoints (inches) ----------------------------------------------------------------------
@@ -591,8 +594,8 @@ def _fasteners() -> list[Fastener]:
             (10.5, 21.3, 15),
             "One large nut and lock washer on a splined shaft",
             "The big nut holding the pitman arm on the steering box shaft.",
-            ("shaft nut", "shaft", "big nut", "sector shaft nut", "nut"),
-            ("pitman nut",),
+            ("shaft nut", "shaft", "big nut", "sector shaft nut"),
+            ("sector shaft nut",),
             side=DRIVER,
         ),
     ]
@@ -857,12 +860,61 @@ def _centre(shapes):
     return tuple(sum(p[i] for p in points) / len(points) for i in range(3))
 
 
+_HOUSING = "xj.axle.housing"
+_FRAME = "xj.body.frame"
+
+
+def _meets() -> dict[str, tuple[str, ...]]:
+    """Which other part each fastener joins, by id (both sides spelled out)."""
+    out = {
+        "xj.steer.drag_link@pitman_end": ("xj.steer.pitman_arm",),
+        "xj.steer.drag_link@knuckle_end": ("xj.axle.knuckle.passenger",),
+        "xj.steer.tie_rod@knuckle_end": ("xj.axle.knuckle.driver",),
+        "xj.steer.tie_rod@drag_link_end": ("xj.steer.drag_link",),
+        "xj.steer.pitman_arm@shaft_nut": ("xj.steer.box",),
+        "xj.susp.track_bar@frame_end": (_FRAME,),
+        "xj.susp.track_bar@axle_end": (_HOUSING,),
+        "xj.susp.track_bar@frame_bracket_bolts": (_FRAME,),
+        "xj.susp.track_bar@frame_bracket_nut": (_FRAME,),
+        "xj.susp.track_bar@frame_bracket_support_bolts": (_FRAME,),
+        "xj.steer.stabilizer@axle_end": (_HOUSING,),
+        "xj.steer.stabilizer@drag_link_end": ("xj.steer.drag_link",),
+    }
+    for i in (1, 2, 3):
+        out[f"xj.steer.box@frame_bolt_{i}"] = (_FRAME,)
+    for side, _ in SIDES:
+        out |= {
+            f"xj.susp.lca.{side}@axle_end": (_HOUSING,),
+            f"xj.susp.lca.{side}@frame_end": (_FRAME,),
+            f"xj.susp.uca.{side}@axle_end": (_HOUSING,),
+            f"xj.susp.uca.{side}@frame_end": (_FRAME,),
+            f"xj.susp.sway_link.{side}@top": ("xj.susp.sway_bar",),
+            f"xj.susp.sway_link.{side}@bottom": (_HOUSING,),
+            f"xj.susp.sway_bar@frame_clamp_{side}": (_FRAME,),
+            f"xj.susp.shock.{side}@top_nut": (_FRAME,),
+            f"xj.susp.shock.{side}@bottom_bolts": (_HOUSING,),
+            f"xj.axle.ball_joint_upper.{side}@stud_nut": (f"xj.axle.knuckle.{side}",),
+            f"xj.axle.ball_joint_lower.{side}@stud_nut": (f"xj.axle.knuckle.{side}",),
+            f"xj.axle.hub.{side}@hub_bolts": (f"xj.axle.knuckle.{side}",),
+        }
+    return out
+
+
+MEETS = _meets()
+
+
 def _build():
     fasteners = _fasteners()
     by_part: dict[str, list[Fastener]] = {}
     out_f = []
     for f in fasteners:
-        f = Fastener(**{**f.__dict__, "view": _view(f.pos, _sign(f.side, f.pos[0]), 0.9)})
+        f = Fastener(
+            **{
+                **f.__dict__,
+                "view": _view(f.pos, _sign(f.side, f.pos[0]), 0.9),
+                "meets": MEETS.get(f.id, ()),
+            }
+        )
         out_f.append(f)
         by_part.setdefault(f.part, []).append(f)
     out_p = []
@@ -882,6 +934,11 @@ FASTENERS_BY_ID = {f.id: f for f in FASTENERS}
 
 def fasteners_of(part_id: str) -> list[Fastener]:
     return [f for f in FASTENERS if f.part == part_id]
+
+
+def fasteners_meeting(part_id: str) -> list[Fastener]:
+    """Other parts' fasteners that join `part_id`."""
+    return [f for f in FASTENERS if part_id in f.meets]
 
 
 def position_m(f: Fastener) -> tuple[float, float, float]:
