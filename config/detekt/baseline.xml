@@ -1242,6 +1242,7 @@
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0x0C</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0x10</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$10</ID>
+    <ID>MagicNumber:MusicLibraryToolbox.kt:MusicLibraryToolbox$10</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100.0</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1000L</ID>
@@ -1251,6 +1252,7 @@
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$30</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$31</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$5</ID>
+    <ID>MagicNumber:MusicLibraryToolbox.kt:MusicLibraryToolbox$5</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$50</ID>
     <ID>MagicNumber:LocationController.kt:LocationController$100f</ID>
     <ID>MagicNumber:MemoryConsolidator.kt:MemoryConsolidator$10</ID>
@@ -3127,7 +3129,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"repeat_end_date" to schema("string", "For repeat_end_kind on_date: yyyy-MM-dd, the series' last possible date.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"repeat_every" to schema("integer", "Every N days/weeks/months for repeat_kind daily/weekly/monthly_on_date. Defaults to 1.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"repeat_kind"</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"saved_albums"</ID>
+    <ID>MaxLineLength:MusicLibraryToolbox.kt:MusicLibraryToolbox$"saved_albums"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"set_sleep_target" -&gt; result(success = true, message = com.kevin.legion.sleep.SleepController.setTarget(context, args.optDouble("hours")))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"shape" to schema("string", "How it renders.", enum = listOf("BAR_SERIES", "LINE_SERIES", "TOTAL_WITH_ROWS"))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"statement" to schema("string", "A few words from the goal's statement, enough to identify it uniquely.")</ID>
@@ -3137,8 +3139,8 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"text" to schema("string", "What to remind the user about, in their own words, e.g. 'grab your gym bag'.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"this car may not report one (common on older or non-US cars). You can just tell me the year, make, and model."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"time" to schema("string", "24-hour HH:mm. For 'add'/'schedule' only if a specific time was given - omit for an all-day item. Requires 'date'.")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"top_artists"</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"top_tracks"</ID>
+    <ID>MaxLineLength:MusicLibraryToolbox.kt:MusicLibraryToolbox$"top_artists"</ID>
+    <ID>MaxLineLength:MusicLibraryToolbox.kt:MusicLibraryToolbox$"top_tracks"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"total presented without it would understate the month. If the response's verified field is false, say "</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"unit" to schema("string", "'add' only, if MEASURED: the unit, e.g. 'steps', 'kg', 'min'. Omit for a plain tick line.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"unit" to schema("string", "Unit for target_value, e.g. 'lbs' or 'usd'. Omit if target_value is omitted.")</ID>
@@ -3192,6 +3194,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$sentenceNoPeriod + if (candidate.isGuess) " - though that interval is LEGION's guess, not one you've confirmed." else "."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$totalObj.put("currency_note", "pending rows span more than one currency - never sum them, read each row's own currency")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val</ID>
+    <ID>MaxLineLength:MusicLibraryToolbox.kt:MusicLibraryToolbox$val</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val delivery = if (row.delivery == ProactiveRaiseRow.DELIVERY_SPOKEN) "said aloud" else "posted as a notification"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val figure = " New available balance for ${resolved.accountId}: ${formatMoney(newAvailable, resolved.currency)}."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val healthSummary = if (concerns.length() == 0) "Everything reads normal - no codes, voltage and temperature look fine." else null</ID>
