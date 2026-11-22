@@ -1960,7 +1960,8 @@
     <ID>MaxLineLength:CalendarAgendaResolverTest.kt:CalendarAgendaResolverTest$fun</ID>
     <ID>MaxLineLength:CalendarAgendaResolverTest.kt:CalendarAgendaResolverTest$val merged = mergeAgenda(emptyList(), listOf(googleEvent(1, "Kevin's birthday", startMs = 5_000L, allDay = true)))</ID>
     <ID>MaxLineLength:CalendarDayRecordedSectionTest.kt:CalendarDayRecordedSectionTest$val dayRows = rows.filter { row -&gt; row.instantMs != null &amp;&amp; row.instantMs &gt;= day &amp;&amp; row.instantMs &lt; dayEndExclusive }</ID>
-    <ID>MaxLineLength:CalendarScreen.kt:ChecklistDayEntry$private data</ID>
+    <ID>MaxLineLength:CalendarDayRows.kt:ChecklistDayEntry$internal data</ID>
+    <ID>MaxLineLength:CalendarDayRows.kt:val resultLabel = measureTargetResult(item, value)?.let { " - ${measureTargetResultLabel(it)}" } ?: ""</ID>
     <ID>MaxLineLength:CalendarScreen.kt:Text("Nothing done on this day yet.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))</ID>
     <ID>MaxLineLength:CalendarScreen.kt:Text("Nothing left on this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))</ID>
     <ID>MaxLineLength:CalendarScreen.kt:Text("Nothing on the calendar this day.", style = LegionType.stamp, color = sem.faint, modifier = Modifier.padding(vertical = 6.dp))</ID>
@@ -1973,7 +1974,6 @@
     <ID>MaxLineLength:CalendarScreen.kt:recordedRows.forEach { note -&gt; RecordedDayRow(note = note, onClick = { selectedRecordingId = note.id }) }</ID>
     <ID>MaxLineLength:CalendarScreen.kt:val checklistDay = java.time.Instant.ofEpochMilli(selectedDayStart).atZone(zone).toLocalDate().toEpochDay().toInt()</ID>
     <ID>MaxLineLength:CalendarScreen.kt:val monthRows = buildInboxRows(monthItems, System.currentTimeMillis(), monthTasks.map { it.toAppointmentEvent() })</ID>
-    <ID>MaxLineLength:CalendarScreen.kt:val resultLabel = measureTargetResult(item, value)?.let { " - ${measureTargetResultLabel(it)}" } ?: ""</ID>
     <ID>MaxLineLength:CallerIdDescribeTest.kt:CallerIdDescribeTest$assertEquals("The call was declined and has stopped ringing.", CallActions.describe(CallActions.Outcome.Rejected))</ID>
     <ID>MaxLineLength:CarCallProbe.kt:CarCallProbe$/** Built fresh from [context] every call rather than cached - cheap, and avoids holding an Application-scoped reference to whatever Context first called in. */</ID>
     <ID>MaxLineLength:CarDatabase.kt:CarDatabase.Companion.&lt;no name provided&gt;$"INSERT OR IGNORE INTO `categories` (`name`, `isFoodCategory`, `guid`) VALUES (?, ?, ?)"</ID>
