@@ -19,20 +19,25 @@ from __future__ import annotations
 import hashlib
 import time
 from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from functools import cache
 from pathlib import Path
 
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.utils import timezone as dj_timezone
 
 from agents.graph.nodes import NodeContext, turn_graph
 from agents.graph.state import TurnState
-from agents.legion import guards, late
+from agents.legion import carry, guards, late, relay_turn
+from agents.legion import client_facts as facts_of
 from agents.legion.gateway import LegionGateway
+from agents.legion.hold import TurnHold
 from agents.legion.retention import prune
 from agents.legion.specs import spec as spec_named
+from agents.legion.spoken import spoken_turn
 from agents.legion.store import TurnStore
-from agents.models import AgentConversation, AgentTurn
+from agents.models import TURN_CANCELLED, AgentConversation, AgentTurn
 from agents.runtime import events as ev
 from agents.runtime.loop import LoopHooks
 from agents.runtime.model import ModelClient, Usage
@@ -46,6 +51,7 @@ from llm import cap as member_cap
 from llm import client as llm_client
 
 FEATURE = "agent_turn"
+DUPLICATE_WORDS = "Nothing was run again: this turn was already posted."
 RECRUITER_REFUSAL = (
     "Nothing was answered: the engine's agent turn is not open to a demo visit. The demo's "
     "assistant has its own door."
@@ -82,19 +88,32 @@ def cost_of(usage: Usage) -> int:
     return -(-hundredths // 100)
 
 
-def context_line(request, now: datetime) -> str:
+def local_now(request, now: datetime, device_offset: int | None = None):
+    """`now` on the turn's local clock: `(local, offset, from_household)`. `device_offset`: the
+    device's own UTC offset in minutes (`client_facts`), which wins over the household's zone."""
     household = household_of(request)
     zone_name = getattr(household, "timezone", None)
     zone = zone_named(zone_name)
     offset = utc_offset_minutes(zone_name, now) if zone is not None else None
     local = now.astimezone(zone) if zone is not None else now
+    from_household = True
+    if device_offset is not None:
+        offset, from_household = device_offset, False
+        local = now.astimezone(dt_timezone(timedelta(minutes=device_offset)))
+    return local, offset, from_household
+
+
+def context_line(request, now: datetime, device_offset: int | None = None) -> str:
+    """`device_offset`: the device's own UTC offset in minutes (`client_facts`), which wins over
+    the household's zone for "today" and "tomorrow"; the time itself is the engine's clock."""
+    local, offset, from_household = local_now(request, now, device_offset)
     today = local.date()
     tomorrow = today + timedelta(days=1)
     # T3b review B4: a head unit's turn is not told the member's name; whoever holds the unit may
     # not be him. The clock stays.
     first = "" if headunit_scope.is_headunit(request) else getattr(request.user, "first_name", "")
     first = first or ""
-    clock = time_fact(now, offset, from_household=True)
+    clock = time_fact(now, offset, from_household=from_household)
     return (
         f"[Context, not said by the person: {clock} Today is {today:%A} {today.isoformat()}; "
         f"tomorrow is {tomorrow:%A} {tomorrow.isoformat()}. {member_fact(first)}]"
@@ -149,25 +168,52 @@ def run_turn(
     agent: str = "generalist",
     feature: str = FEATURE,
     tool_limit=None,
+    voice: dict | None = None,
+    go: bool = True,
+    client_facts: dict | None = None,
+    turn_id=None,
 ):
     """Yields the turn's events; returns its final `TurnState`. `agent` and `feature` are the
     spec that answers and the `llm_usage` feature it is metered under: the late-answer runner
     (`late.py`) passes its read-only `background` spec and its own feature, and `tool_limit`, its
-    cap on calls (`LegionGateway.limit`)."""
+    cap on calls (`LegionGateway.limit`). `voice`: how the voice door answers this turn
+    (`{"spoken", "exact"}`), kept with a pause on a limb so the rest of the turn is answered the
+    same way (`relay_turn.py`). `go` False: the turn is HELD until the phone's decision
+    (`hold.py`); `client_facts`: what the limb says about the turn (`client_facts.py`, already
+    validated)."""
     started = time.monotonic()
     now = now or dj_timezone.now()
     if do_prune:
         prune()
     seq = (conversation.turns.aggregate(m=Max("seq"))["m"] or 0) + 1
-    turn = AgentTurn.objects.create(
-        household_id=conversation.household_id,
-        owner_user_id=conversation.owner_user_id,
-        conversation=conversation,
-        seq=seq,
-        transcript=transcript,
-        graph_version=graph_version(),
-    )
+    # A turn of this conversation still paused on a limb is over now: his next turn began. And any
+    # of his relayed turns elsewhere that went stale (`relay_turn.close_stale`).
+    relay_turn.close_paused(conversation, seq)
+    relay_turn.close_stale(conversation.household_id, conversation.owner_user_id)
+    facts = dict(client_facts or {})
+    # What he heard of an earlier answer, before that history is read into this turn.
+    facts_of.trim_heard(conversation, facts)
+    try:
+        with transaction.atomic():
+            turn = AgentTurn.objects.create(
+                **({"id": turn_id} if turn_id else {}),
+                household_id=conversation.household_id,
+                owner_user_id=conversation.owner_user_id,
+                conversation=conversation,
+                seq=seq,
+                # A held turn's words are written at the phone's go (`store.py`), never on a take.
+                transcript="" if not go else transcript,
+                graph_version=graph_version(),
+            )
+    except IntegrityError:
+        # The same client turn id raced in twice (`agents/turn_options.py`): it ran once.
+        yield ev.error(DUPLICATE_WORDS)
+        return None
     store = TurnStore(turn)
+    hold = TurnHold(turn.pk, needed=not go)
+    if hold.needed:
+        store.held = hold
+        store.transcript = transcript
     history: list[dict] = []
     for earlier in conversation.turns.filter(seq__lt=seq).order_by("seq"):
         history.extend(earlier.history or [])
@@ -175,9 +221,11 @@ def run_turn(
     pending = conversation.pending_confirm
     if pending and int(pending.get("until_seq", 0)) < seq:
         pending = None
+    context_parts = [context_line(request, now, facts.get("utc_offset_minutes"))]
+    context_parts += facts_of.context_notes(facts)
     user_content = {
         "role": "user",
-        "parts": [{"text": context_line(request, now)}, {"text": transcript}],
+        "parts": [*({"text": text} for text in context_parts), {"text": transcript}],
     }
     state = TurnState(
         turn_id=str(turn.pk),
@@ -187,21 +235,45 @@ def run_turn(
         member_id=str(conversation.owner_user_id),
         client=conversation.client,
         transcript=transcript,
-        client_facts={"history_from": len(history)},
+        client_facts={
+            "history_from": len(history),
+            # The turn's own day and time, the context line's: what his day words mean
+            # (`day_words.py`, read by the gateway for a date-taking call).
+            "local": _local_fact(request, now, facts.get("utc_offset_minutes")),
+            **({"voice": voice} if voice else {}),
+            **({"test_mode": True} if facts.get("test_mode") else {}),
+        },
         messages=[*history, user_content],
         pending_confirm=pending,
         graph_version=graph_version(),
     )
     yield ev.Event(
-        "turn", {"turn_id": str(turn.pk), "conversation_id": str(conversation.pk), "seq": seq}
+        "turn",
+        {
+            "turn_id": str(turn.pk),
+            "conversation_id": str(conversation.pk),
+            "seq": seq,
+            "stream_no": 1,
+        },
     )
-    if agent == "generalist" and not pending:
+    if facts.get("carry_tainted"):
+        # The line before this turn read outside text (plan 1119 section 4b rule 5).
+        state.add_taint(facts_of.CARRY)
+        store.mark_taint(state)
+    previous_taint = _taint_before(conversation, seq)
+    if carry.carries(previous_taint):
+        # The carry (ADR 0090 amended, 2026-11-21): the turn before read outside text, so no
+        # write in this one either; one turn only (`carry.py`).
+        state.add_taint(carry.PREVIOUS_TURN)
+        store.mark_taint(state)
+    late_may_run = not facts.get("test_mode") and (not late.enabled() or hold.wait() == "go")
+    if agent == "generalist" and not pending and late_may_run:
         # The late-answer path (dark unless LEGION_LATE_ANSWERS=on). Not while a write waits for
         # his yes: that turn is his answer to it ("cancel that" then drops the write, as today).
         # Code's own answer to "look into X and tell me later", "anything pending?" or "cancel
         # that", with no model round; else the one line owed from earlier, said first and kept
         # out of this turn's model context.
-        if late.enabled() and late.CARRY in _taint_of_turn(conversation, seq - 1):
+        if late.enabled() and late.CARRY in previous_taint:
             # The last turn said a line built on web pages: no write in this one either.
             state.add_taint(late.AFTER_CARRY)
         handled = late.intercept(
@@ -219,6 +291,54 @@ def run_turn(
                 store.mark_taint(state)
             yield late.late_event(line, more)
 
+    ctx = context(
+        request,
+        store,
+        started,
+        model=model,
+        observe=observe,
+        tool_limit=tool_limit,
+        agent=agent,
+        feature=feature,
+        turn_hold=hold,
+    )
+    first_sentence_ms = None
+    gen = spoken_turn(state, ctx, agent).run(turn_graph().run(state, ctx, store))
+    try:
+        while True:
+            event = next(gen)
+            if event.type == "sentence" and first_sentence_ms is None:
+                first_sentence_ms = int((time.monotonic() - started) * 1000)
+            yield event
+    except StopIteration as stop:
+        state = stop.value
+    if hold.needed and hold.peek() is None:
+        # The answer went out (`done` was sent); its record waits for the phone's word, so a turn
+        # the phone takes leaves no words on the record as said.
+        hold.wait()
+    store.finish(
+        state,
+        latency_ms=int((time.monotonic() - started) * 1000),
+        first_sentence_ms=first_sentence_ms,
+    )
+    return state
+
+
+def context(
+    request,
+    store: TurnStore,
+    started: float,
+    *,
+    model: ModelClient,
+    observe=None,
+    tool_limit=None,
+    agent: str = "generalist",
+    feature: str = FEATURE,
+    turn_hold=None,
+) -> NodeContext:
+    """The graph's context for one of this member's turns, first stream or a relay's
+    continuation: the gateway as the member, the route, spend metering and the pause saver."""
+
     def on_model_call(row: dict) -> None:
         store.model_call(row)
         llm_client.record(
@@ -234,9 +354,11 @@ def run_turn(
             cost_estimate_micro_usd=row["cost_micro_usd"],
         )
 
-    ctx = NodeContext(
+    return NodeContext(
         model=model,
-        gateway=LegionGateway(request, recorder=store, observe=observe, limit=tool_limit),
+        gateway=LegionGateway(
+            request, recorder=store, observe=observe, limit=tool_limit, turn_hold=turn_hold
+        ),
         route=route(request, agent),
         spec=spec_named,
         system_for=system_for,
@@ -245,23 +367,13 @@ def run_turn(
         ),
         is_yes=guards.is_yes,
         honesty=lambda s: guards.claims_unbacked_outcome(s.final_text, s.actions),
+        suspend=relay_turn.suspender(store, request),
     )
-    first_sentence_ms = None
-    gen = turn_graph().run(state, ctx, store)
-    try:
-        while True:
-            event = next(gen)
-            if event.type == "sentence" and first_sentence_ms is None:
-                first_sentence_ms = int((time.monotonic() - started) * 1000)
-            yield event
-    except StopIteration as stop:
-        state = stop.value
-    store.finish(
-        state,
-        latency_ms=int((time.monotonic() - started) * 1000),
-        first_sentence_ms=first_sentence_ms,
-    )
-    return state
+
+
+def _local_fact(request, now: datetime, device_offset: int | None) -> dict:
+    local = local_now(request, now, device_offset)[0]
+    return {"day": local.date().isoformat(), "time": local.strftime("%H:%M")}
 
 
 def _last_model_text(history: list[dict]) -> str:
@@ -272,9 +384,24 @@ def _last_model_text(history: list[dict]) -> str:
     return ""
 
 
-def _taint_of_turn(conversation: AgentConversation, seq: int) -> list:
-    row = conversation.turns.filter(seq=seq).values_list("taint_sources", flat=True).first()
-    return list(row or [])
+# How far back the carry looks past turns that were never answered (one query either way).
+_LOOK_BACK = 5
+
+
+def _taint_before(conversation: AgentConversation, seq: int) -> list:
+    """The taint of the last turn before `seq` that counts: a cancelled turn that read nothing of
+    its own (the phone took it, noise, a barge-in, or a carried turn cut off) was never answered,
+    so it neither spends the carry nor counts as the turn before (`carry.py`)."""
+    rows = (
+        conversation.turns.filter(seq__lt=seq)
+        .order_by("-seq")
+        .values_list("status", "taint_sources")[:_LOOK_BACK]
+    )
+    for status, taint in rows:
+        if status == TURN_CANCELLED and not carry.carries(taint):
+            continue
+        return list(taint or [])
+    return []
 
 
 def _code_answer(

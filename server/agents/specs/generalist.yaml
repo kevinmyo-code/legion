@@ -1,5 +1,5 @@
 name: generalist
-version: 4
+version: 7
 # Every registry tool the web assistant has today (assistant.surface.WEB_TOOL_NAMES), plus the
 # engine twins of the phone's day reads, (ticket 03) of its goal, pending-transaction, advice
 # and why-did-you-say-that tools, and (ticket 15) of its aspect-engine records tools.
@@ -51,6 +51,8 @@ tools:
     - web_search
     - check_conditions
     - github_status
+    # The factory board: offered only while LEGION_BOARD=on (the gateway reads `tools_for`).
+    - board_status
     - recall_memory
     - list_memories
     - remember

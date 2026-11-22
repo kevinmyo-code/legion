@@ -104,6 +104,24 @@ internal class ReplyPlayer(
         }
     }
 
+    /** Audio written and not yet played, in ms of the source (0 with no playing track). */
+    fun aheadMs(): Long = synchronized(lock) {
+        val t = track?.takeIf { it.playState == AudioTrack.PLAYSTATE_PLAYING } ?: return@synchronized 0L
+        val head = runCatching { t.playbackHeadPosition.toLong() and HEAD_MASK }.getOrElse { framesWritten }
+        (framesWritten - head).coerceAtLeast(0L) * MS_PER_S / sampleRate
+    }
+
+    /**
+     * The frame the device says it has PRESENTED ([AudioTrack.getTimestamp]), in the device's own
+     * count (it may not reset on a flush: compare only with an earlier reading); null when the
+     * track gives no timestamp (none yet, not playing, or unsupported).
+     */
+    fun presentedFrame(): Long? = synchronized(lock) {
+        val t = track?.takeIf { it.playState == AudioTrack.PLAYSTATE_PLAYING } ?: return@synchronized null
+        val ts = android.media.AudioTimestamp()
+        runCatching { t.getTimestamp(ts) }.getOrDefault(false).takeIf { it }?.let { ts.framePosition }
+    }
+
     fun release() = synchronized(lock) {
         released = true
         generation.incrementAndGet()
@@ -151,5 +169,6 @@ internal class ReplyPlayer(
         private const val POLL_MS = 20L
         private const val DRAIN_TIMEOUT_MS = 4_000L
         private const val HEAD_MASK = 0xFFFF_FFFFL
+        private const val MS_PER_S = 1_000L
     }
 }

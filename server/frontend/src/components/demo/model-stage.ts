@@ -5,6 +5,7 @@ import {
   DirectionalLight,
   HemisphereLight,
   Mesh,
+  MeshStandardMaterial,
   PerspectiveCamera,
   PMREMGenerator,
   Scene,
@@ -49,6 +50,17 @@ export interface StageOptions {
   scrollTurn?: boolean
   /** The browser took the WebGL context away (too many on the page, a GPU reset). */
   onLost?: () => void
+  /**
+   * The garage card (`show_part`): two fingers or a right drag slide the view, and the camera may
+   * come close enough to read one nut. Off for /try, whose viewers stay as they were.
+   */
+  explore?: boolean
+}
+
+/** A camera view in the model file's own coordinates (metres), as the engine's card gives it. */
+export interface StageView {
+  target: readonly number[]
+  from: readonly number[]
 }
 
 export interface Stage {
@@ -60,8 +72,30 @@ export interface Stage {
   turn(dx: number, dy: number): void
   /** Back to the starting view. */
   reset(): void
+  /** Fly the camera to `view` over `ms` (0: at once). For models whose nodes carry ids. */
+  focus(view: StageView, ms: number): void
+  /**
+   * Light up the nodes whose `extras.legion.id` is in `ids`: a part tinted, a fastener's marker
+   * enlarged and drawn on top; every other part faded. An empty list puts everything back.
+   */
+  highlight(ids: readonly string[]): void
   dispose(): void
 }
+
+/** What a node's glTF `extras.legion` says (`server/garage/glb.py`); three hands it over as `userData`. */
+interface Tag {
+  id: string
+  kind: 'part' | 'fastener' | 'model'
+  part?: string
+}
+
+const tagOf = (node: Object3D): Tag | undefined => {
+  const tag = (node.userData as { legion?: Tag } | undefined)?.legion
+  return tag && typeof tag.id === 'string' ? tag : undefined
+}
+
+const LIT = 0x8a4a18
+const FADED = 0.15
 
 /**
  * True when this browser can draw WebGL at all; asked before the chunk's work starts. The probe's
@@ -183,14 +217,27 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
 
   const controls = new OrbitControls(camera, canvas)
   controls.enableDamping = true
-  controls.enablePan = false
-  controls.minDistance = distance * 0.35
+  controls.enablePan = Boolean(options.explore)
+  controls.minDistance = distance * (options.explore ? 0.05 : 0.35)
   controls.maxDistance = distance * 2.5
   controls.autoRotate = options.autoTurn && !options.scrollTurn
   controls.autoRotateSpeed = 1.2
   controls.saveState()
   const startOffset = camera.position.clone().sub(controls.target)
   const UP = new Vector3(0, 1, 0)
+
+  // The id-carrying meshes (garage models; none on /try), each with its own material so one can be
+  // lit or faded alone (the glTF shares one material across every fastener marker).
+  const tagged = new Map<string, { mesh: Mesh; tag: Tag; opacity: number; transparent: boolean }>()
+  model.traverse((node) => {
+    const tag = tagOf(node)
+    if (!tag || !(node instanceof Mesh) || Array.isArray(node.material)) return
+    node.material = node.material.clone()
+    tagged.set(tag.id, { mesh: node, tag, opacity: node.material.opacity, transparent: node.material.transparent })
+  })
+  // A camera flight (`focus`): eased from where it is to the view, stepped in the draw loop.
+  let flight: { fromPos: Vector3; fromTarget: Vector3; toPos: Vector3; toTarget: Vector3; start: number; ms: number } | null =
+    null
 
   // Drawn only when something changed (review 2026-11-20, frames at 1440 px): the controls moved,
   // the size changed, or the page's scroll turned it.
@@ -268,6 +315,14 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
         dirty = true
       }
     }
+    if (flight) {
+      const k = flight.ms > 0 ? Math.min(1, (performance.now() - flight.start) / flight.ms) : 1
+      const eased = k * k * (3 - 2 * k)
+      camera.position.lerpVectors(flight.fromPos, flight.toPos, eased)
+      controls.target.lerpVectors(flight.fromTarget, flight.toTarget, eased)
+      if (k >= 1) flight = null
+      dirty = true
+    }
     // True while it moves (damping, the slow turn): draw those frames too.
     if (controls.update()) dirty = true
     if (!dirty) return
@@ -313,6 +368,48 @@ function build(host: HTMLElement, renderer: WebGLRenderer, model: Object3D, opti
     },
     reset() {
       controls.reset()
+      dirty = true
+      if (!visible) frame()
+    },
+    focus(view, ms) {
+      firstTouch()
+      // The model was moved to centre it: its own coordinates move with it.
+      const shift = model.position
+      flight = {
+        fromPos: camera.position.clone(),
+        fromTarget: controls.target.clone(),
+        toPos: new Vector3(view.from[0], view.from[1], view.from[2]).add(shift),
+        toTarget: new Vector3(view.target[0], view.target[1], view.target[2]).add(shift),
+        start: performance.now(),
+        ms,
+      }
+      dirty = true
+      if (!visible) frame()
+    },
+    highlight(ids) {
+      const lit = new Set(ids)
+      const litParts = new Set(ids.filter((id) => tagged.get(id)?.tag.kind === 'part'))
+      const any = lit.size > 0
+      for (const [id, { mesh, tag, opacity, transparent }] of tagged) {
+        const material = mesh.material as MeshStandardMaterial
+        const hot = lit.has(id)
+        const mine = tag.kind === 'fastener' && tag.part !== undefined && litParts.has(tag.part)
+        const fade = any && !hot && !mine
+        if (tag.kind === 'fastener') {
+          mesh.scale.setScalar(hot ? 2.2 : mine ? 1.4 : 1)
+          // The nut asked about shows through whatever is in front of it.
+          material.depthTest = !hot
+          mesh.renderOrder = hot ? 3 : 0
+          material.emissive.setHex(hot ? 0xffffff : 0x000000)
+          material.emissiveIntensity = hot ? 0.5 : 1
+        } else {
+          material.emissive.setHex(hot ? LIT : 0x000000)
+        }
+        material.transparent = fade || transparent
+        material.opacity = fade ? Math.min(opacity, FADED) : opacity
+        material.depthWrite = !material.transparent
+        material.needsUpdate = true
+      }
       dirty = true
       if (!visible) frame()
     },

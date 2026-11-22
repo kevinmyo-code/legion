@@ -1,7 +1,7 @@
 ---
 status: accepted
 decided: 2026-11-13
-amended: 2026-11-17
+amended: 2026-11-21
 decided-by: Kevin
 supersedes: []
 source: "[[decisions#2026-11-13 - Release and deploy from GitHub, no laptop; injection guard (Kevin)]]"
@@ -26,6 +26,56 @@ not run ... they can simply ask again").
   assistant door, in procedures, and within one `/mcp` request. A mark that cannot be read refuses.
 - **Phone:** `/mcp` carries no turn, so `AskEngine` refuses a write once an engine third-party tool
   answered within the same ask; a Live turn already marked read-through sends nothing at all.
+
+## Amendment 2026-11-21: the carry, the turn after too (Kevin)
+
+**A deliberate ruling by the owner on 2026-11-21, made after a live check showed the web assistant
+writing an item in the turn right after a web search: the web door is to be as strict as the
+engine brain after outside text, on every door.** He chose that scope, and kept it strict: no
+early clearing. The same day he ruled how it meets a same-turn refusal (option A2, below).
+
+- **The rule.** A turn that read outside text taints the person's NEXT turn too.
+  - "Read outside text" means the turn's own read-through mark: a third-party tool, a relayed
+    read-through call, or a late answer built on web pages.
+  - Every write in that next turn refuses in words, including a change he names fully himself.
+    It still reads and answers what it can.
+  - The carry clears after that one turn. A turn tainted only by the carry does not carry again.
+  - **Except after a same-turn refusal of a change HE asked for (A2):** a turn whose own read
+    refused a write, when his own words in that turn asked for a change, does not carry. It told
+    him to ask again, and that promise is true.
+    - His words decide, never the model's text, a tool's output or the page: one shared check over
+      the turn's transcript (`assistant/write_intent.py`).
+    - It fails closed: no words, words it cannot read, or no request for a change all mean no
+      exception, so the next turn is carried.
+    - Code keeps a marker for it: on the web, a `ReadThroughTurn` row at
+      `read_through.refused_mark(turn)`; on the engine, the `write_refused` taint source.
+    - A model's claim of a change with no write call never sets it.
+    - When his words did not ask, the refusal promises nothing (`WRITE_REFUSAL_UNASKED` for the
+      model; the spoken line is "I haven't changed anything: this turn read text from the web."),
+      and the next turn is carried.
+    - A plain read with no refusal still carries.
+- **The words.** The refusal and the spoken line say which turn read it:
+  - the tool's words are `read_through.CARRY_WRITE_REFUSAL` / `CARRY_REFUSAL`;
+  - the closing line is `lines.READ_THROUGH_WAIT_CARRIED` ("I haven't changed anything: I read
+    text from the web just before this, so changes wait for your next message. Ask me again and
+    I'll do it.").
+  - The same-turn words are unchanged where he asked for the change, and true again under A2.
+- **Web assistant (the cascade door), members only.** The server decides from its own record:
+  `ReadThroughTurn` holds the previous turn's mark, read in the same single query as this turn's.
+  - The recruiter demo (/try) keeps the same-turn rule: it is frozen. `read_through.CARRY_ON_DEMO`
+    is the one switch, and applying the rule there is an open question for the owner.
+  - The Live fallback door counts model turns, not his turns, so it keeps the same-turn rule.
+- **Engine brain.** `run_turn` reads the previous turn's `taint_sources` and adds `previous_turn`
+  to this turn's taint (`agents/legion/carry.py`).
+- **A turn never answered does not spend the carry.** On the engine that is a cancelled turn that
+  read nothing itself; on the web, a nothing-heard request, or a carried turn cut off before its
+  answer (it marks itself).
+- **The record.** A carried web turn writes `read_through source=carry` to the conversation's
+  record, so memory consolidation keeps none of it. A carried engine turn ends with
+  `done.tainted`, from which the phone writes its own line.
+- **Phone cascade.** `ReadThroughCarry` today carries only after a read-through opener. It is to
+  carry after any turn that read outside text, his own search included. That is a separate phone
+  slice with its own app update.
 
 ## Amendment 2026-11-17: the phone guard, "Block lasting + outbound" (Kevin)
 

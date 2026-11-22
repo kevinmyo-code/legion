@@ -130,7 +130,8 @@ fun DumbHome(
             PackageManager.PERMISSION_GRANTED
         if (micGranted) {
             context.startService(
-                Intent(context, AriaForegroundService::class.java).setAction(AriaForegroundService.ACTION_TALK),
+                Intent(context, AriaForegroundService::class.java).setAction(AriaForegroundService.ACTION_TALK)
+                    .putExtra(AriaForegroundService.EXTRA_IN_HAND, true),
             )
         } else {
             message = "The microphone is not allowed for LEGION, so Talk did nothing. Type instead."

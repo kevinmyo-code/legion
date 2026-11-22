@@ -543,3 +543,24 @@ def test_the_greeting_skips_the_subscription_scan_and_keeps_every_line(world):  
     assert full["subscriptions"] and full["new_subscriptions"] == ["NEWAPP"]
     for key in ("categories", "total", "fixed", "days_elapsed", "days_in_month"):
         assert lean[key] == full[key], key
+
+
+def test_a_first_posted_discussion_is_due_soon_and_says_the_replies_are_still_due(
+    kevin, auth_client, pinned
+):
+    _event(
+        auth_client,
+        "EXAMPLE 101: Week 4 discussion",
+        kind="task",
+        start=_at(5),
+        private=True,
+        meta={
+            "canvas_assignment_id": 13,
+            "submission_types": "discussion_topic",
+            "canvas_submitted": True,
+        },
+    )
+    due = auth_client.get(FACTS).data["sources"]["due_soon"]
+    (item,) = [i for i in due["items"] if i["title"] == "EXAMPLE 101: Week 4 discussion"]
+    assert item["says"].endswith(" The first post is in; the replies are still due.")
+    assert "has not said" not in item["says"]

@@ -23,7 +23,7 @@ from demo.models import DemoBudgetDay
 from devicelogs.models import DeviceLog
 from devicelogs.views import inflate_capped
 from engine_mcp.models import Outcome
-from engine_mcp.tools import SPEAK_VERBATIM, ToolResult
+from engine_mcp.tools import SPEAK_VERBATIM, ToolResult, dark_tools
 from household.models import Household, HouseholdMember, User
 from ingest.statements import GEMINI_KEY_ENV
 from tests.test_assistant import browser
@@ -214,7 +214,7 @@ def test_a_typed_turn_answers_in_text_and_speaks_nothing(member, engine):
     assert "This conversation started" not in sent.system
     assert sent.contents[-1]["parts"][0]["text"].startswith("(Current context, use naturally")
     assert sent.contents[-1]["parts"][-1]["text"] == "Anything on today?"
-    assert {d["name"] for d in sent.declarations} == set(WEB_TOOL_NAMES) | {
+    assert {d["name"] for d in sent.declarations} == (set(WEB_TOOL_NAMES) - dark_tools()) | {
         cascade.END_TOOL,
         cascade.NOT_FOR_ME_TOOL,
     }

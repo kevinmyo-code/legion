@@ -202,6 +202,9 @@ fun AssistantSettingsScreen(
                 ActiveCompanionRow(name = activeName, blurb = activeBlurb, onOpenCompanions = onOpenCompanions)
 
                 Spacer(Modifier.height(8.dp))
+                OwnerNameRow(companionName = activeName)
+
+                Spacer(Modifier.height(8.dp))
                 SettingsNavRow(
                     label = "Playbooks",
                     status = if (editedPlaybookCount > 0) {

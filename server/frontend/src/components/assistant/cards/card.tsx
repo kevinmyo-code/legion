@@ -6,6 +6,7 @@ import { BarsView } from './bars'
 import { CarView } from './car'
 import { ChecklistView } from './checklist'
 import { DiagramView } from './diagram'
+import { PartView } from './part3d'
 import { ReadingsView, StatusListView } from './readings'
 import { ResumeView } from './resume'
 import { StepsView } from './steps'
@@ -36,6 +37,8 @@ export function ToolCard({ card, className }: { card: Card; className?: string }
         <DiagramView card={card} />
       ) : card.card === 'resume' ? (
         <ResumeView card={card} />
+      ) : card.card === 'part3d' ? (
+        <PartView card={card} />
       ) : card.card === 'readings' ? (
         <ReadingsView card={card} />
       ) : card.card === 'status_list' ? (

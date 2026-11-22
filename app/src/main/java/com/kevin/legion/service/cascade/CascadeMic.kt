@@ -39,8 +39,11 @@ internal class CascadeMic(private val ctx: Context) {
         onBuffer: (ByteArray, Int) -> Unit,
         onNoPermission: () -> Unit,
         onFailure: (String) -> Unit,
-        /** Capture has started: the first buffer is on its way (the tap's chime plays from here). */
-        onRecording: () -> Unit = {},
+        /**
+         * Capture has started, with the record's session id: the first buffer is on its way (the tap's
+         * chime plays from here), and [CallWatch] knows which capture is ours.
+         */
+        onRecording: (sessionId: Int) -> Unit = {},
     ) {
         val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO)
         if (granted != PackageManager.PERMISSION_GRANTED) {
@@ -78,7 +81,7 @@ internal class CascadeMic(private val ctx: Context) {
         try {
             record.startRecording()
             Log.d(TAG, "AudioRecord opened (cascade) sessionId=${record.audioSessionId}")
-            onRecording()
+            onRecording(record.audioSessionId)
             while (kotlin.coroutines.coroutineContext.isActive) {
                 val n = record.read(buffer, 0, buffer.size)
                 if (n < 0) {

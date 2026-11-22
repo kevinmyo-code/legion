@@ -53,3 +53,11 @@ OBD, navigation, music, calls, screens, the camera and alarms can only run on th
 - Specialists name relay tools by capability. A tool is offered only when an online limb of that member declares it.
 - An iOS app or the head unit is then mostly UI on the same contract.
 - What a locked phone does to screen-needing tools is checked on the device when the relay lands. Until then, such a tool refuses in words.
+
+## Trust boundary (engineering note, 2026-11-21; not a ruling)
+
+What the engine trusts today, stated so nobody reads more into the relay's checks:
+- **The manifest is the owner's own app's word.** It arrives over the member's own device token, which can already read and write everything that member can. Each tool's `tool_class`, `writes`, `actuates`, `read_through` and `confirm` are self-declared.
+- **What the engine checks itself** (`server/agents/legion/relay.py`): the class must be one it knows (deny by default); mail- and message-like names never relay; a name that sounds like outside text must carry an outside class; a call that names one of the engine's own outside actions (a calendar read, a place search, caller names) taints the turn whatever the class says. These catch an honest mistake and a tool nobody classified. They do not stop a manifest that lies: a mail reader named `summary` and classed `household` would be offered, untainted.
+- **`confirm: limb`** hands the yes to the limb's own gate. The engine trusts that the gate exists.
+- **If a third-party limb ever attaches** (a device or app not the member's own): before it may, the engine must own each tool's class, write flag and confirm rule itself, keyed by tool in an engine-side registry, never taken from the manifest; and such a limb's results are outside text by default.

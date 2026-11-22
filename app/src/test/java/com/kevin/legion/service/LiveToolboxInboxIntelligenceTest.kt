@@ -34,7 +34,7 @@ import org.robolectric.RobolectricTestRunner
 class LiveToolboxInboxIntelligenceTest {
 
     private fun declarationFor(name: String): org.json.JSONObject {
-        val all: JSONArray = LiveToolbox.sourceDeclarationsForTest()
+        val all: JSONArray = LiveToolbox.sourceDeclarations()
         for (i in 0 until all.length()) {
             val decl = all.getJSONObject(i)
             if (decl.getString("name") == name) return decl

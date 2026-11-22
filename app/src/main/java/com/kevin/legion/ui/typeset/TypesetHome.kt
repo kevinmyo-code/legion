@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevin.legion.R
+import com.kevin.legion.service.turn.OutputToggle
 import com.kevin.legion.assistant.cards.ConversationCard
 import com.kevin.legion.finance.NetCashText
 import com.kevin.legion.ui.assistant.CardStage
@@ -81,9 +82,11 @@ fun TypesetHomeContent(
     groups: (@Composable () -> Unit)? = null,
     /** The last line of what Alfred is saying; shown at the foot while his cards are up. */
     caption: String? = null,
+    /** The SPEAKER / CALL toggle beside the orb; null draws none (no earpiece, or the tests' pages). */
+    output: OutputToggle? = null,
 ) {
     if (cards.isNotEmpty()) {
-        Answering(cards, phase, status, caption, night, actions, modifier)
+        Answering(cards, phase, status, caption, night, output, actions, modifier)
         return
     }
     FitTiers(modifier.fillMaxSize().padding(horizontal = Gutter)) { tier, orb, measuring ->
@@ -94,7 +97,7 @@ fun TypesetHomeContent(
             // center and about 2.5x"): it sits where the contents line was, and the contents line
             // moves under it.
             Glance(glance, tier, measuring, actions)
-            Voice(phase, status, tier, orb, measuring, actions)
+            Voice(phase, status, tier, orb, measuring, output, actions)
             Contents(tier.contentsPerRow, actions)
             groups?.let {
                 it()
@@ -311,6 +314,7 @@ private fun Answering(
     status: String,
     caption: String?,
     night: Boolean,
+    output: OutputToggle?,
     actions: TypesetHomeActions,
     modifier: Modifier,
 ) {
@@ -325,14 +329,19 @@ private fun Answering(
                 ) {
                     TypesetOrb(phase, Modifier.size(orb))
                 }
-                Text(
-                    status,
-                    style = TypesetType.small.copy(fontWeight = TypesetType.bodyStrong.fontWeight),
-                    color = SoftColors.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
+                // The speaker / call toggle sits in the line under the orb, never over it.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        status,
+                        style = TypesetType.small.copy(fontWeight = TypesetType.bodyStrong.fontWeight),
+                        color = SoftColors.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    output?.let { OutputToggleButton(it, actions.onFlipOutput, Modifier.padding(start = 12.dp)) }
+                }
             }
             CardStage(
                 cards,
@@ -367,6 +376,7 @@ private fun Voice(
     tier: FitTier,
     orb: Dp,
     measuring: Boolean,
+    output: OutputToggle?,
     actions: TypesetHomeActions,
 ) {
     Column(Modifier.fillMaxWidth().padding(top = tier.gap), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -377,6 +387,10 @@ private fun Voice(
         ) {
             if (!measuring) TypesetOrb(phase, Modifier.size(size))
         }
+        // The speaker / call toggle sits beside "Type" under the orb: never over the orb, and no taller
+        // than "Type" (both 48dp), so no fit tier changes. Left out of the measuring passes, which stay
+        // in the semantics tree and would hold a second copy of the control.
+        val toggle = output.takeUnless { measuring }
         if (tier.statusOwnLine) {
             Text(
                 status,
@@ -386,7 +400,10 @@ private fun Voice(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
             )
-            TypeButton(actions)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TypeButton(actions)
+                toggle?.let { OutputToggleButton(it, actions.onFlipOutput, Modifier.padding(start = 12.dp)) }
+            }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -398,6 +415,7 @@ private fun Voice(
                     modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp),
                 )
                 TypeButton(actions)
+                toggle?.let { OutputToggleButton(it, actions.onFlipOutput, Modifier.padding(start = 12.dp)) }
             }
         }
     }

@@ -50,6 +50,7 @@ from brief.compose import (
 )
 from household.tenancy import household_of, visible
 from household.timezones import zone_named
+from ingest.canvas_meta import FIRST_POST_IN, first_post_only, handed_in
 
 STATE_FACTS = "facts"
 STATE_EMPTY = "empty"
@@ -376,7 +377,8 @@ def due_soon(request, now: dt.datetime, zone) -> dict:
         meta = row.structured_meta or {}
         canvas = _is_canvas(meta)
         any_canvas = any_canvas or canvas
-        if canvas and meta.get("canvas_submitted") is True:
+        # A discussion with only its first post in is still due (`handed_in`).
+        if canvas and handed_in(meta):
             continue
         if not all_day and (start is None or not now < start <= until):
             continue
@@ -385,11 +387,12 @@ def due_soon(request, now: dt.datetime, zone) -> dict:
         says = f"{title} is due {due_words}."
         if canvas:
             submitted = meta.get("canvas_submitted")
-            says += (
-                " Canvas says not submitted."
-                if submitted is False
-                else " Canvas has not said whether it is submitted."
-            )
+            if first_post_only(meta):
+                says += f" {FIRST_POST_IN}"
+            elif submitted is False:
+                says += " Canvas says not submitted."
+            else:
+                says += " Canvas has not said whether it is submitted."
         items.append(
             {
                 "id": str(row.id),

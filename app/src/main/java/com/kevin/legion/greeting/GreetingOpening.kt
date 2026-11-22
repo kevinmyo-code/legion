@@ -33,6 +33,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 object GreetingBudget {
     const val PACK_MS = 1_500L
     const val FIRST_OUTPUT_MS = 2_500L
+
+    /**
+     * From the first text to the model's whole greeting. The line is held until it is whole, so the
+     * name check reads all of it before any is spoken ([GreetingNames]); past this, the scripted line.
+     */
+    const val WHOLE_LINE_MS = 3_000L
 }
 
 /** What a tap opens with. */
@@ -40,16 +46,19 @@ sealed interface GreetingPlan {
     /** A line the model writes from [prompt], under the same deadlines, with the scripted line as fallback. */
     sealed interface Spoken : GreetingPlan {
         val prompt: String
+
+        /** His name, the only one the line may use ([GreetingNames]); null: no name at all. */
+        val name: String?
     }
 
     /** A personal greeting: [prompt] is [GreetingPrompt.build]'s text and [topic] is the key it leads with. */
-    data class Personal(override val prompt: String, val topic: String) : Spoken
+    data class Personal(override val prompt: String, val topic: String, override val name: String? = null) : Spoken
 
     /**
      * Nothing to raise: a short hello about nothing ([GreetingPrompt.hello]), no facts handed over and
      * no topic recorded (2026-11-16; before, this was the bare scripted line).
      */
-    data class Hello(override val prompt: String) : Spoken
+    data class Hello(override val prompt: String, override val name: String? = null) : Spoken
 
     /** The scripted line. [reason] is for the log only; it is never spoken. */
     data class Scripted(val reason: String) : GreetingPlan
@@ -72,6 +81,8 @@ class GreetingOpening(
     private val cache: GreetingPackCache = GreetingPackCache(backend, scope),
     private val log: (String) -> Unit = {},
     private val clock: () -> Long = System::currentTimeMillis,
+    /** His name ([com.kevin.legion.ai.OwnerName]), read at each tap; null when none is known. */
+    private val ownerName: () -> String? = { null },
 ) {
     @Suppress("ReturnCount") // one exit per way the pack can fail
     suspend fun prepare(now: LocalTime): GreetingPlan = coroutineScope {
@@ -113,14 +124,15 @@ class GreetingOpening(
         val place = GreetingPlace.applyTopics(where.await(), pack.said, pack.closed)
         placeAtPrepare = GreetingBlock.placeKey(place)
         val history = cache.history()
+        val name = ownerName()
         val lead = GreetingBlock.lead(pack, place, now.hour, history)
         if (lead == null) {
             log("greeting_lead none hello")
-            return@coroutineScope GreetingPlan.Hello(GreetingPrompt.hello(history.hellos))
+            return@coroutineScope GreetingPlan.Hello(GreetingPrompt.hello(history.hellos, name), name)
         }
         log("greeting_lead source=${lead.source}")
         val block = GreetingBlock.render(pack, place, now, lead.item)
-        GreetingPlan.Personal(GreetingPrompt.build(block, lead), lead.item.topic)
+        GreetingPlan.Personal(GreetingPrompt.build(block, lead, name), lead.item.topic, name)
     }
 
     private fun scripted(where: kotlinx.coroutines.Deferred<GreetingSource>, reason: String): GreetingPlan {

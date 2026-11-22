@@ -33,7 +33,9 @@ class BackchannelTest {
     fun `short speech, an answer to an ask and a quick next turn each get one`() {
         assertNull(Backchannel.decide(turn()))
         assertEquals(
-            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET", "ANSWER_TEXT"),
+            // 2026-11-20 (Kevin's phone test): answer text in but no answer audio yet still gets a clip.
+            // 2026-11-21: and what the words heard so far rule out at end of turn (wordsSkip).
+            listOf("NOT_HIS", "ON_CALL", "OVER_REPLY", "QUIET", "NOISE", "GOODBYE", "CRISIS"),
             Backchannel.Skip.entries.map { it.name },
         )
     }
@@ -185,12 +187,6 @@ class BackchannelTest {
         }
     }
 
-    @Test
-    fun `an answer_text skip is logged with how long the answer's audio took after it`() {
-        assertEquals("backchannel skip=answer_text gap_ms=850", Backchannel.answerTextGapLine(10_600, 11_450))
-        assertEquals("backchannel skip=answer_text gap_ms=0", Backchannel.answerTextGapLine(10_600, 10_500))
-    }
-
     // Review of aed1c786 (#5): a VoIP call or a denied phone-state permission was missed. The audio
     // mode says a call too, unless the mode is LEGION's own (CallAudioMode.ownCommActive).
     @Test
@@ -217,5 +213,61 @@ class BackchannelTest {
         // The Turn no longer carries the route: no rule can skip on it.
         assertNull(Backchannel.decide(turn()))
         assertFalse(Backchannel.Skip.entries.any { it.token == "half_duplex" })
+    }
+
+    @Test
+    fun `the acknowledgement is at end of turn, and the first wait line not before 2 s after a usual one`() {
+        assertEquals(0L, Backchannel.DELAY_MS)
+        // A usual acknowledgement is 300 to 700 ms: the first wait line 1.5 s after its end lands at 1.8 to 2.2 s.
+        for (ackMs in listOf(300L, 500L, 700L)) {
+            val first = WaitFillers.nextAtMs(lastFillerEndAtMs = ackMs, waitSaid = 0, fillersSaid = 1)!!
+            assertTrue("$ackMs -> $first", first >= 1_800L && first - ackMs >= Backchannel.SPACING_MS)
+        }
+        // With no acknowledgement (nothing in memory), the first sound is a wait line at 1.5 s, not 1.8 s.
+        assertEquals(1_500L, WaitFillers.nextAtMs(lastFillerEndAtMs = 0, waitSaid = 0, fillersSaid = 0))
+        assertEquals(6, FillerTiming.MAX_PER_TURN)
+    }
+
+    @Test
+    fun `the words heard so far keep it silent for noise, a goodbye or distress, and let it play otherwise`() {
+        val goodbye = { w: String -> w.trim().lowercase().startsWith("bye") }
+        val crisis = { w: String -> w.contains("invented distress") }
+        assertNull("no words yet: it plays", Backchannel.wordsSkip(null, goodbye, crisis))
+        assertEquals(Backchannel.Skip.NOISE, Backchannel.wordsSkip("  ", goodbye, crisis))
+        assertEquals(Backchannel.Skip.GOODBYE, Backchannel.wordsSkip("bye bye", goodbye, crisis))
+        assertEquals(Backchannel.Skip.CRISIS, Backchannel.wordsSkip("some invented distress", goodbye, crisis))
+        assertNull(Backchannel.wordsSkip("what's on tomorrow", goodbye, crisis))
+    }
+
+    /**
+     * Every reason the acknowledgement may stay silent, each with why (review K2, 2026-11-21). A new
+     * skip fails [an ordinary turn cannot be skipped] until it is listed here with its reason.
+     */
+    private val allowedSkips = mapOf(
+        "NOT_HIS" to "not a turn of his: the greeting, a proactive line; no one is waiting",
+        "ON_CALL" to "a phone call: the clip would go down the call",
+        "OVER_REPLY" to "he spoke over a reply or a turn in flight: it would play over Alfred's own audio",
+        "QUIET" to "Quiet mode: he asked for silence",
+        "NOISE" to "no words heard: nothing to acknowledge",
+        "GOODBYE" to "a stop or goodbye: the farewell is said instead",
+        "CRISIS" to "distress: the character stops",
+    )
+
+    @Test
+    fun `an ordinary turn cannot be skipped, and every skip reason is a listed one`() {
+        assertEquals(allowedSkips.keys, Backchannel.Skip.entries.map { it.name }.toSet())
+        // Speech of normal length, no stop, no goodbye, no crisis, no call, Quiet off, not over a reply.
+        val ordinary = Backchannel.Turn(fromUser = true, overReplyOrTurn = false, quiet = false, onCall = false)
+        assertNull(Backchannel.decide(ordinary))
+        val goodbye = { w: String -> com.kevin.legion.service.WakePhrases.isSleepPhrase(w, "Jeeves") }
+        val crisis = { w: String -> com.kevin.legion.ai.CrisisDetector.detect(w) }
+        for (words in listOf(null, "what's on tomorrow", "add milk to the list", "how much is left this month")) {
+            assertNull("$words", Backchannel.wordsSkip(words, goodbye, crisis))
+        }
+        // Each skip needs its own condition: one condition on, only that skip.
+        assertEquals(Backchannel.Skip.QUIET, Backchannel.decide(ordinary.copy(quiet = true)))
+        assertEquals(Backchannel.Skip.ON_CALL, Backchannel.decide(ordinary.copy(onCall = true)))
+        assertEquals(Backchannel.Skip.OVER_REPLY, Backchannel.decide(ordinary.copy(overReplyOrTurn = true)))
+        assertEquals(Backchannel.Skip.NOT_HIS, Backchannel.decide(ordinary.copy(fromUser = false)))
     }
 }

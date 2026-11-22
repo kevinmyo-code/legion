@@ -465,7 +465,13 @@ here.
   `EngineTool.writes` is required, so no tool escapes the classification; the engine guards its own
   doors (`read_through.write_refusal`) and the phone guards each `ask_engine` call. On the engine
   brain the taint lives in the turn's state and every write, engine or relayed, passes one guard
-  (ADR 0098, ADR 0100).
+  (ADR 0098, ADR 0100). **AMENDED 2026-11-21 (Kevin, ADR 0090): the taint carries one turn.** The
+  person's NEXT turn refuses every write too, a change he names himself included, and the carry
+  clears once that turn is answered. A turn that refused, in its own read, a change his own words
+  asked for (and so told him to ask again) does not carry: his next message may write. A change
+  the page or the model asked for never lifts the carry. On every door (the web
+  assistant for members, the engine brain, the phone in its own slice); the recruiter demo keeps
+  the same-turn rule until he says.
 - **Memory lives on the engine, private to the member it is about (Kevin, 2026-11-05, ADR 0075).**
   *"centralized memory"*. One store (`member_memories`) for the phone, the web and the Claude
   worker on the Alienware (*"claude can write too."*); never a recruiter, never the work laptop.

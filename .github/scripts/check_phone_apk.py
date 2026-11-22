@@ -82,6 +82,15 @@ def check(apk: Path, sha: str, speaker_sha: str | None, newest_vc: int | None, t
         problems.append(f"BuildConfig MAPBOX_ACCESS_TOKEN is {kind}, not the public pk. token")
     if hits:
         problems.append(f"{len(hits)} APK entries hold an sk.eyJ (Mapbox secret) string")
+    # Text assets are LF everywhere (.gitattributes): a CR byte means a CRLF checkout was packaged.
+    with zipfile.ZipFile(apk) as z:
+        crlf = [n for n in sorted(z.namelist())
+                if n.startswith("assets/") and n.rsplit(".", 1)[-1] in ("json", "csv", "md", "txt")
+                and b"\r" in z.read(n)]
+    if crlf:
+        problems.append(f"text assets with a CR byte (CRLF checkout packaged): {crlf[:10]}")
+    else:
+        print("ok   no CR byte in any text asset")
     vc, vname = release_apk.parse_badging(release_apk.aapt2_output(apk))
     print(f"version {vc} ({vname})")
     if not vname.endswith(f"-{sha[:7]}"):

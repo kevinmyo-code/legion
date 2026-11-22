@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from brief.maintenance import add_months
 from household.tenancy import scoped, visible
+from ingest.canvas_meta import FIRST_POST_IN, first_post_only
 from ingest.category_overrides import with_effective_category
 from ingest.freshness import freshness_for
 from ingest.models import IngestRun, Outcome, Source
@@ -134,6 +135,8 @@ def canvas_section(viewer: Viewer, now: dt.datetime, zone: dt.tzinfo) -> dict:
         meta = task.structured_meta or {}
         if task.done:
             text += " Ticked done."
+        elif first_post_only(meta):
+            text += f" {FIRST_POST_IN}"
         elif meta.get("canvas_submitted") is True:
             text += " Canvas says submitted."
         elif meta.get("canvas_submitted") is False:

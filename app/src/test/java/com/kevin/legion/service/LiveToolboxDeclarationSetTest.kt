@@ -159,7 +159,7 @@ class LiveToolboxDeclarationSetTest {
     @Test
     fun `the list tools tell the model where groceries actually go`() {
         val live = LiveToolbox.declarations()
-        val source = LiveToolbox.sourceDeclarationsForTest()
+        val source = LiveToolbox.sourceDeclarations()
         fun descriptionOf(name: String): String =
             (0 until source.length()).map { source.getJSONObject(it) }
                 .first { it.getString("name") == name }
@@ -356,7 +356,7 @@ class LiveToolboxDeclarationSetTest {
      */
     @Test
     fun `the voice-modal tools are declared with no required params`() {
-        val live = LiveToolbox.sourceDeclarationsForTest()
+        val live = LiveToolbox.sourceDeclarations()
         for (name in listOf("show_agenda_modal")) {
             val decl = (0 until live.length()).map { live.getJSONObject(it) }
                 .first { it.getString("name") == name }

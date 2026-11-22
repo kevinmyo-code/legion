@@ -146,7 +146,14 @@ ROUTES = {
         marker="SETUP",
         parent="home", reach=[("desc", "Settings"), ("text", "LEGION settings")],
     ),
-    "settings/assistant": dict(name="Assistant settings", what="Companion, playbooks, wake word, what it can do."),
+    "settings/assistant": dict(
+        name="Assistant settings",
+        what="Companion, what it calls you, playbooks, wake word, what it can do.",
+        controls=[
+            ("tag", "owner-name-field", "the first name the assistant calls you; blank uses the engine account's"),
+            ("tag", "owner-name-save", "saves that name; applies from the next conversation"),
+        ],
+    ),
     "settings/companions": dict(name="Companions", what="Pick and edit the companion persona.",
                                 parent="settings/assistant", reach=[("text", "Companion")]),
     "settings/playbooks": dict(name="Playbooks", what="Saved procedures the assistant follows."),
@@ -182,6 +189,8 @@ ROUTES = {
         ],
         voice=["ask_engine"],
     ),
+    "settings/car-link": dict(name="Car link", what="Pair the car's head unit with this phone by QR code.",
+                              parent="settings", reach=[("text", "Car link")]),
     "settings/watches": dict(
         name="Watches",
         what="Standing watches (ADR 0083): what Alfred tells you about when it happens, the built-in "

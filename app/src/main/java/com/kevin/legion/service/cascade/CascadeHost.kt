@@ -30,8 +30,6 @@ interface CascadeHost {
     /** Genuine distress in what he said: the same teardown a crisis heard on Live gets. */
     fun crisis()
 
-    /** The short tone a conversation ends with (Live's own). */
-    fun closingTone()
 
     /**
      * The session is fully closed (mic, audio mode, mic claim released): open Gemini Live for this

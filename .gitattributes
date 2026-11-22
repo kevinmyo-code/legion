@@ -37,6 +37,15 @@ server/assistant/docs_corpus.json text eol=lf
 # Windows batch files: cmd.exe wants CRLF.
 *.cmd text eol=crlf
 
+# Everything packaged into the phone APK is checked out with LF on every machine (2026-11-20): with
+# core.autocrlf=true a Windows worktree had CRLF text assets, so laptop APKs carried CRLF and cloud APKs
+# LF for the same commit. The blobs are LF already; this changes checkouts, not history.
+# check_phone_apk.py refuses an APK whose text assets hold a CR byte.
+app/src/main/assets/** text eol=lf
+app/src/main/assets/**/*.onnx binary
+app/src/main/assets/**/*.wav binary
+app/src/main/assets/**/*.model binary
+app/src/main/assets/**/*.bin binary
 # Model files are read byte-for-byte by native code; never normalise line endings.
 app/src/main/assets/wake-kws/* -text
 app/src/main/assets/openwakeword/*.onnx -text

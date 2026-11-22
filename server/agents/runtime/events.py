@@ -33,8 +33,8 @@ def sentence(text: str) -> Event:
     return Event("sentence", {"text": text})
 
 
-def working(tool: str) -> Event:
-    return Event("working", {"tool": tool})
+def working(tool: str, kind: str | None = None) -> Event:
+    return Event("working", {"tool": tool} if kind is None else {"tool": tool, "kind": kind})
 
 
 def waiting() -> Event:
