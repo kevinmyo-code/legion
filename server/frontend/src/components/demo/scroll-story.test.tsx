@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import { useRef } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { diagramAspect, diagramLayers, layerFor, LegionScene } from '@/screens/try-legion-scene'
+import { cardOffset, diagramAspect, diagramLayers, frameDiagram, layerFor, LegionScene, litBoxes, litEdges, readDiagram } from '@/screens/try-legion-scene'
 
 import { resetOrbPlace, useOrbPlace, useStoryGlide, useStoryMotion, useStorySections } from './scroll-story'
 
@@ -243,31 +243,98 @@ describe('the LEGION scene', () => {
     expect(layerFor(0, 3, 0)).toBe(-1)
   })
 
-  test('the part crossing the middle of the screen is the one lit, with its layer', () => {
-    fakeIO()
-    const parts = [
-      { title: 'One', body: 'An invented part.' },
-      { title: 'Two', body: 'Another invented part.' },
-      { title: 'Three', body: 'A third.' },
-    ]
-    const { container } = render(<LegionScene svg={SVG} caption="An invented caption." parts={parts} lead={(t) => `${t}.`} />)
-    const bands = Array.from(container.querySelectorAll('.rc-scene-band'))
-    expect(bands.map((b) => b.getAttribute('data-on'))).toEqual(['true', 'false', 'false'])
-    inView(container.querySelector('[data-step="2"]')!)
-    expect(container.querySelector('[data-step="2"]')).toHaveAttribute('data-on', 'true')
-    expect(bands.map((b) => b.getAttribute('data-on'))).toEqual(['false', 'false', 'true'])
-    // The diagram is still an image (never the SVG's markup in the page) with its words.
-    expect(screen.getByRole('img', { name: 'An invented caption.' }).tagName).toBe('IMG')
-    // Narrow, its frame scrolls sideways, and says so, as the plain page's does.
-    expect(screen.getByRole('region', { name: 'Diagram, scrolls sideways' })).toBeInTheDocument()
-    expect(container.querySelector('.rc-swipe')).toHaveTextContent('Swipe sideways for the rest of the diagram.')
+  test('boxes are read with the heading written in them, and lines with their arrows', () => {
+    const d = readDiagram(NAMED)!
+    expect(d.view).toEqual({ x: 0, y: 0, w: 400, h: 200 })
+    expect(d.boxes.map((b) => b.label)).toEqual(['Fake phone', 'Fake engine', 'Fake bank'])
+    expect(d.edges).toEqual([
+      { x1: 92, y1: 30, x2: 158, y2: 30, both: true },
+      { x1: 242, y1: 30, x2: 308, y2: 30, both: false },
+    ])
+    expect(readDiagram('not a picture')).toBeNull()
   })
 
-  test('with room (900 px and up) the whole diagram shows: no sideways claim, no hint', () => {
+  test('a part lights the boxes it names; naming none (or none found) lights its share of the layers', () => {
+    const d = readDiagram(NAMED)!
+    expect(litBoxes(d, ['fake  ENGINE'], 0, 3)).toEqual([1])
+    expect(litBoxes(d, ['Fake engine', 'Fake bank'], 0, 3)).toEqual([1, 2])
+    expect(litBoxes(d, undefined, 2, 3)).toEqual([2])
+    expect(litBoxes(d, ['Not in the picture'], 0, 3)).toEqual([0])
+  })
+
+  test('the connections lit: between two lit boxes; with one box, every one reaching it', () => {
+    const d = readDiagram(NAMED)!
+    expect(litEdges(d, [0, 1])).toEqual([0])
+    expect(litEdges(d, [1])).toEqual([0, 1])
+    expect(litEdges(d, [])).toEqual([])
+    expect(litEdges(readDiagram(SVG)!, [0])).toEqual([])
+  })
+
+  test('framing: the whole diagram centred, or zoomed to the lit boxes with room, never past three times', () => {
+    const d = readDiagram(NAMED)!
+    expect(frameDiagram(d, [1], 800, 400, false)).toEqual({ scale: 2, x: 0, y: 0 })
+    const zoomed = frameDiagram(d, [1], 400, 200, true)
+    expect(zoomed.scale).toBeCloseTo(Math.min(400 / 116, 200 / 76, 3))
+    // The lit box's centre lands at the frame's centre.
+    expect(zoomed.x + 200 * zoomed.scale).toBeCloseTo(200)
+    expect(zoomed.y + 30 * zoomed.scale).toBeCloseTo(100)
+  })
+
+  test('the card sits under the lit boxes, inside the frame', () => {
+    expect(cardOffset(500, 1000, 400)).toBe(300)
+    expect(cardOffset(50, 1000, 400)).toBe(0)
+    expect(cardOffset(990, 1000, 400)).toBe(600)
+    expect(cardOffset(500, 300, 400)).toBe(0)
+  })
+
+  test('the part at the middle of the screen is the step: its words show, its boxes and lines light', () => {
     fakeIO()
-    media(() => true)
-    const { container } = render(<LegionScene svg={SVG} caption="An invented caption." parts={[{ title: 'One', body: 'Invented.' }]} lead={(t) => t} />)
-    expect(screen.getByRole('region', { name: 'Diagram' })).toBeInTheDocument()
-    expect(container.querySelector('.rc-swipe')).toBeNull()
+    const parts = [
+      { title: 'One', body: 'An invented part about the phone.', lights: ['Fake phone'] },
+      { title: 'Two', body: 'Another invented part, about the engine and the phone.', lights: ['Fake engine', 'Fake phone'] },
+      { title: 'Three', body: 'A third, with no names.' },
+    ]
+    const { container } = render(<LegionScene svg={NAMED} caption="An invented caption." parts={parts} lead={(t) => `${t}.`} />)
+    const items = () => Array.from(container.querySelectorAll('.rc-scene-card li')).map((li) => li.getAttribute('data-on'))
+    const nodes = () => Array.from(container.querySelectorAll('.rc-scene-node')).map((n) => n.getAttribute('data-on'))
+    const edges = () => Array.from(container.querySelectorAll('.rc-scene-edge')).map((n) => n.getAttribute('data-on'))
+    expect(items()).toEqual(['true', 'false', 'false'])
+    expect(nodes()).toEqual(['true', 'false', 'false'])
+    expect(edges()).toEqual(['true', 'false'])
+    inView(container.querySelector('[data-step="1"]')!)
+    expect(items()).toEqual(['false', 'true', 'false'])
+    expect(nodes()).toEqual(['true', 'true', 'false'])
+    expect(edges()).toEqual(['true', 'false'])
+    expect(container.querySelector('.rc-scene-card li[aria-current="step"]')).toHaveTextContent('Two.')
+    // Packets travel only on lit lines: both ways on a line with an arrow at each end.
+    expect(container.querySelectorAll('.rc-scene-packet')).toHaveLength(2)
+    inView(container.querySelector('[data-step="2"]')!)
+    expect(nodes()).toEqual(['false', 'false', 'true'])
+    // The words are in the page once each, in order, and none of them is a live region.
+    for (const part of parts) expect(screen.getAllByText(part.body, { exact: false })).toHaveLength(1)
+    expect(container.querySelector('[aria-live]')).toBeNull()
+    // The diagram is still an image (never the SVG's markup in the page); the highlights are the
+    // page's own drawing over it, hidden from assistive tech.
+    expect(screen.getByRole('img', { name: 'An invented caption.' }).tagName).toBe('IMG')
+    expect(container.querySelector('.rc-scene-overlay')).toHaveAttribute('aria-hidden', 'true')
+    expect(container.querySelector('.rc-scene-overlay text')).toBeNull()
+  })
+
+  test('reduced motion keeps the steps: the scene says so, and the CSS drops the travel', () => {
+    fakeIO()
+    media(() => false)
+    const { container } = render(<LegionScene svg={NAMED} caption="" parts={[{ title: 'One', body: 'Invented.' }]} lead={(t) => t} />)
+    expect(container.querySelector('.rc-scene')).toHaveAttribute('data-motion', 'off')
+    expect(container.querySelector('[data-step="0"]')).not.toBeNull()
   })
 })
+
+const NAMED = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <defs><marker id="a"><path d="M0,0 L8,4 L0,8 z"/></marker></defs>
+  <rect width="400" height="200" fill="#fff"/>
+  <rect x="10" y="10" width="80" height="40"/><text x="20" y="30">Fake phone</text><text x="20" y="44">a fake subtitle</text>
+  <rect x="160" y="10" width="80" height="40"/><text x="170" y="30">Fake engine</text>
+  <rect x="310" y="10" width="80" height="40"/><text x="320" y="30">Fake bank</text>
+  <line x1="92" y1="30" x2="158" y2="30" marker-start="url(#a)" marker-end="url(#a)"/>
+  <line x1="242" y1="30" x2="308" y2="30" marker-end="url(#a)"/>
+</svg>`

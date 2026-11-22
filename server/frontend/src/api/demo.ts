@@ -45,7 +45,8 @@ export interface DemoLegion {
   intro: string
   diagram_svg?: string
   diagram_caption?: string
-  parts: { title: string; body: string }[]
+  /** `lights`: the headings of the diagram boxes the part is about (the scrollytelling stage). */
+  parts: { title: string; body: string; lights?: string[] }[]
   /** "Quality for voice agents" (Kevin, 2026-11-22): figures and the checks behind them. */
   quality?: DemoQuality
 }

@@ -38,23 +38,44 @@ function rules(css: string): { selector: string; body: string; within: string }[
 
 const all = rules(indexCss)
 
-describe('the LEGION scene', () => {
-  test('parts out of focus keep their contrast: no fade, the part in focus turns ink', () => {
-    const steps = all.filter((r) => r.selector.includes('rc-scene-steps'))
-    expect(steps.length).toBeGreaterThan(0)
-    expect(steps.filter((r) => /(^|[\s;])opacity\s*:/.test(r.body)).map((r) => r.selector)).toEqual([])
-    const lit = steps.find((r) => r.selector.includes('[data-on="true"]'))
-    expect(lit?.body).toMatch(/color\s*:\s*var\(--rc-ink\)/)
+describe('the LEGION scene (Kevin, 2026-11-22: the words move with the highlights)', () => {
+  test('the stage holds the diagram and the words: it is pinned, and fits the screen', () => {
+    const stage = all.find((r) => r.selector.trim() === '.recruiter .rc-scene-stage' && !r.within.includes('@media'))
+    expect(stage?.body).toMatch(/position\s*:\s*sticky/)
+    expect(stage?.body).toMatch(/height\s*:\s*100svh/)
   })
 
-  test('the diagram is pinned only where the screen is tall enough to read the parts under it', () => {
-    const unpinned = all.filter((r) => r.selector.includes('.rc-scene-pin') && /max-height:\s*699px/.test(r.within))
-    expect(unpinned.some((r) => /position\s*:\s*static/.test(r.body))).toBe(true)
+  test('on a phone the stage stops above the foot bar', () => {
+    const phone = all.filter((r) => r.selector.includes('.rc-scene-stage') && /max-width:\s*899px/.test(r.within))
+    expect(phone.some((r) => /height\s*:\s*calc\(100svh\s*-\s*72px\)/.test(r.body))).toBe(true)
   })
 
-  test('never pinned under 900 px wide (a phone in portrait has no room under it)', () => {
-    const unpinned = all.filter((r) => r.selector.includes('.rc-scene-pin') && /max-width:\s*899px/.test(r.within))
-    expect(unpinned.some((r) => /position\s*:\s*static/.test(r.body))).toBe(true)
+  test('on a screen too short for it the stage is not pinned and every part shows, so nothing pinned covers its words', () => {
+    const short = all.filter((r) => /max-height:\s*499px/.test(r.within))
+    expect(short.some((r) => r.selector.includes('.rc-scene-stage') && /position\s*:\s*static/.test(r.body))).toBe(true)
+    expect(short.some((r) => r.selector.includes('.rc-scene-card li') && /opacity\s*:\s*1/.test(r.body))).toBe(true)
+  })
+
+  test('print shows every part, in order, unpinned', () => {
+    const print = all.filter((r) => r.within.includes('print'))
+    expect(print.some((r) => r.selector.includes('.rc-scene-stage') && /position\s*:\s*static/.test(r.body))).toBe(true)
+    expect(print.some((r) => r.selector.includes('.rc-scene-card li') && /opacity\s*:\s*1\s*!important/.test(r.body))).toBe(true)
+  })
+
+  test('the highlights move by transform, opacity and stroke only', () => {
+    const motion = all.filter((r) => r.selector.includes('rc-scene-') && /transition|animation\s*:/.test(r.body))
+    expect(motion.length).toBeGreaterThan(0)
+    for (const r of motion) {
+      const props = Array.from(r.body.matchAll(/transition\s*:([^;]+)/g)).flatMap((m) => m[1].split(/,(?![^(]*\))/).map((t) => t.trim().split(/\s+/)[0]))
+      for (const prop of props) expect(['transform', 'opacity', 'stroke-dashoffset', 'none'], `${r.selector}: ${prop}`).toContain(prop)
+    }
+  })
+
+  test('reduced motion: nothing travels or pulses, a change is a short fade', () => {
+    const off = all.filter((r) => r.selector.includes('[data-motion="off"]'))
+    expect(off.some((r) => r.selector.includes('.rc-scene-packet') && /display\s*:\s*none/.test(r.body))).toBe(true)
+    expect(off.some((r) => r.selector.includes('.rc-scene-pulse') && /display\s*:\s*none/.test(r.body))).toBe(true)
+    expect(off.some((r) => r.selector.includes('.rc-scene-card li') && /opacity 150ms/.test(r.body))).toBe(true)
   })
 })
 
