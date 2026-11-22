@@ -4367,9 +4367,9 @@
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$internal suspend fun mailExtraction( context: Context, query: String, noMatchMessage: String, extractionPrompt: String, ): JSONObject</ID>
     <ID>ReturnCount:MusicToolbox.kt:MusicToolbox$private fun controlVolume(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private fun parseCalendarWindow(from: String, to: String, zone: java.time.ZoneId): Pair&lt;Long, Long&gt;?</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun acceptProposalTool(context: Context, args: JSONObject): JSONObject</ID>
+    <ID>ReturnCount:AdvisorToolbox.kt:AdvisorToolbox$private suspend fun acceptProposalTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun areaInfo(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun askAdvisorTool(context: Context, args: JSONObject): JSONObject</ID>
+    <ID>ReturnCount:AdvisorToolbox.kt:AdvisorToolbox$private suspend fun askAdvisorTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun checkReadiness(): JSONObject</ID>
     <ID>ReturnCount:GoalsToolbox.kt:GoalsToolbox$private suspend fun closeGoalTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>

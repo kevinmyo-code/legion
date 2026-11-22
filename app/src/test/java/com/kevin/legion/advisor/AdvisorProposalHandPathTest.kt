@@ -16,7 +16,7 @@ import org.robolectric.RuntimeEnvironment
 
 /**
  * Command-center ticket 11: `accept_proposal` by hand, CRED aspect (ADR 0035).
- * [AdvisorProposalHandPath] re-states `LiveToolbox.acceptProposalTool`'s orchestration (that
+ * [AdvisorProposalHandPath] re-states `AdvisorToolbox.acceptProposalTool`'s orchestration (that
  * function is `private` inside a file this agent's territory brief held READ-ONLY - see
  * [AdvisorProposalHandPath]'s own class doc for the full trace) but calls the exact same
  * [AdvisorProposalExecutor.execute] write. This mirrors [com.kevin.legion.service.LiveToolboxAdvisorTest]'s

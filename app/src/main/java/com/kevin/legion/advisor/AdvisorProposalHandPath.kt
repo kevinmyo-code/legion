@@ -14,7 +14,7 @@ import com.kevin.legion.util.shortDate
  * [AdvisorProposalExecutor.execute] (the one real write) and [com.kevin.legion.data.local.AdvisorAdviceDao]'s
  * claim/settle/revert queries - so the WRITE is identical, never a second implementation of it.
  * Only the thin orchestration around that write (TTL check, claim-before-execute, settle-after) is
- * re-stated here, the same "thin Context wrapper" layer `LiveToolbox.acceptProposalTool` itself is
+ * re-stated here, the same "thin Context wrapper" layer `AdvisorToolbox.acceptProposalTool` itself is
  * one level up from [AdvisorProposalExecutor] - this is that same layer, duplicated because its
  * owner is off limits this session, not because two paths were wanted.
  *
@@ -28,12 +28,12 @@ import com.kevin.legion.util.shortDate
 object AdvisorProposalHandPath {
 
     /**
-     * Reads `LiveToolbox.PROPOSAL_TTL_MS` directly - widened to internal for exactly this, so the
+     * Reads `AdvisorToolbox.PROPOSAL_TTL_MS` directly - widened to internal for exactly this, so the
      * voice path and this hands path can never expire the same row at two different ages. The copy
      * that used to live here (with a drift warning in place of a guarantee) is gone; see that
      * constant's own doc for why 24h and not a conversation-scoped window.
      */
-    private val PROPOSAL_TTL_MS get() = com.kevin.legion.service.LiveToolbox.PROPOSAL_TTL_MS
+    private val PROPOSAL_TTL_MS get() = com.kevin.legion.service.AdvisorToolbox.PROPOSAL_TTL_MS
 
     /** What accepting or dismissing did, for the caller to show on screen - same shape as every
      * other hands-path dialog in this codebase (`ui/body/BodyWriteDialogs.kt`'s own `result: String?`). */

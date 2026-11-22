@@ -21,7 +21,7 @@ import org.robolectric.RuntimeEnvironment
 
 /**
  * Ticket 18's own verification list, exercised against [LiveToolbox.dispatch]'s `accept_proposal`
- * (and [LiveToolbox.mapAdvisorResult] for `ask_advisor`'s degrade path) - same Robolectric-plus-
+ * (and [AdvisorToolbox.mapAdvisorResult] for `ask_advisor`'s degrade path) - same Robolectric-plus-
  * Room shape as [LiveToolboxVehicleScopingTest]. Every test here seeds an `advisor_advice` row
  * directly (never calls the real [com.kevin.legion.advisor.AdvisorAgent], which would need a live
  * Gemini key and network) - `accept_proposal`'s whole point is that it only ever reads what is
@@ -308,7 +308,7 @@ class LiveToolboxAdvisorTest {
 
     @Test
     fun `a ParseFailed advisor answer still produces a spoken result, not a silent drop`() {
-        val response = LiveToolbox.mapAdvisorResult(AdvisorResult.ParseFailed(""))
+        val response = AdvisorToolbox.mapAdvisorResult(AdvisorResult.ParseFailed(""))
 
         assertTrue(
             "a parse failure must still speak something rather than the tool call reading as silence",
@@ -320,7 +320,7 @@ class LiveToolboxAdvisorTest {
     @Test
     fun `a ParseFailed answer RELAYS the model's prose rather than discarding it`() {
         val prose = "Two sessions against a plan of four. The week is not lost - move leg day to Thursday."
-        val response = LiveToolbox.mapAdvisorResult(AdvisorResult.ParseFailed(prose))
+        val response = AdvisorToolbox.mapAdvisorResult(AdvisorResult.ParseFailed(prose))
 
         assertTrue(response.getBoolean("success"))
         assertTrue(
@@ -341,7 +341,7 @@ class LiveToolboxAdvisorTest {
     @Test
     fun `a successful advisor answer carries adviceId so accept_proposal always has a real id to name`() {
         val answer = AdvisorAnswer(spoken = "You're on track.", proposal = """{"op":"set_goal"}""")
-        val response = LiveToolbox.mapAdvisorResult(AdvisorResult.Success(answer, adviceId = 42L))
+        val response = AdvisorToolbox.mapAdvisorResult(AdvisorResult.Success(answer, adviceId = 42L))
 
         assertTrue(response.getBoolean("success"))
         assertEquals(42L, response.getLong("adviceId"))
