@@ -50,8 +50,8 @@ class ControlRoomViewModelTest {
         now = { now },
     )
 
-    private val S1 = "0a1b2c3d-0000-4000-8000-000000000001"
-    private val S2 = "0a1b2c3d-0000-4000-8000-000000000002"
+    private val sessionOne = "0a1b2c3d-0000-4000-8000-000000000001"
+    private val sessionTwo = "0a1b2c3d-0000-4000-8000-000000000002"
 
     @Test
     fun `a session id of another shape offers no summary`() {
@@ -86,7 +86,7 @@ class ControlRoomViewModelTest {
 
     @Test
     fun `sessions show name, folder, machine, state and how long it has waited`() {
-        status(listOf(session(S1), session(S2, machine = "work laptop", state = "busy")))
+        status(listOf(session(sessionOne), session(sessionTwo, machine = "work laptop", state = "busy")))
         val s = viewModel().state.value
         assertEquals(listOf("planner", "planner"), s.sessions.map { it.name })
         assertEquals("waiting 12 min", s.sessions[0].waited)
@@ -98,11 +98,11 @@ class ControlRoomViewModelTest {
 
     @Test
     fun `summary sends a code-built task naming the session id, to its machine`() {
-        status(listOf(session(S1)))
+        status(listOf(session(sessionOne)))
         val vm = viewModel()
         vm.summarise(vm.state.value.sessions.single())
         val sent = claude.created.single()
-        assertEquals(ControlRoomViewModel.summaryRequest(S1), sent.request)
+        assertEquals(ControlRoomViewModel.summaryRequest(sessionOne), sent.request)
         assertEquals("Alienware", sent.machine)
         assertTrue("400 characters" in sent.request)
     }
@@ -195,7 +195,7 @@ class ControlRoomViewModelTest {
 
     @Test
     fun `the board switched off says so and the Claude half still works`() {
-        status(listOf(session(S1)))
+        status(listOf(session(sessionOne)))
         board.boardOut = BoardOutcome.Failed("The control room is switched off on the engine.")
         board.actionsOut = BoardOutcome.Failed("off")
         val s = viewModel().state.value
