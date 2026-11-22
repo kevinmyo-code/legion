@@ -17,7 +17,7 @@
 # deploy/ship.py is not used by this workflow.
 name: Ship engine
 
-run-name: "Ship engine ${{ inputs.dry_run && 'DRY RUN' || 'DEPLOY' }} ${{ inputs.sha }} over ${{ inputs.expect_live_rev }}, gates ${{ inputs.gates_run_id }}"
+run-name: "Ship engine ${{ inputs.dry_run && 'DRY RUN' || 'DEPLOY' }} ${{ inputs.sha }} over ${{ inputs.expect_live_rev }}, gates ${{ inputs.gates_run_id }}${{ inputs.unfreeze != '' && ', CHANGES FROZEN LIVE PATHS' || '' }}"
 
 on:
   workflow_dispatch:
@@ -52,8 +52,13 @@ on:
         required: false
         default: ""
         type: string
-      extra_unset:
-        description: "More env names that must stay unset (adds to the fixed list; cannot remove any)"
+      add_checks:
+        description: "Add-only, space separated: unset:<ENV_NAME> frozen:<path> probe:<METHOD>:/api/<path>:<4xx codes>"
+        required: false
+        default: ""
+        type: string
+      unfreeze:
+        description: "Frozen live files this ship changes: '<file>=<why>; ...' (empty: none; shown to the approver)"
         required: false
         default: ""
         type: string
@@ -85,6 +90,7 @@ jobs:
     outputs:
       has_migrations: ${{ steps.scope.outputs.has_migrations }}
       switches: ${{ steps.scope.outputs.switches }}
+      probes: ${{ steps.scope.outputs.probes }}
     steps:
       - name: The inputs, and the run is a dispatch of dev at sha
         env:
@@ -92,7 +98,8 @@ jobs:
           IMAGE_FILES: ${{ inputs.image_files }}
           MIGRATIONS: ${{ inputs.migrations }}
           EXTRAS: ${{ inputs.expected_extras }}
-          EXTRA_UNSET: ${{ inputs.extra_unset }}
+          ADD_CHECKS: ${{ inputs.add_checks }}
+          UNFREEZE: ${{ inputs.unfreeze }}
         run: |
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           [[ "$LIVE_CODE" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::live_code must be 40 lowercase hex characters"; exit 1; }
@@ -101,7 +108,9 @@ jobs:
           [[ "$IMAGE_FILES" =~ ^[A-Za-z0-9_./:\ -]+$ ]] || { echo "::error::image_files: path:blob pairs only"; exit 1; }
           [[ "$MIGRATIONS" =~ ^[A-Za-z0-9_./:\ -]*$ ]] || { echo "::error::migrations: path:blob pairs only"; exit 1; }
           [[ "$EXTRAS" =~ ^[a-z0-9_,\ ]*$ ]] || { echo "::error::expected_extras: check names only"; exit 1; }
-          [[ "$EXTRA_UNSET" =~ ^[A-Z0-9_,\ ]*$ ]] || { echo "::error::extra_unset: env names only"; exit 1; }
+          [[ "$ADD_CHECKS" =~ ^[A-Za-z0-9_:/.,\ -]*$ ]] || { echo "::error::add_checks: unset:/frozen:/probe: entries only"; exit 1; }
+          unfreeze_ok='^[A-Za-z0-9_./=;:,() -]*$'
+          [[ "$UNFREEZE" =~ $unfreeze_ok ]] || { echo "::error::unfreeze: '<file>=<why>; ...' in plain words"; exit 1; }
           [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::dispatch from dev (this run is on $GITHUB_REF)"; exit 1; }
           [ "$GITHUB_SHA" = "$SHA" ] || { echo "::error::sha $SHA is not the run's own commit $GITHUB_SHA (dev moved, or the wrong sha)"; exit 1; }
 
@@ -159,14 +168,27 @@ jobs:
         env:
           IMAGE_FILES: ${{ inputs.image_files }}
           MIGRATIONS: ${{ inputs.migrations }}
-          EXTRA_UNSET: ${{ inputs.extra_unset }}
+          ADD_CHECKS: ${{ inputs.add_checks }}
+          UNFREEZE: ${{ inputs.unfreeze }}
         run: |
+          set -o pipefail
           printf '%s\n' $IMAGE_FILES | sed 's/:\([0-9a-f]\{40\}\)$/ \1/' > "$RUNNER_TEMP/image-files.txt"
           printf '%s\n' $MIGRATIONS | sed 's/:\([0-9a-f]\{40\}\)$/ \1/' | awk 'NF' > "$RUNNER_TEMP/migrations.txt"
           python3 deploy/ship_checks.py scope --fix "$SHA" --live-code "$LIVE_CODE" \
-            --image-files "$RUNNER_TEMP/image-files.txt" --migrations "$RUNNER_TEMP/migrations.txt"
+            --image-files "$RUNNER_TEMP/image-files.txt" --migrations "$RUNNER_TEMP/migrations.txt" \
+            --add-checks "$ADD_CHECKS" --unfreeze "$UNFREEZE" | tee "$RUNNER_TEMP/scope.txt"
           echo "has_migrations=$([ -s "$RUNNER_TEMP/migrations.txt" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "switches=$(python3 deploy/ship_checks.py switches --extra "$EXTRA_UNSET")" >> "$GITHUB_OUTPUT"
+          python3 deploy/ship_checks.py plan --add-checks "$ADD_CHECKS" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Ship engine ${SHA:0:8} over $EXPECT_LIVE_REV"
+            if grep -q '^UNFROZEN' "$RUNNER_TEMP/scope.txt"; then
+              echo "**This ship changes frozen live paths:**"
+              grep '^UNFROZEN' "$RUNNER_TEMP/scope.txt" | sed 's/^UNFROZEN by this ship: /- /'
+            else
+              echo "No frozen live path changes."
+            fi
+            [ -z "$ADD_CHECKS" ] || echo "Added checks: \`$ADD_CHECKS\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   rehearse:
     needs: checks
@@ -244,6 +266,8 @@ jobs:
         env:
           FIX: ${{ inputs.sha }}
           SWITCHES: ${{ needs.checks.outputs.switches }}
+          EXTRA_PROBES: ${{ needs.checks.outputs.probes }}
+          UNFROZEN: ${{ inputs.unfreeze }}
           MIGRATIONS_IN: ${{ inputs.migrations }}
           DRY: ${{ inputs.dry_run }}
           PROJECT: ${{ vars.GCP_PROJECT }}

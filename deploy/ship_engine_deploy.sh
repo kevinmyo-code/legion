@@ -45,18 +45,33 @@ traffic() {  # "<revision> <percent>" lines with a non-zero percent
 for t in json.load(sys.stdin)['status'].get('traffic', []):
     if t.get('percent'): print(t.get('revisionName', ''), t['percent'])"
 }
+commit_label() {  # the legion-commit label of a revision, empty when absent
+  gcloud run revisions describe "$1" "${G[@]}" --format=json \
+    | python3 -c "import json,sys; print((json.load(sys.stdin)['metadata'].get('labels') or {}).get('legion-commit', ''))"
+}
 check_live() {
   local rev t
   rev=$(gcloud run services describe "$SERVICE" "${G[@]}" --format='value(status.latestReadyRevisionName)' | tr -d '\r')
   [ "$rev" = "$EXPECT_LIVE_REV" ] || stop "the live revision is $rev, not the pinned $EXPECT_LIVE_REV (its code may not be ${LIVE_CODE:0:8}); nothing deployed"
   t=$(traffic)
   [ "$t" = "$EXPECT_LIVE_REV 100" ] || stop "traffic is not 100% on $EXPECT_LIVE_REV: $(echo $t); nothing deployed"
+  # The commit label a cloud ship sets on its revision (deploy.py --label-commit; every other deploy
+  # removes it): when present it must be the pinned live code. Absent: the pin is the owner's word only.
+  LIVE_LABEL=$(commit_label "$EXPECT_LIVE_REV")
+  if [ -n "$LIVE_LABEL" ]; then
+    [ "$LIVE_LABEL" = "$LIVE_CODE" ] || stop "$EXPECT_LIVE_REV is labelled commit $LIVE_LABEL, not the pinned live code $LIVE_CODE; nothing deployed"
+    LIVE_PROOF="label legion-commit=$LIVE_LABEL matches live_code"
+  else
+    LIVE_PROOF="NOT proven: $EXPECT_LIVE_REV has no legion-commit label (deployed outside this workflow); live_code rests on the pin"
+  fi
 }
 
 echo "== 1) live state, the plan and the switches (read only)"
 check_refs
 check_live
 echo "dev = main = ${FIX:0:8}; live revision $EXPECT_LIVE_REV at 100% (pinned as running ${LIVE_CODE:0:8})"
+echo "live code: $LIVE_PROOF"
+[ -z "${UNFROZEN:-}" ] || { echo "THIS SHIP CHANGES FROZEN LIVE PATHS (the owner's approval covers each):"; printf '%s\n' "$UNFROZEN" | tr ';' '\n' | sed 's/^ */  /'; }
 [ -f "$ENV_FILE" ] || stop "no $ENV_FILE (the CLOUDRUN_ENV secret)"
 for n in $SWITCHES; do
   ! grep -qE "^[[:space:]]*(export[[:space:]]+)?$n[[:space:]]*=" "$ENV_FILE" || stop "$ENV_FILE names $n; it must be absent"
@@ -131,19 +146,32 @@ echo "still dev = main = ${FIX:0:8}, $EXPECT_LIVE_REV at 100%"
 echo "== 5) deploy: image + service (schema files applied on start), then the job"
 REST="
 $ROLLBACK"
-(cd deploy/cloudrun && python3 deploy.py --ci --project "$PROJECT" --region "$REGION") || {
+(cd deploy/cloudrun && python3 deploy.py --ci --project "$PROJECT" --region "$REGION" --label-commit "$FIX") || {
   echo "::error::the service deploy failed"
   echo "PRODUCTION STATE: traffic was NOT switched; $EXPECT_LIVE_REV still serves every request with ${LIVE_CODE:0:8}."
   echo "  The new container runs migrate on start, one transaction per schema file: a failed one rolled back;"
   echo "  if one applied and the container failed later, its tables exist, unused (additive). The job was NOT moved."
   echo "$REST"; exit 1; }
-(cd deploy/cloudrun && python3 deploy_job.py --ci --project "$PROJECT" --region "$REGION" --image "${REGION}-docker.pkg.dev/${PROJECT}/legion/server:latest") || {
-  echo "::error::the job image update failed: the SERVICE is already on the new revision, the job still runs $PREV_JOB_IMAGE"
-  echo "$REST"; exit 1; }
-
-echo "== 6) confirm the new revision, its traffic, env and switches"
 NEW_REV=$(gcloud run services describe "$SERVICE" "${G[@]}" --format='value(status.latestReadyRevisionName)' | tr -d '\r')
 [ "$NEW_REV" != "$EXPECT_LIVE_REV" ] || { echo "::error::the service is still on $EXPECT_LIVE_REV: no new revision"; echo "$REST"; exit 1; }
+NEW_LABEL=$(commit_label "$NEW_REV")
+if [ -z "$NEW_LABEL" ]; then
+  echo "::warning::$NEW_REV carries no legion-commit label (untested gcloud behaviour); the next ship's live_code rests on its pin"
+elif [ "$NEW_LABEL" != "$FIX" ]; then
+  echo "::error::$NEW_REV is labelled $NEW_LABEL, not ${FIX}: not this run's deploy (another ship?); the job was NOT moved"; echo "$REST"; exit 1
+fi
+# Review D2: the job takes the image the new revision RUNS, by digest, never :latest (which another
+# build could move between these two steps).
+NEW_DIGEST=$(gcloud run revisions describe "$NEW_REV" "${G[@]}" --format='value(status.imageDigest)' | tr -d '\r')
+[[ "$NEW_DIGEST" == *@sha256:* ]] || { echo "::error::could not read $NEW_REV's image digest; the job was NOT moved"; echo "$REST"; exit 1; }
+echo "$NEW_REV runs $NEW_DIGEST (labelled ${FIX:0:8}); the job moves to that digest"
+(cd deploy/cloudrun && python3 deploy_job.py --ci --project "$PROJECT" --region "$REGION" --image "$NEW_DIGEST") || {
+  echo "::error::the job image update failed: the SERVICE is already on $NEW_REV, the job still runs $PREV_JOB_IMAGE"
+  echo "$REST"; exit 1; }
+JOB_IMAGE_NOW=$(gcloud run jobs describe "$JOB" "${G[@]}" --format='value(spec.template.spec.template.spec.containers[0].image)' | tr -d '\r')
+[ "$JOB_IMAGE_NOW" = "$NEW_DIGEST" ] || { echo "::error::the job runs $JOB_IMAGE_NOW, not $NEW_DIGEST"; echo "$REST"; exit 1; }
+
+echo "== 6) confirm the new revision, its traffic, env and switches"
 [ "$(traffic)" = "$NEW_REV 100" ] || { echo "::error::traffic is not 100% on $NEW_REV: $(traffic | tr '\n' ' ')"; echo "$REST"; exit 1; }
 REV_NAMES=$(gcloud run revisions describe "$NEW_REV" "${G[@]}" --format='value(spec.containers[0].env[].name)' | norm)
 JOB_NOW=$(gcloud run jobs describe "$JOB" "${G[@]}" --format='value(spec.template.spec.template.spec.containers[0].env[].name)' | norm)

@@ -7,7 +7,7 @@
 #     [LEGION_ENGINE_TOKEN=<owner device token>] post_deploy_probes.sh
 #
 # Not carried from the laptop scripts (ship-specific, one-off): a pinned file served byte for byte (the
-# garage model), an owner read of a pinned route, EXTRA_PROBES lines. A ship that needs them checks by hand.
+# garage model), an owner read of a pinned route. A ship's own dark routes come in EXTRA_PROBES.
 set -euo pipefail
 : "${ENGINE_URL:?}" "${SERVICE:?}" "${REGION:?}" "${PROJECT:?}" "${NEW_REV:?}"
 SWITCHES=${SWITCHES:-}
@@ -52,6 +52,16 @@ want "POST head-units" "$(code -X POST -H "$J" -d '{"label":"ship check"}' "$HU"
 want "DELETE head-units/<id>" "$(code -X DELETE "$HU/$Z")" "$HU_OK"
 want "POST head-units/revoke-all" "$(code -X POST -H "$J" -d '{}' "$HU/revoke-all")" "$HU_OK"
 want "POST head-units/<id>/rotate" "$(code -X POST -H "$J" -d '{}' "$HU/$Z/rotate")" "$HU_OK"
+# EXTRA_PROBES: the ship's own dark routes, "<METHOD> <path> <codes,...>;..." (validated by
+# ship_checks.py plan: an /api/ path and 4xx codes only), each sent with no credentials and an empty body.
+if [ -n "${EXTRA_PROBES:-}" ]; then
+  IFS=';' read -ra _probes <<<"$EXTRA_PROBES"
+  for pr in "${_probes[@]}"; do
+    read -r pm pp pc <<<"$pr"
+    [ -n "${pm:-}" ] || continue
+    want "$pm $pp (ship's dark route)" "$(code -X "$pm" --data-binary '' "$U$pp")" "${pc//,/ }"
+  done
+fi
 
 if [ -n "${LEGION_ENGINE_TOKEN:-}" ]; then
   echo "== signed-in dark checks (the owner token; the routes must answer switched off)"
