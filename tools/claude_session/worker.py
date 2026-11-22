@@ -765,9 +765,11 @@ class Worker:
             question = files_question(len(found), sum(f["size"] for f in found))
             log.info("task %s over the files caps (%s files); asking first", t["id"], len(found))
         if self.session_read(t["id"]):
-            # Review finding 9: a task that read a session transcript says where it stands in a
-            # sentence or two; a long summary could carry the transcript off the laptop.
+            # Review finding 9, re-review 6: a task that read a session transcript, by any route,
+            # says where it stands in a sentence or two; a long summary or question could carry
+            # the transcript off the laptop. A message card's question is the worker's own (below).
             summary = summary[:sessions.SUMMARY_MAX]
+            question = question[:sessions.SUMMARY_MAX]
         if status == "needs_confirmation" and self.scope == "full":
             plan = sessions.pinned_plan(self.paths, t["id"])
             if plan is not None:
@@ -1224,8 +1226,14 @@ class Worker:
             if plan_sha and p.get("send_answered"):
                 # Review finding 2: one card, one yes, one token. A second yes to the same card
                 # mints nothing; sessions.py also refuses a plan that was already sent.
-                lines.append(f"Kevin already said yes to task {parent}'s message card once. Do not "
-                             "send anything. Report done saying the message was already handled.")
+                if (sessions.pinned_plan(self.paths, parent) or {}).get("delivered"):
+                    lines.append(f"Kevin already said yes to task {parent}'s message card once and "
+                                 "it was delivered. Do not send anything. Report done saying the "
+                                 "message was already sent.")
+                else:  # re-review 5: never "handled" when it never went
+                    lines.append(f"Kevin already used his yes to task {parent}'s message card, and "
+                                 "that message was not delivered. Do not send anything. Report "
+                                 "done saying: not delivered, ask again for a new card.")
             elif plan_sha:
                 p["send_answered"] = True
                 self.dirty = True

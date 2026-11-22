@@ -101,7 +101,22 @@ def decide(event: dict, paths: Paths) -> dict | None:
     return None
 
 
+ISOLATION_REASON = ("The message gate is not running isolated (`python -I -S`), so nothing "
+                    "is sent. Do not retry.")
+
+
+def isolated() -> bool:
+    """`python -I -S`: no user site, no PYTHON* environment, no `site` (no `.pth` file and no
+    sitecustomize ran first), the ask-list hook's own rule (aa77f61c)."""
+    return bool(sys.flags.isolated) and bool(sys.flags.no_site) and "site" not in sys.modules
+
+
 def main() -> int:
+    if not isolated():
+        out = _deny(ISOLATION_REASON)
+        print(json.dumps(out))
+        print(ISOLATION_REASON, file=sys.stderr)
+        return 2
     try:
         out = decide(json.load(sys.stdin), Paths())
     except Exception:  # fail closed

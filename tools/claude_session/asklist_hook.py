@@ -717,13 +717,30 @@ def _peer_reason() -> str:
             "needs_confirmation with the question it prints. Do not retry or work around it.")
 
 
-SESSIONS_RE = re.compile(r"sessions\.py", re.I)
+SESSIONS_SUBCOMMANDS = re.compile(r"(?<![\w-])(list|read|ask|send)(?![\w-])", re.I)
+_SESSION_WORDS = re.compile(r"\"([^\"]*)\"|'([^']*)'|([^\s\"';&|<>()]+)")
 
 
-def _reads_a_session(command: str) -> bool:
-    """Any command naming sessions.py with `read`, ours or not, alone or not (review finding 1,
-    the way any run of fetch_file.py reads the web): a transcript is read-through."""
-    return bool(SESSIONS_RE.search(command) and re.search(r"\bread\b", command, re.I))
+def _runs_worker_sessions(command: str, tool: str) -> str | None:
+    """The subcommand when the command RUNS the worker's own sessions.py (its path, in any
+    spelling, followed by list, read, ask or send), else None (re-review round 2, finding 2: a
+    project's own sessions.py, or `git add app/sessions.py`, is none of the worker's business)."""
+    own = _plain(str(HERE / SESSIONS_SCRIPT))
+    words = [next(g for g in m.groups() if g is not None)
+             for m in _SESSION_WORDS.finditer(command or "")]
+    for i, w in enumerate(words):
+        if _plain(w, tool == "Bash") == own or _plain(w, True) == own:
+            for later in words[i + 1:]:
+                m = SESSIONS_SUBCOMMANDS.fullmatch(later)
+                if m:
+                    return m.group(1).lower()
+    return None
+
+
+def _reads_a_session(command: str, tool: str) -> bool:
+    """A run of the worker's sessions.py `read`, alone or not (review finding 1, the way any run
+    of fetch_file.py reads the web): a transcript is read-through."""
+    return _runs_worker_sessions(command, tool) == "read"
 
 
 def _sessions_reason() -> str:
@@ -789,11 +806,13 @@ def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict,
         return tool
     if tool in C.FILE_SOURCE_TOOLS:
         target = inp.get("file_path") or inp.get("path") or cwd
+        if C.transcript_file(paths, target):
+            return "session_transcript"  # re-review 6: the summary cap keys on this source
         if C.untrusted_file(paths, target, trec, cfg):
             return "untrusted_file"
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _reads_a_session(command) or C.names_transcripts(command, paths)[0]:
+        if _reads_a_session(command, tool) or C.names_transcripts(command, paths)[0]:
             return "session_transcript"
         if re.search(r"fetch_file\.py", command, re.I):
             return "fetch_file"  # any run of it reads the web, ours or not
@@ -891,10 +910,10 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
         return _deny(C.OWN_TRANSCRIPT_REASON), "worker transcripts"
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if C.names_transcripts(command, paths)[1]:
+        if C.names_transcripts(command, paths)[1] or C.searches_transcripts(command):
             return _deny(C.OWN_TRANSCRIPT_REASON), "worker transcripts"
-        if SESSIONS_RE.search(command) and not _is_our_lone_script(command, SESSIONS_SCRIPT,
-                                                                   task, tool):
+        if _runs_worker_sessions(command, tool) and not _is_our_lone_script(
+                command, SESSIONS_SCRIPT, task, tool):
             # Review findings 1 and 1b: a pipe, a redirect, another task's --task, any other
             # spelling never runs (it would read untainted, or plant a plan on another card).
             return _deny(_sessions_reason()), "sessions"

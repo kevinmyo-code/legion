@@ -59,7 +59,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent))  # own modules after the stdlib
 from common import (Paths, TokenRefused, add_task_arg, find_token, is_under, load_config,  # noqa: E402
-                    read_json, write_json_atomic)
+                    read_json, task_file, write_json_atomic)
 
 HERE = Path(__file__).resolve().parent
 
@@ -69,6 +69,7 @@ TURN_CHARS = 800
 EXCERPT_CHARS = 8000
 TAIL_BYTES = 2 * 1024 * 1024  # a two-turn transcript was 463 KB: read the end, never the whole
 TEXT_MAX = 2000
+TEXT_FILE_CAP = 64 * 1024
 SUMMARY_MAX = 400  # a task that read a transcript sends at most this much summary off the laptop
 SEND_KIND = "session_send"
 COURIER_TOOLS = "ListAgents,SendMessage,ToolSearch"
@@ -86,9 +87,27 @@ URL_USERINFO = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/\s@]+@", re.I)
 SECRET_VALUE = re.compile(
     r"\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|auth)"
     r"(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|\S+)", re.I)
-# Review finding 3: what Kevin cannot see on the card never goes: format (zero-width, bidi, tags),
-# private-use, unassigned and surrogate characters, and controls other than a newline.
-HIDDEN_CATEGORIES = {"Cf", "Co", "Cn", "Cs", "Cc"}
+# Re-review 9: "my password is X", OPENAI_KEY=..., Authorization: Bearer ...
+SECRET_SAID = re.compile(r"\b(password|passphrase|passcode|pin|secret|token)\s+(?:is|was)\s+\S+",
+                         re.I)
+SECRET_NAMED = re.compile(r"\b([A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|CREDENTIALS?)"
+                          r"[A-Za-z0-9_]*)(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|\S+)")
+BEARER = re.compile(r"\bBearer\s+\S+", re.I)
+# Review finding 3 and re-review 3: what Kevin cannot see on the card never goes. An ALLOWLIST:
+# letters, marks, digits, punctuation and symbols, plus the plain space and a newline; never a
+# default-ignorable or blank-looking code point (variation selectors, the grapheme joiner, Hangul
+# fillers, the braille blank). NBSP and every other space is a Zs, so it is refused too.
+SHOWN_CATEGORIES = {"Lu", "Ll", "Lt", "Lm", "Lo", "Mn", "Mc", "Me", "Nd", "Nl", "No", "Pc", "Pd",
+                    "Ps", "Pe", "Pi", "Pf", "Po", "Sm", "Sc", "Sk", "So"}
+BLANK_LOOKING = (set(range(0xFE00, 0xFE10)) | set(range(0xE0100, 0xE01F0))
+                 | set(range(0x180B, 0x1810)) | {0x034F, 0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800,
+                                                  0x17B4, 0x17B5, 0x2028, 0x2029})
+
+
+def hidden_chars(text: str) -> list[str]:
+    """Every character of `text` that the card might not show as itself."""
+    return [c for c in text if c not in " \n" and (
+        unicodedata.category(c) not in SHOWN_CATEGORIES or ord(c) in BLANK_LOOKING)]
 
 
 class Refused(Exception):
@@ -196,6 +215,9 @@ def _text_of(entry: dict) -> tuple[str, str] | None:
     text = SHELL_BLOCKS.sub("", text)
     text = URL_USERINFO.sub(r"\1[removed]@", text)
     text = SECRET_VALUE.sub(r"\1\2[removed]", text)
+    text = SECRET_SAID.sub(r"\1 [removed]", text)
+    text = SECRET_NAMED.sub(r"\1\2[removed]", text)
+    text = BEARER.sub("Bearer [removed]", text)
     text = TOKENISH.sub("[long string removed]", " ".join(text.split()))
     return (kind, text) if text else None
 
@@ -269,15 +291,16 @@ def question(plan: dict, machine: str) -> str:
 
 def ask(paths: Paths, cfg: dict, task: int, wanted: str, text_file: str, rows: list[dict],
         now: float) -> str:
-    f = Path(text_file)
-    if not f.is_file() or not is_under(f, paths.task_work(task)):
-        raise Refused("the message must be a text file in this task's own work folder")
     try:
+        # re-review 8: one path per job, the 64 KB cap every worker script reads free text by
+        f = task_file(text_file, [paths.task_work(task)], cap=TEXT_FILE_CAP)
         text = f.read_text(encoding="utf-8").strip()
+    except ValueError as e:
+        raise Refused(str(e)) from None
     except (OSError, UnicodeDecodeError):
         raise Refused("the message file could not be read as text") from None
     text = unicodedata.normalize("NFC", text)
-    hidden = [c for c in text if c != "\n" and unicodedata.category(c) in HIDDEN_CATEGORIES]
+    hidden = hidden_chars(text)
     if hidden:
         raise Refused(f"the message holds {len(hidden)} invisible or control characters (for "
                       f"example U+{ord(hidden[0]):04X}); write it in plain visible text")
@@ -323,7 +346,7 @@ def sending_path(paths: Paths) -> Path:
 
 def courier_settings(paths: Paths, python: str) -> Path:
     s = paths.sends / "courier-settings.json"
-    cmd = f'"{python}" "{HERE / "courier_hook.py"}"'
+    cmd = f'"{python}" -I -S "{HERE / "courier_hook.py"}"'
     write_json_atomic(s, {"hooks": {"PreToolUse": [
         {"matcher": "*", "hooks": [{"type": "command", "command": cmd}]}]}})
     return s
@@ -341,7 +364,8 @@ def courier_prompt(plan: dict) -> str:
 
 def courier_env(base: dict, paths: Paths) -> dict:
     env = {k: v for k, v in base.items()
-           if k != "CLAUDECODE" and not k.startswith("CLAUDE_CODE_") and k != "ANTHROPIC_API_KEY"}
+           if k != "CLAUDECODE" and not k.startswith("CLAUDE_CODE_") and k != "ANTHROPIC_API_KEY"
+           and not k.upper().startswith("PYTHON")}  # re-review 1: nothing steers the gate's python
     env["LEGION_CLAUDE_HOME"] = str(paths.root)
     env["LEGION_CLAUDE_WORKER"] = "1"  # Kevin's session hooks skip it
     return env
@@ -384,7 +408,8 @@ def preflight(python: str, env: dict) -> None:
     """The gate must answer before anything runs: probe 0 saw a broken hook command FAIL OPEN."""
     probe = json.dumps({"tool_name": "SendMessage", "tool_input": {"to": "x", "message": "y"}})
     try:
-        out = subprocess.run([python, str(HERE / "courier_hook.py")], input=probe, text=True,
+        out = subprocess.run([python, "-I", "-S", str(HERE / "courier_hook.py")], input=probe,
+                             text=True,
                              capture_output=True, timeout=30, env=env,
                              creationflags=0x08000000 if sys.platform == "win32" else 0)
         decision = json.loads(out.stdout)["hookSpecificOutput"]["permissionDecision"]
@@ -435,6 +460,8 @@ def send(paths: Paths, cfg: dict, task: int, token: str, rows: list[dict], now: 
         except OSError:
             pass
     ok, passed = delivered(out), gate.get("state") == "sent"
+    write_json_atomic(plan_path(paths, plan["task"]),
+                      {**plan, "spent_at": now, "delivered": bool(ok and passed)})
     _history(paths, {"task": int(task), "plan_task": plan["task"], "sha256": plan["sha256"],
                      "delivered": ok, "gate_passed": passed, "at": now})
     if ok and passed:

@@ -134,9 +134,17 @@ class TestOneYesOneToken(T.TestWorkerCard):
                  "confirms": True, "started_at": time.time(), "turns": 0}
             self.w.state["tasks"][str(tid)] = f
             text = self.w.task_message(f, self.paths.task_work(tid))
-        self.assertIn("already said yes", text)
+        # Re-review 5: the first yes never sent anything here, so it says so, never "handled".
+        self.assertIn("was not delivered", text)
+        self.assertIn("ask again for a new card", text)
         self.assertEqual(sorted(p.name for p in self.paths.tokens.glob("*.json")),
                          [f"42-{S.SEND_KIND}.json"])
+        plan = read_json(S.plan_path(self.paths, 41))
+        write_json_atomic(S.plan_path(self.paths, 41), {**plan, "spent_at": 1.0, "delivered": True})
+        f = {"id": 44, "parent": 41, "request": "yes", "status": "running", "kind": "ask",
+             "confirms": True, "started_at": time.time(), "turns": 0}
+        self.w.state["tasks"]["44"] = f
+        self.assertIn("it was delivered", self.w.task_message(f, self.paths.task_work(44)))
 
     def test_a_task_that_read_a_session_sends_a_short_summary(self):
         t = {"id": 41, "parent": None, "request": "summarise garden", "status": "running",

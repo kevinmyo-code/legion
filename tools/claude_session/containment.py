@@ -270,10 +270,32 @@ def holds_transcripts(target: str) -> bool:
 
 def names_transcripts(command: str, paths: Paths) -> tuple[bool, bool]:
     """(names any transcript folder, names the worker's own) for a shell command, as text: a
-    command that reads `~/.claude/projects` is a source like a web page (review finding 4)."""
+    command that reads `~/.claude/projects` is a source like a web page (review finding 4). A
+    command naming `.claude` and `projects` anywhere counts (`cd ~/.claude; ls projects`)."""
     flat = (command or "").replace("\\", "/").lower()
-    return (".claude/projects" in flat or _own_prefix(paths) in flat,
+    return (".claude/projects" in flat or _own_prefix(paths) in flat
+            or (".claude" in flat and re.search(r"(?<![\w-])projects(?![\w-])", flat) is not None),
             _own_prefix(paths) in flat)
+
+
+RECURSIVE_RE = re.compile(
+    r"(?:^|\s)(?:-r|-R|-rl|-ri|-rn|--recursive|-Recurse|/s)(?:\s|$)|(?:^|[\s;&|(])rg(?:\.exe)?\s"
+    r"|\*\*", re.I)
+
+
+def searches_transcripts(command: str) -> bool:
+    """A recursive search that names `.claude` walks every transcript, the worker's own
+    included (re-review 4b): never run, whatever it looks for. A search rooted higher (the home
+    folder) without naming `.claude` is not caught here (said in the report)."""
+    flat = (command or "").replace("\\", "/").lower()
+    return ".claude" in flat and RECURSIVE_RE.search(command or "") is not None
+
+
+def transcript_file(paths: Paths, target: str) -> bool:
+    """A file under `~/.claude/projects` other than the worker's own saved tool output."""
+    root = transcripts_root()
+    return bool(target) and root is not None and is_under(target, root) and not (
+        saved_tool_output(target) and in_worker_project(paths, target))
 
 
 def untrusted_file(paths: Paths, target: str, task_rec: dict | None, cfg: dict) -> bool:
