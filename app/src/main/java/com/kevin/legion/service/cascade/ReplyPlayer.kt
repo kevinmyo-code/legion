@@ -109,14 +109,13 @@ internal class ReplyPlayer(
                     null
                 }
             } ?: return
-            if (head >= framesWritten) return
             val now = System.currentTimeMillis()
             if (head != lastHead) {
                 lastHead = head
                 movedAt = now
-            } else if (now - movedAt >= STALL_MS) {
-                return
             }
+            // Drained, or the head has stopped moving (a track that never started): either way, done.
+            if (head >= framesWritten || now - movedAt >= STALL_MS) return
             delay(POLL_MS)
         }
     }
