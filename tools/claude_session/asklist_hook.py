@@ -121,9 +121,6 @@ SKILL_WRITE_RE = re.compile(
     r"(?<![\w./\\-])(?:cp|copy|cpi|xcopy|robocopy|ni|mkdir|md|tee|touch|unzip|tar)(?:\.exe)?\s"
     r"|Copy-Item|New-Item|Tee-Object|\bsed\b[^|;&]*\s-i|Expand-Archive"
     r"|\bgit\b[^|;&]*\b(checkout|restore|clone|worktree|apply|am)\b|\bpython\S*\s", re.I)
-_LEAD_RE = re.compile(
-    r'^\s*&?\s*(?:"[^"]*python[0-9.]*(?:\.exe)?"|\S*python[0-9.]*(?:\.exe)?)\s+'
-    r'(?:"(?P<q>[^"]+)"|(?P<s>\S+))(?P<rest>.*)$', re.I | re.S)
 REPORT_RE = re.compile(r"report\.py\b", re.I)
 
 # Things that look like a path inside a command.
@@ -152,23 +149,36 @@ def _is_lone_report(command: str, task: int | None = None) -> bool:
     return _is_our_lone_script(command, "report.py", task)
 
 
+def _plain(path: str) -> str:
+    """A path as TEXT, compared without resolving anything (re-review A1/A2: realpath collapsed
+    `x/$(cmd)/..`, so shell syntax hid in a folder that `..` then cancelled). Case and slashes
+    only; Git Bash's `/c/` is `c:/`."""
+    t = str(path).replace("\\", "/").lower()
+    g = re.match(r"^/([a-z])/(.*)$", t)
+    return f"{g.group(1)}:/{g.group(2)}" if g else t
+
+
 def _own_python() -> str:
     """The interpreter the worker gives helpers (`worker.helper_python`): this hook's own."""
     exe = Path(sys.executable)
     if exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").exists():
         exe = exe.parent / "python.exe"
-    return norm(exe)
+    return _plain(str(exe))
 
 
 # Unquoted, any of these chains, redirects or runs something in Bash or PowerShell (`( )` and
-# `{ }` run a PowerShell subexpression or script block as an argument).
-_UNSAFE_UNQUOTED = re.compile(r"[$`;|&<>(){}\r\n]")
+# `{ }` run a PowerShell subexpression or script block as an argument; `#` starts a comment).
+_UNSAFE_UNQUOTED = re.compile(r"[$`;|&<>(){}#\r\n]")
 # Inside double quotes both shells still expand `$` and backticks. A backslash before a quote is
 # an escape to Bash and not to PowerShell, so the two would disagree on where the string ends.
 _UNSAFE_IN_DOUBLE = re.compile(r"[$`\r\n]")
 # PowerShell also takes these typographic marks as quotes, so they would move quote boundaries.
 _SMART_QUOTES = re.compile("[‘’‚‛“”„]")
-_TASK_ARG_RE = re.compile(r"(?:^|\s)--task(?:\s+|=)['\"]?(\d+)")
+# Control characters and the spaces one shell may split on and the other not.
+_ODD_CHARS = re.compile(
+    "[\x00-\x08\x0b-\x1f\x7f   -​    　﻿]")
+_DOTDOT = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)")
+_TASK_PREFIXES = ("--t", "--ta", "--tas")  # what argparse would once have expanded to --task
 
 
 def _args_safe(rest: str) -> bool:
@@ -179,7 +189,7 @@ def _args_safe(rest: str) -> bool:
     text may hold `;` or `( )` (literal in both) but nothing in `_UNSAFE_IN_DOUBLE`; unquoted text
     nothing in `_UNSAFE_UNQUOTED`. A backslash before a quote, a typographic quote or an unclosed
     quote fails: the two shells would disagree on where a string ends."""
-    if _SMART_QUOTES.search(rest):
+    if _SMART_QUOTES.search(rest) or _ODD_CHARS.search(rest):
         return False
     unquoted, in_double, i, dq = [], [], 0, False
     while i < len(rest):
@@ -205,27 +215,63 @@ def _args_safe(rest: str) -> bool:
                 or _UNSAFE_IN_DOUBLE.search("".join(in_double)))
 
 
+def _words(text: str) -> list[str]:
+    """Shell words with their quotes removed. Only called on text `_args_safe` passed, where the
+    two shells agree on every boundary."""
+    words, cur, i, dq, has = [], [], 0, False, False
+    while i < len(text):
+        c = text[i]
+        if c == "'" and not dq:
+            j = text.find("'", i + 1)
+            cur.append(text[i + 1:j])
+            i, has = j + 1, True
+            continue
+        if c == '"':
+            dq, has = not dq, True
+        elif c in " \t" and not dq:
+            if cur or has:
+                words.append("".join(cur))
+            cur, has = [], False
+        else:
+            cur.append(c)
+        i += 1
+    if cur or has:
+        words.append("".join(cur))
+    return words
+
+
 def _is_our_lone_script(command: str, script: str, task: int | None = None) -> bool:
-    """`<worker's python> <this folder>/<script> ...` alone. The interpreter must be the worker's
-    own (a helper could write a file named `python`), the script THIS folder's copy (a helper
-    could write its own ship.py), nothing may be chained to it or expanded inside its arguments
-    (`_args_safe`), and a helper of task N may name only `--task N`."""
-    m = _LEAD_RE.match(command or "")
-    if not m:
+    """`<worker's python> <this folder>/<script> ...` alone (2026-11-22 review F1, re-review A1-A3).
+
+    - The WHOLE command, interpreter and script words included, passes `_args_safe`: nothing is
+      chained, expanded or split differently by Bash and PowerShell. A leading PowerShell `&`
+      call operator is the one exception.
+    - No `..` path step anywhere: shell syntax could hide in a folder `..` then cancels.
+    - The first two words, as plain text (never resolved), are the worker's own interpreter (a
+      helper could write a file named `python`) and THIS folder's copy of the script.
+    - Exactly one `--task` (no abbreviation such as `--tas`; the scripts refuse those too), and for
+      a helper of task N it is N."""
+    text = re.sub(r"^\s*&\s*", "", command or "", count=1)
+    if not text.strip() or not _args_safe(text) or _DOTDOT.search(text):
         return False
-    lead = re.match(r'^\s*&?\s*(?:"([^"]+)"|(\S+))', command)
-    if lead is None or norm(_to_os_path(lead.group(1) or lead.group(2))) != _own_python():
+    words = _words(text)
+    if len(words) < 2 or _plain(words[0]) != _own_python():
         return False
-    p = m.group("q") or m.group("s")
-    if norm(_to_os_path(p)) != norm(HERE / script):
+    if _plain(words[1]) != _plain(str(HERE / script)):
         return False
-    rest = m.group("rest")
-    if not _args_safe(rest):
-        return False
-    if task is not None:
-        named = {int(x) for x in _TASK_ARG_RE.findall(rest)}
-        if named and named != {int(task)}:
+    tasks: list[str] = []
+    args = words[2:]
+    for i, w in enumerate(args):
+        if w in _TASK_PREFIXES or w.startswith(tuple(p + "=" for p in _TASK_PREFIXES)):
             return False
+        if w == "--task":
+            tasks.append(args[i + 1] if i + 1 < len(args) else "")
+        elif w.startswith("--task="):
+            tasks.append(w[len("--task="):])
+    if len(tasks) > 1:
+        return False
+    if task is not None and tasks != [str(int(task))]:
+        return False
     return True
 
 

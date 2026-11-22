@@ -95,7 +95,7 @@ def fetch(paths: Paths, cfg: dict, task: int, url: str, name: str | None, opener
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="fetch_file.py")
+    ap = argparse.ArgumentParser(prog="fetch_file.py", allow_abbrev=False)
     ap.add_argument("--task", type=int, required=True)
     ap.add_argument("--url", required=True)
     ap.add_argument("--name")

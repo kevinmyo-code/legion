@@ -666,9 +666,9 @@ def read_ships(paths: Paths) -> list[dict]:
 
 
 def parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="ship.py", description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(prog="ship.py", allow_abbrev=False, description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
-    ask = sub.add_parser("ask", help="check, test, and print the ship question (no token)")
+    ask = sub.add_parser("ask", allow_abbrev=False, help="check, test, and print the ship question (no token)")
     ask.add_argument("--task", type=int, required=True)
     ask.add_argument("--kind", required=True, choices=KINDS)
     ask.add_argument("--branch")
@@ -681,7 +681,7 @@ def parser() -> argparse.ArgumentParser:
     ask.add_argument("--author", default="")
     ask.add_argument("--licence-note", dest="licence_note")
     ask.add_argument("--source-url", dest="source_url")
-    run = sub.add_parser("run", help="ship what Kevin said yes to (needs the token)")
+    run = sub.add_parser("run", allow_abbrev=False, help="ship what Kevin said yes to (needs the token)")
     run.add_argument("--task", type=int, required=True)
     run.add_argument("--token", required=True)
     run.add_argument("--branch", help="optional; must match the question")
