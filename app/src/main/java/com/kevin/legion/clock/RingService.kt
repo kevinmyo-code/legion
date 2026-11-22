@@ -11,7 +11,6 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.kevin.legion.ui.clock.RingActivity
@@ -34,7 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class RingService : Service() {
     private val handler = Handler(Looper.getMainLooper())
-    private val sound by lazy { AlarmSound(this) }
+    private val sound by lazy { soundFactory(this) }
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -52,7 +51,7 @@ class RingService : Service() {
 
     private fun add(request: RingRequest) {
         mutable.value = ringing.value.filterNot { it.key() == request.key() } + request
-        startInForeground(notification(request))
+        startInForeground(RingNotification.build(this, request))
         if (wakeLock == null) {
             wakeLock = getSystemService(PowerManager::class.java)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "legion:clock-ring")
@@ -81,7 +80,7 @@ class RingService : Service() {
         mutable.value = ringing.value.filterNot { it.kind == kind && it.id == id }
         val next = ringing.value.lastOrNull()
         if (next != null) {
-            startInForeground(notification(next))
+            startInForeground(RingNotification.build(this, next))
             return
         }
         sound.stop()
@@ -121,40 +120,14 @@ class RingService : Service() {
             .onFailure { Log.e(TAG, "could not start the ring in the foreground", it) }
     }
 
-    private fun notification(r: RingRequest): Notification {
-        ClockNotifier.ensureChannels(this)
-        val full = RingActivity.pendingIntent(this)
-        val title = when (r.kind) {
-            RingKind.ALARM -> "Alarm"
-            RingKind.TIMER -> "Timer done"
-            RingKind.ALERT -> "Emergency alert"
-        }
-        val b = NotificationCompat.Builder(this, ClockNotifier.CHANNEL_RING)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(title)
-            .setContentText(r.label)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
-            .setSilent(true)
-            .setContentIntent(full)
-            .setFullScreenIntent(full, true)
-        if (r.kind == RingKind.ALARM) {
-            b.addAction(0, "Snooze", ClockNotifier.action(this, ClockActionReceiver.ACTION_SNOOZE, r.id))
-            b.addAction(0, "Dismiss", ClockNotifier.action(this, ClockActionReceiver.ACTION_DISMISS, r.id))
-        } else if (r.kind == RingKind.TIMER) {
-            b.addAction(0, "+1 min", ClockNotifier.action(this, ClockActionReceiver.ACTION_TIMER_ADD, r.id))
-            b.addAction(0, "Stop", ClockNotifier.action(this, ClockActionReceiver.ACTION_TIMER_STOP, r.id))
-        }
-        return b.build()
-    }
-
     companion object {
         private const val TAG = "AlfredClock"
         private const val EXTRA_KIND = "kind"
         private const val EXTRA_ID = "id"
         private const val EXTRA_LABEL = "label"
+
+        /** Test seam: what plays the ring. */
+        internal var soundFactory: (Context) -> RingSound = ::AlarmSound
 
         @Volatile private var current: RingService? = null
         private val mutable = MutableStateFlow<List<RingRequest>>(emptyList())

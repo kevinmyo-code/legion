@@ -14,8 +14,16 @@ interface ClockTime {
     fun bootCount(): Int
 }
 
-/** What rings. [ALERT] is an emergency in the area (ADR 0082, [com.kevin.legion.service.SafetyAlarms]). */
-enum class RingKind { ALARM, TIMER, ALERT }
+/**
+ * What rings. [ALERT] is an emergency in the area (ADR 0082, [com.kevin.legion.service.SafetyAlarms]).
+ * [title] is what the ring screen, the notification and the in-app Stop bar call it; [audit] is the
+ * kind on the ring's log lines ([RingAudit]).
+ */
+enum class RingKind(val title: String, val audit: String) {
+    ALARM("Alarm", "clock_alarm"),
+    TIMER("Timer done", "clock_timer"),
+    ALERT("Emergency alert", "emergency"),
+}
 
 data class RingRequest(val kind: RingKind, val id: Int, val label: String)
 
