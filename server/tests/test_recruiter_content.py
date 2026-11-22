@@ -489,6 +489,50 @@ def test_projects_refuse_unknown_and_missing_keys():
     assert problems(no_parts)
 
 
+def test_a_project_section_may_carry_a_demo_link_a_theme_and_an_orb_mark():
+    """Kevin, 2026-11-22: a live demo link, a palette per section, and the orb's mark."""
+    content = fake_content() | fake_projects()
+    content["project_sections"][0].update(
+        link={"href": "https://demo.example.test", "label": "Try the live demo"},
+        theme="quanex",
+        orb_mark="q",
+    )
+    assert problems(content) == []
+
+
+def test_the_legion_section_may_carry_a_quality_block_and_refuses_a_bad_one():
+    """Kevin, 2026-11-22: "quality for voice agents" inside the LEGION section."""
+    content = fake_content() | fake_projects()
+    content["legion"]["quality"] = {
+        "title": "Quality for voice agents",
+        "stats": [{"value": "12", "label": "lorem cases"}],
+        "checks": [{"title": "Lorem", "body": "Ipsum."}],
+    }
+    assert problems(content) == []
+    content["legion"]["quality"]["stats"] = [{"value": "1", "label": "x"}] * 7
+    assert problems(content)
+    content["legion"]["quality"] = {"title": "Q", "stats": [], "checks": [], "extra": 1}
+    assert problems(content)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("link", {"href": "http://demo.example.test", "label": "Try it"}),
+        ("link", {"href": "javascript:alert(1)", "label": "Try it"}),
+        ("link", {"href": "https://demo.example.test"}),
+        ("link", {"href": "https://demo.example.test", "label": "x", "target": "_top"}),
+        ("theme", "neon"),
+        ("orb_mark", "logo"),
+    ],
+)
+def test_a_project_section_refuses_a_bad_link_theme_or_mark(key, value):
+    content = fake_content() | fake_projects()
+    content["project_sections"][0][key] = value
+    found = problems(content)
+    assert found and found[0].startswith(f"project_sections/0/{key}")
+
+
 @pytest.mark.parametrize("bad_id", ["legion", "work", "Fake Two", "1fake", "", "x" * 41])
 def test_a_project_section_id_is_a_safe_anchor_the_page_does_not_already_use(bad_id):
     content = fake_content() | fake_projects()
