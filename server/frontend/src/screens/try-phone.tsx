@@ -7,9 +7,8 @@ import type { OrbSide } from '@/components/demo/scroll-story'
 /**
  * "LEGION on the phone": one clip per capability, cut from one recording. ONE player (Kevin,
  * 2026-11-19: "each section should be a separate video, like the old clips"), full width of the
- * column at 16:9, because the clips are landscape (Kevin, 2026-11-22: "the clips are meant to be a
- * horizontal video so u can remove the phone boundary thing on the page. and put it as a full
- * width video"). A wide player cannot sit beside the texts, so it no longer pins or follows the
+ * column at 16:9, because the clips are landscape (Kevin's ruling, 2026-11-22: no phone frame,
+ * a full-width video). A wide player cannot sit beside the texts, so it no longer pins or follows the
  * scroll: under it, each capability's text has a Play button that puts its clip in the player.
  *
  * Nothing plays by itself. A clip with a `video` is a `<video>` with controls that loads nothing
@@ -68,7 +67,7 @@ export function PhoneSection({ phone, side }: { phone: DemoPhone; side?: OrbSide
         </figure>
         <div>
           {clips.map((clip, index) => (
-            <div key={`${index}-${clip.title}`} className="rc-step" data-active={index === shown ? '' : undefined}>
+            <div key={`${index}-${clip.title}`} className="rc-step">
               <h3 className="rc-h3">{clip.title}</h3>
               <p>{clip.body}</p>
               {clip.video && (

@@ -12,10 +12,9 @@ import { StoreRepSection } from './store-rep/store-rep-section'
 import { VoiceStage } from './voice-stage'
 
 /**
- * Kevin, 2026-11-22: "when scrolled down to the sales rep page. the orb shouldnt be alfred anymore
- * it should be automatically the store rep". Beside the store-rep section (the orb wears the shop's
- * mark) the orb's tap opens the rep, as the section's own button does; elsewhere it is the guide; a
- * conversation already open is never switched by scrolling. Invented shop.
+ * Kevin's ruling, 2026-11-22: beside the store-rep section (the orb wears the shop's mark) the
+ * orb's tap opens the rep, as the section's own button does; elsewhere it is the guide; a
+ * conversation in progress is never switched by scrolling. Invented shop.
  */
 
 const STATE = { active: false, shop_name: 'Larkspur & Pine', products: [], orders: [], callback: 'off' }
@@ -111,6 +110,42 @@ describe('the orb beside the store-rep section', () => {
     await tapOrb()
     expect(log[0]).toBe('scenario guide')
     expect(log).toContain('TURN greet')
+  })
+
+  test('after a typed question has been answered, a tap beside the section is the rep', async () => {
+    const log: string[] = []
+    serve(false, log)
+    mount(log)
+    await screen.findByRole('button', { name: 'Talk to the store rep' })
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox', { name: /^Type to / }), { target: { value: 'Hi there' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await settle()
+    })
+    expect(log.filter((line) => line.startsWith('scenario'))).toEqual([])
+    act(() => setOrbPlace({ mark: 'larkspur' }))
+    expect(stageOrb()).toHaveAttribute('aria-label', 'Talk to the store rep')
+    await tapOrb()
+    expect(log.filter((line) => line.startsWith('scenario'))).toEqual(['scenario rep'])
+    expect(log[log.length - 1]).toBe('TURN greet')
+  })
+
+  test('a rep conversation, then out of the section: the next tap is the guide again', async () => {
+    const log: string[] = []
+    serve(false, log)
+    mount(log)
+    await screen.findByRole('button', { name: 'Talk to the store rep' })
+    act(() => setOrbPlace({ mark: 'larkspur' }))
+    await tapOrb()
+    // Listening to the rep: a tap stops it (never a switch).
+    await tapOrb()
+    expect(log.filter((line) => line.startsWith('scenario'))).toEqual(['scenario rep'])
+    act(() => setOrbPlace({ mark: null }))
+    expect(stageOrb()).not.toHaveAttribute('aria-label', 'Talk to the store rep')
+    await tapOrb()
+    expect(log.filter((line) => line.startsWith('scenario'))).toEqual(['scenario rep', 'scenario guide'])
+    expect(log[log.length - 1]).toBe('TURN greet')
   })
 
   test('scrolling into the section mid-conversation does not switch it; the next one is the rep', async () => {

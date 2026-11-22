@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { DemoContent } from '@/api/demo'
@@ -11,7 +11,7 @@ import { ChipRow } from '@/components/demo/chip-row'
 import { useOrbFlight } from '@/components/demo/orb-flight'
 import { useOrbPlace, useStoryGlide, useStoryMotion } from '@/components/demo/scroll-story'
 import { useShopVoice } from '@/components/demo/store-rep/use-shop-voice'
-import { fetchShopState, SHOP_STATE_KEY, type ShopState } from '@/lib/store-rep'
+import { fetchShopState, SHOP_STATE_KEY } from '@/lib/store-rep'
 
 /**
  * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"). A long
@@ -128,17 +128,17 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const interruptible = speaking || state.activity === 'thinking'
   const voiceOn = state.mic === 'on'
 
-  // Beside the store-rep section (the orb wears the shop's mark there) a tap that opens a
-  // conversation opens it with the rep; elsewhere, with the guide (Kevin, 2026-11-22: "the orb
-  // shouldnt be alfred anymore it should be automatically the store rep"). A conversation already
-  // open is never switched by scrolling: only the next one picks its persona by section.
-  const queryClient = useQueryClient()
+  // Beside the store-rep section (the orb wears the shop's mark there) the orb's next start is the
+  // rep; elsewhere, the guide (Kevin's ruling, 2026-11-22). A start tap whose persona differs from
+  // the visit's opens a fresh conversation as the right one, as the section's button does; one
+  // that matches resumes. A tap while listening, thinking or speaking still stops or interrupts,
+  // so scrolling never switches a conversation in progress.
   const { startAs } = useShopVoice()
   const inShop = place.mark === 'larkspur'
-  // Only a demo visit has a shop; the section has asked for its state already (same key).
-  const shop = useQuery({ queryKey: SHOP_STATE_KEY, queryFn: fetchShopState, staleTime: 5_000, enabled: inShop && Boolean(cascade) })
-  const between = state.phase !== 'live'
-  const repNext = Boolean(cascade && inShop && between && shop.data)
+  // Only a demo visit has a shop; the section asks for the same state (one cache entry).
+  const shop = useQuery({ queryKey: SHOP_STATE_KEY, queryFn: fetchShopState, staleTime: 5_000, enabled: Boolean(cascade) })
+  const switchTo = cascade && shop.data && shop.data.active !== inShop ? inShop : null
+  const repNext = switchTo === true
 
   const freshIfEnded = () => {
     if (state.phase === 'ended') client.reset()
@@ -147,8 +147,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
     freshIfEnded()
     if (interruptible) client.interrupt()
     else if (voiceOn) client.stopVoice()
-    else if (repNext) startAs(true)
-    else if (cascade && between && queryClient.getQueryData<ShopState | null>(SHOP_STATE_KEY)?.active) startAs(false)
+    else if (switchTo !== null) startAs(switchTo)
     else void client.startVoice()
   }
   const tapChip = (chip: SuggestChip) => {
