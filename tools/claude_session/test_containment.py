@@ -519,7 +519,7 @@ class TestToPdf(Base):
         def render(page, out, scratch):
             seen.append(page.read_text(encoding="utf-8"))
             self.assertFalse(is_under(page, self.work), "the copy is never in the work folder")
-            out.write_bytes(b"%PDF-1.7 fake")
+            out.write_bytes(b"%PDF-1.7 fake\n%%EOF\n")
         return render
 
     def test_makes_a_pdf_beside_the_page_from_a_sanitised_copy_and_lists_it_as_written(self):
@@ -580,11 +580,35 @@ class TestToPdf(Base):
         with self.assertRaises(ValueError):
             to_pdf.convert(self.paths, 41, "day.html", None, render=lambda page, out, scratch: None)
         self.assertFalse((self.work / "day.pdf").exists())
+        # Review F7: a print cut off mid-write (no %%EOF) or not a PDF at all is refused and gone.
+        for bad in (b"%PDF-1.7 half a file", b"<html>not a pdf</html>\n%%EOF"):
+            with self.subTest(bad=bad[:12]):
+                with self.assertRaises(ValueError) as cm:
+                    to_pdf.convert(self.paths, 41, "day.html", None,
+                                   render=lambda page, out, scratch, b=bad: out.write_bytes(b))
+                self.assertIn("no complete PDF", str(cm.exception))
+                self.assertFalse((self.work / "day.pdf").exists())
+
+    def test_every_meta_is_dropped_so_no_refresh_can_navigate(self):
+        """Review F6: the CSP does not cover navigation; dropping <meta> is the only barrier
+        against a refresh to a file:// page. The copy keeps exactly our two."""
+        page = to_pdf.sanitise(
+            '<META HTTP-EQUIV="Refresh" CONTENT="0;url=file:///c:/s.html">'
+            '<meta/http-equiv=refresh/content=0;url=file:///c:/s.html>'
+            '<svg/><meta http-equiv="refresh" content="0;url=file:///c:/s.html">'
+            '<style/><!--><meta http-equiv="refresh" content="1;url=https://x.example">'
+            "<p>kept</p>")
+        self.assertEqual(page.lower().count("<meta"), 2)
+        self.assertNotIn("refresh", page.lower())
+        self.assertNotIn("file:", page.lower())
+        self.assertIn("<p>kept</p>", page)
 
     def test_the_browser_runs_with_no_network_and_a_throwaway_profile(self):
         argv = to_pdf.browser_argv("edge.exe", Path("/t/profile"), self.work / "p.html",
                                    self.work / "p.pdf")
-        self.assertIn("--host-resolver-rules=MAP * ~NOTFOUND", argv)
+        # Review F6: the resolver rule is the flag that carries "no network"; pinned exactly, once.
+        self.assertEqual([a for a in argv if a.startswith("--host-resolver-rules")],
+                         ["--host-resolver-rules=MAP * ~NOTFOUND"])
         self.assertIn("--proxy-server=127.0.0.1:9", argv)
         self.assertIn("--headless=new", argv)
         self.assertTrue(any(a.startswith("--user-data-dir=") for a in argv))
@@ -592,9 +616,36 @@ class TestToPdf(Base):
 
     @unittest.skipUnless(sys.platform == "win32" and to_pdf.find_browser(), "needs Edge or Chrome")
     def test_real_browser_prints_a_pdf(self):
-        (self.work / "day.html").write_text("<h1>Garden walk</h1><p>Rose Garden</p>", encoding="utf-8")
-        o = to_pdf.convert(self.paths, 41, "day.html", None)
+        """And a hostile page loads nothing (review F10): a local listener sees no request."""
+        import http.server
+        import threading
+        hits = []
+
+        class Listen(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                hits.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        srv = http.server.HTTPServer(("127.0.0.1", 0), Listen)
+        port = srv.server_address[1]
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        secret = self.docs / "secret.css"
+        secret.write_text("body::after { content: 'CANARY' }", encoding="utf-8")
+        try:
+            (self.work / "day.html").write_text(
+                f"<style>@import url('{secret.as_uri()}'); @import url('http://127.0.0.1:{port}/c');"
+                f" p {{ background: url(http://127.0.0.1:{port}/bg) }}</style>"
+                f"<h1>Garden walk</h1><p>Rose Garden</p><img src='http://127.0.0.1:{port}/i'>",
+                encoding="utf-8")
+            o = to_pdf.convert(self.paths, 41, "day.html", None)
+        finally:
+            srv.shutdown()
         self.assertTrue(o.read_bytes().startswith(b"%PDF"))
+        self.assertEqual(hits, [])
 
 
 class TestWorkerEndToEnd(WorkerCase):

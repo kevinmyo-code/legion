@@ -48,7 +48,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from common import (DELIVER_EMAIL_SELF, DELIVER_FILES, DELIVER_PHONE, FILES_MAX_COUNT,  # noqa: E402
-                    FILES_MAX_TOTAL_BYTES, PAGE_CAP_BYTES, UPLOAD_CAP_BYTES, Paths, load_config,
+                    FILES_MAX_TOTAL_BYTES, PAGE_CAP_BYTES, UPLOAD_CAP_BYTES, Paths, is_under,
+                    load_config,
                     norm, read_json, write_json_atomic)
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
@@ -149,7 +150,11 @@ def files_instructions(confirmed: bool) -> str:
                    "still list them with --found.")
 
 
-MAIL_WORD_RE = re.compile(r"\be-?mail", re.I)
+# Asking for the result BY mail ("email it to me", "mail me the list", "send it by email"), not
+# a request about mail ("summarise my emails", review 2026-11-22 F4).
+MAIL_WORD_RE = re.compile(
+    r"\b(?:e-?mail|mail)\s+(?:it|this|that|them|me|us)\b"
+    r"|\b(?:by|via|over|in\s+an?)\s+e-?mail\b|\bto\s+my\s+(?:e-?mail|inbox)\b", re.I)
 
 
 def no_mail_line(to_phone: bool) -> str:
@@ -1019,6 +1024,8 @@ class Worker:
             reason = "a scheduled run never sends files"
         elif not t or norm(path) not in allowed:
             reason = "not a file that task listed"
+        elif not self.uploadable(tid, path):
+            reason = "a worker or credential file"
         elif not Path(path).is_file():
             reason = "file is gone"
         elif Path(path).stat().st_size > UPLOAD_CAP_BYTES:
@@ -1038,6 +1045,22 @@ class Worker:
             return
         self.uploaded.add(key)
         log.info("file %s for task %s uploaded", fid, tid)
+
+    def uploadable(self, tid, path: str) -> bool:
+        """Review 2026-11-22 F3: a helper can list any path with --found, including ones it may not
+        read. Never the worker's own folder (config and its token, tokens, taint, state, other
+        tasks' folders) except this task's own work folder, and never a credential-like name.
+        Paths resolve first (`is_under` uses realpath), so a link into either fails too. Any doubt
+        is a refusal."""
+        try:
+            own = self.paths.task_work(int(tid))
+            if is_under(path, self.paths.root) and not is_under(path, own):
+                return False
+            real = os.path.realpath(path)
+            return not (containment.CREDENTIAL_NAMES.search(str(path))
+                        or containment.CREDENTIAL_NAMES.search(real))
+        except (OSError, ValueError, TypeError):
+            return False
 
     # ------------------------------------------------------------ claimed tasks
 

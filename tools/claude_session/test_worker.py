@@ -346,13 +346,50 @@ class TestTasks(WorkerCase):
                           request=f"the rates as a PDF, email it to me {fake(sleep=0.1)}")
         self.engine.queue(id=61, request=f"plan the week and e-mail me {fake(sleep=0.1)}")
         self.engine.queue(id=62, request=f"send me the form scan {fake(sleep=0.1)}", deliver="files")
+        # Review F4: a request ABOUT mail is not a request to be mailed.
+        self.engine.queue(id=63, request=f"summarise my emails about the trip {fake(sleep=0.1)}")
+        self.engine.queue(id=64, deliver="files",
+                          request=f"read the email thread and make a PDF {fake(sleep=0.1)}")
+        ids = (60, 61, 62, 63, 64)
         self.start(mail=no_mail)
-        self.wait(lambda: all(self.engine.finished(i) for i in (60, 61, 62)), what="tasks")
-        msg = {i: [m for m in self.msgs() if m.startswith(f"[task {i}]")][0] for i in (60, 61, 62)}
+        self.wait(lambda: all(self.engine.finished(i) for i in ids), what="tasks")
+        msg = {i: [m for m in self.msgs() if m.startswith(f"[task {i}]")][0] for i in ids}
         self.assertIn("sends it to his phone instead", msg[60])
         self.assertIn("to_pdf.py", msg[60])
         self.assertIn("cannot send mail. Say so in the summary.", msg[61])
-        self.assertNotIn("cannot send mail", msg[62])
+        for i in (62, 63, 64):
+            self.assertNotIn("cannot send mail", msg[i])
+
+    def test_mail_word_matches_a_delivery_ask_only(self):
+        for words in ("email it to me", "mail me the list", "send it by email", "e-mail this",
+                      "put it in an email", "send it to my inbox"):
+            with self.subTest(words=words):
+                self.assertTrue(W.MAIL_WORD_RE.search(words))
+        for words in ("summarise my emails", "read the email thread", "check the email from the "
+                      "bank", "how many mails came today", "find the mail about the lease"):
+            with self.subTest(words=words):
+                self.assertFalse(W.MAIL_WORD_RE.search(words))
+
+    def test_files_never_upload_a_worker_or_credential_file_even_when_listed(self):
+        """Review F3: a helper can list any path with --found; the worker's own folder (its config
+        holds the engine token) and credential-like names never go up. A real find still does."""
+        good = Path(self.tmp.name) / "form-scan.pdf"
+        good.write_bytes(b"%PDF scan")
+        env = Path(self.tmp.name) / "deploy.env"
+        env.write_text("SECRET=1")
+        pem = Path(self.tmp.name) / "server.pem"
+        pem.write_text("x")
+        other = self.paths.task_work(70)
+        other.mkdir(parents=True, exist_ok=True)
+        (other / "notes.txt").write_text("other task")
+        found = [str(good), str(self.paths.config), str(env), str(pem), str(other / "notes.txt")]
+        self.engine.queue(id=71, deliver="files", request=(
+            f"send me the form scan {fake(found=found, summary='Found it.')}"))
+        self.start()
+        self.wait(lambda: self.engine.uploads, what="the good upload")
+        self.wait(lambda: self.engine.finished(71), what="task 71")
+        time.sleep(1.0)
+        self.assertEqual([u[2] for u in self.engine.uploads], [b"%PDF scan"])
 
     def test_files_delivery_over_twenty_files_asks_first_and_uploads_nothing(self):
         found = []

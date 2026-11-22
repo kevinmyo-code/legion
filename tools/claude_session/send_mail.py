@@ -1,8 +1,8 @@
 """Send mail from Alfred's own Gmail (rulings 14 and 17, ticket 04). What a helper calls to send.
 
-    python send_mail.py --task 42 --token T --to dad@example.com --subject "Rates" \
+    python send_mail.py --task 42 --token=T --to dad@example.com --subject "Rates" \
         --body "Here is the sheet." --attach C:/.../work/task-42/rates.xlsx
-    python send_mail.py --task 43 --token T --to kevin --subject "..." --body "..." --attach FILE
+    python send_mail.py --task 43 --token=T --to kevin --subject "..." --body "..." --attach FILE
 
 Refuses unless the worker issued a confirmation token for that task (`tokens/<task>.json`):
 - `kind: yes`: Kevin answered yes to the task's needs_confirmation question. Any recipients;

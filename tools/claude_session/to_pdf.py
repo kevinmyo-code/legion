@@ -9,15 +9,20 @@ This script, this folder's own copy, is the PDF path a tainted task may still ru
 and it goes on the written list.
 
 The page is the task's own text, and a task that read the web may have copied anything into it,
-so the renderer is boxed in three ways:
+so the renderer is boxed in three ways (each checked against real Edge, review 2026-11-22 F6):
 - **Sanitised copy.** Scripts, frames, objects, forms, links, `<meta>` and `<base>` are dropped
   with their contents, event handlers and `href`s go, and an image is kept only as a `data:` URI.
-  The copy is written to a fresh temp folder, never into the work folder.
+  Dropping every `<meta>` is the ONLY barrier against a `<meta refresh>` to a `file://` page: the
+  CSP below does not cover navigation. The copy is written to a fresh temp folder, never into the
+  work folder.
 - **A Content-Security-Policy first in the page**: `default-src 'none'`, inline styles and
-  `data:` images and fonts only. Nothing on disk or on the network can be loaded into the PDF.
-- **No network for the browser**: every host name resolves to nothing, the proxy is a dead port,
-  a throwaway profile, extensions, sync and background fetches off, and a 90 s cap that stops the
-  whole process tree.
+  `data:` images and fonts only, so no subresource on disk or on the network loads.
+- **No network for the browser**: `--host-resolver-rules=MAP * ~NOTFOUND` carries the load:
+  every host name, the proxy's included, resolves to nothing. The proxy at 127.0.0.1:9 is only a
+  second layer and NOT dead on its own: any local process that binds port 9 would become the
+  proxy if the resolver rule were removed. Also a throwaway profile, extensions, sync and
+  background fetches off, and a 90 s cap that stops the whole process tree.
+- The output must look like a whole PDF (`%PDF` first, `%%EOF` near the end), or it is deleted.
 
 The renderer is the laptop's own Edge (or Chrome), headless `--print-to-pdf`, with a fixed argv.
 Markdown is turned into HTML with the `markdown` package when it is installed, else shown as
@@ -192,6 +197,20 @@ def edge_render(page: Path, out: Path, scratch: Path) -> None:
         raise RuntimeError("the browser took too long to print") from None
 
 
+def _whole_pdf(p: Path) -> bool:
+    """`%PDF` first and `%%EOF` in the last KB: a print cut off mid-write fails (review F7)."""
+    try:
+        if not p.is_file() or p.stat().st_size < 8:
+            return False
+        with open(p, "rb") as f:
+            head = f.read(5)
+            f.seek(max(0, p.stat().st_size - 1024))
+            tail = f.read()
+    except OSError:
+        return False
+    return head.startswith(b"%PDF") and b"%%EOF" in tail
+
+
 def convert(paths: Paths, task: int, src: str, out: str | None, render=edge_render) -> Path:
     work = paths.task_work(task)
     s = (work / src) if not Path(src).is_absolute() else Path(src)
@@ -217,9 +236,9 @@ def convert(paths: Paths, task: int, src: str, out: str | None, render=edge_rend
         render(page, o, scratch)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-    if not o.is_file() or o.stat().st_size == 0:
+    if not _whole_pdf(o):
         o.unlink(missing_ok=True)
-        raise ValueError("the browser made no PDF")
+        raise ValueError("the browser made no complete PDF")
     C.record_written(paths, str(o))
     return o
 

@@ -9,8 +9,8 @@ the machine is fixed (create with a machine, assign, claim), never on a workflow
   `can_mail: false` becomes `files` (ADR 0080: to the phone) on a `full` machine, and nothing on a
   `listed` one (it returns summaries only, ruling 5). Unknown (`can_mail` null, a worker from
   before the field) keeps the mail as asked.
-- **Asking for something MADE as a file is asking for the file.** "as a PDF", "into a
-  spreadsheet", "make me a PDF of ..." with no delivery of its own becomes `files` on a `full`
+- **Asking for something MADE as a file is asking for the file.** A making verb with "as a PDF",
+  "into a spreadsheet", or "make me a PDF of ..." with no delivery of its own becomes `files` on a `full`
   machine, so the made file is requested at finish and opens on his phone. Finding an existing
   file ("find the AW4 wiring PDF") is not this: it keeps the found-file offer (send on his yes).
 """
@@ -31,8 +31,16 @@ _FORMAT = (
     r"(?:pdf|excel(?:\s+(?:file|sheet|spreadsheet|workbook))?|spreadsheet|workbook|xlsx|csv"
     r"|word\s+(?:doc|document|file)|docx|document)"
 )
-# "... as a PDF", "into a spreadsheet", "as an Excel file".
-_AS_FORMAT = re.compile(rf"\b(?:as|into)\s+(?:an?\s+)?{_FORMAT}\b", re.I)
+# A making verb in its base form, then "as / into / to a <format>" later in the same sentence:
+# "make the plan ... as a PDF", "turn it into a spreadsheet", "export the notes to Excel". The
+# base form is the point: "the lease I saved as a PDF" or "read the report as a PDF" describe a
+# file that exists (review 2026-11-22, F2), and keep the found-file offer.
+_MAKING_VERB = (
+    r"\b(?:make|create|turn|export|convert|save|put|write|draft|build|generate|format|print)\b"
+)
+_AS_FORMAT = re.compile(
+    rf"{_MAKING_VERB}[^.?!]{{0,80}}?\b(?:as|into|to)\s+(?:an?\s+)?{_FORMAT}\b", re.I
+)
 # "make me a PDF of ...", "create an Excel sheet with ...": a making verb directly followed by
 # "a/an <format>" (one "me" or "us" between at most), never "document": "make a note about a
 # document" or "write a summary of a PDF" is about a file that already exists.
