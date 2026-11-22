@@ -145,8 +145,10 @@ object ProactiveDelivery {
     }
 
     /** [routeFor] with this phone's live readings. */
-    suspend fun route(context: Context, raise: ProactiveRaise, gateAllowsSpeech: Boolean, time: LocalTime): Route =
-        routeFor(
+    suspend fun route(context: Context, raise: ProactiveRaise, gateAllowsSpeech: Boolean, time: LocalTime): Route {
+        // An alert not dangerous enough to ring is posted, day or night (the owner, 2026-11-21).
+        if ((raise.urgency as? ProactiveUrgency.Alarm)?.rings == false) return Route.NOTIFY
+        return routeFor(
             gateAllowsSpeech = gateAllowsSpeech,
             alarm = raise.urgency is ProactiveUrgency.Alarm,
             quietHour = ProactiveBus.isQuietHour(time),
@@ -154,6 +156,7 @@ object ProactiveDelivery {
             inMeeting = inAMeeting(context),
             listenerUp = ProactiveBus.hasListener,
         )
+    }
 
     /**
      * Waits up to [timeoutMs] for something to collect the bus, for a raise site that may have

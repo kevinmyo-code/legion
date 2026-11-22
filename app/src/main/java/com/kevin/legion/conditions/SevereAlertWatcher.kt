@@ -96,8 +96,35 @@ class SevereAlertWatcher(
          */
         fun alarmLevel(severity: String): Int? = RING_LEVELS[severity.trim().lowercase()]
 
-        /** Stub: the allow-list lands in the next commit. */
-        fun mayRing(event: String): Boolean = event.isNotEmpty()
+        /** True when an alert of this NWS [event] may RING ([RINGING_EVENTS]); any other is posted. */
+        fun mayRing(event: String): Boolean = event.trim().lowercase() in RINGING_EVENTS
+
+        /**
+         * The NWS event names that may ring through silent and at night (the owner, 2026-11-21:
+         * "ring only for dangerous events"; freeze, frost, heat, air quality and the like are
+         * posted). Still only at Severe or Extreme ([RING_LEVELS]). Names as api.weather.gov
+         * /alerts/types lists them; lowercase here. Fail safe: a name not listed (a new or renamed
+         * event) is posted, never rung. Watches never ring: nothing is happening yet. Each one is
+         * a short-fuse threat to life where minutes matter:
+         * - tornado warning: a tornado is sighted or on radar (NWS's "tornado emergency" is this
+         *   event with a tag, not its own name);
+         * - flash flood warning: flooding within minutes ("flash flood emergency" likewise);
+         * - severe thunderstorm warning: destructive wind or large hail now;
+         * - extreme wind warning: 115 mph or more, the eyewall arriving;
+         * - hurricane warning, typhoon warning: hurricane-force wind expected, the last call to
+         *   finish preparing or leave;
+         * - storm surge warning: life-threatening inundation;
+         * - tsunami warning: a dangerous wave is coming;
+         * - earthquake warning: shaking is seconds away;
+         * - dust storm warning: visibility near zero, deadly on a road;
+         * - shelter in place warning, evacuation immediate: officials ordering an action now.
+         * One line to add or drop one.
+         */
+        private val RINGING_EVENTS = setOf(
+            "tornado warning", "flash flood warning", "severe thunderstorm warning", "extreme wind warning",
+            "hurricane warning", "typhoon warning", "storm surge warning", "tsunami warning",
+            "earthquake warning", "dust storm warning", "shelter in place warning", "evacuation immediate",
+        )
 
         /**
          * Which NWS severities ring (through silent, vibrate and DND, at night) and at what level.

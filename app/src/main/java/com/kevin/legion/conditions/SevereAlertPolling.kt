@@ -77,7 +77,14 @@ object SevereAlertPolling {
             prompt = SevereAlertWatcher.prompt(facts),
             contentIntent = contentIntent,
             urgency = SevereAlertWatcher.alarmLevel(alert.severity)
-                ?.let { ProactiveUrgency.Alarm(alertId = alert.id, severity = it, references = alert.references) }
+                ?.let {
+                    ProactiveUrgency.Alarm(
+                        alertId = alert.id,
+                        severity = it,
+                        references = alert.references,
+                        rings = SevereAlertWatcher.mayRing(alert.event),
+                    )
+                }
                 ?: ProactiveUrgency.Ordinary,
         )
     }
