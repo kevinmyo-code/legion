@@ -1,6 +1,7 @@
 package com.kevin.legion.service.cascade
 
 import com.kevin.legion.service.ChatTurn
+import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextChatEngine
@@ -253,6 +254,13 @@ object CascadePrompt {
         }
         return contents
     }
+
+    /**
+     * What history keeps of a reply: the words said, or for a read-through reply (mail, web) a
+     * marker in their place, never the outside text. One rule for [CascadeSession] and the voice
+     * eval harness, so the eval replays what a spoken conversation keeps.
+     */
+    fun keptReply(said: String, readThrough: Boolean): String = if (readThrough) LiveAudit.REDACTED else said
 }
 
 /**

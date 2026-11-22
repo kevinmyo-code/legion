@@ -319,7 +319,7 @@ internal class VoiceEvalHarness(
                 "test_turn_ms=${now() - t0} first_text_ms=$firstMs failure=${result.failure?.name ?: "none"}",
             )
             history.add(ChatTurn(fromUser = true, text = heard))
-            history.add(ChatTurn(fromUser = false, text = if (result.readThrough) LiveAudit.REDACTED else said))
+            history.add(ChatTurn(fromUser = false, text = CascadePrompt.keptReply(said, result.readThrough)))
         }
         audit.sessionEnd("eval")
         out(TEST_TAG, "case_end id=${LiveAudit.token(case.id)} ms=${now() - started}")

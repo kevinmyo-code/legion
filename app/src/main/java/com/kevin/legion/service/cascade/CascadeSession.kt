@@ -2959,7 +2959,7 @@ internal class CascadeSession(
         if (heard.isNotBlank()) history.add(ChatTurn(fromUser = true, text = heard))
         if (fromUser && said.isNotBlank()) readThroughCarry.answered()
         // A read-through reply (mail, web) is never kept as history or in the record in clear.
-        val kept = if (readThrough) LiveAudit.REDACTED else said
+        val kept = CascadePrompt.keptReply(said, readThrough)
         if (said.isNotBlank()) history.add(ChatTurn(fromUser = false, text = kept))
         host.turnTranscript(if (fromUser) heard else "", said)
         // A test conversation keeps no record: nothing uploads, nothing becomes a memory.
