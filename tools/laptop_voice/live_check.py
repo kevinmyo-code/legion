@@ -307,8 +307,10 @@ async def main() -> None:
     ready = await c.connect()
     ev = Stamped(c)
     res.append(("ready.stt.end_of_turn true", ready["stt"]["end_of_turn"] is True, ready["stt"]["end_of_turn"]))
-    res.append(("capabilities all true", ready["capabilities"] == {"end_of_turn": True, "partials": True,
-                                                                   "text_streaming": True}, ready["capabilities"]))
+    # Kyutai's flags, each true; other keys may be added later (the client ignores unknown ones).
+    kyutai_caps = ("end_of_turn", "partials", "text_streaming", "maybe_end", "word_times")
+    res.append(("capabilities all true", all(ready["capabilities"].get(k) is True for k in kyutai_caps),
+                ready["capabilities"]))
     # second conversation: Kyutai holds one (batch size 1)
     async with aiohttp.ClientSession() as s:
         ws2 = await s.ws_connect(a.url.replace("http", "ws", 1) + "/v1/conversation",

@@ -241,9 +241,9 @@ class _ScriptedTtsModel:
 
 
 def test_tts_reports_each_word_at_its_consumption_step_plus_the_late_bias():
-    """A word the model takes at text step s starts at about s frames into the id's audio: moshi
-    trains the audio delay_steps behind the text, and every frame before delay_steps is skipped, so
-    the stream's frame k lines up with text step k. One frame is added so a stamp is never early."""
+    """Pins the arithmetic only: a word taken at text step s is stamped (s + WORD_LAG_FRAMES) x 80 ms.
+    That frame k of the stream lines up with text step k is traced from moshi's code
+    (kyutai_core.word_start_ms), not checked here: that needs the real model and its audio."""
     eng = core.KyutaiTts.__new__(core.KyutaiTts)
     model = _ScriptedTtsModel(eng)
     got = []
