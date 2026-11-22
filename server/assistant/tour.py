@@ -1,7 +1,7 @@
 """The demo's one-minute tour (Kevin, 2026-11-17: "the voice the center of attention"): a few beats
 the assistant drives, each one visual picked by code and one short sentence spoken. Lighter since
-2026-11-22 (Kevin: "its too dense and verbose and too much"): four beats, one sentence each, and
-the diagram the one whose caption opens with a short sentence.
+2026-11-22 (Kevin found it too dense): four beats, one sentence each, and the diagram the one whose
+caption opens with a short sentence.
 
 Every beat runs its tool through the web tool door (`assistant.cascade.WebDoor`): the recruiter's
 fence, the audit row and the conversation record are the door's own, as for any tool call. The

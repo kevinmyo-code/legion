@@ -9,7 +9,7 @@ import type { SectionTheme } from '@/api/demo'
  *   things follow the scroll itself: the hero title easing out (a CSS scroll-driven animation
  *   where the browser has them, absent where it does not), and the orb's flight from the stage to
  *   its rest place (`orb-flight.ts`: a passive scroll listener that writes one transform per
- *   animation frame and reads no layout, Kevin 2026-11-22: "one continous flow");
+ *   animation frame and reads no layout, Kevin 2026-11-22: one continuous flow);
  * - the page scrolls at the visitor's own speed: pinning is `position: sticky`, never a captured
  *   wheel or touch;
  * - `prefers-reduced-motion` gives the plain page as it was: no reveal, no pin, no glide;

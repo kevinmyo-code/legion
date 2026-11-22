@@ -377,7 +377,7 @@ describe('the docked orb when the orb is off screen', () => {
       expect(document.activeElement).toBe(dockOrb())
     })
 
-    test('one drawn orb at every scroll position: the flying one (Kevin, 2026-11-22: "one continous flow")', async () => {
+    test('one drawn orb at every scroll position: the flying one (Kevin, 2026-11-22: one continuous flow)', async () => {
       wide()
       fakeIO()
       stage(false, true)

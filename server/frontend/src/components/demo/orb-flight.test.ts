@@ -5,8 +5,8 @@ import { markTargets, OrbRenderer } from '@/components/assistant/orb'
 import { flightFrame, flightTravel, sideRestX, type FlightGeometry } from './orb-flight'
 
 /**
- * The orb's flight as numbers (Kevin, 2026-11-22: "it gotta flow from the middle of the page to
- * that side. one continous flow"). The browser check measures it on screen; these pin the path:
+ * The orb's flight as numbers (Kevin, 2026-11-22: one continuous flow from the middle of the page
+ * to its side place). The browser check measures it on screen; these pin the path:
  * it starts exactly on the stage's orb, ends exactly at its rest place, and never jumps between.
  */
 

@@ -3,8 +3,8 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import type { OrbSide } from '@/components/demo/scroll-story'
 
 /**
- * The orb's one continuous flight (Kevin, 2026-11-22: "it gotta flow from the middle of the page to
- * that side. one continous flow"). There is one drawn orb on the page: it sits exactly over the
+ * The orb's one continuous flight (Kevin, 2026-11-22: from the middle of the page to its side
+ * place in one flow, never vanishing). There is one drawn orb on the page: it sits exactly over the
  * stage's orb at the top, and as the page scrolls it travels, shrinking, to its rest place: beside
  * the sections at desk width, into the foot bar on a phone. Scrolling back flies it home.
  *

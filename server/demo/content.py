@@ -149,7 +149,7 @@ RESERVED_SECTION_IDS = (
     "projects", "look-for", "legion", "phone", "work", "experience", "hero-title",
 )  # fmt: skip
 
-# The page's section palettes (Kevin, 2026-11-22: "the vibe will change for each section"): the
+# The page's section palettes (Kevin, 2026-11-22: a different feel per section): the
 # page blends to a section's palette as it scrolls in. Named in `index.css` (`[data-theme]`).
 SECTION_THEMES = ("legion", "ledger", "midcon", "aw4")
 # A mark the orb takes on beside a section (Kevin, 2026-11-22: the orb becomes the finance voice

@@ -8243,9 +8243,9 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-22 - /try: one orb flow, a mood per section, lighter tour, no web app, new sections (Kevin)
 
-- **Orb:** *"it gotta flow from the middle of the page to that side. one continous flow."* One drawn orb glides from the stage to its rest place with the scroll (beside the sections from 900 px, the foot bar on a phone); reduced motion keeps the plain dock.
-- **Mood:** *"the beige background is kinda dull. i want more energetic mood, color and motion wise"*; *"the vibe will change for each section"*. One token set per section mood, blended as the section reaches mid-screen; AA contrast kept; short fade under reduced motion.
-- **Q:** *"when at quanex section, orb should change into the Q logo that the voice demo has."* The orb's points gather into a letter Q (system font, no logo file) beside a section that names the mark. The Quanex name and the Q being public is held for Kevin's confirmation; the content's naming switch removes both.
-- **Tour:** *"its too dense and verbose and too much."* Four beats of one sentence each.
-- **No members web app on /try:** *"dont show people the web app from the recruiter demo."* No link into the app from the page; "What to look for" removed (*"either not necessary or out of place"*).
-- **Sections:** the Quanex voice proof of concept as a section with its live demo link; order LEGION, Quanex voice, Mid-Continent, AW4; a "quality for voice agents" block inside LEGION.
+- **Orb:** the orb moves from the middle of the page to its side place in one continuous flow, never vanishing and reappearing. One drawn orb glides from the stage to its rest place with the scroll (beside the sections from 900 px, the foot bar on a phone); reduced motion keeps the plain dock.
+- **Mood:** a more energetic page in colour and motion than the beige one, and a different feel per section. One token set per section mood, blended as the section reaches mid-screen; AA contrast kept; short fade under reduced motion.
+- **Quanex voice section and its Q:** the orb turns into the Quanex voice demo's Q at that section (a letter Q drawn from a system font, no logo file). Kevin ruled the Quanex name and the Q public on the page, as built.
+- **Tour:** lighter, because it was too dense. Four beats of one sentence each.
+- **No members web app on /try:** no link into the app from the page. The "What to look for" section is removed, and the old "What I built at Quanex" section is replaced by the Quanex voice section.
+- **Sections:** order LEGION, Quanex voice, Mid-Continent, AW4; the Quanex voice section links to its live demo; a "quality for voice agents" block inside LEGION.
