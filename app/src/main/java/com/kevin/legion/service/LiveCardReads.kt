@@ -86,6 +86,8 @@ object LiveCardReads {
     suspend fun showDayAfterWrite(context: Context, dayStartMs: Long, dayEndMs: Long) {
         val state = ConversationCards.state.value
         if (!state.open || LiveCards.calendarShows(state, dayStartMs)) return
-        ConversationCards.publish(calendar(context, dayStartMs, dayEndMs))
+        // A failed read shows no card and never fails the write that called this; cancellation passes.
+        LiveCards.readOrNull(CardSource.Calendar(dayStartMs, dayEndMs)) { read(context, it) }
+            ?.let(ConversationCards::publish)
     }
 }

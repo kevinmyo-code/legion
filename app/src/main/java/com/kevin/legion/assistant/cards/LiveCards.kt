@@ -50,8 +50,9 @@ object LiveCards {
         }
     }
 
+    /** [read] of [source], or null when it fails; a cancellation is never swallowed. */
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // a failed read keeps the card
-    private suspend fun readOrNull(source: CardSource, read: suspend (CardSource) -> ConversationCard?) =
+    suspend fun readOrNull(source: CardSource, read: suspend (CardSource) -> ConversationCard?) =
         try {
             read(source)
         } catch (e: Exception) {

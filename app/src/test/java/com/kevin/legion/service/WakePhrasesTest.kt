@@ -127,6 +127,17 @@ class WakePhrasesTest {
         }
     }
 
+    /** After a question the thanks is set aside too, and only a hard stop still ends it. */
+    @Test
+    fun `after a question a thanks before a hard stop ends it, before a soft one it does not`() {
+        for (s in listOf("Thanks, goodbye.", "Thank you, Alfred, stop.", "Cheers, bye.")) {
+            assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred", afterQuestion = true))
+        }
+        for (s in listOf("Thanks, that's all.", "Thank you, Alfred, that's it.", "Thanks, never mind.")) {
+            assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred", afterQuestion = true))
+        }
+    }
+
     @Test
     fun `sentences that only use those words never end it`() {
         for (s in listOf(

@@ -60,7 +60,7 @@ class LiveCardsWriteThroughTest {
 
         val r = tool(
             "manage_item",
-            JSONObject().put("action", "add").put("kind", "appointment").put("item", "Dinner with Lee")
+            JSONObject().put("action", "add").put("kind", "appointment").put("item", "Team supper")
                 .put("date", "2027-03-10").put("time", "19:00"),
         )
         assertTrue(r.toString(), r.getBoolean("success"))
@@ -68,7 +68,7 @@ class LiveCardsWriteThroughTest {
 
         val state = ConversationCards.state.value
         assertEquals("no second card for a day already on screen", 1, state.cards.size)
-        assertEquals(listOf("Dinner with Lee"), titles(state.cards.single()))
+        assertEquals(listOf("Team supper"), titles(state.cards.single()))
         assertEquals(serial, state.serial)
     }
 
@@ -77,13 +77,13 @@ class LiveCardsWriteThroughTest {
         tool("read_calendar", JSONObject().put("from", "2027-03-10").put("to", "2027-03-10"))
         tool(
             "manage_item",
-            JSONObject().put("action", "add").put("kind", "appointment").put("item", "Dinner with Lee")
+            JSONObject().put("action", "add").put("kind", "appointment").put("item", "Team supper")
                 .put("date", "2027-03-09").put("time", "19:00"),
         )
         val cards = ConversationCards.state.value.cards
         assertEquals(2, cards.size)
         assertEquals(emptyList<String>(), titles(cards[0]))
-        assertEquals(listOf("Dinner with Lee"), titles(cards[1]))
+        assertEquals(listOf("Team supper"), titles(cards[1]))
         assertEquals("2027-03-09", (cards[1] as ConversationCard.Timeline).date)
     }
 

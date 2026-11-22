@@ -4426,13 +4426,11 @@ object LiveToolbox {
             // The day it landed on takes the screen unless a card already shows it (LiveCards). The
             // row is saved by now: a failed card read must never turn this into "couldn't save".
             val zone = RelativeDay.clock().zone
-            runCatching {
-                LiveCardReads.showDayAfterWrite(
-                    context,
-                    date.atStartOfDay(zone).toInstant().toEpochMilli(),
-                    date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1,
-                )
-            }
+            LiveCardReads.showDayAfterWrite(
+                context,
+                date.atStartOfDay(zone).toInstant().toEpochMilli(),
+                date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1,
+            )
             // `date` ahead of the words: the day it landed on, kept inside the audit line's cut so the
             // voice eval can check a carried day (DateCarry.carried) on the outcome, not the request.
             JSONObject().put("success", true).put("date", date.toString()).put(
