@@ -55,6 +55,11 @@ import blast_radius as br  # noqa: E402
         ("tools/checks/clock_times.py", "RED"),
         ("config/detekt/baseline.xml", "RED"),
         ("./docs/x.md", "GREEN"),
+        ("TEAM.md", "GREEN"),
+        ("server/procedures/builtin/README.md", "GREEN"),
+        ("server/agents/specs/generalist.md", "YELLOW"),
+        ("server/assistant/shared_clauses.txt", "YELLOW"),
+        ("app/src/main/assets/wake-kws/tokens.txt", "YELLOW"),
         ("tools\\claude_session\\worker.py", "RED"),
     ],
 )

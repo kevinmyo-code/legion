@@ -81,7 +81,7 @@ def parse_added(diff_text: str) -> dict[str, list[tuple[int, str]]]:
     line_no = 0
     for raw in diff_text.splitlines():
         if raw.startswith("+++ "):
-            target = raw[4:]
+            target = raw[4:].rstrip("\t")  # git appends a tab when the path holds a space
             path = target[2:] if target.startswith("b/") else None
             if path is not None:
                 out.setdefault(path, [])

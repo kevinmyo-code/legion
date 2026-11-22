@@ -99,8 +99,9 @@ RED_RULES: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 GREEN_RULES: list[tuple[str, tuple[str, ...]]] = [
+    # Not "*.md" or "*.txt" anywhere: prompt text, agent specs and app assets are .md/.txt read at runtime.
     ("docs", (
-        "*.md", "docs/*", "vault/*", ".scratch/*", "memory/*", "*.txt", "LICENSE*",
+        "docs/*", "vault/*", ".scratch/*", "memory/*", "headunit/memory/*", "*README.md", "LICENSE*",
     )),
     ("tests only", (
         "server/tests/*", "*/src/test/*", "*/src/androidTest/*", "tools/tests/*",
@@ -129,6 +130,8 @@ def classify(path: str) -> tuple[str, str]:
     for reason, pats in RED_RULES:
         if any(fnmatch.fnmatchcase(p, pat) for pat in pats):
             return "RED", reason
+    if "/" not in p and p.endswith(".md"):
+        return "GREEN", "docs"
     for reason, pats in GREEN_RULES:
         if any(fnmatch.fnmatchcase(p, pat) for pat in pats):
             return "GREEN", reason

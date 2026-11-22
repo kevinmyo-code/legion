@@ -16,7 +16,7 @@ content load still need the owner's word in every tier, unless he rules otherwis
 
 | Tier | What it covers | Review before merge |
 |---|---|---|
-| GREEN | Docs; tests only; copy and wording (`strings.xml`, the copy modules); styling and layout files (CSS, images, drawables); scripts under `tools/` outside the worker | CI green + one light review: a single reviewer pass, no adversarial rounds |
+| GREEN | Docs (`docs/`, `vault/`, `.scratch/`, `memory/`, READMEs, top-level `.md`; not prompt text or app assets, which are `.md` and `.txt` read at runtime); tests only; copy and wording (`strings.xml`, the copy modules); styling and layout files (CSS, images, drawables); scripts under `tools/` outside the worker | CI green + one light review: a single reviewer pass, no adversarial rounds |
 | YELLOW | App or engine logic that touches none of the RED areas; any path the script does not recognise | CI green + one blind review that ends "Confirmed: SHIP" |
 | RED | The worker hook and containment; auth and tokens; money and figure checks; read-through and crisis guards; migrations and schema; deploy, ship and CI tooling (these checks included); voice gate rules; the public demo's honesty guards; frozen rules (`CLAUDE.md`) | CI green + blind review with adversarial probes, repeated until "Confirmed: SHIP" |
 
@@ -54,8 +54,10 @@ reviewer knows which depth is owed.
 ## Review-finding checks (CI)
 
 Findings reviewers kept repeating are now checks, in `tools/checks/`, run by
-`.github/workflows/checks.yml` on every push and pull request. Each reads only the lines a change
-adds, so existing debt never fails a build.
+`.github/workflows/checks.yml` on pushes to `dev`, `main`, `up/**`, `integrate/**` and `ship/**`, and
+on pull requests. A push to a `feat/` or `fix/` branch runs nothing: push the commit to `up/<name>` to
+check it, or run `python tools/checks/run_all.py --base origin/dev` locally. Each check reads only the
+lines a change adds, so existing debt never fails a build.
 
 | Check | Fails on | Warns on |
 |---|---|---|
@@ -69,5 +71,8 @@ Allowlists sit next to each check (`clock_times_allow.txt`, `file_size_allow.txt
 legitimate time elsewhere carries the marker `clock-ok` on its line. Dates are always fine.
 
 The em dash check cannot see the recruiter demo's page content: it lives outside the repository.
+
+The Django number check sees only the branch's own tree: two unmerged branches that each add the same
+number both pass until the second is rebased onto `dev`.
 
 `python tools/checks/run_all.py --all` prints the whole tree's counts without failing.

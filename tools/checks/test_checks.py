@@ -168,6 +168,22 @@ def test_room_new_version_unregistered_fails():
     assert levels(found) == [FAIL] and "MIGRATION_80_81" in found[0].message
 
 
+def test_room_version_named_only_in_a_comment_fails():
+    ch = change({SCHEMA + "81.json": ("A", "{}\n")},
+                head_files=[SCHEMA + "80.json", SCHEMA + "81.json", DB])
+    ch.head_text[DB] = (
+        "// the diag table: see [MIGRATION_80_81]\n"
+        ".addMigrations(\n    MIGRATION_78_79, // MIGRATION_80_81 next\n    MIGRATION_79_80,\n)\n"
+    )
+    assert levels(migrations.check(ch)) == [FAIL]
+
+
+def test_room_registration_read_across_lines():
+    src = ".addMigrations(\n    MIGRATION_1_2,\n    foo(MIGRATION_2_3),\n    MIGRATION_80_81,\n)\n.build()"
+    assert "MIGRATION_80_81" in migrations.registered(src)
+    assert "build" not in migrations.registered(src)
+
+
 def test_room_oldest_exported_version_needs_no_migration():
     hu = "headunit/app/schemas/com.kevin.midnightai.data.local.CarDatabase/"
     ch = change({hu + "5.json": ("A", "{}\n")}, head_files=[hu + "5.json", hu + "6.json"])
@@ -216,6 +232,11 @@ def test_parse_added_line_numbers():
         "diff --git a/gone.md b/gone.md\n--- a/gone.md\n+++ /dev/null\n@@ -1 +0,0 @@\n-x\n"
     )
     assert parse_added(diff) == {"x.md": [(2, "two"), (3, "three")]}
+
+
+def test_parse_added_path_with_a_space():
+    diff = "diff --git a/a b.md b/a b.md\n--- a/a b.md\t\n+++ b/a b.md\t\n@@ -0,0 +1 @@\n+one\n"
+    assert parse_added(diff) == {"a b.md": [(1, "one")]}
 
 
 def _git(repo: Path, *args: str) -> str:

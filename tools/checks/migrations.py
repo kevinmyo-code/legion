@@ -10,8 +10,10 @@ Django (`server/<app>/migrations/NNNN_*.py`):
   - WARN: an added migration holding a destructive operation (the engine ship refuses it later).
   Declaration itself is Django's own graph, checked by `makemigrations --check` in server.yml.
 Room (`app/schemas/<db>/N.json`, `headunit/app/schemas/<db>/N.json`):
-  - FAIL: an added version N > 1 whose `MIGRATION_<N-1>_<N>` is not named in that module's
-    CarDatabase.kt (the `addMigrations` list);
+  - FAIL: an added version N > 1 whose `MIGRATION_<N-1>_<N>` is not inside an `.addMigrations(...)` call
+    in that module's CarDatabase.kt (a mention in a comment does not count);
+Limit: a Django number clash is seen only against this branch's own tree; two unmerged branches that
+each add the same number both pass until the second one is rebased onto dev.
   - FAIL: an existing version's schema JSON modified or deleted.
 --all checks the whole tree: every Room version registered, no Django number shared.
 """
@@ -27,6 +29,20 @@ NAME = "migrations"
 DJANGO = re.compile(r"^server/([^/]+)/migrations/(\d{4})_[A-Za-z0-9_]+\.py$")
 ROOM = re.compile(r"^((?:headunit/)?app)/schemas/([^/]+)/(\d+)\.json$")
 DESTRUCTIVE = re.compile(r"RemoveField|DeleteModel|AlterField|RenameField|RenameModel")
+
+
+def registered(db_source: str) -> str:
+    """The text inside every `.addMigrations(...)` call, comments removed: a name mentioned only in a
+    comment elsewhere in CarDatabase.kt is not a registration."""
+    text = re.sub(r"//[^\n]*|/\*.*?\*/", "", db_source, flags=re.S)
+    out = []
+    for m in re.finditer(r"\.addMigrations\s*\(", text):
+        depth, i = 1, m.end()
+        while i < len(text) and depth:
+            depth += {"(": 1, ")": -1}.get(text[i], 0)
+            i += 1
+        out.append(text[m.end():i])
+    return "\n".join(out)
 
 
 def car_database(change: Change, module: str) -> str | None:
@@ -73,7 +89,7 @@ def check(change: Change) -> list[Finding]:
             db_file = car_database(change, module)
             if db_file is None:
                 out.append(Finding(FAIL, NAME, path, 0, f"no CarDatabase.kt found in {module} to register {name}"))
-            elif not re.search(rf"\b{name}\b", change.read(db_file) or ""):
+            elif not re.search(rf"\b{name}\b", registered(change.read(db_file) or "")):
                 out.append(Finding(FAIL, NAME, path, 0, f"{name} is not registered in {db_file}"))
     return out
 
