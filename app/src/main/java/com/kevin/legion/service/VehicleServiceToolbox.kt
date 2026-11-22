@@ -39,8 +39,26 @@ object VehicleServiceToolbox {
             val outcome = VehicleController.setOdometer(context, args.optInt("miles"), it.obdMac)
             result(success = outcome.success, message = outcome.message)
         }
-        // Phone audit 2026-11-19: a log_service with no service wrote a blank record and item.
-        "log_service" -> if (args.optString("service").isBlank()) {
+        "log_service" -> logService(context, args)
+        "log_past_service" -> withResolvedVehicle(context, args) { logPastService(context, args, it.obdMac) }
+        "set_maintenance_interval" -> if (args.optString("service").isBlank()) {
+            noItem("Which service?")
+        } else withResolvedVehicle(context, args) {
+            val outcome = VehicleController.setMaintenanceInterval(
+                context,
+                args.optString("service"),
+                args.optInt("interval_miles", -1).takeIf { it > 0 },
+                args.optInt("interval_months", -1).takeIf { it > 0 },
+                it.obdMac,
+            )
+            result(success = outcome.success, message = outcome.message)
+        }
+        else -> null
+    }
+
+    // Phone audit 2026-11-19: a log_service with no service wrote a blank record and item.
+    private suspend fun logService(context: Context, args: JSONObject): JSONObject =
+        if (args.optString("service").isBlank()) {
             noItem("Which service was it?")
         } else withResolvedVehicle(context, args) {
             // Dollars -> cents at the voice edge (CLAUDE.md §4 rule 3: VehicleController.logServiceDirect
@@ -57,21 +75,6 @@ object VehicleServiceToolbox {
             val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents)
             result(success = outcome.success, message = outcome.message)
         }
-        "log_past_service" -> withResolvedVehicle(context, args) { logPastService(context, args, it.obdMac) }
-        "set_maintenance_interval" -> if (args.optString("service").isBlank()) {
-            noItem("Which service?")
-        } else withResolvedVehicle(context, args) {
-            val outcome = VehicleController.setMaintenanceInterval(
-                context,
-                args.optString("service"),
-                args.optInt("interval_miles", -1).takeIf { it > 0 },
-                args.optInt("interval_months", -1).takeIf { it > 0 },
-                it.obdMac,
-            )
-            result(success = outcome.success, message = outcome.message)
-        }
-        else -> null
-    }
 
     /**
      * The spoken guess caveat, appended to a sentence naming [candidate] when
