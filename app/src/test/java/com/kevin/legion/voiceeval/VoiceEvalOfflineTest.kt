@@ -43,6 +43,21 @@ class VoiceEvalOfflineTest {
 
     // --- the committed cases ----------------------------------------------------------------------
 
+    /** The phone ship's gate list (gates.yml runs it; a publish accepts only that run): every id is a case. */
+    @Test
+    fun `every id in the gate list is a committed case, once`() {
+        val ids = mutableSetOf<String>()
+        for (file in listOf("tools/voice_eval/cases.json", "tools/voice_eval/reply_length.json")) {
+            val arr = JSONObject(VoiceEvalCases.resolve(file).readText()).getJSONArray("cases")
+            for (i in 0 until arr.length()) ids += arr.getJSONObject(i).getString("id")
+        }
+        val gate = VoiceEvalCases.resolve("tools/voice_eval/gate_cases.txt").readLines()
+            .map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        assertTrue("the gate list is empty", gate.isNotEmpty())
+        assertEquals("an id is listed twice in gate_cases.txt", gate.size, gate.toSet().size)
+        for (id in gate) assertTrue("gate_cases.txt names $id, which no case file has", id in ids)
+    }
+
     @Test
     fun `every expected call in the committed cases is on the voice surface`() {
         val surface = surfaceActions()

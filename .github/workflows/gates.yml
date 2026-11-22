@@ -29,7 +29,8 @@
 # fail, counts) after .github/scripts/scrub_gate_out.sh: raw console text stays on the runner (G1).
 name: Gates
 # ship.yml finds the gate run for a commit by this title (a dispatch run's head sha is dev's, not `sha`).
-run-name: "Gates ${{ inputs.which }} ${{ inputs.sha }}"
+# A phone run on any list but the committed one is titled "partial", and no publish accepts it (review F1).
+run-name: "Gates ${{ inputs.which }}${{ (inputs.which != 'engine' && inputs.phone_cases != 'default') && ' partial' || '' }} ${{ inputs.sha }}"
 
 on:
   workflow_dispatch:
@@ -45,9 +46,9 @@ on:
         type: choice
         options: [all, phone, engine]
       phone_cases:
-        description: "Phone voice eval case ids (comma list); the phone ship template's 37-case gate set by default"
+        description: "Phone voice eval cases: 'default' = the committed list tools/voice_eval/gate_cases.txt at the sha (the only list a publish accepts); or a comma list of ids (the run is then titled partial)"
         required: false
-        default: "due_open,due_today,due_tonight,calendar_tomorrow,reminders,todo_read,cars,time_now,then_tomorrow,goodbye_ends,short_answer_kept,write_todo,write_reminder,write_complete,tick_todo,multi_write_two,multi_write_mixed,dependent_two_step,lone_word_then_yes,lone_word_no_context,guard_mail_injection,guard_mail_then_timer,filler_specialist,filler_calendar,filler_web,no_filler_after_answer,tags_never_on_money,stt_audio_cars,stt_audio_switch,len_octopus,len_basil,len_turbo,len_latte,len_sleep,len_moon,len_warmup,len_bread"
+        default: "default"
         type: string
       extra_checks:
         description: "Engine: extra live checks a ship names (comma list, at most 3): repo files server/tests/realrun_<name>.py at the sha"
@@ -88,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
-          [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be a comma list of case ids"; exit 1; }
+          [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be 'default' or a comma list of case ids"; exit 1; }
           [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF)."; exit 1; }
           [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
           today=$(date -u +%F)
@@ -117,7 +118,7 @@ jobs:
           [ "$GITHUB_RUN_ATTEMPT" -le 2 ] || { echo "::error::attempt $GITHUB_RUN_ATTEMPT of this run: at most 2 attempts spend the key. Dispatch a new run (the daily cap counts it). Nothing ran."; exit 1; }
           [ -n "$GEMINI_API_KEY" ] || { echo "::error::Secret GEMINI_API_KEY is not set in the gates environment. Nothing ran; this is a FAIL, not a skip (see this file's header)."; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
-          [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be a comma list of case ids"; exit 1; }
+          [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be 'default' or a comma list of case ids"; exit 1; }
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -175,6 +176,16 @@ jobs:
           set -uo pipefail
           # Raw console text (model replies, tool calls) stays in RUNNER_TEMP and is never uploaded.
           raw="$RUNNER_TEMP/gate-raw"; mkdir -p "$raw"
+          if [ "$CASES" = default ]; then
+            [ -f tools/voice_eval/gate_cases.txt ] || { echo "::error::no tools/voice_eval/gate_cases.txt at $SHA: run a named list (the run is then partial)"; exit 1; }
+            CASES=$(tr -d '\r' < tools/voice_eval/gate_cases.txt | grep -vE '^[[:space:]]*(#|$)' | paste -sd, -)
+            echo "requested=default" > "$raw/requested.txt"
+          else
+            echo "requested=partial" > "$raw/requested.txt"
+          fi
+          [[ "$CASES" =~ ^[a-z0-9_]+(,[a-z0-9_]+)*$ ]] || { echo "::error::the case list is not a comma list of ids"; exit 1; }
+          echo "$CASES" > "$raw/cases.txt"
+          echo "cases: $(echo "$CASES" | tr ',' '\n' | wc -l) ($(cut -d= -f2 "$raw/requested.txt"))"
           python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
             --only "$CASES" --json "$raw/voice.json" > "$raw/voice.txt" 2>&1
           rc=$?
@@ -196,7 +207,7 @@ jobs:
           twice=""
           for c in $failed; do
             python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
-              --only "$c" > "$raw/retry-$c.txt" 2>&1 && echo "retry $c: passed" || { echo "retry $c: failed again"; twice="$twice $c"; }
+              --only "$c" > "$raw/retry-$c.txt" 2>&1 && { echo "retry $c: passed"; echo "$c" >> "$raw/retried-pass.txt"; } || { echo "retry $c: failed again"; twice="$twice $c"; }
           done
           [ -z "$twice" ] || { echo "::error::failed twice:$twice"; exit 1; }
           echo "voice eval passed under fail_twice (retried: $failed)"
@@ -222,13 +233,32 @@ jobs:
           set -euo pipefail
           mkdir -p gate-out
           raw="$RUNNER_TEMP/gate-raw"
-          if [ -f "$raw/voice.json" ]; then
-            python3 - "$raw/voice.json" gate-out/voice-scorecard.json <<'EOF'
-          import json, sys
-          s = json.load(open(sys.argv[1], encoding="utf-8"))
-          keep = [{k: c.get(k) for k in ("id", "pass", "known_limit", "proves_nothing")} for c in s.get("cases", [])]
-          out = {"cases": keep, "passed": sum(1 for c in keep if c["pass"]), "total": len(keep)}
-          json.dump(out, open(sys.argv[2], "w", encoding="utf-8"), indent=1)
+          if [ -f "$raw/voice.json" ] && [ -f "$raw/cases.txt" ]; then
+            python3 - "$raw" gate-out/voice-scorecard.json <<'EOF'
+          import json, os, sys
+          raw, dst = sys.argv[1], sys.argv[2]
+          first = {c["id"]: c for c in json.load(open(os.path.join(raw, "voice.json"), encoding="utf-8")).get("cases", [])}
+          retried = set()
+          if os.path.exists(os.path.join(raw, "retried-pass.txt")):
+              retried = set(open(os.path.join(raw, "retried-pass.txt")).read().split())
+          requested = open(os.path.join(raw, "requested.txt")).read().strip().split("=", 1)[1]
+          ids = open(os.path.join(raw, "cases.txt")).read().strip().split(",")
+          rows = []
+          for i in ids:
+              c = first.get(i)
+              if c is None:
+                  status = "pass_on_retry" if i in retried else "not_run"
+              elif c.get("pass"):
+                  status = "pass"
+              elif c.get("known_limit"):
+                  status = "known_limit"
+              elif c.get("proves_nothing"):
+                  status = "proves_nothing"
+              else:
+                  status = "pass_on_retry" if i in retried else "fail"
+              rows.append({"id": i, "status": status})
+          ok = all(r["status"] in ("pass", "pass_on_retry", "known_limit", "proves_nothing") for r in rows)
+          json.dump({"requested": requested, "cases": rows, "all_passed": ok}, open(dst, "w", encoding="utf-8"), indent=1)
           EOF
           fi
           if [ -f "$raw/money.txt" ]; then tail -1 "$raw/money.txt" | grep -E '^[0-9]+/[0-9]+ right' > gate-out/money-summary.txt || true; fi
@@ -301,6 +331,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: false   # this job holds the key: it saves no cache other runs restore (review F4)
       - name: Environment from the pinned requirements (as server.yml)
         working-directory: server
         run: |

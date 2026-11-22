@@ -263,8 +263,30 @@ jobs:
             || { echo "::error::run $GATES_RUN_ID is not a dispatch from dev in this repo ($event, $repo, $branch)"; exit 1; }
           case "$title" in "Gates_phone_$SHA"|"Gates_all_$SHA") ;; *) echo "::error::run $GATES_RUN_ID gated ${title//_/ }, not the phone for $SHA"; exit 1;; esac
           [ "$concl" = success ] || { echo "::error::gates run $GATES_RUN_ID concluded $concl"; exit 1; }
+          # One attempt only (review F2): fail_twice already gave each case its second chance inside the run.
+          [ "$attempt" = 1 ] || { echo "::error::gates run $GATES_RUN_ID passed on attempt $attempt; only a first attempt counts. Nothing was published."; exit 1; }
           phone=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GATES_RUN_ID/jobs" --jq '[.jobs[] | select(.name | startswith("phone"))] | .[0].conclusion')
           [ "$phone" = success ] || { echo "::error::the phone job of gates run $GATES_RUN_ID is $phone"; exit 1; }
+          # The cases it ran are the committed gate list at this sha, every one passed (review F1): read from
+          # the run's own scrubbed scorecard, compared with tools/voice_eval/gate_cases.txt at the sha.
+          gh run download "$GATES_RUN_ID" -R "$GITHUB_REPOSITORY" -n "gates-phone-$SHA" -D gatecard \
+            || { echo "::error::gates run $GATES_RUN_ID kept no phone scorecard. Nothing was published."; exit 1; }
+          git show "$SHA:tools/voice_eval/gate_cases.txt" > gate_cases.txt \
+            || { echo "::error::no tools/voice_eval/gate_cases.txt at $SHA. Nothing was published."; exit 1; }
+          python3 - gatecard/voice-scorecard.json gate_cases.txt <<'EOF'
+          import json, sys
+          card = json.load(open(sys.argv[1], encoding="utf-8"))
+          want = [l.strip() for l in open(sys.argv[2], encoding="utf-8") if l.strip() and not l.strip().startswith("#")]
+          got = {r["id"]: r["status"] for r in card.get("cases", [])}
+          ok = ("pass", "pass_on_retry", "known_limit", "proves_nothing")
+          problems = []
+          if card.get("requested") != "default":
+              problems.append(f"the run used a {card.get('requested')} case list, not the committed one")
+          problems += [f"{i}: {got.get(i, 'not run')}" for i in want if got.get(i) not in ok]
+          if problems:
+              sys.exit("phone gate scorecard refused: " + "; ".join(problems))
+          print(f"phone gate scorecard: all {len(want)} committed cases passed")
+          EOF
           echo "gates run $GATES_RUN_ID (attempt $attempt): phone gate passed on $SHA"
 
       - name: The named dry run is a dispatch of this workflow, from this repo, of this sha, and passed
