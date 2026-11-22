@@ -120,6 +120,14 @@ def context_line(request, now: datetime, device_offset: int | None = None) -> st
     )
 
 
+def user_turn(request, now: datetime, facts: dict, transcript: str) -> dict:
+    """His turn as the model reads it: the bracketed context line, the limb's notes, his words
+    last (`run_turn`, and the draft round of `preempt.py`, which must build the same)."""
+    parts = [context_line(request, now, facts.get("utc_offset_minutes"))]
+    parts += facts_of.context_notes(facts)
+    return {"role": "user", "parts": [*({"text": text} for text in parts), {"text": transcript}]}
+
+
 def system_for(spec, state) -> str:
     return f"{LOCKED}\n\n{spec.prompt}"
 
@@ -138,22 +146,32 @@ def route(request, agent: str = "generalist"):
 def open_conversation(request, conversation_id=None, client: str = "phone") -> AgentConversation:
     """The member's own conversation `conversation_id`, or a new one. Another member's id (or
     another household's) is never found: it starts a new conversation instead."""
-    household = household_of(request)
-    unit = headunit_scope.is_headunit(request)
-    if unit:
+    found = existing_conversation(request, conversation_id, client)
+    if found is not None:
+        return found
+    if headunit_scope.is_headunit(request):
+        client = headunit_scope.TURN_CLIENT
+    return AgentConversation.objects.create(
+        household=household_of(request),
+        owner_user=request.user,
+        client=client,
+        graph_version=graph_version(),
+    )
+
+
+def existing_conversation(request, conversation_id, client: str = "phone"):
+    """The member's own conversation `conversation_id`, or None (`open_conversation` then makes
+    one). Reads only."""
+    if not conversation_id:
+        return None
+    mine = AgentConversation.objects.filter(
+        pk=conversation_id, household=household_of(request), owner_user=request.user
+    )
+    if headunit_scope.is_headunit(request):
         # T3b: a head unit's token keeps to the unit's own conversations: never the member's
         # phone or web history, whatever id it sends.
-        client = headunit_scope.TURN_CLIENT
-    if conversation_id:
-        mine = AgentConversation.objects.filter(
-            pk=conversation_id, household=household, owner_user=request.user
-        )
-        found = (mine.filter(client=client) if unit else mine).first()
-        if found is not None:
-            return found
-    return AgentConversation.objects.create(
-        household=household, owner_user=request.user, client=client, graph_version=graph_version()
-    )
+        mine = mine.filter(client=headunit_scope.TURN_CLIENT)
+    return mine.first()
 
 
 def run_turn(
@@ -221,12 +239,7 @@ def run_turn(
     pending = conversation.pending_confirm
     if pending and int(pending.get("until_seq", 0)) < seq:
         pending = None
-    context_parts = [context_line(request, now, facts.get("utc_offset_minutes"))]
-    context_parts += facts_of.context_notes(facts)
-    user_content = {
-        "role": "user",
-        "parts": [*({"text": text} for text in context_parts), {"text": transcript}],
-    }
+    user_content = user_turn(request, now, facts, transcript)
     state = TurnState(
         turn_id=str(turn.pk),
         conversation_id=str(conversation.pk),
