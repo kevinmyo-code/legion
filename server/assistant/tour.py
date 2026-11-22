@@ -105,8 +105,8 @@ def beats_for(user) -> list[Beat]:
     who = _who(content)
     if who:
         beats.append(Beat("who", who, about_him=True))
-    # The context view first: its caption opens with one short sentence ("Three kinds of people reach
-    # LEGION through four clients."); the components view's runs to forty words.
+    # The context view first: its caption opens with one short sentence ("Three kinds of people
+    # reach LEGION through four clients."); the components view's runs to forty words.
     found = _diagram(user, "legion", ("context", "components", "containers"))
     if found:
         beats.append(
