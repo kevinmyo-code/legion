@@ -26,6 +26,7 @@ HERE_REAL = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE_REAL))
 import containment as C  # noqa: E402
 from common import Paths, write_json_atomic  # noqa: E402
+import integrity  # noqa: E402
 
 BASH = r"C:\Program Files\Git\bin\bash.exe"
 PWSH = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -249,6 +250,7 @@ class Round4b(unittest.TestCase):
             LOG.unlink()
         cls.tmp = tempfile.TemporaryDirectory()
         cls.paths = Paths(Path(cls.tmp.name) / "home").ensure()
+        integrity.write_manifest(cls.paths, EXEC)  # the stub copy is the "deployed" code here
         cls.own = cls.paths.task_work(TASK)
         cls.own.mkdir(parents=True)
         write_json_atomic(cls.paths.agents, {"agentA": TASK, "agentB": 42})

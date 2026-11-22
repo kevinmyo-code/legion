@@ -25,6 +25,7 @@ import containment as C  # noqa: E402
 import fetch_file  # noqa: E402
 import to_xlsx  # noqa: E402
 from common import Paths, read_json, write_json_atomic  # noqa: E402
+import integrity  # noqa: E402
 from test_worker import WorkerCase, fake  # noqa: E402
 
 PY = sys.executable.replace("\\", "/")
@@ -39,6 +40,7 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.paths = Paths(self.root / "home").ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.work = self.paths.task_work(41)
         self.work.mkdir()
         self.docs = self.root / "Documents"

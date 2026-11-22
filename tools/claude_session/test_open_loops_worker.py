@@ -21,6 +21,7 @@ sys.path.insert(0, str(HERE))
 
 import review_memories as R  # noqa: E402
 from common import HOME_ENV, Paths, read_json, write_json_atomic  # noqa: E402
+import integrity  # noqa: E402
 from fake_engine import TOKEN, FakeEngine  # noqa: E402
 from test_worker import WorkerCase, fake  # noqa: E402
 
@@ -49,6 +50,7 @@ class LoopsScriptCase(unittest.TestCase):
         self.old_home = os.environ.get(HOME_ENV)
         os.environ[HOME_ENV] = str(self.home)
         self.paths = Paths(self.home).ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.engine = FakeEngine()
         self.engine.review_context = ON
         self.engine.review_answer = {

@@ -53,6 +53,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
 import containment as C  # noqa: E402
+import integrity  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -301,30 +302,88 @@ def _code_spellings() -> tuple[str, ...]:
     """The worker code folder as text, in every spelling a command could name it."""
     here = _plain(str(HERE))
     drive, rest = here.split(":", 1) if ":" in here else ("", here)
-    return tuple(x for x in (here, f"/{drive}{rest}" if drive else "", _plain(_shadow(HERE))) if x)
+    out = [here, f"/{drive}{rest}" if drive else "", _plain(_shadow(HERE))]
+    # Round 4c: `~/x`, `$HOME/x`, `$env:USERPROFILE/x`, `%USERPROFILE%/x` all end in the part of
+    # the path below the home folder.
+    try:
+        out.append("/" + _plain(str(HERE.relative_to(Path.home()))))
+    except (ValueError, RuntimeError, KeyError, OSError):  # no home folder in this environment
+        pass
+    return tuple(x for x in out if x and x != "/")
 
 
-def _names_worker_code(command: str, cwd: str) -> bool:
+def _names_worker_code(command: str, cwd: str, tool: str = "PowerShell") -> bool:
     """Orchestrator ruling 2026-11-22 (review round 4b): a shell command that names the worker's
     code folder, or runs inside it, is denied to every helper, tainted or not; Kevin changes the
-    worker through git. The one exception is the worker's own python running one script of that
-    folder as its first two words (a lone contained script was allowed above; build_lock.py and
-    warm_worktree.py runs go on to the normal rules), and then only if nothing after those two
-    words names the folder again."""
+    worker through git. The one exception is the worker's own python running one existing script
+    of that folder as its first two words (a lone contained script was allowed above; build_lock.py
+    and warm_worktree.py runs go on to the normal rules), and then only if nothing after those two
+    words names the folder again.
+
+    Round 4c: a relative word counts too, resolved against every folder the command could be
+    working in: the helper's own, each `cd` / `Set-Location` / `pushd` in the command, and
+    build_lock.py's `--cwd`. A regex still cannot see a path built at run time (`$HOME`, `~`,
+    `Join-Path`); `integrity.py` catches what that leaves, before any contained script runs."""
     text = re.sub(r"^\s*&\s+", "", command or "")
     lead = re.match(r'^\s*("[^"]*"|\S+)\s+("[^"]*"|\S+)', text)
     if lead:
         py, script = (w.strip('"') for w in lead.groups())
-        if (_plain(py, True) == _own_python()
-                and _plain(script, True).rsplit("/", 1)[0] == _plain(str(HERE))):
+        bash = tool == "Bash"
+        if (_plain(py, bash) == _own_python() and re.fullmatch(r"[A-Za-z0-9_./:-]+\.py", script)
+                and _plain(script, bash).rsplit("/", 1)[0] == _plain(str(HERE))
+                and (HERE / script.replace("\\", "/").rsplit("/", 1)[-1]).is_file()):
             text = text[lead.end():]
     flat = text.replace("\\", "/").lower()
     if any(x in flat for x in _code_spellings()):
         return True
     if cwd and (is_under(cwd, HERE) or is_under(cwd, _shadow(HERE))):
         return True
-    return any(t is not None and (is_under(t, HERE) or is_under(t, _shadow(HERE)))
-               for t in _targets(text, cwd))
+    if any(t is not None and (is_under(t, HERE) or is_under(t, _shadow(HERE)))
+           for t in _targets(text, cwd)):
+        return True
+    return _relative_into_code(text, cwd)
+
+
+_WORD_RE = re.compile(r"[^\s\"'`;&|<>(){},=]+")
+_CWD_FLAG_RE = re.compile(r"--cwd(?:\s+|=)(?:\"([^\"]+)\"|'([^']+)'|(\S+))")
+
+
+def _relative_into_code(text: str, cwd: str) -> bool:
+    """Any relative word of [text] that, from any folder the command may be working in, lands in
+    the worker code folder (or its `C:\\c\\` mirror)."""
+    bases = [cwd] if cwd else []
+    for m in list(CD_RE.finditer(text)) + list(_CWD_FLAG_RE.finditer(text)):
+        d = _to_os_path(next(g for g in m.groups() if g is not None))
+        if d.startswith(("~", "$", "%")):
+            continue
+        if DRIVE_RE.match(d) or os.path.isabs(d):
+            bases.append(d)
+        else:
+            bases += [os.path.join(b, d) for b in list(bases)]
+    roots = (str(HERE), _shadow(HERE))
+    for w in _WORD_RE.findall(text):
+        if w.startswith("-") or DRIVE_RE.match(w) or w.startswith(("~", "$", "%")) or "://" in w:
+            continue
+        for base in bases:
+            try:
+                target = os.path.join(base, _to_os_path(w))
+                if any(is_under(target, r) for r in roots):
+                    return True
+            except (OSError, ValueError):
+                return True
+    return False
+
+
+def _code_tampered(paths: Paths) -> dict | None:
+    """Review round 4c: the deny for a contained script when this folder is not the deployed code
+    (`integrity.check`), else None. Asked only on the allow path of a contained script."""
+    ok, why = integrity.check(paths, HERE)
+    if ok:
+        return None
+    return _deny("WORKER CODE CHANGED: the laptop worker's own scripts are not the deployed ones ("
+                 + why + "), so none of them runs until Kevin checks the laptop. Do not retry or "
+                 "work around it. Say in your final message that the laptop worker needs "
+                 "attention.")
 
 
 def _worker_code_reason() -> str:
@@ -541,7 +600,7 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
         if _is_lone_report(command, tool=tool):
-            return None
+            return _code_tampered(paths)
         if _is_our_lone_script(command, "send_mail.py", tool=tool):
             return None  # ruling 18: send_mail.py itself allows only text to Kevin from here
         for seg in re.split(r"&&|\|\||;|\|", command):
@@ -635,6 +694,10 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
     command = (inp.get("command", "") or "") if tool in SHELL_TOOLS else ""
     ours = bool(command) and any(_is_our_lone_script(command, s, task, tool)
                                  for s in CONTAINED_SCRIPTS)
+    if ours:
+        tampered = _code_tampered(paths)
+        if tampered:
+            return tampered, "integrity", True
 
     if not agent and (tool in WRITE_TOOLS or (tool in SHELL_TOOLS and not ours)):
         # The main window only dispatches, and it reads every helper's final message (derived
@@ -731,12 +794,15 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
         if _is_lone_report(command, task, tool):
-            return None, ""
+            tampered = _code_tampered(paths)
+            return tampered, "integrity" if tampered else ""
         if any(_is_our_lone_script(command, s, task, tool) for s in SHIP_SCRIPTS):
-            return None, "ship"  # ship.py / undo.py check Kevin's yes token themselves
+            tampered = _code_tampered(paths)
+            # ship.py / undo.py check Kevin's yes token themselves
+            return tampered, "integrity" if tampered else "ship"
         if _pushes(command) or SHIP_TOOLS.search(command):
             return _deny(_ship_reason()), "ship only"
-        if _names_worker_code(command, cwd):
+        if _names_worker_code(command, cwd, tool):
             return _deny(_worker_code_reason()), "worker code"
         if _copy_overwrites(command, cwd, paths):
             if _confirmed(paths, task, now):
