@@ -55,6 +55,7 @@ from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
 import containment  # noqa: E402
 import health as hl  # noqa: E402
+import integrity  # noqa: E402
 import warm_worktree  # noqa: E402
 import workflows as wfl  # noqa: E402
 
@@ -936,6 +937,9 @@ class Worker:
             self.progress = {k: v for k, v in self.progress.items() if k in running}
             wf_fields = self.catalog_fields(now)
             snap = self.health.take() if self.health else None
+            intact = self.code_intact()
+            if snap is not None:
+                snap = {**snap, "code_intact": intact}
             extra = {"health": snap} if snap else {}
             reply = self.engine.heartbeat({
                 "name": self.name, "hostname": socket.gethostname(), "scope": self.scope,
@@ -1295,7 +1299,18 @@ class Worker:
         self.contact_engine(now)
         self.save()
 
+    def code_intact(self) -> bool:
+        """Review round 4c: this folder is the deployed code (`integrity.py`). Checked at start and
+        on every heartbeat; a mismatch is logged once per change and rides the health snapshot as
+        `code_intact: false`. The hook refuses every contained script meanwhile."""
+        ok, why = integrity.check(self.paths)
+        if ok != getattr(self, "_code_ok", None):
+            (log.info if ok else log.error)("worker code %s", "intact" if ok else f"NOT intact: {why}")
+        self._code_ok = ok
+        return ok
+
     def run(self, stop: threading.Event) -> None:
+        self.code_intact()
         self.startup()
         if self.health:
             self.health.start()

@@ -39,6 +39,7 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `warm_worktree.py` | One warm LEGION worktree, `work\warm\wt`, reset per task and keeping its build outputs, so a task's compile is incremental, not cold (task 7's first build took 24 min). Leased to one task at a time; a question holds it for the follow-up that ships it. `prepare` seeds it. |
 | `workflows.py` | Worker workflows (map worker-workflows, ADR 0067 amended 2026-11-10): the `workflow.json` sidecar beside a private skill, its lint (`--lint <skills dir>`), the engine copy and hash, and the phrase matcher the engine ports. The worker re-reads the sidecars every 5 minutes and sends the catalog only when the engine holds another hash. |
 | `to_pdf.py` | A task's own HTML or Markdown to a PDF beside it, allowed after a web read (2026-11-22). Prints a sanitised copy with the laptop's headless Edge: a `default-src 'none'` CSP, no DNS, no proxy, a throwaway profile. |
+| `integrity.py` | Review round 4c: sha256 manifest of this folder's `.py` files, kept outside it (`<root>/code-manifest.json`). `--write` after each deploy of this folder; the worker checks it at start and every heartbeat (`code_intact` in health), the hook before every contained script (none runs on a mismatch, an extra file or no manifest). |
 | `main_session_prompt.md` | The main session's appended system prompt. |
 | `install.ps1` / `uninstall.ps1` / `status.ps1` | Kevin runs these by hand. |
 | `fake_claude.py`, `fake_engine.py`, `test_*.py` | Tests. Never the real CLI, never real mail. |

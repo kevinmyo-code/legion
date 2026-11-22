@@ -20,6 +20,7 @@ sys.path.insert(0, str(HERE))
 import send_mail  # noqa: E402
 import worker as W  # noqa: E402
 from common import Paths, read_json, write_json_atomic  # noqa: E402
+import integrity  # noqa: E402
 from fake_engine import TOKEN, FakeEngine  # noqa: E402
 from engine_client import EngineClient  # noqa: E402
 
@@ -65,6 +66,7 @@ class WorkerCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name) / "legion-claude"
         self.paths = Paths(self.home).ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.fake_log = Path(self.tmp.name) / "fake_claude.jsonl"
         self.engine = FakeEngine()
         self.day = "2026-11-01"

@@ -24,6 +24,7 @@ import asklist_hook as H  # noqa: E402
 import report  # noqa: E402
 import send_mail  # noqa: E402
 from common import Paths, read_json, write_json_atomic  # noqa: E402
+import integrity  # noqa: E402
 
 
 class Base(unittest.TestCase):
@@ -31,6 +32,7 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.paths = Paths(self.root / "home").ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.work = self.paths.task_work(41)
         self.work.mkdir()
         self.kevin_file = self.root / "Documents" / "budget.xlsx"
