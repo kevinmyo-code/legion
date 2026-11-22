@@ -28,7 +28,7 @@ from api.schema import DetailSerializer
 from board import ideas as board_ideas
 from board.authentication import BoardWriterAuthentication
 from board.models import BoardIdea, BoardSnapshot
-from board.views import TAGS, WRITER_ONLY, BoardRiceSerializer, _OffBeforeAnything
+from board.views import TAGS, BoardRiceSerializer, _OffBeforeAnything
 from household.authentication import DeviceTokenAuthentication
 from household.models import is_recruiter
 from household.permissions import IsHouseholdMember
@@ -37,6 +37,10 @@ from household.tenancy import household_of
 logger = logging.getLogger(__name__)
 
 NOT_FOR_RECRUITER = "Nothing was added. A demo visit has no laptop board."
+WRITER_ONLY = (
+    "Nothing was read or marked. Backlog ideas are picked up by the laptop with its board writer "
+    "token, not with a member's own sign-in."
+)
 OFF = OpenApiResponse(DetailSerializer, description="The board is switched off.")
 
 
@@ -191,15 +195,20 @@ class IdeaDetailView(_MemberIdeaView):
 
 
 class _WriterIdeaView(_OffBeforeAnything):
-    """The laptop's writer token only: a member's own sign-in is refused here."""
+    """The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+    the visit's fence in words, as on `BoardView`) and is then refused here."""
 
-    authentication_classes = [BoardWriterAuthentication]
+    authentication_classes = [
+        BoardWriterAuthentication,
+        DeviceTokenAuthentication,
+        SessionAuthentication,
+    ]
     permission_classes = [IsHouseholdMember]
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         if not isinstance(request.auth, BoardSnapshot):
-            raise exceptions.NotAuthenticated(WRITER_ONLY)
+            raise exceptions.PermissionDenied(WRITER_ONLY)
 
 
 class PendingIdeasView(_WriterIdeaView):
