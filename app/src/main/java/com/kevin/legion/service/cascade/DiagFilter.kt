@@ -82,7 +82,7 @@ internal class DiagFilter(private val said: String? = null) : SentenceFilter {
         /** A module-count sentence made only of these (and [BARE]) says nothing new ("Seven modules answered."). */
         private val COUNT_BARE = setOf(
             "answered", "responded", "replied", "read", "scanned", "checked", "were", "came", "back", "up", "in",
-            "out", "on", "reported", "module", "modules", "computers", "controllers", "ecus",
+            "out", "on", "reported", "module", "modules", "s", "computers", "controllers", "ecus",
         )
         private val WORD = Regex("[a-z]+(?:'[a-z]+)?")
         private val DIGIT_WORDS = listOf("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
