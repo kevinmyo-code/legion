@@ -68,6 +68,25 @@ class EmergencyRingRulesTest {
     }
 
     @Test
+    fun `another segment of the same NWS message is the same series`() {
+        // One NWS message carries one segment per zone group (.001.1, .002.1): a Watch for one
+        // place and a Warning for the next, or the zone he drove into. Production 11-13: one
+        // message prefix rang again hours later. Made-up hashes.
+        val rang = "urn:oid:2.49.0.1.840.0.feedc0de.001.1"
+        val records = mapOf(rang to Record(1, now, rang))
+        assertFalse(EmergencyRingRules.isNew(alarm("urn:oid:2.49.0.1.840.0.feedc0de.002.1"), records))
+        assertEquals(rang, EmergencyRingRules.seriesOf(alarm("urn:oid:2.49.0.1.840.0.feedc0de.003.1"), records))
+    }
+
+    @Test
+    fun `different NWS messages, and ids in no NWS shape, never merge by prefix`() {
+        val rang = "urn:oid:2.49.0.1.840.0.feedc0de.001.1"
+        val records = mapOf(rang to Record(1, now, rang), "a1" to Record(1, now, "a1"))
+        assertTrue(EmergencyRingRules.isNew(alarm("urn:oid:2.49.0.1.840.0.beefcafe.001.1"), records))
+        assertTrue(EmergencyRingRules.isNew(alarm("a12"), records))
+    }
+
+    @Test
     fun `stored records round-trip, and a record from before series reads as its own series`() {
         val r = Record(2, now, "a1")
         assertEquals(r, EmergencyRingRules.parse("a9", EmergencyRingRules.format(r)))

@@ -21,6 +21,7 @@ import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -169,7 +170,23 @@ class SevereAlertAlarmTest {
         }
     }
 
+    @Test
+    fun `the same alert id admitted again hours later, after a restart, does not ring again`() {
+        // Production 11-13: a "Severe" Freeze alert rang again 5 to 6.5 hours later. The memory is
+        // on disk (SharedPreferences, read on every admit, nothing held in the process), so a
+        // restart reads what the first admit wrote.
+        val alarm = ProactiveUrgency.Alarm("urn:oid:2.49.0.1.840.0.feedc0de.001.1", 1)
+        val t0 = 1_800_000_000_000L
+        assertTrue(SafetyAlarms.admit(context, alarm, t0))
+        val stored = context.getSharedPreferences("safety_alarms", Context.MODE_PRIVATE)
+        assertTrue(stored.contains(alarm.alertId))
+        val restarted = RuntimeEnvironment.getApplication().applicationContext
+        assertFalse(SafetyAlarms.admit(restarted, alarm, t0 + SIX_HOURS))
+        assertFalse(SafetyAlarms.admit(restarted, alarm, t0 + 2 * SIX_HOURS))
+    }
+
     private companion object {
+        const val SIX_HOURS = 6L * 60 * 60 * 1000
         const val RACES = 20
     }
 }
