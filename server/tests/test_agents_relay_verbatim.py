@@ -292,3 +292,94 @@ def test_a_device_line_stating_money_or_torque_falls_back_to_the_model(
     assert line not in said(rest)
     # No device line was said, so nothing filters the model either.
     assert said(rest)[0] == "Clean bill."
+
+
+# ---- parity with the phone's DiagFilter (review-phone-diag-safety 1121) ----
+
+
+def test_the_safety_cues_match_the_phones_list():
+    assert limb_verbatim.SAFETY_CUES == (
+        "pull over",
+        "pull off",
+        "stop driving",
+        "don't drive",
+        "do not drive",
+        "flashing",
+        "overheating",
+        "overheated",
+        "overheat",
+        "smoke",
+        "burning",
+        "brakes",
+        "oil pressure",
+        "temperature warning",
+    )
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "It overheated on the way, so let it cool first.",
+        "If you smell burning, get it checked.",
+        "Pull off somewhere safe if P0420 comes back.",
+    ],
+)
+def test_the_new_cues_are_never_dropped(sentence):
+    assert not limb_verbatim.restates_result(sentence, SAID)
+
+
+def test_a_code_explained_is_said_only_when_the_device_line_said_that_code():
+    explained = "P0420 means the catalytic converter is working below its threshold."
+    assert not limb_verbatim.restates_result(explained, SAID)
+    # A code the device never said: the model's own figure, dropped.
+    assert limb_verbatim.restates_result("P0301 means cylinder 1 is misfiring.", SAID)
+    # Every code in the sentence must be one the line said.
+    assert limb_verbatim.restates_result(
+        "P0420 and P0301 often show up together on older cars.", SAID
+    )
+    # With no line known, a code sentence is dropped.
+    assert limb_verbatim.restates_result(explained)
+
+
+def test_a_spoken_code_in_digits_or_words_counts_as_that_code():
+    assert limb_verbatim.codes_in("P0420, p 0 4 2 0, P zero four two oh") == {"P0420"}
+    assert limb_verbatim.codes_in("P-zero-four-twenty") == set()
+
+
+def test_a_module_count_is_dropped_only_when_the_rest_is_bare():
+    assert limb_verbatim.restates_result("Seven modules answered.", SAID)
+    assert limb_verbatim.restates_result("3 modules responded.", SAID)
+    assert not limb_verbatim.restates_result(
+        "Two modules flagged faults, get it checked today.", SAID
+    )
+
+
+def test_a_word_for_word_run_of_the_line_is_dropped():
+    assert limb_verbatim.restates_result("Catalyst efficiency below threshold.", SAID)
+    assert not limb_verbatim.restates_result("Below threshold.", SAID)
+
+
+def test_an_explanation_of_the_spoken_code_is_said_in_the_turn(auth_client, codes_limb, engine):
+    explained = "P0420 means the catalytic converter is working below its threshold."
+    _turn, rest = answered(
+        auth_client,
+        engine,
+        codes_result(),
+        reply=m.say(f"{explained} P0301 is also likely. Want me to look it up?"),
+    )
+    assert said(rest) == [SAID, explained, "Want me to look it up?"]
+
+
+def test_the_codes_survive_a_second_pause(auth_client, codes_limb, engine):
+    _e, turn_id, requests = paused(engine, auth_client, m.call("get_codes", {}), text="any codes")
+    engine.rounds = [m.call("car_status", {})]
+    second = events_of(
+        post_result(
+            auth_client, turn_id, requests[0]["call_id"], result=codes_result(), words="Read."
+        )
+    )
+    again = of(second, "tool_request")
+    explained = "P0420 points at the catalytic converter."
+    engine.rounds = [m.say(f"{explained} P0301 too.")]
+    rest = events_of(post_result(auth_client, turn_id, again[0]["call_id"], words="Warm."))
+    assert said(rest) == [explained]
