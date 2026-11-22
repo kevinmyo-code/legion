@@ -742,9 +742,9 @@ app/src/main/java/com/kevin/midnightai/
   (Kevin, 2026-11-06):** the car has its own Gemini key saved in Settings, and a car build is what
   gets published to the engine's bucket, so it must carry no dev key. `gradlew assembleRelease` needs the
   `RELEASE_*` keys.
-- ABI splits are on, no universal APK: one `arm64-v8a` and one `armeabi-v7a` APK per build. Since
-  the native libraries left (sherpa-onnx, Mapbox) the two are byte-identical (16.7 MB `fast`,
-  2026-11-06); publish the arm64 one.
+- ABI splits are on, no universal APK: one `arm64-v8a` and one `armeabi-v7a` APK per build. **Publish
+  the `armeabi-v7a` one:** the head unit runs 32-bit, and since Mapbox brought native libraries back
+  (2026-11-21) the arm64 APK does not install on it.
 - `fast` and `release` take versionCode `yyDDDHHmm` UTC (the updater installs only a higher one);
   `debug` is 1 and never updates itself. Publish with `tools/release_apk.py --app headunit` (ticket 09).
 - `-Pnokey` bakes an empty Gemini key.
