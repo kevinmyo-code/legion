@@ -602,6 +602,23 @@
       "say": "can I afford a dinner out this week?",
       "why": "2026-11-22: a money answer ran the money specialist and was said by voice alone; every budget view now puts the budget card up (BudgetCards, unit-tested). This case pins the route the card rides on",
       "expect": {"calls": ["look_up/ask_money|ask_money|get_monthly_spend"]}
+    },
+    {
+      "id": "delete_event_confirmed",
+      "why": "2026-11-22: asked to remove a calendar entry made by voice, the assistant said entries cannot be removed. manage_item remove now reaches calendar entries: the first turn reads the entry back and asks (nothing removed), the yes removes it (EventRemoval, unit-tested)",
+      "turns": [
+        {"say": "remove the dentist cleaning from my calendar", "expect": {"calls": ["manage_item/remove"], "answer_has": ["(?i)dentist"]}},
+        {
+          "say": "Yes.",
+          "expect": {
+            "calls": ["manage_item/remove"],
+            "succeeded": ["manage_item/remove"],
+            "not_held": true,
+            "result_has": ["Dentist cleaning"]
+          }
+        }
+      ],
+      "write": true
     }
   ]
 }
