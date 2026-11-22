@@ -34,7 +34,7 @@ const CONTEXT = 64
 /** Runs before the speed check that are not timed (graph compile), then the timed runs. */
 const SILERO_WARMUP = 5
 const SILERO_TIMED = 15
-const SMART_TIMED = 3
+const SMART_TIMED = 1
 
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b)
