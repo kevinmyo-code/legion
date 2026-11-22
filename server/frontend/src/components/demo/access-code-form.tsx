@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from 'react'
 
 import { enterDemo } from '@/api/demo'
+import { EnterWait } from '@/components/demo/enter-wait'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -81,6 +82,7 @@ export function AccessCodeForm({
           {submitting ? 'Checking…' : submitLabel}
         </Button>
       </div>
+      {submitting && <EnterWait className="text-[0.9375rem]" />}
       {error && (
         <p id={errorId} role="alert" className="text-[0.9375rem] text-destructive">
           {error}

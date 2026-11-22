@@ -28,6 +28,7 @@ import { usePresenter } from '@/components/assistant/cards/presenter-context'
 import { RESUME_ALT } from '@/components/assistant/cards/resume'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
+import { EnterWait } from '@/components/demo/enter-wait'
 import { StoreRepSection } from '@/components/demo/store-rep/store-rep-section'
 import { useSurface } from '@/lib/surface'
 import { postFunnel } from '@/assistant/deps'
@@ -444,10 +445,12 @@ function VisitorBody({ entered, ended, expiresAt }: { entered: boolean; ended: b
         ) : (
           access
         )
-      ) : (
+      ) : ended ? (
         <p role="status" className="rc-status">
-          {ended ? 'Your demo visit has ended. Tap the orb to start a new one.' : 'Opening the demo…'}
+          Your demo visit has ended. Tap the orb to start a new one.
         </p>
+      ) : (
+        <EnterWait className="rc-status" />
       )}
     </Shell>
   )
