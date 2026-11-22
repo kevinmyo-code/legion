@@ -150,7 +150,10 @@ object ClaudeSessionToolbox {
                 question = args.optString("request"),
             )
             "answer" -> needsTask(taskId) ?: shown(
-                c.answer(taskId, args.optString("request"), args.optBoolean("yes", false), args.optBoolean("email_me")),
+                c.answer(
+                    taskId, args.optString("request"), args.optBoolean("yes", false), args.optBoolean("email_me"),
+                    byVoice = true,
+                ),
             )
             "assign" -> needsTask(taskId) ?: shown(c.assign(taskId, args.optString("machine")))
             "send_file" -> needsTask(taskId) ?: sendResult(c.sendFile(taskId, args.optInt("file_id", 0)))

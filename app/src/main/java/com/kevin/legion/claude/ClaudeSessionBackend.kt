@@ -135,6 +135,15 @@ data class ClaudeTask(
     val latestStep: String? get() = ClaudeSteps.newestFirst(steps).firstOrNull()?.text
     val needsConfirmation: Boolean get() = status == NEEDS_CONFIRMATION
 
+    /**
+     * A card asking to send a message to one of Kevin's Claude sessions (alfred-sessions, Kevin's
+     * ruling 2026-11-22: he reads the exact text on the card and approves it there). The worker
+     * writes this question from its stored plan (`tools/claude_session/sessions.py` `question`),
+     * so the prefix is the worker's own words, never the model's.
+     */
+    val isSessionSendCard: Boolean
+        get() = needsConfirmation && question?.startsWith(SESSION_SEND_PREFIX) == true
+
     /** Kevin asked for the result as a page on his phone. */
     val wantsPage: Boolean get() = deliver == ClaudeTaskDraft.DELIVER_PHONE
 
@@ -169,6 +178,7 @@ data class ClaudeTask(
         const val CANCELLED = "cancelled"
         const val KIND_ASK = "ask"
         const val KIND_WORKFLOW = "workflow"
+        const val SESSION_SEND_PREFIX = "Send this message to your Claude session "
 
         /** States after which nothing more happens to the task. A yes to a question is a NEW task. */
         val FINISHED = setOf(DONE, FAILED, NEEDS_CONFIRMATION, CANCELLED)

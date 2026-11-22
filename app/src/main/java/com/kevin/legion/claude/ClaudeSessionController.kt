@@ -222,12 +222,23 @@ class ClaudeSessionController(
      * `needs_confirmation`, the one thing that unlocks the asked ask-list step on the worker. Every
      * other follow-up carries no `confirms`.
      */
-    suspend fun answer(taskId: Int, answer: String, yes: Boolean, emailMe: Boolean): ClaudeSendResult {
+    suspend fun answer(
+        taskId: Int,
+        answer: String,
+        yes: Boolean,
+        emailMe: Boolean,
+        byVoice: Boolean = false,
+    ): ClaudeSendResult {
         val text = answer.trim().ifEmpty { if (yes) "Yes, go ahead." else "" }
         if (text.isEmpty()) return ClaudeSendResult.NotSent(ClaudeWording.EMPTY_REQUEST)
         val parent = backend.task(taskId)
         if (parent !is ClaudeOutcome.Ok) {
             return ClaudeSendResult.NotSent(ClaudeWording.failed(parent, "send the follow-up to task $taskId"))
+        }
+        if (byVoice && yes && parent.value.isSessionSendCard) {
+            // Kevin's ruling: he approves a message to a session on the card, where the exact text
+            // is, never by a spoken yes to a paraphrase of it.
+            return ClaudeSendResult.NotSent(ClaudeWording.SEND_CARD_ON_SCREEN)
         }
         val draft = ClaudeTaskDraft(
             request = text,
