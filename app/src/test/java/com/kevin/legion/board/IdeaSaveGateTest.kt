@@ -49,5 +49,8 @@ class IdeaSaveGateTest {
         assertTrue(IdeaSaveGate.isExplicitYes("ok save it"))
         assertFalse(IdeaSaveGate.isExplicitYes("not now"))
         assertFalse(IdeaSaveGate.isExplicitYes("sounds good"))
+        for (no in listOf("ok forget it", "okay drop it", "go away", "please don't", "do it later")) {
+            assertFalse(no, IdeaSaveGate.isExplicitYes(no))
+        }
     }
 }

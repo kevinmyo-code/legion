@@ -60,6 +60,28 @@ object VerbatimSpeech {
         return unmark(JSONObject(response.toString())).apply { remove(PRIVATE) }
     }
 
+    /** What history keeps in place of private spoken words ([redact]). */
+    const val PRIVATE_HISTORY = "(LEGION's own voice read the factory board aloud.)"
+
+    /** The private words [response] carries, or null ([markPrivate]). */
+    fun privateWords(response: JSONObject?): String? =
+        if (response?.optBoolean(PRIVATE) == true) of(response) else null
+
+    /**
+     * [text] as history may keep it: [words] (or the part of them spoken before a cut-off) replaced by
+     * [PRIVATE_HISTORY], so the next turn's model and the conversation record never hold them.
+     */
+    fun redact(text: String, words: String?): String {
+        val w = words?.trim().orEmpty()
+        if (w.isEmpty()) return text
+        val start = text.indexOf(w.take(REDACT_PROBE))
+        if (start < 0) return text
+        val end = minOf(text.length, start + w.length)
+        return (text.substring(0, start) + PRIVATE_HISTORY + text.substring(end)).trim()
+    }
+
+    private const val REDACT_PROBE = 24
+
     /** [result] with its words no longer marked to be spoken by the phone. Returns [result]. */
     fun unmark(result: JSONObject): JSONObject {
         result.remove(KEY)

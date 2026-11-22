@@ -634,11 +634,11 @@ object ScriptedLines {
     /**
      * Writes no line is said for, by tool or tool/action: a proposal that changes nothing he would
      * call done, a read on a writing tool (Claude's status, an update check), a screen opened, and
-     * the factory board's actions, whose own words the phone already spoke (`where`, `idea`).
+     * a backlog idea, whose own words the phone already spoke (`idea`; `where` is a read, [ToolReads]).
      */
     val SILENT: Set<String> = setOf(
         "generate_goal_plan", "email/open", "claude_session/check", "claude_session/open_page", "app_update/check",
-        "claude_session/where", "claude_session/idea",
+        "claude_session/idea",
     )
 
     /**

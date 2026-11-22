@@ -43,6 +43,8 @@ object ToolReads {
         "app_update" to setOf("whats_new"),
         "bought_log" to setOf("last", "recent"),
         "clock" to setOf("alarm_list", "timer_left"),
+        // The factory board's "where are we" (backlog intake 1122); `idea` writes.
+        "claude_session" to setOf("where"),
     )
 
     /** Reads unless called with `stop` (which turns a spoken line off for good). */
