@@ -163,12 +163,27 @@ class ActionListView(_MemberActionView):
         return Response({"actions": [board_actions.as_dict(r) for r in rows]})
 
 
+def _phone_token(request) -> bool:
+    from claude_session.models import ClaudeMachine
+    from household.models import DeviceToken
+
+    token = request.auth
+    return (
+        isinstance(request.successful_authenticator, DeviceTokenAuthentication)
+        and isinstance(token, DeviceToken)
+        and token.scope == DeviceToken.SCOPE_WRITE
+        and not ClaudeMachine.objects.filter(token=token).exists()
+    )
+
+
 class _TapView(_MemberActionView):
     allow = True
 
     def post(self, request, action_id):
-        # A device token only: the phone app is where the biometric confirm runs.
-        if not isinstance(request.successful_authenticator, DeviceTokenAuthentication):
+        # A member's own write device token only: the phone app is where the biometric confirm
+        # runs. Never a browser session, and never a token a Claude machine holds (the laptop
+        # that asked must not be able to allow its own record).
+        if not _phone_token(request):
             return Response({"detail": PHONE_ONLY}, status=status.HTTP_403_FORBIDDEN)
         body = TapRequestSerializer(data=request.data)
         sha = body.validated_data["record_sha256"] if body.is_valid() else ""

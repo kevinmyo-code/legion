@@ -33,6 +33,7 @@ from board import cards as board_cards
 from board.models import (
     ANSWER_OUTCOMES,
     ANSWER_PENDING,
+    ANSWER_REFUSED,
     VOTES,
     BoardAnswer,
     BoardSnapshot,
@@ -175,11 +176,15 @@ def record_answer(*, household, owner_user, card_id, ask_sha256, choice, text) -
             raise Refused(NOT_ASKING, 410)
         if ask_hash(card) != ask_sha256:
             raise Refused(CHANGED, 409)
+        # One question, one answer; an answer the laptop refused (its card had moved on) no
+        # longer holds the question, so he may answer again.
         if (
             card.get("answer")
             or BoardAnswer.objects.filter(
                 owner_user=owner_user, card_id=card_id, ask_sha256=ask_sha256
-            ).exists()
+            )
+            .exclude(outcome=ANSWER_REFUSED)
+            .exists()
         ):
             raise Refused(ANSWERED, 409)
         if not answerable(card) or action_word(choice) or action_word(text):

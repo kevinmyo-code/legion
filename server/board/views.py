@@ -6,7 +6,7 @@ Every route here is a 404 before authentication unless `LEGION_BOARD=on` (`board
   says (`board.reading`). Device token or browser session. Never a recruiter (`recruiter_routes`),
   never a head-unit token (not on its list), never the board writer token.
 - `PUT /api/board`: the laptop sends `board.json` as it is. The board writer token ONLY
-  (`board.authentication`). Cleaned (`board.cards.clean_board`), capped at 128 KB, latest only.
+  (`board.authentication`). Cleaned (`board.cards.clean_board`), capped at 64 KB, latest only.
   10 a minute per writer.
 - `POST /api/board/writer`: a signed-in member mints the laptop's writer token, shown once; any
   earlier one dies now. Browser session or a write device token; 5 an hour per member.

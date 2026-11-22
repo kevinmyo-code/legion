@@ -14,8 +14,11 @@ spend need a biometric or PIN confirm on the phone; a spend tap is capped at $25
   ("replay"); a record past `expires_at` (30 minutes on the ENGINE's clock, never the laptop's) is
   410. The cap is checked again at the tap.
 - Every tap, whatever it came to, is one row in the append-only tap log (`BoardActionTap`).
-- Allowed by a member's DEVICE token only: never a browser session, the writer token, a head-unit
-  token, a recruiter, a tool or a voice path.
+- Allowed by a member's own WRITE device token only: never a browser session, the writer token, a
+  read-only or `claude_worker` token, a token any Claude machine holds, a head-unit token, a
+  recruiter, a tool or a voice path. The engine cannot tell the phone app's write token from
+  another write token the member minted by hand (the web Settings "new device"): that residual
+  rests on him, and on the biometric confirm running on the phone.
 
 **What it does not guarantee.** The engine cannot see the fingerprint or PIN: the confirm runs on
 the phone (`ui/controlroom/ActionConfirm.kt`), as the ID vault's does (ADR 0076). And an approval

@@ -461,6 +461,7 @@ def test_every_denied_route_refuses_a_recruiter_in_words(
     settings.LEGION_MCP = True
     monkeypatch.setenv("LEGION_HEADUNIT_SIGNIN", "on")
     monkeypatch.setenv("LEGION_BOARD", "on")
+    monkeypatch.setenv("LEGION_BOARD_ACTIONS", "on")
     client = recruiter_web if credential == "session" else recruiter_token_client
     wrong = []
     for path, cls in DENIED_ROUTES:

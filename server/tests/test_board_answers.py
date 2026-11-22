@@ -168,6 +168,16 @@ def test_a_second_answer_to_the_same_question_is_409(on, auth_client):
     assert BoardAnswer.objects.count() == 1
 
 
+def test_an_answer_the_laptop_refused_frees_the_question(on, auth_client):
+    laptop = _writer(auth_client)
+    _push(laptop, _board(TEAPOT))
+    assert _answer(auth_client, "teapot", choice="green").status_code == 201
+    taken = laptop.get(INBOX).json()["answers"][0]
+    laptop.post(DELIVERED, {"answers": [{"id": taken["id"], "outcome": "refused"}]}, format="json")
+    assert _answer(auth_client, "teapot", choice="blue").status_code == 201
+    assert BoardAnswer.objects.count() == 2
+
+
 def test_a_card_that_left_or_stopped_asking_is_410(on, auth_client):
     laptop = _writer(auth_client)
     _push(laptop, _board(TEAPOT))

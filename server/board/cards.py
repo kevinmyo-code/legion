@@ -46,9 +46,10 @@ REMOVED = "[removed]"
 _INVISIBLE = re.compile(r"[\u200b-\u200f\u2060-\u2064\ufeff\u00ad]")
 FIELD_MAX = 220
 MAX_CARDS = 80
-# Control room C2: the whole backlog rides beside the cards (`clean_backlog`), so the body cap
-# grew from 64 KB to hold it.
-MAX_BYTES = 128 * 1024
+MAX_BYTES = 64 * 1024
+# Control room C2: the whole backlog rides beside the cards (`clean_backlog`), inside the same
+# 64 KB body cap (Kevin's ruling 2026-11-22: within the size limits). The laptop trims it to fit and
+# sends `backlog_total`, so a cut list says how many more there are.
 MAX_BACKLOG = 300
 BACKLOG_TITLE_MAX = 120
 MAX_AGE_MIN = 60 * 24 * 365

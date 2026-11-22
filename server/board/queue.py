@@ -25,6 +25,8 @@ from board import actions as board_actions
 from board import asks, flags, reading
 
 APPROVALS_WITHIN = timedelta(days=7)
+# The phone's `ClaudeSessionController.RECENT`: how many tasks its screens read.
+SHOWN_TASKS = 20
 SESSIONS_WITHIN = timedelta(hours=24)
 NOTHING = "Nothing needs you right now."
 
@@ -63,8 +65,14 @@ def _approvals(request, now) -> list[str]:
     from household.tenancy import scoped
 
     tasks = scoped(ClaudeTask, request)
+    # The same window the control room's Approvals tab reads (the household's newest tasks), so
+    # the home count never names a card he cannot see and clear there.
+    newest = list(tasks.order_by("-created_at", "-id").values_list("id", flat=True)[:SHOWN_TASKS])
     asked = tasks.filter(
-        user=request.user, status=NEEDS_CONFIRMATION, created_at__gte=now - APPROVALS_WITHIN
+        id__in=newest,
+        user=request.user,
+        status=NEEDS_CONFIRMATION,
+        created_at__gte=now - APPROVALS_WITHIN,
     )
     yes_sent = set(
         tasks.filter(confirms=True, parent__in=asked).values_list("parent_id", flat=True)

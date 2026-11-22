@@ -200,3 +200,21 @@ def test_the_tap_log_is_append_only(on, auth_client):
         tap.save()
     with pytest.raises(ValueError):
         tap.delete()
+
+
+def test_a_token_a_claude_machine_holds_cannot_allow(on, auth_client, household_a, household_user):
+    """The laptop that asks must not allow its own record with the worker's device token."""
+    from claude_session.models import SCOPE_FULL, ClaudeMachine
+    from household.models import DeviceToken
+
+    action = _ask(_laptop(auth_client)).json()
+    for scope in (DeviceToken.SCOPE_WRITE, DeviceToken.SCOPE_CLAUDE_WORKER, DeviceToken.SCOPE_READ):
+        token, raw = DeviceToken.issue(household_user, f"claude-session-{scope}", scope=scope)
+        if scope == DeviceToken.SCOPE_WRITE:
+            ClaudeMachine.objects.create(
+                household=household_a, name="Alienware", scope=SCOPE_FULL, token=token
+            )
+        worker = APIClient()
+        worker.credentials(HTTP_AUTHORIZATION=f"Token {raw}")
+        assert _tap(worker, action).status_code == 403, scope
+    assert BoardAction.objects.get().status == "pending"
