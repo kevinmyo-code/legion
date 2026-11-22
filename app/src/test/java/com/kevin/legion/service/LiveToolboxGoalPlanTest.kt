@@ -35,7 +35,7 @@ import org.robolectric.RuntimeEnvironment
  * "I need a Gemini key" refusal path AFTER persisting a stated constraint - deliberately, so the
  * ticket's core promise ("having said once that he has no gym, he should not have to say it
  * again") is provable deterministically, without depending on a real model response.
- * [LiveToolbox.mapGoalPlanResult] itself is covered separately, with no Context and no dispatch
+ * [GoalsToolbox.mapGoalPlanResult] itself is covered separately, with no Context and no dispatch
  * at all, for the branches a missing key can't reach (Success, ParseFailed, refusals).
  */
 @RunWith(RobolectricTestRunner::class)
@@ -268,7 +268,7 @@ class LiveToolboxGoalPlanTest {
             refusals = emptyList(),
         )
 
-        val response = LiveToolbox.mapGoalPlanResult(GoalPlanResult.Success(plan))
+        val response = GoalsToolbox.mapGoalPlanResult(GoalPlanResult.Success(plan))
 
         assertTrue(response.getBoolean("success"))
         assertTrue(response.getString("message").contains("worth revisiting"))
@@ -287,7 +287,7 @@ class LiveToolboxGoalPlanTest {
             refusals = listOf("sleep target: the goal names a diagnosed condition, which needs a physician."),
         )
 
-        val response = LiveToolbox.mapGoalPlanResult(GoalPlanResult.Success(plan))
+        val response = GoalsToolbox.mapGoalPlanResult(GoalPlanResult.Success(plan))
 
         assertTrue(response.getBoolean("success"))
         assertEquals(1, response.getJSONArray("refusals").length())
@@ -297,7 +297,7 @@ class LiveToolboxGoalPlanTest {
     @Test
     fun `mapGoalPlanResult on ParseFailed still relays the model's prose rather than discarding it`() {
         val prose = "Roughly 2200 calories and 8 hours of sleep, kettlebell strength work three times a week."
-        val response = LiveToolbox.mapGoalPlanResult(GoalPlanResult.ParseFailed(prose))
+        val response = GoalsToolbox.mapGoalPlanResult(GoalPlanResult.ParseFailed(prose))
 
         assertTrue(response.getBoolean("success"))
         assertTrue(response.getString("message").contains(prose))
@@ -309,7 +309,7 @@ class LiveToolboxGoalPlanTest {
 
     @Test
     fun `mapGoalPlanResult on Failed refuses in words`() {
-        val response = LiveToolbox.mapGoalPlanResult(GoalPlanResult.Failed)
+        val response = GoalsToolbox.mapGoalPlanResult(GoalPlanResult.Failed)
         assertFalse(response.getBoolean("success"))
         assertTrue(response.getString("message").isNotBlank())
     }

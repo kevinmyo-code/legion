@@ -67,7 +67,7 @@
     <ID>CyclomaticComplexMethod:LiveSessionController.kt:LiveSessionController$fun requestSpeak( prompt: String, listensForReply: Boolean = false, carriesReadThroughContent: Boolean = false, )</ID>
     <ID>CyclomaticComplexMethod:LiveSessionController.kt:LiveSessionController$private fun handleEvent(event: LiveEvent)</ID>
     <ID>CyclomaticComplexMethod:LiveSessionController.kt:LiveSessionController$private fun handleToolCall(call: LiveEvent.ToolCall)</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$internal fun mapGoalPlanResult(outcome: GoalPlanResult): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:GoalsToolbox.kt:GoalsToolbox$internal fun mapGoalPlanResult(outcome: GoalPlanResult): JSONObject</ID>
     <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject</ID>
     <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject</ID>
     <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
@@ -777,7 +777,7 @@
     <ID>LongMethod:LiveSessionController.kt:LiveSessionController$private fun handleEvent(event: LiveEvent)</ID>
     <ID>LongMethod:LiveSessionController.kt:LiveSessionController$private fun handleToolCall(call: LiveEvent.ToolCall)</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$fun declarations(): JSONArray</ID>
-    <ID>LongMethod:LiveToolbox.kt:LiveToolbox$internal fun mapGoalPlanResult(outcome: GoalPlanResult): JSONObject</ID>
+    <ID>LongMethod:GoalsToolbox.kt:GoalsToolbox$internal fun mapGoalPlanResult(outcome: GoalPlanResult): JSONObject</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$internal fun allDeclarations(): JSONArray</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private suspend fun readVehicleSensor(context: Context, args: JSONObject): JSONObject</ID>
@@ -3151,7 +3151,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$*</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$.</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$?:</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$GoalController.CloseOutcome.NotFound -&gt; result(false, "I don't see an active ${aspectLabel(aspect)} goal matching that.")</ID>
+    <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$GoalController.CloseOutcome.NotFound -&gt; result(false, "I don't see an active ${aspectLabel(aspect)} goal matching that.")</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$MusicAction.SEEK_BACK -&gt; controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$MusicAction.SEEK_FORWARD -&gt; controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (user's unit, already converted - do not convert again); ") }</ID>
@@ -3160,7 +3160,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$else</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$headline = healthSummary ?: if (concerns.length() == 1) "1 concern" else "${concerns.length()} concerns"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (aspectRaw !in GoalController.ASPECTS) return result(false, "Which aspect - body, notes, fleet, or money?")</ID>
+    <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$if (aspectRaw !in GoalController.ASPECTS) return result(false, "Which aspect - body, notes, fleet, or money?")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (coolant != null &amp;&amp; coolant &gt;= HOT_COOLANT_C) concerns.put("Coolant is running hot (${Temp.text(context, coolant.toDouble())}).")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (coolant != null) put("coolant", Temp.convert(coolant.toDouble(), coolantUnit)).put("coolantUnit", coolantUnit.symbol)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (days.isNullOrEmpty()) return result(false, "Which day(s) of the week should that repeat on?")</ID>
@@ -3204,8 +3204,8 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logPastServiceDirect(context, service, mileage, milesAgo, date, neverDone, vehicleId)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents)</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$val state = if (turnOn == null) SpotifyController.toggleShuffle(context) else SpotifyController.setShuffle(context, turnOn)</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val status = if (args.optString("status", "achieved").trim().lowercase() == "abandoned") "abandoned" else "achieved"</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val targetValue = if (args.has("target_value") &amp;&amp; !args.isNull("target_value")) args.optDouble("target_value") else null</ID>
+    <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$val status = if (args.optString("status", "achieved").trim().lowercase() == "abandoned") "abandoned" else "achieved"</ID>
+    <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$val targetValue = if (args.has("target_value") &amp;&amp; !args.isNull("target_value")) args.optDouble("target_value") else null</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val value = if (args.has("value") &amp;&amp; !args.isNull("value")) args.optDouble("value") else null</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val whenPhrase = if (allDay) date.format(NOTE_DISPLAY_DATE_FORMAT) else "${date.format(NOTE_DISPLAY_DATE_FORMAT)} at $timeArg"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$when</ID>
@@ -4371,7 +4371,7 @@
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun areaInfo(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun askAdvisorTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun checkReadiness(): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun closeGoalTool(context: Context, args: JSONObject): JSONObject</ID>
+    <ID>ReturnCount:GoalsToolbox.kt:GoalsToolbox$private suspend fun closeGoalTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
     <ID>ReturnCount:MusicToolbox.kt:MusicToolbox$internal suspend fun controlMusicQueue(context: Context, query: String): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun generateGoalPlanTool(context: Context, args: JSONObject): JSONObject</ID>
@@ -4388,7 +4388,7 @@
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun scheduleItem( context: Context, list: ItemList, item: com.kevin.legion.data.local.ListItem, args: JSONObject, ): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun setBudget(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun setCategory(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun setGoalTool(context: Context, args: JSONObject): JSONObject</ID>
+    <ID>ReturnCount:GoalsToolbox.kt:GoalsToolbox$private suspend fun setGoalTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$suspend fun dispatch( context: Context, name: String, args: JSONObject, touchedReadThroughToolThisTurn: Boolean = false, ): JSONObject?</ID>
     <ID>ReturnCount:LocationController.kt:LocationController$@SuppressLint("MissingPermission") @Synchronized fun startFastMode(context: Context)</ID>
     <ID>ReturnCount:LogDigestBuilder.kt:LogDigestBuilder$private fun calendarLine(calendarEvents: List&lt;OpenerCalendarBriefing.BriefingEvent&gt;?, now: Long): String</ID>
@@ -4549,6 +4549,7 @@
     <ID>SwallowedException:LiveSessionController.kt:LiveSessionController$e: Exception</ID>
     <ID>SwallowedException:LiveToolbox.kt:LiveToolbox$e2: Exception</ID>
     <ID>SwallowedException:LiveToolbox.kt:LiveToolbox$e: Exception</ID>
+    <ID>SwallowedException:GoalsToolbox.kt:GoalsToolbox$e: Exception</ID>
     <ID>SwallowedException:MidnightImport.kt:MidnightImport$e: IOException</ID>
     <ID>SwallowedException:Migration59To60Test.kt:Migration59To60Test$e: Exception</ID>
     <ID>SwallowedException:Migration60To61Test.kt:Migration60To61Test$e: Exception</ID>
@@ -4648,6 +4649,7 @@
     <ID>TooGenericExceptionCaught:LiveSessionController.kt:LiveSessionController$e: Exception</ID>
     <ID>TooGenericExceptionCaught:LiveToolbox.kt:LiveToolbox$e2: Exception</ID>
     <ID>TooGenericExceptionCaught:LiveToolbox.kt:LiveToolbox$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:GoalsToolbox.kt:GoalsToolbox$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MaintenanceScheduleReconcile.kt:MaintenanceScheduleReconcile$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MealAgent.kt:MealAgent$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MemoryBackfill.kt:MemoryBackfill$e: Exception</ID>

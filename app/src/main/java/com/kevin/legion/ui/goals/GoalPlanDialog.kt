@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.kevin.legion.advisor.GoalPlan
 import com.kevin.legion.advisor.GoalPlanAgent
 import com.kevin.legion.advisor.GoalPlanResult
-import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.GoalsToolbox
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
 import kotlinx.coroutines.launch
@@ -43,7 +43,7 @@ import kotlinx.coroutines.launch
  *
  * **Every failure the voice path words honestly, this dialog words the same way** - the message
  * shown for every non-success [GoalPlanResult] is read straight out of
- * [LiveToolbox.mapGoalPlanResult]'s own `"message"` field, the identical JSON `generate_goal_plan`
+ * [GoalsToolbox.mapGoalPlanResult]'s own `"message"` field, the identical JSON `generate_goal_plan`
  * hands back to the model to speak. Two copies of "the key is rate-limited, try in a minute" is
  * exactly the kind of drift ADR 0035 warns a second implementation produces, even a copy that
  * merely repeats the words rather than the logic.
@@ -136,7 +136,7 @@ private fun GoalPlanDialog(onDismiss: () -> Unit) {
                                 state = when (val outcome = GoalPlanAgent().generate(context, text)) {
                                     is GoalPlanResult.Success -> PlanDialogState.Proposed(outcome.plan)
                                     else -> PlanDialogState.GenerateFailed(
-                                        LiveToolbox.mapGoalPlanResult(outcome).optString("message"),
+                                        GoalsToolbox.mapGoalPlanResult(outcome).optString("message"),
                                     )
                                 }
                             }
