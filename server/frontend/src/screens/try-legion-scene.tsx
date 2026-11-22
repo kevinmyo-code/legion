@@ -194,17 +194,16 @@ function touches(px: number, py: number, b: DiagramBox): boolean {
 }
 
 /**
- * The connections a step lights: between two of its lit boxes; with a single box lit, every one
- * that reaches it.
+ * The connections a step lights: the ones between two of its lit boxes; when there are none (a
+ * single box, or boxes side by side with no line between them), every one that reaches a lit box.
  */
 export function litEdges(diagram: Diagram, lit: readonly number[]): number[] {
   const boxes = lit.map((i) => diagram.boxes[i]).filter(Boolean)
   const on = (px: number, py: number) => boxes.some((b) => touches(px, py, b))
-  return diagram.edges.flatMap((e, i) => {
-    const a = on(e.x1, e.y1)
-    const b = on(e.x2, e.y2)
-    return (boxes.length > 1 ? a && b : a || b) ? [i] : []
-  })
+  const ends = diagram.edges.map((e) => [on(e.x1, e.y1), on(e.x2, e.y2)])
+  const between = ends.flatMap(([a, b], i) => (a && b ? [i] : []))
+  if (between.length > 0) return between
+  return ends.flatMap(([a, b], i) => (a || b ? [i] : []))
 }
 
 function bounds(boxes: readonly { x: number; y: number; w: number; h: number }[]): { x: number; y: number; w: number; h: number } {

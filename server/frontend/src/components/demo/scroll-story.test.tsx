@@ -262,10 +262,12 @@ describe('the LEGION scene', () => {
     expect(litBoxes(d, ['Not in the picture'], 0, 3)).toEqual([0])
   })
 
-  test('the connections lit: between two lit boxes; with one box, every one reaching it', () => {
+  test('the connections lit: between lit boxes; when none joins them, every one reaching a lit box', () => {
     const d = readDiagram(NAMED)!
     expect(litEdges(d, [0, 1])).toEqual([0])
     expect(litEdges(d, [1])).toEqual([0, 1])
+    // The phone and the bank have no line between them: the lines reaching either light.
+    expect(litEdges(d, [0, 2])).toEqual([0, 1])
     expect(litEdges(d, [])).toEqual([])
     expect(litEdges(readDiagram(SVG)!, [0])).toEqual([])
   })
