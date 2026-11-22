@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { DemoContent } from '@/api/demo'
@@ -9,6 +10,8 @@ import { VoiceOrb } from '@/components/assistant/voice-orb'
 import { ChipRow } from '@/components/demo/chip-row'
 import { useOrbFlight } from '@/components/demo/orb-flight'
 import { useOrbPlace, useStoryGlide, useStoryMotion } from '@/components/demo/scroll-story'
+import { useShopVoice } from '@/components/demo/store-rep/use-shop-voice'
+import { fetchShopState, SHOP_STATE_KEY, type ShopState } from '@/lib/store-rep'
 
 /**
  * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"). A long
@@ -26,6 +29,8 @@ export const STAGE_LINE = 'Tap and ask me about Kevin'
 export const RECORDING_NOTICE = 'Conversations here may be recorded to improve the assistant.'
 /** After the follow-up window lapsed quietly under an open card (item 4). */
 export const ASK_MORE = 'Tap to ask more'
+/** The orb beside the store-rep section, between conversations (Kevin, 2026-11-22). */
+export const TALK_TO_REP = 'Talk to the store rep'
 
 function lastOf(lines: readonly Line[], kind: Line['kind']): Line | undefined {
   for (let i = lines.length - 1; i >= 0; i--) if (lines[i].kind === kind) return lines[i]
@@ -123,6 +128,18 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const interruptible = speaking || state.activity === 'thinking'
   const voiceOn = state.mic === 'on'
 
+  // Beside the store-rep section (the orb wears the shop's mark there) a tap that opens a
+  // conversation opens it with the rep; elsewhere, with the guide (Kevin, 2026-11-22: "the orb
+  // shouldnt be alfred anymore it should be automatically the store rep"). A conversation already
+  // open is never switched by scrolling: only the next one picks its persona by section.
+  const queryClient = useQueryClient()
+  const { startAs } = useShopVoice()
+  const inShop = place.mark === 'larkspur'
+  // Only a demo visit has a shop; the section has asked for its state already (same key).
+  const shop = useQuery({ queryKey: SHOP_STATE_KEY, queryFn: fetchShopState, staleTime: 5_000, enabled: inShop && Boolean(cascade) })
+  const between = state.phase !== 'live'
+  const repNext = Boolean(cascade && inShop && between && shop.data)
+
   const freshIfEnded = () => {
     if (state.phase === 'ended') client.reset()
   }
@@ -130,6 +147,8 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
     freshIfEnded()
     if (interruptible) client.interrupt()
     else if (voiceOn) client.stopVoice()
+    else if (repNext) startAs(true)
+    else if (cascade && between && queryClient.getQueryData<ShopState | null>(SHOP_STATE_KEY)?.active) startAs(false)
     else void client.startVoice()
   }
   const tapChip = (chip: SuggestChip) => {
@@ -153,9 +172,11 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         ? 'Listening. Tap to stop.'
         : cascade?.lapsedQuietly
           ? ASK_MORE
-          : STAGE_LINE
+          : repNext
+            ? TALK_TO_REP
+            : STAGE_LINE
 
-  const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`
+  const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : repNext ? TALK_TO_REP : `Talk to ${who}`
 
   // The captions box: newest words at its foot once they no longer fit (`.rc-captions`), measured
   // again whenever the box or its words change size (a resize, a rotation, a late font), so the
