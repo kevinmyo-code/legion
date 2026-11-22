@@ -1,5 +1,6 @@
 package com.kevin.legion.clock
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Looper
@@ -138,6 +139,13 @@ class RingStopTest {
             .forEach { assertTrue(it, RingControl.isStopPhrase(it, "Alfred")) }
         listOf("stop the music", "set an alarm for seven", "what is this alarm", "")
             .forEach { assertFalse(it, RingControl.isStopPhrase(it, "Alfred")) }
+    }
+
+    @Test
+    fun `a clock timer still rings with notifications blocked, and says so in the log`() {
+        shadowOf(context.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(false)
+        ring(timer)
+        assertTrue(lines().contains("ring_blocked kind=clock_timer reason=notifications_blocked"))
     }
 
     @Test

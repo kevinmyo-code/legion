@@ -31,6 +31,10 @@ internal object EmergencyRingRules {
      */
     const val RING_AGAIN_WHEN_SEVERITY_RISES = true
 
+    const val EXTREME_BYPASSES_CAP = false
+
+    const val EXTREME_SEVERITY = 2
+
     /** What is kept per alert id: the highest severity delivered, when, and the series it is in. */
     data class Record(val severity: Int, val atMs: Long, val series: String)
 
@@ -58,6 +62,6 @@ internal object EmergencyRingRules {
     }
 
     /** True when fewer than [MAX_RINGS_PER_NIGHT] of [ringTimes] fall inside the window before [now]. */
-    fun underCap(ringTimes: List<Long>, now: Long): Boolean =
+    fun underCap(ringTimes: List<Long>, now: Long, severity: Int = 0): Boolean =
         ringTimes.count { now - it in 0 until CAP_WINDOW_MS } < MAX_RINGS_PER_NIGHT
 }

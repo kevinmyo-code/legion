@@ -1,10 +1,14 @@
 package com.kevin.legion.conditions
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioManager
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
+import com.kevin.legion.clock.ClockNotifier
+import com.kevin.legion.clock.RingAudit
 import com.kevin.legion.clock.RingService
 import com.kevin.legion.service.ConversationState
 import com.kevin.legion.service.EmergencyRingRules
@@ -12,6 +16,7 @@ import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveSettings
 import com.kevin.legion.service.ProactiveUrgency
+import com.kevin.legion.service.SafetyAlarms
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -24,7 +29,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowLog
 import java.time.LocalTime
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
 
 /**
  * Integration 2026-11-10 (round 5 + ADR 0082): Kevin asked by name, "if any emergency in the area
@@ -124,5 +132,44 @@ class SevereAlertAlarmTest {
         }
         assertTrue(deliver(alert("c-over", "Severe"), night) is ProactiveBus.RaiseOutcome.Notified)
         assertNull(shadowOf(context as Application).nextStartedService)
+    }
+
+    @Test
+    fun `with LEGION's notifications blocked an emergency does not ring with nothing on screen`() {
+        shadowOf(context.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(false)
+        assertTrue(deliver(alert("b1", "Severe"), night) !is ProactiveBus.RaiseOutcome.Rang)
+        assertNull(shadowOf(context as Application).nextStartedService)
+        assertTrue(skipLogged())
+    }
+
+    @Test
+    fun `with the ring channel blocked an emergency does not ring either`() {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val blocked = NotificationManager.IMPORTANCE_NONE
+        nm.createNotificationChannel(NotificationChannel(ClockNotifier.CHANNEL_RING, "Alarms ringing", blocked))
+        assertTrue(deliver(alert("b2", "Severe"), night) !is ProactiveBus.RaiseOutcome.Rang)
+        assertNull(shadowOf(context as Application).nextStartedService)
+        assertTrue(skipLogged())
+    }
+
+    private fun skipLogged(): Boolean = ShadowLog.getLogsForTag(RingAudit.TAG)
+        .any { it.msg == "ring_skip kind=emergency reason=notifications_blocked" }
+
+    @Test
+    fun `two poll loops admitting the same alert at once deliver it once`() {
+        repeat(RACES) { i ->
+            val alarm = ProactiveUrgency.Alarm("race$i", 1)
+            val start = CountDownLatch(1)
+            val results = Collections.synchronizedList(mutableListOf<Boolean>())
+            val loops = List(2) { Thread { start.await(); results.add(SafetyAlarms.admit(context, alarm)) } }
+            loops.forEach(Thread::start)
+            start.countDown()
+            loops.forEach(Thread::join)
+            assertEquals("race$i", listOf(false, true), results.sorted())
+        }
+    }
+
+    private companion object {
+        const val RACES = 20
     }
 }

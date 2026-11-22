@@ -60,6 +60,14 @@ class EmergencyRingRulesTest {
     }
 
     @Test
+    fun `an Extreme alert past the cap follows the named policy, a Severe one is always capped`() {
+        val full = List(EmergencyRingRules.MAX_RINGS_PER_NIGHT) { now - (it + 1) * hour }
+        val extreme = EmergencyRingRules.underCap(full, now, EmergencyRingRules.EXTREME_SEVERITY)
+        assertEquals(EmergencyRingRules.EXTREME_BYPASSES_CAP, extreme)
+        assertFalse(EmergencyRingRules.underCap(full, now, 1))
+    }
+
+    @Test
     fun `stored records round-trip, and a record from before series reads as its own series`() {
         val r = Record(2, now, "a1")
         assertEquals(r, EmergencyRingRules.parse("a9", EmergencyRingRules.format(r)))
