@@ -19,6 +19,9 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import json
+import re
+from collections import Counter
 from types import SimpleNamespace
 
 import pytest
@@ -215,6 +218,83 @@ def test_a_second_run_writes_nothing_new():
     assert second.card["outcome"] == "ALREADY_COMMITTED"
     assert _counts(inside=True, household=demo) == before
     assert Household.objects.filter(name="Demo").count() == 1
+
+
+UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+STAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)?")
+
+
+def content_of(household: Household, *, since: dt.datetime) -> dict[str, Counter]:
+    """Every row of every tenant table of `household`, as text a second copy can be compared
+    with: keys (`id`, `*_id`) and uuids differ by construction between two copies, and so do
+    the bookkeeping stamps written at seed time (any timestamp at or after `since`). Everything
+    else, every authored value, must be equal."""
+
+    def stamp(match: re.Match) -> str:
+        value = dt.datetime.fromisoformat(match.group(0).replace("Z", "+00:00"))
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=dt.UTC)
+        return "<written>" if value >= since else match.group(0)
+
+    out = {}
+    with connection.cursor() as cursor:
+        for table in _existing_tenant_tables():
+            cursor.execute(
+                f'select row_to_json(t)::text from public."{table}" t where household_id = %s',
+                [household.id],
+            )
+            rows = Counter()
+            for (text,) in cursor.fetchall():
+                row = {
+                    k: v
+                    for k, v in json.loads(text).items()
+                    if k != "id" and not k.endswith("_id")
+                }
+                flat = json.dumps(row, sort_keys=True)
+                rows[STAMP_RE.sub(stamp, UUID_RE.sub("<uuid>", flat))] += 1
+            if rows:
+                out[table] = rows
+    return out
+
+
+def test_a_just_made_household_skips_the_lookups_and_gets_the_same_rows():
+    """`created=True` skips each authored row's existing-row SELECT (demo-enter-slow,
+    2026-11-22): the same rows as the lookup path, one query fewer per authored row."""
+    from django.test.utils import CaptureQueriesContext
+
+    from household.demo_seed import (
+        BUDGET_TARGETS,
+        CATEGORIES,
+        PLACES,
+        SCHEDULES,
+        events,
+        seed_household,
+        service_rows,
+        voice_notes,
+    )
+
+    since = dt.datetime.now(dt.UTC) - dt.timedelta(seconds=1)
+    looked, skipped = (
+        Household.objects.create(name=f"Demo visit {n}", is_demo_visit=True) for n in "ab"
+    )
+    with CaptureQueriesContext(connection) as with_lookups:
+        seed_household(looked, today=TODAY, created=False)
+    with CaptureQueriesContext(connection) as without:
+        seed_household(skipped, today=TODAY, created=True)
+
+    assert content_of(skipped, since=since) == content_of(looked, since=since)
+    assert _counts(inside=True, household=skipped) == _counts(inside=True, household=looked)
+    authored = (
+        1  # the car
+        + len(service_rows(TODAY))
+        + len(SCHEDULES)
+        + len(CATEGORIES)
+        + len(BUDGET_TARGETS)
+        + len(PLACES)
+        + len(voice_notes(dt.datetime.now(dt.UTC)))
+        + len(events(TODAY, dt.UTC))
+    )
+    assert len(with_lookups) - len(without) == authored
 
 
 def test_reset_deletes_what_it_may_keeps_what_is_gated_and_reseeds_the_same_rows():
