@@ -106,7 +106,7 @@ def image_uri(project: str, region: str, tag: str) -> str:
 def service_deploy_command(
     gcloud: str, service: str, image: str, region: str, max_instances: int,
     secrets_value: str, env_file: str | None = None, labels: dict[str, str] | None = None,
-    concurrency: int | None = None,
+    concurrency: int | None = None, allow_unauthenticated: bool = True,
 ) -> list[str]:
     """The one `gcloud run deploy` line for the service. `deploy/ship.py` builds its deploy from
     this too, so a change to memory, timeout or concurrency here reaches both doors at once.
@@ -116,10 +116,14 @@ def service_deploy_command(
         "--image", image,
         "--region", region,
         "--platform", "managed",
-        # Auth is Django's own device-token header (household/authentication.py),
-        # not IAM - the whole point is a stranger's phone can talk to their
-        # own deploy without being added as a GCP principal.
-        "--allow-unauthenticated",
+    ]
+    # Auth is Django's own device-token header (household/authentication.py),
+    # not IAM - the whole point is a stranger's phone can talk to their
+    # own deploy without being added as a GCP principal. `--ci` leaves the flag out: the policy is
+    # already set on the service and stays as it is, and the deploy identity may not set IAM.
+    if allow_unauthenticated:
+        command += ["--allow-unauthenticated"]
+    command += [
         "--memory", "512Mi",
         "--cpu", "1",
         "--min-instances", "0",
@@ -139,7 +143,9 @@ def service_deploy_command(
     return command
 
 
-def build_commands(gcloud: str, docker, image: str, build_with: str) -> list[list[str]]:
+def build_commands(
+    gcloud: str, docker, image: str, build_with: str, suppress_logs: bool = False
+) -> list[list[str]]:
     """The command(s) that produce `image` in Artifact Registry. Returned
     as a list rather than run inline so --dry-run can print every one of
     them without this function needing its own dry-run branch."""
@@ -157,7 +163,10 @@ def build_commands(gcloud: str, docker, image: str, build_with: str) -> list[lis
     # Cloud Build: no local Docker daemon required, matches the reference's
     # "--source ." shortcut but as an explicit build+push step so
     # deploy_job.py can point at the exact same tag without rebuilding.
-    return [[gcloud, "builds", "submit", "--tag", image, str(SERVER_DIR)]]
+    # `--suppress-logs` (--ci): streaming from the default logs bucket needs project Viewer, which the
+    # deploy identity does not hold; the command still waits and fails when the build fails.
+    return [[gcloud, "builds", "submit", "--tag", image, *(["--suppress-logs"] if suppress_logs else []),
+             str(SERVER_DIR)]]
 
 
 def main() -> int:
@@ -176,6 +185,12 @@ def main() -> int:
     parser.add_argument(
         "--dry-run", action="store_true",
         help="print every gcloud command this would run and run none of them",
+    )
+    parser.add_argument(
+        "--ci", action="store_true",
+        help="for .github/workflows/ship.yml: skip `gcloud services enable` (the APIs are on; the deploy "
+             "identity holds no serviceusage.services.enable), keep the service's IAM as it is (no "
+             "--allow-unauthenticated: the policy already allows it), and do not stream build logs",
     )
     args = parser.parse_args()
 
@@ -218,17 +233,20 @@ def main() -> int:
     if args.dry_run:
         print("--dry-run: printing every command, running none of them.\n")
 
-    print("Enabling the APIs this needs (no-op if already on) ...")
-    run(
-        [
-            gcloud, "services", "enable",
-            "run.googleapis.com",
-            "artifactregistry.googleapis.com",
-            "cloudbuild.googleapis.com",
-            "secretmanager.googleapis.com",
-        ],
-        args.dry_run,
-    )
+    if args.ci:
+        print("--ci: not enabling APIs (they are on; this identity cannot enable services)")
+    else:
+        print("Enabling the APIs this needs (no-op if already on) ...")
+        run(
+            [
+                gcloud, "services", "enable",
+                "run.googleapis.com",
+                "artifactregistry.googleapis.com",
+                "cloudbuild.googleapis.com",
+                "secretmanager.googleapis.com",
+            ],
+            args.dry_run,
+        )
 
     print("\nEnsuring the Artifact Registry repository exists ...")
     if args.dry_run:
@@ -259,7 +277,7 @@ def main() -> int:
             die("Could not create the Artifact Registry repository.")
 
     print(f"\nBuilding and pushing {image} with {args.build_with} ...")
-    for command in build_commands(gcloud, docker, image, args.build_with):
+    for command in build_commands(gcloud, docker, image, args.build_with, suppress_logs=args.ci):
         if run(command, args.dry_run) != 0:
             die("Build failed. Nothing deployed.")
 
@@ -276,6 +294,7 @@ def main() -> int:
             gcloud, args.service, image, region, max_instances,
             secrets_flag_value(secret_names_for(cloud_env)),
             concurrency=concurrency,
+            allow_unauthenticated=not args.ci,
         )
         if not args.dry_run:
             deploy_command += ["--env-vars-file", str(env_file)]
