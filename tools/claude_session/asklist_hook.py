@@ -151,9 +151,9 @@ def _is_lone_report(command: str, task: int | None = None) -> bool:
 
 def _plain(path: str) -> str:
     """A path as TEXT, compared without resolving anything (re-review A1/A2: realpath collapsed
-    `x/$(cmd)/..`, so shell syntax hid in a folder that `..` then cancelled). Case and slashes
-    only; Git Bash's `/c/` is `c:/`."""
-    t = str(path).replace("\\", "/").lower()
+    `x/$(cmd)/..`). ASCII case and slashes only (non-ASCII never gets here, so no Unicode case
+    folding such as the Kelvin sign); Git Bash's `/c/` is `c:/`."""
+    t = "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in str(path).replace("\\", "/"))
     g = re.match(r"^/([a-z])/(.*)$", t)
     return f"{g.group(1)}:/{g.group(2)}" if g else t
 
@@ -166,95 +166,82 @@ def _own_python() -> str:
     return _plain(str(exe))
 
 
-# Unquoted, any of these chains, redirects or runs something in Bash or PowerShell (`( )` and
-# `{ }` run a PowerShell subexpression or script block as an argument; `#` starts a comment).
-_UNSAFE_UNQUOTED = re.compile(r"[$`;|&<>(){}#\r\n]")
-# Inside double quotes both shells still expand `$` and backticks. A backslash before a quote is
-# an escape to Bash and not to PowerShell, so the two would disagree on where the string ends.
-_UNSAFE_IN_DOUBLE = re.compile(r"[$`\r\n]")
-# PowerShell also takes these typographic marks as quotes, so they would move quote boundaries.
-_SMART_QUOTES = re.compile("[‘’‚‛“”„]")
-# Control characters and the spaces one shell may split on and the other not.
-_ODD_CHARS = re.compile(
-    "[\x00-\x08\x0b-\x1f\x7f   -​    　﻿]")
-_DOTDOT = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)")
+# An ALLOWLIST, not a list of shell syntax (review round 3, 2026-11-22: `--ta\sk` lost its
+# backslash in Bash, and PowerShell's `--%` passed the rest raw). Every character of a contained
+# script's command is one of these, in Bash and PowerShell alike plain text:
+_PATH_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:/")
+# Unquoted words: no comma (a PowerShell array), no `?` (a Bash glob), no `@` (PowerShell splat),
+# no `( )` (a PowerShell subexpression).
+_UNQUOTED_CHARS = _PATH_CHARS | frozenset("=+")
+# Inside one pair of plain quotes, a summary may also use spaces and , ? ! @ ( ).
+_QUOTED_CHARS = _UNQUOTED_CHARS | frozenset(" ,?!@()")
+_DOTDOT = re.compile(r"(?:^|/)\.\.(?:/|$)")
 _TASK_PREFIXES = ("--t", "--ta", "--tas")  # what argparse would once have expanded to --task
 
 
-def _args_safe(rest: str) -> bool:
-    """True when the arguments carry nothing either shell would run (2026-11-22 review F1).
-
-    Single-quoted text is literal in Bash and PowerShell alike (PowerShell's `''` escape keeps the
-    same boundaries as Bash's close-and-reopen), so a summary may say '$5' there. Double-quoted
-    text may hold `;` or `( )` (literal in both) but nothing in `_UNSAFE_IN_DOUBLE`; unquoted text
-    nothing in `_UNSAFE_UNQUOTED`. A backslash before a quote, a typographic quote or an unclosed
-    quote fails: the two shells would disagree on where a string ends."""
-    if _SMART_QUOTES.search(rest) or _ODD_CHARS.search(rest):
-        return False
-    unquoted, in_double, i, dq = [], [], 0, False
-    while i < len(rest):
-        c = rest[i]
-        if c == "\\" and i + 1 < len(rest) and rest[i + 1] in "\"'":
-            return False
-        if c == "'" and not dq:
-            j = rest.find("'", i + 1)
-            if j < 0:
-                return False
-            i = j + 1
+def _plain_words(text: str) -> list[str] | None:
+    """The command's words, or None when any character is outside the allowlist. Words are split
+    on single spaces; a quoted word is a whole word, '...' or "...", non-empty, holding no quote
+    or backslash, so both shells (and PowerShell 5.1's re-quoting for a native program) give the
+    program exactly these words."""
+    if not text.isascii() or "--%" in text:
+        return None
+    pieces = _quoted_split(text)
+    if not pieces:
+        return None
+    words = []
+    for w in pieces:
+        if w == "":
             continue
-        if c == '"':
-            dq = not dq
-        elif dq:
-            in_double.append(c)
+        if len(w) >= 3 and w[0] == w[-1] and w[0] in "'\"":
+            inner = w[1:-1]
+            if not inner or not set(inner) <= _QUOTED_CHARS:
+                return None
+            words.append(inner)
+        elif set(w) <= _UNQUOTED_CHARS:
+            words.append(w)
         else:
-            unquoted.append(c)
-        i += 1
-    if dq:
-        return False
-    return not (_UNSAFE_UNQUOTED.search("".join(unquoted))
-                or _UNSAFE_IN_DOUBLE.search("".join(in_double)))
-
-
-def _words(text: str) -> list[str]:
-    """Shell words with their quotes removed. Only called on text `_args_safe` passed, where the
-    two shells agree on every boundary."""
-    words, cur, i, dq, has = [], [], 0, False, False
-    while i < len(text):
-        c = text[i]
-        if c == "'" and not dq:
-            j = text.find("'", i + 1)
-            cur.append(text[i + 1:j])
-            i, has = j + 1, True
-            continue
-        if c == '"':
-            dq, has = not dq, True
-        elif c in " \t" and not dq:
-            if cur or has:
-                words.append("".join(cur))
-            cur, has = [], False
-        else:
-            cur.append(c)
-        i += 1
-    if cur or has:
-        words.append("".join(cur))
+            return None
     return words
 
 
-def _is_our_lone_script(command: str, script: str, task: int | None = None) -> bool:
-    """`<worker's python> <this folder>/<script> ...` alone (2026-11-22 review F1, re-review A1-A3).
+def _quoted_split(text: str) -> list[str]:
+    """Split on spaces, keeping each quoted span whole so `_plain_words` can judge it."""
+    out, cur, q = [], [], None
+    for c in text:
+        if q:
+            cur.append(c)
+            if c == q:
+                q = None
+        elif c in "'\"" and not cur:
+            q = c
+            cur.append(c)
+        elif c == " ":
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(c)
+    if q:
+        return []  # unclosed
+    out.append("".join(cur))
+    return out
 
-    - The WHOLE command, interpreter and script words included, passes `_args_safe`: nothing is
-      chained, expanded or split differently by Bash and PowerShell. A leading PowerShell `&`
-      call operator is the one exception.
-    - No `..` path step anywhere: shell syntax could hide in a folder `..` then cancels.
-    - The first two words, as plain text (never resolved), are the worker's own interpreter (a
-      helper could write a file named `python`) and THIS folder's copy of the script.
-    - Exactly one `--task` (no abbreviation such as `--tas`; the scripts refuse those too), and for
-      a helper of task N it is N."""
-    text = re.sub(r"^\s*&\s*", "", command or "", count=1)
-    if not text.strip() or not _args_safe(text) or _DOTDOT.search(text):
+
+def _is_our_lone_script(command: str, script: str, task: int | None = None) -> bool:
+    """`<worker's python> <this folder>/<script> ...` alone (review F1, re-review A1-A3, round 3).
+
+    - Every character is on the allowlist above (`_plain_words`); a leading PowerShell `&` call
+      operator is the one exception. No backslash, `%`, `$`, backtick, `;`, `|`, `&`, `<`, `>`,
+      `{`, `}`, `#`, `*`, `~`, `[`, `]`, no non-ASCII, no `--%`.
+    - No `..` path step anywhere.
+    - The first two words, as plain ASCII text (never resolved), are the worker's own interpreter
+      and THIS folder's copy of the script (the worker's install folder, never a task folder).
+    - Exactly one `--task` (no `--t`/`--ta`/`--tas`), and for a helper of task N it is N. The
+      scripts themselves refuse a repeated or abbreviated --task too (`common.add_task_arg`)."""
+    text = re.sub(r"^&( |$)", "", command or "", count=1)
+    words = _plain_words(text)
+    if words is None or _DOTDOT.search(text.replace("\\", "/")):
         return False
-    words = _words(text)
     if len(words) < 2 or _plain(words[0]) != _own_python():
         return False
     if _plain(words[1]) != _plain(str(HERE / script)):
@@ -268,9 +255,7 @@ def _is_our_lone_script(command: str, script: str, task: int | None = None) -> b
             tasks.append(args[i + 1] if i + 1 < len(args) else "")
         elif w.startswith("--task="):
             tasks.append(w[len("--task="):])
-    if len(tasks) > 1:
-        return False
-    if task is not None and tasks != [str(int(task))]:
+    if len(tasks) != 1 or (task is not None and tasks != [str(int(task))]):
         return False
     return True
 
@@ -294,9 +279,11 @@ def _scratch(path, paths: Paths) -> bool:
 
 def _worker_internal(path, paths: Paths) -> bool:
     """The worker's own files: everything under its root outside the work folder, plus the ship
-    history. Tokens live here, so a helper writing one would be forging Kevin's yes."""
-    return is_under(path, paths.ships) or (is_under(path, paths.root)
-                                           and not is_under(path, paths.work))
+    history. Tokens live here, so a helper writing one would be forging Kevin's yes. Also the
+    worker's own code (this folder): the hook trusts scripts here by path, so no helper may
+    write or plant one (review round 3)."""
+    return is_under(path, paths.ships) or is_under(path, HERE) or (
+        is_under(path, paths.root) and not is_under(path, paths.work))
 
 
 def _worker_files_reason() -> str:

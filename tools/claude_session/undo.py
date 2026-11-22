@@ -32,7 +32,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from common import Paths, TokenRefused, find_token, load_config, read_json, write_json_atomic  # noqa: E402
+from common import (Paths, TokenRefused, add_task_arg, find_token, load_config,  # noqa: E402
+                    read_json, write_json_atomic)
 from ship import Refused, Shipper, World, read_ships  # noqa: E402
 
 PLAN_NAME = "undo-plan.json"
@@ -214,9 +215,9 @@ def main(argv: list[str] | None = None, paths: Paths | None = None, world: World
     ap = argparse.ArgumentParser(prog="undo.py", allow_abbrev=False, description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
     ask = sub.add_parser("ask", allow_abbrev=False)
-    ask.add_argument("--task", type=int, required=True)
+    add_task_arg(ask)
     run = sub.add_parser("run", allow_abbrev=False)
-    run.add_argument("--task", type=int, required=True)
+    add_task_arg(run)
     run.add_argument("--token", required=True)
     a = ap.parse_args(sys.argv[1:] if argv is None else argv)
     paths = paths or Paths()

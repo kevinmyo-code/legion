@@ -66,8 +66,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import build_lock  # noqa: E402
 import warm_worktree  # noqa: E402
-from common import (Paths, TokenRefused, find_token, load_config, read_json,  # noqa: E402
-                    write_json_atomic)
+from common import (Paths, TokenRefused, add_task_arg, find_token, load_config,  # noqa: E402
+                    read_json, write_json_atomic)
 
 KINDS = ("engine", "phone", "both", "content")
 PROJECT = "legion-engine-260906"
@@ -669,7 +669,7 @@ def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="ship.py", allow_abbrev=False, description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
     ask = sub.add_parser("ask", allow_abbrev=False, help="check, test, and print the ship question (no token)")
-    ask.add_argument("--task", type=int, required=True)
+    add_task_arg(ask)
     ask.add_argument("--kind", required=True, choices=KINDS)
     ask.add_argument("--branch")
     ask.add_argument("--worktree")
@@ -682,7 +682,7 @@ def parser() -> argparse.ArgumentParser:
     ask.add_argument("--licence-note", dest="licence_note")
     ask.add_argument("--source-url", dest="source_url")
     run = sub.add_parser("run", allow_abbrev=False, help="ship what Kevin said yes to (needs the token)")
-    run.add_argument("--task", type=int, required=True)
+    add_task_arg(run)
     run.add_argument("--token", required=True)
     run.add_argument("--branch", help="optional; must match the question")
     run.add_argument("--kind", choices=KINDS, help="optional; must match the question")

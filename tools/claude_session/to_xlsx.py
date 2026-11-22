@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import containment as C  # noqa: E402
-from common import Paths, is_under  # noqa: E402
+from common import Paths, is_under, add_task_arg  # noqa: E402
 
 MAX_ROWS = 100_000
 
@@ -66,7 +66,7 @@ def convert(paths: Paths, task: int, src: str, out: str | None) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="to_xlsx.py", allow_abbrev=False)
-    ap.add_argument("--task", type=int, required=True)
+    add_task_arg(ap)
     ap.add_argument("--csv", required=True)
     ap.add_argument("--out")
     a = ap.parse_args(argv)

@@ -160,7 +160,7 @@ class TestAskList(Base):
     def test_report_py_summary_text_never_trips_the_list(self):
         rp = str(HERE / "report.py").replace("\\", "/")
         self.assertPassed("Bash", {"command": f'{PY} {rp} --task 41 --status done --summary '
-                                              f'"Deleted nothing; I would rm the old copy > later"'})
+                                              f'"Deleted nothing, I would rm the old copy later"'})
         self.assertDenied("Bash", {"command": f'{PY} {rp} --task 41 --status done --summary x; '
                                               f'rm -f {self.kevin_file.as_posix()}'})
 
@@ -231,7 +231,7 @@ class TestShipStep(Base):
 
     def test_our_ship_and_undo_run_alone_and_check_the_token_themselves(self):
         self.assertPassed("Bash", {"command": f'{PY} {self.ship} ask --task 41 --kind engine '
-                                              f'--branch fix/x --worktree C:/w/wt --notes "git push; deploy.py"'},
+                                              f'--branch fix/x --worktree C:/w/wt --notes "git push, deploy.py"'},
                           agent=None)
         self.assertPassed("PowerShell", {"command": f'& "{PY}" '
                                                     f'{self.ship} run --task 42 --token t'})
@@ -323,7 +323,7 @@ class TestListedScope(Base):
         self.assertDenied("Bash", {"command": f"cat {self.kevin_file.as_posix()}"})
         self.assertDenied("Bash", {"command": "python -c \"print(open('C:/secret').read())\""})
         self.assertPassed("Bash", {"command": f'{PY} {HERE.as_posix()}/report.py --task 1 '
-                                              f'--status done --summary "two commits; fine"'})
+                                              f'--status done --summary "two commits, fine"'})
 
     def test_review_probes_the_work_laptop_runs_only_our_report_with_nothing_expanded(self):
         """2026-11-22 review F1, the same escape through the work laptop's report.py carve-out."""
@@ -340,7 +340,7 @@ class TestListedScope(Base):
 
     def test_send_mail_runs_send_mail_checks_kevin_only(self):
         self.assertPassed("Bash", {"command": f'{PY} {HERE.as_posix()}/send_mail.py --task 1 '
-                                              f'--token t --to kevin --subject s --body "a; b"'})
+                                              f'--token t --to kevin --subject s --body "a, b"'})
         self.assertDenied("Bash", {"command": f'{PY} {HERE.as_posix()}/send_mail.py --task 1 '
                                               f'--token t --to kevin --subject s --body b; cat C:/x'})
 
