@@ -247,7 +247,14 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
     // code (entered on load), a reload of a visit, or a code typed in the box. One branch, so
     // entering never remounts the stage.
     return (
-      <VoiceFirstVisit refTag={refTag} entered={recruiter} ended={visitEnded} expiresAt={expiresAt} enter={enterLink} />
+      <VoiceFirstVisit
+        refTag={refTag}
+        entered={recruiter}
+        entering={entering}
+        ended={visitEnded}
+        expiresAt={expiresAt}
+        enter={enterLink}
+      />
     )
   }
 
@@ -381,12 +388,15 @@ function expiryWords(iso: string | undefined): string | null {
 function VoiceFirstVisit({
   refTag,
   entered,
+  entering,
   ended,
   expiresAt,
   enter,
 }: {
   refTag?: string
   entered: boolean
+  /** The entry request is in flight (the wait's clock starts with it, not with the page). */
+  entering: boolean
   /** A link's visit ran out: the next tap enters again. */
   ended: boolean
   expiresAt?: string
@@ -417,7 +427,7 @@ function VoiceFirstVisit({
       sessionLimit={VISITOR_SESSION_ENDED}
       copy={VISITOR_COPY}
     >
-      <VisitorBody entered={entered} ended={ended} expiresAt={expiresAt} />
+      <VisitorBody entered={entered} entering={entering} ended={ended} expiresAt={expiresAt} />
     </AssistantProvider>
   )
 }
@@ -427,7 +437,17 @@ function VoiceFirstVisit({
  * stage, with the page under it. One tree for both, so entering never mounts the stage again (the
  * browser run, 2026-11-19: a remount restarted the orb and the page modal's provider with it).
  */
-function VisitorBody({ entered, ended, expiresAt }: { entered: boolean; ended: boolean; expiresAt?: string }) {
+function VisitorBody({
+  entered,
+  entering,
+  ended,
+  expiresAt,
+}: {
+  entered: boolean
+  entering: boolean
+  ended: boolean
+  expiresAt?: string
+}) {
   const content = useDemoContent(entered)
   // The visit this conversation entered is over: the next tap enters again (`forgetEntry`).
   const { client } = useAssistant()
@@ -449,8 +469,14 @@ function VisitorBody({ entered, ended, expiresAt }: { entered: boolean; ended: b
         <p role="status" className="rc-status">
           Your demo visit has ended. Tap the orb to start a new one.
         </p>
-      ) : (
+      ) : entering ? (
+        // Mounted with the request, so its clock is the request's: a link opened in a background
+        // tab enters only once looked at, and must not show a nearly full bar before it has begun.
         <EnterWait className="rc-status" />
+      ) : (
+        <p role="status" className="rc-status">
+          Opening the demo…
+        </p>
       )}
     </Shell>
   )

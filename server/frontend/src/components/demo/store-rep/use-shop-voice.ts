@@ -20,10 +20,11 @@ export function useShopVoice() {
   const [switching, setSwitching] = useState(false)
   const cascade = client instanceof CascadeClient ? client : null
 
-  function startAs(rep: boolean) {
+  /** `fresh: false` resumes an open conversation of the same persona, the switch still sent. */
+  function startAs(rep: boolean, fresh = true) {
     if (!cascade || busy.current) return
     busy.current = true
-    if (state.phase !== 'idle') cascade.reset()
+    if (fresh && state.phase !== 'idle') cascade.reset()
     // Busy until the switch lands: a second tap would cut the hello and switch twice.
     setSwitching(true)
     const switched = setScenario(rep)

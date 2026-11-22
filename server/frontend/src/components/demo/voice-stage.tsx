@@ -37,6 +37,11 @@ function lastOf(lines: readonly Line[], kind: Line['kind']): Line | undefined {
   return undefined
 }
 
+/** The first letter up, at the start of a sentence: "the store rep" becomes "The store rep". */
+function sentence(words: string): string {
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 function money(usd: number | null): string {
   if (usd === null) return ''
   return usd < 0.01 ? `${(usd * 100).toFixed(2)}¢` : `$${usd.toFixed(3)}`
@@ -137,6 +142,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const inShop = place.mark === 'larkspur'
   // Only a demo visit has a shop; the section asks for the same state (one cache entry).
   const shop = useQuery({ queryKey: SHOP_STATE_KEY, queryFn: fetchShopState, staleTime: 5_000, enabled: Boolean(cascade) })
+  // Labels follow the cached state; a start tap sends the section's scenario regardless (below).
   const switchTo = cascade && shop.data && shop.data.active !== inShop ? inShop : null
   const repNext = switchTo === true
   // Who is talking: the rep while the visit's scenario is the shop, else the guide.
@@ -150,7 +156,9 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
     freshIfEnded()
     if (interruptible) client.interrupt()
     else if (voiceOn) client.stopVoice()
-    else if (switchTo !== null) startAs(switchTo)
+    // A start tap always sends the section's scenario (idempotent), since the cache may be stale
+    // (another tab on the same visit); only a persona change opens a fresh conversation.
+    else if (cascade && shop.data) startAs(inShop, switchTo !== null)
     else void client.startVoice()
   }
   const tapChip = (chip: SuggestChip) => {
@@ -167,9 +175,9 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const heard = lastOf(state.lines, 'me')
   const sys = lastOf(state.lines, 'sys')
   const status = speaking
-    ? `${who} is speaking. Tap to interrupt.`
+    ? `${sentence(who)} is speaking. Tap to interrupt.`
     : state.activity === 'thinking'
-      ? `${who} is thinking…`
+      ? `${sentence(who)} is thinking…`
       : voiceOn
         ? 'Listening. Tap to stop.'
         : cascade?.lapsedQuietly

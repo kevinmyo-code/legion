@@ -351,6 +351,48 @@ describe('/try', () => {
     }
   })
 
+  test('a link opened in a hidden tab: the wait bar starts with the entry, never nearly full before it', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    let visibility: DocumentVisibilityState = 'hidden'
+    const spy = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    const realNow = Date.now
+    try {
+      renderApp('/try?code=OPEN-SESAME', engine, 'family')
+      await screen.findByRole('button', { name: /^Talk to / })
+      await act(settle)
+      // Hidden: no entry, so no bar and no "about 15 seconds" yet.
+      expect(await screen.findByText('Opening the demo…')).toBeInTheDocument()
+      expect(document.querySelector('[data-stage="enter-bar"]')).toBeNull()
+      // A minute later the visitor looks at the tab; the entry starts and is held.
+      const later = realNow() + 60_000
+      vi.spyOn(Date, 'now').mockImplementation(() => later)
+      const answer = globalThis.fetch
+      let release: () => void = () => {}
+      const held = new Promise<void>((resolve) => (release = resolve))
+      vi.stubGlobal('fetch', async (input: Request) => {
+        if (new URL(input.url).pathname === '/api/demo/enter') await held
+        return answer(input)
+      })
+      visibility = 'visible'
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+        await settle()
+      })
+      expect(await screen.findByText(ENTER_WAIT_LINE)).toBeInTheDocument()
+      const bar = document.querySelector<HTMLElement>('[data-stage="enter-bar"]')!
+      expect(Number(/scaleX\(([\d.]+)\)/.exec(bar.style.transform)![1])).toBeLessThan(0.05)
+      await act(async () => {
+        release()
+        await settle()
+      })
+      expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    } finally {
+      spy.mockRestore()
+      vi.mocked(Date.now).mockRestore?.()
+    }
+  })
+
   test('a link opened over a visit this browser already holds enters nothing new', async () => {
     const engine = visitor({ assistant: { engine: 'cascade' } })
     setAudioFactory(() => new FakeAudio())

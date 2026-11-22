@@ -94,14 +94,15 @@ describe('the orb beside the store-rep section', () => {
     expect(log).toContain('TURN greet')
   })
 
-  test('elsewhere the orb is the guide, with no switch while the guide is on', async () => {
+  test('elsewhere the orb is the guide, the guide scenario sent though the cache says it is on', async () => {
     const log: string[] = []
     serve(false, log)
     mount(log)
     await screen.findByRole('button', { name: 'Talk to the store rep' })
     expect(stageOrb()).not.toHaveAttribute('aria-label', 'Talk to the store rep')
     await tapOrb()
-    expect(log).toEqual(['TURN greet'])
+    // Never trusted from the cache (another tab may have switched the visit): sent, then greeted.
+    expect(log).toEqual(['scenario guide', 'TURN greet'])
   })
 
   test('elsewhere, after the rep was on, the next tap switches the visit back to the guide', async () => {
@@ -156,24 +157,24 @@ describe('the orb beside the store-rep section', () => {
     mount(log)
     await screen.findByRole('button', { name: 'Talk to the store rep' })
     await tapOrb()
-    expect(log).toEqual(['TURN greet'])
+    expect(log).toEqual(['scenario guide', 'TURN greet'])
     act(() => setOrbPlace({ mark: 'larkspur' }))
     await act(async () => {
       await settle()
     })
     // The guide's conversation runs on: no switch, and the orb is still that conversation's control.
-    expect(log.filter((line) => line.startsWith('scenario'))).toEqual([])
+    expect(log.filter((line) => line.startsWith('scenario'))).toEqual(['scenario guide'])
     expect(stageOrb()).not.toHaveAttribute('aria-label', 'Talk to the store rep')
     // The visitor closes it (the orb's tap while listening); the next tap is the rep.
     await tapOrb()
     expect(stageOrb()).toHaveAttribute('aria-label', 'Talk to the store rep')
     await tapOrb()
-    expect(log.filter((line) => line.startsWith('scenario'))).toEqual(['scenario rep'])
+    expect(log.filter((line) => line.startsWith('scenario'))).toEqual(['scenario guide', 'scenario rep'])
   })
 
   test.each([
-    [true, /^the store rep is thinking/],
-    [false, /^(?!the store rep)\S.* is thinking/],
+    [true, /^The store rep is thinking/],
+    [false, /^(?!The store rep)\S.* is thinking/],
   ])('while thinking, the line names who is talking (rep on: %s)', async (active, line) => {
     const log: string[] = []
     serve(active, log)
