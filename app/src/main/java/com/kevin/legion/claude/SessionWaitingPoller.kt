@@ -126,6 +126,12 @@ class SessionWaitingPoller(
 
         /** The one line, said or posted. Facts only: which session, where, that it waits on him. */
         fun words(s: ClaudeCodeSession): String =
-            "Your Claude session ${s.spokenName} on the ${s.machine} is waiting on you."
+            "Your Claude session ${plain(s.spokenName)} on the ${s.machine} is waiting on you."
+
+        /** A session name is free text anyone starting a session sets: plain words only. */
+        private fun plain(name: String): String =
+            name.filter { it.isLetterOrDigit() || it in " -_." }.trim().take(NAME_CHARS).ifBlank { "unnamed" }
+
+        private const val NAME_CHARS = 60
     }
 }
