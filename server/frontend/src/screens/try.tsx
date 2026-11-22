@@ -10,6 +10,8 @@ import {
   type DemoContent,
   type DemoProject,
   type DemoProjectSection,
+  type DemoQuality,
+  type SectionTheme,
 } from '@/api/demo'
 import { useMe } from '@/api/queries'
 import {
@@ -32,7 +34,7 @@ import { VoiceStage } from '@/components/demo/voice-stage'
 import { Media } from '@/screens/try-media'
 import { LegionScene } from '@/screens/try-legion-scene'
 import { PhoneSection } from '@/screens/try-phone'
-import { useStoryMotion, useStorySections, type OrbSide } from '@/components/demo/scroll-story'
+import { useOrbPlace, useSectionThemes, useStoryMotion, useStorySections, type OrbSide } from '@/components/demo/scroll-story'
 
 /**
  * The recruiter section (recruiter-demo ticket 07). The look is prototype D
@@ -248,8 +250,22 @@ function Shell({
   voice?: boolean
 }) {
   const desk = useSurface() === 'workbench'
+  // The page's mood follows the section in view (`useSectionThemes`); the sign-in door has none.
+  const theme = useOrbPlace().theme
+  const moody = voice || assistant
   const page = (
-    <div className="recruiter rc-layout" data-voice={voice ? 'on' : undefined}>
+    <div
+      className="recruiter rc-layout"
+      data-voice={voice ? 'on' : undefined}
+      data-page-theme={moody ? theme : undefined}
+    >
+      {moody && (
+        <div className="rc-ambient" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
       <div className="rc-column rc-prose">
         <div className="rc-inner">{children}</div>
         {assistant && dock && !desk && <FamilyAssistant launcher="bar" />}
@@ -473,6 +489,7 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
   const motion = useStoryMotion()
   const main = useRef<HTMLElement>(null)
   useStorySections(main, motion, content)
+  useSectionThemes(main, content)
   let sideIndex = 0
   const nextSide = (): OrbSide => (sideIndex++ % 2 === 0 ? 'right' : 'left')
   return (
@@ -530,6 +547,7 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
                 ))}
               </div>
             )}
+            {legion.quality && <Quality quality={legion.quality} />}
           </Section>
         )}
 
@@ -628,6 +646,8 @@ function Section({
   title,
   side,
   pinned = false,
+  theme,
+  mark,
   children,
 }: {
   id: string
@@ -636,6 +656,10 @@ function Section({
   side?: OrbSide
   /** A pinned scene: the orb rides alone beside it. */
   pinned?: boolean
+  /** Its palette (`index.css` `[data-page-theme]`); none is LEGION's. */
+  theme?: SectionTheme
+  /** The mark the orb takes on beside it. */
+  mark?: 'q'
   children: ReactNode
 }) {
   return (
@@ -645,6 +669,8 @@ function Section({
       className="rc-section"
       data-orb-side={side}
       data-pinned={pinned ? 'true' : undefined}
+      data-theme={theme}
+      data-orb-mark={mark}
     >
       <h2 id={`${id}-title`} className="rc-h2">
         {title}
@@ -737,8 +763,16 @@ function ProjectsStrip({ projects, side }: { projects: DemoProject[]; side?: Orb
 /** A project after LEGION's: the same parts as the LEGION section, plus its media slot. */
 function ProjectSection({ section, side }: { section: DemoProjectSection; side?: OrbSide }) {
   return (
-    <Section id={section.id} title={section.title} side={side}>
+    <Section id={section.id} title={section.title} side={side} theme={section.theme} mark={section.orb_mark}>
       <p>{section.intro}</p>
+      {section.link && (
+        <p className="rc-demo-link">
+          {/* A live demo elsewhere: a new tab, and it learns nothing of this page. */}
+          <a href={section.link.href} target="_blank" rel="noopener noreferrer">
+            {section.link.label}
+          </a>
+        </p>
+      )}
       {section.diagram_svg && <Diagram svg={section.diagram_svg} caption={section.diagram_caption ?? ''} />}
       {section.parts.length > 0 && (
         <div className="rc-runin">
@@ -751,6 +785,40 @@ function ProjectSection({ section, side }: { section: DemoProjectSection; side?:
       )}
       {section.media && <Media media={section.media} title={section.title} />}
     </Section>
+  )
+}
+
+/**
+ * "Quality for voice agents" (Kevin, 2026-11-22), inside the LEGION section: a row of figures,
+ * then the checks behind them as run-in lines. Both are lists, so a new check is one more row.
+ */
+function Quality({ quality }: { quality: DemoQuality }) {
+  return (
+    <div className="rc-quality" aria-labelledby="legion-quality-title">
+      <h3 id="legion-quality-title" className="rc-h3">
+        {quality.title}
+      </h3>
+      {quality.intro && <p>{quality.intro}</p>}
+      {quality.stats.length > 0 && (
+        <dl className="rc-tiles">
+          {quality.stats.map((stat) => (
+            <div key={`${stat.value}-${stat.label}`} className="rc-tile">
+              <dt>{stat.value}</dt>
+              <dd>{stat.label}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {quality.checks.length > 0 && (
+        <div className="rc-runin">
+          {quality.checks.map((check) => (
+            <p key={check.title}>
+              <b>{runIn(check.title)}</b> {check.body}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

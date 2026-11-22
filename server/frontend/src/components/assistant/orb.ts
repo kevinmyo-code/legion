@@ -54,6 +54,12 @@ export class OrbRenderer {
   private t = 0
   private rot = 0
   private level = 0
+  // A mark the points gather into (the Q at the Quanex section, Kevin 2026-11-22): one target per
+  // point, x and y in the orb's radius units, and how far the points have gone toward it (0..1).
+  private mark: Float32Array | null = null
+  private markGoal = 0
+  private morph = 0
+  private still = false
 
   private readonly dotScale: number
 
@@ -74,6 +80,22 @@ export class OrbRenderer {
     this.mode = mode
   }
 
+  /** The points gather into `targets` (from `markTargets`), or go back to the sphere (null). */
+  setMark(targets: Float32Array | null) {
+    if (targets) this.mark = targets
+    this.markGoal = targets ? 1 : 0
+  }
+
+  /** How many points it draws. */
+  size(): number {
+    return this.pts.length / 4
+  }
+
+  /** How far the points have gathered into the mark (tests read this). */
+  morphed(): number {
+    return this.morph
+  }
+
   /** Where the eased numbers are now (tests read this). */
   params(): readonly number[] {
     return this.cur
@@ -90,6 +112,10 @@ export class OrbRenderer {
     const goal = MODES[this.mode]
     const k = 1 - Math.pow(0.02, d)
     for (let i = 0; i < goal.length; i++) this.cur[i] += (goal[i] - this.cur[i]) * k
+    // About a second to gather or scatter; under reduced motion the same time, as a crossfade.
+    this.morph += (this.markGoal - this.morph) * (1 - Math.pow(0.004, d))
+    if (Math.abs(this.markGoal - this.morph) < 0.002) this.morph = this.markGoal
+    this.still = still
     if (still) {
       this.level = 0
       return
@@ -113,6 +139,10 @@ export class OrbRenderer {
     const dot = pixelRatio * 1.7 * this.dotScale
     const { ink, accent } = colours
     const pts = this.pts
+    const mark = this.morph > 0 ? this.mark : null
+    // Smoothstep, so the gather starts and lands softly.
+    const m = mark ? this.morph * this.morph * (3 - 2 * this.morph) : 0
+    const fade = this.still && mark !== null
     for (let i = 0; i < pts.length; i += 4) {
       let x = pts[i]
       let y = pts[i + 1]
@@ -139,12 +169,79 @@ export class OrbRenderer {
       const c0 = Math.round(ink[0] + (accent[0] - ink[0]) * hot)
       const c1 = Math.round(ink[1] + (accent[1] - ink[1]) * hot)
       const c2 = Math.round(ink[2] + (accent[2] - ink[2]) * hot)
-      ctx.fillStyle = `rgba(${c0},${c1},${c2},${alpha.toFixed(3)})`
       const s = dot * (0.55 + depth * 0.9)
-      ctx.fillRect(cx + x1 * R - s / 2, cx + y2 * R - s / 2, s, s)
+      let px = cx + x1 * R
+      let py = cx + y2 * R
+      if (mark) {
+        const j = (i / 4) * 2
+        // The mark is flat and still alive: each point shimmers a little around its place.
+        const mx = cx + (mark[j] + Math.sin(t * 1.3 + seed * 30) * 0.012) * R * 1.15
+        const my = cx + (mark[j + 1] + Math.cos(t * 1.1 + seed * 30) * 0.012) * R * 1.15
+        const ma = Math.min(1, (0.7 + 0.3 * twinkle) * Math.max(bright, 0.6))
+        if (fade) {
+          // Reduced motion: nothing travels; the sphere fades out as the mark fades in.
+          ctx.fillStyle = `rgba(${c0},${c1},${c2},${(alpha * (1 - m)).toFixed(3)})`
+          ctx.fillRect(px - s / 2, py - s / 2, s, s)
+          ctx.fillStyle = `rgba(${accent[0]},${accent[1]},${accent[2]},${(ma * m).toFixed(3)})`
+          ctx.fillRect(mx - s / 2, my - s / 2, s, s)
+          continue
+        }
+        px += (mx - px) * m
+        py += (my - py) * m
+        const a = alpha + (ma - alpha) * m
+        const r0 = Math.round(c0 + (accent[0] - c0) * m)
+        const r1 = Math.round(c1 + (accent[1] - c1) * m)
+        const r2 = Math.round(c2 + (accent[2] - c2) * m)
+        ctx.fillStyle = `rgba(${r0},${r1},${r2},${a.toFixed(3)})`
+        ctx.fillRect(px - s / 2, py - s / 2, s, s)
+        continue
+      }
+      ctx.fillStyle = `rgba(${c0},${c1},${c2},${alpha.toFixed(3)})`
+      ctx.fillRect(px - s / 2, py - s / 2, s, s)
     }
   }
 }
+
+/**
+ * One target per point inside a mark, from its coverage (`alpha`, a `size` x `size` image's alpha
+ * channel, as a canvas draws it): x and y in radius units, centred, the mark's larger side spanning
+ * -1..1. The same seeded pick as the points' own seeds, so a mark is the same on every load. No
+ * covered pixel (no font to draw with): a ring, so the points still gather into something.
+ */
+export function markTargets(alpha: ArrayLike<number>, size: number, count: number): Float32Array {
+  const pool: number[] = []
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (alpha[y * size + x] > 128) pool.push(x, y)
+  const out = new Float32Array(count * 2)
+  const n = pool.length / 2
+  let minX = size
+  let maxX = 0
+  let minY = size
+  let maxY = 0
+  for (let k = 0; k < pool.length; k += 2) {
+    minX = Math.min(minX, pool[k])
+    maxX = Math.max(maxX, pool[k])
+    minY = Math.min(minY, pool[k + 1])
+    maxY = Math.max(maxY, pool[k + 1])
+  }
+  const midX = (minX + maxX) / 2
+  const midY = (minY + maxY) / 2
+  const half = Math.max(1, (Math.max(maxX - minX, maxY - minY) + 1) / 2)
+  for (let i = 0; i < count; i++) {
+    const seed = fract(Math.sin(i * 12.9898) * 43758.5453)
+    const jitter = fract(Math.sin(i * 78.233) * 12543.123)
+    if (n === 0) {
+      const a = seed * Math.PI * 2
+      out[i * 2] = Math.cos(a) * 0.8
+      out[i * 2 + 1] = Math.sin(a) * 0.8
+      continue
+    }
+    const k = Math.floor(seed * n) * 2
+    out[i * 2] = (pool[k] + jitter - 0.5 - midX) / half
+    out[i * 2 + 1] = (pool[k + 1] + fract(seed * 7) - 0.5 - midY) / half
+  }
+  return out
+}
+
 
 function fract(value: number): number {
   return value - Math.floor(value)

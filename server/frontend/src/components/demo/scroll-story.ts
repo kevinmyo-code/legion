@@ -1,11 +1,15 @@
 import { useEffect, useLayoutEffect, useSyncExternalStore, type RefObject } from 'react'
 
+import type { SectionTheme } from '@/api/demo'
+
 /**
  * /try as a scroll story (Kevin, 2026-11-19, from the prototype captures: "B bolder"). The rules
  * every part of it keeps:
- * - nothing runs on a scroll event: IntersectionObserver says what is in view, CSS animates
- *   `transform` and `opacity`, and the one scroll-linked effect (the hero title easing out) is a
- *   CSS scroll-driven animation where the browser has them, and simply absent where it does not;
+ * - IntersectionObserver says what is in view, and CSS animates `transform` and `opacity`. Two
+ *   things follow the scroll itself: the hero title easing out (a CSS scroll-driven animation
+ *   where the browser has them, absent where it does not), and the orb's flight from the stage to
+ *   its rest place (`orb-flight.ts`: a passive scroll listener that writes one transform per
+ *   animation frame and reads no layout, Kevin 2026-11-22: "one continous flow");
  * - the page scrolls at the visitor's own speed: pinning is `position: sticky`, never a captured
  *   wheel or touch;
  * - `prefers-reduced-motion` gives the plain page as it was: no reveal, no pin, no glide;
@@ -41,25 +45,43 @@ export function useStoryGlide(): boolean {
 }
 
 export type OrbSide = 'left' | 'right'
+/** The mark the orb takes on beside a section (Kevin, 2026-11-22: the Q at the Quanex section). */
+export type OrbMark = 'q'
 export interface OrbPlace {
   side: OrbSide
   /** Beside a pinned scene the orb rides alone: its line and chips would cover the scene. */
   pinned: boolean
-  /**
-   * A section has put it in place. Until then (the header and hero, which keep no room for it) the
-   * side orb stays hidden (review recheck 2026-11-20: it sat over the header's links at 900-1280 px).
-   */
+  /** A section has put it in place; false above the first section (the header and hero). */
   placed: boolean
+  /** The palette of the section at the middle of the screen (`index.css` `[data-page-theme]`). */
+  theme: SectionTheme
+  /** The mark the orb shows there, or none. */
+  mark: OrbMark | null
 }
 
 // One place for the whole page: the sections say which one is in view, the voice stage's orb
 // follows. A tiny store, so the two need no shared parent component.
-let place: OrbPlace = { side: 'right', pinned: false, placed: false }
+const HOME: OrbPlace = { side: 'right', pinned: false, placed: false, theme: 'legion', mark: null }
+let place: OrbPlace = HOME
 const listeners = new Set<() => void>()
 
-export function setOrbPlace({ side, pinned, placed = true }: { side: OrbSide; pinned: boolean; placed?: boolean }) {
-  if (side === place.side && pinned === place.pinned && placed === place.placed) return
-  place = { side, pinned, placed }
+export function setOrbPlace(next: Partial<OrbPlace>) {
+  const merged = { ...place, placed: true, ...next }
+  if (
+    merged.side === place.side &&
+    merged.pinned === place.pinned &&
+    merged.placed === place.placed &&
+    merged.theme === place.theme &&
+    merged.mark === place.mark
+  )
+    return
+  place = merged
+  for (const listener of listeners) listener()
+}
+
+/** Back to the page's top state (tests, and a page that leaves). */
+export function resetOrbPlace() {
+  place = HOME
   for (const listener of listeners) listener()
 }
 
@@ -72,6 +94,39 @@ export function useOrbPlace(): OrbPlace {
     () => place,
     () => place,
   )
+}
+
+const THEMES: readonly SectionTheme[] = ['legion', 'quanex', 'midcon', 'aw4']
+
+/**
+ * The palette and the orb's mark follow the section at the middle of the screen (Kevin,
+ * 2026-11-22: "the vibe will change for each section"), motion or not: under reduced motion the
+ * colours still change, with a short fade instead of a blend (CSS). Sections are `[data-orb-side]`;
+ * one with no `data-theme` is LEGION's palette. Above the first section, LEGION's and no mark.
+ */
+export function useSectionThemes(root: RefObject<HTMLElement | null>, deps: unknown) {
+  useEffect(() => {
+    const element = root.current
+    if (!element || typeof IntersectionObserver === 'undefined') return
+    const sections = Array.from(element.querySelectorAll<HTMLElement>('[data-orb-side]'))
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const target = entry.target as HTMLElement
+          const theme = THEMES.find((t) => t === target.dataset.theme) ?? 'legion'
+          setOrbPlace({ theme, mark: target.dataset.orbMark === 'q' ? 'q' : null, placed: place.placed })
+        }
+        const first = sections[0]
+        if (first && first.getBoundingClientRect().top > window.innerHeight / 2) {
+          setOrbPlace({ theme: 'legion', mark: null, placed: place.placed })
+        }
+      },
+      { rootMargin: '-50% 0px -50% 0px' },
+    )
+    sections.forEach((section) => observer.observe(section))
+    return () => observer.disconnect()
+  }, [root, deps])
 }
 
 // What has risen in once stays shown for the visit: a live content reload re-runs the marking,
@@ -129,12 +184,15 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
             pinned: target.dataset.pinned === 'true',
           })
         }
-        // Above the first section (its top below the middle) the orb has no place: the header and
-        // hero keep no room for it. Read from the section's own position on every callback, so a
-        // jump straight to the top (Home, a scrollbar drag, a flick), where the first section never
-        // crosses the middle, still counts (review recheck cbe39b2a).
+        // Above the first section (its top below the middle) the orb is on its way back to the
+        // stage: unplaced, and on the right, the side it flies out to. Read from the section's own
+        // position on every callback, so a jump straight to the top (Home, a scrollbar drag, a
+        // flick), where the first section never crosses the middle, still counts (review recheck
+        // cbe39b2a).
         const first = sections[0]
-        if (first && first.getBoundingClientRect().top > window.innerHeight / 2) setOrbPlace({ ...place, placed: false })
+        if (first && first.getBoundingClientRect().top > window.innerHeight / 2) {
+          setOrbPlace({ side: 'right', pinned: false, placed: false })
+        }
       },
       { rootMargin: '-50% 0px -50% 0px' },
     )

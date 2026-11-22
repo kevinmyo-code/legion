@@ -432,7 +432,7 @@ describe('/try', () => {
     expect(within(dock).queryByRole('button', { name: /^Close/ })).not.toBeInTheDocument()
     expect(document.querySelector('[data-chat="askbar"]')).not.toBeInTheDocument()
     // The page column is beside the dock, not under it.
-    expect(dock.parentElement?.firstElementChild).toContainElement(screen.getByRole('heading', { level: 1 }))
+    expect(dock.parentElement?.querySelector('.rc-column')).toContainElement(screen.getByRole('heading', { level: 1 }))
     // Its copy: the 5-minute line, the chips, the recording notice.
     expect(within(dock).getByText(/A demo conversation lasts up to 5 minutes\./)).toBeInTheDocument()
     expect(within(dock).getByRole('button', { name: 'Which card charges are unverified?' })).toBeInTheDocument()
@@ -837,6 +837,48 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     expect(within(nav).queryByRole('link', { name: 'Projects' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Projects' })).not.toBeInTheDocument()
     expect(document.querySelector('#fake-two')).toBeNull()
+  })
+
+  test('a project section carries its live demo link (a new tab), its mood and its orb mark (Kevin, 2026-11-22)', async () => {
+    const engine = visitor()
+    const content = withProjects()
+    content.project_sections![0] = {
+      ...content.project_sections![0],
+      link: { href: 'https://demo.example.test', label: 'Try the fake demo' },
+      theme: 'quanex',
+      orb_mark: 'q',
+    }
+    engine.demo.content = content
+    renderApp('/try', engine, 'family')
+    const section = await screen.findByRole('region', { name: 'Fake two' })
+    const link = within(section).getByRole('link', { name: 'Try the fake demo' })
+    expect(link).toHaveAttribute('href', 'https://demo.example.test')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(section).toHaveAttribute('data-theme', 'quanex')
+    expect(section).toHaveAttribute('data-orb-mark', 'q')
+    // The page starts in LEGION's mood; the sections' own come as they reach the middle (a browser).
+    expect(section.closest('.recruiter')).toHaveAttribute('data-page-theme', 'legion')
+  })
+
+  test("the LEGION section's quality block: figures as tiles, then the checks (Kevin, 2026-11-22)", async () => {
+    const engine = visitor()
+    const content = withProjects()
+    content.legion = {
+      ...content.legion!,
+      quality: {
+        title: 'Fake quality',
+        stats: [{ value: '12', label: 'fake cases' }],
+        checks: [{ title: 'Fake check', body: 'Checked, in fake words.' }],
+      },
+    }
+    engine.demo.content = content
+    renderApp('/try', engine, 'family')
+    const legion = await screen.findByRole('region', { name: 'How LEGION is built' })
+    expect(within(legion).getByRole('heading', { level: 3, name: 'Fake quality' })).toBeInTheDocument()
+    expect(within(legion).getByText('12')).toBeInTheDocument()
+    expect(within(legion).getByText('fake cases')).toBeInTheDocument()
+    expect(within(legion).getByText('Checked, in fake words.')).toBeInTheDocument()
   })
 
   test('the strip links each project to its section, and a project with no link stands alone', async () => {
