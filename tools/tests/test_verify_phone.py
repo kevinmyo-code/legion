@@ -444,3 +444,23 @@ def test_a_refused_add_turn_leaves_nothing_to_clean_up():
         res = status(r, cid)
         assert res["status"] == runner.BLOCKED, cid
         assert res["cleanup"] == "ok", (cid, res["cleanup"])
+
+
+class DropsAfterTheAdd(FakeDevice):
+    """The calendar add lands on the phone, then adb drops before the reply (review probe P3)."""
+
+    def turn(self, text, case_id, tools=(), timeout=60):
+        out = super().turn(text, case_id, tools, timeout)
+        if text.startswith("add verify-test dentist"):
+            raise runner.Abort("adb dropped while sending a turn (not resent): timed out")
+        return out
+
+
+def test_a_write_turn_that_may_have_landed_is_cleaned_up_or_reported():
+    dev = DropsAfterTheAdd()
+    r = runner.run_suite(NEXT2, dev, only={"calendar_delete"})
+    cal = status(r, "calendar_delete")
+    left = [n for names in dev.events.values() for n in names if n.startswith("verify-test")]
+    # Either the cleanup removed it, or the run says it was left behind: never silent.
+    assert (not left and cal["cleanup"] == "ok") or cal["cleanup"].startswith("LEFT BEHIND"), (left, cal["cleanup"])
+    assert not left

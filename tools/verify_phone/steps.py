@@ -35,11 +35,17 @@ def say(ctx: Ctx, words: str, tools: tuple[str, ...] = (), timeout: float = 60) 
     if ctx.run.get("forbidden"):
         raise Blocked("not sent: the run stopped on a forbidden tool, no more assistant turns")
     mark = ctx.device.mark()
-    why = ctx.device.turn(words, case_id=f"verify-{ctx.result.id}", tools=tools, timeout=timeout)
+    before = ctx.data.get("cleanup_needed", False)
     if tools:
-        # A write turn went through: from here its check has something to clean up. Set only after
-        # the turn returned, so a check whose write was never sent never reports LEFT BEHIND.
+        # Set before sending: a write turn that may have landed (the link dropped mid-send, an Abort)
+        # is cleaned up or reported LEFT BEHIND. Only a turn the phone refused outright (Blocked:
+        # nothing reached the assistant) puts it back.
         ctx.data["cleanup_needed"] = True
+    try:
+        why = ctx.device.turn(words, case_id=f"verify-{ctx.result.id}", tools=tools, timeout=timeout)
+    except Blocked:
+        ctx.data["cleanup_needed"] = before
+        raise
     ctx.step(f"say ({'write' if tools else 'read'})", why in ("answered", "quiet", "closed"), why)
     if why == "real_conversation":
         raise Blocked("a real conversation took over")
