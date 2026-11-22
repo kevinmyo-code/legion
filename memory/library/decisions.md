@@ -8234,3 +8234,10 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 - **Ruling:** the demo gets the member rule (the carry, A2, only when the visitor's own words asked for the change). His word covers this change only; the rest of the demo (prompt, persona, delivery text, household data, chips, tour) stays frozen. It ships only on his word.
 - ADR 0090 (amended 2026-11-21).
+
+## 2026-11-22 - A file asked for as the result comes to the phone (Kevin: fixes B)
+
+- **Ruling (Kevin, option B):** fix the "ask Claude for a file" flow: a PDF helper a task that read the web may still run, the made file requested and opened on the phone, and mail chosen only where the laptop can send it.
+- **Built that way:** `deliver: files` for a result asked for as a file on a `full` machine; `email_self` to a machine reporting `can_mail: false` goes to the phone (a `listed` machine: summary only); `to_pdf.py` in the worker.
+- **Orchestrator's call, not Kevin's:** a machine whose worker has not reported `can_mail` (null) keeps the mail as asked, so an un-updated work laptop keeps its text mail.
+- ADR 0080 (amended 2026-11-22).

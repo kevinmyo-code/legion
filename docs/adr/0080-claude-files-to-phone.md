@@ -79,7 +79,7 @@ a month, and left it in a folder every app with media access can read.
   file that lands while neither is running waits on the engine, up to its 24 hours.
 - Amends ADR 0067's "Files" bullet for this path only; its offered-file flow is unchanged.
 
-## Amendment 2026-11-22 (Kevin): a file asked for as the result is a file asked for by name
+## Amendment 2026-11-22 (Kevin, fixes B): a file asked for as the result is a file asked for by name
 
 A request for a plan "as a PDF" (2026-11-22) was sent as `deliver: email_self` to a laptop
 with no mail account: nothing was emailed, the page stayed on the laptop, and it was HTML because a
@@ -90,6 +90,7 @@ task that read the web had no way to make a PDF. Three changes, same rules as ab
   fixed (create, assign, claim; `server/claude_session/delivery.py`). Finding an existing file is
   not this and keeps the offered-file flow.
 - The worker reports `can_mail` on every heartbeat. `email_self` to a machine that reports false
-  becomes `files` (a `listed` machine: summary only). Unknown (an older worker) keeps the mail.
+  becomes `files` (a `listed` machine: summary only). Unknown (an older worker) keeps the mail
+  (the orchestrator's call, not a ruling).
 - `tools/claude_session/to_pdf.py` makes the PDF in the task folder, allowed after a web read like
   `to_xlsx.py`: a sanitised copy, a `default-src 'none'` policy, a browser with no network.

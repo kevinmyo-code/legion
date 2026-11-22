@@ -53,6 +53,10 @@ def test_a_result_asked_for_as_a_file_is_a_made_file(words):
     "summarise the PDF in my Downloads folder",
     "what does the lease document say about pets",
     "how big is the spreadsheet on my desktop",
+    "write a summary of a PDF in my Downloads",
+    "make a note about a document on my desktop",
+    "save a document I scanned",
+    "make sure a PDF of the lease is in Documents",
     "",
 ])
 def test_finding_or_reading_a_file_is_not(words):

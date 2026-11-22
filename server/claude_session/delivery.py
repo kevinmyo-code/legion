@@ -33,10 +33,13 @@ _FORMAT = (
 )
 # "... as a PDF", "into a spreadsheet", "as an Excel file".
 _AS_FORMAT = re.compile(rf"\b(?:as|into)\s+(?:an?\s+)?{_FORMAT}\b", re.I)
-# "make me a PDF of ...", "create an Excel sheet with ...": a making verb, then "a/an <format>".
+# "make me a PDF of ...", "create an Excel sheet with ...": a making verb directly followed by
+# "a/an <format>" (one "me" or "us" between at most), never "document": "make a note about a
+# document" or "write a summary of a PDF" is about a file that already exists.
 _MAKE_FORMAT = re.compile(
-    rf"\b(?:make|create|write|draft|build|generate|export|turn|save|convert|put\s+together)\b"
-    rf"[^.?!]{{0,80}}?\ban?\s+{_FORMAT}\b",
+    r"\b(?:make|create|generate|build|draft|export)\s+(?:(?:me|us)\s+)?an?\s+"
+    r"(?:pdf|excel(?:\s+(?:file|sheet|spreadsheet|workbook))?|spreadsheet|workbook|xlsx"
+    r"|word\s+(?:doc|document|file)|docx)\b",
     re.I,
 )
 
