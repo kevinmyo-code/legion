@@ -97,6 +97,64 @@ class SevereAlertWatcher(
         fun alarmLevel(severity: String): Int? = RING_LEVELS[severity.trim().lowercase()]
 
         /**
+         * The alert's ring level: its severity's ([alarmLevel]), else [ANY_SEVERITY_LEVEL] for an
+         * event in [RINGS_AT_ANY_SEVERITY], else null (an ordinary Safety raise).
+         */
+        fun ringLevel(alert: SevereAlert): Int? =
+            alarmLevel(alert.severity) ?: ANY_SEVERITY_LEVEL.takeIf { normal(alert.event) in RINGS_AT_ANY_SEVERITY }
+
+        private fun normal(event: String): String = event.trim().lowercase()
+
+        /** True when an alert of this NWS [event] may RING ([RINGING_EVENTS]); any other is posted. */
+        fun mayRing(event: String): Boolean = normal(event) in RINGING_EVENTS
+
+        /**
+         * Events that ring whatever severity NWS labels them (the owner, 2026-11-22): a tornado
+         * warning is a tornado warning, Moderate or Unknown included. Every other event in
+         * [RINGING_EVENTS] still needs Severe or Extreme. The engine passes these through too
+         * (`conditions.sources.ALWAYS_SEVERE_EVENTS`). One line to add one.
+         */
+        private val RINGS_AT_ANY_SEVERITY = setOf("tornado warning")
+
+        /** The level such an event rings at below Severe: Severe's, so an Extreme one still rises. */
+        private const val ANY_SEVERITY_LEVEL = 1
+
+        /**
+         * The NWS event names that may ring through silent and at night (the owner, 2026-11-21:
+         * "ring only for dangerous events"; freeze, frost, heat, air quality and the like are
+         * posted). Still only at Severe or Extreme ([RING_LEVELS]). Names as api.weather.gov
+         * /alerts/types lists them; lowercase here. Fail safe: a name not listed (a new or renamed
+         * event) is posted, never rung. Watches never ring: nothing is happening yet. Each one is
+         * a short-fuse threat to life where minutes matter:
+         * - tornado warning: a tornado is sighted or on radar (NWS's "tornado emergency" is this
+         *   event with a tag, not its own name);
+         * - flash flood warning: flooding within minutes ("flash flood emergency" likewise);
+         * - severe thunderstorm warning: destructive wind or large hail now;
+         * - extreme wind warning: 115 mph or more, the eyewall arriving;
+         * - hurricane warning, typhoon warning: hurricane-force wind expected, the last call to
+         *   finish preparing or leave;
+         * - storm surge warning: life-threatening inundation;
+         * - tsunami warning: a dangerous wave is coming;
+         * - earthquake warning: shaking is seconds away;
+         * - dust storm warning: visibility near zero, deadly on a road;
+         * - shelter in place warning, evacuation immediate: officials ordering an action now.
+         * Added by the owner, 2026-11-22:
+         * - snow squall warning: sudden whiteout and ice, deadly on a road;
+         * - civil danger, hazardous materials, radiological hazard, nuclear power plant warnings:
+         *   a release or threat where officials want people to act now;
+         * - fire warning: a spreading wildfire threatening places (not Red Flag Warning or Fire
+         *   Weather Watch, which are fire WEATHER and are posted).
+         * One line to add or drop one.
+         */
+        private val RINGING_EVENTS = setOf(
+            "tornado warning", "flash flood warning", "severe thunderstorm warning", "extreme wind warning",
+            "hurricane warning", "typhoon warning", "storm surge warning", "tsunami warning",
+            "earthquake warning", "dust storm warning", "shelter in place warning", "evacuation immediate",
+            "snow squall warning", "civil danger warning", "hazardous materials warning",
+            "radiological hazard warning", "nuclear power plant warning", "fire warning",
+        )
+
+        /**
          * Which NWS severities ring (through silent, vibrate and DND, at night) and at what level.
          * Today: Severe and Extreme. Owner decision pending (phantom alarm report 2026-11-21): drop
          * "severe" here to ring for Extreme only. One line to change.
@@ -104,11 +162,11 @@ class SevereAlertWatcher(
         private val RING_LEVELS = mapOf("extreme" to 2, "severe" to 1)
 
         /** What [SeenAlerts] holds for a raised alert: its id, plus its ring level when it has one. */
-        fun seenKey(alert: SevereAlert): String = alarmLevel(alert.severity)?.let { "${alert.id}#$it" } ?: alert.id
+        fun seenKey(alert: SevereAlert): String = ringLevel(alert)?.let { "${alert.id}#$it" } ?: alert.id
 
         /** True when [alert] was raised before at its ring level or higher (a plain id is level 0). */
         fun alreadyRaised(seen: Set<String>, alert: SevereAlert): Boolean {
-            val level = alarmLevel(alert.severity) ?: 0
+            val level = ringLevel(alert) ?: 0
             return seen.any { key ->
                 when {
                     key == alert.id -> level == 0

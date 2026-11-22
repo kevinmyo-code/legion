@@ -15,15 +15,23 @@ import java.util.concurrent.ConcurrentHashMap
  * took. The key is the voice's own: engine, model, voice, sample rate and the exact text, so a new
  * voice or a reworded line never plays old audio. Bounded by [maxFiles] and [maxBytes], the least
  * recently played file going first. A disk that cannot be read or written costs only the speed-up.
+ *
+ * Since 2026-11-21 (voice-local-clips, Kevin: "yes bundle"): the files live in app storage
+ * (`filesDir`), not the cache, so Android never clears them under storage pressure (the laptop
+ * voice's renders cannot ship in the APK: CC BY-NC). The old cache folder is moved over once
+ * ([moveOnce]). Under a key with nothing in memory or on disk, the clip shipped in the APK under the
+ * same key answers ([bundled], [BundledLines]: cloud-voice lines only); a render of his own wins.
  */
 internal class KeptLineAudio(
     private val dir: () -> File?,
     private val maxFiles: Int = MAX_FILES,
     private val maxBytes: Long = MAX_BYTES,
     private val mem: MutableMap<String, ByteArray> = ConcurrentHashMap(),
+    /** The APK's clip under [key], or null ([BundledLines.lookup]); never written to disk. */
+    private val bundled: (String) -> ByteArray? = { null },
 ) : MutableMap<String, ByteArray> by mem {
 
-    override fun get(key: String): ByteArray? = mem[key] ?: fromDisk(key)?.also { mem[key] = it }
+    override fun get(key: String): ByteArray? = mem[key] ?: (fromDisk(key) ?: bundled(key))?.also { mem[key] = it }
 
     override fun put(key: String, value: ByteArray): ByteArray? {
         val before = mem.put(key, value)
@@ -75,12 +83,15 @@ internal class KeptLineAudio(
         /**
          * About 65 lines per voice since 2026-11-17 (8 acks, 5 fillers, ~44 tool lines, the missed
          * line, the check-in closers): two voices' worth, so a voice switch does not evict the other.
+         * Unchanged by the move to app storage (2026-11-21): the same 10 MB bound, now never cleared
+         * by Android; the APK's clips are not counted (they are never written here).
          */
         const val MAX_FILES = 160
 
         /** About 200 s of 24 kHz PCM16: every kept line in two voices, at ~1.3 s a line. */
         const val MAX_BYTES = 10L * 1024 * 1024
         private const val SUFFIX = ".pcm"
+        private const val DIR_NAME = "scripted-tts"
 
         fun name(key: String): String {
             val digest = MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
@@ -91,12 +102,35 @@ internal class KeptLineAudio(
 
         @Volatile private var dir: File? = null
 
-        /** Where the process's kept lines live; set once at start ([CascadeWarmup.install]). */
+        /**
+         * Where the process's kept lines live, set once at start ([CascadeWarmup.install]): app
+         * storage, with the old cache folder's files moved in first. Also opens the APK's clips.
+         */
         fun install(context: Context) {
-            dir = File(context.applicationContext.cacheDir, "scripted-tts")
+            val app = context.applicationContext
+            val store = File(app.filesDir, DIR_NAME)
+            moveOnce(File(app.cacheDir, DIR_NAME), store)
+            dir = store
+            BundledLines.install(app)
+        }
+
+        /**
+         * The kept lines in [from] (the old cache folder) moved into [to], once: a file already in
+         * [to] is kept, [from] is deleted after. Nothing here can fail the start.
+         */
+        fun moveOnce(from: File, to: File) {
+            if (!from.isDirectory) return
+            runCatching {
+                to.mkdirs()
+                from.listFiles { f -> f.isFile && f.name.endsWith(SUFFIX) }?.forEach { f ->
+                    val target = File(to, f.name)
+                    if (!target.exists() && !f.renameTo(target)) f.copyTo(target)
+                }
+            }
+            runCatching { from.deleteRecursively() }
         }
 
         /** The process's one store, shared by both voices (their keys never collide: each names its engine). */
-        val SHARED: MutableMap<String, ByteArray> = KeptLineAudio({ dir })
+        val SHARED: MutableMap<String, ByteArray> = KeptLineAudio({ dir }, bundled = BundledLines::lookup)
     }
 }

@@ -174,13 +174,15 @@ class Alert:
 
 
 SEVERE_LEVELS = frozenset({"Severe", "Extreme"})
-HURRICANE_EVENTS = frozenset({"Hurricane Watch", "Hurricane Warning"})
+# Raised whatever severity NWS gives them: hurricanes (Kevin, round 5) and a tornado warning (the
+# owner, 2026-11-22: it rings at any severity, so the phone must see it).
+ALWAYS_SEVERE_EVENTS = frozenset({"Hurricane Watch", "Hurricane Warning", "Tornado Warning"})
 
 
 def is_severe(alert: Alert) -> bool:
-    """The proactive raise's filter (Kevin, round 5): NWS severity Severe or Extreme, or a
-    hurricane watch or warning whatever severity NWS gave it. Nothing else raises."""
-    return alert.severity in SEVERE_LEVELS or alert.event in HURRICANE_EVENTS
+    """The proactive raise's filter (Kevin, round 5): NWS severity Severe or Extreme, or an event
+    in ALWAYS_SEVERE_EVENTS whatever severity NWS gave it. Nothing else raises."""
+    return alert.severity in SEVERE_LEVELS or alert.event in ALWAYS_SEVERE_EVENTS
 
 
 def parse_alerts(raw: bytes) -> list[Alert]:

@@ -23,4 +23,6 @@
     <exclude domain="external" path="wake-samples/" />
     <!-- "Only my voice": the voiceprint built from his voice never leaves the phone. -->
     <exclude domain="file" path="voiceprint/" />
+    <!-- Kept voice lines (KeptLineAudio): up to 10 MB of renders, the laptop voice's among them (CC BY-NC); re-rendered on their own. -->
+    <exclude domain="file" path="scripted-tts/" />
 </full-backup-content>

@@ -745,8 +745,9 @@ internal class GeminiTts(
     }
 
     // The voice actually speaking is in the key: a Puck clip is never replayed as another voice, or the reverse.
+    // The same key the APK's clips are filed under ([BundledLines]).
     private fun keyOf(text: String, take: Int = 0) =
-        "cloud|${CloudSpeechWire.TTS_MODEL}|$voiceNow|$sampleRate|$text" + if (take > 0) "#take$take" else ""
+        BundledLines.cloudKey(CloudSpeechWire.TTS_MODEL, voiceNow, sampleRate, text, take)
 
     companion object {
         /** 24 kHz PCM16 mono. */

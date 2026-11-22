@@ -193,11 +193,16 @@ sealed interface ProactiveUrgency {
      * only when [severity] rises (a higher number is more severe; the feed picks the scale and keeps
      * it). [references] are the ids of the earlier alerts this one updates (NWS `references`): an
      * update joins their series ([EmergencyRingRules]) and does not ring again.
+     *
+     * [rings] false (the owner, 2026-11-21: ring only for dangerous events): the alert keeps the
+     * alarm's one-per-series memory but is always POSTED as a visible notification, never rung and
+     * never spoken.
      */
     data class Alarm(
         val alertId: String,
         val severity: Int,
         val references: List<String> = emptyList(),
+        val rings: Boolean = true,
     ) : ProactiveUrgency {
         init {
             require(alertId.isNotBlank()) { "an alarm must carry the feed's alert id - it is the dedup key" }
