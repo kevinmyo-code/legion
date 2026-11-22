@@ -403,10 +403,10 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
 
 # This folder's own scripts a tainted task may still run, alone: each checks its own limits
 # (report.py its fields, send_mail.py its token and Kevin on every send, ship.py and undo.py
-# Kevin's yes to the question they print, fetch_file.py its download hosts, to_xlsx.py its task
-# folder).
+# Kevin's yes to the question they print, fetch_file.py its download hosts, to_xlsx.py and
+# to_pdf.py their task folder; to_pdf.py also prints with no network and loads nothing).
 CONTAINED_SCRIPTS = ("report.py", "send_mail.py", "ship.py", "undo.py", "fetch_file.py",
-                     "to_xlsx.py")
+                     "to_xlsx.py", "to_pdf.py")
 
 
 def _write_targets(inp: dict) -> list[str]:

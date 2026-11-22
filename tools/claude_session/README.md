@@ -38,6 +38,7 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `build_lock.py` | One build at a time with a heat check from laptopctl's agent (ticket 08). Each Gradle step also takes the laptop's shared mkdir lock (config `gradle_lock`), runs with `--max-workers=1 --build-cache` and a stable private daemon registry, and leaves the daemon warm: never `--stop` (2026-11-09). |
 | `warm_worktree.py` | One warm LEGION worktree, `work\warm\wt`, reset per task and keeping its build outputs, so a task's compile is incremental, not cold (task 7's first build took 24 min). Leased to one task at a time; a question holds it for the follow-up that ships it. `prepare` seeds it. |
 | `workflows.py` | Worker workflows (map worker-workflows, ADR 0067 amended 2026-11-10): the `workflow.json` sidecar beside a private skill, its lint (`--lint <skills dir>`), the engine copy and hash, and the phrase matcher the engine ports. The worker re-reads the sidecars every 5 minutes and sends the catalog only when the engine holds another hash. |
+| `to_pdf.py` | A task's own HTML or Markdown to a PDF beside it, allowed after a web read (2026-11-22). Prints a sanitised copy with the laptop's headless Edge: a `default-src 'none'` CSP, no DNS, no proxy, a throwaway profile. |
 | `main_session_prompt.md` | The main session's appended system prompt. |
 | `install.ps1` / `uninstall.ps1` / `status.ps1` | Kevin runs these by hand. |
 | `fake_claude.py`, `fake_engine.py`, `test_*.py` | Tests. Never the real CLI, never real mail. |
@@ -77,7 +78,7 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `scope` | `full` (every fixed drive, read and write) or `listed` (repos root only, summaries only) |
 | `engine_url`, `token` | Engine base URL and device token |
 | `repos_root` | `listed` only |
-| `mail` | `{address, app_password, kevin, smtp_host, smtp_port}`; on `listed` only text to `kevin` |
+| `mail` | `{address, app_password, kevin, smtp_host, smtp_port}`; on `listed` only text to `kevin`. Whether it is set rides every heartbeat as `can_mail`; without it the engine sends "email it to me" results to the phone |
 | optional | `claude_cmd`, `heartbeat_s`, `task_cap_s`, `hang_s`, `add_dirs`, `keep_awake` |
 | workflows, optional | `skills_dir` (default `work\.claude\skills`), `workflow_reports` (default `%USERPROFILE%\.legion\reports`, one folder per workflow, dated reports kept 180 days), `task_log` (default `%USERPROFILE%\.legion\task-log.jsonl`, one line per finished task with its request text, kept 180 days, read only by the workflow miner), `agent_rules`, `catalog_s` (300) |
 | containment, optional | `untrusted_paths` (folders whose files taint a task that reads them, e.g. Downloads), `egress_allow` (extra hosts shell commands may reach, beside github, the engine, pypi and npm), `download_hosts` (where `fetch_file.py` may download from; default free-book sources and GitHub) |
@@ -116,7 +117,7 @@ question); it keeps existing hooks, writes `settings.json.bak-<stamp>`, and is s
   description), 120 characters at most, held in memory only.
 - **Containment** (architecture upgrade 2, 2026-11-10; `containment.py`): a task that read mail,
   the web or an untrusted file loses the shell (except this folder's report, mail, ship, undo,
-  fetch_file and to_xlsx scripts, alone), new helpers, and writes outside its own task folder,
+  fetch_file, to_xlsx and to_pdf scripts, alone), new helpers, and writes outside its own task folder,
   for the rest of the task, across restarts, and in its follow-ups. Marks live in `taint\`.
   Shell commands reach only allowlisted hosts; no shell names a file a tainted task wrote. A
   regex hook is not a sandbox: `containment.py` lists what it cannot stop.

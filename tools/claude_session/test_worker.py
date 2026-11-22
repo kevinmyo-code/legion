@@ -165,6 +165,17 @@ class TestTasks(WorkerCase):
                          ("Alienware", "full", "2.1.316 (Claude Code)"))
         self.wait(lambda: self.engine.heartbeats[-1]["state"] == "idle", what="idle")
 
+    def test_heartbeat_says_whether_this_laptop_can_mail(self):
+        """2026-11-22: the engine routes `email_self` to the phone when this is false."""
+        self.start()
+        self.wait(lambda: self.engine.heartbeats, what="heartbeat")
+        self.assertIs(self.engine.heartbeats[0]["can_mail"], True)
+        self.stop_last()
+        self.engine.heartbeats.clear()
+        self.start(mail={"address": "alfred@example.com", "kevin": "kevin@example.com"})
+        self.wait(lambda: self.engine.heartbeats, what="heartbeat")
+        self.assertIs(self.engine.heartbeats[0]["can_mail"], False)
+
     def test_child_env_and_command(self):
         self.engine.queue(id=1, request=fake(sleep=0.1))
         self.start()

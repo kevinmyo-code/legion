@@ -133,7 +133,10 @@ def files_instructions(confirmed: bool) -> str:
     """ADR 0080: what a `deliver: files` helper is told. Find by name, path and metadata; open a
     document only to tell candidates apart, and say so; ask when unsure or past the caps."""
     text = ("Kevin wants these files on his phone; naming them was his yes for exactly those "
-            "files. Find them by name, folder, date, type and size. Do not open or read a "
+            "files. If he asked you to MAKE something as a file (a PDF, a spreadsheet, a "
+            "document), make it in the work folder (a PDF with to_pdf.py, rule 8) and list only "
+            "the finished file with --found, not the page or CSV it was made from. Otherwise "
+            "find them by name, folder, date, type and size. Do not open or read a "
             "document's contents (scans, IDs, statements, letters) unless you must to tell two "
             "candidates apart; if you did, say so in the summary. List every file to send with "
             "--found (each under 25 MB) and LEGION sends them to his phone. The summary names "
@@ -423,6 +426,7 @@ class Worker:
                      "<<WARM>>": cmd_path(HERE / "warm_worktree.py"),
                      "<<FETCH>>": cmd_path(HERE / "fetch_file.py"),
                      "<<TO_XLSX>>": cmd_path(HERE / "to_xlsx.py"),
+                     "<<TO_PDF>>": cmd_path(HERE / "to_pdf.py"),
                      "<<SCOPE>>": scope}.items():
             text = text.replace(k, v)
         return text
@@ -919,7 +923,7 @@ class Worker:
                 "name": self.name, "hostname": socket.gethostname(), "scope": self.scope,
                 "state": "busy" if running else "idle", "running": running,
                 "progress": {str(k): v for k, v in self.progress.items()},
-                "claude_version": self.claude_version,
+                "claude_version": self.claude_version, "can_mail": self.can_mail(),
                 # memory-review ticket 15: the engine mints the daily review only when idle.
                 "input_idle_s": self.idle(), "on_mains": self.on_mains(), **wf_fields, **extra})
             self.note_engine_hash(reply, wf_fields, now)
@@ -1159,14 +1163,13 @@ class Worker:
             # never one the engine row claims.
             lines.append("This scheduled run has no yes to send mail. Do not send any.")
         elif t.get("deliver") == DELIVER_EMAIL_SELF:
-            mail = self.cfg.get("mail") or {}
-            if mail.get("address") and mail.get("kevin") and self.scope == "full":
+            if self.can_mail() and self.scope == "full":
                 tok = self.issue_token(tid, parent, "email_self")
                 lines.append("Kevin asked for the result by email; send it to him with send_mail.py "
                              f"--task {tid} --token {tok} --to kevin --attach FILE; that is the yes "
                              "for this one send to Kevin only. Anyone else still needs "
                              "needs_confirmation.")
-            elif mail.get("address") and mail.get("kevin"):  # work laptop, ruling 18
+            elif self.can_mail():  # work laptop, ruling 18
                 tok = self.issue_token(tid, parent, "email_self")
                 lines.append("Kevin asked for the result by email; send him the summary as text "
                              f"with send_mail.py --task {tid} --token {tok} --to kevin (no "
@@ -1193,6 +1196,13 @@ class Worker:
                              "summaries only. Say so in the summary.")
         lines.append(f"Work folder: {work}")
         return "\n".join(lines)
+
+    def can_mail(self) -> bool:
+        """send_mail.py's own test: an account, its app password and Kevin's address. Sent on every
+        heartbeat so the engine never routes a result to mail this laptop cannot send."""
+        mail = self.cfg.get("mail") or {}
+        return bool(mail.get("address") and mail.get("app_password")
+                    and (mail.get("kevin") or "").strip())
 
     def issue_token(self, tid: int, parent, kind: str) -> str:
         tok = secrets.token_urlsafe(16)

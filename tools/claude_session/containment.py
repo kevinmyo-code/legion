@@ -21,8 +21,8 @@ helper is one long turn:
   follow-up task (it inherits its parent's mark) all stay tainted.
 - **What a tainted task may still do**: read, search, WebFetch and WebSearch (research needs
   them); Write or Edit a data file (no script extension) inside its own task folder, or create
-  its workflow's own report file; run THIS folder's `report.py`, `send_mail.py` and `to_xlsx.py`,
-  alone. Every path it writes goes on the written list.
+  its workflow's own report file; run THIS folder's `report.py`, `send_mail.py`, `fetch_file.py`,
+  `to_xlsx.py` and `to_pdf.py`, alone. Every path it writes goes on the written list.
 - **What it may not**: Bash or PowerShell otherwise (ship.py and undo.py included), NotebookEdit,
   a Write anywhere else, starting another helper (Agent), and reading the worker's own folder or
   a credential file (`CREDENTIAL_NAMES`).

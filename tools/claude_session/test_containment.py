@@ -23,8 +23,9 @@ sys.path.insert(0, str(HERE))
 import asklist_hook as H  # noqa: E402
 import containment as C  # noqa: E402
 import fetch_file  # noqa: E402
+import to_pdf  # noqa: E402
 import to_xlsx  # noqa: E402
-from common import Paths, read_json, write_json_atomic  # noqa: E402
+from common import Paths, is_under, norm, read_json, write_json_atomic  # noqa: E402
 from test_worker import WorkerCase, fake  # noqa: E402
 
 PY = sys.executable.replace("\\", "/")
@@ -209,7 +210,8 @@ class TestWhatATaintedTaskMayDo(Base):
                     f'"{self.work.as_posix()}/dracula.epub" --title Dracula',
                     f'{PY} {ours("undo.py")} ask --task 41',
                     f'{PY} {ours("fetch_file.py")} --task 41 --url https://www.gutenberg.org/x.epub',
-                    f'{PY} {ours("to_xlsx.py")} --task 41 --csv rates.csv'):
+                    f'{PY} {ours("to_xlsx.py")} --task 41 --csv rates.csv',
+                    f'{PY} {ours("to_pdf.py")} --task 41 --src day.html'):
             with self.subTest(cmd=cmd[:60]):
                 self.passed("Bash", {"command": cmd})
 
@@ -418,6 +420,23 @@ class TestExistingWorkflowsTrace(Base):
                 self.passed(tool, inp)
         self.denied("Bash", {"command": f"python -c \"import openpyxl\""}, "READ-THROUGH")
 
+    def test_web_research_to_pdf(self):
+        """2026-11-22: a plan "as a PDF" after reading the web."""
+        for tool, inp in (("WebSearch", {"query": "garden hours"}),
+                          ("Write", {"file_path": str(self.work / "day.html"), "content": "<h1>x</h1>"}),
+                          ("Bash", {"command": f'{PY} {ours("to_pdf.py")} --task 41 --src day.html'}),
+                          ("PowerShell", {"command": f'{PY} {ours("to_pdf.py")} --task 41 --src day.html'}),
+                          ("Bash", {"command": f'{PY} {ours("report.py")} --task 41 --status done '
+                                               f'--summary "Garden walk, a PDF" --found '
+                                               f'"{self.work.as_posix()}/day.pdf"'})):
+            with self.subTest(tool=tool):
+                self.passed(tool, inp)
+        # The script alone, never chained, and never a browser of its own.
+        self.denied("Bash", {"command": f'{PY} {ours("to_pdf.py")} --task 41 --src day.html; dir'},
+                    "READ-THROUGH")
+        self.denied("Bash", {"command": 'msedge --headless --print-to-pdf=x.pdf day.html'},
+                    "READ-THROUGH")
+
     def test_book_finder_search_download_ship_ask(self):
         for tool, inp in (("WebSearch", {"query": "Dracula epub standard ebooks"}),
                           ("WebFetch", {"url": "https://standardebooks.org/ebooks/x"}),
@@ -491,6 +510,89 @@ class TestScripts(Base):
         self.assertTrue(str(ws["B3"].value).startswith("'="))
         with self.assertRaises(ValueError):
             to_xlsx.convert(self.paths, 41, str(self.docs / "x.csv"), None)
+
+
+class TestToPdf(Base):
+    """to_pdf.py: the folder rules, the sanitised copy the browser sees, the written list."""
+
+    def fake_render(self, seen):
+        def render(page, out, scratch):
+            seen.append(page.read_text(encoding="utf-8"))
+            self.assertFalse(is_under(page, self.work), "the copy is never in the work folder")
+            out.write_bytes(b"%PDF-1.7 fake")
+        return render
+
+    def test_makes_a_pdf_beside_the_page_from_a_sanitised_copy_and_lists_it_as_written(self):
+        (self.work / "day.html").write_text(
+            '<html><head><title>Day</title><meta http-equiv="refresh" content="0;url=file:///c:/x">'
+            '<link rel="stylesheet" href="https://cdn.example/a.css"><base href="https://x.example/">'
+            '<style>p > b { color: red }</style></head><body onload="go()">'
+            '<h1 onclick="x()">Garden walk</h1><p>Morning &amp; <b>lunch</b></p>'
+            '<img src="https://track.example/p.png"><img src="data:image/png;base64,AAAA" alt="map">'
+            '<iframe src="file:///c:/secret.txt">inside</iframe><object data="x"><p>obj</p></object>'
+            '<script>document.write("ran")</script><a href="https://x.example">site</a>'
+            '<svg><image href="https://x.example/i.png"/></svg><form action="https://x"><input></form>'
+            '</body></html>', encoding="utf-8")
+        seen = []
+        o = to_pdf.convert(self.paths, 41, "day.html", None, render=self.fake_render(seen))
+        self.assertEqual(o, self.work / "day.pdf")
+        self.assertTrue(o.read_bytes().startswith(b"%PDF"))
+        page = seen[0]
+        self.assertTrue(page.startswith("<!doctype html>"))
+        self.assertLess(page.index("Content-Security-Policy"), page.index("<title>"))
+        self.assertIn("default-src 'none'", page)
+        for kept in ("<h1>Garden walk</h1>", "Morning &amp; <b>lunch</b>", "p > b { color: red }",
+                     'src="data:image/png;base64,AAAA"', "<a>site</a>"):
+            self.assertIn(kept, page)
+        for gone in ("refresh", "cdn.example", "<base", "onload", "onclick", "track.example",
+                     "<iframe", "inside", "secret", "<object", "obj", "<script", "document.write",
+                     "https://x.example", "<svg", "<form", "<input"):
+            self.assertNotIn(gone, page)
+        self.assertIn(norm(str(o)), C.written_paths(self.paths))
+
+    def test_markdown_becomes_a_page(self):
+        (self.work / "plan.md").write_text("# Plan\n\n- Rose Garden\n- Fern Hollow\n", encoding="utf-8")
+        seen = []
+        to_pdf.convert(self.paths, 41, "plan.md", None, render=self.fake_render(seen))
+        self.assertIn("Plan", seen[0])
+        self.assertIn("Fern Hollow", seen[0])
+        self.assertTrue((self.work / "plan.pdf").is_file())
+
+    def test_refuses_outside_the_folder_other_types_an_overwrite_and_no_output(self):
+        (self.work / "day.html").write_text("<p>x</p>", encoding="utf-8")
+        (self.work / "notes.txt").write_text("x", encoding="utf-8")
+        (self.docs / "day.html").write_text("<p>x</p>", encoding="utf-8")
+        (self.work / "old.pdf").write_bytes(b"%PDF old")
+        ok = self.fake_render([])
+        for src, out, why in ((str(self.docs / "day.html"), None, "directly in"),
+                              ("day.html", str(self.docs / "day.pdf"), "directly in"),
+                              ("notes.txt", None, ".html"),
+                              ("day.html", "day.png", ".pdf"),
+                              ("day.html", "old.pdf", "already there"),
+                              ("gone.html", None, "no such file")):
+            with self.subTest(src=src, out=out):
+                with self.assertRaises(ValueError) as cm:
+                    to_pdf.convert(self.paths, 41, src, out, render=ok)
+                self.assertIn(why, str(cm.exception))
+        self.assertEqual((self.work / "old.pdf").read_bytes(), b"%PDF old")
+        with self.assertRaises(ValueError):
+            to_pdf.convert(self.paths, 41, "day.html", None, render=lambda page, out, scratch: None)
+        self.assertFalse((self.work / "day.pdf").exists())
+
+    def test_the_browser_runs_with_no_network_and_a_throwaway_profile(self):
+        argv = to_pdf.browser_argv("edge.exe", Path("/t/profile"), self.work / "p.html",
+                                   self.work / "p.pdf")
+        self.assertIn("--host-resolver-rules=MAP * ~NOTFOUND", argv)
+        self.assertIn("--proxy-server=127.0.0.1:9", argv)
+        self.assertIn("--headless=new", argv)
+        self.assertTrue(any(a.startswith("--user-data-dir=") for a in argv))
+        self.assertTrue(argv[-1].startswith("file:"))
+
+    @unittest.skipUnless(sys.platform == "win32" and to_pdf.find_browser(), "needs Edge or Chrome")
+    def test_real_browser_prints_a_pdf(self):
+        (self.work / "day.html").write_text("<h1>Garden walk</h1><p>Rose Garden</p>", encoding="utf-8")
+        o = to_pdf.convert(self.paths, 41, "day.html", None)
+        self.assertTrue(o.read_bytes().startswith(b"%PDF"))
 
 
 class TestWorkerEndToEnd(WorkerCase):
