@@ -339,13 +339,6 @@ object LiveToolbox {
     }
 
     /**
-     * Everything that could be top-level, in order: [allDeclarations] minus [DISPATCHED], the
-     * routers, and every sibling toolbox's declarations. [declarations] then applies
-     * [LiveSurface]. Internal for `LiveSurfaceTest`, which checks every old name has a home.
-     */
-    internal fun surfaceCandidatesForTest(): JSONArray = surfaceCandidates()
-
-    /**
      * Every declaration as written in its own file, before [LiveSurface] folds them: the
      * candidates plus the router-hidden reads. Tests that pin a tool's own wording read it here;
      * for a folded tool that wording now reaches a router's sub-agent or nobody, and the live
@@ -375,6 +368,11 @@ object LiveToolbox {
         return declared + folded + DISPATCHED.values.flatten()
     }
 
+    /**
+     * Everything that could be top-level, in order: [allDeclarations] minus [DISPATCHED], the
+     * routers, and every sibling toolbox's declarations. [declarations] then applies
+     * [LiveSurface].
+     */
     // The pre-diet declarations() body, renamed (live cost diet): its LongMethod was baselined
     // under the old name.
     @Suppress("LongMethod")
