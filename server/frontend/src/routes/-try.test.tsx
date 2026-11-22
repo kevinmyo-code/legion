@@ -12,7 +12,6 @@ import { renderApp } from '@/test/render-app'
 import type { DemoContent, DemoSectionMedia } from '@/api/demo'
 import { FIRST_QUESTIONS, OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
 import { RECORDING_NOTICE, STAGE_LINE } from '@/components/demo/voice-stage'
-import { ENTRY_TAP_MS } from '@/assistant/turn-deadline'
 
 /**
  * The recruiter section (recruiter-demo ticket 07): the code box on `/login`,
@@ -139,26 +138,27 @@ describe('/try', () => {
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
   })
 
-  test('a direct link opens on the orb with no gate; the tap enters, once; the code leaves the address bar', async () => {
-    // The visit's engine is the cascade (the server default): the voice stage stays after the tap.
+  test('a direct link opens the full page with no gate, entered once on load; the code leaves the address bar', async () => {
+    // Kevin, 2026-11-22: the link shows what a typed code shows. The audio still waits for the tap.
     const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
     const audio = new FakeAudio()
     setAudioFactory(() => audio)
     const { router } = renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    expect(screen.getByText(STAGE_LINE)).toBeInTheDocument()
-    expect(screen.getByText(RECORDING_NOTICE)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
     expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
-    // Nothing is entered until the tap (Kevin, 2026-11-17: entering happens on that tap).
-    expect(engine.demo.enterBodies).toEqual([])
+    expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
     expect(router.state.location.search).toEqual({ ref: 'acme' })
     expect(router.history.location.href).not.toContain('code=')
+    expect(screen.getByText(STAGE_LINE)).toBeInTheDocument()
+    expect(screen.getByText(RECORDING_NOTICE)).toBeInTheDocument()
+    // Nothing is heard or played before the tap.
+    expect(audio.micOpen).toBe(false)
     await act(async () => {
-      fireEvent.click(orb)
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
       await settle()
     })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
-    expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
+    // The tap starts the conversation on the visit already entered: no second entry.
+    expect(engine.demo.enterBodies).toHaveLength(1)
     expect(engine.demo.funnel).toEqual(expect.arrayContaining(['page_load:acme', 'orb_tap:acme']))
     // The stage stays above the page: the tour, typing, and the ask. Chips come from the engine
     // after the greeting (`demo/suggestions.py`); the page writes none of its own.
@@ -168,39 +168,47 @@ describe('/try', () => {
   })
 
   /**
-   * The browser run, 2026-11-19 (`server/tests/realrun_try_orb_flow.mjs`): the tour button's tap,
-   * which enters the visit, unmounted the whole voice stage and mounted a new one (the orb restarted,
-   * the page modal's provider with it). Entering adds the page under the stage; the stage stays.
+   * The browser run, 2026-11-19 (`server/tests/realrun_try_orb_flow.mjs`): entering unmounted the
+   * whole voice stage and mounted a new one (the orb restarted, the page modal's provider with it).
+   * Entering adds the page under the stage; the stage stays.
    */
-  test('the tap that enters keeps the same stage: nothing above the page is mounted again', async () => {
+  test('entering keeps the same stage: nothing above the page is mounted again', async () => {
     const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
     setAudioFactory(() => new FakeAudio())
     renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    const stage = screen.getByRole('region', { name: 'Talk to the demo assistant' })
-    await act(async () => {
-      fireEvent.click(orb)
-      await settle()
-    })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Talk to the demo assistant' })).toBe(stage)
-    expect(document.querySelector('[data-stage="orb"]')).toBe(orb)
-  })
-
-  test('the tap is not undone when the sign-in answer lands before the visit (one orb, one tap)', async () => {
-    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
-    const audio = new FakeAudio()
-    setAudioFactory(() => audio)
-    renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    // From the tap on, the visit's own answer is held back until everything else has landed.
     const answer = globalThis.fetch
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => (release = resolve))
     vi.stubGlobal('fetch', async (input: Request) => {
-      if (new URL(input.url).pathname === '/api/demo/session') await held
+      if (new URL(input.url).pathname === '/api/demo/enter') await held
       return answer(input)
     })
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    const stage = screen.getByRole('region', { name: 'Talk to the demo assistant' })
+    expect(await screen.findByText('Opening the demo…')).toBeInTheDocument()
+    await act(async () => {
+      release()
+      await settle()
+    })
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Talk to the demo assistant' })).toBe(stage)
+    expect(document.querySelector('[data-stage="orb"]')).toBe(orb)
+  })
+
+  test('a tap during the on-load entry waits for it: one entry, and the tap is not undone', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
+    const answer = globalThis.fetch
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    vi.stubGlobal('fetch', async (input: Request) => {
+      if (new URL(input.url).pathname === '/api/demo/enter') await held
+      return answer(input)
+    })
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    expect(await screen.findByText('Opening the demo…')).toBeInTheDocument()
     await act(async () => {
       fireEvent.click(orb)
       await settle()
@@ -209,51 +217,50 @@ describe('/try', () => {
       release()
       await settle()
     })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
     // The conversation the tap opened is the one still running: never disposed, mic still held.
     expect(audio.disposed).toBe(false)
     expect(audio.micOpen).toBe(true)
     expect(engine.demo.enterBodies).toHaveLength(1)
   })
 
-  test('an entry the conversation gave up on is aborted and never touches the page when it answers late', async () => {
+  test('a link is not entered while the tab is hidden, and is entered once it is shown', async () => {
     const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
     setAudioFactory(() => new FakeAudio())
+    let visibility: DocumentVisibilityState = 'hidden'
+    const spy = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    try {
+      renderApp('/try?code=OPEN-SESAME', engine, 'family')
+      await screen.findByRole('button', { name: /^Talk to / })
+      await act(settle)
+      expect(engine.demo.enterBodies).toEqual([])
+      visibility = 'visible'
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+        await settle()
+      })
+      expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+      expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME' }])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  test('a link opened over a visit this browser already holds enters nothing new', async () => {
+    const engine = visitor({ assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
     renderApp('/try?code=OPEN-SESAME', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    const answer = globalThis.fetch
-    let release: () => void = () => {}
-    const held = new Promise<void>((resolve) => (release = resolve))
-    let entry: Request | null = null
-    vi.stubGlobal('fetch', async (input: Request) => {
-      if (new URL(input.url).pathname === '/api/demo/enter') {
-        entry = input
-        await held
-      }
-      return answer(input)
-    })
-    await act(async () => {
-      fireEvent.click(orb)
-      await settle()
-    })
-    // Still entering after two seconds: a tap gives up on it.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, ENTRY_TAP_MS + 100))
-    })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /^(Talk to|Interrupt) / }))
-      await settle()
-    })
-    expect(entry!.signal.aborted).toBe(true)
-    // It answers late, refused: the page does not switch to the code box.
-    engine.demo.enterReply = { status: 403, body: { detail: WRONG_CODE } }
-    await act(async () => {
-      release()
-      await settle()
-    })
-    expect(screen.queryByText(WRONG_CODE)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Talk to / })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    await act(settle)
+    expect(engine.demo.enterBodies).toEqual([])
+  })
+
+  test("a link opened by a signed-in member enters nothing and keeps the member's preview", async () => {
+    const engine = createEngine()
+    renderApp('/try?code=OPEN-SESAME', engine, 'family')
+    expect(await screen.findByText(/^Preview\./)).toBeInTheDocument()
+    await act(settle)
+    expect(engine.demo.enterBodies).toEqual([])
   })
 
   test("a member's preview stays put while the visit question is asked again", async () => {
@@ -306,32 +313,22 @@ describe('/try', () => {
     expect(await screen.findByRole('button', { name: 'Take the one-minute tour' })).toBeInTheDocument()
   })
 
-  test('when the engine says Live, a link visit gets the Live page after the tap, and no cascade turn is asked', async () => {
+  test('when the engine says Live, a link visit gets the Live page, and no cascade turn is asked', async () => {
     const engine = createEngine({ signedIn: false })
     setAudioFactory(() => new FakeAudio())
     renderApp('/try?code=OPEN-SESAME', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    await act(async () => {
-      fireEvent.click(orb)
-      await settle()
-    })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Take the one-minute tour' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Take the one-minute tour' })).not.toBeInTheDocument())
     expect(engine.unhandled).not.toContain('POST /api/assistant/turn')
   })
 
-  test('a direct link with a wrong code says why in words at the tap, and falls back to the code box', async () => {
+  test('a direct link with a wrong code says why in words, and falls back to the code box', async () => {
     const engine = createEngine({ signedIn: false })
     setAudioFactory(() => new FakeAudio())
     const { router } = renderApp('/try?code=stale', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    await waitFor(() => expect(router.history.location.href).not.toContain('stale'))
-    await act(async () => {
-      fireEvent.click(orb)
-      await settle()
-    })
     expect(await screen.findByRole('alert')).toHaveTextContent(WRONG_CODE)
     expect(screen.getByLabelText('Access code')).toBeInTheDocument()
+    expect(router.history.location.href).not.toContain('stale')
   })
 
   test('a visit renders every section of the page from the engine', async () => {

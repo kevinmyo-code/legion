@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import {
   DEMO_SESSION_KEY,
@@ -106,9 +106,9 @@ const PREVIEW_COPY: ChatCopy = { subtitle: 'Your assistant (preview)', voiceFirs
 export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  // The link's code, kept for the orb's tap (voice-first, Kevin 2026-11-17): the visit is entered
-  // by the tap that opens the audio, not on load. It leaves the address bar at once, so it is never
-  // in the history or a copied URL.
+  // The link's code (Kevin, 2026-11-22: the link shows the same full page as a typed code). It
+  // leaves the address bar at once, so it is never in the history or a copied URL; the visit is
+  // entered as the page opens (`linkEntry` below), and the audio still starts on the orb's tap.
   const [linkCode] = useState(code)
   const [linkError, setLinkError] = useState<string | null>(null)
   const counted = useRef(false)
@@ -125,11 +125,53 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   const me = useMe()
   const recruiter = session.data?.role === 'recruiter'
   // A visit's own session is signed in too: a member is someone signed in who is not a visitor.
-  // Never decided while the tap is entering: entering refetches both, and `me` landing first
-  // briefly read the new visitor as a member, which unmounted the orb mid-tap (review item 2).
+  // Never decided while the link is entering: entering refetches both, and `me` landing first
+  // briefly read the new visitor as a member, which unmounted the orb (review item 2).
   const [entering, setEntering] = useState(false)
-  const entryToken = useRef(0)
   const member = me.data?.signedIn === true && !recruiter && !entering
+  // The link's one entry for this page: started on load, and a tap that comes while it runs waits
+  // on the same promise, so one link never spends two of the per-address tries or seeds two visits.
+  const linkEntry = useRef<Promise<boolean> | null>(null)
+  const enterLink = useCallback(
+    () =>
+      (linkEntry.current ??= (async () => {
+      setEntering(true)
+      try {
+        const result = await enterDemo(linkCode ?? '', refTag)
+        if (!result.ok) {
+          setLinkError(result.message)
+          return false
+        }
+        // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
+        const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
+        await queryClient.invalidateQueries()
+        return chosen?.engine !== 'live'
+      } finally {
+        setEntering(false)
+      }
+    })()),
+    [linkCode, refTag, queryClient],
+  )
+  // Entered on load once the page knows who is here: never over a visit this browser already holds
+  // (a second click on the resume link inside the two hours), never for a signed-in member (Kevin
+  // checking his own link would be signed out by the visit's login), and only once the page is
+  // actually shown: a prerendered or background tab waits until it is looked at.
+  const settled = !session.isPending && !me.isPending
+  const holdsVisit = recruiter || me.data?.signedIn === true
+  useEffect(() => {
+    if (linkCode === undefined || !settled || holdsVisit || linkEntry.current) return
+    const go = () => {
+      if (document.visibilityState !== 'visible') return false
+      void enterLink()
+      return true
+    }
+    if (go()) return
+    const onVisible = () => {
+      if (go()) document.removeEventListener('visibilitychange', onVisible)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [linkCode, settled, holdsVisit, enterLink])
   // The engine's switch (ADR 0102): a visit whose engine is Live gets the Live dock page, so a
   // server-side rollback needs no new web build. Asked once a visit exists (it is the visit's own
   // answer); before that, the tap's entry asks it before any greeting (`enter` below).
@@ -149,36 +191,11 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
 
   const awaitingEngine = recruiter && engine.isPending
   if (!member && !liveVisit && !linkError && !awaitingEngine && (linkCode !== undefined || recruiter)) {
-    // Every visitor gets the voice stage (Kevin, 2026-11-17): a link with its code (the tap enters),
-    // a reload of a visit, or a code typed in the box. One branch, so entering never remounts it.
-    return (
-      <VoiceFirstVisit
-        refTag={refTag}
-        entered={recruiter}
-        expiresAt={expiresAt}
-        enter={async (signal) => {
-          // Each entry is its own: one the conversation gave up on (aborted) never touches the page.
-          const token = ++entryToken.current
-          const current = () => token === entryToken.current && !signal.aborted
-          setEntering(true)
-          try {
-            const result = await enterDemo(linkCode ?? '', refTag, signal)
-            if (!current()) return false
-            if (!result.ok) {
-              setLinkError(result.message)
-              return false
-            }
-            // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
-            const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
-            if (!current()) return false
-            await queryClient.invalidateQueries()
-            return current() && chosen?.engine !== 'live'
-          } finally {
-            if (token === entryToken.current) setEntering(false)
-          }
-        }}
-      />
-    )
+    // Every visitor gets the voice stage and the page under it (Kevin, 2026-11-22: "keep the demo
+    // page with the code in the link same as what i see when i type my code in"): a link with its
+    // code (entered on load), a reload of a visit, or a code typed in the box. One branch, so
+    // entering never remounts the stage.
+    return <VoiceFirstVisit refTag={refTag} entered={recruiter} expiresAt={expiresAt} enter={enterLink} />
   }
 
   if (session.isPending || me.isPending || awaitingEngine) {
@@ -221,15 +238,18 @@ function Shell({
   children,
   assistant = false,
   dock = true,
+  voice = false,
 }: {
   children: ReactNode
   assistant?: boolean
   /** False on the voice-first page: its stage is the conversation, so no second dock or bar. */
   dock?: boolean
+  /** A visitor's voice-first page: the orb flies over it, and its sections keep room for it. */
+  voice?: boolean
 }) {
   const desk = useSurface() === 'workbench'
   const page = (
-    <div className="recruiter rc-layout">
+    <div className="recruiter rc-layout" data-voice={voice ? 'on' : undefined}>
       <div className="rc-column rc-prose">
         <div className="rc-inner">{children}</div>
         {assistant && dock && !desk && <FamilyAssistant launcher="bar" />}
@@ -286,9 +306,10 @@ function expiryWords(iso: string | undefined): string | null {
 }
 
 /**
- * A visit opened from a link with its code (voice-first, Kevin 2026-11-17): one provider for the
- * whole page, so the tap on the orb that enters the visit and unlocks the audio is the same
- * conversation that then runs. Before the tap: the orb and its line. After: the page below it.
+ * A visitor's page (voice-first, Kevin 2026-11-17): one provider for the whole page, so the tap on
+ * the orb that unlocks the audio is the same conversation that then runs. A link's visit is entered
+ * as the page opens (Kevin, 2026-11-22); a tap that comes before that entry has answered waits on
+ * the same entry (`enter`), never a second one.
  */
 function VoiceFirstVisit({
   refTag,
@@ -299,7 +320,7 @@ function VoiceFirstVisit({
   refTag?: string
   entered: boolean
   expiresAt?: string
-  enter: (signal: AbortSignal) => Promise<boolean>
+  enter: () => Promise<boolean>
 }) {
   // A browser that already holds a visit (a reload) is not entered again by the tap.
   const enteredRef = useRef(entered)
@@ -311,7 +332,7 @@ function VoiceFirstVisit({
   const queryClient = useQueryClient()
   const voiceFirst = useMemo(
     () => ({
-      prepare: (signal: AbortSignal) => (enteredRef.current ? Promise.resolve(true) : enterRef.current(signal)),
+      prepare: () => (enteredRef.current ? Promise.resolve(true) : enterRef.current()),
       funnelRef: refTag ?? '',
       sessionMinutes: 5,
       // The server switched this visit to Live mid-visit: ask again, and `TryScreen` swaps pages.
@@ -332,18 +353,28 @@ function VoiceFirstVisit({
 }
 
 /**
- * Before the tap: the stage alone. After it: the same stage, with the page under it. One tree for
- * both, so entering never mounts the stage again (the browser run, 2026-11-19: the tour's tap
- * remounted it, the orb and the page modal's provider with it).
+ * While a link's visit is being entered: the stage alone, and a line saying so. Then the same
+ * stage, with the page under it. One tree for both, so entering never mounts the stage again (the
+ * browser run, 2026-11-19: a remount restarted the orb and the page modal's provider with it).
  */
 function VisitorBody({ entered, expiresAt }: { entered: boolean; expiresAt?: string }) {
   const content = useDemoContent(entered)
   const access = <AccessNote expiry={expiryWords(expiresAt)} />
   const loaded = entered && content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
   return (
-    <Shell assistant dock={false}>
+    <Shell assistant dock={false} voice>
       <VoiceStage content={loaded} />
-      {entered && (loaded ? <Sections content={loaded} access={access} ask={false} /> : access)}
+      {entered ? (
+        loaded ? (
+          <Sections content={loaded} access={access} ask={false} />
+        ) : (
+          access
+        )
+      ) : (
+        <p role="status" className="rc-status">
+          Opening the demo…
+        </p>
+      )}
     </Shell>
   )
 }

@@ -8234,3 +8234,9 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 - **Ruling:** the demo gets the member rule (the carry, A2, only when the visitor's own words asked for the change). His word covers this change only; the rest of the demo (prompt, persona, delivery text, household data, chips, tour) stays frozen. It ships only on his word.
 - ADR 0090 (amended 2026-11-21).
+
+## 2026-11-22 - The /try link opens the full page (Kevin)
+
+- **Ruling:** *"keep the demo page with the code in the link same as what i see when i type my code in. so full page."* The link enters the visit on load (as before 2026-11-17) instead of on the orb's tap; the audio still starts on the tap.
+- Trade-off: a link opened by anything that runs the page's script (and shows the tab) creates a visit. Bounded by the per-address enter throttle and the hourly prune; no model spend until someone talks.
+- ADR 0103 (amended 2026-11-22).
