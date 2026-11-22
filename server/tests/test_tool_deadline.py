@@ -10,6 +10,7 @@ Every test here runs the real door in autocommit (`transaction=True`), as produc
 from __future__ import annotations
 
 import ast
+import dataclasses
 import inspect
 import threading
 import time
@@ -46,7 +47,7 @@ def short_deadline(monkeypatch):
     from assistant import cascade
 
     monkeypatch.setattr(
-        cascade, "LIMITS", cascade.dataclasses.replace(cascade.LIMITS, tool_timeout_s=DEADLINE_S)
+        cascade, "LIMITS", dataclasses.replace(cascade.LIMITS, tool_timeout_s=DEADLINE_S)
     )
 
 
