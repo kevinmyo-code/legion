@@ -699,6 +699,43 @@
       ],
       "write": true,
       "proves_nothing_on": "phone: test mode refuses the first turn's remove, so no question is armed and nothing can land either way; EventRemovalTest proves the ask, the yes and the refusals"
+    },
+    {
+      "id": "reschedule_followup",
+      "why": "2026-11-22: 'put X tomorrow at seven' then 'actually, seven thirty' tried a remove, then an add with no item. The correction must move the one entry (manage_item schedule, or an add the phone reads as a correction: EventMove), never leave two",
+      "turns": [
+        {
+          "say": "put coffee with the invented accountant tomorrow at seven",
+          "expect": {
+            "calls": [
+              "manage_item/add"
+            ],
+            "succeeded": [
+              "manage_item/add"
+            ],
+            "result_has": [
+              "\"date\":\"{today+1}\""
+            ]
+          }
+        },
+        {
+          "say": "actually, seven thirty",
+          "expect": {
+            "succeeded": [
+              "manage_item/schedule|manage_item/add"
+            ],
+            "result_has": [
+              "Moved \"",
+              "7:30 pm"
+            ],
+            "not_succeeded": [
+              "manage_item/remove"
+            ]
+          }
+        }
+      ],
+      "write": true,
+      "proves_nothing_on": "phone: test mode refuses both writes, so nothing is added or moved; EventMoveTest proves the move and the follow-up"
     }
   ]
 }
