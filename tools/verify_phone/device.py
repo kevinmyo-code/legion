@@ -153,7 +153,14 @@ class RealDevice:
         for k, v in extras.items():
             kind, val = ("b", str(v).lower()) if isinstance(v, bool) else ("s", str(v))
             cmd += f" --extra {k}:{kind}:{shlex.quote(val)}"
-        return door.parse_bundle(self._sh(cmd))
+        if method != "turn":
+            return door.parse_bundle(self._sh(cmd))
+        # A turn can write: sent once, never through phonectl's reconnect-and-retry (a replayed
+        # "add" would add twice). A dropped link here is reported, not repeated.
+        rc, out, err = self.adb.raw(["shell", cmd], timeout=20)
+        if rc != 0:
+            raise Abort(f"adb dropped while sending a turn (not resent): {(err or out).decode('utf-8', 'replace')[:120]}")
+        return door.parse_bundle(out.decode("utf-8", "replace"))
 
     def door_ready(self) -> bool | str:
         st = self._door("status")
