@@ -7,9 +7,11 @@ import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ChecklistTick
 import com.kevin.legion.data.local.OutboxTarget
 import com.kevin.legion.testutil.RoomTestReset
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -58,8 +60,18 @@ import org.robolectric.RuntimeEnvironment
  * all: it writes a [ChecklistTick] row directly, the same way `ChecklistControllerTest`'s own
  * `backdatedChecklist` helper writes a [com.kevin.legion.data.local.Checklist] row directly, and
  * then calls [ChecklistsWriteThrough] itself - a plain suspend call, nothing launched, nothing to
- * race. Nothing else in this file changed: `renameChecklist`/`createChecklist` still push
- * synchronously through `checklistChanged`, which this ticket deliberately leaves alone.
+ * race.
+ *
+ * **Every other controller write is launched too** (create, add, rename: the push queue,
+ * 2026-09-27), onto ONE real worker that runs pushes in write order. A test that asserts on what
+ * those pushes queued must first wait for them with [awaitQueuedPushes]: it enqueues a sentinel
+ * behind them on the same FIFO worker and waits for it. `three offline renames` asserted without
+ * that wait and read an empty outbox whenever the worker was behind (CI, 2026-11-22: "expected 1
+ * but was 0"). Waiting on the real worker rather than a test scope matters: under
+ * [ChecklistController.pushScopeOverride] each push is its own launch, so four pushes of one row
+ * interleave and `enqueue`'s check-then-insert can queue two, an order production never runs.
+ * [setUp] and [tearDown] drain the worker too, so no push leaks into another test's backend or
+ * database.
  */
 @RunWith(RobolectricTestRunner::class)
 class ChecklistsWriteThroughTest {
@@ -115,13 +127,28 @@ class ChecklistsWriteThroughTest {
 
     @Before
     fun setUp() {
+        // A push another class left on the worker runs now, with no backend (a no-op), not later
+        // under this test's backend and database.
+        ChecklistController.pushScopeOverride = null
+        ChecklistController.backendOverride = null
+        runBlocking { awaitQueuedPushes() }
         RoomTestReset.resetCarDatabaseSingleton()
     }
 
     @After
     fun tearDown() {
-        ChecklistController.backendOverride = null
+        // Override off FIRST: a sentinel sent into a finished runTest scope would never run.
         ChecklistController.pushScopeOverride = null
+        runBlocking { awaitQueuedPushes() }
+        ChecklistController.backendOverride = null
+    }
+
+    /** Returns once every push enqueued before it has run. The worker is one FIFO consumer, so a
+     * sentinel enqueued last completes last. Needs [ChecklistController.pushScopeOverride] null. */
+    private suspend fun awaitQueuedPushes() {
+        val done = CompletableDeferred<Unit>()
+        ChecklistController.enqueuePush { done.complete(Unit) }
+        withTimeout(PUSH_WAIT_MS) { done.await() }
     }
 
     /** Runs [block] with [ChecklistController.pushScopeOverride] pointed at THIS call's own
@@ -184,6 +211,7 @@ class ChecklistsWriteThroughTest {
         val checklist = ChecklistController.createChecklist(context, "fitness")
 
         val outcome = ChecklistsWriteThrough(context, backend).checklistChanged(checklist.id)
+        awaitQueuedPushes() // createChecklist's own push was refused too, and must not have queued
 
         assertTrue(outcome is ChecklistsWriteThrough.PushOutcome.Refused)
         assertEquals(sentence, (outcome as ChecklistsWriteThrough.PushOutcome.Refused).message)
@@ -196,13 +224,18 @@ class ChecklistsWriteThroughTest {
 
     @Test
     fun `three offline renames of the same row queue ONE entry, not three`() = runBlocking {
-        ChecklistController.backendOverride = unreachable()
+        val backend = unreachable()
+        ChecklistController.backendOverride = backend
         val checklist = ChecklistController.createChecklist(context, "bio")
 
         ChecklistController.renameChecklist(context, checklist.id, "bio v2")
         ChecklistController.renameChecklist(context, checklist.id, "bio v3")
         ChecklistController.renameChecklist(context, checklist.id, "bio v4")
+        awaitQueuedPushes()
 
+        // All four pushes (create + three renames) really ran and failed, so the 1 below is the
+        // dedupe at work, not pushes that had not run yet.
+        assertEquals(4, backend.calls.count { it == "upsertChecklist" })
         // The drain re-reads the row's CURRENT state, so a second identical entry would only mean
         // a second identical push - see ChecklistsOutboxDrain's own class doc.
         val queued = CarDatabase.getDatabase(context).outboxDao()
@@ -223,6 +256,7 @@ class ChecklistsWriteThroughTest {
         val checklist = ChecklistController.createChecklist(context, "bio")
         val item = ChecklistController.addItem(context, checklist.id, "squats")
         ChecklistController.tick(context, item.id, day = 20_703)
+        awaitQueuedPushes() // else the empty queues below would be read before any push ran
 
         val dao = CarDatabase.getDatabase(context).outboxDao()
         assertTrue(dao.pendingForTable(OutboxTarget.CHECKLISTS, ChecklistsOutboxDrain.MAX_ATTEMPTS).isEmpty())
@@ -230,5 +264,10 @@ class ChecklistsWriteThroughTest {
         assertTrue(dao.pendingForTable(OutboxTarget.CHECKLIST_TICKS, ChecklistsOutboxDrain.MAX_ATTEMPTS).isEmpty())
         // The local rows are all there, exactly as before this ticket existed.
         assertNotNull(CarDatabase.getDatabase(context).checklistTickDao().getForItemOnDay(item.id, 20_703))
+    }
+
+    private companion object {
+        /** A ceiling, not a wait: the fake backends fail at once, so a drain takes milliseconds. */
+        const val PUSH_WAIT_MS = 10_000L
     }
 }
