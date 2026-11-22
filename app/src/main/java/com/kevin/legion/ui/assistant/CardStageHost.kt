@@ -35,6 +35,7 @@ fun CardStageOverlay(onOpen: (CardDestination) -> Unit, modifier: Modifier = Mod
     SoftTheme {
         CardStageSurface(
             cards,
+            arrival = state.serial,
             onClose = ConversationCards::close,
             onOpen = { where ->
                 ConversationCards.dismiss()
@@ -57,6 +58,7 @@ internal fun CardStageSurface(
     onOpen: ((CardDestination) -> Unit)?,
     onCloseAll: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    arrival: Long? = null,
 ) {
     Box(
         modifier
@@ -70,6 +72,6 @@ internal fun CardStageSurface(
             .padding(horizontal = 16.dp)
             .padding(top = 8.dp),
     ) {
-        CardStage(cards, onClose = onClose, onOpen = onOpen, onCloseAll = onCloseAll)
+        CardStage(cards, onClose = onClose, onOpen = onOpen, onCloseAll = onCloseAll, arrival = arrival)
     }
 }

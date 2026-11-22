@@ -82,11 +82,13 @@ fun TypesetHomeContent(
     groups: (@Composable () -> Unit)? = null,
     /** The last line of what Alfred is saying; shown at the foot while his cards are up. */
     caption: String? = null,
+    /** The card store's publish count ([CardStage]'s arrival); null for a preview. */
+    cardSerial: Long? = null,
     /** The SPEAKER / CALL toggle beside the orb; null draws none (no earpiece, or the tests' pages). */
     output: OutputToggle? = null,
 ) {
     if (cards.isNotEmpty()) {
-        Answering(cards, phase, status, caption, night, output, actions, modifier)
+        Answering(cards, cardSerial, phase, status, caption, night, output, actions, modifier)
         return
     }
     FitTiers(modifier.fillMaxSize().padding(horizontal = Gutter)) { tier, orb, measuring ->
@@ -310,6 +312,7 @@ private fun Modifier.bleed(by: Dp): Modifier = layout { measurable, constraints 
 @Suppress("LongParameterList")
 private fun Answering(
     cards: List<ConversationCard>,
+    cardSerial: Long?,
     phase: OrbPhase,
     status: String,
     caption: String?,
@@ -349,6 +352,7 @@ private fun Answering(
                 onOpen = actions.onOpenCard,
                 onCloseAll = actions.onDismissCard,
                 modifier = Modifier.weight(1f).padding(top = 8.dp),
+                arrival = cardSerial,
             )
             Text(
                 caption.orEmpty(),

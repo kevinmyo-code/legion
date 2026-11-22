@@ -95,7 +95,10 @@ fun cardDestination(card: ConversationCard): CardDestination? = when (card) {
  * its own Close and, where a screen sits behind it, an Open link; "Close all" puts the stack away.
  *
  * [cards] is the store's order, oldest first. A new card turns the stage back to page one, and the
- * stage arrives with a short fade and rise, none with animations off.
+ * stage arrives with a short fade and rise, none with animations off. [arrival] is the store's
+ * [com.kevin.legion.assistant.cards.ConversationCardsState.serial]: only a published card changes it,
+ * so closing a card or a live card read again in place (LiveCards) neither turns the page nor
+ * replays the rise. Null keys on the newest card instead (a stateless preview).
  */
 @Composable
 fun CardStage(
@@ -104,6 +107,7 @@ fun CardStage(
     modifier: Modifier = Modifier,
     onOpen: ((CardDestination) -> Unit)? = null,
     onCloseAll: (() -> Unit)? = null,
+    arrival: Long? = null,
 ) {
     if (cards.isEmpty()) return
     val pages = cards.asReversed()
@@ -112,9 +116,8 @@ fun CardStage(
     val motion = deckMotionEnabled()
     val newest = pages.first()
     val appear = remember { Animatable(1f) }
-    // A new card arriving turns to it and plays the rise; a live card read again in place
-    // (LiveCards: same source, same count) does neither, so a refresh never yanks the page he is on.
-    LaunchedEffect(pages.size, newest.source ?: newest) {
+    val keys = remember(pages) { pageKeys(pages) }
+    LaunchedEffect(arrival ?: newest) {
         if (pager.currentPage != 0) pager.scrollToPage(0)
         if (motion) {
             appear.snapTo(0f)
@@ -143,7 +146,7 @@ fun CardStage(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             pageSpacing = 16.dp,
             verticalAlignment = Alignment.Top,
-            key = { System.identityHashCode(pages[it]) },
+            key = { keys[it] },
         ) { i ->
             CardPage(pages[i], onClose = { onClose(pages[i]) }, onOpen = onOpen, modifier = Modifier.fillMaxHeight())
         }
@@ -346,3 +349,17 @@ private val BAR = 6.dp
 private val RISE = 12.dp
 private const val ARRIVE_MS = 220
 private const val TIME_COLUMN = 0.34f
+
+/**
+ * One key per page that survives a live card read again in place: its source, numbered when two
+ * pages share one; a card with no source keeps its object identity. A new key would rebuild the page
+ * and drop a long card's scroll on every refresh. Strings, so a key can be saved in a Bundle.
+ */
+internal fun pageKeys(pages: List<ConversationCard>): List<String> {
+    val seen = HashMap<String, Int>()
+    return pages.map { card ->
+        val base = card.source?.toString() ?: "card@" + System.identityHashCode(card)
+        val n = seen.merge(base, 1, Int::plus) ?: 1
+        if (n == 1) base else "$base#$n"
+    }
+}
