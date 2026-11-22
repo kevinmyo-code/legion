@@ -50,12 +50,17 @@ class EventMoveTest {
         RelativeDay.pin(Clock.fixed(LocalDateTime.of(today, LocalTime.of(10, 0)).atZone(zone).toInstant(), zone))
         EventRemoval.reset()
         EventMove.reset()
+        clockMs = 1_000_000L
+        EventRemoval.clock = { clockMs }
     }
+
+    private var clockMs = 0L
 
     @After
     fun tearDown() {
         EventsAppointmentWriter.backendOverride = null
         EventMove.reset()
+        EventRemoval.clock = System::currentTimeMillis
         RelativeDay.pin(null)
         RoomTestReset.drainArchDiskIoPool()
     }
@@ -67,12 +72,13 @@ class EventMoveTest {
         day: LocalDate = tomorrow,
         hour: Int = 19,
         serverId: String? = null,
+        repeatKind: String? = null,
     ): Event {
         val start = day.atTime(hour, 0).atZone(zone).toInstant().toEpochMilli()
         val row = Event(
             serverId = serverId, guid = java.util.UUID.randomUUID().toString(), title = title, startsAt = start,
             endsAt = start + 2 * 3_600_000L, source = "legion", kind = EventKind.EVENT,
-            updatedAtMs = 1L, createdAt = 1L,
+            updatedAtMs = 1L, createdAt = 1L, repeatKind = repeatKind,
         )
         return row.copy(id = dao.insert(row))
     }
@@ -212,16 +218,75 @@ class EventMoveTest {
         val r = schedule("move team supper to seven thirty", time = "19:30")
         assertTrue(r.toString(), r.getBoolean("success"))
         assertEquals(listOf("server-1"), backend.upserts)
+        assertEquals("queued before the push", listOf(true), backend.queuedAtPush)
         val queued = CarDatabase.getDatabase(context).outboxDao().getAll()
         assertEquals(listOf(OutboxOperation.UPDATE), queued.map { it.operation })
     }
 
-    private class FakeEventsBackend : EventsBackend {
+    @Test
+    fun `a reminder add after an entry makes a reminder and never moves the entry`() = runBlocking {
+        nextTurn()
+        addEntry("add team supper tomorrow at seven", "Team supper", tomorrow, "19:00")
+        nextTurn()
+        val r = item("remind me about team supper tomorrow at two", "action" to "add", "kind" to "reminder",
+            "item" to "Team supper", "date" to "$tomorrow", "time" to "14:00")
+        assertTrue(r.toString(), r.getBoolean("success"))
+        assertEquals(LocalDateTime.of(tomorrow, LocalTime.of(19, 0)), entries("Team supper").single().at())
+        assertTrue(NotesController.allItems(context).any { it.text == "Team supper" })
+    }
+
+    @Test
+    fun `a match on a shared word only asks, and moves nothing`() = runBlocking {
+        val row = seed("Team call")
+        val r = item("move the call with the accountant to four", "action" to "schedule",
+            "item" to "call with the accountant", "time" to "16:00")
+        assertFalse(r.getBoolean("success"))
+        assertTrue(r.optBoolean("needs_answer"))
+        assertTrue(r.getString("message"), r.getString("message").contains("\"Team call\""))
+        assertEquals(LocalDateTime.of(tomorrow, LocalTime.of(19, 0)), dao.getById(row.id)!!.at())
+    }
+
+    @Test
+    fun `a repeating entry is not moved, and the result says the whole series would move`() = runBlocking {
+        val row = seed("Team supper", repeatKind = "WEEKLY")
+        val r = schedule("move team supper to friday", date = "${today.plusDays(3)}")
+        assertFalse(r.getBoolean("success"))
+        assertTrue(r.getString("message"), r.getString("message").contains("the whole series"))
+        assertEquals(LocalDateTime.of(tomorrow, LocalTime.of(19, 0)), dao.getById(row.id)!!.at())
+    }
+
+    @Test
+    fun `a reminder and an entry matching equally ask which one, and his words settle it`() = runBlocking {
+        NotesController.addItemDue(context, NotesController.theList(context).id, "Team supper", null, allDay = true)
+        val row = seed("Team supper")
+        val which = schedule("move team supper to eight", time = "20:00")
+        assertFalse(which.getBoolean("success"))
+        assertTrue(which.getString("message"), which.getString("message").contains("the reminder \"Team supper\""))
+        assertEquals(LocalDateTime.of(tomorrow, LocalTime.of(19, 0)), dao.getById(row.id)!!.at())
+
+        val moved = schedule("the calendar one", time = "20:00")
+        assertTrue(moved.toString(), moved.getBoolean("success"))
+        assertEquals(LocalDateTime.of(tomorrow, LocalTime.of(20, 0)), dao.getById(row.id)!!.at())
+    }
+
+    @Test
+    fun `the entry just discussed is forgotten after three minutes, turns counted or not`() = runBlocking {
+        addEntry("put team supper tomorrow at seven", "Team supper", tomorrow, "19:00")
+        clockMs += EventMove.RECENT_MS + 1
+        val r = item("at seven thirty", "action" to "add", "time" to "19:30", "date" to "$tomorrow")
+        assertFalse(r.getBoolean("success"))
+        assertEquals(LocalDateTime.of(tomorrow, LocalTime.of(19, 0)), entries("Team supper").single().at())
+    }
+
+    private inner class FakeEventsBackend : EventsBackend {
         val upserts = mutableListOf<String>()
+        val queuedAtPush = mutableListOf<Boolean>()
         override suspend fun fetchActive(): Result<List<RemoteEvent>> = Result.success(emptyList())
         override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> = Result.success(emptyList())
         override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> {
             upserts += serverId.orEmpty()
+            queuedAtPush += CarDatabase.getDatabase(context).outboxDao().getAll()
+                .any { it.operation == OutboxOperation.UPDATE }
             return Result.failure(EventsBackendException("offline"))
         }
         override suspend fun softDelete(serverId: String): Result<Boolean> = Result.success(true)

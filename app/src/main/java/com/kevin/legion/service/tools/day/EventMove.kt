@@ -35,7 +35,10 @@ import org.json.JSONObject
  * words keep it an add). An add with no item and no such entry asks "add what?" ([LiveToolbox]).
  */
 internal object EventMove {
-    private data class Recent(val eventId: Long, val turn: Long)
+    private data class Recent(val eventId: Long, val turn: Long, val atMs: Long)
+
+    /** How long "the entry just discussed" lasts on any path, turns counted or not. */
+    const val RECENT_MS = EventRemoval.TTL_MS
 
     @Volatile private var recent: Recent? = null
 
@@ -46,7 +49,7 @@ internal object EventMove {
 
     /** An entry was just added or moved in this turn: a follow-up add may mean it. */
     fun noteTouched(eventId: Long) {
-        recent = Recent(eventId, EventRemoval.currentTurn)
+        recent = Recent(eventId, EventRemoval.currentTurn, EventRemoval.clock())
     }
 
     /**
@@ -60,6 +63,7 @@ internal object EventMove {
         date: LocalDate?,
         time: LocalTime?,
         reminders: List<ListItem>,
+        userText: String?,
     ): JSONObject? {
         if (date == null && time == null) return null
         val zone = RelativeDay.clock().zone
@@ -71,12 +75,19 @@ internal object EventMove {
         val events = tieredTextMatches(phrase, dao.activeByKindInLocalWindow(EventKind.EVENT, fromMs, toMs, zone)) {
             it.title
         }
-        val reminderTier = tieredTextMatches(phrase, reminders) { it.text }.tier
-        if (events.tier == TextMatches.NONE || reminderTier < events.tier) return null
+        val matched = tieredTextMatches(phrase, reminders) { it.text }
+        // His words may name the pool ("the reminder", "the calendar one"), as for remove.
+        val named = EventRemovalWords.kindNamed(userText)
+        val eventTier = if (named == EventRemovalWords.Kind.REMINDER) TextMatches.NONE else events.tier
+        val reminderTier = if (named == EventRemovalWords.Kind.ENTRY) TextMatches.NONE else matched.tier
+        if (eventTier == TextMatches.NONE || reminderTier < eventTier) return null
+        if (reminderTier == eventTier) return whichOne(events.items, matched.items.map { it.text }, today, zone)
+        // A shared word is not enough to change an entry: it names the candidates and asks.
+        if (eventTier == TextMatches.WORDS) return whichOne(events.items, emptyList(), today, zone)
         val about = kotlin.coroutines.coroutineContext[RelativeDay.TurnDates]?.aboutDay
         val onAbout = events.items.filter { EventRemovalWords.rowDay(it, zone) == about }
         val chosen = events.items.singleOrNull() ?: onAbout.singleOrNull()
-            ?: return whichOne(events.items, today, zone)
+            ?: return whichOne(events.items, emptyList(), today, zone)
         return moveRow(context, chosen, date, time)
     }
 
@@ -92,7 +103,9 @@ internal object EventMove {
         time: LocalTime?,
         userText: String?,
     ): JSONObject? {
-        val last = recent?.takeIf { it.turn >= EventRemoval.currentTurn - 1 } ?: return null
+        val last = recent?.takeIf {
+            it.turn >= EventRemoval.currentTurn - 1 && EventRemoval.clock() - it.atMs <= RECENT_MS
+        } ?: return null
         if (date == null && time == null) return null
         if (EventRemovalWords.saysAnother(userText)) return null
         val row = CarDatabase.getDatabase(context).eventDao().getById(last.eventId)
@@ -105,6 +118,13 @@ internal object EventMove {
     }
 
     private suspend fun moveRow(context: Context, row: Event, date: LocalDate?, time: LocalTime?): JSONObject {
+        // A repeating row is its series' anchor: moving it would move every occurrence (review 2026-11-22).
+        if (row.repeatKind != null) {
+            return fail(
+                "Nothing was moved: \"${row.title}\" repeats, and moving it would move the whole series, " +
+                    "every occurrence. Change the series on the Calendar screen.",
+            )
+        }
         val zone = RelativeDay.clock().zone
         val (start, end, allDay) = newTimes(row, date, time, zone)
         if (!NotesController.updateAppointment(context, row.id, row.title, start, end, allDay)) {
@@ -139,12 +159,14 @@ internal object EventMove {
         return Triple(start, start + length, false)
     }
 
-    private fun whichOne(events: List<Event>, today: LocalDate, zone: ZoneId): JSONObject {
-        val named = events.sortedBy { it.startsAt ?: 0L }.map { "\"${it.title}\", ${whenPhrase(it, today, zone)}" }
+    private fun whichOne(events: List<Event>, reminderNames: List<String>, today: LocalDate, zone: ZoneId): JSONObject {
+        val named = reminderNames.map { "the reminder \"$it\"" } +
+            events.sortedBy { it.startsAt ?: 0L }.map { "\"${it.title}\", ${whenPhrase(it, today, zone)}" }
         val more = named.size - EventRemoval.MAX_NAMED
         val tail = if (more > 0) "; and $more more: a day narrows it" else ""
         val listed = named.take(EventRemoval.MAX_NAMED).joinToString("; ")
-        return fail("Nothing was moved. Which one? $listed$tail.", asks = true)
+        val both = if (reminderNames.isEmpty()) "" else " Say \"the reminder\" or \"the calendar one\"."
+        return fail("Nothing was moved. Which one? $listed$tail.$both", asks = true)
     }
 
     private const val HOUR_MS = 3_600_000L

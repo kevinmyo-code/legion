@@ -4282,13 +4282,19 @@ object LiveToolbox {
         val date = parseNoteLocalDate(dateArg)
         val time = parseNoteLocalTime(timeArg)
         val unreadable = dateArg.isNotEmpty() && date == null || timeArg.isNotEmpty() && time == null
+        val action = args.optString("action").trim().lowercase()
+        // Only an add that could be an appointment corrects one: a reminder add never moves an entry.
+        val appointmentAdd = args.optString("kind").trim().lowercase() in setOf("", "appointment")
         return when {
             unreadable -> null
-            args.optString("action").trim().lowercase() == "add" ->
+            action == "add" -> if (appointmentAdd) {
                 com.kevin.legion.service.tools.day.EventMove.followUp(context, item, date, time, userText)
-            args.optString("action").trim().lowercase() != "schedule" || item.isBlank() -> null
+            } else {
+                null
+            }
+            action != "schedule" || item.isBlank() -> null
             else -> com.kevin.legion.service.tools.day.EventMove.move(
-                context, item, date, time, NotesController.openItemsForList(context, theList(context).id),
+                context, item, date, time, NotesController.openItemsForList(context, theList(context).id), userText,
             )
         }
     }
