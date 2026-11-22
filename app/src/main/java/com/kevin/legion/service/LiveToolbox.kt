@@ -62,7 +62,6 @@ import com.kevin.legion.assistant.cards.ChecklistLine
 import com.kevin.legion.assistant.cards.PhoneCards
 import com.kevin.legion.assistant.cards.ToolCards
 import com.kevin.legion.vehicle.ActiveVehicle
-import com.kevin.legion.vehicle.BuildSheetController
 import com.kevin.legion.data.local.ItemList
 import com.kevin.legion.gmail.GmailAuth
 import com.kevin.legion.gmail.GmailClient
@@ -92,7 +91,6 @@ import com.kevin.legion.vehicle.DtcClearController
 import com.kevin.legion.vehicle.DtcDescriptions
 import com.kevin.legion.vehicle.DtcLookup
 import com.kevin.legion.vehicle.GarageController
-import com.kevin.legion.vehicle.GaragePreferences
 import com.kevin.legion.vehicle.MaintenanceAgent
 import com.kevin.legion.vehicle.SymptomAgent
 import com.kevin.legion.vehicle.VehicleController
@@ -901,6 +899,7 @@ object LiveToolbox {
         // ADR 0085: a manage_item add/remove naming a proposed to-do answers it; null otherwise.
         OpenLoopsToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
+        VehicleBuildToolbox.dispatch(context, name, args)?.let { return it }
         VehicleManageToolbox.dispatch(context, name, args)?.let { return it }
         VehicleRecordsToolbox.dispatch(context, name, args)?.let { return it }
         VehicleServiceToolbox.dispatch(context, name, args)?.let { return it }
@@ -1103,10 +1102,6 @@ object LiveToolbox {
             )
             "manage_checklist" -> nameIt(manageChecklist(context, args), args)
             "get_last_ticked" -> getLastTicked(context, args.optString("item"))
-            "log_build_entry" -> withResolvedVehicle(context, args) { logBuildEntry(context, args, it.obdMac) }
-            "list_build_history" -> withResolvedVehicle(context, args) { listBuildHistory(context, args.optString("type"), it.obdMac) }
-            "get_spend" -> getSpend(context, args.optString("category"))
-            "activate_garage" -> activateGarage(context, args)
             "categorize_transactions" -> categorizeTransactions(context)
             "set_category" -> setCategory(context, args)
             "get_balance" -> getLedgerBalance(context, args.optString("account"))
@@ -2122,89 +2117,6 @@ object LiveToolbox {
             "memory states: add no detail, date, place or reason it does not hold. If none of them " +
             "bears on the question, say so in a clause and ask."
 
-    // --- Build sheet / spend ledger -------------------------------------
-
-    /**
-     * Logs a build-sheet entry (mod/part/repair/consumable/other), with
-     * optional cost. [vehicleId] is the resolved fleet-wide-voice override
-     * (ticket 01) - null means the active car.
-     */
-    private suspend fun logBuildEntry(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject {
-        val title = args.optString("title")
-        if (title.isBlank()) return noItem("What should I log on the build sheet?")
-        val cost = if (args.has("cost") && !args.isNull("cost"))
-            args.optDouble("cost").takeIf { !it.isNaN() } else null
-        val msg = BuildSheetController.add(
-            context,
-            title = title,
-            type = args.optString("type"),
-            cost = cost,
-            vendor = args.optString("vendor"),
-            notes = args.optString("notes"),
-            vehicleId = vehicleId,
-        )
-        return result(success = true, message = msg)
-    }
-
-    /**
-     * Reads back build history (what/when, plus cost - ungated, see
-     * [getSpend]'s doc). [vehicleId] is the resolved fleet-wide-voice override
-     * (ticket 01) - null means the active car.
-     */
-    private suspend fun listBuildHistory(context: Context, type: String, vehicleId: String? = null): JSONObject {
-        val entries = BuildSheetController.history(context, type, vehicleId)
-        val arr = JSONArray()
-        for (e in entries) {
-            val o = JSONObject().put("title", e.title).put("type", e.type).put("date", shortDate(e.date))
-            if (e.mileage != null) o.put("mileage", e.mileage)
-            if (e.vendor.isNotBlank()) o.put("vendor", e.vendor)
-            if (e.notes.isNotBlank()) o.put("notes", e.notes)
-            // No currency column on BuildEntry (2026-08-07 currency audit, see getSpend's doc
-            // comment) - a cost is still reported when the driver stated one, but never with an
-            // invented currency attached.
-            if (e.cost != null) {
-                o.put("cost", e.cost)
-                o.put("currency", JSONObject.NULL)
-            }
-            arr.put(o)
-        }
-        return JSONObject().put("success", true).put("count", entries.size).put("entries", arr)
-    }
-
-    /**
-     * Reports total / per-category spend. No gating - SpendGate was retired
-     * 2026-07-31 with no replacement built yet.
-     */
-    /**
-     * 2026-08-07 currency audit (CLAUDE.md §4, the "money figures must carry their currency"
-     * pass): [BuildSheetController]'s `Double`-cost build-sheet entries carry NO currency column
-     * at all - unlike [com.kevin.legion.ledger.LedgerTransaction]/[com.kevin.legion.data.local.PantryReceipt],
-     * which both do. Per the audit's own instruction, a currency is NEVER invented or guessed
-     * from the device locale here - `currency` is emitted as `JSONObject.NULL` with a `note`
-     * saying plainly that the source never recorded one, so the model can still say the bare
-     * number without silently attaching sterling (or any other currency) to it. This is the
-     * traced root cause of the bug this whole pass exists to close: `getLedgerBalance` used to
-     * emit a bare `balance` figure the same way, and the English-butler persona filled the gap
-     * with pounds every time.
-     */
-    private suspend fun getSpend(context: Context, category: String): JSONObject {
-        val byCat = BuildSheetController.spendByCategory(context)
-        val currencyNote = "this figure's source data has no currency recorded - state the " +
-            "number without naming a currency"
-        val cat = category.trim().lowercase()
-        if (cat.isNotBlank()) {
-            val amount = byCat[cat] ?: byCat[BuildSheetController.normalizeType(cat)] ?: 0.0
-            return JSONObject().put("success", true).put("category", cat).put("spend", amount)
-                .put("currency", JSONObject.NULL).put("currency_note", currencyNote)
-        }
-        val catObj = JSONObject()
-        for ((k, v) in byCat) catObj.put(k, v)
-        return JSONObject().put("success", true)
-            .put("total", BuildSheetController.totalSpend(context))
-            .put("byCategory", catObj)
-            .put("currency", JSONObject.NULL).put("currency_note", currencyNote)
-    }
-
     /**
      * Latest known balance for one account, or all known accounts if none
      * named. Reads [LedgerController.accountBalances] - the SAME
@@ -3153,23 +3065,6 @@ object LiveToolbox {
             runCatching { com.kevin.legion.sleep.SleepController.currentTargetMinutes(context) }.getOrNull(),
         )
         return JSONObject().put("success", true).put("count", logs.size).put("nights", arr)
-    }
-
-    /**
-     * Dispatches the activate_garage voice tool: a Context/JSONObject-thin
-     * wrapper around [GarageController.dispatchVoiceActivate], which owns the
-     * actual confirm-gate + door-resolution logic (unit-tested directly in
-     * GarageLogicTest, no Context needed there).
-     */
-    private suspend fun activateGarage(context: Context, args: JSONObject): JSONObject {
-        val doorName = args.optString("door").takeIf { it.isNotBlank() }
-        val confirmed = args.optBoolean("confirmed", false)
-        val doors = GarageController.configuredDoors(context)
-        val defaultId = GaragePreferences.defaultDoorId(context)
-        val r = GarageController.dispatchVoiceActivate(doors, defaultId, doorName, confirmed) { door ->
-            GarageController.activate(context, door)
-        }
-        return result(r.success, r.message)
     }
 
     /**

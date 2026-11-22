@@ -28,6 +28,7 @@ object MainSource {
         "service/VehicleServiceToolbox.kt",
         "service/VehicleRecordsToolbox.kt",
         "service/VehicleManageToolbox.kt",
+        "service/VehicleBuildToolbox.kt",
     )
 
     /** `service/cascade/CascadeSession.kt` and the files split out of it. */

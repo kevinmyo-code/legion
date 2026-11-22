@@ -3127,7 +3127,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"grouping" to schema("string", "NONE for one figure, else BY_MONTH or BY_CATEGORY.", enum = listOf("NONE", "BY_MONTH", "BY_CATEGORY"))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"item" to schema("string", "'tick'/'untick'/'remove': which existing line to match, in the user's words.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"item" to schema("string", "For 'add', the new item's text. For every other action, which existing item to match, in the user's words.")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"list_build_history" -&gt; withResolvedVehicle(context, args) { listBuildHistory(context, args.optString("type"), it.obdMac) }</ID>
+    <ID>MaxLineLength:VehicleBuildToolbox.kt:VehicleBuildToolbox$"list_build_history" -&gt; withResolvedVehicle(context, args) { listBuildHistory(context, args.optString("type"), it.obdMac) }</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"log_meal" -&gt; result(success = true, message = MealController.logMeal(context, args.optString("description")))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"mileage" to schema("integer", "Absolute odometer reading it was done at, if the user gave one, e.g. 185000.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"repeat_day" to schema("integer", "Day of month, 1-31, for repeat_kind monthly_on_date or yearly. Past the month's end lands on its last day.")</ID>
