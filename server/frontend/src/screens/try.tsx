@@ -831,6 +831,9 @@ function ProjectSection({ section, side }: { section: DemoProjectSection; side?:
           </a>
         </p>
       )}
+      {/* A live demo this page draws itself (Kevin, 2026-11-22: the store rep as its own section),
+          right under the pitch so its control is the first thing to tap. */}
+      {section.widget === 'store_rep' && <StoreRepSection />}
       {section.diagram_svg && <Diagram svg={section.diagram_svg} caption={section.diagram_caption ?? ''} />}
       {section.parts.length > 0 && (
         <div className="rc-runin">
@@ -842,8 +845,6 @@ function ProjectSection({ section, side }: { section: DemoProjectSection; side?:
         </div>
       )}
       {section.media && <Media media={section.media} title={section.title} />}
-      {/* A live demo this page draws itself (Kevin, 2026-11-22: the store rep as its own section). */}
-      {section.widget === 'store_rep' && <StoreRepSection />}
     </Section>
   )
 }
