@@ -188,7 +188,7 @@ CARRY = Check(
 # --------------------------------------------------------------------------- calendar delete
 
 CAL_ITEM = "verify-test dentist"
-SYNC_WAIT_S = 150  # EnginePoll ticks every 60 s in the foreground
+SYNC_WAIT_S = 200  # EnginePoll ticks every 60 s in the foreground; two ticks wanted
 
 
 def cal_setup(ctx: Ctx) -> None:
@@ -228,10 +228,11 @@ def cal_act(ctx: Ctx) -> None:
 
 
 def cal_verify(ctx: Ctx) -> None:
-    synced = poll_log(ctx, ctx.data["delete_mark"], logs.EVENTS_PULLED, SYNC_WAIT_S)
-    ctx.note("sync_seen", synced)
+    # Two pulls, not one: the first may have started before the delete reached the outbox.
+    synced = poll_log(ctx, ctx.data["delete_mark"], logs.EVENTS_PULLED, SYNC_WAIT_S, count=2)
+    ctx.note("syncs_seen_2", synced)
     if not synced:
-        raise Blocked(f"no events sync logged within {SYNC_WAIT_S} s of the delete; cannot say it stays deleted")
+        raise Blocked(f"fewer than two events syncs logged within {SYNC_WAIT_S} s of the delete; cannot say it stays deleted")
     ctx.device.key("back")
     _open_calendar(ctx)
     if ctx.device.wait_text(CAL_ITEM, 8):
@@ -297,6 +298,8 @@ def mic_act(ctx: Ctx) -> None:
     go_home(ctx)
     ctx.data["cleanup_needed"] = True
     say(ctx, "set a timer for 10 seconds", writes=True)
+    # The mic goes back when the conversation closes (MicArbiter.Hold.drop): the mark comes first.
+    ctx.data["release_mark"] = ctx.device.mark()
     end(ctx)
     for _ in range(20):
         stops = _stop_controls(ctx.device.screen())
@@ -312,18 +315,18 @@ def mic_act(ctx: Ctx) -> None:
 
 
 def mic_verify(ctx: Ctx) -> None:
-    since = ctx.data["stop_mark"]
-    granted = poll_log(ctx, since, logs.MIC_WAKE_GRANTED, 30)
-    lines = ctx.device.logcat(since)
-    refused = any(logs.MIC_WAKE_REFUSED.search(ln.msg) for ln in lines if ln.tag == "MicArbiter")
-    ctx.note("ring_stop_logged", any(logs.RING_STOP.search(ln.msg) for ln in lines))
+    """Granted to the wake word after the conversation let go, and never refused after the ring.
+    The ring itself takes no mic claim; the call ring's RING_LISTENING claim stays a manual check."""
+    granted = poll_log(ctx, ctx.data["release_mark"], logs.MIC_WAKE_GRANTED, 30)
+    after_ring = ctx.device.logcat(ctx.data["stop_mark"])
+    refused = any(logs.MIC_WAKE_REFUSED.search(ln.msg) for ln in after_ring if ln.tag == "MicArbiter")
+    ctx.note("ring_stop_logged", any(logs.RING_STOP.search(ln.msg) for ln in after_ring))
     ctx.note("wake_granted", granted)
-    ctx.note("wake_refused_seen", refused)
-    if granted:
-        return
+    ctx.note("wake_refused_after_ring", refused)
     if refused:
         raise Fail("the wake word was refused the mic after the ring (a claim was never released)")
-    raise Blocked("inconclusive: no wake-word mic request logged in 30 s (is the wake word on?)")
+    if not granted:
+        raise Blocked("inconclusive: no wake-word mic grant logged after the conversation (is the wake word on?)")
 
 
 def mic_cleanup(ctx: Ctx) -> None:

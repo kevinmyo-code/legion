@@ -87,11 +87,14 @@ jobs:
           BEFORE: ${{ github.event.before }}
           INPUT_BASE: ${{ github.event.inputs.base }}
         run: |
-          case "$EVENT" in
-            pull_request) BASE="$PR_BASE" ;;
-            push) BASE="$BEFORE" ;;
+          # A branch is compared with dev (its whole diff, not just its last push); dev and main
+          # with the push's own `before`.
+          case "$EVENT/$GITHUB_REF" in
+            pull_request/*) BASE="$PR_BASE" ;;
+            push/refs/heads/dev|push/refs/heads/main) BASE="$BEFORE" ;;
+            push/*) BASE=origin/dev ;;
             *) BASE="${INPUT_BASE:-origin/dev}" ;;
           esac
-          # A new branch's push has an all-zero `before`; compare with dev then.
+          # A new ref's push has an all-zero `before`; compare with dev then.
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=origin/dev; fi
           python tools/verify_phone stale --base "$BASE" --head HEAD --summary "$GITHUB_STEP_SUMMARY" || true

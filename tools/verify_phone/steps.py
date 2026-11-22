@@ -62,9 +62,10 @@ def wait_for(ctx: Ctx, text: str, timeout: float) -> bool:
     return ok
 
 
-def poll_log(ctx: Ctx, since: str, pattern, timeout: float, every: float = 5) -> bool:
+def poll_log(ctx: Ctx, since: str, pattern, timeout: float, every: float = 5, count: int = 1) -> bool:
+    """Until [pattern] has matched [count] log lines since [since], or [timeout] seconds."""
     for i in range(int(timeout // every) + 1):
-        if any(pattern.search(ln.msg) for ln in ctx.device.logcat(since)):
+        if sum(1 for ln in ctx.device.logcat(since) if pattern.search(ln.msg)) >= count:
             return True
         if i * every < timeout:
             ctx.device.sleep(every)

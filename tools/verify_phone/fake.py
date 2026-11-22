@@ -67,7 +67,8 @@ class FakeDevice:
             self._log("AlfredRing", "ring_start kind=timer")
         if sync and self.pending_sync:
             self.pending_sync = False
-            self._log("MidnightEvents", "engine_poll[events] inserted=0 updated=0 tombstoned=0", "D")
+            for _ in range(2):
+                self._log("MidnightEvents", "engine_poll[events] inserted=0 updated=0 tombstoned=0", "D")
             if "resurrect" in self.bugs:
                 for day, names in list(self.deleted_here_days()):
                     self.events.setdefault(day, []).extend(names)
@@ -153,8 +154,8 @@ class FakeDevice:
         elif hit.label == "Stop alarm":
             self.ringing = False
             self._log("AlfredRing", "ring_stop kind=timer reason=button")
-            self._log("MicArbiter", "request: WAKE_WORD refused - held by LIVE_TURN" if "mic_stuck" in self.bugs
-                      else "request: WAKE_WORD granted", "D")
+            if "mic_stuck" in self.bugs:  # the wake word's watchdog keeps asking and keeps being refused
+                self._log("MicArbiter", "request: WAKE_WORD refused - held by RING_LISTENING", "D")
 
     def key(self, name: str) -> None:
         self._usable()
@@ -180,7 +181,8 @@ class FakeDevice:
         if self.conv != "none":
             self.conv = "none"
             self._audit('session_end reason="test_end"')
-            self._log("MicArbiter", "request: WAKE_WORD granted", "D")
+            self._log("MicArbiter", "request: WAKE_WORD refused - held by RING_LISTENING" if "mic_stuck" in self.bugs
+                      else "request: WAKE_WORD granted", "D")
 
     def turn(self, text: str, case_id: str, writes: bool = False, timeout: float = 60) -> str:
         self._usable()
