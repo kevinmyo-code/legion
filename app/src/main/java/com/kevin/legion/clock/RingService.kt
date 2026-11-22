@@ -52,7 +52,10 @@ class RingService : Service() {
     }
 
     private fun add(request: RingRequest) {
-        if (ringing.value.none { it.key() == request.key() }) RingAudit.started(request.kind)
+        if (ringing.value.none { it.key() == request.key() }) {
+            RingAudit.started(request.kind)
+            if (!RingNotification.canShow(this)) RingAudit.blocked(request.kind)
+        }
         mutable.value = ringing.value.filterNot { it.key() == request.key() } + request
         startInForeground(RingNotification.build(this, request))
         if (wakeLock == null) {

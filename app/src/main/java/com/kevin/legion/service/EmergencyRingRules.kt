@@ -31,8 +31,13 @@ internal object EmergencyRingRules {
      */
     const val RING_AGAIN_WHEN_SEVERITY_RISES = true
 
+    /**
+     * Whether an Extreme alert may ring past [MAX_RINGS_PER_NIGHT]. False = the cap binds every
+     * alert, as built. The owner's call (review R2, 2026-11-21): one line to flip.
+     */
     const val EXTREME_BYPASSES_CAP = false
 
+    /** The ring level of an NWS Extreme alert (`SevereAlertWatcher.alarmLevel`). */
     const val EXTREME_SEVERITY = 2
 
     /** What is kept per alert id: the highest severity delivered, when, and the series it is in. */
@@ -61,7 +66,11 @@ internal object EmergencyRingRules {
         return RING_AGAIN_WHEN_SEVERITY_RISES && alarm.severity > top
     }
 
-    /** True when fewer than [MAX_RINGS_PER_NIGHT] of [ringTimes] fall inside the window before [now]. */
-    fun underCap(ringTimes: List<Long>, now: Long, severity: Int = 0): Boolean =
-        ringTimes.count { now - it in 0 until CAP_WINDOW_MS } < MAX_RINGS_PER_NIGHT
+    /**
+     * True when fewer than [MAX_RINGS_PER_NIGHT] of [ringTimes] fall inside the window before [now],
+     * or [severity] is Extreme and [EXTREME_BYPASSES_CAP] lets it through.
+     */
+    fun underCap(ringTimes: List<Long>, now: Long, severity: Int): Boolean =
+        (EXTREME_BYPASSES_CAP && severity >= EXTREME_SEVERITY) ||
+            ringTimes.count { now - it in 0 until CAP_WINDOW_MS } < MAX_RINGS_PER_NIGHT
 }

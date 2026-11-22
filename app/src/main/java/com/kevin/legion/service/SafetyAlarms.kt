@@ -2,7 +2,9 @@ package com.kevin.legion.service
 
 import android.content.Context
 import android.util.Log
+import com.kevin.legion.clock.RingAudit
 import com.kevin.legion.clock.RingKind
+import com.kevin.legion.clock.RingNotification
 import com.kevin.legion.clock.RingRequest
 import com.kevin.legion.clock.RingService
 import java.util.concurrent.ConcurrentHashMap
@@ -45,21 +47,30 @@ object SafetyAlarms {
     private const val LISTENER_WAIT_MS = 3_000L
 
     private val held = ConcurrentHashMap<Int, ProactiveRaise>()
+
+    /**
+     * One writer for the series memory and the ring times (review R3): the two poll loops can raise
+     * the same alert at once, and without it both passed [admit] before either remembered it.
+     */
+    private val lock = Any()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /**
      * True when [alarm] may be delivered: its series has not been delivered at this severity or
-     * higher. A repeat is still remembered, linked into its series, so a later update that names
-     * only the repeat is known too.
+     * higher. Check and record are one step under [lock], so of two loops admitting the same alert
+     * only one gets true. Every path after admission in the bus delivers (or counts as delivered),
+     * so recording here is never early. A repeat is recorded too, linked into its series, so a
+     * later update that names only the repeat is known.
      */
-    fun admit(context: Context, alarm: ProactiveUrgency.Alarm, now: Long = System.currentTimeMillis()): Boolean {
-        val isNew = EmergencyRingRules.isNew(alarm, records(context))
-        if (!isNew) remember(context, alarm, now)
-        return isNew
-    }
+    fun admit(context: Context, alarm: ProactiveUrgency.Alarm, now: Long = System.currentTimeMillis()): Boolean =
+        synchronized(lock) {
+            val isNew = EmergencyRingRules.isNew(alarm, records(context))
+            remember(context, alarm, now)
+            isNew
+        }
 
-    /** Records that [alarm] was delivered (or repeated), in its series, never lowering its severity. */
-    fun remember(context: Context, alarm: ProactiveUrgency.Alarm, now: Long = System.currentTimeMillis()) {
+    /** Records [alarm] in its series, never lowering its severity. Under [lock], from [admit]. */
+    private fun remember(context: Context, alarm: ProactiveUrgency.Alarm, now: Long) {
         val records = records(context)
         val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
         records.forEach { (key, r) -> if (now - r.atMs > KEEP_DAYS * DAY_MS) edit.remove(key) }
@@ -78,15 +89,29 @@ object SafetyAlarms {
     internal fun ringId(alertId: String): Int = alertId.hashCode() and Int.MAX_VALUE
 
     /**
-     * Starts the ring with the facts on screen. False when the night's cap is reached or it could
-     * not start; nothing is held then and the bus posts it.
+     * Starts the ring with the facts on screen. False when nothing could show it (notifications or
+     * the ring channel blocked), the night's cap is reached, or it could not start; nothing is held
+     * then and the bus posts it.
      */
     fun ring(context: Context, raise: ProactiveRaise, now: Long = System.currentTimeMillis()): Boolean {
         val alarm = raise.urgency as? ProactiveUrgency.Alarm ?: return false
+        // Nothing on screen could show or stop it: the phantom alarm again (review R1). The bus posts it.
+        val shown = RingNotification.canShow(context)
+        if (!shown) RingAudit.skipped(RingKind.ALERT)
+        return shown && synchronized(lock) { startUnderCap(context, raise, alarm, now) }
+    }
+
+    /** The cap check, the start and the ring time, as one step under [lock]. */
+    private fun startUnderCap(
+        context: Context,
+        raise: ProactiveRaise,
+        alarm: ProactiveUrgency.Alarm,
+        now: Long,
+    ): Boolean {
         val rings = context.getSharedPreferences(RINGS_PREFS, Context.MODE_PRIVATE)
         val recent = rings.getString(RINGS_KEY, "").orEmpty().split(',').mapNotNull { it.toLongOrNull() }
             .filter { now - it < EmergencyRingRules.CAP_WINDOW_MS }
-        val capped = !EmergencyRingRules.underCap(recent, now)
+        val capped = !EmergencyRingRules.underCap(recent, now, alarm.severity)
         if (capped) Log.i(TAG, "emergency ring cap reached (${EmergencyRingRules.MAX_RINGS_PER_NIGHT}); posted instead")
         val id = ringId(alarm.alertId)
         if (!capped) held[id] = raise

@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.kevin.legion.ui.clock.RingActivity
 
 /**
@@ -54,6 +55,20 @@ object RingNotification {
         b.addAction(0, "Stop", ClockNotifier.action(context, ClockActionReceiver.ACTION_STOP_RING, r.id))
         return b.build()
     }
+
+    /**
+     * False when LEGION's notifications or the ring channel are blocked: a ring then has nothing on
+     * screen to see or stop it (review R1). Unreadable counts as shown.
+     */
+    fun canShow(context: Context): Boolean = runCatching {
+        val channel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.getSystemService(NotificationManager::class.java).getNotificationChannel(ClockNotifier.CHANNEL_RING)
+        } else {
+            null
+        }
+        NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+            channel?.importance != NotificationManager.IMPORTANCE_NONE
+    }.getOrDefault(true)
 
     /** False only when Android 14+ says the full-screen permission is refused; unreadable is allowed. */
     private fun mayFullScreen(context: Context): Boolean =

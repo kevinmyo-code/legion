@@ -119,6 +119,18 @@ object RingAudit {
         Log.i(TAG, stopLine(kind, reason))
     }
 
+    /** An emergency that did not ring because nothing could show it ([RingNotification.canShow]). */
+    fun skipped(kind: RingKind) {
+        Log.w(TAG, "ring_skip kind=${kind.audit} reason=$BLOCKED")
+    }
+
+    /** A clock ring with nothing on screen: he set it, so it rings, and this says why it is unseen. */
+    fun blocked(kind: RingKind) {
+        Log.w(TAG, "ring_blocked kind=${kind.audit} reason=$BLOCKED")
+    }
+
+    private const val BLOCKED = "notifications_blocked"
+
     internal fun startLine(kind: RingKind): String = "ring_start kind=${kind.audit}"
 
     internal fun stopLine(kind: RingKind, reason: RingStopReason): String =

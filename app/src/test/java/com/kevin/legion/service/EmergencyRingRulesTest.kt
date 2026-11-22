@@ -53,10 +53,10 @@ class EmergencyRingRulesTest {
     fun `at most the cap rings inside the window, older rings do not count`() {
         val max = EmergencyRingRules.MAX_RINGS_PER_NIGHT
         val inside = List(max - 1) { now - (it + 1) * hour }
-        assertTrue(EmergencyRingRules.underCap(inside, now))
-        assertFalse(EmergencyRingRules.underCap(inside + (now - 10L), now))
+        assertTrue(EmergencyRingRules.underCap(inside, now, 1))
+        assertFalse(EmergencyRingRules.underCap(inside + (now - 10L), now, 1))
         val old = List(max) { now - EmergencyRingRules.CAP_WINDOW_MS - (it + 1) * hour }
-        assertTrue(EmergencyRingRules.underCap(old, now))
+        assertTrue(EmergencyRingRules.underCap(old, now, 1))
     }
 
     @Test

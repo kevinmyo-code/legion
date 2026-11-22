@@ -303,9 +303,9 @@ object ProactiveBus {
         var route = ProactiveDelivery.route(context, raise, gateAllowsSpeech = refusal == null, time = time)
         // A check-in is spoken or nothing: a question posted to the shade would be a nag.
         if (raise.checkIn != null && route != ProactiveDelivery.Route.SPEAK) return RaiseOutcome.NotNow
-        if (alarm != null) SafetyAlarms.remember(context, alarm)
         if (route == ProactiveDelivery.Route.RING && !SafetyAlarms.ring(context, raise)) {
-            // The night's ring cap is reached, or Android refused the background start: post it, never drop it.
+            // Nothing could show it, the night's cap is reached, or Android refused the background start:
+            // post it, never drop it. (The alert was recorded when it was admitted.)
             route = ProactiveDelivery.Route.NOTIFY
         }
         val raised = ProactiveRaiseRow(
