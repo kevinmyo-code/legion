@@ -40,4 +40,41 @@ class KeptLineAudioTest {
         assertEquals(10, store["a"]!!.size)
         assertNull(KeptLineAudio({ null })["a"])
     }
+    @Test fun `with nothing of his own, the APK's clip answers, and is never written to disk`() {
+        val shipped = ByteArray(480) { 3 }
+        val store = KeptLineAudio({ dir }, bundled = { k -> shipped.takeIf { k == "cloud|m|v|24000|Mm." } })
+        assertArrayEquals(shipped, store["cloud|m|v|24000|Mm."])
+        assertNull(store["laptop|model|voice|24000|Mm."])
+        assertTrue(dir.listFiles().isNullOrEmpty())
+        dir.deleteRecursively()
+    }
+
+    @Test fun `a render of his own wins over the APK's clip, from memory and from disk`() {
+        val shipped = ByteArray(480) { 3 }
+        val own = ByteArray(960) { 7 }
+        val bundled = { _: String -> shipped }
+        KeptLineAudio({ dir }, bundled = bundled)["cloud|m|v|24000|Mm."] = own
+        val restarted = KeptLineAudio({ dir }, bundled = bundled)
+        assertArrayEquals("from disk, after a restart", own, restarted["cloud|m|v|24000|Mm."])
+        val live = KeptLineAudio({ dir }, bundled = bundled)
+        assertArrayEquals(shipped, live["cloud|m|v|24000|Other."])
+        live["cloud|m|v|24000|Other."] = own
+        assertArrayEquals("a fresh render replaces the APK's clip in memory", own, live["cloud|m|v|24000|Other."])
+        dir.deleteRecursively()
+    }
+
+    @Test fun `the old cache folder moves into app storage once, newer files kept`() {
+        val old = File(dir, "cache").apply { mkdirs() }
+        val new = File(dir, "files").apply { mkdirs() }
+        File(old, "a.pcm").writeBytes(byteArrayOf(1))
+        File(old, "b.pcm").writeBytes(byteArrayOf(2))
+        File(new, "b.pcm").writeBytes(byteArrayOf(9))
+        KeptLineAudio.moveOnce(old, new)
+        assertArrayEquals(byteArrayOf(1), File(new, "a.pcm").readBytes())
+        assertArrayEquals("the file already in app storage wins", byteArrayOf(9), File(new, "b.pcm").readBytes())
+        assertTrue(!old.exists())
+        KeptLineAudio.moveOnce(old, new)
+        assertEquals(2, new.listFiles()!!.size)
+        dir.deleteRecursively()
+    }
 }
