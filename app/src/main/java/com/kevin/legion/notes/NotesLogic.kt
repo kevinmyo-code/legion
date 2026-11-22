@@ -29,7 +29,8 @@ sealed class ItemMatch {
  * 1. Exact (case-insensitive) text match.
  * 2. Substring match, either direction (the item's text contains the query, or the query contains
  *    the item's text) - e.g. "batteries" matches "AA batteries for the headlamp".
- * 3. Best word-overlap match (content words only, >2 characters, so "the"/"a" don't drive it).
+ * 3. Best word-overlap match (content words only: over two letters and not a stop word, so
+ *    "the"/"and" don't drive it).
  *
  * This is the same three-tier shape [com.kevin.legion.vehicle.CarTaskController]'s private `match`
  * already used, but that function always guessed on ambiguity; this one refuses instead, per
@@ -44,33 +45,57 @@ fun matchItem(query: String, items: List<ListItem>): ItemMatch {
     }
 }
 
+/** The rows a query matched and the tier they matched at: [EXACT] is strongest. */
+data class TextMatches<T>(val items: List<T>, val tier: Int) {
+    companion object {
+        const val EXACT = 0
+        const val SUBSTRING = 1
+        const val WORDS = 2
+
+        /** Nothing matched: weaker than any tier. */
+        const val NONE = 3
+    }
+}
+
 /**
  * [matchItem]'s three tiers over any rows, by the text [text] gives each: the first tier that
  * matches anything, all of its matches. Empty when nothing matches.
  */
+fun <T> bestTextMatches(query: String, items: List<T>, text: (T) -> String): List<T> =
+    tieredTextMatches(query, items, text).items
+
+/** [bestTextMatches] with the tier it matched at, so matches from two pools can be ranked. */
 @Suppress("ReturnCount") // one return per tier, most confident first
-fun <T> bestTextMatches(query: String, items: List<T>, text: (T) -> String): List<T> {
+fun <T> tieredTextMatches(query: String, items: List<T>, text: (T) -> String): TextMatches<T> {
+    val none = TextMatches(emptyList<T>(), TextMatches.NONE)
     val q = query.trim().lowercase()
-    if (q.isBlank() || items.isEmpty()) return emptyList()
+    if (q.isBlank() || items.isEmpty()) return none
 
     val exact = items.filter { text(it).trim().lowercase() == q }
-    if (exact.isNotEmpty()) return exact
+    if (exact.isNotEmpty()) return TextMatches(exact, TextMatches.EXACT)
 
     val substring = items.filter { text(it).lowercase().contains(q) || q.contains(text(it).trim().lowercase()) }
-    if (substring.isNotEmpty()) return substring
+    if (substring.isNotEmpty()) return TextMatches(substring, TextMatches.SUBSTRING)
 
     val qWords = contentWords(q)
-    if (qWords.isEmpty()) return emptyList()
+    if (qWords.isEmpty()) return none
     val scored = items
         .map { it to (contentWords(text(it).lowercase()) intersect qWords).size }
         .filter { it.second > 0 }
-    if (scored.isEmpty()) return emptyList()
+    if (scored.isEmpty()) return none
     val bestScore = scored.maxOf { it.second }
-    return scored.filter { it.second == bestScore }.map { it.first }
+    return TextMatches(scored.filter { it.second == bestScore }.map { it.first }, TextMatches.WORDS)
 }
 
+/** Words over two letters that carry meaning: a shared "the" or "and" is no match (review 2026-11-22). */
 private fun contentWords(s: String): Set<String> =
-    s.split(Regex("\\W+")).filter { it.length > 2 }.toSet()
+    s.split(Regex("\\W+")).filter { it.length > 2 && it !in STOP_WORDS }.toSet()
+
+private val STOP_WORDS = setOf(
+    "the", "and", "for", "with", "from", "that", "this", "these", "those", "then", "than", "into", "onto",
+    "off", "out", "about", "your", "you", "are", "was", "were", "has", "have", "had", "its", "our",
+    "their", "his", "her", "not", "but", "all", "any", "can", "one", "some", "just", "also", "please",
+)
 
 // ------------------------------------------------------------------------------- repeat columns
 
