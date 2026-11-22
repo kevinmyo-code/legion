@@ -496,6 +496,15 @@ class TaskListCreateView(APIView):
                 "for Kevin's yes (needs_confirmation).",
                 http.HTTP_400_BAD_REQUEST,
             )
+        if data["confirms"] and scoped(ClaudeTask, request).filter(
+            parent=parent, confirms=True
+        ).exists():
+            # One question, one yes (alfred-sessions review, finding 2): a second Yes to the same
+            # card never mints a second confirmation on the laptop.
+            return _detail(
+                "Nothing was sent. Kevin already said yes to that question once.",
+                http.HTTP_409_CONFLICT,
+            )
 
         machine = None
         status = QUEUED
@@ -1524,13 +1533,13 @@ class SessionReportView(APIView):
         with transaction.atomic():
             # get_or_create keeps the unique-key race safe (two hooks for a new session at
             # once); the lock then orders the waiting_since step against a parallel report.
-            created, _ = ClaudeCodeSession.objects.get_or_create(
+            stored, _ = ClaudeCodeSession.objects.get_or_create(
                 household=household,
                 machine=machine,
                 session_id=data["session_id"],
                 defaults={"project": data["project"], "state": data["state"], "last_seen_at": now},
             )
-            row = ClaudeCodeSession.objects.select_for_update().get(pk=created.pk)
+            row = ClaudeCodeSession.objects.select_for_update().get(pk=stored.pk)
             if data["state"] != SESSION_WAITING:
                 row.waiting_since = None
             elif row.state != SESSION_WAITING or row.waiting_since is None:

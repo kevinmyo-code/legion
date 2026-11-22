@@ -4,14 +4,14 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("claude_session", "0008_laptop_health"),
+        ("claude_session", "0009_machine_can_mail"),
     ]
 
     operations = [
         migrations.AddField(
             model_name="claudecodesession",
             name="name",
-            field=models.TextField(blank=True, default=""),
+            field=models.TextField(blank=True, db_default="", default=""),
         ),
         migrations.AddField(
             model_name="claudecodesession",
