@@ -96,6 +96,9 @@ class SevereAlertWatcher(
          */
         fun alarmLevel(severity: String): Int? = RING_LEVELS[severity.trim().lowercase()]
 
+        /** Stub: the any-severity rule lands in the next commit. */
+        fun ringLevel(alert: SevereAlert): Int? = alarmLevel(alert.severity)
+
         /** True when an alert of this NWS [event] may RING ([RINGING_EVENTS]); any other is posted. */
         fun mayRing(event: String): Boolean = event.trim().lowercase() in RINGING_EVENTS
 

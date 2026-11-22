@@ -216,6 +216,41 @@ class SevereAlertAlarmTest {
     }
 
     @Test
+    fun `a Tornado Warning rings whatever severity NWS gives it`() {
+        // The owner, 2026-11-22: Tornado Warning rings at any severity label.
+        listOf("Moderate", "Unknown").forEachIndexed { i, severity ->
+            val outcome = deliver(event("Tornado Warning", "tm$i", severity), night)
+            assertTrue(severity, outcome is ProactiveBus.RaiseOutcome.Rang)
+            assertTrue(rang())
+        }
+    }
+
+    @Test
+    fun `Snow Squall and Hazardous Materials Warnings at Severe ring`() {
+        assertTrue(deliver(event("Snow Squall Warning", "sq1", "Severe"), night) is ProactiveBus.RaiseOutcome.Rang)
+        assertTrue(rang())
+        val hazmat = deliver(event("Hazardous Materials Warning", "hz1", "Severe"), night)
+        assertTrue(hazmat is ProactiveBus.RaiseOutcome.Rang)
+        assertTrue(rang())
+    }
+
+    @Test
+    fun `fire weather is not a fire, a Red Flag Warning and a Fire Weather Watch are posted`() {
+        assertTrue(deliver(event("Red Flag Warning", "rf1", "Severe"), night) is ProactiveBus.RaiseOutcome.Notified)
+        assertTrue(deliver(event("Fire Weather Watch", "fw1", "Severe"), night) is ProactiveBus.RaiseOutcome.Notified)
+        assertNull(shadowOf(context as Application).nextStartedService)
+    }
+
+    @Test
+    fun `every event the owner added may ring, by its exact NWS name`() {
+        listOf(
+            "Snow Squall Warning", "Civil Danger Warning", "Hazardous Materials Warning", "Radiological Hazard Warning",
+            "Nuclear Power Plant Warning", "Fire Warning", "Shelter In Place Warning", "Evacuation Immediate",
+        ).forEach { assertTrue(it, SevereAlertWatcher.mayRing(it)) }
+        assertFalse(SevereAlertWatcher.mayRing("Red Flag Warning"))
+    }
+
+    @Test
     fun `a Watch never rings, even a Tornado Watch at Extreme`() {
         assertTrue(deliver(event("Tornado Watch", "w1", "Extreme"), night) is ProactiveBus.RaiseOutcome.Notified)
         assertNull(shadowOf(context as Application).nextStartedService)

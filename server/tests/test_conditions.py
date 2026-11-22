@@ -6,6 +6,7 @@ test reaches the network (`conftest.py` makes `_fetch` fail unless a test hands 
 
 from __future__ import annotations
 
+import dataclasses
 import urllib.error
 from pathlib import Path
 
@@ -74,6 +75,19 @@ def test_alert_parser_and_the_severe_filter():
     assert [a.event for a in alerts] == ["Storm Warning", "Flood Advisory", "Hurricane Watch"]
     assert [sources.is_severe(a) for a in alerts] == [True, False, True]
     assert alerts[0].sender.startswith("NWS")
+
+
+def test_a_tornado_warning_is_severe_whatever_severity_nws_gives_it():
+    # The owner, 2026-11-22: a tornado warning rings at any severity, so the engine must pass it.
+    base = sources.parse_alerts(fixture("nws_alerts.json"))[1]
+
+    def severe(event: str, severity: str) -> bool:
+        return sources.is_severe(dataclasses.replace(base, event=event, severity=severity))
+
+    for severity in ("Moderate", "Minor", "Unknown"):
+        assert severe("Tornado Warning", severity)
+    assert not severe("Freeze Warning", "Moderate")
+    assert not severe("Tornado Watch", "Moderate")
 
 
 def test_alert_parser_keeps_the_ids_an_update_references():
