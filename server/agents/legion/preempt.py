@@ -75,8 +75,6 @@ MAX_WASTED_PER_CONVERSATION = 6
 NODE = "preempt"
 WASTED = "preempt_wasted"
 FEATURE = "agent_turn_preempt"
-# How long the turn's end waits for a dropped draft to stop, so its usage is known.
-JOIN_S = 2.0
 _END = object()
 
 
@@ -90,9 +88,10 @@ def normalise(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s']", " ", t).split())
 
 
-def draft_request(request, conversation, transcript: str, now, facts: dict) -> ModelRequest:
-    """The first request the turn would send for `transcript` (`run_turn` -> the agent node ->
-    `run_loop`), built from reads only."""
+def draft_base(request, conversation) -> ModelRequest:
+    """Everything of the turn's first request but his turn (`run_turn` -> the agent node ->
+    `run_loop`): read once, before the audio, so no draft queries the database between frames
+    (review 1121, minor)."""
     spec = spec_named(AGENT)
     history: list[dict] = []
     if conversation is not None:
@@ -101,11 +100,16 @@ def draft_request(request, conversation, transcript: str, now, facts: dict) -> M
     return ModelRequest(
         model=spec.model,
         system=system_for(spec, None),
-        contents=[*history, user_turn(request, now, facts, transcript)],
+        contents=history,
         declarations=LegionGateway(request).declarations(spec),
         allow_tools=spec.limits.max_rounds > 1,
         timeout_s=spec.limits.round_timeout_s,
     )
+
+
+def draft_request(base: ModelRequest, request, transcript: str, now, facts: dict) -> ModelRequest:
+    """The first request the turn would send for `transcript`: `base` plus his turn."""
+    return replace(base, contents=[*base.contents, user_turn(request, now, facts, transcript)])
 
 
 class Draft:
@@ -229,6 +233,7 @@ class Drafter:
     ):
         self.request = request
         self.conversation = conversation
+        self.base = draft_base(request, conversation)
         self.facts = facts
         self.model_for = model_for
         self.wasted_before = wasted_before
@@ -263,7 +268,7 @@ class Drafter:
         if not self._may_draft(guess):
             return
         when = dj_timezone.now()
-        req = draft_request(self.request, self.conversation, guess, when, self.facts)
+        req = draft_request(self.base, self.request, guess, when, self.facts)
         draft = Draft(guess, req, self.model_for(), when)
         self.drafts.append(draft)
         self.current = draft
@@ -302,15 +307,16 @@ class Drafter:
 
     def close(self) -> None:
         """Once the utterance is over: every draft not used is stopped, metered and logged.
-        Idempotent."""
+        Never waits on a draft (review 1121 P1: this runs while the stream lock, the conversation
+        lock and a worker thread are held): a draft still running is metered with the usage it
+        reported, else the estimate, and its thread ends on its own at its next event or its
+        round's time limit. Idempotent."""
         if self._closed:
             return
         self._closed = True
         wasted = [d for d in self.drafts if not d.used]
         for draft in wasted:
             draft.cancelled.set()
-        for draft in wasted:
-            draft.done.wait(JOIN_S)
         turn = AgentTurn.objects.filter(pk=self.turn_id).first() if self.turn_id else None
         for draft in wasted:
             usage = draft.usage or _estimate(draft)
@@ -326,7 +332,7 @@ class Drafter:
                     cached_tokens=usage.cached_tokens,
                     output_tokens=usage.output_tokens,
                     first_token_ms=None,
-                    total_ms=draft.ms,
+                    total_ms=draft.ms or int((time.monotonic() - draft.started) * 1000),
                     cost_micro_usd=cost,
                     finish_reason=WASTED,
                     household_id=turn.household_id,
@@ -358,7 +364,7 @@ def _estimate(draft: Draft) -> Usage:
     answer so far likewise. An estimate."""
     sent = len(draft.req.system) + len(json.dumps(draft.req.contents, default=str))
     sent += len(json.dumps(draft.req.declarations, default=str))
-    said = sum(len(str(getattr(i, "text", "") or "")) for i in draft.items)
+    said = sum(len(str(getattr(i, "text", "") or "")) for i in list(draft.items))
     return Usage(sent // 4 + 1, 0, said // 4, sent // 4 + 1 + said // 4)
 
 
