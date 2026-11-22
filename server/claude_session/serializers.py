@@ -111,6 +111,10 @@ class ClaudeHeartbeatSerializer(serializers.Serializer):
         help_text="Seconds since Windows last saw keyboard or mouse input.",
     )
     on_mains = serializers.BooleanField(required=False, allow_null=True, default=None)
+    can_mail = serializers.BooleanField(
+        required=False, allow_null=True, default=None,
+        help_text="Whether this worker can send mail. Absent: an older worker, unknown.",
+    )
     # Worker workflows (ticket 03). A worker that knows workflows always sends its hash, and the
     # full list only when the hash the engine echoed differs. Never a reason to refuse a heartbeat:
     # a bad entry is dropped and counted (`workflows_dropped`).

@@ -143,7 +143,8 @@ def test_offline_recovers_with_a_push_others_silently():
 
 def test_conditions_from_a_snapshot():
     assert hl.conditions({**SNAP, "gpu_c": 90.0}) == {
-        hl.HOT: True, hl.DISK_LOW: False, hl.RAM_HIGH: False, hl.AGENT_DOWN: False}
+        hl.HOT: True, hl.DISK_LOW: False, hl.RAM_HIGH: False, hl.AGENT_DOWN: False,
+        hl.CODE_CHANGED: False}
     c = hl.conditions({**SNAP, "disk_free_gb": 14.9, "ram_used_pct": 95.0,
                        "laptopctl_agent": False})
     assert c[hl.DISK_LOW] and c[hl.RAM_HIGH] and c[hl.AGENT_DOWN]
@@ -189,6 +190,19 @@ def test_disk_low_pushes_once(token_a, subscribed, sender):
     assert sender.sent[0]["kind"] == "laptop_health"
     assert "9.5 GB" in sender.sent[0]["body"]
     assert token_a.get(f"{API}status/").data["machines"][0]["health"]["alerts"] == ["disk_low"]
+
+
+def test_changed_worker_code_says_the_worker_needs_attention_once(token_a, subscribed, sender):
+    """Review round 4c: the worker's integrity check failed (`code_intact: false`)."""
+    _beat(token_a, health={**SNAP, "code_intact": True})
+    assert sender.sent == []
+    _beat(token_a, health={**SNAP, "code_intact": False})
+    _beat(token_a, health={**SNAP, "code_intact": False})
+    assert len(sender.sent) == 1
+    assert "needs attention" in sender.sent[0]["title"]
+    assert token_a.get(f"{API}status/").data["machines"][0]["health"]["alerts"] == ["code_changed"]
+    # A worker from before the check sends no field: unknown, never an alert.
+    assert not hl.conditions({k: None for k in hl.FIELDS})[hl.CODE_CHANGED]
 
 
 def test_offline_from_the_tick_then_back_online(token_a, subscribed, sender):

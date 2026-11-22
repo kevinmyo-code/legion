@@ -12,14 +12,31 @@ Prints one line in words.
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import argparse
 import csv
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parent))  # this folder's own modules, after the standard library
 import containment as C  # noqa: E402
-from common import Paths, is_under  # noqa: E402
+from common import Paths, is_under, add_task_arg  # noqa: E402
 
 MAX_ROWS = 100_000
 
@@ -65,8 +82,8 @@ def convert(paths: Paths, task: int, src: str, out: str | None) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="to_xlsx.py")
-    ap.add_argument("--task", type=int, required=True)
+    ap = argparse.ArgumentParser(prog="to_xlsx.py", allow_abbrev=False)
+    add_task_arg(ap)
     ap.add_argument("--csv", required=True)
     ap.add_argument("--out")
     a = ap.parse_args(argv)

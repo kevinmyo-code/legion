@@ -43,6 +43,23 @@ The hook log records tool, decision, rule and agent id. Never the command, a pat
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import json
 import os
 import re
@@ -50,11 +67,72 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+HERE = Path(__file__).resolve().parent
+
+
+def _worker_root() -> Path:
+    """`common.home()`, without importing common: nothing from this folder is trusted yet."""
+    env = os.environ.get("LEGION_CLAUDE_HOME")
+    if env:
+        return Path(env)
+    return Path(os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")) / "legion-claude"
+
+
+def _deployed(root: Path) -> tuple[bool, str]:
+    """Review round 4d: is this folder the deployed code? Standard library only. integrity.py is
+    run from the very bytes whose hash matched the manifest, then it checks every other file. On
+    any doubt, not deployed."""
+    import hashlib
+    import types
+    try:
+        with open(root / "code-manifest.json", encoding="utf-8") as f:
+            want = json.load(f)["files"]["integrity.py"]
+        data = (HERE / "integrity.py").read_bytes()
+        if hashlib.sha256(data).hexdigest() != want:
+            return False, "the integrity check itself was changed"
+        mod = types.ModuleType("legion_integrity")
+        mod.__file__ = str(HERE / "integrity.py")
+        exec(compile(data, mod.__file__, "exec"), mod.__dict__)
+        return mod.check(types.SimpleNamespace(root=root), HERE)
+    except Exception:  # noqa: BLE001 - fail closed
+        return False, "no deployed code manifest, or it could not be read"
+
+
+_CHANGED = ("WORKER CODE CHANGED: the laptop worker's own scripts are not the deployed ones ({}), "
+            "so they are not trusted until Kevin checks the laptop. Do not retry or work around "
+            "it. Say in your final message that the laptop worker needs attention.")
+
+ISOLATION_REASON = ("The ask-list hook is not running isolated (`python -I -S`), so a file on its "
+                    "python's path could have changed it: every call is refused until the worker "
+                    "starts it with -I -S. Stop and report --status failed.")
+
+
+def isolated() -> bool:
+    """`python -I -S`: no user site, no PYTHON* environment, no `site` (so no `.pth` file and no
+    sitecustomize ran before this code; review round 4 R4-1, and round 4d's D4/D5). Anything else
+    and the hook cannot trust itself."""
+    return bool(sys.flags.isolated) and bool(sys.flags.no_site) and "site" not in sys.modules
+
+
+if __name__ == "__main__":
+    if not isolated():
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "permissionDecision": "deny",
+            "permissionDecisionReason": ISOLATION_REASON}}))
+        sys.exit(0)
+    # Before anything from this folder is imported: a changed folder could otherwise run its own
+    # code inside this hook and answer for it. Every tool call is refused until it is fixed.
+    _ok, _why = _deployed(_worker_root())
+    if not _ok:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "permissionDecision": "deny",
+            "permissionDecisionReason": _CHANGED.format(_why)}}))
+        sys.exit(0)
+
+sys.path.append(str(HERE))  # this folder's own modules, after the standard library
 from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
 import containment as C  # noqa: E402
-
-HERE = Path(__file__).resolve().parent
+import outside_writes as OW  # noqa: E402
 
 SHELL_TOOLS = ("Bash", "PowerShell")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
@@ -121,9 +199,6 @@ SKILL_WRITE_RE = re.compile(
     r"(?<![\w./\\-])(?:cp|copy|cpi|xcopy|robocopy|ni|mkdir|md|tee|touch|unzip|tar)(?:\.exe)?\s"
     r"|Copy-Item|New-Item|Tee-Object|\bsed\b[^|;&]*\s-i|Expand-Archive"
     r"|\bgit\b[^|;&]*\b(checkout|restore|clone|worktree|apply|am)\b|\bpython\S*\s", re.I)
-_LEAD_RE = re.compile(
-    r'^\s*&?\s*(?:"[^"]*python[0-9.]*(?:\.exe)?"|\S*python[0-9.]*(?:\.exe)?)\s+'
-    r'(?:"(?P<q>[^"]+)"|(?P<s>\S+))(?P<rest>.*)$', re.I | re.S)
 REPORT_RE = re.compile(r"report\.py\b", re.I)
 
 # Things that look like a path inside a command.
@@ -145,31 +220,127 @@ LISTED_SHELL_OK = re.compile(
 )
 
 
-def _is_lone_script(command: str, script: str) -> bool:
-    """`python .../<script> ...` and nothing chained to it. Its free text (a summary, a mail body)
-    must not trip the ask list, so it is judged with quoted strings removed."""
-    bare = re.sub(r'"(?:\\.|[^"\\])*"' + r"|'[^']*'", '""', command)
-    pat = r"^\s*&?\s*\S*python(?:\.exe)?\S*\s+\S*" + re.escape(script) + r"\b"
-    if not re.match(pat, bare, re.I):
+def _is_lone_report(command: str, task: int | None = None, tool: str = "PowerShell") -> bool:
+    """This folder's report.py, alone (`_is_our_lone_script`): its free text (a summary) must not
+    trip the ask list. Any other report.py, or one with something expandable, is an ordinary
+    command (2026-11-22 review F1: the old check stripped quoted text and took any `python`)."""
+    return _is_our_lone_script(command, "report.py", task, tool)
+
+
+def _plain(path: str, bash: bool = False) -> str:
+    """A path as TEXT, compared without resolving anything (re-review A1/A2: realpath collapsed
+    `x/$(cmd)/..`). ASCII case and slashes only (non-ASCII never gets here, so no Unicode case
+    folding such as the Kelvin sign). Git Bash's `/c/X` is `c:/X` ONLY for Bash: PowerShell and
+    python.exe read `/c/X` as `<drive>:\\c\\X` (review round 4b)."""
+    t = "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in str(path).replace("\\", "/"))
+    g = re.match(r"^/([a-z])/(.*)$", t) if bash else None
+    return f"{g.group(1)}:/{g.group(2)}" if g else t
+
+
+def _own_python() -> str:
+    """The interpreter the worker gives helpers (`worker.helper_python`): this hook's own."""
+    exe = Path(sys.executable)
+    if exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").exists():
+        exe = exe.parent / "python.exe"
+    return _plain(str(exe))
+
+
+# An ALLOWLIST, not a list of shell syntax (review round 3, 2026-11-22: `--ta\sk` lost its
+# backslash in Bash, and PowerShell's `--%` passed the rest raw). Every character of a contained
+# script's command is one of these, in Bash and PowerShell alike plain text:
+_PATH_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.:/")
+# Unquoted words: no comma (a PowerShell array), no `?` (a Bash glob), no `@` (PowerShell splat),
+# no `( )` (a PowerShell subexpression).
+_UNQUOTED_CHARS = _PATH_CHARS | frozenset("=+")
+# Inside one pair of plain quotes, a summary may also use spaces and , ? ! @ ( ).
+_QUOTED_CHARS = _UNQUOTED_CHARS | frozenset(" ,?!@()")
+_DOTDOT = re.compile(r"(?:^|/)\.\.(?:/|$)")
+_TASK_PREFIXES = ("--t", "--ta", "--tas")  # what argparse would once have expanded to --task
+
+
+def _plain_words(text: str) -> list[str] | None:
+    """The command's words, or None when any character is outside the allowlist. Words are split
+    on single spaces; a quoted word is a whole word, '...' or "...", non-empty, holding no quote
+    or backslash, so both shells (and PowerShell 5.1's re-quoting for a native program) give the
+    program exactly these words."""
+    if not text.isascii() or "--%" in text:
+        return None
+    pieces = _quoted_split(text)
+    if not pieces:
+        return None
+    words = []
+    for w in pieces:
+        if w == "":
+            continue
+        if len(w) >= 3 and w[0] == w[-1] and w[0] in "'\"":
+            inner = w[1:-1]
+            if not inner or not set(inner) <= _QUOTED_CHARS:
+                return None
+            words.append(inner)
+        elif set(w) <= _UNQUOTED_CHARS:
+            words.append(w)
+        else:
+            return None
+    return words
+
+
+def _quoted_split(text: str) -> list[str]:
+    """Split on spaces, keeping each quoted span whole so `_plain_words` can judge it."""
+    out, cur, q = [], [], None
+    for c in text:
+        if q:
+            cur.append(c)
+            if c == q:
+                q = None
+        elif c in "'\"" and not cur:
+            q = c
+            cur.append(c)
+        elif c == " ":
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(c)
+    if q:
+        return []  # unclosed
+    out.append("".join(cur))
+    return out
+
+
+def _is_our_lone_script(command: str, script: str, task: int | None = None,
+                        tool: str = "PowerShell") -> bool:
+    """`<worker's python> <this folder>/<script> ...` alone (review F1, re-review A1-A3, round 3).
+
+    - Every character is on the allowlist above (`_plain_words`); a leading PowerShell `&` call
+      operator is the one exception. No backslash, `%`, `$`, backtick, `;`, `|`, `&`, `<`, `>`,
+      `{`, `}`, `#`, `*`, `~`, `[`, `]`, no non-ASCII, no `--%`.
+    - No `..` path step anywhere.
+    - The first two words, as plain ASCII text (never resolved), are the worker's own interpreter
+      and THIS folder's copy of the script (the worker's install folder, never a task folder).
+    - Exactly one `--task` (no `--t`/`--ta`/`--tas`), and for a helper of task N it is N. The
+      scripts themselves refuse a repeated or abbreviated --task too (`common.add_task_arg`)."""
+    text = re.sub(r"^&( |$)", "", command or "", count=1)
+    words = _plain_words(text)
+    if words is None or _DOTDOT.search(text.replace("\\", "/")):
         return False
-    return not re.search(r"[;&|`<>]|\$\(", bare.split(script, 1)[1])
-
-
-def _is_lone_report(command: str) -> bool:
-    return _is_lone_script(command, "report.py")
-
-
-def _is_our_lone_script(command: str, script: str) -> bool:
-    """`python <this folder>/<script> ...` alone: the script must be THIS folder's copy (a helper
-    could write its own ship.py), and nothing may be chained to it. Free text in its arguments
-    (the ship notes) is judged with quoted strings removed."""
-    m = _LEAD_RE.match(command or "")
-    if not m:
+    bash = tool == "Bash"
+    if words and len(words) > 1 and words[1] == "-I":
+        words = [words[0], *words[2:]]  # python's isolated mode (round 4d): the same run
+    if len(words) < 2 or _plain(words[0], bash) != _own_python():
         return False
-    p = m.group("q") or m.group("s")
-    if norm(_to_os_path(p)) != norm(HERE / script):
+    if _plain(words[1], bash) != _plain(str(HERE / script)):
         return False
-    return not re.search(r"[;&|`<>\n]|\$\(", _unquoted(m.group("rest")))
+    tasks: list[str] = []
+    args = words[2:]
+    for i, w in enumerate(args):
+        if w in _TASK_PREFIXES or w.startswith(tuple(p + "=" for p in _TASK_PREFIXES)):
+            return False
+        if w == "--task":
+            tasks.append(args[i + 1] if i + 1 < len(args) else "")
+        elif w.startswith("--task="):
+            tasks.append(w[len("--task="):])
+    if len(tasks) != 1 or (task is not None and tasks != [str(int(task))]):
+        return False
+    return True
 
 
 def _unquoted(command: str) -> str:
@@ -191,9 +362,130 @@ def _scratch(path, paths: Paths) -> bool:
 
 def _worker_internal(path, paths: Paths) -> bool:
     """The worker's own files: everything under its root outside the work folder, plus the ship
-    history. Tokens live here, so a helper writing one would be forging Kevin's yes."""
-    return is_under(path, paths.ships) or (is_under(path, paths.root)
-                                           and not is_under(path, paths.work))
+    history. Tokens live here, so a helper writing one would be forging Kevin's yes. Also the
+    worker's own code (this folder): the hook trusts scripts here by path, so no helper may
+    write or plant one (review round 3)."""
+    return (is_under(path, paths.ships) or is_under(path, HERE) or is_under(path, _shadow(HERE))
+            or (is_under(path, paths.root) and not is_under(path, paths.work)))
+
+
+def _shadow(folder: Path) -> str:
+    """Where PowerShell or python.exe would put Git Bash's spelling of [folder]: `/c/Users/x` read
+    there is `C:\\c\\Users\\x` (review round 4b). No helper may write there either."""
+    drive, rest = os.path.splitdrive(str(folder))
+    letter = drive.rstrip(":").lower()
+    return f"{drive}{os.sep}{letter}{rest}" if letter else str(folder)
+
+
+def _code_spellings() -> tuple[str, ...]:
+    """The worker code folder as text, in every spelling a command could name it."""
+    here = _plain(str(HERE))
+    drive, rest = here.split(":", 1) if ":" in here else ("", here)
+    out = [here, f"/{drive}{rest}" if drive else "", _plain(_shadow(HERE))]
+    # Round 4c: `~/x`, `$HOME/x`, `$env:USERPROFILE/x`, `%USERPROFILE%/x` all end in the part of
+    # the path below the home folder.
+    try:
+        out.append("/" + _plain(str(HERE.relative_to(Path.home()))))
+    except (ValueError, RuntimeError, KeyError, OSError):  # no home folder in this environment
+        pass
+    return tuple(x for x in out if x and x != "/")
+
+
+def _names_worker_code(command: str, cwd: str, tool: str = "PowerShell") -> bool:
+    """Orchestrator ruling 2026-11-22 (review round 4b): a shell command that names the worker's
+    code folder, or runs inside it, is denied to every helper, tainted or not; Kevin changes the
+    worker through git. The one exception is the worker's own python running one existing script
+    of that folder as its first two words (a lone contained script was allowed above; build_lock.py
+    and warm_worktree.py runs go on to the normal rules), and then only if nothing after those two
+    words names the folder again.
+
+    Round 4c: a relative word counts too, resolved against every folder the command could be
+    working in: the helper's own, each `cd` / `Set-Location` / `pushd` in the command, and
+    build_lock.py's `--cwd`. A regex still cannot see a path built at run time (`$HOME`, `~`,
+    `Join-Path`); `integrity.py` catches what that leaves, before any contained script runs."""
+    text = re.sub(r"^\s*&\s+", "", command or "")
+    lead = re.match(r'^\s*("[^"]*"|\S+)\s+(?:-I\s+)?("[^"]*"|\S+)', text)
+    if lead:
+        py, script = (w.strip('"') for w in lead.groups())
+        bash = tool == "Bash"
+        if (_plain(py, bash) == _own_python() and re.fullmatch(r"[A-Za-z0-9_./:-]+\.py", script)
+                and _plain(script, bash).rsplit("/", 1)[0] == _plain(str(HERE))
+                and (HERE / script.replace("\\", "/").rsplit("/", 1)[-1]).is_file()):
+            text = text[lead.end():]
+    flat = text.replace("\\", "/").lower()
+    if any(x in flat for x in _code_spellings()):
+        return True
+    if cwd and (is_under(cwd, HERE) or is_under(cwd, _shadow(HERE))):
+        return True
+    if any(t is not None and (is_under(t, HERE) or is_under(t, _shadow(HERE)))
+           for t in _targets(text, cwd)):
+        return True
+    return _relative_into_code(text, cwd)
+
+
+_WORD_RE = re.compile(r"[^\s\"'`;&|<>(){},=]+")
+_CWD_FLAG_RE = re.compile(r"--cwd(?:\s+|=)(?:\"([^\"]+)\"|'([^']+)'|(\S+))")
+
+
+def _relative_into_code(text: str, cwd: str) -> bool:
+    """Any relative word of [text] that, from any folder the command may be working in, lands in
+    the worker code folder (or its `C:\\c\\` mirror)."""
+    bases = [cwd] if cwd else []
+    for m in list(CD_RE.finditer(text)) + list(_CWD_FLAG_RE.finditer(text)):
+        d = _to_os_path(next(g for g in m.groups() if g is not None))
+        if d.startswith(("~", "$", "%")):
+            continue
+        if DRIVE_RE.match(d) or os.path.isabs(d):
+            bases.append(d)
+        else:
+            bases += [os.path.join(b, d) for b in list(bases)]
+    roots = (str(HERE), _shadow(HERE))
+    for w in _WORD_RE.findall(text):
+        if w.startswith("-") or DRIVE_RE.match(w) or w.startswith(("~", "$", "%")) or "://" in w:
+            continue
+        for base in bases:
+            try:
+                target = os.path.join(base, _to_os_path(w))
+                if any(is_under(target, r) for r in roots):
+                    return True
+            except (OSError, ValueError):
+                return True
+    return False
+
+
+def _code_tampered(paths: Paths) -> dict | None:
+    """Review round 4c: the deny for a contained script when this folder is not the deployed code
+    (`integrity.check`), else None. Asked only on the allow path of a contained script."""
+    ok, why = _deployed(Path(paths.root))
+    return None if ok else _deny(_CHANGED.format(why))
+
+
+def _worker_code_reason() -> str:
+    return ("WORKER CODE: the worker's own scripts are Kevin's to change, through git, never a "
+            "helper's, tainted or not. A shell command may name that folder only to run one of "
+            "its scripts with the worker's python. Do not retry or work around it.")
+
+
+COPY_RE = re.compile(r"(?:^|[;&|\n(])\s*(?:cp|copy|Copy-Item|cpi)(?:\.exe)?\s+([^;&|\n]+)", re.I)
+
+
+def _copy_overwrites(command: str, cwd: str, paths: Paths) -> bool:
+    """`cp a b` / `Copy-Item a b` with no force flag still overwrites an existing b (review round 4b
+    debt): ask when the destination (the last word) is an existing file outside the scratch
+    folders. A destination that is a folder, or does not exist yet, makes a new file."""
+    for m in COPY_RE.finditer(command or ""):
+        words = [w.strip("\"'") for w in m.group(1).split() if not w.startswith("-")]
+        if len(words) < 2:
+            continue
+        dest = _to_os_path(words[-1])
+        if not os.path.isabs(dest):
+            dest = os.path.join(cwd or ".", dest)
+        try:
+            if os.path.isfile(dest) and not _scratch(dest, paths):
+                return True
+        except (OSError, ValueError):
+            return True
+    return False
 
 
 def _worker_files_reason() -> str:
@@ -213,6 +505,12 @@ def _ship_reason() -> str:
 def _deny(reason: str) -> dict:
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                    "permissionDecisionReason": reason}}
+
+
+def _hard_place_reason() -> str:
+    return ("PROTECTED: this would write where the worker's python, this hook or the worker's own "
+            "files live (or the gh install). That cannot be confirmed. Do not retry or work around "
+            "it. Report what you needed with --status failed.")
 
 
 def _ask_reason(label: str) -> str:
@@ -381,9 +679,9 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
         return None
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_lone_report(command):
-            return None
-        if _is_lone_script(command, "send_mail.py"):
+        if _is_lone_report(command, tool=tool):
+            return _code_tampered(paths)
+        if _is_our_lone_script(command, "send_mail.py", tool=tool):
             return None  # ruling 18: send_mail.py itself allows only text to Kevin from here
         for seg in re.split(r"&&|\|\||;|\|", command):
             if not seg.strip():
@@ -403,10 +701,10 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
 
 # This folder's own scripts a tainted task may still run, alone: each checks its own limits
 # (report.py its fields, send_mail.py its token and Kevin on every send, ship.py and undo.py
-# Kevin's yes to the question they print, fetch_file.py its download hosts, to_xlsx.py its task
-# folder).
+# Kevin's yes to the question they print, fetch_file.py its download hosts, to_xlsx.py and
+# to_pdf.py their task folder; to_pdf.py also prints with no network and loads nothing).
 CONTAINED_SCRIPTS = ("report.py", "send_mail.py", "ship.py", "undo.py", "fetch_file.py",
-                     "to_xlsx.py")
+                     "to_xlsx.py", "to_pdf.py")
 
 
 def _write_targets(inp: dict) -> list[str]:
@@ -455,8 +753,8 @@ def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict) -> st
             return "untrusted_file"
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_our_lone_script(command, "fetch_file.py"):
-            return "fetch_file"
+        if re.search(r"fetch_file\.py", command, re.I):
+            return "fetch_file"  # any run of it reads the web, ours or not
         if C.fetches(command):
             return "shell_fetch"
     return None
@@ -474,7 +772,12 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
     own_work = paths.task_work(task) if task is not None else None
     is_tainted = C.tainted(paths, task, agent, tasks)
     command = (inp.get("command", "") or "") if tool in SHELL_TOOLS else ""
-    ours = bool(command) and any(_is_our_lone_script(command, s) for s in CONTAINED_SCRIPTS)
+    ours = bool(command) and any(_is_our_lone_script(command, s, task, tool)
+                                 for s in CONTAINED_SCRIPTS)
+    if ours:
+        tampered = _code_tampered(paths)
+        if tampered:
+            return tampered, "integrity", True
 
     if not agent and (tool in WRITE_TOOLS or (tool in SHELL_TOOLS and not ours)):
         # The main window only dispatches, and it reads every helper's final message (derived
@@ -562,6 +865,19 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             if _confirmed(paths, task, now):
                 return None, "confirmed"
             return _deny(_ask_reason("change one of Kevin's worker skills")), "skills"
+        # Outside the task's own folder (outside_writes.py): a new file, or a protected place, asks;
+        # what the hook itself runs on is refused.
+        tasks = (read_json(paths.state, {}) or {}).get("tasks") or {}
+        where = OW.file_verdict(target, paths, task, tasks.get(str(task))) if target else None
+        if where == OW.WORKER:
+            return _deny(_worker_files_reason()), "worker files"
+        if where == OW.HARD:
+            return _deny(_hard_place_reason()), "hook's own files"
+        if where == OW.ASK:
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason("create a file outside its work folder, or change a protected "
+                                     "one")), "outside work"
         if target and Path(target).exists() and not _scratch(target, paths):
             if _confirmed(paths, task, now):
                 return None, "confirmed"
@@ -570,12 +886,34 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
 
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_lone_report(command):
-            return None, ""
-        if any(_is_our_lone_script(command, s) for s in SHIP_SCRIPTS):
-            return None, "ship"  # ship.py / undo.py check Kevin's yes token themselves
+        if _is_lone_report(command, task, tool):
+            tampered = _code_tampered(paths)
+            return tampered, "integrity" if tampered else ""
+        if any(_is_our_lone_script(command, s, task, tool) for s in SHIP_SCRIPTS):
+            tampered = _code_tampered(paths)
+            # ship.py / undo.py check Kevin's yes token themselves
+            return tampered, "integrity" if tampered else "ship"
+        if re.search(r"integrity", command, re.I) and re.search(
+                r"--write|write_manifest", command, re.I):
+            # Round 4d: blessing the folder is the deploy step's alone, never a helper's.
+            return _deny(_worker_code_reason()), "worker code"
         if _pushes(command) or SHIP_TOOLS.search(command):
             return _deny(_ship_reason()), "ship only"
+        if _names_worker_code(command, cwd, tool):
+            return _deny(_worker_code_reason()), "worker code"
+        where = OW.shell_verdict(command, cwd, paths)
+        if where and where[0] == OW.WORKER:
+            return _deny(_worker_files_reason()), "worker files"
+        if where and where[0] == OW.HARD:
+            return _deny(_hard_place_reason()), "hook's own files"
+        if where:
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason(f"write into a protected place ({where[1]})")), "outside work"
+        if _copy_overwrites(command, cwd, paths):
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason(OVERWRITE_LABEL)), OVERWRITE_LABEL
         if _names_skills(command, cwd, paths) and (SKILL_WRITE_RE.search(command) or any(
                 re.search(pat, command, re.I) for _l, kind, pat in RULES if kind == "path")):
             if _confirmed(paths, task, now):

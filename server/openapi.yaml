@@ -17428,6 +17428,11 @@ components:
         on_mains:
           type: boolean
           nullable: true
+        can_mail:
+          type: boolean
+          nullable: true
+          description: 'Whether this worker can send mail. Absent: an older worker,
+            unknown.'
         workflows_hash:
           type: string
           nullable: true

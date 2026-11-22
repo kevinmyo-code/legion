@@ -51,6 +51,9 @@ Rulings this file enforces, by number in the map:
   worker asks first. The bytes go to the private bucket (`storage`) or, with
   none set, the row's column; only the member who asked may download them,
   `received/` deletes them, and they are refused and purged 24 h after upload.
+- Delivery settled per machine (2026-11-22, `claude_session.delivery`): mail to a
+  machine that reports it cannot send goes to the phone instead, and a result
+  asked for as a file ("as a PDF") is `deliver: files` on a `full` machine.
 """
 
 from __future__ import annotations
@@ -73,6 +76,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from claude_session import delivery
 from claude_session import health as hl
 from claude_session import serializers as s
 from claude_session import workflows as wf
@@ -540,6 +544,9 @@ class TaskListCreateView(APIView):
         # is a follow-up that carries no deliver of its own; it still means "to my phone".
         if deliver is None and data["confirms"] and parent.deliver == DELIVER_FILES:
             deliver = DELIVER_FILES
+        # No mail where none can be sent; a file asked for as the result goes to the phone.
+        # Settled again at assign or claim when no machine is known yet.
+        deliver = delivery.settle(deliver, data["request"], kind, machine)
 
         # Ticket 09 and ADR 0080: a page or files never come from a `listed` machine.
         listed = machine is not None and machine.scope == SCOPE_LISTED
@@ -674,7 +681,8 @@ class TaskAssignView(APIView):
                     return refused
             task.machine = machine
             task.status = QUEUED
-            task.save(update_fields=["machine", "status"])
+            task.deliver = delivery.settle(task.deliver, task.request, task.kind, machine)
+            task.save(update_fields=["machine", "status", "deliver"])
         return Response(_created(task, machine, now))
 
 
@@ -801,7 +809,7 @@ def _health_row(m: ClaudeMachine, now) -> dict | None:
 
 TOUCH_FIELDS = [
     "hostname", "scope", "reported_state", "claude_version", "input_idle_s", "on_mains",
-    "last_seen_at", "token",
+    "can_mail", "last_seen_at", "token",
 ]
 
 
@@ -816,6 +824,7 @@ def _touch_machine(request, data: dict, now) -> ClaudeMachine:
     machine.claude_version = data.get("claude_version", "")
     machine.input_idle_s = data.get("input_idle_s")
     machine.on_mains = data.get("on_mains")
+    machine.can_mail = data.get("can_mail")
     machine.last_seen_at = now
     # Map decision G (memory-and-vault): bind the token that speaks for this machine, so memory
     # and the vault can refuse a `listed` machine's token. A browser session binds nothing.
@@ -984,7 +993,8 @@ class ClaimView(APIView):
                 task.machine = machine
                 task.status = RUNNING
                 task.started_at = now
-                task.save(update_fields=["machine", "status", "started_at"])
+                task.deliver = delivery.settle(task.deliver, task.request, task.kind, machine)
+                task.save(update_fields=["machine", "status", "started_at", "deliver"])
         if not claimed:
             return Response(status=http.HTTP_204_NO_CONTENT)
         return Response([task_row(task, now) for task in claimed])

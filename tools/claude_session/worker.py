@@ -27,6 +27,23 @@ Logs carry ids, statuses, counts and exit codes. Never a request, a summary, a q
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import argparse
 import collections
 import ctypes
@@ -46,14 +63,16 @@ import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+sys.path.append(str(HERE))  # this folder's own modules, after the standard library
 from common import (DELIVER_EMAIL_SELF, DELIVER_FILES, DELIVER_PHONE, FILES_MAX_COUNT,  # noqa: E402
-                    FILES_MAX_TOTAL_BYTES, PAGE_CAP_BYTES, UPLOAD_CAP_BYTES, Paths, load_config,
+                    FILES_MAX_TOTAL_BYTES, PAGE_CAP_BYTES, UPLOAD_CAP_BYTES, Paths, is_under,
+                    load_config,
                     norm, read_json, write_json_atomic)
 from engine_client import EngineClient, EngineDown, EngineError  # noqa: E402
 from session import MainSession, build_command, child_env, kill_tree  # noqa: E402
 import containment  # noqa: E402
 import health as hl  # noqa: E402
+import integrity  # noqa: E402
 import warm_worktree  # noqa: E402
 import workflows as wfl  # noqa: E402
 
@@ -133,7 +152,10 @@ def files_instructions(confirmed: bool) -> str:
     """ADR 0080: what a `deliver: files` helper is told. Find by name, path and metadata; open a
     document only to tell candidates apart, and say so; ask when unsure or past the caps."""
     text = ("Kevin wants these files on his phone; naming them was his yes for exactly those "
-            "files. Find them by name, folder, date, type and size. Do not open or read a "
+            "files. If he asked you to MAKE something as a file (a PDF, a spreadsheet, a "
+            "document), make it in the work folder (a PDF with to_pdf.py, rule 8) and list only "
+            "the finished file with --found, not the page or CSV it was made from. Otherwise "
+            "find them by name, folder, date, type and size. Do not open or read a "
             "document's contents (scans, IDs, statements, letters) unless you must to tell two "
             "candidates apart; if you did, say so in the summary. List every file to send with "
             "--found (each under 25 MB) and LEGION sends them to his phone. The summary names "
@@ -144,6 +166,23 @@ def files_instructions(confirmed: bool) -> str:
                    f"{FILES_MAX_COUNT} files or {FILES_MAX_TOTAL_BYTES // (1024 * 1024)} MB, "
                    "finish needs_confirmation with one question naming the count and size, and "
                    "still list them with --found.")
+
+
+# Asking for the result BY mail ("email it to me", "mail me the list", "send it by email"), not
+# a request about mail ("summarise my emails", review 2026-11-22 F4).
+MAIL_WORD_RE = re.compile(
+    r"\b(?:e-?mail|mail)\s+(?:it|this|that|them|me|us)\b"
+    r"|\b(?:by|via|over|in\s+an?)\s+e-?mail\b|\bto\s+my\s+(?:e-?mail|inbox)\b", re.I)
+
+
+def no_mail_line(to_phone: bool) -> str:
+    """2026-11-22: the engine turns "email it to me" into files on the phone (or a summary on a
+    listed machine) when this laptop cannot mail. The helper says so, so no one waits for mail."""
+    if to_phone:
+        return ("He asked for it by email, but this laptop cannot send mail, so LEGION sends it to "
+                "his phone instead. Make the result a file (a write-up as a PDF with to_pdf.py), "
+                "list it with --found, and say in the summary it went to his phone, not by email.")
+    return "He asked for it by email, but this laptop cannot send mail. Say so in the summary."
 
 
 def over_files_caps(found) -> bool:
@@ -386,7 +425,9 @@ class Worker:
 
     def write_settings(self) -> None:
         hook = HERE / "asklist_hook.py"
-        command = f"{cmd_path(helper_python())} {cmd_path(hook)}"
+        # -I (round 4d) and -S (round 4 R4-1): no user site, no PYTHON* environment and no `site`,
+        # so no .pth or sitecustomize runs before the hook; the hook refuses every call otherwise.
+        command = f"{cmd_path(helper_python())} -I -S {cmd_path(hook)}"
         # Containment (2026-11-10): reads, web, Gmail and Agent go through the hook on every
         # machine, so a read-through source marks its task before it runs.
         matcher = "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|" + containment.HOOK_MATCHER_EXTRA
@@ -414,7 +455,7 @@ class Worker:
                      "only: never --found, never upload, no web. Mail only as text to Kevin himself, and only "
                      "when the task message gives a token. No Gmail here: rule 10 does "
                      "not apply on this machine.")
-        for k, v in {"<<MACHINE>>": self.name, "<<PYTHON>>": cmd_path(helper_python()),
+        for k, v in {"<<MACHINE>>": self.name, "<<PYTHON>>": cmd_path(helper_python()) + " -I",
                      "<<REPORT>>": cmd_path(HERE / "report.py"),
                      "<<SEND_MAIL>>": cmd_path(HERE / "send_mail.py"),
                      # alfred-builds tickets 03, 05, 08: the ship step, undo, the build lock.
@@ -423,6 +464,7 @@ class Worker:
                      "<<WARM>>": cmd_path(HERE / "warm_worktree.py"),
                      "<<FETCH>>": cmd_path(HERE / "fetch_file.py"),
                      "<<TO_XLSX>>": cmd_path(HERE / "to_xlsx.py"),
+                     "<<TO_PDF>>": cmd_path(HERE / "to_pdf.py"),
                      "<<SCOPE>>": scope}.items():
             text = text.replace(k, v)
         return text
@@ -914,12 +956,15 @@ class Worker:
             self.progress = {k: v for k, v in self.progress.items() if k in running}
             wf_fields = self.catalog_fields(now)
             snap = self.health.take() if self.health else None
+            intact = self.code_intact()
+            if snap is not None:
+                snap = {**snap, "code_intact": intact}
             extra = {"health": snap} if snap else {}
             reply = self.engine.heartbeat({
                 "name": self.name, "hostname": socket.gethostname(), "scope": self.scope,
                 "state": "busy" if running else "idle", "running": running,
                 "progress": {str(k): v for k, v in self.progress.items()},
-                "claude_version": self.claude_version,
+                "claude_version": self.claude_version, "can_mail": self.can_mail(),
                 # memory-review ticket 15: the engine mints the daily review only when idle.
                 "input_idle_s": self.idle(), "on_mains": self.on_mains(), **wf_fields, **extra})
             self.note_engine_hash(reply, wf_fields, now)
@@ -1002,6 +1047,8 @@ class Worker:
             reason = "a scheduled run never sends files"
         elif not t or norm(path) not in allowed:
             reason = "not a file that task listed"
+        elif not self.uploadable(tid, path):
+            reason = "a worker or credential file"
         elif not Path(path).is_file():
             reason = "file is gone"
         elif Path(path).stat().st_size > UPLOAD_CAP_BYTES:
@@ -1021,6 +1068,22 @@ class Worker:
             return
         self.uploaded.add(key)
         log.info("file %s for task %s uploaded", fid, tid)
+
+    def uploadable(self, tid, path: str) -> bool:
+        """Review 2026-11-22 F3: a helper can list any path with --found, including ones it may not
+        read. Never the worker's own folder (config and its token, tokens, taint, state, other
+        tasks' folders) except this task's own work folder, and never a credential-like name.
+        Paths resolve first (`is_under` uses realpath), so a link into either fails too. Any doubt
+        is a refusal."""
+        try:
+            own = self.paths.task_work(int(tid))
+            if is_under(path, self.paths.root) and not is_under(path, own):
+                return False
+            real = os.path.realpath(path)
+            return not (containment.CREDENTIAL_NAMES.search(str(path))
+                        or containment.CREDENTIAL_NAMES.search(real))
+        except (OSError, ValueError, TypeError):
+            return False
 
     # ------------------------------------------------------------ claimed tasks
 
@@ -1103,7 +1166,7 @@ class Worker:
         tid = t["id"]
         text = (HERE / "memory_review_prompt.md").read_text(encoding="utf-8")
         for k, v in {"<<TASK>>": str(tid), "<<WORK>>": str(work),
-                     "<<PYTHON>>": cmd_path(helper_python()),
+                     "<<PYTHON>>": cmd_path(helper_python()) + " -I",
                      "<<REVIEW>>": cmd_path(HERE / "review_memories.py"),
                      "<<REPORT>>": cmd_path(HERE / "report.py")}.items():
             text = text.replace(k, v)
@@ -1144,7 +1207,7 @@ class Worker:
                 lines.append(f"This is Kevin's answer to task {parent}'s question. If it is a clear "
                              f"yes, the step it asked "
                              f"about may now run, for task {tid} only. Confirmation token: {tok} "
-                             f"(send_mail.py takes it as --task {tid} --token {tok}). Not a clear "
+                             f"(send_mail.py takes it as --task {tid} --token={tok}). Not a clear "
                              "yes: do not run it, report what Kevin said.")
         elif t.get("kind") == KIND_WORKFLOW:
             lines.append(f"[task {tid}] Workflow {t['workflow']}. Use the {t['workflow']} skill.")
@@ -1159,17 +1222,16 @@ class Worker:
             # never one the engine row claims.
             lines.append("This scheduled run has no yes to send mail. Do not send any.")
         elif t.get("deliver") == DELIVER_EMAIL_SELF:
-            mail = self.cfg.get("mail") or {}
-            if mail.get("address") and mail.get("kevin") and self.scope == "full":
+            if self.can_mail() and self.scope == "full":
                 tok = self.issue_token(tid, parent, "email_self")
                 lines.append("Kevin asked for the result by email; send it to him with send_mail.py "
-                             f"--task {tid} --token {tok} --to kevin --attach FILE; that is the yes "
+                             f"--task {tid} --token={tok} --to kevin --attach FILE; that is the yes "
                              "for this one send to Kevin only. Anyone else still needs "
                              "needs_confirmation.")
-            elif mail.get("address") and mail.get("kevin"):  # work laptop, ruling 18
+            elif self.can_mail():  # work laptop, ruling 18
                 tok = self.issue_token(tid, parent, "email_self")
                 lines.append("Kevin asked for the result by email; send him the summary as text "
-                             f"with send_mail.py --task {tid} --token {tok} --to kevin (no "
+                             f"with send_mail.py --task {tid} --token={tok} --to kevin (no "
                              "attachments from this laptop); that is the yes for this one send "
                              "to Kevin only.")
             else:
@@ -1191,11 +1253,21 @@ class Worker:
             else:  # the engine refuses this; held here too (ruling 5)
                 lines.append("Kevin asked for files on his phone, but this laptop returns "
                              "summaries only. Say so in the summary.")
+        if (t.get("deliver") != DELIVER_EMAIL_SELF and MAIL_WORD_RE.search(t["request"])
+                and not self.can_mail()):
+            lines.append(no_mail_line(t.get("deliver") == DELIVER_FILES))
         lines.append(f"Work folder: {work}")
         return "\n".join(lines)
 
+    def can_mail(self) -> bool:
+        """send_mail.py's own test: an account, its app password and Kevin's address. Sent on every
+        heartbeat so the engine never routes a result to mail this laptop cannot send."""
+        mail = self.cfg.get("mail") or {}
+        return bool(mail.get("address") and mail.get("app_password")
+                    and (mail.get("kevin") or "").strip())
+
     def issue_token(self, tid: int, parent, kind: str) -> str:
-        tok = secrets.token_urlsafe(16)
+        tok = secrets.token_hex(16)  # never starts with "-", which argparse would read as a flag
         write_json_atomic(self.paths.tokens / f"{tid}-{kind}.json", {
             "token": tok, "task": int(tid), "parent": int(parent) if parent else None, "kind": kind,
             "expires_at": self.clock() + self.cfg["task_cap_s"] + 600})
@@ -1246,7 +1318,18 @@ class Worker:
         self.contact_engine(now)
         self.save()
 
+    def code_intact(self) -> bool:
+        """Review round 4c: this folder is the deployed code (`integrity.py`). Checked at start and
+        on every heartbeat; a mismatch is logged once per change and rides the health snapshot as
+        `code_intact: false`. The hook refuses every contained script meanwhile."""
+        ok, why = integrity.check(self.paths)
+        if ok != getattr(self, "_code_ok", None):
+            (log.info if ok else log.error)("worker code %s", "intact" if ok else f"NOT intact: {why}")
+        self._code_ok = ok
+        return ok
+
     def run(self, stop: threading.Event) -> None:
+        self.code_intact()
         self.startup()
         if self.health:
             self.health.start()

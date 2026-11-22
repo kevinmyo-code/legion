@@ -20,6 +20,8 @@ minute. This module:
   | `disk_low` | C: free < `DISK_LOW_GB` |
   | `ram_high` | RAM >= `RAM_HIGH_PCT` for `RAM_FOR` |
   | `agent_down` | laptopctl-agent not answering for `AGENT_FOR` |
+  | `code_changed` | the worker's own scripts are not the deployed ones (`code_intact: false`, |
+  |  | the worker's `integrity.py`); it runs no contained step until checked |
 
   Only a machine that sent a snapshot within `WATCHED_FOR` is watched, so the work laptop
   (which sends none) never pages Kevin for being switched off.
@@ -67,18 +69,20 @@ HOT = "hot"
 DISK_LOW = "disk_low"
 RAM_HIGH = "ram_high"
 AGENT_DOWN = "agent_down"
+CODE_CHANGED = "code_changed"
 SUSTAIN = {
     OFFLINE: dt.timedelta(0),
     HOT: HOT_FOR,
     DISK_LOW: dt.timedelta(0),
     RAM_HIGH: RAM_FOR,
     AGENT_DOWN: AGENT_FOR,
+    CODE_CHANGED: dt.timedelta(0),
 }
 # Only going offline says when it is over; the others are said once per episode.
 SAYS_RECOVERY = frozenset({OFFLINE})
 
 NUMBERS = ("cpu_c", "gpu_c", "cpu_load_pct", "ram_used_pct", "disk_free_gb")
-BOOLS = ("laptopctl_agent", "on_mains", "reboot_pending")
+BOOLS = ("laptopctl_agent", "on_mains", "reboot_pending", "code_intact")
 FIELDS = (*NUMBERS, "fans_rpm", "uptime_s", "boot_at", *BOOLS)
 
 
@@ -156,6 +160,7 @@ def conditions(snap: dict) -> dict[str, bool]:
         DISK_LOW: disk is not None and disk < DISK_LOW_GB,
         RAM_HIGH: ram is not None and ram >= RAM_HIGH_PCT,
         AGENT_DOWN: snap.get("laptopctl_agent") is False,
+        CODE_CHANGED: snap.get("code_intact") is False,
     }
 
 
@@ -240,6 +245,12 @@ def words(machine, fire: Fire, snap: dict | None) -> tuple[str, str]:
             f"{name} out of memory",
             f"RAM at {snap.get('ram_used_pct')}% for over "
             f"{int(RAM_FOR.total_seconds() // 60)} minutes.",
+        )
+    if fire.kind == CODE_CHANGED:
+        return (
+            f"{name}: laptop worker needs attention",
+            "Its own scripts are not the deployed ones, so it runs no report, mail or file step "
+            "until the laptop is checked.",
         )
     return (
         f"{name}: laptopctl stopped",

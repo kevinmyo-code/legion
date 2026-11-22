@@ -25,6 +25,7 @@ import asklist_hook as H  # noqa: E402
 import review_memories as R  # noqa: E402
 import worker as W  # noqa: E402
 from common import HOME_ENV, Paths, read_json, write_json_atomic  # noqa: E402
+import integrity  # noqa: E402
 from fake_engine import TOKEN, FakeEngine  # noqa: E402
 from test_worker import WorkerCase, fake  # noqa: E402
 
@@ -52,6 +53,7 @@ class ScriptCase(unittest.TestCase):
         self.old_home = os.environ.get(HOME_ENV)
         os.environ[HOME_ENV] = str(self.home)
         self.paths = Paths(self.home).ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.engine = FakeEngine()
         self.engine.review_context = CONTEXT
         write_json_atomic(self.paths.config, {"name": "Alienware", "scope": "full",
@@ -146,6 +148,7 @@ class HookCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.paths = Paths(self.root / "home").ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.work = self.paths.task_work(7)
         self.work.mkdir()
         write_json_atomic(self.paths.state, {"tasks": {
@@ -174,8 +177,11 @@ class HookCase(unittest.TestCase):
 
     def test_an_ordinary_task_is_untouched(self):
         self.assertEqual(self.decide("Bash", {"command": "git status"}, "agentA"), "pass")
+        # a new file outside its own work folder asks (outside_writes.py, review round 4)
         self.assertEqual(self.decide("Write", {"file_path": str(self.root / "new.md")}, "agentA"),
-                         "pass")
+                         "deny")
+        self.assertEqual(self.decide("Write", {"file_path": str(self.paths.task_work(8) / "new.md")},
+                                     "agentA"), "pass")
 
 
 class TestReviewTask(WorkerCase):

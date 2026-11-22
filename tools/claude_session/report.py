@@ -11,6 +11,23 @@ helper sees the mistake and can retry with the right fields.
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import argparse
 import json
 import os
@@ -18,8 +35,8 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import STATUSES, Paths, write_json_atomic  # noqa: E402
+sys.path.append(str(Path(__file__).resolve().parent))  # this folder's own modules, after the standard library
+from common import STATUSES, Paths, write_json_atomic, add_task_arg  # noqa: E402
 
 
 def _file_entry(raw: str) -> dict:
@@ -33,8 +50,8 @@ def _file_entry(raw: str) -> dict:
 
 
 def build(argv: list[str]) -> dict:
-    ap = argparse.ArgumentParser(prog="report.py", description=__doc__.splitlines()[0])
-    ap.add_argument("--task", type=int, required=True)
+    ap = argparse.ArgumentParser(prog="report.py", allow_abbrev=False, description=__doc__.splitlines()[0])
+    add_task_arg(ap)
     ap.add_argument("--status", required=True, choices=STATUSES)
     ap.add_argument("--summary", default="")
     ap.add_argument("--question", default="")

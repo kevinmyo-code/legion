@@ -20,6 +20,7 @@ sys.path.insert(0, str(HERE))
 import send_mail  # noqa: E402
 import worker as W  # noqa: E402
 from common import Paths, read_json, write_json_atomic  # noqa: E402
+import integrity  # noqa: E402
 from fake_engine import TOKEN, FakeEngine  # noqa: E402
 from engine_client import EngineClient  # noqa: E402
 
@@ -65,6 +66,7 @@ class WorkerCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name) / "legion-claude"
         self.paths = Paths(self.home).ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.fake_log = Path(self.tmp.name) / "fake_claude.jsonl"
         self.engine = FakeEngine()
         self.day = "2026-11-01"
@@ -165,6 +167,17 @@ class TestTasks(WorkerCase):
                          ("Alienware", "full", "2.1.316 (Claude Code)"))
         self.wait(lambda: self.engine.heartbeats[-1]["state"] == "idle", what="idle")
 
+    def test_heartbeat_says_whether_this_laptop_can_mail(self):
+        """2026-11-22: the engine routes `email_self` to the phone when this is false."""
+        self.start()
+        self.wait(lambda: self.engine.heartbeats, what="heartbeat")
+        self.assertIs(self.engine.heartbeats[0]["can_mail"], True)
+        self.stop_last()
+        self.engine.heartbeats.clear()
+        self.start(mail={"address": "alfred@example.com", "kevin": "kevin@example.com"})
+        self.wait(lambda: self.engine.heartbeats, what="heartbeat")
+        self.assertIs(self.engine.heartbeats[0]["can_mail"], False)
+
     def test_child_env_and_command(self):
         self.engine.queue(id=1, request=fake(sleep=0.1))
         self.start()
@@ -230,7 +243,7 @@ class TestTasks(WorkerCase):
         orig = send_mail.SMTP_FACTORY
         send_mail.SMTP_FACTORY = FakeSMTP
         try:
-            args = ["--task", "51", "--token", tok["token"], "--to", "dad@example.com",
+            args = ["--task", "51", f"--token={tok['token']}", "--to", "dad@example.com",
                     "--subject", "s", "--body", "b"]
             self.assertEqual(send_mail.main(args, self.paths), 0)
             self.assertEqual(send_mail.main(args, self.paths), 1, "one yes, one send")
@@ -253,13 +266,35 @@ class TestTasks(WorkerCase):
         orig = send_mail.SMTP_FACTORY
         send_mail.SMTP_FACTORY = FakeSMTP
         try:
-            base = ["--task", "55", "--token", tok["token"], "--subject", "s", "--body", "b"]
+            base = ["--task", "55", f"--token={tok['token']}", "--subject", "s", "--body", "b"]
             self.assertEqual(send_mail.main(base + ["--to", "dad@example.com"], self.paths), 1)
             self.assertEqual(send_mail.main(base + ["--to", "kevin"], self.paths), 0)
         finally:
             send_mail.SMTP_FACTORY = orig
         self.assertEqual(len(FakeSMTP.sent), 1)
         self.assertEqual(FakeSMTP.sent[0][1], ["kevin@example.com"])
+        # 2026-11-22: a url-safe token began with "-" about 1 in 64, and `--token <tok>` then
+        # failed argparse. Tokens are hex now, and every command the message shows is --token=.
+        self.assertRegex(tok["token"], r"^[0-9a-f]{32}$")
+        self.assertIn(f"--token={tok['token']}", msg)
+        self.assertNotIn(f"--token {tok['token']}", msg)
+
+    def test_a_token_that_starts_with_a_dash_still_parses_as_token_equals(self):
+        """A token issued before the hex change may start with "-": the --token= form takes it."""
+        self.start()
+        legacy = "-Ab3_legacy-token"
+        write_json_atomic(self.paths.tokens / "57-email_self.json", {
+            "token": legacy, "task": 57, "parent": None, "kind": "email_self",
+            "expires_at": time.time() + 600})
+        FakeSMTP.sent = []
+        orig = send_mail.SMTP_FACTORY
+        send_mail.SMTP_FACTORY = FakeSMTP
+        try:
+            self.assertEqual(send_mail.main(["--task", "57", f"--token={legacy}", "--to", "kevin",
+                                             "--subject", "s", "--body", "b"], self.paths), 0)
+        finally:
+            send_mail.SMTP_FACTORY = orig
+        self.assertEqual(len(FakeSMTP.sent), 1)
 
     def test_phone_delivery_asks_for_one_page_and_uploads_it_at_finish(self):
         page = Path(self.tmp.name) / "atlanta.html"
@@ -305,6 +340,58 @@ class TestTasks(WorkerCase):
         self.assertEqual(sorted(u[2] for u in self.engine.uploads), [b"%PDF scan", b"jpeg bytes"])
         [finish] = self.engine.finished(58)
         self.assertEqual(finish["status"], "done")
+
+    def test_mail_asked_on_a_laptop_that_cannot_mail_says_where_it_went(self):
+        """2026-11-22: the engine turned "email it to me" into files (full) or a summary (listed)."""
+        no_mail = {"address": "", "kevin": ""}
+        self.engine.queue(id=60, deliver="files",
+                          request=f"the rates as a PDF, email it to me {fake(sleep=0.1)}")
+        self.engine.queue(id=61, request=f"plan the week and e-mail me {fake(sleep=0.1)}")
+        self.engine.queue(id=62, request=f"send me the form scan {fake(sleep=0.1)}", deliver="files")
+        # Review F4: a request ABOUT mail is not a request to be mailed.
+        self.engine.queue(id=63, request=f"summarise my emails about the trip {fake(sleep=0.1)}")
+        self.engine.queue(id=64, deliver="files",
+                          request=f"read the email thread and make a PDF {fake(sleep=0.1)}")
+        ids = (60, 61, 62, 63, 64)
+        self.start(mail=no_mail)
+        self.wait(lambda: all(self.engine.finished(i) for i in ids), what="tasks")
+        msg = {i: [m for m in self.msgs() if m.startswith(f"[task {i}]")][0] for i in ids}
+        self.assertIn("sends it to his phone instead", msg[60])
+        self.assertIn("to_pdf.py", msg[60])
+        self.assertIn("cannot send mail. Say so in the summary.", msg[61])
+        for i in (62, 63, 64):
+            self.assertNotIn("cannot send mail", msg[i])
+
+    def test_mail_word_matches_a_delivery_ask_only(self):
+        for words in ("email it to me", "mail me the list", "send it by email", "e-mail this",
+                      "put it in an email", "send it to my inbox"):
+            with self.subTest(words=words):
+                self.assertTrue(W.MAIL_WORD_RE.search(words))
+        for words in ("summarise my emails", "read the email thread", "check the email from the "
+                      "bank", "how many mails came today", "find the mail about the lease"):
+            with self.subTest(words=words):
+                self.assertFalse(W.MAIL_WORD_RE.search(words))
+
+    def test_files_never_upload_a_worker_or_credential_file_even_when_listed(self):
+        """Review F3: a helper can list any path with --found; the worker's own folder (its config
+        holds the engine token) and credential-like names never go up. A real find still does."""
+        good = Path(self.tmp.name) / "form-scan.pdf"
+        good.write_bytes(b"%PDF scan")
+        env = Path(self.tmp.name) / "deploy.env"
+        env.write_text("SECRET=1")
+        pem = Path(self.tmp.name) / "server.pem"
+        pem.write_text("x")
+        other = self.paths.task_work(70)
+        other.mkdir(parents=True, exist_ok=True)
+        (other / "notes.txt").write_text("other task")
+        found = [str(good), str(self.paths.config), str(env), str(pem), str(other / "notes.txt")]
+        self.engine.queue(id=71, deliver="files", request=(
+            f"send me the form scan {fake(found=found, summary='Found it.')}"))
+        self.start()
+        self.wait(lambda: self.engine.uploads, what="the good upload")
+        self.wait(lambda: self.engine.finished(71), what="task 71")
+        time.sleep(1.0)
+        self.assertEqual([u[2] for u in self.engine.uploads], [b"%PDF scan"])
 
     def test_files_delivery_over_twenty_files_asks_first_and_uploads_nothing(self):
         found = []
@@ -614,7 +701,7 @@ class TestListed(WorkerCase):
         orig = send_mail.SMTP_FACTORY
         send_mail.SMTP_FACTORY = FakeSMTP
         try:
-            base = ["--task", "110", "--token", tok["token"], "--subject", "s", "--body", "summary"]
+            base = ["--task", "110", f"--token={tok['token']}", "--subject", "s", "--body", "summary"]
             self.assertEqual(send_mail.main(base + ["--to", "kevin", "--attach", str(att)], self.paths), 1)
             self.assertEqual(send_mail.main(base + ["--to", "dad@example.com"], self.paths), 1)
             self.assertEqual(send_mail.main(base + ["--to", "kevin"], self.paths), 0)

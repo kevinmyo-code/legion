@@ -16,6 +16,7 @@ import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 
+PY = sys.executable.replace("\\", "/")
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
@@ -23,6 +24,7 @@ import asklist_hook as H  # noqa: E402
 import report  # noqa: E402
 import send_mail  # noqa: E402
 from common import Paths, read_json, write_json_atomic  # noqa: E402
+import integrity  # noqa: E402
 
 
 class Base(unittest.TestCase):
@@ -30,6 +32,7 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.paths = Paths(self.root / "home").ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.work = self.paths.task_work(41)
         self.work.mkdir()
         self.kevin_file = self.root / "Documents" / "budget.xlsx"
@@ -62,7 +65,9 @@ class TestAskList(Base):
         self.assertIn("needs_confirmation", reason)
         self.assertIn("--question", reason)
         self.assertDenied("Edit", {"file_path": str(self.kevin_file)})
-        self.assertPassed("Write", {"file_path": str(self.root / "Documents" / "new.md")})
+        # A NEW file outside the work folder asks too (outside_writes.py, review 11-19 round 4).
+        out = self.assertDenied("Write", {"file_path": str(self.root / "Documents" / "new.md")})
+        self.assertIn("needs_confirmation", out["hookSpecificOutput"]["permissionDecisionReason"])
         own = self.work / "out.xlsx"
         own.write_text("made earlier by the helper")
         self.assertPassed("Write", {"file_path": str(own)})
@@ -75,7 +80,13 @@ class TestAskList(Base):
         not, a scheduled run included (no token)."""
         folder = self.root / "profile" / ".legion" / "reports" / "rates-sheet"
         folder.mkdir(parents=True)
-        self.assertPassed("Write", {"file_path": str(folder / "2026-11-10-task-41.md")})
+        report = folder / "2026-11-10-task-41.md"
+        # The worker names the task's report file; that one file is the exception to "a new file
+        # outside the work folder asks" (outside_writes.py).
+        write_json_atomic(self.paths.agents, {"agentA": 41})
+        write_json_atomic(self.paths.state, {"tasks": {"41": {"id": 41, "report_file": str(report)}}})
+        self.assertPassed("Write", {"file_path": str(report)})
+        self.assertDenied("Write", {"file_path": str(folder / "2026-11-10-other.md")})
         older = folder / "2026-11-03-task-30.md"
         older.write_text("last week's report")
         out = self.assertDenied("Write", {"file_path": str(older)})
@@ -158,9 +169,9 @@ class TestAskList(Base):
 
     def test_report_py_summary_text_never_trips_the_list(self):
         rp = str(HERE / "report.py").replace("\\", "/")
-        self.assertPassed("Bash", {"command": f'python {rp} --task 41 --status done --summary '
-                                              f'"Deleted nothing; I would rm the old copy > later"'})
-        self.assertDenied("Bash", {"command": f'python {rp} --task 41 --status done --summary x; '
+        self.assertPassed("Bash", {"command": f'{PY} {rp} --task 41 --status done --summary '
+                                              f'"Deleted nothing, I would rm the old copy later"'})
+        self.assertDenied("Bash", {"command": f'{PY} {rp} --task 41 --status done --summary x; '
                                               f'rm -f {self.kevin_file.as_posix()}'})
 
     def test_send_mail_script_passes_hook_and_checks_itself(self):
@@ -188,13 +199,13 @@ class TestAskList(Base):
     def test_hook_process_fails_closed_and_logs_no_text(self):
         env = {**os.environ, "LEGION_CLAUDE_HOME": str(self.paths.root)}
         write_json_atomic(self.paths.config, {"scope": "full"})
-        p = subprocess.run([sys.executable, str(HERE / "asklist_hook.py")], input="not json",
+        p = subprocess.run([sys.executable, "-I", "-S", str(HERE / "asklist_hook.py")], input="not json",
                            capture_output=True, text=True, env=env)
         self.assertEqual(p.returncode, 0)
         self.assertEqual(json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
         ev = {"tool_name": "Bash", "tool_input": {"command": f"rm {self.kevin_file.as_posix()}"},
               "cwd": str(self.work), "agent_id": "a1"}
-        p = subprocess.run([sys.executable, str(HERE / "asklist_hook.py")], input=json.dumps(ev),
+        p = subprocess.run([sys.executable, "-I", "-S", str(HERE / "asklist_hook.py")], input=json.dumps(ev),
                            capture_output=True, text=True, env=env)
         self.assertEqual(json.loads(p.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
         log = (self.paths.logs / "hook.log").read_text(encoding="utf-8")
@@ -229,12 +240,12 @@ class TestShipStep(Base):
                 self.assertIn("SHIP STEP", out["hookSpecificOutput"]["permissionDecisionReason"])
 
     def test_our_ship_and_undo_run_alone_and_check_the_token_themselves(self):
-        self.assertPassed("Bash", {"command": f'python {self.ship} ask --task 41 --kind engine '
-                                              f'--branch fix/x --worktree C:/w/wt --notes "git push; deploy.py"'},
+        self.assertPassed("Bash", {"command": f'{PY} {self.ship} ask --task 41 --kind engine '
+                                              f'--branch fix/x --worktree C:/w/wt --notes "git push, deploy.py"'},
                           agent=None)
-        self.assertPassed("PowerShell", {"command": f'& "C:/Program Files/Python/python.exe" '
+        self.assertPassed("PowerShell", {"command": f'& "{PY}" '
                                                     f'{self.ship} run --task 42 --token t'})
-        self.assertPassed("Bash", {"command": f"python {self.undo} run --task 42 --token t"})
+        self.assertPassed("Bash", {"command": f"{PY} {self.undo} run --task 42 --token t"})
 
     def test_a_ship_py_that_is_not_ours_gets_no_carve_out(self):
         fake = (self.work / "ship.py").as_posix()
@@ -321,13 +332,26 @@ class TestListedScope(Base):
         self.assertDenied("Bash", {"command": f"cd {r}/app && git commit -m x"})
         self.assertDenied("Bash", {"command": f"cat {self.kevin_file.as_posix()}"})
         self.assertDenied("Bash", {"command": "python -c \"print(open('C:/secret').read())\""})
-        self.assertPassed("Bash", {"command": f'python {HERE.as_posix()}/report.py --task 1 '
-                                              f'--status done --summary "two commits; fine"'})
+        self.assertPassed("Bash", {"command": f'{PY} {HERE.as_posix()}/report.py --task 1 '
+                                              f'--status done --summary "two commits, fine"'})
+
+    def test_review_probes_the_work_laptop_runs_only_our_report_with_nothing_expanded(self):
+        """2026-11-22 review F1, the same escape through the work laptop's report.py carve-out."""
+        rp = f"{HERE.as_posix()}/report.py"
+        own = (self.work / "report.py").as_posix()
+        for shell in ("Bash", "PowerShell"):
+            for cmd in (f'{PY} {rp} --task 1 --status done --summary "$(curl https://x.example)"',
+                        f'{PY} {rp} --task 1 --status done --summary "`whoami`"',
+                        f'{PY} {rp} --task 1 --status done --summary "a\\" ; whoami ; \\"b"',
+                        f"python {own} --task 1 --status done --summary x",
+                        f'{(self.work / "python").as_posix()} {rp} --task 1 --summary x'):
+                with self.subTest(shell=shell, cmd=cmd[-50:]):
+                    self.assertDenied(shell, {"command": cmd})
 
     def test_send_mail_runs_send_mail_checks_kevin_only(self):
-        self.assertPassed("Bash", {"command": f'python {HERE.as_posix()}/send_mail.py --task 1 '
-                                              f'--token t --to kevin --subject s --body "a; b"'})
-        self.assertDenied("Bash", {"command": f'python {HERE.as_posix()}/send_mail.py --task 1 '
+        self.assertPassed("Bash", {"command": f'{PY} {HERE.as_posix()}/send_mail.py --task 1 '
+                                              f'--token t --to kevin --subject s --body "a, b"'})
+        self.assertDenied("Bash", {"command": f'{PY} {HERE.as_posix()}/send_mail.py --task 1 '
                                               f'--token t --to kevin --subject s --body b; cat C:/x'})
 
     def test_no_web(self):

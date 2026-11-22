@@ -9,7 +9,7 @@ Two halves, because the yes sits between them (ruling 2: one yes per change ship
         --author "Bram Stoker" --licence-note "public domain (Project Gutenberg)" \
         --source-url https://www.gutenberg.org/ebooks/345
 
-    python ship.py run --task 42 --token <token from the yes>
+    python ship.py run --task 42 --token=<token from the yes>
 
 `ask` needs no token and sends nothing. For code it fetches, rebases the branch on origin/dev
 (a conflict stops it), runs the targeted tests (red stops it: ruling 4, red tests block the ship
@@ -46,6 +46,23 @@ the report. Stdlib only.
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import argparse
 import datetime
 import hashlib
@@ -63,11 +80,11 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+sys.path.append(str(HERE))  # this folder's own modules, after the standard library
 import build_lock  # noqa: E402
 import warm_worktree  # noqa: E402
-from common import (Paths, TokenRefused, find_token, load_config, read_json,  # noqa: E402
-                    write_json_atomic)
+from common import (Paths, TokenRefused, add_task_arg, find_token, load_config,  # noqa: E402
+                    read_json, write_json_atomic)
 
 KINDS = ("engine", "phone", "both", "content")
 PROJECT = "legion-engine-260906"
@@ -666,10 +683,10 @@ def read_ships(paths: Paths) -> list[dict]:
 
 
 def parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="ship.py", description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(prog="ship.py", allow_abbrev=False, description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
-    ask = sub.add_parser("ask", help="check, test, and print the ship question (no token)")
-    ask.add_argument("--task", type=int, required=True)
+    ask = sub.add_parser("ask", allow_abbrev=False, help="check, test, and print the ship question (no token)")
+    add_task_arg(ask)
     ask.add_argument("--kind", required=True, choices=KINDS)
     ask.add_argument("--branch")
     ask.add_argument("--worktree")
@@ -681,8 +698,8 @@ def parser() -> argparse.ArgumentParser:
     ask.add_argument("--author", default="")
     ask.add_argument("--licence-note", dest="licence_note")
     ask.add_argument("--source-url", dest="source_url")
-    run = sub.add_parser("run", help="ship what Kevin said yes to (needs the token)")
-    run.add_argument("--task", type=int, required=True)
+    run = sub.add_parser("run", allow_abbrev=False, help="ship what Kevin said yes to (needs the token)")
+    add_task_arg(run)
     run.add_argument("--token", required=True)
     run.add_argument("--branch", help="optional; must match the question")
     run.add_argument("--kind", choices=KINDS, help="optional; must match the question")

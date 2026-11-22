@@ -1,8 +1,8 @@
 """Send mail from Alfred's own Gmail (rulings 14 and 17, ticket 04). What a helper calls to send.
 
-    python send_mail.py --task 42 --token T --to dad@example.com --subject "Rates" \
+    python send_mail.py --task 42 --token=T --to dad@example.com --subject "Rates" \
         --body "Here is the sheet." --attach C:/.../work/task-42/rates.xlsx
-    python send_mail.py --task 43 --token T --to kevin --subject "..." --body "..." --attach FILE
+    python send_mail.py --task 43 --token=T --to kevin --subject "..." --body "..." --attach FILE
 
 Refuses unless the worker issued a confirmation token for that task (`tokens/<task>.json`):
 - `kind: yes`: Kevin answered yes to the task's needs_confirmation question. Any recipients;
@@ -17,6 +17,23 @@ Never prints or logs the app password, the body, or attachment paths.
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import argparse
 import mimetypes
 import smtplib
@@ -26,8 +43,9 @@ import time
 from email.message import EmailMessage
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import Paths, TokenRefused, find_token, load_config, write_json_atomic  # noqa: E402
+sys.path.append(str(Path(__file__).resolve().parent))  # this folder's own modules, after the standard library
+from common import (TEXT_FILE_CAP_BYTES, Paths, TokenRefused, add_task_arg, find_token,  # noqa: E402
+                    load_config, task_file, write_json_atomic)
 
 ATTACH_CAP_BYTES = 20 * 1024 * 1024  # Gmail refuses over 25 MB after encoding
 
@@ -55,8 +73,8 @@ def _find_token(paths: Paths, task: int, token: str, now: float) -> tuple[Path, 
 
 def prepare(argv: list[str], paths: Paths, cfg: dict, now: float | None = None):
     now = time.time() if now is None else now
-    ap = argparse.ArgumentParser(prog="send_mail.py")
-    ap.add_argument("--task", type=int, required=True)
+    ap = argparse.ArgumentParser(prog="send_mail.py", allow_abbrev=False)
+    add_task_arg(ap)
     ap.add_argument("--token", required=True)
     ap.add_argument("--to", action="append", required=True, help="address, or 'kevin'")
     ap.add_argument("--subject", required=True)
@@ -92,13 +110,18 @@ def prepare(argv: list[str], paths: Paths, cfg: dict, now: float | None = None):
     if cc:
         msg["Cc"] = ", ".join(cc)
     msg["Subject"] = a.subject
-    text = a.body if a.body is not None else Path(a.body_file).read_text(encoding="utf-8")
+    # Body file and attachments only from this task's own folder or its parent task's (the files a
+    # follow-up's yes is about): never any other readable file (review 11-19, round 3).
+    folders = [paths.task_work(a.task)] + ([paths.task_work(int(tok["parent"]))] if tok.get("parent") else [])
+    try:
+        text = a.body if a.body is not None else task_file(
+            a.body_file, folders, TEXT_FILE_CAP_BYTES).read_text(encoding="utf-8")
+        attach = [task_file(raw, folders) for raw in a.attach]
+    except ValueError as e:
+        raise Refused(f"{e}; copy it into the work folder first") from None
     msg.set_content(text)
     total = 0
-    for raw in a.attach:
-        p = Path(raw)
-        if not p.is_file():
-            raise Refused(f"an attachment is missing ({p.name})")
+    for p in attach:
         total += p.stat().st_size
         if total > ATTACH_CAP_BYTES:
             raise Refused("the attachments are over 20 megabytes")

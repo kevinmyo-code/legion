@@ -179,6 +179,8 @@ class WorkerHeartbeatTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         paths = Paths(Path(tmp.name))
+        import integrity
+        integrity.write_manifest(paths)  # the deployed code (review round 4c)
         cfg = {"name": "Testbox", "scope": "full", "engine_url": "http://x", "token": "t",
                "keep_awake": False}
 
@@ -210,7 +212,7 @@ class WorkerHeartbeatTest(unittest.TestCase):
         w.contact_engine(NOW)
         w.next_contact = 0
         w.contact_engine(NOW)
-        self.assertEqual(sent[0]["health"], {"cpu_c": 50.0})
+        self.assertEqual(sent[0]["health"], {"cpu_c": 50.0, "code_intact": True})
         self.assertNotIn("health", sent[1])
 
     def test_failed_heartbeat_keeps_snapshot(self):
@@ -234,7 +236,7 @@ class WorkerHeartbeatTest(unittest.TestCase):
         w.contact_engine(NOW)
         w.next_contact = 0
         w.contact_engine(NOW)
-        self.assertEqual(calls[1]["health"], {"cpu_c": 51.0})
+        self.assertEqual(calls[1]["health"], {"cpu_c": 51.0, "code_intact": True})
 
     def test_listed_machine_has_no_sampler_by_default(self):
         import worker as W

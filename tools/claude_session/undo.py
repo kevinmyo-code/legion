@@ -1,7 +1,7 @@
 r"""Undo the last ship (map alfred-builds, ticket 05). "Alfred, undo the last update."
 
     python undo.py ask --task 50
-    python undo.py run --task 51 --token <token from the yes>
+    python undo.py run --task 51 --token=<token from the yes>
 
 `ask` (no token, sends nothing) finds the newest ship in `work/ships.jsonl` that has not been
 undone, writes `undo-plan.json` into the task's work folder, and prints the question on its last
@@ -25,14 +25,32 @@ already tested and shipped, and an undo is the fast path out of a bad ship. Stdl
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import argparse
 import sys
 import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-from common import Paths, TokenRefused, find_token, load_config, read_json, write_json_atomic  # noqa: E402
+sys.path.append(str(HERE))  # this folder's own modules, after the standard library
+from common import (Paths, TokenRefused, add_task_arg, find_token, load_config,  # noqa: E402
+                    read_json, write_json_atomic)
 from ship import Refused, Shipper, World, read_ships  # noqa: E402
 
 PLAN_NAME = "undo-plan.json"
@@ -211,12 +229,12 @@ class Undoer(Shipper):
 
 def main(argv: list[str] | None = None, paths: Paths | None = None, world: World | None = None,
          say=print) -> int:
-    ap = argparse.ArgumentParser(prog="undo.py", description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(prog="undo.py", allow_abbrev=False, description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
-    ask = sub.add_parser("ask")
-    ask.add_argument("--task", type=int, required=True)
-    run = sub.add_parser("run")
-    run.add_argument("--task", type=int, required=True)
+    ask = sub.add_parser("ask", allow_abbrev=False)
+    add_task_arg(ask)
+    run = sub.add_parser("run", allow_abbrev=False)
+    add_task_arg(run)
     run.add_argument("--token", required=True)
     a = ap.parse_args(sys.argv[1:] if argv is None else argv)
     paths = paths or Paths()
