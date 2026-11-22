@@ -221,3 +221,158 @@ def test_an_organizer_past_the_cap_is_refused(auth_client):
     body = {"title": "x", "starts_at": "2026-03-12T15:00:00Z", "organizer": "a" * 321}
     response = auth_client.post("/api/events", body, format="json")
     assert response.status_code == 400 and "organizer" in response.data
+
+
+# ---- review 1121 C1: who wrote it cannot be rewritten ----
+
+
+def test_source_and_organizer_cannot_change_after_create(auth_client, household_a):
+    invite = imported(household_a, organizer=STRANGER)
+    body = {"source": "legion", "organizer": calendar_taint.ORGANIZER_SELF, "title": "Renamed"}
+    response = auth_client.patch(f"/api/events/{invite.pk}", body, format="json")
+    assert response.status_code == 200, response.data
+    invite.refresh_from_db()
+    assert (invite.source, invite.organizer, invite.title) == ("google", STRANGER, "Renamed")
+
+
+def test_a_client_sending_the_stored_source_on_update_is_unaffected(auth_client, household_a):
+    # The phone's PATCH sends every field, `source` included, as it holds it.
+    invite = imported(household_a, organizer=STRANGER)
+    response = auth_client.patch(
+        f"/api/events/{invite.pk}", {"source": "google", "done": True}, format="json"
+    )
+    assert response.status_code == 200 and response.data["source"] == "google"
+
+
+def test_the_engine_tools_never_set_who_wrote_an_event(seeded, household_a):
+    from engine_mcp.tools import TOOLS_BY_NAME, run_engine_tool
+
+    request = member_request(seeded)
+    fields = {
+        "title": "Lunch",
+        "starts_at": "2026-03-12T12:00:00",
+        "source": "google",
+        "organizer": STRANGER,
+    }
+    made = run_engine_tool(request, TOOLS_BY_NAME["add_event"], {"fields": fields})
+    assert not made.is_error, made.text
+    row = Event.objects.get(title="Lunch")
+    assert (row.source, row.organizer) == ("legion", None)
+    invite = imported(household_a, organizer=STRANGER)
+    changed = run_engine_tool(
+        request,
+        TOOLS_BY_NAME["update_event"],
+        {"id": str(invite.pk), "fields": {"source": "legion", "organizer": "self"}},
+    )
+    assert not changed.is_error, changed.text
+    invite.refresh_from_db()
+    assert (invite.source, invite.organizer) == ("google", STRANGER)
+
+
+# ---- review 1121 C2: a read inside another tool (a procedure's step) counts ----------------------
+
+
+def test_an_event_read_inside_another_tool_marks_it_and_stops_its_later_writes(seeded, household_a):
+    from engine_mcp.tools import TOOLS_BY_NAME, run_engine_tool
+
+    imported(household_a, organizer=STRANGER)
+    request = member_request(seeded)
+    with calendar_taint.watching(request) as watch:
+        read = run_engine_tool(request, TOOLS_BY_NAME["list_events"], {"from": DAY, "to": DAY})
+        assert not read.is_error
+        write = run_engine_tool(
+            request,
+            TOOLS_BY_NAME["add_event"],
+            {"fields": {"title": "Planted", "starts_at": "2026-03-12T09:00:00"}},
+        )
+    assert watch.outside is True
+    assert write.is_error and "read outside text" in write.text
+    assert not Event.objects.filter(title="Planted").exists()
+
+
+def test_watching_is_inert_for_a_request_no_one_watches(seeded, household_a):
+    from engine_mcp.tools import TOOLS_BY_NAME, run_engine_tool
+
+    imported(household_a, organizer=STRANGER)
+    request = member_request(seeded)
+    run_engine_tool(request, TOOLS_BY_NAME["list_events"], {"from": DAY, "to": DAY})
+    write = run_engine_tool(
+        request,
+        TOOLS_BY_NAME["add_event"],
+        {"fields": {"title": "Fine", "starts_at": "2026-03-12T09:00:00"}},
+    )
+    assert not write.is_error, write.text
+
+
+# ---- review 1121 C3: a write that ran stays a write that ran ----
+
+
+def test_a_failed_mark_after_an_event_write_keeps_the_write_and_withholds_the_row(
+    seeded, household_a, monkeypatch
+):
+    invite = imported(household_a, organizer=STRANGER)
+    monkeypatch.setattr(TurnStore, "mark_taint", lambda self, state: False)
+    rounds = [
+        m.call("update_event", {"id": str(invite.pk), "fields": {"done": True}}),
+        m.say("Marked."),
+    ]
+    model = m.FakeModel(rounds)
+    request = member_request(seeded)
+    conversation = open_conversation(request, None, "test")
+    seen = []
+    events = list(
+        run_turn(
+            request,
+            "mark the budget review done",
+            model,
+            conversation=conversation,
+            now=EVENING_UTC,
+            observe=seen.append,
+        )
+    )
+    assert seen[0]["ok"] is True and seen[0]["outcome"] == "ok"
+    assert done_of(events)["writes_ran"] is True
+    invite.refresh_from_db()
+    assert invite.done is True
+    response = model.requests[1].contents[-1]["parts"][0]["functionResponse"]["response"]
+    assert response["success"] is True
+    assert response["message"] == calendar_taint.WRITE_KEPT_ROW_WITHHELD
+    assert "Budget review invite" not in str(model.requests[1].contents)
+
+
+# ---- review 1121 C4: the words say which outside text it was ----
+
+
+def said(events) -> list[str]:
+    return [e.data["text"] for e in events if e.type == "sentence"]
+
+
+def test_a_calendar_taint_refuses_and_closes_in_calendar_words(seeded, household_a):
+    imported(household_a, organizer=STRANGER)
+    events, seen, conversation = turn(
+        seeded, "what's on today, and add stamps to my list", read_then_write()
+    )
+    refusal = next(c["text"] for c in seen if c["name"] == "add_checklist_item")
+    assert "calendar entry someone else wrote" in refusal
+    assert "web search" not in refusal
+    words = " ".join(said(events))
+    assert "calendar entry someone else wrote" in words
+    assert "from the web" not in words
+    # The next turn is carried, in calendar words too.
+    rounds = [m.call("add_checklist_item", {"checklist": "Todo", "text": "milk"}), m.say("Ok.")]
+    events, seen, _c = turn(seeded, "add milk", rounds, conversation=conversation)
+    refusal = next(c["text"] for c in seen if c["name"] == "add_checklist_item")
+    assert "The turn before this one read outside text" in refusal
+    assert "calendar entry someone else wrote" in refusal
+    words = " ".join(said(events))
+    assert "calendar entry someone else wrote" in words and "from the web" not in words
+
+
+def test_only_a_calendar_only_taint_gets_the_calendar_words():
+    name = "add_checklist_item"
+    assert calendar_taint.refusal(["web_search"], name) is None
+    assert calendar_taint.refusal(["calendar", "web_search"], name) is None
+    assert calendar_taint.refusal(["previous_turn"], name, carried=True) is None
+    assert "calendar entry" in calendar_taint.refusal(["calendar", "read_calendar"], name)
+    carried = calendar_taint.refusal(["previous_turn", calendar_taint.CARRIED], name, carried=True)
+    assert "The turn before this one read outside text" in carried
