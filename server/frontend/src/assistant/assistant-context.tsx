@@ -135,7 +135,7 @@ export function AssistantProvider({
   defaultOpen?: boolean
   /**
    * The demo's voice-first door (Kevin, 2026-11-17): the conversation is the engine's cascade from
-   * the first tap, before any visit exists to ask which engine; `prepare` enters the visit inside
+   * the first tap, before any visit exists to ask which engine; `prepare` waits for the visit's entry (made as the page opens) inside
    * that tap, and `funnelRef` tags the page's funnel counts.
    */
   voiceFirst?: {

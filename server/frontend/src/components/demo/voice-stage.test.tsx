@@ -12,7 +12,7 @@ import { FakeAudio, settle } from '@/test/fake-live'
 
 import indexCss from '../../index.css?raw'
 
-import { setOrbPlace } from './scroll-story'
+import { resetOrbPlace, setOrbPlace } from './scroll-story'
 import { VoiceStage } from './voice-stage'
 
 /**
@@ -305,7 +305,8 @@ describe('the docked orb when the orb is off screen', () => {
   describe('beside the sections, where there is room', () => {
     afterEach(() => {
       vi.unstubAllGlobals()
-      setOrbPlace({ side: 'right', pinned: false, placed: false })
+      resetOrbPlace()
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true })
     })
     const wide = () =>
       vi.stubGlobal('matchMedia', (query: string) => ({
@@ -315,30 +316,43 @@ describe('the docked orb when the orb is off screen', () => {
         removeEventListener() {},
       }))
     const side = () => document.querySelector<HTMLElement>('[data-stage="side"]')
+    // The orb flies with the scroll itself (`orb-flight.ts`): it lands once the page has scrolled
+    // past the stage, and goes home when it is back at the top.
+    const scrollTo = async (y: number) => {
+      await act(async () => {
+        Object.defineProperty(window, 'scrollY', { value: y, configurable: true })
+        window.dispatchEvent(new Event('scroll'))
+        await new Promise((resolve) => setTimeout(resolve, 60))
+      })
+    }
+    const away = async (seen: boolean) => {
+      deliver(seen)
+      await scrollTo(seen ? 0 : 5000)
+    }
 
-    test('rides beside the page once the orb is off screen; no foot bar, no room taken at the foot', () => {
+    test('rides beside the page once the orb is off screen; no foot bar, no room taken at the foot', async () => {
       wide()
       fakeIO()
       stage(false, true)
       act(() => setOrbPlace({ side: 'right', pinned: false }))
       expect(side()).toHaveAttribute('data-shown', 'false')
-      expect(side()).toHaveAttribute('inert')
-      deliver(false)
+      expect(side()).toHaveAttribute('aria-hidden', 'true')
+      await away(false)
       expect(side()).toHaveAttribute('data-shown', 'true')
-      expect(side()).not.toHaveAttribute('inert')
+      expect(side()).not.toHaveAttribute('aria-hidden')
       expect(side()).toHaveTextContent('Tap and ask me about Kevin')
       expect(dock()).toBeNull()
       expect(document.body.style.paddingBottom).toBe('')
-      deliver(true)
+      await away(true)
       expect(side()).toHaveAttribute('data-shown', 'false')
     })
 
-    test('follows the section in view to its side, and rides alone beside a pinned scene', () => {
+    test('follows the section in view to its side, and rides alone beside a pinned scene', async () => {
       wide()
       fakeIO()
       stage(false, true)
       act(() => setOrbPlace({ side: 'right', pinned: false }))
-      deliver(false)
+      await away(false)
       expect(side()).toHaveAttribute('data-side', 'right')
       act(() => setOrbPlace({ side: 'left', pinned: true }))
       expect(side()).toHaveAttribute('data-side', 'left')
@@ -350,7 +364,7 @@ describe('the docked orb when the orb is off screen', () => {
       fakeIO()
       const { audio, cancels } = stage(true)
       await tapOrbAndCloseCard()
-      deliver(false)
+      await away(false)
       expect(dockOrb()).toHaveAccessibleName('Interrupt the assistant')
       expect(side()).toContainElement(dockOrb())
       const flushes = audio.flushes
@@ -363,13 +377,16 @@ describe('the docked orb when the orb is off screen', () => {
       expect(document.activeElement).toBe(dockOrb())
     })
 
-    test('draws its orb only while it shows (the hidden one costs no frames)', () => {
+    test('one drawn orb at every scroll position: the flying one (Kevin, 2026-11-22: one continuous flow)', async () => {
       wide()
       fakeIO()
       stage(false, true)
-      act(() => setOrbPlace({ side: 'right', pinned: false }))
-      expect(side()!.querySelector('canvas')).toBeNull()
-      deliver(false)
+      // At the top the stage's button stays the control, with nothing drawn in it.
+      expect(orb()!.querySelector('canvas')).toBeNull()
+      expect(document.querySelectorAll('canvas')).toHaveLength(1)
+      expect(side()!.querySelector('canvas')).not.toBeNull()
+      await away(false)
+      expect(document.querySelectorAll('canvas')).toHaveLength(1)
       expect(side()!.querySelector('canvas')).not.toBeNull()
     })
 
@@ -402,7 +419,7 @@ describe('the docked orb when the orb is off screen', () => {
       })
       await screen.findByRole('group', { name: 'Suggested questions' })
       act(() => setOrbPlace({ side: 'right', pinned: false }))
-      deliver(false)
+      await away(false)
       expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
       expect(side()).toContainElement(screen.getByRole('group', { name: 'Suggested questions' }))
       act(() => setOrbPlace({ side: 'left', pinned: true }))
@@ -411,18 +428,23 @@ describe('the docked orb when the orb is off screen', () => {
       expect(screen.getAllByRole('group', { name: 'Suggested questions' })).toHaveLength(1)
     })
 
-    test('never shows before a section has placed it (the header and hero have no room for it)', () => {
+    test('takes over from the stage once it lands, over the header too: it never vanishes', async () => {
       wide()
       fakeIO()
       stage(false, true)
-      deliver(false)
       expect(side()).toHaveAttribute('data-shown', 'false')
-      expect(side()).toHaveAttribute('inert')
-      act(() => setOrbPlace({ side: 'right', pinned: false }))
+      // Not yet the page's orb for a screen reader or the keyboard: the stage's button is.
+      expect(side()).toHaveAttribute('aria-hidden', 'true')
+      expect(dockOrb()).toHaveAttribute('tabindex', '-1')
+      await away(false)
+      // No section has placed it yet (the header and hero): it is still the orb, and still drawn.
       expect(side()).toHaveAttribute('data-shown', 'true')
-      // Back above the sections: out of the way again.
-      act(() => setOrbPlace({ side: 'right', pinned: false, placed: false }))
+      expect(side()).not.toHaveAttribute('aria-hidden')
+      expect(dockOrb()).not.toHaveAttribute('tabindex')
+      expect(side()!.querySelector('canvas')).not.toBeNull()
+      await away(true)
       expect(side()).toHaveAttribute('data-shown', 'false')
+      expect(side()!.querySelector('canvas')).not.toBeNull()
     })
 
     test('chips you can see under the stage orb answer a tap at every scroll position; only off screen do they step aside', async () => {
@@ -475,13 +497,15 @@ describe('the docked orb when the orb is off screen', () => {
         await settle()
       })
       expect(asked).toEqual(['An invented question?'])
-      // The chips scroll off too: the side copy takes over, the off-screen one steps aside.
+      // The chips scroll off too and the orb lands: the side copy takes over, the off-screen one
+      // steps aside.
+      await scrollTo(5000)
       deliverBy(0, false)
       expect(room()).toHaveAttribute('inert')
       expect(side()).toContainElement(screen.getByRole('group', { name: 'Suggested questions' }))
     })
 
-    test('narrower, or with reduced motion, it docks at the foot as before', () => {
+    test('narrower, with motion allowed, the orb flies into the foot bar', async () => {
       vi.stubGlobal('matchMedia', (query: string) => ({
         matches: !query.includes('min-width'),
         media: query,
@@ -490,7 +514,27 @@ describe('the docked orb when the orb is off screen', () => {
       }))
       fakeIO()
       stage(false, true)
-      deliver(false)
+      expect(side()).toHaveAttribute('data-rest', 'dock')
+      expect(side()).toContainElement(dock())
+      await away(false)
+      expect(side()).toHaveAttribute('data-shown', 'true')
+      // The bar keeps an empty slot; the drawn orb is the flying one.
+      expect(dock()!.querySelector('canvas')).toBeNull()
+      expect(document.querySelectorAll('canvas')).toHaveLength(1)
+      expect(document.body.style.paddingBottom).not.toBe('')
+    })
+
+    test('with reduced motion it docks at the foot as before, with its own small orb', async () => {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      }))
+      fakeIO()
+      stage(false, true)
+      expect(side()).toBeNull()
+      await away(false)
       expect(side()).toBeNull()
       expect(dock()).not.toBeNull()
     })

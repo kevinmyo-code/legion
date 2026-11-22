@@ -1,15 +1,16 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import {
-  DEMO_SESSION_KEY,
   enterDemo,
   useDemoContent,
   useDemoSession,
   type DemoContent,
   type DemoProject,
   type DemoProjectSection,
+  type DemoQuality,
+  type SectionTheme,
 } from '@/api/demo'
 import { useMe } from '@/api/queries'
 import {
@@ -20,6 +21,7 @@ import {
   useAssistantEngine,
   type ChatCopy,
 } from '@/assistant/assistant-context'
+import { CascadeClient } from '@/assistant/cascade-client'
 import { FamilyAssistant } from '@/components/assistant/family-assistant'
 import { AssistantModals } from '@/components/assistant/assistant-modals'
 import { usePresenter } from '@/components/assistant/cards/presenter-context'
@@ -32,7 +34,7 @@ import { VoiceStage } from '@/components/demo/voice-stage'
 import { Media } from '@/screens/try-media'
 import { LegionScene } from '@/screens/try-legion-scene'
 import { PhoneSection } from '@/screens/try-phone'
-import { useStoryMotion, useStorySections, type OrbSide } from '@/components/demo/scroll-story'
+import { useOrbPlace, useSectionThemes, useStoryMotion, useStorySections, type OrbSide } from '@/components/demo/scroll-story'
 
 /**
  * The recruiter section (recruiter-demo ticket 07). The look is prototype D
@@ -106,9 +108,9 @@ const PREVIEW_COPY: ChatCopy = { subtitle: 'Your assistant (preview)', voiceFirs
 export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  // The link's code, kept for the orb's tap (voice-first, Kevin 2026-11-17): the visit is entered
-  // by the tap that opens the audio, not on load. It leaves the address bar at once, so it is never
-  // in the history or a copied URL.
+  // The link's code (Kevin, 2026-11-22: the link shows the same full page as a typed code). It
+  // leaves the address bar at once, so it is never in the history or a copied URL; the visit is
+  // entered as the page opens (`linkEntry` below), and the audio still starts on the orb's tap.
   const [linkCode] = useState(code)
   const [linkError, setLinkError] = useState<string | null>(null)
   const counted = useRef(false)
@@ -125,59 +127,125 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   const me = useMe()
   const recruiter = session.data?.role === 'recruiter'
   // A visit's own session is signed in too: a member is someone signed in who is not a visitor.
-  // Never decided while the tap is entering: entering refetches both, and `me` landing first
-  // briefly read the new visitor as a member, which unmounted the orb mid-tap (review item 2).
+  // Never decided while the link is entering: entering refetches both, and `me` landing first
+  // briefly read the new visitor as a member, which unmounted the orb (review item 2). Nor once a
+  // link's visit has ended: `me` may still say signed in until it is asked again.
   const [entering, setEntering] = useState(false)
-  const entryToken = useRef(0)
-  const member = me.data?.signedIn === true && !recruiter && !entering
+  const [visitEnded, setVisitEnded] = useState(false)
+  const member = me.data?.signedIn === true && !recruiter && !entering && !visitEnded
+  // The link's entry: started once on load, and a tap that comes while it runs waits on the same
+  // one, so one link never spends two of the per-address tries or seeds two visits. It is dropped
+  // when it fails, when the tap waiting on it gives up (its request is aborted), and when the visit
+  // ends, so the next tap enters afresh with the link's code.
+  const linkEntry = useRef<{ done: Promise<boolean>; abort: AbortController } | null>(null)
+  const enterLink = useCallback(
+    (signal?: AbortSignal) => {
+      let entry = linkEntry.current
+      if (!entry) {
+        const abort = new AbortController()
+        // This entry is the page's own until it is dropped: it is known by its abort controller.
+        const mine = () => linkEntry.current?.abort === abort
+        const current = () => mine() && !abort.signal.aborted
+        const made: { done: Promise<boolean>; abort: AbortController } = {
+          abort,
+          done: (async () => {
+            setEntering(true)
+            try {
+              const result = await enterDemo(linkCode ?? '', refTag, abort.signal)
+              if (!current()) return false
+              if (!result.ok) {
+                setLinkError(result.message)
+                return false
+              }
+              // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
+              const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
+              if (!current()) return false
+              await queryClient.invalidateQueries()
+              setVisitEnded(false)
+              return current() && chosen?.engine !== 'live'
+            } finally {
+              if (mine() || linkEntry.current === null) setEntering(false)
+            }
+          })(),
+        }
+        void made.done.then((ok) => {
+          if (!ok && mine()) linkEntry.current = null
+        })
+        linkEntry.current = made
+        entry = made
+      }
+      const waited = entry
+      signal?.addEventListener(
+        'abort',
+        () => {
+          if (linkEntry.current !== waited) return
+          waited.abort.abort()
+          linkEntry.current = null
+        },
+        { once: true },
+      )
+      return waited.done
+    },
+    [linkCode, refTag, queryClient],
+  )
+  // A link's visit that ends (its two hours run out) is forgotten: the page waits for a tap, which
+  // enters again. Never on its own: an open tab must not renew a visit nobody is using.
+  const wasRecruiter = useRef(false)
+  useEffect(() => {
+    if (session.isPending) return
+    if (wasRecruiter.current && !recruiter && linkCode !== undefined) {
+      linkEntry.current = null
+      setVisitEnded(true)
+    }
+    wasRecruiter.current = recruiter
+  }, [recruiter, session.isPending, linkCode])
+  // Entered on load once the page knows who is here, once per page: never over a visit this
+  // browser already holds (a second click on the resume link inside the two hours), never for a
+  // signed-in member (Kevin checking his own link would be signed out by the visit's login), and
+  // only once the page is actually shown: a prerendered or background tab waits until it is looked at.
+  const settled = !session.isPending && !me.isPending
+  const holdsVisit = recruiter || me.data?.signedIn === true
+  const triedOnLoad = useRef(false)
+  useEffect(() => {
+    if (linkCode === undefined || !settled || holdsVisit || triedOnLoad.current) return
+    const go = () => {
+      if (document.visibilityState !== 'visible') return false
+      triedOnLoad.current = true
+      void enterLink()
+      return true
+    }
+    if (go()) return
+    const onVisible = () => {
+      if (go()) document.removeEventListener('visibilitychange', onVisible)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [linkCode, settled, holdsVisit, enterLink])
   // The engine's switch (ADR 0102): a visit whose engine is Live gets the Live dock page, so a
   // server-side rollback needs no new web build. Asked once a visit exists (it is the visit's own
-  // answer); before that, the tap's entry asks it before any greeting (`enter` below).
+  // answer); before that, the entry asks it before any greeting (`enterLink` above).
   const engine = useAssistantEngine(recruiter)
   const liveVisit = recruiter && engine.data?.engine === 'live'
 
-  // When the visit runs out, ask again, so the page goes back to the code box
-  // instead of showing an assistant that will refuse.
+  // When the visit runs out, ask again (who is here, too), so the page goes back to the code box,
+  // or for a link to a tap that enters again, instead of showing an assistant that will refuse.
   const expiresAt = recruiter ? session.data?.expires_at : undefined
   useEffect(() => {
     if (!expiresAt) return
     const wait = Date.parse(expiresAt) - Date.now() + 1000
     if (!Number.isFinite(wait)) return
-    const timer = setTimeout(() => void queryClient.invalidateQueries({ queryKey: DEMO_SESSION_KEY }), Math.max(wait, 0))
+    const timer = setTimeout(() => void queryClient.invalidateQueries(), Math.max(wait, 0))
     return () => clearTimeout(timer)
   }, [expiresAt, queryClient])
 
   const awaitingEngine = recruiter && engine.isPending
   if (!member && !liveVisit && !linkError && !awaitingEngine && (linkCode !== undefined || recruiter)) {
-    // Every visitor gets the voice stage (Kevin, 2026-11-17): a link with its code (the tap enters),
-    // a reload of a visit, or a code typed in the box. One branch, so entering never remounts it.
+    // Every visitor gets the voice stage and the page under it (Kevin, 2026-11-22: the link shows
+    // the same full page as a typed code): a link with its
+    // code (entered on load), a reload of a visit, or a code typed in the box. One branch, so
+    // entering never remounts the stage.
     return (
-      <VoiceFirstVisit
-        refTag={refTag}
-        entered={recruiter}
-        expiresAt={expiresAt}
-        enter={async (signal) => {
-          // Each entry is its own: one the conversation gave up on (aborted) never touches the page.
-          const token = ++entryToken.current
-          const current = () => token === entryToken.current && !signal.aborted
-          setEntering(true)
-          try {
-            const result = await enterDemo(linkCode ?? '', refTag, signal)
-            if (!current()) return false
-            if (!result.ok) {
-              setLinkError(result.message)
-              return false
-            }
-            // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
-            const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
-            if (!current()) return false
-            await queryClient.invalidateQueries()
-            return current() && chosen?.engine !== 'live'
-          } finally {
-            if (token === entryToken.current) setEntering(false)
-          }
-        }}
-      />
+      <VoiceFirstVisit refTag={refTag} entered={recruiter} ended={visitEnded} expiresAt={expiresAt} enter={enterLink} />
     )
   }
 
@@ -221,15 +289,32 @@ function Shell({
   children,
   assistant = false,
   dock = true,
+  voice = false,
 }: {
   children: ReactNode
   assistant?: boolean
   /** False on the voice-first page: its stage is the conversation, so no second dock or bar. */
   dock?: boolean
+  /** A visitor's voice-first page: the orb flies over it, and its sections keep room for it. */
+  voice?: boolean
 }) {
   const desk = useSurface() === 'workbench'
+  // The page's mood follows the section in view (`useSectionThemes`); the sign-in door has none.
+  const theme = useOrbPlace().theme
+  const moody = voice || assistant
   const page = (
-    <div className="recruiter rc-layout">
+    <div
+      className="recruiter rc-layout"
+      data-voice={voice ? 'on' : undefined}
+      data-page-theme={moody ? theme : undefined}
+    >
+      {moody && (
+        <div className="rc-ambient" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
       <div className="rc-column rc-prose">
         <div className="rc-inner">{children}</div>
         {assistant && dock && !desk && <FamilyAssistant launcher="bar" />}
@@ -286,18 +371,22 @@ function expiryWords(iso: string | undefined): string | null {
 }
 
 /**
- * A visit opened from a link with its code (voice-first, Kevin 2026-11-17): one provider for the
- * whole page, so the tap on the orb that enters the visit and unlocks the audio is the same
- * conversation that then runs. Before the tap: the orb and its line. After: the page below it.
+ * A visitor's page (voice-first, Kevin 2026-11-17): one provider for the whole page, so the tap on
+ * the orb that unlocks the audio is the same conversation that then runs. A link's visit is entered
+ * as the page opens (Kevin, 2026-11-22); a tap that comes before that entry has answered waits on
+ * the same entry (`enter`), never a second one.
  */
 function VoiceFirstVisit({
   refTag,
   entered,
+  ended,
   expiresAt,
   enter,
 }: {
   refTag?: string
   entered: boolean
+  /** A link's visit ran out: the next tap enters again. */
+  ended: boolean
   expiresAt?: string
   enter: (signal: AbortSignal) => Promise<boolean>
 }) {
@@ -326,24 +415,39 @@ function VoiceFirstVisit({
       sessionLimit={VISITOR_SESSION_ENDED}
       copy={VISITOR_COPY}
     >
-      <VisitorBody entered={entered} expiresAt={expiresAt} />
+      <VisitorBody entered={entered} ended={ended} expiresAt={expiresAt} />
     </AssistantProvider>
   )
 }
 
 /**
- * Before the tap: the stage alone. After it: the same stage, with the page under it. One tree for
- * both, so entering never mounts the stage again (the browser run, 2026-11-19: the tour's tap
- * remounted it, the orb and the page modal's provider with it).
+ * While a link's visit is being entered: the stage alone, and a line saying so. Then the same
+ * stage, with the page under it. One tree for both, so entering never mounts the stage again (the
+ * browser run, 2026-11-19: a remount restarted the orb and the page modal's provider with it).
  */
-function VisitorBody({ entered, expiresAt }: { entered: boolean; expiresAt?: string }) {
+function VisitorBody({ entered, ended, expiresAt }: { entered: boolean; ended: boolean; expiresAt?: string }) {
   const content = useDemoContent(entered)
+  // The visit this conversation entered is over: the next tap enters again (`forgetEntry`).
+  const { client } = useAssistant()
+  useEffect(() => {
+    if (ended && client instanceof CascadeClient) client.forgetEntry()
+  }, [ended, client])
   const access = <AccessNote expiry={expiryWords(expiresAt)} />
   const loaded = entered && content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
   return (
-    <Shell assistant dock={false}>
+    <Shell assistant dock={false} voice>
       <VoiceStage content={loaded} />
-      {entered && (loaded ? <Sections content={loaded} access={access} ask={false} /> : access)}
+      {entered ? (
+        loaded ? (
+          <Sections content={loaded} access={access} ask={false} />
+        ) : (
+          access
+        )
+      ) : (
+        <p role="status" className="rc-status">
+          {ended ? 'Your demo visit has ended. Tap the orb to start a new one.' : 'Opening the demo…'}
+        </p>
+      )}
     </Shell>
   )
 }
@@ -402,19 +506,18 @@ function RecruiterPage({ mode, expiresAt, refTag }: { mode: 'visitor' | 'preview
 }
 
 /**
- * The way from this page into the normal app (ticket 13, rulings 1 and 2): the
- * same screens a member uses, on the visitor's own copy of the made-up
- * household. The app's demo banner links back here. The expiry sentence is its
- * own element so it can be found and read on its own.
+ * What a visitor's visit is: until when, and that the assistant's changes land only in their own
+ * copy. No way into the members' web app from here (Kevin, 2026-11-22: the demo shows the phone
+ * and the assistant, not the web app); the expiry sentence is its own element so it can be found
+ * and read on its own.
  */
 function AccessNote({ expiry }: { expiry: string | null }) {
   return (
     <p className="rc-access">
       {expiry && <span>{expiry}</span>}
       {expiry && ' '}
-      The app itself is open too: Money, Fleet, Lists, Calendar, Places and Notes, on your own copy of the made-up
-      household. Anything you change stays in your copy and is deleted when the visit ends.{' '}
-      <Link to="/">Open the app</Link>.
+      Anything the assistant changes happens only in your own copy of the made-up household, and is deleted when
+      the visit ends.
     </p>
   )
 }
@@ -433,7 +536,7 @@ function propertiesHeading(count: number): string {
 }
 
 function Sections({ content, access, ask = true }: { content: DemoContent; access: ReactNode; ask?: boolean }) {
-  const { hero, look_for: lookFor, work, experience, links, assets, phone, legion } = content
+  const { hero, work, experience, links, assets, phone, legion } = content
   const name = content.name?.trim() || 'LEGION'
   const hasPhone = phone !== undefined && phone.clips.length > 0
   const projects = content.projects ?? []
@@ -443,6 +546,7 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
   const motion = useStoryMotion()
   const main = useRef<HTMLElement>(null)
   useStorySections(main, motion, content)
+  useSectionThemes(main, content)
   let sideIndex = 0
   const nextSide = (): OrbSide => (sideIndex++ % 2 === 0 ? 'right' : 'left')
   return (
@@ -455,10 +559,6 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
           {hasPhone && <a href="#phone">Phone</a>}
           {work && <a href="#work">Work</a>}
           <a href="#experience">Experience</a>
-          {/* At phone width the access note carries this link, so the nav stays one row (CSS). */}
-          <Link to="/" data-nav-app="">
-            Open the app
-          </Link>
         </nav>
       </header>
 
@@ -486,18 +586,6 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
 
         {projects.length > 0 && <ProjectsStrip projects={projects} side={nextSide()} />}
 
-        {lookFor.length > 0 && (
-          <Section id="look-for" title="What to look for" side={nextSide()}>
-            <div className="rc-runin">
-              {lookFor.map((item) => (
-                <p key={item.title}>
-                  <b>{runIn(item.title)}</b> {item.body}
-                </p>
-              ))}
-            </div>
-          </Section>
-        )}
-
         {legion && (
           <Section id="legion" title={legion.title} side={nextSide()} pinned={motion && Boolean(legion.diagram_svg)}>
             <p>{legion.intro}</p>
@@ -516,6 +604,7 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
                 ))}
               </div>
             )}
+            {legion.quality && <Quality quality={legion.quality} />}
           </Section>
         )}
 
@@ -614,6 +703,8 @@ function Section({
   title,
   side,
   pinned = false,
+  theme,
+  mark,
   children,
 }: {
   id: string
@@ -622,6 +713,10 @@ function Section({
   side?: OrbSide
   /** A pinned scene: the orb rides alone beside it. */
   pinned?: boolean
+  /** Its palette (`index.css` `[data-page-theme]`); none is LEGION's. */
+  theme?: SectionTheme
+  /** The mark the orb takes on beside it. */
+  mark?: 'q'
   children: ReactNode
 }) {
   return (
@@ -631,6 +726,8 @@ function Section({
       className="rc-section"
       data-orb-side={side}
       data-pinned={pinned ? 'true' : undefined}
+      data-theme={theme}
+      data-orb-mark={mark}
     >
       <h2 id={`${id}-title`} className="rc-h2">
         {title}
@@ -723,8 +820,16 @@ function ProjectsStrip({ projects, side }: { projects: DemoProject[]; side?: Orb
 /** A project after LEGION's: the same parts as the LEGION section, plus its media slot. */
 function ProjectSection({ section, side }: { section: DemoProjectSection; side?: OrbSide }) {
   return (
-    <Section id={section.id} title={section.title} side={side}>
+    <Section id={section.id} title={section.title} side={side} theme={section.theme} mark={section.orb_mark}>
       <p>{section.intro}</p>
+      {section.link && (
+        <p className="rc-demo-link">
+          {/* A live demo elsewhere: a new tab, and it learns nothing of this page. */}
+          <a href={section.link.href} target="_blank" rel="noopener noreferrer">
+            {section.link.label}
+          </a>
+        </p>
+      )}
       {section.diagram_svg && <Diagram svg={section.diagram_svg} caption={section.diagram_caption ?? ''} />}
       {section.parts.length > 0 && (
         <div className="rc-runin">
@@ -737,6 +842,40 @@ function ProjectSection({ section, side }: { section: DemoProjectSection; side?:
       )}
       {section.media && <Media media={section.media} title={section.title} />}
     </Section>
+  )
+}
+
+/**
+ * "Quality for voice agents" (Kevin, 2026-11-22), inside the LEGION section: a row of figures,
+ * then the checks behind them as run-in lines. Both are lists, so a new check is one more row.
+ */
+function Quality({ quality }: { quality: DemoQuality }) {
+  return (
+    <div className="rc-quality" aria-labelledby="legion-quality-title">
+      <h3 id="legion-quality-title" className="rc-h3">
+        {quality.title}
+      </h3>
+      {quality.intro && <p>{quality.intro}</p>}
+      {quality.stats.length > 0 && (
+        <dl className="rc-tiles">
+          {quality.stats.map((stat) => (
+            <div key={`${stat.value}-${stat.label}`} className="rc-tile">
+              <dt>{stat.value}</dt>
+              <dd>{stat.label}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {quality.checks.length > 0 && (
+        <div className="rc-runin">
+          {quality.checks.map((check) => (
+            <p key={check.title}>
+              <b>{runIn(check.title)}</b> {check.body}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

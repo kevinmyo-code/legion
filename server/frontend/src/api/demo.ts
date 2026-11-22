@@ -46,7 +46,19 @@ export interface DemoLegion {
   diagram_svg?: string
   diagram_caption?: string
   parts: { title: string; body: string }[]
+  /** "Quality for voice agents" (Kevin, 2026-11-22): figures and the checks behind them. */
+  quality?: DemoQuality
 }
+
+export interface DemoQuality {
+  title: string
+  intro?: string
+  stats: { value: string; label: string }[]
+  checks: { title: string; body: string }[]
+}
+
+/** A section's palette (`index.css` `[data-theme]`); the page blends to it as it scrolls in. */
+export type SectionTheme = 'legion' | 'ledger' | 'midcon' | 'aw4'
 
 /**
  * A clip slot that may not be filled yet: with `video` the page plays it, without one it says
@@ -87,6 +99,11 @@ export interface DemoSectionMedia extends DemoMedia {
 export interface DemoProjectSection extends DemoLegion {
   id: string
   media?: DemoSectionMedia
+  /** A live demo to try, opened in a new tab (https only, the engine's schema). */
+  link?: { href: string; label: string }
+  theme?: SectionTheme
+  /** The mark the orb takes on beside this section. */
+  orb_mark?: 'q'
 }
 
 export interface DemoContent {

@@ -835,7 +835,7 @@ def test_no_model_request_in_a_conversation_ever_holds_his_sentences(loaded, vis
     _events(_post(visitor, text="And his experience?", conversation_id=conversation))
     _events(_post(visitor, text="Did he graduate?", conversation_id=conversation))
     beat = _events(_post(visitor, tour=0, conversation_id=conversation))
-    assert [s["text"] for s in _of(beat, "sentence")][0] == " ".join(LOCATION)
+    assert [s["text"] for s in _of(beat, "sentence")][0] == LOCATION[0]
     diagram = _events(_post(visitor, tour=1, conversation_id=conversation))
     caption = [s["text"] for s in _of(diagram, "sentence")][0]
     assert _of(diagram, "tool")[0]["name"] == "show_diagram"
@@ -910,7 +910,8 @@ def test_the_tours_who_beat_is_his_profile_in_the_third_person_never_the_page_le
     )
     beat = _events(_post(visitor, tour=0))
     said = [s["text"] for s in _of(beat, "sentence")][0]
-    assert said == " ".join(LOCATION)
+    # One sentence since 2026-11-22 (Kevin found the tour too dense).
+    assert said == LOCATION[0]
     words = said.replace(".", " ").replace(",", " ").split()
     assert not any(w in _FIRST_PERSON or w.lower() in ("my", "me", "mine", "myself") for w in words)
     assert "I build" not in said

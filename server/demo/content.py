@@ -149,8 +149,16 @@ RESERVED_SECTION_IDS = (
     "projects", "look-for", "legion", "phone", "work", "experience", "hero-title",
 )  # fmt: skip
 
+# The page's section palettes (Kevin, 2026-11-22: a different feel per section): the
+# page blends to a section's palette as it scrolls in. Named in `index.css` (`[data-theme]`).
+SECTION_THEMES = ("legion", "ledger", "midcon", "aw4")
+# A mark the orb takes on beside a section (Kevin, 2026-11-22: the orb becomes the finance voice
+# demo's Q at its section). Only a letter drawn from a system font: no logo file is shipped.
+ORB_MARKS = ("q",)
+
 # A project section below LEGION's (Kevin, 2026-11-05: the second project). The same shape as
-# `legion`, plus the `id` the strip's anchor points at and an optional media slot.
+# `legion`, plus the `id` the strip's anchor points at, an optional media slot, an optional link
+# out to a live demo (https only: the page opens it in a new tab), a palette and an orb mark.
 _PROJECT_SECTION = _obj(
     {
         "id": {
@@ -164,8 +172,28 @@ _PROJECT_SECTION = _obj(
         "diagram_caption": _STR,
         "parts": {"type": "array", "items": _TITLE_BODY},
         "media": _SECTION_MEDIA,
+        "link": _obj({"href": {"type": "string", "pattern": r"^https://\S+\Z"}, "label": _STR}),
+        "theme": {"enum": list(SECTION_THEMES)},
+        "orb_mark": {"enum": list(ORB_MARKS)},
     },
-    optional=("diagram_svg", "diagram_caption", "media"),
+    optional=("diagram_svg", "diagram_caption", "media", "link", "theme", "orb_mark"),
+)
+
+# "Quality for voice agents" inside the LEGION section (Kevin, 2026-11-22): a few figures and the
+# checks behind them, short and visual. Lists, so later checks (a scenario, a card) add rows only.
+MAX_QUALITY_STATS = 6
+_QUALITY = _obj(
+    {
+        "title": _STR,
+        "intro": _STR,
+        "stats": {
+            "type": "array",
+            "items": _obj({"value": _STR, "label": _STR}),
+            "maxItems": MAX_QUALITY_STATS,
+        },
+        "checks": {"type": "array", "items": _TITLE_BODY},
+    },
+    optional=("intro",),
 )
 
 CONTENT_SCHEMA: dict = _obj(
@@ -203,8 +231,9 @@ CONTENT_SCHEMA: dict = _obj(
                 "diagram_svg": _STR,
                 "diagram_caption": _STR,
                 "parts": {"type": "array", "items": _TITLE_BODY},
+                "quality": _QUALITY,
             },
-            optional=("diagram_svg", "diagram_caption"),
+            optional=("diagram_svg", "diagram_caption", "quality"),
         ),
         # Optional, so content written before them still loads: without `projects` no strip is
         # drawn, without `project_sections` nothing below LEGION's section.

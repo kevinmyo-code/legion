@@ -712,7 +712,9 @@ for (const width of [900, 1024, 1280]) {
     await ctx.close()
     for (const r of results) {
       expect(r.hits, `${r.how}: the side orb covered a header link`).toEqual([])
-      expect(r.shownWhileHeader, `${r.how}: the side orb showed while the header was on screen`).toBe(0)
+      // Since 2026-11-22 the orb never vanishes (Kevin: one continuous flow): it may be at rest
+      // while the header shows, so long as it covers none of its links (`shownWhileHeader` is kept
+      // in the numbers file for looking).
     }
   })
 }

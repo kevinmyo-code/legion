@@ -659,6 +659,12 @@ export class CascadeClient {
     return this.audioIO?.levels?.() ?? { input: 0, output: 0 }
   }
 
+  /** The visit this client entered has ended (it ran out): the next tap enters again. */
+  forgetEntry() {
+    this.dropEntry()
+    this.prepared = false
+  }
+
   reset() {
     this.rememberLastAsked()
     this.cutReply(null)

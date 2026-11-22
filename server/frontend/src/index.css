@@ -309,6 +309,94 @@
 }
 
 /*
+ * The /try page's moods (Kevin, 2026-11-22: more energy than the old beige page, in colour and
+ * motion, and a different feel per section). A visitor's page and the member's
+ * preview carry `data-page-theme` (the sign-in door does not): the palette of the section at the
+ * middle of the screen (`scroll-story.ts` `useSectionThemes`). Tune a mood here and nowhere else:
+ * paper, ink, meta (secondary text), rule, accent (links, buttons, the orb's sweep and its mark)
+ * and three glows, the slow light behind the page (`.rc-ambient`).
+ *
+ * Contrast (WCAG AA, checked 2026-11-22, with a glow at its strongest, 22%, under the text): ink
+ * 10:1 or more, meta 5.3:1 or more, accent 4.6:1 or more, white on accent 5.9:1 or more.
+ *
+ * The colours are registered (`@property`), so the page blends from one mood to the next instead
+ * of cutting; under reduced motion the blend is a short fade.
+ */
+@property --rc-paper { syntax: "<color>"; inherits: true; initial-value: #faf8f3; }
+@property --rc-ink { syntax: "<color>"; inherits: true; initial-value: #1d1a16; }
+@property --rc-meta { syntax: "<color>"; inherits: true; initial-value: #6b655b; }
+@property --rc-rule { syntax: "<color>"; inherits: true; initial-value: #dcd6ca; }
+@property --rc-accent { syntax: "<color>"; inherits: true; initial-value: #8a2d1e; }
+@property --rc-glow-1 { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --rc-glow-2 { syntax: "<color>"; inherits: true; initial-value: transparent; }
+@property --rc-glow-3 { syntax: "<color>"; inherits: true; initial-value: transparent; }
+
+/* LEGION's: a cool bright paper, ink with a violet cast, an electric violet accent; coral, violet
+   and teal light. The default for every section that names no mood of its own. */
+.recruiter[data-page-theme] {
+    --rc-paper: #f7f6fc;
+    --rc-ink: #15131f;
+    --rc-meta: #524e66;
+    --rc-rule: #dddbea;
+    --rc-accent: #5b2ee0;
+    --rc-glow-1: #ff5e3a;
+    --rc-glow-2: #7b5cff;
+    --rc-glow-3: #12b8c2;
+    --surface-2: color-mix(in srgb, var(--rc-paper) 92%, var(--rc-accent));
+    --muted: var(--surface-2);
+    --accent: color-mix(in srgb, var(--rc-paper) 86%, var(--rc-accent));
+    --primary-container: var(--surface-2);
+    --outline: color-mix(in srgb, var(--rc-meta) 60%, var(--rc-paper));
+    transition:
+        --rc-paper 900ms ease,
+        --rc-ink 900ms ease,
+        --rc-meta 900ms ease,
+        --rc-rule 900ms ease,
+        --rc-accent 900ms ease,
+        --rc-glow-1 1200ms ease,
+        --rc-glow-2 1200ms ease,
+        --rc-glow-3 1200ms ease;
+}
+/* "ledger": the finance voice demo's own palette (its stylesheet): cool grey paper, deep green. */
+.recruiter[data-page-theme="ledger"] {
+    --rc-paper: #f4f6f7;
+    --rc-ink: #14181c;
+    --rc-meta: #4f5964;
+    --rc-rule: #dfe4e7;
+    --rc-accent: #026b21;
+    --rc-glow-1: #35b866;
+    --rc-glow-2: #7fcf9c;
+    --rc-glow-3: #9db8c4;
+}
+/* An equipment dealer's yard: steel-blue paper, slate ink, safety orange, amber light. */
+.recruiter[data-page-theme="midcon"] {
+    --rc-paper: #eff2f5;
+    --rc-ink: #10161d;
+    --rc-meta: #465161;
+    --rc-rule: #d5dbe2;
+    --rc-accent: #9c3305;
+    --rc-glow-1: #f59e0b;
+    --rc-glow-2: #64748b;
+    --rc-glow-3: #fb923c;
+}
+/* A garage: canvas paper, olive drab, amber work light and a rust glow. No marks of any maker. */
+.recruiter[data-page-theme="aw4"] {
+    --rc-paper: #f3f3ec;
+    --rc-ink: #1b1e14;
+    --rc-meta: #474d3a;
+    --rc-rule: #d9dbcc;
+    --rc-accent: #4c5a17;
+    --rc-glow-1: #8a9a3b;
+    --rc-glow-2: #d97706;
+    --rc-glow-3: #9a3412;
+}
+@media (prefers-reduced-motion: reduce) {
+    .recruiter[data-page-theme] {
+        transition-duration: 200ms;
+    }
+}
+
+/*
  * Square corners everywhere inside, components included. The radius tokens
  * cannot do this: they are declared `@theme inline`, so `rounded-card` compiles
  * to a literal length, and `rounded-full` is no token at all. This rule is
@@ -327,6 +415,13 @@
 }
 .recruiter .rc-phone .rc-pscreen {
     border-radius: 25px;
+}
+
+/* The flying orb is round to the pointer too: a tap on the orb you see is the orb's, and a tap
+   beside it (in the corner of its square) reaches what is under it. */
+.recruiter .rc-flyer {
+    overflow: hidden;
+    border-radius: 50%;
 }
 
 /* The other exception: the voice stage's suggestion chips are pills (Kevin, 2026-11-19, "the
@@ -653,7 +748,9 @@
         .recruiter .rc-stage {
             position: static !important;
         }
-        .recruiter .rc-voice-side {
+        .recruiter .rc-flyer,
+        .recruiter .rc-side-words,
+        .recruiter .rc-ambient {
             display: none !important;
         }
         .recruiter [data-story="on"] .rc-hero .rc-h1 {
@@ -676,12 +773,28 @@
         }
     }
 
-    /* The orb beside the sections (>= 900 px): one fixed element moved between the sides by a
-       transform; hidden (and inert) while the stage's own orb is on screen. */
+    /* The orb in flight (Kevin, 2026-11-22: one continuous flow; `components/demo/orb-flight.ts`):
+       one fixed orb as large as the stage's, moved and scaled only by the transform the flight
+       writes. Its wrapper draws no box of its own. Beside the sections (>= 900 px) its status
+       line and chips are a column under its rest place, moved between the sides by a transform;
+       on a phone its rest place is the foot bar's slot. */
     .recruiter .rc-voice-side {
+        display: contents;
+    }
+    .recruiter .rc-flyer {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 50;
+        pointer-events: auto;
+        transform-origin: 50% 50%;
+        will-change: transform;
+    }
+
+    .recruiter .rc-side-words {
         --side-x: calc(100vw - 14rem);
         position: fixed;
-        top: 50%;
+        top: calc(50% + 3rem);
         left: 0;
         z-index: 50;
         display: flex;
@@ -691,19 +804,19 @@
         gap: 0.5rem;
         opacity: 0;
         visibility: hidden;
-        /* Only the orb and the chips take a click; the status line never swallows one meant for
-           the page under it (review recheck 2026-11-20). */
+        /* Only the chips take a click; the status line never swallows one meant for the page
+           under it (review recheck 2026-11-20). */
         pointer-events: none;
-        transform: translate(var(--side-x), -50%);
+        transform: translateX(var(--side-x));
         transition:
             transform 800ms cubic-bezier(0.2, 0, 0, 1),
             opacity 300ms ease-out,
             visibility 0s linear 300ms;
     }
-    .recruiter .rc-voice-side[data-side="left"] {
+    .recruiter .rc-voice-side[data-side="left"] .rc-side-words {
         --side-x: 1.5rem;
     }
-    .recruiter .rc-voice-side[data-shown="true"] {
+    .recruiter .rc-voice-side[data-shown="true"] .rc-side-words {
         opacity: 1;
         visibility: visible;
         transition:
@@ -711,29 +824,29 @@
             opacity 300ms ease-out,
             visibility 0s;
     }
-    .recruiter .rc-side-orb,
-    .recruiter .rc-voice-side .rc-chips {
-        pointer-events: auto;
-    }
-    /* 10rem (Kevin, 2026-11-20: "about twice as big"): still inside the 12rem column and the 14rem
-       room each section keeps, so it covers no section text at any width from 900 px. */
-    .recruiter .rc-side-orb {
-        width: 10rem;
-        height: 10rem;
-        color: var(--rc-ink);
-        --orb-accent: var(--rc-accent);
-    }
-    .recruiter .rc-side-words {
-        display: flex;
-        width: 100%;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.5rem;
-        transition: opacity 300ms ease-out;
-    }
+    /* Beside a pinned scene the orb rides alone: its line and chips would cover the scene. */
     .recruiter .rc-voice-side[data-pinned="true"] .rc-side-words {
         opacity: 0;
         pointer-events: none;
+    }
+    .recruiter .rc-side-orb,
+    .recruiter .rc-side-words .rc-chips {
+        pointer-events: auto;
+    }
+    /* At rest beside the sections the orb is 10rem (Kevin, 2026-11-20: "about twice as big"),
+       inside the 12rem column and the 14rem room each section keeps, so it covers no section text
+       at any width from 900 px. The flight (`orb-flight.ts` SIDE_ORB_REM) scales the stage-sized
+       orb down to it. */
+    .recruiter .rc-side-orb {
+        color: var(--rc-ink);
+        --orb-accent: var(--rc-accent);
+    }
+    /* With a mood, the orb is drawn in the mood's accent, its sweep and its mark in the first glow:
+       it changes colour with the section it rides beside. */
+    .recruiter[data-page-theme] [data-stage="orb"],
+    .recruiter[data-page-theme] [data-stage="dock-orb"] {
+        color: var(--rc-accent);
+        --orb-accent: var(--rc-glow-1);
     }
     .recruiter .rc-side-line {
         margin: 0;
@@ -742,11 +855,193 @@
         line-height: 1.3;
         text-align: center;
     }
-    .recruiter .rc-voice-side .rc-chips {
+    .recruiter .rc-side-words .rc-chips {
         flex-direction: column;
         align-items: center;
         overflow: visible;
         mask-image: none;
+    }
+    /* The phone's foot bar, there from the start and shown as the orb lands in it. */
+    .recruiter .rc-flight-dock {
+        opacity: 0;
+        visibility: hidden;
+        transition:
+            opacity 250ms ease-out,
+            visibility 0s linear 250ms;
+    }
+    .recruiter .rc-voice-side[data-shown="true"] .rc-flight-dock {
+        opacity: 1;
+        visibility: visible;
+        transition:
+            opacity 250ms ease-out,
+            visibility 0s;
+    }
+    /* The header and the hero keep the same room as the sections where the orb passes them. */
+    @media (min-width: 900px) and (prefers-reduced-motion: no-preference) {
+        .recruiter[data-voice="on"] {
+            --orb-room: max(0px, calc(14rem - max(3.5 * var(--u), (100vw - 46 * var(--u)) / 2)));
+        }
+        .recruiter[data-voice="on"] .rc-top,
+        .recruiter[data-voice="on"] .rc-hero {
+            padding-right: var(--orb-room);
+        }
+    }
+    /* Under 1100 px the column's own gutter is 1.25u, not 3.5u (below): the room is reckoned from
+       the gutter there really is, or the header's last link ran under the orb at 900 px. */
+    @media (min-width: 900px) and (max-width: 1100px) and (prefers-reduced-motion: no-preference) {
+        .recruiter[data-voice="on"],
+        .recruiter [data-story="on"] {
+            --orb-room: max(0px, calc(14rem - max(1.25 * var(--u), (100vw - 46 * var(--u)) / 2)));
+        }
+    }
+
+    /* The light behind the page: three soft glows of the mood's colours drifting slowly. Only
+       transform moves (each glow is its own layer, its softness drawn once in a gradient, never a
+       live blur); the colours blend with the mood. Under reduced motion they stay still. */
+    .recruiter .rc-ambient {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        overflow: hidden;
+        pointer-events: none;
+    }
+    .recruiter .rc-ambient > span {
+        position: absolute;
+        width: 60vmax;
+        height: 60vmax;
+        will-change: transform;
+        animation: rc-drift 28s ease-in-out infinite alternate;
+    }
+    .recruiter .rc-ambient > span:nth-child(1) {
+        top: -30vmax;
+        left: -25vmax;
+        background: radial-gradient(closest-side, color-mix(in srgb, var(--rc-glow-1) 22%, transparent), transparent);
+    }
+    .recruiter .rc-ambient > span:nth-child(2) {
+        top: 10vh;
+        right: -35vmax;
+        background: radial-gradient(closest-side, color-mix(in srgb, var(--rc-glow-2) 22%, transparent), transparent);
+        animation-duration: 34s;
+        animation-delay: -9s;
+    }
+    .recruiter .rc-ambient > span:nth-child(3) {
+        bottom: -40vmax;
+        left: 10vw;
+        background: radial-gradient(closest-side, color-mix(in srgb, var(--rc-glow-3) 20%, transparent), transparent);
+        animation-duration: 40s;
+        animation-delay: -17s;
+    }
+    @keyframes rc-drift {
+        0% {
+            transform: translate3d(0, 0, 0) scale(1);
+        }
+        50% {
+            transform: translate3d(6vmax, 4vmax, 0) scale(1.12);
+        }
+        100% {
+            transform: translate3d(-4vmax, 8vmax, 0) scale(0.94);
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .recruiter .rc-ambient > span {
+            animation: none;
+        }
+    }
+    /* The page's own column sits above the light. */
+    .recruiter[data-page-theme] > .rc-column {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Each section clearly its own (Kevin, 2026-11-22: each section clearly separate): a bar
+       in the mood's accent fading into its first glow across the top, drawn in as the section
+       arrives where motion is allowed. A project with a mood of its own gets a larger title. */
+    .recruiter[data-page-theme] .rc-section {
+        position: relative;
+        border-top: 0;
+    }
+    .recruiter[data-page-theme] .rc-section::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: linear-gradient(90deg, var(--rc-accent), var(--rc-glow-1) 45%, transparent);
+        transform-origin: 0 50%;
+    }
+    .recruiter[data-page-theme] [data-story="on"] .rc-section::before {
+        animation: rc-bar-in linear both;
+        animation-timeline: view();
+        animation-range: entry 0% entry 60%;
+    }
+    @keyframes rc-bar-in {
+        from {
+            transform: scaleX(0.08);
+        }
+    }
+    .recruiter[data-page-theme] .rc-section[data-theme] > .rc-h2 {
+        font-size: calc(2 * var(--u));
+        letter-spacing: -0.01em;
+    }
+    /* A clip or a model brightens in as it arrives, on the scroll itself where the browser can
+       run that on the compositor; opacity only (moving a layer that size costs frames). */
+    @supports (animation-timeline: view()) {
+        .recruiter [data-story="on"] .rc-video,
+        .recruiter [data-story="on"] .rc-model-box {
+            animation: rc-media-in linear both;
+            animation-timeline: view();
+            animation-range: entry 0% entry 70%;
+        }
+    }
+    @keyframes rc-media-in {
+        from {
+            opacity: 0.25;
+        }
+    }
+
+    /* The link out to a live demo: the accent, one line, a full tap target. */
+    .recruiter .rc-prose .rc-demo-link {
+        margin: 0 0 calc(1.2 * var(--u));
+    }
+    .recruiter .rc-demo-link a {
+        display: inline-block;
+        padding: 10px 0;
+        font-weight: 600;
+        color: var(--rc-accent);
+        text-decoration-color: var(--rc-accent);
+    }
+    .recruiter .rc-demo-link a::after {
+        content: "\00a0\2197";
+    }
+
+    /* Quality for voice agents: tiles of figures, the accent on each figure. */
+    .recruiter .rc-quality {
+        margin: calc(2 * var(--u)) 0 0;
+    }
+    .recruiter .rc-tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+        gap: calc(0.6 * var(--u));
+        margin: calc(0.9 * var(--u)) 0 calc(1.4 * var(--u));
+        font-variant-numeric: tabular-nums;
+    }
+    .recruiter .rc-tile {
+        padding: calc(0.7 * var(--u)) calc(0.8 * var(--u));
+        border-top: 3px solid var(--rc-accent);
+        background: color-mix(in srgb, var(--rc-paper) 82%, #ffffff);
+    }
+    .recruiter .rc-tile dt {
+        font-size: calc(1.7 * var(--u));
+        font-weight: 650;
+        line-height: 1.05;
+        color: var(--rc-accent);
+    }
+    .recruiter .rc-tile dd {
+        margin: calc(0.3 * var(--u)) 0 0;
+        font-size: calc(0.86 * var(--u));
+        line-height: 1.35;
+        color: var(--rc-meta);
     }
 
     /* The LEGION scene: the diagram pinned at the top while its parts scroll up under it, the
@@ -757,7 +1052,8 @@
         z-index: 1;
         margin: 0 0 calc(1.2 * var(--u));
         padding: calc(0.6 * var(--u)) 0 calc(0.4 * var(--u));
-        background: var(--rc-paper);
+        /* Nearly opaque, so the parts pass under it, and the light behind the page still reads. */
+        background: color-mix(in srgb, var(--rc-paper) 94%, transparent);
     }
     .recruiter .rc-scene-pin .rc-figcaption {
         margin-top: calc(0.4 * var(--u));
@@ -1194,9 +1490,6 @@
             overflow-x: auto;
             column-gap: calc(0.8 * var(--u));
             scrollbar-width: none;
-        }
-        .recruiter .rc-top nav [data-nav-app] {
-            display: none;
         }
         .recruiter .rc-top nav a {
             display: inline-flex;

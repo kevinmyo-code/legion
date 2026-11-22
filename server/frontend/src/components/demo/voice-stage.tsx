@@ -7,12 +7,13 @@ import type { Line } from '@/assistant/live-client'
 import { orbMode } from '@/components/assistant/orb'
 import { VoiceOrb } from '@/components/assistant/voice-orb'
 import { ChipRow } from '@/components/demo/chip-row'
-import { useOrbPlace, useStoryGlide } from '@/components/demo/scroll-story'
+import { useOrbFlight } from '@/components/demo/orb-flight'
+import { useOrbPlace, useStoryGlide, useStoryMotion } from '@/components/demo/scroll-story'
 
 /**
  * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"). A long
  * spoken opening and a page to read before talking lose people, so: one large orb and one line;
- * the tap that opens the audio is the tap that enters the visit, and the opening is about five
+ * the visit is entered as the page opens (Kevin, 2026-11-22), the tap opens the audio, and the opening is about five
  * seconds. Under the orb, for people who
  * cannot talk: the engine's suggestion chips (answered aloud once the greeting, recording notice
  * included, has played to its end; typed before that), the one-minute tour, captions always on, and a
@@ -69,6 +70,15 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   // beside whichever is in view instead of docking at the foot. Same control, same tap path.
   const glide = useStoryGlide()
   const place = useOrbPlace()
+  // With motion allowed, one orb flies from the stage to its rest place and back (`orb-flight.ts`):
+  // beside the sections where there is room, into the foot bar on a phone. Reduced motion keeps
+  // the stage's own orb and the plain foot dock.
+  const flight = useStoryMotion()
+  const dockSlotRef = useRef<HTMLSpanElement>(null)
+  const landed = useOrbFlight({ on: flight, rest: glide ? 'side' : 'dock', side: place.side, stage: orbRef, flyer: dockOrbRef, slot: dockSlotRef })
+  // In flight, the orb's words, chips and foot bar show once it has landed at its rest place;
+  // without flight (reduced motion), the dock shows once the stage's orb has gone.
+  const shown = flight ? landed : docked
   // The chips under the stage orb have their own watcher (any of the row on screen): they stay the
   // ones to tap until they themselves scroll away, though the orb above them is half gone (review
   // recheck 2026-11-20: tying them to the orb made visible chips dead to a tap).
@@ -91,7 +101,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
     }
   }, [glide])
   useEffect(() => {
-    if (!docked || glide) return
+    if (!shown || glide) return
     const el = dockRef.current
     const room = () => {
       document.body.style.paddingBottom = `${el?.offsetHeight || DOCK_ROOM_PX}px`
@@ -102,11 +112,10 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       window.removeEventListener('resize', room)
       document.body.style.paddingBottom = ''
     }
-  }, [docked, glide])
+  }, [shown, glide])
   const who = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
-  // Shown once the stage's orb has gone AND a section has placed it (never over the header).
-  const sideShown = glide && docked && place.placed
+  const sideShown = glide && shown
   const sideChips = Boolean(sideShown && !chipsSeen && !place.pinned && cascade && cascade.chips.length > 0)
   const mode = orbMode(state)
   const speaking = state.activity === 'speaking'
@@ -187,7 +196,8 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         data-mode={mode}
         className="aspect-square w-[min(64vw,15rem)] rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
       >
-        <VoiceOrb mode={mode} levels={() => client.levels()} className="block size-full" />
+        {/* In flight the drawn orb is the flying one, laid exactly over this button at the top. */}
+        {!flight && <VoiceOrb mode={mode} levels={() => client.levels()} mark={place.mark} className="block size-full" />}
       </button>
       {/* The chips sit right under the orb (Kevin, 2026-11-19: "make them float at the bottom of the
           orb"); the row's height is kept while there are none, so chips arriving never push the page. */}
@@ -202,40 +212,55 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       >
         {cascade && cascade.chips.length > 0 && <ChipRow chips={cascade.chips} onTap={tapChip} />}
       </div>
-      {glide ? (
-        // Beside the sections (>= 900 px, motion allowed): always mounted, shown once the stage's
-        // orb has scrolled away, and moved between the two sides by a transform (CSS). Its line and
-        // chips ride with it, except beside a pinned scene, which they would cover.
+      {flight ? (
+        // One orb for the whole page (Kevin, 2026-11-22: one continuous flow): always mounted and
+        // drawn, flown by `useOrbFlight`. Wherever it is seen it is the orb to a tap (round to the
+        // pointer: CSS); until it lands it is out of the accessibility tree and the tab order, where
+        // the stage's own button (under it at the top, the same control) stands for it.
         <div
           data-stage="side"
-          data-shown={sideShown ? 'true' : 'false'}
+          data-shown={shown ? 'true' : 'false'}
           data-side={place.side}
           data-pinned={place.pinned ? 'true' : 'false'}
-          aria-hidden={!sideShown}
-          inert={!sideShown}
+          data-rest={glide ? 'side' : 'dock'}
+          aria-hidden={shown ? undefined : true}
           className="rc-voice-side"
         >
           <button
             ref={dockOrbRef}
             type="button"
+            tabIndex={shown ? undefined : -1}
             onClick={() => {
               onOrb()
-              // The keyboard stays on the orb the visitor can see.
-              dockOrbRef.current?.focus({ preventScroll: true })
+              // The keyboard stays on the orb the visitor can see; in flight the stage's button
+              // stands for it (this one is hidden from the accessibility tree until it lands).
+              if (shown) dockOrbRef.current?.focus({ preventScroll: true })
             }}
             aria-label={orbLabel}
             data-stage="dock-orb"
             data-mode={mode}
-            className="rc-side-orb flex-none rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="rc-flyer rc-side-orb rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            {/* Drawn only while it shows: a hidden orb would still draw every frame. */}
-            {sideShown && <VoiceOrb mode={mode} levels={() => client.levels()} points={800} dot={1} className="block size-full" />}
+            <VoiceOrb mode={mode} levels={() => client.levels()} mark={place.mark} className="block size-full" />
           </button>
-          {/* Beside a pinned scene the words fade out; out of the tab order with them. */}
-          <div className="rc-side-words" inert={place.pinned}>
-            <p className="rc-side-line">{status}</p>
-            {sideChips && cascade && <ChipRow chips={cascade.chips} onTap={tapChip} />}
-          </div>
+          {glide ? (
+            // Beside a pinned scene the words fade out; out of the tab order with them.
+            <div className="rc-side-words" inert={!shown || place.pinned}>
+              <p className="rc-side-line">{status}</p>
+              {sideChips && cascade && <ChipRow chips={cascade.chips} onTap={tapChip} />}
+            </div>
+          ) : (
+            // The foot bar the orb flies into on a phone: its slot stays empty, the orb lands on it.
+            <div
+              ref={dockRef}
+              data-stage="dock"
+              inert={!shown}
+              className="rc-voice-dock rc-flight-dock fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t bg-background px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-lg"
+            >
+              <span ref={dockSlotRef} aria-hidden="true" className="size-12 flex-none" />
+              <p className="min-w-0 flex-1 truncate text-left text-sm font-medium">{status}</p>
+            </div>
+          )}
         </div>
       ) : (
         docked && (
@@ -259,7 +284,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
             data-mode={mode}
             className="size-12 flex-none rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           >
-            <VoiceOrb mode={mode} levels={() => client.levels()} points={260} dot={0.7} className="block size-full" />
+            <VoiceOrb mode={mode} levels={() => client.levels()} points={260} dot={0.7} mark={place.mark} className="block size-full" />
           </button>
           <p className="min-w-0 flex-1 truncate text-left text-sm font-medium">{status}</p>
         </div>

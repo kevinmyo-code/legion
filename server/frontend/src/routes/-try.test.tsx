@@ -135,30 +135,31 @@ describe('/try', () => {
     renderApp('/try?ref=acme', engine, 'family')
     fireEvent.change(await screen.findByLabelText('Access code'), { target: { value: 'OPEN-SESAME' } })
     fireEvent.click(screen.getByRole('button', { name: 'Open the demo' }))
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Experience' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
   })
 
-  test('a direct link opens on the orb with no gate; the tap enters, once; the code leaves the address bar', async () => {
-    // The visit's engine is the cascade (the server default): the voice stage stays after the tap.
+  test('a direct link opens the full page with no gate, entered once on load; the code leaves the address bar', async () => {
+    // Kevin, 2026-11-22: the link shows what a typed code shows. The audio still waits for the tap.
     const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
     const audio = new FakeAudio()
     setAudioFactory(() => audio)
     const { router } = renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    expect(screen.getByText(STAGE_LINE)).toBeInTheDocument()
-    expect(screen.getByText(RECORDING_NOTICE)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
     expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
-    // Nothing is entered until the tap (Kevin, 2026-11-17: entering happens on that tap).
-    expect(engine.demo.enterBodies).toEqual([])
+    expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
     expect(router.state.location.search).toEqual({ ref: 'acme' })
     expect(router.history.location.href).not.toContain('code=')
+    expect(screen.getByText(STAGE_LINE)).toBeInTheDocument()
+    expect(screen.getByText(RECORDING_NOTICE)).toBeInTheDocument()
+    // Nothing is heard or played before the tap.
+    expect(audio.micOpen).toBe(false)
     await act(async () => {
-      fireEvent.click(orb)
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
       await settle()
     })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
-    expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
+    // The tap starts the conversation on the visit already entered: no second entry.
+    expect(engine.demo.enterBodies).toHaveLength(1)
     expect(engine.demo.funnel).toEqual(expect.arrayContaining(['page_load:acme', 'orb_tap:acme']))
     // The stage stays above the page: the tour, typing, and the ask. Chips come from the engine
     // after the greeting (`demo/suggestions.py`); the page writes none of its own.
@@ -168,39 +169,47 @@ describe('/try', () => {
   })
 
   /**
-   * The browser run, 2026-11-19 (`server/tests/realrun_try_orb_flow.mjs`): the tour button's tap,
-   * which enters the visit, unmounted the whole voice stage and mounted a new one (the orb restarted,
-   * the page modal's provider with it). Entering adds the page under the stage; the stage stays.
+   * The browser run, 2026-11-19 (`server/tests/realrun_try_orb_flow.mjs`): entering unmounted the
+   * whole voice stage and mounted a new one (the orb restarted, the page modal's provider with it).
+   * Entering adds the page under the stage; the stage stays.
    */
-  test('the tap that enters keeps the same stage: nothing above the page is mounted again', async () => {
+  test('entering keeps the same stage: nothing above the page is mounted again', async () => {
     const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
     setAudioFactory(() => new FakeAudio())
     renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    const stage = screen.getByRole('region', { name: 'Talk to the demo assistant' })
-    await act(async () => {
-      fireEvent.click(orb)
-      await settle()
-    })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Talk to the demo assistant' })).toBe(stage)
-    expect(document.querySelector('[data-stage="orb"]')).toBe(orb)
-  })
-
-  test('the tap is not undone when the sign-in answer lands before the visit (one orb, one tap)', async () => {
-    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
-    const audio = new FakeAudio()
-    setAudioFactory(() => audio)
-    renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    // From the tap on, the visit's own answer is held back until everything else has landed.
     const answer = globalThis.fetch
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => (release = resolve))
     vi.stubGlobal('fetch', async (input: Request) => {
-      if (new URL(input.url).pathname === '/api/demo/session') await held
+      if (new URL(input.url).pathname === '/api/demo/enter') await held
       return answer(input)
     })
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    const stage = screen.getByRole('region', { name: 'Talk to the demo assistant' })
+    expect(await screen.findByText('Opening the demo…')).toBeInTheDocument()
+    await act(async () => {
+      release()
+      await settle()
+    })
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Talk to the demo assistant' })).toBe(stage)
+    expect(document.querySelector('[data-stage="orb"]')).toBe(orb)
+  })
+
+  test('a tap during the on-load entry waits for it: one entry, and the tap is not undone', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    const audio = new FakeAudio()
+    setAudioFactory(() => audio)
+    renderApp('/try?code=OPEN-SESAME&ref=acme', engine, 'family')
+    const answer = globalThis.fetch
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    vi.stubGlobal('fetch', async (input: Request) => {
+      if (new URL(input.url).pathname === '/api/demo/enter') await held
+      return answer(input)
+    })
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    expect(await screen.findByText('Opening the demo…')).toBeInTheDocument()
     await act(async () => {
       fireEvent.click(orb)
       await settle()
@@ -209,34 +218,36 @@ describe('/try', () => {
       release()
       await settle()
     })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
     // The conversation the tap opened is the one still running: never disposed, mic still held.
     expect(audio.disposed).toBe(false)
     expect(audio.micOpen).toBe(true)
     expect(engine.demo.enterBodies).toHaveLength(1)
   })
 
-  test('an entry the conversation gave up on is aborted and never touches the page when it answers late', async () => {
+  test('an entry the conversation gave up on is aborted, never touches the page when it answers late, and the next tap enters afresh', async () => {
     const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
     setAudioFactory(() => new FakeAudio())
     renderApp('/try?code=OPEN-SESAME', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
     const answer = globalThis.fetch
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => (release = resolve))
-    let entry: Request | null = null
+    const entries: Request[] = []
     vi.stubGlobal('fetch', async (input: Request) => {
       if (new URL(input.url).pathname === '/api/demo/enter') {
-        entry = input
-        await held
+        entries.push(input)
+        if (entries.length === 1) await held
       }
       return answer(input)
     })
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    await waitFor(() => expect(entries).toHaveLength(1))
+    // A tap waits on the entry made on load.
     await act(async () => {
       fireEvent.click(orb)
       await settle()
     })
-    // Still entering after two seconds: a tap gives up on it.
+    // Still entering after two seconds: a tap gives up on it, and its request is aborted.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, ENTRY_TAP_MS + 100))
     })
@@ -244,7 +255,7 @@ describe('/try', () => {
       fireEvent.click(screen.getByRole('button', { name: /^(Talk to|Interrupt) / }))
       await settle()
     })
-    expect(entry!.signal.aborted).toBe(true)
+    expect(entries[0].signal.aborted).toBe(true)
     // It answers late, refused: the page does not switch to the code box.
     engine.demo.enterReply = { status: 403, body: { detail: WRONG_CODE } }
     await act(async () => {
@@ -253,7 +264,83 @@ describe('/try', () => {
     })
     expect(screen.queryByText(WRONG_CODE)).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Talk to / })).toBeInTheDocument()
+    // The next tap makes a fresh request with the link's code, and enters.
+    engine.demo.enterReply = null
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    await waitFor(() => expect(entries).toHaveLength(2))
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+  })
+
+  test('a link visit that runs out waits for a tap, which enters again (never the member preview, never on its own)', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    renderApp('/try?code=OPEN-SESAME', engine, 'family')
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    expect(engine.demo.enterBodies).toHaveLength(1)
+    // The two hours run out: the engine holds no visit, and the page asks again.
+    engine.demo.session = null
+    engine.demo.ended = true
+    await act(async () => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+      await settle()
+    })
+    focusManager.setFocused(undefined)
+    expect(await screen.findByText('Your demo visit has ended. Tap the orb to start a new one.')).toBeInTheDocument()
+    expect(screen.queryByText(/^Preview\./)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: sampleContent().hero.title })).not.toBeInTheDocument()
+    await act(settle)
+    expect(engine.demo.enterBodies).toHaveLength(1)
+    // A tap enters again with the link's code.
+    engine.demo.ended = false
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    await waitFor(() => expect(engine.demo.enterBodies).toHaveLength(2))
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+  })
+
+  test('a link is not entered while the tab is hidden, and is entered once it is shown', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    let visibility: DocumentVisibilityState = 'hidden'
+    const spy = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    try {
+      renderApp('/try?code=OPEN-SESAME', engine, 'family')
+      await screen.findByRole('button', { name: /^Talk to / })
+      await act(settle)
+      expect(engine.demo.enterBodies).toEqual([])
+      visibility = 'visible'
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+        await settle()
+      })
+      expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+      expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME' }])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  test('a link opened over a visit this browser already holds enters nothing new', async () => {
+    const engine = visitor({ assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    renderApp('/try?code=OPEN-SESAME', engine, 'family')
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    await act(settle)
+    expect(engine.demo.enterBodies).toEqual([])
+  })
+
+  test("a link opened by a signed-in member enters nothing and keeps the member's preview", async () => {
+    const engine = createEngine()
+    renderApp('/try?code=OPEN-SESAME', engine, 'family')
+    expect(await screen.findByText(/^Preview\./)).toBeInTheDocument()
+    await act(settle)
+    expect(engine.demo.enterBodies).toEqual([])
   })
 
   test("a member's preview stays put while the visit question is asked again", async () => {
@@ -306,32 +393,22 @@ describe('/try', () => {
     expect(await screen.findByRole('button', { name: 'Take the one-minute tour' })).toBeInTheDocument()
   })
 
-  test('when the engine says Live, a link visit gets the Live page after the tap, and no cascade turn is asked', async () => {
+  test('when the engine says Live, a link visit gets the Live page, and no cascade turn is asked', async () => {
     const engine = createEngine({ signedIn: false })
     setAudioFactory(() => new FakeAudio())
     renderApp('/try?code=OPEN-SESAME', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    await act(async () => {
-      fireEvent.click(orb)
-      await settle()
-    })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Take the one-minute tour' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Take the one-minute tour' })).not.toBeInTheDocument())
     expect(engine.unhandled).not.toContain('POST /api/assistant/turn')
   })
 
-  test('a direct link with a wrong code says why in words at the tap, and falls back to the code box', async () => {
+  test('a direct link with a wrong code says why in words, and falls back to the code box', async () => {
     const engine = createEngine({ signedIn: false })
     setAudioFactory(() => new FakeAudio())
     const { router } = renderApp('/try?code=stale', engine, 'family')
-    const orb = await screen.findByRole('button', { name: /^Talk to / })
-    await waitFor(() => expect(router.history.location.href).not.toContain('stale'))
-    await act(async () => {
-      fireEvent.click(orb)
-      await settle()
-    })
     expect(await screen.findByRole('alert')).toHaveTextContent(WRONG_CODE)
     expect(screen.getByLabelText('Access code')).toBeInTheDocument()
+    expect(router.history.location.href).not.toContain('stale')
   })
 
   test('a visit renders every section of the page from the engine', async () => {
@@ -342,7 +419,8 @@ describe('/try', () => {
     expect(await screen.findByRole('heading', { level: 1, name: content.hero.title })).toBeInTheDocument()
     expect(screen.getByText(expiryLine(engine.demo.session!.expires_at))).toBeInTheDocument()
     expect(screen.getByText('Houston, open to relocation')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    // No "What to look for" (Kevin, 2026-11-22: out of place).
+    expect(screen.queryByRole('heading', { name: 'What to look for' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'What I built at work' })).toBeInTheDocument()
     expect(screen.getByText('~770')).toBeInTheDocument()
 
@@ -374,7 +452,7 @@ describe('/try', () => {
 
   test('phone: no chat in the page, one Ask bar at the bottom, no orb; it opens the sheet', async () => {
     renderApp('/try', visitor(), 'family')
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     // Kevin, 2026-11-03: "remove the talk to my assistant chat window in the middle".
     expect(screen.queryByRole('region', { name: 'Talk to my assistant' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Talk' })).not.toBeInTheDocument()
@@ -418,7 +496,7 @@ describe('/try', () => {
     // Kevin, 2026-11-03: "keep the right panel window open at all times".
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
     expect(dock).toHaveAttribute('id', 'assistant-dock')
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     expect(screen.queryByRole('region', { name: 'Talk to my assistant' })).not.toBeInTheDocument()
     expect(screen.queryByRole('search')).not.toBeInTheDocument()
     // Voice is the star (Kevin, 2026-11-04): the orb is the talk button, typing folds under it.
@@ -434,7 +512,7 @@ describe('/try', () => {
     expect(within(dock).queryByRole('button', { name: /^Close/ })).not.toBeInTheDocument()
     expect(document.querySelector('[data-chat="askbar"]')).not.toBeInTheDocument()
     // The page column is beside the dock, not under it.
-    expect(dock.parentElement?.firstElementChild).toContainElement(screen.getByRole('heading', { level: 1 }))
+    expect(dock.parentElement?.querySelector('.rc-column')).toContainElement(screen.getByRole('heading', { level: 1 }))
     // Its copy: the 5-minute line, the chips, the recording notice.
     expect(within(dock).getByText(/A demo conversation lasts up to 5 minutes\./)).toBeInTheDocument()
     expect(within(dock).getByRole('button', { name: 'Which card charges are unverified?' })).toBeInTheDocument()
@@ -627,7 +705,7 @@ describe('/try', () => {
     setAudioFactory(() => audio)
     renderApp('/try', visitor(), 'workbench')
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     expect(within(dock).getByRole('status')).toHaveTextContent('Tap to talk')
 
     fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
@@ -657,7 +735,7 @@ describe('/try', () => {
     })
     renderApp('/try', engine, 'workbench')
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
     const socket = await connect()
 
@@ -691,7 +769,7 @@ describe('/try', () => {
     setAudioFactory(() => audio)
     renderApp('/try', visitor(), 'workbench')
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
     expect(await within(dock).findByRole('alert')).toHaveTextContent(/microphone is blocked/)
     expect(within(dock).getByRole('textbox', { name: /^Message / })).toBeInTheDocument()
@@ -714,17 +792,13 @@ describe('/try', () => {
     expect(socket.sentOf('clientContent')).toEqual([])
   })
 
-  test('the visitor page has a clear way into the app (ticket 13)', async () => {
-    const { router } = renderApp('/try', visitor(), 'family')
-    // Two ways in, both to the app: the top line's nav, and the hero's access note,
-    // which says what the visitor's copy of the household is.
+  test('the visitor page has no way into the members web app (Kevin, 2026-11-22)', async () => {
+    renderApp('/try', visitor(), 'family')
+    // The hero's access note says what the visitor's copy is, and links nowhere.
     const hero = await screen.findByRole('region', { name: sampleContent().hero.title })
     expect(within(hero).getByText(/deleted when the visit ends/)).toBeInTheDocument()
-    const nav = screen.getByRole('navigation', { name: 'On this page' })
-    expect(within(nav).getByRole('link', { name: 'Open the app' })).toHaveAttribute('href', '/')
-    fireEvent.click(within(hero).getByRole('link', { name: 'Open the app' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
-    expect(await screen.findByRole('note', { name: 'Demo visit' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open the app' })).not.toBeInTheDocument()
+    expect(document.querySelector('a[href="/"]')).toBeNull()
   })
 
   test('a recruiter whose visit ended lands back on /try, not on a broken page', async () => {
@@ -845,6 +919,48 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     expect(document.querySelector('#fake-two')).toBeNull()
   })
 
+  test('a project section carries its live demo link (a new tab), its mood and its orb mark (Kevin, 2026-11-22)', async () => {
+    const engine = visitor()
+    const content = withProjects()
+    content.project_sections![0] = {
+      ...content.project_sections![0],
+      link: { href: 'https://demo.example.test', label: 'Try the fake demo' },
+      theme: 'ledger',
+      orb_mark: 'q',
+    }
+    engine.demo.content = content
+    renderApp('/try', engine, 'family')
+    const section = await screen.findByRole('region', { name: 'Fake two' })
+    const link = within(section).getByRole('link', { name: 'Try the fake demo' })
+    expect(link).toHaveAttribute('href', 'https://demo.example.test')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(section).toHaveAttribute('data-theme', 'ledger')
+    expect(section).toHaveAttribute('data-orb-mark', 'q')
+    // The page starts in LEGION's mood; the sections' own come as they reach the middle (a browser).
+    expect(section.closest('.recruiter')).toHaveAttribute('data-page-theme', 'legion')
+  })
+
+  test("the LEGION section's quality block: figures as tiles, then the checks (Kevin, 2026-11-22)", async () => {
+    const engine = visitor()
+    const content = withProjects()
+    content.legion = {
+      ...content.legion!,
+      quality: {
+        title: 'Fake quality',
+        stats: [{ value: '12', label: 'fake cases' }],
+        checks: [{ title: 'Fake check', body: 'Checked, in fake words.' }],
+      },
+    }
+    engine.demo.content = content
+    renderApp('/try', engine, 'family')
+    const legion = await screen.findByRole('region', { name: 'How LEGION is built' })
+    expect(within(legion).getByRole('heading', { level: 3, name: 'Fake quality' })).toBeInTheDocument()
+    expect(within(legion).getByText('12')).toBeInTheDocument()
+    expect(within(legion).getByText('fake cases')).toBeInTheDocument()
+    expect(within(legion).getByText('Checked, in fake words.')).toBeInTheDocument()
+  })
+
   test('the strip links each project to its section, and a project with no link stands alone', async () => {
     const engine = visitor()
     engine.demo.content = withProjects()
@@ -857,8 +973,8 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     expect(within(strip).getAllByRole('link')).toHaveLength(2)
     const nav = screen.getByRole('navigation', { name: 'On this page' })
     expect(within(nav).getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '#projects')
-    // The strip sits right under the hero, before "What to look for".
-    expect(follows(strip, screen.getByRole('region', { name: 'What to look for' }))).toBe(true)
+    // The strip sits right under the hero, before the first section.
+    expect(follows(screen.getByRole('region', { name: sampleContent().hero.title }), strip)).toBe(true)
 
     const section = screen.getByRole('region', { name: 'Fake two' })
     expect(section).toHaveAttribute('id', 'fake-two')
@@ -960,7 +1076,7 @@ describe('/try: a per-company ref (Kevin, 2026-11-05)', () => {
       fireEvent.click(orb)
       await settle()
     })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Experience' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([sent ? { code: 'OPEN-SESAME', ref: sent } : { code: 'OPEN-SESAME' }])
   })
 })

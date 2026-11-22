@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { diagramAspect, diagramLayers, layerFor, LegionScene } from '@/screens/try-legion-scene'
 
-import { setOrbPlace, useOrbPlace, useStoryGlide, useStoryMotion, useStorySections } from './scroll-story'
+import { resetOrbPlace, useOrbPlace, useStoryGlide, useStoryMotion, useStorySections } from './scroll-story'
 
 /**
  * The /try scroll story (Kevin, 2026-11-19, "B bolder"): sections rise in as they arrive, the orb
@@ -56,7 +56,7 @@ afterEach(() => {
   ;(globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = realIO
   observers.length = 0
   vi.unstubAllGlobals()
-  setOrbPlace({ side: 'right', pinned: false, placed: false })
+  resetOrbPlace()
 })
 
 function Page({ content = 'content' }: { content?: string }) {

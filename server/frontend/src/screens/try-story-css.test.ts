@@ -60,11 +60,40 @@ describe('the LEGION scene', () => {
 
 describe('the side orb', () => {
   test('takes clicks only on the orb and the chips, never on its status line', () => {
-    const side = all.find((r) => r.selector.trim() === '.recruiter .rc-voice-side' && !r.within.includes('@media'))
-    expect(side?.body).toMatch(/pointer-events\s*:\s*none/)
+    const words = all.find((r) => r.selector.trim() === '.recruiter .rc-side-words' && !r.within.includes('@media'))
+    expect(words?.body).toMatch(/pointer-events\s*:\s*none/)
     const live = all.filter((r) => /pointer-events\s*:\s*auto/.test(r.body)).map((r) => r.selector)
     expect(live.some((sel) => sel.includes('.rc-side-orb'))).toBe(true)
-    expect(live.some((sel) => sel.includes('.rc-voice-side') && sel.includes('.rc-chips'))).toBe(true)
+    expect(live.some((sel) => sel.includes('.rc-side-words') && sel.includes('.rc-chips'))).toBe(true)
+  })
+
+  test('in flight it moves by transform only: a fixed layer, nothing laid out again', () => {
+    const flyer = all
+      .filter((r) => r.selector.trim() === '.recruiter .rc-flyer')
+      .map((r) => r.body)
+      .join(';')
+    expect(flyer).toMatch(/position\s*:\s*fixed/)
+    expect(flyer).toMatch(/will-change\s*:\s*transform/)
+    expect(flyer).not.toMatch(/transition/)
+    // Round to the pointer: a tap in the corner of its square reaches what is under it.
+    expect(flyer).toMatch(/border-radius\s*:\s*50%/)
+  })
+})
+
+describe('the moods', () => {
+  test('every section mood names the same tokens, so each is tuned in one place', () => {
+    const tokens = ['--rc-paper', '--rc-ink', '--rc-meta', '--rc-rule', '--rc-accent', '--rc-glow-1', '--rc-glow-2', '--rc-glow-3']
+    for (const mood of ['ledger', 'midcon', 'aw4']) {
+      const rule = all.find((r) => r.selector.trim() === `.recruiter[data-page-theme="${mood}"]`)
+      expect(rule, mood).toBeDefined()
+      for (const token of tokens) expect(rule!.body, `${mood} ${token}`).toContain(`${token}:`)
+    }
+  })
+
+  test('reduced motion: the light stays still and the blend is a short fade', () => {
+    const still = all.filter((r) => r.within.includes('prefers-reduced-motion: reduce'))
+    expect(still.some((r) => r.selector.includes('.rc-ambient') && /animation\s*:\s*none/.test(r.body))).toBe(true)
+    expect(still.some((r) => r.selector.includes('[data-page-theme]') && /transition-duration\s*:\s*200ms/.test(r.body))).toBe(true)
   })
 })
 
@@ -76,11 +105,8 @@ describe('print', () => {
 })
 
 describe('the side orb size', () => {
-  test('about twice the first cut: 10rem (160 px)', () => {
-    const orb = all.filter((r) => r.selector.trim() === '.recruiter .rc-side-orb' && !r.within.includes('@media'))
-    expect(orb.some((r) => /width\s*:\s*10rem/.test(r.body) && /height\s*:\s*10rem/.test(r.body))).toBe(true)
-    // It still fits the room each section keeps for it, so it covers no section text.
-    const panel = all.find((r) => r.selector.trim() === '.recruiter .rc-voice-side' && !r.within.includes('@media'))
-    expect(panel?.body).toMatch(/width\s*:\s*12rem/)
+  test('its words ride in the 12rem column each section keeps room for', () => {
+    const words = all.find((r) => r.selector.trim() === '.recruiter .rc-side-words' && !r.within.includes('@media'))
+    expect(words?.body).toMatch(/width\s*:\s*12rem/)
   })
 })

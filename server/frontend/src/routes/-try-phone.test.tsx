@@ -102,7 +102,7 @@ describe('the phone section', () => {
 
   test('renders nothing when the content has no phone section', async () => {
     const { container } = renderApp('/try', visitWith(undefined), 'family')
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     expect(screen.queryByRole('region', { name: 'LEGION on the phone' })).not.toBeInTheDocument()
     expect(container.querySelector('#phone')).toBeNull()
     expect(container.querySelector('video')).toBeNull()
@@ -129,12 +129,17 @@ describe('the phone section', () => {
     vi.stubGlobal(
       'IntersectionObserver',
       class {
+        // Only the phone section's own watcher (the reading line); the page's mood watcher
+        // (`useSectionThemes`) watches the sections too and is not under test here.
+        mine: boolean
         constructor(callback: IntersectionObserverCallback, init: IntersectionObserverInit) {
+          this.mine = init?.rootMargin !== '-50% 0px -50% 0px'
+          if (!this.mine) return
           notify = callback
           options.push(init)
         }
         observe(element: Element) {
-          observed.push(element)
+          if (this.mine) observed.push(element)
         }
         disconnect() {}
         unobserve() {}

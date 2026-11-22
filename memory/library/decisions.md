@@ -8234,3 +8234,18 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 - **Ruling:** the demo gets the member rule (the carry, A2, only when the visitor's own words asked for the change). His word covers this change only; the rest of the demo (prompt, persona, delivery text, household data, chips, tour) stays frozen. It ships only on his word.
 - ADR 0090 (amended 2026-11-21).
+
+## 2026-11-22 - The /try link opens the full page (Kevin)
+
+- **Ruling:** *"keep the demo page with the code in the link same as what i see when i type my code in. so full page."* The link enters the visit on load (as before 2026-11-17) instead of on the orb's tap; the audio still starts on the tap.
+- Trade-off: a link opened by anything that runs the page's script (and shows the tab) creates a visit. Bounded by the per-address enter throttle and the hourly prune; no model spend until someone talks.
+- ADR 0103 (amended 2026-11-22).
+
+## 2026-11-22 - /try: one orb flow, a mood per section, lighter tour, no web app, new sections (Kevin)
+
+- **Orb:** the orb moves from the middle of the page to its side place in one continuous flow, never vanishing and reappearing. One drawn orb glides from the stage to its rest place with the scroll (beside the sections from 900 px, the foot bar on a phone); reduced motion keeps the plain dock.
+- **Mood:** a more energetic page in colour and motion than the beige one, and a different feel per section. One token set per section mood, blended as the section reaches mid-screen; AA contrast kept; short fade under reduced motion.
+- **Quanex voice section and its Q:** the orb turns into the Quanex voice demo's Q at that section (a letter Q drawn from a system font, no logo file). Kevin ruled the Quanex name and the Q public on the page, as built.
+- **Tour:** lighter, because it was too dense. Four beats of one sentence each.
+- **No members web app on /try:** no link into the app from the page. The "What to look for" section is removed, and the old "What I built at Quanex" section is replaced by the Quanex voice section.
+- **Sections:** order LEGION, Quanex voice, Mid-Continent, AW4; the Quanex voice section links to its live demo; a "quality for voice agents" block inside LEGION.
