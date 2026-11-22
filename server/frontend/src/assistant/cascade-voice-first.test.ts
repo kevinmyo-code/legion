@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { CONVERSATION_CLOSED, CascadeClient, ECHO_TAIL_MS, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
+import { CONVERSATION_CLOSED, CascadeClient, ECHO_TAIL_MS, TALK_OVER_OFF, type CascadeDeps, type FunnelEvent, type TurnRequest, type TurnStart } from './cascade-client'
 import { EARLY_TRANSCRIPT, createCascadeDeps } from './deps'
 import { MAX_UTTERANCE_MS, WINDOW_MS } from './endpointer'
 import { MAX_UTTERANCE_SAMPLES } from './utterance'
@@ -75,6 +75,10 @@ class StubDetector implements TurnDetector {
   replyEnded() {
     this.replies.ended++
   }
+  pathChanges = 0
+  audioPathChanged() {
+    this.pathChanges++
+  }
   reset() {
     this.resets++
   }
@@ -128,7 +132,7 @@ function build(
     audio: () => audio,
     now: () => Date.now(),
     utcOffsetMinutes: () => 0,
-    // Voice barge-in is off on the page (`deps.ts` VOICE_BARGE_IN); this file tests the code behind
+    // Talk-over is off on the demo (`deps.ts` TALK_OVER_DEFAULT); this file tests the code behind
     // the switch, so it is on here.
     bargeIn: true,
     turnDetector: options.loadModels ?? (async () => detector),
@@ -198,7 +202,7 @@ describe('the models in the conversation', () => {
     expect(late.handlers).toBeNull()
   })
 
-  it('a barge-in pauses the reply; a person (the verdict) cuts it, cancels the turn, and listens', async () => {
+  it('a barge-in cuts the reply at once, cancels the turn, and listens (the phone rule)', async () => {
     const t = build([spoken('Hello.'), { ok: true, events: hanging([{ type: 'turn', data: { conversation_id: 'c-1', turn: 1 } }, AUDIO]) }])
     await open(t)
     // A turn is in flight and its audio playing.
@@ -207,58 +211,41 @@ describe('the models in the conversation', () => {
     expect(t.requests).toHaveLength(2)
     const flushes = t.audio.flushes
     t.detector.fire()
-    expect(t.audio.paused).toBe(true)
-    expect(t.audio.flushes).toBe(flushes)
-    expect(t.signals[1].aborted).toBe(false)
-    t.detector.verdict(false)
     expect(t.audio.flushes).toBe(flushes + 1)
     expect(t.signals[1].aborted).toBe(true)
     expect(t.client.getState().mic).toBe('on')
     expect(t.client.bargeIns).toBe(1)
-    // What they said over it is the next turn.
+    // What they said over it is the next turn, marked for the engine's echo check.
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
     await settle()
     expect(t.requests).toHaveLength(3)
+    expect(t.requests[2].bargeIn).toBe(true)
   })
 
-  it('its own echo (the verdict): nothing is posted and the answer plays on; twice, and it is half-duplex', async () => {
-    const t = build([spoken('Hello.'), spoken('A long answer.'), spoken('Another long answer.')])
+  it('two self-interrupts turn talk-over off for the conversation, and the page says so', async () => {
+    const t = build([spoken('Hello.'), spoken('A long answer.'), spoken('Another long answer.'), spoken('More.'), spoken('More.')])
     await open(t)
     for (let i = 0; i < 2; i++) {
       t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
       await settle()
+      t.audio.handlers?.onPlaying(true)
       t.detector.fire()
-      // The echo's "turn" ends before the verdict: held, never sent.
-      t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
-      await settle()
       t.detector.verdict(true)
-      expect(t.audio.paused).toBe(false)
-      expect(t.audio.flushes).toBe(0)
-      t.audio.handlers?.onPlaying(false)
       await settle()
     }
-    expect(t.requests).toHaveLength(3)
-    expect(t.client.bargeIns).toBe(0)
+    expect(t.client.bargeIns).toBe(2)
     expect(t.client.fullDuplex).toBe(false)
     const said = t.client.getState().lines.filter((l) => l.kind === 'sys').map((l) => l.text)
-    expect(said.join(' ')).not.toMatch(/duplex|interrupt/i)
+    expect(said).toContain(TALK_OVER_OFF)
+    expect(said.filter((x) => x === TALK_OVER_OFF)).toHaveLength(1)
     // Talked over now: nothing happens.
-    t.audio.handlers?.onPlaying(true)
-    t.detector.fire()
-    expect(t.audio.paused).toBe(false)
-  })
-
-  it('the reply ends while paused, then its echo verdict: the conversation listens again (not stuck idle)', async () => {
-    const t = build([spoken('Hello.'), spoken('A long answer.')])
-    await open(t)
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
     await settle()
+    t.audio.handlers?.onPlaying(true)
+    const flushes = t.audio.flushes
     t.detector.fire()
-    // The answer runs out while paused (its stream already ended: it re-listens), then the verdict.
-    t.audio.handlers?.onPlaying(false)
-    t.detector.verdict(true)
-    expect(t.client.getState().mic).toBe('on')
-    expect(t.client.getState().activity).toBe('listening')
+    expect(t.audio.flushes).toBe(flushes)
+    expect(t.client.bargeIns).toBe(2)
   })
 
   it('a barge-in turn posts barge_in; the next ordinary turn does not; a busy re-post keeps it', async () => {
@@ -435,14 +422,14 @@ describe('wall-clock backstops (review r3: a suspended capture sends no chunks)'
 describe('early transcripts, off for this ship (deps.ts EARLY_TRANSCRIPT)', () => {
   it("the page's deps carry no early transcript", () => {
     expect(EARLY_TRANSCRIPT).toBe(false)
-    expect(createCascadeDeps().transcribe).toBeUndefined()
+    expect(createCascadeDeps({ surface: 'members' }).transcribe).toBeUndefined()
   })
 
   it('off: a pause transcribes nothing and the turn goes to the engine once, as audio', async () => {
     const t = build([spoken('Hello.')])
     await open(t)
     t.detector.handlers?.onStart()
-    t.detector.handlers?.onEarly(UTTERANCE)
+    t.detector.handlers?.onSpeculate(UTTERANCE)
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
     await settle()
     expect(t.transcribe).not.toHaveBeenCalled()
@@ -457,7 +444,7 @@ describe('speculation (early transcript at 300 ms of silence), behind the switch
     const t = build([spoken('Hello.')], { early: true })
     await open(t)
     t.detector.handlers?.onStart()
-    t.detector.handlers?.onEarly(UTTERANCE)
+    t.detector.handlers?.onSpeculate(UTTERANCE)
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
     await settle()
     expect(t.requests[1]).toMatchObject({ text: 'How is it built', spoken: true })
@@ -468,7 +455,7 @@ describe('speculation (early transcript at 300 ms of silence), behind the switch
   it('throws the early words away when speech resumes, and sends the audio', async () => {
     const t = build([spoken('Hello.')], { early: true })
     await open(t)
-    t.detector.handlers?.onEarly(UTTERANCE)
+    t.detector.handlers?.onSpeculate(UTTERANCE)
     t.detector.handlers?.onResumed()
     expect(t.transcribeSignals[0].aborted).toBe(true)
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
@@ -480,7 +467,7 @@ describe('speculation (early transcript at 300 ms of silence), behind the switch
   it('falls back to the audio when the early transcript failed', async () => {
     const t = build([spoken('Hello.')], { transcript: null, early: true })
     await open(t)
-    t.detector.handlers?.onEarly(UTTERANCE)
+    t.detector.handlers?.onSpeculate(UTTERANCE)
     t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
     await settle()
     expect(t.requests[1].audio).toBeDefined()

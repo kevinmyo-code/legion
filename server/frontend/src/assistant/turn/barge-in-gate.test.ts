@@ -9,7 +9,8 @@ import {
   SPAN_WINDOWS,
   SUSTAIN_MS,
   SUSTAIN_WINDOWS,
-  VERDICT_GRACE_MS,
+  WARMUP_MS,
+  WARMUP_WINDOWS,
   VERDICT_MS,
   WINDOW_MS,
   peakLevel,
@@ -278,19 +279,51 @@ describe('one barge-in counts once (review 2026-11-17)', () => {
   })
 })
 
-describe('the verdict after a paused reply (review 2026-11-17: echo still in flight)', () => {
-  it("the reply's echo still arriving in the first 320 ms after a fire is not a person", () => {
+// The phone's warm-up cases (BargeInGateTest.kt, 2026-11-21), ported case for case.
+describe('the echo warm-up (3 s of reply audio after a new audio path)', () => {
+  function warmGate() {
     const g = gate()
-    feed(g, windows, 0.95, loud)
-    // 288 ms of echo: well over SELF_SPEECH_MS, so without the grace it reads as a person.
-    expect(9 * WINDOW_MS).toBeLessThan(VERDICT_GRACE_MS)
-    const v = verdicts([...feed(g, 9, 0.95, loud), ...feed(g, 60, 0.05, 300)])[0]
-    expect(v.selfInterrupt).toBe(true)
+    g.startWarmUp()
+    return g
+  }
+
+  it('while the echo canceller warms up a sustained voice is ignored, never a fire', () => {
+    const g = warmGate()
+    const events = feed(g, windows * 3, 0.95, loud)
+    expect(events.every((e) => e.type === 'ignored')).toBe(true)
+    expect(events[0]).toMatchObject({ type: 'ignored', reason: 'warmup', level: loud })
+    // One ignored line per full span, not one per window.
+    expect(events).toHaveLength(3)
+    expect(g.armedNow).toBe(true)
+    expect(g.onReplyEnd()!.fired).toBe(false)
   })
 
-  it('a person who keeps talking past it is still a person', () => {
-    const g = gate()
+  it('an ignored span is no self-interrupt and the voice fires once the 3 s are over', () => {
+    const g = warmGate()
     feed(g, windows, 0.95, loud)
-    expect(verdicts(feed(g, 60, 0.9, 20_000))[0].selfInterrupt).toBe(false)
+    feed(g, WARMUP_WINDOWS - windows - 1, 0.1, 500)
+    expect(g.warmingUpNow).toBe(true)
+    feed(g, 1, 0.1, 500)
+    expect(g.warmingUpNow).toBe(false)
+    expect(g.selfInterrupts).toBe(0)
+    const after = feed(g, windows, 0.95, loud)
+    expect(after).toHaveLength(1)
+    expect(after[0].type).toBe('fire')
+  })
+
+  it('silence between an ack and the reply does not use up the warm-up', () => {
+    const g = warmGate()
+    feed(g, 10, 0.1, 500)
+    feed(g, 3 * WARMUP_WINDOWS, 0.1, 500, false)
+    expect(g.warmingUpNow).toBe(true)
+    const after = feed(g, windows, 0.95, loud)
+    expect(after).toHaveLength(1)
+    expect(after[0].type).toBe('ignored')
+  })
+
+  it('the warm-up is three seconds of windows and no warm-up means no ignoring', () => {
+    expect(WARMUP_MS).toBe(3_000)
+    expect(WARMUP_WINDOWS).toBe(94)
+    expect(fires(feed(gate(), windows, 0.95, loud))).toHaveLength(1)
   })
 })

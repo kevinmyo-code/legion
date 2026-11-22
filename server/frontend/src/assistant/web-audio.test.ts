@@ -3,9 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWebAudio } from './web-audio'
 
 /**
- * The playback side's pause (review r4: the barge-in pause was undone by the next audio chunk,
- * because every `play()` resumed a suspended context). A stand-in `AudioContext` that records what
- * the code asks of it; jsdom has no Web Audio.
+ * The playback side's flush (a barge-in or a tap cuts the reply at once). A stand-in `AudioContext`
+ * that records what the code asks of it; jsdom has no Web Audio.
  */
 
 class FakeContext {
@@ -15,6 +14,7 @@ class FakeContext {
   destination = {}
   resumes = 0
   started = 0
+  stopped = 0
   constructor() {
     FakeContext.made.push(this)
   }
@@ -46,7 +46,9 @@ class FakeContext {
       start() {
         context.started += 1
       },
-      stop() {},
+      stop() {
+        context.stopped += 1
+      },
     }
   }
 }
@@ -57,22 +59,19 @@ afterEach(() => {
 })
 
 describe('web audio playback', () => {
-  it('audio that arrives while paused is queued, not started: only resume or a flush lets it play', () => {
+  it('a flush stops every queued sentence at once and says playback ended', () => {
     vi.stubGlobal('AudioContext', FakeContext)
     const io = createWebAudio()
+    const playing: boolean[] = []
+    io.unlock?.((p) => playing.push(p))
+    io.play(new Int16Array(240), 24_000)
+    io.play(new Int16Array(240), 24_000)
     io.play(new Int16Array(240), 24_000)
     const context = FakeContext.made[0]
-    expect(context.state).toBe('running')
-    io.pause?.()
-    expect(context.state).toBe('suspended')
-    io.play(new Int16Array(240), 24_000)
-    io.play(new Int16Array(240), 24_000)
-    expect(context.state).toBe('suspended')
     expect(context.started).toBe(3)
-    io.resume?.()
-    expect(context.state).toBe('running')
-    io.pause?.()
     io.flush()
+    expect(context.stopped).toBe(3)
+    expect(playing).toEqual([true, false])
     expect(context.state).toBe('running')
     io.dispose()
   })

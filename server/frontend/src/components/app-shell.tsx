@@ -44,7 +44,7 @@ export function AppShell({
   )
 
   return (
-    <AssistantProvider defaultOpen>
+    <AssistantProvider defaultOpen voiceSurface="members">
       <AssistantModals>
         <EventSheetHost>
           {surface === 'workbench' ? (

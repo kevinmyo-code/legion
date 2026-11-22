@@ -7,20 +7,24 @@
  * cuts 512-sample windows, asks the Silero worker for each window's probability in order, and acts
  * on the policy's and the gate's answers:
  * - `onStart` (speech confirmed; the utterance begins with the phone's 544 ms pre-roll),
- * - `onEarly` (EARLY_MS of silence: the audio so far, for an early transcript),
+ * - `onSpeculate` (SPECULATE_MS of silence: the audio so far, for an early transcript),
  * - `onResumed` (speech came back: drop that early transcript),
  * - `onEnd` (the turn ended: the utterance, the reason and how long the silence was),
  * - `onBargeIn` (sustained speech over the reply) and `onVerdict` (whether that was the reply's
- *   own echo).
+ *   own echo); `onIgnored` (a fire held back by the echo warm-up) and `onReplyStats` (what the gate
+ *   heard over each reply), for the conversation record.
  *
  * `loadTurnDetector` returns null when the models cannot load or run too slowly here
  * (`MAX_SILERO_MS` per window, `MAX_SMART_MS` per check); the page then keeps its energy-threshold
  * `Endpointer` and listens half-duplex. A device fast enough for Silero but not Smart Turn gets
  * silence-only end of turn at the phone's 700 ms base (`smartAvailable` false). With Smart Turn, a
- * "finished" verdict ends the turn at 500 ms (`WEB_FINISHED_MS`); no verdict yet keeps the 700 ms base.
+ * "finished" verdict ends the turn at 500 ms (FINISHED_MS); no verdict yet keeps the 700 ms base. With
+ * `earlyEnd` (the phone's "End clear turns sooner"), a first verdict >= 0.95 before 500 ms ends it at
+ * 300 ms. `audioPathChanged` starts the gate's 3 s echo warm-up at the next reply audio, as the
+ * phone's `TurnTaker` does after call audio starts or its device changes.
  */
-import { BargeInGate, peakLevel, type GateEvent } from './barge-in-gate'
-import { BASE_MS, EndOfTurnPolicy, WEB_FINISHED_MS, WINDOW_MS, type Action, type Reason } from './eot-policy'
+import { BargeInGate, peakLevel, type GateEvent, type ReplyStats } from './barge-in-gate'
+import { BASE_MS, EndOfTurnPolicy, FINISHED_MS, WINDOW_MS, type Action, type Reason } from './eot-policy'
 import type { FromWorker, ToWorker } from './turn.worker'
 
 export const WINDOW = 512
@@ -36,11 +40,13 @@ export const MAX_TURN_SAMPLES = 28 * 16_000
 
 export interface TurnHandlers {
   onStart(): void
-  onEarly(audio: Int16Array): void
+  onSpeculate(audio: Int16Array): void
   onResumed(): void
   onEnd(audio: Int16Array, reason: Reason, silenceMs: number): void
   onBargeIn(event: Extract<GateEvent, { type: 'fire' }>): void
   onVerdict(event: Extract<GateEvent, { type: 'verdict' }>): void
+  onIgnored?(event: Extract<GateEvent, { type: 'ignored' }>): void
+  onReplyStats?(stats: ReplyStats): void
 }
 
 export interface TurnDetector {
@@ -56,6 +62,8 @@ export interface TurnDetector {
   /** The reply started or stopped being audible (the gate learns each reply's echo). */
   replyStarted(): void
   replyEnded(): void
+  /** The mic opened or the default device moved: the next reply audio starts the echo warm-up. */
+  audioPathChanged(): void
   /** Forget any turn in progress (the page closed or reset the conversation). */
   reset(): void
   dispose(): void
@@ -67,6 +75,8 @@ export interface DetectorDeps {
   makeWorker(): WorkerLike
   sileroUrl: string
   smartUrl: string
+  /** The phone's early end of clear turns (its setting, default on there). */
+  earlyEnd?: boolean
 }
 
 function toFloat(pcm: Int16Array): Float32Array {
@@ -104,7 +114,7 @@ export async function loadTurnDetector(deps: DetectorDeps, timeoutMs = 20_000): 
   const s = await ready(st, { type: 'init', smart: deps.smartUrl }, timeoutMs)
   const smartOk = Boolean(s && s.smartMs !== null && s.smartMs <= MAX_SMART_MS)
   if (!smartOk) st.terminate()
-  return new ModelDetector(vad, smartOk ? st : null, Math.max(v.loadMs, s?.loadMs ?? 0), v.sileroMs, s?.smartMs ?? null)
+  return new ModelDetector(vad, smartOk ? st : null, Math.max(v.loadMs, s?.loadMs ?? 0), v.sileroMs, s?.smartMs ?? null, deps.earlyEnd ?? false)
 }
 
 class ModelDetector implements TurnDetector {
@@ -126,17 +136,26 @@ class ModelDetector implements TurnDetector {
   private turnSamples = 0
   private turnKey = 0
   private disposed = false
+  /** Set by `audioPathChanged`, taken at the next window heard while the reply plays. */
+  private pathChanged = false
 
   private readonly vad: WorkerLike
   private readonly smart: WorkerLike | null
 
-  constructor(vad: WorkerLike, smart: WorkerLike | null, loadMs: number, sileroMs: number, smartMs: number | null) {
+  constructor(
+    vad: WorkerLike,
+    smart: WorkerLike | null,
+    loadMs: number,
+    sileroMs: number,
+    smartMs: number | null,
+    earlyEnd: boolean,
+  ) {
     this.vad = vad
     this.smart = smart
     this.loadMs = loadMs
     this.sileroMs = sileroMs
     this.smartMs = smartMs
-    this.policy = new EndOfTurnPolicy(smart !== null, BASE_MS, WEB_FINISHED_MS)
+    this.policy = new EndOfTurnPolicy(smart !== null, BASE_MS, FINISHED_MS, earlyEnd)
     vad.onmessage = (e) => {
       if (e.data.type === 'prob') this.onProb(e.data.seq, e.data.prob)
     }
@@ -178,7 +197,12 @@ class ModelDetector implements TurnDetector {
   }
 
   replyEnded() {
-    this.gate.onReplyEnd()
+    const stats = this.gate.onReplyEnd()
+    if (stats) this.handlers?.onReplyStats?.(stats)
+  }
+
+  audioPathChanged() {
+    this.pathChanged = true
   }
 
   /**
@@ -212,6 +236,11 @@ class ModelDetector implements TurnDetector {
       while (this.turnSamples > MAX_TURN_SAMPLES && this.turn.length > 1) this.turnSamples -= this.turn.shift()!.length
     }
     if (w.playing) {
+      // The first reply audio on a new path starts the echo warm-up (LiveKit: the agent's first speech).
+      if (this.pathChanged) {
+        this.pathChanged = false
+        this.gate.startWarmUp()
+      }
       const event = this.gate.onWindow(prob, w.level, true)
       if (event?.type === 'fire') {
         // Talked over: the activity starts now, with the windows that fired it as its start.
@@ -222,6 +251,7 @@ class ModelDetector implements TurnDetector {
         return
       }
       if (event?.type === 'verdict') this.handlers?.onVerdict(event)
+      if (event?.type === 'ignored') this.handlers?.onIgnored?.(event)
       if (!this.turn) return
     } else {
       const event = this.gate.onWindow(prob, w.level, false)
@@ -256,8 +286,8 @@ class ModelDetector implements TurnDetector {
       } else if (a.type === 'check') {
         const pcm = this.audio()
         this.smart?.postMessage({ type: 'check', checkId: a.checkId, turnKey: this.turnKey, audio: toFloat(pcm) } satisfies ToWorker)
-      } else if (a.type === 'early') {
-        this.handlers?.onEarly(this.audio())
+      } else if (a.type === 'speculate') {
+        this.handlers?.onSpeculate(this.audio())
       } else if (a.type === 'resumed') {
         this.handlers?.onResumed()
       } else if (a.type === 'end') {

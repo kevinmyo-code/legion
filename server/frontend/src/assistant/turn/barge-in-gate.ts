@@ -16,27 +16,17 @@
  * echo cancellation sits in front, so the learned floor is usually far below the phone's call-mode
  * DEFAULT_ECHO_FLOOR; the default is the phone's, and a reply learns its own within 320 ms.
  *
- * **OFF on the web for the first ship (`deps.ts` VOICE_BARGE_IN, 2026-11-17).** Read this before
- * turning it back on. Pause-then-decide passed its unit tests three times and failed the real
- * headless-Chrome echo runs each time (`vf-echo`: the opening heard back at 25% posted a turn, 52
- * audio stops; `vf-echo-long`: the gate judged a long answer's own echo a person, cut it after 139
- * stops, and the echo was posted without `barge_in=1` and answered). What the code, not a browser,
- * says about why (suspects, unconfirmed):
- * - Every "stop" in those counts is an `AudioBufferSourceNode.stop()` in `web-audio.ts` flush(): one
- *   cut stops every queued sentence chunk, so 52 or 139 stops can be one or two cuts.
- * - The tail after a reply (`ECHO_TAIL_MS`, 300 ms) is counted in mic chunks from `onPlaying(false)`,
- *   and web-audio reports that from its idle timer 80 ms after the last buffer's SCHEDULED end. Real
- *   output latency plus the device and echo-canceller buffers are not in that figure, so an echo
- *   arriving later than about 300 ms starts an ordinary turn: posted with no `barge_in`, since it
- *   was never a barge-in. That fits the opening's echo becoming a turn.
- * - `VERDICT_GRACE_MS` (320 ms) assumes playback goes quiet soon after `pause()`. `suspend()` is
- *   asynchronous and the output buffer still drains, so a long answer's echo can run past the grace,
- *   read as a person still talking, and cut the answer.
- * - The flag rides `bargeTurn`, which any `listen()` without keepTurn clears. Anything that calls
- *   `listen()` between the verdict and that turn's end (the backstop's re-listen, `replyDrained`
- *   after the cut's flush, the echo-verdict re-listen added in r4) posts the turn without it.
- * - The unit rooms (`echo.test.ts`) model latency as a fixed 240 ms delay and an instant pause; the
- *   browser has neither. A test that reproduces the browser runs belongs before any fix.
+ * **Echo warm-up (ADR 0064 amendment 2026-11-21).** The echo canceller needs a few seconds of
+ * playback to learn the room each time the audio path is new. `startWarmUp` (the caller's, at the
+ * first reply audio after the mic opens or the default device moves) opens WARMUP_WINDOWS windows,
+ * counted only while reply audio plays. Inside them a span that would fire is reported as `ignored`
+ * instead: nothing is flushed, no verdict is watched, nothing counts, and the span starts over.
+ *
+ * **The web, 2026-11-22.** Voice barge-in was off on the web from 11-17 to 11-22 after the web's own
+ * "pause, then decide" failed the headless-Chrome echo runs. That path and its 320 ms verdict grace
+ * are gone: a fire flushes the reply at once, as on the phone, and the warm-up above guards the
+ * opening. One web-only rule stays (`shared/turn/spec.json` web_only): the page may count a
+ * self-interrupt the engine found (an empty transcript, or one echoing the reply), once per fire.
  */
 
 export const WINDOW_MS = 32
@@ -56,14 +46,12 @@ export const USER_GUARD_WINDOWS = Math.floor(USER_GUARD_MS / WINDOW_MS)
 const MAX_LEARN = 2_000
 export const VERDICT_MS = 1_216
 export const SELF_SPEECH_MS = 160
-/**
- * The web's addition: speech in the verdict's first this-many ms is not counted. The page pauses
- * the reply when the gate fires, and what already left the speaker is still on its way back to the
- * mic (output latency, the room); counted, the reply's own echo read as a person still talking.
- */
-export const VERDICT_GRACE_MS = 320
 export const MAX_SELF_INTERRUPTS = 2
 export const CLEARLY_USER_FACTOR = 2
+/** How long a would-be fire is ignored from the first reply audio on a new audio path. */
+export const WARMUP_MS = 3_000
+/** WARMUP_MS in windows, rounded up. */
+export const WARMUP_WINDOWS = Math.ceil(WARMUP_MS / WINDOW_MS)
 
 export type GateEvent =
   | { type: 'fire'; prob: number; level: number; echoFloor: number; threshold: number; sustainMs: number }
@@ -76,6 +64,8 @@ export type GateEvent =
       selfInterrupts: number
       nowDisabled: boolean
     }
+  /** A span that would have fired, dropped for `reason`; the span starts over. */
+  | { type: 'ignored'; reason: 'warmup'; level: number; threshold: number }
 
 export interface ReplyStats {
   fired: boolean
@@ -115,8 +105,6 @@ export class BargeInGate {
   private armed = false
   private verdictWindowsLeft = 0
   private speechAfterMs = 0
-  /** The part of it after `VERDICT_GRACE_MS`, which is what the verdict goes on. */
-  private speechAfterGraceMs = 0
   private fireLevel = 0
   private fireThreshold = 0
   private replyOpen = false
@@ -131,6 +119,19 @@ export class BargeInGate {
   private bestSpanWindows = 0
   /** The last barge-in already counted as a self-interrupt (by the verdict or by the page). */
   private fireCounted = false
+
+  /** Windows left in which a would-be fire is ignored (`startWarmUp`). */
+  private warmUpLeft = 0
+
+  /** The echo canceller is still settling (`startWarmUp`). */
+  get warmingUpNow(): boolean {
+    return this.warmUpLeft > 0
+  }
+
+  /** Reply audio just started on a new audio path: ignore fires for the next WARMUP_MS. */
+  startWarmUp() {
+    this.warmUpLeft = WARMUP_WINDOWS
+  }
 
   get armedNow(): boolean {
     return this.armed
@@ -203,12 +204,15 @@ export class BargeInGate {
 
   onWindow(prob: number, level: number, playing: boolean): GateEvent | null {
     if (this.userGuardLeft > 0) this.userGuardLeft--
+    const warmingUp = this.warmUpLeft > 0
+    // Only playback trains the canceller: silence between replies must not use the window up.
+    if (warmingUp && playing) this.warmUpLeft--
     if (this.verdictWindowsLeft > 0) return this.watch(prob)
     if (!this.armed || !playing || this.disabled) return null
-    return this.listen(prob, level)
+    return this.listen(prob, level, warmingUp)
   }
 
-  private listen(prob: number, level: number): GateEvent | null {
+  private listen(prob: number, level: number, warmingUp: boolean): GateEvent | null {
     const threshold = this.threshold()
     const qualifies = prob >= PROB && level >= threshold
     this.count(prob, level, threshold, qualifies)
@@ -234,6 +238,10 @@ export class BargeInGate {
       if (this.spanProb[i] > maxProb) maxProb = this.spanProb[i]
       if (this.spanLevel[i] > maxLevel) maxLevel = this.spanLevel[i]
     }
+    if (warmingUp) {
+      this.resetRun()
+      return { type: 'ignored', reason: 'warmup', level: maxLevel, threshold }
+    }
     const fire: GateEvent = {
       type: 'fire',
       prob: maxProb,
@@ -250,7 +258,6 @@ export class BargeInGate {
     this.resetRun()
     this.verdictWindowsLeft = Math.floor(VERDICT_MS / WINDOW_MS)
     this.speechAfterMs = 0
-    this.speechAfterGraceMs = 0
     this.userGuardLeft = USER_GUARD_WINDOWS
     return fire
   }
@@ -265,15 +272,13 @@ export class BargeInGate {
   }
 
   private watch(prob: number): GateEvent | null {
-    const watchedMs = (Math.floor(VERDICT_MS / WINDOW_MS) - this.verdictWindowsLeft) * WINDOW_MS
     if (prob >= SPEECH_PROB) {
       this.speechAfterMs += WINDOW_MS
-      if (watchedMs >= VERDICT_GRACE_MS) this.speechAfterGraceMs += WINDOW_MS
       this.userGuardLeft = USER_GUARD_WINDOWS
     }
     if (--this.verdictWindowsLeft > 0) return null
     const clearlyUser = this.fireLevel >= this.fireThreshold * CLEARLY_USER_FACTOR
-    const self = this.speechAfterGraceMs < SELF_SPEECH_MS && !clearlyUser
+    const self = this.speechAfterMs < SELF_SPEECH_MS && !clearlyUser
     if (self && !this.fireCounted) {
       this.fireCounted = true
       this.selfInterrupts++

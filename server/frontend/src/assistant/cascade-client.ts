@@ -22,6 +22,7 @@ import { readRefusal } from './refusals'
 import { ENTRY_MS, ENTRY_TAP_MS, TurnDeadline } from './turn-deadline'
 import { newTurnId, postTurn } from './turn-post'
 import { utterance } from './utterance'
+import type { ReplyStats } from './turn/barge-in-gate'
 import type { TurnDetector } from './turn/detector'
 import type { AssistantState, Line, Notice } from './live-client'
 import { base64ToPcm16 } from './pcm'
@@ -116,7 +117,7 @@ export interface CascadeDeps {
    */
   turnDetector?: () => Promise<TurnDetector | null>
   /**
-   * Barge-in by voice (`deps.ts` VOICE_BARGE_IN, off for this ship). Off: half-duplex from the
+   * Talk-over (`deps.ts` TALK_OVER_DEFAULT: off on the demo). Off: half-duplex from the
    * start; what the mic hears while a reply plays, and in its tail, never reaches the models.
    */
   bargeIn?: boolean
@@ -168,6 +169,8 @@ export interface CascadeOptions {
 
 /** After the reply ends, this much audio is not listened to: its tail is still in the room. */
 export const ECHO_TAIL_MS = 300
+/** The phone's notice when two self-interrupts turn talk-over off for the conversation. */
+export const TALK_OVER_OFF = 'Interrupting turned off for this conversation.'
 /** Pre-roll kept ahead of the first voiced chunk (20 ms chunks), so the first word is not clipped. */
 const PREROLL_CHUNKS = 15
 
@@ -236,6 +239,9 @@ export class CascadeClient {
   eotMs: number[] = []
   /** Barge-ins this page has acted on (the browser check reads it). */
   bargeIns = 0
+  /** Spans the echo warm-up held back, and what the gate heard over the last replies (the browser check reads them). */
+  warmUpIgnored = 0
+  replyStats: ReplyStats[] = []
   /** Sentences the engine judged were not for the assistant (section 10), or no speech at all. */
   ignoredTurns = 0
   /** The line this turn's own heard words drew, if any. */
@@ -244,8 +250,6 @@ export class CascadeClient {
   private prepared = false
   /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
   private entering = false
-  /** The gate fired over the reply, which is paused until its verdict; a turn that ended meanwhile. */
-  private bargePending: { held: Int16Array | null; afterReply: 'listen' | 'close' | 'tour' | null } | null = null
   /** Audio right after the reply ended that is not yet listened to (ECHO_TAIL_MS). */
   private tailLeftMs = 0
   /** The turn being listened to began over a reply (`barge_in=1` on its post). */
@@ -445,6 +449,7 @@ export class CascadeClient {
         onChunk: (pcm) => this.onChunk(pcm, generation),
         onMicLost: () => this.micLost(),
         onPlaying: (playing) => this.onPlaying(playing),
+        onPathChange: () => this.detector?.audioPathChanged(),
       })
     } catch (error) {
       opened = Promise.reject(error)
@@ -463,6 +468,8 @@ export class CascadeClient {
       () => {
         if (generation !== this.micGeneration) return
         this.rec({ kind: 'mic_open', reason: 'tap' })
+        // A new capture is a new echo path: the gate warms up on the first reply audio.
+        this.detector?.audioPathChanged()
         this.micReady = true
         if (this.state.mic === 'starting' && !this.entering) this.set({ mic: 'off' })
       },
@@ -497,13 +504,21 @@ export class CascadeClient {
         // Loaded after the page let go of this client: its workers go too.
         if (this.disposed) return detector.dispose()
         this.detector = detector
+        // Loaded with the mic already open: its echo canceller is as new as the gate.
+        detector.audioPathChanged()
         detector.setHandlers({
           onStart: () => this.onSpeechStart(),
-          onEarly: (audio) => this.onEarly(audio),
+          onSpeculate: (audio) => this.onSpeculate(audio),
           onResumed: () => this.dropSpec(),
           onEnd: (audio, _reason, silenceMs) => this.onTurnEnd(audio, silenceMs),
           onBargeIn: () => this.onBargeIn(),
-          onVerdict: (v) => this.onVerdict(v.selfInterrupt, v.nowDisabled),
+          onVerdict: (v) => this.onVerdict(v.nowDisabled),
+          onIgnored: () => {
+            this.warmUpIgnored += 1
+          },
+          onReplyStats: (stats) => {
+            this.replyStats = [...this.replyStats.slice(-19), stats]
+          },
         })
       },
       () => {},
@@ -743,7 +758,7 @@ export class CascadeClient {
   }
 
   /** The phone's speculation: at 300 ms of silence, transcribe what was said so far. */
-  private onEarly(audio: Int16Array) {
+  private onSpeculate(audio: Int16Array) {
     if (!this.listening || !this.deps.transcribe) return
     this.dropSpec()
     const abort = new AbortController()
@@ -770,9 +785,7 @@ export class CascadeClient {
     this.chunks = []
     this.speechStarted = false
     if (this.state.mic === 'on') this.set({ mic: 'off' })
-    // Ended before the gate's verdict: sent only if it was a person.
-    if (this.bargePending) this.bargePending.held = audio
-    else void this.sendTurn(audio, spec)
+    void this.sendTurn(audio, spec)
   }
 
   private async sendTurn(audio: Int16Array, spec: { result: Promise<string | null> } | null) {
@@ -796,49 +809,30 @@ export class CascadeClient {
   }
 
   /**
-   * Talked over. The reply is paused, not cut, until the gate's verdict (about 1.2 s): its own
-   * echo then plays on with nothing posted (review 2026-11-17: an echo cut the answer and was sent
-   * as a paid turn); a person cuts it, and what they said is the turn. Without `pause` here, it
-   * cuts at once.
+   * Talked over (the phone's rule, ADR 0064): the reply is flushed at once, the engine's turn is
+   * cancelled, and what they said, from the span that fired, is the next turn (`barge_in=1`, so the
+   * engine checks it for the reply's own echo). The gate's verdict about 1.2 s later only counts
+   * self-interrupts; two of them turn talk-over off for this conversation.
    */
   private onBargeIn() {
     if (!this.voiceOpen || (!this.playing && !this.awaiting) || !this.fullDuplex) return
-    if (this.audioIO?.pause) {
-      this.audioIO.pause()
-      // What follows the reply (listen, close, the next beat) must survive listen() below.
-      this.bargePending = { held: null, afterReply: this.afterReply }
-    } else this.cutForBargeIn()
-    this.listen(true)
-    this.speechStarted = true
-  }
-
-  private cutForBargeIn() {
     this.bargedOver = this.lastReply
     this.bargeIns += 1
     this.cutReply('barge_in')
+    this.listen(true)
     this.bargeTurn = true
+    this.speechStarted = true
   }
 
-  private onVerdict(selfInterrupt: boolean, nowDisabled: boolean) {
-    if (nowDisabled) this.halfDuplex = true
-    const pending = this.bargePending
-    if (!pending) return
-    this.bargePending = null
-    if (selfInterrupt) {
-      // Its own voice: what was heard goes, and the answer plays on from where it paused.
-      this.afterReply ??= pending.afterReply
-      this.stopListening()
-      this.detector?.reset()
-      this.audioIO?.resume?.()
-      // Nothing left to play (the reply ended while paused): listen now, or nothing ever will.
-      if (!this.playing && !this.awaiting) {
-        if (this.afterReply) this.replyDrained()
-        else this.listen()
-      }
-      return
-    }
-    this.cutForBargeIn()
-    if (pending.held) void this.sendTurn(pending.held, null)
+  private onVerdict(nowDisabled: boolean) {
+    if (nowDisabled) this.talkOverOff()
+  }
+
+  /** Two self-interrupts: half-duplex for the rest of this conversation, said on screen (the phone's notice). */
+  private talkOverOff() {
+    if (this.halfDuplex) return
+    this.halfDuplex = true
+    this.push({ kind: 'sys', text: TALK_OVER_OFF })
   }
 
   /** The reply has played to its end: listen again, or close if it was the sign-off. */
@@ -1277,9 +1271,9 @@ export class CascadeClient {
     const words = text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
     const reply = over.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ')
     // Nothing heard, or only what the assistant was saying: the barge-in was its own voice. Two of
-    // those and this conversation listens half-duplex, without a word about it.
+    // those and this conversation listens half-duplex.
     if (!words || (words.length >= 4 && reply.includes(words))) {
-      if (this.detector.gate.countSelfInterrupt()) this.halfDuplex = true
+      if (this.detector.gate.countSelfInterrupt()) this.talkOverOff()
     }
   }
 
@@ -1338,7 +1332,6 @@ export class CascadeClient {
     // A greeting cut short does not count as the recording notice heard.
     this.greetPlaying = false
     this.audioFrom = null
-    this.bargePending = null
     this.deadline?.clear()
     this.dropTurn()
     this.turnGeneration += 1

@@ -37,8 +37,6 @@ type AudioSessionNavigator = Navigator & { audioSession?: { type: string } }
 export function createWebAudio(): AudioIO {
   let capture: AudioContext | null = null
   let playback: AudioContext | null = null
-  /** Held by `pause()` (a barge-in awaiting its verdict): only `resume()` or a flush lets it go. */
-  let paused = false
   let stream: MediaStream | null = null
   let source: MediaStreamAudioSourceNode | null = null
   let node: AudioWorkletNode | null = null
@@ -77,8 +75,8 @@ export function createWebAudio(): AudioIO {
         playback = new AudioContext()
       }
     }
-    // A new context starts suspended until a tap; a paused one stays paused while audio is queued.
-    if (playback.state === 'suspended' && !paused) void playback.resume()
+    // A new context starts suspended until a tap.
+    if (playback.state === 'suspended') void playback.resume()
     if (!outTap) {
       outTap = makeTap(playback)
       outTap.connect(playback.destination)
@@ -93,7 +91,31 @@ export function createWebAudio(): AudioIO {
     return loudness(scratch)
   }
 
+  /** The default input and output now, to tell a real device move from a list refresh. */
+  let devicesKey = ''
+  const readDevices = async (): Promise<string> => {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices()
+      // Chrome lists the default as `default`; Safari and Firefox list it first.
+      const pick = (kind: MediaDeviceKind) => {
+        const of = all.filter((d) => d.kind === kind)
+        return (of.find((d) => d.deviceId === 'default') ?? of[0])?.groupId ?? ''
+      }
+      return `${pick('audioinput')}|${pick('audiooutput')}`
+    } catch {
+      return ''
+    }
+  }
+  const onDeviceChange = () => {
+    void readDevices().then((key) => {
+      if (!stream || key === devicesKey) return
+      devicesKey = key
+      handlers?.onPathChange?.()
+    })
+  }
+
   const stopMic = () => {
+    navigator.mediaDevices?.removeEventListener?.('devicechange', onDeviceChange)
     if (node) {
       node.port.onmessage = null
       node.port.close()
@@ -177,6 +199,11 @@ export function createWebAudio(): AudioIO {
       opened.getAudioTracks().forEach((track) => {
         track.onended = () => handlers?.onMicLost()
       })
+      // A device moved while talking (headphones in or out): the barge-in gate warms up again.
+      void readDevices().then((key) => {
+        devicesKey = key
+      })
+      navigator.mediaDevices.addEventListener?.('devicechange', onDeviceChange)
       context.onstatechange = () => {
         // iOS puts a context into "interrupted" for a phone call or Siri.
         if ((context.state as string) === 'interrupted') handlers?.onMicLost()
@@ -220,18 +247,6 @@ export function createWebAudio(): AudioIO {
       if (idleTimer) clearTimeout(idleTimer)
       idleTimer = null
       setSounding(false)
-      paused = false
-      if (playback?.state === 'suspended') void playback.resume()
-    },
-
-    pause() {
-      paused = true
-      if (playback?.state === 'running') void playback.suspend()
-    },
-
-    resume() {
-      paused = false
-      if (playback?.state === 'suspended') void playback.resume()
     },
 
     dispose() {

@@ -152,7 +152,7 @@ describe.skipIf(!RUN)('the detector on real Silero (Smart Turn absent: silence o
     let starts = 0
     detector.setHandlers({
       onStart: () => starts++,
-      onEarly: () => {},
+      onSpeculate: () => {},
       onResumed: () => {},
       onEnd: (_a, _r, silenceMs) => ends.push(silenceMs),
       onBargeIn: () => {},
@@ -169,7 +169,7 @@ describe.skipIf(!RUN)('the detector on real Silero (Smart Turn absent: silence o
     let bargeIns = 0
     detector.setHandlers({
       onStart: () => {},
-      onEarly: () => {},
+      onSpeculate: () => {},
       onResumed: () => {},
       onEnd: () => {},
       onBargeIn: () => bargeIns++,

@@ -265,13 +265,14 @@ function cancelTurn(turnId: string) {
 }
 
 /** The phone's turn models, after the first tap: two workers, the site's own model files. */
-async function loadTurnModels(): Promise<TurnDetector | null> {
+async function loadTurnModels(earlyEnd: boolean): Promise<TurnDetector | null> {
   try {
     const { loadTurnDetector } = await import('./turn/detector')
     return await loadTurnDetector({
       makeWorker: () => new Worker(new URL('./turn/turn.worker.ts', import.meta.url), { type: 'module' }),
       sileroUrl: '/turn/silero_vad_v6_2.onnx',
       smartUrl: '/turn/smart-turn-v3.2-cpu.onnx',
+      earlyEnd,
     })
   } catch {
     return null
@@ -287,14 +288,30 @@ async function loadTurnModels(): Promise<TurnDetector | null> {
  */
 export const EARLY_TRANSCRIPT = false
 
+/** Which web voice door: the public demo (/try) or a signed-in member's assistant. */
+export type VoiceSurface = 'demo' | 'members'
+
 /**
- * Barge-in by voice: OFF for the demo's first ship (2026-11-17). Three rounds of pause-then-decide
- * passed the unit tests and failed the real headless-Chrome echo runs (the reply heard back cut the
- * answer and was posted as a turn; `turn/barge-in-gate.ts` has what the code says about why). Off,
- * the conversation is half-duplex from the start and a tap (the orb, the dialog's Interrupt) is
- * the way to interrupt. The code and its tests stay, behind this.
+ * The phone's turn-taking on the web (ADR 0064; Kevin, 2026-11-22: "all my voice agents should be
+ * the same"): talking over the reply stops it, and a clearly finished turn ends at 300 ms. One
+ * switch for both, so a page with it off ends turns and plays replies exactly as before (half-duplex,
+ * a tap interrupts). The phone has them as two settings, default on. On the web: OFF on the demo
+ * until Kevin says; members as below. A browser may override either way for testing with
+ * localStorage `legion.voice.talkover` = `on` or `off`.
  */
-export const VOICE_BARGE_IN = false
+export const TALK_OVER_DEFAULT: Record<VoiceSurface, boolean> = { demo: false, members: false }
+export const TALK_OVER_KEY = 'legion.voice.talkover'
+
+export function talkOverOn(surface: VoiceSurface): boolean {
+  try {
+    const override = window.localStorage.getItem(TALK_OVER_KEY)
+    if (override === 'on') return true
+    if (override === 'off') return false
+  } catch {
+    // Storage blocked: the default.
+  }
+  return TALK_OVER_DEFAULT[surface]
+}
 
 /** What has been said so far, transcribed early; null when it could not be had. */
 async function transcribe(audio: Int16Array, signal: AbortSignal): Promise<string | null> {
@@ -343,15 +360,16 @@ async function chips(offer: string): Promise<SuggestChip[]> {
   }
 }
 
-export function createCascadeDeps(options: { funnelRef?: string } = {}): CascadeDeps {
+export function createCascadeDeps(options: { funnelRef?: string; surface: VoiceSurface }): CascadeDeps {
+  const talkOver = talkOverOn(options.surface)
   return {
     startTurn,
     cancelTurn,
     robotic,
     chips,
-    turnDetector: loadTurnModels,
+    turnDetector: () => loadTurnModels(talkOver),
     ...(EARLY_TRANSCRIPT ? { transcribe } : {}),
-    bargeIn: VOICE_BARGE_IN,
+    bargeIn: talkOver,
     ...(options.funnelRef !== undefined ? { funnel: (event) => postFunnel(event, options.funnelRef) } : {}),
     audio: (): AudioIO => {
       if (audioFactory) return audioFactory()

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { EARLY_MS, WEB_FINISHED_MS } from './eot-policy'
+import { SPECULATE_MS, FINISHED_MS } from './eot-policy'
 import { MAX_TURN_SAMPLES, loadTurnDetector, type TurnDetector, type TurnHandlers } from './detector'
 import { chunks, concat, echo, over, silence, speech } from './fixtures'
 import type { FromWorker, ToWorker } from './turn.worker'
@@ -86,7 +86,7 @@ function watch(detector: TurnDetector): Seen {
   const seen: Seen = { starts: 0, early: [], resumed: 0, ends: [], bargeIns: 0, verdicts: [] }
   const handlers: TurnHandlers = {
     onStart: () => seen.starts++,
-    onEarly: (audio) => seen.early.push(audio.length),
+    onSpeculate: (audio) => seen.early.push(audio.length),
     onResumed: () => seen.resumed++,
     onEnd: (audio, reason, silenceMs) => seen.ends.push({ samples: audio.length, reason, silenceMs }),
     onBargeIn: () => seen.bargeIns++,
@@ -154,7 +154,7 @@ describe('the turn (speech, then silence)', () => {
     const seen: Int16Array[] = []
     detector!.setHandlers({
       onStart: () => {},
-      onEarly: () => {},
+      onSpeculate: () => {},
       onResumed: () => {},
       onEnd: (audio) => seen.push(audio),
       onBargeIn: () => {},
@@ -196,13 +196,13 @@ describe('the turn (speech, then silence)', () => {
     // The fake Smart Turn says "finished" (0.9): the web's early end (to one window), against the
     // old 1.2 s energy window.
     expect(end.reason).toBe('finished')
-    expect(end.silenceMs).toBeGreaterThanOrEqual(WEB_FINISHED_MS)
-    expect(end.silenceMs).toBeLessThan(WEB_FINISHED_MS + 64)
+    expect(end.silenceMs).toBeGreaterThanOrEqual(FINISHED_MS)
+    expect(end.silenceMs).toBeLessThan(FINISHED_MS + 64)
     expect(end.silenceMs).toBeLessThan(SILENCE_MS)
     // The turn's audio carries its start (the pre-roll) and the whole utterance.
     expect(end.samples).toBeGreaterThan(1.2 * 16_000)
     expect(seen.early[0]).toBeLessThanOrEqual(end.samples)
-    expect(EARLY_MS).toBe(300)
+    expect(SPECULATE_MS).toBe(300)
   })
 
   it('throws the early transcript away when speech resumes', async () => {

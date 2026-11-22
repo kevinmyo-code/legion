@@ -16,7 +16,7 @@ import { useSurface } from '@/lib/surface'
 
 import { CascadeClient, type CascadeDeps } from './cascade-client'
 import type { AssistantClient } from './client'
-import { createCascadeDeps, createLiveDeps, preloadAudio } from './deps'
+import { createCascadeDeps, createLiveDeps, preloadAudio, type VoiceSurface } from './deps'
 import { LiveClient, type AssistantState, type LiveDeps } from './live-client'
 
 /**
@@ -114,6 +114,7 @@ export function AssistantProvider({
   defaultOpen = false,
   voiceFirst,
   funnelRef,
+  voiceSurface = 'demo',
 }: {
   children: ReactNode
   deps?: LiveDeps
@@ -147,6 +148,11 @@ export function AssistantProvider({
   }
   /** The demo's ref tag: when set, the conversation counts its funnel steps under it. */
   funnelRef?: string
+  /**
+   * Which door this is, for the phone's turn-taking on the web (`deps.ts` TALK_OVER_DEFAULT). The
+   * members' shell says `members`; anything that does not say is the demo, which keeps it off.
+   */
+  voiceSurface?: VoiceSurface
 }) {
   const surface = useSurface()
   const surfaceRef = useRef(surface)
@@ -173,7 +179,7 @@ export function AssistantProvider({
   const voiceFirstRef = useRef(voiceFirst)
   const [client, setClient] = useState<AssistantClient>(() =>
     voiceFirstRef.current
-      ? new CascadeClient(cascadeDeps ?? createCascadeDeps({ funnelRef: voiceFirstRef.current.funnelRef }), {
+      ? new CascadeClient(cascadeDeps ?? createCascadeDeps({ funnelRef: voiceFirstRef.current.funnelRef, surface: 'demo' }), {
           companionName: null,
           sessionMinutes: voiceFirstRef.current.sessionMinutes ?? null,
           endOnHidden: () => surfaceRef.current === 'family',
@@ -198,7 +204,7 @@ export function AssistantProvider({
     if (!cascadeInfo) return
     setClient((current) => {
       if (current instanceof CascadeClient) return current
-      const next: AssistantClient = new CascadeClient(cascadeDeps ?? createCascadeDeps({ funnelRef }), {
+      const next: AssistantClient = new CascadeClient(cascadeDeps ?? createCascadeDeps({ funnelRef, surface: voiceSurface }), {
         companionName: cascadeInfo.companion_name,
         sessionMinutes: cascadeInfo.session_minutes ?? null,
         endOnHidden: () => surfaceRef.current === 'family',
@@ -208,7 +214,7 @@ export function AssistantProvider({
       })
       return next
     })
-  }, [cascadeInfo, cascadeDeps, funnelRef])
+  }, [cascadeInfo, cascadeDeps, funnelRef, voiceSurface])
   useEffect(() => {
     client.attach()
     return () => client.dispose()

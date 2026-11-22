@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { BASE_MS, CAP_MS, EARLY_MS, EndOfTurnPolicy, GATE_MS, WEB_FINISHED_MS, WINDOW_MS, type Action } from './eot-policy'
+import { BASE_MS, CAP_MS, SPECULATE_MS, EndOfTurnPolicy, GATE_MS, FINISHED_MS, WINDOW_MS, type Action } from './eot-policy'
 
 // Fails fast, with its name, if anything hangs.
 vi.setConfig({ testTimeout: 10_000 })
@@ -159,11 +159,11 @@ describe('EndOfTurnPolicy (the phone policy)', () => {
 
   it('says once per silence when it is early enough to start transcribing', () => {
     const p = speaking()
-    const early = of(actions(p, 400), 'early')
+    const early = of(actions(p, 400), 'speculate')
     expect(early).toHaveLength(1)
-    expect(early[0].silenceMs).toBeGreaterThanOrEqual(EARLY_MS)
+    expect(early[0].silenceMs).toBeGreaterThanOrEqual(SPECULATE_MS)
     expect(p.onWindow(speech)[0].type).toBe('resumed')
-    expect(of(actions(p, 400), 'early')).toHaveLength(1)
+    expect(of(actions(p, 400), 'speculate')).toHaveLength(1)
   })
 })
 
@@ -171,20 +171,20 @@ describe('EndOfTurnPolicy (the phone policy)', () => {
 // verdict; with no verdict, or no Smart Turn, the 700 ms base as before. The phone passes none.
 describe('EndOfTurnPolicy with the web early end', () => {
   function web(smart = true): EndOfTurnPolicy {
-    const p = new EndOfTurnPolicy(smart, BASE_MS, WEB_FINISHED_MS)
+    const p = new EndOfTurnPolicy(smart, BASE_MS, FINISHED_MS)
     for (let i = 0; i < 20; i++) p.onWindow(speech)
     return p
   }
 
   it('a finished verdict before 500 ms ends the turn at 500 ms', () => {
-    expect(WEB_FINISHED_MS).toBe(500)
+    expect(FINISHED_MS).toBe(500)
     const p = web()
     const check = of(actions(p, 300), 'check')[0]
     expect(p.onCheckResult(check.checkId, 0.9)).toEqual([])
     const end = of(actions(p, 400), 'end')[0]
     expect(end.reason).toBe('finished')
-    expect(end.silenceMs).toBeGreaterThanOrEqual(WEB_FINISHED_MS)
-    expect(end.silenceMs).toBeLessThan(WEB_FINISHED_MS + WINDOW_MS)
+    expect(end.silenceMs).toBeGreaterThanOrEqual(FINISHED_MS)
+    expect(end.silenceMs).toBeLessThan(FINISHED_MS + WINDOW_MS)
   })
 
   it('a finished verdict that lands between 500 and 700 ms ends the turn when it lands', () => {
@@ -192,7 +192,7 @@ describe('EndOfTurnPolicy with the web early end', () => {
     const check = of(actions(p, 600), 'check')[0]
     const end = p.onCheckResult(check.checkId, 0.9)[0] as Extract<Action, { type: 'end' }>
     expect(end.reason).toBe('finished')
-    expect(end.silenceMs).toBeGreaterThanOrEqual(WEB_FINISHED_MS)
+    expect(end.silenceMs).toBeGreaterThanOrEqual(FINISHED_MS)
     expect(end.silenceMs).toBeLessThan(BASE_MS)
   })
 

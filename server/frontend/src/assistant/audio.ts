@@ -29,6 +29,11 @@ export interface AudioHandlers {
   onMicLost(): void
   /** Playback went from nothing queued to something playing (`true`) or back (`false`). */
   onPlaying(playing: boolean): void
+  /**
+   * The default microphone or speaker changed while the mic is open (headphones in or out): the
+   * echo canceller has a new path to learn, so the barge-in gate warms up again. Optional.
+   */
+  onPathChange?(): void
 }
 
 export interface AudioIO {
@@ -47,14 +52,8 @@ export interface AudioIO {
    * the microphone opens and brings its own handlers. Optional; a fake may skip it.
    */
   unlock?(onPlaying?: (playing: boolean) => void): void
-  /** Drop everything queued and stop what is sounding (an interruption). Undoes a `pause`. */
+  /** Drop everything queued and stop what is sounding (an interruption). */
   flush(): void
-  /**
-   * Hold playback where it is, keeping what is queued (the barge-in gate fired and its verdict is
-   * not in yet), and carry on from there. Optional: without them a barge-in cuts at once.
-   */
-  pause?(): void
-  resume?(): void
   /** Everything: mic, playback, contexts. Safe to call twice. */
   dispose(): void
   /**

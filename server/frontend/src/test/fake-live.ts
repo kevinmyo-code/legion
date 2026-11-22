@@ -109,15 +109,7 @@ export class FakeAudio implements AudioIO {
   }
   flush() {
     this.flushes += 1
-    this.paused = false
     this.handlers?.onPlaying(false)
-  }
-  paused = false
-  pause() {
-    this.paused = true
-  }
-  resume() {
-    this.paused = false
   }
   dispose() {
     this.disposed = true
