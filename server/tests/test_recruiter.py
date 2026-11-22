@@ -176,18 +176,20 @@ def test_the_allowlist_is_the_member_surface_less_list_tables_and_the_brief():
     grades = {"canvas_grades", "what_i_need"}
     # greeting_facts (alfred-greets ticket 01): one member's own day, coursework and budgets.
     greeting = {"greeting_facts"}
-    # board_status (2026-11-20): a real member's laptop board.
+    # board_status (2026-11-20): a real member's laptop board; add_backlog_idea (2026-11-22): its
+    # backlog.
     assert set(RECRUITER_EXCLUDED) == {
         "list_tables", "brief_latest", "check_conditions", "github_status", "board_status",
-        *memory, *body, *grades, *greeting,
+        "add_backlog_idea", *memory, *body, *grades, *greeting,
     }
     assert surface.BODY_COACH_TOOLS == body
     assert (
         RECRUITER_EXCLUDED["brief_latest"]
         == RECRUITER_DENIED["brief.views.BriefLatestView"]
     )
+    # Every write a visit could make lands in its own copy, except a real member's laptop backlog.
     for tool in TOOLS:
-        if tool.writes and tool.name not in memory | body:
+        if tool.writes and tool.name not in memory | body | {"add_backlog_idea"}:
             assert tool.name in RECRUITER_TOOLS, tool.name
     assert "about_kevin" in RECRUITER_TOOLS
     assert "about_kevin" not in surface.WEB_TOOL_NAMES

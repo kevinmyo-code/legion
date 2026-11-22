@@ -395,7 +395,9 @@ class GeminiTextLoop(
             val results = ran.map { it.result }
             speakVerbatim(results, state, listener)
             val nudge = if (round + 1 >= maxRounds) "Answer now with what you have." else null
-            contents.put(AgentProtocol.functionResponseContent(results, nudge))
+            // Words only the phone may say (the factory board's cards) never reach the model.
+            val forModel = results.map { it.copy(response = VerbatimSpeech.forModel(it.response)) }
+            contents.put(AgentProtocol.functionResponseContent(forModel, nudge))
         }
     }
 

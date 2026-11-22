@@ -11,6 +11,12 @@ Every route here is a 404 before authentication unless `LEGION_BOARD=on` (`board
 - `POST /api/board/writer`: a signed-in member mints the laptop's writer token, shown once; any
   earlier one dies now. Browser session or a write device token; 5 an hour per member.
 - `DELETE /api/board/writer`: revoke it. The snapshot stays readable.
+- `POST /api/board/ideas`: a backlog idea in the member's words: cleaned, scored (`board.rubric`)
+  and stored as a DRAFT, with the read-back a voice says. 20 drafts a day (`board.ideas`).
+- `POST /api/board/ideas/<id>/confirm`: his yes; the draft becomes pending for the laptop.
+- `DELETE /api/board/ideas/<id>`: his no; the draft is dropped.
+- `GET /api/board/ideas/pending` and `POST /api/board/ideas/<id>/delivered`: the laptop's writer
+  token ONLY, to turn pending ideas into queued cards (`board.sh intake`).
 
 Logs carry sizes, counts and ages only, never card text.
 """
@@ -32,6 +38,7 @@ from rest_framework.views import APIView
 from api.schema import DetailSerializer
 from board import cards as board_cards
 from board import flags, reading
+from board import ideas as board_ideas
 from board.authentication import BoardWriterAuthentication
 from board.models import BoardSnapshot
 from household.authentication import DeviceTokenAuthentication
@@ -101,6 +108,14 @@ class BoardRemovedSerializer(serializers.Serializer):
     field = serializers.CharField()
 
 
+class BoardRiceSerializer(serializers.Serializer):
+    r = serializers.CharField()
+    i = serializers.CharField()
+    c = serializers.CharField()
+    e = serializers.CharField()
+    score = serializers.FloatField()
+
+
 class BoardCardSerializer(serializers.Serializer):
     id = serializers.CharField()
     col = serializers.ChoiceField(choices=list(board_cards.COLS))
@@ -120,6 +135,11 @@ class BoardCardSerializer(serializers.Serializer):
     answer = BoardAnswerSerializer(allow_null=True)
     age_min = serializers.IntegerField(help_text="Minutes since the card changed, as of now.")
     stale = serializers.BooleanField()
+    rice = BoardRiceSerializer(allow_null=True, help_text="A backlog idea's score, else null.")
+    blast = serializers.CharField(
+        allow_blank=True, help_text="A backlog idea's blast forecast: GREEN, YELLOW, RED or blank."
+    )
+    scored_by = serializers.CharField(allow_blank=True)
 
 
 class BoardSnapshotSerializer(serializers.Serializer):
@@ -150,6 +170,14 @@ class BoardSerializer(serializers.Serializer):
     spoken = serializers.ListField(
         child=serializers.CharField(), help_text="Lines a voice says word for word, built by code."
     )
+    brief = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="'Where are we': at most five short lines a voice says word for word.",
+    )
+    brief_for_model = serializers.CharField(
+        help_text="The brief's freshness and counts only, no card text: what a model may read."
+    )
+    pending_ideas = serializers.IntegerField(help_text="Ideas said yes to, not on the laptop yet.")
 
 
 class BoardStoredSerializer(serializers.Serializer):
@@ -182,6 +210,7 @@ def _payload(request, now=None) -> dict:
             "projects": board_cards.projects(cards),
             "cards": cards,
         }
+    short = reading.brief(request, r)
     writer = None
     if row is not None and row.writer_key_hash:
         writer = {"created_at": row.writer_created_at, "last_used_at": row.writer_last_used_at}
@@ -193,6 +222,9 @@ def _payload(request, now=None) -> dict:
         "laptop_on": r.laptop_on,
         "writer": writer,
         "spoken": reading.spoken_lines(request, r),
+        "brief": short.lines,
+        "brief_for_model": short.for_model,
+        "pending_ideas": board_ideas.pending_count(request.user),
     }
 
 

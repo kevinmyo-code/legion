@@ -1716,6 +1716,11 @@ def test_every_mcp_tool_is_scoped_by_household(
     covered.add("board_status")
     is_error, text, _ = call(mcp_b, "board_status", {})
     assert is_error and text.startswith("Nothing was read."), text
+    # add_backlog_idea (backlog intake) is never run over /mcp: it saves only on a yes in a later
+    # turn, which /mcp cannot tell apart (test_board_ideas.py covers member privacy).
+    covered.add("add_backlog_idea")
+    is_error, text, _ = call(mcp_b, "add_backlog_idea", {"text": "alpha"})
+    assert is_error and text.startswith("Nothing was written."), text
     # web_search reads no row at all; offline here, it fails in words.
     covered.add("web_search")
     is_error, text, _ = call(mcp_b, "web_search", {"query": "alpha"})

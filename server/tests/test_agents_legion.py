@@ -514,7 +514,8 @@ def test_a_tracker_draft_cannot_be_committed_in_the_same_turn(seeded):
     from homes.models import UserAspect
     from homes.records_tools import CREATE_ASPECT, RECORD_TOOLS
 
-    assert guards.CONFIRM_FLAG_TOOLS <= {t.name for t in RECORD_TOOLS}
+    # The records tools, plus backlog intake (`test_board_ideas.py` covers its later yes).
+    assert guards.CONFIRM_FLAG_TOOLS - {"add_backlog_idea"} <= {t.name for t in RECORD_TOOLS}
     draft = {
         "aspect_name": "Test reading",
         "record_types": [{"name": "Book", "fields": [{"name": "title", "type": "TEXT"}]}],

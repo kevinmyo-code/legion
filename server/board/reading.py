@@ -194,3 +194,99 @@ def model_lines(request, reading: Reading) -> list[str]:
     cards = cards_now(reading)
     by_project = projects_line(cards)
     return [first, counts_line(cards)] + ([by_project] if by_project else [])
+
+
+# ---- "where are we": the short read (backlog intake 1122, S4) ----------------------------------
+
+BRIEF_WAITING = 2
+BRIEF_WORKING = 3
+BRIEF_DONE = 3
+BRIEF_TITLE_MAX = 40
+
+
+def _short(title: str) -> str:
+    if len(title) <= BRIEF_TITLE_MAX:
+        return title
+    return title[:BRIEF_TITLE_MAX].rsplit(" ", 1)[0].rstrip(" ,.;:") + "..."
+
+
+def _listed(cards: list[dict], limit: int) -> str:
+    names = [_short(c["title"]) for c in cards[:limit]]
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _plural(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def waiting_sessions(request) -> int:
+    """Claude sessions in the household waiting on someone (`claude_session`'s status screen's own
+    rule: seen within its window, state `waiting`). The rows are household-shared already."""
+    from claude_session.models import SESSION_WAITING, ClaudeCodeSession
+    from claude_session.views import SESSION_SHOWN_HOURS
+    from household.tenancy import scoped
+
+    since = timezone.now() - timedelta(hours=SESSION_SHOWN_HOURS)
+    return (
+        scoped(ClaudeCodeSession, request)
+        .filter(state=SESSION_WAITING, last_seen_at__gte=since)
+        .count()
+    )
+
+
+@dataclass(frozen=True)
+class Brief:
+    """`lines`: what a voice says word for word (code-made, card titles included). `for_model`:
+    counts and freshness only, no card text, for whatever model sits beside the voice."""
+
+    lines: list[str]
+    for_model: str
+
+
+def brief(request, reading: Reading) -> Brief:
+    """'Where are we': freshness, the counts, the top cards, sessions and ideas, at most five
+    sentences of about sixty words."""
+    from board import ideas
+
+    first = freshness_line(request, reading)
+    sessions = waiting_sessions(request)
+    pending = ideas.pending_count(request.user)
+    tail_parts = []
+    if sessions:
+        tail_parts.append(
+            f"{_plural(sessions, 'Claude session', 'Claude sessions')} "
+            f"{'is' if sessions == 1 else 'are'} waiting on you"
+        )
+    if pending:
+        tail_parts.append(
+            f"{_plural(pending, 'idea is', 'ideas are')} not on the laptop yet"
+        )
+    tail = (" and ".join(tail_parts) + ".") if tail_parts else ""
+    tail = tail[:1].upper() + tail[1:]
+    if reading.row is None or reading.row.received_at is None:
+        lines = [first] + ([tail] if tail else [])
+        return Brief(lines=lines, for_model=" ".join(lines))
+    cards = cards_now(reading)
+    in_flight = [c for c in cards if c["col"] in ("working", "testing")]
+    waiting = open_asks(cards)
+    done = [c for c in cards if c["col"] == "done"]
+    counts = (
+        f"{len(in_flight)} in flight, {len(waiting)} waiting on you, "
+        f"{len(done)} shipped today."
+    )
+    lines = [first, counts]
+    if waiting:
+        lines.append(f"Waiting on you: {_listed(waiting, BRIEF_WAITING)}.")
+    work_done = []
+    if in_flight:
+        work_done.append(f"working on {_listed(in_flight, BRIEF_WORKING)}")
+    if done:
+        work_done.append(f"done today, {_listed(done, BRIEF_DONE)}")
+    if work_done:
+        sentence = "; ".join(work_done) + "."
+        lines.append(sentence[:1].upper() + sentence[1:])
+    if tail:
+        lines.append(tail)
+    return Brief(lines=lines[:5], for_model=" ".join([first, counts] + ([tail] if tail else [])))

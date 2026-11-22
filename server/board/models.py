@@ -90,3 +90,55 @@ class BoardSnapshot(models.Model):
             ]
         )
         return row, raw
+
+
+IDEA_DRAFT = "draft"
+IDEA_PENDING = "pending"
+IDEA_DELIVERED = "delivered"
+IDEA_DROPPED = "dropped"
+IDEA_STATUSES = (IDEA_DRAFT, IDEA_PENDING, IDEA_DELIVERED, IDEA_DROPPED)
+
+
+def new_card_id() -> str:
+    """The laptop card id an idea becomes: made by the engine, never from the idea's text."""
+    return "idea-" + secrets.token_hex(5)
+
+
+class BoardIdea(models.Model):
+    """A backlog idea the member said to Alfred, waiting for the laptop (`board.ideas`).
+
+    `public.board_ideas`, born tenanted and private to its member like `board_snapshots`.
+
+    **Life.** `draft` when Alfred has scored it and read it back; `pending` only after the member's
+    yes (`board.ideas.confirm`); `delivered` once the laptop's writer has turned it into a queued
+    card; `dropped` on a no or an expired draft. Only `pending` rows are ever handed to the laptop,
+    so a draft nobody said yes to never reaches the board. Nothing here starts any work: the laptop
+    makes a `queued` card and the orchestrator promotes it with the member in chat.
+
+    `text` is the member's own words, cleaned (`board.ideas.clean_text`); `scores` holds the
+    rubric's enums and what code computed from them (`board.rubric`), never free model text.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        "household.Household", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
+    owner_user = models.ForeignKey(
+        "household.User", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
+    card_id = models.CharField(max_length=60, unique=True, default=new_card_id)
+    title = models.TextField()
+    text = models.TextField()
+    scores = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=12, default=IDEA_DRAFT)
+    created_at = models.DateTimeField(default=timezone.now)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "board_ideas"
+        indexes = [models.Index(fields=["owner_user", "status"], name="board_ideas_owner_status")]
+
+    def __str__(self) -> str:
+        # Ids only, never the idea's words.
+        return f"idea {self.card_id}"

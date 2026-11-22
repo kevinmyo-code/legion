@@ -921,7 +921,7 @@ object LiveToolbox {
         PurchaseToolbox.dispatch(context, name, args)?.let { return it }
         BooksToolbox.dispatch(context, name, args)?.let { return it }
         BrowserToolbox.dispatch(context, name, args)?.let { return it }
-        ClaudeSessionToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
+        ClaudeSessionToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn, userText)?.let { return it }
         AppUpdateToolbox.dispatch(context, name, args)?.let { return it }
         MemoryToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         VaultToolbox.dispatch(context, name, args)?.let { return it }

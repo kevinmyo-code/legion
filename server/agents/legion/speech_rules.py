@@ -28,6 +28,8 @@ from engine_mcp.tools import ENDS_TURN, FOR_MODEL, REPLAY_AS, SPEAK_EXACT, SPEAK
 
 # `about_kevin`: his profile, spoken by code and never by the model (2026-11-18, `demo/tools.py`).
 # `board_status`: the factory board, spoken by code; the model never sees a card (`board/tool.py`).
+# `add_backlog_idea`: the idea's read-back and its saved or dropped line, spoken by code; the
+# read-back ends the turn, so his yes is his next turn (`board/tool.py`).
 # `show_part`: where a Jeep fastener is and its checked torque (garage, 2026-11-20).
 # The store-rep demo's switch, read-back, placed order and hand-off (`demo/shop/tools.py`).
 VERBATIM_TOOLS: frozenset[str] = frozenset(
@@ -35,6 +37,7 @@ VERBATIM_TOOLS: frozenset[str] = frozenset(
         "account_balances",
         "about_kevin",
         "board_status",
+        "add_backlog_idea",
         "show_part",
         "start_store_demo",
         "leave_store_demo",
