@@ -81,7 +81,7 @@ class ShortClipTest {
 
     @Test
     fun `a sub-threshold clip after idle is consumed with the rule, and never without it`() {
-        val clipFrames = 254 * 24 // the 14:41 "Right.", 254 ms at 24 kHz
+        val clipFrames = 254 * 24 // an observed "Right.", 254 ms at 24 kHz
         val clip = ByteArray(clipFrames * 2) { 1 }
         // The shipped build: default threshold (the buffer), clip written as it is. Never mixed.
         FillingTrack(bufferFrames).apply {

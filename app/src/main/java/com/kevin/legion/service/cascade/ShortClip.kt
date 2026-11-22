@@ -6,7 +6,7 @@ package com.kevin.legion.service.cascade
  * an underrun is "filling": the mixer does not take any of its frames until the frames waiting reach
  * its start threshold, which by default is its whole buffer (0.5 s here). A clip shorter than that,
  * with nothing written after it, is never mixed: the closing chime (290 ms) after the close's flush,
- * an acknowledgement after a silence long enough for an underrun. The device log of 14:42 shows it:
+ * an acknowledgement after a silence long enough for an underrun. A device log showed it:
  * the chime was written, the track was never ready, and the mixer dropped it for underrun
  * ("BUFFER TIMEOUT") about half a second after its restart.
  *

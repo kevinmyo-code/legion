@@ -1316,7 +1316,7 @@ internal class CascadeSession(
     /** What the words heard so far already rule out ([Backchannel.wordsSkip]); null with none heard yet. */
     private fun ackWordsSkip(u: TurnUtterance): Backchannel.Skip? = Backchannel.wordsSkip(
         // The final when the voice already has it (the laptop ending the turn itself), else the running
-        // transcript (2026-11-21: on a laptop "bye bye" the running words were not yet the goodbye and an
+        // transcript (2026-11-21: on a laptop goodbye the running words were not yet the goodbye and an
         // acknowledgement played; the final was already in). The goodbye test is the stop rule's own.
         u.finalText() ?: heardSoFar?.takeIf { it.first == u.id }?.second,
         goodbye = ::endsConversation,

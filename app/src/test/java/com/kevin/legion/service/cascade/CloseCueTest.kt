@@ -90,7 +90,7 @@ class CloseCueTest {
             "close_cue played ms=540 reason=sleep_phrase route=bt by=floor latency_ms=none base=none consumed_frames=-1 of=0 drained=0",
             CloseCue.playedLine("sleep_phrase", "bt", CloseCue.Heard(CloseCue.By.FLOOR, 540, null), chimeMs = 290),
         )
-        // The 14:42 shape: the wait ended on the floor and the mixer took none of it. The line says so.
+        // The observed shape: the wait ended on the floor and the mixer took none of it. The line says so.
         assertEquals(
             "close_cue played ms=546 reason=sleep_phrase route=speaker by=floor latency_ms=none base=0 consumed_frames=0 of=6960 drained=0",
             CloseCue.playedLine("sleep_phrase", "speaker", CloseCue.Heard(CloseCue.By.FLOOR, 546, 0, 0, 6_960), chimeMs = 290),

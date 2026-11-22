@@ -54,7 +54,7 @@ internal object CloseCue {
 
     /**
      * How far the sound heard lags the track's head position, and an idle track's restart (2026-11-21,
-     * the chime not heard after "bye bye"): the head position says a frame was handed on, not that it
+     * the chime not heard after a goodbye): the head position says a frame was handed on, not that it
      * was heard. The wait was the chime plus the route's settle only (350 ms on the speaker for a
      * 290 ms chime), so the release's pause and flush could cut the chime before it was heard.
      */
