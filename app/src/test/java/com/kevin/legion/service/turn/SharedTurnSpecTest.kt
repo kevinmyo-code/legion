@@ -8,7 +8,6 @@ import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.double
-import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -26,7 +25,7 @@ import org.junit.Test
 class SharedTurnSpecTest {
 
     private fun shared(name: String): JsonObject {
-        var dir: File? = File(System.getProperty("user.dir")).absoluteFile
+        var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
         while (dir != null) {
             val candidate = File(dir, "shared/turn/$name")
             if (candidate.isFile) return Json.parseToJsonElement(candidate.readText()).jsonObject
@@ -113,42 +112,49 @@ class SharedTurnSpecTest {
     private fun runPolicy(case: JsonObject): List<String> {
         val config = case.getValue("config").jsonObject
         val finished = config.getValue("finished").jsonPrimitive.boolean
-        val policy = EndOfTurnPolicy(
-            smartAvailable = config.getValue("smart").jsonPrimitive.boolean,
-            baseMs = EndOfTurnPolicy.BASE_MS,
-            finishedMs = if (finished) EndOfTurnPolicy.FINISHED_MS else EndOfTurnPolicy.BASE_MS,
-            earlyEnd = config.getValue("early_end").jsonPrimitive.boolean,
+        val run = PolicyRun(
+            EndOfTurnPolicy(
+                smartAvailable = config.getValue("smart").jsonPrimitive.boolean,
+                baseMs = EndOfTurnPolicy.BASE_MS,
+                finishedMs = if (finished) EndOfTurnPolicy.FINISHED_MS else EndOfTurnPolicy.BASE_MS,
+                earlyEnd = config.getValue("early_end").jsonPrimitive.boolean,
+            ),
         )
+        for (element: JsonElement in case.getValue("steps").jsonArray) run.step(element.jsonObject)
+        return run.out
+    }
+
+    /** One case through the policy: each step's actions, written as cases.json writes them. */
+    private inner class PolicyRun(private val policy: EndOfTurnPolicy) {
         val out = mutableListOf<String>()
-        var lastCheck = 0
-        fun take(actions: List<EndOfTurnPolicy.Action>) {
-            for (a in actions) {
-                when (a) {
-                    is EndOfTurnPolicy.Action.StartActivity -> out += "start"
-                    is EndOfTurnPolicy.Action.RequestCheck -> {
-                        lastCheck = a.checkId
-                        out += "check@${a.silenceMs}"
-                    }
-                    is EndOfTurnPolicy.Action.SpeechResumed -> out += "resumed"
-                    is EndOfTurnPolicy.Action.EndActivity -> out += "end:${a.reason.wire}@${a.silenceMs}"
-                }
-            }
-        }
-        for (element: JsonElement in case.getValue("steps").jsonArray) {
-            val s = element.jsonObject
+        private var lastCheck = 0
+
+        fun step(s: JsonObject) {
             when {
                 "speech" in s -> repeat(s.intOr("speech")!!) { take(policy.onWindow(SPEECH)) }
                 "quiet" in s -> repeat(s.intOr("quiet")!!) { take(policy.onWindow(QUIET)) }
-                "prob" in s -> {
-                    val p = s.getValue("prob").jsonPrimitive.double.toFloat()
-                    repeat(s.intOr("n") ?: 1) { take(policy.onWindow(p)) }
-                }
-                "score" in s -> take(policy.onCheckResult(lastCheck, s.getValue("score").jsonPrimitive.double.toFloat()))
+                "prob" in s -> repeat(s.intOr("n") ?: 1) { take(policy.onWindow(s.float("prob"))) }
+                "score" in s -> take(policy.onCheckResult(lastCheck, s.float("score")))
                 "fail" in s -> take(policy.onCheckFailed(lastCheck))
             }
         }
-        return out
+
+        private fun take(actions: List<EndOfTurnPolicy.Action>) {
+            for (a in actions) {
+                out += when (a) {
+                    is EndOfTurnPolicy.Action.StartActivity -> "start"
+                    is EndOfTurnPolicy.Action.RequestCheck -> {
+                        lastCheck = a.checkId
+                        "check@${a.silenceMs}"
+                    }
+                    is EndOfTurnPolicy.Action.SpeechResumed -> "resumed"
+                    is EndOfTurnPolicy.Action.EndActivity -> "end:${a.reason.wire}@${a.silenceMs}"
+                }
+            }
+        }
     }
+
+    private fun JsonObject.float(key: String): Float = getValue(key).jsonPrimitive.double.toFloat()
 
     private fun runGate(case: JsonObject): List<String> {
         val gate = BargeInGate()
@@ -156,26 +162,30 @@ class SharedTurnSpecTest {
         for (element in case.getValue("steps").jsonArray) {
             val s = element.jsonObject
             when {
-                "reply" in s -> if (s.getValue("reply").jsonPrimitive.contentOrNull == "start") gate.onReplyStart() else gate.onReplyEnd()
+                "reply" in s -> if (s.getValue("reply").jsonPrimitive.contentOrNull == "start") {
+                    gate.onReplyStart()
+                } else {
+                    gate.onReplyEnd()
+                }
                 "warm_up" in s -> gate.startWarmUp()
                 "user_turn_end" in s -> gate.onUserTurnEnd()
                 else -> {
-                    val prob = s.getValue("prob").jsonPrimitive.doubleOrNull!!.toFloat()
+                    val prob = s.float("prob")
                     val level = s.intOr("level")!!
                     val playing = s["playing"]?.jsonPrimitive?.booleanOrNull ?: true
-                    repeat(s.intOr("n") ?: 1) {
-                        when (val e = gate.onWindow(prob, level, playing)) {
-                            is BargeInGate.Event.Fire -> out += "fire level=${e.level} threshold=${e.threshold}"
-                            is BargeInGate.Event.Verdict ->
-                                out += "verdict self=${e.selfInterrupt} count=${e.selfInterrupts} disabled=${e.nowDisabled}"
-                            is BargeInGate.Event.Ignored -> out += "ignored ${e.reason}"
-                            null -> Unit
-                        }
-                    }
+                    repeat(s.intOr("n") ?: 1) { gateLine(gate.onWindow(prob, level, playing))?.let { out += it } }
                 }
             }
         }
         return out
+    }
+
+    private fun gateLine(e: BargeInGate.Event?): String? = when (e) {
+        is BargeInGate.Event.Fire -> "fire level=${e.level} threshold=${e.threshold}"
+        is BargeInGate.Event.Verdict ->
+            "verdict self=${e.selfInterrupt} count=${e.selfInterrupts} disabled=${e.nowDisabled}"
+        is BargeInGate.Event.Ignored -> "ignored ${e.reason}"
+        null -> null
     }
 
     private companion object {
