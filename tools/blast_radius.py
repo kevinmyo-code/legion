@@ -39,7 +39,6 @@ PUBLISH_NOTE = "PUBLISH: touches docs/, which GitHub Pages serves from dev; the 
 # (reason, patterns). Matched casefolded; fnmatch `*` also crosses `/`.
 RED_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("agent rules, hooks and MCP config", (
-        "*claude*.md",
         ".claude/*", "*/.claude/*",
         ".mcp.json", "*.mcp.json", "*/.mcp.json",
     )),
@@ -184,6 +183,9 @@ def is_doc(path: str) -> bool:
 def classify(path: str) -> tuple[str, str]:
     """(tier, reason) for one repo-relative path."""
     p = _norm(path).casefold()
+    name = p.rsplit("/", 1)[-1]
+    if name.startswith("claude") and name.endswith(".md"):  # CLAUDE.md, CLAUDE.local.md, at any depth
+        return "RED", "agent rules, hooks and MCP config"
     for reason, pats in RED_RULES:
         if _any(p, pats):
             return "RED", reason
