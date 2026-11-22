@@ -1409,31 +1409,20 @@ internal class CascadeSession(
      */
     private suspend fun playAckClip(p: ReplyPlayer, pcm: ByteArray) {
         val gen = p.generation()
-        ackPlaying = true
+        ackCut.playing = true
         try {
             withContext(Dispatchers.IO) { p.write(p.startable(pcm), gen) }
             // Never held past its own length and a margin: the answer waits on this clip's lock.
             p.awaitDrained(pcm.size * MS_PER_S / (p.sampleRate * PCM_BYTES_PER_SAMPLE) + ACK_DRAIN_MARGIN_MS)
         } finally {
-            ackPlaying = false
+            ackCut.playing = false
         }
     }
 
-    /** The acknowledgement's audio is in the track now ([playAckClip]); read by [cutAck] on the loop. */
-    @Volatile private var ackPlaying = false
+    /** Whoever ends the acknowledgement cuts it at once, before the next line is written ([AckCut]). */
+    private val ackCut by lazy { AckCut(endJobs = { fillerJobs.endTurn() }, flush = { player?.flush() }) }
 
-    /**
-     * Ends the acknowledgement and, if it is playing, cuts its audio now, on the caller's turn of the
-     * loop: before the next line is written (2026-11-21: the cut used to run when the cancelled clip
-     * next resumed, after a farewell had been queued, and could flush that too).
-     */
-    private fun cutAck() {
-        fillerJobs.endTurn()
-        if (ackPlaying) {
-            ackPlaying = false
-            player?.flush()
-        }
-    }
+    private fun cutAck() = ackCut.cut()
 
     /** The clip whose audio [clipListen] keeps: its kind and line index, for [ClipListen.joinedLine]. */
     @Volatile private var clipListenKind = ""

@@ -599,11 +599,12 @@ class CascadeWiringTest {
         assertTrue(clip.contains("finally {"))
         // The cut is made at once by whoever ends it (cutAck), never later from the cancelled clip.
         assertFalse(clip.contains("p.flush()"))
-        assertTrue(clip.contains("ackPlaying = false"))
+        assertTrue(clip.contains("ackCut.playing = true") && clip.contains("ackCut.playing = false"))
         // Never held past its own length and a margin: the answer waits on the ack's lock.
         assertTrue(clip.contains("p.awaitDrained(pcm.size * MS_PER_S / (p.sampleRate * PCM_BYTES_PER_SAMPLE) + ACK_DRAIN_MARGIN_MS)"))
-        val cut = bodyOf(s, "cutAck")
-        assertTrue(cut.indexOf("fillerJobs.endTurn()") in 0 until cut.indexOf("player?.flush()"))
+        // The cut's order is AckCut's (behaviour-tested in AckCutTest); the session wires it.
+        assertTrue(s.contains("AckCut(endJobs = { fillerJobs.endTurn() }, flush = { player?.flush() })"))
+        assertTrue(s.contains("private fun cutAck() = ackCut.cut()"))
         assertTrue(s.substring(s.indexOf("private fun ackSteps(")).take(1_500).contains("clipPlayback.during { playAckClip(p, pcm) }"))
         val turnStart = s.substring(s.indexOf("private fun onUserTurnStart()")).take(800)
         assertTrue(turnStart.contains("cutAck()"))
