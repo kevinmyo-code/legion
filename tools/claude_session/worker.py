@@ -1161,7 +1161,7 @@ class Worker:
                 lines.append(f"This is Kevin's answer to task {parent}'s question. If it is a clear "
                              f"yes, the step it asked "
                              f"about may now run, for task {tid} only. Confirmation token: {tok} "
-                             f"(send_mail.py takes it as --task {tid} --token {tok}). Not a clear "
+                             f"(send_mail.py takes it as --task {tid} --token={tok}). Not a clear "
                              "yes: do not run it, report what Kevin said.")
         elif t.get("kind") == KIND_WORKFLOW:
             lines.append(f"[task {tid}] Workflow {t['workflow']}. Use the {t['workflow']} skill.")
@@ -1179,13 +1179,13 @@ class Worker:
             if self.can_mail() and self.scope == "full":
                 tok = self.issue_token(tid, parent, "email_self")
                 lines.append("Kevin asked for the result by email; send it to him with send_mail.py "
-                             f"--task {tid} --token {tok} --to kevin --attach FILE; that is the yes "
+                             f"--task {tid} --token={tok} --to kevin --attach FILE; that is the yes "
                              "for this one send to Kevin only. Anyone else still needs "
                              "needs_confirmation.")
             elif self.can_mail():  # work laptop, ruling 18
                 tok = self.issue_token(tid, parent, "email_self")
                 lines.append("Kevin asked for the result by email; send him the summary as text "
-                             f"with send_mail.py --task {tid} --token {tok} --to kevin (no "
+                             f"with send_mail.py --task {tid} --token={tok} --to kevin (no "
                              "attachments from this laptop); that is the yes for this one send "
                              "to Kevin only.")
             else:
@@ -1221,7 +1221,7 @@ class Worker:
                     and (mail.get("kevin") or "").strip())
 
     def issue_token(self, tid: int, parent, kind: str) -> str:
-        tok = secrets.token_urlsafe(16)
+        tok = secrets.token_hex(16)  # never starts with "-", which argparse would read as a flag
         write_json_atomic(self.paths.tokens / f"{tid}-{kind}.json", {
             "token": tok, "task": int(tid), "parent": int(parent) if parent else None, "kind": kind,
             "expires_at": self.clock() + self.cfg["task_cap_s"] + 600})

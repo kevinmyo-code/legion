@@ -1,7 +1,7 @@
 r"""Undo the last ship (map alfred-builds, ticket 05). "Alfred, undo the last update."
 
     python undo.py ask --task 50
-    python undo.py run --task 51 --token <token from the yes>
+    python undo.py run --task 51 --token=<token from the yes>
 
 `ask` (no token, sends nothing) finds the newest ship in `work/ships.jsonl` that has not been
 undone, writes `undo-plan.json` into the task's work folder, and prints the question on its last

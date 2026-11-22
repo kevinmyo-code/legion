@@ -241,7 +241,7 @@ class TestTasks(WorkerCase):
         orig = send_mail.SMTP_FACTORY
         send_mail.SMTP_FACTORY = FakeSMTP
         try:
-            args = ["--task", "51", "--token", tok["token"], "--to", "dad@example.com",
+            args = ["--task", "51", f"--token={tok['token']}", "--to", "dad@example.com",
                     "--subject", "s", "--body", "b"]
             self.assertEqual(send_mail.main(args, self.paths), 0)
             self.assertEqual(send_mail.main(args, self.paths), 1, "one yes, one send")
@@ -264,13 +264,35 @@ class TestTasks(WorkerCase):
         orig = send_mail.SMTP_FACTORY
         send_mail.SMTP_FACTORY = FakeSMTP
         try:
-            base = ["--task", "55", "--token", tok["token"], "--subject", "s", "--body", "b"]
+            base = ["--task", "55", f"--token={tok['token']}", "--subject", "s", "--body", "b"]
             self.assertEqual(send_mail.main(base + ["--to", "dad@example.com"], self.paths), 1)
             self.assertEqual(send_mail.main(base + ["--to", "kevin"], self.paths), 0)
         finally:
             send_mail.SMTP_FACTORY = orig
         self.assertEqual(len(FakeSMTP.sent), 1)
         self.assertEqual(FakeSMTP.sent[0][1], ["kevin@example.com"])
+        # 2026-11-22: a url-safe token began with "-" about 1 in 64, and `--token <tok>` then
+        # failed argparse. Tokens are hex now, and every command the message shows is --token=.
+        self.assertRegex(tok["token"], r"^[0-9a-f]{32}$")
+        self.assertIn(f"--token={tok['token']}", msg)
+        self.assertNotIn(f"--token {tok['token']}", msg)
+
+    def test_a_token_that_starts_with_a_dash_still_parses_as_token_equals(self):
+        """A token issued before the hex change may start with "-": the --token= form takes it."""
+        self.start()
+        legacy = "-Ab3_legacy-token"
+        write_json_atomic(self.paths.tokens / "57-email_self.json", {
+            "token": legacy, "task": 57, "parent": None, "kind": "email_self",
+            "expires_at": time.time() + 600})
+        FakeSMTP.sent = []
+        orig = send_mail.SMTP_FACTORY
+        send_mail.SMTP_FACTORY = FakeSMTP
+        try:
+            self.assertEqual(send_mail.main(["--task", "57", f"--token={legacy}", "--to", "kevin",
+                                             "--subject", "s", "--body", "b"], self.paths), 0)
+        finally:
+            send_mail.SMTP_FACTORY = orig
+        self.assertEqual(len(FakeSMTP.sent), 1)
 
     def test_phone_delivery_asks_for_one_page_and_uploads_it_at_finish(self):
         page = Path(self.tmp.name) / "atlanta.html"
@@ -640,7 +662,7 @@ class TestListed(WorkerCase):
         orig = send_mail.SMTP_FACTORY
         send_mail.SMTP_FACTORY = FakeSMTP
         try:
-            base = ["--task", "110", "--token", tok["token"], "--subject", "s", "--body", "summary"]
+            base = ["--task", "110", f"--token={tok['token']}", "--subject", "s", "--body", "summary"]
             self.assertEqual(send_mail.main(base + ["--to", "kevin", "--attach", str(att)], self.paths), 1)
             self.assertEqual(send_mail.main(base + ["--to", "dad@example.com"], self.paths), 1)
             self.assertEqual(send_mail.main(base + ["--to", "kevin"], self.paths), 0)

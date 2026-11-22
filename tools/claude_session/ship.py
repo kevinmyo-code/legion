@@ -9,7 +9,7 @@ Two halves, because the yes sits between them (ruling 2: one yes per change ship
         --author "Bram Stoker" --licence-note "public domain (Project Gutenberg)" \
         --source-url https://www.gutenberg.org/ebooks/345
 
-    python ship.py run --task 42 --token <token from the yes>
+    python ship.py run --task 42 --token=<token from the yes>
 
 `ask` needs no token and sends nothing. For code it fetches, rebases the branch on origin/dev
 (a conflict stops it), runs the targeted tests (red stops it: ruling 4, red tests block the ship

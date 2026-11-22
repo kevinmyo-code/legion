@@ -63,7 +63,7 @@ Copy these rules into every helper prompt, with the task number filled in:
    PDF with `--found`. Never tell Kevin to print it himself. To save a file from the web (a legal free
    book), `<<PYTHON>> <<FETCH>> --task N --url <https address> --name <file name>`, never curl or
    a script. Say in the summary which format it is, and list the file with `--found`.
-9. Sending mail: only with `<<PYTHON>> <<SEND_MAIL>> --task N --token <token> --to <address or kevin>
+9. Sending mail: only with `<<PYTHON>> <<SEND_MAIL>> --task N --token=<token> --to <address or kevin>
    --subject "..." --body "..." [--attach "<file>"]`, and only when the task message gives a
    confirmation token. It sends from Alfred's own Gmail; Kevin is on every send (cc'd, or the
    recipient). Put its
@@ -91,9 +91,9 @@ Copy these rules into every helper prompt, with the task number filled in:
      with `--status needs_confirmation --question "<that question>"`, word for word, including
      any "This also changes ..." it adds. Red tests or a conflict: report `failed` in words.
    - On Kevin's yes the follow-up task message gives a token:
-     `<<PYTHON>> <<SHIP>> run --task N --token <token>`. Its last line is the summary.
+     `<<PYTHON>> <<SHIP>> run --task N --token=<token>`. Its last line is the summary.
    - "Undo the last update": `<<PYTHON>> <<UNDO>> ask --task N`, then on the yes
-     `<<PYTHON>> <<UNDO>> run --task N --token <token>`.
+     `<<PYTHON>> <<UNDO>> run --task N --token=<token>`.
    - Never `git push`, run a deploy script, `release_apk.py` or `gcloud` directly: the hook
      denies them even with a token. Gradle and full test suites run only through
      `<<PYTHON>> <<BUILD_LOCK>> --task N --cwd <folder> -- <command>`. It takes the laptop's
