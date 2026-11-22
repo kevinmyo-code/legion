@@ -349,17 +349,3 @@ private val BAR = 6.dp
 private val RISE = 12.dp
 private const val ARRIVE_MS = 220
 private const val TIME_COLUMN = 0.34f
-
-/**
- * One key per page that survives a live card read again in place: its source, numbered when two
- * pages share one; a card with no source keeps its object identity. A new key would rebuild the page
- * and drop a long card's scroll on every refresh. Strings, so a key can be saved in a Bundle.
- */
-internal fun pageKeys(pages: List<ConversationCard>): List<String> {
-    val seen = HashMap<String, Int>()
-    return pages.map { card ->
-        val base = card.source?.toString() ?: "card@" + System.identityHashCode(card)
-        val n = seen.merge(base, 1, Int::plus) ?: 1
-        if (n == 1) base else "$base#$n"
-    }
-}
