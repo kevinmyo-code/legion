@@ -290,16 +290,25 @@ class EventsAppointmentWriterTest {
     }
 
     @Test
-    fun `deleting an event whose create is still queued cancels the create and leaves nothing`() = runBlocking {
-        backend.uploadResult = Result.failure(EventsBackendException("offline"))
+    fun `deleting an event whose create is still queued cancels the create and keeps a tombstone`() = runBlocking {
+        // The queued push may have reached the server before it timed out: the tombstone is what a
+        // later pull matches, so the event never comes back.
+        backend.uploadResult = Result.failure(EventsBackendException("timed out"))
         val row = EventsAppointmentWriter.addEvent(
             context, "Lunch with Pat", startsAtMs = 1000L, endsAtMs = 2000L, allDay = false,
             source = "legion", kind = EventKind.EVENT,
         )
         EventsAppointmentWriter.deleteEvent(context, row)
-        assertNull(CarDatabase.getDatabase(context).eventDao().getById(row.id))
+        val tombstone = CarDatabase.getDatabase(context).eventDao().getById(row.id)
+        assertTrue(tombstone != null && tombstone.deleted)
         assertTrue(CarDatabase.getDatabase(context).outboxDao().getAll().isEmpty())
-        assertTrue(backend.softDeleteCalls.isEmpty())
+
+        backend.changed += ackFor(row, done = false).copy(
+            serverId = "server-uuid-7", originGuid = row.guid, kind = EventKind.EVENT, updatedAtMs = 1_500L,
+        )
+        EventsSync.pull(context, backend)
+        assertEquals(listOf("server-uuid-7"), backend.softDeleteCalls)
+        assertTrue(CarDatabase.getDatabase(context).eventDao().getAll().single().deleted)
     }
 
     // ------------------------------------------------------------------------- setDone (the tick)

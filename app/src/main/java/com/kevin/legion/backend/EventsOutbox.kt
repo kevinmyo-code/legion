@@ -466,13 +466,11 @@ object EventsAppointmentWriter {
      * configured install with a real [Event.serverId], pushes via [EventsBackend.softDelete] and
      * enqueues an [OutboxOperation.SOFT_DELETE] entry on failure.
      *
-     * **A [Event.serverId] of null with its create still queued is the one case this hard-deletes**:
-     * nothing reached the server, so the queued create is cancelled ([cancelPendingCreate]) and the
-     * local row goes with it. A null [Event.serverId] with NO create queued means the create already
-     * reached the server and no pull has filled the id in yet (a create's push does not return one):
-     * the row is soft-deleted locally and [EventsSync.pull], matching it by guid, sends the tombstone
-     * once it learns the server id. That window used to hard-delete with no tombstone, and the next
-     * pull put the event back (closed 2026-11-22).
+     * **A [Event.serverId] of null** means no pull has told this phone the server id yet, whether the
+     * create is still queued or already reached the server (a create's push does not return one, and
+     * a timed-out push may have committed). Any queued create is cancelled and the row is kept as a
+     * local tombstone; [EventsSync.pull], matching it by guid, sends the delete once it learns the id.
+     * A hard delete here used to leave the pull nothing to match, and the event came back (2026-11-22).
      */
     suspend fun deleteEvent(context: Context, existing: Event): Boolean {
         val db = CarDatabase.getDatabase(context)
@@ -485,15 +483,13 @@ object EventsAppointmentWriter {
         val serverId = existing.serverId
         val now = System.currentTimeMillis()
         if (serverId == null) {
-            // A create still queued never reached the server: cancel it and nothing is left anywhere.
-            // A create that DID reach it, before a pull filled in the server id, must stay as a local
-            // tombstone: a hard delete left the pull nothing to match by guid, and the next pull put
-            // the event back (2026-11-22). [EventsSync.pull] sends that tombstone once it has the id.
-            if (cancelPendingCreate(db, existing.id)) {
-                db.eventDao().deleteById(existing.id)
-            } else {
-                db.eventDao().update(existing.copy(deleted = true, updatedAtMs = now))
-            }
+            // No server id yet: the create may or may not have reached the server (a push that timed
+            // out after the server committed is queued too). Cancel any queued create and keep a local
+            // tombstone either way: a hard delete left the pull nothing to match by guid, and the next
+            // pull put the event back (2026-11-22). [EventsSync.pull] sends the delete once it has the
+            // id; a tombstone the server never heard of is never matched and costs nothing.
+            cancelPendingCreate(db, existing.id)
+            db.eventDao().update(existing.copy(deleted = true, updatedAtMs = now))
             return true
         }
 
@@ -554,14 +550,13 @@ object EventsAppointmentWriter {
     /** Cancels every still-queued [OutboxOperation.UPSERT] create entry for [localId] - see
      * [deleteEvent]'s own doc comment for why a null [Event.serverId] means there is nothing
      * server-side yet for this cancellation to need to reach. */
-    private suspend fun cancelPendingCreate(db: CarDatabase, localId: Long): Boolean {
+    private suspend fun cancelPendingCreate(db: CarDatabase, localId: Long) {
         val dao = db.outboxDao()
         val pending = dao.pendingForTable(OutboxTarget.EVENTS, Int.MAX_VALUE)
             .filter { it.operation == OutboxOperation.UPSERT && it.localId == localId }
         for (entry in pending) {
             dao.delete(entry.id)
         }
-        return pending.isNotEmpty()
     }
 }
 

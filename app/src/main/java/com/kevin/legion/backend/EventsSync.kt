@@ -192,7 +192,10 @@ object EventsSync {
             if (remote.kind !in KNOWN_KINDS) unrecognizedKinds += remote.kind
 
             // See this object's own class doc for why guid/originGuid is checked before serverId.
-            val local = remote.originGuid?.let { localByGuid[it] } ?: localByServerId[remote.serverId]
+            val matched = remote.originGuid?.let { localByGuid[it] } ?: localByServerId[remote.serverId]
+            // Read again, not the snapshot taken before the loop: a delete or edit made by hand while
+            // this pull runs must not be merged over with the stale copy (review of 79c642b9).
+            val local = matched?.let { db.eventDao().getById(it.id) ?: it }
 
             if (local == null && remote.deleted) {
                 // Traced 2026-09-02 (the 88-row bug, see PullReport.skippedTombstoneNoLocalMatch's
