@@ -135,7 +135,7 @@ class CascadeWarmupTest {
         val s = source("service/cascade/CascadeSession.kt")
         val open = s.substring(s.indexOf("private suspend fun openNow"))
         val prewarm = open.indexOf("LaptopPrewarm.start(ctx, \"open\")")
-        assertTrue(prewarm in 0 until open.indexOf("MicArbiter.request("))
+        assertTrue(prewarm in 0 until open.indexOf("micHold.take"))
         assertTrue(open.indexOf("LaptopPrewarm.cancel(\"open_aborted\")") in 0 until open.indexOf("openBackend("))
         val openBackend = s.substring(s.indexOf("private suspend fun openBackend"))
         assertTrue(openBackend.indexOf("takePrewarmed() ?: tryLaptop(") in 0 until openBackend.indexOf("CascadeRules.nextAfter("))

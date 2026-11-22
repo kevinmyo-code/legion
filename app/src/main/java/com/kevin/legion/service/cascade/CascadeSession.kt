@@ -254,7 +254,8 @@ internal class CascadeSession(
     private var player: ReplyPlayer? = null
     private var callAudio: CallAudioMode? = null
     private var micJob: Job? = null
-    @Volatile private var micClaimed = false
+    /** The mic claim, released as the claimant it was asked as (a ring's too). */
+    private val micHold = MicArbiter.Hold(micClaimant)
     private var focus: AudioFocusRequest? = null
     private var auditStarted = false
     private var oneShotRequested = false
@@ -511,14 +512,13 @@ internal class CascadeSession(
         if (listens) {
             // The mic first, as Live claimed it before it connected: the wake capture lets go while
             // the backend opens, so the first capture is not refused.
-            if (!MicArbiter.request(micClaimant) { scope.launch(loop) { onMicPreempted() } }) {
+            if (!micHold.take { scope.launch(loop) { onMicPreempted() } }) {
                 LaptopPrewarm.cancel("open_aborted")
                 host.notice("Didn't start - the microphone is in use")
                 shutdown("mic_held")
                 host.closed("mic_held")
                 return
             }
-            micClaimed = true
         }
         LiveLatency.log(LiveLatency.TAG, "open_mic_ms=${System.currentTimeMillis() - started}")
         if (listens && opening == OpeningRule.Opening.CHIME) openMicNow()
@@ -3421,7 +3421,7 @@ internal class CascadeSession(
 
     private fun onMicPreempted() {
         if (closing.get()) return
-        micClaimed = false
+        micHold.lost()
         scope.launch(loop) {
             LiveLatency.log("LIVE_TURN", "cascade preempted by a higher-priority mic claimant")
             shutdown("preempted")
@@ -3651,8 +3651,7 @@ internal class CascadeSession(
         step("turn") { turnTaker?.reset() }
         step("call_watch") { callWatch.stop() }
         // The mic is closed: its claim goes now, so the wake word re-arms without waiting on the chime.
-        step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
-        micClaimed = false
+        step("mic_claim") { micHold.drop() }
         val micReleasedMs = System.currentTimeMillis() - releaseStartMs
         // The closing chime, before the player and the route go (Bluetooth would cut it off).
         val chimed = try {
