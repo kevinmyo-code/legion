@@ -6,6 +6,7 @@ backlog votes (C2), DARK with the rest of the board (`board.flags`). The rules a
   410 the card left the board or stopped asking; 400 refused in words (a deploy, publish, flag or
   spend is answered in chat). Device token or browser session; never a recruiter.
 - `POST /api/board/votes`: his vote on a backlog idea (`p1`..`p3`, `up`, `down`, `clear`).
+- `GET /api/board/queue` (C4): what waits on him, counted, with code-built words (`board.queue`).
 - `GET /api/board/inbox` and `POST /api/board/inbox/delivered`: the laptop's writer token ONLY
   (`writer_methods`). It pulls answers and votes, applies each answer only while its own card still
   has the same hash, and reports each one `applied` or `refused`. No inbound connection to the
@@ -23,7 +24,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 
 from api.schema import DetailSerializer
-from board import asks
+from board import asks, queue
 from board.idea_views import OFF, _MemberIdeaView, _WriterIdeaView
 from board.models import VOTES
 from board.views import TAGS
@@ -209,3 +210,29 @@ class InboxDeliveredView(_WriterIdeaView):
         data = body.validated_data
         answers = [{"id": a["id"], "outcome": a["outcome"]} for a in data["answers"]]
         return Response(asks.mark_delivered(request.user, answers, data["votes"]))
+
+
+class QueueItemSerializer(serializers.Serializer):
+    key = serializers.CharField(help_text="Stable per waiting thing: the phone raises each once.")
+    kind = serializers.CharField(help_text="sessions, approvals or decisions.")
+
+
+class QueueSerializer(serializers.Serializer):
+    counts = serializers.DictField(child=serializers.IntegerField())
+    line = serializers.CharField(help_text="The home line, built by code from the counts only.")
+    spoken = serializers.ListField(
+        child=serializers.CharField(), help_text="Said word for word; counts only, no card text."
+    )
+    items = QueueItemSerializer(many=True)
+
+
+class QueueView(_MemberIdeaView):
+    """Control room C4: `board.queue`."""
+
+    @extend_schema(
+        operation_id="api_board_queue",
+        tags=TAGS,
+        responses={200: QueueSerializer, 403: DetailSerializer, 404: OFF},
+    )
+    def get(self, request):
+        return Response(queue.build(request))

@@ -14,6 +14,7 @@ import json
 
 import pytest
 from django.core.cache import cache
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from board import asks
@@ -318,3 +319,74 @@ def test_the_laptop_takes_the_newest_vote_per_idea(on, auth_client):
     laptop.post(DELIVERED, {"votes": [votes[0]["id"]]}, format="json")
     assert laptop.get(INBOX).json()["votes"] == []
     assert BoardVote.objects.filter(delivered_at__isnull=True).count() == 0
+
+
+# ---- the queue (C4) ----------------------------------------------------------------------------
+
+QUEUE = "/api/board/queue"
+
+
+def test_the_queue_counts_sessions_approvals_and_decisions_in_code_words(
+    on, auth_client, household_a, household_user
+):
+    from claude_session.models import ClaudeCodeSession, ClaudeMachine, ClaudeTask
+
+    now = timezone.now()
+    machine = ClaudeMachine.objects.create(household=household_a, name="Alienware", scope="full")
+    ClaudeCodeSession.objects.create(
+        household=household_a,
+        machine=machine,
+        session_id="s-1",
+        project="teapot",
+        state="waiting",
+        waiting_since=now,
+        last_seen_at=now,
+    )
+    ClaudeCodeSession.objects.create(
+        household=household_a, machine=machine, session_id="s-2", state="busy", last_seen_at=now
+    )
+    asked = ClaudeTask.objects.create(
+        household=household_a,
+        user=household_user,
+        machine=machine,
+        origin="named",
+        request="Brew it",
+        status="needs_confirmation",
+        question="Brew the green one?",
+    )
+    answered = ClaudeTask.objects.create(
+        household=household_a,
+        user=household_user,
+        machine=machine,
+        origin="named",
+        request="Pour it",
+        status="needs_confirmation",
+        question="Pour now?",
+    )
+    ClaudeTask.objects.create(
+        household=household_a,
+        user=household_user,
+        machine=machine,
+        origin="named",
+        request="Yes",
+        parent=answered,
+        confirms=True,
+    )
+    _push(_writer(auth_client), _board(TEAPOT, KETTLE_SHIP, SILENT))
+    body = auth_client.get(QUEUE).json()
+    assert body["counts"] == {"sessions": 1, "approvals": 1, "decisions": 1}
+    assert body["line"] == "Needs you: 1 session, 1 approval, 1 decision."
+    assert body["spoken"] == [body["line"]]
+    keys = {i["key"] for i in body["items"]}
+    assert f"task:{asked.id}" in keys and any(k.startswith("session:s-1@") for k in keys)
+    # Counts only: no card, task or session words reach the line.
+    for words in ("Teapot", "Brew", "teapot", "Kettle"):
+        assert words not in body["line"]
+    _answer(auth_client, "teapot", choice="blue")
+    assert auth_client.get(QUEUE).json()["counts"]["decisions"] == 0
+
+
+def test_an_empty_queue_says_so(on, auth_client):
+    body = auth_client.get(QUEUE).json()
+    assert body["counts"] == {"sessions": 0, "approvals": 0, "decisions": 0}
+    assert body["line"] == "Nothing needs you right now."

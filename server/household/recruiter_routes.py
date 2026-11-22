@@ -157,6 +157,7 @@ RECRUITER_DENIED: dict[str, str] = {
     "board.idea_views.DeliveredIdeaView": "a demo visit has no laptop backlog",
     "board.answer_views.AnswerListView": "a demo visit has no laptop board",
     "board.answer_views.VoteListView": "a demo visit has no laptop backlog",
+    "board.answer_views.QueueView": "a demo visit has no laptop board",
     "board.answer_views.InboxView": "a demo visit has no laptop board",
     "board.answer_views.InboxDeliveredView": "a demo visit has no laptop board",
     "board.action_views.ActionListView": "a demo visit has no laptop board",

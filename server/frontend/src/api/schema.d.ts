@@ -1060,6 +1060,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/board/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Control room C4: `board.queue`. */
+        get: operations["api_board_queue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/board/votes": {
         parameters: {
             query?: never;
@@ -11314,6 +11331,22 @@ export interface components {
          * @enum {string}
          */
         PushEnum: "sent" | "no_device" | "turned_off" | "failed" | "not_set_up";
+        Queue: {
+            counts: {
+                [key: string]: number;
+            };
+            /** @description The home line, built by code from the counts only. */
+            line: string;
+            /** @description Said word for word; counts only, no card text. */
+            spoken: string[];
+            items: components["schemas"]["QueueItem"][];
+        };
+        QueueItem: {
+            /** @description Stable per waiting thing: the phone raises each once. */
+            key: string;
+            /** @description sessions, approvals or decisions. */
+            kind: string;
+        };
         Rate: {
             /** @description 1 USD = rate_micros / 1e6 SGD. */
             rate_micros: number;
@@ -15803,6 +15836,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_queue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Queue"];
                 };
             };
             403: {

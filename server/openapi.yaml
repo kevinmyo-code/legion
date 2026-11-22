@@ -2413,6 +2413,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The board is switched off.
+  /api/board/queue:
+    get:
+      operationId: api_board_queue
+      description: 'Control room C4: `board.queue`.'
+      tags:
+      - board
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Queue'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
   /api/board/votes:
     post:
       operationId: api_board_votes_create
@@ -25717,6 +25745,42 @@ components:
         * `turned_off` - turned_off
         * `failed` - failed
         * `not_set_up` - not_set_up
+    Queue:
+      type: object
+      properties:
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        line:
+          type: string
+          description: The home line, built by code from the counts only.
+        spoken:
+          type: array
+          items:
+            type: string
+          description: Said word for word; counts only, no card text.
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueueItem'
+      required:
+      - counts
+      - items
+      - line
+      - spoken
+    QueueItem:
+      type: object
+      properties:
+        key:
+          type: string
+          description: 'Stable per waiting thing: the phone raises each once.'
+        kind:
+          type: string
+          description: sessions, approvals or decisions.
+      required:
+      - key
+      - kind
     Rate:
       type: object
       properties:
