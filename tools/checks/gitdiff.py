@@ -24,6 +24,7 @@ class Change:
     head_text: dict[str, str] = field(default_factory=dict)
     base_text: dict[str, str] = field(default_factory=dict)
     head_files: list[str] = field(default_factory=list)  # every tracked path at head
+    moved_from: dict[str, str] = field(default_factory=dict)  # added path -> deleted path it was moved from
 
     def read(self, path: str) -> str | None:
         return self.head_text.get(path)
@@ -33,7 +34,7 @@ class Change:
 
 
 def git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=True,
+    return subprocess.run(["git", "-c", "core.quotePath=false", *args], capture_output=True, text=True, check=True,
                           encoding="utf-8", errors="replace").stdout
 
 
@@ -123,8 +124,13 @@ def from_git(base: str, head: str = "HEAD") -> Change:
         if path:
             status[path] = letter[:1]
     added = parse_added(git("diff", "-U0", "--no-renames", "--no-color", merge_base, head))
+    moved: dict[str, str] = {}
+    for line in git("diff", "--name-status", "-M", "--diff-filter=R", merge_base, head).splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3:
+            moved[parts[2]] = parts[1]
     return Change(status=status, added=added, head_text=LazyText(head), base_text=LazyText(merge_base),
-                  head_files=tracked_files(head))
+                  head_files=tracked_files(head), moved_from=moved)
 
 
 def tracked_files(rev: str = "HEAD") -> list[str]:

@@ -12,9 +12,15 @@ Django (`server/<app>/migrations/NNNN_*.py`):
 Room (`app/schemas/<db>/N.json`, `headunit/app/schemas/<db>/N.json`):
   - FAIL: an added version N > 1 whose `MIGRATION_<N-1>_<N>` is not inside an `.addMigrations(...)` call
     in that module's CarDatabase.kt (a mention in a comment does not count);
-Limit: a Django number clash is seen only against this branch's own tree; two unmerged branches that
-each add the same number both pass until the second one is rebased onto dev.
   - FAIL: an existing version's schema JSON modified or deleted.
+Escape hatch: an added line anywhere in the change reading
+    migration-edit-ok: <file name> <reason of at least 10 characters>
+turns that file's FAIL into a WARN that names the reason. Every file this check covers is RED in
+tools/blast_radius.py, so a marked change always gets the adversarial RED review, which must accept the
+reason in writing.
+Limit: a Django number clash is seen only against this branch's own tree; two unmerged branches that
+each add the same number both pass until the second one is rebased onto dev. supabase/migrations is
+not checked (the legacy schema; RED in the tier script).
 --all checks the whole tree: every Room version registered, no Django number shared.
 """
 
@@ -28,6 +34,7 @@ from gitdiff import Change
 NAME = "migrations"
 DJANGO = re.compile(r"^server/([^/]+)/migrations/(\d{4})_[A-Za-z0-9_]+\.py$")
 ROOM = re.compile(r"^((?:headunit/)?app)/schemas/([^/]+)/(\d+)\.json$")
+MARKER = re.compile(r"migration-edit-ok:\s*(\S+)\s+(\S.{9,})")
 DESTRUCTIVE = re.compile(r"RemoveField|DeleteModel|AlterField|RenameField|RenameModel")
 
 
@@ -53,7 +60,27 @@ def car_database(change: Change, module: str) -> str | None:
     return None
 
 
+def markers(change: Change) -> dict[str, str]:
+    """file name -> reason, from every `migration-edit-ok:` marker in an added line."""
+    found: dict[str, str] = {}
+    for path in change.status:
+        for _, text in change.added.get(path, []):
+            m = MARKER.search(text)
+            if m:
+                found[m.group(1)] = m.group(2).strip()
+    return found
+
+
 def check(change: Change) -> list[Finding]:
+    ok = markers(change)
+    return [
+        Finding(WARN, f.check, f.path, f.line, f"{f.message} (accepted by migration-edit-ok: {ok[base]})")
+        if f.level == FAIL and (base := f.path.rsplit("/", 1)[-1]) in ok else f
+        for f in _check(change)
+    ]
+
+
+def _check(change: Change) -> list[Finding]:
     out: list[Finding] = []
     django_numbers: dict[tuple[str, str], list[str]] = {}
     for p in change.head_files:

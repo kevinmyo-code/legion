@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import clock_times  # noqa: E402
+import detekt_baseline  # noqa: E402
 import em_dashes  # noqa: E402
 import file_size  # noqa: E402
 import gitdiff  # noqa: E402
@@ -29,16 +30,18 @@ from common import FAIL, WARN, Finding  # noqa: E402
 
 CHECKS = (
     ("a", clock_times.NAME, "real clock times in docs and comments", "FAIL log-like, bare in docs; WARN bare in comments, ranges"),
-    ("b", file_size.NAME, "code files over 600 lines", "FAIL new file; WARN crossed or grew"),
-    ("c", migrations.NAME, "schema files declared, existing ones untouched", "FAIL"),
+    ("b", file_size.NAME, "code files over 600 lines", "FAIL new file; WARN new test file, crossed or grew"),
+    ("c", migrations.NAME, "schema files declared, existing ones untouched", "FAIL; WARN with a migration-edit-ok marker"),
     ("d", em_dashes.NAME, "em dashes in user-facing copy", "FAIL strings.xml + copy modules; WARN code"),
+    ("f", detekt_baseline.NAME, "detekt baseline only shrinks or re-keys", "FAIL"),
 )
 SKIPPED = "(e) offhand quotes: skipped, not mechanically detectable (intent is not in the text); reviewers keep it."
 SHOW = 40
 
 
 def run(change: gitdiff.Change) -> list[Finding]:
-    return clock_times.check(change) + file_size.check(change) + migrations.check(change) + em_dashes.check(change)
+    return (clock_times.check(change) + file_size.check(change) + migrations.check(change)
+            + em_dashes.check(change) + detekt_baseline.check(change))
 
 
 def gate(base: str, head: str) -> int:
@@ -52,8 +55,11 @@ def gate(base: str, head: str) -> int:
     if change.status:
         import blast_radius
 
-        tier, rows = blast_radius.tier_of(list(change.status))
-        lines += [f"Blast radius: {blast_radius.summary_line(tier, rows)}", ""]
+        tier, rows = blast_radius.tier_of(list(change.status), change.head_files)
+        base_tier = blast_radius.base_copy_tier(base, head, list(change.status))
+        final = max(tier, base_tier or "GREEN", key=blast_radius.ORDER.__getitem__)
+        lines += [f"Blast radius: {final} (base copy of the tier script: {base_tier or 'none at the merge base'};"
+                  f" head copy: {blast_radius.summary_line(tier, rows)})", ""]
     counts = Counter((f.check, f.level) for f in findings)
     for letter, name, what, rule in CHECKS:
         lines.append(f"({letter}) {what} [{rule}]: {counts[(name, FAIL)]} fail, {counts[(name, WARN)]} warn")
@@ -109,6 +115,7 @@ def count_all(head: str) -> int:
     print(f"(d) em dashes in copy: {len(dash)} lines ({_levels(dash)} if they were all new)")
     for name, level, _ in em_dashes.AREAS:
         print(f"      {name} [{level} in the gate]: {per_area[name]}")
+    print(f"(f) detekt baseline entries: {detekt_baseline.count(change)} (only a diff can grow or shrink it)")
     print(SKIPPED)
     return 0
 

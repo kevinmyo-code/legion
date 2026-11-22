@@ -7,49 +7,66 @@ tags: [docs, process]
 
 How much review a change gets before it merges depends on what it can break. Every change gets a
 tier from the files it touches; the tier sets the review depth. Once its review passes and CI is
-green, a change merges to `dev` (and `dev` to `main`) without waiting for a person.
+green, a change merges to `dev` without waiting for a person.
 
-**Deploys and publishes are not merges.** An engine deploy, a phone or head unit publish, and a
-content load still need the owner's word in every tier, unless he rules otherwise later.
+**Some things are never just a merge.** An engine deploy, a phone or head unit publish, a content
+load and a phone install need the owner's word in every tier, and no brief can lift that. A merge
+that touches `docs/` is also a publish: GitHub Pages serves `docs/` from `dev`, so that merge needs
+the owner's word too (the default until he rules otherwise).
 
 ## The tiers
 
 | Tier | What it covers | Review before merge |
 |---|---|---|
-| GREEN | Docs (`docs/`, `vault/`, `.scratch/`, `memory/`, READMEs, top-level `.md`; not prompt text or app assets, which are `.md` and `.txt` read at runtime); tests only; copy and wording (`strings.xml`, the copy modules); styling and layout files (CSS, images, drawables); scripts under `tools/` outside the worker | CI green + one light review: a single reviewer pass, no adversarial rounds |
-| YELLOW | App or engine logic that touches none of the RED areas; any path the script does not recognise | CI green + one blind review that ends "Confirmed: SHIP" |
-| RED | The worker hook and containment; auth and tokens; money and figure checks; read-through and crisis guards; migrations and schema; deploy, ship and CI tooling (these checks included); voice gate rules; the public demo's honesty guards; frozen rules (`CLAUDE.md`) | CI green + blind review with adversarial probes, repeated until "Confirmed: SHIP" |
+| GREEN | Docs (`.md`, `.txt` and images under `docs/`, `vault/`, `.scratch/`, `memory/`; READMEs; top-level `.md`); tests whose subject is not RED; `strings.xml`; styling files by type (CSS, images, drawables) | CI green + one light review: a single pass over the task text and the diff, ending "Confirmed: SHIP at &lt;sha&gt;" |
+| YELLOW | App, engine and tool logic that touches none of the RED areas; test fixtures the ship freezes; the detekt baseline (with its own check); any path the script does not recognise | CI green + one blind review ending "Confirmed: SHIP at &lt;sha&gt;" |
+| RED | Agent rules, hooks and MCP config at any depth (`*CLAUDE*.md`, `.claude/`, `.mcp.json`); the worker hook and containment; scripts the commit hooks run; auth and tokens; money, figure and privacy checks; read-through and crisis guards; migrations and schema; deploy, ship and CI tooling (these checks included, and `conftest.py`); build scripts and dependencies; voice gate rules and the code the gate runs; the public demo's honesty guards | CI green + blind review with adversarial probes, repeated until "Confirmed: SHIP at &lt;sha&gt;" |
 
-Then, in every tier: auto-merge. A blind review gets only the task text and the full diff, never the
-author's plan or summary, and the author never reviews its own change.
+The reviewer gets only the task text and the full diff, never the author's plan or summary.
 
 **The highest tier wins.** One RED file makes the whole change RED.
 
-**Tests in a RED area are RED.** A test is GREEN on its own, but a test next to a guard (the worker's
-tests, the frozen recruiter-delivery test) is matched as RED first: weakening a guard's test weakens
-the guard.
+**Tests and test data of a RED subject are RED.** A test under a test root whose name points at a RED
+subject (gate, read-through, crisis, money, auth, vault, privacy, migration, schema, the ship and
+release tools, the gate's own cases) is RED: weakening a guard's test weakens the guard.
 
-**A file list cannot see logic.** "Styling with no logic" is judged by file type only: a Compose
-screen or a `.tsx` component is YELLOW even when the change is visual, because the script cannot
-prove it is. A reviewer who finds a GREEN change doing more than its tier says raises the tier.
+**Case does not lower a tier.** Matching ignores case, and a path that differs only in case from
+another tracked path is RED: on a Windows checkout the two collide.
+
+**A file list cannot see logic.** GREEN styling is judged by file type only: a Compose screen or a
+`.tsx` component is YELLOW even when the change is visual. A reviewer who finds a change doing more
+than its tier says raises the tier.
+
+**Anything the gates workflow runs is RED.** It runs with the voice gate's API key present, so the
+gate cases, the eval scripts, the gate's test code and the Gradle build scripts are RED. The rest of
+the phone's test classpath also runs in that job; only a required reviewer on the `gates` environment
+closes that fully, and that is a repository setting for the owner, never an agent.
+
+## Merging
+
+- The author never merges its own change.
+- A merge needs "Confirmed: SHIP at &lt;sha&gt;" where the sha is the exact head being merged. A later
+  commit needs a new review, at the tier of the full diff.
+- Every workflow that ran on that sha must be green, not just the checks below: a docs change, for
+  example, relies on the Server workflow's docs-corpus check.
+- `dev` to `main`: a fast-forward of commits that each merged to `dev` this way needs no further
+  review, only every workflow green on `main`'s new head.
 
 ## The script
 
 `tools/blast_radius.py` prints the tier and the reason for each file:
 
 ```
-python tools/blast_radius.py                    # this branch vs origin/dev
-python tools/blast_radius.py --base A --head B
-python tools/blast_radius.py --short            # one line, for a board card or a brief
-git diff --name-only A B | python tools/blast_radius.py --files -
+git show origin/dev:tools/blast_radius.py | python - --base origin/dev --head <sha>   # trusted
+python tools/blast_radius.py --short    # one line, for a board card or a brief
 ```
 
-It counts deleted and renamed-away paths (moving a RED file out is a RED change), and it exits 2 on
-an empty file list rather than calling nothing GREEN. The patterns live at the top of the script;
-changing them is itself a RED change.
+The trusted run is the copy on `dev`, never the branch's own: otherwise a change could edit the
+script to lower its own tier. Run from a checkout, the script also loads the base copy from git and
+reports the higher of the two. CI runs the base copy in its own step. The script counts deleted and
+renamed-away paths, and exits 2 on an empty file list rather than calling nothing GREEN.
 
-Use its `--short` line in the board card's status and at the top of every review brief, so the
-reviewer knows which depth is owed.
+Use the `--short` line in the board card's status and at the top of every review brief.
 
 ## Review-finding checks (CI)
 
@@ -62,17 +79,22 @@ lines a change adds, so existing debt never fails a build.
 | Check | Fails on | Warns on |
 |---|---|---|
 | (a) Clock times in docs and comments | a log-like time anywhere (with seconds, after a date, or with a zone name); a bare time in a doc | a bare time in a code comment; a time range (a time-of-day rule) |
-| (b) Code files over 600 lines | a new code file over 600 | an existing file that crosses 600, or is over and grows |
-| (c) Schema files | an edited or deleted migration; a Django migration number already used in its app; a Room schema version with no `MIGRATION_<n-1>_<n>` registered in its `CarDatabase.kt`; an edited shipped schema JSON | a new Django migration with a destructive operation |
+| (b) Code files over 600 lines | a new code file over 600 | a new test file over 600; an existing file that crosses 600, or is over and grows. A pure move is compared with the file it came from |
+| (c) Schema files | an edited or deleted migration; a Django migration number already used in its app; a Room schema version with no `MIGRATION_<n-1>_<n>` inside `.addMigrations(...)`; an edited shipped schema JSON | a new Django migration with a destructive operation; a failure accepted by a `migration-edit-ok:` marker |
 | (d) Em dashes in user-facing copy | `strings.xml` (phone and head unit); the copy modules | web app source, phone and head unit Kotlin, the demo's engine code |
 | (e) Offhand quotes | not checked: whether a quote was a deliberate ruling is not in its text | |
+| (f) Detekt baseline | an entry added that is not a one-for-one re-key of a removed one (same rule and code, new file name) | |
 
-Allowlists sit next to each check (`clock_times_allow.txt`, `file_size_allow.txt`). A single
-legitimate time elsewhere carries the marker `clock-ok` on its line. Dates are always fine.
+Escape hatches, each visible in the diff:
+- (a): the allowlist `clock_times_allow.txt`, or the marker `clock-ok` on a line. Dates are always fine.
+- (b): the allowlist `file_size_allow.txt`.
+- (c): a line `migration-edit-ok: <file name> <reason>` added anywhere in the change. Every file (c)
+  covers is RED, so the marker always sits in a change that gets the adversarial review, and that
+  review must accept the reason in writing.
 
-The em dash check cannot see the recruiter demo's page content: it lives outside the repository.
-
-The Django number check sees only the branch's own tree: two unmerged branches that each add the same
-number both pass until the second is rebased onto `dev`.
+Limits: the em dash check cannot see the recruiter demo's page content (it lives outside the
+repository); the Django number check sees only the branch's own tree, so two unmerged branches that
+each add the same number both pass until the second is rebased onto `dev`; `supabase/migrations` is
+not checked.
 
 `python tools/checks/run_all.py --all` prints the whole tree's counts without failing.

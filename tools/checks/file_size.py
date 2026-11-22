@@ -3,8 +3,9 @@
 Review finding it automates: new modules landing at 700 to 1500 lines, and old ones growing further.
 
 Gate mode (--base):
-  - FAIL: a NEW code file over 600 lines;
+  - FAIL: a NEW code file over 600 lines (a new TEST file over 600 only warns);
   - WARN: an existing file that crosses 600, or is already over 600 and grows (existing debt never fails).
+  A pure move (git rename detection) is compared with the file it moved from, never called new.
 --all: counts the code files over 600 in the tree, never fails.
 Only code counts (see CODE_EXT); generated and data files are skipped, as is anything in file_size_allow.txt.
 """
@@ -25,6 +26,14 @@ def line_count(text: str | None) -> int:
     return 0 if not text else len(text.splitlines())
 
 
+TEST_PATTERNS = ("*/tests/*", "*/src/test/*", "*/src/androidTest/*", "*.test.ts", "*.test.tsx", "*.spec.ts",
+                 "*/test_*.py", "test_*.py")
+
+
+def is_test(path: str) -> bool:
+    return matches(path, TEST_PATTERNS)
+
+
 def is_code(path: str) -> bool:
     return ext(path) in CODE_EXT
 
@@ -38,10 +47,13 @@ def check(change: Change, allow: list[str] | None = None) -> list[Finding]:
         after = line_count(change.read(path))
         if after <= LIMIT:
             continue
-        if letter == "A":
-            out.append(Finding(FAIL, NAME, path, 0, f"new file is {after} lines (limit {LIMIT}): split it"))
+        moved_from = change.moved_from.get(path)
+        if letter == "A" and moved_from is None:
+            level = WARN if is_test(path) else FAIL
+            out.append(Finding(level, NAME, path, 0, f"new {'test ' if level == WARN else ''}file is {after} lines"
+                               f" (limit {LIMIT}): split it"))
             continue
-        before = line_count(change.read_base(path))
+        before = line_count(change.read_base(moved_from or path))
         if before <= LIMIT:
             out.append(Finding(WARN, NAME, path, 0, f"crossed {LIMIT} lines ({before} -> {after})"))
         elif after > before:

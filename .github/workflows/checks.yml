@@ -2,7 +2,8 @@
 #
 # Findings reviewers kept repeating, turned into checks (tools/checks/):
 #   (a) clock times in docs and comments, (b) code files over 600 lines, (c) schema files declared and
-#   existing ones untouched, (d) em dashes in user-facing copy. (e) offhand quotes is not mechanical.
+#   existing ones untouched, (d) em dashes in user-facing copy, (f) the detekt baseline only shrinks.
+#   (e) offhand quotes is not mechanical.
 # Each check reads only what the change ADDS, so existing debt never fails the build; the counts for the
 # whole tree come from `python tools/checks/run_all.py --all`.
 #
@@ -35,6 +36,7 @@ jobs:
           # The checks diff against a base: a shallow clone has no merge base, and an empty diff
           # would read as a pass.
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -52,8 +54,7 @@ jobs:
         run: python .github/scripts/junit_totals.py checks-junit.xml
 
       # Base: the PR's base; on a dev/main push, the previous tip; anywhere else, the merge base with dev.
-      # run_all.py exits 2 when the base cannot be resolved, so a missing base fails here.
-      - name: Review-finding checks on the change
+      - name: Resolve the base
         if: ${{ !cancelled() }}
         env:
           EVENT: ${{ github.event_name }}
@@ -69,8 +70,27 @@ jobs:
           else
             BASE="origin/dev"
           fi
+          git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null || { echo "::error::base $BASE does not resolve"; exit 1; }
           echo "base: $BASE"
-          python tools/checks/run_all.py --base "$BASE" --head HEAD
+          echo "CHECK_BASE=$BASE" >> "$GITHUB_ENV"
+
+      # The trusted tier: the BASE copy of tools/blast_radius.py, read from git, never the head copy, so a
+      # change cannot lower its own tier by editing the script. The head copy's view prints in the next step.
+      - name: Blast-radius tier from the base copy of the script
+        if: ${{ !cancelled() && env.CHECK_BASE != '' }}
+        run: |
+          MB=$(git merge-base "$CHECK_BASE" HEAD)
+          if git cat-file -e "$MB:tools/blast_radius.py" 2>/dev/null; then
+            git show "$MB:tools/blast_radius.py" > "$RUNNER_TEMP/blast_radius_base.py"
+            python "$RUNNER_TEMP/blast_radius_base.py" --base "$CHECK_BASE" --head HEAD | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No tools/blast_radius.py at the merge base $MB: only the head copy's tier exists (this change adds the script)." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # run_all.py exits 2 when the base cannot be resolved, so a missing base fails here.
+      - name: Review-finding checks on the change
+        if: ${{ !cancelled() && env.CHECK_BASE != '' }}
+        run: python tools/checks/run_all.py --base "$CHECK_BASE" --head HEAD
 
       - name: Upload the JUnit XML
         if: always()

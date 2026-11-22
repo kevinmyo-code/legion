@@ -14,6 +14,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 
 import clock_times  # noqa: E402
+import detekt_baseline  # noqa: E402
 import em_dashes  # noqa: E402
 import file_size  # noqa: E402
 import migrations  # noqa: E402
@@ -273,3 +274,79 @@ def test_gate_end_to_end_passes_clean_change(repo, capsys):
 
 def test_gate_unknown_base_exits_2_not_pass(repo, capsys):
     assert run_all.main(["--base", "no-such-branch"]) == 2
+
+
+# ------------------------------------------------------------------------------------------ review round 1
+def test_new_test_file_over_limit_only_warns():
+    found = file_size.check(change({"server/tests/test_big.py": ("A", lines(700))}), allow=[])
+    assert levels(found) == [WARN]
+
+
+def test_pure_move_is_not_a_new_file():
+    ch = change({"server/old_big.py": ("D", ""), "server/garage/big.py": ("A", lines(700))},
+                base={"server/old_big.py": lines(700)})
+    ch.moved_from["server/garage/big.py"] = "server/old_big.py"
+    assert file_size.check(ch, allow=[]) == []
+    ch.head_text["server/garage/big.py"] = lines(720)
+    assert levels(file_size.check(ch, allow=[])) == [WARN]
+
+
+def test_migration_edit_marker_turns_fail_into_named_warn():
+    path = "server/ledger/migrations/0003_x.py"
+    plain = change({path: ("M", "ops = []\n")})
+    marked = change({path: ("M", "# migration-edit-ok: 0003_x.py never applied anywhere, fixes a typo\nops = []\n")})
+    assert levels(migrations.check(plain)) == [FAIL]
+    found = migrations.check(marked)
+    assert levels(found) == [WARN] and "never applied anywhere" in found[0].message
+
+
+def test_migration_marker_needs_a_reason_and_the_right_file():
+    path = "server/ledger/migrations/0003_x.py"
+    no_reason = change({path: ("M", "# migration-edit-ok: 0003_x.py ok\n")})
+    wrong_file = change({path: ("M", "# migration-edit-ok: 0004_y.py a long enough reason here\n")})
+    assert levels(migrations.check(no_reason)) == [FAIL]
+    assert levels(migrations.check(wrong_file)) == [FAIL]
+
+
+BASELINE = "config/detekt/baseline.xml"
+
+
+def baseline(*entries: str) -> str:
+    return "<SmellBaseline><CurrentIssues>\n" + "".join(f"<ID>{e}</ID>\n" for e in entries) + "</CurrentIssues></SmellBaseline>\n"
+
+
+def test_detekt_baseline_shrinking_passes_growing_fails():
+    old = baseline("LongMethod:A.kt$A$fun a()", "MagicNumber:B.kt$B$3")
+    shrink = change({BASELINE: ("M", baseline("LongMethod:A.kt$A$fun a()"))}, base={BASELINE: old})
+    grow = change({BASELINE: ("M", baseline("LongMethod:A.kt$A$fun a()", "MagicNumber:B.kt$B$3",
+                                            "LongMethod:C.kt$C$fun c()"))}, base={BASELINE: old})
+    assert detekt_baseline.check(shrink) == []
+    assert levels(detekt_baseline.check(grow)) == [FAIL]
+
+
+def test_detekt_baseline_rekey_one_for_one_passes_but_not_two_for_one():
+    old = baseline("LongMethod:Old.kt$Foo$fun bar()")
+    moved = change({BASELINE: ("M", baseline("LongMethod:New.kt$Foo$fun bar()"))}, base={BASELINE: old})
+    doubled = change({BASELINE: ("M", baseline("LongMethod:New.kt$Foo$fun bar()", "LongMethod:Two.kt$Foo$fun bar()"))},
+                     base={BASELINE: old})
+    assert detekt_baseline.check(moved) == []
+    assert levels(detekt_baseline.check(doubled)) == [FAIL]
+
+
+def test_gate_end_to_end_non_ascii_path_is_read(repo, capsys):
+    (repo / "docs" / "café.md").write_text("shipped 2026-11-21 14:42\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "accent")
+    assert run_all.main(["--base", "dev"]) == 1
+
+
+def test_gate_end_to_end_pure_move_of_big_file_passes(repo, capsys):
+    _git(repo, "checkout", "-q", "dev")
+    (repo / "server").mkdir()
+    (repo / "server" / "big.py").write_text(lines(700), encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "big")
+    _git(repo, "checkout", "-q", "-B", "feat")
+    _git(repo, "mv", "server/big.py", "server/garage_big.py")
+    _git(repo, "commit", "-q", "-m", "move")
+    assert run_all.main(["--base", "dev"]) == 0
