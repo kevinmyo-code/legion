@@ -38,6 +38,14 @@ object BoardActions {
 
     private const val CARD_ROWS = 30
 
+    /** `where` or `idea` from `claude_session`'s arguments. */
+    suspend fun dispatch(context: Context, action: String, args: JSONObject, userText: String?): JSONObject =
+        if (action == "where") {
+            where(context)
+        } else {
+            idea(context, args.optString("request"), if (args.has("yes")) args.optBoolean("yes") else null, userText)
+        }
+
     suspend fun where(context: Context): JSONObject =
         when (val out = backendFactory(context).brief()) {
             is BoardOutcome.Failed -> result(false, out.sentence)
@@ -62,18 +70,21 @@ object BoardActions {
      */
     suspend fun idea(context: Context, request: String, yes: Boolean?, userText: String?): JSONObject {
         val backend = backendFactory(context)
-        if (yes == false) {
-            val waiting = gate.current() ?: return result(false, IdeaSaveGate.NOTHING_WAITING)
-            return spoken(backend.dropIdea(waiting.id)) { gate.clear() }
-        }
-        if (yes == true) {
-            return when (val decision = gate.check(userText)) {
+        val waiting = gate.current()
+        return when {
+            yes == false && waiting == null -> result(false, IdeaSaveGate.NOTHING_WAITING)
+            yes == false && waiting != null -> spoken(backend.dropIdea(waiting.id)) { gate.clear() }
+            yes == true -> when (val decision = gate.check(userText)) {
                 is IdeaSaveGate.Decision.Refused -> result(false, decision.message)
                 is IdeaSaveGate.Decision.Go -> spoken(backend.confirmIdea(decision.id)) { gate.clear() }
             }
+            request.isBlank() -> result(false, "Say the idea in words. Nothing was added.")
+            else -> drafted(backend.draftIdea(request), userText)
         }
-        if (request.isBlank()) return result(false, "Say the idea in words. Nothing was added.")
-        return when (val out = backend.draftIdea(request)) {
+    }
+
+    private fun drafted(out: BoardOutcome<com.kevin.legion.board.IdeaDraft>, userText: String?): JSONObject =
+        when (out) {
             is BoardOutcome.Failed -> result(false, out.sentence)
             is BoardOutcome.Ok -> {
                 gate.register(out.value.id, userText)
@@ -88,7 +99,6 @@ object BoardActions {
                 )
             }
         }
-    }
 
     private inline fun spoken(out: BoardOutcome<String>, onOk: () -> Unit): JSONObject = when (out) {
         is BoardOutcome.Failed -> result(false, out.sentence)

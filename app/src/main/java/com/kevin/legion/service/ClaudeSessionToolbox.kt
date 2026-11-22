@@ -167,13 +167,7 @@ object ClaudeSessionToolbox {
                 watchFactory(context).setAnnouncements(true)
                 result(true, "Result announcements are on again.")
             }
-            "where" -> BoardActions.where(context)
-            "idea" -> BoardActions.idea(
-                context,
-                request = args.optString("request"),
-                yes = if (args.has("yes")) args.optBoolean("yes") else null,
-                userText = userText,
-            )
+            "where", "idea" -> BoardActions.dispatch(context, action, args, userText)
             else -> result(
                 false,
                 "Say whether to send, run a workflow, check, answer, assign or send a file. Nothing was sent.",
