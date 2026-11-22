@@ -43,6 +43,23 @@ The hook log records tool, decision, rule and agent id. Never the command, a pat
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import json
 import os
 import re
@@ -50,12 +67,54 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+HERE = Path(__file__).resolve().parent
+
+
+def _worker_root() -> Path:
+    """`common.home()`, without importing common: nothing from this folder is trusted yet."""
+    env = os.environ.get("LEGION_CLAUDE_HOME")
+    if env:
+        return Path(env)
+    return Path(os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")) / "legion-claude"
+
+
+def _deployed(root: Path) -> tuple[bool, str]:
+    """Review round 4d: is this folder the deployed code? Standard library only. integrity.py is
+    run from the very bytes whose hash matched the manifest, then it checks every other file. On
+    any doubt, not deployed."""
+    import hashlib
+    import types
+    try:
+        with open(root / "code-manifest.json", encoding="utf-8") as f:
+            want = json.load(f)["files"]["integrity.py"]
+        data = (HERE / "integrity.py").read_bytes()
+        if hashlib.sha256(data).hexdigest() != want:
+            return False, "the integrity check itself was changed"
+        mod = types.ModuleType("legion_integrity")
+        mod.__file__ = str(HERE / "integrity.py")
+        exec(compile(data, mod.__file__, "exec"), mod.__dict__)
+        return mod.check(types.SimpleNamespace(root=root), HERE)
+    except Exception:  # noqa: BLE001 - fail closed
+        return False, "no deployed code manifest, or it could not be read"
+
+
+_CHANGED = ("WORKER CODE CHANGED: the laptop worker's own scripts are not the deployed ones ({}), "
+            "so they are not trusted until Kevin checks the laptop. Do not retry or work around "
+            "it. Say in your final message that the laptop worker needs attention.")
+
+if __name__ == "__main__":
+    # Before anything from this folder is imported: a changed folder could otherwise run its own
+    # code inside this hook and answer for it. Every tool call is refused until it is fixed.
+    _ok, _why = _deployed(_worker_root())
+    if not _ok:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "permissionDecision": "deny",
+            "permissionDecisionReason": _CHANGED.format(_why)}}))
+        sys.exit(0)
+
+sys.path.append(str(HERE))  # this folder's own modules, after the standard library
 from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
 import containment as C  # noqa: E402
-import integrity  # noqa: E402
-
-HERE = Path(__file__).resolve().parent
 
 SHELL_TOOLS = ("Bash", "PowerShell")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
@@ -246,6 +305,8 @@ def _is_our_lone_script(command: str, script: str, task: int | None = None,
     if words is None or _DOTDOT.search(text.replace("\\", "/")):
         return False
     bash = tool == "Bash"
+    if words and len(words) > 1 and words[1] == "-I":
+        words = [words[0], *words[2:]]  # python's isolated mode (round 4d): the same run
     if len(words) < 2 or _plain(words[0], bash) != _own_python():
         return False
     if _plain(words[1], bash) != _plain(str(HERE / script)):
@@ -325,7 +386,7 @@ def _names_worker_code(command: str, cwd: str, tool: str = "PowerShell") -> bool
     build_lock.py's `--cwd`. A regex still cannot see a path built at run time (`$HOME`, `~`,
     `Join-Path`); `integrity.py` catches what that leaves, before any contained script runs."""
     text = re.sub(r"^\s*&\s+", "", command or "")
-    lead = re.match(r'^\s*("[^"]*"|\S+)\s+("[^"]*"|\S+)', text)
+    lead = re.match(r'^\s*("[^"]*"|\S+)\s+(?:-I\s+)?("[^"]*"|\S+)', text)
     if lead:
         py, script = (w.strip('"') for w in lead.groups())
         bash = tool == "Bash"
@@ -377,13 +438,8 @@ def _relative_into_code(text: str, cwd: str) -> bool:
 def _code_tampered(paths: Paths) -> dict | None:
     """Review round 4c: the deny for a contained script when this folder is not the deployed code
     (`integrity.check`), else None. Asked only on the allow path of a contained script."""
-    ok, why = integrity.check(paths, HERE)
-    if ok:
-        return None
-    return _deny("WORKER CODE CHANGED: the laptop worker's own scripts are not the deployed ones ("
-                 + why + "), so none of them runs until Kevin checks the laptop. Do not retry or "
-                 "work around it. Say in your final message that the laptop worker needs "
-                 "attention.")
+    ok, why = _deployed(Path(paths.root))
+    return None if ok else _deny(_CHANGED.format(why))
 
 
 def _worker_code_reason() -> str:
@@ -800,6 +856,10 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             tampered = _code_tampered(paths)
             # ship.py / undo.py check Kevin's yes token themselves
             return tampered, "integrity" if tampered else "ship"
+        if re.search(r"integrity", command, re.I) and re.search(
+                r"--write|write_manifest", command, re.I):
+            # Round 4d: blessing the folder is the deploy step's alone, never a helper's.
+            return _deny(_worker_code_reason()), "worker code"
         if _pushes(command) or SHIP_TOOLS.search(command):
             return _deny(_ship_reason()), "ship only"
         if _names_worker_code(command, cwd, tool):
