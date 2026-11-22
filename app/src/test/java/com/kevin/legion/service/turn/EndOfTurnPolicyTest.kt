@@ -199,8 +199,8 @@ class EndOfTurnPolicyTest {
 
     // --- the cascade's "finished" end (Kevin, 2026-11-19, the web's rule) ---------------------------
 
-    private fun cascadeSpeaking(): EndOfTurnPolicy {
-        val p = EndOfTurnPolicy(true, finishedMs = EndOfTurnPolicy.FINISHED_MS)
+    private fun cascadeSpeaking(early: Boolean = true): EndOfTurnPolicy {
+        val p = EndOfTurnPolicy(true, finishedMs = EndOfTurnPolicy.FINISHED_MS, earlyEnd = early)
         repeat(20) { p.onWindow(speech) }
         return p
     }
@@ -264,7 +264,7 @@ class EndOfTurnPolicyTest {
     @Test
     fun `a clear done landing before the early mark ends the turn at the first window past it`() {
         val p = cascadeSpeaking()
-        assertTrue(firstVerdict(p, 288, 0.95f).isEmpty())
+        assertTrue(firstVerdict(p, 288, 0.97f).isEmpty())
         val end = actions(p, 400).filterIsInstance<Action.EndActivity>().single()
         assertEquals(Reason.EARLY, end.reason)
         assertEquals(320, end.silenceMs)
@@ -273,19 +273,21 @@ class EndOfTurnPolicyTest {
     @Test
     fun `a clear done landing after the early mark ends the turn on arrival`() {
         val p = cascadeSpeaking()
-        val end = firstVerdict(p, 352, 0.9f).single() as Action.EndActivity
+        val end = firstVerdict(p, 352, 0.97f).single() as Action.EndActivity
         assertEquals(Reason.EARLY, end.reason)
         assertEquals(352, end.silenceMs)
-        assertEquals(0.9f, end.scores.last().score)
+        assertEquals(0.97f, end.scores.last().score)
     }
 
     @Test
-    fun `the early threshold is inclusive at 0_80 and 0_79 keeps the 500 ms rule`() {
+    fun `the early threshold is inclusive at 0_95 and 0_94 keeps the 500 ms rule`() {
+        // Drive logs: clear turns scored 0.97-0.98; the two he talked past scored 0.94.
+        assertEquals(0.95f, EndOfTurnPolicy.EARLY_THRESHOLD)
         val at = cascadeSpeaking()
-        val early = firstVerdict(at, 352, EndOfTurnPolicy.EARLY_THRESHOLD).single() as Action.EndActivity
+        val early = firstVerdict(at, 352, 0.95f).single() as Action.EndActivity
         assertEquals(Reason.EARLY, early.reason)
         val under = cascadeSpeaking()
-        assertTrue(firstVerdict(under, 352, 0.79f).isEmpty())
+        assertTrue(firstVerdict(under, 352, 0.94f).isEmpty())
         val end = actions(under, 400).filterIsInstance<Action.EndActivity>().single()
         assertEquals(Reason.FINISHED, end.reason)
         assertEquals(512, end.silenceMs)
@@ -332,6 +334,15 @@ class EndOfTurnPolicyTest {
         repeat(20) { cap.onWindow(speech) }
         assertTrue(firstVerdict(cap, 288, 0.99f).isEmpty())
         assertTrue(actions(cap, 2_000).none { it is Action.EndActivity })
+    }
+
+    @Test
+    fun `with the early end switched off a clear done keeps the 500 ms rule`() {
+        val off = cascadeSpeaking(early = false)
+        assertTrue(firstVerdict(off, 288, 0.99f).isEmpty())
+        val end = actions(off, 400).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.FINISHED, end.reason)
+        assertEquals(512, end.silenceMs)
     }
 
     @Test
