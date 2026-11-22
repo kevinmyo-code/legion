@@ -41,12 +41,14 @@
     "echo_tail_ms": 300,
     "max_silero_ms": 16,
     "max_smart_ms": 450,
+    "verdict_grace_ms": 320,
     "engine_echo_counts_as_self_interrupt": true,
     "why": {
       "speculate_ms": "where an early transcript may start (off on the page, deps.ts EARLY_TRANSCRIPT)",
       "echo_tail_ms": "after a reply ends the browser cannot see its output latency, so this much mic audio is not a new turn",
       "max_silero_ms": "slower per window and the device cannot keep up: no models, energy end of turn, half-duplex",
       "max_smart_ms": "slower per check and Smart Turn is off: silence-only end at base_ms",
+      "verdict_grace_ms": "after a fire flushes the reply, its echo already in flight (browser output latency) is not counted as the person in the self-interrupt verdict",
       "engine_echo_counts_as_self_interrupt": "a barge_in=1 turn the engine heard nothing in, or only the reply's words, counts once toward max_self_interrupts"
     }
   }

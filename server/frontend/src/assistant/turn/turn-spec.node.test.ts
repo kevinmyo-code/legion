@@ -79,6 +79,7 @@ describe('shared/turn/spec.json: the web keeps the phone numbers', () => {
     expect(cascade.ECHO_TAIL_MS).toBe(w.echo_tail_ms)
     expect(detector.MAX_SILERO_MS).toBe(w.max_silero_ms)
     expect(detector.MAX_SMART_MS).toBe(w.max_smart_ms)
+    expect(gate.VERDICT_GRACE_MS).toBe(w.verdict_grace_ms)
   })
 })
 

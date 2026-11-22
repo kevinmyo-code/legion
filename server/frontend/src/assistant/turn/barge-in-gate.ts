@@ -23,10 +23,10 @@
  * instead: nothing is flushed, no verdict is watched, nothing counts, and the span starts over.
  *
  * **The web, 2026-11-22.** Voice barge-in was off on the web from 11-17 to 11-22 after the web's own
- * "pause, then decide" failed the headless-Chrome echo runs. That path and its 320 ms verdict grace
- * are gone: a fire flushes the reply at once, as on the phone, and the warm-up above guards the
- * opening. One web-only rule stays (`shared/turn/spec.json` web_only): the page may count a
- * self-interrupt the engine found (an empty transcript, or one echoing the reply), once per fire.
+ * "pause, then decide" failed the headless-Chrome echo runs. That path is gone: a fire flushes the
+ * reply at once, as on the phone, and the warm-up above guards the opening. Two web-only rules stay
+ * (`shared/turn/spec.json` web_only): the page may count a self-interrupt the engine found (an empty
+ * transcript, or one echoing the reply), once per fire; and VERDICT_GRACE_MS, below.
  */
 
 export const WINDOW_MS = 32
@@ -46,6 +46,13 @@ export const USER_GUARD_WINDOWS = Math.floor(USER_GUARD_MS / WINDOW_MS)
 const MAX_LEARN = 2_000
 export const VERDICT_MS = 1_216
 export const SELF_SPEECH_MS = 160
+/**
+ * The web's addition: speech in the verdict's first this-many ms is not counted. What already left
+ * the speaker when the reply was flushed is still on its way back to the mic (the browser's output
+ * latency, the room); counted, a fire on the reply's own echo read as a person, and with an engine
+ * that answered the echo as words the cut-off never came (`echo.test.ts`, no canceller).
+ */
+export const VERDICT_GRACE_MS = 320
 export const MAX_SELF_INTERRUPTS = 2
 export const CLEARLY_USER_FACTOR = 2
 /** How long a would-be fire is ignored from the first reply audio on a new audio path. */
@@ -105,6 +112,8 @@ export class BargeInGate {
   private armed = false
   private verdictWindowsLeft = 0
   private speechAfterMs = 0
+  /** The part of it after VERDICT_GRACE_MS, which is what the verdict goes on. */
+  private speechAfterGraceMs = 0
   private fireLevel = 0
   private fireThreshold = 0
   private replyOpen = false
@@ -258,6 +267,7 @@ export class BargeInGate {
     this.resetRun()
     this.verdictWindowsLeft = Math.floor(VERDICT_MS / WINDOW_MS)
     this.speechAfterMs = 0
+    this.speechAfterGraceMs = 0
     this.userGuardLeft = USER_GUARD_WINDOWS
     return fire
   }
@@ -272,13 +282,15 @@ export class BargeInGate {
   }
 
   private watch(prob: number): GateEvent | null {
+    const watchedMs = (Math.floor(VERDICT_MS / WINDOW_MS) - this.verdictWindowsLeft) * WINDOW_MS
     if (prob >= SPEECH_PROB) {
       this.speechAfterMs += WINDOW_MS
+      if (watchedMs >= VERDICT_GRACE_MS) this.speechAfterGraceMs += WINDOW_MS
       this.userGuardLeft = USER_GUARD_WINDOWS
     }
     if (--this.verdictWindowsLeft > 0) return null
     const clearlyUser = this.fireLevel >= this.fireThreshold * CLEARLY_USER_FACTOR
-    const self = this.speechAfterMs < SELF_SPEECH_MS && !clearlyUser
+    const self = this.speechAfterGraceMs < SELF_SPEECH_MS && !clearlyUser
     if (self && !this.fireCounted) {
       this.fireCounted = true
       this.selfInterrupts++

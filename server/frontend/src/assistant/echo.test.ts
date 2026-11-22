@@ -313,6 +313,51 @@ describe('talk-over on (the phone rule, ADR 0064)', () => {
   })
 })
 
+/** An answer that takes the engine 1.5 s (speech to text, the model), as a real turn does. */
+function slowReply(room: Room, pcm: Int16Array, text: string, turn: number): TurnStart {
+  return {
+    ok: true,
+    events: (async function* () {
+      await room.after(75)
+      yield { type: 'turn', data: { conversation_id: 'c-1', turn } } as SseEvent
+      yield { type: 'sentence', data: { text } } as SseEvent
+      yield { type: 'audio', data: { pcm: pcm16ToBase64(pcm), rate: 16_000 } } as SseEvent
+      yield { type: 'done', data: { status: 'done' } } as SseEvent
+    })(),
+  }
+}
+
+describe('talk-over with no canceller, and the engine answering the echo as words', () => {
+  it('the gate alone still stops it: at most two cuts, then talk-over is off', async () => {
+    const long = () => tone(5_000)
+    const t = talkOverRoom(
+      () => 1,
+      (r) => [
+        spokenReply(tone(200), 'Hi.', 0),
+        pacedReply(r, long(), 1),
+        slowReply(r, tone(200), 'Sure.', 2),
+        pacedReply(r, long(), 3),
+        slowReply(r, tone(200), 'Sure.', 4),
+        pacedReply(r, long(), 5),
+        slowReply(r, tone(200), 'Sure.', 6),
+        pacedReply(r, long(), 7),
+      ],
+    )
+    void t.client.startVoice()
+    await microtasks()
+    await t.run(60)
+    for (const question of ['One.', 'Two.', 'Three.', 'Four.']) {
+      t.client.send(question)
+      await microtasks()
+      await t.run(1_200, () => !t.room.sounding && t.client.getState().activity === 'listening')
+      await t.run(150)
+    }
+    expect(t.room.cuts).toBeLessThanOrEqual(2)
+    expect(t.client.fullDuplex).toBe(false)
+    t.client.dispose()
+  })
+})
+
 describe('talk-over off (the demo default, deps.ts TALK_OVER_DEFAULT)', () => {
   function room(answers: (r: Room) => TurnStart[]) {
     const r = new Room()

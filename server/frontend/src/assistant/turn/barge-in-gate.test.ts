@@ -9,6 +9,7 @@ import {
   SPAN_WINDOWS,
   SUSTAIN_MS,
   SUSTAIN_WINDOWS,
+  VERDICT_GRACE_MS,
   WARMUP_MS,
   WARMUP_WINDOWS,
   VERDICT_MS,
@@ -325,5 +326,21 @@ describe('the echo warm-up (3 s of reply audio after a new audio path)', () => {
     expect(WARMUP_MS).toBe(3_000)
     expect(WARMUP_WINDOWS).toBe(94)
     expect(fires(feed(gate(), windows, 0.95, loud))).toHaveLength(1)
+  })
+})
+
+describe('the verdict grace (web only: echo still in flight after the flush)', () => {
+  it("the reply's echo still arriving in the first 320 ms after a fire is not a person", () => {
+    const g = gate()
+    feed(g, windows, 0.95, loud)
+    expect(9 * WINDOW_MS).toBeLessThan(VERDICT_GRACE_MS)
+    const v = verdicts([...feed(g, 9, 0.95, loud, false), ...feed(g, 60, 0.05, 300, false)])[0]
+    expect(v.selfInterrupt).toBe(true)
+  })
+
+  it('a person who keeps talking past it is still a person', () => {
+    const g = gate()
+    feed(g, windows, 0.95, loud)
+    expect(verdicts(feed(g, 60, 0.9, 20_000, false))[0].selfInterrupt).toBe(false)
   })
 })
