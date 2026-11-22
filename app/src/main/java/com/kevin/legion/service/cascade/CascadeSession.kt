@@ -61,6 +61,7 @@ import com.kevin.legion.service.testturn.TestTurns
 import com.kevin.legion.service.tools.LiveSurface
 import com.kevin.legion.service.tools.day.ConversationDay
 import com.kevin.legion.service.tools.day.DateCarry
+import com.kevin.legion.service.tools.day.EventRemoval
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.ClearCodesVoiceGate
@@ -1748,6 +1749,8 @@ internal class CascadeSession(
         if (record.fromUser) record.askedBefore = lastTurnAsked
         // The day the last turn was about is this turn's to carry, and no later turn's (DateCarry).
         if (record.fromUser) conversationDay.startTurn()
+        // A calendar-entry remove question is answerable in his next turn only (EventRemoval).
+        if (record.fromUser) EventRemoval.turnStarted()
         // ADR 0090 gap 5: the turn after a read-through opener starts marked, as on Live.
         if (readThroughCarry.startTurn(record.fromUser, record.startMarked)) {
             record.startMarked = true
@@ -3627,6 +3630,8 @@ internal class CascadeSession(
 
     @Suppress("TooGenericExceptionCaught")
     private suspend fun release(reason: String) {
+        // The conversation is over: no remove question outlives it.
+        EventRemoval.reset()
         // Called from inside a turn too (a hand-over, a dismissal): that turn must not cancel
         // itself, or the step after release (opening Live) would never run.
         val caller = kotlin.coroutines.coroutineContext[Job]

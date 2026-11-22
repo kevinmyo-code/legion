@@ -882,6 +882,8 @@ object LiveToolbox {
             if (r.name != name) return dispatch(context, r.name, r.args, touchedReadThroughToolThisTurn, userText)
         }
         LiveSurface.unknownAction(name, args)?.let { return it }
+        // A calendar-entry remove question waits only for the remove that answers it (EventRemoval).
+        if (name != "manage_item" || !isRemove(args)) EventRemoval.reset()
         // His own day word wins over a date one day off it, for the calendar and task tools, on the
         // date the voice turn was given (RelativeDay.corrected; 2026-11-17 evening: "and tomorrow?"
         // read today+2); a dated write that names no day goes on the conversation's day
@@ -4250,16 +4252,18 @@ object LiveToolbox {
      * yes in a later turn ([userText], EventRemoval). Null when no calendar entry is involved; `date`
      * narrows which day.
      */
-    @Suppress("ReturnCount") // not a remove, an unreadable date, or the entry's answer
     private suspend fun removeCalendarEntry(context: Context, args: JSONObject, userText: String?): JSONObject? {
         val item = args.optString("item").trim()
-        if (args.optString("action").trim().lowercase() != "remove" || item.isBlank()) return null
+        if (!isRemove(args) || item.isBlank()) return null
+        // A date that does not read leaves the calendar alone: the reminder path runs as before.
         val dateArg = args.optString("date").trim()
-        val day = if (dateArg.isEmpty()) null else parseNoteLocalDate(dateArg)
-            ?: return result(false, "I couldn't read \"$dateArg\" as a date - try yyyy-MM-dd.")
-        val reminders = NotesController.findItem(context, theList(context).id, item)
+        val day = parseNoteLocalDate(dateArg)
+        if (dateArg.isNotEmpty() && day == null) return null
+        val reminders = NotesController.openItemsForList(context, theList(context).id)
         return EventRemoval.remove(context, item, day, userText, reminders)
     }
+
+    private fun isRemove(args: JSONObject) = args.optString("action").trim().lowercase() == "remove"
 
     /** Dispatches `manage_item`: add / tick / untick / remove / schedule / skip one item. */
     private suspend fun manageItem(context: Context, args: JSONObject): JSONObject {

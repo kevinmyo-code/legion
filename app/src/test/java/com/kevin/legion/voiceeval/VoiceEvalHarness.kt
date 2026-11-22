@@ -176,6 +176,8 @@ internal class VoiceEvalHarness(
 
     @Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements") // the session's turn order, in one place
     private suspend fun runTurns(case: EvalCase) {
+        // A new conversation, as the session's release: no remove question carries over.
+        com.kevin.legion.service.tools.day.EventRemoval.reset()
         val audit = LiveAudit(sink = { out(LiveAudit.TAG, it) }, onSession = {})
         audit.enabled = true
         audit.sessionStart("eval+${prefix.model}", emptySet())
@@ -253,6 +255,8 @@ internal class VoiceEvalHarness(
             audit.user(heard, final = true)
             askedBefore = asked
             asked = false
+            // As the session: a calendar-entry remove question is answerable in his next turn only.
+            com.kevin.legion.service.tools.day.EventRemoval.turnStarted()
             val t0 = now()
             turnStartedAt = java.time.LocalTime.now()
             dateCalls.set(0)
