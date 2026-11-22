@@ -412,8 +412,8 @@
  * Square corners everywhere inside, components included. The radius tokens
  * cannot do this: they are declared `@theme inline`, so `rounded-card` compiles
  * to a literal length, and `rounded-full` is no token at all. This rule is
- * unlayered, so it wins over every Tailwind utility. The one exception is the
- * phone frame below, which depicts a phone.
+ * unlayered, so it wins over every Tailwind utility. The exceptions follow, the
+ * first being the phone section's video player.
  */
 .recruiter,
 .recruiter *,
@@ -422,11 +422,8 @@
     border-radius: 0;
 }
 
-.recruiter .rc-phone {
-    border-radius: 34px;
-}
-.recruiter .rc-phone .rc-pscreen {
-    border-radius: 25px;
+.recruiter .rc-player {
+    border-radius: 12px;
 }
 
 /* The flying orb is round to the pointer too: a tap on the orb you see is the orb's, and a tap
@@ -440,12 +437,6 @@
    suggestion cards can be better too"). Unlayered, as the rule it overrides is. */
 .recruiter .rc-chip {
     border-radius: 9999px;
-}
-.recruiter .rc-inline {
-    border-radius: 22px;
-}
-.recruiter .rc-inline .rc-pscreen {
-    border-radius: 16px;
 }
 
 /* Focus stays visible: an ink ring on paper, whatever a component's own
@@ -756,8 +747,7 @@
             transform: none !important;
             transition: none !important;
         }
-        .recruiter .rc-scene-stage,
-        .recruiter .rc-stage {
+        .recruiter .rc-scene-stage {
             position: static !important;
             height: auto !important;
         }
@@ -1451,8 +1441,7 @@
         }
     }
 
-    /* The phone scene (900 px and up, motion allowed; `try-phone.tsx`): each row's Play
-       puts its clip in the one pinned player. */
+    /* The phone section (`try-phone.tsx`): each row's Play puts its clip in the one player. */
     .recruiter .rc-step-play {
         align-self: flex-start;
         min-height: 44px;
@@ -1686,49 +1675,27 @@
         }
     }
 
-    /* LEGION on the phone: the frame sticks while the capability texts scroll past. */
+    /* LEGION on the phone: one full-width 16:9 player, the capability texts under it. */
     .rc-scrolly {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 280px;
-        column-gap: calc(3.2 * var(--u));
-        align-items: start;
         margin-top: calc(1.2 * var(--u));
+    }
+    .rc-player-wrap {
+        margin: 0 0 calc(1.4 * var(--u));
+    }
+    .rc-player {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        background: #15130f;
     }
     .rc-step {
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        min-height: 60vh;
-        padding: var(--u) 0;
-    }
-    .rc-step:first-child {
-        min-height: 44vh;
-        justify-content: flex-start;
+        padding: 0 0 calc(1.4 * var(--u));
     }
     .rc-prose .rc-step p {
         margin: 0;
-        color: var(--rc-meta);
-        transition: color 0.35s;
-    }
-    .rc-prose .rc-step[data-active] p {
-        color: var(--rc-ink);
-    }
-    .rc-stage {
-        position: sticky;
-        top: calc(2.5 * var(--u));
-    }
-    .rc-phone {
-        width: 280px;
-        height: 580px;
-        padding: 10px;
-        border: 1px solid var(--rc-ink);
-        background: #ffffff;
-    }
-    .rc-pscreen {
-        position: relative;
-        height: 100%;
-        overflow: hidden;
-        background: #15130f;
     }
     .rc-clip {
         position: absolute;
@@ -1741,11 +1708,6 @@
         padding: calc(1.4 * var(--u));
         color: var(--rc-paper);
         text-align: center;
-        opacity: 0;
-        transition: opacity 0.45s;
-    }
-    .rc-clip[data-on] {
-        opacity: 1;
     }
     .rc-clip video {
         position: absolute;
@@ -1767,36 +1729,9 @@
         font-size: calc(0.82 * var(--u));
     }
     .rc-prose .rc-stage-caption {
-        max-width: 280px;
-        margin: calc(0.8 * var(--u)) 0 0;
+        margin: calc(0.6 * var(--u)) 0 0;
         font-size: calc(0.86 * var(--u));
         color: var(--rc-meta);
-        text-align: center;
-    }
-    .rc-inline {
-        width: 220px;
-        aspect-ratio: 9 / 16;
-        margin: calc(0.9 * var(--u)) 0 0;
-        padding: 7px;
-        border: 1px solid var(--rc-ink);
-        background: #ffffff;
-    }
-    .rc-inline .rc-clip {
-        position: static;
-        height: 100%;
-        opacity: 1;
-    }
-    /* Under 900px, or with reduced motion: no stage, each clip under its text. */
-    .rc-scrolly[data-mode="inline"] {
-        display: block;
-    }
-    .rc-scrolly[data-mode="inline"] .rc-step {
-        min-height: 0;
-        justify-content: flex-start;
-        padding: 0 0 calc(1.8 * var(--u));
-    }
-    .rc-prose .rc-scrolly[data-mode="inline"] .rc-step p {
-        color: var(--rc-ink);
     }
 
     /* Swipe hints: only where the row or frame actually scrolls, on a phone (below). */
@@ -1806,9 +1741,7 @@
 
     /*
      * Phone width (Kevin, 2026-11-04: "make the page look good for mobile").
-     * The header on two lines at most, a smaller headline, the facts stacked,
-     * and the phone clips as one swipeable row instead of eight frames stacked
-     * down a 10,000 px page.
+     * The header on two lines at most, a smaller headline, the facts stacked.
      */
     @media (max-width: 640px) {
         .rc-top {
@@ -1855,30 +1788,6 @@
             content: none;
         }
 
-        .rc-scrolly[data-mode="inline"] > div:first-child {
-            display: flex;
-            gap: var(--u);
-            margin: 0 calc(-1.25 * var(--u));
-            padding: 0 calc(1.25 * var(--u)) calc(0.4 * var(--u));
-            overflow-x: auto;
-            overscroll-behavior-x: contain;
-            scroll-snap-type: x mandatory;
-            scroll-padding: 0 calc(1.25 * var(--u));
-            scrollbar-width: none;
-        }
-        .rc-scrolly[data-mode="inline"] .rc-step {
-            flex: 0 0 82%;
-            padding: 0;
-            scroll-snap-align: start;
-        }
-        .rc-scrolly[data-mode="inline"] .rc-inline {
-            width: 170px;
-            margin-top: auto;
-            padding-top: 7px;
-        }
-        .rc-scrolly[data-mode="inline"] .rc-step > p {
-            margin-bottom: calc(0.9 * var(--u));
-        }
         .rc-prose .rc-swipe {
             display: block;
             margin: calc(0.5 * var(--u)) 0 0;

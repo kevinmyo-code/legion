@@ -11,6 +11,7 @@ import { DAY_CARD, SPEND_CARD } from '@/test/cards-seed'
 import { renderApp } from '@/test/render-app'
 import type { DemoContent, DemoSectionMedia } from '@/api/demo'
 import { FIRST_QUESTIONS, OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
+import { ENTER_WAIT_LINE } from '@/components/demo/enter-wait'
 import { RECORDING_NOTICE, STAGE_LINE } from '@/components/demo/voice-stage'
 import { ENTRY_TAP_MS } from '@/assistant/turn-deadline'
 
@@ -102,6 +103,30 @@ describe('the access code on /login', () => {
     fireEvent.click(within(box).getByRole('button', { name: 'Open the demo' }))
     expect(await within(box).findByRole('alert')).toHaveTextContent(WRONG_CODE)
     expect(router.state.location.pathname).toBe('/login')
+    // The wait line goes with the wait: an error is never shown under "setting up".
+    expect(within(box).queryByText(ENTER_WAIT_LINE)).not.toBeInTheDocument()
+  })
+
+  test('while the code is entered, it says what is happening and about how long', async () => {
+    const engine = createEngine({ signedIn: false })
+    renderApp('/login', engine, 'family')
+    const box = await screen.findByRole('region', { name: 'Have an access code?' })
+    const answer = globalThis.fetch
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    vi.stubGlobal('fetch', async (input: Request) => {
+      if (new URL(input.url).pathname === '/api/demo/enter') await held
+      return answer(input)
+    })
+    fireEvent.change(within(box).getByLabelText('Access code'), { target: { value: 'nope' } })
+    fireEvent.click(within(box).getByRole('button', { name: 'Open the demo' }))
+    expect(await within(box).findByText(ENTER_WAIT_LINE)).toBeInTheDocument()
+    await act(async () => {
+      release()
+      await settle()
+    })
+    expect(await within(box).findByRole('alert')).toHaveTextContent(WRONG_CODE)
+    expect(within(box).queryByText(ENTER_WAIT_LINE)).not.toBeInTheDocument()
   })
 
   test.each([
@@ -186,7 +211,7 @@ describe('/try', () => {
     })
     const orb = await screen.findByRole('button', { name: /^Talk to / })
     const stage = screen.getByRole('region', { name: 'Talk to the demo assistant' })
-    expect(await screen.findByText('Opening the demo…')).toBeInTheDocument()
+    expect(await screen.findByText(ENTER_WAIT_LINE)).toBeInTheDocument()
     await act(async () => {
       release()
       await settle()
@@ -209,7 +234,7 @@ describe('/try', () => {
       return answer(input)
     })
     const orb = await screen.findByRole('button', { name: /^Talk to / })
-    expect(await screen.findByText('Opening the demo…')).toBeInTheDocument()
+    expect(await screen.findByText(ENTER_WAIT_LINE)).toBeInTheDocument()
     await act(async () => {
       fireEvent.click(orb)
       await settle()
@@ -323,6 +348,48 @@ describe('/try', () => {
       expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME' }])
     } finally {
       spy.mockRestore()
+    }
+  })
+
+  test('a link opened in a hidden tab: the wait bar starts with the entry, never nearly full before it', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    let visibility: DocumentVisibilityState = 'hidden'
+    const spy = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    const realNow = Date.now
+    try {
+      renderApp('/try?code=OPEN-SESAME', engine, 'family')
+      await screen.findByRole('button', { name: /^Talk to / })
+      await act(settle)
+      // Hidden: no entry, so no bar and no "about 15 seconds" yet.
+      expect(await screen.findByText('Opening the demo…')).toBeInTheDocument()
+      expect(document.querySelector('[data-stage="enter-bar"]')).toBeNull()
+      // A minute later the visitor looks at the tab; the entry starts and is held.
+      const later = realNow() + 60_000
+      vi.spyOn(Date, 'now').mockImplementation(() => later)
+      const answer = globalThis.fetch
+      let release: () => void = () => {}
+      const held = new Promise<void>((resolve) => (release = resolve))
+      vi.stubGlobal('fetch', async (input: Request) => {
+        if (new URL(input.url).pathname === '/api/demo/enter') await held
+        return answer(input)
+      })
+      visibility = 'visible'
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+        await settle()
+      })
+      expect(await screen.findByText(ENTER_WAIT_LINE)).toBeInTheDocument()
+      const bar = document.querySelector<HTMLElement>('[data-stage="enter-bar"]')!
+      expect(Number(/scaleX\(([\d.]+)\)/.exec(bar.style.transform)![1])).toBeLessThan(0.05)
+      await act(async () => {
+        release()
+        await settle()
+      })
+      expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    } finally {
+      spy.mockRestore()
+      vi.mocked(Date.now).mockRestore?.()
     }
   })
 
