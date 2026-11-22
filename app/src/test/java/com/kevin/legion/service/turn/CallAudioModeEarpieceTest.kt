@@ -110,19 +110,42 @@ class CallAudioModeEarpieceTest {
     }
 
     @Test
-    fun `entering call audio and each switch start the echo warm-up again`() {
-        var now = 50_000L
-        val mode = CallAudioMode(audio, clock = { now })
-        assertFalse(mode.warmingUp)
+    fun `entering call audio is a path change, taken once`() {
+        val mode = CallAudioMode(audio)
+        assertFalse(mode.takePathChange())
         mode.enter()
-        assertTrue(mode.warmingUp)
-        now += BargeInGate.WARMUP_MS
-        assertFalse(mode.warmingUp)
-        mode.retarget(earpiece = true)
-        assertTrue(mode.warmingUp)
-        now += BargeInGate.WARMUP_MS - 1
-        assertTrue(mode.warmingUp)
+        assertTrue(mode.takePathChange())
+        assertFalse(mode.takePathChange())
         mode.exit("test")
-        assertFalse(mode.warmingUp)
+    }
+
+    @Test
+    fun `a switch is a path change only when the routed device really changes`() {
+        var routed = AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+        val mode = CallAudioMode(audio) { routed }
+        mode.enter()
+        mode.takePathChange()
+        mode.retarget(earpiece = false)
+        assertFalse("same device: no change", mode.takePathChange())
+        routed = AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+        mode.retarget(earpiece = true)
+        assertTrue(mode.takePathChange())
+        mode.exit("test")
+    }
+
+    @Test
+    fun `a device plugged or pulled counts only when the routed device moves`() {
+        var routed = AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+        val mode = CallAudioMode(audio) { routed }
+        mode.onDevicesChanged()
+        assertFalse("outside call audio nothing counts", mode.takePathChange())
+        mode.enter()
+        mode.takePathChange()
+        mode.onDevicesChanged()
+        assertFalse(mode.takePathChange())
+        routed = AudioDeviceInfo.TYPE_WIRED_HEADSET
+        mode.onDevicesChanged()
+        assertTrue(mode.takePathChange())
+        mode.exit("test")
     }
 }

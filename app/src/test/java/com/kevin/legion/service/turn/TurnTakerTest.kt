@@ -239,23 +239,31 @@ class TurnTakerTest {
     }
 
     @Test
-    fun `during the echo warm-up a voice over the reply is logged and ignored, then barges after`() {
+    fun `the warm-up starts at the first reply audio after a path change, then a voice barges`() {
         val vad = ScriptedVad(0.95f)
-        var warming = true
+        var changed = true
         val sink = object : TurnTaker.Sink by RecordingSink() {
             val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
             var barged = 0
             override fun onBargeIn(fire: BargeInGate.Event.Fire) { barged++ }
             override fun log(tag: String, message: String) { logs += "$tag $message" }
-            override fun echoWarmingUp() = warming
+            override fun takeAudioPathChange() = changed.also { changed = false }
         }
         val t = TurnTaker(TurnConfig(true, true, false, "test"), vad, null, sink)
+        // Not playing yet: the change waits for reply audio (a long silence here does not use it up).
+        vad.next = 0.05f
+        repeat(40) { t.feed(quiet, quiet.size, playing = false) }
+        assertTrue(changed)
         t.onReplyStart()
+        vad.next = 0.95f
         repeat(4) { t.feed(loud(), 3_200, playing = true) }
         assertEquals(0, sink.barged)
+        assertTrue(sink.logs.any { it == "${TurnTaker.BARGE_TAG} warmup_start ms=${BargeInGate.WARMUP_MS}" })
         val line = sink.logs.first { it.contains("bargein_ignored") }
         assertTrue(line, line.startsWith("${TurnTaker.BARGE_TAG} bargein_ignored reason=warmup level="))
-        warming = false
+        vad.next = 0.05f
+        repeat(30) { t.feed(quiet, quiet.size, playing = true) }
+        vad.next = 0.95f
         repeat(4) { t.feed(loud(), 3_200, playing = true) }
         assertEquals(1, sink.barged)
     }

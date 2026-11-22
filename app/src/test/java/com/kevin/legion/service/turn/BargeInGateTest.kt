@@ -368,16 +368,14 @@ class BargeInGateTest {
         assertNull(BargeInGate().onReplyEnd())
     }
 
-    // --- the echo warm-up window (2026-11-21; LiveKit and Unmute both ignore interruptions for 3 s) ---
+    // --- the echo warm-up (2026-11-21, LiveKit's way: 3 s from the first reply audio after a change) ---
 
-    private fun feedWarm(g: BargeInGate, n: Int, prob: Float, level: Int): List<Event> =
-        (1..n).mapNotNull { g.onWindow(prob, level, playing = true, warmingUp = true) }
+    private fun warmGate() = gate().apply { startWarmUp() }
 
     @Test
     fun `while the echo canceller warms up a sustained voice is ignored, never a fire`() {
-        val g = gate()
-        val events = feedWarm(g, windows * 3, 0.95f, loud)
-        assertTrue(events.isNotEmpty())
+        val g = warmGate()
+        val events = feed(g, windows * 3, 0.95f, loud)
         assertTrue(events.all { it is Event.Ignored })
         val ignored = events.first() as Event.Ignored
         assertEquals(Event.Ignored.WARMUP, ignored.reason)
@@ -389,20 +387,22 @@ class BargeInGateTest {
     }
 
     @Test
-    fun `an ignored span is no self-interrupt and the voice fires once the warm-up is over`() {
-        val g = gate()
-        feedWarm(g, windows, 0.95f, loud)
-        assertTrue(feed(g, 60, 0.1f, 500).isEmpty())
+    fun `an ignored span is no self-interrupt and the voice fires once the 3 s are over`() {
+        val g = warmGate()
+        feed(g, windows, 0.95f, loud)
+        // The rest of the warm-up passes in real time, playing or not.
+        feed(g, BargeInGate.WARMUP_WINDOWS - windows - 1, 0.1f, 500, playing = false)
+        assertTrue(g.warmingUpNow)
+        feed(g, 1, 0.1f, 500, playing = false)
+        assertFalse(g.warmingUpNow)
         assertEquals(0, g.selfInterrupts)
         assertTrue(feed(g, windows, 0.95f, loud).single() is Event.Fire)
     }
 
     @Test
-    fun `the warm-up is three seconds from the last audio path change`() {
+    fun `the warm-up is three seconds of windows and no warm-up means no ignoring`() {
         assertEquals(3_000L, BargeInGate.WARMUP_MS)
-        assertFalse(BargeInGate.warmingUp(changedAtMs = null, nowMs = 10_000))
-        assertTrue(BargeInGate.warmingUp(changedAtMs = 10_000, nowMs = 10_000))
-        assertTrue(BargeInGate.warmingUp(changedAtMs = 10_000, nowMs = 12_999))
-        assertFalse(BargeInGate.warmingUp(changedAtMs = 10_000, nowMs = 13_000))
+        assertEquals(94, BargeInGate.WARMUP_WINDOWS)
+        assertTrue(feed(gate(), windows, 0.95f, loud).single() is Event.Fire)
     }
 }
