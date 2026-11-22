@@ -37,6 +37,7 @@ __all__ = [
     "SAFETY_CUES",
     "SAID_NOTE",
     "TOOLS",
+    "codes_in",
     "for_model",
     "line_of",
     "restates_result",
@@ -59,7 +60,8 @@ _CODE = re.compile(
 )
 _COUNT = re.compile(
     r"\b(\d+|no|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|several|all)\s+"
-    r"(modules?|module\(s\)|computers?|controllers?|ecus?)\b",
+    # "module(s)" before "modules?", so the whole word goes when a count is taken out.
+    r"(module\(s\)|(?:modules?|computers?|controllers?|ecus?)\b)",
     re.IGNORECASE,
 )
 _VERDICT = re.compile(
@@ -68,53 +70,100 @@ _VERDICT = re.compile(
     re.IGNORECASE,
 )
 # A sentence holding any of these is a warning about driving the car: never dropped as a
-# restatement, whatever else it says (review 1121 V1). The one list.
+# restatement, whatever else it says (review 1121 V1). The one list: the phone's
+# `DiagFilter.SAFETY_CUES` is the same, in the same order.
 SAFETY_CUES = (
     "pull over",
+    "pull off",
     "stop driving",
     "don't drive",
     "do not drive",
     "flashing",
     "overheating",
+    "overheated",
     "overheat",
     "smoke",
+    "burning",
     "brakes",
     "oil pressure",
     "temperature warning",
 )
 _SAFETY = re.compile(r"\b(" + "|".join(re.escape(c) for c in SAFETY_CUES) + r")\b", re.IGNORECASE)
-# Words a bare verdict about the read is made of ("The engine's clear.", "Clean bill of health."):
-# a verdict-word sentence with any other word says something new and is said.
-_BARE_VERDICT = frozenset(
-    "a all an and are be bill car car's clean clear cleared code codes completely engine engine's "
-    "everything everything's fine good health healthy here is issue issues it it's its look "
-    "looking looks no nothing of ok okay pretty problem problems right seem seems set so stored "
-    "that that's the there this totally very was wrong you're".split()
+# The words a bare verdict or a bare code mention is made of (the phone's `DiagFilter.BARE`): a
+# sentence with any other word says something new and is said.
+_BARE = frozenset(
+    "a all an and are again be bill car car's clean clear cleared code codes completely engine "
+    "engine's everything everything's fine gone good got has have health healthy here is issue "
+    "issues it it's its look looking looks no nothing of ok okay one pending pretty problem "
+    "problems right seem seems set so still stored that that's the there there's this totally "
+    "very was with wrong you you're your zero oh two three four five six seven eight nine".split()
+)
+# A module-count sentence made only of these and `_BARE` says nothing new ("Seven modules
+# answered."); the phone's `DiagFilter.COUNT_BARE`.
+_COUNT_BARE = frozenset(
+    "answered responded replied read scanned checked were came back up in out on reported module "
+    "modules computers controllers ecus".split()
 )
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
+_DIGIT_WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+_JOINED_CODE = re.compile(r"\b[pcbu][0-3][0-9a-f]{3}\b")
+_CODE_GAP = re.compile(r"(?:(?<=\b[pcbu])|(?<=[0-9]))[\s-]+(?=[0-9])")
+# Fewest words for a sentence to count as repeating the spoken line.
+_REPEAT_MIN_WORDS = 3
 # The phone's scripted filler lines (`ScriptedLines.FILLERS`), as `LeadingFiller.core` reads them.
 _FILLER_CORES = frozenset({"one moment", "just a moment", "on it", "checking", "let me look"})
-_ENDS = ".!?…"
+_ENDS = ".!?\u2026"
 
 
-def restates_result(sentence: str) -> bool:
-    """True when `sentence` restates a diagnostics answer already said: a trouble code ("P0420",
-    "P zero four two zero"), a module count, a bare verdict, or a bare filler line. Never a
-    sentence with a safety cue."""
+def restates_result(sentence: str, said: str | None = None) -> bool:
+    """True when `sentence` only restates the diagnostics answer already said (`said`, the device's
+    line, when known): a bare module count, a bare code or any code the line did not say, a bare
+    verdict, a bare filler line, or a word-for-word run of the line. Never a sentence with a
+    safety cue. The phone's `DiagFilter.restatesResult`, kept equal."""
     text = (sentence or "").replace("\u2019", "'")
     if _SAFETY.search(text):
         return False
     core = text.strip().rstrip(_ENDS).lower()
     return bool(
-        _CODE.search(text)
-        or _COUNT.search(text)
-        or (_VERDICT.search(text) and _only_verdict(core))
+        (_COUNT.search(text) and _bare(_COUNT.sub(" ", core), _COUNT_BARE))
+        or (_CODE.search(text) and _code_restates(core, said))
+        or (_VERDICT.search(text) and _bare(core))
+        or _repeats(core, said)
         or core in _FILLER_CORES
     )
 
 
-def _only_verdict(core: str) -> bool:
-    return all(word in _BARE_VERDICT for word in _WORD.findall(core))
+def _bare(core: str, more: frozenset = frozenset()) -> bool:
+    return all(word in _BARE or word in more for word in _WORD.findall(core))
+
+
+def _code_restates(core: str, said: str | None) -> bool:
+    """A code sentence restates the read when it says nothing else, or when any code in it was
+    not in the line: the model may explain a code it was given, never say one of its own (the
+    text model garbles figures, the reason the line is said by code)."""
+    if _bare(_CODE.sub(" ", core)):
+        return True
+    codes = codes_in(core)
+    return not codes or said is None or not codes <= codes_in(said)
+
+
+def codes_in(text: str) -> set[str]:
+    """The codes in `text`, written as P0301 whether said "P0301", "p 0 3 0 1" or "P zero three
+    oh one"."""
+    t = text.lower()
+    for digit, word in enumerate(_DIGIT_WORDS):
+        t = re.sub(rf"\b{word}\b", str(digit), t)
+    t = _CODE_GAP.sub("", re.sub(r"\boh\b", "0", t))
+    return {m.group(0).upper() for m in _JOINED_CODE.finditer(t)}
+
+
+def _repeats(core: str, said: str | None) -> bool:
+    """The sentence is the line, or a run of it, word for word."""
+    words = _WORD.findall(core)
+    if said is None or len(words) < _REPEAT_MIN_WORDS:
+        return False
+    line = " ".join(_WORD.findall(said.replace("\u2019", "'").lower()))
+    return f" {' '.join(words)} " in f" {line} "
 
 
 def line_of(req: dict, result: dict) -> str | None:
