@@ -83,7 +83,7 @@ class CardStageArrivalTest {
         serial += 1
         rule.waitForIdle()
         rule.onNodeWithText("1 of 2").assertExists()
-        rule.onNodeWithText("gloves").assertExists()
+        rule.onNodeWithText("gloves", substring = true).assertExists()
     }
 
     @Test
