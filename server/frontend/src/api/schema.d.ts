@@ -8107,7 +8107,7 @@ export interface components {
             notes?: string | null;
             source?: string;
             google_event_id?: string | null;
-            /** @description Who organized an event that came in from another calendar: an address, or 'self' when that calendar says its own owner organized it. Optional; never returned. */
+            /** @description Who organized an event that came in from another calendar: an address, or 'self' when that calendar says its own owner organized it. Optional; never returned; set on create only (an update ignores it, as it ignores `source`). */
             organizer?: string | null;
             done?: boolean;
             /** Format: date-time */
@@ -10268,7 +10268,7 @@ export interface components {
             notes?: string | null;
             source?: string;
             google_event_id?: string | null;
-            /** @description Who organized an event that came in from another calendar: an address, or 'self' when that calendar says its own owner organized it. Optional; never returned. */
+            /** @description Who organized an event that came in from another calendar: an address, or 'self' when that calendar says its own owner organized it. Optional; never returned; set on create only (an update ignores it, as it ignores `source`). */
             organizer?: string | null;
             done?: boolean;
             /** Format: date-time */

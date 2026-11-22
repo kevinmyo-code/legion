@@ -21,10 +21,15 @@ PREVIOUS_TURN = "previous_turn"
 # does not carry (the owner's ruling, option A2; re-check R1). A carry-type name: it never carries
 # by itself.
 REFUSED_HERE = "write_refused"
+# The carry from a turn whose only outside text was a calendar entry (`calendar_taint.CARRIED`):
+# added beside `PREVIOUS_TURN`, so the carried words name what was read.
+PREVIOUS_TURN_CALENDAR = "previous_turn_calendar"
 # Every taint source that is a carry, not a read of this turn's own (`client_facts.CARRY`: the
 # phone's last line read outside text; `late.AFTER_CARRY`). Kept as names here, so the guards need
 # not import the late-answer runner; a test pins them to their owners' constants.
-CARRY_SOURCES = frozenset({"carry", "late_after_carry", PREVIOUS_TURN, REFUSED_HERE})
+CARRY_SOURCES = frozenset(
+    {"carry", "late_after_carry", PREVIOUS_TURN, REFUSED_HERE, PREVIOUS_TURN_CALENDAR}
+)
 
 
 def carries(previous_taint) -> bool:

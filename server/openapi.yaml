@@ -18830,7 +18830,8 @@ components:
           nullable: true
           description: 'Who organized an event that came in from another calendar:
             an address, or ''self'' when that calendar says its own owner organized
-            it. Optional; never returned.'
+            it. Optional; never returned; set on create only (an update ignores it,
+            as it ignores `source`).'
           maxLength: 320
         done:
           type: boolean
@@ -23313,7 +23314,8 @@ components:
           nullable: true
           description: 'Who organized an event that came in from another calendar:
             an address, or ''self'' when that calendar says its own owner organized
-            it. Optional; never returned.'
+            it. Optional; never returned; set on create only (an update ignores it,
+            as it ignores `source`).'
           maxLength: 320
         done:
           type: boolean

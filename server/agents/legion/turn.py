@@ -29,7 +29,7 @@ from django.utils import timezone as dj_timezone
 
 from agents.graph.nodes import NodeContext, turn_graph
 from agents.graph.state import TurnState
-from agents.legion import carry, guards, late, relay_turn
+from agents.legion import calendar_taint, carry, guards, late, relay_turn
 from agents.legion import client_facts as facts_of
 from agents.legion.gateway import LegionGateway
 from agents.legion.hold import TurnHold
@@ -265,6 +265,9 @@ def run_turn(
         # The carry (ADR 0090 amended, 2026-11-21): the turn before read outside text, so no
         # write in this one either; one turn only (`carry.py`).
         state.add_taint(carry.PREVIOUS_TURN)
+        if calendar_taint.only_calendar(previous_taint):
+            # What the turn before read: a calendar entry only, so the carried words say so.
+            state.add_taint(calendar_taint.CARRIED)
         store.mark_taint(state)
     late_may_run = not facts.get("test_mode") and (not late.enabled() or hold.wait() == "go")
     if agent == "generalist" and not pending and late_may_run:

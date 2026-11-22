@@ -358,7 +358,10 @@ def test_a_calendar_taint_refuses_and_closes_in_calendar_words(seeded, household
     words = " ".join(said(events))
     assert "calendar entry someone else wrote" in words
     assert "from the web" not in words
-    # The next turn is carried, in calendar words too.
+    # A turn that only read is carried into the next, in calendar words too. (A turn that refused
+    # a change his own words asked for does not carry: the owner's A2 exception.)
+    rounds = [m.call("read_calendar", {"from": DAY, "to": DAY}), m.say("A review at four.")]
+    _events, _seen, conversation = turn(seeded, "what's on today", rounds)
     rounds = [m.call("add_checklist_item", {"checklist": "Todo", "text": "milk"}), m.say("Ok.")]
     events, seen, _c = turn(seeded, "add milk", rounds, conversation=conversation)
     refusal = next(c["text"] for c in seen if c["name"] == "add_checklist_item")

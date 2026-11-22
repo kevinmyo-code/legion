@@ -63,6 +63,11 @@ SUGGESTION_META_KEYS = ("city", "venue", "address", "url", "price")
 SOURCE_CHOICES = ("legion", "google")
 # An address is at most 320 characters (RFC 5321's 64 + 1 + 255).
 ORGANIZER_MAX_CHARS = 320
+# Who wrote an event: set when the row is made (a syncing client names an imported calendar's
+# event), never changed after (review 1121 C1). The engine brain decides from them whether an
+# event's text is someone else's (`agents/legion/calendar_taint.py`), so no later write may
+# launder an invite into his own entry. An update that sends them is applied without them.
+WRITTEN_ONCE = ("source", "organizer")
 REPEAT_KIND_CHOICES = ("DAILY", "WEEKLY", "MONTHLY_ON_DATE", "YEARLY")
 REPEAT_END_KIND_CHOICES = ("NEVER", "ON_DATE", "AFTER_COUNT")
 
@@ -183,7 +188,7 @@ class EventSerializer(serializers.ModelSerializer):
                 "help_text": (
                     "Who organized an event that came in from another calendar: an address, or "
                     "'self' when that calendar says its own owner organized it. Optional; never "
-                    "returned."
+                    "returned; set on create only (an update ignores it, as it ignores `source`)."
                 ),
             },
         }
@@ -352,6 +357,10 @@ class EventSerializer(serializers.ModelSerializer):
         # `EventDetailView.patch` has already turned any `visibility` into an
         # `owner_user_id` (or refused it); the word itself is not a column.
         validated_data.pop("visibility", None)
+        # Never changed after create (`WRITTEN_ONCE`). Dropped, not refused: the phone's PATCH
+        # sends every field it holds, `source` included, and must keep working as it does.
+        for key in WRITTEN_ONCE:
+            validated_data.pop(key, None)
         instance = super().update(instance, validated_data)
         # The `touch_updated_at` trigger has just overwritten `updated_at`
         # with the database's own clock, and a `done_at` derived by

@@ -247,18 +247,25 @@ class LegionGateway:
             # The request's flag is the second fence (a procedure's own steps check it, not the
             # turn's state); a relay's continuation is a new request, so it is armed again here.
             read_through.flag_request(self.request)
-        result: ToolResult = run_engine_tool(self.request, tool, dict(call.args))
+        # An event someone outside the household wrote (`calendar_taint.py`), read by this tool
+        # or any tool it runs (a procedure's steps): known only once read, so the mark is saved
+        # here, before the result reaches the model, or the rows are withheld.
+        with calendar_taint.watching(self.request) as watch:
+            result: ToolResult = run_engine_tool(self.request, tool, dict(call.args))
         # The deadline is soft (budget.py): a late tool is not interrupted; its `ms` says so.
         outcome = _OUTCOMES.get(result.outcome, "failed" if result.is_error else "ok")
-        # An event someone outside the household wrote (`calendar_taint.py`): known only once
-        # read, so the mark is saved here, before the result reaches the model, or it is withheld.
-        calendar = calendar_taint.reads_outside(self.request, call.name, result)
+        calendar = watch.outside
         if calendar:
             state.add_taint(calendar_taint.TAINT_SOURCE)
             saved = self.recorder.mark_taint(state) if self.recorder is not None else True
-            if not saved:
+            if not saved and not (tool.writes and not result.is_error):
                 words = calendar_taint.MARK_FAILED
                 return self._done(state, call, tool, False, words, "refused", "tainted", started)
+            if not saved:
+                # A write that ran stays one (review 1121 C3): only the row it returned is held.
+                result = ToolResult(
+                    text=calendar_taint.WRITE_KEPT_ROW_WITHHELD, outcome=result.outcome
+                )
         # Its result is outside text by class: a third-party tool, or a procedure run while the
         # request is flagged (a step read one, `read_through.before_tool`, or the turn had).
         outside = (

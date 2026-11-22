@@ -31,7 +31,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from agents.legion import carry
+from agents.legion import calendar_taint, carry
 from assistant import read_through
 from assistant.surface import refusal_for
 from engine_mcp.tools import TOOLS_BY_NAME
@@ -94,6 +94,11 @@ def tainted_refusal(state, name: str, destructive: bool = False) -> str:
     the turn before (`carry.only_carried`), else this turn's (`assistant.read_through`)."""
     carried = carry.only_carried(state.taint)
     asked = carried or carry.note_refused(state)
+    words = calendar_taint.refusal(
+        state.taint, name, destructive=destructive, asked=asked, carried=carried
+    )
+    if words is not None:
+        return words
     if name == "remember":
         if carried:
             return read_through.CARRY_REFUSAL

@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from dataclasses import dataclass, field
 
-from agents.legion import carry, closing, done_lines
+from agents.legion import calendar_taint, carry, closing, done_lines
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
 from agents.legion.speech_rules import backed_cents, backed_torque, is_stop_utterance
@@ -312,7 +312,7 @@ class SpokenTurn:
             promise=carry.REFUSED_HERE in state.taint,
         )
         if line is not None:
-            yield self._say(line)
+            yield self._say(calendar_taint.spoken(line, state.taint))
         else:
             # Plan 1119 section 2: a write the reply never named is said by code.
             done = done_lines.done_line(m.facts, " ".join(m.said))

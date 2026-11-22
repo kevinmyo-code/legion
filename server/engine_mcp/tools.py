@@ -718,7 +718,15 @@ def _delete_record(request, args) -> ToolResult:
 
 
 def _add_event(request, args) -> ToolResult:
-    fields = args["fields"]
+    from api.events import WRITTEN_ONCE
+
+    # Who wrote an event is the syncing device's to say, never a model's (review 1121 C1): an
+    # event a tool makes is the household's own. An update ignores them in the API itself.
+    fields = (
+        {k: v for k, v in args["fields"].items() if k not in WRITTEN_ONCE}
+        if isinstance(args["fields"], dict)
+        else args["fields"]
+    )
     # Audit 2026-11-09: "remind me to get my medicine today" was saved as
     # {"kind": "reminder", "title": "Get medicine"}, no day, so it would never come up. A
     # reminder asked for by name, or one with a lead time, needs a day; an item with no kind
@@ -4122,6 +4130,12 @@ def run_tool(request, name: str, arguments: dict) -> ToolResult:
     return run_engine_tool(request, tool, arguments)
 
 
+# What the engine's agent turn hangs on a request (`agents/legion/calendar_taint.watching`): each
+# callable sees every tool this request runs, a procedure's steps included, right after its
+# handler, as `hook(name, result)`. No other caller sets it, so for them nothing runs.
+AFTER_TOOL = "legion_after_tool"
+
+
 def run_engine_tool(request, tool: EngineTool, arguments: dict) -> ToolResult:
     """`run_tool` for a tool already in hand: the write fence, the table fence,
     the schema, and the handler, in that order. Also the door for a tool kept
@@ -4155,7 +4169,7 @@ def run_engine_tool(request, tool: EngineTool, arguments: dict) -> ToolResult:
     if unmarked:
         return refused(unmarked)
     try:
-        return tool.handler(request, arguments)
+        result = tool.handler(request, arguments)
     except Exception as exc:  # noqa: BLE001 - the result must say what happened, always
         if tool.writes:
             return failed(
@@ -4168,3 +4182,6 @@ def run_engine_tool(request, tool: EngineTool, arguments: dict) -> ToolResult:
             f"({type(exc).__name__}), so nothing is known from this call - which is not the "
             f"same as there being nothing."
         )
+    for hook in getattr(request, AFTER_TOOL, ()):
+        hook(name, result)
+    return result
