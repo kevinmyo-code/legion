@@ -366,9 +366,14 @@ object EventsAppointmentWriter {
             return true
         }
 
+        // Queued before the push and drained once it lands, as for a delete: a push cut short (the voice
+        // tool's time limit cancels it) still leaves the change queued (review 2026-11-22).
+        val queued = enqueueUpdate(db, updated)
         val result = backend.upsert(serverId, updated.toEventFields())
-        if (result.isFailure) {
-            enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+        if (result.isSuccess) {
+            db.outboxDao().delete(queued)
+        } else {
+            db.outboxDao().recordAttempt(queued, 0, result.exceptionOrNull()?.message)
         }
         return true
     }
@@ -425,7 +430,9 @@ object EventsAppointmentWriter {
             else -> {
                 val result = backend.upsert(serverId, updated.toEventFields())
                 if (result.isFailure) {
-                    enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+                    enqueueUpdate(db, updated).also {
+                        db.outboxDao().recordAttempt(it, 0, result.exceptionOrNull()?.message)
+                    }
                 }
             }
         }
@@ -452,7 +459,9 @@ object EventsAppointmentWriter {
             else -> {
                 val result = backend.upsert(serverId, updated.toEventFields())
                 if (result.isFailure) {
-                    enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+                    enqueueUpdate(db, updated).also {
+                        db.outboxDao().recordAttempt(it, 0, result.exceptionOrNull()?.message)
+                    }
                 }
             }
         }
@@ -507,7 +516,7 @@ object EventsAppointmentWriter {
         return true
     }
 
-    private suspend fun enqueueUpdate(db: CarDatabase, row: Event, error: String?) {
+    private suspend fun enqueueUpdate(db: CarDatabase, row: Event): Long =
         db.outboxDao().insert(
             OutboxEntry(
                 targetTable = OutboxTarget.EVENTS,
@@ -516,10 +525,9 @@ object EventsAppointmentWriter {
                 payload = Json.encodeToString(EventUpdateOutboxPayload.serializer(), EventUpdateOutboxPayload.from(row)),
                 createdAt = System.currentTimeMillis(),
                 attempts = 0,
-                lastError = error,
+                lastError = null,
             ),
         )
-    }
 
     private suspend fun enqueueDelete(db: CarDatabase, localId: Long, serverId: String): Long =
         db.outboxDao().insert(
