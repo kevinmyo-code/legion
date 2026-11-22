@@ -71,9 +71,9 @@
     <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject</ID>
     <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject</ID>
     <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getHealth(context: Context): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:VehicleHealthToolbox.kt:VehicleHealthToolbox$private suspend fun getHealth(context: Context): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getLedgerBalance(context: Context, account: String): JSONObject</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:VehicleHealthToolbox.kt:VehicleHealthToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getNextService(context: Context, vehicle: Vehicle): JSONObject</ID>
     <ID>CyclomaticComplexMethod:VehicleSensorToolbox.kt:VehicleSensorToolbox$private suspend fun getVehicleData(context: Context, metric: String): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject</ID>
@@ -1252,9 +1252,9 @@
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$12</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1900</ID>
     <ID>MagicNumber:VehicleCodesToolbox.kt:VehicleCodesToolbox$25</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$30</ID>
+    <ID>MagicNumber:VehicleHealthToolbox.kt:VehicleHealthToolbox$30</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$31</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$5</ID>
+    <ID>MagicNumber:VehicleHealthToolbox.kt:VehicleHealthToolbox$5</ID>
     <ID>MagicNumber:VehicleCodesToolbox.kt:VehicleCodesToolbox$5</ID>
     <ID>MagicNumber:MusicLibraryToolbox.kt:MusicLibraryToolbox$5</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$50</ID>
@@ -3157,20 +3157,20 @@
     <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$GoalController.CloseOutcome.NotFound -&gt; result(false, "I don't see an active ${aspectLabel(aspect)} goal matching that.")</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$MusicAction.SEEK_BACK -&gt; controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$MusicAction.SEEK_FORWARD -&gt; controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (user's unit, already converted - do not convert again); ") }</ID>
+    <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (user's unit, already converted - do not convert again); ") }</ID>
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$SpotifyWebApi.PlaylistResolution.NeedsAuthorization -&gt; SpotifyUriResolution.Failed(spotifyNeedsAuthorizationResult())</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$append(withGuessCaveat("${next.byMiles.serviceName} is soonest by mileage, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$else</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$headline = healthSummary ?: if (concerns.length() == 1) "1 concern" else "${concerns.length()} concerns"</ID>
+    <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$headline = healthSummary ?: if (concerns.length() == 1) "1 concern" else "${concerns.length()} concerns"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if</ID>
     <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$if (aspectRaw !in GoalController.ASPECTS) return result(false, "Which aspect - body, notes, fleet, or money?")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (coolant != null &amp;&amp; coolant &gt;= HOT_COOLANT_C) concerns.put("Coolant is running hot (${Temp.text(context, coolant.toDouble())}).")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (coolant != null) put("coolant", Temp.convert(coolant.toDouble(), coolantUnit)).put("coolantUnit", coolantUnit.symbol)</ID>
+    <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$if (coolant != null &amp;&amp; coolant &gt;= HOT_COOLANT_C) concerns.put("Coolant is running hot (${Temp.text(context, coolant.toDouble())}).")</ID>
+    <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$if (coolant != null) put("coolant", Temp.convert(coolant.toDouble(), coolantUnit)).put("coolantUnit", coolantUnit.symbol)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (days.isNullOrEmpty()) return result(false, "Which day(s) of the week should that repeat on?")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (month !in 1..12 || day !in 1..31) return result(false, "Which month and day should that repeat on each year?")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (removed) "Removed the pending charge: ${match.row.description}." else "Couldn't remove that - it may already be gone."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (time == null) it.format(NOTE_DISPLAY_DATE_FORMAT) else "${it.format(NOTE_DISPLAY_DATE_FORMAT)} at $timeArg"</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (voltage != null &amp;&amp; voltage &lt; LOW_VOLTAGE) concerns.put("Battery voltage is low (${"%.1f".format(voltage)}V) - it may be weak or not charging.")</ID>
+    <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$if (voltage != null &amp;&amp; voltage &lt; LOW_VOLTAGE) concerns.put("Battery voltage is low (${"%.1f".format(voltage)}V) - it may be weak or not charging.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$is GoalController.SetOutcome.Unchanged -&gt; result(true, "That's already the current ${aspectLabel(aspect)} goal - nothing changed.")</ID>
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$is SpotifyWebApi.PlaylistResolution.Unauthorized -&gt; SpotifyUriResolution.Failed(spotifyUnauthorizedResult(resolution.detail))</ID>
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$is SpotifyWebApi.SearchOutcome.Found -&gt; SpotifyUriResolution.Found(outcome.uri, outcome.name, outcome.subtitle)</ID>
@@ -3202,7 +3202,7 @@
     <ID>MaxLineLength:MusicLibraryToolbox.kt:MusicLibraryToolbox$val</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val delivery = if (row.delivery == ProactiveRaiseRow.DELIVERY_SPOKEN) "said aloud" else "posted as a notification"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val figure = " New available balance for ${resolved.accountId}: ${formatMoney(newAvailable, resolved.currency)}."</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val healthSummary = if (concerns.length() == 0) "Everything reads normal - no codes, voltage and temperature look fine." else null</ID>
+    <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$val healthSummary = if (concerns.length() == 0) "Everything reads normal - no codes, voltage and temperature look fine." else null</ID>
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$val message = SpotifyController.message(outcome, query) + (fallbackNote?.takeIf { succeeded }?.let { " $it" } ?: "")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val message = accepted.workoutPlanMessage ?: "I couldn't put a workout plan together just now - try again in a sec."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logPastServiceDirect(context, service, mileage, milesAgo, date, neverDone, vehicleId)</ID>
@@ -4374,13 +4374,13 @@
     <ID>ReturnCount:AdvisorToolbox.kt:AdvisorToolbox$private suspend fun acceptProposalTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun areaInfo(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:AdvisorToolbox.kt:AdvisorToolbox$private suspend fun askAdvisorTool(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun checkReadiness(): JSONObject</ID>
+    <ID>ReturnCount:VehicleHealthToolbox.kt:VehicleHealthToolbox$private suspend fun checkReadiness(): JSONObject</ID>
     <ID>ReturnCount:GoalsToolbox.kt:GoalsToolbox$private suspend fun closeGoalTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
     <ID>ReturnCount:MusicToolbox.kt:MusicToolbox$internal suspend fun controlMusicQueue(context: Context, query: String): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun generateGoalPlanTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:VehicleCodesToolbox.kt:VehicleCodesToolbox$private suspend fun getCodes(context: Context): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
+    <ID>ReturnCount:VehicleHealthToolbox.kt:VehicleHealthToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun logPastService(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun logPendingTransaction(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun lookupVin(context: Context): JSONObject</ID>

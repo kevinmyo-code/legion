@@ -35,7 +35,7 @@ object CarToolbelt {
      * What one [trendSummary] call produced: the sentence, and whether it is an ANSWER rather than
      * one of the three refusals below it.
      *
-     * **[trendSummary] returned a bare `String` and `LiveToolbox.getTrend` recovered the flag by
+     * **[trendSummary] returned a bare `String` and `VehicleHealthToolbox.getTrend` recovered the flag by
      * sniffing two prefixes** - `!text.startsWith("Unknown metric") && !text.startsWith("Not enough
      * history")` - which was already wrong for a third refusal at the time it was read on
      * 2026-09-07: [MpgTrust.VOICE_REFUSAL] matches neither prefix, so `get_trend` with
@@ -58,7 +58,7 @@ object CarToolbelt {
      * the fleet-wide-voice override (ticket 01, "category B" stored-data
      * tool) - null means the active car, unchanged; this is the ONE formatter
      * below actually wired to a tool's `vehicle` argument today
-     * (`LiveToolbox.getTrend`). The rest of this object's formatters/belt
+     * (`VehicleHealthToolbox.getTrend`). The rest of this object's formatters/belt
      * builders also gained the same override per ticket 01 §2's literal
      * instruction, but nothing currently PASSES anything but null into them -
      * see this file's class doc for why (the investigating sub-agents that
@@ -92,7 +92,7 @@ object CarToolbelt {
      *
      * **"mpg" is refused HERE, ahead of the map, rather than simply left out of it** (ticket 09,
      * `.scratch/drive-ui/issues/09-mpg-scale-bug.md` - see MpgTrust's own doc): [trendSummary] is
-     * the single point both `LiveToolbox.getTrend` AND every investigating sub-agent's `get_trend`
+     * the single point both `VehicleHealthToolbox.getTrend` AND every investigating sub-agent's `get_trend`
      * belt tool ([trendTool]) funnel through, so gating it here is defense in depth against either
      * caller's own enum ever offering "mpg" again - the caller-side enums are ALSO stripped of
      * "mpg" (belt-and-suspenders, not redundant: a stale client-side cache of the old declaration
