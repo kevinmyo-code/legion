@@ -563,6 +563,18 @@ def _no_nhtsa(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_spare_pool(settings, monkeypatch):
+    """No spare demo visit households unless a test asks (`demo.spares`): every visit seeds
+    inline, as it did before the pool, and no refill thread ever starts, since one would commit
+    households on its own connection under a transactional test. `tests/test_demo_spares.py`
+    turns the pool on and calls the refill itself."""
+    from demo import spares
+
+    settings.LEGION_DEMO_SPARE_POOL = 0
+    monkeypatch.setattr(spares, "_spawn", lambda work: None)
+
+
+@pytest.fixture(autouse=True)
 def _no_conditions_network(monkeypatch):
     """No test reaches NWS, USGS, NHC, DriveTexas or FIRMS: `check_conditions`' one fetch fails
     in words unless a test hands it answers (`tests/test_conditions.py`), and no ambient key

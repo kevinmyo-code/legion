@@ -26,6 +26,12 @@ procedures ticket 13): a visit's runs go with its household above; this is
 the 30-day backstop for recruiter runs and the 60-day sweep for members'
 (also run inline at each new run).
 
+**And the spare visit households** (`demo.spares`, demo-enter-slow 2026-11-22): every spare
+that may no longer be handed out (seeded for an earlier day, by an older seed, or too long ago)
+is deleted whole, like an expired visit's household, and the pool is topped back up to
+`LEGION_DEMO_SPARE_POOL`. This hourly run is the refill's backstop: `/enter` also starts one
+after each visit, on a thread Cloud Run may starve.
+
 **And agent turn traces past retention** (`agents.legion.retention.prune`, engine-brain ticket
 02, ADR 0100): checkpoints at 7 days, turn content at 30, model-call numbers at 90. Also run
 inline at each new turn; this hourly run is what prunes while the turn endpoint is off.
@@ -40,6 +46,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from agents.legion.retention import prune as prune_agent_traces
+from demo import spares
 from demo.models import CallbackRequest, DemoVisit, ShopOrder
 from demo.visit_cleanup import delete_visit_household
 from devicelogs.models import VISIT_RETENTION_DAYS, DeviceLog
@@ -86,7 +93,9 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"Would delete {n_households} expired demo visit household(s) and "
                 f"{n_legacy} older visitor(s), and {stale} visit conversation record(s) older "
-                f"than {VISIT_RETENTION_DAYS} days. Nothing was deleted."
+                f"than {VISIT_RETENTION_DAYS} days. Nothing was deleted. Would discard "
+                f"{spares.stale_count()} spare visit household(s) that may no longer be handed "
+                f"out, and seed none."
             )
             return
         rows = 0
@@ -100,6 +109,7 @@ class Command(BaseCommand):
         from demo import funnel
 
         counts = funnel.prune(VISIT_RETENTION_DAYS)
+        pool = spares.refill()
         # The store-rep demo (`demo/shop/`): orders and callback requests, a visitor's name and
         # contact included, go after the same 30 days as the visit records.
         cutoff = timezone.now() - timedelta(days=VISIT_RETENTION_DAYS)
@@ -113,5 +123,11 @@ class Command(BaseCommand):
             f"conversation record(s) older than {VISIT_RETENTION_DAYS} days, and {runs} procedure "
             f"run(s) past retention, and {traces} agent trace row(s) past retention, and "
             f"{counts} funnel count row(s) older than {VISIT_RETENTION_DAYS} days, and {shop} "
-            f"store-rep order or callback row(s) older than {VISIT_RETENTION_DAYS} days."
+            f"store-rep order or callback row(s) older than {VISIT_RETENTION_DAYS} days. "
+            + (
+                "Spare visit households: another refill was running, so none were touched."
+                if pool["busy"]
+                else f"Spare visit households: {pool['discarded']} discarded, {pool['seeded']} "
+                f"seeded (pool {spares.pool_size()})."
+            )
         )

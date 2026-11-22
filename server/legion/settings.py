@@ -314,6 +314,11 @@ LEGION_DEMO_COST_PER_SEARCH_USD = (
 LEGION_DEMO_MAX_SESSION_MINUTES = (
     os.environ.get("LEGION_DEMO_MAX_SESSION_MINUTES", "").strip() or "5"
 )
+# demo-enter-slow (2026-11-22): how many visit households `demo.spares` keeps seeded ahead of
+# time, so `/api/demo/enter` claims one instead of seeding inline (about 16 s on Cloud Run).
+# Default 2. 0 turns the pool off: every visit seeds inline, as before, and the hourly prune
+# deletes any spare left over. Parsed in `demo.spares.pool_size`, which falls back to 2.
+LEGION_DEMO_SPARE_POOL = os.environ.get("LEGION_DEMO_SPARE_POOL", "").strip() or "2"
 
 MIDDLEWARE = [
     # Engine logging upgrade (architecture review 2026-11-10, item 4): first, so every log
