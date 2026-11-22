@@ -1,7 +1,6 @@
 package com.kevin.legion.service.cascade
 
 import com.kevin.legion.service.ChatTurn
-import com.kevin.legion.service.LiveAudit
 import com.kevin.legion.service.LiveToolbox
 import com.kevin.legion.service.ReadThroughWriteGuard
 import com.kevin.legion.service.TextChatEngine
@@ -211,7 +210,21 @@ object CascadePrompt {
             "holding line (checking, one moment, let me look) before or instead of a tool call: the app " +
             "plays its own while a tool runs, so call the tool, then answer. " +
             "Now and then, in a casual moment only, one of <chuckle>, <laugh>, <sigh> or <short pause> may go " +
-            "in a sentence; never with figures, codes or bad news."
+            "in a sentence; never with figures, codes or bad news. " +
+            "A reply marked as answered from a web search or other outside text is finished: never go back " +
+            "to it on your own. If he asks what you said there or where you read it, say web answers are " +
+            "not kept and offer to look it up again."
+
+    /**
+     * What history keeps in place of a reply that read outside text (ADR 0090: never the text).
+     * It says the question was answered and is closed: a bare placeholder left it looking
+     * unanswered, and the model kept going back to it. The engine replays the same words
+     * (`agents.legion.redact.OUTSIDE_ANSWER_NOTE`, a server test pins them equal). Not the audit
+     * log's marker ([com.kevin.legion.service.LiveAudit.REDACTED]): that one is for records.
+     */
+    const val OUTSIDE_ANSWER_NOTE =
+        "(Answered from a web search or other outside text. That answer was not kept. " +
+            "Done unless he asks again.)"
 
     data class Split(val cacheable: String, val volatile: String)
 
@@ -256,11 +269,11 @@ object CascadePrompt {
     }
 
     /**
-     * What history keeps of a reply: the words said, or for a read-through reply (mail, web) a
-     * marker in their place, never the outside text. One rule for [CascadeSession] and the voice
-     * eval harness, so the eval replays what a spoken conversation keeps.
+     * What history keeps of a reply: the words said, or for a read-through reply (mail, web)
+     * [OUTSIDE_ANSWER_NOTE] in their place, never the outside text. One rule for [CascadeSession]
+     * and the voice eval harness, so the eval replays what a spoken conversation keeps.
      */
-    fun keptReply(said: String, readThrough: Boolean): String = if (readThrough) LiveAudit.REDACTED else said
+    fun keptReply(said: String, readThrough: Boolean): String = if (readThrough) OUTSIDE_ANSWER_NOTE else said
 }
 
 /**
