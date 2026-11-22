@@ -230,17 +230,28 @@ def test_confirms_is_refused_without_a_parent_waiting_for_a_yes(token_a):
     assert _create(token_a, parent=done).status_code == 201
 
 
-def test_a_question_takes_one_yes(token_a):
+def test_a_message_card_takes_one_yes(token_a):
     _beat(token_a)
     asked = _create(token_a, machine="Alienware").data["id"]
     _claim(token_a)
-    _finish(token_a, asked, status="needs_confirmation", question="Send it?")
+    _finish(token_a, asked, status="needs_confirmation",
+            question='Send this message to your Claude session garden (garden) on the Alienware: '
+                     '"Water the beds." Send it?')
     assert _create(token_a, parent=asked, confirms=True).status_code == 201
     again = _create(token_a, parent=asked, confirms=True)
     assert again.status_code == 409
     assert "already said yes" in again.data["detail"]
     assert ClaudeTask.objects.filter(confirms=True).count() == 1
     assert _create(token_a, parent=asked).status_code == 201  # words, no yes: still fine
+
+
+def test_any_other_card_keeps_its_retry(token_a):
+    _beat(token_a)
+    asked = _create(token_a, machine="Alienware").data["id"]
+    _claim(token_a)
+    _finish(token_a, asked, status="needs_confirmation", question="Ship it?")
+    assert _create(token_a, parent=asked, confirms=True).status_code == 201
+    assert _create(token_a, parent=asked, confirms=True).status_code == 201
 
 
 # --- assign (Kevin 2026-11-01) -------------------------------------------------------
