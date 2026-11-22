@@ -2,6 +2,7 @@ package com.kevin.legion.vehicle
 
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.VehicleRecordsToolbox
 import com.kevin.legion.service.VehicleServiceToolbox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -93,12 +94,12 @@ class VehicleDefaultPickTest {
     @Test
     fun `recalls use the stated identity only for missing fields`() {
         val blank = car("car:x", "XJ", 0, "", "")
-        val s = LiveToolbox.statedIdentity(blank, 1998, "Jeep", "Cherokee")!!
-        assertEquals(LiveToolbox.StatedIdentity(1998, "Jeep", "Cherokee", listOf("year", "make", "model")), s)
+        val s = VehicleRecordsToolbox.statedIdentity(blank, 1998, "Jeep", "Cherokee")!!
+        assertEquals(VehicleRecordsToolbox.StatedIdentity(1998, "Jeep", "Cherokee", listOf("year", "make", "model")), s)
         // Complete record: the record wins, nothing stated is used.
-        assertNull(LiveToolbox.statedIdentity(jeep, 2001, "Jeep", "Cherokee"))
+        assertNull(VehicleRecordsToolbox.statedIdentity(jeep, 2001, "Jeep", "Cherokee"))
         // The question does not fill the gap: refuse as before.
-        assertNull(LiveToolbox.statedIdentity(blank, 1998, "Jeep", ""))
+        assertNull(VehicleRecordsToolbox.statedIdentity(blank, 1998, "Jeep", ""))
     }
 
     // Phone audit 2026-11-10: asked about a car the household does not own, the fleet lookup read

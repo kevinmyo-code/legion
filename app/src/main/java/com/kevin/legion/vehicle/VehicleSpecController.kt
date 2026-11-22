@@ -40,7 +40,7 @@ object VehicleSpecController {
      * [vehicleId] override (ticket 01) - null means the active car. In practice always null
      * today: `lookup_vin` reads the OBD port directly (a live-hardware read, the same
      * physical-reality constraint as CLAUDE.md-ticket-01 §0's "category A" tools), so it is
-     * never called with a named car - see `LiveToolbox.lookupVin`'s doc for why that tool takes
+     * never called with a named car - see `VehicleRecordsToolbox.lookupVin`'s doc for why that tool takes
      * no `vehicle` argument despite ticket 01's own §3 build spec listing it under "category B".
      */
     suspend fun refreshFromVin(context: Context, vin: String, vehicleId: String? = null): VinRefreshResult {
