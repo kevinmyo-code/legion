@@ -30,7 +30,8 @@ from common import Paths, write_json_atomic  # noqa: E402
 BASH = r"C:\Program Files\Git\bin\bash.exe"
 PWSH = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 CAN_RUN = sys.platform == "win32" and Path(BASH).is_file() and Path(PWSH).is_file()
-CONTAINED = ("report.py", "send_mail.py", "ship.py", "undo.py", "fetch_file.py", "to_xlsx.py")
+CONTAINED = ("report.py", "send_mail.py", "ship.py", "undo.py", "fetch_file.py", "to_xlsx.py",
+             "to_pdf.py")
 STUB = """import argparse, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import add_task_arg
@@ -202,6 +203,8 @@ CASES = [
     ("0.undo", "both", f"{PY} {S('undo.py')} ask --task 41", "allow"),
     ("0.fetch", "both", f"{PY} {S('fetch_file.py')} --task 41 --url https://example.com/a", "allow"),
     ("0.xlsx", "both", f"{PY} {S('to_xlsx.py')} --task 41 --csv a.csv", "allow"),
+    ("0.pdf", "both", f"{PY} {S('to_pdf.py')} --task 41 --src a.html", "allow"),
+    ("0.pdf-other-task", "both", f"{PY} {S('to_pdf.py')} --task 50 --src a.html", "deny"),
     ("0.mail", "both", f"{PY} {S('send_mail.py')} --task 41 --token t --to kevin --subject x --body y",
      "allow"),
 ]
