@@ -1,0 +1,97 @@
+# CI for tools/verify_phone (scripted device verification, 2026-11-22). No phone here, so two things:
+#
+#   - The runner's own tests against the in-repo fake phone (`tools/tests/test_verify_phone.py`),
+#     including the map test: every app file and symbol a device check names still exists.
+#   - "Device checks that may be stale": the checks whose app code this push or PR touched, LISTED in
+#     the step summary. It never fails the job: a flagged check is one to re-read before the next
+#     phone run, not a broken build.
+#
+# No secrets: nothing here talks to a phone or a server.
+
+name: Verify phone
+
+on:
+  push:
+    branches: [dev, main, 'up/**', 'integrate/**', 'ship/**']
+    paths:
+      - 'tools/verify_phone/**'
+      - 'tools/tests/test_verify_phone.py'
+      - 'tools/phone/adb.py'
+      - 'tools/phone_voice_test.py'
+      - 'tools/voice_audit.py'
+      - 'app/src/main/**'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/verify-phone.yml'
+  pull_request:
+    paths:
+      - 'tools/verify_phone/**'
+      - 'tools/tests/test_verify_phone.py'
+      - 'tools/phone/adb.py'
+      - 'tools/phone_voice_test.py'
+      - 'tools/voice_audit.py'
+      - 'app/src/main/**'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/verify-phone.yml'
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Base ref for the stale listing (default: origin/dev)"
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' && github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    name: runner tests, stale listing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0  # the stale listing diffs against a base
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: pytest
+        run: |
+          python -m pip install --quiet pytest
+          python -m pytest tools/tests/test_verify_phone.py -p no:cacheprovider --junitxml=junit.xml \
+            || echo "pytest exited $? (verdict comes from the XML below)"
+
+      - name: Totals from the JUnit XML
+        if: always()
+        run: python3 .github/scripts/junit_totals.py junit.xml
+
+      - name: Upload the JUnit XML
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verify-phone-junit-xml
+          path: junit.xml
+          if-no-files-found: warn
+
+      # Lists only; `|| true` and the tool's own exit 0 keep it from ever failing the job.
+      - name: Device checks that may be stale
+        if: always()
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          INPUT_BASE: ${{ github.event.inputs.base }}
+        run: |
+          case "$EVENT" in
+            pull_request) BASE="$PR_BASE" ;;
+            push) BASE="$BEFORE" ;;
+            *) BASE="${INPUT_BASE:-origin/dev}" ;;
+          esac
+          # A new branch's push has an all-zero `before`; compare with dev then.
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=origin/dev; fi
+          python tools/verify_phone stale --base "$BASE" --head HEAD --summary "$GITHUB_STEP_SUMMARY" || true
