@@ -118,8 +118,10 @@ def add_backlog_idea(request, arguments: dict):
             return refused(NEEDS_TEXT)
     except ideas.Refused as exc:
         return refused(str(exc))
+    # What a door that cannot speak by code (Live, the web tool door) is handed: the words to say,
+    # never a claim that they were said (as `board_status` does).
     return ok(
-        f"{note} Said to him: {said}",
+        f"{note} Say this to him word for word: {said}",
         {
             SPEAK_VERBATIM: [said],
             SPEAK_EXACT: True,

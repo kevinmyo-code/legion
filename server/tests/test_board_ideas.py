@@ -240,11 +240,23 @@ def test_tool_no_drops_and_nothing_without_words(on, scorer, household_user):
     assert add_backlog_idea(_request(household_user), {}).is_error
 
 
-def test_engine_brain_holds_the_confirm_for_a_later_yes():
+def test_the_read_back_ends_the_turn_on_the_engine_doors_and_asks_one_yes_only():
+    """The read-back is spoken by code and ends the turn (cascade and engine brain), so his yes is
+    his next turn; the brain's confirm hold is NOT also applied, or he would be asked twice."""
     from agents.legion.guards import CONFIRM_FLAG_TOOLS
     from agents.legion.speech_rules import VERBATIM_TOOLS
 
-    assert "add_backlog_idea" in CONFIRM_FLAG_TOOLS and "add_backlog_idea" in VERBATIM_TOOLS
+    assert "add_backlog_idea" in VERBATIM_TOOLS and "add_backlog_idea" not in CONFIRM_FLAG_TOOLS
+
+
+def test_a_door_that_cannot_speak_is_told_to_read_it_back_not_that_it_was_said(
+    on, scorer, household_user
+):
+    from engine_mcp.tools import FOR_MODEL
+
+    result = add_backlog_idea(_request(household_user), {"text": "Sort the garage list"})
+    assert "Said to him" not in result.text and "Say this to him" in result.text
+    assert "said to him word for word" in result.structured[FOR_MODEL]
 
 
 # ---- the laptop's pull --------------------------------------------------------------------------
