@@ -3,8 +3,8 @@ package com.kevin.legion.service.turn
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
-import android.os.SystemClock
 import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Call-style audio for barge-in (Kevin, 2026-10-27: "sounds fine" on the speaker): while a
@@ -19,8 +19,6 @@ import android.util.Log
  */
 internal class CallAudioMode(
     private val audio: AudioManager,
-    /** Milliseconds for the echo warm-up ([warmingUp]); a test passes its own. */
-    private val clock: () -> Long = { SystemClock.elapsedRealtime() },
     /**
      * The communication device the platform routes to now (the readback). A seam: Robolectric always
      * honours a selection, so a test passes one that refuses the earpiece (as the trailing lambda).
@@ -33,15 +31,46 @@ internal class CallAudioMode(
     private var bluetoothSco = false
     private var earpieceOn = false
 
-    /**
-     * When call audio last started or moved device; null outside call audio. Volatile and read
-     * without the lock: the mic thread reads it every window, and [enter] / [retarget] hold the lock
-     * across audio-system calls.
-     */
-    @Volatile private var pathChangedAtMs: Long? = null
+    /** The device call audio is routed to, as last read; a change of it is a new echo path. */
+    private var routedDevice: Int? = null
 
-    /** The echo canceller is still settling: barge-in fires are ignored ([BargeInGate.WARMUP_MS]). */
-    val warmingUp: Boolean get() = BargeInGate.warmingUp(pathChangedAtMs, clock())
+    /**
+     * Set when call audio starts or its routed device changes; [takePathChange] clears it. Atomic and
+     * read without the lock: the mic thread asks during replies, and [enter] / [retarget] hold the
+     * lock across audio-system calls.
+     */
+    private val pathChanged = AtomicBoolean(false)
+
+    /** True once per new echo path: the barge-in warm-up starts at the next reply audio. */
+    fun takePathChange(): Boolean = pathChanged.getAndSet(false)
+
+    /**
+     * An output device was added or removed (a wired headset plugged or pulled, say): a new echo path
+     * only if call audio's routed device actually moved.
+     */
+    @Synchronized
+    fun onDevicesChanged() {
+        if (!active || bluetoothSco) return
+        noteRouted()
+    }
+
+    /** Reads the routed device; a different one than before marks a path change. Under the lock. */
+    private fun noteRouted() {
+        val now = runCatching { routedNow() }.getOrNull()
+        if (now != routedDevice) pathChanged.set(true)
+        routedDevice = now
+    }
+
+    private fun routedNow(): Int? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            routedType(audio)
+        } else {
+            when {
+                hasWired(audio) -> AudioDeviceInfo.TYPE_WIRED_HEADSET
+                earpieceOn -> AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+                else -> AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+            }
+        }
 
     /** True while this conversation listens through a Bluetooth hands-free mic ([enterBluetooth]). */
     val onBluetoothMic: Boolean @Synchronized get() = active && bluetoothSco
@@ -60,8 +89,11 @@ internal class CallAudioMode(
             active = true
             ownCommActive = true
             audio.mode = AudioManager.MODE_IN_COMMUNICATION
-            pathChangedAtMs = clock()
-            "entered prevMode=$prevMode mode=${audio.mode} ${select(earpiece)}"
+            val line = "entered prevMode=$prevMode mode=${audio.mode} ${select(earpiece)}"
+            // Entering is always a new echo path, whatever the device.
+            routedDevice = runCatching { routedNow() }.getOrNull()
+            pathChanged.set(true)
+            line
         }.getOrElse { "enter failed: ${it.message}" }.also { Log.i(TAG, it) }
     }
 
@@ -74,8 +106,7 @@ internal class CallAudioMode(
     @Synchronized
     fun retarget(earpiece: Boolean): String {
         if (!active || bluetoothSco) return "retarget skipped: not in call audio"
-        pathChangedAtMs = clock()
-        return runCatching { "retarget ${select(earpiece)}" }
+        return runCatching { "retarget ${select(earpiece)}".also { noteRouted() } }
             .getOrElse { "retarget failed: ${it.message}" }.also { Log.i(TAG, it) }
     }
 
@@ -147,7 +178,8 @@ internal class CallAudioMode(
     fun exit(why: String) {
         if (!active) return
         active = false
-        pathChangedAtMs = null
+        pathChanged.set(false)
+        routedDevice = null
         val wasSco = bluetoothSco
         bluetoothSco = false
         earpieceOn = false

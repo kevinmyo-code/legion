@@ -50,8 +50,11 @@ internal class TurnTaker(
         fun onSmartTurnFailed(reason: String)
         fun log(tag: String, message: String)
 
-        /** The echo canceller is still settling after a route change ([BargeInGate.WARMUP_MS]). */
-        fun echoWarmingUp(): Boolean = false
+        /**
+         * True once after call audio starts or its routed device changes ([BargeInGate.startWarmUp]
+         * runs at the next reply audio). Live never changes the path this way: false.
+         */
+        fun takeAudioPathChange(): Boolean = false
     }
 
     private val lock = Any()
@@ -194,7 +197,12 @@ internal class TurnTaker(
     /** One window through the echo gate. Returns STARTED/BARGED bits. Must hold [lock]. */
     private fun gateWindow(prob: Float, level: Int, playing: Boolean): Int {
         var outcome = 0
-        when (val ev = gate.onWindow(prob, level, playing, playing && sink.echoWarmingUp())) {
+        // The first reply audio on a new path starts the echo warm-up (LiveKit: the agent's first speech).
+        if (playing && sink.takeAudioPathChange()) {
+            gate.startWarmUp()
+            sink.log(BARGE_TAG, "warmup_start ms=${BargeInGate.WARMUP_MS}")
+        }
+        when (val ev = gate.onWindow(prob, level, playing)) {
             is BargeInGate.Event.Fire -> {
                 bargedThisReply = true
                 startOnsetWindows = BargeInGate.SPAN_WINDOWS + 1

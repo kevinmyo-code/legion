@@ -1034,8 +1034,8 @@ internal class CascadeSession(
     // --- turns -----------------------------------------------------------------------------------
 
     private val sink = object : TurnTaker.Sink {
-        // Call audio just started or moved device: its echo canceller is still learning the room.
-        override fun echoWarmingUp() = callAudio?.warmingUp == true
+        // Call audio just started or its device moved: the echo canceller must learn the room again.
+        override fun takeAudioPathChange() = callAudio?.takePathChange() == true
 
         override fun sendActivityStart() {
             val b = backend ?: return
@@ -3745,7 +3745,7 @@ internal class CascadeSession(
         val mode = CallAudioMode(audioManager)
         LiveLatency.log(TurnTaker.BARGE_TAG, "call audio ${mode.enter(onEarpiece)} (cascade, $token)")
         callAudio = mode
-        audioRoute.watchForBluetooth { onBluetoothConnected() }
+        audioRoute.watchForBluetooth(onOutputsChanged = { callAudio?.onDevicesChanged() }) { onBluetoothConnected() }
     }
 
     /**

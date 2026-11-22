@@ -43,9 +43,10 @@ package com.kevin.legion.service.turn
  *    per [TurnTaker], one taker per socket: the seed never outlives the session.
  *
  * **Echo warm-up (2026-11-21; LiveKit and Unmute both ignore interruptions for 3 s).** The platform
- * echo canceller needs a few seconds to learn the room after call audio starts or the route moves
- * (speaker, earpiece, headset). While the caller says so ([onWindow]'s `warmingUp`, true for
- * [WARMUP_MS] after the change, [warmingUp]), a span that would fire is reported as [Event.Ignored]
+ * echo canceller needs a few seconds of playback to learn the room after call audio starts or the
+ * routed device changes. [startWarmUp] (the caller's, at the first reply audio after such a change,
+ * as LiveKit starts its timer on the agent's first speech) opens [WARMUP_WINDOWS] windows, counted in
+ * real time on every window. Inside them a span that would fire is reported as [Event.Ignored]
  * instead: nothing is flushed, no verdict is watched, nothing counts as a self-interrupt, and the span
  * starts over, so a voice that goes on fires as soon as the window closes.
  *
@@ -139,6 +140,17 @@ internal class BargeInGate {
     private var longestRunMs = 0
     private var bestSpanWindows = 0
 
+    /** Windows left in which a would-be fire is ignored ([startWarmUp]). */
+    private var warmUpLeft = 0
+
+    /** The echo canceller is still settling ([startWarmUp]). */
+    val warmingUpNow: Boolean get() = warmUpLeft > 0
+
+    /** Reply audio just started on a new audio path: ignore fires for the next [WARMUP_MS]. */
+    fun startWarmUp() {
+        warmUpLeft = WARMUP_WINDOWS
+    }
+
     /** Listening for the user over the current reply. */
     val armedNow: Boolean get() = armed
 
@@ -188,12 +200,14 @@ internal class BargeInGate {
     fun threshold(): Int = maxOf(MIN_LEVEL, (echoFloor() * ECHO_MARGIN).toInt())
 
     /**
-     * One window. [playing] is true while the reply is audible; [warmingUp] while the echo canceller is
-     * still settling. Returns a [Event.Fire] when the user is talking over it, [Event.Ignored] when he
-     * would be but the warm-up holds it, a [Event.Verdict] when a fire's watch period ends, else null.
+     * One window. [playing] is true while the reply is audible. Returns a [Event.Fire] when the user
+     * is talking over it, [Event.Ignored] when he would be but the warm-up holds it, a [Event.Verdict]
+     * when a fire's watch period ends, otherwise null.
      */
-    fun onWindow(prob: Float, level: Int, playing: Boolean, warmingUp: Boolean = false): Event? {
+    fun onWindow(prob: Float, level: Int, playing: Boolean): Event? {
         if (userGuardLeft > 0) userGuardLeft--
+        val warmingUp = warmUpLeft > 0
+        if (warmingUp) warmUpLeft--
         return when {
             verdictWindowsLeft > 0 -> watch(prob)
             !armed || !playing || disabled -> null
@@ -319,11 +333,10 @@ internal class BargeInGate {
         /** A fire whose peak was at least this many times its threshold was the user, not echo. */
         const val CLEARLY_USER_FACTOR = 2
 
-        /** How long after call audio starts or the route moves a would-be fire is ignored. */
+        /** How long a would-be fire is ignored from the first reply audio on a new audio path. */
         const val WARMUP_MS = 3_000L
 
-        /** True for [WARMUP_MS] after [changedAtMs] (null: no change recorded, so no warm-up). */
-        fun warmingUp(changedAtMs: Long?, nowMs: Long): Boolean =
-            changedAtMs != null && nowMs - changedAtMs in 0 until WARMUP_MS
+        /** [WARMUP_MS] in windows, rounded up. */
+        const val WARMUP_WINDOWS = ((WARMUP_MS + WINDOW_MS - 1) / WINDOW_MS).toInt()
     }
 }
