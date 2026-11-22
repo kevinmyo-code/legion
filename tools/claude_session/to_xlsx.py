@@ -65,7 +65,7 @@ def convert(paths: Paths, task: int, src: str, out: str | None) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="to_xlsx.py")
+    ap = argparse.ArgumentParser(prog="to_xlsx.py", allow_abbrev=False)
     ap.add_argument("--task", type=int, required=True)
     ap.add_argument("--csv", required=True)
     ap.add_argument("--out")

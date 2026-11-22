@@ -211,11 +211,11 @@ class Undoer(Shipper):
 
 def main(argv: list[str] | None = None, paths: Paths | None = None, world: World | None = None,
          say=print) -> int:
-    ap = argparse.ArgumentParser(prog="undo.py", description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(prog="undo.py", allow_abbrev=False, description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="mode", required=True)
-    ask = sub.add_parser("ask")
+    ask = sub.add_parser("ask", allow_abbrev=False)
     ask.add_argument("--task", type=int, required=True)
-    run = sub.add_parser("run")
+    run = sub.add_parser("run", allow_abbrev=False)
     run.add_argument("--task", type=int, required=True)
     run.add_argument("--token", required=True)
     a = ap.parse_args(sys.argv[1:] if argv is None else argv)

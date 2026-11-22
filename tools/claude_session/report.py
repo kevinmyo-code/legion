@@ -33,7 +33,7 @@ def _file_entry(raw: str) -> dict:
 
 
 def build(argv: list[str]) -> dict:
-    ap = argparse.ArgumentParser(prog="report.py", description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(prog="report.py", allow_abbrev=False, description=__doc__.splitlines()[0])
     ap.add_argument("--task", type=int, required=True)
     ap.add_argument("--status", required=True, choices=STATUSES)
     ap.add_argument("--summary", default="")
