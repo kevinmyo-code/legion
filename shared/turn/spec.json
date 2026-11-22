@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "source": "docs/adr/0064-phone-turn-taking-local-end-of-turn-and-barge-in.md and its amendments (to 2026-11-21)",
+  "about": "The turn-taking numbers every LEGION voice client uses. Kevin, 2026-11-22: 'all my voice agents should be the same'. The phone (app/.../service/turn/EndOfTurnPolicy.kt, BargeInGate.kt) and the web (server/frontend/src/assistant/turn/eot-policy.ts, barge-in-gate.ts) keep their own constants; SharedTurnSpecTest.kt and turn-spec.node.test.ts fail when either differs from this file, and both run cases.json. Change a number here and in both clients in one commit.",
+  "end_of_turn": {
+    "window_ms": 32,
+    "start_prob": 0.5,
+    "end_prob": 0.35,
+    "confirm_ms": 200,
+    "gate_ms": 192,
+    "base_ms": 700,
+    "finished_ms": 500,
+    "cap_ms": 2500,
+    "threshold": 0.5,
+    "early_threshold": 0.95,
+    "early_ms": 300
+  },
+  "barge_in": {
+    "window_ms": 32,
+    "prob": 0.8,
+    "speech_prob": 0.5,
+    "sustain_ms": 256,
+    "span_windows": 16,
+    "echo_margin": 1.5,
+    "echo_percentile": 90,
+    "default_echo_floor": 12000,
+    "min_level": 3000,
+    "learn_windows": 10,
+    "user_guard_ms": 1000,
+    "verdict_ms": 1216,
+    "self_speech_ms": 160,
+    "max_self_interrupts": 2,
+    "clearly_user_factor": 2,
+    "warmup_ms": 3000,
+    "warmup_windows": 94,
+    "pre_roll_windows": 17
+  },
+  "web_only": {
+    "about": "Numbers only the browser has, and why. Not the phone's to match.",
+    "speculate_ms": 300,
+    "echo_tail_ms": 300,
+    "max_silero_ms": 16,
+    "max_smart_ms": 450,
+    "engine_echo_counts_as_self_interrupt": true,
+    "why": {
+      "speculate_ms": "where an early transcript may start (off on the page, deps.ts EARLY_TRANSCRIPT)",
+      "echo_tail_ms": "after a reply ends the browser cannot see its output latency, so this much mic audio is not a new turn",
+      "max_silero_ms": "slower per window and the device cannot keep up: no models, energy end of turn, half-duplex",
+      "max_smart_ms": "slower per check and Smart Turn is off: silence-only end at base_ms",
+      "engine_echo_counts_as_self_interrupt": "a barge_in=1 turn the engine heard nothing in, or only the reply's words, counts once toward max_self_interrupts"
+    }
+  }
+}

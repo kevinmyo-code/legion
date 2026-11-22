@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "about": "Scripted turn-taking cases both voice clients must pass, window by window (32 ms Silero windows). Run by app/src/test/.../service/turn/SharedTurnSpecTest.kt and server/frontend/src/assistant/turn/turn-spec.node.test.ts. Made-up numbers only.",
+  "format": {
+    "policy_steps": "{speech: n} n windows at prob 0.9; {quiet: n} n windows at 0.05; {prob: p, n: k}; {score: s} answers the check in flight; {fail: true} that check threw",
+    "policy_config": "smart: Smart Turn loaded; finished: the cascade's 500 ms finished end (else Live: base only); early_end: the 0.95 / 300 ms early end",
+    "policy_expect": "every action in order: start | check@<silence ms> | resumed | end:<reason>@<silence ms>. The web's speculate action is not listed (web only).",
+    "gate_steps": "{reply: start|end}; {warm_up: true}; {user_turn_end: true}; {prob: p, level: l, n: k, playing: bool (default true)}",
+    "gate_expect": "every event in order: fire level=<l> threshold=<t> | verdict self=<bool> count=<n> disabled=<bool> | ignored warmup"
+  },
+  "policy": [
+    {
+      "name": "no verdict before the base ends the turn at 700 ms",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 25}],
+      "expect": ["start", "check@192", "end:base@704"]
+    },
+    {
+      "name": "a blip shorter than the 200 ms confirm never starts a turn",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 4}, {"quiet": 30}],
+      "expect": []
+    },
+    {
+      "name": "a clear first verdict before 300 ms ends the turn at the first window past 300",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.97}, {"quiet": 10}],
+      "expect": ["start", "check@192", "end:early@320"]
+    },
+    {
+      "name": "a clear first verdict landing after 300 ms ends the turn on arrival",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 13}, {"score": 0.97}, {"quiet": 10}],
+      "expect": ["start", "check@192", "end:early@416"]
+    },
+    {
+      "name": "0.95 is clear (inclusive)",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.95}, {"quiet": 10}],
+      "expect": ["start", "check@192", "end:early@320"]
+    },
+    {
+      "name": "0.94 keeps the 500 ms finished end",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.94}, {"quiet": 20}],
+      "expect": ["start", "check@192", "end:finished@512"]
+    },
+    {
+      "name": "a high score after a not-done in the same silence never ends early",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.2}, {"quiet": 3}, {"score": 0.99}, {"quiet": 20}],
+      "expect": ["start", "check@192", "check@192", "end:finished@512"]
+    },
+    {
+      "name": "a clear verdict landing after 500 ms ends the turn on arrival as finished",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 17}, {"score": 0.99}],
+      "expect": ["start", "check@192", "end:finished@544"]
+    },
+    {
+      "name": "with the early end off a clear verdict keeps the 500 ms rule",
+      "config": {"smart": true, "finished": true, "early_end": false},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.99}, {"quiet": 20}],
+      "expect": ["start", "check@192", "end:finished@512"]
+    },
+    {
+      "name": "Live (no finished end): a done verdict still waits for the base",
+      "config": {"smart": true, "finished": false, "early_end": false},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.99}, {"quiet": 20}],
+      "expect": ["start", "check@192", "end:base@704"]
+    },
+    {
+      "name": "not done holds the turn past the base; the first done ends it as extended",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.2}, {"quiet": 20}, {"score": 0.8}],
+      "expect": ["start", "check@192", "check@192", "end:extended@832"]
+    },
+    {
+      "name": "a held turn ends at the 2.5 s cap",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.1}, {"quiet": 80}],
+      "expect": ["start", "check@192", "check@192", "end:cap@2528"]
+    },
+    {
+      "name": "speech resuming cancels a pending check and a hold",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.1}, {"speech": 1}, {"score": 0.99}, {"quiet": 25}],
+      "expect": ["start", "check@192", "check@192", "resumed", "check@192", "end:base@704"]
+    },
+    {
+      "name": "quiet but not silent windows (0.4) neither resume nor hold",
+      "config": {"smart": false, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 10}, {"prob": 0.4, "n": 1}, {"quiet": 20}],
+      "expect": ["start", "end:fallback@704"]
+    },
+    {
+      "name": "without Smart Turn it is silence only, reason fallback",
+      "config": {"smart": false, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 25}],
+      "expect": ["start", "end:fallback@704"]
+    },
+    {
+      "name": "a check that throws while held ends the turn on silence",
+      "config": {"smart": true, "finished": true, "early_end": true},
+      "steps": [{"speech": 20}, {"quiet": 6}, {"score": 0.1}, {"quiet": 20}, {"fail": true}],
+      "expect": ["start", "check@192", "check@192", "end:fallback@832"]
+    }
+  ],
+  "gate": [
+    {
+      "name": "sustained loud speech over the reply fires against the default floor",
+      "steps": [{"reply": "start"}, {"prob": 0.95, "level": 25000, "n": 8}],
+      "expect": ["fire level=25000 threshold=18000"]
+    },
+    {
+      "name": "a 192 ms backchannel never fires",
+      "steps": [{"reply": "start"}, {"prob": 0.95, "level": 25000, "n": 6}, {"prob": 0.1, "level": 500, "n": 20}],
+      "expect": []
+    },
+    {
+      "name": "8 of 16 windows in any order fire (A25 run 5 jitter)",
+      "steps": [{"reply": "start"}, {"prob": 0.95, "level": 25000, "n": 4}, {"prob": 0.3, "level": 25000, "n": 2}, {"prob": 0.95, "level": 25000, "n": 4}],
+      "expect": ["fire level=25000 threshold=18000"]
+    },
+    {
+      "name": "nothing fires while the reply is not playing",
+      "steps": [{"reply": "start"}, {"prob": 0.95, "level": 25000, "n": 20, "playing": false}],
+      "expect": []
+    },
+    {
+      "name": "no speech after two fires: two self-interrupts turn barge-in off",
+      "steps": [
+        {"reply": "start"}, {"prob": 0.95, "level": 20000, "n": 8}, {"prob": 0.1, "level": 500, "n": 38, "playing": false},
+        {"reply": "start"}, {"prob": 0.95, "level": 20000, "n": 8}, {"prob": 0.1, "level": 500, "n": 38, "playing": false}
+      ],
+      "expect": [
+        "fire level=20000 threshold=18000", "verdict self=true count=1 disabled=false",
+        "fire level=20000 threshold=18000", "verdict self=true count=2 disabled=true"
+      ]
+    },
+    {
+      "name": "a short loud stop against a quiet learned floor is the user, not echo",
+      "steps": [{"reply": "start"}, {"prob": 0.1, "level": 500, "n": 20}, {"prob": 0.95, "level": 22914, "n": 8}, {"prob": 0.1, "level": 500, "n": 38}],
+      "expect": ["fire level=22914 threshold=3000", "verdict self=false count=0 disabled=false"]
+    },
+    {
+      "name": "the floor does not learn the user still talking after his turn (run 6)",
+      "steps": [{"user_turn_end": true}, {"reply": "start"}, {"prob": 0.6, "level": 9785, "n": 30}, {"prob": 0.1, "level": 400, "n": 10}, {"prob": 0.95, "level": 14000, "n": 8}],
+      "expect": ["fire level=14000 threshold=3000"]
+    },
+    {
+      "name": "the echo warm-up ignores full spans for 3 s of reply audio, then fires",
+      "steps": [{"warm_up": true}, {"reply": "start"}, {"prob": 0.95, "level": 25000, "n": 24}, {"prob": 0.1, "level": 500, "n": 70}, {"prob": 0.95, "level": 25000, "n": 8}],
+      "expect": ["ignored warmup", "ignored warmup", "ignored warmup", "fire level=25000 threshold=3000"]
+    },
+    {
+      "name": "silence between replies does not use up the warm-up",
+      "steps": [{"warm_up": true}, {"reply": "start"}, {"prob": 0.1, "level": 500, "n": 10}, {"prob": 0.1, "level": 500, "n": 300, "playing": false}, {"prob": 0.95, "level": 25000, "n": 8}],
+      "expect": ["ignored warmup"]
+    }
+  ]
+}
