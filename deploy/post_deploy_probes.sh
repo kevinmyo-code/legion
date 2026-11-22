@@ -27,7 +27,7 @@ MAIN_JS=$(printf '%s' "$TRY_HTML" | grep -o 'src="/assets/index-[^"]*\.js"' | he
 [ -n "$MAIN_JS" ] || fail "/try names no /assets/index-*.js script"
 curl -fsS -o /dev/null -w "ok /try serves $MAIN_JS: HTTP %{http_code}, %{size_download} bytes\n" "$U$MAIN_JS" || fail "the main script did not answer 200"
 SW=$(curl -fsS "$U/sw.js") || fail "/sw.js did not answer 200"
-if printf '%s' "$SW" | grep -qE '\.(wasm|onnx|glb)|model-stage'; then fail "the live service worker precaches .wasm, .onnx, .glb or the 3D chunk"; fi
+if grep -qE '\.(wasm|onnx|glb)|model-stage' <<<"$SW"; then fail "the live service worker precaches .wasm, .onnx, .glb or the 3D chunk"; fi
 echo "ok service worker: no .wasm, .onnx, .glb or 3D chunk in its precache"
 
 echo "== no-session probes (each refused before any paid call)"

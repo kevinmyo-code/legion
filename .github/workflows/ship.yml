@@ -122,13 +122,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Each CI workflow that ran on sha (push), judged by its newest run (a passed re-run supersedes a
-          # failed one): every one must be green, and the server suite must be one of them.
-          newest=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&event=push&per_page=100" \
-            --jq '[.workflow_runs[] | select(.path | test("workflows/(server|frontend|android|headunit)\\.yml$"))] | group_by(.path)[] | max_by(.run_started_at) | [.path, (.conclusion // .status)] | @tsv')
+          # Each CI workflow that ran on sha (a push, or a dispatch, on dev or main), judged by its newest run
+          # (a passed re-run supersedes a failed one): every one must be green, and the server suite must be
+          # one of them. A push its path filters skipped has no server run: dispatch server.yml on dev first.
+          newest=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select((.event == "push" or .event == "workflow_dispatch") and (.head_branch == "dev" or .head_branch == "main") and (.head_repository.full_name == "'"$GITHUB_REPOSITORY"'") and (.path | test("workflows/(server|frontend|android|headunit)[.]yml$")))] | group_by(.path)[] | max_by(.run_started_at) | [.path, (.conclusion // .status)] | @tsv')
           echo "$newest"
-          printf '%s\n' "$newest" | grep -qP '^\.github/workflows/server\.yml\tsuccess$' \
-            || { echo "::error::no successful server.yml push run on $SHA"; exit 1; }
+          awk -F'\t' '$1 == ".github/workflows/server.yml" && $2 == "success" {f = 1} END {exit !f}' <<<"$newest" \
+            || { echo "::error::no successful server.yml run on $SHA (dev or main)"; exit 1; }
           not_green=$(printf '%s\n' "$newest" | awk -F'\t' 'NF && $2!="success"')
           [ -z "$not_green" ] || { echo "::error::not green on $SHA: $not_green"; exit 1; }
           echo "CI green on $SHA"

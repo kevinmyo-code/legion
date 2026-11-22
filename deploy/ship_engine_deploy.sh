@@ -59,7 +59,7 @@ check_live
 echo "dev = main = ${FIX:0:8}; live revision $EXPECT_LIVE_REV at 100% (pinned as running ${LIVE_CODE:0:8})"
 [ -f "$ENV_FILE" ] || stop "no $ENV_FILE (the CLOUDRUN_ENV secret)"
 for n in $SWITCHES; do
-  ! sed 's/\r$//' "$ENV_FILE" | grep -qE "^[[:space:]]*(export[[:space:]]+)?$n[[:space:]]*=" || stop "$ENV_FILE names $n; it must be absent"
+  ! grep -qE "^[[:space:]]*(export[[:space:]]+)?$n[[:space:]]*=" "$ENV_FILE" || stop "$ENV_FILE names $n; it must be absent"
 done
 SVC_NAMES=$(gcloud run services describe "$SERVICE" "${G[@]}" --format='value(spec.template.spec.containers[0].env[].name)' | norm)
 JOB_NAMES=$(gcloud run jobs describe "$JOB" "${G[@]}" --format='value(spec.template.spec.template.spec.containers[0].env[].name)' | norm)
@@ -173,7 +173,7 @@ if [ -n "$MIGRATIONS" ] && grep -qE '^server/' "$MIGRATIONS"; then
   while read -r path _; do
     case "$path" in server/*) ;; *) continue;; esac
     name=$(basename "$path" .py)
-    echo "$OUT" | grep -qE "\[X\] +$name" || { echo "::error::$name is not confirmed applied"; echo "$REST"; exit 1; }
+    grep -qE "\[X\] +$name" <<<"$OUT" || { echo "::error::$name is not confirmed applied"; echo "$REST"; exit 1; }
     echo "[X] $name"
   done < "$MIGRATIONS"
 fi
