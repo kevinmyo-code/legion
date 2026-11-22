@@ -977,8 +977,9 @@ private fun LegionShell(
                             homeListPick = checklistId
                             navController.navigate(LegionRoute.CHECKLISTS) { launchSingleTop = true }
                         },
+                        // Control room (1122): Controls' "Claude sessions" and the home line open it.
                         onOpenClaudeSession = {
-                            navController.navigate(LegionRoute.CLAUDE_SESSION) { launchSingleTop = true }
+                            navController.navigate(LegionRoute.CONTROL_ROOM) { launchSingleTop = true }
                         },
                         onOpenGrades = { navController.navigate(LegionRoute.GRADES) { launchSingleTop = true } },
                         // Household-finance ticket 13: a Money panel bar opens that category's
@@ -1363,6 +1364,12 @@ private fun LegionShell(
             // claude-session ticket 05: the Claude session screen, reached from HOME's More sheet.
             composable(LegionRoute.CLAUDE_SESSION) {
                 com.kevin.legion.ui.claudesession.ClaudeSessionScreen(onBack = { navController.popBackStack() })
+            }
+            composable(LegionRoute.CONTROL_ROOM) {
+                com.kevin.legion.ui.controlroom.ControlRoomScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTasks = { navController.navigate(LegionRoute.CLAUDE_SESSION) { launchSingleTop = true } },
+                )
             }
             // authOk/authNonce carry the browser round trip's outcome down from the exchange
             // effect above - see its own comment for why the exchange cannot live in this screen.
