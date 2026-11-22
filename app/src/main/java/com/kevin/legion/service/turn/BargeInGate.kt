@@ -219,6 +219,11 @@ internal class BargeInGate {
         val inSpan = Integer.bitCount(span)
         if (inSpan > bestSpanWindows) bestSpanWindows = inSpan
         if (inSpan < SUSTAIN_WINDOWS) return null
+        return spanFull(threshold, inSpan, warmingUp)
+    }
+
+    /** A full span: its peak, then a fire, or an [Event.Ignored] while [warmingUp]. */
+    private fun spanFull(threshold: Int, inSpan: Int, warmingUp: Boolean): Event {
         var maxProb = 0f
         var maxLevel = 0
         for (ago in 0 until SPAN_WINDOWS) {

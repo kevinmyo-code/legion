@@ -19,12 +19,13 @@ import android.util.Log
  */
 internal class CallAudioMode(
     private val audio: AudioManager,
+    /** Milliseconds for the echo warm-up ([warmingUp]); a test passes its own. */
+    private val clock: () -> Long = { SystemClock.elapsedRealtime() },
     /**
      * The communication device the platform routes to now (the readback). A seam: Robolectric always
-     * honours a selection, so a test passes one that refuses the earpiece.
+     * honours a selection, so a test passes one that refuses the earpiece (as the trailing lambda).
      */
     private val routedType: (AudioManager) -> Int? = { currentDeviceType(it) },
-    private val clock: () -> Long = { SystemClock.elapsedRealtime() },
 ) {
     private var active = false
     private var prevMode = AudioManager.MODE_NORMAL
