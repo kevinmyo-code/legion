@@ -47,3 +47,13 @@ LATE_ANSWERS_ENV = "LEGION_LATE_ANSWERS"
 
 def late_answers_enabled() -> bool:
     return os.environ.get(LATE_ANSWERS_ENV, "").strip().lower() == "on"
+
+
+# Draft-start on the streamed door (`agents/legion/preempt.py`): the model's first round asked on
+# the running guess of his words before he finishes, used only when the final words match. Off
+# unless `on`, and only where the streamed door itself is on.
+PREEMPT_ENV = "LEGION_AGENTS_PREEMPT"
+
+
+def preempt_enabled() -> bool:
+    return os.environ.get(PREEMPT_ENV, "").strip().lower() == "on"
