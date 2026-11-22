@@ -109,6 +109,21 @@ def test_a_ticked_task_says_so(auth_client, houston, household_user):
     ]
 
 
+def test_a_first_posted_discussion_says_the_replies_are_still_due(
+    auth_client, houston, household_user
+):
+    from legacy.models.dates import Event
+
+    task = make_task(auth_client, "EXAMPLE 101: Week 4 discussion", "2026-10-16T15:00:00Z")
+    Event.objects.filter(pk=task).update(
+        structured_meta={"submission_types": "discussion_topic", "canvas_submitted": True}
+    )
+    assert texts(section(build(houston, household_user), "canvas")) == [
+        "EXAMPLE 101: Week 4 discussion: due Fri Oct 16, 10:00 AM. "
+        "The first post is in; the replies are still due."
+    ]
+
+
 def test_canvas_never_shows_another_members_private_task(auth_client, houston, household_user, mia):
     make_task(_client_for(mia), "Mia's private task", "2026-10-16T15:00:00Z", visibility="private")
     make_task(auth_client, "Shared chore", "2026-10-16T16:00:00Z")

@@ -26,6 +26,7 @@ pages) still opens it, as before. One of those doors is
 conversation record there, matched to the caller and the visit, and reads
 nothing. `/api/device-logs/` stays denied below.
 """
+
 from __future__ import annotations
 
 RECRUITER_ALLOWED: frozenset[str] = frozenset(
@@ -146,6 +147,9 @@ RECRUITER_DENIED: dict[str, str] = {
     "headunit_signin.views.HeadUnitDetailView": "a demo visit has no head unit to sign in",
     "headunit_signin.views.HeadUnitRevokeAllView": "a demo visit has no head unit to sign in",
     "headunit_signin.views.HeadUnitRotateView": "a demo visit has no head unit to sign in",
+    # The factory board is a real member's laptop status.
+    "board.views.BoardView": "a demo visit has no laptop board",
+    "board.views.BoardWriterView": "a demo visit has no laptop board",
     "household.households.InviteListCreateView": _SETTINGS,
     "household.households.InviteDetailView": _SETTINGS,
     "household.households.MemberDetailView": _SETTINGS,
@@ -250,6 +254,10 @@ RECRUITER_DENIED: dict[str, str] = {
     "agents.views.AgentTurnView": _AGENTS,
     "agents.views.AgentTurnStreamView": _AGENTS,
     "agents.views.AgentCancelView": _AGENTS,
+    "agents.relay_views.AgentToolResultView": _AGENTS,
+    "agents.relay_views.AgentTurnStatusView": _AGENTS,
+    "agents.relay_views.AgentTurnGoView": _AGENTS,
+    "agents.relay_views.AgentTurnTakeView": _AGENTS,
     "agents.views.AgentLimbView": _AGENTS,
     "agents.views.AgentWarmView": _AGENTS,
     "agents.views.AgentProbeSseView": _AGENTS,

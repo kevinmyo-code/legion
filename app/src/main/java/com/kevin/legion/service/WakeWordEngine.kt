@@ -126,6 +126,11 @@ object WakeWordEngine {
     private var effects: List<AudioEffect> = emptyList()
     private var recordingCallback: AudioManager.AudioRecordingCallback? = null
 
+    /** The wake word's own capture while it runs (0: none): a conversation's call check leaves it out. */
+    @Volatile
+    var captureSessionId = 0
+        private set
+
     // Ticket 05 (`.scratch/wake-word/issues/05-mic-ownership.md`): this engine now goes through
     // MicArbiter for the mic instead of polling ConversationState.isBusy itself. This is the
     // watchdog's OWN belief about whether it currently holds the mic - lifted out of what used
@@ -429,6 +434,7 @@ object WakeWordEngine {
         WakeSampleRecorder.configure(context, sourceName, effects.size, twoStage = detector != null, engine = engineKey)
         SpeakerVerifier.resetAudio()
         registerSilenceWatch(context, r)
+        captureSessionId = r.audioSessionId
 
         // Mirrors GeminiLiveSession's own capture line on purpose: ticket 12 was diagnosed by
         // comparing the two paths' sources, and that comparison was only possible because one of
@@ -775,6 +781,7 @@ object WakeWordEngine {
             runCatching { am?.unregisterAudioRecordingCallback(cb) }
         }
         recordingCallback = null
+        captureSessionId = 0
         _silenced.value = false
 
         // STOP, then JOIN, then release - in that order, and the join is not optional.

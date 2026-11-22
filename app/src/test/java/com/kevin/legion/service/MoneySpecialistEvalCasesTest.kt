@@ -29,7 +29,7 @@ class MoneySpecialistEvalCasesTest {
 
     @Test
     fun `every case names a money tool and a view that exist, and the live setup is written`() {
-        val decls = LiveToolbox.sourceDeclarationsForTest()
+        val decls = LiveToolbox.sourceDeclarations()
         val byName = (0 until decls.length()).map { decls.getJSONObject(it) }.associateBy { it.getString("name") }
         val reachable = LiveToolbox.reachableNamesForTest()
         moneyTools.forEach { assertTrue("$it is not reachable", it in reachable && it in byName) }

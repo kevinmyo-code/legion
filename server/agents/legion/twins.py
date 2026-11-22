@@ -35,6 +35,7 @@ from zoneinfo import ZoneInfo
 from engine_mcp import tools as reg
 from engine_mcp.tools import EngineTool, ok, refused
 from household.tenancy import visible
+from ingest.canvas_meta import handed_in
 
 TASK_OVERDUE_LOOKBACK_DAYS = 30
 CALENDAR = "calendar"
@@ -161,17 +162,6 @@ def says(s: DueSummary) -> str:
     return " ".join(parts)
 
 
-def handed_in(meta) -> bool:
-    if not isinstance(meta, dict):
-        return False
-    submitted = meta.get("submitted_at")
-    return bool(
-        meta.get("canvas_submitted")
-        or (isinstance(submitted, str) and submitted.strip())
-        or meta.get("excused")
-    )
-
-
 def _label(at: datetime, all_day: bool, zone) -> str:
     if all_day:
         return f"{at.astimezone(UTC):%b} {at.astimezone(UTC).day}, {at.astimezone(UTC).year}"
@@ -184,22 +174,31 @@ def _row_date(at: datetime, all_day: bool, zone) -> date:
     return at.astimezone(UTC).date() if all_day else at.astimezone(zone).date()
 
 
-def _input(event, zone) -> DueInput | None:
+def _due_at(event, zone) -> datetime:
+    """When a row stops being due: an all-day row at the end of its own day, else its instant."""
+    if not event.all_day:
+        return event.starts_at
+    day = _row_date(event.starts_at, True, zone)
+    return datetime.combine(day + timedelta(days=1), datetime.min.time(), zone) - timedelta(
+        milliseconds=1
+    )
+
+
+def _input(event, zone, now) -> DueInput | None:
     if event.starts_at is None or event.deleted_at is not None:
         return None
     if event.kind not in ("task", "reminder"):
         return None
     day = _row_date(event.starts_at, event.all_day, zone)
-    end_of_day = datetime.combine(day + timedelta(days=1), datetime.min.time(), zone) - timedelta(
-        milliseconds=1
-    )
     source = CALENDAR if event.kind == "task" else TODO
+    at = _due_at(event, zone)
     return DueInput(
         title=event.title,
-        at=end_of_day if event.all_day else event.starts_at,
+        at=at,
         all_day=event.all_day,
         date=day,
-        done=bool(event.done) or (source == CALENDAR and handed_in(event.structured_meta)),
+        done=bool(event.done)
+        or (source == CALENDAR and handed_in(event.structured_meta, past_due=now >= at)),
         source=source,
         recurring=source == TODO and event.repeat_kind is not None,
         when_label=_label(event.starts_at, event.all_day, zone),
@@ -248,7 +247,7 @@ def _read_calendar(request, args) -> object:
             deleted_at__isnull=True, kind="reminder", done=False, starts_at__lt=lo
         )[: reg.READ_LIMIT_MAX]
     )
-    inputs = [i for i in (_input(e, zone) for e in [*rows, *old_todos]) if i is not None]
+    inputs = [i for i in (_input(e, zone, now) for e in [*rows, *old_todos]) if i is not None]
     summary = summarize(inputs, from_day, to_day, today, now)
     window = [
         e
@@ -267,7 +266,8 @@ def _read_calendar(request, args) -> object:
             "kind": e.kind,
         }
         if e.kind == "task":
-            row["done"] = bool(e.done) or handed_in(e.structured_meta)
+            past_due = now >= _due_at(e, zone)
+            row["done"] = bool(e.done) or handed_in(e.structured_meta, past_due=past_due)
         if e.location:
             row["location"] = e.location
         out_rows.append(row)

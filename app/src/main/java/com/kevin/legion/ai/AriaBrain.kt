@@ -14,6 +14,7 @@ import com.kevin.legion.location.PlaceController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.service.tools.day.ListRouting
+import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.vehicle.ObdBluetoothManager
 import com.kevin.legion.vehicle.VehicleController
 import kotlinx.coroutines.Dispatchers
@@ -248,7 +249,7 @@ class AriaBrain private constructor(context: Context) {
         // UTC as a default.
         // 2026-11-15: the date is stated with tomorrow and yesterday spelled out, as local dates
         // ([localDates]), so "tomorrow" or "Sunday" never rests on the model's own date arithmetic.
-        sb.append("\n\n").append(localDates(java.time.ZonedDateTime.now(ZoneId.systemDefault())))
+        sb.append("\n\n").append(localDates(RelativeDay.now()))
             .append(" ").append(whereAndWhen())
         sb.append(" You do NOT have a clock and cannot tell the time on your own. " +
             "Whenever the user asks the time, or the answer depends on it, call the " +
@@ -423,7 +424,7 @@ class AriaBrain private constructor(context: Context) {
         // only accurate as of the moment a conversation opens, which is why
         // get_current_time exists as well - a long conversation must re-read
         // the clock rather than trust this note.
-        sb.appendSection(clockNote(java.time.ZonedDateTime.now(ZoneId.systemDefault())))
+        sb.appendSection(clockNote(RelativeDay.now()))
 
         buildContinuityNote()?.let { sb.appendSection(it) }
 
@@ -1153,7 +1154,9 @@ internal fun localDates(now: java.time.ZonedDateTime): String {
     val today = now.toLocalDate()
     val tomorrow = today.plusDays(1)
     val yesterday = today.minusDays(1)
-    return "Today's date is ${today.format(LONG_DAY)} ($today) on the user's own clock. Tomorrow is " +
+    // "tonight included": the evening is today, never a date the model works out.
+    return "Today's date is ${today.format(LONG_DAY)} ($today) on the user's own clock, tonight included. " +
+        "Tomorrow is " +
         "${tomorrow.format(SHORT_DAY)} ($tomorrow); yesterday was ${yesterday.format(SHORT_DAY)} ($yesterday). " +
         "Every date you say or pass to a tool is his local date, never a UTC one."
 }

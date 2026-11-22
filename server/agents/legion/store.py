@@ -18,8 +18,10 @@ import logging
 from django.db import DatabaseError, transaction
 from django.utils import timezone
 
-from agents.legion import redact
+from agents.graph.state import OUTSIDE_REPLY_STUB
+from agents.legion import redact, relay
 from agents.models import (
+    TURN_AWAITING_LIMB,
     AgentCheckpoint,
     AgentConversation,
     AgentModelCall,
@@ -28,6 +30,27 @@ from agents.models import (
 )
 
 log = logging.getLogger(__name__)
+
+# The event fields that hold words, blanked in a stored event once outside text was read.
+_WORD_FIELDS = ("text", "final_text", "words", "args")
+
+
+def _issued(after_turn: list[dict]) -> dict | None:
+    if not after_turn:
+        return None
+    return relay.issued_record(after_turn, asked_at_ms=int(timezone.now().timestamp() * 1000))
+
+
+def _without_words(event: dict) -> dict:
+    data = {
+        k: (OUTSIDE_REPLY_STUB if k in _WORD_FIELDS else v)
+        for k, v in (event.get("data") or {}).items()
+    }
+    if "device_actions" in data:
+        data["device_actions"] = [
+            {"name": a.get("name"), "call_id": a.get("call_id")} for a in data["device_actions"]
+        ]
+    return {**event, "data": data}
 
 
 def _safe(what: str):
@@ -51,21 +74,55 @@ class TurnStore:
     def __init__(self, turn: AgentTurn, agent: str = "generalist"):
         self.turn = turn
         self.agent = agent
+        # The turn's hold (`hold.py`), when it has one. While it waits for the phone's word,
+        # nothing holding his words or the model's is written (`_waiting`): checkpoints and tool
+        # call rows wait in memory and are written at the go, or never (a take or a timeout,
+        # `finish`). His words (`transcript`) are written at the go too.
+        self.held = None
+        self.transcript = None
+        self._deferred: list = []
         self._owner = {"household_id": turn.household_id, "owner_user_id": turn.owner_user_id}
 
-    # The graph's checkpointer.
-    @_safe("checkpoint")
+    def _waiting(self) -> bool:
+        """True while the turn's hold has no decision yet; at a go, what waited is written."""
+        if self.held is None:
+            return False
+        decision = self.held.peek()
+        if decision is None:
+            return True
+        if self.held.go and self._deferred:
+            deferred, self._deferred = self._deferred, []
+            for write in deferred:
+                write()
+        return not self.held.go
+
     def save(self, state, node: str, step: int, events) -> None:
+        if self._waiting():
+            # Built now (the state moves on), written at the go.
+            row = self._checkpoint_row(state, node, step, events)
+            self._deferred.append(lambda: self._write_checkpoint(row))
+            return
+        if self.held is not None and not self.held.go:
+            return  # taken or timed out: never written
+        self._write_checkpoint(self._checkpoint_row(state, node, step, events))
+
+    @_safe("checkpoint")
+    def _write_checkpoint(self, row: dict) -> None:
+        AgentCheckpoint.objects.create(turn=self.turn, **row, **self._owner)
+
+    def _checkpoint_row(self, state, node: str, step: int, events) -> dict:
         raw = json.loads(json.dumps(state.to_json(), default=str))
-        raw["messages"] = redact.history_for_storage(raw.get("messages") or [])
-        AgentCheckpoint.objects.create(
-            turn=self.turn,
-            step=step,
-            node=node,
-            state=raw,
-            events=[e.to_json() for e in events],
-            **self._owner,
-        )
+        raw["messages"] = redact.history_for_storage(raw.get("messages") or [], state.outside)
+        kept = [e.to_json() for e in events]
+        if state.outside:
+            # The node's words may carry the outside text on: none are kept (plan 1119 s5).
+            raw["final_text"] = raw["words"] = OUTSIDE_REPLY_STUB
+            raw["after_turn"] = [
+                {"name": a.get("name"), "call_id": a.get("call_id")}
+                for a in raw.get("after_turn") or []
+            ]
+            kept = [_without_words(e) for e in kept]
+        return {"step": step, "node": node, "state": raw, "events": kept}
 
     @_safe("model call")
     def model_call(self, row: dict) -> None:
@@ -85,8 +142,16 @@ class TurnStore:
             **self._owner,
         )
 
-    @_safe("tool call")
     def tool_call(self, state, **row) -> None:
+        if self._waiting():
+            self._deferred.append(lambda: self._write_tool_call(row))
+            return
+        if self.held is not None and not self.held.go:
+            return
+        self._write_tool_call(row)
+
+    @_safe("tool call")
+    def _write_tool_call(self, row: dict) -> None:
         AgentToolCall.objects.create(
             turn=self.turn,
             call_id=row["call_id"] or "",
@@ -97,8 +162,39 @@ class TurnStore:
             outcome=row["outcome"],
             guard=row["guard"],
             ms=row["ms"],
+            where=row.get("where") or "engine",
             **self._owner,
         )
+
+    def suspend(self, state) -> bool:
+        """Saves a turn paused on a limb (`state.pending_relay`), with the whole state it resumes
+        from, BEFORE any `tool_request` leaves. Like `mark_taint` it fails closed: False and the
+        request never goes out. The state is stored as the checkpointer stores it; it holds no
+        outside text (the gateway refuses a limb call once any was read)."""
+        try:
+            raw = json.loads(json.dumps(state.to_json(), default=str))
+            raw["messages"] = redact.history_for_storage(raw.get("messages") or [])
+            # The loop's pause is beside the state, not inside it twice.
+            raw["pending_relay"] = None
+            relay = {**state.pending_relay, "state": raw}
+            words = {"transcript": self.transcript} if self.transcript is not None else {}
+            with transaction.atomic():
+                AgentTurn.objects.filter(pk=self.turn.pk).update(
+                    **words,
+                    status=TURN_AWAITING_LIMB,
+                    pending_relay=relay,
+                    tainted=state.tainted,
+                    taint_sources=list(state.taint),
+                )
+                # A yes this turn spent is spent now, not when the turn ends: a pause that never
+                # resumes must not leave it releasable by his next "ok".
+                AgentConversation.objects.filter(pk=self.turn.conversation_id).update(
+                    last_turn_at=timezone.now(), pending_confirm=state.pending_confirm
+                )
+            return True
+        except (DatabaseError, TypeError, ValueError):
+            log.warning("agents: a pause on a limb was not saved; nothing was sent", exc_info=True)
+            return False
 
     def mark_taint(self, state) -> bool:
         try:
@@ -119,23 +215,55 @@ class TurnStore:
 
     @_safe("turn")
     def finish(self, state, *, latency_ms: int, first_sentence_ms: int | None) -> None:
+        if state.status == TURN_AWAITING_LIMB:
+            # Paused, not finished: `suspend` wrote the row; only the timings so far are added.
+            AgentTurn.objects.filter(pk=self.turn.pk).update(
+                latency_ms=latency_ms, first_sentence_ms=first_sentence_ms
+            )
+            return
+        if self.held is not None and not self.held.go:
+            # Taken, or no go in time: the phone answers it (or nobody does). None of his words
+            # and none of the engine's stay: no transcript, final text, history, checkpoint,
+            # tool-call arguments or results. Only ids, times, sizes, the decision and the
+            # usage numbers (`agents_model_call`, `llm_usage`) are kept.
+            self._deferred = []
+            AgentTurn.objects.filter(pk=self.turn.pk).update(
+                status="cancelled",
+                transcript="",
+                final_text="",
+                history=[],
+                pending_relay=None,
+                latency_ms=latency_ms,
+                cost_micro_usd=state.budget.cost_micro_usd,
+            )
+            AgentCheckpoint.objects.filter(turn=self.turn).delete()
+            AgentToolCall.objects.filter(turn=self.turn).update(args_redacted={}, result_trimmed="")
+            return
+        self._waiting()  # a go that came at the very end: write what waited for it
         status = (
             state.status if state.status in ("done", "cancelled", "failed", "refused") else "failed"
         )
+        # Never lowered: a relayed write recorded before this stream stays recorded.
+        wrote = {"writes_ran": True} if state.writes_ran else {}
+        if self.transcript is not None:
+            AgentTurn.objects.filter(pk=self.turn.pk).update(transcript=self.transcript)
         AgentTurn.objects.filter(pk=self.turn.pk).update(
+            # A relayed turn's last stream ends its pause (null already on any other turn); a K1
+            # device action keeps its call on the row so its result is recorded after the reply.
+            pending_relay=_issued(state.after_turn),
+            **wrote,
             route_agents=list((state.route or {}).get("agents") or []),
             route_reason=(state.route or {}).get("reason", ""),
             status=status,
             tainted=state.tainted,
             taint_sources=list(state.taint),
-            writes_ran=state.writes_ran,
-            final_text=state.final_text or state.words,
+            final_text=(OUTSIDE_REPLY_STUB if state.outside else (state.final_text or state.words)),
             honesty_flag=state.honesty_flag,
             latency_ms=latency_ms,
             first_sentence_ms=first_sentence_ms,
             cost_micro_usd=state.budget.cost_micro_usd,
             history=redact.history_for_storage(
-                state.messages[state.client_facts.get("history_from", 0) :]
+                state.messages[state.client_facts.get("history_from", 0) :], state.outside
             ),
         )
         AgentConversation.objects.filter(pk=self.turn.conversation_id).update(

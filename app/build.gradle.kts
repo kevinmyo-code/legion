@@ -418,6 +418,10 @@ dependencies {
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
     // The car link's QR scanner: ML Kit barcode scanning with the model bundled (no Play services download).
+    // The owner knows ML Kit reports usage and performance metrics to Google (its terms say so) and
+    // chose to keep it as shipped. To stop that later: remove Google's three data-transport components
+    // from the merged manifest (TransportBackendDiscovery, JobInfoSchedulerService,
+    // AlarmManagerSchedulerBroadcastReceiver) or replace the scanner.
     implementation(libs.mlkit.barcode.scanning)
     // WorkManager, for books ticket 05 only (the unmetered-network PDF conversion worker).
     implementation(libs.work.runtime.ktx)

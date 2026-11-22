@@ -58,6 +58,12 @@ def test_relative_day_words_in_args_count_as_their_dates():
     assert graders.grade_turn(rec, expect, TODAY) == []
 
 
+def test_tonight_in_args_counts_as_today():
+    rec = _record("ok.", [_call("read_calendar", {"from": "tonight", "to": "tonight"})])
+    expect = {"args_all": {"read_calendar": {"from": {"eq": "{today}"}, "to": {"eq": "{today}"}}}}
+    assert graders.grade_turn(rec, expect, TODAY) == []
+
+
 def test_an_empty_claim_over_open_work_fails():
     read = _call("read_calendar", text=json.dumps({"due": {"open": 2}}))
     assert graders.grade_turn(
@@ -142,8 +148,13 @@ def test_homes_covers_every_ticket_03_tool():
 
 # Suites written but not yet recorded live: their replay is skipped with this reason, never
 # faked. An explicit map, so a deleted cassette of a recorded suite still fails loudly instead of
-# skipping. Empty now: `records` (ticket 15) was recorded live on 2026-11-17 (27/27).
-UNRECORDED_SUITES: dict[str, str] = {}
+# skipping. `records` (ticket 15) was recorded live on 2026-11-17 (27/27).
+UNRECORDED_SUITES: dict[str, str] = {
+    "garage_gate": (
+        "the web cascade's live gate for show_part (switch off until it passes); this runner "
+        "drives the agents door, which never declares show_part"
+    ),
+}
 SUITES = sorted(p.stem for p in runner.CASES.glob("*.yaml"))
 
 

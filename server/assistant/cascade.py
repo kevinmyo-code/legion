@@ -13,16 +13,18 @@ credential to Google.
 
 - **The loop is the engine runtime's** (`agents.runtime.loop.run_loop`, `GeminiClient`), the same
   generic loop the dark agent turn uses: rounds, the tool-free last round with the phone's nudge,
-  streamed text cut into whole sentences, per-round token counts (spec 6, 7, 8). Nothing of
-  `agents/legion` (its router, specs, confirm gate or turn tables) is used, and
-  `/api/agents/turn` is untouched. No runtime file is changed.
+  streamed text cut into whole sentences, per-round token counts (spec 6, 7, 8). Of
+  `agents/legion` it uses the turn rules both voice doors share (engine-brain switch plan, slice
+  E0: `speech_rules`, `sentence_gate`, `ask_again`, `closing`, `end_conversation`, `lines`), the
+  gateway's declarations, `late` and the honesty check in `guards`; never its router, specs,
+  confirm gate or turn tables, and `/api/agents/turn` is untouched.
 - **The prompt prefix is cached** (`assistant/prompt_cache.py`, spec 9): the stable body plus the
   phone's voice clause (spec 11) and the declarations; the clock and who is speaking ride at the
   head of each turn as the phone's "(Current context ...)" note (spec 10).
 - **The tools are the web tool door's**, called the way `POST /api/assistant/tool` calls them
   (`WebDoor` below): `tools_for(user)` declares them (a recruiter's `RECRUITER_TOOLS`, narrowed
   tables, its own procedures and diagrams), `refusal_for` fences each call (default deny for a
-  recruiter), `recruiter_only_tool` / `run_engine_tool` runs it under the caller's own
+  recruiter), `off_registry_tool` / `run_engine_tool` runs it under the caller's own
   `visible()`, every call is audited (`AssistantCall`) and written to the conversation record, and
   a card goes to the screen, never to the model. So a recruiter's fence on this path is the Live
   path's fence, the same code. **One addition, for every role: `end_conversation`** (spec 18), a
@@ -73,43 +75,47 @@ from datetime import UTC, datetime
 from django.db import DatabaseError, transaction
 from django.db import connections as db_connections
 
-from agents.legion import late
+from agents.legion import closing, late
+from agents.legion import sentence_gate as gates
+from agents.legion.ask_again import ask_again, asks_again
+from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
 from agents.legion.gateway import SLOW_TOOLS, rest_declarations
 from agents.legion.guards import claims_unbacked_outcome
 from agents.legion.lines import (
-    CHANGE_MADE,
-    CHANGE_NOT_MADE,
+    CHANGE_MADE,  # noqa: F401 - read as cascade.CHANGE_MADE
+    CHANGE_NOT_MADE,  # noqa: F401 - read as cascade.CHANGE_NOT_MADE
     FAILED_AFTER_WRITE_SPOKEN,
     FAILED_SPOKEN,
     MISSED_LINE,
-    NO_TEXT,
+    NO_TEXT,  # noqa: F401 - read as cascade.NO_TEXT
     NOT_ANSWERED_BUDGET,
     NOT_ANSWERED_MODEL,
     NOT_ANSWERED_TIMEOUT,
     NOTHING_CHANGED,
-    READ_THROUGH_WAIT,
-    READ_THROUGH_WAIT_AFTER_WRITE,
+    READ_THROUGH_NOTHING_CHANGED,  # noqa: F401 - read as cascade.READ_THROUGH_NOTHING_CHANGED
+    READ_THROUGH_WAIT,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT
+    READ_THROUGH_WAIT_AFTER_WRITE,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_AFTER_WRITE
+    READ_THROUGH_WAIT_CARRIED,  # noqa: F401 - read as cascade.READ_THROUGH_WAIT_CARRIED
     SPOKEN_FAILURES,  # noqa: F401 - read as cascade.SPOKEN_FAILURES
     STT_FAILED,
     TOO_MANY_TOOLS,
 )
 from agents.legion.speech_rules import (
-    FILLER_NOTE,
+    FILLER_NOTE,  # noqa: F401 - read as cascade.FILLER_NOTE
     VERBATIM_TOOLS,  # noqa: F401 - read as cascade.VERBATIM_TOOLS
     _verbatim,
     backed_cents,
+    backed_torque,
     decimal_cents,  # noqa: F401 - read as cascade.decimal_cents
-    has_money,
-    is_filler,
+    has_money,  # noqa: F401 - read as cascade.has_money
+    is_filler,  # noqa: F401 - read as cascade.is_filler
     is_stop_utterance,
-    states_unbacked_figure,
 )
 from agents.runtime import events as ev
 from agents.runtime.budget import BudgetUsed, LoopLimits
 from agents.runtime.loop import (
     BUDGET_WORDS,
     MODEL_WORDS,
-    NO_ANSWER_WORDS,
     TIMEOUT_WORDS,
     LoopHooks,
     SentenceSplitter,
@@ -152,7 +158,7 @@ from agents.voice.stage import (  # noqa: F401 - prices read as cascade.X
 )
 from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
 from assistant.models import AssistantCall
-from assistant.surface import recruiter_only_tool, refusal_for, tools_for
+from assistant.surface import off_registry_tool, refusal_for, tools_for
 from demo import suggestions
 from demo.budget import tester_visit
 from demo.tools import spoken_for as about_kevin_spoken_for
@@ -164,6 +170,7 @@ from engine_mcp.tools import (
     run_engine_tool,
     run_tool,
 )
+from garage import topic as garage_topic
 from household.models import is_recruiter
 from household.tenancy import household_of
 from legion import deadline
@@ -242,8 +249,6 @@ def mark_robotic(request, conversation_id, turn: int, *, source: str) -> None:
     )
 
 
-# The phone's `end_conversation` (spec 18): the description and the sign-off instruction, with
-# "he" made "they" (the web serves every member and a visitor).
 # Knowing when it is being spoken to (voice-persona section 10, Kevin 2026-11-17: "yes all four").
 # A third outcome besides answering and calling a tool: the sentence was not for the assistant
 # (a visitor turning to someone else). A no-data control like `end_conversation`.
@@ -293,28 +298,6 @@ def addressed_decision(signals: dict[str, bool], model_says_not: bool) -> str:
     if signals.get("answers_question") or signals.get("second_person"):
         return "unsure"
     return "not_addressed"
-
-
-END_TOOL = "end_conversation"
-END_DECLARATION = {
-    "name": END_TOOL,
-    "description": (
-        "End the conversation when they are DONE with you: 'never mind', 'nothing', "
-        "'I'm good', 'that's all', 'go away'. 'That will be all' ALWAYS means this, "
-        "however politely. 'Go to sleep', 'sleep', 'go dormant', 'stand down' mean this "
-        "too: about YOU going quiet, not their bedtime; no goodnight. Say one dry sign-off "
-        "line in your own register in the same turn; it closes when you finish. Do NOT "
-        "call this when they are answering 'no' to something you offered, declining a "
-        "suggestion, or pausing."
-    ),
-    "parameters": {"type": "object", "properties": {}},
-}
-
-END_INSTRUCTION = (
-    "Sign off now with one dry line in your own register (a <chuckle> before it is fine), "
-    "about this conversation, then "
-    "stop. The conversation ends when you finish speaking."
-)
 
 
 def failure_audio(voice: str, wrote: bool) -> ev.Event | None:
@@ -468,7 +451,14 @@ class WebDoor:
         self.addressed: dict[str, bool] = {}
         self._tools = None
         self._declarations = None
-        read_through.set_turn(request, conversation_id, turn)
+        # The carry (ADR 0090 amended, 2026-11-21): the turn after one that read outside text
+        # refuses writes too; a member rule, the demo frozen (`read_through.CARRY_ON_DEMO`).
+        read_through.set_turn(
+            request,
+            conversation_id,
+            turn,
+            carry=not self.recruiter or read_through.CARRY_ON_DEMO,
+        )
 
     def tools(self) -> dict:
         if self._tools is None:
@@ -496,7 +486,7 @@ class WebDoor:
         if self.not_for_me and self._writes(name):
             return False
         return (
-            recruiter_only_tool(name, self.user) is not None
+            off_registry_tool(name, self.user) is not None
             or refusal_for(name, self.user, {}) is None
         )
 
@@ -568,7 +558,7 @@ class WebDoor:
                 ok, outcome, text = False, Outcome.REFUSED, refusal
                 guard = "recruiter" if self.recruiter else "not_allowed"
             else:
-                only_here = recruiter_only_tool(name, self.user)
+                only_here = off_registry_tool(name, self.user)
                 if only_here is not None and name == "about_kevin":
                     only_here = self.tools()[name]
                 if only_here is not None:
@@ -1154,6 +1144,8 @@ def _answer(
         if turn_input.spoken:
             yield ev.Event("heard", {"text": words})
     report.heard = words
+    # Whether HIS words ask for a change (the carry's exception, ADR 0090 amended 2026-11-21).
+    read_through.heard(request, words)
     speaker.exact = spoken_figures.wants_exact(words)
     heard_at = datetime.now(UTC)
     user_recorded = False
@@ -1259,6 +1251,21 @@ def _answer(
     filler_dropped = 0
     no_answer = False
     money_dropped = 0
+    # The torque guard (garage, `speech_rules.states_unbacked_torque`): on exactly when
+    # `show_part` is offered to this caller (the switch on, his account, the cascade); otherwise
+    # `backed_torque` answers None and no sentence is checked.
+    torque_on = "show_part" in door.tools()
+    torque_topic = garage_topic.SENTENCE if torque_on else None
+    about_front_end = torque_on and garage_topic.about_front_end(words, last_reply)
+    torque_dropped = 0
+    # Which sentences are said, held or dropped (`agents/legion/sentence_gate.py`): asked per
+    # sentence; the counts, speech and events stay here.
+    gate = gates.SentenceGate(
+        backed=lambda: backed_cents(door.calls),
+        torque=lambda: backed_torque(door.calls, torque_topic, about_front_end),
+        actions=door.actions,
+    )
+
     sentences = 0
 
     # The first lookup of the turn and when it started; its line waits for FILLER_WAIT_S.
@@ -1294,13 +1301,6 @@ def _answer(
 
     def tainted() -> bool:
         return read_through.read_third_party(door.request)
-
-    def honest(text: str) -> bool:
-        """False for a sentence that claims a change when no write has gone through in this turn
-        yet (`agents.legion.guards.claims_unbacked_outcome`, the runtime's own check; CLAUDE.md
-        section 7). Such a sentence is held and decided at the end of the turn. Nothing else is
-        rewritten from the model's words (findings 4 and 10): when in doubt its sentence stays."""
-        return not claims_unbacked_outcome(text, door.actions())
 
     def say(
         text: str, tagged: str | None = None, replay: str | None = None, exact_text: bool = False
@@ -1418,27 +1418,25 @@ def _answer(
                 tagged = event.data["text"]
                 # Every check below reads the sentence without its tags (`speech_tags`).
                 text = speech_tags.untagged(tagged)
-                if not text:
-                    continue
-                if text == NO_ANSWER_WORDS:
-                    # The runtime's line for a turn with no words. Held: after tools, the turn is
-                    # asked once more (below); else the phone's own line is said (spec 31).
+                verdict = gate.in_answer(
+                    text,
+                    sentences=sentences,
+                    verbatim_said=verbatim_said,
+                    max_spoken=MAX_SPOKEN_SENTENCES,
+                )
+                if verdict == gates.NO_ANSWER:
+                    # Held: after tools, the turn is asked once more (below).
                     no_answer = True
-                    continue
-                if sentences == 0 and is_filler(text):
+                elif verdict == gates.FILLER:
                     filler_dropped += 1
-                    continue
-                if (verbatim_said and has_money(text)) or states_unbacked_figure(
-                    text, backed_cents(door.calls)
-                ):
+                elif verdict == gates.MONEY:
                     money_dropped += 1
-                    continue
-                if sentences >= MAX_SPOKEN_SENTENCES:
-                    continue
-                if not honest(text):
+                elif verdict == gates.TORQUE:
+                    torque_dropped += 1
+                elif verdict == gates.HOLD:
                     held_claims.append((text, tagged))
-                    continue
-                yield say(text, tagged)
+                elif verdict == gates.SAY:
+                    yield say(text, tagged)
                 continue
             yield event
     finally:
@@ -1466,87 +1464,94 @@ def _answer(
         yield from _not_for_me(request, door, speaker, report, timings)
         return
     record_user()
-    if door.cancelled():
+    stopped = door.cancelled()
+    # A turn under the carry alone gets its record line, and one cut off before its answer does not
+    # spend the carry (ADR 0090 amended, 2026-11-21; `read_through.carried_turn`). Members only.
+    read_through.carried_turn(request, cancelled=stopped)
+    if stopped:
         # The browser stopped this turn: nothing more is asked for or said (2026-11-17, cancel).
         report.status = "cancelled"
         yield ev.done("cancelled", " ".join(report.said).strip(), door.wrote())
         return
     report.status = result.status if result is not None else "cancelled"
     failure = _failure_words(result, door)
-    if (
-        failure is None
-        and result is not None
-        and result.status == "done"
-        and sentences == 0
-        and (filler_dropped or no_answer)
-        and door.calls
-        and not door.end_requested
+    if result is not None and asks_again(
+        failed=failure is not None,
+        status=result.status,
+        sentences=sentences,
+        filler_only=bool(filler_dropped or no_answer),
+        tools_ran=bool(door.calls),
+        ending=door.end_requested,
     ):
         # Spec 23: the tools ran and the answer was only filler, or nothing at all (measured
         # 2026-11-17: a write refused after a web search left the last round empty, and the person
         # heard neither the search's answer nor the refusal). Asked once more, tool-free, with the
         # phone's note; whatever it says is the answer.
-        for tagged in _ask_again(model, model_name, system, state.messages, door, rounds):
+        for tagged in ask_again(
+            model,
+            model_name,
+            system,
+            state.messages,
+            door.declarations(),
+            LIMITS.round_timeout_s,
+            rounds,
+        ):
             text = speech_tags.untagged(tagged)
-            if not text or is_filler(text) or (verbatim_said and has_money(text)):
-                continue
-            if states_unbacked_figure(text, backed_cents(door.calls)):
+            verdict = gate.in_ask_again(text, verbatim_said=verbatim_said)
+            if verdict == gates.MONEY:
                 money_dropped += 1
-                continue
-            if not honest(text):
+            elif verdict == gates.TORQUE:
+                torque_dropped += 1
+            elif verdict == gates.HOLD:
                 held_claims.append((text, tagged))
-                continue
-            yield say(text, tagged)
+            elif verdict == gates.SAY:
+                yield say(text, tagged)
         report.rounds = len(rounds)
         timings["rounds"] = len(rounds)
         _meter(request, model_name, rounds[-1:])
-    # A change ADR 0090 held back: a write refused by the outside-text rule, or `remember`'s own
-    # refusal (round 2 finding 5: that one was missed, so "Noted." passed with nothing saved).
-    guard_refused = any(
-        not c.ok
-        and (
-            (c.text.startswith("Nothing was") and "read outside text" in c.text)
-            or c.text == read_through.REFUSAL
-        )
-        for c in door.calls
-    )
+    # A change ADR 0090 held back (`agents/legion/closing.py`).
+    guard_refused = closing.guard_refused(door.calls)
     # The answer's own words go to speech first; what follows may use the request kept back.
     speaker.flush()
     speaker.closing = True
     # The closing lines are decided from what happened, at the END of the turn (findings 2, 3).
     for text, tagged in held_claims:
-        if states_unbacked_figure(text, backed_cents(door.calls)):
+        verdict = gate.held(text)
+        if verdict == gates.MONEY:
             # Held before the money tool ran; its figures are checked now, like every sentence's
             # (blind review finding 3). It was still a claim of a change, so the closing line about
             # the change is said in its place (round 2, N1): "went through" or "did not".
             money_dropped += 1
             unbacked += 1
-        elif honest(text):
+        elif verdict == gates.TORQUE:
+            torque_dropped += 1
+            unbacked += 1
+        elif verdict == gates.SAY:
             yield say(text, tagged)
         else:
             unbacked += 1
     # The final count: the ask-again round's and the held claims' drops included (finding 2).
     timings["money_dropped"] = money_dropped
+    if torque_on:
+        timings["torque_dropped"] = torque_dropped
     wrote = door.wrote()
-    if guard_refused:
-        yield say(READ_THROUGH_WAIT_AFTER_WRITE if wrote else READ_THROUGH_WAIT)
-    elif unbacked:
-        if wrote:
-            yield say(CHANGE_MADE)
-        elif tainted():
-            yield say(READ_THROUGH_WAIT)
-        else:
-            yield say(CHANGE_NOT_MADE)
-    elif wrote and any(c.ends_turn for c in door.calls):
-        # The turn ended on code's own answer (his profile) in the round that also made a change:
-        # the model never got to confirm it, so code does, in its own words.
-        yield say(CHANGE_MADE)
+    closing_line = closing.closing_line(
+        door.calls,
+        refused=guard_refused,
+        unbacked=unbacked,
+        wrote=wrote,
+        tainted=tainted,
+        carried=closing.refused_by_carry(door.calls),
+        promise=read_through.promised(request),
+    )
+    if closing_line is not None:
+        yield say(closing_line)
     timings["wait_reason"] = int(guard_refused)
     timings["unbacked"] = unbacked
     if failure is not None:
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
-        yield say(NO_TEXT + ("" if door.wrote() else NOTHING_CHANGED))
+        yield say(closing.nothing_said_line(door.wrote()))
     if late.enabled() and not door.cancelled() and not crisis.detect(words):
         # The late-answer path (`agents/legion/late.py`; switched off, not even the cancel check
         # runs here): the one owed line, claimed only now, after
@@ -1596,13 +1601,14 @@ def _answer(
 
 
 def _late_read_through(request, door, owed) -> None:
-    """An owed line built on web pages (`late.read_third_party`): this turn and the next may not
-    write (`read_through.mark_turns`), and memory keeps no assistant line from here on (the
-    record's `read_through source=carry`)."""
+    """An owed line built on web pages (`late.read_third_party`): this turn may not write
+    (`read_through.mark_turns`), nor the next (the carry, ADR 0090 amended: it reads this turn's
+    mark, so marking the next turn too would carry a second time), and memory keeps no assistant
+    line from here on (the record's `read_through source=carry`)."""
     if not late.read_third_party(owed):
         return
     conversation_id = conversation_id_of(door)
-    read_through.mark_turns(request, conversation_id, (door.turn, door.turn + 1))
+    read_through.mark_turns(request, conversation_id, (door.turn,))
     web_conversation.record_lines(
         request,
         conversation_id,
@@ -1632,39 +1638,6 @@ def _not_for_me(request, door, speaker, report, timings):
     yield from speaker.drain()
     extra = {"words": UNSURE_CUE} if decision == "unsure" else {}
     yield ev.done(decision, "", False, ignored=decision, **extra)
-
-
-def _ask_again(model, model_name, system, messages, door, rounds) -> list[str]:
-    """One tool-free round after a filler-only answer (spec 23). [] on any failure."""
-    req = ModelRequest(
-        model=model_name,
-        system=system,
-        contents=[*messages, {"role": "user", "parts": [{"text": FILLER_NOTE}]}],
-        declarations=door.declarations(),
-        allow_tools=False,
-        timeout_s=LIMITS.round_timeout_s,
-    )
-    splitter = SentenceSplitter()
-    out: list[str] = []
-    usage = Usage()
-    try:
-        for item in model.stream(req):
-            if isinstance(item, TextDelta):
-                out.extend(splitter.feed(item.text))
-            elif isinstance(item, Usage):
-                usage = item
-    except ModelFailure:
-        return []
-    finally:
-        rounds.append(
-            {
-                "prompt_tokens": usage.prompt_tokens,
-                "cached_tokens": usage.cached_tokens,
-                "output_tokens": usage.output_tokens,
-            }
-        )
-    out.extend(splitter.flush())
-    return out
 
 
 def conversation_id_of(door: WebDoor):

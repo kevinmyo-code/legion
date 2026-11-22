@@ -124,6 +124,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/turn/{turn_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A relayed turn's status and the calls still waited for, for the device asked */
+        get: operations["api_agents_turn_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agents/turn/{turn_id}/cancel": {
         parameters: {
             query?: never;
@@ -135,6 +152,57 @@ export interface paths {
         put?: never;
         /** Cancel the member's own running turn */
         post: operations["api_agents_turn_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/turn/{turn_id}/go": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The phone's go on a held turn: the engine may act on it */
+        post: operations["api_agents_turn_go"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/turn/{turn_id}/take": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The phone keeps a held turn: cancelled, nothing acts, nothing recorded as said */
+        post: operations["api_agents_turn_take"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/turn/{turn_id}/tool_result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A limb's result for a relayed call; the round's last one streams the rest */
+        post: operations["api_agents_turn_tool_result"];
         delete?: never;
         options?: never;
         head?: never;
@@ -731,6 +799,38 @@ export interface paths {
          */
         post: operations["api_auth_signup_create"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_board_retrieve"];
+        put: operations["api_board_update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/writer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_writer_create"];
+        delete: operations["api_board_writer_destroy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -6455,6 +6555,106 @@ export interface components {
             due_on: string;
             amount_cents: number;
         };
+        Board: {
+            snapshot: components["schemas"]["BoardSnapshot"] | null;
+            /** @description Received within the last 3 minutes. */
+            live: boolean;
+            age_s: number | null;
+            /** Format: date-time */
+            laptop_seen_at: string | null;
+            laptop_on: boolean;
+            writer: components["schemas"]["BoardWriterInfo"] | null;
+            /** @description Lines a voice says word for word, built by code. */
+            spoken: string[];
+        };
+        BoardAnswer: {
+            choice: string;
+            text: string;
+            at: string;
+            by: string;
+        };
+        BoardCard: {
+            id: string;
+            col: components["schemas"]["ColEnum"];
+            kind: components["schemas"]["BoardCardKindEnum"];
+            title: string;
+            status: string;
+            waiting: string;
+            owner: string;
+            ask: string;
+            project: components["schemas"]["ProjectEnum"];
+            /** @description An ask's choices. */
+            options: string[];
+            /** @description A typed answer is allowed. */
+            free_text: boolean;
+            /** @description `choice`, `approval` (answered in chat only), or blank. */
+            ask_kind: string;
+            say: string;
+            answer: components["schemas"]["BoardAnswer"] | null;
+            /** @description Minutes since the card changed, as of now. */
+            age_min: number;
+            stale: boolean;
+        };
+        /**
+         * @description * `agent` - agent
+         *     * `ship` - ship
+         *     * `build` - build
+         *     * `cloud` - cloud
+         *     * `decision` - decision
+         *     * `session` - session
+         * @enum {string}
+         */
+        BoardCardKindEnum: "agent" | "ship" | "build" | "cloud" | "decision" | "session";
+        BoardProject: {
+            id: string;
+            title: string;
+            open: number;
+            needs: number;
+        };
+        BoardRemoved: {
+            card: string;
+            field: string;
+        };
+        BoardSnapshot: {
+            /**
+             * Format: date-time
+             * @description The laptop's own clock: display only.
+             */
+            generated_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the engine received it.
+             */
+            received_at: string;
+            build_slot: string;
+            counts: {
+                [key: string]: number;
+            };
+            needs_kevin: string[];
+            answered_waiting: string[];
+            projects: components["schemas"]["BoardProject"][];
+            cards: components["schemas"]["BoardCard"][];
+        };
+        BoardStored: {
+            cards: number;
+            bytes: number;
+            /** Format: date-time */
+            received_at: string;
+            /** @description Fields blanked as key, token or email shaped: card and field only. */
+            removed: components["schemas"]["BoardRemoved"][];
+        };
+        BoardWriterInfo: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+        };
+        BoardWriterIssued: {
+            /** @description Shown once. The engine keeps only its hash. */
+            token: string;
+            /** Format: date-time */
+            created_at: string;
+        };
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -7570,6 +7770,15 @@ export interface components {
             readonly deleted_at: string | null;
         };
         /**
+         * @description * `queued` - queued
+         *     * `working` - working
+         *     * `needs_kevin` - needs_kevin
+         *     * `testing` - testing
+         *     * `done` - done
+         * @enum {string}
+         */
+        ColEnum: "queued" | "working" | "needs_kevin" | "testing" | "done";
+        /**
          * @description Field-for-field `RemoteCompanionMemory`. See this module's own doc
          *     comment for the embedding columns that exist on neither side.
          */
@@ -7833,6 +8042,18 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
         };
+        DroppedTool: {
+            name: string;
+            reason: components["schemas"]["DroppedToolReasonEnum"];
+        };
+        /**
+         * @description * `engine_tool` - engine_tool
+         *     * `mail_like` - mail_like
+         *     * `unknown_class` - unknown_class
+         *     * `outside_name_plain_class` - outside_name_plain_class
+         * @enum {string}
+         */
+        DroppedToolReasonEnum: "engine_tool" | "mail_like" | "unknown_class" | "outside_name_plain_class";
         Energy: {
             /** @description Always true: every figure is an estimate. */
             estimate: boolean;
@@ -8642,6 +8863,8 @@ export interface components {
             contract_version: number;
             brain: components["schemas"]["AgentBrainEnum"];
             brain_reason: components["schemas"]["AgentBrainReasonEnum"];
+            /** @description Manifest tools the engine will not offer, and why: engine_tool, mail_like, unknown_class, outside_name_plain_class (`server/contracts/limb/v1/tool_classes.json`). */
+            dropped: components["schemas"]["DroppedTool"][];
         };
         LimbManifest: {
             contract_version: number;
@@ -8678,6 +8901,18 @@ export interface components {
             needs?: components["schemas"]["AgentLimbNeedEnum"][];
             /** @default engine */
             confirm: components["schemas"]["AgentLimbConfirmEnum"];
+            read_through_when?: {
+                [key: string]: string[];
+            };
+            /** @default false */
+            mail: boolean;
+            mail_when?: {
+                [key: string]: string[];
+            };
+            /** @default  */
+            tool_class: string;
+            /** @default 20000 */
+            deadline_ms: number;
         };
         LinkToken: {
             /** @description Short-lived; hand it to Plaid Link. */
@@ -10389,6 +10624,18 @@ export interface components {
             /** @description Optional. The live board, 220 characters (see `Player.board`); left as it was when omitted. */
             board?: string;
         };
+        /**
+         * @description * `phone` - phone
+         *     * `headunit` - headunit
+         *     * `engine` - engine
+         *     * `web` - web
+         *     * `jeep` - jeep
+         *     * `infra` - infra
+         *     * `home` - home
+         *     * `other` - other
+         * @enum {string}
+         */
+        ProjectEnum: "phone" | "headunit" | "engine" | "web" | "jeep" | "infra" | "home" | "other";
         Proposal: {
             /** Format: uuid */
             id: string;
@@ -11597,6 +11844,39 @@ export interface components {
             /** @default USER_REPORTED */
             source: string;
         };
+        ToolResult: {
+            call_id: string;
+            /** @description The tool the limb ran; if sent, it must be the call's own. */
+            name?: string;
+            /**
+             * @description `not_run`: the limb never started it (a cancel came first, a locked screen).
+             *
+             *     * `ok` - ok
+             *     * `failed` - failed
+             *     * `refused` - refused
+             *     * `timed_out` - timed_out
+             *     * `not_run` - not_run
+             */
+            outcome: components["schemas"]["ToolResultOutcomeEnum"];
+            /** @description The tool's output, when `ok`. */
+            result?: {
+                [key: string]: unknown;
+            };
+            /** @description What did or did not happen, in words. */
+            words: string;
+            ms?: number;
+            played?: string[];
+            cut_off?: boolean;
+        };
+        /**
+         * @description * `ok` - ok
+         *     * `failed` - failed
+         *     * `refused` - refused
+         *     * `timed_out` - timed_out
+         *     * `not_run` - not_run
+         * @enum {string}
+         */
+        ToolResultOutcomeEnum: "ok" | "failed" | "refused" | "timed_out" | "not_run";
         TopUp: {
             available: boolean;
             reason?: string;
@@ -11746,15 +12026,21 @@ export interface components {
             kind: components["schemas"]["TurnRequestKindEnum"];
             /** @description With `kind=say`: the line to speak. */
             text?: string;
-            /**
-             * @description With `transcript`: answer aloud too (`audio` events).
-             * @default false
-             */
-            speak: boolean;
+            /** @description With `transcript`: answer aloud too (`audio` events). */
+            speak?: boolean | null;
             /** Format: uuid */
             conversation_id?: string | null;
             /** @default phone */
             client: components["schemas"]["ClientEnum"];
+            /** @description False: hold the turn until `POST .../go` (`agents/legion/hold.py`). Absent: go for a `transcript`, hold for an `audio` clip. */
+            go?: boolean | null;
+            /** @description What the limb says about the turn (`client_facts.py`). */
+            client_facts?: unknown;
+            /**
+             * Format: uuid
+             * @description The client's own id for this turn: a re-post of it answers 409 `duplicate`.
+             */
+            turn_id?: string;
             /** @description The voice contract the client speaks (wire v1: 1). Another version is refused with `contract_unsupported`. */
             contract_version?: number;
         };
@@ -12609,6 +12895,34 @@ export interface operations {
             };
         };
     };
+    api_agents_turn_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON {turn_id, seq, status, stream_no, calls: [tool_request data], waiting_for: [call ids], recorded: [call ids]}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_agents_turn_cancel: {
         parameters: {
             query?: never;
@@ -12629,6 +12943,176 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_agents_turn_go: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON {decision, status}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_agents_turn_take: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON {decision, status}. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_agents_turn_tool_result: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToolResult"];
+                "application/x-www-form-urlencoded": components["schemas"]["ToolResult"];
+                "multipart/form-data": components["schemas"]["ToolResult"];
+            };
+        };
+        responses: {
+            /** @description text/event-stream: the rest of the turn (as `POST /api/agents/turn`), or JSON {recorded, status, detail} when nothing more streams. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description JSON {waiting_for: [call ids]}. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description `too_late`: over 24 hours after it was asked. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            411: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13838,6 +14322,169 @@ export interface operations {
             };
             /** @description Rate limited: 5 signup attempts a minute per IP, shared with GET /api/auth/invite/{code} so guessing codes cannot be split across the two. Nothing was created. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Board"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardStored"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_writer_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token, shown this once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardWriterIssued"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_writer_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked: the laptop can no longer send the board. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -62,6 +62,7 @@ FILLERS: dict[str, tuple[bool, tuple[str, ...]]] = {
     "brief_latest": (False, ("Pulling up the brief.", "Checking the brief.")),
     "check_conditions": (True, ("Checking the conditions.", "Looking at the weather feeds.")),
     "github_status": (True, ("Checking GitHub.", "Looking at the builds.")),
+    "board_status": (False, ("Checking the board.", "Looking at what's in flight.")),
     # LEGION itself and the demo
     "legion_docs": (False, ("Looking through the design docs.", "Checking the docs.")),
     "show_diagram": (False, ("Bringing up the diagram.", "Pulling up the diagram.")),

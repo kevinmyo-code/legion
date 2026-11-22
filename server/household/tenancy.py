@@ -23,7 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# A hundred and ten names (count it with len(); this line was stale five times before).
+# A hundred and fifteen names (count it with len(); this line was stale six times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -243,6 +243,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # T3b: a head unit's own engine sign-in, private to the member who paired it (`OWNER_PATHS`;
     # `headunit_signin/models.py`). Only a hash of each token is stored.
     "headunit_credentials",
+    # The factory board's latest snapshot and its laptop writer's hash, private to the member
+    # (`OWNER_PATHS`; `board/models.py`).
+    "board_snapshots",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -345,6 +348,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "user_field_defs",
         "user_records",
         "headunit_credentials",
+        "board_snapshots",
     }
 )
 
@@ -556,6 +560,8 @@ OWNER_PATHS: dict[str, str] = {
     "proactive_raises": "owner_user",
     # T3b: never null, so a member lists and revokes only the head units they paired.
     "headunit_credentials": "owner_user",
+    # One row per member, never null: a member reads only their own board.
+    "board_snapshots": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

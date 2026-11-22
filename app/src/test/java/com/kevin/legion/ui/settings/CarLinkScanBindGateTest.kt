@@ -69,4 +69,26 @@ class CarLinkScanBindGateTest {
     private fun mlKitPinned(catalog: String): Boolean =
         Regex("""(?m)^mlkitBarcode = "17\.3\.0"$""").containsMatchIn(catalog) &&
             Regex("""(?m)^mlkit-barcode-scanning = \{.*version\.ref = "mlkitBarcode" \}$""").containsMatchIn(catalog)
+
+    @Test fun `a camera that cannot be bound is reported by class name`() {
+        var why: String? = null
+        val bound = startOrReport<String>(
+            step = { throw IllegalArgumentException("no such camera") },
+            failed = { why = it },
+        )
+        assertTrue(bound == null && why == "IllegalArgumentException")
+    }
+
+    @Test fun `the back camera is used when there is one, otherwise any camera, otherwise none`() {
+        assertTrue(pickCamera("back", hasBack = true, others = listOf("front")) == "back")
+        assertTrue(pickCamera("back", hasBack = false, others = listOf("front", "usb")) == "front")
+        assertTrue(pickCamera("back", hasBack = false, others = emptyList()) == null)
+    }
+
+    @Test fun `leaving the pane releases exactly the use cases it bound, once`() {
+        val uses = PaneCameraUses<String>()
+        uses.record(listOf("preview", "analysis"))
+        assertTrue(uses.release() == listOf("preview", "analysis"))
+        assertTrue(uses.release().isEmpty())
+    }
 }

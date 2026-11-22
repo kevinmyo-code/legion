@@ -93,6 +93,9 @@ def engine(monkeypatch):
 def _post(client, **fields):
     if "audio" in fields:
         fields["audio"] = SimpleUploadedFile("u.wav", fields["audio"], "audio/wav")
+        # An absent `go` holds an engine-heard turn (E2b): these tests are the answer path's own,
+        # so they say go up front; the hold has its own tests (`test_agents_voice_e2b.py`).
+        fields.setdefault("go", "true")
     return client.post("/api/agents/turn", fields, format="multipart")
 
 

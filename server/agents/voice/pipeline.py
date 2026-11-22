@@ -170,8 +170,9 @@ class Lines:
         self.stream = request_ms
         self.n = 0
 
-    def turn(self, seq: int) -> None:
-        self.seq, self.stream = seq, 1
+    def turn(self, seq: int, stream_no: int = 1) -> None:
+        # A relay's continuation is the turn's next stream (`turn.stream_no`), counted afresh.
+        self.seq, self.stream, self.n = seq, stream_no, 0
 
     def next(self) -> str:
         self.n += 1
@@ -239,13 +240,24 @@ class Utterance:
     # `say`: the line to speak.
     text: str | None = None
     # A `transcript` turn answered aloud too (an `audio` or `say` turn always is).
-    speak: bool = False
+    # True/False: answered aloud or not, whatever the kind (`agents/turn_options.py`); None:
+    # the door's default (audio and `say` are spoken, a transcript is not).
+    speak: bool | None = None
+    # The hold (`agents/legion/hold.py`) and the limb's facts (`client_facts.py`).
+    go: bool = True
+    client_facts: dict | None = None
+    # The client's own turn id (`agents/turn_options.py`): the turn row is made with it.
+    turn_id: object | None = None
     # The streamed door's result (`streaming.Streamed`): its transcript, usage and marks.
     streamed: object | None = None
 
     @property
     def spoken(self) -> bool:
-        return self.audio is not None or self.kind == "say" or self.speak
+        if self.kind == "say":
+            return True
+        if self.speak is not None:
+            return self.speak
+        return self.audio is not None
 
 
 def voice_turn(
@@ -268,14 +280,9 @@ def voice_turn(
     origin = t0 if arrived_at is None else arrived_at
     timings: dict = {}
     filler_audio = filler_audio or FILLER_AUDIO
-    speaker = AgentSpeaker(speech, voice, enabled=utterance.spoken, clock=clock)
+    speaker, cancel = _speaker(speech, voice, utterance.spoken, clock)
     lines = Lines(int(time.time() * 1000) * 1000 + next(_REQUESTS) % 1000)
     marks: dict = {}
-    # Bounded per turn: never more requests than reserved at the start (review C3).
-    speaker.more = lambda n: False
-    cancel = TurnCancel(clock)
-    speaker.cancelled = cancel
-    speaker.cancelled_often = cancel.often
     status = "failed"
     try:
         if utterance.kind == "say":
@@ -348,12 +355,21 @@ def voice_turn(
         # He asked for exact figures: nothing is rounded when spoken (the web door's rule; its
         # second half, exact after a write, needs the tool event's write flag: slice E3).
         speaker.exact = spoken_figures.wants_exact(words)
-        status = yield from _answer(
+        events = run_turn(
             request,
             words,
-            heard,
             model_for(),
-            conversation_for(),
+            conversation=conversation_for(),
+            voice={"spoken": speaker.enabled, "exact": speaker.exact},
+            go=utterance.go,
+            client_facts=utterance.client_facts,
+            turn_id=utterance.turn_id,
+        )
+        status = yield from _answer(
+            request,
+            events,
+            heard,
+            words,
             speaker,
             filler_audio,
             timings,
@@ -364,27 +380,97 @@ def voice_turn(
             origin,
         )
     finally:
-        speaker.close()
-        stage.record_speech(timings, speaker)
-        # Speech cut short by a cancel or a hang-up was still paid for as far as it went.
-        cut_prompt, cut_output = speaker.cut_short_tokens()
-        timings["tts_prompt_tokens"] += cut_prompt
-        timings["tts_output_tokens"] += cut_output
-        timings["turn_ms"] = int((clock() - t0) * 1000)
-        timings["tts_requests"] = speaker.requests
-        stage.meter_speech(request, timings, FEATURE)
         streamed = utterance.streamed
-        log.warning(
-            "agents_voice_turn status=%s spoken=%s %s%s",
+        _close_speech(
+            request,
+            speaker,
+            timings,
+            t0,
+            clock,
             status,
-            str(utterance.spoken).lower(),
-            stage.timing_values(timings),
             (
                 f" stream=1 stt_fallback={streamed.fallback} stt_failure={streamed.failure or '-'}"
                 if streamed is not None
                 else ""
             ),
         )
+
+
+def voice_resume(
+    request,
+    events: Iterator[ev.Event],
+    speech,
+    *,
+    voice: str,
+    spoken: bool,
+    exact: bool,
+    filler_audio: FillerAudio | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    arrived_at: float | None = None,
+) -> Iterator[ev.Event]:
+    """The rest of a turn that paused on a limb (`relay_turn.resume`'s `events`), answered the
+    way its first stream was: spoken when that one was, with the same exact-figures choice. Its
+    lines are the turn's next stream (`line_id` `"<seq>.<stream_no>.<n>"`)."""
+    t0 = clock()
+    origin = t0 if arrived_at is None else arrived_at
+    timings: dict = {}
+    speaker, cancel = _speaker(speech, voice, spoken, clock)
+    speaker.exact = exact
+    lines = Lines(int(time.time() * 1000) * 1000 + next(_REQUESTS) % 1000)
+    status = "failed"
+    try:
+        status = yield from _answer(
+            request,
+            events,
+            None,
+            "",
+            speaker,
+            filler_audio or FILLER_AUDIO,
+            timings,
+            clock,
+            cancel,
+            lines,
+            {},
+            origin,
+        )
+    finally:
+        # A hang-up closes this stream; the turn's own events are closed with it, now, so the
+        # relayed turn is finished at once (`relay_resume`), not whenever it is collected.
+        close = getattr(events, "close", None)
+        if close is not None:
+            close()
+        _close_speech(request, speaker, timings, t0, clock, status, " relay=1")
+
+
+def _speaker(speech, voice: str, enabled: bool, clock) -> tuple[AgentSpeaker, TurnCancel]:
+    speaker = AgentSpeaker(speech, voice, enabled=enabled, clock=clock)
+    # Bounded per stream: never more requests than reserved at the start (review C3).
+    speaker.more = lambda n: False
+    cancel = TurnCancel(clock)
+    speaker.cancelled = cancel
+    speaker.cancelled_often = cancel.often
+    return speaker, cancel
+
+
+def _close_speech(request, speaker, timings, t0, clock, status, tail: str) -> None:
+    """A stream's end: speech stopped, metered (cut-short requests too) and logged, numbers
+    and names only."""
+    speaker.close()
+    stage.record_speech(timings, speaker)
+    # Speech cut short by a cancel or a hang-up was still paid for as far as it went.
+    cut_prompt, cut_output = speaker.cut_short_tokens()
+    timings["tts_prompt_tokens"] += cut_prompt
+    timings["tts_output_tokens"] += cut_output
+    timings["turn_ms"] = int((clock() - t0) * 1000)
+    timings["tts_requests"] = speaker.requests
+    stage.meter_speech(request, timings, FEATURE)
+    log.warning(
+        "agents_voice_turn status=%s spoken=%s %s%s",
+        status,
+        str(speaker.enabled).lower(),
+        stage.timing_values(timings),
+        tail,
+    )
 
 
 def filler_meter(request) -> Callable[[object, bool], None]:
@@ -455,10 +541,9 @@ def _say(speaker, text, lines, marks, t0, clock, timings) -> Iterator[ev.Event]:
 
 def _answer(
     request,
-    words,
+    events,
     heard,
-    model,
-    conversation,
+    words,
     speaker,
     filler_audio,
     timings,
@@ -468,14 +553,15 @@ def _answer(
     marks,
     t_turn,
 ):
-    """The agent turn's events, with its sentences spoken as they come (up to the turn's bound)
-    and a slow tool's filler line said from memory. Returns the turn's status."""
+    """The agent turn's `events` (a first stream or a relay's continuation), with its sentences
+    spoken as they come (up to the stream's bound) and a slow tool's filler line said from
+    memory. Returns the turn's status."""
     t0 = clock()
     status = "failed"
     sentences = 0
     spoken_chars = 0
     filler_said = False
-    for event in run_turn(request, words, model, conversation=conversation):
+    for event in events:
         yield from speaker.ready()
         if event.type == "sentence":
             tagged = event.data.get("text", "")
@@ -529,7 +615,7 @@ def _answer(
             continue
         if event.type == "turn":
             cancel.turn_id = event.data.get("turn_id")
-            lines.turn(event.data.get("seq") or 0)
+            lines.turn(event.data.get("seq") or 0, event.data.get("stream_no") or 1)
         yield event
         if event.type == "turn" and heard is not None:
             marks["heard_ms"] = _ms(clock, t_turn)

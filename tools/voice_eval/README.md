@@ -98,7 +98,10 @@ sent typed and the scorecard says why.
 - `calls`: each entry must be called; `a|b` is either; `tool/action` matches the action (or router
   `domain`) the model sent, a bare name matches a tool or an action. `not_calls`: must not be.
 - `args`: on a matching call, each argument equals the value, or `{"lte"|"gte": ...}`, or
-  `{"re": ...}`. `{today}`, `{today+1}`, `{today-1}` are the run's date.
+  `{"re": ...}`. `{today}`, `{today+1}`, `{today-1}` are the run's date. A calendar read
+  (`read_calendar`) is judged on the window the phone resolves, not on the keys sent: no `from` is
+  today and no `to` is `from` (`window_args`); today / tonight / tomorrow / yesterday count as
+  their dates. `args_all` and `read_day` use the same window.
 - `args_all`: like `args`, but EVERY matching call must fit (a wrong first call the model later
   corrects still fails).
 - `answer_has` / `answer_not`: regexes on the reply (case-insensitive).

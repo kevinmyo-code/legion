@@ -31,6 +31,7 @@ import json
 import re
 from dataclasses import dataclass
 
+from agents.legion import carry
 from assistant import read_through
 from assistant.surface import refusal_for
 from engine_mcp.tools import TOOLS_BY_NAME
@@ -81,27 +82,42 @@ def check_call(state, spec, name: str, args: dict, tool, user) -> Verdict:
     if tool.writes and not spec.writes_allowed:
         return Verdict(False, READ_ONLY.format(name=name), "not_allowed")
     if tool.writes and state.tainted:
-        words = (
-            read_through.REFUSAL
-            if name == "remember"
-            else read_through.WRITE_REFUSAL.format(
-                verb="deleted" if tool.destructive else "changed", name=name
-            )
-        )
-        return Verdict(False, words, "tainted")
+        return Verdict(False, tainted_refusal(state, name, tool.destructive), "tainted")
     flagged = name in CONFIRM_FLAG_TOOLS and (args or {}).get("confirm") is True
     if tool.writes and (tool.destructive or name in spec.confirm or flagged):
-        digest = args_sha256(name, args)
-        if state.confirmed and state.confirmed == digest:
-            state.confirmed = None
-            return ALLOW
-        state.pending_confirm = {
-            "tool": name,
-            "args_sha256": digest,
-            "until_seq": state.seq + CONFIRM_TURNS,
-        }
-        return Verdict(False, NEEDS_CONFIRM.format(name=name), "needs_confirm")
+        return hold_for_yes(state, name, args)
     return ALLOW
+
+
+def tainted_refusal(state, name: str, destructive: bool = False) -> str:
+    """The words a write refuses with in a tainted turn: the carried ones when the only reason is
+    the turn before (`carry.only_carried`), else this turn's (`assistant.read_through`)."""
+    carried = carry.only_carried(state.taint)
+    asked = carried or carry.note_refused(state)
+    if name == "remember":
+        if carried:
+            return read_through.CARRY_REFUSAL
+        return read_through.REFUSAL if asked else read_through.REFUSAL_UNASKED
+    if carried:
+        template = read_through.CARRY_WRITE_REFUSAL
+    else:
+        template = read_through.WRITE_REFUSAL if asked else read_through.WRITE_REFUSAL_UNASKED
+    return template.format(verb="deleted" if destructive else "changed", name=name)
+
+
+def hold_for_yes(state, name: str, args: dict) -> Verdict:
+    """Confirm before write: the call runs only when a yes in this turn released exactly these
+    arguments; otherwise it is held (`pending_confirm`) and refused in words for now."""
+    digest = args_sha256(name, args)
+    if state.confirmed and state.confirmed == digest:
+        state.confirmed = None
+        return ALLOW
+    state.pending_confirm = {
+        "tool": name,
+        "args_sha256": digest,
+        "until_seq": state.seq + CONFIRM_TURNS,
+    }
+    return Verdict(False, NEEDS_CONFIRM.format(name=name), "needs_confirm")
 
 
 def needs_taint(name: str) -> bool:

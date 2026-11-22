@@ -19,6 +19,36 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class ListenCueTest {
 
+    // Kevin, 2026-11-20: an original chime when a conversation closes, the opening earcon's counterpart.
+    private fun samples(pcm: ByteArray): ShortArray {
+        val b = ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        return ShortArray(b.remaining()) { b.get(it) }
+    }
+
+    /** Sign changes per second over [s]: twice the tone's frequency. */
+    private fun crossingsPerSecond(s: ShortArray): Double {
+        var n = 0
+        for (i in 1 until s.size) if ((s[i - 1] < 0) != (s[i] < 0) && s[i] != 0.toShort()) n++
+        return n * ListenCue.SAMPLE_RATE.toDouble() / s.size
+    }
+
+    @Test
+    fun `the closing chime is short, soft and two descending notes, never the opening earcon`() {
+        val chime = ListenCue.closeChimePcm()
+        assertTrue(ListenCue.durationMs(chime) in 250L..320L)
+        val s = samples(chime)
+        val peak = s.maxOf { kotlin.math.abs(it.toInt()) }
+        assertTrue("soft: $peak", peak <= (0.25 * Short.MAX_VALUE).toInt() + 1)
+        assertTrue("audible: $peak", peak >= (0.2 * Short.MAX_VALUE).toInt())
+        // Fades in and out: no step at either end.
+        assertTrue(kotlin.math.abs(s.first().toInt()) < 200 && kotlin.math.abs(s.last().toInt()) < 200)
+        // Descending: the first note is higher than the last.
+        val high = s.copyOfRange(0, (ListenCue.CLOSE_HIGH_SEC * ListenCue.SAMPLE_RATE).toInt())
+        val low = s.copyOfRange(s.size - (ListenCue.CLOSE_LOW_SEC * ListenCue.SAMPLE_RATE).toInt(), s.size)
+        assertTrue(crossingsPerSecond(high) > crossingsPerSecond(low) * 1.3)
+        assertTrue("never the opening earcon", !chime.contentEquals(ListenCue.earconPcm()))
+    }
+
     private fun linesJson(): String {
         val f = listOf("src/main/assets/listen_cues/lines.json", "app/src/main/assets/listen_cues/lines.json")
             .map(::File).first { it.isFile }

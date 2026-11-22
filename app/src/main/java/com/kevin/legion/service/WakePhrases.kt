@@ -94,8 +94,12 @@ object WakePhrases {
         val name = normalise(companionName)
         return when {
             t.isEmpty() -> false
-            afterQuestion -> isStopPhrase(t, name, HARD_STOPS)
-            else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || isStopPhrase(t, name, STOP_PHRASES)
+            // A farewell said as the whole turn ([Farewells], 2026-11-20: "bye bye" got "night" back).
+            // While an answer is awaited, a turn with an answer word in it is his answer (F1).
+            afterQuestion -> !Farewells.answersQuestion(transcript) &&
+                (isStopPhrase(t, name, HARD_STOPS) || Farewells.isFarewell(transcript, companionName, true))
+            else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || isStopPhrase(t, name, STOP_PHRASES) ||
+                Farewells.isFarewell(transcript, companionName)
         }
     }
 

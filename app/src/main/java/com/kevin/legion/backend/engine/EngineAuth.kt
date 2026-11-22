@@ -45,7 +45,8 @@ sealed interface LoginResult {
  * its user is a household member; if it 401s or 403s, the phone knows to ask for a new token.
  */
 sealed interface MeResult {
-    data class Ok(val userId: String, val email: String, val deviceName: String) : MeResult
+    /** [name] is the member's own name on the engine (`User.first_name`); blank when none is set. */
+    data class Ok(val userId: String, val email: String, val deviceName: String, val name: String = "") : MeResult
 
     /** No token on this device, or the engine rejected the one stored (revoked, expired, wrong
      * key) - household/authentication.py's DeviceTokenAuthentication returns 401 for all three,
@@ -80,6 +81,8 @@ private data class MeResponseBody(
     @SerialName("user_id") val userId: String,
     val email: String,
     @SerialName("device_name") val deviceName: String,
+    // `User.first_name` (server/household/serializers.py MeResponseSerializer); an older engine sends none.
+    val name: String = "",
 )
 
 /**
@@ -239,7 +242,7 @@ class EngineAuth(
         }
         val body = decodeOrNull(response, MeResponseBody.serializer())
         return if (body != null) {
-            MeResult.Ok(body.userId, body.email, body.deviceName)
+            MeResult.Ok(body.userId, body.email, body.deviceName, body.name)
         } else {
             MeResult.Unreachable("The engine's reply from $baseUrl didn't look like a membership response.")
         }

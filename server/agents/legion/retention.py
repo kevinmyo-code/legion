@@ -44,8 +44,9 @@ def prune(now: datetime.datetime | None = None) -> dict[str, int]:
     out["tool_calls"] = AgentToolCall.objects.filter(created_at__lt=content_cutoff).delete()[0]
     out["blanked"] = (
         AgentTurn.objects.filter(created_at__lt=content_cutoff)
-        .exclude(transcript="", final_text="", history=[])
-        .update(transcript="", final_text="", history=[])
+        .exclude(transcript="", final_text="", history=[], pending_relay__isnull=True)
+        # A turn still paused on a limb holds its state (its words) in `pending_relay`.
+        .update(transcript="", final_text="", history=[], pending_relay=None)
     )
     # Everything else of a turn past 90 days (its model calls go with it, CASCADE).
     out["turns"] = (

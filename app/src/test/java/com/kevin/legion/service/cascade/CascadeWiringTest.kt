@@ -150,7 +150,14 @@ class CascadeWiringTest {
         val s = session()
         val close = bodyOf(s, "closedOnNoise")
         assertTrue(close.contains("MAX_NOISE_IN_A_ROW"))
-        assertTrue(close.contains("host.closingTone()"))
+        // 2026-11-20: the close's chime is played by the release (playCloseCue), not a stock tone here.
+        assertTrue(bodyOf(s, "releaseNow").contains("playCloseCue(reason)"))
+        // F4, 2026-11-21: a farewell ends the acknowledgement, and cuts it if it is playing ([playAckClip]).
+        val stop = bodyOf(s, "endByStop")
+        assertTrue(stop.indexOf("fillerJobs.endTurn()") in 0 until stop.indexOf("endByVoice()"))
+        assertFalse(stop.contains("if (!playbackActive) fillerJobs.endTurn()"))
+        // F2: the hand-over's release carries the reason the chime rule knows.
+        assertTrue(bodyOf(s, "handOver").contains("release(CloseCue.voiceFailedReason(reason, VoiceEngineSettings.LIVE_RETIRED, quiet))"))
         assertTrue("a noise drop counts", bodyOf(s, "droppedWords").contains("closedOnNoise()"))
         assertTrue("no voice at all counts", bodyOf(s, "runTurn").contains("closedOnNoise()"))
         assertTrue("heard words reset it", bodyOf(s, "runTurn").contains("noiseInARow = 0"))
@@ -350,10 +357,10 @@ class CascadeWiringTest {
         val s = session()
         // One source of truth (2026-11-16): the block reads what day read_calendar reads, no pack.
         val load = bodyOf(s, "loadAgenda")
-        assertTrue(load.contains("withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone) }"))
+        assertTrue(load.contains("withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone, nowMs) }"))
         assertFalse(load.contains("GreetingFactory"))
         val toolbox = File(sourceRoot(), "service/LiveToolbox.kt").readText()
-        assertTrue(toolbox.contains("com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone)"))
+        assertTrue(toolbox.contains("com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone, nowMs)"))
         // The 30-minute and other-day rule is checked for every turn, not only at open.
         assertTrue(bodyOf(s, "agendaNow").contains("AgendaBlock.current("))
         // The greeting never waits for the agenda: it does not wait for the preamble at all.
@@ -430,7 +437,6 @@ class CascadeWiringTest {
             tool = { _, _, _, _, _ -> JSONObject() },
             transcript = { _, _ -> },
             onCrisis = {},
-            tone = {},
             toLive = { _, _ -> toLive++ },
             onClosed = {},
         )
@@ -502,6 +508,143 @@ class CascadeWiringTest {
     }
 
     private fun controller() = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
+
+    @Test
+    fun `the greeting is held whole and gated before any of it is spoken`() {
+        val g = bodyOf(session(), "speakGreeting")
+        // Nothing streams to the speaker as it arrives.
+        assertFalse(g.contains("reply.text(delta)"))
+        val join = g.indexOf("GreetingBudget.WHOLE_LINE_MS")
+        val gate = g.indexOf("greetingGate(whole, written.toString(), plan.name)")
+        val speak = g.indexOf("reply.text(written.toString())")
+        val kept = g.indexOf("noteOpened(plan, GreetingWords.of(written.toString(), plan.name))")
+        assertTrue("$join $gate $speak $kept", join in 0 until gate && gate < speak && speak < kept)
+        // Any gate but SPEAK says nothing of the model's line and keeps nothing; only some play the scripted hello.
+        val blocked = g.substring(gate, speak)
+        assertTrue(blocked.contains("greetingNotSpoken(gate)"))
+        assertTrue(blocked.contains("return@launch"))
+        val notSpoken = bodyOf(session(), "greetingNotSpoken")
+        assertTrue(notSpoken.contains("if (gate.scripted) speakScripted(ackLines.next())"))
+        assertTrue(notSpoken.contains("gate.logLine(earcon)?.let"))
+        assertFalse(blocked.contains("noteOpened("))
+        // The gate reads his speech the moment it decides, and the name check gets his name.
+        val decide = bodyOf(session(), "greetingGate")
+        assertTrue(decide.contains("GreetingGate.decide(heardSinceOpen, whole, whole && GreetingWords.namesHim(written, name))"))
+    }
+
+    @Test
+    fun `one closing sound, the chime, and the old ACK tone is gone from every path`() {
+        val root = sourceRoot()
+        // The cascade never reaches the old tone: no host hook, no bridge parameter.
+        listOf("service/cascade/CascadeSession.kt", "service/cascade/CascadeBridge.kt", "service/cascade/CascadeHost.kt")
+            .map { File(root, it) }.filter { it.isFile }
+            .forEach { f -> assertFalse(f.name, stripComments(f.readText()).contains("closingTone")) }
+        val live = stripComments(File(root, "service/LiveSessionController.kt").readText())
+        assertFalse(live.contains("ToneGenerator"))
+        assertFalse(live.contains("TONE_PROP_ACK"))
+        assertFalse(live.contains("playClosingTone"))
+        assertFalse(live.contains("tone = ::"))
+        // The Live path (retired, a rollback only) plays the same chime, once, on its window's lapse.
+        assertTrue(bodyOf(live, "playCloseChime").contains("ListenCue.closeChimePcm()"))
+        assertEquals(1, Regex("playCloseChime\\(\\)").findAll(live).count() - 1)
+        // The cascade's chime plays from the one release every close goes through, guarded to once.
+        val release = bodyOf(session(), "releaseNow")
+        assertEquals(1, Regex("playCloseCue\\(").findAll(release).count())
+    }
+
+    @Test
+    fun `a dropped greeting acknowledges the wake with the earcon unless he is talking now`() {
+        val g = bodyOf(session(), "speakGreeting")
+        val blocked = g.substring(g.indexOf("if (gate != GreetingGate.SPEAK)"), g.indexOf("reply.text(written.toString())"))
+        assertTrue(blocked.indexOf("greetingNotSpoken(gate)") in 0 until blocked.indexOf("return@launch"))
+        val gate = bodyOf(session(), "greetingNotSpoken")
+        assertTrue(gate.contains("GreetingGate.earconAfterDrop(System.currentTimeMillis(), lastLocalSpeechAtMs)"))
+        assertTrue(gate.contains("gate.logLine(earcon)"))
+        assertTrue(gate.contains("if (earcon) playDropEarcon()"))
+        assertTrue(bodyOf(session(), "playDropEarcon").contains("ListenCue.earconPcm()"))
+    }
+
+    @Test
+    fun `a stop mid-reply flushes the buffered speech before the chime, and the chime itself is not flushed`() {
+        val release = bodyOf(session(), "releaseNow")
+        val interrupt = release.indexOf("speaker?.interrupt()")
+        val flush = release.indexOf("player?.flush()")
+        val chime = release.indexOf("playCloseCue(reason)")
+        assertTrue("$interrupt $flush $chime", interrupt in 0 until flush && flush < chime)
+        assertEquals(1, release.split("player?.flush()").size - 1)
+        // The chime is written under the generation read after that flush, and nothing flushes it.
+        val cue = bodyOf(session(), "playCloseCue")
+        assertFalse(cue.contains("flush("))
+        assertTrue(cue.contains("p.write(pcm, p.generation())"))
+        assertTrue(release.indexOf("player?.release()") > chime)
+    }
+
+    @Test
+    fun `the acknowledgement plays at end of turn from memory, gated by the words heard so far, and is cut when he speaks`() {
+        val s = session()
+        val schedule = bodyOf(s, "scheduleBackchannel")
+        assertTrue(schedule.contains("?: ackWordsSkip(u)"))
+        assertTrue(schedule.contains("fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }"))
+        val words = bodyOf(s, "ackWordsSkip")
+        assertTrue(words.contains("heardSoFar?.takeIf { it.first == u.id }?.second"))
+        assertTrue(words.contains("WakePhrases.isSleepPhrase(it, CompanionProfile.name(ctx))"))
+        assertTrue(words.contains("CrisisDetector::detect"))
+        // The running transcript is kept with the speculation setting off too.
+        val wire = bodyOf(s, "wireEarlySignals")
+        assertTrue(wire.indexOf("heardSoFar = id to text") in 0 until wire.indexOf("if (!speculate) return"))
+        // A cancelled acknowledgement is flushed at once: his speech (onUserTurnStart) and a stop end its job.
+        val clip = bodyOf(s, "playAckClip")
+        assertTrue(clip.contains("catch (e: CancellationException)"))
+        assertTrue(clip.contains("if (p.generation() == gen) p.flush()"))
+        assertTrue(s.substring(s.indexOf("private fun ackSteps(")).take(1_500).contains("clipPlayback.during { playAckClip(p, pcm) }"))
+        val turnStart = s.substring(s.indexOf("private fun onUserTurnStart()")).take(800)
+        assertTrue(turnStart.contains("fillerJobs.endTurn()"))
+    }
+
+    @Test
+    fun `the chime is logged either way and the route stays up until it has played`() {
+        val s = session()
+        val cue = bodyOf(s, "playCloseCue")
+        assertTrue(cue.contains("CloseCue.skippedLine(reason"))
+        assertTrue(cue.contains("CloseCue.playedLine(reason"))
+        assertTrue(cue.contains("CloseCue.minPlayMs(chimeMs)"))
+        val release = bodyOf(s, "releaseNow")
+        val chime = release.indexOf("playCloseCue(reason)")
+        listOf("player?.release()", "earpiece.stop()", "it.exit(\"cascade \$reason\")", "abandonFocus()").forEach {
+            assertTrue(it, release.indexOf(it) > chime)
+        }
+    }
+
+    @Test
+    fun `every turn logs its first-sound line, also when the acknowledgement was skipped`() {
+        val s = session()
+        // Each sound marks the turn and logs the line at once.
+        var at = s.indexOf("turnGap?.started(")
+        var n = 0
+        while (at >= 0) {
+            val next = s.substring(at, minOf(s.length, at + 200))
+            assertTrue("a sound without its line: ${next.take(60)}", next.contains("logFirstSound()"))
+            n++
+            at = s.indexOf("turnGap?.started(", at + 1)
+        }
+        assertEquals("ack, task line and wait line", 3, n)
+        val audio = bodyOf(s, "answerAudioIn")
+        assertTrue(audio.indexOf("turnGap?.answerHeard(now)") in 0 until audio.indexOf("logFirstSound()"))
+        // A turn with no sound still gets one (kind=none): at the next turn, back to listening, and the close.
+        val silent = "turnGap?.silentLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }"
+        val schedule = bodyOf(s, "scheduleBackchannel")
+        assertTrue(schedule.indexOf(silent) in 0 until schedule.indexOf("turnGap = TurnGap(eotAtMs, lastLocalSpeechAtMs)"))
+        assertTrue(bodyOf(s, "backToListening").contains(silent))
+        assertTrue(bodyOf(s, "releaseNow").contains(silent))
+        // Every skip names itself in that line.
+        assertTrue(schedule.contains("turnGap?.noteSkip(skip.token)"))
+        assertTrue(bodyOf(s, "backchannelStillDue").contains("turnGap?.noteSkip(reason)"))
+        assertTrue(s.contains("turnGap?.noteSkip(\"no_clip_fits\")"))
+        // The session's own skips are these, named: a new one fails here until it is listed.
+        val due = bodyOf(s, "backchannelStillDue")
+        val reasons = due.split("skip(\"").drop(1).map { it.substringBefore("\"") }.toSet()
+        assertEquals(setOf("over_cue", "answer_first", "noise"), reasons)
+    }
 
     private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
 

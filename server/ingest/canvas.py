@@ -68,6 +68,7 @@ from django.db import connection, transaction
 from django.db.models.functions import Now
 
 from ingest import vault
+from ingest.canvas_meta import DISCUSSION_TYPE
 from ingest.drive import Response
 from ingest.models import IngestRun, SessionSource
 
@@ -580,7 +581,7 @@ def assignment_tasks(
     }
     tasks = [parent]
     skipped = None
-    if "discussion_topic" in types.split(","):
+    if DISCUSSION_TYPE in types.split(","):
         when, reason = initial_post_deadline(assignment, due, zone)
         if when is None:
             skipped = reason

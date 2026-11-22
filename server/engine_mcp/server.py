@@ -79,6 +79,17 @@ def _as_mcp_tool(tool) -> types.Tool:
 # (CLAUDE.md section 7).
 SCREEN_ONLY_TOOLS: frozenset[str] = frozenset({"show_diagram"})
 
+# Tools whose structured result carries text only code may speak (`board_status`: the factory
+# board's cards). A `/mcp` client's model could read `structuredContent`, so `/mcp` neither lists
+# nor runs them; the phone reads `GET /api/board` instead.
+CODE_SPOKEN_ONLY_TOOLS: frozenset[str] = frozenset({"board_status"})
+NOT_ON_MCP: frozenset[str] = SCREEN_ONLY_TOOLS | CODE_SPOKEN_ONLY_TOOLS
+
+CODE_SPOKEN_REFUSAL = (
+    "Nothing was read. {name} is spoken by LEGION's own voice and is not offered here; the "
+    "phone and the web read it themselves."
+)
+
 SCREEN_ONLY_REFUSAL = (
     "Nothing was read. Nothing was shown either: {name} draws a picture in LEGION's web app, "
     "and this client has no screen that can show it. Say plainly that the diagram can be seen "
@@ -98,7 +109,7 @@ def _tools_for_request(request):
         if tool.name == "run_procedure"
         else tool
         for tool in TOOLS
-        if tool.name not in SCREEN_ONLY_TOOLS
+        if tool.name not in NOT_ON_MCP
     ]
 
 
@@ -112,6 +123,8 @@ async def _call_tool(ctx, params) -> types.CallToolResult:
     request = CURRENT_REQUEST.get()
     if params.name in SCREEN_ONLY_TOOLS:
         result = refused(SCREEN_ONLY_REFUSAL.format(name=params.name))
+    elif params.name in CODE_SPOKEN_ONLY_TOOLS:
+        result = refused(CODE_SPOKEN_REFUSAL.format(name=params.name))
     else:
         result = await sync_to_async(run_tool, thread_sensitive=True)(
             request, params.name, params.arguments or {}

@@ -7,10 +7,11 @@ import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
+import com.kevin.legion.service.cascade.EngineBrainSettings
 
 /**
  * The adb door for test turns. Reached with `adb shell content call --uri
- * content://com.kevin.legion.testturn --method <status|turn|audio|end> [--arg ...] [--extra id:s:..]
+ * content://com.kevin.legion.testturn --method <status|turn|audio|end|engine_brain> [--arg ...] [--extra id:s:..]
  * [--extra writes:b:true]`; `content call` prints the returned Bundle, which is how the CLI reads
  * status on a non-debuggable build.
  *
@@ -34,20 +35,25 @@ class TestTurnProvider : ContentProvider() {
     }
 
     private fun answer(ctx: Context, method: String, arg: String?, extras: Bundle?): Map<String, Any> =
-        TestTurnCommands.handle(
-            method = method,
-            arg = arg,
-            id = extras?.getString("id").orEmpty().ifBlank { "adb" },
-            allowWrites = extras?.getBoolean("writes", false) == true,
-            enabled = TestTurnSettings.allowed(ctx),
-            barge = extras?.getBoolean("barge", false) == true,
-            host = TestTurns.host,
-            readClip = { name ->
-                TestTurns.audioFile(ctx, name)?.takeIf { it.isFile }?.let { f ->
-                    runCatching { TestMic.parseWav(f.readBytes()) }.getOrNull()
-                }
-            },
-        )
+        // The engine brain's developer switch (P1): set over this adb door only, never a Settings row.
+        if (method == EngineBrainSettings.ADB_METHOD) {
+            EngineBrainSettings.fromAdb(ctx, arg)
+        } else {
+            TestTurnCommands.handle(
+                method = method,
+                arg = arg,
+                id = extras?.getString("id").orEmpty().ifBlank { "adb" },
+                allowWrites = extras?.getBoolean("writes", false) == true,
+                enabled = TestTurnSettings.allowed(ctx),
+                barge = extras?.getBoolean("barge", false) == true,
+                host = TestTurns.host,
+                readClip = { name ->
+                    TestTurns.audioFile(ctx, name)?.takeIf { it.isFile }?.let { f ->
+                        runCatching { TestMic.parseWav(f.readBytes()) }.getOrNull()
+                    }
+                },
+            )
+        }
 
     private fun bundle(map: Map<String, Any>): Bundle = Bundle().apply {
         for ((k, v) in map) {

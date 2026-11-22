@@ -97,7 +97,18 @@ def test_a_device_attaches_and_the_default_brain_is_the_phone(
     tools = {t["name"]: t for t in limb.manifest["tools"]}
     assert tools["clear_codes"]["confirm"] == "limb" and tools["set_timer"]["confirm"] == "engine"
     assert tools["set_timer"]["needs"] == [] and limb.manifest["streams"] == ["obd_samples"]
-    assert set(response.data) == {"limb_id", "contract_version", "brain", "brain_reason"}
+    assert set(response.data) == {
+        "limb_id",
+        "contract_version",
+        "brain",
+        "brain_reason",
+        "dropped",
+    }
+    # Neither invented tool declares a `tool_class`: the engine says so at attach (E2b).
+    assert response.data["dropped"] == [
+        {"name": "set_timer", "reason": "unknown_class"},
+        {"name": "clear_codes", "reason": "unknown_class"},
+    ]
 
 
 def test_the_device_comes_from_the_token_never_from_the_body(

@@ -78,6 +78,8 @@ def test_github_then_delete_in_one_turn_is_refused_and_nothing_is_deleted(member
             say("Done."),
         ],
         conversation,
+        # His own words ask for the change (the carry's exception reads them: ADR 0090, R1).
+        words="Check GitHub, then delete that event.",
     )
     refused = _tools(events)["delete_event"]
     assert refused["ok"] is False
@@ -122,6 +124,7 @@ def test_the_next_turn_deletes_when_the_person_asks_again(member, engine):
             say("x"),
         ],
         conversation,
+        words="Check GitHub, then delete that event.",
     )
     assert _live(event_id)
     events, _ = _turn(
@@ -211,13 +214,24 @@ def test_remember_is_refused_in_the_turn_that_searched_the_web(member, engine):
             call("remember", {"text": "The pump is great."}),
             say("Ok."),
         ],
+        words="Look up the pump and remember that it is great.",
     )
     refused = _tools(events)["remember"]
     assert refused["ok"] is False and refused["text"] == read_through.REFUSAL
 
 
-def test_the_next_turn_may_remember(member, engine):
+def test_the_turn_after_next_may_remember(member, engine):
     _, conversation = _turn(member, engine, [call("web_search", {"query": "pump"}), say("Read.")])
+    # The carry (ADR 0090 amended 2026-11-21): a plain read (no write refused) carries, so the
+    # next turn refuses, in the carried words; the one after may.
+    events, _ = _turn(
+        member,
+        engine,
+        [call("remember", {"text": "I like oat milk."}), say("Noted.")],
+        conversation,
+    )
+    assert _tools(events)["remember"]["ok"] is False
+    assert _tools(events)["remember"]["text"] == read_through.CARRY_REFUSAL
     events, _ = _turn(
         member,
         engine,

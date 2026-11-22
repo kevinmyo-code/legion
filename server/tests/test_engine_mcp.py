@@ -17,7 +17,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from engine_mcp.models import McpCall, Outcome
-from engine_mcp.server import SCREEN_ONLY_TOOLS
+from engine_mcp.server import NOT_ON_MCP
 from engine_mcp.tools import (
     DELETABLE,
     EXCLUDED_TABLES,
@@ -152,7 +152,7 @@ def test_a_legacy_client_initializes_and_lists_without_a_session(mcp_write):
     listed = rpc(mcp_write, "tools/list", modern=False)
     assert listed.status_code == 200, listed.content
     names = {tool["name"] for tool in json.loads(listed.content)["result"]["tools"]}
-    assert names == set(TOOLS_BY_NAME) - SCREEN_ONLY_TOOLS
+    assert names == set(TOOLS_BY_NAME) - NOT_ON_MCP
 
 
 def _phone_rpc(client, method: str, meta: dict):
@@ -186,7 +186,7 @@ def test_the_phone_envelope_without_client_capabilities_was_the_400(mcp_read):
 def test_tools_list_is_the_registry_with_its_hints(mcp_read):
     response = rpc(mcp_read, "tools/list")
     tools = {tool["name"]: tool for tool in json.loads(response.content)["result"]["tools"]}
-    assert set(tools) == set(TOOLS_BY_NAME) - SCREEN_ONLY_TOOLS
+    assert set(tools) == set(TOOLS_BY_NAME) - NOT_ON_MCP
     for name, listed in tools.items():
         tool = TOOLS_BY_NAME[name]
         hints = listed["annotations"]

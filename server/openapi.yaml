@@ -303,6 +303,33 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: No Gemini key on this engine.
+  /api/agents/turn/{turn_id}:
+    get:
+      operationId: api_agents_turn_status
+      summary: A relayed turn's status and the calls still waited for, for the device
+        asked
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: 'JSON {turn_id, seq, status, stream_no, calls: [tool_request
+            data], waiting_for: [call ids], recorded: [call ids]}.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/agents/turn/{turn_id}/cancel:
     post:
       operationId: api_agents_turn_cancel
@@ -328,6 +355,152 @@ paths:
                 $ref: '#/components/schemas/Detail'
           description: ''
         '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/agents/turn/{turn_id}/go:
+    post:
+      operationId: api_agents_turn_go
+      summary: 'The phone''s go on a held turn: the engine may act on it'
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: JSON {decision, status}.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/agents/turn/{turn_id}/take:
+    post:
+      operationId: api_agents_turn_take
+      summary: 'The phone keeps a held turn: cancelled, nothing acts, nothing recorded
+        as said'
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: JSON {decision, status}.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/agents/turn/{turn_id}/tool_result:
+    post:
+      operationId: api_agents_turn_tool_result
+      summary: A limb's result for a relayed call; the round's last one streams the
+        rest
+      parameters:
+      - in: path
+        name: turn_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - agents
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolResult'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ToolResult'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ToolResult'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          description: 'text/event-stream: the rest of the turn (as `POST /api/agents/turn`),
+            or JSON {recorded, status, detail} when nothing more streams.'
+        '202':
+          description: 'JSON {waiting_for: [call ids]}.'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: '`too_late`: over 24 hours after it was asked.'
+        '411':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '503':
           content:
             application/json:
               schema:
@@ -1520,6 +1693,127 @@ paths:
           description: 'Rate limited: 5 signup attempts a minute per IP, shared with
             GET /api/auth/invite/{code} so guessing codes cannot be split across the
             two. Nothing was created.'
+  /api/board:
+    get:
+      operationId: api_board_retrieve
+      tags:
+      - board
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+    put:
+      operationId: api_board_update
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardStored'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/board/writer:
+    post:
+      operationId: api_board_writer_create
+      tags:
+      - board
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BoardWriterIssued'
+          description: The token, shown this once.
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+    delete:
+      operationId: api_board_writer_destroy
+      tags:
+      - board
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '204':
+          description: 'Revoked: the laptop can no longer send the board.'
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/body/bodyweight_logs/:
     get:
       operationId: api_body_bodyweight_logs_list
@@ -15097,6 +15391,249 @@ components:
       - amount_cents
       - due_on
       - label
+    Board:
+      type: object
+      properties:
+        snapshot:
+          allOf:
+          - $ref: '#/components/schemas/BoardSnapshot'
+          nullable: true
+        live:
+          type: boolean
+          description: Received within the last 3 minutes.
+        age_s:
+          type: integer
+          nullable: true
+        laptop_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        laptop_on:
+          type: boolean
+        writer:
+          allOf:
+          - $ref: '#/components/schemas/BoardWriterInfo'
+          nullable: true
+        spoken:
+          type: array
+          items:
+            type: string
+          description: Lines a voice says word for word, built by code.
+      required:
+      - age_s
+      - laptop_on
+      - laptop_seen_at
+      - live
+      - snapshot
+      - spoken
+      - writer
+    BoardAnswer:
+      type: object
+      properties:
+        choice:
+          type: string
+        text:
+          type: string
+        at:
+          type: string
+        by:
+          type: string
+      required:
+      - at
+      - by
+      - choice
+      - text
+    BoardCard:
+      type: object
+      properties:
+        id:
+          type: string
+        col:
+          $ref: '#/components/schemas/ColEnum'
+        kind:
+          $ref: '#/components/schemas/BoardCardKindEnum'
+        title:
+          type: string
+        status:
+          type: string
+        waiting:
+          type: string
+        owner:
+          type: string
+        ask:
+          type: string
+        project:
+          $ref: '#/components/schemas/ProjectEnum'
+        options:
+          type: array
+          items:
+            type: string
+          description: An ask's choices.
+        free_text:
+          type: boolean
+          description: A typed answer is allowed.
+        ask_kind:
+          type: string
+          description: '`choice`, `approval` (answered in chat only), or blank.'
+        say:
+          type: string
+        answer:
+          allOf:
+          - $ref: '#/components/schemas/BoardAnswer'
+          nullable: true
+        age_min:
+          type: integer
+          description: Minutes since the card changed, as of now.
+        stale:
+          type: boolean
+      required:
+      - age_min
+      - answer
+      - ask
+      - ask_kind
+      - col
+      - free_text
+      - id
+      - kind
+      - options
+      - owner
+      - project
+      - say
+      - stale
+      - status
+      - title
+      - waiting
+    BoardCardKindEnum:
+      enum:
+      - agent
+      - ship
+      - build
+      - cloud
+      - decision
+      - session
+      type: string
+      description: |-
+        * `agent` - agent
+        * `ship` - ship
+        * `build` - build
+        * `cloud` - cloud
+        * `decision` - decision
+        * `session` - session
+    BoardProject:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        open:
+          type: integer
+        needs:
+          type: integer
+      required:
+      - id
+      - needs
+      - open
+      - title
+    BoardRemoved:
+      type: object
+      properties:
+        card:
+          type: string
+        field:
+          type: string
+      required:
+      - card
+      - field
+    BoardSnapshot:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 'The laptop''s own clock: display only.'
+        received_at:
+          type: string
+          format: date-time
+          description: When the engine received it.
+        build_slot:
+          type: string
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        needs_kevin:
+          type: array
+          items:
+            type: string
+        answered_waiting:
+          type: array
+          items:
+            type: string
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardProject'
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardCard'
+      required:
+      - answered_waiting
+      - build_slot
+      - cards
+      - counts
+      - generated_at
+      - needs_kevin
+      - projects
+      - received_at
+    BoardStored:
+      type: object
+      properties:
+        cards:
+          type: integer
+        bytes:
+          type: integer
+        received_at:
+          type: string
+          format: date-time
+        removed:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardRemoved'
+          description: 'Fields blanked as key, token or email shaped: card and field
+            only.'
+      required:
+      - bytes
+      - cards
+      - received_at
+      - removed
+    BoardWriterInfo:
+      type: object
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - created_at
+      - last_used_at
+    BoardWriterIssued:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Shown once. The engine keeps only its hash.
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - created_at
+      - token
     BodyweightLog:
       type: object
       description: |-
@@ -17580,6 +18117,20 @@ components:
       - sync_id
       - updated_at
       - vehicle_id
+    ColEnum:
+      enum:
+      - queued
+      - working
+      - needs_kevin
+      - testing
+      - done
+      type: string
+      description: |-
+        * `queued` - queued
+        * `working` - working
+        * `needs_kevin` - needs_kevin
+        * `testing` - testing
+        * `done` - done
     CompanionMemory:
       type: object
       description: |-
@@ -18108,6 +18659,28 @@ components:
       - to_at
       - updated_at
       - vehicle_id
+    DroppedTool:
+      type: object
+      properties:
+        name:
+          type: string
+        reason:
+          $ref: '#/components/schemas/DroppedToolReasonEnum'
+      required:
+      - name
+      - reason
+    DroppedToolReasonEnum:
+      enum:
+      - engine_tool
+      - mail_like
+      - unknown_class
+      - outside_name_plain_class
+      type: string
+      description: |-
+        * `engine_tool` - engine_tool
+        * `mail_like` - mail_like
+        * `unknown_class` - unknown_class
+        * `outside_name_plain_class` - outside_name_plain_class
     Energy:
       type: object
       properties:
@@ -19797,10 +20370,17 @@ components:
           $ref: '#/components/schemas/AgentBrainEnum'
         brain_reason:
           $ref: '#/components/schemas/AgentBrainReasonEnum'
+        dropped:
+          type: array
+          items:
+            $ref: '#/components/schemas/DroppedTool'
+          description: 'Manifest tools the engine will not offer, and why: engine_tool,
+            mail_like, unknown_class, outside_name_plain_class (`server/contracts/limb/v1/tool_classes.json`).'
       required:
       - brain
       - brain_reason
       - contract_version
+      - dropped
       - limb_id
     LimbManifest:
       type: object
@@ -19886,6 +20466,34 @@ components:
           allOf:
           - $ref: '#/components/schemas/AgentLimbConfirmEnum'
           default: engine
+        read_through_when:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              maxLength: 64
+            maxItems: 32
+        mail:
+          type: boolean
+          default: false
+        mail_when:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+              maxLength: 64
+            maxItems: 32
+        tool_class:
+          type: string
+          default: ''
+          maxLength: 32
+        deadline_ms:
+          type: integer
+          maximum: 120000
+          minimum: 500
+          default: 20000
       required:
       - actuates
       - name
@@ -23433,6 +24041,26 @@ components:
       - level
       - lines
       - score
+    ProjectEnum:
+      enum:
+      - phone
+      - headunit
+      - engine
+      - web
+      - jeep
+      - infra
+      - home
+      - other
+      type: string
+      description: |-
+        * `phone` - phone
+        * `headunit` - headunit
+        * `engine` - engine
+        * `web` - web
+        * `jeep` - jeep
+        * `infra` - infra
+        * `home` - home
+        * `other` - other
     Proposal:
       type: object
       properties:
@@ -26070,6 +26698,63 @@ components:
           default: USER_REPORTED
       required:
       - day
+    ToolResult:
+      type: object
+      properties:
+        call_id:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          description: The tool the limb ran; if sent, it must be the call's own.
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+        outcome:
+          allOf:
+          - $ref: '#/components/schemas/ToolResultOutcomeEnum'
+          description: |-
+            `not_run`: the limb never started it (a cancel came first, a locked screen).
+
+            * `ok` - ok
+            * `failed` - failed
+            * `refused` - refused
+            * `timed_out` - timed_out
+            * `not_run` - not_run
+        result:
+          type: object
+          additionalProperties: {}
+          description: The tool's output, when `ok`.
+        words:
+          type: string
+          description: What did or did not happen, in words.
+          maxLength: 2000
+        ms:
+          type: integer
+          minimum: 0
+        played:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+        cut_off:
+          type: boolean
+      required:
+      - call_id
+      - outcome
+      - words
+    ToolResultOutcomeEnum:
+      enum:
+      - ok
+      - failed
+      - refused
+      - timed_out
+      - not_run
+      type: string
+      description: |-
+        * `ok` - ok
+        * `failed` - failed
+        * `refused` - refused
+        * `timed_out` - timed_out
+        * `not_run` - not_run
     TopUp:
       type: object
       properties:
@@ -26345,7 +27030,7 @@ components:
           maxLength: 600
         speak:
           type: boolean
-          default: false
+          nullable: true
           description: 'With `transcript`: answer aloud too (`audio` events).'
         conversation_id:
           type: string
@@ -26355,6 +27040,18 @@ components:
           allOf:
           - $ref: '#/components/schemas/ClientEnum'
           default: phone
+        go:
+          type: boolean
+          nullable: true
+          description: 'False: hold the turn until `POST .../go` (`agents/legion/hold.py`).
+            Absent: go for a `transcript`, hold for an `audio` clip.'
+        client_facts:
+          description: What the limb says about the turn (`client_facts.py`).
+        turn_id:
+          type: string
+          format: uuid
+          description: 'The client''s own id for this turn: a re-post of it answers
+            409 `duplicate`.'
         contract_version:
           type: integer
           description: 'The voice contract the client speaks (wire v1: 1). Another
@@ -27479,6 +28176,13 @@ components:
       - trust_tier
       - updated_at
   securitySchemes:
+    boardWriterToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: The laptop's board writer token, sent as `Token bw1_<key>`. It
+        reaches only PUT /api/board; every other route and method refuses it. Minted
+        by POST /api/board/writer from a member's signed-in session.
     cookieAuth:
       type: apiKey
       in: cookie

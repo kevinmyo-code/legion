@@ -37,7 +37,6 @@ import time
 import uuid
 import wave
 
-from django.db import connection
 from django.http import StreamingHttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_field
@@ -48,6 +47,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
+from agents import turn_locks, turn_options
 from agents.legion import flags, limbs
 from agents.legion.turn import cancel, open_conversation
 from agents.runtime import events as ev
@@ -56,7 +56,7 @@ from agents.voice import allowance, pipeline, stage, streaming
 from agents.voice.hedge import HedgedSpeech
 from agents.voice.speech import INPUT_RATE, MAX_AUDIO_BYTES, MAX_UTTERANCE_SECONDS, GeminiSpeech
 from api.schema import DetailSerializer
-from assistant import turn_slots, voice_engine
+from assistant import voice_engine
 from headunit_signin import scope as headunit_scope
 from headunit_signin import spend as unit_spend
 from headunit_signin.authentication import HeadUnitTokenAuthentication
@@ -176,11 +176,28 @@ class TurnRequestSerializer(serializers.Serializer):
     )
     speak = serializers.BooleanField(
         required=False,
-        default=False,
+        allow_null=True,
+        default=None,
         help_text="With `transcript`: answer aloud too (`audio` events).",
     )
     conversation_id = serializers.UUIDField(required=False, allow_null=True)
     client = serializers.ChoiceField(choices=["phone", "web", "headunit"], default="phone")
+    go = serializers.BooleanField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text=(
+            "False: hold the turn until `POST .../go` (`agents/legion/hold.py`). Absent: go "
+            "for a `transcript`, hold for an `audio` clip."
+        ),
+    )
+    client_facts = serializers.JSONField(
+        required=False, help_text="What the limb says about the turn (`client_facts.py`)."
+    )
+    turn_id = serializers.UUIDField(
+        required=False,
+        help_text="The client's own id for this turn: a re-post of it answers 409 `duplicate`.",
+    )
     contract_version = serializers.IntegerField(
         required=False,
         help_text=(
@@ -261,7 +278,8 @@ def _speech_client():
 def _stream(request, data, utterance, arrived_at=None):
     unit = request.auth if headunit_scope.is_headunit(request) else None
     before = unit_spend.member_spent(request.user) if unit is not None else 0
-    speech = _speech_client() if utterance.spoken else None
+    # Speech-to-text needs it for any clip, spoken answer or not (`speak: false`).
+    speech = _speech_client() if utterance.spoken or utterance.audio is not None else None
     turn = pipeline.voice_turn(
         request,
         utterance,
@@ -360,6 +378,23 @@ class AgentTurnView(_SwitchedAgentsView):
         refusal = _shape_refusal(data)
         if refusal is not None:
             return refusal
+        options, refusal = turn_options.read(
+            {
+                "go": data.get("go"),
+                "speak": data.get("speak"),
+                "client_facts": data.get("client_facts"),
+                "turn_id": data.get("turn_id"),
+            },
+            default_go=data.get("audio") is None,
+        )
+        if refusal is None:
+            refusal = turn_options.headunit_refusal(request, options)
+        if refusal is None:
+            refusal = turn_options.brain_refusal(request, options)
+        if refusal is None:
+            refusal = turn_options.duplicate_refusal(request, options)
+        if refusal is not None:
+            return refusal
         if not gemini_key():
             return Response(
                 {"detail": KEY_ABSENT, "code": "no_key"},
@@ -394,9 +429,22 @@ class AgentTurnView(_SwitchedAgentsView):
             audio=pcm,
             transcript=data.get("transcript"),
             text=data.get("text"),
-            speak=bool(data.get("speak")),
+            speak=options["speak"],
+            go=options["go"],
+            client_facts=options["client_facts"],
+            turn_id=options["turn_id"],
         )
-        return _sse(_stream(request, data, utterance, arrived))
+        # One turn at a time in a conversation (`agents/turn_locks.py`), held while it streams.
+        held = turn_locks.hold_conversation(data.get("conversation_id"))
+        if held is None:
+            return _refuse(
+                "Another turn of this conversation is still answering.",
+                "conversation_busy",
+                status.HTTP_409_CONFLICT,
+            )
+        response = _sse(_stream(request, data, utterance, arrived))
+        response._resource_closers.append(held.release)
+        return response
 
 
 STREAM_OFF_WORDS = (
@@ -459,7 +507,7 @@ class AgentTurnStreamView(_SwitchedAgentsView):
     def post(self, request):
         arrived = time.monotonic()
         # One open stream per member, taken before a byte is read (review 1120, finding 4).
-        held = _hold_stream(request.user)
+        held = turn_locks.hold_stream(request.user)
         if held is None:
             return _refuse(streaming.STREAM_BUSY, "stream_busy", status.HTTP_409_CONFLICT)
         try:
@@ -469,19 +517,25 @@ class AgentTurnStreamView(_SwitchedAgentsView):
         reader = streaming.FrameReader(
             request.META.get("wsgi.input"), length, sock=request.META.get("gunicorn.socket")
         )
+        self._conversation_held = None
         try:
             response = self._take(request, reader, arrived)
         except BaseException:
             held.release()
+            if self._conversation_held is not None:
+                self._conversation_held.release()
             raise
         finally:
             # The body is read: the socket's own timeout again before anything is written.
             reader.release()
+        locks = [held] + ([self._conversation_held] if self._conversation_held else [])
         if isinstance(response, StreamingHttpResponse):
-            # The answer's stream holds the lock until it closes, however it ends.
-            response._resource_closers.append(held.release)
+            # The answer's stream holds the locks until it closes, however it ends.
+            for lock in locks:
+                response._resource_closers.append(lock.release)
         else:
-            held.release()
+            for lock in locks:
+                lock.release()
         return response
 
     def _take(self, request, reader, arrived):
@@ -513,6 +567,16 @@ class AgentTurnStreamView(_SwitchedAgentsView):
         data, refusal = _stream_meta(meta)
         if refusal is not None:
             return refusal
+        # The engine hears these words itself: an absent `go` holds (review 1121, H3).
+        options, refusal = turn_options.read(meta, default_go=False)
+        if refusal is None:
+            refusal = turn_options.headunit_refusal(request, options)
+        if refusal is None:
+            refusal = turn_options.brain_refusal(request, options)
+        if refusal is None:
+            refusal = turn_options.duplicate_refusal(request, options)
+        if refusal is not None:
+            return refusal
         key = gemini_key()
         if not key:
             return Response(
@@ -532,7 +596,21 @@ class AgentTurnStreamView(_SwitchedAgentsView):
                     pipeline.FEATURE,
                 )
             return _refuse(exc.detail, exc.code, _FRAME_STATUS.get(exc.code, 400))
-        utterance = pipeline.Utterance(kind="user", audio=streamed.pcm, streamed=streamed)
+        # One turn at a time in a conversation, on this route too (review 1121, H6); held, with
+        # the member's stream lock, until the answer's response closes.
+        conversation_held = turn_locks.hold_conversation(data.get("conversation_id"))
+        if conversation_held is None:
+            return _refuse(streaming.STREAM_BUSY, "stream_busy", status.HTTP_409_CONFLICT)
+        self._conversation_held = conversation_held
+        utterance = pipeline.Utterance(
+            kind="user",
+            audio=streamed.pcm,
+            streamed=streamed,
+            speak=options["speak"],
+            go=options["go"],
+            client_facts=options["client_facts"],
+            turn_id=options["turn_id"],
+        )
         return _sse(_stream(request, data, utterance, arrived))
 
 
@@ -540,17 +618,6 @@ _FRAME_STATUS = {
     "too_long": status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
     "stalled": status.HTTP_408_REQUEST_TIMEOUT,
 }
-
-
-def _hold_stream(user) -> turn_slots.Held | None:
-    """The member's one open stream (`streaming.STREAM_LOCK_NS`), or None while another is open.
-    No advisory locks on a local SQLite run: nothing is limited there."""
-    if connection.vendor != "postgresql":
-        return turn_slots.Held()
-    key = turn_slots._key(f"stream:{user.pk}")
-    if not turn_slots._try(streaming.STREAM_LOCK_NS, key):
-        return None
-    return turn_slots.Held(locks=[(streaming.STREAM_LOCK_NS, key)])
 
 
 def _stream_meta(meta: dict) -> tuple[dict, Response | None]:

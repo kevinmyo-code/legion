@@ -1711,6 +1711,11 @@ def test_every_mcp_tool_is_scoped_by_household(
     covered.add("github_status")
     is_error, text, _ = call(mcp_b, "github_status", {"aspect": "builds"})
     assert is_error and text.startswith("Nothing was read."), text
+    # board_status (the factory board) is never run over /mcp: its result carries card text only
+    # LEGION's own voice speaks (test_board.py covers member privacy on the web door).
+    covered.add("board_status")
+    is_error, text, _ = call(mcp_b, "board_status", {})
+    assert is_error and text.startswith("Nothing was read."), text
     # web_search reads no row at all; offline here, it fails in words.
     covered.add("web_search")
     is_error, text, _ = call(mcp_b, "web_search", {"query": "alpha"})

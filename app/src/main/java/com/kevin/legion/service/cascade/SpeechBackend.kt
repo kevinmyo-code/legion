@@ -87,6 +87,12 @@ internal class TurnUtterance(
         }
     }
 
+    /** Why the phone was waiting on his answer when he began ([EngineBrainRules.phoneAwaits]), or null. */
+    @Volatile var awaits: String? = null
+
+    /** The engine hears this utterance ([EngineBrain]), else null (the phone's own transcriber). */
+    val engine: EngineUtterance? get() = inner as? EngineUtterance
+
     /** The audio sent so far, or null when this utterance keeps none. */
     fun keptAudio(): ByteArray? = if (keepAudio) synchronized(kept) { kept.toByteArray() } else null
 

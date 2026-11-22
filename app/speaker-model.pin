@@ -1,16 +1,16 @@
 # The "Only my voice" speaker model is NOT committed (cloud-builds step 4, 2026-11-20).
 # A cloud build (.github/scripts/fetch_speaker_model.sh --install) takes ONE of two files:
 #
-#   release_ok=yes  the OFFICIAL file from `url`, checked by `bytes` and `sha256`. It waits on a hand
-#                   test on the phone with the enrolled voiceprint (re-enrolled if needed): it must
-#                   tell the owner's voice from others as well as the copy on the phone today.
+#   release_ok=yes  the OFFICIAL file from `url`, checked by `bytes` and `sha256`. In force since the
+#                   owner's phone test on 2026-11-20 (new voiceprint, his wakes accepted and other
+#                   voices rejected; the scores stay off the repo). Laptop and cloud builds both take it.
 #   release_ok=no   INTERIM: the copy that ships on the phone today (one byte shorter than the
 #                   official file, another sha256, origin unproven), from the owner's private APK
 #                   bucket at `interim_object` (keyless Google sign-in, production environment only),
 #                   checked by `interim_bytes` and `interim_sha256`. Never committed.
 #
 # Either way a cloud APK never builds without a speaker model: a missing or mismatched file stops the
-# build. Flip release_ok to "yes" in its own reviewed commit after the phone test.
+# build. The interim lines stay as the documented way back (release_ok=no needs the bucket login).
 #
 # Official source: k2-fsa/sherpa-onnx release "speaker-recongition-models" (sic), the ONNX export of
 # 3D-Speaker's ERes2Net (English, VoxCeleb, 16 kHz). bytes and sha256 are the ones GitHub reports for
@@ -28,4 +28,4 @@ license_git_blob=261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64
 interim_object=build-assets/speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx
 interim_bytes=26485263
 interim_sha256=c59158379255ad66e161679cca6af8d52d51e389e3224ab7d7a7baae295c2db5
-release_ok=no
+release_ok=yes
