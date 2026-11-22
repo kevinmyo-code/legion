@@ -105,7 +105,7 @@ class LiveToolboxRouteTableTest {
 
         /**
          * The labels of the `when` whose `{` follows [whenAt]: the quoted names before each `->` at
-         * the `when`'s own depth. Strings and line comments are skipped when counting depth.
+         * the `when`'s own depth. Strings, char literals and comments are skipped when counting depth.
          */
         fun branchLabels(text: String, whenAt: Int): List<String> {
             assertTrue("when (name) not found", whenAt >= 0)
@@ -118,21 +118,25 @@ class LiveToolboxRouteTableTest {
                     LABEL.find(text.substring(i, lineEnd(text, i)))
                         ?.let { m -> labels += NAME.findAll(m.groupValues[1]).map { it.groupValues[1] } }
                 }
-                lineStart = false
-                when (text[i]) {
-                    '"' -> i = skipString(text, i)
-                    '\'' -> i += if (text[i + 1] == '\\') 3 else 2
-                    '/' -> when {
-                        text.startsWith("//", i) -> i = lineEnd(text, i) - 1
-                        text.startsWith("/*", i) -> i = text.indexOf("*/", i) + 1
-                    }
-                    '{', '(' -> depth++
-                    '}', ')' -> if (--depth == 0) return labels
-                    '\n' -> lineStart = true
+                lineStart = text[i] == '\n'
+                depth += when (text[i]) {
+                    '{', '(' -> 1
+                    '}', ')' -> -1
+                    else -> 0
                 }
-                i++
+                if (depth == 0) return labels
+                i = skipLiteral(text, i) + 1
             }
             error("unbalanced when")
+        }
+
+        /** The last index of the string, char literal or comment that starts at [at]; [at] if none does. */
+        fun skipLiteral(text: String, at: Int): Int = when {
+            text[at] == '"' -> skipString(text, at)
+            text[at] == '\'' -> at + if (text[at + 1] == '\\') 3 else 2
+            text.startsWith("//", at) -> lineEnd(text, at) - 1
+            text.startsWith("/*", at) -> text.indexOf("*/", at) + 1
+            else -> at
         }
 
         fun lineEnd(text: String, from: Int): Int = text.indexOf('\n', from).let { if (it < 0) text.length else it }
