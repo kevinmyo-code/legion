@@ -575,7 +575,7 @@ class CascadeWiringTest {
         // The chime is written under the generation read after that flush, and nothing flushes it.
         val cue = bodyOf(session(), "playCloseCue")
         assertFalse(cue.contains("flush("))
-        assertTrue(cue.contains("p.write(pcm, p.generation())"))
+        assertTrue(cue.contains("p.write(p.startable(pcm), p.generation())"))
         assertTrue(release.indexOf("player?.release()") > chime)
     }
 
@@ -594,9 +594,9 @@ class CascadeWiringTest {
         // The running transcript is kept with the speculation setting off too.
         val wire = bodyOf(s, "wireEarlySignals")
         assertTrue(wire.indexOf("heardSoFar = id to text") in 0 until wire.indexOf("if (!speculate) return"))
-        // A cancelled acknowledgement is flushed at once: his speech (onUserTurnStart) and a stop end its job.
+        // A cancelled acknowledgement is cut at once: his speech (onUserTurnStart) and a stop call cutAck.
         val clip = bodyOf(s, "playAckClip")
-        assertTrue(clip.contains("catch (e: CancellationException)"))
+        assertTrue(clip.contains("finally {"))
         // The cut is made at once by whoever ends it (cutAck), never later from the cancelled clip.
         assertFalse(clip.contains("p.flush()"))
         assertTrue(clip.contains("ackPlaying = false"))
