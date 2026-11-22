@@ -13,8 +13,10 @@ Each path gets a tier. RED if it matches a RED rule (case-insensitive) or case-c
 tracked path; else YELLOW if it matches a YELLOW rule; else GREEN if it matches a GREEN rule; else YELLOW.
 An unknown path is never GREEN. The change's tier is the highest of its files. Deleted and renamed-away
 paths count. A file list cannot prove "no logic": GREEN styling is decided by file type only.
-A path under docs/ is also flagged PUBLISH: Pages serves docs/ from dev, so merging it publishes the
-public site and needs Kevin's word (orchestrator default 2026-11-22, pending his confirmation).
+A rendered site file under docs/ (.html, .js, .css, .json, privacy pages, the Pages config, top-level
+images) is also flagged PUBLISH: Pages serves docs/ from dev, so merging it changes the public site and
+needs Kevin's word (orchestrator default 2026-11-22, pending his confirmation). Plain .md/.txt docs are
+not: the repo is public already.
 Stdlib only. Exit 0 with the tier printed; exit 2 on no files or a git error.
 """
 
@@ -34,7 +36,7 @@ REVIEW = {
     "RED": 'CI green + blind review with adversarial probes until "Confirmed: SHIP at <sha>", then auto-merge',
 }
 DEPLOY_NOTE = "Deploys, publishes, content loads and phone installs still need Kevin's word in every tier."
-PUBLISH_NOTE = "PUBLISH: touches docs/, which GitHub Pages serves from dev; the merge itself needs Kevin's word."
+PUBLISH_NOTE = "PUBLISH: changes a rendered GitHub Pages file (served from dev:docs/); the merge itself needs Kevin's word."
 
 # (reason, patterns). Matched casefolded; fnmatch `*` also crosses `/`.
 RED_RULES: list[tuple[str, tuple[str, ...]]] = [
@@ -224,8 +226,26 @@ def tier_of(paths: list[str], tracked: list[str] | None = None) -> tuple[str, li
     return rows[0][0], rows
 
 
+SITE_EXT = (".html", ".htm", ".js", ".mjs", ".css", ".json", ".webmanifest")
+SITE_NAMES = ("cname", ".nojekyll", "_config.yml", "_config.yaml")
+IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico")
+
+
+def is_site_file(path: str) -> bool:
+    """A rendered GitHub Pages file under docs/: pages, scripts, styles, data they load, the Pages config,
+    privacy pages, and images at the top of docs/ (where a page loads them). Not .md/.txt docs or the
+    diagrams beside them: the repo is public, so those appearing on Pages adds no exposure."""
+    p = _norm(path).casefold()
+    if not p.startswith("docs/"):
+        return False
+    name = p.rsplit("/", 1)[-1]
+    if p.endswith(SITE_EXT) or name in SITE_NAMES or "privacy" in name:
+        return True
+    return p.count("/") == 1 and p.endswith(IMAGE_EXT)
+
+
 def publishes(paths: list[str]) -> list[str]:
-    return sorted(p for p in map(_norm, paths) if p.casefold().startswith("docs/"))
+    return sorted(p for p in map(_norm, paths) if is_site_file(p))
 
 
 def summary_line(tier: str, rows: list[tuple[str, str, str]]) -> str:
@@ -236,7 +256,7 @@ def summary_line(tier: str, rows: list[tuple[str, str, str]]) -> str:
             reasons.append(reason)
     line = f"{tier} ({'; '.join(reasons)}): {len(rows)} files"
     if publishes([r[2] for r in rows]):
-        line += " + PUBLISH (docs/: needs Kevin's word)"
+        line += " + PUBLISH (Pages site file: needs Kevin's word)"
     return line
 
 

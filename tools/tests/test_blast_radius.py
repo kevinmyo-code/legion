@@ -147,7 +147,7 @@ def test_summary_line_names_the_reasons_of_the_top_tier_only():
     assert line.startswith("RED (")
     assert "deploy, ship and CI tooling" in line and "worker hook and containment" in line
     assert "app, engine or tool logic" not in line
-    assert ": 4 files" in line and line.endswith("needs Kevin's word)")
+    assert line.endswith(": 4 files")
 
 
 def test_cli_reads_stdin(monkeypatch, capsys):
@@ -176,12 +176,29 @@ def test_case_collision_is_red():
     assert tier == "GREEN"
 
 
-def test_docs_change_is_flagged_publish():
-    tier, rows = br.tier_of(["docs/a.md"])
-    assert tier == "GREEN"
-    assert "PUBLISH" in br.summary_line(tier, rows)
-    tier, rows = br.tier_of(["vault/a.md"])
-    assert "PUBLISH" not in br.summary_line(tier, rows)
+@pytest.mark.parametrize(
+    "path,flag",
+    [
+        ("docs/index.html", True),
+        ("docs/privacy.html", True),
+        ("docs/board.json", True),
+        ("docs/site.js", True),
+        ("docs/style.css", True),
+        ("docs/CNAME", True),
+        ("docs/.nojekyll", True),
+        ("docs/_config.yml", True),
+        ("docs/logo.png", True),
+        ("docs/design/canvas/Main.dc.html", True),
+        ("docs/adr/0110-x.md", False),
+        ("docs/process/blast-radius.md", False),
+        ("docs/architecture/views/c1.svg", False),
+        ("docs/notes.txt", False),
+        ("vault/index.html", False),
+    ],
+)
+def test_publish_flag_only_for_rendered_site_files(path, flag):
+    tier, rows = br.tier_of([path])
+    assert ("PUBLISH" in br.summary_line(tier, rows)) is flag
 
 
 def _git(repo, *args):

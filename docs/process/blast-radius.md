@@ -11,8 +11,12 @@ green, a change merges to `dev` without waiting for a person.
 
 **Some things are never just a merge.** An engine deploy, a phone or head unit publish, a content
 load and a phone install need the owner's word in every tier, and no brief can lift that. A merge
-that touches `docs/` is also a publish: GitHub Pages serves `docs/` from `dev`, so that merge needs
-the owner's word too (the default until he rules otherwise).
+that changes a rendered site file under `docs/` is also a publish: GitHub Pages serves `docs/` from
+`dev`, so a change to a page (`.html`), a script, style or data file it loads (`.js`, `.css`,
+`.json`), a privacy page, the Pages config (`CNAME`, `.nojekyll`, `_config.yml`) or an image at the top
+of `docs/` needs the owner's word too (the default until he rules otherwise). Plain `.md` and `.txt`
+docs are not: the repository is public already, so their appearing on Pages adds nothing. The script
+prints PUBLISH for the files that count.
 
 ## The tiers
 
