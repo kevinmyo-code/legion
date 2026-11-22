@@ -244,7 +244,7 @@ def convert(paths: Paths, task: int, src: str, out: str | None, render=edge_rend
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="to_pdf.py")
+    ap = argparse.ArgumentParser(prog="to_pdf.py", allow_abbrev=False)
     ap.add_argument("--task", type=int, required=True)
     ap.add_argument("--src", required=True)
     ap.add_argument("--out")
