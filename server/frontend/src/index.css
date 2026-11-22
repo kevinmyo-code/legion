@@ -380,6 +380,18 @@
     --rc-glow-3: #fb923c;
 }
 /* A garage: canvas paper, olive drab, amber work light and a rust glow. No marks of any maker. */
+/* "shop": the made-up outdoor shop (Larkspur & Pine): birch paper, pine green, larkspur blue and
+   a sunlit glow. Contrast (2026-11-22, glow at 22%): ink 15:1, meta 6.1:1, accent 5.8:1. */
+.recruiter[data-page-theme="shop"] {
+    --rc-paper: #f2f4ec;
+    --rc-ink: #172019;
+    --rc-meta: #45503f;
+    --rc-rule: #d6dccb;
+    --rc-accent: #2b5a35;
+    --rc-glow-1: #6f86d8;
+    --rc-glow-2: #d6a43a;
+    --rc-glow-3: #7aa65a;
+}
 .recruiter[data-page-theme="aw4"] {
     --rc-paper: #f3f3ec;
     --rc-ink: #1b1e14;
@@ -1026,6 +1038,91 @@
     }
     .recruiter .rc-demo-link a::after {
         content: "\00a0\2197";
+    }
+
+    /* The store-rep section (`components/demo/store-rep/store-rep-section.tsx`): the shop's mark,
+       one clear way to talk to the rep, the catalogue, the orders, the callback and the after-call
+       card, in the section's own colours. The mark's flower is larkspur blue (5.6:1 on its paper). */
+    .recruiter .rc-store {
+        display: flex;
+        flex-direction: column;
+        gap: calc(0.9 * var(--u));
+        max-width: var(--rc-measure);
+        margin-top: calc(1 * var(--u));
+    }
+    .recruiter .rc-shop-mark {
+        width: calc(4.5 * var(--u));
+        height: calc(4.5 * var(--u));
+    }
+    .recruiter .rc-shop-mark-pine {
+        fill: var(--rc-accent);
+    }
+    .recruiter .rc-shop-mark-larkspur {
+        fill: #4659b8;
+    }
+    .recruiter .rc-store-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: calc(0.6 * var(--u));
+    }
+    .recruiter .rc-store-controls .rc-store-hint {
+        flex-basis: 100%;
+    }
+    .recruiter .rc-store-talk {
+        min-height: 48px;
+        padding: 0 calc(1.2 * var(--u));
+        font-size: calc(1.02 * var(--u));
+        font-weight: 600;
+        background: var(--rc-accent);
+        color: #ffffff;
+    }
+    .recruiter .rc-store-talk:hover {
+        background: var(--rc-ink);
+    }
+    .recruiter .rc-prose .rc-store-hint,
+    .recruiter .rc-store-hint {
+        margin: 0;
+        font-size: calc(0.86 * var(--u));
+        color: var(--rc-meta);
+    }
+    .recruiter .rc-store-catalogue summary {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .recruiter .rc-store-catalogue ul,
+    .recruiter .rc-store-orders ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .recruiter .rc-store-catalogue li,
+    .recruiter .rc-store-orders li {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: calc(0.8 * var(--u));
+        padding: calc(0.35 * var(--u)) 0;
+        border-bottom: 1px solid var(--rc-rule);
+    }
+    .recruiter .rc-store-name {
+        display: block;
+    }
+    .recruiter .rc-store-price {
+        flex: none;
+        font-variant-numeric: tabular-nums;
+    }
+    .recruiter .rc-store-form {
+        display: flex;
+        flex-direction: column;
+        gap: calc(0.5 * var(--u));
+    }
+    .recruiter .rc-store-card {
+        padding-top: calc(0.6 * var(--u));
+        border-top: 3px solid var(--rc-accent);
     }
 
     /* Quality for voice agents: tiles of figures, the accent on each figure. */

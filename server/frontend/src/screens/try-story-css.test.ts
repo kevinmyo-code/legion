@@ -129,7 +129,7 @@ describe('the side orb', () => {
 describe('the moods', () => {
   test('every section mood names the same tokens, so each is tuned in one place', () => {
     const tokens = ['--rc-paper', '--rc-ink', '--rc-meta', '--rc-rule', '--rc-accent', '--rc-glow-1', '--rc-glow-2', '--rc-glow-3']
-    for (const mood of ['ledger', 'midcon', 'aw4']) {
+    for (const mood of ['ledger', 'midcon', 'aw4', 'shop']) {
       const rule = all.find((r) => r.selector.trim() === `.recruiter[data-page-theme="${mood}"]`)
       expect(rule, mood).toBeDefined()
       for (const token of tokens) expect(rule!.body, `${mood} ${token}`).toContain(`${token}:`)

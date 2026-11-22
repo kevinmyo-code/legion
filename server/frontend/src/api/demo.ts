@@ -60,7 +60,7 @@ export interface DemoQuality {
 }
 
 /** A section's palette (`index.css` `[data-theme]`); the page blends to it as it scrolls in. */
-export type SectionTheme = 'legion' | 'ledger' | 'midcon' | 'aw4'
+export type SectionTheme = 'legion' | 'ledger' | 'midcon' | 'aw4' | 'shop'
 
 /**
  * A clip slot that may not be filled yet: with `video` the page plays it, without one it says
@@ -105,7 +105,9 @@ export interface DemoProjectSection extends DemoLegion {
   link?: { href: string; label: string }
   theme?: SectionTheme
   /** The mark the orb takes on beside this section. */
-  orb_mark?: 'q'
+  orb_mark?: 'q' | 'larkspur'
+  /** A live demo the page draws inside the section, by name (the store rep). */
+  widget?: 'store_rep'
 }
 
 export interface DemoContent {
