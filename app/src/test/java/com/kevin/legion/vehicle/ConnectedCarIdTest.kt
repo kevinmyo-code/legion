@@ -2,6 +2,7 @@ package com.kevin.legion.vehicle
 
 import com.kevin.legion.ai.CAR_STATUS_CLAUSE
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.VehicleSensorToolbox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -35,19 +36,19 @@ class ConnectedCarIdTest {
 
     @Test
     fun `the connected car with no bitmask is unread, not unprofiled`() {
-        val p = LiveToolbox.sensorProfile(connectedToThisCar = true, live = emptySet(), stored = emptySet())
+        val p = VehicleSensorToolbox.sensorProfile(connectedToThisCar = true, live = emptySet(), stored = emptySet())
         assertTrue(p.unread)
         assertTrue(p.pids.isEmpty())
     }
 
     @Test
     fun `live beats stored on the connected car, stored answers an unplugged one`() {
-        assertEquals(setOf(5), LiveToolbox.sensorProfile(true, live = setOf(5), stored = setOf(12)).pids)
-        assertEquals(setOf(12), LiveToolbox.sensorProfile(true, live = emptySet(), stored = setOf(12)).pids)
-        val unplugged = LiveToolbox.sensorProfile(false, live = setOf(5), stored = setOf(12))
+        assertEquals(setOf(5), VehicleSensorToolbox.sensorProfile(true, live = setOf(5), stored = setOf(12)).pids)
+        assertEquals(setOf(12), VehicleSensorToolbox.sensorProfile(true, live = emptySet(), stored = setOf(12)).pids)
+        val unplugged = VehicleSensorToolbox.sensorProfile(false, live = setOf(5), stored = setOf(12))
         assertEquals(setOf(12), unplugged.pids)
         assertFalse(unplugged.unread)
-        assertFalse(LiveToolbox.sensorProfile(false, emptySet(), emptySet()).unread)
+        assertFalse(VehicleSensorToolbox.sensorProfile(false, emptySet(), emptySet()).unread)
     }
 
     @Test

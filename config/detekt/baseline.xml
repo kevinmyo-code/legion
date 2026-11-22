@@ -75,7 +75,7 @@
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getLedgerBalance(context: Context, account: String): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getNextService(context: Context, vehicle: Vehicle): JSONObject</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getVehicleData(context: Context, metric: String): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:VehicleSensorToolbox.kt:VehicleSensorToolbox$private suspend fun getVehicleData(context: Context, metric: String): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageItem(context: Context, args: JSONObject): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageVehicle(context: Context, args: JSONObject): JSONObject</ID>
@@ -780,7 +780,7 @@
     <ID>LongMethod:GoalsToolbox.kt:GoalsToolbox$internal fun mapGoalPlanResult(outcome: GoalPlanResult): JSONObject</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$internal fun allDeclarations(): JSONArray</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private suspend fun readVehicleSensor(context: Context, args: JSONObject): JSONObject</ID>
+    <ID>LongMethod:VehicleSensorToolbox.kt:VehicleSensorToolbox$private suspend fun readVehicleSensor(context: Context, args: JSONObject): JSONObject</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$private suspend fun scheduleItem( context: Context, list: ItemList, item: com.kevin.legion.data.local.ListItem, args: JSONObject, ): JSONObject</ID>
     <ID>LongMethod:LiveToolbox.kt:LiveToolbox$suspend fun dispatch( context: Context, name: String, args: JSONObject, touchedReadThroughToolThisTurn: Boolean = false, ): JSONObject?</ID>
     <ID>LongMethod:MainActivity.kt:@Composable private fun LegionShell( deepLinkRoute: String? = null, deepLinkNonce: Int = 0, openItemId: Long? = null, openItemNonce: Int = 0, spotifyRedirect: Uri? = null, spotifyRedirectNonce: Int = 0, onSpotifyRedirectConsumed: () -&gt; Unit = {}, )</ID>
@@ -1234,17 +1234,19 @@
     <ID>MagicNumber:LiveSessionController.kt:LiveSessionController$300_000L</ID>
     <ID>MagicNumber:LiveSessionController.kt:LiveSessionController$30_000L</ID>
     <ID>MagicNumber:LiveSessionController.kt:LiveSessionController$6</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0.621371</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0x04</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0x05</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0x06</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0x07</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0x0C</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$0x10</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0.621371</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x04</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x05</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x06</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x07</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x0C</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x10</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$10</ID>
     <ID>MagicNumber:MusicLibraryToolbox.kt:MusicLibraryToolbox$10</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$100</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100.0</ID>
+    <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$100.0</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1000L</ID>
     <ID>MagicNumber:MusicControlToolbox.kt:MusicControlToolbox$1000L</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$12</ID>
@@ -3108,9 +3110,9 @@
     <ID>MaxLineLength:ListItemDao.kt:ListItemDao$@Query("SELECT * FROM list_items WHERE listId = :listId AND done = 0 AND deleted = 0 ORDER BY sortOrder ASC, createdAt ASC")</ID>
     <ID>MaxLineLength:ListItemDao.kt:ListItemDao$@Query("SELECT * FROM list_items WHERE triggerPlaceLabel IS NOT NULL AND done = 0 AND deleted = 0 ORDER BY createdAt")</ID>
     <ID>MaxLineLength:ListItemDao.kt:ListItemDao$@Query("UPDATE list_items SET startsAt = NULL, endsAt = NULL, triggerPlaceLabel = NULL, updatedAt = :at WHERE id = :id")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"${VehicleController.label(vehicle)} does report ${spec.description.lowercase()}, but I need the "</ID>
+    <ID>MaxLineLength:VehicleSensorToolbox.kt:VehicleSensorToolbox$"${VehicleController.label(vehicle)} does report ${spec.description.lowercase()}, but I need the "</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"${next.byMiles!!.serviceName}, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} or "</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"I haven't profiled ${VehicleController.label(vehicle)} yet - plug the adapter into it once and I'll "</ID>
+    <ID>MaxLineLength:VehicleSensorToolbox.kt:VehicleSensorToolbox$"I haven't profiled ${VehicleController.label(vehicle)} yet - plug the adapter into it once and I'll "</ID>
     <ID>MaxLineLength:VehicleCodesToolbox.kt:VehicleCodesToolbox$"The OBD adapter isn't connected, so I can't read any codes - plug it in, or tell me the code you're seeing."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"There's already a checklist called \"${existing.name}\" - pick a different name or add to that one."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"Which one? " + match.candidates.joinToString(", ") { "${it.description} (${formatMoney(it.amountCents, it.currency)})" }</ID>
@@ -3178,9 +3180,10 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$parseNoteDate(args.optString("repeat_end_date")) ?: return result(false, "When should that repeat stop?")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$putIfSet(o, "assembledIn", listOf(spec.plantCity, spec.plantCountry).filter { it.isNotBlank() }.joinToString(", "))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$putIfSet(o, "transmission", listOf(spec.transmissionSpeeds, spec.transmissionStyle).filter { it.isNotBlank() }.joinToString(" "))</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$reading(0x05, c) { put("temperature", Temp.convert(c!!.toDouble(), unit)).put("temperatureUnit", unit.symbol) }</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$reading(0x0F, iat) { put("temperature", Temp.convert(iat!!.toDouble(), unit)).put("temperatureUnit", unit.symbol) }</ID>
+    <ID>MaxLineLength:VehicleSensorToolbox.kt:VehicleSensorToolbox$reading(0x05, c) { put("temperature", Temp.convert(c!!.toDouble(), unit)).put("temperatureUnit", unit.symbol) }</ID>
+    <ID>MaxLineLength:VehicleSensorToolbox.kt:VehicleSensorToolbox$reading(0x0F, iat) { put("temperature", Temp.convert(iat!!.toDouble(), unit)).put("temperatureUnit", unit.symbol) }</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result</ID>
+    <ID>MaxLineLength:VehicleSensorToolbox.kt:VehicleSensorToolbox$result</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$result(success = true, message = "That went past the end of the track, so Spotify moved on to the next song.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result(true, if (action == "tick") "Marked \"${row.title}\" attended." else "Marked \"${row.title}\" not attended.")</ID>
