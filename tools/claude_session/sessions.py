@@ -10,8 +10,8 @@
 - **read**: a bounded excerpt of one session's transcript (`~/.claude/projects/*/<id>.jsonl`): its
   last turns of user and assistant TEXT only, tool calls and output dropped, each turn and the
   whole capped, long token-like strings blanked. The helper summarises it; only the summary leaves
-  the laptop (ADR 0067, Kevin 2026-11-22: "summaries may go to the engine and phone, raw
-  transcripts stay on the laptop"). Reading taints the task (the hook marks it by this script's
+  the laptop (ADR 0067; Kevin's ruling 2026-11-22: a summary may reach the engine and the phone,
+  a raw transcript never does). Reading taints the task (the hook marks it by this script's
   `read`). Never the worker's own sessions (their messages carry confirmation tokens), never a
   session in config `sessions_deny`.
 - **ask**: Alfred drafted the message (Kevin's ruling 2); this stores the SEND PLAN (target id and
