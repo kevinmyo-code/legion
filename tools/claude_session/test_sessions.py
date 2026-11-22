@@ -318,6 +318,20 @@ class TestHookAndContainment(Base):
                                                  f"garden --text-file {self.work.as_posix()}/msg.txt"})
         self.assertIsNone(out)
 
+    def test_git_bash_spelling_counts_only_in_bash(self):
+        def gb(p):
+            p = str(p).replace("\\", "/")
+            return f"/{p[0].lower()}{p[2:]}" if p[1:2] == ":" else p
+        cmd = f"{gb(PY)} {gb(ours('sessions.py'))} read --task 41 --session garden"
+        out, _ = self.decide_tool("PowerShell", cmd)
+        self.assertFalse(C.tainted(self.paths, 41, "agentA", {}))
+        out, _ = self.decide_tool("Bash", cmd)
+        self.assertIsNone(out)
+        self.assertTrue(C.tainted(self.paths, 41, "agentA", {}))
+
+    def decide_tool(self, tool, command):
+        return self.decide(tool, {"command": command})
+
     def test_the_worker_never_messages_or_lists_peers_itself(self):
         for tool in ("SendMessage", "ListAgents"):
             for agent in ("agentA", None):

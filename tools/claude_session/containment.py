@@ -224,7 +224,10 @@ def default_untrusted() -> list[str]:
     """Always untrusted, whatever the config says (alfred-sessions 1122): Claude Code's session
     transcripts hold text other sessions read (mail, web pages, peers' messages), so a helper
     that reads one, by Read, Grep or `sessions.py read`, is read-through like any web page."""
-    return [str(Path.home() / ".claude" / "projects")]
+    try:
+        return [str(Path.home() / ".claude" / "projects")]
+    except RuntimeError:  # no home in this environment (a test's bare env): no ~ to read either
+        return []
 
 
 def untrusted_file(paths: Paths, target: str, task_rec: dict | None, cfg: dict) -> bool:

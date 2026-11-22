@@ -693,9 +693,9 @@ def _peer_reason() -> str:
             "needs_confirmation with the question it prints. Do not retry or work around it.")
 
 
-def _reads_a_session(command: str, task: int | None) -> bool:
+def _reads_a_session(command: str, task: int | None, tool: str) -> bool:
     """`sessions.py read`, ours and alone: a transcript is read-through like a web page."""
-    if not _is_our_lone_script(command, SESSIONS_SCRIPT, task):
+    if not _is_our_lone_script(command, SESSIONS_SCRIPT, task, tool):
         return False
     words = _plain_words(re.sub(r"^&( |$)", "", command, count=1)) or []
     return len(words) > 2 and words[2] == "read"
@@ -748,7 +748,7 @@ def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict,
             return "untrusted_file"
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _reads_a_session(command, _agent_task(paths, event_agent)):
+        if _reads_a_session(command, _agent_task(paths, event_agent), tool):
             return "session_transcript"
         if re.search(r"fetch_file\.py", command, re.I):
             return "fetch_file"  # any run of it reads the web, ours or not
