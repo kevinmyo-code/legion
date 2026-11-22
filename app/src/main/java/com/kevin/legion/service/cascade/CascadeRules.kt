@@ -166,6 +166,7 @@ internal object CascadeRules {
         bargeSetting: Boolean,
         route: AudioRoute,
         inCall: Boolean,
+        earlySetting: Boolean = false,
     ): TurnPlan {
         val barge = OpeningRule.bargeIn(bargeSetting, route, inCall)
         val smart = !serviceEndsTurns && smartSetting && smartTurnReady
@@ -175,7 +176,10 @@ internal object CascadeRules {
             append(if (barge) ", barge-in on ${route.name.lowercase()}" else ", half-duplex")
         }
         return TurnPlan(
-            config = TurnConfig(manualActivity = true, bargeIn = barge, smartTurn = smart, note = note),
+            config = TurnConfig(
+                manualActivity = true, bargeIn = barge, smartTurn = smart, note = note,
+                earlyEnd = smart && earlySetting,
+            ),
             endBaseMs = if (serviceEndsTurns) EndOfTurnPolicy.CAP_MS else EndOfTurnPolicy.BASE_MS,
             serviceEndsTurns = serviceEndsTurns,
             // Only when Smart Turn runs on the phone: a "done" ends the turn at 500 ms (clear: 300), else the base.

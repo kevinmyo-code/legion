@@ -59,7 +59,9 @@ internal class TurnTaker(
         smartAvailable = config.smartTurn && smartTurn != null,
         baseMs = endBaseMs,
         finishedMs = endFinishedMs,
+        earlyEnd = config.earlyEnd,
     )
+    private val earlyEnds = EarlyEndWatch()
     private val gate = BargeInGate()
 
     private val ring = ByteArray(maxOf(PRE_ROLL_MS, BARGE_PRE_ROLL_MS) * BYTES_PER_MS)
@@ -160,6 +162,7 @@ internal class TurnTaker(
             else -> minOf(windowsSincePlaying + 1, MAX_WINDOWS_SINCE_PLAYING)
         }
         appendFloatRing()
+        earlyEnds.onWindow()
         if (policy.inActivity) appendTurn(window, 0, window.size)
         if (prob >= EndOfTurnPolicy.START_PROB && !playing) sink.onLocalSpeech()
         var outcome = if (bargeIn) gateWindow(prob, level, playing) else 0
@@ -203,6 +206,7 @@ internal class TurnTaker(
                 )
                 if (manual) {
                     policy.forceStart()?.let {
+                        noteStart(BargeInGate.SPAN_WINDOWS + 1)
                         // The whole span the gate fired on, so the onset of a short word is in it.
                         beginTurnAudio(BargeInGate.SPAN_WINDOWS + 1)
                         outcome = outcome or STARTED
@@ -235,6 +239,7 @@ internal class TurnTaker(
             when (a) {
                 is EndOfTurnPolicy.Action.StartActivity -> {
                     startOnsetWindows = a.onsetWindows
+                    noteStart(a.onsetWindows)
                     beginTurnAudio(a.onsetWindows)
                     out = out or STARTED
                     sink.onUserTurnStart(bargeIn = false)
@@ -244,6 +249,7 @@ internal class TurnTaker(
                     sink.sendActivityEnd()
                     // The user was talking until a moment ago: the next reply must not learn them.
                     gate.onUserTurnEnd()
+                    earlyEnds.onEnd(early = a.reason == EndOfTurnPolicy.Reason.EARLY)
                     sink.onEndOfTurn(a)
                     out = out or ENDED
                 }
@@ -251,6 +257,11 @@ internal class TurnTaker(
             }
         }
         return out
+    }
+
+    /** A turn starts: was it him going on after an early end? Must hold [lock]. */
+    private fun noteStart(onsetWindows: Int) {
+        earlyEnds.onStart(onsetWindows)?.let { sink.log(LATENCY_TAG, EarlyEndWatch.line(it)) }
     }
 
     private fun forward(

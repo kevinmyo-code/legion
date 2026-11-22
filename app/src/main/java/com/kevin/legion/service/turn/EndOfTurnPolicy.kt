@@ -28,12 +28,14 @@ package com.kevin.legion.service.turn
  *   the web's rule):** a "done" verdict that lands before the base ends the turn at [finishedMs] of
  *   silence (or at once if that is already past), [Reason.FINISHED]. Without that verdict nothing
  *   changes. Live passes nothing and keeps the rule above.
- * - **The early end (2026-11-21, Pipecat lets the same model end turns):** with [finishedMs] on, the
- *   FIRST verdict of a silence scoring >= [EARLY_THRESHOLD] that lands before [finishedMs] ends the
- *   turn at [EARLY_MS] of silence (or at once if that is already past), [Reason.EARLY]. On the A25 at
- *   4 threads the first verdict lands at 288-416 ms of silence (2026-11-20 cloud session, n=23), so
- *   this saves about 0.1-0.2 s against [FINISHED_MS]. The policy never sees words (the cloud's STT
- *   runs after the end), so the score alone guards a mid-sentence pause: a silence that already
+ * - **The early end (2026-11-21, Pipecat lets the same model end turns):** with [finishedMs] and
+ *   [earlyEnd] on (Settings > Assistant, default on), the FIRST verdict of a silence scoring >=
+ *   [EARLY_THRESHOLD] that lands before [finishedMs] ends the turn at [EARLY_MS] of silence (or at
+ *   once if that is already past), [Reason.EARLY]. On the A25 at 4 threads the first verdict lands at
+ *   288-416 ms of silence (2026-11-20 cloud session, n=23), so this saves about 0.1-0.2 s against
+ *   [FINISHED_MS]. The threshold sits above the two verdicts talked past in that session (0.94) and
+ *   below the clear turns (0.97-0.98). The policy never sees words (the cloud's STT runs after the
+ *   end), so the score alone guards a mid-sentence pause: a silence that already
  *   heard "not done" keeps the [finishedMs] rule however high a later check scores, and a verdict
  *   that lands at or after [finishedMs] (a slow phone) ends exactly as before.
  */
@@ -49,6 +51,8 @@ internal class EndOfTurnPolicy(
     private val baseMs: Int = BASE_MS,
     /** The silence that ends a turn Smart Turn called finished; at or above [baseMs] it is off. */
     private val finishedMs: Int = baseMs,
+    /** The early end on top of [finishedMs]; the cascade passes its setting, Live nothing. */
+    private val earlyEnd: Boolean = false,
 ) {
 
     enum class Reason(val wire: String) {
@@ -230,7 +234,7 @@ internal class EndOfTurnPolicy(
     /** [clear]: the silence's first verdict, scoring high. It ends early only if it beat [finishedMs]. */
     private fun finish(clear: Boolean): List<Action> {
         hold = false
-        val at = if (clear && silenceMs < finishedMs) EARLY_MS else finishedMs
+        val at = if (earlyEnd && clear && silenceMs < finishedMs) EARLY_MS else finishedMs
         finishAtMs = at
         return if (silenceMs >= at) end(finishReason(at)) else emptyList()
     }
@@ -295,7 +299,7 @@ internal class EndOfTurnPolicy(
         const val THRESHOLD = 0.5f
 
         /** A first verdict at or above this ends the cascade's turn at [EARLY_MS] (Pipecat ends on > 0.5). */
-        const val EARLY_THRESHOLD = 0.8f
+        const val EARLY_THRESHOLD = 0.95f
 
         /** The least silence an early end takes; a verdict landing sooner waits for it. */
         const val EARLY_MS = 300

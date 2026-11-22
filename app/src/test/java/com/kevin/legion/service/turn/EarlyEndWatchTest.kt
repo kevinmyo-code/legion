@@ -11,7 +11,7 @@ class EarlyEndWatchTest {
     @Test
     fun `speech starting within 1_5 s of an early end is reported with its delay`() {
         val watch = EarlyEndWatch()
-        watch.onEarlyEnd()
+        watch.onEnd(early = true)
         repeat(20) { watch.onWindow() }
         // Confirmed now, begun 7 windows ago: 13 windows after the end.
         assertEquals(13 * w, watch.onStart(onsetWindows = 7))
@@ -22,7 +22,7 @@ class EarlyEndWatchTest {
     @Test
     fun `speech after 1_5 s, or with no early end, is not reported`() {
         val late = EarlyEndWatch()
-        late.onEarlyEnd()
+        late.onEnd(early = true)
         repeat(EarlyEndWatch.LIMIT_MS / w + 8) { late.onWindow() }
         assertNull(late.onStart(onsetWindows = 7))
         val none = EarlyEndWatch()
@@ -34,7 +34,7 @@ class EarlyEndWatchTest {
     fun `the limit is 1_5 s and the edge counts`() {
         assertEquals(1_500, EarlyEndWatch.LIMIT_MS)
         val edge = EarlyEndWatch()
-        edge.onEarlyEnd()
+        edge.onEnd(early = true)
         repeat(46) { edge.onWindow() } // 1,472 ms
         assertEquals(46 * w, edge.onStart(onsetWindows = 0))
     }

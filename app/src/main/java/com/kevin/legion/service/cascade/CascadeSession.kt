@@ -576,6 +576,7 @@ internal class CascadeSession(
             bargeSetting = if (early != null) tapBarge else VoiceTurnSettings.bargeIn(ctx),
             route = early ?: CallAudioMode.route(audioManager),
             inCall = if (early != null) false else TelephonyController.isInCall,
+            earlySetting = VoiceTurnSettings.earlyEndOfTurn(ctx),
         )
         plan = p
         if (models != null) {
@@ -3358,6 +3359,7 @@ internal class CascadeSession(
                 bargeSetting = old?.bargeIn == true,
                 route = CallAudioMode.route(audioManager),
                 inCall = TelephonyController.isInCall,
+                earlySetting = VoiceTurnSettings.earlyEndOfTurn(ctx),
             )
             turnTaker = TurnTaker(
                 next.config,
