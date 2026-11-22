@@ -31,6 +31,7 @@ object MainSource {
         "service/VehicleBuildToolbox.kt",
         "service/BodyReadToolbox.kt",
         "service/BodyLogToolbox.kt",
+        "service/PlacesToolbox.kt",
     )
 
     /** `service/cascade/CascadeSession.kt` and the files split out of it. */

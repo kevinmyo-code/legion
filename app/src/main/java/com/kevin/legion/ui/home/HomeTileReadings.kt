@@ -13,7 +13,7 @@ import com.kevin.legion.ledger.formatMoney
 import com.kevin.legion.location.AirNow
 import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.plan.TrustTier
-import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.PlacesToolbox
 import com.kevin.legion.ui.buildBudgetLineGapRowData
 import com.kevin.legion.ui.buildFleetTile
 import com.kevin.legion.ui.fleet.DueRowView
@@ -128,8 +128,8 @@ fun weatherIconRes(description: String?): Int {
  * message - there is no area to look air quality up for, same rule [AreaCard] itself already holds.
  * [aqi] null (still loading) states so in words rather than a blank second half.
  */
-internal fun areaAqiLine(readout: LiveToolbox.LocationReadout, aqi: AirNow.Reading?): String = when (readout) {
-    is LiveToolbox.LocationReadout.Available -> {
+internal fun areaAqiLine(readout: PlacesToolbox.LocationReadout, aqi: AirNow.Reading?): String = when (readout) {
+    is PlacesToolbox.LocationReadout.Available -> {
         val air = aqi?.let { aqiLine(it) } ?: "Checking air quality..."
         "${areaLine(readout)} - $air"
     }

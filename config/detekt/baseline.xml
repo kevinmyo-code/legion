@@ -3224,7 +3224,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val value = if (args.has("value") &amp;&amp; !args.isNull("value")) args.optDouble("value") else null</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val whenPhrase = if (allDay) date.format(NOTE_DISPLAY_DATE_FORMAT) else "${date.format(NOTE_DISPLAY_DATE_FORMAT)} at $timeArg"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$when</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox.LocationReadout.Available$data</ID>
+    <ID>MaxLineLength:PlacesToolbox.kt:PlacesToolbox.LocationReadout.Available$data</ID>
     <ID>MaxLineLength:LiveToolboxAdvisorTest.kt:LiveToolboxAdvisorTest$"UPDATE advisor_advice SET proposalJson = '{\"op\":\"set_sleep_target\",\"targetHours\":8.0}' WHERE id = $id"</ID>
     <ID>MaxLineLength:LiveToolboxAdvisorTest.kt:LiveToolboxAdvisorTest$assertFalse("SleepController.setTarget's own failure string must not read as success", result.getBoolean("success"))</ID>
     <ID>MaxLineLength:LiveToolboxAdvisorTest.kt:LiveToolboxAdvisorTest$assertFalse("the row is already accepted, so a second call must refuse rather than re-run", second.getBoolean("success"))</ID>
@@ -3249,7 +3249,7 @@
     <ID>MaxLineLength:LiveToolboxNextServiceGuessCaveatTest.kt:LiveToolboxNextServiceGuessCaveatTest$MaintenanceItem(vehicleId = "AA:BB", serviceName = "Oil Change", intervalSource = "SEEDED", intervalMiles = 5000, lastDoneMileage = 1000)</ID>
     <ID>MaxLineLength:LiveToolboxNextServiceGuessCaveatTest.kt:LiveToolboxNextServiceGuessCaveatTest$MaintenanceItem(vehicleId = "CC:DD", serviceName = "Oil Change", intervalSource = "CONFIRMED", intervalMiles = 5000, lastDoneMileage = 1000)</ID>
     <ID>MaxLineLength:LiveToolboxNextServiceGuessCaveatTest.kt:LiveToolboxNextServiceGuessCaveatTest$Vehicle(obdMac = mac, name = name, make = "Test", model = "Car", year = 2020, personaPrompt = "", odometerBaseline = 2000, odometerBaselineAt = 1L)</ID>
-    <ID>MaxLineLength:LiveToolboxWorldCardSharedFunctionTest.kt:LiveToolboxWorldCardSharedFunctionTest$LiveToolbox.LocationReadout.NoPermission</ID>
+    <ID>MaxLineLength:LiveToolboxWorldCardSharedFunctionTest.kt:LiveToolboxWorldCardSharedFunctionTest$PlacesToolbox.LocationReadout.NoPermission</ID>
     <ID>MaxLineLength:LiveToolboxWorldCardSharedFunctionTest.kt:LiveToolboxWorldCardSharedFunctionTest$fun</ID>
     <ID>MaxLineLength:LocationController.kt:LocationController$ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED</ID>
     <ID>MaxLineLength:LocationController.kt:LocationController$return</ID>
@@ -4383,7 +4383,7 @@
     <ID>ReturnCount:MusicToolbox.kt:MusicToolbox$private fun controlVolume(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private fun parseCalendarWindow(from: String, to: String, zone: java.time.ZoneId): Pair&lt;Long, Long&gt;?</ID>
     <ID>ReturnCount:AdvisorToolbox.kt:AdvisorToolbox$private suspend fun acceptProposalTool(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun areaInfo(context: Context, args: JSONObject): JSONObject</ID>
+    <ID>ReturnCount:PlacesToolbox.kt:PlacesToolbox$private suspend fun areaInfo(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:AdvisorToolbox.kt:AdvisorToolbox$private suspend fun askAdvisorTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:VehicleHealthToolbox.kt:VehicleHealthToolbox$private suspend fun checkReadiness(): JSONObject</ID>
     <ID>ReturnCount:GoalsToolbox.kt:GoalsToolbox$private suspend fun closeGoalTool(context: Context, args: JSONObject): JSONObject</ID>

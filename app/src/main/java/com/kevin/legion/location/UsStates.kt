@@ -8,7 +8,7 @@ import java.util.Locale
  * and [CrimeHistory]'s FBI Crime Data Explorer lookup - both APIs key their state filter on the
  * two-letter form, while `Geocoder` only ever gives back the full English name. Locale-dependent on
  * the device returning English admin-area names, same assumption
- * `LiveToolbox.getCurrentLocation`'s own `Geocoder` call already makes.
+ * `PlacesToolbox.getCurrentLocation`'s own `Geocoder` call already makes.
  */
 object UsStates {
     private val NAME_TO_ABBREVIATION: Map<String, String> = mapOf(

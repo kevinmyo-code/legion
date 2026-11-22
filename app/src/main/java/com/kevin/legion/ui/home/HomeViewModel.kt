@@ -18,7 +18,7 @@ import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.meals.MealController
 import com.kevin.legion.meals.dayStartEpoch
 import com.kevin.legion.notes.NotesController
-import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.PlacesToolbox
 import com.kevin.legion.ui.AgendaSource
 import com.kevin.legion.ui.fleet.DueRowView
 import com.kevin.legion.ui.fleet.buildDueRows
@@ -164,8 +164,8 @@ private suspend fun loadState(context: Context): HomeUiState {
         weatherLine(null) to weatherIconRes(null)
     }
     val areaAqi = try {
-        when (val readout = LiveToolbox.resolveCurrentLocation(context)) {
-            is LiveToolbox.LocationReadout.Available -> areaAqiLine(readout, AirNow.current(readout.lat, readout.lon))
+        when (val readout = PlacesToolbox.resolveCurrentLocation(context)) {
+            is PlacesToolbox.LocationReadout.Available -> areaAqiLine(readout, AirNow.current(readout.lat, readout.lon))
             else -> areaAqiLine(readout, null)
         }
     } catch (e: Exception) {
