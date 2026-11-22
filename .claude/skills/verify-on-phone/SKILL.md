@@ -19,10 +19,6 @@ never this sentence). Everything on it is his: messages, money, memories, contac
 - A change's verification step says "on the phone" and the phone answers `preflight`.
 - Before reporting a phone ticket `built`: if the phone is reachable, run its device steps.
 - Not for performance numbers, wake-word tests, or anything needing a voice: those stay Kevin's.
-- **After a phone update, run its scripted suite first:** `python tools/verify_phone run <suite>`
-  (`list` shows them; `--dry-run` runs it on the fake phone). It replaces the post-update checklist.
-  A new update with new behaviour gets a new suite under `tools/verify_phone/suites/`, each check
-  naming the app code it reads so `python tools/verify_phone stale --base origin/dev` can flag it.
 
 ## The rules (the CLI enforces these; the skill only explains them)
 
