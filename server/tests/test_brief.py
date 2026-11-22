@@ -907,6 +907,27 @@ def test_the_command_builds_only_for_a_due_household(houston, household_user, mo
     assert Brief.objects.count() == 1, "built once per local day"
 
 
+def test_a_household_with_no_member_gets_no_news_call_and_no_job_row(houston, monkeypatch):
+    """A spare demo visit household waits with no member (`demo.spares`): before this, every
+    hourly run after 05:00 built News for it (a paid call) and wrote a job row, because no brief
+    ever marked it done."""
+    from django.utils import timezone
+
+    from household.models import Household
+
+    empty = Household.objects.create(name="Nobody home", timezone="America/Chicago")
+    calls = []
+    monkeypatch.setattr(
+        "brief.build.build_news", lambda today: calls.append(today) or failed("not built")
+    )
+    monkeypatch.setattr(timezone, "now", lambda: dt.datetime(2026, 10, 15, 10, 5, tzinfo=dt.UTC))
+    out = io.StringIO()
+    call_command("morning_brief", stdout=out)
+    assert f"brief for household {empty.pk}: no member, nothing built" in out.getvalue()
+    assert not IngestRun.objects.filter(household=empty).exists()
+    assert calls == []
+
+
 def test_dry_run_prints_and_writes_nothing(houston, household_user, monkeypatch):
     monkeypatch.delenv(GEMINI_KEY_ENV, raising=False)
     out = io.StringIO()
