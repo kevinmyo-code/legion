@@ -8,6 +8,9 @@ counted against the conversation's cap. Fake model, fake socket; every word inve
 
 from __future__ import annotations
 
+import threading
+import time
+
 import pytest
 
 from agents.evals.runner import member_request
@@ -289,3 +292,52 @@ def test_the_streamed_door_drafts_nothing_with_the_switch_off(
     _guessing(stream, "What is on the calendar today")
     _events(_post(auth_client, utterance()))
     assert len(engine.models) == 1
+
+
+# ---- review 1121 P1: closing never waits on a draft ----
+
+
+class Stuck:
+    """A model that has not sent its first token yet."""
+
+    def __init__(self):
+        self.release = threading.Event()
+        self.requests: list = []
+
+    def stream(self, req):
+        self.requests.append(req)
+        self.release.wait(5)
+        yield from m.say("Late words.")
+
+
+def test_close_returns_at_once_with_a_draft_stuck_on_its_first_token(household_user, on):
+    request = member_request(household_user)
+    stuck = Stuck()
+    d = drafter(request, lambda: stuck)
+    d.heard("what is on")
+    d.heard("what is on")
+    assert d.current is not None
+    started = time.monotonic()
+    try:
+        d.close()
+        took = time.monotonic() - started
+    finally:
+        stuck.release.set()
+    assert took < 0.1, took
+    row = LlmUsage.objects.get(feature=preempt.FEATURE)
+    # No usage came yet: the estimate from the request, never zero.
+    assert row.prompt_tokens > 0
+
+
+def test_the_draft_request_reads_the_database_once_per_utterance_not_per_draft(
+    household_user, on, django_assert_max_num_queries
+):
+    request = member_request(household_user)
+    d = drafter(request, Models([m.say("a")], [m.say("b")]))
+    draft(d, "what is on")
+    # A second draft builds its request from what the first read: no query in the audio loop.
+    with django_assert_max_num_queries(0):
+        d.heard("what is on today")
+        d.heard("what is on today")
+    assert d.current is not None and d.current.done.wait(5)
+    d.close()
