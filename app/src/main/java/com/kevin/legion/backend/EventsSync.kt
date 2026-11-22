@@ -214,6 +214,15 @@ object EventsSync {
                 continue
             }
 
+            if (local.deleted && local.serverId == null && !remote.deleted) {
+                // Deleted here before any pull told this phone the server id
+                // ([EventsAppointmentWriter.deleteEvent]): send the tombstone now, never take the
+                // server's live copy back (2026-11-22, a deleted event came back on the next pull).
+                EventsAppointmentWriter.deleteEvent(context, local.copy(serverId = remote.serverId))
+                tombstoned++
+                continue
+            }
+
             if (remote.deleted) {
                 // Rule 5: honour the tombstone with a local SOFT-delete, never a hard delete - the
                 // row stays auditable, matching [Event.deleted]'s own soft-delete-mirror
