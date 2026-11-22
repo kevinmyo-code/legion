@@ -9,6 +9,8 @@ import android.util.Log
 import com.kevin.legion.BuildConfig
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CompanionProfile
+import com.kevin.legion.clock.RingControl
+import com.kevin.legion.clock.RingStopReason
 import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiUsageMeter
@@ -2099,11 +2101,13 @@ internal class CascadeSession(
 
     /**
      * His latest words are a stop ([WakePhrases.isSleepPhrase]); after a question only a hard stop,
-     * so "that's it" as an answer goes to the model.
+     * so "that's it" as an answer goes to the model. While anything rings, "stop the alarm" and the
+     * like are a stop too ([RingControl.voiceStops]), and [endByStop] stops the ring.
      */
     private fun endsConversation(words: String): Boolean {
         val afterQuestion = FollowUpWindow.isQuestion(lastClipText)
-        return WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = afterQuestion)
+        return WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = afterQuestion) ||
+            RingControl.voiceStops(words, CompanionProfile.name(ctx))
     }
 
     /**
@@ -2112,6 +2116,7 @@ internal class CascadeSession(
      * done and never said).
      */
     private suspend fun endByStop(u: TurnUtterance, words: String) {
+        if (RingControl.voiceStops(words, CompanionProfile.name(ctx))) RingControl.stopAll(ctx, RingStopReason.VOICE)
         // No "Mm." before "Goodbye." (review F4): the acknowledgement, which now starts at end of turn,
         // is dropped, and cut if it is playing ([playAckClip]).
         turnEndsConversation = true

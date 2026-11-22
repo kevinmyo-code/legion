@@ -62,7 +62,8 @@ object SevereAlertPolling {
      * The raise for one alert. **A Severe or Extreme alert is an emergency [ProactiveUrgency.Alarm]**
      * (ADR 0082, Kevin by name: "if any emergency in the area is noted, alarm me"): Safety only; it
      * RINGS in quiet hours or on a silenced phone and is spoken otherwise (posted in a meeting);
-     * one ring per alert id, again only when its severity rises (`SafetyAlarms`). Pure but for the
+     * one ring per alert series (an NWS update joins the series of what it references), again only
+     * when its severity rises (`SafetyAlarms`). Pure but for the
      * tap target, so it is tested without Android.
      */
     internal fun raise(alert: SevereAlert, where: String, contentIntent: PendingIntent?): ProactiveRaise {
@@ -76,7 +77,7 @@ object SevereAlertPolling {
             prompt = SevereAlertWatcher.prompt(facts),
             contentIntent = contentIntent,
             urgency = SevereAlertWatcher.alarmLevel(alert.severity)
-                ?.let { ProactiveUrgency.Alarm(alertId = alert.id, severity = it) }
+                ?.let { ProactiveUrgency.Alarm(alertId = alert.id, severity = it, references = alert.references) }
                 ?: ProactiveUrgency.Ordinary,
         )
     }

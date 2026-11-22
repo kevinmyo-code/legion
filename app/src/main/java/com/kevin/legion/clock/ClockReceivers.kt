@@ -34,8 +34,9 @@ class ClockFireReceiver : BroadcastReceiver() {
 }
 
 /**
- * The clock's notification buttons: Dismiss and Snooze on a ring, +1 min and Stop on a timer, Pause,
- * Resume and Cancel on a countdown, End bedtime. Not exported.
+ * The clock's notification buttons: Stop on every ring (and its swipe), Snooze on an alarm, +1 min on
+ * a timer, Pause, Resume and Cancel on a countdown, End bedtime. Not exported. Stop and the swipe stop
+ * EVERYTHING ringing ([RingControl.stopAll]): the one notification stands for all of it.
  */
 class ClockActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -44,9 +45,10 @@ class ClockActionReceiver : BroadcastReceiver() {
         val label = clock.timers.idLabel(id)
         runCatching {
             when (intent.action) {
-                ACTION_DISMISS -> clock.alarms.dismiss(id)
-                ACTION_SNOOZE -> clock.alarms.snooze(id)
-                ACTION_TIMER_STOP, ACTION_TIMER_CANCEL -> clock.timers.remove(id)
+                ACTION_STOP_RING -> RingControl.stopAll(context, RingStopReason.NOTIFICATION)
+                ACTION_RING_SWIPED -> RingControl.stopAll(context, RingStopReason.SWIPE)
+                ACTION_SNOOZE -> RingControl.snooze(context, id)
+                ACTION_TIMER_CANCEL -> clock.timers.remove(id)
                 ACTION_TIMER_ADD -> clock.timers.addMinute(id)
                 ACTION_TIMER_PAUSE -> clock.timers.pause(label)
                 ACTION_TIMER_RESUME -> clock.timers.resume(label)
@@ -56,9 +58,7 @@ class ClockActionReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val ACTION_DISMISS = "com.kevin.legion.clock.DISMISS"
         const val ACTION_SNOOZE = "com.kevin.legion.clock.SNOOZE"
-        const val ACTION_TIMER_STOP = "com.kevin.legion.clock.TIMER_STOP"
         const val ACTION_TIMER_ADD = "com.kevin.legion.clock.TIMER_ADD"
         const val ACTION_TIMER_PAUSE = "com.kevin.legion.clock.TIMER_PAUSE"
         const val ACTION_TIMER_RESUME = "com.kevin.legion.clock.TIMER_RESUME"

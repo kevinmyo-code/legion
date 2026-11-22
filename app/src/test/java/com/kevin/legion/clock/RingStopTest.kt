@@ -54,7 +54,7 @@ class RingStopTest {
     private fun ring(vararg rings: RingRequest): RingService {
         val first = Robolectric.buildService(RingService::class.java, RingService.intent(context, rings.first()))
             .create().startCommand(0, 1)
-        rings.drop(1).forEachIndexed { i, r -> first.withIntent(RingService.intent(context, r)).startCommand(0, i + 2) }
+        rings.drop(1).forEachIndexed { i, r -> first.get().onStartCommand(RingService.intent(context, r), 0, i + 2) }
         service = first
         assertTrue(sound.playing)
         assertEquals(rings.size, RingService.ringing.value.size)

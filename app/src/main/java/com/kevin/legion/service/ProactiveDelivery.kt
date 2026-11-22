@@ -184,10 +184,26 @@ object ProactiveDelivery {
      * Ringer silent or vibrate, or any Do Not Disturb filter other than "all", is silenced (Kevin's
      * "unless i silent the phone"). Pure, for the test.
      */
-    internal fun isSilenced(ringerMode: Int, interruptionFilter: Int): Boolean =
-        ringerMode != AudioManager.RINGER_MODE_NORMAL ||
-            (interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL &&
-                interruptionFilter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN)
+    internal fun isSilenced(ringerMode: Int, interruptionFilter: Int): Boolean {
+        val ringer = ringerMode != AudioManager.RINGER_MODE_NORMAL &&
+            (ringerMode != AudioManager.RINGER_MODE_VIBRATE || VIBRATE_COUNTS_AS_SILENCED)
+        val dnd = interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL &&
+            interruptionFilter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+        return ringer || (dnd && DND_COUNTS_AS_SILENCED)
+    }
+
+    /**
+     * Vibrate reads as silenced: a raise is posted rather than spoken, and a Severe or Extreme
+     * weather alert RINGS at any hour. Owner decision pending (phantom alarm report 2026-11-21):
+     * false = on vibrate, lines are spoken and alerts ring only in quiet hours.
+     */
+    const val VIBRATE_COUNTS_AS_SILENCED = true
+
+    /**
+     * Do Not Disturb (LEGION's Quiet included) reads as silenced, with the same two effects.
+     * Owner decision pending.
+     */
+    const val DND_COUNTS_AS_SILENCED = true
 
     /** Unreadable reads as silenced: posting is the safe side. */
     fun phoneSilenced(context: Context): Boolean = runCatching {

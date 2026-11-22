@@ -23,11 +23,10 @@ import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.clock.AlarmText
 import com.kevin.legion.clock.AndroidBedtimeEffects
 import com.kevin.legion.clock.ClockGraph
-import com.kevin.legion.clock.RingKind
-import com.kevin.legion.clock.RingRequest
+import com.kevin.legion.clock.RingControl
 import com.kevin.legion.clock.RingService
+import com.kevin.legion.clock.RingStopReason
 import com.kevin.legion.service.AriaForegroundService
-import com.kevin.legion.service.SafetyAlarms
 import com.kevin.legion.spokenbrief.WakeBrief
 import com.kevin.legion.ui.MainActivity
 import com.kevin.legion.ui.theme.soft.ProvideTypesetEdition
@@ -46,8 +45,8 @@ import java.time.ZoneId
  * Brief me is the tap: it dismisses the alarm, asks the assistant service for the sitrep, and opens
  * LEGION so the conversation is on screen. **A plain Dismiss of a morning alarm now also speaks the
  * brief, unprompted, once a day** (ADR 0082, [WakeBrief]); Brief me stays as the replay. An
- * emergency [RingKind.ALERT] shows its facts and one Dismiss, after which the line is said
- * ([SafetyAlarms]).
+ * emergency alert shows its facts and one Dismiss, after which the line is said
+ * ([com.kevin.legion.service.SafetyAlarms]). Every stop goes through [RingControl].
  */
 class RingActivity : ComponentActivity() {
     private var problem by mutableStateOf<String?>(null)
@@ -73,9 +72,9 @@ class RingActivity : ComponentActivity() {
                     canBrief = unlocked,
                     problem = problem,
                     actions = RingActions(
-                        onDismiss = { top?.let { dismiss(it); WakeBrief.afterDismiss(this, it.kind, unlocked) } },
-                        onSnooze = { top?.let { ClockGraph.controller(this).alarms.snooze(it.id) } },
-                        onBrief = { top?.let(::brief) },
+                        onDismiss = { top?.let { stopAll(); WakeBrief.afterDismiss(this, it.kind, unlocked) } },
+                        onSnooze = { top?.let { RingControl.snooze(this, it.id) } },
+                        onBrief = { top?.let { brief() } },
                         onAddMinute = { top?.let { ClockGraph.controller(this).timers.addMinute(it.id) } },
                         onClose = ::finish,
                     ),
@@ -84,20 +83,16 @@ class RingActivity : ComponentActivity() {
         }
     }
 
-    private fun dismiss(r: RingRequest) {
-        val clock = ClockGraph.controller(this)
-        when (r.kind) {
-            RingKind.ALARM -> clock.alarms.dismiss(r.id)
-            RingKind.TIMER -> clock.timers.remove(r.id)
-            RingKind.ALERT -> SafetyAlarms.dismissed(this, r.id)
-        }
+    /** Dismiss, Stop and Brief me stop everything ringing, not only the newest ([RingControl]). */
+    private fun stopAll() {
+        RingControl.stopAll(this, RingStopReason.SCREEN)
     }
 
-    private fun brief(r: RingRequest) {
+    private fun brief() {
         holdOpen = true
         WakeBrief.briefedByTap(this) // the tap is today's brief; no second, unprompted one
         val refusal = briefRefusal()
-        dismiss(r)
+        stopAll()
         if (refusal != null) {
             problem = refusal
             lifecycleScope.launch {

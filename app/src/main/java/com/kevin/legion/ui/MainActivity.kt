@@ -1433,6 +1433,10 @@ private fun LegionShell(
             )
         }
         com.kevin.legion.ui.claudesession.ClaudeTaskModalHost(onOpenAll = openClaudeScreen, suppressed = isDrivingMode)
+
+        // While anything rings (an alarm, a timer, an emergency alert), Stop is on top of every screen.
+        val ringBarAt = Modifier.align(Alignment.TopCenter)
+        SoftTheme { com.kevin.legion.ui.clock.RingStopBar(ringBarAt) }
     }
 }
 

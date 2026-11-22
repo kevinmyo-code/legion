@@ -13,6 +13,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import java.util.concurrent.ConcurrentHashMap
 import com.kevin.legion.ui.clock.RingActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,8 +29,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * `mediaPlayback` below. Started from [ClockFireReceiver], which an exact alarm exempts from the
  * background-start ban. Direct-boot aware.
  *
- * Several things can ring at once (two timers); the newest is on the screen and Dismiss acts on it.
- * Each auto-silences after [ClockDefaults.AUTO_SILENCE_MIN].
+ * Several things can ring at once (two timers); the newest is on the screen and notification.
+ * Each auto-silences after [ClockDefaults.AUTO_SILENCE_MIN]. Stopping is [RingControl]'s: this
+ * service only plays, shows and logs ([RingAudit]) each start and stop with its reason.
  */
 class RingService : Service() {
     private val handler = Handler(Looper.getMainLooper())
@@ -50,6 +52,7 @@ class RingService : Service() {
     }
 
     private fun add(request: RingRequest) {
+        if (ringing.value.none { it.key() == request.key() }) RingAudit.started(request.kind)
         mutable.value = ringing.value.filterNot { it.key() == request.key() } + request
         startInForeground(RingNotification.build(this, request))
         if (wakeLock == null) {
@@ -62,22 +65,16 @@ class RingService : Service() {
         handler.postDelayed({ silence(request) }, request.key(), after)
     }
 
-    /** Rang out unanswered: an alarm is dismissed as missed, a timer is finished. */
-    private fun silence(request: RingRequest) {
-        val clock = ClockGraph.controller(this)
-        runCatching {
-            when (request.kind) {
-                RingKind.ALARM -> clock.alarms.dismiss(request.id, silenced = true)
-                RingKind.TIMER -> clock.timers.remove(request.id)
-                RingKind.ALERT -> com.kevin.legion.service.SafetyAlarms.rangOut(this, request.id)
-            }
-        }.onFailure { Log.e(TAG, "auto-silence failed", it) }
-        remove(request.kind, request.id)
-    }
+    /** Rang out unanswered: an alarm is dismissed as missed, a timer is finished, an alert posted. */
+    private fun silence(request: RingRequest) = RingControl.stop(this, request, RingStopReason.TIMEOUT)
 
     private fun remove(kind: RingKind, id: Int) {
-        handler.removeCallbacksAndMessages(RingRequest(kind, id, "").key())
-        mutable.value = ringing.value.filterNot { it.kind == kind && it.id == id }
+        val key = RingRequest(kind, id, "").key()
+        val reason = reasons.remove(key) ?: RingStopReason.CLOCK
+        if (ringing.value.none { it.key() == key }) return
+        RingAudit.stopped(kind, reason)
+        handler.removeCallbacksAndMessages(key)
+        mutable.value = ringing.value.filterNot { it.key() == key }
         val next = ringing.value.lastOrNull()
         if (next != null) {
             startInForeground(RingNotification.build(this, next))
@@ -143,9 +140,19 @@ class RingService : Service() {
         internal fun intent(context: Context, r: RingRequest): Intent = Intent(context, RingService::class.java)
             .putExtra(EXTRA_KIND, r.kind.name).putExtra(EXTRA_ID, r.id).putExtra(EXTRA_LABEL, r.label)
 
-        /** Stops one ring. Runs on the service's main thread; a no-op when nothing is ringing. */
+        /** Why each ring is about to stop, set by [RingControl] before it asks; unset is [RingStopReason.CLOCK]. */
+        private val reasons = ConcurrentHashMap<String, RingStopReason>()
+
+        internal fun noteReason(kind: RingKind, id: Int, reason: RingStopReason) {
+            reasons[RingRequest(kind, id, "").key()] = reason
+        }
+
+        /** Stops one ring. Runs on the service's main thread; a no-op when it is not ringing. */
         fun stop(kind: RingKind, id: Int) {
-            val service = current ?: return
+            val service = current ?: run {
+                reasons.remove(RingRequest(kind, id, "").key())
+                return
+            }
             Handler(Looper.getMainLooper()).post { service.remove(kind, id) }
         }
 

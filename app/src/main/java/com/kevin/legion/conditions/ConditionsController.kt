@@ -110,8 +110,17 @@ class ConditionsController(private val client: EngineMcpClient) {
                         area = a.optString("area"),
                         sender = a.optString("sender"),
                         ends = a.optString("ends").ifBlank { a.optString("expires") },
+                        references = strings(a.optJSONArray("references")),
                     )
                 }
+
+        /** An engine from before `references` sends none: no references, never a crash. */
+        private fun strings(array: JSONArray?): List<String> =
+            if (array == null) {
+                emptyList()
+            } else {
+                (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
+            }
 
         private fun objects(array: JSONArray?): List<JSONObject> =
             if (array == null) emptyList() else (0 until array.length()).mapNotNull { array.optJSONObject(it) }
