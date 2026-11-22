@@ -167,7 +167,7 @@ internal object EventRemoval {
             others > 1 -> " Only this one goes; the other $others \"${row.title}\" entries stay."
             else -> ""
         }
-        return asking("Remove \"${row.title}\", ${whenPhrase(row, today, zone)}?$scope")
+        return fail("Remove \"${row.title}\", ${whenPhrase(row, today, zone)}?$scope", asks = true)
             .put("instruction", ASK_AND_WAIT)
     }
 
@@ -177,7 +177,8 @@ internal object EventRemoval {
             events.sortedBy { it.startsAt ?: 0L }.map { "\"${it.title}\", ${whenPhrase(it, today, zone)}" }
         val more = named.size - MAX_NAMED
         val tail = if (more > 0) "; and $more more: a day narrows it" else ""
-        return asking("Nothing was removed. Which one? " + named.take(MAX_NAMED).joinToString("; ") + tail + ".")
+        val listed = named.take(MAX_NAMED).joinToString("; ")
+        return fail("Nothing was removed. Which one? $listed$tail.", asks = true)
     }
 
     /** Nothing matched among events or reminders: coursework by that name gets its own answer. */
@@ -197,9 +198,10 @@ internal object EventRemoval {
         )
     }
 
-    private fun asking(message: String): JSONObject =
-        // `needs_answer`: his next one word may answer it (the cascade's LoneWordWriteGuard.asks).
-        fail(message).put("needs_answer", true)
-
-    private fun fail(message: String): JSONObject = JSONObject().put("success", false).put("message", message)
+    /** Nothing was removed. [asks]: the message is a question to him, and `needs_answer` says so, so
+     * his next one word may answer it (the cascade's LoneWordWriteGuard.asks). */
+    private fun fail(message: String, asks: Boolean = false): JSONObject {
+        val out = JSONObject().put("success", false).put("message", message)
+        return if (asks) out.put("needs_answer", true) else out
+    }
 }
