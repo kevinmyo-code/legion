@@ -100,7 +100,7 @@ class LiveToolboxRouteTableTest {
 
         /** Routed in the module but declared nowhere: retired tools that still answer by name. */
         val UNDECLARED_ROUTES = setOf(
-            "manage_grocery", "recall_memory", "remember", "show_groceries_modal", "show_list_modal",
+            "manage_grocery", "remember", "show_groceries_modal", "show_list_modal",
         )
 
         /**
