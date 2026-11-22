@@ -52,7 +52,8 @@ object ClaudeSessionToolbox {
             "reads results already in; \"ask Claude to...\" is always a new send or workflow; answer follows up a " +
             "task (yes=true only for his yes to its question); assign picks the machine it asked for; " +
             "send_file only on his yes to a found file; open_page opens a task's page on his yes; " +
-            "quiet/unquiet stop/restart result announcements; where reads the board; idea adds a backlog idea. " +
+            "quiet/unquiet stop/restart result announcements; where reads the board; needs, what waits on him; " +
+            "idea adds a backlog idea. " +
             "A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
@@ -67,7 +68,7 @@ object ClaudeSessionToolbox {
                         null,
                         listOf(
                             "send", "workflow", "check", "answer", "assign", "send_file", "open_page", "quiet",
-                            "unquiet", "where", "idea",
+                            "unquiet", "where", "needs", "idea",
                         ),
                     ),
                 )
@@ -170,7 +171,7 @@ object ClaudeSessionToolbox {
                 watchFactory(context).setAnnouncements(true)
                 result(true, "Result announcements are on again.")
             }
-            "where", "idea" -> BoardActions.dispatch(context, action, args, userText)
+            "where", "needs", "idea" -> BoardActions.dispatch(context, action, args, userText)
             else -> result(
                 false,
                 "Say whether to send, run a workflow, check, answer, assign or send a file. Nothing was sent.",

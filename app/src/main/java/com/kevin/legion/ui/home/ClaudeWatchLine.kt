@@ -10,7 +10,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -20,6 +22,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.kevin.legion.backend.engine.EngineConfig
+import com.kevin.legion.backend.engine.EngineHttp
+import com.kevin.legion.board.BoardOutcome
+import com.kevin.legion.board.BoardQueue
+import com.kevin.legion.board.EngineControlRoomBackend
 import com.kevin.legion.claude.ClaudeLiveWatch
 import com.kevin.legion.claude.ClaudeSessionController
 import com.kevin.legion.ui.theme.soft.SoftColors
@@ -35,26 +42,41 @@ import kotlinx.coroutines.isActive
  * through [ClaudeSessionController] like the Claude session screen. It polls every
  * [POLL_EVERY] **only while HOME is started** (`repeatOnLifecycle`; Navigation keeps a covered HOME
  * below STARTED), and reuses any read the result watcher made in the last [REUSE_WITHIN].
+ * When anything waits on him, the control room's [needsYouLine] takes its place (one queue read
+ * per tick, same lifecycle).
  */
 @Composable
 fun rememberClaudeWatchLine(): String? {
     val context = LocalContext.current
     val live = remember(context) { ClaudeLiveWatch.get(context) }
     val controller = remember(context) { ClaudeSessionController.forContext(context) }
+    val queue = remember(context) {
+        EngineControlRoomBackend(EngineHttp(EngineConfig(context.applicationContext)))
+    }
+    var needsYou by remember { mutableStateOf<String?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, live) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
                 live.refreshIfStale(controller, REUSE_WITHIN)
+                needsYou = needsYouLine(queue.queue())
                 delay(POLL_EVERY.toMillis())
             }
         }
     }
     val summary by live.summary.collectAsStateWithLifecycle()
-    return summary?.homeLine
+    return needsYou ?: summary?.homeLine
 }
 
-/** The line itself; nothing at all when [line] is null. Tapping opens the Claude session screen. */
+/**
+ * The control room's "Needs you: N sessions, N approvals, N decisions" (control room C4), the
+ * engine's code-built line, when anything waits on him; null otherwise (nothing waits, or the
+ * board is switched off or unreadable), so the Claude line shows as before.
+ */
+internal fun needsYouLine(out: BoardOutcome<BoardQueue>): String? =
+    (out as? BoardOutcome.Ok)?.value?.takeIf { it.total > 0 }?.line?.takeIf { it.isNotBlank() }
+
+/** The line itself; nothing at all when [line] is null. Tapping opens the control room. */
 @Composable
 fun ClaudeWatchLine(line: String?, onOpen: () -> Unit) {
     line ?: return

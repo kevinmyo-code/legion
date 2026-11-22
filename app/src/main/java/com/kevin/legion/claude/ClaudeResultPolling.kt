@@ -9,6 +9,9 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.kevin.legion.backend.engine.EngineConfig
+import com.kevin.legion.backend.engine.EngineHttp
+import com.kevin.legion.board.EngineControlRoomBackend
 import com.kevin.legion.service.LiveNotes
 import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.ProactiveCategory
@@ -76,7 +79,12 @@ object ClaudeResultPolling {
                     } finally {
                         // alfred-sessions (Kevin 2026-11-22): any Claude session that starts
                         // waiting on him, once per wait, rate-limited.
-                        sessionWaits(app).maybePoll()
+                        try {
+                            sessionWaits(app).maybePoll()
+                        } finally {
+                            // Control room C4: a new board question or action record, once each.
+                            queueRaises(app).maybePoll()
+                        }
                     }
                 }
             } finally {
@@ -112,12 +120,35 @@ object ClaudeResultPolling {
             ).also { waits = it }
         }
 
+    @Volatile private var queued: QueuePoller? = null
+
+    private const val QUEUE_WHAT = "Something on the user's factory board is waiting on them."
+
+    /** The ONE [QueuePoller] for the process (control room C4). */
+    private fun queueRaises(app: Context): QueuePoller =
+        queued ?: synchronized(this) {
+            queued ?: QueuePoller(
+                queue = { EngineControlRoomBackend(EngineHttp(EngineConfig(app))).queue() },
+                seen = SessionWaitSeenStore(app, SessionWaitSeenStore.QUEUE_KEY),
+                watch = ClaudeWatchStore(app),
+                announce = { key, text ->
+                    announceWait(app, key, text, tag = "From the control room's queue", what = QUEUE_WHAT)
+                },
+            ).also { queued = it }
+        }
+
     /**
      * A session waiting on him: the open conversation's note, else a proactive raise in the
      * "Claude tasks" category (spoken when allowed, posted when not). No question, so no mic.
      */
-    private suspend fun announceWait(context: Context, key: String, text: String): ClaudeDelivery {
-        val note = "[Claude session waiting, from the laptop's own report] $text Tell the user this " +
+    private suspend fun announceWait(
+        context: Context,
+        key: String,
+        text: String,
+        tag: String = "Claude session waiting, from the laptop's own report",
+        what: String = "One of the user's Claude Code sessions on their laptop is waiting on them.",
+    ): ClaudeDelivery {
+        val note = "[$tag] $text Tell the user this " +
             "now in one short sentence. Say nothing else about it."
         if (LiveNotes.offer("claude_wait_$key", note)) return ClaudeDelivery.DELIVERED
         val raise = ProactiveRaise(
@@ -126,7 +157,7 @@ object ClaudeResultPolling {
             category = ProactiveCategory.CLAUDE_TASKS,
             reason = text,
             facts = text,
-            prompt = "One of the user's Claude Code sessions on their laptop is waiting on them. The " +
+            prompt = "$what The " +
                 "facts, and the only things you may say about it: $text Tell the user in one short " +
                 "sentence. Mention no other subject.",
             listensForReply = false,
