@@ -113,6 +113,20 @@ class WakePhrasesTest {
         assertFalse(WakePhrases.isSleepPhrase("Goodbye, Jarvis.", "Alfred"))
     }
 
+    /** 2026-11-22: a thanks before the name and the stop kept the stop from matching. */
+    @Test
+    fun `thanks and the name before a stop are set aside`() {
+        for (s in listOf(
+            "Thanks, Alfred, that's all.", "Thank you Alfred, that's it.", "Thanks Alfred. That's all.",
+            "Cheers, Alfred, we're done.", "Okay, thanks, never mind.", "Thank you, that's all.",
+        )) {
+            assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        }
+        for (s in listOf("Thanks, Alfred.", "Thank you.", "Thanks, Alfred, add eggs.", "Thanks, that's all the milk")) {
+            assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        }
+    }
+
     @Test
     fun `sentences that only use those words never end it`() {
         for (s in listOf(
