@@ -45,8 +45,8 @@ package com.kevin.legion.service.turn
  * **Echo warm-up (2026-11-21; LiveKit and Unmute both ignore interruptions for 3 s).** The platform
  * echo canceller needs a few seconds of playback to learn the room after call audio starts or the
  * routed device changes. [startWarmUp] (the caller's, at the first reply audio after such a change,
- * as LiveKit starts its timer on the agent's first speech) opens [WARMUP_WINDOWS] windows, counted in
- * real time on every window. Inside them a span that would fire is reported as [Event.Ignored]
+ * as LiveKit starts its timer on the agent's first speech) opens [WARMUP_WINDOWS] windows, counted
+ * only while reply audio plays. Inside them a span that would fire is reported as [Event.Ignored]
  * instead: nothing is flushed, no verdict is watched, nothing counts as a self-interrupt, and the span
  * starts over, so a voice that goes on fires as soon as the window closes.
  *
@@ -207,7 +207,9 @@ internal class BargeInGate {
     fun onWindow(prob: Float, level: Int, playing: Boolean): Event? {
         if (userGuardLeft > 0) userGuardLeft--
         val warmingUp = warmUpLeft > 0
-        if (warmingUp) warmUpLeft--
+        // Only playback trains the canceller: the cascade's silence between an ack and the reply
+        // (1.5-3 s) must not use the window up before the reply it protects.
+        if (warmingUp && playing) warmUpLeft--
         return when {
             verdictWindowsLeft > 0 -> watch(prob)
             !armed || !playing || disabled -> null
