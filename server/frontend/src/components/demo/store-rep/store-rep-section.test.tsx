@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { AssistantProvider, useAssistant } from '@/assistant/assistant-context'
 import type { CascadeDeps, TurnStart } from '@/assistant/cascade-client'
 import type { SseEvent } from '@/assistant/sse'
+import { AudioError } from '@/assistant/audio'
 import { FakeAudio, settle } from '@/test/fake-live'
 
 import { StoreRepSection } from './store-rep-section'
@@ -66,12 +67,13 @@ function serve(state: typeof STATE, log: string[]) {
 }
 
 function Send() {
-  const { client } = useAssistant()
+  const { client, state } = useAssistant()
   return (
     <>
       <button onClick={() => client.send('Thanks, that will be all.')}>send</button>
       <button onClick={() => void client.startVoice()}>orb tap</button>
       <button onClick={() => client.stopVoice()}>close</button>
+      <span data-testid="activity">{state.activity}</span>
     </>
   )
 }
@@ -163,6 +165,50 @@ describe('StoreRepSection', () => {
     })
     expect(log).toContain('scenario switched')
     expect(log).not.toContain('TURN greet')
+  })
+
+  test('a blocked mic during the switch leaves no thinking orb behind', async () => {
+    const log: string[] = []
+    let release: () => void = () => {}
+    hold = new Promise<void>((resolve) => (release = resolve))
+    serve(STATE, log)
+    const audio = new FakeAudio()
+    audio.failWith = new AudioError('denied', 'blocked')
+    mount(log, audio)
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Talk to the store rep' }))
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await settle()
+    })
+    expect(log).not.toContain('TURN greet')
+    expect(screen.getByTestId('activity')).toHaveTextContent('idle')
+  })
+
+  test('"Talk to the store rep" is busy until the switch lands: a double click switches once and still greets', async () => {
+    const log: string[] = []
+    let release: () => void = () => {}
+    hold = new Promise<void>((resolve) => (release = resolve))
+    serve(STATE, log)
+    mount(log)
+    const talk = await screen.findByRole('button', { name: 'Talk to the store rep' })
+    await act(async () => {
+      fireEvent.click(talk)
+      fireEvent.click(talk)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(talk).toBeDisabled()
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await settle()
+    })
+    expect(log.filter((l) => l === 'POST /api/demo/shop/scenario')).toHaveLength(1)
+    expect(log).toContain('TURN greet')
+    expect(talk).not.toBeDisabled()
   })
 
   test('"Back to the LEGION guide" switches back, busy while it does', async () => {

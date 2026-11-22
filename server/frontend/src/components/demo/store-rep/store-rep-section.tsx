@@ -40,6 +40,8 @@ export function StoreRepSection() {
   const [card, setCard] = useState<CallCard | null>(null)
   const [cardAsked, setCardAsked] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [switching, setSwitching] = useState(false)
+  const switchingNow = useRef(false)
   const [leaveError, setLeaveError] = useState<string | null>(null)
   const cascade = client instanceof CascadeClient ? client : null
 
@@ -102,10 +104,19 @@ export function StoreRepSection() {
    * switch, and a tap or close meanwhile cancels it (`CascadeClient.startVoice`).
    */
   function talk() {
+    if (switchingNow.current) return
+    switchingNow.current = true
     if (state.phase !== 'idle') voice.reset()
-    const switched = setScenario(true).then((next) => {
-      if (next) queryClient.setQueryData(SHOP_STATE_KEY, next)
-    })
+    // Busy until the switch lands: a second click would cut the rep's hello and switch twice.
+    setSwitching(true)
+    const switched = setScenario(true)
+      .then((next) => {
+        if (next) queryClient.setQueryData(SHOP_STATE_KEY, next)
+      })
+      .finally(() => {
+        switchingNow.current = false
+        setSwitching(false)
+      })
     void voice.startVoice(switched)
   }
 
@@ -125,7 +136,7 @@ export function StoreRepSection() {
     <div className="rc-store" data-active={data.active ? 'true' : 'false'}>
       <ShopMark className="rc-shop-mark" title={`${data.shop_name}, a made-up shop`} />
       <div className="rc-store-controls">
-        <Button className="rc-store-talk" onClick={talk}>
+        <Button className="rc-store-talk" onClick={talk} disabled={switching}>
           Talk to the store rep
         </Button>
         {data.active && (

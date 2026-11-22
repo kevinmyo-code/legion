@@ -486,7 +486,14 @@ export class CascadeClient {
           this.refresh()
           await before.catch(() => undefined)
           const gone = generation !== this.turnGeneration || !this.voiceOpen || this.disposed
-          if (gone) return
+          if (gone) {
+            // Closed by the mic failing (no tap cut the wait): the thinking state is still ours to clear.
+            if (generation === this.turnGeneration) {
+              this.awaiting = false
+              this.refresh()
+            }
+            return
+          }
           this.awaiting = false
           this.refresh()
         }
