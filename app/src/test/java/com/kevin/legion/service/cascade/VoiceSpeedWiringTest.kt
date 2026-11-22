@@ -2,6 +2,7 @@
 
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.testutil.MainSource
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -237,7 +238,7 @@ class VoiceSpeedWiringTest {
     private fun ackCode(s: String): String =
         s.substring(s.indexOf("private suspend fun playBackchannel("), s.indexOf("private fun logFirstSound("))
 
-    private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
+    private fun session() = stripComments(MainSource.read(MainSource.CASCADE_SESSION))
 
     private fun bodyOf(source: String, name: String): String {
         val signature = Regex("fun $name\\(").find(source)?.range?.first ?: fail("no fun $name(").let { -1 }

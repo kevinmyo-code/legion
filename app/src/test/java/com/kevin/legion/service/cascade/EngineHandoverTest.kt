@@ -3,6 +3,7 @@ package com.kevin.legion.service.cascade
 import com.kevin.legion.service.cascade.FakeEngineWire.Companion.event
 import com.kevin.legion.service.cascade.FakeEngineWire.Companion.json
 import com.kevin.legion.service.cascade.FakeEngineWire.Companion.sse
+import com.kevin.legion.testutil.MainSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -16,7 +17,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.io.File
 
 /**
  * Who answers a turn when the phone and the engine hand over (re-check round 2): his answer to the
@@ -285,8 +285,7 @@ class EngineHandoverTest {
 
     @Test
     fun `every engineBrain use in the cascade is null-safe, so the switch off reaches none of it`() {
-        val here = File("src/main/java/com/kevin/legion/service/cascade/CascadeSession.kt")
-        val src = (if (here.isFile) here else File("app", here.path)).readText()
+        val src = MainSource.read(MainSource.CASCADE_SESSION)
         assertEquals("one place builds it", 1, src.split("EngineBrainOpen.open(").size - 1)
         val uses = src.lines().map { it.trim() }
             .filter { it.contains("engineBrain") && !it.startsWith("*") && !it.startsWith("//") }

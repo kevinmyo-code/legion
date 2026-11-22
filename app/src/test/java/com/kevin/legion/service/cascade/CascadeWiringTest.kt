@@ -3,6 +3,7 @@
 package com.kevin.legion.service.cascade
 
 import com.kevin.legion.service.Phase
+import com.kevin.legion.testutil.MainSource
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -166,7 +167,7 @@ class CascadeWiringTest {
 
     @Test
     fun `every tool that takes a date gets his day word, at the one dispatch door, before any toolbox`() {
-        val toolbox = stripComments(File(sourceRoot(), "service/LiveToolbox.kt").readText())
+        val toolbox = stripComments(MainSource.read(MainSource.LIVE_TOOLBOX))
         val dispatch = bodyOf(toolbox, "dispatch")
         val fix = dispatch.indexOf("DateCarry.resolved(name, args, userText, it)")
         assertTrue(fix >= 0)
@@ -359,7 +360,7 @@ class CascadeWiringTest {
         val load = bodyOf(s, "loadAgenda")
         assertTrue(load.contains("withTimeoutOrNull(AGENDA_WAIT_MS) { CalendarWindowRead.today(ctx, zone, nowMs) }"))
         assertFalse(load.contains("GreetingFactory"))
-        val toolbox = File(sourceRoot(), "service/LiveToolbox.kt").readText()
+        val toolbox = MainSource.read(MainSource.LIVE_TOOLBOX)
         assertTrue(toolbox.contains("com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone, nowMs)"))
         // The 30-minute and other-day rule is checked for every turn, not only at open.
         assertTrue(bodyOf(s, "agendaNow").contains("AgendaBlock.current("))
@@ -537,7 +538,8 @@ class CascadeWiringTest {
     fun `one closing sound, the chime, and the old ACK tone is gone from every path`() {
         val root = sourceRoot()
         // The cascade never reaches the old tone: no host hook, no bridge parameter.
-        listOf("service/cascade/CascadeSession.kt", "service/cascade/CascadeBridge.kt", "service/cascade/CascadeHost.kt")
+        assertFalse("CascadeSession", stripComments(MainSource.read(MainSource.CASCADE_SESSION)).contains("closingTone"))
+        listOf("service/cascade/CascadeBridge.kt", "service/cascade/CascadeHost.kt")
             .map { File(root, it) }.filter { it.isFile }
             .forEach { f -> assertFalse(f.name, stripComments(f.readText()).contains("closingTone")) }
         val live = stripComments(File(root, "service/LiveSessionController.kt").readText())
@@ -674,7 +676,7 @@ class CascadeWiringTest {
         assertTrue(player.contains("setStartThresholdInFrames("))
     }
 
-    private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
+    private fun session() = stripComments(MainSource.read(MainSource.CASCADE_SESSION))
 
     private fun bodyOf(source: String, name: String): String {
         val signature = Regex("fun $name\\(").find(source)?.range?.first ?: fail("no fun $name(").let { -1 }
