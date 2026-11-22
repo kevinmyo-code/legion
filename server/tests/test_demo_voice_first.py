@@ -1,6 +1,7 @@
 # ruff: noqa: F811 - fixtures imported from the cascade tests
 """The demo's voice-first build (Kevin, 2026-11-17): honest per-tool fillers, the live strip's
-numbers, early transcripts, the one-minute tour, the short opening and the funnel counts.
+numbers, early transcripts, the short opening and the funnel counts (the one-minute tour was
+removed on 2026-11-22; one test keeps that it stays gone).
 
 Google is never called: the text model is `FakeModel` and speech is the cascade tests' fake. Every
 visitor, household, line of content and ref tag here is invented.
@@ -318,6 +319,15 @@ def test_the_turn_takes_no_tour_any_more(visitor, engine):
     response = _post(visitor, tour=0)
     assert response.status_code == 400
     assert engine.model.requests == []
+
+
+def test_a_turn_with_text_and_a_stale_tour_field_is_answered_as_a_normal_turn(visitor, engine):
+    """A tab still holding the old page may send `tour` with a question: the field is ignored."""
+    engine.model = FakeModel([say("About three hundred a month.")])
+    events = _events(_post(visitor, tour=1, text="What does the household spend on food?"))
+    assert [s["text"] for s in _of(events, "sentence")] == ["About three hundred a month."]
+    done = _of(events, "done")[0]
+    assert done["status"] == "done" and "tour" not in done
 
 
 # =============================================================================

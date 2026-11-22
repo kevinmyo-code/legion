@@ -186,7 +186,11 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   // Its own class name: it once borrowed `rc-stage`, the phone section's sticky class, and stayed
   // pinned with no background over everything scrolling under it (live demo, 2026-11-18).
   return (
-    <section aria-label="Talk to the demo assistant" className="rc-voice-stage flex flex-col items-center gap-3 px-4 pt-6 pb-4 text-center">
+    <section
+      aria-label="Talk to the demo assistant"
+      // Which conversation runs the stage: the engine's cascade, or the Live fallback.
+      data-client={cascade ? 'cascade' : 'live'}
+      className="rc-voice-stage flex flex-col items-center gap-3 px-4 pt-6 pb-4 text-center">
       <button
         ref={orbRef}
         type="button"

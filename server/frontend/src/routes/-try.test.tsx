@@ -379,6 +379,8 @@ describe('/try', () => {
     setAudioFactory(() => new FakeAudio())
     renderApp('/try', engine, 'family')
     expect(await screen.findByRole('textbox', { name: /^Type to / })).toBeInTheDocument()
+    // The stage runs on the engine's cascade (the client is attached, not only the form drawn).
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Talk to the demo assistant' })).toHaveAttribute('data-client', 'cascade'))
     expect(screen.getByText(RECORDING_NOTICE)).toBeInTheDocument()
     // No second chat: the stage is the conversation.
     expect(screen.getAllByRole('button', { name: /^Talk to / })).toHaveLength(1)
@@ -391,6 +393,7 @@ describe('/try', () => {
     fireEvent.change(await screen.findByLabelText('Access code'), { target: { value: 'OPEN-SESAME' } })
     fireEvent.click(screen.getByRole('button', { name: 'Open the demo' }))
     expect(await screen.findByRole('textbox', { name: /^Type to / })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Talk to the demo assistant' })).toHaveAttribute('data-client', 'cascade'))
   })
 
   test('when the engine says Live, a link visit gets the Live page, and no cascade turn is asked', async () => {

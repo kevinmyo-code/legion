@@ -183,7 +183,13 @@ _PROJECT_SECTION = _obj(
 # about, which the page lights as the part's step comes up (Kevin, 2026-11-22: the words move with
 # the diagram's highlights). A heading the diagram does not have lights nothing; the page then
 # falls back to the layer at the part's share of the way through.
-_LEGION_PART = _obj({"title": _STR, "body": _STR, "lights": _STRS}, optional=("lights",))
+MAX_LIGHTS = 12
+_LIGHTS = {
+    "type": "array",
+    "items": {"type": "string", "minLength": 1, "maxLength": 80},
+    "maxItems": MAX_LIGHTS,
+}
+_LEGION_PART = _obj({"title": _STR, "body": _STR, "lights": _LIGHTS}, optional=("lights",))
 
 # "Quality for voice agents" inside the LEGION section (Kevin, 2026-11-22): a few figures and the
 # checks behind them, short and visual. Lists, so later checks (a scenario, a card) add rows only.
