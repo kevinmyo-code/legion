@@ -34,7 +34,7 @@ fun ControlRoomScreen(onBack: () -> Unit, onOpenTasks: () -> Unit) {
                 onTab = viewModel::pick,
                 onSummary = viewModel::summarise,
                 onOpenTasks = onOpenTasks,
-                onYes = viewModel::yes,
+                onYes = { card -> viewModel.yes(card, confirmer) },
                 onAllow = { card -> viewModel.allow(card, confirmer) },
                 onDecline = viewModel::decline,
                 onAnswer = viewModel::answer,

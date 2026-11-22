@@ -115,7 +115,10 @@ class ControlRoomViewModelTest {
         claude.taskById[7] = card
         val vm = viewModel()
         assertEquals(listOf(7), vm.state.value.tasks.map { it.id })
-        vm.yes(7)
+        val confirm = FakeConfirmer(yes = false)
+        vm.yes(vm.state.value.tasks.single(), confirm)
+        // A message card is one tap: no confirm is asked.
+        assertTrue(confirm.shown.isEmpty())
         val yes = claude.created.single()
         assertTrue(yes.confirms)
         assertEquals(7, yes.parent)
@@ -123,6 +126,24 @@ class ControlRoomViewModelTest {
         claude.tasksOut = ClaudeOutcome.Ok(listOf(card, yesTask))
         vm.refresh()
         assertEquals(emptyList<Int>(), vm.state.value.tasks.map { it.id })
+    }
+
+    @Test
+    fun `a ship card's Yes asks the fingerprint or PIN first, and a no sends nothing`() {
+        status(emptyList())
+        val ship = messageCard(9).copy(question = "Ready: Alfred no longer announces a timer twice. Ship it?")
+        claude.tasksOut = ClaudeOutcome.Ok(listOf(ship))
+        claude.taskById[9] = ship
+        val vm = viewModel()
+        val card = vm.state.value.tasks.single()
+        assertTrue(card.confirm)
+        vm.yes(card, FakeConfirmer(yes = false))
+        assertTrue(claude.created.isEmpty())
+        assertEquals(BiometricActionConfirmer.CANCELLED, vm.state.value.message)
+        val yes = FakeConfirmer(yes = true)
+        vm.yes(card, yes)
+        assertEquals(listOf("Yes to Claude task 9"), yes.shown)
+        assertTrue(claude.created.single().confirms)
     }
 
     @Test

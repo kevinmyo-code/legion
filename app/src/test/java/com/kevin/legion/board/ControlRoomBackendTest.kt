@@ -66,7 +66,11 @@ class ControlRoomBackendTest {
         val deploy = spend.copy(
             kind = "deploy_engine", sha = "1a2b3c4d".repeat(5), reviewOkSha = "f".repeat(40), tier = "RED",
         )
-        assertEquals("Deploy the engine at 1a2b3c4d", ActionWords.headline(deploy))
+        assertEquals("Deploy the engine at 1a2b3c4d1a2b", ActionWords.headline(deploy))
+        // The laptop's claims are said as its claims, never as checked facts.
+        val reviewed = ActionWords.facts(deploy.copy(reviewOkSha = deploy.sha, ciGreen = true))
+        assertTrue("The laptop says: review confirmed this commit" in reviewed)
+        assertTrue("The laptop says: every check green" in reviewed)
         assertTrue("Review is NOT of this commit" in ActionWords.facts(deploy))
         assertEquals("An unknown request. Do not allow it.", ActionWords.headline(spend.copy(kind = "rm_rf")))
     }

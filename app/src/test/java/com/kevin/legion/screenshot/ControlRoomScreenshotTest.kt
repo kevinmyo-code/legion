@@ -78,7 +78,7 @@ class ControlRoomScreenshotTest {
 
     private companion object {
         const val FRAME_MS = 500L
-        const val DEPLOY = "Deploy the engine at 1a2b3c4d"
+        const val DEPLOY = "Deploy the engine at 1a2b3c4d1a2b"
         val STATE = ControlRoomUiState(
             loading = false,
             sessions = listOf(
@@ -86,12 +86,17 @@ class ControlRoomScreenshotTest {
                 SessionUi("s-2", "notes", "kitchen", "work laptop", "Busy", false, "", false),
             ),
             tasks = listOf(
-                TaskCardUi(7, "Alienware", "Send this message to your Claude session planner: \"water the beans\""),
+                TaskCardUi(
+                    7, "Alienware", "Send this message to your Claude session planner: \"water the beans\"",
+                    confirm = false,
+                ),
+                TaskCardUi(9, "Alienware", "Ready: Kettle firmware. Ship it?", confirm = true),
             ),
             actions = listOf(
                 ActionCardUi(
-                    "rec-1", "b".repeat(64), "Deploy the engine at 1a2b3c4d",
-                    listOf("Commit 1a2b3c4d, RED tier", "Review confirmed this commit", "Every check green",
+                    "rec-1", "b".repeat(64), DEPLOY,
+                    listOf("Commit 1a2b3c4d1a2b, RED tier", "The laptop says: review confirmed this commit",
+                        "The laptop says: every check green",
                         "Expires 2031-04-02 10:30 UTC"),
                     "Waiting on you", open = true,
                 ),

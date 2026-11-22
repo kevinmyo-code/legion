@@ -6,6 +6,7 @@ import com.kevin.legion.board.BoardQuestion
 import com.kevin.legion.board.BoardView
 import com.kevin.legion.claude.ClaudeCodeSession
 import com.kevin.legion.claude.ClaudeOverview
+import com.kevin.legion.claude.ClaudeTask
 import com.kevin.legion.ui.claudesession.ClaudeSessionRows
 import com.kevin.legion.ui.claudesession.TaskRowUi
 import java.time.Duration
@@ -31,8 +32,14 @@ data class SessionUi(
     val canSummarise: Boolean,
 )
 
-/** A message, mail or ship card from a Claude task: its question and one Yes. */
-data class TaskCardUi(val id: Int, val machine: String?, val question: String)
+/**
+ * A message, mail or ship card from a Claude task: its question and one Yes. [confirm] is true for
+ * every card but a message to a Claude session: a worker ship card merges, deploys or publishes on
+ * its yes, so its Yes asks for the fingerprint or PIN like an Allow (orchestrator default
+ * 2026-11-22, pending Kevin). Only a message card, whose exact text the worker wrote from its
+ * stored plan, stays one tap.
+ */
+data class TaskCardUi(val id: Int, val machine: String?, val question: String, val confirm: Boolean = true)
 
 /** An action record, rendered by code from typed fields ([ActionWords]). */
 data class ActionCardUi(
@@ -79,7 +86,7 @@ data class ControlRoomActions(
     val onSummary: (SessionUi) -> Unit = {},
     /** Tasks and workflows: the full Claude session screen. */
     val onOpenTasks: () -> Unit = {},
-    val onYes: (Int) -> Unit = {},
+    val onYes: (TaskCardUi) -> Unit = {},
     val onAllow: (ActionCardUi) -> Unit = {},
     val onDecline: (ActionCardUi) -> Unit = {},
     /** (decision, choice): null choice sends the typed text. */
@@ -144,7 +151,10 @@ object ControlRoomRows {
     fun taskCards(overview: ClaudeOverview): List<TaskCardUi> =
         ClaudeSessionRows.tasks(overview).filter { it.needsConfirmation }.map(::taskCard)
 
-    private fun taskCard(t: TaskRowUi) = TaskCardUi(t.id, t.machine, t.question ?: t.request)
+    private fun taskCard(t: TaskRowUi): TaskCardUi {
+        val question = t.question ?: t.request
+        return TaskCardUi(t.id, t.machine, question, confirm = !question.startsWith(ClaudeTask.SESSION_SEND_PREFIX))
+    }
 
     fun actions(list: List<ActionRecord>): List<ActionCardUi> = list.map { a ->
         ActionCardUi(

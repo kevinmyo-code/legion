@@ -9,7 +9,7 @@ import java.util.Locale
  * shown only inside quotation marks, as data.
  */
 object ActionWords {
-    private const val SHORT_SHA = 8
+    private const val SHORT_SHA = 12
     private const val CENTS = 100.0
 
     /** `2031-04-02T10:30`: an ISO time cut to the minute. */
@@ -28,8 +28,11 @@ object ActionWords {
     fun facts(a: ActionRecord): List<String> = buildList {
         if (a.sha.isNotBlank()) {
             add("Commit ${short(a.sha)}, ${a.tier} tier")
-            add(if (a.reviewOkSha == a.sha) "Review confirmed this commit" else "Review is NOT of this commit")
-            add(if (a.ciGreen) "Every check green" else "Checks NOT green")
+            // The engine cannot verify these two; they are the laptop's word, said as such.
+            val reviewed = a.reviewOkSha == a.sha
+            add(if (reviewed) "The laptop says: review confirmed this commit" else "Review is NOT of this commit")
+            add(if (a.ciGreen) "The laptop says: every check green" else "Checks NOT green")
+            add("Full commit ${a.sha}")
         }
         if (a.kind == "spend") {
             add("To “${a.payee}”")

@@ -58,7 +58,15 @@ internal fun LazyListScope.approvalsTab(state: ControlRoomUiState, actions: Cont
         else -> items(state.tasks, key = { "t-${it.id}" }) { t ->
             // The worker's own words on a message card hold the exact text he approves (one yes).
             Ruled("Task ${t.id}" + (t.machine?.let { " on the $it" } ?: ""), t.question) {
-                Buttons { InkButton("Yes", { actions.onYes(t.id) }, primary = true, enabled = !state.busy) }
+                Buttons { InkButton("Yes", { actions.onYes(t) }, primary = true, enabled = !state.busy) }
+                if (t.confirm) {
+                    Text(
+                        "Yes asks for your fingerprint or PIN: this card may merge, deploy or publish.",
+                        style = TypesetType.smallItalic,
+                        color = SoftColors.text2,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
             }
         }
     }

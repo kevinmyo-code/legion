@@ -103,8 +103,23 @@ class ControlRoomViewModel(
         }
     }
 
-    /** The one Yes on a message, mail or ship card: one tap, the controller's own rule. */
-    fun yes(taskId: Int) = act { controller.answer(taskId, "", yes = true, emailMe = false).sentence }
+    /**
+     * The one Yes on a message, mail or ship card, through the controller's own rule. A message
+     * card is one tap; every other card (a ship merges, deploys or publishes) asks [confirmer] first,
+     * and only its yes is sent.
+     */
+    fun yes(card: TaskCardUi, confirmer: ActionConfirmer) {
+        val send = { act { controller.answer(card.id, "", yes = true, emailMe = false).sentence } }
+        if (!card.confirm) {
+            send()
+            return
+        }
+        confirmer.confirm(
+            "Yes to Claude task ${card.id}",
+            { send() },
+            { sentence -> _state.update { it.copy(message = sentence) } },
+        )
+    }
 
     /** His answer to a board question: a choice, or the typed text when [choice] is null. */
     fun answer(decision: DecisionUi, choice: String?) {
