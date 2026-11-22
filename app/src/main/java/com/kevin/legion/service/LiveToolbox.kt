@@ -4257,7 +4257,8 @@ object LiveToolbox {
         val dateArg = args.optString("date").trim()
         val day = parseNoteLocalDate(dateArg)
         // A date that does not read leaves the calendar alone: the reminder path runs as before.
-        if (!isRemove(args) || item.isBlank() || dateArg.isNotEmpty() && day == null) return null
+        val unreadable = dateArg.isNotEmpty() && day == null
+        if (!isRemove(args) || item.isBlank() || unreadable) return null
         val reminders = NotesController.openItemsForList(context, theList(context).id)
         return EventRemoval.remove(context, item, day, userText, reminders)
     }
