@@ -401,6 +401,9 @@ internal class CascadeSession(
     /** The date the model's prompt states as today ([RelativeDay.TurnDates]). */
     @Volatile private var promptDay: LocalDate = RelativeDay.today()
 
+    /** The day this conversation is about ([RelativeDay.nextAboutDay]): a follow-up that names none goes there. */
+    @Volatile private var aboutDay: LocalDate? = null
+
     /** Writes that went through and that he has not heard said yet ([OwedWrites]). */
     private val owed = OwedWrites()
 
@@ -2446,18 +2449,19 @@ internal class CascadeSession(
                 // A read-through opener (ADR 0090) marks the turn before the loop's own flag can.
                 // The turn's date facts ride in the call's context to the date fix ([RelativeDay.corrected]).
                 // A lone word's write is held before it reaches the controller ([LoneWordWriteGuard]).
-                else -> held ?: withContext(
-                    RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1) +
-                        ClearCodesVoiceGate.HeardVoice(record.voicedMs),
-                ) {
-                    host.runTool(
-                        name,
-                        args,
-                        // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
-                        readThrough || record.startMarked,
-                        if (record.fromUser) record.heard else "",
-                        seq,
-                    )
+                else -> held ?: run {
+                    val dates = RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, aboutDay)
+                    val words = if (record.fromUser) record.heard else ""
+                    withContext(dates + ClearCodesVoiceGate.HeardVoice(record.voicedMs)) {
+                        host.runTool(
+                            name,
+                            args,
+                            // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
+                            readThrough || record.startMarked,
+                            words,
+                            seq,
+                        )
+                    }.also { response -> noteAboutDay(name, args, words, dates, response) }
                 }
             }
         } finally {
@@ -2475,6 +2479,19 @@ internal class CascadeSession(
             ),
         )
         response
+    }
+
+    /** The conversation's day after this call, read from the args it actually ran with. */
+    private fun noteAboutDay(
+        name: String,
+        args: JSONObject,
+        words: String,
+        dates: RelativeDay.TurnDates,
+        response: JSONObject,
+    ) {
+        val call = LiveSurface.resolve(name, args)
+        val ran = RelativeDay.resolved(call.name, call.args, words, dates)?.first ?: call.args
+        aboutDay = RelativeDay.nextAboutDay(aboutDay, call.name, ran, response.optBoolean("success", false), dates.day)
     }
 
     private fun listenerFor(record: TurnRecord, reply: ReplySpeaker) = object : GeminiTextLoop.Listener {

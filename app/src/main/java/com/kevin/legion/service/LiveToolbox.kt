@@ -882,9 +882,10 @@ object LiveToolbox {
         LiveSurface.unknownAction(name, args)?.let { return it }
         // His own day word wins over a date one day off it, for the calendar and task tools, on the
         // date the voice turn was given (RelativeDay.corrected; 2026-11-17 evening: "and tomorrow?"
-        // read today+2). Only a voice turn carries TurnDates.
+        // read today+2); a dated write that names no day goes on the conversation's day
+        // (RelativeDay.carried, 2026-11-22). Only a voice turn carries TurnDates.
         val turnDates = kotlin.coroutines.coroutineContext[RelativeDay.TurnDates]
-        turnDates?.let { RelativeDay.corrected(name, args, userText, it) }?.let { (fixed, note) ->
+        turnDates?.let { RelativeDay.resolved(name, args, userText, it) }?.let { (fixed, note) ->
             return dispatch(context, name, fixed, touchedReadThroughToolThisTurn, userText)?.put("date_note", note)
         }
         // The adapter's car is unknown or only recognised: a live read still runs (its readings are held,
@@ -4431,8 +4432,10 @@ object LiveToolbox {
                     date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1,
                 )
             }
-            result(
-                true,
+            // `date` ahead of the words: the day it landed on, kept inside the audit line's cut so the
+            // voice eval can check a carried day (RelativeDay.carried) on the outcome, not the request.
+            JSONObject().put("success", true).put("date", date.toString()).put(
+                "message",
                 ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase),
             )
         } catch (e: Exception) {
@@ -4959,11 +4962,8 @@ object LiveToolbox {
                     is ChecklistController.ChecklistItemsResult.Failed ->
                         result(false, "Could not read \"${checklist.name}\". Try again shortly.")
                     is ChecklistController.ChecklistItemsResult.Loaded -> {
-                        ToolCards.publish(
-                            LiveCardReads.checklistCard(
-                                checklist.id, checklist.name, loaded.items.map { ChecklistLine(it.item.text, it.ticked) },
-                            ),
-                        )
+                        val lines = loaded.items.map { ChecklistLine(it.item.text, it.ticked) }
+                        ToolCards.publish(LiveCardReads.checklistCard(checklist.id, checklist.name, lines))
                         if (loaded.items.isEmpty()) {
                             return result(true, "\"${checklist.name}\" has no items yet.").also {
                                 if (ListRouting.isTodoName(checklist.name)) withReminders(context, it)

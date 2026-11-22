@@ -580,6 +580,28 @@
           "expect": {"answer_not": ["(?<![a-z])mars(?![a-z])", "rover", "nasa", "perseverance"]}
         }
       ]
+    },
+    {
+      "id": "date_carry_tomorrow",
+      "why": "2026-11-22: after a read of tomorrow, a follow-up add that named no day went on today. A dated write that names no day goes on the day the conversation is about (RelativeDay.carried); judged on the day it landed, not the day the model asked for",
+      "turns": [
+        {"say": "what's on my calendar tomorrow", "expect": {"calls": ["day/read_calendar"], "read_day": ["{today+1}"]}},
+        {
+          "say": "put coffee with the invented accountant at seven",
+          "expect": {
+            "calls": ["manage_item/add"],
+            "succeeded": ["manage_item/add"],
+            "result_has": ["\"date\":\"{today+1}\""]
+          }
+        }
+      ],
+      "write": true
+    },
+    {
+      "id": "budget_afford",
+      "say": "can I afford a dinner out this week?",
+      "why": "2026-11-22: a money answer ran the money specialist and was said by voice alone; every budget view now puts the budget card up (BudgetCards, unit-tested). This case pins the route the card rides on",
+      "expect": {"calls": ["look_up/ask_money|ask_money|get_monthly_spend"]}
     }
   ]
 }
