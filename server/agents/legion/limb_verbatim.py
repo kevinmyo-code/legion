@@ -10,12 +10,17 @@ same two rules live here:
   contract file both sides' tests load) whose `ok` result carries `speak_verbatim`, made by that
   same tool (`verbatim_from`), has that line said by code before the model's words. Never a
   read-through tool (its words are outside text), never a late or timed-out result, never past
-  `MAX_CHARS`. Anything else is handed to the model as before.
+  `MAX_CHARS`, never a line stating a money or torque figure (the same detectors the model's
+  sentences pass; review 1121 V2). Anything else is handed to the model as before.
 - **The model is told.** It gets the line as already said, and the rest of the result without
   the line, so it has nothing to say again.
-- **No restatement.** After such a line, a model sentence naming a trouble code, a module count,
-  a verdict word, or a bare filler line is not said (`restates_result`, the phone's
-  `DiagFilter.restatesResult`), for the rest of the turn, across a pause.
+- **No restatement.** After such a line, a model sentence naming a trouble code or a module
+  count, a bare verdict ("Clean bill.", "All good."), or a bare filler line is not said
+  (`restates_result`, the phone's `DiagFilter.restatesResult`, narrowed), for the rest of the
+  turn, across a pause. Review 1121 V1: a sentence with a safety cue (`SAFETY_CUES`) is ALWAYS
+  said, and a verdict word inside other content ("I can clear them if you say yes", "it's clear
+  tonight") is not a restatement. The clear offer may be said: clearing still needs his own yes in
+  a later turn (the phone's clear-codes gate), so the offer acts on nothing.
 """
 
 from __future__ import annotations
@@ -24,10 +29,12 @@ import json
 import re
 
 from agents.legion.relay import CLASSES_FILE, VERBATIM_TOOLS
+from agents.legion.speech_rules import has_money, torque_figures
 
 __all__ = [
     "CLASSES_FILE",
     "MAX_CHARS",
+    "SAFETY_CUES",
     "SAID_NOTE",
     "TOOLS",
     "for_model",
@@ -60,6 +67,31 @@ _VERDICT = re.compile(
     r"|nothing wrong)\b",
     re.IGNORECASE,
 )
+# A sentence holding any of these is a warning about driving the car: never dropped as a
+# restatement, whatever else it says (review 1121 V1). The one list.
+SAFETY_CUES = (
+    "pull over",
+    "stop driving",
+    "don't drive",
+    "do not drive",
+    "flashing",
+    "overheating",
+    "overheat",
+    "smoke",
+    "brakes",
+    "oil pressure",
+    "temperature warning",
+)
+_SAFETY = re.compile(r"\b(" + "|".join(re.escape(c) for c in SAFETY_CUES) + r")\b", re.IGNORECASE)
+# Words a bare verdict about the read is made of ("The engine's clear.", "Clean bill of health."):
+# a verdict-word sentence with any other word says something new and is said.
+_BARE_VERDICT = frozenset(
+    "a all an and are be bill car car's clean clear cleared code codes completely engine engine's "
+    "everything everything's fine good health healthy here is issue issues it it's its look "
+    "looking looks no nothing of ok okay pretty problem problems right seem seems set so stored "
+    "that that's the there this totally very was wrong you're".split()
+)
+_WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
 # The phone's scripted filler lines (`ScriptedLines.FILLERS`), as `LeadingFiller.core` reads them.
 _FILLER_CORES = frozenset({"one moment", "just a moment", "on it", "checking", "let me look"})
 _ENDS = ".!?…"
@@ -67,14 +99,22 @@ _ENDS = ".!?…"
 
 def restates_result(sentence: str) -> bool:
     """True when `sentence` restates a diagnostics answer already said: a trouble code ("P0420",
-    "P zero four two zero"), a module count, a verdict word, or a bare filler line."""
-    core = (sentence or "").strip().rstrip(_ENDS).lower()
+    "P zero four two zero"), a module count, a bare verdict, or a bare filler line. Never a
+    sentence with a safety cue."""
+    text = (sentence or "").replace("\u2019", "'")
+    if _SAFETY.search(text):
+        return False
+    core = text.strip().rstrip(_ENDS).lower()
     return bool(
-        _CODE.search(sentence)
-        or _COUNT.search(sentence)
-        or _VERDICT.search(sentence)
+        _CODE.search(text)
+        or _COUNT.search(text)
+        or (_VERDICT.search(text) and _only_verdict(core))
         or core in _FILLER_CORES
     )
+
+
+def _only_verdict(core: str) -> bool:
+    return all(word in _BARE_VERDICT for word in _WORD.findall(core))
 
 
 def line_of(req: dict, result: dict) -> str | None:
@@ -88,6 +128,9 @@ def line_of(req: dict, result: dict) -> str | None:
         return None
     line = data.get(SAID_KEY)
     if not isinstance(line, str) or not line.strip() or len(line.strip()) > MAX_CHARS:
+        return None
+    if has_money(line) or torque_figures(line):
+        # Code's own line would skip the money and torque checks the model's sentences pass.
         return None
     return line.strip()
 
