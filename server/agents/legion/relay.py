@@ -66,7 +66,6 @@ from agents.legion import guards, redact
 from agents.legion.client_facts import TEST_MODE_WORDS
 from agents.legion.guards import Verdict
 from agents.models import Limb
-from assistant import read_through
 from household.models import DeviceToken
 from household.tenancy import household_of
 
@@ -364,7 +363,7 @@ def decide(state, spec, tool: LimbTool, args: dict) -> Decision:
         return _refused(TEST_MODE_WORDS.format(name=name), "not_allowed")
     ruled = name in AFTER_OUTSIDE_TEXT
     if acts and state.tainted and not ruled:
-        return _refused(read_through.WRITE_REFUSAL.format(verb="changed", name=name), "tainted")
+        return _refused(guards.tainted_refusal(state, name), "tainted")
     if acts and tool.confirm != "limb":
         held = guards.hold_for_yes(state, name, args)
         if not held.allow:
