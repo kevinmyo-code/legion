@@ -73,9 +73,13 @@ class LiveToolboxRouteTableTest {
         val start = toolbox.indexOf("    suspend fun dispatch(")
         val whenAt = toolbox.indexOf("return when (name) {", start)
         val head = toolbox.substring(start, whenAt)
+        // After every toolbox that was its own file before the split, so each guard and each older
+        // toolbox still runs first, as it did when these branches sat in the big `when`.
+        val lastOlder = head.indexOf("BodyCoachToolbox.dispatch(")
+        assertTrue("BodyCoachToolbox.dispatch moved; re-anchor this test", lastOlder >= 0)
         for (file in splitFiles()) {
             val obj = file.substringAfterLast('/').removeSuffix(".kt")
-            assertTrue("$obj is never asked from LiveToolbox.dispatch", head.contains("$obj.dispatch("))
+            assertTrue("$obj is never asked from LiveToolbox.dispatch", head.indexOf("$obj.dispatch(") > lastOlder)
         }
     }
 
