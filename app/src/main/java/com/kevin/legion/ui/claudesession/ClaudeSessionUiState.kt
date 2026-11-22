@@ -116,7 +116,8 @@ object ClaudeSessionRows {
         overview: ClaudeOverview,
         wording: ClaudeWording = ClaudeWording(),
     ): List<TaskRowUi> {
-        // One question, one yes (alfred-sessions review, finding 2): once a yes went, no Yes button.
+        // One message card, one yes (alfred-sessions review 2; the orchestrator's ruling keeps every
+        // other card's retry): once a yes to a message card went, it has no Yes button.
         val answered = overview.tasks.filter { it.confirms }.mapNotNull { it.parent }.toSet()
         return overview.tasks.map { t -> row(t, overview, wording, answered) }
     }
@@ -134,7 +135,7 @@ object ClaudeSessionRows {
             files = t.files.filterNot { t.wantsPage && it.isPage }
                 .map { FileRowUi(it.id, it.name, ClaudeWording.size(it.size), it.uploaded, it.requested) },
             filesMayCome = !overview.summariesOnly(t),
-            needsConfirmation = t.needsConfirmation && t.id !in answered,
+            needsConfirmation = t.needsConfirmation && !(t.isSessionSendCard && t.id in answered),
             needsMachine = t.status == ClaudeTask.NEEDS_MACHINE,
             pageTitle = t.pages.firstOrNull()?.title,
             pageWaiting = t.wantsPage && t.pages.isEmpty() && t.status == ClaudeTask.DONE,
