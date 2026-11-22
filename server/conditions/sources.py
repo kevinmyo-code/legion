@@ -168,6 +168,9 @@ class Alert:
     expires: str
     ends: str
     sender: str
+    # The ids of the earlier alerts this one updates (NWS `references`), so the phone rings once per
+    # alert series rather than on every update. Defaulted, so an Alert cached before it reads as ().
+    references: tuple[str, ...] = ()
 
 
 SEVERE_LEVELS = frozenset({"Severe", "Extreme"})
@@ -203,9 +206,18 @@ def parse_alerts(raw: bytes) -> list[Alert]:
                 expires=str(p.get("expires") or ""),
                 ends=str(p.get("ends") or ""),
                 sender=str(p.get("senderName") or "NWS"),
+                references=_references(p.get("references")),
             )
         )
     return alerts
+
+
+def _references(raw) -> tuple[str, ...]:
+    """The `identifier` of each referenced alert; anything malformed is skipped, never raised."""
+    if not isinstance(raw, list):
+        return ()
+    ids = (str(r.get("identifier") or "") for r in raw if isinstance(r, dict))
+    return tuple(i for i in ids if i)
 
 
 def alerts(lat: float, lon: float) -> list[Alert]:
