@@ -36,27 +36,37 @@ sealed class ItemMatch {
  * ticket 05's precedent from `log_pending_transaction`.
  */
 fun matchItem(query: String, items: List<ListItem>): ItemMatch {
-    val q = query.trim().lowercase()
-    if (q.isBlank() || items.isEmpty()) return ItemMatch.NoMatch
-
-    val exact = items.filter { it.text.trim().lowercase() == q }
-    if (exact.isNotEmpty()) return resolveOrAmbiguous(exact)
-
-    val substring = items.filter { it.text.lowercase().contains(q) || q.contains(it.text.trim().lowercase()) }
-    if (substring.isNotEmpty()) return resolveOrAmbiguous(substring)
-
-    val qWords = contentWords(q)
-    if (qWords.isEmpty()) return ItemMatch.NoMatch
-    val scored = items
-        .map { it to (contentWords(it.text.lowercase()) intersect qWords).size }
-        .filter { it.second > 0 }
-    if (scored.isEmpty()) return ItemMatch.NoMatch
-    val bestScore = scored.maxOf { it.second }
-    return resolveOrAmbiguous(scored.filter { it.second == bestScore }.map { it.first })
+    val matches = bestTextMatches(query, items) { it.text }
+    return when (matches.size) {
+        0 -> ItemMatch.NoMatch
+        1 -> ItemMatch.Resolved(matches.first())
+        else -> ItemMatch.Ambiguous(matches)
+    }
 }
 
-private fun resolveOrAmbiguous(matches: List<ListItem>): ItemMatch =
-    if (matches.size == 1) ItemMatch.Resolved(matches.first()) else ItemMatch.Ambiguous(matches)
+/**
+ * [matchItem]'s three tiers over any rows, by the text [text] gives each: the first tier that
+ * matches anything, all of its matches. Empty when nothing matches.
+ */
+fun <T> bestTextMatches(query: String, items: List<T>, text: (T) -> String): List<T> {
+    val q = query.trim().lowercase()
+    if (q.isBlank() || items.isEmpty()) return emptyList()
+
+    val exact = items.filter { text(it).trim().lowercase() == q }
+    if (exact.isNotEmpty()) return exact
+
+    val substring = items.filter { text(it).lowercase().contains(q) || q.contains(text(it).trim().lowercase()) }
+    if (substring.isNotEmpty()) return substring
+
+    val qWords = contentWords(q)
+    if (qWords.isEmpty()) return emptyList()
+    val scored = items
+        .map { it to (contentWords(text(it).lowercase()) intersect qWords).size }
+        .filter { it.second > 0 }
+    if (scored.isEmpty()) return emptyList()
+    val bestScore = scored.maxOf { it.second }
+    return scored.filter { it.second == bestScore }.map { it.first }
+}
 
 private fun contentWords(s: String): Set<String> =
     s.split(Regex("\\W+")).filter { it.length > 2 }.toSet()
