@@ -7351,6 +7351,8 @@ export interface components {
             /** @description Seconds since Windows last saw keyboard or mouse input. */
             input_idle_s?: number | null;
             on_mains?: boolean | null;
+            /** @description Whether this worker can send mail. Absent: an older worker, unknown. */
+            can_mail?: boolean | null;
             /** @description The worker's hash of its catalog. Absent: an older worker, catalog untouched. */
             workflows_hash?: string | null;
             /** @description The catalog (at most 50 entries, each at most 2 KB), only when the hash moved. */

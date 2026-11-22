@@ -151,6 +151,11 @@ class ClaudeMachine(models.Model):
     # (treated as not idle, so a review then waits for the 36 hour rule).
     input_idle_s = models.IntegerField(null=True, blank=True)
     on_mains = models.BooleanField(null=True, blank=True)
+    # Whether this machine's worker can send mail (its config has Alfred's mail account and
+    # Kevin's address), as the last heartbeat said. Null from a worker that predates the field:
+    # unknown, so `email_self` is kept as asked. False: `claude_session.delivery` sends the result
+    # to the phone instead (2026-11-22: mail was chosen on a laptop that cannot send).
+    can_mail = models.BooleanField(null=True, blank=True)
     # Null for a machine only a session hook has ever named.
     last_seen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(db_default=Now())
