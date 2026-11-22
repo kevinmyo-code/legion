@@ -136,10 +136,12 @@ class RingService : Service() {
         val ringing: StateFlow<List<RingRequest>> = mutable.asStateFlow()
 
         fun start(context: Context, r: RingRequest) {
-            val i = Intent(context, RingService::class.java)
-                .putExtra(EXTRA_KIND, r.kind.name).putExtra(EXTRA_ID, r.id).putExtra(EXTRA_LABEL, r.label)
-            ContextCompat.startForegroundService(context, i)
+            ContextCompat.startForegroundService(context, intent(context, r))
         }
+
+        /** The start intent for [r]; a test hands it to the service it builds. */
+        internal fun intent(context: Context, r: RingRequest): Intent = Intent(context, RingService::class.java)
+            .putExtra(EXTRA_KIND, r.kind.name).putExtra(EXTRA_ID, r.id).putExtra(EXTRA_LABEL, r.label)
 
         /** Stops one ring. Runs on the service's main thread; a no-op when nothing is ringing. */
         fun stop(kind: RingKind, id: Int) {

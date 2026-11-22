@@ -189,10 +189,16 @@ sealed interface ProactiveUrgency {
      * stream) with [ProactiveRaise.facts] on screen, and the line is spoken after Dismiss.
      * Otherwise it is spoken like any Safety raise. Still inside the master and the Safety switch.
      *
-     * [alertId] is the feed's own id for the alert: **one alarm per id**, and a second only when
-     * [severity] rises (a higher number is more severe; the feed picks the scale and keeps it).
+     * [alertId] is the feed's own id for the alert: **one alarm per alert series**, and a second
+     * only when [severity] rises (a higher number is more severe; the feed picks the scale and keeps
+     * it). [references] are the ids of the earlier alerts this one updates (NWS `references`): an
+     * update joins their series ([EmergencyRingRules]) and does not ring again.
      */
-    data class Alarm(val alertId: String, val severity: Int) : ProactiveUrgency {
+    data class Alarm(
+        val alertId: String,
+        val severity: Int,
+        val references: List<String> = emptyList(),
+    ) : ProactiveUrgency {
         init {
             require(alertId.isNotBlank()) { "an alarm must carry the feed's alert id - it is the dedup key" }
         }

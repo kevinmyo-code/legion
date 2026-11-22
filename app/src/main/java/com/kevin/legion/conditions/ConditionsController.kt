@@ -22,6 +22,8 @@ data class SevereAlert(
     val area: String,
     val sender: String,
     val ends: String,
+    /** The ids of the earlier alerts this one updates (NWS `references`); empty for a first issue. */
+    val references: List<String> = emptyList(),
 )
 
 /** Where conditions were asked about: the phone's own fix, or a saved place by label. */

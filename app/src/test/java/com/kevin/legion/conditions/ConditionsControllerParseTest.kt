@@ -15,7 +15,8 @@ class ConditionsControllerParseTest {
         """{"where":"the given point","lat":30.05,"lon":-98.85,"sections":[
           {"kind":"alerts","status":"found","text":"NWS alerts, active now: ...","rows":[
             {"id":"urn:oid:a","event":"Storm Warning","severity":"Severe","headline":"h","area":"Coast",
-             "sender":"NWS Example","ends":"","expires":"2026-11-10T05:00:00-09:00","severe":true},
+             "sender":"NWS Example","ends":"","expires":"2026-11-10T05:00:00-09:00","severe":true,
+             "references":["urn:oid:earlier"]},
             {"id":"urn:oid:b","event":"Flood Advisory","severity":"Minor","headline":"","area":"",
              "sender":"NWS","ends":"","expires":"","severe":false},
             {"id":"","event":"Tornado Warning","severity":"Extreme","severe":true}]},
@@ -34,6 +35,14 @@ class ConditionsControllerParseTest {
         val severe = ConditionsController.severe(structured)
         assertEquals(listOf("urn:oid:a"), severe.map { it.id })
         assertEquals("2026-11-10T05:00:00-09:00", severe[0].ends)
+    }
+
+    @Test
+    fun `an update keeps the ids it references, and an engine that sends none reads as none`() {
+        assertEquals(listOf("urn:oid:earlier"), ConditionsController.severe(structured).single().references)
+        val old = JSONObject(structured.toString())
+        old.getJSONArray("sections").getJSONObject(0).getJSONArray("rows").getJSONObject(0).remove("references")
+        assertEquals(emptyList<String>(), ConditionsController.severe(old).single().references)
     }
 
     @Test

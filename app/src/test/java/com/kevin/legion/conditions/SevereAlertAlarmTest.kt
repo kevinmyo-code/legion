@@ -7,6 +7,7 @@ import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.clock.RingService
 import com.kevin.legion.service.ConversationState
+import com.kevin.legion.service.EmergencyRingRules
 import com.kevin.legion.service.ProactiveBus
 import com.kevin.legion.service.ProactiveCategory
 import com.kevin.legion.service.ProactiveSettings
@@ -38,9 +39,9 @@ class SevereAlertAlarmTest {
     private val noon = LocalTime.of(12, 0)
     private val night = LocalTime.of(2, 30)
 
-    private fun alert(id: String, severity: String) = SevereAlert(
+    private fun alert(id: String, severity: String, vararg refs: String) = SevereAlert(
         id, "Tornado Warning", severity, "Tornado Warning until 4 PM", "Example County", "NWS Example",
-        "2026-11-10T16:00:00-06:00",
+        "2026-11-10T16:00:00-06:00", refs.toList(),
     )
 
     @Before
@@ -77,6 +78,8 @@ class SevereAlertAlarmTest {
         assertEquals(ProactiveUrgency.Alarm("a1", 1), severe.urgency)
         val extreme = SevereAlertPolling.raise(alert("a1", "Extreme"), "", null)
         assertEquals(ProactiveUrgency.Alarm("a1", 2), extreme.urgency)
+        val update = SevereAlertPolling.raise(alert("a2", "Severe", "a1"), "", null)
+        assertEquals(ProactiveUrgency.Alarm("a2", 1, listOf("a1")), update.urgency)
         assertEquals(ProactiveUrgency.Ordinary, SevereAlertPolling.raise(alert("a1", "Moderate"), "", null).urgency)
     }
 
@@ -102,5 +105,24 @@ class SevereAlertAlarmTest {
         assertTrue(deliver(alert("r1", "Extreme"), night) is ProactiveBus.RaiseOutcome.Rang)
         assertTrue(rang())
         assertEquals(ProactiveBus.RaiseOutcome.AlreadyAlarmed, deliver(alert("r1", "Severe"), night))
+    }
+
+    @Test
+    fun `an NWS update of an alert that rang does not ring again, nor an update of the update`() {
+        assertTrue(deliver(alert("u1", "Severe"), night) is ProactiveBus.RaiseOutcome.Rang)
+        assertTrue(rang())
+        assertEquals(ProactiveBus.RaiseOutcome.AlreadyAlarmed, deliver(alert("u2", "Severe", "u1"), night))
+        assertEquals(ProactiveBus.RaiseOutcome.AlreadyAlarmed, deliver(alert("u3", "Severe", "u2"), night))
+        assertNull(shadowOf(context as Application).nextStartedService)
+    }
+
+    @Test
+    fun `past the nightly cap a new alert is posted, never rung and never dropped`() {
+        repeat(EmergencyRingRules.MAX_RINGS_PER_NIGHT) { i ->
+            assertTrue(deliver(alert("c$i", "Severe"), night) is ProactiveBus.RaiseOutcome.Rang)
+            assertTrue(rang())
+        }
+        assertTrue(deliver(alert("c-over", "Severe"), night) is ProactiveBus.RaiseOutcome.Notified)
+        assertNull(shadowOf(context as Application).nextStartedService)
     }
 }

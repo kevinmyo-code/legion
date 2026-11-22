@@ -12,7 +12,7 @@ import com.kevin.legion.ui.clock.RingActivity
  */
 object RingNotification {
 
-    fun build(context: Context, r: RingRequest): Notification {
+    fun build(context: Context, r: RingRequest, fullScreen: Boolean = true): Notification {
         ClockNotifier.ensureChannels(context)
         val full = RingActivity.pendingIntent(context)
         val b = NotificationCompat.Builder(context, ClockNotifier.CHANNEL_RING)

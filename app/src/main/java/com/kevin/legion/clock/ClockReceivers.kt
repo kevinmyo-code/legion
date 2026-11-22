@@ -64,6 +64,8 @@ class ClockActionReceiver : BroadcastReceiver() {
         const val ACTION_TIMER_RESUME = "com.kevin.legion.clock.TIMER_RESUME"
         const val ACTION_TIMER_CANCEL = "com.kevin.legion.clock.TIMER_CANCEL"
         const val ACTION_BEDTIME_END = "com.kevin.legion.clock.BEDTIME_END"
+        const val ACTION_STOP_RING = "com.kevin.legion.clock.STOP_RING"
+        const val ACTION_RING_SWIPED = "com.kevin.legion.clock.RING_SWIPED"
     }
 }
 
