@@ -532,9 +532,9 @@ def test_a_tracker_draft_cannot_be_committed_in_the_same_turn(seeded):
     assert UserAspect.objects.filter(name="Test reading").exists()
 
 
-def test_a_backlog_idea_is_read_back_then_saved_on_one_yes_in_the_next_turn(seeded, monkeypatch):
-    """Kevin, 2026-11-22, "read it back first": on the engine brain the read-back is said by code and
-    ends the turn, a commit in that same turn saves nothing, and ONE yes in his next turn saves it."""
+def test_a_backlog_idea_is_read_back_then_saved_on_one_later_yes(seeded, monkeypatch):
+    """Kevin, 2026-11-22, "read it back first": on the engine brain the read-back is said by code
+    and ends the turn (nothing saved), and ONE yes in his next turn saves it."""
     from datetime import timedelta as td
 
     from board.models import IDEA_DRAFT, IDEA_PENDING, BoardIdea
