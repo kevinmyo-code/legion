@@ -86,8 +86,15 @@ def test_enter_claims_a_ready_spare_and_the_marker_goes_with_it(code):
 
 @pytest.mark.django_db
 def test_a_claimed_spare_is_the_household_an_inline_seed_makes(code, settings):
+    """While it waits, the scheduled jobs write their rows for it as for any household (here
+    the half-hourly heartbeat); the claim takes those away, so it matches a fresh seed."""
+    from ingest.models import IngestRun
+
     since = timezone.now() - dt.timedelta(seconds=1)
     spares.refill(size=1)
+    [waiting] = SpareVisitHousehold.objects.values_list("household_id", flat=True)
+    call_command("heartbeat", stdout=StringIO())
+    assert IngestRun.objects.filter(household_id=waiting).exists()
     assert _enter(code, "spare").status_code == 201
     settings.LEGION_DEMO_SPARE_POOL = 0  # the next visit seeds inline
     assert _enter(code, "inline").status_code == 201
@@ -137,6 +144,45 @@ def test_pool_off_hands_out_nothing_and_the_refill_deletes_every_spare(code, set
     assert _visit_household("off").id != spare.household_id
     assert spares.refill() == {"discarded": 1, "seeded": 0, "busy": 0}
     assert not Household.objects.filter(pk=spare.household_id).exists()
+
+
+@pytest.mark.django_db
+def test_a_closed_door_keeps_no_spares(pool):
+    """No live demo code: nobody can enter, so the hourly refill seeds none and deletes any left
+    over, and the dry run says so."""
+    row, _raw = DemoCode.rotate()
+    spares.refill(size=1)
+    [spare] = SpareVisitHousehold.objects.all()
+    DemoCode.close_all()
+    assert spares.pool_size() == 0
+    dry = StringIO()
+    call_command("prune_demo_visitors", "--dry-run", stdout=dry)
+    assert "Would discard 1 spare visit household(s)" in dry.getvalue()
+    out = StringIO()
+    call_command("prune_demo_visitors", stdout=out)
+    assert "Spare visit households: 1 discarded, 0 seeded (pool 0)." in out.getvalue()
+    assert not Household.objects.filter(pk=spare.household_id).exists()
+    assert not Household.objects.filter(is_demo_visit=True).exists()
+
+
+@pytest.mark.django_db
+def test_a_failing_refill_never_stops_the_prune(code, monkeypatch):
+    """The refill runs last: a seed bug is said in words and the 30-day deletes still ran."""
+    from demo.models import CallbackRequest
+
+    old = CallbackRequest.objects.create(name="A Visitor", contact="a@example.com")
+    CallbackRequest.objects.filter(pk=old.pk).update(
+        created_at=timezone.now() - dt.timedelta(days=31)
+    )
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("seed broke")
+
+    monkeypatch.setattr("demo.spares.seed_household", _boom)
+    out = StringIO()
+    call_command("prune_demo_visitors", stdout=out)
+    assert "Spare visit households: the refill failed (RuntimeError)" in out.getvalue()
+    assert not CallbackRequest.objects.filter(pk=old.pk).exists()
 
 
 # =============================================================================
@@ -259,6 +305,7 @@ def test_concurrent_claims_never_share_a_household(settings):
     """Three claims at once over two spares, each holding its lock until all three have
     claimed: two distinct households and one empty hand, never the same household twice."""
     settings.LEGION_DEMO_SPARE_POOL = 2
+    DemoCode.rotate()
     spares.refill()
     assert SpareVisitHousehold.objects.count() == 2
     claimed_all = threading.Barrier(3, timeout=30)

@@ -39,6 +39,7 @@ inline at each new turn; this hourly run is what prunes while the turn endpoint 
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from django.core.management.base import BaseCommand
@@ -53,6 +54,8 @@ from devicelogs.models import VISIT_RETENTION_DAYS, DeviceLog
 from devicelogs.web_conversation import prune_visit_records
 from household.models import Household, HouseholdMember, User
 from procedures.retention import prune as prune_runs
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -109,7 +112,6 @@ class Command(BaseCommand):
         from demo import funnel
 
         counts = funnel.prune(VISIT_RETENTION_DAYS)
-        pool = spares.refill()
         # The store-rep demo (`demo/shop/`): orders and callback requests, a visitor's name and
         # contact included, go after the same 30 days as the visit records.
         cutoff = timezone.now() - timedelta(days=VISIT_RETENTION_DAYS)
@@ -117,6 +119,22 @@ class Command(BaseCommand):
             ShopOrder.objects.filter(created_at__lt=cutoff).delete()[0]
             + CallbackRequest.objects.filter(created_at__lt=cutoff).delete()[0]
         )
+        # Last, and never in the way of the deletes above: a refill that fails is said in words
+        # and the next visit seeds inline.
+        try:
+            pool = spares.refill()
+            spare_line = (
+                "Spare visit households: another refill was running, so none were touched."
+                if pool["busy"]
+                else f"Spare visit households: {pool['discarded']} discarded, {pool['seeded']} "
+                f"seeded (pool {spares.pool_size()})."
+            )
+        except Exception as exc:  # noqa: BLE001 - reported in the output line
+            logger.exception("prune_demo_visitors: the spare refill failed")
+            spare_line = (
+                f"Spare visit households: the refill failed ({type(exc).__name__}); the next "
+                f"visit seeds inline."
+            )
         self.stdout.write(
             f"Deleted {n_households} expired demo visit household(s) ({rows} rows, visitors "
             f"included) and {n_legacy} older visitor(s) with their tokens, and {records} visit "
@@ -124,10 +142,5 @@ class Command(BaseCommand):
             f"run(s) past retention, and {traces} agent trace row(s) past retention, and "
             f"{counts} funnel count row(s) older than {VISIT_RETENTION_DAYS} days, and {shop} "
             f"store-rep order or callback row(s) older than {VISIT_RETENTION_DAYS} days. "
-            + (
-                "Spare visit households: another refill was running, so none were touched."
-                if pool["busy"]
-                else f"Spare visit households: {pool['discarded']} discarded, {pool['seeded']} "
-                f"seeded (pool {spares.pool_size()})."
-            )
+            + spare_line
         )

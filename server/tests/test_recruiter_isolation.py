@@ -249,9 +249,9 @@ def world(token_a, household_a, settings):
     _kevin_rows(token_a)
 
     settings.LEGION_DEMO_SPARE_POOL = 1
+    _row, code = DemoCode.rotate()
     spares.refill()
     [spare] = SpareVisitHousehold.objects.values_list("household_id", flat=True)
-    _row, code = DemoCode.rotate()
     browser, visit = _enter_as(code, "iso")
     visitor, demo = visit.user, visit.household
     assert demo.id == spare and not SpareVisitHousehold.objects.exists()

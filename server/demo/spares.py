@@ -26,7 +26,7 @@ Refill: after each visit commits, on a thread (`refill_soon`), so it is never in
 path. Best effort, because Cloud Run may throttle the CPU once the response is sent; the hourly
 `prune_demo_visitors` refills too. One refill at a time across every instance (an advisory
 lock), so two never overshoot the pool. Pool size: `LEGION_DEMO_SPARE_POOL` (default 2; 0 turns
-the pool off and the next refill deletes every spare).
+the pool off and the next refill deletes every spare), and 0 while no demo code is live.
 """
 
 from __future__ import annotations
@@ -45,10 +45,11 @@ from django.db import connection, transaction
 from django.utils import timezone
 
 from demo.briefing import DEMO_PROCEDURES, seed_visit_procedures
-from demo.models import SpareVisitHousehold
+from demo.models import DemoCode, SpareVisitHousehold
 from demo.visit_cleanup import delete_visit_household
 from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import Household
+from ingest.models import IngestRun
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,10 @@ _SEED_SOURCES = (
 
 
 def pool_size() -> int:
+    """`LEGION_DEMO_SPARE_POOL`, and 0 while the demo's door is closed (no live code): an engine
+    nobody can enter keeps no spare households."""
+    if not DemoCode.live().exists():
+        return 0
     try:
         return max(0, int(str(getattr(settings, "LEGION_DEMO_SPARE_POOL", DEFAULT_POOL))))
     except ValueError:
@@ -111,8 +116,10 @@ def _fresh(now: dt.datetime):
 def claim(now: dt.datetime | None = None) -> Household | None:
     """One ready spare, made the caller's, or None. Call inside the visit's transaction: the
     marker row goes with it, and a rollback puts the spare back. Two callers never get the same
-    one (`skip_locked`). The household's own `created_at` becomes the visit's, as a seed now
-    would have stamped it."""
+    one (`skip_locked`). What the wait left behind goes: the household's own `created_at` becomes
+    the visit's, as a seed now would have stamped it, and the job rows the scheduled commands
+    wrote while it waited (a heartbeat every half hour, a skipped push check every five
+    minutes) are deleted, since a fresh seed has none."""
     if pool_size() == 0:
         return None
     now = now or timezone.now()
@@ -126,6 +133,7 @@ def claim(now: dt.datetime | None = None) -> Household | None:
     if spare is None:
         return None
     household = spare.household
+    IngestRun.objects.filter(household=household, started_at__gte=spare.created_at).delete()
     spare.delete()
     Household.objects.filter(pk=household.pk).update(created_at=now)
     household.created_at = now
@@ -169,7 +177,7 @@ def refill(size: int | None = None) -> dict[str, int]:
     """Discards what may not be handed out, then seeds spares until `size` (the pool size) are
     ready. Each spare is seeded and marked in one transaction, so a half-seeded one is never
     claimable. Another refill already running anywhere means this one does nothing."""
-    size = pool_size() if size is None else size
+    size = pool_size() if size is None or not DemoCode.live().exists() else size
     with connection.cursor() as cursor:
         cursor.execute("select pg_try_advisory_lock(%s, %s)", list(_LOCK))
         if not cursor.fetchone()[0]:
