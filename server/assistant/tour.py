@@ -1,5 +1,7 @@
 """The demo's one-minute tour (Kevin, 2026-11-17: "the voice the center of attention"): a few beats
-the assistant drives, each one visual picked by code and one or two sentences spoken.
+the assistant drives, each one visual picked by code and one short sentence spoken. Lighter since
+2026-11-22 (Kevin: "its too dense and verbose and too much"): four beats, one sentence each, and
+the diagram the one whose caption opens with a short sentence.
 
 Every beat runs its tool through the web tool door (`assistant.cascade.WebDoor`): the recruiter's
 fence, the audit row and the conversation record are the door's own, as for any tool call. The
@@ -26,15 +28,12 @@ from dataclasses import dataclass
 from agents.runtime.tools import ToolCall
 
 # Each line claims only what the demo as built shows (round 2 speech review T): the card is a live
-# read of the made-up household's records, the resume is the one loaded for this visit, and the
-# contact links are the stage's own (`components/demo/voice-stage.tsx`, from the loaded content).
-LIVE_LINE = "That card is a live lookup on this made-up household's car records."
+# read of the made-up household's records, and the resume is the one loaded for this visit.
+LIVE_LINE = "That's a live lookup on this made-up household's car."
 RESUME_LINE = "And that's his one-page resume."
 # The tour's lighter lines carry an expression tag (`assistant/speech_tags.py`): spoken as a sound,
 # never shown, stored or checked.
-END_LINE = (
-    "That's the tour. <short pause> Ask me anything else, or use the links below to get in touch."
-)
+END_LINE = "That's the tour. <short pause> Ask me anything."
 STOPPED_LINE = "Okay, tour stopped. Ask me anything."
 # The tour's own code lines: the only tour sentences that may carry a tag.
 CODE_LINES = frozenset({LIVE_LINE, RESUME_LINE, END_LINE, STOPPED_LINE})
@@ -90,13 +89,13 @@ def _diagram(user, project: str, prefer: tuple[str, ...]) -> tuple[str, str] | N
 
 
 def _who(content: dict) -> str:
-    """His profile's first section, at most two sentences, as written; "" without his order (then
-    nothing leads by accident, as `demo.profile.speak` asks which one)."""
+    """His profile's first section's first sentence, as written; "" without his order (then nothing
+    leads by accident, as `demo.profile.speak` asks which one)."""
     from demo.profile import PROFILE_ORDER, sections_of
 
     order = content.get(PROFILE_ORDER)
     sections = sections_of(content.get("profile"), order) if order else []
-    return " ".join(sections[0].sentences[:2]) if sections else ""
+    return sections[0].sentences[0] if sections and sections[0].sentences else ""
 
 
 def beats_for(user) -> list[Beat]:
@@ -106,17 +105,14 @@ def beats_for(user) -> list[Beat]:
     who = _who(content)
     if who:
         beats.append(Beat("who", who, about_him=True))
-    found = _diagram(user, "legion", ("components", "context", "containers"))
+    # The context view first: its caption opens with one short sentence ("Three kinds of people reach
+    # LEGION through four clients."); the components view's runs to forty words.
+    found = _diagram(user, "legion", ("context", "components", "containers"))
     if found:
         beats.append(
             Beat("legion", "", "show_diagram", {"project": found[0], "view": found[1]}, True)
         )
     beats.append(Beat("live", LIVE_LINE, "next_service", {}))
-    found = _diagram(user, "workflow", ("loop", "roles"))
-    if found:
-        beats.append(
-            Beat("workflow", "", "show_diagram", {"project": found[0], "view": found[1]}, True)
-        )
     beats.append(Beat("resume", RESUME_LINE, "show_resume", {}))
     return beats
 
