@@ -233,7 +233,8 @@ def write_manifest() -> None:
                     "FixedClipsTest checks every sha256.",
         "model": MODEL, "voice": VOICE, "rate": RATE, "clips": entries,
     }
-    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    with open(OUT / "manifest.json", "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(manifest, indent=2) + "\n")
 
 
 if __name__ == "__main__":
