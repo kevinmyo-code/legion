@@ -61,6 +61,8 @@ SUGGESTION_META_KEYS = ("city", "venue", "address", "url", "price")
 # `KIND_CHOICES` lives in `api/event_columns.py`, beside the CHECK it is
 # built into, so the 400 and the constraint cannot disagree.
 SOURCE_CHOICES = ("legion", "google")
+# An address is at most 320 characters (RFC 5321's 64 + 1 + 255).
+ORGANIZER_MAX_CHARS = 320
 REPEAT_KIND_CHOICES = ("DAILY", "WEEKLY", "MONTHLY_ON_DATE", "YEARLY")
 REPEAT_END_KIND_CHOICES = ("NEVER", "ON_DATE", "AFTER_COUNT")
 
@@ -119,6 +121,7 @@ class EventSerializer(serializers.ModelSerializer):
             "notes",
             "source",
             "google_event_id",
+            "organizer",
             "done",
             "done_at",
             "sort_order",
@@ -169,6 +172,20 @@ class EventSerializer(serializers.ModelSerializer):
             "exact": {"required": False},
             "exact_downgraded": {"required": False},
             "kind": {"required": False},
+            # Who organized an imported event (`api/event_columns.py`): written by a syncing
+            # client, never returned, so no read of an event changes for a client that does not
+            # know it (the web, /try, the phone today). Read only by the engine's agent turn.
+            "organizer": {
+                "required": False,
+                "allow_null": True,
+                "write_only": True,
+                "max_length": ORGANIZER_MAX_CHARS,
+                "help_text": (
+                    "Who organized an event that came in from another calendar: an address, or "
+                    "'self' when that calendar says its own owner organized it. Optional; never "
+                    "returned."
+                ),
+            },
         }
 
     @extend_schema_field(PinnedBySerializer(many=True))

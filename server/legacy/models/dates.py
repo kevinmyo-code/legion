@@ -27,6 +27,9 @@ class Event(models.Model):
     # anyway) and is behaviourally equivalent for reads: Postgres already
     # treats every NULL as distinct under a plain unique constraint too.
     google_event_id = models.TextField(null=True)
+    # Who organized an imported event, as its calendar says (an address, or `self`); null when
+    # unknown. `ingest/migrations/0027`; read by `agents/legion/calendar_taint.py` only.
+    organizer = models.TextField(null=True)
     done = models.BooleanField()
     done_at = models.DateTimeField(null=True)
     sort_order = models.IntegerField(null=True)

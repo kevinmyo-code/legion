@@ -321,6 +321,11 @@ def django_db_setup(django_db_setup, django_db_blocker):
 
             skipped = add_event_suggestions(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0027` (engine brain, calendar taint), the same way.
+            from api.event_columns import add_event_organizer
+
+            skipped = add_event_organizer(cursor)
+            assert skipped is None, skipped
             # `ingest/migrations/0019` (suggestion pins), the same way. AFTER
             # tenancy and 0018: its composite key names `events.household_id`
             # and its guard reads `events.kind`.

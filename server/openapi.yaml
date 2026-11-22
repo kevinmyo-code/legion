@@ -18824,6 +18824,14 @@ components:
         google_event_id:
           type: string
           nullable: true
+        organizer:
+          type: string
+          writeOnly: true
+          nullable: true
+          description: 'Who organized an event that came in from another calendar:
+            an address, or ''self'' when that calendar says its own owner organized
+            it. Optional; never returned.'
+          maxLength: 320
         done:
           type: boolean
         done_at:
@@ -23299,6 +23307,14 @@ components:
         google_event_id:
           type: string
           nullable: true
+        organizer:
+          type: string
+          writeOnly: true
+          nullable: true
+          description: 'Who organized an event that came in from another calendar:
+            an address, or ''self'' when that calendar says its own owner organized
+            it. Optional; never returned.'
+          maxLength: 320
         done:
           type: boolean
         done_at:

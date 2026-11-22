@@ -196,3 +196,29 @@ def add_event_suggestions(cursor) -> str | None:
         return "events: public.events does not exist here; nothing changed."
     cursor.execute(SUGGESTION_ADD_SQL)
     return None
+
+
+# **Engine brain, calendar taint (relay report 12.4).** Who organized an event
+# that came in from outside (a synced or shared calendar, an invite), as that
+# calendar states it: an address, or `self` when the calendar says its own
+# owner organized it. Null when nobody said (every row before this column, and
+# every row a client that does not know the field writes). Read only by the
+# engine's agent turn (`agents/legion/calendar_taint.py`) to decide whether the
+# event's text is someone else's; never returned by the API. Nullable, so every
+# existing row reads exactly as it did.
+ORGANIZER_ADD_SQL = """
+alter table public.events
+    add column if not exists organizer text;
+"""
+
+ORGANIZER_DROP_SQL = """
+alter table if exists public.events drop column if exists organizer;
+"""
+
+
+def add_event_organizer(cursor) -> str | None:
+    """Adds `events.organizer` if `events` is there. None when it ran, or why not."""
+    if not _table_exists(cursor, "events"):
+        return "events: public.events does not exist here; nothing added."
+    cursor.execute(ORGANIZER_ADD_SQL)
+    return None

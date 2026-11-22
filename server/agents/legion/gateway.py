@@ -28,7 +28,7 @@ import time
 from datetime import date
 from datetime import time as clock_time
 
-from agents.legion import day_words, guards, hold, redact, relay
+from agents.legion import calendar_taint, day_words, guards, hold, redact, relay
 from agents.legion.client_facts import TEST_MODE_WORDS
 from agents.legion.end_conversation import END_DECLARATION, END_INSTRUCTION, END_TOOL
 from agents.legion.speech_rules import _verbatim
@@ -250,10 +250,21 @@ class LegionGateway:
         result: ToolResult = run_engine_tool(self.request, tool, dict(call.args))
         # The deadline is soft (budget.py): a late tool is not interrupted; its `ms` says so.
         outcome = _OUTCOMES.get(result.outcome, "failed" if result.is_error else "ok")
+        # An event someone outside the household wrote (`calendar_taint.py`): known only once
+        # read, so the mark is saved here, before the result reaches the model, or it is withheld.
+        calendar = calendar_taint.reads_outside(self.request, call.name, result)
+        if calendar:
+            state.add_taint(calendar_taint.TAINT_SOURCE)
+            saved = self.recorder.mark_taint(state) if self.recorder is not None else True
+            if not saved:
+                words = calendar_taint.MARK_FAILED
+                return self._done(state, call, tool, False, words, "refused", "tainted", started)
         # Its result is outside text by class: a third-party tool, or a procedure run while the
         # request is flagged (a step read one, `read_through.before_tool`, or the turn had).
-        outside = guards.needs_taint(call.name) or (
-            call.name == PROCEDURE_TOOL and read_through.read_third_party(self.request)
+        outside = (
+            calendar
+            or guards.needs_taint(call.name)
+            or (call.name == PROCEDURE_TOOL and read_through.read_third_party(self.request))
         )
         fact = (
             write_fact(call.name, result.structured)
