@@ -100,7 +100,9 @@ object ProactiveBus {
     }
 
     /**
-     * The night window. Inside it only [QUIET_HOURS_EXEMPT] may speak.
+     * The night window. Inside it only [QUIET_HOURS_EXEMPT] may speak, and a Severe or Extreme
+     * weather alert RINGS instead of speaking ([ProactiveDelivery.routeFor]; owner decision pending
+     * on whether it should, phantom alarm report 2026-11-21). One pair to change for both.
      *
      * **Wellbeing is in that set because the nudge this whole map came from lives at night** -
      * Kevin, 2026-08-16: *"it's past 10pm, perhaps rest is in order."* A window that muted the night
@@ -174,7 +176,7 @@ object ProactiveBus {
          * [StatedNoFacts]: only an emergency may ring. */
         data object AlarmNotAllowed : RaiseOutcome()
 
-        /** This alert id was already delivered at this severity or higher. One alarm per alert. */
+        /** This alert's series was already delivered at this severity or higher. One alarm per alert series. */
         data object AlreadyAlarmed : RaiseOutcome()
     }
 
@@ -281,7 +283,7 @@ object ProactiveBus {
         if (!raise.statesItsFacts) return RaiseOutcome.StatedNoFacts
         val alarm = raise.urgency as? ProactiveUrgency.Alarm
         if (alarm != null && raise.category != ProactiveCategory.SAFETY) return RaiseOutcome.AlarmNotAllowed
-        if (alarm != null && !SafetyAlarms.isNew(context, alarm)) return RaiseOutcome.AlreadyAlarmed
+        if (alarm != null && !SafetyAlarms.admit(context, alarm)) return RaiseOutcome.AlreadyAlarmed
 
         // --- the checks that need the raise history ---------------------------------------
         val dao = CarDatabase.getDatabase(context).proactiveRaiseDao()
@@ -301,9 +303,9 @@ object ProactiveBus {
         var route = ProactiveDelivery.route(context, raise, gateAllowsSpeech = refusal == null, time = time)
         // A check-in is spoken or nothing: a question posted to the shade would be a nag.
         if (raise.checkIn != null && route != ProactiveDelivery.Route.SPEAK) return RaiseOutcome.NotNow
-        if (alarm != null) SafetyAlarms.remember(context, alarm)
         if (route == ProactiveDelivery.Route.RING && !SafetyAlarms.ring(context, raise)) {
-            // The ring could not start (Android refused the background start): post it, never drop it.
+            // Nothing could show it, the night's cap is reached, or Android refused the background start:
+            // post it, never drop it. (The alert was recorded when it was admitted.)
             route = ProactiveDelivery.Route.NOTIFY
         }
         val raised = ProactiveRaiseRow(

@@ -118,7 +118,7 @@ class VoiceSpeedWiringTest {
         assertTrue(schedule.contains("fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }"))
         // New speech cancels a pending one, and notes whether it started over a reply or a turn.
         val start = bodyOf(s.substring(s.indexOf("private fun onUserTurnStart()")), "onUserTurnStart")
-        assertTrue(start.contains("fillerJobs.endTurn()"))
+        assertTrue(start.contains("cutAck()"))
         assertTrue(start.contains("uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)"))
     }
 

@@ -17,8 +17,11 @@ internal object EndOfTurnLine {
         val scores = end.scores.takeLast(SCORES_LOGGED).joinToString(",") {
             "%.2f@%d>%d".format(Locale.US, it.score, it.askedAtMs, it.arrivedAtMs)
         }
+        // The bench greps `eot_early=1`; the score is the verdict that ended the turn (the last one).
+        val early = end.scores.lastOrNull()?.takeIf { end.reason == EndOfTurnPolicy.Reason.EARLY }
+            ?.let { " eot_early=1 score=%.2f".format(Locale.US, it.score) }.orEmpty()
         return "eot_ms=${end.silenceMs} eot_reason=${end.reason.wire} " +
             "eot_longest_silence_ms=${end.longestSilenceMs} st_checks=${end.scores.size} " +
-            "st_scores=${scores.ifEmpty { "none" }}"
+            "st_scores=${scores.ifEmpty { "none" }}$early"
     }
 }

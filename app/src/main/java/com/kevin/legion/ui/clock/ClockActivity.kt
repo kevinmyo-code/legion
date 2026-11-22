@@ -5,7 +5,11 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
@@ -75,7 +79,11 @@ class ClockActivity : ComponentActivity() {
         val ui = remember(state, tick, tab, problems, bedtimeProblem, notice) {
             ClockUi.from(state, clock.time, tab, problems, bedtimeProblem, notice)
         }
-        ClockScreen(ui, actions())
+        Box(Modifier.fillMaxSize()) {
+            ClockScreen(ui, actions())
+            // An emergency alert is in no clock list: the bar is where this screen shows it ringing.
+            RingStopBar(Modifier.align(Alignment.TopCenter))
+        }
     }
 
     private fun actions() = ClockActions(

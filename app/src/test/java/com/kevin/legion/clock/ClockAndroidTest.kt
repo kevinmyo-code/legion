@@ -91,9 +91,7 @@ class ClockAndroidTest {
         assertTrue(rig.ringer.ringing.isEmpty())
         fire(1)
         assertEquals(RingRequest(RingKind.ALARM, 1, "07:00"), rig.ringer.ringing.single())
-        val dismiss = Intent(ClockActionReceiver.ACTION_DISMISS).putExtra(ClockFireReceiver.EXTRA_ID, 1)
-        ClockActionReceiver().onReceive(context, dismiss)
-        assertTrue(rig.ringer.ringing.isEmpty())
+        // The notification's Stop is RingStopTest's: it stops the real ring service's rings.
     }
 
     @Test

@@ -76,6 +76,13 @@ def test_alert_parser_and_the_severe_filter():
     assert alerts[0].sender.startswith("NWS")
 
 
+def test_alert_parser_keeps_the_ids_an_update_references():
+    # The phone rings once per alert series: an update names the alerts it replaces.
+    alerts = sources.parse_alerts(fixture("nws_alerts.json"))
+    assert alerts[0].references == ("urn:oid:2.49.0.1.840.0.example-earlier-issue.001.1",)
+    assert alerts[1].references == ()
+
+
 def test_usgs_parser_pairs_height_and_flow_per_site():
     gauges = {g.site: g for g in sources.parse_usgs(fixture("usgs_iv.json"))}
     bear = gauges["08166140"]
@@ -176,6 +183,7 @@ def test_severe_only_keeps_severe_and_hurricane(mcp, monkeypatch):
     assert "Flood Advisory" not in text
     rows = structured["sections"][0]["rows"]
     assert all(r["severe"] for r in rows) and len(rows) == 2
+    assert list(rows[0]["references"]) == ["urn:oid:2.49.0.1.840.0.example-earlier-issue.001.1"]
 
 
 def test_no_alerts_is_read_and_empty(mcp, monkeypatch):

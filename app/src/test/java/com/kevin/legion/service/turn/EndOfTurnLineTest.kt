@@ -39,9 +39,22 @@ class EndOfTurnLineTest {
     }
 
     @Test
+    fun `an early end says so with the score that ended it, and only an early end does`() {
+        val early = EndActivity(Reason.EARLY, silenceMs = 320, scores = listOf(Score(0.934f, 192, 288)))
+        assertEquals(
+            "eot_ms=320 eot_reason=early eot_longest_silence_ms=320 st_checks=1 " +
+                "st_scores=0.93@192>288 eot_early=1 score=0.93",
+            EndOfTurnLine.of(early),
+        )
+        val finished = EndActivity(Reason.FINISHED, silenceMs = 512, scores = listOf(Score(0.6f, 192, 288)))
+        assertTrue(EndOfTurnLine.of(finished).endsWith("st_scores=0.60@192>288"))
+    }
+
+    @Test
     fun `the line is keys and numbers only`() {
         val end = EndActivity(Reason.EXTENDED, silenceMs = 900, scores = listOf(Score(0.4567f, 192, 700)))
-        val pairs = EndOfTurnLine.of(end).split(" ")
+        val pairs = (EndOfTurnLine.of(end) + " " +
+            EndOfTurnLine.of(EndActivity(Reason.EARLY, 320, listOf(Score(0.9f, 192, 288))))).split(" ")
         val number = Regex("""^-?\d+(\.\d+)?$""")
         val score = Regex("""^\d\.\d\d@\d+>\d+$""")
         for (pair in pairs) {

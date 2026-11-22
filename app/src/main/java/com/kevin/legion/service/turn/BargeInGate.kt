@@ -42,6 +42,14 @@ package com.kevin.legion.service.turn
  *    first 320 ms of every reply ran at a threshold of 18,000, thirty times the real echo. One gate
  *    per [TurnTaker], one taker per socket: the seed never outlives the session.
  *
+ * **Echo warm-up (2026-11-21; LiveKit and Unmute both ignore interruptions for 3 s).** The platform
+ * echo canceller needs a few seconds of playback to learn the room after call audio starts or the
+ * routed device changes. [startWarmUp] (the caller's, at the first reply audio after such a change,
+ * as LiveKit starts its timer on the agent's first speech) opens [WARMUP_WINDOWS] windows, counted
+ * only while reply audio plays. Inside them a span that would fire is reported as [Event.Ignored]
+ * instead: nothing is flushed, no verdict is watched, nothing counts as a self-interrupt, and the span
+ * starts over, so a voice that goes on fires as soon as the window closes.
+ *
  * The gate says nothing unless it fires, so each reply also keeps a [ReplyStats] (A25,
  * 2026-10-28: armed on every reply, zero fires, and no way to tell why). [onReplyEnd] hands it back
  * once per reply; it is null when no reply was open, so a second end (flush, then drain) is silent.
@@ -65,6 +73,13 @@ internal class BargeInGate {
             val selfInterrupts: Int,
             val nowDisabled: Boolean,
         ) : Event
+
+        /** A span that would have fired, dropped for [reason]; the span starts over. */
+        data class Ignored(val reason: String, val level: Int, val threshold: Int) : Event {
+            companion object {
+                const val WARMUP = "warmup"
+            }
+        }
     }
 
     /**
@@ -125,6 +140,17 @@ internal class BargeInGate {
     private var longestRunMs = 0
     private var bestSpanWindows = 0
 
+    /** Windows left in which a would-be fire is ignored ([startWarmUp]). */
+    private var warmUpLeft = 0
+
+    /** The echo canceller is still settling ([startWarmUp]). */
+    val warmingUpNow: Boolean get() = warmUpLeft > 0
+
+    /** Reply audio just started on a new audio path: ignore fires for the next [WARMUP_MS]. */
+    fun startWarmUp() {
+        warmUpLeft = WARMUP_WINDOWS
+    }
+
     /** Listening for the user over the current reply. */
     val armedNow: Boolean get() = armed
 
@@ -175,18 +201,23 @@ internal class BargeInGate {
 
     /**
      * One window. [playing] is true while the reply is audible. Returns a [Event.Fire] when the user
-     * is talking over it, a [Event.Verdict] when a fire's watch period ends, otherwise null.
+     * is talking over it, [Event.Ignored] when he would be but the warm-up holds it, a [Event.Verdict]
+     * when a fire's watch period ends, otherwise null.
      */
     fun onWindow(prob: Float, level: Int, playing: Boolean): Event? {
         if (userGuardLeft > 0) userGuardLeft--
+        val warmingUp = warmUpLeft > 0
+        // Only playback trains the canceller: the cascade's silence between an ack and the reply
+        // (1.5-3 s) must not use the window up before the reply it protects.
+        if (warmingUp && playing) warmUpLeft--
         return when {
             verdictWindowsLeft > 0 -> watch(prob)
             !armed || !playing || disabled -> null
-            else -> listen(prob, level)
+            else -> listen(prob, level, warmingUp)
         }
     }
 
-    private fun listen(prob: Float, level: Int): Event? {
+    private fun listen(prob: Float, level: Int, warmingUp: Boolean): Event? {
         val threshold = threshold()
         val qualifies = prob >= PROB && level >= threshold
         count(prob, level, threshold, qualifies)
@@ -204,6 +235,11 @@ internal class BargeInGate {
         val inSpan = Integer.bitCount(span)
         if (inSpan > bestSpanWindows) bestSpanWindows = inSpan
         if (inSpan < SUSTAIN_WINDOWS) return null
+        return spanFull(threshold, inSpan, warmingUp)
+    }
+
+    /** A full span: its peak, then a fire, or an [Event.Ignored] while [warmingUp]. */
+    private fun spanFull(threshold: Int, inSpan: Int, warmingUp: Boolean): Event {
         var maxProb = 0f
         var maxLevel = 0
         for (ago in 0 until SPAN_WINDOWS) {
@@ -212,6 +248,16 @@ internal class BargeInGate {
             if (spanProb[i] > maxProb) maxProb = spanProb[i]
             if (spanLevel[i] > maxLevel) maxLevel = spanLevel[i]
         }
+        return if (warmingUp) {
+            resetRun()
+            Event.Ignored(Event.Ignored.WARMUP, maxLevel, threshold)
+        } else {
+            fire(maxProb, maxLevel, threshold, inSpan)
+        }
+    }
+
+    /** The span fired: watch for the verdict, and hold the user guard. */
+    private fun fire(maxProb: Float, maxLevel: Int, threshold: Int, inSpan: Int): Event.Fire {
         val fire = Event.Fire(maxProb, maxLevel, echoFloor(), threshold, inSpan * WINDOW_MS)
         fireLevel = maxLevel
         fireThreshold = threshold
@@ -288,5 +334,11 @@ internal class BargeInGate {
         const val MAX_SELF_INTERRUPTS = 2
         /** A fire whose peak was at least this many times its threshold was the user, not echo. */
         const val CLEARLY_USER_FACTOR = 2
+
+        /** How long a would-be fire is ignored from the first reply audio on a new audio path. */
+        const val WARMUP_MS = 3_000L
+
+        /** [WARMUP_MS] in windows, rounded up. */
+        const val WARMUP_WINDOWS = ((WARMUP_MS + WINDOW_MS - 1) / WINDOW_MS).toInt()
     }
 }

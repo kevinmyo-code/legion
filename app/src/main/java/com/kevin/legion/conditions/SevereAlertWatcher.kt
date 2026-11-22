@@ -94,11 +94,14 @@ class SevereAlertWatcher(
          * is noted, alarm me"): Extreme 2, Severe 1. Anything else the engine marks severe (a
          * hurricane watch at a lower NWS severity) stays an ordinary Safety raise, null here.
          */
-        fun alarmLevel(severity: String): Int? = when (severity.trim().lowercase()) {
-            "extreme" -> 2
-            "severe" -> 1
-            else -> null
-        }
+        fun alarmLevel(severity: String): Int? = RING_LEVELS[severity.trim().lowercase()]
+
+        /**
+         * Which NWS severities ring (through silent, vibrate and DND, at night) and at what level.
+         * Today: Severe and Extreme. Owner decision pending (phantom alarm report 2026-11-21): drop
+         * "severe" here to ring for Extreme only. One line to change.
+         */
+        private val RING_LEVELS = mapOf("extreme" to 2, "severe" to 1)
 
         /** What [SeenAlerts] holds for a raised alert: its id, plus its ring level when it has one. */
         fun seenKey(alert: SevereAlert): String = alarmLevel(alert.severity)?.let { "${alert.id}#$it" } ?: alert.id

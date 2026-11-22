@@ -19,6 +19,8 @@ internal data class TurnConfig(
     val smartTurn: Boolean,
     /** Why a part is off, for the log line. */
     val note: String,
+    /** A clear Smart Turn "done" ends the turn early ([EndOfTurnPolicy.EARLY_MS]); the cascade only. */
+    val earlyEnd: Boolean = false,
 ) {
     companion object {
         val SERVER_VAD = TurnConfig(manualActivity = false, bargeIn = false, smartTurn = false, note = "server VAD")
@@ -65,6 +67,7 @@ object VoiceTurnSettings {
     private const val KEY_KEEP_CONVERSATION_LOG = "conversation_log_keep_and_send"
     private const val KEY_BLUETOOTH_MIC = "bluetooth_mic"
     private const val KEY_LOCAL_COMMANDS = "local_commands"
+    private const val KEY_EARLY_END = "early_end_of_turn"
 
     /** Kevin, 2026-11-10: in the car, listen through the car's own mic. Default ON. */
     internal const val BLUETOOTH_MIC_DEFAULT = true
@@ -88,6 +91,13 @@ object VoiceTurnSettings {
     /** Default ON (Kevin, 2026-10-27: "straight to on", no shadow mode). */
     fun smartEndOfTurn(context: Context): Boolean = prefs(context).getBoolean(KEY_SMART_END, true)
     fun setSmartEndOfTurn(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SMART_END, on).apply()
+
+    /**
+     * "End clear turns sooner" ([EndOfTurnPolicy.EARLY_THRESHOLD]): a clear Smart Turn "done" ends
+     * the turn at 300 ms of silence instead of 500. Default ON; the off switch needs no release.
+     */
+    fun earlyEndOfTurn(context: Context): Boolean = prefs(context).getBoolean(KEY_EARLY_END, true)
+    fun setEarlyEndOfTurn(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_EARLY_END, on).apply()
 
     /** Default ON; never applies over Bluetooth ([TurnConfig.decide]). */
     fun bargeIn(context: Context): Boolean = prefs(context).getBoolean(KEY_BARGE_IN, true)

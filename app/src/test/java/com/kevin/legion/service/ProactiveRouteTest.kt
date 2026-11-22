@@ -142,10 +142,13 @@ class ProactiveRouteTest {
 
     @Test
     fun `one alarm per alert id, and again only when the severity rises`() {
-        assertTrue(SafetyAlarms.isNewGiven(null, 2))
-        assertFalse(SafetyAlarms.isNewGiven(2, 2))
-        assertFalse(SafetyAlarms.isNewGiven(3, 2))
-        assertTrue(SafetyAlarms.isNewGiven(2, 3))
+        fun seen(severity: Int) = mapOf("a" to EmergencyRingRules.Record(severity, 0L, "a"))
+        fun isNew(severity: Int, records: Map<String, EmergencyRingRules.Record>) =
+            EmergencyRingRules.isNew(ProactiveUrgency.Alarm("a", severity), records)
+        assertTrue(isNew(2, emptyMap()))
+        assertFalse(isNew(2, seen(2)))
+        assertFalse(isNew(2, seen(3)))
+        assertEquals(EmergencyRingRules.RING_AGAIN_WHEN_SEVERITY_RISES, isNew(3, seen(2)))
     }
 
     @Test

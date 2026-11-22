@@ -14,6 +14,12 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
 
+/** What [RingService] plays: [AlarmSound] on the phone, a fake in tests. */
+interface RingSound {
+    fun start()
+    fun stop()
+}
+
 /**
  * The ring's sound and buzz (ticket 02). The phone's default alarm sound on the ALARM stream
  * (`USAGE_ALARM`, which Quiet mode lets through), looping, ramped from quiet to full over
@@ -26,7 +32,7 @@ import android.util.Log
  * **Before the first unlock the ringtone may be unreadable** (media storage is credential
  * encrypted), so any failure to play it falls back to a [ToneGenerator] beep on the same stream.
  */
-class AlarmSound(private val context: Context) {
+class AlarmSound(private val context: Context) : RingSound {
     private val handler = Handler(Looper.getMainLooper())
     private val audio: AudioManager get() = context.getSystemService(AudioManager::class.java)
     private var player: MediaPlayer? = null
@@ -41,7 +47,7 @@ class AlarmSound(private val context: Context) {
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
 
-    fun start() {
+    override fun start() {
         if (playing) return
         playing = true
         raiseIfSilent()
@@ -50,7 +56,7 @@ class AlarmSound(private val context: Context) {
         vibrate()
     }
 
-    fun stop() {
+    override fun stop() {
         if (!playing) return
         playing = false
         handler.removeCallbacksAndMessages(null)

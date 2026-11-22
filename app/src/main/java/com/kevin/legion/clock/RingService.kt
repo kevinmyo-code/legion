@@ -11,9 +11,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import java.util.concurrent.ConcurrentHashMap
 import com.kevin.legion.ui.clock.RingActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,12 +29,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * `mediaPlayback` below. Started from [ClockFireReceiver], which an exact alarm exempts from the
  * background-start ban. Direct-boot aware.
  *
- * Several things can ring at once (two timers); the newest is on the screen and Dismiss acts on it.
- * Each auto-silences after [ClockDefaults.AUTO_SILENCE_MIN].
+ * Several things can ring at once (two timers); the newest is on the screen and notification.
+ * Each auto-silences after [ClockDefaults.AUTO_SILENCE_MIN]. Stopping is [RingControl]'s: this
+ * service only plays, shows and logs ([RingAudit]) each start and stop with its reason.
  */
 class RingService : Service() {
     private val handler = Handler(Looper.getMainLooper())
-    private val sound by lazy { AlarmSound(this) }
+    private val sound by lazy { soundFactory(this) }
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -51,8 +52,12 @@ class RingService : Service() {
     }
 
     private fun add(request: RingRequest) {
+        if (ringing.value.none { it.key() == request.key() }) {
+            RingAudit.started(request.kind)
+            if (!RingNotification.canShow(this)) RingAudit.blocked(request.kind)
+        }
         mutable.value = ringing.value.filterNot { it.key() == request.key() } + request
-        startInForeground(notification(request))
+        startInForeground(RingNotification.build(this, request))
         if (wakeLock == null) {
             wakeLock = getSystemService(PowerManager::class.java)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "legion:clock-ring")
@@ -63,25 +68,19 @@ class RingService : Service() {
         handler.postDelayed({ silence(request) }, request.key(), after)
     }
 
-    /** Rang out unanswered: an alarm is dismissed as missed, a timer is finished. */
-    private fun silence(request: RingRequest) {
-        val clock = ClockGraph.controller(this)
-        runCatching {
-            when (request.kind) {
-                RingKind.ALARM -> clock.alarms.dismiss(request.id, silenced = true)
-                RingKind.TIMER -> clock.timers.remove(request.id)
-                RingKind.ALERT -> com.kevin.legion.service.SafetyAlarms.rangOut(this, request.id)
-            }
-        }.onFailure { Log.e(TAG, "auto-silence failed", it) }
-        remove(request.kind, request.id)
-    }
+    /** Rang out unanswered: an alarm is dismissed as missed, a timer is finished, an alert posted. */
+    private fun silence(request: RingRequest) = RingControl.stop(this, request, RingStopReason.TIMEOUT)
 
     private fun remove(kind: RingKind, id: Int) {
-        handler.removeCallbacksAndMessages(RingRequest(kind, id, "").key())
-        mutable.value = ringing.value.filterNot { it.kind == kind && it.id == id }
+        val key = RingRequest(kind, id, "").key()
+        val reason = reasons.remove(key) ?: RingStopReason.CLOCK
+        if (ringing.value.none { it.key() == key }) return
+        RingAudit.stopped(kind, reason)
+        handler.removeCallbacksAndMessages(key)
+        mutable.value = ringing.value.filterNot { it.key() == key }
         val next = ringing.value.lastOrNull()
         if (next != null) {
-            startInForeground(notification(next))
+            startInForeground(RingNotification.build(this, next))
             return
         }
         sound.stop()
@@ -121,40 +120,14 @@ class RingService : Service() {
             .onFailure { Log.e(TAG, "could not start the ring in the foreground", it) }
     }
 
-    private fun notification(r: RingRequest): Notification {
-        ClockNotifier.ensureChannels(this)
-        val full = RingActivity.pendingIntent(this)
-        val title = when (r.kind) {
-            RingKind.ALARM -> "Alarm"
-            RingKind.TIMER -> "Timer done"
-            RingKind.ALERT -> "Emergency alert"
-        }
-        val b = NotificationCompat.Builder(this, ClockNotifier.CHANNEL_RING)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(title)
-            .setContentText(r.label)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
-            .setSilent(true)
-            .setContentIntent(full)
-            .setFullScreenIntent(full, true)
-        if (r.kind == RingKind.ALARM) {
-            b.addAction(0, "Snooze", ClockNotifier.action(this, ClockActionReceiver.ACTION_SNOOZE, r.id))
-            b.addAction(0, "Dismiss", ClockNotifier.action(this, ClockActionReceiver.ACTION_DISMISS, r.id))
-        } else if (r.kind == RingKind.TIMER) {
-            b.addAction(0, "+1 min", ClockNotifier.action(this, ClockActionReceiver.ACTION_TIMER_ADD, r.id))
-            b.addAction(0, "Stop", ClockNotifier.action(this, ClockActionReceiver.ACTION_TIMER_STOP, r.id))
-        }
-        return b.build()
-    }
-
     companion object {
         private const val TAG = "AlfredClock"
         private const val EXTRA_KIND = "kind"
         private const val EXTRA_ID = "id"
         private const val EXTRA_LABEL = "label"
+
+        /** Test seam: what plays the ring. */
+        internal var soundFactory: (Context) -> RingSound = ::AlarmSound
 
         @Volatile private var current: RingService? = null
         private val mutable = MutableStateFlow<List<RingRequest>>(emptyList())
@@ -163,14 +136,26 @@ class RingService : Service() {
         val ringing: StateFlow<List<RingRequest>> = mutable.asStateFlow()
 
         fun start(context: Context, r: RingRequest) {
-            val i = Intent(context, RingService::class.java)
-                .putExtra(EXTRA_KIND, r.kind.name).putExtra(EXTRA_ID, r.id).putExtra(EXTRA_LABEL, r.label)
-            ContextCompat.startForegroundService(context, i)
+            ContextCompat.startForegroundService(context, intent(context, r))
         }
 
-        /** Stops one ring. Runs on the service's main thread; a no-op when nothing is ringing. */
+        /** The start intent for [r]; a test hands it to the service it builds. */
+        internal fun intent(context: Context, r: RingRequest): Intent = Intent(context, RingService::class.java)
+            .putExtra(EXTRA_KIND, r.kind.name).putExtra(EXTRA_ID, r.id).putExtra(EXTRA_LABEL, r.label)
+
+        /** Why each ring is about to stop, set by [RingControl] before it asks; unset is [RingStopReason.CLOCK]. */
+        private val reasons = ConcurrentHashMap<String, RingStopReason>()
+
+        internal fun noteReason(kind: RingKind, id: Int, reason: RingStopReason) {
+            reasons[RingRequest(kind, id, "").key()] = reason
+        }
+
+        /** Stops one ring. Runs on the service's main thread; a no-op when it is not ringing. */
         fun stop(kind: RingKind, id: Int) {
-            val service = current ?: return
+            val service = current ?: run {
+                reasons.remove(RingRequest(kind, id, "").key())
+                return
+            }
             Handler(Looper.getMainLooper()).post { service.remove(kind, id) }
         }
 

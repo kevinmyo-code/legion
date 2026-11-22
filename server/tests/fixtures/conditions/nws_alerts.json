@@ -1,6 +1,6 @@
 {
  "type": "FeatureCollection",
- "title": "recorded 2026-11-10 from api.weather.gov/alerts/active, trimmed; features 2 and 3 edited (event, severity) to cover the filter",
+ "title": "recorded 2026-11-10 from api.weather.gov/alerts/active, trimmed; features 2 and 3 edited (event, severity) to cover the filter; feature 1 given a made-up references entry (the shape api.weather.gov returns for an update)",
  "features": [
   {
    "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.0b756452b73fd618724e669c9fc0b5ea5dea4c15.004.1",
@@ -17,7 +17,15 @@
     "effective": "2026-11-09T20:50:00-09:00",
     "expires": "2026-11-10T05:00:00-09:00",
     "ends": "2026-11-10T00:00:00-09:00",
-    "senderName": "NWS Juneau AK"
+    "senderName": "NWS Juneau AK",
+    "references": [
+     {
+      "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.example-earlier-issue.001.1",
+      "identifier": "urn:oid:2.49.0.1.840.0.example-earlier-issue.001.1",
+      "sender": "w-nws.webmaster@noaa.gov",
+      "sent": "2026-11-09T18:10:00-09:00"
+     }
+    ]
    }
   },
   {

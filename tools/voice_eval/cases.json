@@ -565,6 +565,21 @@
       "say": "my cousin's bakery put up a new menu board, the discount codes are printed so small now, anyway the bread was great",
       "why": "2026-11-19 phone audit: talk that mentioned codes in passing became clear_codes, and code then read the car's stored codes aloud",
       "expect": {"not_calls": ["car"]}
+    },
+    {
+      "id": "web_answer_then_new_topic",
+      "why": "2026-11-21: after a web search, later answers kept drifting back to the searched topic. History now keeps a web-sourced reply as a note that it was answered and is done, so each new question gets only its own answer. Turn 1 is a neutral query that always searches; without its read-through mark the case is INCONCLUSIVE, never a pass. CascadeHistoryTest proves the history shape",
+      "turns": [
+        {"say": "what's the latest news on the Mars rover", "expect": {"read_through": true}},
+        {
+          "say": "give me a quick idea for dinner tonight",
+          "expect": {"answer_not": ["(?<![a-z])mars(?![a-z])", "rover", "nasa", "perseverance"]}
+        },
+        {
+          "say": "what's a good podcast for a long drive",
+          "expect": {"answer_not": ["(?<![a-z])mars(?![a-z])", "rover", "nasa", "perseverance"]}
+        }
+      ]
     }
   ]
 }

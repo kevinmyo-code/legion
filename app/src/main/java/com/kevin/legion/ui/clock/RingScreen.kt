@@ -39,13 +39,7 @@ fun RingScreen(now: String, ring: RingRequest?, canBrief: Boolean, problem: Stri
     ) {
         Spacer(Modifier.height(48.dp))
         Text(now, color = SoftColors.text, fontSize = 88.sp, fontWeight = FontWeight.Light)
-        val title = when (ring?.kind) {
-            RingKind.TIMER -> "Timer done"
-            RingKind.ALARM -> "Alarm"
-            RingKind.ALERT -> "Emergency alert"
-            null -> ""
-        }
-        Text(title, color = SoftColors.primary, fontSize = 20.sp)
+        Text(ring?.kind?.title.orEmpty(), color = SoftColors.primary, fontSize = 20.sp)
         ring?.label?.let { Text(it, color = SoftColors.text2, fontSize = 18.sp, textAlign = TextAlign.Center) }
         Spacer(Modifier.weight(1f))
         if (problem != null) {

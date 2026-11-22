@@ -89,6 +89,10 @@ data class ClockState(
 /** The defaults chosen in the build (ADR 0079); Kevin may change them. */
 object ClockDefaults {
     const val SNOOZE_MIN = 9
+    /**
+     * How long any ring (alarm, timer, emergency alert) plays unanswered before it silences itself.
+     * Owner decision pending for the emergency ring (phantom alarm report 2026-11-21): one line.
+     */
     const val AUTO_SILENCE_MIN = 10
     const val RAMP_SECONDS = 30
     const val TIMER_EXTRA_MIN = 1
