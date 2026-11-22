@@ -213,10 +213,10 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
         {cascade && cascade.chips.length > 0 && <ChipRow chips={cascade.chips} onTap={tapChip} />}
       </div>
       {flight ? (
-        // One orb for the whole page (Kevin, 2026-11-22: "one continous flow"): always mounted and
-        // drawn, flown by `useOrbFlight`. Until it lands it takes no tap (CSS: it would cover the
-        // chips and links it passes) and is out of the accessibility tree and the tab order; the
-        // stage's button under it at the top is the control then.
+        // One orb for the whole page (Kevin, 2026-11-22: one continuous flow): always mounted and
+        // drawn, flown by `useOrbFlight`. Wherever it is seen it is the orb to a tap (round to the
+        // pointer: CSS); until it lands it is out of the accessibility tree and the tab order, where
+        // the stage's own button (under it at the top, the same control) stands for it.
         <div
           data-stage="side"
           data-shown={shown ? 'true' : 'false'}
@@ -232,8 +232,9 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
             tabIndex={shown ? undefined : -1}
             onClick={() => {
               onOrb()
-              // The keyboard stays on the orb the visitor can see.
-              dockOrbRef.current?.focus({ preventScroll: true })
+              // The keyboard stays on the orb the visitor can see; in flight the stage's button
+              // stands for it (this one is hidden from the accessibility tree until it lands).
+              if (shown) dockOrbRef.current?.focus({ preventScroll: true })
             }}
             aria-label={orbLabel}
             data-stage="dock-orb"

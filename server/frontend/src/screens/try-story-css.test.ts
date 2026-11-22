@@ -68,10 +68,15 @@ describe('the side orb', () => {
   })
 
   test('in flight it moves by transform only: a fixed layer, nothing laid out again', () => {
-    const flyer = all.find((r) => r.selector.trim() === '.recruiter .rc-flyer')
-    expect(flyer?.body).toMatch(/position\s*:\s*fixed/)
-    expect(flyer?.body).toMatch(/will-change\s*:\s*transform/)
-    expect(flyer?.body).not.toMatch(/transition/)
+    const flyer = all
+      .filter((r) => r.selector.trim() === '.recruiter .rc-flyer')
+      .map((r) => r.body)
+      .join(';')
+    expect(flyer).toMatch(/position\s*:\s*fixed/)
+    expect(flyer).toMatch(/will-change\s*:\s*transform/)
+    expect(flyer).not.toMatch(/transition/)
+    // Round to the pointer: a tap in the corner of its square reaches what is under it.
+    expect(flyer).toMatch(/border-radius\s*:\s*50%/)
   })
 })
 

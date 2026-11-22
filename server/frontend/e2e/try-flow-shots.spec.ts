@@ -8,9 +8,9 @@ import { createEngine, type Engine } from '../src/test/engine'
 import { sampleContent } from '../src/test/engine-demo'
 
 /**
- * The /try flow of 2026-11-22 in a REAL browser, for LOOKING (Kevin: "one continous flow", "more
- * energetic mood", "the vibe will change for each section", the orb turning into the Q at the
- * finance voice section). Screenshots at 1440 x 900, 1000 x 800 and 390 x 844: the top, the orb in
+ * The /try flow of 2026-11-22 in a REAL browser, for LOOKING (Kevin: one continuous orb flow, a
+ * more energetic mood, a feel per section, the orb turning into the Q at the finance voice
+ * section). Screenshots at 1440 x 900, 1000 x 800 and 390 x 844: the top, the orb in
  * flight, each section with the orb at rest, the blend and the morph caught midway, reduced
  * motion; plus numbers: the orb's path per scroll step (it never jumps or vanishes), long frames
  * while scrolling, and sideways overflow at 390 px. Fake engine; invented content unless the owner
@@ -148,31 +148,45 @@ for (const size of SIZES) {
 
     // The orb's path, a few pixels of scroll at a time from the top through the first sections.
     const path_: { y: number; x: number; cy: number; w: number }[] = []
-    // In flight the orb passes over the stage's controls: a tap on any of them must reach it.
+    // In flight the orb passes over the stage's controls. A tap on the orb you see is the orb's; a
+    // tap on a control that the orb's circle does not cover reaches the control.
     const stolen: string[] = []
+    const missed: number[] = []
     for (let y = 0; y <= 1400; y += 20) {
       await page.evaluate((to) => window.scrollTo(0, to), y)
       await page.waitForTimeout(40)
       const box = await orbBox(page)
       if (box) path_.push({ y, x: Math.round(box.x), cy: Math.round(box.y), w: Math.round(box.w) })
-      stolen.push(
-        ...(await page.evaluate((at) => {
-          const flyer = document.querySelector('.rc-flyer')
-          const controls = Array.from(document.querySelectorAll('[data-stage="tour"], [data-stage="form"] button, [data-stage="form"] input, [data-stage="ask"] a, [data-stage="chips-room"] button'))
-          const out: string[] = []
-          for (const c of controls) {
-            const r = c.getBoundingClientRect()
-            const cx = r.left + r.width / 2
-            const cy = r.top + r.height / 2
-            if (r.width === 0 || cy < 0 || cy > window.innerHeight) continue
-            const hit = document.elementFromPoint(cx, cy)
-            if (flyer && hit && flyer.contains(hit)) out.push(`${at}: ${c.textContent?.trim() || c.getAttribute('aria-label') || c.tagName}`)
-          }
-          return out
-        }, y)),
-      )
+      const look = await page.evaluate((at) => {
+        const flyer = document.querySelector('.rc-flyer')
+        const out: string[] = []
+        if (!flyer) return { out, orbTappable: true }
+        const f = flyer.getBoundingClientRect()
+        const ox = f.left + f.width / 2
+        const oy = f.top + f.height / 2
+        const radius = f.width / 2
+        const onScreen = oy > 0 && oy < window.innerHeight && ox > 0 && ox < window.innerWidth
+        const centre = onScreen ? document.elementFromPoint(ox, oy) : null
+        const controls = Array.from(document.querySelectorAll('[data-stage="tour"], [data-stage="form"] button, [data-stage="form"] input, [data-stage="ask"] a, [data-stage="chips-room"] button'))
+        for (const c of controls) {
+          const r = c.getBoundingClientRect()
+          const cx = r.left + r.width / 2
+          const cy = r.top + r.height / 2
+          if (r.width === 0 || cy < 0 || cy > window.innerHeight) continue
+          if (Math.hypot(cx - ox, cy - oy) < radius) continue
+          const hit = document.elementFromPoint(cx, cy)
+          if (hit && flyer.contains(hit)) out.push(`${at}: ${c.textContent?.trim() || c.getAttribute('aria-label') || c.tagName}`)
+        }
+        // The orb's own centre: the orb, or (at the very top) the stage's button under it.
+        const stage = document.querySelector('[data-stage="orb"]')
+        const orbTappable = !onScreen || Boolean(centre && (flyer.contains(centre) || stage?.contains(centre)))
+        return { out, orbTappable }
+      }, y)
+      stolen.push(...look.out)
+      if (!look.orbTappable) missed.push(y)
     }
     numbers.tapsTakenByTheFlyingOrb = stolen
+    numbers.scrollWhereTheOrbTookNoTap = missed
     let biggestStep = 0
     for (let i = 1; i < path_.length; i++) biggestStep = Math.max(biggestStep, Math.hypot(path_[i].x - path_[i - 1].x, path_[i].cy - path_[i - 1].cy))
     numbers.orbPath = path_
@@ -283,6 +297,7 @@ for (const size of SIZES) {
     fs.writeFileSync(path.join(OUT, `${size.name}-numbers.json`), JSON.stringify(numbers, null, 1))
     expect(numbers.overflowX).toBe(0)
     expect(stolen).toEqual([])
+    expect(missed).toEqual([])
     await context.close()
   })
 }

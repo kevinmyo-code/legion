@@ -309,8 +309,8 @@
 }
 
 /*
- * The /try page's moods (Kevin, 2026-11-22: "the beige background is kinda dull. i want more
- * energetic mood"; "the vibe will change for each section"). A visitor's page and the member's
+ * The /try page's moods (Kevin, 2026-11-22: more energy than the old beige page, in colour and
+ * motion, and a different feel per section). A visitor's page and the member's
  * preview carry `data-page-theme` (the sign-in door does not): the palette of the section at the
  * middle of the screen (`scroll-story.ts` `useSectionThemes`). Tune a mood here and nowhere else:
  * paper, ink, meta (secondary text), rule, accent (links, buttons, the orb's sweep and its mark)
@@ -415,6 +415,13 @@
 }
 .recruiter .rc-phone .rc-pscreen {
     border-radius: 25px;
+}
+
+/* The flying orb is round to the pointer too: a tap on the orb you see is the orb's, and a tap
+   beside it (in the corner of its square) reaches what is under it. */
+.recruiter .rc-flyer {
+    overflow: hidden;
+    border-radius: 50%;
 }
 
 /* The other exception: the voice stage's suggestion chips are pills (Kevin, 2026-11-19, "the
@@ -766,7 +773,7 @@
         }
     }
 
-    /* The orb in flight (Kevin, 2026-11-22: "one continous flow"; `components/demo/orb-flight.ts`):
+    /* The orb in flight (Kevin, 2026-11-22: one continuous flow; `components/demo/orb-flight.ts`):
        one fixed orb as large as the stage's, moved and scaled only by the transform the flight
        writes. Its wrapper draws no box of its own. Beside the sections (>= 900 px) its status
        line and chips are a column under its rest place, moved between the sides by a transform;
@@ -783,11 +790,7 @@
         transform-origin: 50% 50%;
         will-change: transform;
     }
-    /* In flight it takes no tap: it passes over the chips, the typing box and the links, which
-       keep theirs. At the top the stage's own button lies under it and takes the tap. */
-    .recruiter .rc-voice-side:not([data-shown="true"]) .rc-flyer {
-        pointer-events: none;
-    }
+
     .recruiter .rc-side-words {
         --side-x: calc(100vw - 14rem);
         position: fixed;
@@ -950,7 +953,7 @@
         z-index: 1;
     }
 
-    /* Each section clearly its own (Kevin, 2026-11-22: "each section separated clearly"): a bar
+    /* Each section clearly its own (Kevin, 2026-11-22: each section clearly separate): a bar
        in the mood's accent fading into its first glow across the top, drawn in as the section
        arrives where motion is allowed. A project with a mood of its own gets a larger title. */
     .recruiter[data-page-theme] .rc-section {
