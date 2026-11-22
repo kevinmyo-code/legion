@@ -1522,18 +1522,18 @@ class SessionReportView(APIView):
             )
         keep_summary = machine.scope != SCOPE_LISTED
         with transaction.atomic():
-            row = (
-                ClaudeCodeSession.objects.select_for_update()
-                .filter(household=household, machine=machine, session_id=data["session_id"])
-                .first()
+            # get_or_create keeps the unique-key race safe (two hooks for a new session at
+            # once); the lock then orders the waiting_since step against a parallel report.
+            created, _ = ClaudeCodeSession.objects.get_or_create(
+                household=household,
+                machine=machine,
+                session_id=data["session_id"],
+                defaults={"project": data["project"], "state": data["state"], "last_seen_at": now},
             )
-            if row is None:
-                row = ClaudeCodeSession(
-                    household=household, machine=machine, session_id=data["session_id"]
-                )
+            row = ClaudeCodeSession.objects.select_for_update().get(pk=created.pk)
             if data["state"] != SESSION_WAITING:
                 row.waiting_since = None
-            elif row.pk is None or row.state != SESSION_WAITING or row.waiting_since is None:
+            elif row.state != SESSION_WAITING or row.waiting_since is None:
                 # A new wait on Kevin; a repeated `waiting` (the Notification hook fires more
                 # than once) keeps the episode it is part of.
                 row.waiting_since = now
