@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from agents.legion import carry, closing, done_lines
 from agents.legion import sentence_gate as gates
 from agents.legion.ask_again import ask_again, asks_again
+from agents.legion.limb_verbatim import restates_result
 from agents.legion.speech_rules import backed_cents, backed_torque, is_stop_utterance
 from agents.legion.spelled_money import states_unbacked_spelled
 from agents.legion.trailing_filler import is_wait_line
@@ -65,6 +66,9 @@ class TurnCall:
     replay: str | None = None
     response: dict | None = None
     call_id: str = ""
+    # A device's own diagnostics line (`limb_verbatim.py`): after it, the model's sentences that
+    # restate it are not said, for the rest of the turn.
+    no_restating: bool = False
 
 
 @dataclass
@@ -81,6 +85,9 @@ class _Memory:
     torque_dropped: int = 0
     no_answer: bool = False
     verbatim_said: bool = False
+    # A device's diagnostics line was said (`limb_verbatim.py`); restatements dropped after it.
+    device_said: bool = False
+    restated_dropped: int = 0
     backed: list[int] | None = None
     end: bool = False
     # The writes that went through (`tool.write_fact`), for the done line.
@@ -94,6 +101,8 @@ class _Memory:
             "torque_dropped": self.torque_dropped,
             "no_answer": self.no_answer,
             "verbatim_said": self.verbatim_said,
+            "device_said": self.device_said,
+            "restated_dropped": self.restated_dropped,
             "backed": self.backed,
             "end": self.end,
         }
@@ -119,6 +128,8 @@ class _Memory:
             torque_dropped=int(raw.get("torque_dropped") or 0),
             no_answer=bool(raw.get("no_answer")),
             verbatim_said=bool(raw.get("verbatim_said")),
+            device_said=bool(raw.get("device_said")),
+            restated_dropped=int(raw.get("restated_dropped") or 0),
             backed=list(raw["backed"]) if raw.get("backed") is not None else None,
             end=bool(raw.get("end")),
             facts=list(raw.get("facts") or []),
@@ -207,9 +218,11 @@ class SpokenTurn:
         if call is None or not call.ok or not call.verbatim:
             return
         m = self.memory
-        if not (call.ends_turn or not m.verbatim_said):
+        if call.no_restating:
+            m.device_said = True
+        elif not (call.ends_turn or not m.verbatim_said):
             return
-        if not call.ends_turn:
+        elif not call.ends_turn:
             m.verbatim_said = True
         for i, line in enumerate(call.verbatim):
             marker = None
@@ -235,6 +248,8 @@ class SpokenTurn:
         )
         if verdict == gates.SAY and states_unbacked_spelled(text, self._backed()):
             m.money_dropped += 1
+        elif verdict == gates.SAY and m.device_said and restates_result(text):
+            m.restated_dropped += 1
         elif verdict == gates.SAY and m.said and is_wait_line(text):
             # The phone's `TrailingFiller`: once the answer has begun, a filler line is not said.
             m.trailing_dropped += 1
@@ -278,6 +293,8 @@ class SpokenTurn:
                     m.torque_dropped += 1
                 elif verdict == gates.HOLD:
                     m.held.append([text, tagged])
+                elif verdict == gates.SAY and m.device_said and restates_result(text):
+                    m.restated_dropped += 1
                 elif verdict == gates.SAY:
                     yield self._say(text, tagged)
         if m.no_answer and not m.said and state.status == "done":

@@ -188,6 +188,8 @@ BUILT dark in E2 (`agents/legion/relay.py`, `agents/legion/relay_turn.py`, `agen
 | `ms` | how long the call ran on the device |
 | `played`, `cut_off` | the report of section 5a |
 
+**The device's own words, said as written** (BUILT dark, `agents/legion/limb_verbatim.py`, inventory row 18 of the engine-brain plan): for a tool listed under `limb_verbatim_tools` in `server/contracts/limb/v1/tool_classes.json` (today only `get_codes`, the diagnostics read), an `ok` result whose `result` carries `speak_verbatim` (at most 600 characters) and `verbatim_from` naming that same tool is said word for word as the first `sentence` of the continuation. The model is told it was said, and its later sentences that restate it (a trouble code, a module count, a verdict word, a bare filler) are not said for the rest of the turn. A read-through tool, a late or timed-out result, or any other tool is handed to the model as before.
+
 Answers:
 - The post that completes the round (every call of it has a result) answers with the **continuation stream**: the rest of the turn, same events, starting with a `turn` event that has the same `turn_id`, `conversation_id` and `seq`, and the next `stream_no`.
 - A post that leaves calls of the round still open answers 202 `{waiting_for: [call ids]}`.
