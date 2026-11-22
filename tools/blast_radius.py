@@ -81,6 +81,7 @@ RED_RULES: list[tuple[str, tuple[str, ...]]] = [
         "server/frontend/src/lib/figures.ts",
         "*/reconciliationgate.kt", "*/spokenmoney.kt", "*/moneyfilter.kt",
         "tools/finance_privacy_check.py",
+        "server/tests/finance_synthetic.py",  # the figure allowlist of the public-repo privacy guard
         "app/src/test/resources/gate-corpus.json",
     )),
     ("read-through and crisis guards", (
@@ -103,6 +104,7 @@ RED_RULES: list[tuple[str, tuple[str, ...]]] = [
         SELF,
         "tools/checks/*",
         "app/models.sha256", "app/speaker-model.pin",
+        "config/detekt/detekt.yml",
         "server/dockerfile", "server/.dockerignore", "server/.gcloudignore",
         "server/requirements.txt", "server/pyproject.toml", "server/uv.lock", "server/entrypoint.sh",
         "server/frontend/package.json", "server/frontend/package-lock.json",
@@ -118,6 +120,17 @@ RED_RULES: list[tuple[str, tuple[str, ...]]] = [
         "tools/live_tool_eval/*", "tools/live_tool_eval.py",
         "server/tests/realrun_*",
         "*/moneyspecialistevalcasestest.kt",
+        # tools/voice_eval.py runs :app:testDebugUnitTest --tests ...voiceeval.VoiceEvalRun with the key.
+        "*/voiceeval/*",
+        # Imported (transitively) by server/tests/realrun_*, which the keyed engine gate runs. Kept current
+        # by tools/tests/test_blast_radius.py::test_everything_realrun_imports_is_red.
+        "server/tests/legacy_test_schema.py",
+        "server/tests/test_assistant.py",
+        "server/tests/test_assistant_cascade.py",
+        "server/tests/test_no_speech.py",
+        "server/tests/test_profile_verbatim.py",
+        "server/tests/test_recruiter.py",
+        "server/tests/test_recruiter_content.py",
     )),
     ("public demo honesty guards", (
         "server/demo/shop/guards.py",
@@ -132,6 +145,8 @@ RED_TEST_NAMES = (
     "*figure*", "*privacy*", "*containment*", "*asklist*", "*migration*", "*schema*", "*token*",
     "test_ship*", "test_release_apk*", "test_voice_eval*", "test_blast_radius*", "test_checks*",
     "realrun_*", "*recruiter_delivery*", "*specialisteval*",
+    "*relay*", "*claude_session*", "*claude_worker*", "*worker_scope*", "*ingest*", "*signin*",
+    "*connect_session*", "*household*", "finance_synthetic*",
 )
 
 YELLOW_RULES: list[tuple[str, tuple[str, ...]]] = [
@@ -186,7 +201,8 @@ def classify(path: str) -> tuple[str, str]:
     """(tier, reason) for one repo-relative path."""
     p = _norm(path).casefold()
     name = p.rsplit("/", 1)[-1]
-    if name.startswith("claude") and name.endswith(".md"):  # CLAUDE.md, CLAUDE.local.md, at any depth
+    # CLAUDE.md, CLAUDE.local.md at any depth; AGENTS.md and TEAM.md (the roster agents read) at the root.
+    if (name.startswith("claude") and name.endswith(".md")) or p in ("agents.md", "team.md"):
         return "RED", "agent rules, hooks and MCP config"
     for reason, pats in RED_RULES:
         if _any(p, pats):
@@ -272,15 +288,24 @@ def git_files(base: str, head: str) -> list[str]:
 
 
 def base_copy_tier(base: str, head: str, paths: list[str]) -> str | None:
-    """The tier this change gets from the BASE revision's copy of this script, or None if the base has
-    none. Loaded from git, so edits to the head copy cannot change it."""
+    """The tier this change gets from the BASE's copy of this script (the base tip, else the merge base),
+    or None if neither has one. Loaded from git, so edits to the head copy cannot change it."""
+    src = rev = None
+    candidates = [base]
     try:
-        merge_base = git("merge-base", base, head).strip()
-        src = git("show", f"{merge_base}:{SELF}")
+        candidates.append(git("merge-base", base, head).strip())
     except subprocess.CalledProcessError:
+        pass
+    for rev in candidates:  # the base TIP first (a stale branch still meets today's rules), then the fork point
+        try:
+            src = git("show", f"{rev}:{SELF}")
+            break
+        except subprocess.CalledProcessError:
+            continue
+    if src is None:
         return None
     ns: dict = {"__name__": "blast_radius_base_copy"}
-    exec(compile(src, f"{merge_base}:{SELF}", "exec"), ns)  # noqa: S102 (our own file, from git)
+    exec(compile(src, f"{rev}:{SELF}", "exec"), ns)  # noqa: S102 (our own file, from git)
     return ns["tier_of"](paths)[0]
 
 

@@ -20,6 +20,21 @@ import blast_radius as br  # noqa: E402
         ("docs/adr/0110-something.md", "GREEN"),
         ("README.md", "GREEN"),
         ("server/tests/test_ledger.py", "GREEN"),
+        # round 2: S1 subjects, S2 gate code
+        ("server/tests/test_agents_relay_api.py", "RED"),
+        ("server/tests/test_claude_worker_scope.py", "RED"),
+        ("server/tests/test_claude_session_api.py", "RED"),
+        ("server/tests/test_ingest_runs.py", "RED"),
+        ("server/tests/test_headunit_signin.py", "RED"),
+        ("server/tests/test_connect_session.py", "RED"),
+        ("server/tests/test_add_household_member.py", "RED"),
+        ("server/tests/finance_synthetic.py", "RED"),
+        ("app/src/test/java/com/kevin/legion/voiceeval/VoiceEvalRun.kt", "RED"),
+        ("server/tests/test_recruiter_content.py", "RED"),
+        ("server/tests/test_assistant.py", "RED"),
+        ("config/detekt/detekt.yml", "RED"),
+        ("AGENTS.md", "RED"),
+        ("TEAM.md", "RED"),
         ("app/src/test/java/com/kevin/legion/FooTest.kt", "GREEN"),
         ("server/frontend/src/lib/foo.test.ts", "GREEN"),
         ("server/frontend/e2e/try-shots.spec.ts", "GREEN"),
@@ -56,7 +71,6 @@ import blast_radius as br  # noqa: E402
         ("tools/checks/clock_times.py", "RED"),
         ("config/detekt/baseline.xml", "YELLOW"),
         ("./docs/x.md", "GREEN"),
-        ("TEAM.md", "GREEN"),
         ("server/procedures/builtin/README.md", "GREEN"),
         ("server/agents/specs/generalist.md", "YELLOW"),
         ("server/assistant/shared_clauses.txt", "YELLOW"),
@@ -115,6 +129,21 @@ import blast_radius as br  # noqa: E402
         ("app/src/main/java/com/x/__tests__/Prod.kt", "YELLOW"),
         ("server/assistant/test_mode.py", "YELLOW"),
         ("server/tests/test_ledger.py", "GREEN"),
+        # round 2: S1 subjects, S2 gate code
+        ("server/tests/test_agents_relay_api.py", "RED"),
+        ("server/tests/test_claude_worker_scope.py", "RED"),
+        ("server/tests/test_claude_session_api.py", "RED"),
+        ("server/tests/test_ingest_runs.py", "RED"),
+        ("server/tests/test_headunit_signin.py", "RED"),
+        ("server/tests/test_connect_session.py", "RED"),
+        ("server/tests/test_add_household_member.py", "RED"),
+        ("server/tests/finance_synthetic.py", "RED"),
+        ("app/src/test/java/com/kevin/legion/voiceeval/VoiceEvalRun.kt", "RED"),
+        ("server/tests/test_recruiter_content.py", "RED"),
+        ("server/tests/test_assistant.py", "RED"),
+        ("config/detekt/detekt.yml", "RED"),
+        ("AGENTS.md", "RED"),
+        ("TEAM.md", "RED"),
     ],
 )
 def test_classify(path, tier):
@@ -228,3 +257,52 @@ def test_base_copy_wins_over_a_head_copy_that_lowers_itself(tmp_path, monkeypatc
     assert br.base_copy_tier("dev", "HEAD", ["tools/blast_radius.py", "deploy/x.sh"]) == "RED"
     assert br.main(["--base", "dev", "--head", "HEAD", "--short"]) == 0
     assert capsys.readouterr().out.startswith("RED")
+
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def test_everything_realrun_imports_is_red():
+    """S2: the keyed engine gate runs server/tests/realrun_*; every tests module they import, transitively,
+    must be RED, or a merged change could alter what runs with the key under a lighter review."""
+    import re
+
+    tests = REPO / "server" / "tests"
+    todo = sorted(tests.glob("realrun_*.py"))
+    assert todo, "no realrun_*.py found: the test is not looking at the repo"
+    seen: set[Path] = set()
+    while todo:
+        f = todo.pop()
+        if f in seen:
+            continue
+        seen.add(f)
+        for m in re.finditer(r"^\s*(?:from|import)\s+tests\.([A-Za-z0-9_]+)", f.read_text(encoding="utf-8"), re.M):
+            dep = tests / f"{m.group(1)}.py"
+            if dep.exists():
+                todo.append(dep)
+    for f in sorted(seen):
+        rel = f.relative_to(REPO).as_posix()
+        assert br.classify(rel)[0] == "RED", f"{rel} runs in the keyed gate but tiers {br.classify(rel)}"
+
+
+def test_base_copy_read_from_the_base_tip_for_a_stale_branch(tmp_path, monkeypatch):
+    """A branch forked before the script existed still meets the copy on the base tip."""
+    src = Path(br.__file__).read_text(encoding="utf-8")
+    _git(tmp_path, "init", "-q", "-b", "dev")
+    _git(tmp_path, "config", "user.email", "t@example.com")
+    _git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "a.txt").write_text("a\n", encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "fork point")
+    _git(tmp_path, "checkout", "-q", "-b", "feat")
+    (tmp_path / "deploy").mkdir()
+    (tmp_path / "deploy" / "x.sh").write_text("echo\n", encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "stale branch")
+    _git(tmp_path, "checkout", "-q", "dev")
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "blast_radius.py").write_text(src, encoding="utf-8")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "script lands on dev")
+    monkeypatch.chdir(tmp_path)
+    assert br.base_copy_tier("dev", "feat", ["deploy/x.sh"]) == "RED"

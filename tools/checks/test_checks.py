@@ -294,7 +294,7 @@ def test_pure_move_is_not_a_new_file():
 def test_migration_edit_marker_turns_fail_into_named_warn():
     path = "server/ledger/migrations/0003_x.py"
     plain = change({path: ("M", "ops = []\n")})
-    marked = change({path: ("M", "# migration-edit-ok: 0003_x.py never applied anywhere, fixes a typo\nops = []\n")})
+    marked = change({path: ("M", "# migration-edit-ok: server/ledger/migrations/0003_x.py never applied anywhere, fixes a typo\nops = []\n")})
     assert levels(migrations.check(plain)) == [FAIL]
     found = migrations.check(marked)
     assert levels(found) == [WARN] and "never applied anywhere" in found[0].message
@@ -302,10 +302,12 @@ def test_migration_edit_marker_turns_fail_into_named_warn():
 
 def test_migration_marker_needs_a_reason_and_the_right_file():
     path = "server/ledger/migrations/0003_x.py"
-    no_reason = change({path: ("M", "# migration-edit-ok: 0003_x.py ok\n")})
-    wrong_file = change({path: ("M", "# migration-edit-ok: 0004_y.py a long enough reason here\n")})
+    no_reason = change({path: ("M", f"# migration-edit-ok: {path} ok\n")})
+    wrong_file = change({path: ("M", "# migration-edit-ok: server/ledger/migrations/0004_y.py a long enough reason\n")})
+    name_only = change({path: ("M", "# migration-edit-ok: 0003_x.py a long enough reason here\n")})
     assert levels(migrations.check(no_reason)) == [FAIL]
     assert levels(migrations.check(wrong_file)) == [FAIL]
+    assert levels(migrations.check(name_only)) == [FAIL]
 
 
 BASELINE = "config/detekt/baseline.xml"

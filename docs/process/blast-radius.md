@@ -24,14 +24,15 @@ prints PUBLISH for the files that count.
 |---|---|---|
 | GREEN | Docs (`.md`, `.txt` and images under `docs/`, `vault/`, `.scratch/`, `memory/`; READMEs; top-level `.md`); tests whose subject is not RED; `strings.xml`; styling files by type (CSS, images, drawables) | CI green + one light review: a single pass over the task text and the diff, ending "Confirmed: SHIP at &lt;sha&gt;" |
 | YELLOW | App, engine and tool logic that touches none of the RED areas; test fixtures the ship freezes; the detekt baseline (with its own check); any path the script does not recognise | CI green + one blind review ending "Confirmed: SHIP at &lt;sha&gt;" |
-| RED | Agent rules, hooks and MCP config at any depth (`*CLAUDE*.md`, `.claude/`, `.mcp.json`); the worker hook and containment; scripts the commit hooks run; auth and tokens; money, figure and privacy checks; read-through and crisis guards; migrations and schema; deploy, ship and CI tooling (these checks included, and `conftest.py`); build scripts and dependencies; voice gate rules and the code the gate runs; the public demo's honesty guards | CI green + blind review with adversarial probes, repeated until "Confirmed: SHIP at &lt;sha&gt;" |
+| RED | Agent rules, hooks and MCP config (`CLAUDE*.md` and `.claude/` at any depth, `.mcp.json`, top-level `AGENTS.md` and `TEAM.md`); the worker hook and containment; scripts the commit hooks run; auth and tokens; money, figure and privacy checks; read-through and crisis guards; migrations and schema; deploy, ship and CI tooling (these checks included, `conftest.py`, the detekt rule config); build scripts and dependencies; voice gate rules and the code the gate runs; the public demo's honesty guards | CI green + blind review with adversarial probes, repeated until "Confirmed: SHIP at &lt;sha&gt;" |
 
 The reviewer gets only the task text and the full diff, never the author's plan or summary.
 
 **The highest tier wins.** One RED file makes the whole change RED.
 
 **Tests and test data of a RED subject are RED.** A test under a test root whose name points at a RED
-subject (gate, read-through, crisis, money, auth, vault, privacy, migration, schema, the ship and
+subject (gate, read-through, crisis, money, auth, vault, privacy, migration, schema, relay, the
+worker, ingest, sign-in, connect session, household, the synthetic finance allowlist, the ship and
 release tools, the gate's own cases) is RED: weakening a guard's test weakens the guard.
 
 **Case does not lower a tier.** Matching ignores case, and a path that differs only in case from
@@ -42,7 +43,8 @@ another tracked path is RED: on a Windows checkout the two collide.
 than its tier says raises the tier.
 
 **Anything the gates workflow runs is RED.** It runs with the voice gate's API key present, so the
-gate cases, the eval scripts, the gate's test code and the Gradle build scripts are RED. The rest of
+gate cases, the eval scripts, the gate's test code (the phone's `voiceeval` tests, `realrun_*` and every
+test module they import, kept current by a test) and the Gradle build scripts are RED. The rest of
 the phone's test classpath also runs in that job; only a required reviewer on the `gates` environment
 closes that fully, and that is a repository setting for the owner, never an agent.
 
@@ -66,8 +68,9 @@ python tools/blast_radius.py --short    # one line, for a board card or a brief
 ```
 
 The trusted run is the copy on `dev`, never the branch's own: otherwise a change could edit the
-script to lower its own tier. Run from a checkout, the script also loads the base copy from git and
-reports the higher of the two. CI runs the base copy in its own step. The script counts deleted and
+script to lower its own tier. Run from a checkout, the script also loads the base copy from git (the
+base tip's copy, else the merge base's) and reports the higher of the two. CI runs the base copy in its
+own step. The script counts deleted and
 renamed-away paths, and exits 2 on an empty file list rather than calling nothing GREEN.
 
 Use the `--short` line in the board card's status and at the top of every review brief.
@@ -92,7 +95,7 @@ lines a change adds, so existing debt never fails a build.
 Escape hatches, each visible in the diff:
 - (a): the allowlist `clock_times_allow.txt`, or the marker `clock-ok` on a line. Dates are always fine.
 - (b): the allowlist `file_size_allow.txt`.
-- (c): a line `migration-edit-ok: <file name> <reason>` added anywhere in the change. Every file (c)
+- (c): a line `migration-edit-ok: <repo path> <reason>` added anywhere in the change. Every file (c)
   covers is RED, so the marker always sits in a change that gets the adversarial review, and that
   review must accept the reason in writing.
 
