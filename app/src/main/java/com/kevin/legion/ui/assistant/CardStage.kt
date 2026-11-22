@@ -112,7 +112,9 @@ fun CardStage(
     val motion = deckMotionEnabled()
     val newest = pages.first()
     val appear = remember { Animatable(1f) }
-    LaunchedEffect(newest) {
+    // A new card arriving turns to it and plays the rise; a live card read again in place
+    // (LiveCards: same source, same count) does neither, so a refresh never yanks the page he is on.
+    LaunchedEffect(pages.size, newest.source ?: newest) {
         if (pager.currentPage != 0) pager.scrollToPage(0)
         if (motion) {
             appear.snapTo(0f)

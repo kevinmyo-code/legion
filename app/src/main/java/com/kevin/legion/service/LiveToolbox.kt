@@ -2242,7 +2242,8 @@ object LiveToolbox {
         val nowMs = RelativeDay.clock().millis()
         val read = com.kevin.legion.calendar.CalendarWindowRead.read(context, startMs, endMs, zone, nowMs)
         val events = read.events
-        ToolCards.publish(PhoneCards.calendar(events, zone, startMs))
+        // A live card: it re-reads this window when the calendar changes while it is up (LiveCards).
+        ToolCards.publish(LiveCardReads.calendarCard(events, startMs, endMs))
         // 2026-11-15: "Quiet on the calendar for today" over two open assignments. Everything due,
         // from BOTH places a due date lives (calendar tasks and dated to-dos, overdue too), is
         // summed up in Kotlin ahead of the rows ([DueReader]), and the
@@ -4420,6 +4421,16 @@ object LiveToolbox {
                 source = DatesAspectSeeder.SOURCE_LEGION,
                 kind = EventKind.EVENT,
             )
+            // The day it landed on takes the screen unless a card already shows it (LiveCards). The
+            // row is saved by now: a failed card read must never turn this into "couldn't save".
+            val zone = RelativeDay.clock().zone
+            runCatching {
+                LiveCardReads.showDayAfterWrite(
+                    context,
+                    date.atStartOfDay(zone).toInstant().toEpochMilli(),
+                    date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1,
+                )
+            }
             result(
                 true,
                 ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase),
@@ -4948,7 +4959,11 @@ object LiveToolbox {
                     is ChecklistController.ChecklistItemsResult.Failed ->
                         result(false, "Could not read \"${checklist.name}\". Try again shortly.")
                     is ChecklistController.ChecklistItemsResult.Loaded -> {
-                        ToolCards.checklist(checklist.name, loaded.items.map { ChecklistLine(it.item.text, it.ticked) })
+                        ToolCards.publish(
+                            LiveCardReads.checklistCard(
+                                checklist.id, checklist.name, loaded.items.map { ChecklistLine(it.item.text, it.ticked) },
+                            ),
+                        )
                         if (loaded.items.isEmpty()) {
                             return result(true, "\"${checklist.name}\" has no items yet.").also {
                                 if (ListRouting.isTodoName(checklist.name)) withReminders(context, it)
@@ -5139,7 +5154,7 @@ object LiveToolbox {
     private suspend fun readList(context: Context): JSONObject {
         val items = NotesController.allItems(context)
         val rows = buildInboxRows(items, System.currentTimeMillis())
-        ToolCards.checklist(PhoneCards.TODO_LIST_NAME, rows.map { ChecklistLine(it.text, it.done) })
+        ToolCards.publish(LiveCardReads.remindersCard(rows.map { ChecklistLine(it.text, it.done) }))
         val arr = JSONArray()
         for (row in rows) {
             val o = JSONObject()

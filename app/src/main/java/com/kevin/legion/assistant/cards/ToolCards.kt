@@ -58,6 +58,4 @@ object ToolCards {
             ),
         )
     }
-
-    fun checklist(listName: String, lines: List<ChecklistLine>) = publish(PhoneCards.checklist(listName, lines))
 }
