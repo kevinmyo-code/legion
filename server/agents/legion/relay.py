@@ -88,6 +88,8 @@ _CLOSED = {
     "outside_actions": [],
     "max_calls_per_round": 0,
     "engine_tools_leaving_engine": None,
+    # Limb tools whose own spoken words the engine says word for word (`limb_verbatim.py`).
+    "limb_verbatim_tools": [],
 }
 
 
@@ -158,6 +160,9 @@ MAX_RELAY_HOPS = 3
 # sum of their deadlines: 4 x the 120 s manifest maximum + the grace stays under the 10 minute idle
 # close, so a slow round is never closed while the device is still working on it.
 MAX_CALLS_PER_ROUND = int(_LISTS["max_calls_per_round"])
+# Limb tools whose result may carry the device's own words to say word for word
+# (`limb_verbatim.py`; the phone's `VerbatimSpeech`): its diagnostics read only.
+VERBATIM_TOOLS = frozenset(_LISTS["limb_verbatim_tools"])
 
 MAIL_REFUSED = (
     "Nothing was read: {name} would read mail or messages through the device, and that is not "

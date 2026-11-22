@@ -8,5 +8,6 @@
   "outside_name_words": ["agenda", "browser", "calendar", "call_log", "caller", "callers", "camera", "clipboard", "contact", "contacts", "feed", "file", "files", "invite", "invites", "look", "news", "notification", "notifications", "ocr", "page", "pages", "photo", "photos", "screen_text", "search", "web"],
   "outside_actions": ["agenda", "call_log", "calendar", "caller_id", "get_agenda", "invites", "nearby", "place_search", "read_calendar", "recent_calls", "search_places", "who_called"],
   "max_calls_per_round": 4,
-  "engine_tools_leaving_engine": ["check_conditions", "github_status", "vehicle_recalls", "web_search"]
+  "engine_tools_leaving_engine": ["check_conditions", "github_status", "vehicle_recalls", "web_search"],
+  "limb_verbatim_tools": ["get_codes"]
 }

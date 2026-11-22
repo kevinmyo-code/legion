@@ -11,14 +11,15 @@ with it: `relay_turn.close_stale` closes such a turn on the member's next reques
 
 from __future__ import annotations
 
+import dataclasses
 import time
 
 from django.db import transaction
 
 from agents.graph.nodes import NodeContext, turn_graph
 from agents.graph.state import TurnState
-from agents.legion import relay_turn
-from agents.legion.spoken import spoken_turn
+from agents.legion import limb_verbatim, relay_turn
+from agents.legion.spoken import TurnCall, spoken_turn
 from agents.legion.store import TurnStore
 from agents.models import TURN_FAILED, TURN_RUNNING, AgentTurn
 from agents.runtime import events as ev
@@ -31,10 +32,19 @@ def resume(request, turn: AgentTurn, paused: dict, model, *, context, fresh=None
     started = time.monotonic() - float(paused["loop"].get("elapsed_s") or 0.0)
     state = TurnState.from_json(paused["state"])
     outcomes = []
+    said_by_device = []
     for item in paused["loop"]["relay"]:
         req = item["request"]
         result = (fresh or {}).get(req["call_id"]) or paused["results"][req["call_id"]]
         outcome = relay_turn.outcome_of(req, result)
+        line = limb_verbatim.line_of(req, result)
+        if line is not None:
+            # Said by code as the device wrote it (inventory row 18); the model is told so.
+            message = limb_verbatim.for_model(line, result)
+            outcome = dataclasses.replace(
+                outcome, response={**outcome.response, "message": message}
+            )
+            said_by_device.append(_said(req, line, outcome.response))
         outcomes.append(outcome)
         if req.get("read_through"):
             # Its result is outside text now in the turn: by class, whatever the tool's name.
@@ -47,6 +57,9 @@ def resume(request, turn: AgentTurn, paused: dict, model, *, context, fresh=None
     store = TurnStore(turn)
     ctx: NodeContext = context(request, store, started)
     ctx.relay_results = outcomes
+    # The speech rules read the stream's calls (`spoken.SpokenTurn._verbatim`): a relayed one is
+    # there only when the device's own words are said for it.
+    ctx.gateway.calls.extend(said_by_device)
     first_sentence_ms = None
     agent = ((state.route or {}).get("agents") or ["generalist"])[0]
     gen = spoken_turn(state, ctx, agent).run(turn_graph().run(state, ctx, store, from_node="agent"))
@@ -79,6 +92,19 @@ def resume(request, turn: AgentTurn, paused: dict, model, *, context, fresh=None
         first_sentence_ms=turn.first_sentence_ms or first_sentence_ms,
     )
     return state
+
+
+def _said(req: dict, line: str, response: dict) -> TurnCall:
+    return TurnCall(
+        req["name"],
+        True,
+        line,
+        bool(req.get("writes")),
+        verbatim=(line,),
+        response=response,
+        call_id=req["call_id"],
+        no_restating=True,
+    )
 
 
 def _dropped(turn_pk, state: TurnState, started: float) -> None:
