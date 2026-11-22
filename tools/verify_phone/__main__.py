@@ -72,7 +72,8 @@ def main(argv: list[str] | None = None) -> int:
     path = runner.write_log(run)
     print(f"log (local only): {path}")
     t = run["totals"]
-    return 0 if not (t["fail"] or t["blocked"] or run.get("stopped")) else 1
+    left = any(r["cleanup"].startswith("LEFT BEHIND") for r in run["results"])
+    return 0 if not (t["fail"] or t["blocked"] or run.get("stopped") or left) else 1
 
 
 if __name__ == "__main__":

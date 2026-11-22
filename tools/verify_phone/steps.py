@@ -26,16 +26,28 @@ def go_home(ctx: Ctx, tries: int = 4) -> None:
     raise Blocked("could not reach LEGION's home (Matrix mode on, or another screen held)")
 
 
-def say(ctx: Ctx, words: str, writes: bool = False, timeout: float = 60) -> str:
-    """One assistant turn as his words; returns the turn's mark (phone clock) for `calls_since`."""
+def say(ctx: Ctx, words: str, tools: tuple[str, ...] = (), timeout: float = 60) -> str:
+    """One assistant turn as his words; returns the turn's mark (phone clock) for `calls_since`.
+
+    [tools]: the only tools the turn may write with (the door refuses the rest before they run, on a
+    build that has `allow_tools`). After a forbidden-tool stop no further turn is sent, cleanup
+    included: the run says LEFT BEHIND instead."""
+    if ctx.run.get("forbidden"):
+        raise Blocked("not sent: the run stopped on a forbidden tool, no more assistant turns")
     mark = ctx.device.mark()
-    why = ctx.device.turn(words, case_id=f"verify-{ctx.result.id}", writes=writes, timeout=timeout)
-    ctx.step(f"say ({'write' if writes else 'read'})", why in ("answered", "quiet", "closed"), why)
+    why = ctx.device.turn(words, case_id=f"verify-{ctx.result.id}", tools=tools, timeout=timeout)
+    ctx.step(f"say ({'write' if tools else 'read'})", why in ("answered", "quiet", "closed"), why)
     if why == "real_conversation":
         raise Blocked("a real conversation took over")
     calls = calls_since(ctx, mark)
-    bad = sorted({c.name for c in calls} & logs.FORBIDDEN_TOOLS)
+    # Refused by the door before it ran (test_mode) is the guard working; anything else ran.
+    refused = sorted({c.name for c in calls if c.name in logs.FORBIDDEN_TOOLS and '"test_mode":true' in
+                      c.response.replace(" ", "")})
+    if refused:
+        ctx.note(f"forbidden_refused_{len(ctx.result.steps)}", refused)
+    bad = sorted({c.name for c in calls if c.name in logs.FORBIDDEN_TOOLS} - set(refused))
     if bad:
+        ctx.run["forbidden"] = bad
         raise Abort(f"FORBIDDEN tool called ({', '.join(bad)}): run stopped, Kevin must look")
     ctx.note(f"tools_{len(ctx.result.steps)}", [c.name for c in calls])
     if why == "timeout":

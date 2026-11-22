@@ -3,8 +3,13 @@ carry, mic release after a ring, closing by voice, event delete").
 
 Test items are made up and named `verify-test ...`; each check removes its own. Assistant turns go
 through the test-turn door as his words, so the voice cascade (the code under test for date carry and
-closing) runs with no laptop speaker. Nothing here touches money writes, mail, messages or calls: the
-budget question is a read, and a forbidden tool name in any turn stops the run.
+closing) runs with no laptop speaker. The budget question is a read.
+
+Money, mail, messages and calls: each write turn names the only tools it may use (`allow_tools`), and a
+build that has the door's named list refuses every other tool BEFORE it runs. 263261832 does not have
+it (it rides the next phone update): there a write turn may run any tool, and a forbidden tool name in
+LIVE_AUDIT is caught only AFTER it ran. It stops the run, and no further assistant turn is sent, so
+cleanup leaves its items behind and says so. The run log's `door_preventive` says which build it was.
 """
 from __future__ import annotations
 
@@ -17,13 +22,19 @@ from ..steps import calls_since, end, find, go_home, poll_log, say, wait_for
 A = "app/src/main/java/com/kevin/legion/"
 VERSION_CODE = 263261832
 
+# The resolved tool names each write turn may use (TestWrites on the phone).
+LIST_TOOLS = ("manage_checklist",)
+EVENT_TOOLS = ("manage_item",)
+CLOCK_TOOLS = ("clock",)
+
 # What the checks read on the phone, and where the app writes it (the `stale` map).
 CARD_UI = {
     A + "ui/assistant/CardStage.kt": ["Close card", "CardPage", "CardStage"],
 }
 DOOR = {
     A + "service/testturn/TestTurns.kt": ["STATUS_KEYS", "fun turn", "fun end"],
-    A + "service/testturn/TestTurnPolicy.kt": ["fun isRead"],
+    A + "service/testturn/TestTurnPolicy.kt": ["fun isRead", "class TestWrites", "fun allows"],
+    A + "service/testturn/TestTurnProvider.kt": ["allow_tools"],
 }
 AUDIT = {A + "service/LiveAudit.kt": ["fun toolCall", "fun toolResult", "fun sessionEnd"]}
 
@@ -61,7 +72,7 @@ def card_setup(ctx: Ctx) -> None:
 
 def card_act(ctx: Ctx) -> None:
     ctx.data["cleanup_needed"] = True
-    ctx.data["add_mark"] = say(ctx, f"add {LIST_ITEM} to my grocery list", writes=True)
+    ctx.data["add_mark"] = say(ctx, f"add {LIST_ITEM} to my grocery list", tools=LIST_TOOLS)
 
 
 def card_verify(ctx: Ctx) -> None:
@@ -82,7 +93,7 @@ def card_cleanup(ctx: Ctx) -> None:
     if not ctx.data.get("cleanup_needed"):
         end(ctx)
         return
-    mark = say(ctx, f"remove {LIST_ITEM} from my grocery list", writes=True)
+    mark = say(ctx, f"remove {LIST_ITEM} from my grocery list", tools=LIST_TOOLS)
     removed = any(c.success for c in calls_since(ctx, mark)
                   if "checklist" in c.name and str(c.args.get("action", "")).lower() in ("remove", "delete"))
     end(ctx)
@@ -139,7 +150,7 @@ def carry_setup(ctx: Ctx) -> None:
 
 def carry_act(ctx: Ctx) -> None:
     ctx.data["cleanup_needed"] = True
-    ctx.data["add_mark"] = say(ctx, f"add {CARRY_ITEM} at 9 pm", writes=True)
+    ctx.data["add_mark"] = say(ctx, f"add {CARRY_ITEM} at 9 pm", tools=EVENT_TOOLS)
 
 
 def carry_verify(ctx: Ctx) -> None:
@@ -166,8 +177,9 @@ def carry_cleanup(ctx: Ctx) -> None:
 
 def _delete_event(ctx: Ctx, item: str, day: dt.date) -> None:
     words = day.strftime("%A %B ") + str(day.day)
-    mark = say(ctx, f"delete the {item} event on {words}", writes=True)
-    ok = any(c.success for c in calls_since(ctx, mark) if c.name in ("manage_item", "manage_event", "day"))
+    mark = say(ctx, f"delete the {item} event on {words}", tools=EVENT_TOOLS)
+    ok = any(c.success for c in calls_since(ctx, mark)
+             if c.name == "manage_item" and str(c.args.get("action", "")).lower() in ("remove", "delete"))
     end(ctx)
     if not ok:
         raise Fail(f"'{item}' on {day.isoformat()} may still be on the calendar: delete it by hand")
@@ -197,7 +209,7 @@ def cal_setup(ctx: Ctx) -> None:
         raise Blocked("run before 11 pm phone time (the test event goes at 11:30 pm today)")
     ctx.data["day"] = now.date()
     ctx.data["cleanup_needed"] = True
-    say(ctx, f"add {CAL_ITEM} today at 11:30 pm", writes=True)
+    say(ctx, f"add {CAL_ITEM} today at 11:30 pm", tools=EVENT_TOOLS)
     end(ctx)
 
 
@@ -215,10 +227,11 @@ def cal_act(ctx: Ctx) -> None:
         raise Fail("the event added by the assistant is not on the Calendar screen's day")
     els = ctx.device.screen()
     row = find(els, CAL_ITEM)[0]
-    removes = [e for e in els if e.label == "Remove" and e.bounds[1] - 80 <= row.center[1] <= e.bounds[3] + 80]
-    if not removes:
-        raise Fail("no Remove control on the event's row")
-    target = min(removes, key=lambda e: abs(e.center[1] - row.center[1]))
+    # Only a Remove whose own height spans the test row's centre: a near miss could be a real event's.
+    removes = [e for e in els if e.label == "Remove" and e.bounds[1] <= row.center[1] <= e.bounds[3]]
+    if len(removes) != 1:
+        raise Blocked(f"no single Remove control on the test row ({len(removes)} found); not tapping a neighbour's")
+    target = removes[0]
     ctx.data["delete_mark"] = ctx.device.mark()
     ctx.device.tap_xy(*target.center, what="the event row's Remove")
     ctx.step("tapped Remove")
@@ -297,7 +310,7 @@ def _stop_controls(els):
 def mic_act(ctx: Ctx) -> None:
     go_home(ctx)
     ctx.data["cleanup_needed"] = True
-    say(ctx, "set a timer for 10 seconds", writes=True)
+    say(ctx, "set a timer for 10 seconds", tools=CLOCK_TOOLS)
     # The mic goes back when the conversation closes (MicArbiter.Hold.drop): the mark comes first.
     ctx.data["release_mark"] = ctx.device.mark()
     end(ctx)
@@ -334,7 +347,7 @@ def mic_cleanup(ctx: Ctx) -> None:
     if stops:
         ctx.device.tap_xy(*stops[0].center, what="the ring's Stop")
     elif ctx.data.get("cleanup_needed"):
-        say(ctx, "cancel the timer", writes=True)
+        say(ctx, "cancel the timer", tools=CLOCK_TOOLS)
         end(ctx)
 
 

@@ -5,7 +5,7 @@
     python tools/verify_phone run next2 --dry-run       the same suite against the in-repo fake phone
     python tools/verify_phone stale --base origin/dev   checks whose app code changed since <base>
 
-Why (Kevin, 2026-11-22, "lets do all of it": create verification / maintain verification): the
+Why (Kevin ruled 2026-11-22 to adopt both "create verification" and "maintain verification"): the
 post-update checklists he ran by hand become checks that drive the real app and read what it really
 did. A check passes only on something observable on the phone (a card's words on screen, the
 assistant's own LIVE_AUDIT tool lines, LEGION's own log tags), never on a unit test.

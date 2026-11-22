@@ -122,6 +122,8 @@ def run_suite(suite: Suite, device, only: set[str] | None = None, clock=time.mon
         if check.door and not run.get("door_checked"):
             run["door_checked"] = True
             run["door"] = device.door_ready()
+            # False: an older build, where a forbidden tool is caught only after it ran.
+            run["door_preventive"] = bool(getattr(device, "preventive", False))
         if check.door and run["door"] is not True:
             r.status, r.reason = BLOCKED, f"test-turn door: {run['door']}"
             continue

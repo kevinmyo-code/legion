@@ -206,3 +206,181 @@ def test_stale_flags_a_symbol_the_diff_removed(tmp_path):
     diff = stale.parse_diff(NAME_STATUS, PATCH)
     got = dict(stale.flags([runner.Check("c", "", {"app/x/WakePhrases.kt": ["LEAD_INS"]})], diff, tmp_path))
     assert "no longer has LEAD_INS" in got["c"]
+
+
+# ------------------------------------------------------------- review fixes (2026-11-22)
+
+def test_forbidden_tool_on_an_old_build_stops_the_run_and_sends_no_cleanup_turn():
+    dev = FakeDevice(bugs={"forbidden_tool"}, preventive=False)
+    r = runner.run_suite(NEXT2, dev)
+    assert "FORBIDDEN" in r["stopped"] and r["door_preventive"] is False
+    card = status(r, "card_live_update")
+    assert card["status"] == runner.BLOCKED and card["cleanup"].startswith("LEFT BEHIND")
+    # After the add that also mailed, not one more turn went to the assistant.
+    assert dev.sent[-1][0].startswith("add verify-test milk")
+    assert status(r, "budget_card")["status"] == runner.NOT_RUN
+
+
+def test_forbidden_tool_refused_by_the_door_is_the_guard_working():
+    dev = FakeDevice(bugs={"forbidden_tool"}, preventive=True)
+    r = runner.run_suite(NEXT2, dev)
+    assert r["stopped"] == "" and r["door_preventive"] is True
+    assert r["totals"]["fail"] == 0
+    assert any(k.startswith("forbidden_refused") for k in status(r, "card_live_update")["evidence"])
+
+
+def test_every_write_turn_names_its_tools_and_reads_name_none():
+    dev = FakeDevice()
+    runner.run_suite(NEXT2, dev)
+    for words, tools in dev.sent:
+        writes = words.startswith(("add ", "remove ", "delete ", "set a timer", "cancel "))
+        assert bool(tools) == writes, words
+        assert not set(tools) & logs.FORBIDDEN_TOOLS
+
+
+def test_a_delete_answered_with_a_read_is_not_counted_as_deleted():
+    r = run(bugs={"delete_reads"})
+    assert status(r, "date_carry")["cleanup"].startswith("LEFT BEHIND")
+
+
+class NeighbourRemoveFake(FakeDevice):
+    """The test row's own Remove is missing from the dump; a real event's Remove sits 20 px lower, short of the test row."""
+
+    def screen(self):
+        els = super().screen()
+        if self.where != "calendar":
+            return els
+        out = []
+        for e in els:
+            if e.label == "Remove":
+                row = next(x for x in els if x.bounds[1] == e.bounds[1] and x is not e)
+                if row.label.startswith("verify-test"):
+                    continue
+                e.bounds = (940, e.bounds[1] + 20, 1040, e.bounds[3] + 20)  # near the test row, not on it
+            out.append(e)
+        return out
+
+
+def test_calendar_remove_must_span_the_test_rows_centre():
+    dev = NeighbourRemoveFake()
+    r = runner.run_suite(NEXT2, dev, only={"calendar_delete"})
+    cal = status(r, "calendar_delete")
+    assert cal["status"] == runner.BLOCKED and "single Remove" in cal["reason"]
+    assert "Remove" not in dev.taps
+    assert dev.events[dev.clock.date()] == ["Private Dinner"]  # his event untouched, test item cleaned up
+
+
+def test_exit_code_is_nonzero_when_a_pass_left_its_item(tmp_path, monkeypatch):
+    from verify_phone.__main__ import main
+    monkeypatch.setenv("LEGION_VERIFY_OUT", str(tmp_path))
+    assert main(["run", "next2", "--dry-run"]) == 0
+    assert main(["run", "next2", "--dry-run", "--only", "budget_card,date_carry", "--fake-bugs", "cleanup_fails"]) == 1
+
+
+# ------------------------------------------------------- RealDevice against a stub phonectl
+
+NEW_DOOR = "Result: Bundle[{ok=true, enabled=true, service=true, allow_tools=true, conversation=none}]"
+OLD_DOOR = "Result: Bundle[{ok=true, enabled=true, service=true, conversation=none}]"
+
+
+class StubAdb:
+    serial = None
+
+    def __init__(self, raw_rc=0, status=NEW_DOOR):
+        self.raw_rc, self.status = raw_rc, status
+        self.raw_calls, self.run_calls = [], []
+
+    def run(self, args, timeout=20):
+        self.run_calls.append(args)
+        cmd = " ".join(args)
+        if "%m-%d" in cmd:
+            return b"11-22 14:00:00.000\n"
+        if "--method status" in cmd:
+            return self.status.encode()
+        return b"Result: Bundle[{ok=true}]"
+
+    def raw(self, args, timeout=20):
+        self.raw_calls.append(args)
+        out = b"Result: Bundle[{ok=true}]" if self.raw_rc == 0 else b""
+        return self.raw_rc, out, b"error: device offline"
+
+
+class StubPhone:
+    def __init__(self, screen=None, act=None, adb=None):
+        self._screen = screen or {"awake": True, "locked": False, "package": "com.kevin.legion"}
+        self._act = act or {"ok": True}
+        self.adb = adb or StubAdb()
+        self.taps = []
+
+    def screen(self):
+        return dict(self._screen)
+
+    def snapshot(self):
+        if self._screen.get("locked") is not False or self._screen.get("awake") is not True:
+            return {"ok": False, "refused": "phone is locked: ask Kevin"}
+        return {"ok": True, "elements": []}
+
+    def tap(self, target=None, x=None, y=None, **kw):
+        assert "approved_by_user" not in kw  # never set by this tool
+        self.taps.append((target, x, y))
+        return dict(self._act)
+
+
+def real(**kw):
+    from verify_phone.device import RealDevice
+    return RealDevice(phone=StubPhone(**kw), sleep=lambda s: None)
+
+
+@pytest.mark.parametrize("screen", [
+    {"awake": True, "locked": True, "package": "x"},
+    {"awake": True, "locked": None, "package": "x"},   # unreadable lock state: fail closed
+    {"awake": False, "locked": False, "package": "x"},
+    {"awake": None, "locked": False, "package": "x"},
+])
+def test_real_device_fails_closed_on_a_locked_dark_or_unreadable_phone(screen):
+    d = real(screen=screen)
+    with pytest.raises(runner.Abort):
+        d.mark()
+    with pytest.raises(runner.Abort):
+        d.screen()
+
+
+def test_real_device_guard_approval_becomes_blocked_without_screen_text():
+    d = real(act={"ok": False, "needs_approval": True,
+                  "refused": "needs Kevin's approval: target says 'delete' (\"Delete Private Dinner\")"})
+    with pytest.raises(runner.Blocked) as e:
+        d.tap_xy(10, 10, what="the row's Remove")
+    assert "approval" in str(e.value) and "Private" not in str(e.value)
+
+
+def test_real_device_error_text_is_short_and_has_no_quoted_labels():
+    d = real(act={"ok": False, "refused": 'no element matching "Private Dinner at a place" on screen (0 matches)'})
+    with pytest.raises(runner.Blocked) as e:
+        d.tap_text("Calendar")
+    assert "Private" not in str(e.value)
+    from verify_phone.device import short
+    assert len(short("x" * 200)) == 60
+
+
+def test_real_device_sends_a_turn_once_and_a_dropped_link_stops_the_run():
+    d = real(adb=StubAdb(raw_rc=1))
+    with pytest.raises(runner.Abort):
+        d.turn("add verify-test milk to my grocery list", "verify-x", tools=("manage_checklist",))
+    assert len(d.adb.raw_calls) == 1  # never retried
+    sent = " ".join(d.adb.raw_calls[0])
+    assert "--method turn" in sent and "allow_tools:s:manage_checklist" in sent and "writes:b:true" in sent
+
+
+def test_real_device_read_turn_carries_no_write_extras():
+    adb = StubAdb()
+    d = real(adb=adb)
+    d.turn("what's on my calendar tomorrow?", "verify-x", timeout=0.01)
+    sent = " ".join(adb.raw_calls[0])
+    assert "writes" not in sent and "allow_tools" not in sent
+
+
+def test_real_device_reports_an_old_door_as_not_preventive():
+    d = real(adb=StubAdb(status=OLD_DOOR))
+    assert d.door_ready() is True and d.preventive is False
+    d2 = real()
+    assert d2.door_ready() is True and d2.preventive is True

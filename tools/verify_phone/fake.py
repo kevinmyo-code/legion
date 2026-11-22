@@ -3,7 +3,10 @@ a small model of the app (a grocery list, a calendar, cards, a timer ring, the m
 writes real threadtime logcat lines, so the checks' parsing runs as it would on the phone.
 
 Each `bugs` entry turns one behaviour off, the way a regression would: `card_static`,
-`no_carry`, `resurrect`, `no_close`, `mic_stuck`, `crash`, `guard_remove`, `cleanup_fails`.
+`no_carry`, `resurrect`, `no_close`, `mic_stuck`, `crash`, `guard_remove`, `cleanup_fails`, and
+`forbidden_tool` (the model also calls `email` in every write turn), `delete_reads` (a delete
+turn is answered with a read). `preventive=False` is a build
+whose door ignores `allow_tools`, so that email runs.
 Every name and item here is made up."""
 from __future__ import annotations
 
@@ -20,7 +23,7 @@ PKG = "com.kevin.legion"
 
 class FakeDevice:
     def __init__(self, version_code: int = 263261832, locked: bool = False, door: bool | str = True,
-                 bugs: set[str] | None = None, now: dt.datetime | None = None):
+                 bugs: set[str] | None = None, now: dt.datetime | None = None, preventive: bool = True):
         self.version_code = version_code
         self.locked = locked
         self.door = door
@@ -38,6 +41,8 @@ class FakeDevice:
         self.pending_sync = False
         self.deleted_here: set[str] = set()
         self.taps: list[str] = []
+        self.preventive = preventive  # this build's door honours allow_tools
+        self.sent: list[tuple[str, tuple[str, ...]]] = []  # (words, tools) of every turn
 
     # ---- plumbing --------------------------------------------------------------------------------
     def describe(self) -> dict:
@@ -184,8 +189,9 @@ class FakeDevice:
             self._log("MicArbiter", "request: WAKE_WORD refused - held by RING_LISTENING" if "mic_stuck" in self.bugs
                       else "request: WAKE_WORD granted", "D")
 
-    def turn(self, text: str, case_id: str, writes: bool = False, timeout: float = 60) -> str:
+    def turn(self, text: str, case_id: str, tools: tuple[str, ...] = (), timeout: float = 60) -> str:
         self._usable()
+        self.sent.append((text, tools))
         if self.conv == "none":
             self.conv = "test"
             self._audit("session_start model=fake async_set=none")
@@ -194,10 +200,22 @@ class FakeDevice:
         tomorrow = self.clock.date() + dt.timedelta(days=1)
         fail = "cleanup_fails" in self.bugs and any(w in t for w in ("remove", "delete"))
 
+        def allowed(name):
+            return name in tools if self.preventive else bool(tools)
+
         def write(name, args, extra=None):
-            ok = writes and not fail
+            if not allowed(name):
+                self._tool(name, args, False, {"test_mode": True})
+                return False
+            ok = not fail
             self._tool(name, args, ok, extra)
             return ok
+
+        if "forbidden_tool" in self.bugs and tools:  # the model reaches for mail in a write turn
+            if allowed("email"):
+                self._tool("email", {"to": "someone"}, True)
+            else:
+                self._tool("email", {"to": "someone"}, False, {"test_mode": True})
 
         if t == "what's on my grocery list?":
             self._tool("manage_checklist", {"action": "read", "list": "groceries"})
@@ -224,6 +242,8 @@ class FakeDevice:
             if write("manage_item", {"action": "add", "item": m.group(1), "time": "23:30"},
                      {"date": self.clock.date().isoformat()}):
                 self.events.setdefault(self.clock.date(), []).append(m.group(1))
+        elif "delete_reads" in self.bugs and re.match(r"delete the (.+) event on .+", t):
+            self._tool("manage_item", {"action": "read_list"})  # answered with a read, nothing deleted
         elif m := re.match(r"delete the (.+) event on .+", t):
             name = m.group(1)
             if write("manage_item", {"action": "remove", "item": name}):
@@ -236,10 +256,10 @@ class FakeDevice:
                 self._audit('session_end reason="stop_phrase"')
                 return "closed"
         elif m := re.match(r"set a timer for (\d+) seconds", t):
-            if write("timer_start", {"seconds": int(m.group(1))}):
+            if write("clock", {"action": "timer_start", "seconds": int(m.group(1))}):
                 self.timer_due = self.clock.timestamp() + int(m.group(1))
         elif t == "cancel the timer":
-            write("timer_cancel", {})
+            write("clock", {"action": "timer_cancel"})
             self.timer_due, self.ringing = None, False
         self._audit('assistant text="ok"')
         return "answered"

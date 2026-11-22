@@ -27,6 +27,14 @@ if str(TOOLS) not in sys.path:
 import phone_voice_test as door  # noqa: E402  (the door's bundle parser and turn-finished rule)
 from phone.adb import PACKAGE, parse_version  # noqa: E402
 
+_QUOTED = re.compile(r"\"[^\"]*\"|'[^']*'")
+
+
+def short(why: str) -> str:
+    """phonectl's error text for our log: quoted parts (screen labels) dropped, 60 characters at most."""
+    return _QUOTED.sub('"..."', why or "")[:60]
+
+
 _SNAP_LINE = re.compile(r'^(e\d+) (\S+) "(.*)" \[([^\]]*)\] @(-?\d+),(-?\d+),(-?\d+),(-?\d+)$')
 
 
@@ -113,14 +121,14 @@ class RealDevice:
         if not r.get("ok"):
             why = r.get("refused") or r.get("error") or "snapshot failed"
             if "locked" in why or "screen is off" in why:
-                raise Abort(why)
-            raise Blocked(f"snapshot: {why[:160]}")
+                raise Abort(short(why))
+            raise Blocked(f"snapshot: {short(why)}")
         return parse_snapshot(r["elements"])
 
     def wait_text(self, text: str, timeout: float, gone: bool = False) -> bool:
         r = self.phone.wait(stable_ms=700, timeout_s=timeout, text=text, gone=gone)
         if not r.get("ok") and r.get("refused"):
-            raise Abort(r["refused"])
+            raise Abort(short(r["refused"]))
         return bool(r.get("ok"))
 
     def _acted(self, r: dict, what: str) -> None:
@@ -130,8 +138,8 @@ class RealDevice:
         if r.get("needs_approval"):
             raise Blocked(f"phonectl guard asks Kevin's approval for {what}; not set by this tool")
         if "locked" in why or "screen is off" in why:
-            raise Abort(why)
-        raise Blocked(f"{what}: {why[:160]}")
+            raise Abort(short(why))
+        raise Blocked(f"{what}: {short(why)}")
 
     def tap_text(self, text: str) -> None:
         self._acted(self.phone.tap(text), f"tap '{text}'")
@@ -172,20 +180,32 @@ class RealDevice:
             return "assistant service not running (open LEGION once)"
         if st.get("conversation") == "real":
             return "a real conversation is open"
+        # Older builds ignore `allow_tools` and let a `writes` turn run any tool: the forbidden-tool
+        # stop is then only after the fact.
+        self.preventive = bool(st.get("allow_tools"))
         return True
 
     def conversation(self) -> str:
         return str(self._door("status").get("conversation", "none"))
 
-    def turn(self, text: str, case_id: str, writes: bool = False, timeout: float = 60) -> str:
+    preventive = False
+
+    def turn(self, text: str, case_id: str, tools: tuple[str, ...] = (), timeout: float = 60) -> str:
         """His words as a test-conversation turn; waits until it is answered. Returns why it ended
-        (`answered`, `quiet`, `closed`, `timeout`, ...). Raises Blocked if the phone refuses it."""
+        (`answered`, `quiet`, `closed`, `timeout`, ...). Raises Blocked if the phone refuses it.
+
+        [tools] are the only tools this turn may change anything with (resolved names, the door's
+        `allow_tools`): the phone refuses every other write before it runs. An older build without
+        `allow_tools` takes `writes` alone and lets any tool run (`preventive` is False then)."""
         before = self._door("status")
         if before.get("conversation") == "real":
             raise Blocked("a real conversation is open; not testing over it")
-        r = self._door("turn", text, id=case_id, writes=writes)
+        extras = {"id": case_id}
+        if tools:
+            extras.update(writes=True, allow_tools=",".join(tools))
+        r = self._door("turn", text, **extras)
         if not r.get("ok"):
-            raise Blocked(f"the phone refused the turn: {r.get('error')}")
+            raise Blocked(f"the phone refused the turn: {short(str(r.get('error')))}")
         sent, heard_at, saw_busy = time.monotonic(), None, False
         while time.monotonic() - sent < timeout:
             self.sleep(0.6)
