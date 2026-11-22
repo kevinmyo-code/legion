@@ -60,6 +60,10 @@ class Paths:
         self.lock = self.root / "worker.lock"
         # Ship history (alfred-builds tickets 03 and 05): one JSON line per ship or undo.
         self.ships = self.work / "ships.jsonl"
+        # Messages to Kevin's Claude sessions (alfred-sessions 1122): each task's send plan, the
+        # one being delivered, the courier's settings and folder. Outside the work folder, so no
+        # helper can write a plan, forge the card's text or arm the courier.
+        self.sends = self.root / "sends"
         # Kevin's private worker skills: his files, not scratch (the ask-list hook asks).
         self.skills = self.work / ".claude"
 

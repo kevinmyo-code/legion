@@ -8,6 +8,10 @@ Run by SessionStart, UserPromptSubmit, Notification, Stop and SessionEnd hooks i
 - No config (`%APPDATA%\\legion-claude\\config.json`) means do nothing.
 - The prompt summary (first 120 chars) is sent only from a `full` scope machine (ruling 5).
 - The worker's own main session is skipped (it sets LEGION_CLAUDE_WORKER, see session.py).
+- The session's own name (`/rename`, `--name`) rides along from a `full` machine, read from
+  Claude Code's `~/.claude/sessions/<pid>.json` (an undocumented file: read for the name only,
+  never its pipe or key). Interactive sessions only have one; none found sends a blank name and
+  the engine keeps the name it has.
 
 Also `--install-settings PATH` / `--uninstall-settings PATH`, used by install.ps1 / uninstall.ps1
 to merge these hooks into a settings file without touching anyone else's hooks.
@@ -48,6 +52,7 @@ from engine_client import EngineClient  # noqa: E402
 WORKER_MARKER = "LEGION_CLAUDE_WORKER"
 TIMEOUT_S = 2.0
 SUMMARY_CHARS = 120
+NAME_CHARS = 80
 STATES = {
     "SessionStart": "working",
     "UserPromptSubmit": "working",
@@ -58,7 +63,21 @@ STATES = {
 OURS = "session_hook.py"
 
 
-def build_payload(event: dict, cfg: dict) -> dict | None:
+def session_name(session_id: str, sessions_dir: Path | None = None) -> str:
+    """The name Claude Code shows for `session_id`, or "" (no file, unreadable, unnamed)."""
+    folder = sessions_dir or Path.home() / ".claude" / "sessions"
+    try:
+        for f in folder.glob("*.json"):
+            data = read_json(f, None)
+            if isinstance(data, dict) and data.get("sessionId") == session_id:
+                name = data.get("name")
+                return " ".join(str(name).split())[:NAME_CHARS] if name else ""
+    except OSError:
+        pass
+    return ""
+
+
+def build_payload(event: dict, cfg: dict, sessions_dir: Path | None = None) -> dict | None:
     state = STATES.get(event.get("hook_event_name") or "")
     sid = event.get("session_id")
     if not state or not sid or not cfg.get("name"):
@@ -68,17 +87,20 @@ def build_payload(event: dict, cfg: dict) -> dict | None:
     if cfg.get("scope") == "full" and isinstance(prompt, str) and prompt.strip():
         summary = " ".join(prompt.split())[:SUMMARY_CHARS]
     cwd = event.get("cwd") or ""
+    name = session_name(str(sid), sessions_dir) if cfg.get("scope") == "full" else ""
     return {
         "machine": cfg["name"],
         "session_id": str(sid),
         "project": os.path.basename(os.path.normpath(cwd)) if cwd else "",
         "state": state,
         "last_prompt_summary": summary,
+        "name": name,
         "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
-def report(stdin_text: str, env=None, paths: Paths | None = None) -> dict | None:
+def report(stdin_text: str, env=None, paths: Paths | None = None,
+           sessions_dir: Path | None = None) -> dict | None:
     """Returns the payload it sent (or tried to), None when it did nothing. Never raises."""
     try:
         env = os.environ if env is None else env
@@ -90,7 +112,7 @@ def report(stdin_text: str, env=None, paths: Paths | None = None) -> dict | None
         cfg = load_config(paths)
         if not cfg.get("engine_url") or not cfg.get("token"):
             return None
-        payload = build_payload(json.loads(stdin_text or "{}"), cfg)
+        payload = build_payload(json.loads(stdin_text or "{}"), cfg, sessions_dir)
         if payload is None:
             return None
         try:

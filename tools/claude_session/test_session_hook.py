@@ -30,6 +30,8 @@ class HookTest(unittest.TestCase):
         self.engine = FakeEngine()
         self.tmp = tempfile.TemporaryDirectory()
         self.paths = Paths(Path(self.tmp.name))
+        self.sessions_dir = Path(self.tmp.name) / "claude-sessions"  # never Kevin's real folder
+        self.sessions_dir.mkdir()
         self.config(scope="full")
 
     def tearDown(self):
@@ -42,7 +44,24 @@ class HookTest(unittest.TestCase):
         write_json_atomic(self.paths.config, cfg)
 
     def run_hook(self, text, env=None):
-        return sh.report(text, env={} if env is None else env, paths=self.paths)
+        return sh.report(text, env={} if env is None else env, paths=self.paths,
+                         sessions_dir=self.sessions_dir)
+
+    def test_name_comes_from_the_session_file(self):
+        write_json_atomic(self.sessions_dir / "4242.json", {"sessionId": "other", "name": "nope"})
+        write_json_atomic(self.sessions_dir / "4343.json", {"sessionId": "abc-123", "name": " builder\n one "})
+        self.run_hook(event("Stop"))
+        self.assertEqual(self.engine.sessions[-1]["name"], "builder one")
+
+    def test_no_session_file_sends_a_blank_name(self):
+        self.run_hook(event("Stop"))
+        self.assertEqual(self.engine.sessions[-1]["name"], "")
+
+    def test_listed_sends_no_name(self):
+        self.config(scope="listed", name="work laptop")
+        write_json_atomic(self.sessions_dir / "4343.json", {"sessionId": "abc-123", "name": "client x"})
+        self.run_hook(event("Stop"))
+        self.assertEqual(self.engine.sessions[-1]["name"], "")
 
     def test_each_event_maps_to_state(self):
         want = {"SessionStart": "working", "UserPromptSubmit": "working",

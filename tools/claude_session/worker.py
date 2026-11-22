@@ -73,6 +73,7 @@ from session import MainSession, build_command, child_env, kill_tree  # noqa: E4
 import containment  # noqa: E402
 import health as hl  # noqa: E402
 import integrity  # noqa: E402
+import sessions  # noqa: E402
 import warm_worktree  # noqa: E402
 import workflows as wfl  # noqa: E402
 
@@ -463,6 +464,7 @@ class Worker:
                      "<<FETCH>>": cmd_path(HERE / "fetch_file.py"),
                      "<<TO_XLSX>>": cmd_path(HERE / "to_xlsx.py"),
                      "<<TO_PDF>>": cmd_path(HERE / "to_pdf.py"),
+                     "<<SESSIONS>>": cmd_path(HERE / "sessions.py"),
                      "<<SCOPE>>": scope}.items():
             text = text.replace(k, v)
         return text
@@ -760,6 +762,13 @@ class Worker:
             status = "needs_confirmation"
             question = files_question(len(found), sum(f["size"] for f in found))
             log.info("task %s over the files caps (%s files); asking first", t["id"], len(found))
+        if status == "needs_confirmation" and self.scope == "full":
+            plan = sessions.pinned_plan(self.paths, t["id"])
+            if plan is not None:
+                # alfred-sessions (Kevin's ruling 2): the card shows the exact message and target,
+                # written here from the stored plan, never by the model; the yes is bound to it.
+                question = sessions.question(plan, self.name)
+                t["send_plan_sha"] = plan["sha256"]
         t.update(status=status, summary=summary, question=question, found=found, finished_at=now)
         self.log_task(t, status)
         payload = {"status": status, "summary": summary, "question": question,
@@ -1200,7 +1209,17 @@ class Worker:
                 lines.append(f"Task {parent} was workflow {t['workflow']}: use the "
                              f"{t['workflow']} skill again.")
             lines.append(f"Kevin now says: {t['request']}")
-            if t.get("confirms"):  # the phone marked this as Kevin's answer to task P's question
+            plan_sha = (p or {}).get("send_plan_sha") if t.get("confirms") else None
+            if plan_sha:
+                # A yes to a message card unlocks that one message and nothing else: no `yes`
+                # token, so ship.py, send_mail.py and the ask list stay shut (alfred-sessions).
+                tok = self.issue_token(tid, parent, sessions.SEND_KIND, plan_sha=plan_sha)
+                lines.append(f"This is Kevin's answer to task {parent}'s question, which asked to "
+                             "send a message to one of his Claude sessions. If it is a clear yes, "
+                             f"run only: {cmd_path(helper_python())} {cmd_path(HERE / 'sessions.py')} "
+                             f"send --task {tid} --token {tok} and put its last line in the "
+                             "summary. Not a clear yes: do not run it, report what Kevin said.")
+            elif t.get("confirms"):  # the phone marked this as Kevin's answer to task P's question
                 tok = self.issue_token(tid, parent, "yes")
                 lines.append(f"This is Kevin's answer to task {parent}'s question. If it is a clear "
                              f"yes, the step it asked "
@@ -1264,11 +1283,13 @@ class Worker:
         return bool(mail.get("address") and mail.get("app_password")
                     and (mail.get("kevin") or "").strip())
 
-    def issue_token(self, tid: int, parent, kind: str) -> str:
+    def issue_token(self, tid: int, parent, kind: str, plan_sha: str | None = None) -> str:
         tok = secrets.token_hex(16)  # never starts with "-", which argparse would read as a flag
-        write_json_atomic(self.paths.tokens / f"{tid}-{kind}.json", {
-            "token": tok, "task": int(tid), "parent": int(parent) if parent else None, "kind": kind,
-            "expires_at": self.clock() + self.cfg["task_cap_s"] + 600})
+        record = {"token": tok, "task": int(tid), "parent": int(parent) if parent else None,
+                  "kind": kind, "expires_at": self.clock() + self.cfg["task_cap_s"] + 600}
+        if plan_sha:
+            record["plan_sha"] = plan_sha  # pinned when the card was written (sessions.py send)
+        write_json_atomic(self.paths.tokens / f"{tid}-{kind}.json", record)
         log.info("task %s confirmation issued (%s)", tid, kind)
         return tok
 

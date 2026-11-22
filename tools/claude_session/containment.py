@@ -71,7 +71,8 @@ TAINT_DENIED_WRITES = ("NotebookEdit",)
 AGENT_TOOLS = ("Agent", "Task")
 
 # The hook matcher (worker.write_settings) must name every tool these rules see.
-HOOK_MATCHER_EXTRA = "Read|Glob|Grep|WebFetch|WebSearch|Agent|Task|mcp__claude_ai_Gmail__.*"
+HOOK_MATCHER_EXTRA = ("Read|Glob|Grep|WebFetch|WebSearch|Agent|Task|mcp__claude_ai_Gmail__.*"
+                      "|SendMessage|ListAgents")
 
 SCRIPT_EXT = frozenset({
     ".py", ".pyw", ".ps1", ".psm1", ".psd1", ".bat", ".cmd", ".sh", ".bash", ".js", ".mjs", ".cjs",
@@ -82,7 +83,7 @@ SCRIPT_EXT = frozenset({
 # file that holds a credential.
 CREDENTIAL_NAMES = re.compile(
     r"(^|[\\/])(\.ssh|\.gnupg|\.aws|\.azure|\.kube|\.docker|gcloud|\.config[\\/]gcloud"
-    r"|\.git-credentials|\.netrc|_netrc|\.npmrc|\.pypirc|credentials\.json"
+    r"|\.git-credentials|\.netrc|_netrc|\.npmrc|\.pypirc|\.?credentials\.json"
     r"|application_default_credentials\.json|local\.properties|[^\\/]*\.env|\.env\.[^\\/]*"
     r"|[^\\/]*\.(pem|key|p12|pfx|keystore|jks))([\\/]|$)", re.I)
 
@@ -219,10 +220,17 @@ def prune(paths: Paths, cutoff: float) -> None:
 # --------------------------------------------------------------------------- untrusted files
 
 
+def default_untrusted() -> list[str]:
+    """Always untrusted, whatever the config says (alfred-sessions 1122): Claude Code's session
+    transcripts hold text other sessions read (mail, web pages, peers' messages), so a helper
+    that reads one, by Read, Grep or `sessions.py read`, is read-through like any web page."""
+    return [str(Path.home() / ".claude" / "projects")]
+
+
 def untrusted_file(paths: Paths, target: str, task_rec: dict | None, cfg: dict) -> bool:
     if not target:
         return False
-    roots = list(cfg.get("untrusted_paths") or [])
+    roots = default_untrusted() + list(cfg.get("untrusted_paths") or [])
     if isinstance(task_rec, dict):
         roots += list(task_rec.get("untrusted") or [])
     if any(r and is_under(target, r) for r in roots):
