@@ -28,7 +28,7 @@ import migrations  # noqa: E402
 from common import FAIL, WARN, Finding  # noqa: E402
 
 CHECKS = (
-    ("a", clock_times.NAME, "real clock times in docs and comments", "FAIL on added lines"),
+    ("a", clock_times.NAME, "real clock times in docs and comments", "FAIL log-like, bare in docs; WARN bare in comments, ranges"),
     ("b", file_size.NAME, "code files over 600 lines", "FAIL new file; WARN crossed or grew"),
     ("c", migrations.NAME, "schema files declared, existing ones untouched", "FAIL"),
     ("d", em_dashes.NAME, "em dashes in user-facing copy", "FAIL strings.xml + copy modules; WARN code"),
