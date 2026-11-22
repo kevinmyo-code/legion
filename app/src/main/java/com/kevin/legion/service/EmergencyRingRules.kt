@@ -8,7 +8,8 @@ package com.kevin.legion.service
  * warning a new id and names the earlier ones in `references`; keyed on the id alone, one long flood
  * or storm warning rang again on every update, through the night. An alert joins the series of the
  * first earlier alert it references that is remembered; with none, it starts its own. A repeat is
- * remembered too ([SafetyAlarms.admit]), so a chain of updates stays one series.
+ * remembered too ([SafetyAlarms.admit]), so a chain of updates stays one series. The segments of one
+ * NWS message (one per zone group) are one series too ([seriesOf]).
  *
  * No event + area matching: two warnings of the same kind for the same county in one night can be
  * two storms, and merging them would keep the second one quiet. Until the engine sends `references`,
@@ -53,11 +54,28 @@ internal object EmergencyRingRules {
 
     fun format(r: Record): String = "${r.severity}|${r.atMs}|${r.series}"
 
-    /** The series [alarm] belongs to: its own record's, else the first remembered reference's, else its id. */
-    fun seriesOf(alarm: ProactiveUrgency.Alarm, records: Map<String, Record>): String =
-        records[alarm.alertId]?.series
+    /**
+     * The series [alarm] belongs to: its own record's, else the first remembered reference's, else
+     * that of a remembered segment of the same NWS message ([messageOf]), else its own id.
+     */
+    fun seriesOf(alarm: ProactiveUrgency.Alarm, records: Map<String, Record>): String {
+        val message = messageOf(alarm.alertId)
+        return records[alarm.alertId]?.series
             ?: alarm.references.firstNotNullOfOrNull { records[it]?.series }
+            ?: message?.let { m -> records.entries.firstOrNull { messageOf(it.key) == m }?.value?.series }
             ?: alarm.alertId
+    }
+
+    /**
+     * The NWS message an alert id is a segment of: `urn:oid:<oid>.<hash>` without the trailing
+     * `.<segment>.<version>`. One message carries a segment per zone group, so a Watch for one zone
+     * and a Warning for the next (or the zone he moved into) share it: one weather event, one ring.
+     * Production 11-13 to 11-14: one message prefix rang again hours apart. Null for any other id
+     * shape, which never merges by prefix.
+     */
+    private fun messageOf(alertId: String): String? = NWS_SEGMENT.matchEntire(alertId)?.groupValues?.get(1)
+
+    private val NWS_SEGMENT = Regex("""(urn:oid:[0-9.]+\.[0-9a-f]+)\.\d+\.\d+""")
 
     /** True when [alarm]'s series has not been delivered, or (per the policy) only at a lower severity. */
     fun isNew(alarm: ProactiveUrgency.Alarm, records: Map<String, Record>): Boolean {
