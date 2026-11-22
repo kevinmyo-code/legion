@@ -45,9 +45,19 @@ on:
         type: choice
         options: [all, phone, engine]
       phone_cases:
-        description: "Phone voice eval case ids (comma list); the phone ship template's gate set by default"
+        description: "Phone voice eval case ids (comma list); the phone ship template's 37-case gate set by default"
         required: false
-        default: "due_open,due_today,calendar_tomorrow,reminders,todo_read,cars,time_now,then_tomorrow,goodbye_ends,short_answer_kept,write_todo,write_reminder,write_complete,tick_todo,multi_write_two,multi_write_mixed,dependent_two_step,lone_word_then_yes,lone_word_no_context,guard_mail_injection,guard_mail_then_timer,filler_specialist,filler_calendar,filler_web,no_filler_after_answer,tags_never_on_money,stt_audio_cars,stt_audio_switch,len_octopus,len_basil,len_turbo,len_latte,len_sleep,len_moon,len_warmup,len_bread"
+        default: "due_open,due_today,due_tonight,calendar_tomorrow,reminders,todo_read,cars,time_now,then_tomorrow,goodbye_ends,short_answer_kept,write_todo,write_reminder,write_complete,tick_todo,multi_write_two,multi_write_mixed,dependent_two_step,lone_word_then_yes,lone_word_no_context,guard_mail_injection,guard_mail_then_timer,filler_specialist,filler_calendar,filler_web,no_filler_after_answer,tags_never_on_money,stt_audio_cars,stt_audio_switch,len_octopus,len_basil,len_turbo,len_latte,len_sleep,len_moon,len_warmup,len_bread"
+        type: string
+      extra_checks:
+        description: "Engine: extra live checks a ship names (comma list, at most 3): repo files server/tests/realrun_<name>.py at the sha"
+        required: false
+        default: ""
+        type: string
+      extra_cap_usd:
+        description: "Engine: spend cap per extra check in USD (at most 0.30)"
+        required: false
+        default: "0.12"
         type: string
 
 permissions:
@@ -305,38 +315,19 @@ jobs:
           printf '%s' "$GEMINI_API_KEY" > "$RUNNER_TEMP/gk.txt"
           echo "LEGION_GEMINI_KEY_FILE=$RUNNER_TEMP/gk.txt" >> "$GITHUB_ENV"
 
-      - name: Realrun gate (web cascade, budget $0.09)
-        working-directory: server
+      # Today's laptop ship scripts' step 1c, from the TRUSTED copy (this run's own dev commit): the standard
+      # gate (fail_twice with the heard-back-only retry), one chip turn, and the extra checks the ship names.
+      # Verdicts and spend estimates go to gate-raw/summary.txt; raw pytest output stays on the runner.
+      - name: Engine live gate (standard gate, chip turn, extra checks)
         env:
-          REALRUN_OUT: ${{ runner.temp }}/gate-raw/realrun-out
-          REALRUN_BUDGET_USD: '0.09'
-        run: uv run --no-sync pytest -q -p no:cacheprovider tests/realrun_web_cascade.py -k realrun_gate -s --junitxml=gate-realrun.xml
-
-      - name: One real chip turn
-        working-directory: server
-        run: uv run --no-sync pytest -q -p no:cacheprovider tests/realrun_demo_suggestions.py -s --junitxml=gate-chip.xml
-
-      # A realrun test SKIPS without the key or past its budget; a skip must never read as a pass.
-      - name: Every gate test ran and passed (JUnit XML, skips fail)
-        if: always()
+          EXTRAS: ${{ inputs.extra_checks }}
+          EXTRA_CAP: ${{ inputs.extra_cap_usd }}
         run: |
-          python3 - server/gate-realrun.xml server/gate-chip.xml <<'EOF'
-          import sys, xml.etree.ElementTree as ET
-          bad = False
-          for path in sys.argv[1:]:
-              try:
-                  root = ET.parse(path).getroot()
-              except (OSError, ET.ParseError) as exc:
-                  print(f"{path}: unreadable ({exc}): not a pass"); bad = True; continue
-              suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
-              t = sum(int(s.get("tests", 0)) for s in suites)
-              f = sum(int(s.get("failures", 0)) + int(s.get("errors", 0)) for s in suites)
-              k = sum(int(s.get("skipped", 0)) for s in suites)
-              print(f"{path}: tests={t} failed={f} skipped={k}")
-              if t == 0 or f or k:
-                  bad = True
-          sys.exit("a gate test failed, skipped or did not run" if bad else 0)
-          EOF
+          set -euo pipefail
+          [[ "$EXTRAS" =~ ^[a-z0-9_,]*$ ]] || { echo "::error::extra_checks must be a comma list of realrun_<words> names"; exit 1; }
+          s=trusted/.github/scripts/engine_live_gate.sh
+          [ -f "$s" ] || { echo "::error::no engine gate script at $s"; exit 1; }
+          bash "$s" "$GITHUB_WORKSPACE/server" "$RUNNER_TEMP/gate-raw" "$EXTRAS" "$EXTRA_CAP"
 
       - name: Forget the key
         if: always()
@@ -349,22 +340,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p gate-out
-          for x in realrun chip; do
-            f=server/gate-$x.xml
-            [ -f "$f" ] || continue
-            python3 - "$f" > "gate-out/$x-summary.txt" <<'EOF'
-          import sys, xml.etree.ElementTree as ET
-          root = ET.parse(sys.argv[1]).getroot()
-          suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
-          for s in suites:
-              for c in s.iter("testcase"):
-                  state = "failed" if c.find("failure") is not None or c.find("error") is not None else "skipped" if c.find("skipped") is not None else "passed"
-                  print(f"{c.get('name')}: {state}")
-          EOF
-          done
+          [ -f "$RUNNER_TEMP/gate-raw/summary.txt" ] && cp "$RUNNER_TEMP/gate-raw/summary.txt" gate-out/engine-summary.txt
           s=trusted/.github/scripts/scrub_gate_out.sh
           [ -f "$s" ] || { echo "::error::no scrub script at $s: nothing is uploaded"; rm -rf gate-out; exit 1; }
-          bash "$s" gate-out realrun-summary.txt chip-summary.txt
+          bash "$s" gate-out engine-summary.txt
 
       - name: Keep the scorecard (only after a successful scrub)
         if: always() && steps.scrub.outcome == 'success'

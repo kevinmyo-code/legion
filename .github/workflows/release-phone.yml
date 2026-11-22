@@ -44,7 +44,7 @@
 # official speaker model (Apache-2.0, notice and licence text inside) and the public Mapbox pk. token;
 # no key. A signed APK does not reveal the signing key.
 name: Release phone
-run-name: "Release phone ${{ inputs.dry_run && 'DRY RUN' || 'PUBLISH' }} ${{ inputs.sha }}${{ !inputs.dry_run && format(' from dry run {0}', inputs.dry_run_id) || '' }}"
+run-name: "Release phone ${{ inputs.dry_run && 'DRY RUN' || 'PUBLISH' }} ${{ inputs.sha }}${{ !inputs.dry_run && format(' from dry run {0}, gates {1}', inputs.dry_run_id, inputs.gates_run_id) || '' }}"
 
 on:
   workflow_dispatch:
@@ -58,6 +58,11 @@ on:
         required: true
         default: true
         type: boolean
+      gates_run_id:
+        description: "Publish only: the run id of a successful gates.yml run (phone or all) of this sha"
+        required: false
+        default: ""
+        type: string
       dry_run_id:
         description: "Publish only: the run id of the successful dry run of this sha"
         required: false
@@ -221,6 +226,7 @@ jobs:
     env:
       SHA: ${{ inputs.sha }}
       DRY_RUN_ID: ${{ inputs.dry_run_id }}
+      GATES_RUN_ID: ${{ inputs.gates_run_id }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Inputs and where this run comes from
@@ -242,6 +248,24 @@ jobs:
       - name: sha is on dev
         run: |
           git merge-base --is-ancestor "$SHA" HEAD || { echo "::error::$SHA is not on dev. Nothing was published."; exit 1; }
+
+      # The phone's live gate ran in the cloud (gates.yml): a publish needs its passed run for this sha, so
+      # nothing local is needed. A gates run's head sha is the dev tip it was dispatched on; its title names
+      # the gated sha ("Gates phone <sha>" or "Gates all <sha>").
+      - name: The named gates run passed the phone gate on this sha
+        run: |
+          set -euo pipefail
+          [[ "$GATES_RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::gates_run_id must be the numeric run id of a passed gates.yml run. Nothing was published."; exit 1; }
+          read -r path event repo branch title concl attempt < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GATES_RUN_ID" \
+            --jq '[.path, .event, .head_repository.full_name, .head_branch, (.display_title | gsub(" "; "_")), .conclusion, .run_attempt] | @tsv')
+          [ "$path" = .github/workflows/gates.yml ] || { echo "::error::run $GATES_RUN_ID is $path, not gates.yml"; exit 1; }
+          [ "$event" = workflow_dispatch ] && [ "$repo" = "$GITHUB_REPOSITORY" ] && [ "$branch" = dev ] \
+            || { echo "::error::run $GATES_RUN_ID is not a dispatch from dev in this repo ($event, $repo, $branch)"; exit 1; }
+          case "$title" in "Gates_phone_$SHA"|"Gates_all_$SHA") ;; *) echo "::error::run $GATES_RUN_ID gated ${title//_/ }, not the phone for $SHA"; exit 1;; esac
+          [ "$concl" = success ] || { echo "::error::gates run $GATES_RUN_ID concluded $concl"; exit 1; }
+          phone=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GATES_RUN_ID/jobs" --jq '[.jobs[] | select(.name | startswith("phone"))] | .[0].conclusion')
+          [ "$phone" = success ] || { echo "::error::the phone job of gates run $GATES_RUN_ID is $phone"; exit 1; }
+          echo "gates run $GATES_RUN_ID (attempt $attempt): phone gate passed on $SHA"
 
       - name: The named dry run is a dispatch of this workflow, from this repo, of this sha, and passed
         run: |
