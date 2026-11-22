@@ -433,19 +433,18 @@ function RecruiterPage({ mode, expiresAt, refTag }: { mode: 'visitor' | 'preview
 }
 
 /**
- * The way from this page into the normal app (ticket 13, rulings 1 and 2): the
- * same screens a member uses, on the visitor's own copy of the made-up
- * household. The app's demo banner links back here. The expiry sentence is its
- * own element so it can be found and read on its own.
+ * What a visitor's visit is: until when, and that the assistant's changes land only in their own
+ * copy. No way into the members' web app from here (Kevin, 2026-11-22: the demo shows the phone
+ * and the assistant, not the web app); the expiry sentence is its own element so it can be found
+ * and read on its own.
  */
 function AccessNote({ expiry }: { expiry: string | null }) {
   return (
     <p className="rc-access">
       {expiry && <span>{expiry}</span>}
       {expiry && ' '}
-      The app itself is open too: Money, Fleet, Lists, Calendar, Places and Notes, on your own copy of the made-up
-      household. Anything you change stays in your copy and is deleted when the visit ends.{' '}
-      <Link to="/">Open the app</Link>.
+      Anything the assistant changes happens only in your own copy of the made-up household, and is deleted when
+      the visit ends.
     </p>
   )
 }
@@ -464,7 +463,7 @@ function propertiesHeading(count: number): string {
 }
 
 function Sections({ content, access, ask = true }: { content: DemoContent; access: ReactNode; ask?: boolean }) {
-  const { hero, look_for: lookFor, work, experience, links, assets, phone, legion } = content
+  const { hero, work, experience, links, assets, phone, legion } = content
   const name = content.name?.trim() || 'LEGION'
   const hasPhone = phone !== undefined && phone.clips.length > 0
   const projects = content.projects ?? []
@@ -486,10 +485,6 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
           {hasPhone && <a href="#phone">Phone</a>}
           {work && <a href="#work">Work</a>}
           <a href="#experience">Experience</a>
-          {/* At phone width the access note carries this link, so the nav stays one row (CSS). */}
-          <Link to="/" data-nav-app="">
-            Open the app
-          </Link>
         </nav>
       </header>
 
@@ -516,18 +511,6 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
         </section>
 
         {projects.length > 0 && <ProjectsStrip projects={projects} side={nextSide()} />}
-
-        {lookFor.length > 0 && (
-          <Section id="look-for" title="What to look for" side={nextSide()}>
-            <div className="rc-runin">
-              {lookFor.map((item) => (
-                <p key={item.title}>
-                  <b>{runIn(item.title)}</b> {item.body}
-                </p>
-              ))}
-            </div>
-          </Section>
-        )}
 
         {legion && (
           <Section id="legion" title={legion.title} side={nextSide()} pinned={motion && Boolean(legion.diagram_svg)}>

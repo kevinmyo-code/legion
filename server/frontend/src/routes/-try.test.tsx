@@ -134,7 +134,7 @@ describe('/try', () => {
     renderApp('/try?ref=acme', engine, 'family')
     fireEvent.change(await screen.findByLabelText('Access code'), { target: { value: 'OPEN-SESAME' } })
     fireEvent.click(screen.getByRole('button', { name: 'Open the demo' }))
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Experience' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([{ code: 'OPEN-SESAME', ref: 'acme' }])
   })
 
@@ -339,7 +339,8 @@ describe('/try', () => {
     expect(await screen.findByRole('heading', { level: 1, name: content.hero.title })).toBeInTheDocument()
     expect(screen.getByText(expiryLine(engine.demo.session!.expires_at))).toBeInTheDocument()
     expect(screen.getByText('Houston, open to relocation')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    // No "What to look for" (Kevin, 2026-11-22: out of place).
+    expect(screen.queryByRole('heading', { name: 'What to look for' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'What I built at work' })).toBeInTheDocument()
     expect(screen.getByText('~770')).toBeInTheDocument()
 
@@ -371,7 +372,7 @@ describe('/try', () => {
 
   test('phone: no chat in the page, one Ask bar at the bottom, no orb; it opens the sheet', async () => {
     renderApp('/try', visitor(), 'family')
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     // Kevin, 2026-11-03: "remove the talk to my assistant chat window in the middle".
     expect(screen.queryByRole('region', { name: 'Talk to my assistant' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Talk' })).not.toBeInTheDocument()
@@ -415,7 +416,7 @@ describe('/try', () => {
     // Kevin, 2026-11-03: "keep the right panel window open at all times".
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
     expect(dock).toHaveAttribute('id', 'assistant-dock')
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     expect(screen.queryByRole('region', { name: 'Talk to my assistant' })).not.toBeInTheDocument()
     expect(screen.queryByRole('search')).not.toBeInTheDocument()
     // Voice is the star (Kevin, 2026-11-04): the orb is the talk button, typing folds under it.
@@ -624,7 +625,7 @@ describe('/try', () => {
     setAudioFactory(() => audio)
     renderApp('/try', visitor(), 'workbench')
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     expect(within(dock).getByRole('status')).toHaveTextContent('Tap to talk')
 
     fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
@@ -654,7 +655,7 @@ describe('/try', () => {
     })
     renderApp('/try', engine, 'workbench')
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
     const socket = await connect()
 
@@ -688,7 +689,7 @@ describe('/try', () => {
     setAudioFactory(() => audio)
     renderApp('/try', visitor(), 'workbench')
     const dock = await screen.findByRole('complementary', { name: /^Conversation with/ })
-    await screen.findByRole('heading', { name: 'What to look for' })
+    await screen.findByRole('heading', { name: 'Experience' })
     fireEvent.click(within(dock).getByRole('button', { name: /^Talk to / }))
     expect(await within(dock).findByRole('alert')).toHaveTextContent(/microphone is blocked/)
     expect(within(dock).getByRole('textbox', { name: /^Message / })).toBeInTheDocument()
@@ -711,17 +712,13 @@ describe('/try', () => {
     expect(socket.sentOf('clientContent')).toEqual([])
   })
 
-  test('the visitor page has a clear way into the app (ticket 13)', async () => {
-    const { router } = renderApp('/try', visitor(), 'family')
-    // Two ways in, both to the app: the top line's nav, and the hero's access note,
-    // which says what the visitor's copy of the household is.
+  test('the visitor page has no way into the members web app (Kevin, 2026-11-22)', async () => {
+    renderApp('/try', visitor(), 'family')
+    // The hero's access note says what the visitor's copy is, and links nowhere.
     const hero = await screen.findByRole('region', { name: sampleContent().hero.title })
     expect(within(hero).getByText(/deleted when the visit ends/)).toBeInTheDocument()
-    const nav = screen.getByRole('navigation', { name: 'On this page' })
-    expect(within(nav).getByRole('link', { name: 'Open the app' })).toHaveAttribute('href', '/')
-    fireEvent.click(within(hero).getByRole('link', { name: 'Open the app' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
-    expect(await screen.findByRole('note', { name: 'Demo visit' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open the app' })).not.toBeInTheDocument()
+    expect(document.querySelector('a[href="/"]')).toBeNull()
   })
 
   test('a recruiter whose visit ended lands back on /try, not on a broken page', async () => {
@@ -854,8 +851,8 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     expect(within(strip).getAllByRole('link')).toHaveLength(2)
     const nav = screen.getByRole('navigation', { name: 'On this page' })
     expect(within(nav).getByRole('link', { name: 'Projects' })).toHaveAttribute('href', '#projects')
-    // The strip sits right under the hero, before "What to look for".
-    expect(follows(strip, screen.getByRole('region', { name: 'What to look for' }))).toBe(true)
+    // The strip sits right under the hero, before the first section.
+    expect(follows(screen.getByRole('region', { name: sampleContent().hero.title }), strip)).toBe(true)
 
     const section = screen.getByRole('region', { name: 'Fake two' })
     expect(section).toHaveAttribute('id', 'fake-two')
@@ -957,7 +954,7 @@ describe('/try: a per-company ref (Kevin, 2026-11-05)', () => {
       fireEvent.click(orb)
       await settle()
     })
-    expect(await screen.findByRole('heading', { name: 'What to look for' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Experience' })).toBeInTheDocument()
     expect(engine.demo.enterBodies).toEqual([sent ? { code: 'OPEN-SESAME', ref: sent } : { code: 'OPEN-SESAME' }])
   })
 })
