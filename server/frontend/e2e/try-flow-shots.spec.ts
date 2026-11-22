@@ -167,7 +167,7 @@ for (const size of SIZES) {
         const radius = f.width / 2
         const onScreen = oy > 0 && oy < window.innerHeight && ox > 0 && ox < window.innerWidth
         const centre = onScreen ? document.elementFromPoint(ox, oy) : null
-        const controls = Array.from(document.querySelectorAll('[data-stage="tour"], [data-stage="form"] button, [data-stage="form"] input, [data-stage="ask"] a, [data-stage="chips-room"] button'))
+        const controls = Array.from(document.querySelectorAll('[data-stage="form"] button, [data-stage="form"] input, [data-stage="ask"] a, [data-stage="chips-room"] button'))
         for (const c of controls) {
           const r = c.getBoundingClientRect()
           const cx = r.left + r.width / 2

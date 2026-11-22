@@ -8249,3 +8249,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Tour:** lighter, because it was too dense. Four beats of one sentence each.
 - **No members web app on /try:** no link into the app from the page. The "What to look for" section is removed, and the old "What I built at Quanex" section is replaced by the Quanex voice section.
 - **Sections:** order LEGION, Quanex voice, Mid-Continent, AW4; the Quanex voice section links to its live demo; a "quality for voice agents" block inside LEGION.
+
+## 2026-11-22 - /try: the LEGION diagram tells its story with the scroll; the tour is removed (Kevin)
+
+- **Scrollytelling:** after trying the live page, Kevin found the words scrolling away under the pinned diagram awkward, and wanted the highlights livelier. The diagram and the step's words now sit on one pinned stage: each part names the boxes it is about, they light with a glow and a pulse, the connections between them draw on with packets travelling along them, and the step's words sit in a card under the lit boxes (on a phone the diagram zooms to them). Reduced motion keeps the steps with instant changes.
+- **Tour:** Kevin ruled the one-minute tour removed. The stage control, the turn endpoint's `tour` field and the tour code are gone; the opening no longer offers it. ADR 0103 amended.

@@ -589,22 +589,22 @@ function Sections({ content, access, ask = true }: { content: DemoContent; acces
         {projects.length > 0 && <ProjectsStrip projects={projects} side={nextSide()} />}
 
         {legion && (
-          <Section id="legion" title={legion.title} side={nextSide()} pinned={motion && Boolean(legion.diagram_svg)}>
+          <Section id="legion" title={legion.title} side={nextSide()} pinned={Boolean(legion.diagram_svg)}>
             <p>{legion.intro}</p>
-            {motion && legion.diagram_svg ? (
-              // The pinned scene: the diagram stays while its parts scroll past, its layers lit.
+            {legion.diagram_svg ? (
+              // The scrollytelling stage: the diagram pinned, each part's words under the boxes it
+              // lights (reduced motion included: the same steps, with instant changes).
               <LegionScene svg={legion.diagram_svg} caption={legion.diagram_caption ?? ''} parts={legion.parts} lead={runIn} />
             ) : (
-              legion.diagram_svg && <Diagram svg={legion.diagram_svg} caption={legion.diagram_caption ?? ''} />
-            )}
-            {!(motion && legion.diagram_svg) && legion.parts.length > 0 && (
-              <div className="rc-runin">
-                {legion.parts.map((part) => (
-                  <p key={part.title}>
-                    <b>{runIn(part.title)}</b> {part.body}
-                  </p>
-                ))}
-              </div>
+              legion.parts.length > 0 && (
+                <div className="rc-runin">
+                  {legion.parts.map((part) => (
+                    <p key={part.title}>
+                      <b>{runIn(part.title)}</b> {part.body}
+                    </p>
+                  ))}
+                </div>
+              )
             )}
             {legion.quality && <Quality quality={legion.quality} />}
           </Section>

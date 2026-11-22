@@ -18,7 +18,7 @@ vi.setConfig({ testTimeout: 10_000 })
 
 /**
  * The browser's turn-taking wired into the conversation (the phone's barge-in, self-trigger guard,
- * speculation), and the demo's tour, funnel, prepare-in-the-tap and live strip. The detector is a
+ * speculation), and the demo's funnel, prepare-in-the-tap and live strip. The detector is a
  * stand-in whose handlers the test calls; `turn/detector.test.ts` covers the detector itself.
  */
 
@@ -607,48 +607,6 @@ describe('the demo', () => {
     await settle()
     expect(t.requests).toHaveLength(0)
     expect(t.client.getState().mic).toBe('off')
-  })
-
-  it('plays the tour beat by beat and counts its start and finish', async () => {
-    const t = build([
-      spoken('Hi.'),
-      spoken('Beat one.', { tour: { beat: 0, next: 1 } }),
-      spoken('Beat two.', { tour: { beat: 1, next: null } }),
-    ])
-    await open(t)
-    t.client.startTour()
-    await settle()
-    expect(t.requests[1].tour).toBe(0)
-    t.audio.handlers?.onPlaying(false)
-    await settle()
-    expect(t.requests[2].tour).toBe(1)
-    t.audio.handlers?.onPlaying(false)
-    await settle()
-    expect(t.requests).toHaveLength(3)
-    expect(t.funnel).toEqual(['orb_tap', 'tour_started', 'tour_finished'])
-  })
-
-  it('something said during the tour goes with the beat, so "skip" and "stop" steer it', async () => {
-    const t = build([spoken('Hi.'), spoken('Beat one.', { tour: { beat: 0, next: 1 } })])
-    await open(t)
-    t.client.startTour()
-    await settle()
-    t.audio.handlers?.onPlaying(true)
-    t.detector.fire()
-    t.detector.verdict(false)
-    t.detector.handlers?.onEnd(UTTERANCE, 'base', 704)
-    await settle()
-    expect(t.requests.at(-1)).toMatchObject({ tour: 1 })
-  })
-
-  it('something typed during the tour goes with the beat too', async () => {
-    const t = build([spoken('Hi.'), spoken('Beat one.', { tour: { beat: 0, next: 1 } })])
-    await open(t)
-    t.client.startTour()
-    await settle()
-    t.client.send('skip')
-    await settle()
-    expect(t.requests.at(-1)).toMatchObject({ text: 'skip', tour: 1 })
   })
 
   it('counts the first word heard and the third turn', async () => {

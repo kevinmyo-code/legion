@@ -876,17 +876,6 @@ class AssistantTurnRequestSerializer(serializers.Serializer):
             "`POST /api/assistant/turn/cancel`."
         ),
     )
-    tour = serializers.IntegerField(
-        required=False,
-        allow_null=True,
-        min_value=0,
-        max_value=20,
-        help_text=(
-            "A demo visit's one-minute tour: the beat to play (from 0). With `audio` or `text`, "
-            "what was said or typed during the tour: 'skip' plays this beat, 'stop' ends the "
-            "tour, anything else is a question and the tour ends."
-        ),
-    )
     greet = serializers.BooleanField(
         required=False,
         default=False,
@@ -1008,8 +997,8 @@ def _turn_sse(
         if said:
             replay = report.history_text()
             if replay != said:
-                # History replays this instead of what was said (his profile, a tour line about
-                # him: `TurnReport.replay`); the record keeps what was said, for him to read.
+                # History replays this instead of what was said (his profile:
+                # `TurnReport.replay`); the record keeps what was said, for him to read.
                 lines.append(web_conversation.engine_replay_line(now, replay))
             lines.append(web_conversation.engine_assistant_line(now, said))
         if report.status == "cancelled":
@@ -1069,7 +1058,7 @@ def _refuse(request, detail: str, code: int, slug: str | None = None, **extra) -
 # The turn route's refusal codes (the page's contract with the server, 2026-11-17: interrupt must
 # not read as the time limit). `busy` also carries `retry_ms`.
 TURN_REFUSAL_CODES = {
-    "bad_request": "400: the body did not fit (one audio or one text; a tour is the demo's).",
+    "bad_request": "400: the body did not fit (one audio or one text).",
     "no_conversation": "404: no conversation with that id is the caller's.",
     "live_engine": "409: this caller's assistant runs on live voice.",
     "time_limit": "409: a demo conversation reached its time limit.",
@@ -1186,7 +1175,7 @@ class AssistantTurnView(_AssistantView):
             "`speech_failed` {reason}; `speech_stopped` {reason} (the rest of the answer is "
             "shown, not spoken); `done` {status, final_text, writes_ran, words?, end? (the "
             "conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`: nothing "
-            "was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (the demo tester "
+            "was answered), cost_usd? and tools_ms? (the demo tester "
             "visit's estimated turn cost and each tool's time; no other caller gets them)}; "
             "`error` {words}. A typed turn gets no "
             "`audio`. Every refusal body is {detail, code}: `bad_request` (400), "
@@ -1246,14 +1235,6 @@ class AssistantTurnView(_AssistantView):
         data = body.validated_data
         upload, text = data.get("audio"), (data.get("text") or "").strip()
         greet = bool(data.get("greet"))
-        tour_beat = data.get("tour")
-        if tour_beat is not None and not is_recruiter(request.user):
-            return _refuse(
-                request,
-                "Nothing was answered. The tour is the demo's.",
-                status.HTTP_400_BAD_REQUEST,
-                "bad_request",
-            )
         if greet and (upload is not None or text):
             return _refuse(
                 request,
@@ -1261,14 +1242,7 @@ class AssistantTurnView(_AssistantView):
                 status.HTTP_400_BAD_REQUEST,
                 "bad_request",
             )
-        if tour_beat is not None and text and upload is not None:
-            return _refuse(
-                request,
-                "Nothing was answered. A tour turn carries `audio` or `text`, not both.",
-                status.HTTP_400_BAD_REQUEST,
-                "bad_request",
-            )
-        if not greet and tour_beat is None and (upload is None) == (not text):
+        if not greet and (upload is None) == (not text):
             return _refuse(
                 request,
                 "Nothing was answered. Send one utterance as `audio` or one `text`.",
@@ -1330,23 +1304,12 @@ class AssistantTurnView(_AssistantView):
                 )
             # The loop's rounds plus the one tool-free ask again (spec 23); a greeting is one call.
             # One more for a prompt cache the turn may have to make (round 2 turn review 8).
-            reserved_rounds = (
-                1
-                if greet
-                else 0
-                if tour_beat is not None and audio is None and not text
-                else cascade.MAX_ROUNDS + 1
-            ) + 1
+            reserved_rounds = (1 if greet else cascade.MAX_ROUNDS + 1) + 1
             if audio is not None:
                 # Speech-to-text may be tried once more (round 3, finding 8 leftovers): reserved
                 # as one more call, given back when it was not needed.
                 reserved_rounds += 1
-            spoken_turn = (
-                greet
-                or audio is not None
-                or bool(data.get("spoken"))
-                or (tour_beat is not None and not text)
-            )
+            spoken_turn = greet or audio is not None or bool(data.get("spoken"))
             voice = voice_engine.voice_for(request.user)
             # Speech reserved per request it may make: the turn's own, and the filler and failure
             # lines it may have to make first for this voice (round 2 turn review 8).
@@ -1408,7 +1371,6 @@ class AssistantTurnView(_AssistantView):
                 greet=greet,
                 greeting_history=_greeting_history(data.get("greeting_history")),
                 spoken=bool(data.get("spoken")) and bool(text),
-                tour_beat=tour_beat,
                 heard_before=web_conversation.utterances_received(row),
                 barge_in=bool(data.get("barge_in")) and audio is not None,
                 last_reply=web_conversation.last_reply(row),

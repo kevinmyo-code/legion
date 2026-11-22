@@ -64,7 +64,7 @@ def engine_for(user) -> str:
 # The cascade's voice, per role, next to the engine choice (Kevin, 2026-11-17, after auditioning:
 # then again: "i dont like that southern voice anymore. can we go back to puck? lively energetic
 # and fast?" for the demo; then for Alfred on LEGION: "this is my choice Authoritative Advisor 3 /
-# en-gb-advisor-3"). Members: en-gb-advisor-3; the demo and its tour: Puck. Plain: no style. The
+# en-gb-advisor-3"). Members: en-gb-advisor-3; the demo: Puck. Plain: no style. The
 # companion's stored voice is Live's (the fallback engine keeps it); the cascade speaks in these.
 # `LEGION_WEB_TTS_VOICE` / `LEGION_WEB_TTS_VOICE_RECRUITER` override. A name Google refuses is
 # spoken in `speech.FALLBACK_VOICE` (Puck) instead of going silent.

@@ -1,6 +1,7 @@
 # ruff: noqa: F811 - fixtures imported from the cascade tests
 """The demo's voice-first build (Kevin, 2026-11-17): honest per-tool fillers, the live strip's
-numbers, early transcripts, the one-minute tour, the short opening and the funnel counts.
+numbers, early transcripts, the short opening and the funnel counts (the one-minute tour was
+removed on 2026-11-22; one test keeps that it stays gone).
 
 Google is never called: the text model is `FakeModel` and speech is the cascade tests' fake. Every
 visitor, household, line of content and ref tag here is invented.
@@ -16,7 +17,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 
 from agents.runtime.model import FakeModel, call, say
-from assistant import cascade, fillers, tour, voice_engine, web_greeting
+from assistant import cascade, fillers, voice_engine, web_greeting
 from assistant.speech_tags import untagged as strip
 from assistant.surface import RECRUITER_TOOLS, WEB_TOOL_NAMES
 from demo import funnel
@@ -34,7 +35,6 @@ from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     visitor_user,
 )
 from tests.test_demo_strip_tester_only import make_visit
-from tests.test_recruiter_content import load_fake
 
 pytestmark = pytest.mark.django_db
 
@@ -297,136 +297,37 @@ def test_an_early_transcript_is_answered_aloud_without_transcribing_again(member
 
 
 # =============================================================================
-# The opening and the tour
+# The opening
 # =============================================================================
 
 
-def test_the_opening_is_short_names_the_tour_and_the_recording_and_never_says_train():
+def test_the_opening_is_short_names_the_recording_and_never_says_train():
     line = strip(web_greeting.recruiter_hello("Alfred"))
     # About five seconds spoken (2026-11-17: 7.1 to 8.0 s measured at 22 words).
     assert len(line.split()) <= web_greeting.MAX_GREETING_WORDS
     unnamed = strip(web_greeting.recruiter_hello(""))
     assert len(unnamed.split()) <= web_greeting.MAX_GREETING_WORDS + 1
-    assert "tour" in line and "recorded" in line
+    # No tour to offer since 2026-11-22 (Kevin removed it).
+    assert "recorded" in line and "tour" not in line
     assert "train" not in line.lower()
     assert web_greeting.recruiter_hello("").startswith("I'm Kevin's assistant.")
 
 
-@pytest.mark.parametrize(
-    ("words", "skip", "stop"),
-    [
-        ("skip", True, False),
-        ("Next please.", True, False),
-        ("stop", False, True),
-        ("Stop the tour.", False, True),
-        ("What does he do at work?", False, False),
-        ("Don't stop telling me about the diagram", False, False),
-    ],
-)
-def test_skip_and_stop_are_whole_utterances(words, skip, stop):
-    assert tour.is_skip(words) is skip
-    assert tour.is_stop(words) is stop
-
-
-def _walk_tour(client, engine):
-    """Plays every beat as the page would; returns (sentences, tools, done payloads)."""
-    beat, said, tools, dones, conversation = 0, [], [], [], None
-    for _ in range(10):
-        fields = {"tour": beat}
-        if conversation:
-            fields["conversation_id"] = conversation
-        events = _events(_post(client, **fields))
-        conversation = _of(events, "turn")[0]["conversation_id"]
-        said += [s["text"] for s in _of(events, "sentence")]
-        tools += [t["name"] for t in _of(events, "tool")]
-        done = _of(events, "done")[0]
-        dones.append(done)
-        if done["tour"]["next"] is None:
-            break
-        beat = done["tour"]["next"]
-    return said, tools, dones
-
-
-def test_the_tour_plays_from_loaded_content_and_ends_with_the_ask(visitor, engine, tmp_path):
-    load_fake(tmp_path)
-    said, tools, dones = _walk_tour(visitor, engine)
-    # His profile's first section, his words as written, none written in code (2026-11-18: the
-    # page lead is first person, so the tour no longer says it).
-    assert said[0] == "Fake experience: three years of pretend work at Example Corp."
-    assert said[-1] == strip(tour.END_LINE)
-    assert "show_resume" in tools
-    assert 2 <= len(dones) <= 6
-    # No model wrote a word of it.
+def test_the_turn_takes_no_tour_any_more(visitor, engine):
+    """Kevin, 2026-11-22: the one-minute tour is removed. A `tour` field is not a turn: with no
+    audio and no text the request is refused, as any empty turn is."""
+    response = _post(visitor, tour=0)
+    assert response.status_code == 400
     assert engine.model.requests == []
 
 
-def test_a_tour_with_no_content_skips_the_beats_with_nothing_to_show(visitor, engine):
-    said, _tools, _dones = _walk_tour(visitor, engine)
-    assert "Lorem ipsum lead." not in said
-    assert not any("Fake experience" in s for s in said)
-    assert said[-1] == strip(tour.END_LINE)
-
-
-def test_stop_said_during_the_tour_ends_it(visitor, engine, tmp_path):
-    load_fake(tmp_path)
-    engine.speech.heard = "stop"
-    events = _events(_post(visitor, tour=1, audio=PCM))
-    assert [s["text"] for s in _of(events, "sentence")] == [strip(tour.STOPPED_LINE)]
-    assert _of(events, "done")[0]["tour"]["next"] is None
-
-
-def test_a_question_during_the_tour_is_answered(visitor, engine, tmp_path):
-    load_fake(tmp_path)
-    engine.speech.heard = "What does the household spend on food?"
-    engine.model = FakeModel([say("About three hundred a month.")])
-    events = _events(_post(visitor, tour=1, audio=PCM))
-    assert [s["text"] for s in _of(events, "sentence")] == ["About three hundred a month."]
-    assert "tour" not in _of(events, "done")[0]
-
-
-def test_the_tour_is_the_demos_alone(member, visitor, engine):
-    assert _post(member, tour=0).status_code == 400
-    assert _post(visitor, tour=0, text="hi", audio=PCM).status_code == 400
-
-
-@pytest.mark.parametrize("how", ["typed", "spoken"])
-def test_stop_during_the_tour_typed_or_spoken_ends_it(visitor, engine, tmp_path, how):
-    # The page sends the beat with a typed turn too (2026-11-17): typed is handled as said.
-    load_fake(tmp_path)
-    if how == "typed":
-        events = _events(_post(visitor, tour=1, text="stop"))
-    else:
-        engine.speech.heard = "stop"
-        events = _events(_post(visitor, tour=1, audio=PCM))
-    assert [s["text"] for s in _of(events, "sentence")] == [tour.STOPPED_LINE]
-    assert _of(events, "done")[0]["tour"]["next"] is None
-
-
-@pytest.mark.parametrize("how", ["typed", "spoken"])
-def test_a_question_during_the_tour_typed_or_spoken_is_answered(visitor, engine, tmp_path, how):
-    load_fake(tmp_path)
-    engine.model = FakeModel([say("About three hundred a month.")])
-    if how == "typed":
-        events = _events(_post(visitor, tour=1, text="What does the household spend on food?"))
-    else:
-        engine.speech.heard = "What does the household spend on food?"
-        events = _events(_post(visitor, tour=1, audio=PCM))
-    assert [s["text"] for s in _of(events, "sentence")] == ["About three hundred a month."]
-    assert "tour" not in _of(events, "done")[0]
-
-
-def test_a_typed_tour_question_is_recorded_typed_and_not_spoken(visitor, engine, tmp_path):
-    """Round 3 N9: a typed question during the tour is a typed turn: recorded with typed=true,
-    answered on screen, and reserved against the text budget, not the voice cap."""
-    from tests.test_assistant_cascade import _record
-
-    load_fake(tmp_path)
+def test_a_turn_with_text_and_a_stale_tour_field_is_answered_as_a_normal_turn(visitor, engine):
+    """A tab still holding the old page may send `tour` with a question: the field is ignored."""
     engine.model = FakeModel([say("About three hundred a month.")])
     events = _events(_post(visitor, tour=1, text="What does the household spend on food?"))
-    assert engine.speech.spoken == []
-    assert _of(events, "audio") == []
-    record = _record(_of(events, "turn")[0]["conversation_id"])
-    assert "user final=true typed=true" in record
+    assert [s["text"] for s in _of(events, "sentence")] == ["About three hundred a month."]
+    done = _of(events, "done")[0]
+    assert done["status"] == "done" and "tour" not in done
 
 
 # =============================================================================
@@ -486,19 +387,3 @@ def test_funnel_rows_age_out_with_the_visitor_retention():
     funnel.count("page_load", "x")
     assert funnel.prune(30) == 1
     assert DemoFunnelDay.objects.count() == 1
-
-
-def test_the_tour_is_four_beats_the_context_diagram_first_and_no_workflow(
-    visitor_user, tmp_path, monkeypatch
-):
-    """Lighter since 2026-11-22: his first sentence, the LEGION context diagram, the live card,
-    the resume; no workflow diagram beat, even with every view available."""
-    from diagrams import catalogue
-
-    load_fake(tmp_path)
-    views = {"legion": ["components", "containers", "context"], "workflow": ["loop", "roles"]}
-    monkeypatch.setattr(catalogue, "available", lambda user, project: views.get(project, []))
-    beats = tour.beats_for(visitor_user)
-    assert [b.key for b in beats] == ["who", "legion", "live", "resume"]
-    assert beats[1].args == {"project": "legion", "view": "context"}
-    assert all(b.key != "workflow" for b in beats)

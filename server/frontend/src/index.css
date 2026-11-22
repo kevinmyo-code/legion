@@ -744,9 +744,22 @@
             transform: none !important;
             transition: none !important;
         }
-        .recruiter .rc-scene-pin,
+        .recruiter .rc-scene-stage,
         .recruiter .rc-stage {
             position: static !important;
+            height: auto !important;
+        }
+        /* Every part's words, in order, under the diagram. */
+        .recruiter .rc-scene-steps {
+            display: none !important;
+        }
+        .recruiter .rc-scene-card {
+            display: block !important;
+            transform: none !important;
+        }
+        .recruiter .rc-scene-card li {
+            opacity: 1 !important;
+            transform: none !important;
         }
         .recruiter .rc-flyer,
         .recruiter .rc-side-words,
@@ -1044,78 +1057,312 @@
         color: var(--rc-meta);
     }
 
-    /* The LEGION scene: the diagram pinned at the top while its parts scroll up under it, the
-       layer the part at the reading line is about lit. Opaque, so the parts pass under it. */
-    .recruiter .rc-scene-pin {
+    /* The LEGION scene (Kevin, 2026-11-22; `screens/try-legion-scene.tsx`): one stage pinned while
+       one invisible marker per part scrolls past it. The stage holds the diagram, the highlights
+       drawn over it and the card with the step's words, so the words never scroll away from the
+       boxes they light. The stage fits the screen (`svh`), above the phone's foot bar. */
+    .recruiter .rc-scene {
+        position: relative;
+    }
+    .recruiter .rc-scene-stage {
         position: sticky;
         top: 0;
         z-index: 1;
-        margin: 0 0 calc(1.2 * var(--u));
-        padding: calc(0.6 * var(--u)) 0 calc(0.4 * var(--u));
-        /* Nearly opaque, so the parts pass under it, and the light behind the page still reads. */
-        background: color-mix(in srgb, var(--rc-paper) 94%, transparent);
+        display: flex;
+        height: 100svh;
+        flex-direction: column;
+        justify-content: center;
+        gap: calc(0.8 * var(--u));
+        padding: calc(0.8 * var(--u)) 0;
+        /* Larger text (200% zoom) or a long part never runs off the stage: the card scrolls inside
+           it instead (below), and nothing else may grow it. */
+        overflow: hidden;
     }
-    .recruiter .rc-scene-pin .rc-figcaption {
-        margin-top: calc(0.4 * var(--u));
-    }
-    .recruiter .rc-scene-frame {
-        position: relative;
-    }
-    /* Narrow, as wide as the picture, which is wider than the frame and scrolls sideways: the
-       layer bands are placed in percent of this box. */
-    @media (max-width: 899px) {
-        .recruiter .rc-scene-frame {
-            width: fit-content;
-            min-width: 100%;
-        }
-    }
-    /* With room, the whole diagram in view (no sideways scroll), no taller than 40% of the screen
-       so the parts have room under it; a phone keeps the plain page's sideways frame. */
-    @media (min-width: 900px) {
-        .recruiter .rc-scene .rc-frame img {
-            min-width: 0;
-        }
-        .recruiter .rc-scene .rc-scene-frame {
-            max-width: calc(40vh * var(--diagram-aspect, 2.3));
-            margin: 0 auto;
-        }
-    }
-    /* Short screens (a phone on its side, a small laptop): the diagram is not pinned at all, so it
-       never covers the parts it explains (review 2026-11-20). */
-    @media (max-height: 699px) {
-        .recruiter .rc-scene-pin {
-            position: static;
-        }
-    }
-    /* Nor under 900 px wide: a phone in portrait has no room under a diagram that keeps its
-       readable width and scrolls sideways (review recheck 2026-11-20). The layer still lights. */
-    @media (max-width: 899px) {
-        .recruiter .rc-scene-pin {
-            position: static;
-        }
-    }
-    .recruiter .rc-scene-band {
-        position: absolute;
-        outline: 2px solid var(--rc-accent);
-        outline-offset: 3px;
-        opacity: 0;
-        transition: opacity 400ms ease-out;
+    .recruiter .rc-scene-steps {
+        /* The markers scroll over the stage's own height: the scene is one screen per part. */
+        margin-top: -100svh;
         pointer-events: none;
     }
-    .recruiter .rc-scene-band[data-on="true"] {
+    .recruiter .rc-scene-steps [data-step] {
+        height: 75svh;
+    }
+    /* A phone step's further shots: shorter, so a step of three shots is not three screens. */
+    .recruiter .rc-scene-steps [data-shot]:not([data-shot="0"]) {
+        height: 55svh;
+    }
+    /* The first is a screen tall: its middle reaches the middle of the screen just as the stage
+       pins, so the first step is never read while the stage is still sliding up. */
+    .recruiter .rc-scene-steps > .rc-scene-part:first-child > [data-shot="0"] {
+        height: 100svh;
+    }
+    .recruiter .rc-scene-steps > .rc-scene-part:last-child > [data-step]:last-child {
+        height: 100svh;
+    }
+    /* The caption sits in the stage at desk width; on a phone under the scene (below). */
+    .recruiter .rc-scene-caption-after {
+        display: none;
+    }
+    /* A part's shorter phone wording (`short`): one of the two shows, never both. */
+    .recruiter .rc-part-short {
+        display: none;
+    }
+    .recruiter .rc-scene-figure {
+        flex: none;
+        margin: 0;
+    }
+    .recruiter .rc-scene-figure .rc-figcaption {
+        margin-top: calc(0.4 * var(--u));
+    }
+    /* The frame clips the diagram it frames; at desk width it is the whole diagram's shape, on a
+       phone a window the diagram zooms in. */
+    .recruiter .rc-scene-frame {
+        position: relative;
+        overflow: hidden;
+        width: 100%;
+        aspect-ratio: var(--diagram-aspect, 2.3);
+        max-height: 52svh;
+        border: 1px solid var(--rc-rule);
+        background: #ffffff;
+    }
+    .recruiter .rc-scene-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: 0 0;
+        transition: transform 900ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .recruiter .rc-scene-layer img,
+    .recruiter .rc-scene-overlay {
+        position: absolute;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+    }
+    .recruiter .rc-scene-overlay {
+        overflow: visible;
+    }
+    .recruiter .rc-scene-plain {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        object-fit: contain;
+    }
+    /* A lit box: a soft glow fades in, its ring turns the accent, and a pulse breathes out of it. */
+    .recruiter .rc-scene-glow {
+        fill: color-mix(in srgb, var(--rc-accent) 12%, transparent);
+        stroke: color-mix(in srgb, var(--rc-accent) 30%, transparent);
+        stroke-width: 6;
+        opacity: 0;
+        transition: opacity 500ms ease-out;
+    }
+    .recruiter .rc-scene-ring {
+        fill: none;
+        stroke: var(--rc-accent);
+        stroke-width: 2.5;
+        opacity: 0;
+        transition: opacity 400ms ease-out;
+    }
+    .recruiter .rc-scene-node[data-on="true"] .rc-scene-glow,
+    .recruiter .rc-scene-node[data-on="true"] .rc-scene-ring {
         opacity: 1;
     }
-    /* The part at the reading line turns ink; the others stay meta, which keeps AA contrast
-       (review 2026-11-20: a 40% fade put them near 1.8:1). */
-    .recruiter .rc-prose .rc-scene-steps p {
-        min-height: 34vh;
-        margin: 0;
-        padding: calc(0.6 * var(--u)) 0;
-        color: var(--rc-meta);
-        transition: color 400ms ease-out;
+    .recruiter .rc-scene-pulse {
+        fill: none;
+        stroke: var(--rc-accent);
+        stroke-width: 2;
+        transform-box: fill-box;
+        transform-origin: center;
+        opacity: 0;
+        /* A few breaths when the step comes up, then rest (under five seconds, WCAG 2.2.2); the
+           next step starts them again. */
+        animation: rc-scene-pulse 2.2s ease-out 2;
     }
-    .recruiter .rc-prose .rc-scene-steps p[data-on="true"] {
-        color: var(--rc-ink);
+    @keyframes rc-scene-pulse {
+        from {
+            opacity: 0.7;
+            transform: scale(1);
+        }
+        to {
+            opacity: 0;
+            transform: scale(1.12);
+        }
+    }
+    /* A lit connection draws itself on (the stroke runs from one end to the other), and packets
+       travel along it, both ways where it has an arrow at each end. */
+    .recruiter .rc-scene-edge line {
+        fill: none;
+        stroke: var(--rc-accent);
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        transition: stroke-dashoffset 800ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .recruiter .rc-scene-edge[data-on="true"] line {
+        stroke-dashoffset: 0;
+    }
+    .recruiter .rc-scene-packet {
+        fill: var(--rc-accent);
+        stroke: #ffffff;
+        stroke-width: 1.5;
+        opacity: 0;
+        /* Two trips when the step comes up, then rest (a new step sends them again). */
+        animation: rc-scene-packet 1.8s linear 2;
+        animation-delay: 0.5s;
+    }
+    .recruiter .rc-scene-packet-back {
+        animation-delay: 1.4s;
+    }
+    @keyframes rc-scene-packet {
+        0% {
+            opacity: 0;
+            transform: translate(0, 0);
+        }
+        12% {
+            opacity: 1;
+        }
+        88% {
+            opacity: 1;
+        }
+        100% {
+            opacity: 0;
+            transform: translate(var(--dx), var(--dy));
+        }
+    }
+    /* Off screen the loops stop. */
+    .recruiter .rc-scene[data-visible="false"] .rc-scene-pulse,
+    .recruiter .rc-scene[data-visible="false"] .rc-scene-packet {
+        animation-play-state: paused;
+    }
+    /* The card: every part's words in one place, stacked; the step's shows, the others wait unseen
+       but stay in the page's reading order. At desk width it slides under the lit boxes, and a
+       notch on its top edge points at them. */
+    .recruiter .rc-scene-card {
+        position: relative;
+        display: grid;
+        width: min(30rem, 100%);
+        margin: 0;
+        padding: calc(0.8 * var(--u)) calc(1 * var(--u));
+        list-style: none;
+        flex: 0 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        border-top: 3px solid var(--rc-accent);
+        background: color-mix(in srgb, var(--rc-paper) 90%, #ffffff);
+        box-shadow: 0 6px 24px -12px color-mix(in srgb, var(--rc-ink) 40%, transparent);
+        transition: transform 700ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .recruiter .rc-scene-card::before {
+        content: "";
+        position: absolute;
+        top: -10px;
+        left: -8px;
+        border: 8px solid transparent;
+        border-top: 0;
+        border-bottom: 7px solid var(--rc-accent);
+        transform: translateX(var(--pointer-x, 50%));
+        transition: transform 700ms cubic-bezier(0.2, 0, 0, 1);
+    }
+    .recruiter .rc-scene-card li {
+        grid-area: 1 / 1;
+        opacity: 0;
+        transform: translateY(10px);
+        /* The outgoing words leave fast; the incoming ones wait for them (no two read at once). */
+        transition:
+            opacity 140ms ease-in,
+            transform 300ms cubic-bezier(0.2, 0, 0, 1);
+        pointer-events: none;
+    }
+    .recruiter .rc-scene-card li[data-on="true"] {
+        opacity: 1;
+        transform: none;
+        transition:
+            opacity 360ms ease-out 160ms,
+            transform 500ms cubic-bezier(0.2, 0, 0, 1) 160ms;
+        pointer-events: auto;
+    }
+    .recruiter .rc-prose .rc-scene-card p {
+        margin: 0;
+    }
+    /* A phone: the card spans the stage, the frame is a window the diagram zooms in, and the
+       stage stops above the foot bar. */
+    @media (max-width: 899px) {
+        .recruiter .rc-scene-stage {
+            /* The foot bar: its orb, padding and border, plus the phone's own safe area. */
+            height: calc(100svh - 76px - env(safe-area-inset-bottom, 0px));
+            justify-content: flex-start;
+            padding-top: calc(1 * var(--u));
+        }
+        .recruiter .rc-scene-frame {
+            aspect-ratio: auto;
+            height: min(42svh, 340px);
+            max-height: none;
+        }
+        .recruiter .rc-scene-card {
+            width: 100%;
+        }
+        .recruiter .rc-scene-card::before {
+            display: none;
+        }
+        .recruiter .rc-scene-caption {
+            display: none;
+        }
+        .recruiter .rc-scene-caption-after {
+            display: block;
+            margin-top: calc(0.6 * var(--u));
+        }
+        .recruiter .rc-part-full {
+            display: none;
+        }
+        .recruiter .rc-part-short {
+            display: inline;
+        }
+    }
+    /* Reduced motion: the same steps; nothing travels, pulses or slides, a change is a short fade. */
+    .recruiter .rc-scene[data-motion="off"] .rc-scene-layer,
+    .recruiter .rc-scene[data-motion="off"] .rc-scene-card,
+    .recruiter .rc-scene[data-motion="off"] .rc-scene-card::before {
+        transition: none;
+    }
+    .recruiter .rc-scene[data-motion="off"] .rc-scene-pulse,
+    .recruiter .rc-scene[data-motion="off"] .rc-scene-packet {
+        display: none;
+    }
+    .recruiter .rc-scene[data-motion="off"] .rc-scene-edge line {
+        transition: none;
+    }
+    .recruiter .rc-scene[data-motion="off"] .rc-scene-card li {
+        transform: none;
+        transition: opacity 150ms linear;
+        transition-delay: 0s;
+    }
+    /* A screen too short for the stage (a phone on its side): not pinned, every part's words
+       shown in order under the diagram, so nothing pinned covers its own words. */
+    @media (max-height: 499px) {
+        .recruiter .rc-scene-stage {
+            position: static;
+            height: auto;
+        }
+        .recruiter .rc-scene-steps {
+            display: none;
+        }
+        .recruiter .rc-scene-card {
+            display: block;
+            width: 100%;
+            transform: none !important;
+        }
+        .recruiter .rc-scene-card::before {
+            display: none;
+        }
+        .recruiter .rc-scene-card li {
+            opacity: 1;
+            transform: none;
+            margin: 0 0 calc(0.6 * var(--u));
+        }
     }
 
     /* The phone scene (900 px and up, motion allowed; `try-phone.tsx`): each row's Play

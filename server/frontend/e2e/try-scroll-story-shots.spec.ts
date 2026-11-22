@@ -292,7 +292,7 @@ async function modalHoldsPlace(page: Page, scene: string) {
   await page.evaluate((y) => window.scrollTo(0, y), top + Math.round(page.viewportSize()!.height * 0.6))
   await page.waitForTimeout(700)
   const pinned = await page.evaluate((sel) => {
-    const pin = document.querySelector(`${sel} .rc-scene-pin, ${sel} .rc-stage`)
+    const pin = document.querySelector(`${sel} .rc-scene-stage, ${sel} .rc-stage`)
     return pin ? Math.round(pin.getBoundingClientRect().top) : null
   }, scene)
   const y0 = await page.evaluate(() => window.scrollY)
@@ -568,7 +568,7 @@ for (const size of SHORT) {
     await page.waitForTimeout(600)
     const pin = legion
       ? await page.evaluate(() => {
-          const el = document.querySelector('.rc-scene-pin') as HTMLElement
+          const el = document.querySelector('.rc-scene-stage') as HTMLElement
           const r = el.getBoundingClientRect()
           return { position: getComputedStyle(el).position, bottom: Math.round(r.bottom), top: Math.round(r.top) }
         })

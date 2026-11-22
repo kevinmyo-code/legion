@@ -66,8 +66,6 @@ export interface TurnRequest {
   text?: string
   /** `text` came from an early transcript of speech: answered aloud. */
   spoken?: boolean
-  /** The demo tour's beat to play. */
-  tour?: number
   greet?: boolean
   greetingHistory?: GreetingHistory
   conversationId: string | null
@@ -130,7 +128,7 @@ export interface CascadeDeps {
   chips?: (offer: string) => Promise<SuggestChip[]>
 }
 
-export type FunnelEvent = 'orb_tap' | 'first_word' | 'turns_3' | 'tour_started' | 'tour_finished' | 'resume_opened'
+export type FunnelEvent = 'orb_tap' | 'first_word' | 'turns_3' | 'resume_opened'
 
 /** What the live strip shows while it talks (the demo): the tool, how long, the turn's cost. */
 export interface StripEntry {
@@ -178,7 +176,6 @@ type TurnInput = {
   text?: string
   greet?: boolean
   spoken?: boolean
-  tour?: number
   bargeIn?: boolean
   chip?: string
 }
@@ -209,7 +206,7 @@ export class CascadeClient {
   private playing = false
   private awaiting = false
   /** After the reply: close (end_conversation) or listen again once playback drains. */
-  private afterReply: 'listen' | 'close' | 'tour' | null = null
+  private afterReply: 'listen' | 'close' | null = null
   private greeted = false
   private lastAsked: string | null = null
   private limitTimer: ReturnType<typeof setTimeout> | null = null
@@ -245,7 +242,7 @@ export class CascadeClient {
   /** The demo visit is being entered: taps wait for it (the orb shows "starting"). */
   private entering = false
   /** The gate fired over the reply, which is paused until its verdict; a turn that ended meanwhile. */
-  private bargePending: { held: Int16Array | null; afterReply: 'listen' | 'close' | 'tour' | null } | null = null
+  private bargePending: { held: Int16Array | null; afterReply: 'listen' | 'close' | null } | null = null
   /** Audio right after the reply ended that is not yet listened to (ECHO_TAIL_MS). */
   private tailLeftMs = 0
   /** The turn being listened to began over a reply (`barge_in=1` on its post). */
@@ -261,7 +258,6 @@ export class CascadeClient {
   /** The page let go of this client: it never asks the engine for anything again. */
   private disposed = false
   // ---- the demo ----
-  private tourNext: number | null = null
   strip: StripState = { tools: [], costUsd: null }
   /**
    * The engine sent a turn's cost on this page: Kevin's tester visit, the only one the strip is for
@@ -513,16 +509,6 @@ export class CascadeClient {
   /** Barge-in is live: the models are loaded and this conversation has not fallen back. */
   get fullDuplex(): boolean {
     return this.deps.bargeIn === true && this.detector !== null && !this.halfDuplex && !this.detector.gate.disabled
-  }
-
-  /** The demo's one-minute tour: plays beat `beat` (from 0), driven by the engine. */
-  startTour(beat = 0) {
-    if (this.state.phase === 'ended' || this.disposed) return
-    if (beat === 0) this.deps.funnel?.('tour_started')
-    this.unlockPlayback()
-    this.cutReply('tap')
-    this.stopListening()
-    void this.afterPrepare(() => this.turn({ tour: beat }, true))
   }
 
   /**
@@ -853,10 +839,6 @@ export class CascadeClient {
     this.afterReply = null
     if (next === 'close') this.close(true)
     else if (next === 'listen') this.listen()
-    else if (next === 'tour' && this.tourNext !== null) {
-      const beat = this.tourNext
-      void this.turn({ tour: beat }, true)
-    }
   }
 
   private onChunk(pcm: Int16Array, generation: number) {
@@ -956,7 +938,7 @@ export class CascadeClient {
    * the next tap opens a new conversation.
    */
   private closeWith(notice: Notice) {
-    // First the turn: with no voice and no conversation open (a chip, the box, the tour) close()
+    // First the turn: with no voice and no conversation open (a chip, the box) close()
     // has nothing to close, and the turn must still stop.
     this.cutReply(null)
     this.close(true)
@@ -988,12 +970,7 @@ export class CascadeClient {
     this.typedEcho = typed ? given.text ?? null : null
     // Every upload passes here, so none is ever over the engine's cap.
     const { audio: raw, ...rest } = given
-    let input: TurnInput = raw ? { ...rest, audio: utterance(raw) } : rest
-    if ((input.audio || (typed && input.text)) && input.tour === undefined && this.tourNext !== null) {
-      // Said or typed during the tour: the engine hears "skip" and "stop", or answers a question.
-      input = { ...input, tour: this.tourNext }
-    }
-    if (input.tour === undefined) this.tourNext = null
+    const input: TurnInput = raw ? { ...rest, audio: utterance(raw) } : rest
     this.strip = { tools: [], costUsd: null }
     // A new turn: the last answer's chips go (the next answer brings its own).
     this.chips = []
@@ -1061,23 +1038,18 @@ export class CascadeClient {
     }
     let open: number | null = null
     let end = false
-    let tourNext: number | null = null
     let offer: string | null = null
-    const touring = input.tour !== undefined
     try {
       for await (const event of start.events) {
         if (generation !== this.turnGeneration) return
         deadline.heard()
         if (event.type === 'done' && event.data.end === true) end = true
         if (event.type === 'done') {
-          const tour = event.data.tour as { next?: number | null } | undefined
-          tourNext = typeof tour?.next === 'number' ? tour.next : null
           if (typeof event.data.cost_usd === 'number') {
             this.strip = { ...this.strip, costUsd: event.data.cost_usd }
             this.stripShown = true
           }
           if (typeof event.data.offer === 'string') offer = event.data.offer
-          if (touring && tour && tourNext === null) this.deps.funnel?.('tour_finished')
         }
         open = this.onEvent(event, open, startedConversation)
       }
@@ -1092,13 +1064,8 @@ export class CascadeClient {
         this.awaiting = false
         this.abort = null
         void this.record?.flush()
-        this.tourNext = tourNext
         if (end) {
           this.afterReply = 'close'
-          if (!this.playing) this.replyDrained()
-        } else if (tourNext !== null) {
-          // The next beat plays once this one has been heard; the mic listens meanwhile (barge-in).
-          this.afterReply = 'tour'
           if (!this.playing) this.replyDrained()
         } else {
           this.settle(spoken)

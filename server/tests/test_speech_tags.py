@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from agents.runtime.model import FakeModel, say
-from assistant import cascade, speech_tags, tour, voice_engine
+from assistant import cascade, speech_tags, voice_engine
 from assistant.speech import FALLBACK_VOICE, GeminiSpeech, Spoken
 from tests.test_assistant_cascade import (  # noqa: F401 - fixtures
     PCM,
@@ -103,7 +103,7 @@ def test_a_code_line_that_is_not_expressive_is_spoken_plain():
 def test_the_scripted_lines_carry_only_allowed_tags():
     from assistant import fillers, web_greeting
 
-    for line in (web_greeting.recruiter_hello("Alfred"), *tour.CODE_LINES):
+    for line in (web_greeting.recruiter_hello("Alfred"),):
         for tag in speech_tags._TAG.findall(line):
             assert f"<{tag}>" in speech_tags.ALLOWED, line
     # Tool fillers and the failure lines carry none; an acknowledgement may carry an allowed one.
@@ -205,14 +205,6 @@ def test_the_speaker_speaks_code_lines_plain_and_figures_rounded():
     )
 
 
-def test_the_tour_shows_its_lines_plain_and_speaks_their_tag(visitor, engine):
-    engine.speech.heard = "stop"
-    events = _events(_post(visitor, tour=0, audio=PCM))
-    assert [s["text"] for s in _of(events, "sentence")] == [tour.STOPPED_LINE]
-    # Too short for a tag (section 9): said plain.
-    assert not any("<" in t for t, _v in engine.speech.spoken)
-
-
 def test_the_opening_is_shown_and_spoken_plain(visitor, engine):
     """Round 4 speech E2: no tag next to the recording notice; plain is better there."""
     events = _events(_post(visitor, greet="true"))
@@ -225,8 +217,8 @@ def test_the_opening_is_shown_and_spoken_plain(visitor, engine):
     [
         # A tag on a short second sentence goes, whatever the length of the whole line.
         (
-            "I'm Alfred. <breath> Ask about Kevin or the tour.",
-            "I'm Alfred. Ask about Kevin or the tour.",
+            "I'm Alfred. <breath> Ask me about Kevin.",
+            "I'm Alfred. Ask me about Kevin.",
         ),
         # A long casual sentence keeps its tag; the short one before it has none to lose.
         (

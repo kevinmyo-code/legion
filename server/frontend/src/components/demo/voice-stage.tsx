@@ -16,7 +16,7 @@ import { useOrbPlace, useStoryGlide, useStoryMotion } from '@/components/demo/sc
  * the visit is entered as the page opens (Kevin, 2026-11-22), the tap opens the audio, and the opening is about five
  * seconds. Under the orb, for people who
  * cannot talk: the engine's suggestion chips (answered aloud once the greeting, recording notice
- * included, has played to its end; typed before that), the one-minute tour, captions always on, and a
+ * included, has played to its end; typed before that), captions always on, and a
  * box to type (answered aloud too, and an open conversation carries on after it). The full recording notice sits by the mic. A live strip shows what the engine is
  * doing (tool, how long, the turn's estimated cost). The ask (resume, contact) stays on screen.
  * Mobile first: one column at 360 px.
@@ -186,7 +186,11 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   // Its own class name: it once borrowed `rc-stage`, the phone section's sticky class, and stayed
   // pinned with no background over everything scrolling under it (live demo, 2026-11-18).
   return (
-    <section aria-label="Talk to the demo assistant" className="rc-voice-stage flex flex-col items-center gap-3 px-4 pt-6 pb-4 text-center">
+    <section
+      aria-label="Talk to the demo assistant"
+      // Which conversation runs the stage: the engine's cascade, or the Live fallback.
+      data-client={cascade ? 'cascade' : 'live'}
+      className="rc-voice-stage flex flex-col items-center gap-3 px-4 pt-6 pb-4 text-center">
       <button
         ref={orbRef}
         type="button"
@@ -357,11 +361,6 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
             {marked ? 'Marked, thanks' : 'Sounded robotic'}
           </button>
         </p>
-      )}
-      {cascade && (
-        <button type="button" className="rc-ask-q" data-stage="tour" onClick={() => cascade.startTour(0)}>
-          Take the one-minute tour
-        </button>
       )}
       <form onSubmit={submit} data-stage="form" className="flex w-full max-w-[34rem] gap-2">
         <input

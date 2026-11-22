@@ -48,9 +48,7 @@ MAX_AVOID_LINES = 3
 # kept in memory once made so it starts inside the tap. Measured 7.1 to 8.0 s at 22 words
 # (2026-11-17), so every greeting, scripted or model-worded, keeps to `MAX_GREETING_WORDS`.
 MAX_GREETING_WORDS = 14
-RECRUITER_OPENING = (
-    "I'm {who}. Ask about {whom} or the tour. Chats are recorded to improve me."
-)
+RECRUITER_OPENING = "I'm {who}. Ask me about {whom}. Chats are recorded to improve me."
 
 
 def recruiter_hello(name: str = "") -> str:

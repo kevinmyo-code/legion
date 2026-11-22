@@ -20,7 +20,7 @@ import json
 import pytest
 
 from agents.runtime.model import FakeModel, call, say
-from assistant import cascade, tour
+from assistant import cascade
 from demo import profile
 from demo.profile import NOT_SHARED_LINE, OFFERS, Section, speak, split_sentences
 from demo.tools import ABOUT_KEVIN, ABOUT_KEVIN_SPOKEN, spoken_for
@@ -820,25 +820,20 @@ def _profile_in(request) -> list[str]:
 
 def test_no_model_request_in_a_conversation_ever_holds_his_sentences(loaded, visitor, engine):
     """Four turns in one conversation: a profile answer, a capped one, a follow-up the model
-    answers in its own words, then a tour beat that says his lead and a question after it. Every
-    request the model was ever sent is searched for every sentence of the profile and the lead."""
+    answers in its own words, then a question after it. Every request the model was ever sent is
+    searched for every sentence of the profile and the lead."""
     engine.model = FakeModel(
         [
             ak("education", "location"),
             ak("experience"),
             say("Happy to say more about any of that."),
-            say("The tour shows how it is built."),
+            say("Glad to help."),
         ]
     )
     first = _events(_post(visitor, text="Tell me about Kevin."))
     conversation = _of(first, "turn")[0]["conversation_id"]
     _events(_post(visitor, text="And his experience?", conversation_id=conversation))
     _events(_post(visitor, text="Did he graduate?", conversation_id=conversation))
-    beat = _events(_post(visitor, tour=0, conversation_id=conversation))
-    assert [s["text"] for s in _of(beat, "sentence")][0] == LOCATION[0]
-    diagram = _events(_post(visitor, tour=1, conversation_id=conversation))
-    caption = [s["text"] for s in _of(diagram, "sentence")][0]
-    assert _of(diagram, "tool")[0]["name"] == "show_diagram"
     _events(_post(visitor, text="What was that?", conversation_id=conversation))
     assert len(engine.model.requests) == 4
     for request in engine.model.requests:
@@ -846,10 +841,6 @@ def test_no_model_request_in_a_conversation_ever_holds_his_sentences(loaded, vis
     later = json.dumps(engine.model.requests[-1].contents)
     assert "(Read aloud from Kevin's profile: Location, Education.)" in later
     assert "(Read aloud from Kevin's profile: Experience, sentences 1 to 5 of 7.)" in later
-    assert "(Tour line read aloud: who.)" in later
-    # A diagram's caption is about the project, not him: the follow-up still sees it.
-    assert json.dumps(caption)[1:-1] in later
-    assert "(Tour line read aloud: legion.)" not in later
 
 
 def test_the_record_keeps_what_was_said_and_history_replays_the_marker(loaded, visitor, engine):
@@ -868,13 +859,15 @@ def test_the_record_keeps_what_was_said_and_history_replays_the_marker(loaded, v
     }
 
 
-def test_a_tour_code_line_is_replayed_as_said_and_a_content_line_as_a_marker():
+def test_a_code_line_is_replayed_as_said_and_a_content_line_as_a_marker():
     report = cascade.TurnReport()
-    report.say(LEAD, "(Tour line read aloud: who.)")
-    report.say(tour.LIVE_LINE)
-    assert report.history_text() == f"(Tour line read aloud: who.) {tour.LIVE_LINE}"
+    report.say(LEAD, "(Read aloud from Kevin's profile: Location.)")
+    report.say("That's a live lookup on a made-up car.")
+    assert report.history_text() == (
+        "(Read aloud from Kevin's profile: Location.) That's a live lookup on a made-up car."
+    )
     report.say("Second profile line.", "")
-    assert report.history_text().endswith(tour.LIVE_LINE)
+    assert report.history_text().endswith("That's a live lookup on a made-up car.")
 
 
 def test_a_profile_line_with_a_link_and_a_slash_list_is_spoken_exactly(tmp_path, visitor, engine):
@@ -894,39 +887,6 @@ def test_a_profile_line_with_a_link_and_a_slash_list_is_spoken_exactly(tmp_path,
 
 
 _FIRST_PERSON = ("I", "I'm", "I've", "me", "my", "mine", "myself")
-
-
-def test_the_tours_who_beat_is_his_profile_in_the_third_person_never_the_page_lead(
-    tmp_path, visitor, engine
-):
-    # Kevin, 2026-11-18: "the 1 minute tour the ai says 'I' when it should be kevin". The page's
-    # lead is written in the first person for the page; the tour speaks his profile's first
-    # section (his order, as written) instead. No pronoun is ever swapped.
-    load_fake(
-        tmp_path,
-        content=_content(
-            hero={**_content()["hero"], "lead": "I build pretend things. My work is fake."}
-        ),
-    )
-    beat = _events(_post(visitor, tour=0))
-    said = [s["text"] for s in _of(beat, "sentence")][0]
-    # One sentence since 2026-11-22 (Kevin found the tour too dense).
-    assert said == LOCATION[0]
-    words = said.replace(".", " ").replace(",", " ").split()
-    assert not any(w in _FIRST_PERSON or w.lower() in ("my", "me", "mine", "myself") for w in words)
-    assert "I build" not in said
-
-
-def test_without_his_order_the_tour_skips_the_who_beat(tmp_path, visitor, engine):
-    load_fake(tmp_path, content=_content())
-    from demo.models import RecruiterContent
-
-    row = RecruiterContent.current()
-    row.content = {k: v for k, v in row.content.items() if k != profile.PROFILE_ORDER}
-    row.save(update_fields=["content"])
-    beat = _events(_post(visitor, tour=0))
-    said = [s["text"] for s in _of(beat, "sentence")]
-    assert not any(s in " ".join(said) for s in LOCATION)
 
 
 def test_a_profile_word_is_respelled_for_speech_and_kept_on_screen(

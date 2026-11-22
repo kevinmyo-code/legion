@@ -179,6 +179,26 @@ _PROJECT_SECTION = _obj(
     optional=("diagram_svg", "diagram_caption", "media", "link", "theme", "orb_mark"),
 )
 
+# A part of the LEGION section: its words, and (optionally) the headings of the diagram boxes it is
+# about, which the page lights as the part's step comes up (Kevin, 2026-11-22: the words move with
+# the diagram's highlights). A heading the diagram does not have lights nothing; the page then
+# falls back to the layer at the part's share of the way through.
+MAX_LIGHTS = 12
+_LIGHTS = {
+    "type": "array",
+    # Not blank: a name of spaces would normalise to "" and light every box with no heading.
+    "items": {"type": "string", "minLength": 1, "maxLength": 80, "pattern": r"\S"},
+    "maxItems": MAX_LIGHTS,
+}
+# `short`: the same words, fewer of them, for a phone, where the stage leaves the card little room
+# (blind review D2, 2026-11-22).
+MAX_SHORT = 160
+_SHORT = {"type": "string", "minLength": 1, "maxLength": MAX_SHORT, "pattern": r"\S"}
+_LEGION_PART = _obj(
+    {"title": _STR, "body": _STR, "lights": _LIGHTS, "short": _SHORT},
+    optional=("lights", "short"),
+)
+
 # "Quality for voice agents" inside the LEGION section (Kevin, 2026-11-22): a few figures and the
 # checks behind them, short and visual. Lists, so later checks (a scenario, a card) add rows only.
 MAX_QUALITY_STATS = 6
@@ -230,7 +250,7 @@ CONTENT_SCHEMA: dict = _obj(
                 "intro": _STR,
                 "diagram_svg": _STR,
                 "diagram_caption": _STR,
-                "parts": {"type": "array", "items": _TITLE_BODY},
+                "parts": {"type": "array", "items": _LEGION_PART},
                 "quality": _QUALITY,
             },
             optional=("diagram_svg", "diagram_caption", "quality"),

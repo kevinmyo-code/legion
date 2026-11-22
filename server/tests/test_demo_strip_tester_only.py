@@ -102,48 +102,6 @@ def test_the_robotic_route_takes_the_tester_visit(visitor, visitor_user, engine)
 # ---- review 2026-11-19: the rest of the strip's numbers and its spoken marker -------------------
 
 
-def _tour_events(client) -> list[tuple[str, dict]]:
-    """Every beat of the tour, as the page plays it."""
-    out, beat, conversation = [], 0, None
-    for _ in range(10):
-        fields = {"tour": beat}
-        if conversation:
-            fields["conversation_id"] = conversation
-        events = _events(_post(client, **fields))
-        out += events
-        conversation = _of(events, "turn")[0]["conversation_id"]
-        done = _of(events, "done")[0]
-        if done["tour"]["next"] is None:
-            break
-        beat = done["tour"]["next"]
-    return out
-
-
-def test_tour_beats_on_an_ordinary_visit_carry_no_cost_and_no_tool_times(
-    visitor, visitor_user, engine, tmp_path
-):
-    from tests.test_recruiter_content import load_fake
-
-    load_fake(tmp_path)
-    make_visit(visitor_user, unmetered=False)
-    events = _tour_events(visitor)
-    tools = _of(events, "tool")
-    assert tools, "the tour ran no tool: nothing was checked"
-    assert all("ms" not in t for t in tools)
-    assert all("cost_usd" not in d and "tools_ms" not in d for d in _of(events, "done"))
-
-
-def test_tour_beats_on_the_tester_visit_keep_each_tool_time(
-    visitor, visitor_user, engine, tmp_path
-):
-    from tests.test_recruiter_content import load_fake
-
-    load_fake(tmp_path)
-    make_visit(visitor_user, unmetered=True)
-    tools = _of(_tour_events(visitor), "tool")
-    assert tools and all(isinstance(t["ms"], int) for t in tools)
-
-
 def test_saying_it_sounded_robotic_on_an_ordinary_visit_marks_nothing(
     visitor, visitor_user, engine
 ):

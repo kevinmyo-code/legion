@@ -64,7 +64,7 @@ One multipart POST per utterance: **this shape may change** under Kevin's open d
 |---|---|---|
 | `audio` | file, at most 28 s (`MAX_UTTERANCE_SECONDS = 28`, `MAX_AUDIO_BYTES = 28*16000*2`) | EXISTS assistant door `assistant/views.py:781-782`; NEW on the agents door |
 | `text` | string, at most 2,000 characters | EXISTS assistant door (`MAX_TYPED_CHARS`). CHANGE on the agents door: it takes `transcript` (max 4,000) today; v1 accepts `text` and keeps accepting `transcript` while today's callers use it |
-| `kind` | one of `user`, `greeting`, `opener`, `check_in`, `proactive`, `say` (section 6) | NEW. Today the assistant door infers the kind from flags (`greet`, `tour`, `preface`) |
+| `kind` | one of `user`, `greeting`, `opener`, `check_in`, `proactive`, `say` (section 6) | NEW. Today the assistant door infers the kind from flags (`greet`, `preface`; `tour` until it was removed on 2026-11-22) |
 | `turn_id` | UUID made by the client | EXISTS assistant door `assistant/views.py:871`; NEW on the agents door (its turn id is made by the server today) |
 | `conversation_id` | UUID or empty | EXISTS both doors |
 | `client` | `phone`, `headunit`, `web`. With the caller's role it picks the persona: the profile's companion, Moose for `headunit`, the guide for a recruiter's visit (ADR 0104) | EXISTS agents door; the persona choice is NEW |
@@ -76,7 +76,7 @@ One multipart POST per utterance: **this shape may change** under Kevin's open d
 | `played` | JSON list of the `line_id`s that played to the end since the client's last report (section 5a) | NEW |
 | `cut_off` | bool: the client stopped a line of the last turn before its end (tap, barge-in, stop word, voice failure) | NEW |
 | `greeting_history` | JSON `{"today":[...],"last":kind,"hellos":[...]}`, max 2,000 | EXISTS assistant door (parsed at `assistant/views.py:1044`) |
-| `tour`, `chip`, `preface`, `spoken` | demo-only fields | EXISTS assistant door; not part of the device contract |
+| `chip`, `preface`, `spoken` | demo-only fields (`tour` removed 2026-11-22) | EXISTS assistant door; not part of the device contract |
 
 Validation (EXISTS `assistant/views.py:1235-1291`): exactly one of `audio` or `text` for a user
 turn; a greeting carries neither. A `say` turn carries `text` and is spoken verbatim (NEW).
@@ -122,7 +122,7 @@ CHANGE on the agents door: a re-sent `turn_id` replays that turn's stream instea
 | `crisis` | `text`: the fixed crisis line, also spoken as a `sentence` with `role: "answer"` and its `line_id`; a client with a screen shows its crisis card and does not also caption that line. The turn ends after it | EXISTS on the agents door as built (section 0); the behaviour is an orchestrator default, not ruled (client contract section 15) |
 
 `done` fields:
-- EXISTS: `status` (`done`, `cancelled`, `nothing_heard`, `greeting`, `not_addressed`, `unsure`, `robotic`, `tour`), `final_text`, `writes_ran`; agents door `honesty_flag`, `pending_confirm`; assistant door `end`, `ignored` (`no_speech`, `not_addressed`, `unsure`), `words`, `offer`, and for testers `cost_usd`, `tools_ms` (`assistant/cascade.py:2084-2126`).
+- EXISTS: `status` (`done`, `cancelled`, `nothing_heard`, `greeting`, `not_addressed`, `unsure`, `robotic`; `tour` until 2026-11-22), `final_text`, `writes_ran`; agents door `honesty_flag`, `pending_confirm`; assistant door `end`, `ignored` (`no_speech`, `not_addressed`, `unsure`), `words`, `offer`, and for testers `cost_usd`, `tools_ms` (`assistant/cascade.py:2084-2126`).
 - NEW: `ignored` on the agents door, with the same values plus `noise` (the engine's noise rule dropped it). The client counts `no_speech` and `unsure` as missed, `noise` as noise, and `not_addressed` as neither (client contract section 6).
 - NEW: `status: "awaiting_limb"` with `calls` (the round's call ids) when the stream carried `tool_request`s (the status EXISTS as `TURN_AWAITING_LIMB`, `agents/models.py:52`, and nothing sets it yet); `asked` (bool: the reply asked the person something, from the tool fields `needs_answer`, `needs_confirmation` or a draft, or the last line ends in a question mark; drives the backchannel `answer_to_ask` skip and the 12 s follow-up window); `follow_up` (bool: open the follow-up window); `timing` (engine-side stage times in ms, keys in the client contract section 11); `contract_version`.
 - BUILT dark (slice E3, `agents/legion/spoken.py`): agents door `end` (true when the model called `end_conversation` or his words were only a stop phrase; the limb closes after playback), and `final_text` is exactly the sentences the stream sent (code's lines included; the outside-text stub when outside text was read). Code's write line (`done_lines.py`) is a plain `sentence` for now, without `role: "write"` or `facts` (owed with the fact ledger).

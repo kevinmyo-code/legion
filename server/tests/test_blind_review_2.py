@@ -222,19 +222,7 @@ def test_the_demo_cap_is_half_one_instances_threads(monkeypatch):
 # ---- finding 2: replaced by round 3 design change D1, `tests/test_tool_deadline.py` -------------
 
 
-# ---- finding 7: a missed tour reply and a broken turn are said, not only shown ------------------
-
-
-def test_a_tour_transcription_failure_is_said(visitor, engine):
-    from assistant import cascade
-
-    def fail(pcm):
-        raise SpeechFailure("stt_unreachable")
-
-    engine.speech.transcribe = fail
-    events = _events(_post(visitor, tour=1, audio=PCM))
-    assert _of(events, "error")
-    assert [t for t, _v in engine.speech.spoken] == [cascade.MISSED_LINE]
+# ---- finding 7: a broken turn is said, not only shown (the tour half went with the tour) ------
 
 
 def test_a_broken_spoken_turn_says_so_from_memory(member, engine, monkeypatch, household_user):
