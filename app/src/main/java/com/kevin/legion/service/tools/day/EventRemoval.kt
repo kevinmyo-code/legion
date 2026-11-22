@@ -107,7 +107,9 @@ internal object EventRemoval {
         val events = tieredTextMatches(phrase, dao.activeByKindInLocalWindow(EventKind.EVENT, fromMs, toMs, zone)) {
             it.title
         }
-        val dueThatDay = reminders.filter { day == null || EventRemovalWords.localDay(it.startsAt) == day }
+        val dueThatDay = reminders.filter { r ->
+            day == null || r.startsAt?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalDate() } == day
+        }
         val matched = tieredTextMatches(phrase, dueThatDay) { it.text }
         return pick(dao, events, matched, userText) ?: if (events.items.isEmpty() && matched.items.isEmpty()) {
             taskOnly(dao, phrase, fromMs, toMs)

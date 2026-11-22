@@ -53,6 +53,7 @@ internal object EventMove {
      * `schedule` for [phrase] to [date] and/or [time]. Null when no calendar entry is the better
      * match, or nothing moves: the reminder path runs as before.
      */
+    @Suppress("ReturnCount") // nothing to move, a reminder matches better, which one: each on its own line
     suspend fun move(
         context: Context,
         phrase: String,

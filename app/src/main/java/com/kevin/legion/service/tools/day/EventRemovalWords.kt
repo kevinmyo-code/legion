@@ -41,10 +41,6 @@ internal object EventRemovalWords {
         Instant.ofEpochMilli(it).atZone(if (row.allDay) ZoneOffset.UTC else zone).toLocalDate()
     }
 
-    /** The local day of an instant (a reminder's due time), on the pinned clock's zone. */
-    fun localDay(ms: Long?): LocalDate? =
-        ms?.let { Instant.ofEpochMilli(it).atZone(RelativeDay.clock().zone).toLocalDate() }
-
     fun dayWords(date: LocalDate, today: LocalDate): String = when (date) {
         today -> "today"
         today.plusDays(1) -> "tomorrow"
