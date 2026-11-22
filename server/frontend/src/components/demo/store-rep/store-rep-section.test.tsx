@@ -38,7 +38,10 @@ const CARD = {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  hold = null
 })
+
+let hold: Promise<void> | null = null
 
 function serve(state: typeof STATE, log: string[]) {
   let current = state
@@ -51,6 +54,7 @@ function serve(state: typeof STATE, log: string[]) {
     if (pathname === '/api/demo/shop/scenario') {
       // The switch takes a while: the greeting must not go before it lands.
       await new Promise((resolve) => setTimeout(resolve, 60))
+      if (hold) await hold
       log.push('scenario switched')
       const body = (await input.json()) as { active: boolean }
       current = { ...current, active: body.active }
@@ -63,10 +67,16 @@ function serve(state: typeof STATE, log: string[]) {
 
 function Send() {
   const { client } = useAssistant()
-  return <button onClick={() => client.send('Thanks, that will be all.')}>send</button>
+  return (
+    <>
+      <button onClick={() => client.send('Thanks, that will be all.')}>send</button>
+      <button onClick={() => void client.startVoice()}>orb tap</button>
+      <button onClick={() => client.stopVoice()}>close</button>
+    </>
+  )
 }
 
-function mount(log: string[]) {
+function mount(log: string[], audio = new FakeAudio()) {
   async function* answer(): AsyncGenerator<SseEvent> {
     yield { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } }
     yield { type: 'sentence', data: { text: 'Thanks for shopping.' } }
@@ -78,7 +88,7 @@ function mount(log: string[]) {
       return { ok: true, events: answer() }
     },
     cancelTurn: () => {},
-    audio: () => new FakeAudio(),
+    audio: () => audio,
     now: () => Date.now(),
     utcOffsetMinutes: () => 0,
   }
@@ -108,6 +118,83 @@ describe('StoreRepSection', () => {
     expect(greeted).toBeGreaterThan(switched)
     // On: the way back shows.
     expect(await screen.findByRole('button', { name: 'Back to the LEGION guide' })).toBeInTheDocument()
+  })
+
+  test('the mic opens in the tap, before the switch lands', async () => {
+    const log: string[] = []
+    let release: () => void = () => {}
+    hold = new Promise<void>((resolve) => (release = resolve))
+    serve(STATE, log)
+    const audio = new FakeAudio()
+    mount(log, audio)
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Talk to the store rep' }))
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(audio.micOpen).toBe(true)
+    expect(log).not.toContain('scenario switched')
+    expect(log).not.toContain('TURN greet')
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await settle()
+    })
+    expect(log).toContain('TURN greet')
+  })
+
+  test.each(['orb tap', 'close'])('a %s while the switch lands cancels the rep greeting', async (control) => {
+    const log: string[] = []
+    let release: () => void = () => {}
+    hold = new Promise<void>((resolve) => (release = resolve))
+    serve(STATE, log)
+    mount(log)
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Talk to the store rep' }))
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: control }))
+      await settle()
+    })
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await settle()
+    })
+    expect(log).toContain('scenario switched')
+    expect(log).not.toContain('TURN greet')
+  })
+
+  test('"Back to the LEGION guide" switches back, busy while it does', async () => {
+    const log: string[] = []
+    let release: () => void = () => {}
+    serve({ ...STATE, active: true }, log)
+    mount(log)
+    const back = await screen.findByRole('button', { name: 'Back to the LEGION guide' })
+    // While the rep is on, the made-up shop is said on screen.
+    expect(screen.getByText(/a made-up outdoor shop, is on: nothing is charged or shipped/)).toBeInTheDocument()
+    hold = new Promise<void>((resolve) => (release = resolve))
+    await act(async () => {
+      fireEvent.click(back)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    })
+    expect(back).toBeDisabled()
+    await act(async () => {
+      release()
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await settle()
+    })
+    expect(log.filter((l) => l === 'POST /api/demo/shop/scenario')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Back to the LEGION guide' })).not.toBeInTheDocument()
+  })
+
+  test('while the shop state is on its way, only the mark shows', async () => {
+    vi.stubGlobal('fetch', () => new Promise<Response>(() => {}))
+    mount([])
+    await act(settle)
+    expect(screen.getByRole('img', { name: 'Larkspur & Pine, a made-up shop' })).toBeInTheDocument()
+    expect(screen.queryByText(/runs on a demo visit/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /store rep/i })).not.toBeInTheDocument()
   })
 
   test('a store-rep conversation that ends shows its after-call card in the section', async () => {

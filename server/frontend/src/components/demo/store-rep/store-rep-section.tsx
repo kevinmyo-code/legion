@@ -39,6 +39,9 @@ export function StoreRepSection() {
   const shop = useQuery({ queryKey: SHOP_STATE_KEY, queryFn: fetchShopState, staleTime: 5_000 })
   const [card, setCard] = useState<CallCard | null>(null)
   const [cardAsked, setCardAsked] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const [leaveError, setLeaveError] = useState<string | null>(null)
+  const cascade = client instanceof CascadeClient ? client : null
 
   // After each answer the scenario, the orders and the callback state may have changed by voice.
   const settled = state.activity === 'idle' || state.activity === 'listening'
@@ -68,29 +71,54 @@ export function StoreRepSection() {
     setCardAsked(true)
   }
 
-  if (!shop.data) {
+  // Still asking: the mark alone (never the no-visit line to a visitor whose state is on its way).
+  if (shop.isPending) {
     return (
       <div className="rc-store">
         <ShopMark className="rc-shop-mark" />
-        <p className="rc-store-hint">The store rep runs on a demo visit: open the page with the access code to talk to it.</p>
+      </div>
+    )
+  }
+  // No visit (a member's preview), or a conversation that is not the engine's own voice (the Live
+  // fallback does not play the rep): the mark and a line, no controls.
+  if (!shop.data || !cascade) {
+    return (
+      <div className="rc-store">
+        <ShopMark className="rc-shop-mark" />
+        <p className="rc-store-hint">
+          {shop.data
+            ? "The store rep runs on the engine's own voice, which this visit is not using right now."
+            : 'The store rep runs on a demo visit: open the page with the access code to talk to it.'}
+        </p>
       </div>
     )
   }
   const data = shop.data
+  const voice = cascade
 
-  /** In the tap: the scenario switch goes to the engine, and the voice opens at once; the greeting waits for the switch. */
+  /**
+   * In the tap: the scenario switch goes to the engine and a fresh call opens at once (an open
+   * conversation with the guide ends first, so the rep always greets); the greeting waits for the
+   * switch, and a tap or close meanwhile cancels it (`CascadeClient.startVoice`).
+   */
   function talk() {
-    if (state.phase === 'ended') client.reset()
+    if (state.phase !== 'idle') voice.reset()
     const switched = setScenario(true).then((next) => {
       if (next) queryClient.setQueryData(SHOP_STATE_KEY, next)
     })
-    if (client instanceof CascadeClient) void client.startVoice(switched)
-    else void switched.then(() => client.startVoice())
+    void voice.startVoice(switched)
   }
 
   async function leave() {
-    const next = await setScenario(false)
-    if (next) queryClient.setQueryData(SHOP_STATE_KEY, next)
+    setLeaving(true)
+    setLeaveError(null)
+    try {
+      const next = await setScenario(false)
+      if (next) queryClient.setQueryData(SHOP_STATE_KEY, next)
+      else setLeaveError('The engine did not switch back. Try again.')
+    } finally {
+      setLeaving(false)
+    }
   }
 
   return (
@@ -101,14 +129,19 @@ export function StoreRepSection() {
           Talk to the store rep
         </Button>
         {data.active && (
-          <Button variant="outline" onClick={() => void leave()}>
+          <Button variant="outline" onClick={() => void leave()} disabled={leaving}>
             Back to the LEGION guide
           </Button>
         )}
+        {leaveError && (
+          <p role="alert" className="text-destructive">
+            {leaveError}
+          </p>
+        )}
         <p className="rc-store-hint">
           {data.active
-            ? 'The store rep is on. Try "I need a daypack for weekend hikes", then "that\'s too expensive", then buy something.'
-            : 'The orb becomes the rep of a made-up outdoor shop. Nothing is charged or shipped.'}
+            ? `The rep of ${data.shop_name}, a made-up outdoor shop, is on: nothing is charged or shipped. Try "I need a daypack for weekend hikes", then "that's too expensive", then buy something.`
+            : `The orb becomes the rep of ${data.shop_name}, a made-up outdoor shop. Nothing is charged or shipped.`}
         </p>
       </div>
       <Catalogue state={data} />

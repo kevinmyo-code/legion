@@ -419,7 +419,8 @@ export class CascadeClient {
    * assistant thinking or speaking), it interrupts and listens again (spec 20, 21).
    *
    * `before`: something the greeting must wait for, started in the same tap (the store-rep switch,
-   * so the greeting is the rep's); the mic and the playback still open at once.
+   * so the greeting is the rep's); the mic and the playback still open at once. It applies to a
+   * conversation this tap opens: a caller that wants a fresh greeting resets the client first.
    */
   startVoice(before?: Promise<unknown>): Promise<void> {
     if (this.state.phase === 'ended' || this.disposed) return Promise.resolve()
@@ -477,7 +478,18 @@ export class CascadeClient {
   private greetAfterPrepare(before?: Promise<unknown>) {
     return this.afterPrepare(
       async () => {
-        if (before) await before.catch(() => undefined)
+        if (before) {
+          // The orb shows thinking while the switch lands; a tap or a close meanwhile (the turn
+          // generation moves, or the voice closes) means no greeting at all.
+          const generation = this.turnGeneration
+          this.awaiting = true
+          this.refresh()
+          await before.catch(() => undefined)
+          const gone = generation !== this.turnGeneration || !this.voiceOpen || this.disposed
+          if (gone) return
+          this.awaiting = false
+          this.refresh()
+        }
         await this.turn({ greet: true }, true)
       },
       () => {

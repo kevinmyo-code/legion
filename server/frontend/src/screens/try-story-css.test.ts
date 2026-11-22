@@ -143,6 +143,15 @@ describe('the moods', () => {
   })
 })
 
+describe('the store rep', () => {
+  test("its talk button wears the section's accent: unlayered, after and above the ink button rule", () => {
+    const talk = all.filter((r) => r.selector.includes('.rc-store-talk') && !r.within.includes('@layer'))
+    expect(talk.some((r) => !r.selector.includes(':hover') && /background\s*:\s*var\(--rc-accent\)/.test(r.body))).toBe(true)
+    const ink = indexCss.indexOf('.recruiter [data-slot="button"][data-variant="default"],')
+    expect(indexCss.indexOf('.rc-store-talk {')).toBeGreaterThan(ink)
+  })
+})
+
 describe('print', () => {
   test('prints every section, revealed or not', () => {
     const print = all.filter((r) => r.within.includes('print') && r.selector.includes('[data-reveal]'))

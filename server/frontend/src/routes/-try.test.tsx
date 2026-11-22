@@ -964,6 +964,19 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     expect(within(legion).getByText('Checked, in fake words.')).toBeInTheDocument()
   })
 
+  test('a project section holding the store rep draws its live demo inside it (Kevin, 2026-11-22)', async () => {
+    const engine = visitor()
+    const content = withProjects()
+    content.project_sections![0] = { ...content.project_sections![0], widget: 'store_rep', theme: 'shop', orb_mark: 'larkspur' }
+    engine.demo.content = content
+    renderApp('/try', engine, 'family')
+    const section = await screen.findByRole('region', { name: 'Fake two' })
+    expect(within(section).getByRole('img', { name: 'Larkspur & Pine, a made-up shop' })).toBeInTheDocument()
+    expect(section).toHaveAttribute('data-orb-mark', 'larkspur')
+    // No floating pill anywhere on the page: the section is the way in.
+    expect(screen.queryByRole('button', { name: /Try: store rep|Store rep: on/ })).not.toBeInTheDocument()
+  })
+
   test('the strip links each project to its section, and a project with no link stands alone', async () => {
     const engine = visitor()
     engine.demo.content = withProjects()

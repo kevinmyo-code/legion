@@ -379,7 +379,6 @@
     --rc-glow-2: #64748b;
     --rc-glow-3: #fb923c;
 }
-/* A garage: canvas paper, olive drab, amber work light and a rust glow. No marks of any maker. */
 /* "shop": the made-up outdoor shop (Larkspur & Pine): birch paper, pine green, larkspur blue and
    a sunlit glow. Contrast (2026-11-22, glow at 22%): ink 15:1, meta 6.1:1, accent 5.8:1. */
 .recruiter[data-page-theme="shop"] {
@@ -392,6 +391,7 @@
     --rc-glow-2: #d6a43a;
     --rc-glow-3: #7aa65a;
 }
+/* A garage: canvas paper, olive drab, amber work light and a rust glow. No marks of any maker. */
 .recruiter[data-page-theme="aw4"] {
     --rc-paper: #f3f3ec;
     --rc-ink: #1b1e14;
@@ -1068,17 +1068,6 @@
     }
     .recruiter .rc-store-controls .rc-store-hint {
         flex-basis: 100%;
-    }
-    .recruiter .rc-store-talk {
-        min-height: 48px;
-        padding: 0 calc(1.2 * var(--u));
-        font-size: calc(1.02 * var(--u));
-        font-weight: 600;
-        background: var(--rc-accent);
-        color: #ffffff;
-    }
-    .recruiter .rc-store-talk:hover {
-        background: var(--rc-ink);
     }
     .recruiter .rc-prose .rc-store-hint,
     .recruiter .rc-store-hint {
@@ -1975,6 +1964,20 @@
 .recruiter [data-slot="button"][data-variant="secondary"]:hover {
     background: var(--rc-accent);
     color: #ffffff;
+}
+/* The store rep's way in: the section's own accent (pine on the shop's paper, white text 8:1),
+   ink on hover. More specific than the ink button rule above, which it follows. */
+.recruiter .rc-store [data-slot="button"][data-variant="default"].rc-store-talk {
+    min-height: 48px;
+    padding: 0 calc(1.2 * var(--u));
+    font-size: calc(1.02 * var(--u));
+    font-weight: 600;
+    background: var(--rc-accent);
+    color: #ffffff;
+}
+.recruiter .rc-store [data-slot="button"][data-variant="default"].rc-store-talk:hover {
+    background: var(--rc-ink);
+    color: var(--rc-paper);
 }
 .recruiter [data-slot="button"][data-size="lg"] {
     padding: 0 calc(1.1 * var(--u));
