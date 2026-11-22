@@ -41,7 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import containment as C  # noqa: E402
-from common import Paths, is_under  # noqa: E402
+from common import Paths, add_task_arg, is_under  # noqa: E402
 
 MAX_SRC_BYTES = 5 * 1024 * 1024
 RENDER_TIMEOUT_S = 90
@@ -245,7 +245,7 @@ def convert(paths: Paths, task: int, src: str, out: str | None, render=edge_rend
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="to_pdf.py", allow_abbrev=False)
-    ap.add_argument("--task", type=int, required=True)
+    add_task_arg(ap)
     ap.add_argument("--src", required=True)
     ap.add_argument("--out")
     a = ap.parse_args(argv)

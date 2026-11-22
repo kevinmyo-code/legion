@@ -324,7 +324,8 @@ class TestWhatATaintedTaskMayDo(Base):
                            (ship.main, ["ask", "--task", "41", "--task", "99", "--kind", "content"]),
                            (undo.main, ["ask", "--task", "41", "--task", "99"]),
                            (ff.main, ["--task", "41", "--task", "99", "--url", "https://x.example"]),
-                           (tx.main, ["--task", "41", "--csv", "a.csv", "--task=99"])):
+                           (tx.main, ["--task", "41", "--csv", "a.csv", "--task=99"]),
+                           (to_pdf.main, ["--task", "41", "--src", "a.html", "--task", "99"])):
             with self.subTest(script=main.__module__):
                 with self.assertRaises(SystemExit):
                     main(argv)
