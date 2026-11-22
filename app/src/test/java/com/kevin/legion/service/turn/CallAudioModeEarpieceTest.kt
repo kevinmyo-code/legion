@@ -108,4 +108,21 @@ class CallAudioModeEarpieceTest {
         assertNull(audio.communicationDevice)
         assertFalse(CallAudioMode.ownCommActive)
     }
+
+    @Test
+    fun `entering call audio and each switch start the echo warm-up again`() {
+        var now = 50_000L
+        val mode = CallAudioMode(audio, clock = { now })
+        assertFalse(mode.warmingUp)
+        mode.enter()
+        assertTrue(mode.warmingUp)
+        now += BargeInGate.WARMUP_MS
+        assertFalse(mode.warmingUp)
+        mode.retarget(earpiece = true)
+        assertTrue(mode.warmingUp)
+        now += BargeInGate.WARMUP_MS - 1
+        assertTrue(mode.warmingUp)
+        mode.exit("test")
+        assertFalse(mode.warmingUp)
+    }
 }

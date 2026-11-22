@@ -237,4 +237,26 @@ class TurnTakerTest {
         assertEquals(TurnTaker.PRE_ROLL_MS - 224 - f.getValue("pre_roll_tail_ms").toInt(), lead)
         assertTrue(lead >= 220)
     }
+
+    @Test
+    fun `during the echo warm-up a voice over the reply is logged and ignored, then barges after`() {
+        val vad = ScriptedVad(0.95f)
+        var warming = true
+        val sink = object : TurnTaker.Sink by RecordingSink() {
+            val logs = java.util.Collections.synchronizedList(mutableListOf<String>())
+            var barged = 0
+            override fun onBargeIn(fire: BargeInGate.Event.Fire) { barged++ }
+            override fun log(tag: String, message: String) { logs += "$tag $message" }
+            override fun echoWarmingUp() = warming
+        }
+        val t = TurnTaker(TurnConfig(true, true, false, "test"), vad, null, sink)
+        t.onReplyStart()
+        repeat(4) { t.feed(loud(), 3_200, playing = true) }
+        assertEquals(0, sink.barged)
+        val line = sink.logs.first { it.contains("bargein_ignored") }
+        assertTrue(line, line.startsWith("${TurnTaker.BARGE_TAG} bargein_ignored reason=warmup level="))
+        warming = false
+        repeat(4) { t.feed(loud(), 3_200, playing = true) }
+        assertEquals(1, sink.barged)
+    }
 }

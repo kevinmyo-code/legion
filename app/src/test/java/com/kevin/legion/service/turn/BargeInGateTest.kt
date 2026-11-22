@@ -367,4 +367,42 @@ class BargeInGateTest {
     fun `no reply open means no stats`() {
         assertNull(BargeInGate().onReplyEnd())
     }
+
+    // --- the echo warm-up window (2026-11-21; LiveKit and Unmute both ignore interruptions for 3 s) ---
+
+    private fun feedWarm(g: BargeInGate, n: Int, prob: Float, level: Int): List<Event> =
+        (1..n).mapNotNull { g.onWindow(prob, level, playing = true, warmingUp = true) }
+
+    @Test
+    fun `while the echo canceller warms up a sustained voice is ignored, never a fire`() {
+        val g = gate()
+        val events = feedWarm(g, windows * 3, 0.95f, loud)
+        assertTrue(events.isNotEmpty())
+        assertTrue(events.all { it is Event.Ignored })
+        val ignored = events.first() as Event.Ignored
+        assertEquals(Event.Ignored.WARMUP, ignored.reason)
+        assertEquals(loud, ignored.level)
+        // One ignored line per full span, not one per window.
+        assertEquals(3, events.size)
+        assertTrue(g.armedNow)
+        assertFalse(g.onReplyEnd()!!.fired)
+    }
+
+    @Test
+    fun `an ignored span is no self-interrupt and the voice fires once the warm-up is over`() {
+        val g = gate()
+        feedWarm(g, windows, 0.95f, loud)
+        assertTrue(feed(g, 60, 0.1f, 500).isEmpty())
+        assertEquals(0, g.selfInterrupts)
+        assertTrue(feed(g, windows, 0.95f, loud).single() is Event.Fire)
+    }
+
+    @Test
+    fun `the warm-up is three seconds from the last audio path change`() {
+        assertEquals(3_000L, BargeInGate.WARMUP_MS)
+        assertFalse(BargeInGate.warmingUp(changedAtMs = null, nowMs = 10_000))
+        assertTrue(BargeInGate.warmingUp(changedAtMs = 10_000, nowMs = 10_000))
+        assertTrue(BargeInGate.warmingUp(changedAtMs = 10_000, nowMs = 12_999))
+        assertFalse(BargeInGate.warmingUp(changedAtMs = 10_000, nowMs = 13_000))
+    }
 }
