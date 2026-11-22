@@ -117,6 +117,7 @@ internal object EventMove {
         return if (sameEntry) moveRow(context, row, date, time) else null
     }
 
+    @Suppress("ReturnCount") // a series, a failed write, the move: each answers on its own line
     private suspend fun moveRow(context: Context, row: Event, date: LocalDate?, time: LocalTime?): JSONObject {
         // A repeating row is its series' anchor: moving it would move every occurrence (review 2026-11-22).
         if (row.repeatKind != null) {
