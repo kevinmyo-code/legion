@@ -169,6 +169,9 @@ class GeminiTextLoop(
         var fillerAgain = false
         var verbatim = false
         var verbatimFrom: String? = null
+
+        /** The words the phone said itself this turn ([speakVerbatim]), for [DiagFilter]'s repeat check. */
+        var verbatimLine: String? = null
         var moneyDropped = 0
         var diagDropped = 0
         var trailingFillerDropped = 0
@@ -260,7 +263,7 @@ class GeminiTextLoop(
             // diagnostics answer, no sentence restating its codes, counts or a verdict.
             val money: SentenceFilter? = when {
                 !state.verbatim -> null
-                state.verbatimFrom == VerbatimSpeech.DIAGNOSTICS -> DiagFilter()
+                state.verbatimFrom == VerbatimSpeech.DIAGNOSTICS -> DiagFilter(state.verbatimLine)
                 else -> MoneyFilter()
             }
             // A filler-only sentence after real content is never spoken ([TrailingFiller]).
@@ -496,6 +499,7 @@ class GeminiTextLoop(
         emit("$words ", state, listener)
         state.verbatim = true
         state.verbatimFrom = VerbatimSpeech.fromOf(hit.response)
+        state.verbatimLine = words
     }
 
     /** Something real was said this turn: text that is not only filler. */
