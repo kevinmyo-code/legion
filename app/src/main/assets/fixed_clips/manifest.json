@@ -1,0 +1,225 @@
+{
+  "_comment": "Cloud-voice clips shipped in the app (tools/render_fixed_clips.py). Gemini TTS output; the phone plays one only when its cache has none for the same model, voice and rate. FixedClipsTest checks every sha256.",
+  "model": "gemini-3.8-flash-tts",
+  "voice": "en-gb-advisor-3",
+  "rate": 24000,
+  "clips": [
+    {
+      "line": "Mm.",
+      "take": 0,
+      "file": "ack_mm_0.wav",
+      "ms": 699,
+      "sha256": "ac28dae12fdf208c928c2959b0831fa6569570489970df67082fce55eb09e603"
+    },
+    {
+      "line": "Mm.",
+      "take": 1,
+      "file": "ack_mm_1.wav",
+      "ms": 558,
+      "sha256": "5e7936f1102d2102b7707fbae6b373d6c62fdda058b4eaa625166cbf18486c8e"
+    },
+    {
+      "line": "Right.",
+      "take": 0,
+      "file": "ack_right_0.wav",
+      "ms": 797,
+      "sha256": "a0048957b31cb3a9da0a85b8ed5b8316f14464ef864d6249653ede12245956aa"
+    },
+    {
+      "line": "Right.",
+      "take": 1,
+      "file": "ack_right_1.wav",
+      "ms": 632,
+      "sha256": "52526ee8bcd5e1120f2ded0bca770d3bd70f092a8112b69b23daf2f3284ce264"
+    },
+    {
+      "line": "Yeah.",
+      "take": 0,
+      "file": "ack_yeah_0.wav",
+      "ms": 679,
+      "sha256": "89331c49a1d1b620112a6d9550f9e1f591669dbf451ea1767840b4eeb6cc8ee1"
+    },
+    {
+      "line": "Yeah.",
+      "take": 1,
+      "file": "ack_yeah_1.wav",
+      "ms": 808,
+      "sha256": "347cf1a38e47bed54824850dcd22e739ee6a00094a57d0dbd814e511ed6b0cf2"
+    },
+    {
+      "line": "Hmm.",
+      "take": 0,
+      "file": "ack_hmm_0.wav",
+      "ms": 781,
+      "sha256": "95a15e6732f9685281c59412453a7b03b05fe1c444e1cfcde4450fba8fd4b9c5"
+    },
+    {
+      "line": "Hmm.",
+      "take": 1,
+      "file": "ack_hmm_1.wav",
+      "ms": 617,
+      "sha256": "0c50d37c981d32ca3bb01dd5ad8d5ec1e959b7ebd15feb645dfab140e50144fe"
+    },
+    {
+      "line": "Okay.",
+      "take": 0,
+      "file": "ack_okay_0.wav",
+      "ms": 725,
+      "sha256": "101b82c9bfbdef26950f2240958cd116f0110531596c6c3a3b7d2801d82a0b26"
+    },
+    {
+      "line": "Okay.",
+      "take": 1,
+      "file": "ack_okay_1.wav",
+      "ms": 747,
+      "sha256": "8a25b2af9d742fc870b1b4fd15109e2287f879b67f2512bdb7c565a54cad01d0"
+    },
+    {
+      "line": "Mhm.",
+      "take": 0,
+      "file": "ack_mhm_0.wav",
+      "ms": 511,
+      "sha256": "16d38dc60e2b86143c89971b8386fe55930dc7f05e118a4e52e1f801911a517e"
+    },
+    {
+      "line": "Mhm.",
+      "take": 1,
+      "file": "ack_mhm_1.wav",
+      "ms": 496,
+      "sha256": "e7a8c4491823623feb35446ac6731a0dc3ac1224cbe8e29af4fc218e6baae2a9"
+    },
+    {
+      "line": "Uh-huh.",
+      "take": 0,
+      "file": "ack_uh_huh_0.wav",
+      "ms": 573,
+      "sha256": "a8ed42606311c3d26dc51b5e48550e721177252ef10ced01429f80e08e552a51"
+    },
+    {
+      "line": "Uh-huh.",
+      "take": 1,
+      "file": "ack_uh_huh_1.wav",
+      "ms": 648,
+      "sha256": "de8a6f466ff5672ec3ffc79cdba3256b022528eaa6299166f46f920b979e08d2"
+    },
+    {
+      "line": "Alright.",
+      "take": 0,
+      "file": "ack_alright_0.wav",
+      "ms": 550,
+      "sha256": "239e8adf6cec68f82b33f71f5ccf48da7a99746645f527f00082ade29c509807"
+    },
+    {
+      "line": "Alright.",
+      "take": 1,
+      "file": "ack_alright_1.wav",
+      "ms": 524,
+      "sha256": "90889c9386219cbd88d360f73b376c4d6afea4207c92b8415d27c51b912557bb"
+    },
+    {
+      "line": "Still on it.",
+      "take": 0,
+      "file": "wait_still_on_it_0.wav",
+      "ms": 907,
+      "sha256": "b012564e4ddef0b54e74e235ca738c0d25045ac62ca3013002a4d2b54f96c04d"
+    },
+    {
+      "line": "Still on it.",
+      "take": 1,
+      "file": "wait_still_on_it_1.wav",
+      "ms": 990,
+      "sha256": "64d188afd79f7d1ce2bb06b560cffd869cdad07756f5d22f8c06d78df5f589fb"
+    },
+    {
+      "line": "Still checking.",
+      "take": 0,
+      "file": "wait_still_checking_0.wav",
+      "ms": 1069,
+      "sha256": "8809e7929aacb4a45065a75e3aa5786b21e656d47edf22c533df18288a54f659"
+    },
+    {
+      "line": "Still checking.",
+      "take": 1,
+      "file": "wait_still_checking_1.wav",
+      "ms": 1168,
+      "sha256": "dc4b507d5f259a1f74926f315dd2f695a51b9cddc17c220effa3d6b9105a5727"
+    },
+    {
+      "line": "One moment more.",
+      "take": 0,
+      "file": "wait_one_moment_more_0.wav",
+      "ms": 1180,
+      "sha256": "76883959cb0546f78b6bd9f819658b07d3471aa56a98ed8fd01693ba46295431"
+    },
+    {
+      "line": "One moment more.",
+      "take": 1,
+      "file": "wait_one_moment_more_1.wav",
+      "ms": 1036,
+      "sha256": "b79c7b63fe14379c2d2dfad971efac90536a5fe26c25027d6caec4ee00f3b725"
+    },
+    {
+      "line": "Bear with me.",
+      "take": 0,
+      "file": "wait_bear_with_me_0.wav",
+      "ms": 655,
+      "sha256": "54aa728d1d62233f49b4b89b59e0cedac4ff0ce20b10ae314171cabf5f243b5a"
+    },
+    {
+      "line": "Bear with me.",
+      "take": 1,
+      "file": "wait_bear_with_me_1.wav",
+      "ms": 953,
+      "sha256": "72ce1e967d34810ca5fcf65aa01249244950c934e4ec6cd52a7ce03955d575cb"
+    },
+    {
+      "line": "Working on it.",
+      "take": 0,
+      "file": "wait_working_on_it_0.wav",
+      "ms": 1020,
+      "sha256": "61c5efe17b589b37740d94ca67056e4d94b73574f9b13b2183055d298e76286c"
+    },
+    {
+      "line": "Working on it.",
+      "take": 1,
+      "file": "wait_working_on_it_1.wav",
+      "ms": 843,
+      "sha256": "87effddf3d932be577e93b1dec2bc602082abcb6fbbaa171f0faf89e0d849967"
+    },
+    {
+      "line": "Goodbye.",
+      "take": 0,
+      "file": "farewell_goodbye_0.wav",
+      "ms": 671,
+      "sha256": "7df2fa2f18a17699c52543346a3e7a58a9bb5868ccb47185f133c53e7fb0aeb9"
+    },
+    {
+      "line": "Bye for now.",
+      "take": 0,
+      "file": "farewell_bye_for_now_0.wav",
+      "ms": 828,
+      "sha256": "c1522fd921ed1d5b4e76883c5cb4b693feabb2a4da0ccf969fb402e8e3042fff"
+    },
+    {
+      "line": "Talk soon.",
+      "take": 0,
+      "file": "farewell_talk_soon_0.wav",
+      "ms": 711,
+      "sha256": "9939c2aa581567a32920c709ac23636daf6eca7942ea9976348124f17e3f6fcc"
+    },
+    {
+      "line": "Didn't catch that. Say it again?",
+      "take": 0,
+      "file": "missed_0.wav",
+      "ms": 2106,
+      "sha256": "45990bc141d9ce15452804d3f681728ca448a799eab91f2b0d2acb9c0d0279fb"
+    },
+    {
+      "line": "Sorry, I lost my voice for a second.",
+      "take": 0,
+      "file": "voice_lost_0.wav",
+      "ms": 2047,
+      "sha256": "484ebe677b5020feecfd5453c9e3ba7d44725b471a95d368f7ab4443f59ab0f3"
+    }
+  ]
+}
