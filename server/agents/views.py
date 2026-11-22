@@ -616,6 +616,7 @@ class AgentTurnStreamView(_SwitchedAgentsView):
             kind="user",
             audio=streamed.pcm,
             streamed=streamed,
+            drafter=drafter,
             speak=options["speak"],
             go=options["go"],
             client_facts=options["client_facts"],
