@@ -33,11 +33,15 @@ internal class CallAudioMode(
     private var bluetoothSco = false
     private var earpieceOn = false
 
-    /** When call audio last started or moved device; the barge-in echo warm-up runs from here. */
-    private var pathChangedAtMs: Long? = null
+    /**
+     * When call audio last started or moved device; null outside call audio. Volatile and read
+     * without the lock: the mic thread reads it every window, and [enter] / [retarget] hold the lock
+     * across audio-system calls.
+     */
+    @Volatile private var pathChangedAtMs: Long? = null
 
     /** The echo canceller is still settling: barge-in fires are ignored ([BargeInGate.WARMUP_MS]). */
-    val warmingUp: Boolean @Synchronized get() = active && BargeInGate.warmingUp(pathChangedAtMs, clock())
+    val warmingUp: Boolean get() = BargeInGate.warmingUp(pathChangedAtMs, clock())
 
     /** True while this conversation listens through a Bluetooth hands-free mic ([enterBluetooth]). */
     val onBluetoothMic: Boolean @Synchronized get() = active && bluetoothSco
@@ -143,6 +147,7 @@ internal class CallAudioMode(
     fun exit(why: String) {
         if (!active) return
         active = false
+        pathChangedAtMs = null
         val wasSco = bluetoothSco
         bluetoothSco = false
         earpieceOn = false
