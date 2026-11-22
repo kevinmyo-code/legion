@@ -2,6 +2,7 @@ package com.kevin.legion.claude
 
 import com.kevin.legion.board.BoardOutcome
 import com.kevin.legion.board.BoardQueue
+import com.kevin.legion.board.EngineControlRoomBackend
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.sync.Mutex
@@ -17,6 +18,7 @@ import kotlinx.coroutines.sync.withLock
  *   id. Each is raised once ([SessionWaitSeen], its own store); a key that left the queue is forgotten.
  * - At most [MAX_PER_WINDOW] in [WINDOW]; past that a key is marked and dropped (it is still in the
  *   control room and on the home line).
+ * - The engine's board switched off: one read per [OFF_BACKOFF], not per minute.
  * - Silenced with the "Claude tasks" switch, `quiet`, or the master switch: marked, never raised.
  * - The words are FACTS ONLY, made here from the kind: no card, record or agent text is ever in a push.
  *
@@ -43,7 +45,12 @@ class QueuePoller(
     }
 
     internal suspend fun pollNow(): Int {
-        val out = queue() as? BoardOutcome.Ok ?: return 0
+        val read = queue()
+        if (read is BoardOutcome.Failed && read.sentence == EngineControlRoomBackend.OFF) {
+            // Dark on the engine: ask again in OFF_BACKOFF, not every minute.
+            lastPoll = now().plus(OFF_BACKOFF).minus(EVERY)
+        }
+        val out = read as? BoardOutcome.Ok ?: return 0
         val raisable = out.value.items.mapNotNull { (_, key) -> words(key)?.let { key to it } }.toMap()
         seen.keepOnly(raisable.keys)
         var raised = 0
@@ -70,6 +77,7 @@ class QueuePoller(
     companion object {
         val EVERY: Duration = Duration.ofMinutes(1)
         val WINDOW: Duration = Duration.ofMinutes(30)
+        val OFF_BACKOFF: Duration = Duration.ofMinutes(15)
         const val MAX_PER_WINDOW = 4
         const val DECISION = "Your factory board has a new question for you. It is in the control room."
         const val ACTION = "The laptop asks you to allow something. It is in the control room's approvals."

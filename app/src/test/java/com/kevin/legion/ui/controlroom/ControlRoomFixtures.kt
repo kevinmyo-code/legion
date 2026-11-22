@@ -42,8 +42,10 @@ class FakeControlRoomBackend : ControlRoomBackend {
             answerPending = false, answered = null, ageMin = 4, stale = false,
         )
         val SHIP_IT = TEAPOT.copy(id = "kettle", title = "Kettle firmware", ask = "Ship it?", answerable = false)
-        val WORKING = TEAPOT.copy(id = "scones", title = "Scone recipe", col = "working", ask = "", options = emptyList(),
-            status = "Reading notes", askSha256 = "", answerable = false)
+        val WORKING = TEAPOT.copy(
+            id = "scones", title = "Scone recipe", col = "working", ask = "", options = emptyList(),
+            status = "Reading notes", askSha256 = "", answerable = false,
+        )
         val BOARD = BoardView(
             sent = true, live = true, ageS = 60, laptopOn = true,
             cards = listOf(TEAPOT, SHIP_IT, WORKING),
@@ -63,7 +65,12 @@ class FakeControlRoomBackend : ControlRoomBackend {
             amountCents = 1999, payee = "Tea Supply Co", purpose = "Kettle descaler")
         val QUEUE = BoardQueue(1, 2, 1, "Needs you: 1 session, 2 approvals, 1 decision.",
             listOf("Needs you: 1 session, 2 approvals, 1 decision."),
-            listOf("sessions" to "session:s-1@1", "approvals" to "action:rec-1", "decisions" to "decision:teapot:aaaaaaaaaaaa"))
+            listOf(
+                "sessions" to "session:s-1@1",
+                "approvals" to "action:rec-1",
+                "decisions" to "decision:teapot:aaaaaaaaaaaa",
+            ),
+        )
     }
 }
 

@@ -54,11 +54,11 @@ class ControlRoomScreenshotTest {
 
     @Test
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
-    fun `approvals, day`() = shot(ControlTab.APPROVALS, "control-room-approvals-day.png", "Deploy the engine at 1a2b3c4d")
+    fun `approvals, day`() = shot(ControlTab.APPROVALS, "control-room-approvals-day.png", DEPLOY)
 
     @Test
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS + "-night")
-    fun `approvals, night`() = shot(ControlTab.APPROVALS, "control-room-approvals-night.png", "Deploy the engine at 1a2b3c4d")
+    fun `approvals, night`() = shot(ControlTab.APPROVALS, "control-room-approvals-night.png", DEPLOY)
 
     @Test
     @Config(qualifiers = ScreenshotDeviceConfig.QUALIFIERS)
@@ -78,13 +78,16 @@ class ControlRoomScreenshotTest {
 
     private companion object {
         const val FRAME_MS = 500L
+        const val DEPLOY = "Deploy the engine at 1a2b3c4d"
         val STATE = ControlRoomUiState(
             loading = false,
             sessions = listOf(
                 SessionUi("s-1", "planner", "garden", "Alienware", "Waiting on you", true, "waiting 12 min", true),
                 SessionUi("s-2", "notes", "kitchen", "work laptop", "Busy", false, "", false),
             ),
-            tasks = listOf(TaskCardUi(7, "Alienware", "Send this message to your Claude session planner: \"water the beans\"")),
+            tasks = listOf(
+                TaskCardUi(7, "Alienware", "Send this message to your Claude session planner: \"water the beans\""),
+            ),
             actions = listOf(
                 ActionCardUi(
                     "rec-1", "b".repeat(64), "Deploy the engine at 1a2b3c4d",

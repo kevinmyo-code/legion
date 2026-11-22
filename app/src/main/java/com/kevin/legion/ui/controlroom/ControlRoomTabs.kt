@@ -34,7 +34,8 @@ internal fun LazyListScope.sessionsTab(state: ControlRoomUiState, actions: Contr
     head("Claude sessions")
     when {
         state.claudeNote != null -> note(state.claudeNote)
-        state.sessions.isEmpty() -> note(if (state.loading) "Reading your sessions." else "No Claude session is running.")
+        state.sessions.isEmpty() ->
+            note(if (state.loading) "Reading your sessions." else "No Claude session is running.")
         else -> items(state.sessions, key = { "s-" + it.sessionId + it.machine + it.name }) { s ->
             Ruled(
                 s.name,
@@ -101,7 +102,12 @@ internal fun LazyListScope.boardTab(state: ControlRoomUiState, actions: ControlR
             Row(Modifier.fillMaxWidth()) {
                 VOTE_CHOICES.forEach { (vote, label) ->
                     Column(Modifier.padding(end = 6.dp)) {
-                        InkButton(label, { actions.onVote(b.id, vote) }, primary = vote == b.vote, enabled = !state.busy)
+                        InkButton(
+                            label,
+                            { actions.onVote(b.id, vote) },
+                            primary = vote == b.vote,
+                            enabled = !state.busy,
+                        )
                     }
                 }
             }
@@ -154,7 +160,8 @@ private fun Decision(d: DecisionUi, state: ControlRoomUiState, actions: ControlR
                     onValueChange = { actions.onType(d.id, it) },
                     textStyle = TypesetType.body.copy(color = SoftColors.text),
                     cursorBrush = SolidColor(SoftColors.text),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).border(1.dp, SoftColors.barRule).padding(10.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        .border(1.dp, SoftColors.barRule).padding(10.dp),
                 )
                 Buttons {
                     InkButton(

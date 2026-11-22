@@ -54,12 +54,21 @@ fun rememberClaudeWatchLine(): String? {
         EngineControlRoomBackend(EngineHttp(EngineConfig(context.applicationContext)))
     }
     var needsYou by remember { mutableStateOf<String?>(null) }
+    var offTicks = 0
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, live) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
                 live.refreshIfStale(controller, REUSE_WITHIN)
-                needsYou = needsYouLine(queue.queue())
+                // The board dark on the engine: one queue read per OFF_EVERY ticks, not every tick.
+                if (offTicks > 0) {
+                    offTicks--
+                } else {
+                    val read = queue.queue()
+                    val off = (read as? BoardOutcome.Failed)?.sentence == EngineControlRoomBackend.OFF
+                    offTicks = if (off) OFF_EVERY else 0
+                    needsYou = needsYouLine(read)
+                }
                 delay(POLL_EVERY.toMillis())
             }
         }
@@ -98,6 +107,7 @@ fun ClaudeWatchLine(line: String?, onOpen: () -> Unit) {
 }
 
 private const val POLL_SECONDS = 30L
+private const val OFF_EVERY = 30
 private const val REUSE_SECONDS = 25L
 private val POLL_EVERY: Duration = Duration.ofSeconds(POLL_SECONDS)
 private val REUSE_WITHIN: Duration = Duration.ofSeconds(REUSE_SECONDS)

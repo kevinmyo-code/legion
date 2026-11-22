@@ -50,6 +50,15 @@ class ControlRoomViewModelTest {
         now = { now },
     )
 
+    private val S1 = "0a1b2c3d-0000-4000-8000-000000000001"
+    private val S2 = "0a1b2c3d-0000-4000-8000-000000000002"
+
+    @Test
+    fun `a session id of another shape offers no summary`() {
+        status(listOf(session("planner; delete everything")))
+        assertFalse(viewModel().state.value.sessions.single().canSummarise)
+    }
+
     private fun machines(vararg m: ClaudeMachine) = m.toList()
 
     private fun status(sessions: List<ClaudeCodeSession>) {
@@ -77,7 +86,7 @@ class ControlRoomViewModelTest {
 
     @Test
     fun `sessions show name, folder, machine, state and how long it has waited`() {
-        status(listOf(session("s-1"), session("s-2", machine = "work laptop", state = "busy")))
+        status(listOf(session(S1), session(S2, machine = "work laptop", state = "busy")))
         val s = viewModel().state.value
         assertEquals(listOf("planner", "planner"), s.sessions.map { it.name })
         assertEquals("waiting 12 min", s.sessions[0].waited)
@@ -89,11 +98,11 @@ class ControlRoomViewModelTest {
 
     @Test
     fun `summary sends a code-built task naming the session id, to its machine`() {
-        status(listOf(session("s-1")))
+        status(listOf(session(S1)))
         val vm = viewModel()
         vm.summarise(vm.state.value.sessions.single())
         val sent = claude.created.single()
-        assertEquals(ControlRoomViewModel.summaryRequest("s-1"), sent.request)
+        assertEquals(ControlRoomViewModel.summaryRequest(S1), sent.request)
         assertEquals("Alienware", sent.machine)
         assertTrue("400 characters" in sent.request)
     }
@@ -110,7 +119,8 @@ class ControlRoomViewModelTest {
         val yes = claude.created.single()
         assertTrue(yes.confirms)
         assertEquals(7, yes.parent)
-        claude.tasksOut = ClaudeOutcome.Ok(listOf(card, card.copy(id = 8, parent = 7, confirms = true, status = "queued")))
+        val yesTask = card.copy(id = 8, parent = 7, confirms = true, status = "queued")
+        claude.tasksOut = ClaudeOutcome.Ok(listOf(card, yesTask))
         vm.refresh()
         assertEquals(emptyList<Int>(), vm.state.value.tasks.map { it.id })
     }
@@ -185,7 +195,7 @@ class ControlRoomViewModelTest {
 
     @Test
     fun `the board switched off says so and the Claude half still works`() {
-        status(listOf(session("s-1")))
+        status(listOf(session(S1)))
         board.boardOut = BoardOutcome.Failed("The control room is switched off on the engine.")
         board.actionsOut = BoardOutcome.Failed("off")
         val s = viewModel().state.value

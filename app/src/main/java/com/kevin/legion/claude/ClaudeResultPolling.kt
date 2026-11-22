@@ -83,7 +83,8 @@ object ClaudeResultPolling {
                             sessionWaits(app).maybePoll()
                         } finally {
                             // Control room C4: a new board question or action record, once each.
-                            queueRaises(app).maybePoll()
+                            (queued ?: synchronized(this) { queued ?: queuePoller(app).also { queued = it } })
+                                .maybePoll()
                         }
                     }
                 }
@@ -124,18 +125,17 @@ object ClaudeResultPolling {
 
     private const val QUEUE_WHAT = "Something on the user's factory board is waiting on them."
 
-    /** The ONE [QueuePoller] for the process (control room C4). */
-    private fun queueRaises(app: Context): QueuePoller =
-        queued ?: synchronized(this) {
-            queued ?: QueuePoller(
-                queue = { EngineControlRoomBackend(EngineHttp(EngineConfig(app))).queue() },
-                seen = SessionWaitSeenStore(app, SessionWaitSeenStore.QUEUE_KEY),
-                watch = ClaudeWatchStore(app),
-                announce = { key, text ->
-                    announceWait(app, key, text, tag = "From the control room's queue", what = QUEUE_WHAT)
-                },
-            ).also { queued = it }
-        }
+    /** The ONE [QueuePoller] for the process (control room C4), made on the loop's first tick. */
+    private val queuePoller: (Context) -> QueuePoller = { app ->
+        QueuePoller(
+            queue = { EngineControlRoomBackend(EngineHttp(EngineConfig(app))).queue() },
+            seen = SessionWaitSeenStore(app, SessionWaitSeenStore.QUEUE_KEY),
+            watch = ClaudeWatchStore(app),
+            announce = { key, text ->
+                announceWait(app, key, text, tag = "From the control room's queue", what = QUEUE_WHAT)
+            },
+        )
+    }
 
     /**
      * A session waiting on him: the open conversation's note, else a proactive raise in the

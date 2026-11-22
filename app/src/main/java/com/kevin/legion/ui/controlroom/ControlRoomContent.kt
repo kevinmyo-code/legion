@@ -31,23 +31,6 @@ import com.kevin.legion.ui.theme.soft.MsIcon
 import com.kevin.legion.ui.theme.soft.SoftColors
 import com.kevin.legion.ui.theme.soft.TypesetType
 
-/** Everything the control room can ask for, one bag so the stateless content renders with fakes. */
-data class ControlRoomActions(
-    val onBack: () -> Unit = {},
-    val onRefresh: () -> Unit = {},
-    val onTab: (ControlTab) -> Unit = {},
-    val onSummary: (SessionUi) -> Unit = {},
-    /** Tasks and workflows: the full Claude session screen. */
-    val onOpenTasks: () -> Unit = {},
-    val onYes: (Int) -> Unit = {},
-    val onAllow: (ActionCardUi) -> Unit = {},
-    val onDecline: (ActionCardUi) -> Unit = {},
-    /** (decision, choice): null choice sends the typed text. */
-    val onAnswer: (DecisionUi, String?) -> Unit = { _, _ -> },
-    val onType: (String, String) -> Unit = { _, _ -> },
-    val onVote: (String, String) -> Unit = { _, _ -> },
-)
-
 /**
  * The control room (control room C1-C4), Typeset (ADR 0081): a masthead, four ruled tabs with
  * counts, and one list. Stateless; [ControlRoomScreen] wires the ViewModel and the confirm.
@@ -57,7 +40,10 @@ fun ControlRoomContent(state: ControlRoomUiState, actions: ControlRoomActions, m
     Column(modifier.fillMaxSize().background(SoftColors.ground).testTag(ROOT_TAG)) {
         Masthead(actions)
         Tabs(state, actions.onTab)
-        state.message?.let { Text(it, style = TypesetType.smallItalic, color = SoftColors.text, modifier = gutter.padding(vertical = 8.dp)) }
+        state.message?.let {
+            val at = gutter.padding(vertical = 8.dp)
+            Text(it, style = TypesetType.smallItalic, color = SoftColors.text, modifier = at)
+        }
         LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
             when (state.tab) {
                 ControlTab.SESSIONS -> sessionsTab(state, actions)
@@ -106,7 +92,8 @@ private fun Tabs(state: ControlRoomUiState, onTab: (ControlTab) -> Unit) {
                     color = if (on) SoftColors.text else SoftColors.text2,
                     textAlign = TextAlign.Center,
                 )
-                Box(Modifier.padding(top = 8.dp).fillMaxWidth().heightIn(min = 2.dp).background(if (on) SoftColors.text else SoftColors.ground))
+                val bar = if (on) SoftColors.text else SoftColors.ground
+                Box(Modifier.padding(top = 8.dp).fillMaxWidth().heightIn(min = 2.dp).background(bar))
             }
         }
     }
@@ -117,7 +104,12 @@ internal val gutter = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
 
 /** A section's small-caps head. */
 internal fun LazyListScope.head(text: String) = item {
-    Text(text.uppercase(), style = TypesetType.caps, color = SoftColors.text2, modifier = gutter.padding(top = 18.dp, bottom = 6.dp))
+    Text(
+        text.uppercase(),
+        style = TypesetType.caps,
+        color = SoftColors.text2,
+        modifier = gutter.padding(top = 18.dp, bottom = 6.dp),
+    )
 }
 
 /** Words in place of a list: why it is empty, or why it could not be read. */

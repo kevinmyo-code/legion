@@ -12,6 +12,9 @@ object ActionWords {
     private const val SHORT_SHA = 8
     private const val CENTS = 100.0
 
+    /** `2031-04-02T10:30`: an ISO time cut to the minute. */
+    private const val MINUTE_CHARS = 16
+
     fun headline(a: ActionRecord): String = when (a.kind) {
         "deploy_engine" -> "Deploy the engine at ${short(a.sha)}"
         "publish_phone" -> "Publish a phone update from ${short(a.sha)}"
@@ -32,7 +35,7 @@ object ActionWords {
             add("To “${a.payee}”")
             add("For “${a.purpose}”")
         }
-        add("Expires ${a.expiresAt.take(16).replace('T', ' ')} UTC")
+        add("Expires ${a.expiresAt.take(MINUTE_CHARS).replace('T', ' ')} UTC")
     }
 
     fun status(status: String): String = when (status) {

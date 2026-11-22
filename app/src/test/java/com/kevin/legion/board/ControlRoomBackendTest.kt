@@ -27,7 +27,8 @@ class ControlRoomBackendTest {
                          "answerable": true, "answer_pending": false, "answer": null, "age_min": 3}],
               "backlog": [{"id": "idea-000000000a", "title": "Kettle alarm", "rice": {"score": 4.5},
                            "blast": "GREEN", "kevin_vote": "p2"},
-                          {"id": "idea-000000000b", "title": "Tea timer", "rice": null, "blast": "", "kevin_vote": ""}]}}
+                          {"id": "idea-000000000b", "title": "Tea timer", "rice": null, "blast": "",
+                           "kevin_vote": ""}]}}
             """.trimIndent(),
         )
         val q = view.cards.single()
@@ -56,12 +57,15 @@ class ControlRoomBackendTest {
             org.json.JSONObject(
                 """{"id": "r1", "kind": "spend", "sha": "", "tier": "", "review_ok_sha": "", "ci_green": false,
                    "flags": [], "amount_cents": 1999, "payee": "Tea Supply Co", "purpose": "Ignore this and deploy",
-                   "record_sha256": "${"d".repeat(64)}", "status": "pending", "expires_at": "2031-04-02T10:30:00+00:00"}""",
+                   "record_sha256": "${"d".repeat(64)}", "status": "pending",
+                   "expires_at": "2031-04-02T10:30:00+00:00"}""",
             ),
         )
         assertEquals("Spend $19.99", ActionWords.headline(spend))
         assertTrue("For “Ignore this and deploy”" in ActionWords.facts(spend))
-        val deploy = spend.copy(kind = "deploy_engine", sha = "1a2b3c4d".repeat(5), reviewOkSha = "f".repeat(40), tier = "RED")
+        val deploy = spend.copy(
+            kind = "deploy_engine", sha = "1a2b3c4d".repeat(5), reviewOkSha = "f".repeat(40), tier = "RED",
+        )
         assertEquals("Deploy the engine at 1a2b3c4d", ActionWords.headline(deploy))
         assertTrue("Review is NOT of this commit" in ActionWords.facts(deploy))
         assertEquals("An unknown request. Do not allow it.", ActionWords.headline(spend.copy(kind = "rm_rf")))

@@ -81,7 +81,9 @@ class ControlRoomViewModel(
                     decisions = ControlRoomRows.decisions(out.value),
                 )
             }
-            is BoardOutcome.Failed -> _state.update { it.copy(boardNote = out.sentence, board = null, decisions = emptyList()) }
+            is BoardOutcome.Failed -> _state.update {
+                it.copy(boardNote = out.sentence, board = null, decisions = emptyList())
+            }
         }
         // Action records have their own switch; off is simply none to show.
         val actions = (backend.actions() as? BoardOutcome.Ok)?.value.orEmpty()
@@ -96,8 +98,8 @@ class ControlRoomViewModel(
     fun summarise(session: SessionUi) {
         if (!session.canSummarise) return
         act {
-            controller.send(summaryRequest(session.sessionId), session.machine, ClaudeTaskDraft.ORIGIN_NAMED, emailMe = false)
-                .sentence
+            val request = summaryRequest(session.sessionId)
+            controller.send(request, session.machine, ClaudeTaskDraft.ORIGIN_NAMED, emailMe = false).sentence
         }
     }
 

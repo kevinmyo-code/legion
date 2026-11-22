@@ -11,7 +11,12 @@ import com.kevin.legion.ui.claudesession.TaskRowUi
 import java.time.Duration
 import java.time.Instant
 
-enum class ControlTab(val label: String) { SESSIONS("Sessions"), APPROVALS("Approvals"), BOARD("Board"), DECISIONS("Decisions") }
+enum class ControlTab(val label: String) {
+    SESSIONS("Sessions"),
+    APPROVALS("Approvals"),
+    BOARD("Board"),
+    DECISIONS("Decisions"),
+}
 
 data class SessionUi(
     val sessionId: String,
@@ -66,6 +71,23 @@ data class BoardSectionUi(
     val backlogMore: String,
 )
 
+/** Everything the control room can ask for, one bag so the stateless content renders with fakes. */
+data class ControlRoomActions(
+    val onBack: () -> Unit = {},
+    val onRefresh: () -> Unit = {},
+    val onTab: (ControlTab) -> Unit = {},
+    val onSummary: (SessionUi) -> Unit = {},
+    /** Tasks and workflows: the full Claude session screen. */
+    val onOpenTasks: () -> Unit = {},
+    val onYes: (Int) -> Unit = {},
+    val onAllow: (ActionCardUi) -> Unit = {},
+    val onDecline: (ActionCardUi) -> Unit = {},
+    /** (decision, choice): null choice sends the typed text. */
+    val onAnswer: (DecisionUi, String?) -> Unit = { _, _ -> },
+    val onType: (String, String) -> Unit = { _, _ -> },
+    val onVote: (String, String) -> Unit = { _, _ -> },
+)
+
 /** Everything the control room draws, as one value (CLAUDE.md section 8). */
 data class ControlRoomUiState(
     val tab: ControlTab = ControlTab.SESSIONS,
@@ -107,15 +129,15 @@ object ControlRoomRows {
                 stateText = if (s.waitingOnYou) "Waiting on you" else s.state.replaceFirstChar(Char::uppercase),
                 waiting = s.waitingOnYou,
                 waited = waited(s, now),
-                canSummarise = s.sessionId.isNotBlank() && machine?.summariesOnly != true,
+                canSummarise = SESSION_ID.matches(s.sessionId) && machine?.summariesOnly != true,
             )
         }
 
     private fun waited(s: ClaudeCodeSession, now: Instant): String {
-        val since = s.waitingSince ?: return ""
-        if (!s.waitingOnYou) return ""
+        val since = s.waitingSince?.takeIf { s.waitingOnYou } ?: return ""
         val min = Duration.between(since, now).toMinutes().coerceAtLeast(0)
-        return if (min < MINUTES_PER_HOUR) "waiting $min min" else "waiting ${min / MINUTES_PER_HOUR} h ${min % MINUTES_PER_HOUR} min"
+        val hours = min / MINUTES_PER_HOUR
+        return if (hours == 0L) "waiting $min min" else "waiting $hours h ${min % MINUTES_PER_HOUR} min"
     }
 
     /** Claude task cards that want his yes, after the one-yes rule ([ClaudeSessionRows.tasks]). */
@@ -193,6 +215,11 @@ object ControlRoomRows {
         }
     }
 
+    /**
+     * The id shape `tools/claude_session/sessions.py` accepts: the id goes into the worker's task
+     * text, so anything else (an engine row with odd text in it) offers no Summary at all.
+     */
+    private val SESSION_ID = Regex("[0-9a-fA-F-]{8,64}")
     private const val MINUTES_PER_HOUR = 60L
     private const val SECONDS_PER_MINUTE = 60L
 }

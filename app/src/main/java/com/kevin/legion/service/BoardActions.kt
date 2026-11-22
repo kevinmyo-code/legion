@@ -50,7 +50,10 @@ object BoardActions {
         when (action) {
             "where" -> where(context)
             "needs" -> needs(context)
-            else -> idea(context, args.optString("request"), if (args.has("yes")) args.optBoolean("yes") else null, userText)
+            else -> {
+                val yes = if (args.has("yes")) args.optBoolean("yes") else null
+                idea(context, args.optString("request"), yes, userText)
+            }
         }
 
     /**
