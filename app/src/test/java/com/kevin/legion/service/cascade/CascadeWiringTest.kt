@@ -372,7 +372,8 @@ class CascadeWiringTest {
         val s = session()
         assertTrue(bodyOf(s, "newTextLoop").contains("isMutating = CascadeRules::isWrite"))
         val exec = bodyOf(s, "executorFor")
-        assertTrue(exec.indexOf("claimWrite(record, name)") in 0 until exec.indexOf("host.runTool("))
+        assertTrue(exec.indexOf("claimWrite(record, name)") in 0 until exec.indexOf("runDated("))
+        assertTrue(bodyOf(s, "runDated").contains("host.runTool("))
         assertTrue(bodyOf(s, "claimWrite").contains("record.writeCalled = true"))
     }
 
@@ -483,7 +484,7 @@ class CascadeWiringTest {
         val exec = bodyOf(s, "executorFor")
         // Logged under the called name with its args; LiveAudit redacts on the resolved call (LiveAuditTest).
         assertTrue(exec.contains("audit.toolCall(id, name, false, args.toString())"))
-        assertTrue(exec.contains("readThrough || record.startMarked,"))
+        assertTrue(bodyOf(s, "runDated").contains("readThrough || record.startMarked,"))
         assertTrue(bodyOf(s, "recordTurn").contains("if (fromUser && said.isNotBlank()) readThroughCarry.answered()"))
         val answer = bodyOf(s, "answerTurn")
         val carryAt = answer.indexOf("readThroughCarry.startTurn(record.fromUser, record.startMarked)")
