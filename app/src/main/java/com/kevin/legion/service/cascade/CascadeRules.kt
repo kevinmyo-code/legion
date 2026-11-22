@@ -77,7 +77,10 @@ internal object CascadeRules {
         /** The phone's silence end: the policy base, or the cap when it is only the safety net. */
         val endBaseMs: Int,
         val serviceEndsTurns: Boolean,
-        /** The silence end after a Smart Turn "done" ([EndOfTurnPolicy.FINISHED_MS]); [endBaseMs] when off. */
+        /**
+         * The silence end after a Smart Turn "done" ([EndOfTurnPolicy.FINISHED_MS]; a clear one ends at
+         * [EndOfTurnPolicy.EARLY_MS]); [endBaseMs] when off.
+         */
         val endFinishedMs: Int = endBaseMs,
     ) {
         /** What a phone-side end means in this plan. */
@@ -175,7 +178,7 @@ internal object CascadeRules {
             config = TurnConfig(manualActivity = true, bargeIn = barge, smartTurn = smart, note = note),
             endBaseMs = if (serviceEndsTurns) EndOfTurnPolicy.CAP_MS else EndOfTurnPolicy.BASE_MS,
             serviceEndsTurns = serviceEndsTurns,
-            // Only when Smart Turn runs on the phone: its "done" ends the turn at 500 ms, else the base.
+            // Only when Smart Turn runs on the phone: a "done" ends the turn at 500 ms (clear: 300), else the base.
             endFinishedMs = when {
                 smart -> EndOfTurnPolicy.FINISHED_MS
                 serviceEndsTurns -> EndOfTurnPolicy.CAP_MS
