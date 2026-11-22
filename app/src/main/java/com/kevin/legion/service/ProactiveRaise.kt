@@ -198,6 +198,7 @@ sealed interface ProactiveUrgency {
         val alertId: String,
         val severity: Int,
         val references: List<String> = emptyList(),
+        val rings: Boolean = true,
     ) : ProactiveUrgency {
         init {
             require(alertId.isNotBlank()) { "an alarm must carry the feed's alert id - it is the dedup key" }

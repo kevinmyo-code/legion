@@ -96,6 +96,9 @@ class SevereAlertWatcher(
          */
         fun alarmLevel(severity: String): Int? = RING_LEVELS[severity.trim().lowercase()]
 
+        /** Stub: the allow-list lands in the next commit. */
+        fun mayRing(event: String): Boolean = event.isNotEmpty()
+
         /**
          * Which NWS severities ring (through silent, vibrate and DND, at night) and at what level.
          * Today: Severe and Extreme. Owner decision pending (phantom alarm report 2026-11-21): drop

@@ -48,8 +48,10 @@ class SevereAlertAlarmTest {
     private val noon = LocalTime.of(12, 0)
     private val night = LocalTime.of(2, 30)
 
-    private fun alert(id: String, severity: String, vararg refs: String) = SevereAlert(
-        id, "Tornado Warning", severity, "Tornado Warning until 4 PM", "Example County", "NWS Example",
+    private fun alert(id: String, severity: String, vararg refs: String) = event("Tornado Warning", id, severity, *refs)
+
+    private fun event(event: String, id: String, severity: String, vararg refs: String) = SevereAlert(
+        id, event, severity, "$event until 4 PM", "Example County", "NWS Example",
         "2026-11-10T16:00:00-06:00", refs.toList(),
     )
 
@@ -183,6 +185,42 @@ class SevereAlertAlarmTest {
         val restarted = RuntimeEnvironment.getApplication().applicationContext
         assertFalse(SafetyAlarms.admit(restarted, alarm, t0 + SIX_HOURS))
         assertFalse(SafetyAlarms.admit(restarted, alarm, t0 + 2 * SIX_HOURS))
+    }
+
+    @Test
+    fun `a Freeze Warning at Severe is posted, never rung, at night and on a silenced phone`() {
+        // The owner, 2026-11-21: ring only for dangerous events; freeze and the like just notify.
+        assertTrue(deliver(event("Freeze Warning", "f1", "Severe"), night) is ProactiveBus.RaiseOutcome.Notified)
+        assertNull(shadowOf(context as Application).nextStartedService)
+        context.getSystemService(AudioManager::class.java).ringerMode = AudioManager.RINGER_MODE_VIBRATE
+        assertTrue(deliver(event("Freeze Warning", "f2", "Severe"), noon) is ProactiveBus.RaiseOutcome.Notified)
+        assertNull(shadowOf(context as Application).nextStartedService)
+    }
+
+    @Test
+    fun `a non-dangerous Severe alert is posted, not spoken, in the daytime too`() {
+        assertTrue(deliver(event("Extreme Heat Warning", "h1", "Severe"), noon) is ProactiveBus.RaiseOutcome.Notified)
+    }
+
+    @Test
+    fun `a Tornado Warning at Severe rings`() {
+        assertTrue(deliver(event("Tornado Warning", "t1", "Severe"), night) is ProactiveBus.RaiseOutcome.Rang)
+        assertTrue(rang())
+    }
+
+    @Test
+    fun `an unknown event, even Extreme, is posted, never rung`() {
+        val unknown = deliver(event("Made-up Hazard Warning", "x1", "Extreme"), night)
+        assertTrue(unknown is ProactiveBus.RaiseOutcome.Notified)
+        assertNull(shadowOf(context as Application).nextStartedService)
+    }
+
+    @Test
+    fun `a Watch never rings, even a Tornado Watch at Extreme`() {
+        assertTrue(deliver(event("Tornado Watch", "w1", "Extreme"), night) is ProactiveBus.RaiseOutcome.Notified)
+        assertNull(shadowOf(context as Application).nextStartedService)
+        assertFalse(SevereAlertWatcher.mayRing("Tornado Watch"))
+        assertTrue(SevereAlertWatcher.mayRing(" tornado warning "))
     }
 
     private companion object {
