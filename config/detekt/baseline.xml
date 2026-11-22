@@ -3152,7 +3152,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$MusicAction.SEEK_BACK -&gt; controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$MusicAction.SEEK_FORWARD -&gt; controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (user's unit, already converted - do not convert again); ") }</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$SpotifyWebApi.PlaylistResolution.NeedsAuthorization -&gt; SpotifyUriResolution.Failed(spotifyNeedsAuthorizationResult())</ID>
+    <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$SpotifyWebApi.PlaylistResolution.NeedsAuthorization -&gt; SpotifyUriResolution.Failed(spotifyNeedsAuthorizationResult())</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$append(withGuessCaveat("${next.byMiles.serviceName} is soonest by mileage, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$else</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$headline = healthSummary ?: if (concerns.length() == 1) "1 concern" else "${concerns.length()} concerns"</ID>
@@ -3166,8 +3166,8 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (time == null) it.format(NOTE_DISPLAY_DATE_FORMAT) else "${it.format(NOTE_DISPLAY_DATE_FORMAT)} at $timeArg"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if (voltage != null &amp;&amp; voltage &lt; LOW_VOLTAGE) concerns.put("Battery voltage is low (${"%.1f".format(voltage)}V) - it may be weak or not charging.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$is GoalController.SetOutcome.Unchanged -&gt; result(true, "That's already the current ${aspectLabel(aspect)} goal - nothing changed.")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$is SpotifyWebApi.PlaylistResolution.Unauthorized -&gt; SpotifyUriResolution.Failed(spotifyUnauthorizedResult(resolution.detail))</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$is SpotifyWebApi.SearchOutcome.Found -&gt; SpotifyUriResolution.Found(outcome.uri, outcome.name, outcome.subtitle)</ID>
+    <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$is SpotifyWebApi.PlaylistResolution.Unauthorized -&gt; SpotifyUriResolution.Failed(spotifyUnauthorizedResult(resolution.detail))</ID>
+    <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$is SpotifyWebApi.SearchOutcome.Found -&gt; SpotifyUriResolution.Found(outcome.uri, outcome.name, outcome.subtitle)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$message = WorkoutController.logBodyweight(context, args.optDouble("weight"), args.optString("weight_unit", "lbs"))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$next.byMiles != null -&gt; withGuessCaveat("${next.byMiles.serviceName} is next, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$notes += "includes $pendingCount transaction(s) you logged as pending, not yet confirmed by the bank"</ID>
@@ -3195,7 +3195,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val delivery = if (row.delivery == ProactiveRaiseRow.DELIVERY_SPOKEN) "said aloud" else "posted as a notification"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val figure = " New available balance for ${resolved.accountId}: ${formatMoney(newAvailable, resolved.currency)}."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val healthSummary = if (concerns.length() == 0) "Everything reads normal - no codes, voltage and temperature look fine." else null</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val message = SpotifyController.message(outcome, query) + (fallbackNote?.takeIf { succeeded }?.let { " $it" } ?: "")</ID>
+    <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$val message = SpotifyController.message(outcome, query) + (fallbackNote?.takeIf { succeeded }?.let { " $it" } ?: "")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val message = accepted.workoutPlanMessage ?: "I couldn't put a workout plan together just now - try again in a sec."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logPastServiceDirect(context, service, mileage, milesAgo, date, neverDone, vehicleId)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents)</ID>
