@@ -384,3 +384,63 @@ def test_real_device_reports_an_old_door_as_not_preventive():
     assert d.door_ready() is True and d.preventive is False
     d2 = real()
     assert d2.door_ready() is True and d2.preventive is True
+
+
+# ------------------------------------------------------------- review round 2 (2026-11-22)
+
+class MailOnCleanup(FakeDevice):
+    """Old build: the model also mails during the grocery cleanup turn."""
+
+    def turn(self, text, case_id, tools=(), timeout=60):
+        if text.startswith("remove verify-test milk"):
+            self._tool("email", {"to": "someone"}, True)
+        return super().turn(text, case_id, tools, timeout)
+
+
+def test_forbidden_tool_in_a_cleanup_turn_stops_the_run_before_the_next_check():
+    dev = MailOnCleanup(preventive=False)
+    r = runner.run_suite(NEXT2, dev)
+    assert "FORBIDDEN" in r["stopped"] and "cleanup" in r["stopped"]
+    assert status(r, "budget_card")["status"] == runner.NOT_RUN
+    assert dev.sent[-1][0].startswith("remove verify-test milk")
+    assert "STOPPED" in runner.table(r)
+
+
+class RanButSaysTestMode(FakeDevice):
+    """A forbidden tool that RAN (success true) though its response mentions test_mode."""
+
+    def turn(self, text, case_id, tools=(), timeout=60):
+        if text.startswith("add verify-test milk"):
+            self._tool("email", {"to": "someone"}, True, {"test_mode": True})
+        return super().turn(text, case_id, tools, timeout)
+
+
+def test_a_forbidden_tool_counts_as_refused_only_with_success_false_and_test_mode():
+    r = runner.run_suite(NEXT2, RanButSaysTestMode(preventive=False))
+    assert "FORBIDDEN" in r["stopped"]
+
+
+def test_a_check_whose_write_was_never_sent_reports_no_left_behind():
+    import datetime as dt
+    r = runner.run_suite(NEXT2, FakeDevice(now=dt.datetime(2026, 11, 22, 23, 30)))
+    for cid in ("date_carry", "calendar_delete"):
+        res = status(r, cid)
+        assert res["status"] == runner.BLOCKED, cid
+        assert not res["cleanup"].startswith("LEFT BEHIND"), (cid, res["cleanup"])
+
+
+class RefusesTheAdd(FakeDevice):
+    """The phone refuses the calendar add turn (e.g. a real conversation opened): nothing was written."""
+
+    def turn(self, text, case_id, tools=(), timeout=60):
+        if text.startswith(("add verify-test dentist", "set a timer")):
+            raise runner.Blocked("the phone refused the turn: real_conversation")
+        return super().turn(text, case_id, tools, timeout)
+
+
+def test_a_refused_add_turn_leaves_nothing_to_clean_up():
+    r = runner.run_suite(NEXT2, RefusesTheAdd())
+    for cid in ("calendar_delete", "mic_after_ring"):
+        res = status(r, cid)
+        assert res["status"] == runner.BLOCKED, cid
+        assert res["cleanup"] == "ok", (cid, res["cleanup"])

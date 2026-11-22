@@ -128,6 +128,9 @@ def run_suite(suite: Suite, device, only: set[str] | None = None, clock=time.mon
             r.status, r.reason = BLOCKED, f"test-turn door: {run['door']}"
             continue
         stop = _run_one(ctx, check, r, clock)
+        if not stop and run.get("forbidden"):
+            # Seen in a cleanup turn: the check itself finished, but nothing more runs after it.
+            stop = f"FORBIDDEN tool called ({', '.join(run['forbidden'])}) in {check.id}'s cleanup"
         if check.id == "version" and r.status != PASS:
             gate = "installed build is not the suite's (see the version check)"
     run["finished"] = dt.datetime.now().isoformat(timespec="seconds")
@@ -171,7 +174,7 @@ def _cleanup(ctx: Ctx, check: Check) -> str:
         check.cleanup(ctx)
         return ctx.data.get("cleanup", "ok")
     except Abort as e:
-        return f"LEFT BEHIND (phone stopped answering: {e})"
+        return f"LEFT BEHIND (run stopped: {str(e)[:100]})"
     except (Fail, Blocked) as e:
         return f"LEFT BEHIND: {e}"
     except Exception as e:  # noqa: BLE001

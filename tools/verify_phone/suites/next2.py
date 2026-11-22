@@ -71,7 +71,6 @@ def card_setup(ctx: Ctx) -> None:
 
 
 def card_act(ctx: Ctx) -> None:
-    ctx.data["cleanup_needed"] = True
     ctx.data["add_mark"] = say(ctx, f"add {LIST_ITEM} to my grocery list", tools=LIST_TOOLS)
 
 
@@ -149,7 +148,6 @@ def carry_setup(ctx: Ctx) -> None:
 
 
 def carry_act(ctx: Ctx) -> None:
-    ctx.data["cleanup_needed"] = True
     ctx.data["add_mark"] = say(ctx, f"add {CARRY_ITEM} at 9 pm", tools=EVENT_TOOLS)
 
 
@@ -208,7 +206,6 @@ def cal_setup(ctx: Ctx) -> None:
     if now.time() >= dt.time(23, 0):
         raise Blocked("run before 11 pm phone time (the test event goes at 11:30 pm today)")
     ctx.data["day"] = now.date()
-    ctx.data["cleanup_needed"] = True
     say(ctx, f"add {CAL_ITEM} today at 11:30 pm", tools=EVENT_TOOLS)
     end(ctx)
 
@@ -237,7 +234,7 @@ def cal_act(ctx: Ctx) -> None:
     ctx.step("tapped Remove")
     if not ctx.device.wait_text(CAL_ITEM, 10, gone=True):
         raise Fail("the event stayed on screen after Remove")
-    ctx.data["deleted_by_hand"] = True
+    ctx.data["cleanup_needed"] = False  # gone by hand; comes back only if the sync brings it back
 
 
 def cal_verify(ctx: Ctx) -> None:
@@ -249,8 +246,8 @@ def cal_verify(ctx: Ctx) -> None:
     ctx.device.key("back")
     _open_calendar(ctx)
     if ctx.device.wait_text(CAL_ITEM, 8):
+        ctx.data["cleanup_needed"] = True
         raise Fail("the deleted event came back after a sync")
-    ctx.data["cleanup_needed"] = False
 
 
 def cal_cleanup(ctx: Ctx) -> None:
@@ -309,7 +306,6 @@ def _stop_controls(els):
 
 def mic_act(ctx: Ctx) -> None:
     go_home(ctx)
-    ctx.data["cleanup_needed"] = True
     say(ctx, "set a timer for 10 seconds", tools=CLOCK_TOOLS)
     # The mic goes back when the conversation closes (MicArbiter.Hold.drop): the mark comes first.
     ctx.data["release_mark"] = ctx.device.mark()

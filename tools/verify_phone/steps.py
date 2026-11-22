@@ -36,13 +36,18 @@ def say(ctx: Ctx, words: str, tools: tuple[str, ...] = (), timeout: float = 60) 
         raise Blocked("not sent: the run stopped on a forbidden tool, no more assistant turns")
     mark = ctx.device.mark()
     why = ctx.device.turn(words, case_id=f"verify-{ctx.result.id}", tools=tools, timeout=timeout)
+    if tools:
+        # A write turn went through: from here its check has something to clean up. Set only after
+        # the turn returned, so a check whose write was never sent never reports LEFT BEHIND.
+        ctx.data["cleanup_needed"] = True
     ctx.step(f"say ({'write' if tools else 'read'})", why in ("answered", "quiet", "closed"), why)
     if why == "real_conversation":
         raise Blocked("a real conversation took over")
     calls = calls_since(ctx, mark)
-    # Refused by the door before it ran (test_mode) is the guard working; anything else ran.
-    refused = sorted({c.name for c in calls if c.name in logs.FORBIDDEN_TOOLS and '"test_mode":true' in
-                      c.response.replace(" ", "")})
+    # Refused by the door before it ran (success false AND test_mode) is the guard working;
+    # anything else ran, a success that merely mentions test_mode included.
+    refused = sorted({c.name for c in calls if c.name in logs.FORBIDDEN_TOOLS and c.success is False
+                      and '"test_mode":true' in c.response.replace(" ", "")})
     if refused:
         ctx.note(f"forbidden_refused_{len(ctx.result.steps)}", refused)
     bad = sorted({c.name for c in calls if c.name in logs.FORBIDDEN_TOOLS} - set(refused))
