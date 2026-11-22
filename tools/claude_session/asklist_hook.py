@@ -145,31 +145,88 @@ LISTED_SHELL_OK = re.compile(
 )
 
 
-def _is_lone_script(command: str, script: str) -> bool:
-    """`python .../<script> ...` and nothing chained to it. Its free text (a summary, a mail body)
-    must not trip the ask list, so it is judged with quoted strings removed."""
-    bare = re.sub(r'"(?:\\.|[^"\\])*"' + r"|'[^']*'", '""', command)
-    pat = r"^\s*&?\s*\S*python(?:\.exe)?\S*\s+\S*" + re.escape(script) + r"\b"
-    if not re.match(pat, bare, re.I):
+def _is_lone_report(command: str, task: int | None = None) -> bool:
+    """This folder's report.py, alone (`_is_our_lone_script`): its free text (a summary) must not
+    trip the ask list. Any other report.py, or one with something expandable, is an ordinary
+    command (2026-11-22 review F1: the old check stripped quoted text and took any `python`)."""
+    return _is_our_lone_script(command, "report.py", task)
+
+
+def _own_python() -> str:
+    """The interpreter the worker gives helpers (`worker.helper_python`): this hook's own."""
+    exe = Path(sys.executable)
+    if exe.name.lower() == "pythonw.exe" and (exe.parent / "python.exe").exists():
+        exe = exe.parent / "python.exe"
+    return norm(exe)
+
+
+# Unquoted, any of these chains, redirects or runs something in Bash or PowerShell (`( )` and
+# `{ }` run a PowerShell subexpression or script block as an argument).
+_UNSAFE_UNQUOTED = re.compile(r"[$`;|&<>(){}\r\n]")
+# Inside double quotes both shells still expand `$` and backticks. A backslash before a quote is
+# an escape to Bash and not to PowerShell, so the two would disagree on where the string ends.
+_UNSAFE_IN_DOUBLE = re.compile(r"[$`\r\n]")
+# PowerShell also takes these typographic marks as quotes, so they would move quote boundaries.
+_SMART_QUOTES = re.compile("[‘’‚‛“”„]")
+_TASK_ARG_RE = re.compile(r"(?:^|\s)--task(?:\s+|=)['\"]?(\d+)")
+
+
+def _args_safe(rest: str) -> bool:
+    """True when the arguments carry nothing either shell would run (2026-11-22 review F1).
+
+    Single-quoted text is literal in Bash and PowerShell alike (PowerShell's `''` escape keeps the
+    same boundaries as Bash's close-and-reopen), so a summary may say '$5' there. Double-quoted
+    text may hold `;` or `( )` (literal in both) but nothing in `_UNSAFE_IN_DOUBLE`; unquoted text
+    nothing in `_UNSAFE_UNQUOTED`. A backslash before a quote, a typographic quote or an unclosed
+    quote fails: the two shells would disagree on where a string ends."""
+    if _SMART_QUOTES.search(rest):
         return False
-    return not re.search(r"[;&|`<>]|\$\(", bare.split(script, 1)[1])
+    unquoted, in_double, i, dq = [], [], 0, False
+    while i < len(rest):
+        c = rest[i]
+        if c == "\\" and i + 1 < len(rest) and rest[i + 1] in "\"'":
+            return False
+        if c == "'" and not dq:
+            j = rest.find("'", i + 1)
+            if j < 0:
+                return False
+            i = j + 1
+            continue
+        if c == '"':
+            dq = not dq
+        elif dq:
+            in_double.append(c)
+        else:
+            unquoted.append(c)
+        i += 1
+    if dq:
+        return False
+    return not (_UNSAFE_UNQUOTED.search("".join(unquoted))
+                or _UNSAFE_IN_DOUBLE.search("".join(in_double)))
 
 
-def _is_lone_report(command: str) -> bool:
-    return _is_lone_script(command, "report.py")
-
-
-def _is_our_lone_script(command: str, script: str) -> bool:
-    """`python <this folder>/<script> ...` alone: the script must be THIS folder's copy (a helper
-    could write its own ship.py), and nothing may be chained to it. Free text in its arguments
-    (the ship notes) is judged with quoted strings removed."""
+def _is_our_lone_script(command: str, script: str, task: int | None = None) -> bool:
+    """`<worker's python> <this folder>/<script> ...` alone. The interpreter must be the worker's
+    own (a helper could write a file named `python`), the script THIS folder's copy (a helper
+    could write its own ship.py), nothing may be chained to it or expanded inside its arguments
+    (`_args_safe`), and a helper of task N may name only `--task N`."""
     m = _LEAD_RE.match(command or "")
     if not m:
+        return False
+    lead = re.match(r'^\s*&?\s*(?:"([^"]+)"|(\S+))', command)
+    if lead is None or norm(_to_os_path(lead.group(1) or lead.group(2))) != _own_python():
         return False
     p = m.group("q") or m.group("s")
     if norm(_to_os_path(p)) != norm(HERE / script):
         return False
-    return not re.search(r"[;&|`<>\n]|\$\(", _unquoted(m.group("rest")))
+    rest = m.group("rest")
+    if not _args_safe(rest):
+        return False
+    if task is not None:
+        named = {int(x) for x in _TASK_ARG_RE.findall(rest)}
+        if named and named != {int(task)}:
+            return False
+    return True
 
 
 def _unquoted(command: str) -> str:
@@ -383,7 +440,7 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
         command = inp.get("command", "") or ""
         if _is_lone_report(command):
             return None
-        if _is_lone_script(command, "send_mail.py"):
+        if _is_our_lone_script(command, "send_mail.py"):
             return None  # ruling 18: send_mail.py itself allows only text to Kevin from here
         for seg in re.split(r"&&|\|\||;|\|", command):
             if not seg.strip():
@@ -455,8 +512,8 @@ def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict) -> st
             return "untrusted_file"
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_our_lone_script(command, "fetch_file.py"):
-            return "fetch_file"
+        if re.search(r"fetch_file\.py", command, re.I):
+            return "fetch_file"  # any run of it reads the web, ours or not
         if C.fetches(command):
             return "shell_fetch"
     return None
@@ -474,7 +531,7 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
     own_work = paths.task_work(task) if task is not None else None
     is_tainted = C.tainted(paths, task, agent, tasks)
     command = (inp.get("command", "") or "") if tool in SHELL_TOOLS else ""
-    ours = bool(command) and any(_is_our_lone_script(command, s) for s in CONTAINED_SCRIPTS)
+    ours = bool(command) and any(_is_our_lone_script(command, s, task) for s in CONTAINED_SCRIPTS)
 
     if not agent and (tool in WRITE_TOOLS or (tool in SHELL_TOOLS and not ours)):
         # The main window only dispatches, and it reads every helper's final message (derived
@@ -570,9 +627,9 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
 
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_lone_report(command):
+        if _is_lone_report(command, task):
             return None, ""
-        if any(_is_our_lone_script(command, s) for s in SHIP_SCRIPTS):
+        if any(_is_our_lone_script(command, s, task) for s in SHIP_SCRIPTS):
             return None, "ship"  # ship.py / undo.py check Kevin's yes token themselves
         if _pushes(command) or SHIP_TOOLS.search(command):
             return _deny(_ship_reason()), "ship only"
