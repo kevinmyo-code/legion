@@ -317,6 +317,21 @@ class TestTasks(WorkerCase):
         [finish] = self.engine.finished(58)
         self.assertEqual(finish["status"], "done")
 
+    def test_mail_asked_on_a_laptop_that_cannot_mail_says_where_it_went(self):
+        """2026-11-22: the engine turned "email it to me" into files (full) or a summary (listed)."""
+        no_mail = {"address": "", "kevin": ""}
+        self.engine.queue(id=60, deliver="files",
+                          request=f"the rates as a PDF, email it to me {fake(sleep=0.1)}")
+        self.engine.queue(id=61, request=f"plan the week and e-mail me {fake(sleep=0.1)}")
+        self.engine.queue(id=62, request=f"send me the form scan {fake(sleep=0.1)}", deliver="files")
+        self.start(mail=no_mail)
+        self.wait(lambda: all(self.engine.finished(i) for i in (60, 61, 62)), what="tasks")
+        msg = {i: [m for m in self.msgs() if m.startswith(f"[task {i}]")][0] for i in (60, 61, 62)}
+        self.assertIn("sends it to his phone instead", msg[60])
+        self.assertIn("to_pdf.py", msg[60])
+        self.assertIn("cannot send mail. Say so in the summary.", msg[61])
+        self.assertNotIn("cannot send mail", msg[62])
+
     def test_files_delivery_over_twenty_files_asks_first_and_uploads_nothing(self):
         found = []
         for i in range(21):

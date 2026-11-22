@@ -532,6 +532,7 @@ class TestToPdf(Base):
             '<iframe src="file:///c:/secret.txt">inside</iframe><object data="x"><p>obj</p></object>'
             '<script>document.write("ran")</script><a href="https://x.example">site</a>'
             '<svg><image href="https://x.example/i.png"/></svg><form action="https://x"><input></form>'
+            '<iframe src="file:///c:/secret2.txt"/><p>after the self-closed frame</p>'
             '</body></html>', encoding="utf-8")
         seen = []
         o = to_pdf.convert(self.paths, 41, "day.html", None, render=self.fake_render(seen))
@@ -542,7 +543,8 @@ class TestToPdf(Base):
         self.assertLess(page.index("Content-Security-Policy"), page.index("<title>"))
         self.assertIn("default-src 'none'", page)
         for kept in ("<h1>Garden walk</h1>", "Morning &amp; <b>lunch</b>", "p > b { color: red }",
-                     'src="data:image/png;base64,AAAA"', "<a>site</a>"):
+                     'src="data:image/png;base64,AAAA"', "<a>site</a>",
+                     "<p>after the self-closed frame</p>"):
             self.assertIn(kept, page)
         for gone in ("refresh", "cdn.example", "<base", "onload", "onclick", "track.example",
                      "<iframe", "inside", "secret", "<object", "obj", "<script", "document.write",

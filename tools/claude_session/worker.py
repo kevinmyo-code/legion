@@ -149,6 +149,19 @@ def files_instructions(confirmed: bool) -> str:
                    "still list them with --found.")
 
 
+MAIL_WORD_RE = re.compile(r"\be-?mail", re.I)
+
+
+def no_mail_line(to_phone: bool) -> str:
+    """2026-11-22: the engine turns "email it to me" into files on the phone (or a summary on a
+    listed machine) when this laptop cannot mail. The helper says so, so no one waits for mail."""
+    if to_phone:
+        return ("He asked for it by email, but this laptop cannot send mail, so LEGION sends it to "
+                "his phone instead. Make the result a file (a write-up as a PDF with to_pdf.py), "
+                "list it with --found, and say in the summary it went to his phone, not by email.")
+    return "He asked for it by email, but this laptop cannot send mail. Say so in the summary."
+
+
 def over_files_caps(found) -> bool:
     total = sum(int(f.get("size") or 0) for f in found)
     return len(found) > FILES_MAX_COUNT or total > FILES_MAX_TOTAL_BYTES
@@ -1194,6 +1207,9 @@ class Worker:
             else:  # the engine refuses this; held here too (ruling 5)
                 lines.append("Kevin asked for files on his phone, but this laptop returns "
                              "summaries only. Say so in the summary.")
+        if (t.get("deliver") != DELIVER_EMAIL_SELF and MAIL_WORD_RE.search(t["request"])
+                and not self.can_mail()):
+            lines.append(no_mail_line(t.get("deliver") == DELIVER_FILES))
         lines.append(f"Work folder: {work}")
         return "\n".join(lines)
 

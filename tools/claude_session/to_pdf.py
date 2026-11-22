@@ -94,6 +94,9 @@ class _Sanitiser(HTMLParser):
         self.in_style = tag == "style"
 
     def handle_startendtag(self, tag, attrs):
+        # `<svg/>` or `<iframe/>` has no end tag to wait for: dropped alone, never the rest.
+        if self.skip or tag in _DROP_WITH_CONTENT:
+            return
         self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
@@ -185,6 +188,7 @@ def edge_render(page: Path, out: Path, scratch: Path) -> None:
     except subprocess.TimeoutExpired:
         from session import kill_tree  # noqa: PLC0415
         kill_tree(proc.pid)
+        out.unlink(missing_ok=True)  # never leave a half-written PDF behind
         raise RuntimeError("the browser took too long to print") from None
 
 
