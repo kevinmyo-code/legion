@@ -878,6 +878,14 @@
             padding-right: var(--orb-room);
         }
     }
+    /* Under 1100 px the column's own gutter is 1.25u, not 3.5u (below): the room is reckoned from
+       the gutter there really is, or the header's last link ran under the orb at 900 px. */
+    @media (min-width: 900px) and (max-width: 1100px) and (prefers-reduced-motion: no-preference) {
+        .recruiter[data-voice="on"],
+        .recruiter [data-story="on"] {
+            --orb-room: max(0px, calc(14rem - max(1.25 * var(--u), (100vw - 46 * var(--u)) / 2)));
+        }
+    }
 
     /* The light behind the page: three soft glows of the mood's colours drifting slowly. Only
        transform moves (each glow is its own layer, its softness drawn once in a gradient, never a
