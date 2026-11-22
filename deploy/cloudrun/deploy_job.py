@@ -90,6 +90,11 @@ def main() -> int:
         help="the exact image deploy.py just built and pushed; required unless --dry-run",
     )
     parser.add_argument(
+        "--ci", action="store_true",
+        help="for .github/workflows/ship.yml: skip `gcloud services enable` (the APIs are on; the deploy "
+             "identity holds no serviceusage.services.enable)",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="print every gcloud command this would run and run none of them",
     )
@@ -135,14 +140,17 @@ def main() -> int:
     if args.dry_run:
         print("--dry-run: printing every command, running none of them.\n")
 
-    print("Enabling the APIs this needs (no-op if already on) ...")
-    run(
-        [
-            gcloud, "services", "enable",
-            "run.googleapis.com", "cloudscheduler.googleapis.com", "secretmanager.googleapis.com",
-        ],
-        args.dry_run,
-    )
+    if args.ci:
+        print("--ci: not enabling APIs (they are on; this identity cannot enable services)")
+    else:
+        print("Enabling the APIs this needs (no-op if already on) ...")
+        run(
+            [
+                gcloud, "services", "enable",
+                "run.googleapis.com", "cloudscheduler.googleapis.com", "secretmanager.googleapis.com",
+            ],
+            args.dry_run,
+        )
 
     if args.dry_run:
         verb = "create-or-update"

@@ -46,6 +46,7 @@ on:
       - 'shared/cards/fixtures.json'
       - 'deploy/crontab'
       - 'deploy/cloudrun/_common.py'
+      - 'deploy/ship_checks.py'
       - 'tools/connect_session.py'
       - 'tools/claude_session/test_fixtures/workflows/match_cases.json'
       - 'docs/**'
@@ -67,6 +68,7 @@ on:
       - 'shared/cards/fixtures.json'
       - 'deploy/crontab'
       - 'deploy/cloudrun/_common.py'
+      - 'deploy/ship_checks.py'
       - 'tools/connect_session.py'
       - 'tools/claude_session/test_fixtures/workflows/match_cases.json'
       - 'docs/**'
@@ -154,6 +156,18 @@ jobs:
       # below): lint once hid the whole suite for a month, and must not again.
       - name: ruff
         run: uv run --no-sync ruff check .
+
+      # Two checks the laptop engine ship ran in its step 1c (cloud-gates review F6): they need no key, so
+      # they run on every push here. A model change with no schema file fails; so does a docs corpus that
+      # no longer matches the public docs it is generated from.
+      - name: No schema file missing (makemigrations --check)
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync python manage.py makemigrations --check --dry-run -v0
+
+      - name: Docs corpus is current (gen_docs_corpus.py --check)
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: server/.venv/bin/python server/assistant/gen_docs_corpus.py --check
 
       # The contract check, and it is the same failure the staleness test
       # (`tests/test_openapi_schema.py`) raises - run here as its own step so a stale contract is

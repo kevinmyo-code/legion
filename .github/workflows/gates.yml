@@ -1,0 +1,387 @@
+# Live gates that need a real Gemini key (cloud-builds plan step 6, 2026-11-20): the phone's voice eval
+# (laptop harness, invented data) and the money specialist eval, and the engine's realrun gate plus one
+# real chip turn. The same commands the laptop ship templates run in their "live gate" steps.
+#
+# workflow_dispatch ONLY, never on a push, a pull request or a fork; `sha` must be on dev
+# branch of this repo. Jobs run in the `gates` environment, whose one secret is GEMINI_API_KEY.
+# Without that secret every job FAILS at its first step (it never skips, and a skip is never a pass).
+# The key is written to a file only the job's user can read, handed over as LEGION_GEMINI_KEY_FILE
+# like on the laptop, never printed, and deleted at the end. It builds, signs, publishes and deploys
+# nothing; it holds no other secret and no Google sign-in.
+#
+# Setup: the `gates` environment exists (deployment branches: dev; no reviewer). Kevin adds the secret
+# GEMINI_API_KEY himself; agents never place keys. He chose his EXISTING Gemini key, not a separate
+# capped one, so nothing outside this file caps the spend: this file bounds it itself (below). Do not
+# dispatch it until `gh secret list --env gates` shows the key (it would only fail at its first step).
+#
+# Spend, bounded here: about $0.10 to $0.20 of Gemini per full run. The phone eval runs the 36 named
+# cases once, retries at most 5 failed cases once each (more than 5 failures = fail, no retry); the
+# engine gate is capped by REALRUN_BUDGET_USD=0.09 (its tests stop at the cap and that counts as a
+# fail); the chip turn is about half a cent; job time limits 45 and 30 minutes. One run at a time for
+# the whole workflow (a queue), and job `cap` stops a run when this workflow already ran more than
+# MAX_RUNS_PER_DAY = 6 attempts today (UTC; re-runs count): four ships plus two re-runs. Each job that
+# holds the key also refuses attempt 3 or later of its run (at most 2 attempts per run). Worst case per full run, in model
+# calls (estimate): about 40 voice turns x up to 4 rounds = 160, plus 2 speech cases (2 TTS + 2 STT),
+# plus at most 5 retried cases (about 20), plus 7 money calls, plus the engine gate (stops at $0.09)
+# and 1-3 chip calls: under about 200 calls, about $0.20. With the cap: under about 1,200 calls and
+# about $1.20 a day. Runner minutes are free (public repo).
+# Only from dev: `sha` must be on origin/dev (review G3). Uploads only scorecards (case ids, pass or
+# fail, counts) after .github/scripts/scrub_gate_out.sh: raw console text stays on the runner (G1).
+name: Gates
+# ship.yml finds the gate run for a commit by this title (a dispatch run's head sha is dev's, not `sha`).
+# A phone run on any list but the committed one is titled "partial", and no publish accepts it (review F1).
+run-name: "Gates ${{ inputs.which }}${{ (inputs.which != 'engine' && inputs.phone_cases != 'default') && ' partial' || '' }} ${{ inputs.sha }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit to gate (full 40-hex sha, on dev)"
+        required: true
+        type: string
+      which:
+        description: "Which gates"
+        required: true
+        default: all
+        type: choice
+        options: [all, phone, engine]
+      phone_cases:
+        description: "Phone voice eval cases: 'default' = the committed list tools/voice_eval/gate_cases.txt at the sha (the only list a publish accepts); or a comma list of ids (the run is then titled partial)"
+        required: false
+        default: "default"
+        type: string
+      extra_checks:
+        description: "Engine: extra live checks a ship names (comma list, at most 3): repo files server/tests/realrun_<name>.py at the sha"
+        required: false
+        default: ""
+        type: string
+      extra_cap_usd:
+        description: "Engine: spend cap per extra check in USD (at most 0.30)"
+        required: false
+        default: "0.12"
+        type: string
+
+permissions:
+  contents: read
+
+# One group for the whole workflow (review G2): never two runs at once. With cancel-in-progress false a
+# running run is never cancelled, but GitHub keeps only ONE pending run per group: a newer dispatch
+# cancels the older pending one. So at most one runs and one waits.
+concurrency:
+  group: gates
+  cancel-in-progress: false
+
+jobs:
+  cap:
+    name: daily cap and inputs (no key)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    env:
+      SHA: ${{ inputs.sha }}
+      CASES: ${{ inputs.phone_cases }}
+      GH_TOKEN: ${{ github.token }}
+      MAX_RUNS_PER_DAY: '6'
+    steps:
+      - name: Inputs, dispatch ref, and at most MAX_RUNS_PER_DAY runs of this workflow today (UTC)
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
+          [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be 'default' or a comma list of case ids"; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::Dispatch this from dev (got $GITHUB_REF)."; exit 1; }
+          [ "$GITHUB_REPOSITORY" = kevinmyo-code/legion ] || { echo "::error::Runs only in kevinmyo-code/legion."; exit 1; }
+          today=$(date -u +%F)
+          # Attempts, not runs: a re-run keeps its run id, so each run counts its run_attempt.
+          n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/gates.yml/runs?created=>=$today&per_page=100" --jq '[.workflow_runs[].run_attempt] | add // 0')
+          echo "gates attempts today (UTC $today), this one included: $n of at most $MAX_RUNS_PER_DAY"
+          [ "$n" -le "$MAX_RUNS_PER_DAY" ] || { echo "::error::daily cap reached ($n attempts today, cap $MAX_RUNS_PER_DAY): the key is Kevin's main key. Nothing ran."; exit 1; }
+
+  phone:
+    needs: cap
+    if: inputs.which == 'all' || inputs.which == 'phone'
+    name: phone voice eval + money specialist eval
+    runs-on: ubuntu-latest
+    environment: gates
+    timeout-minutes: 45
+    env:
+      JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
+      SHA: ${{ inputs.sha }}
+      CASES: ${{ inputs.phone_cases }}
+    steps:
+      - name: The key exists (fail closed); at most 2 attempts of this run
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # "Re-run failed jobs" does not re-run `cap`, so this job counts its own attempts.
+          [ "$GITHUB_RUN_ATTEMPT" -le 2 ] || { echo "::error::attempt $GITHUB_RUN_ATTEMPT of this run: at most 2 attempts spend the key. Dispatch a new run (the daily cap counts it). Nothing ran."; exit 1; }
+          [ -n "$GEMINI_API_KEY" ] || { echo "::error::Secret GEMINI_API_KEY is not set in the gates environment. Nothing ran; this is a FAIL, not a skip (see this file's header)."; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
+          [[ "$CASES" =~ ^[a-z0-9_,]+$ ]] || { echo "::error::phone_cases must be 'default' or a comma list of case ids"; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      # This run's own commit (the dev tip it was dispatched on): the scrub comes from here, never from
+      # the commit under test.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: trusted
+
+      - name: The commit is on dev (review G3; it runs with Kevin's main key)
+        run: |
+          git merge-base --is-ancestor "$SHA" origin/dev || { echo "::error::$SHA is not on origin/dev. Nothing ran."; exit 1; }
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Point local.properties at the runner's SDK (no key baked)
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          [ -n "${sdk}" ] || { echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set."; exit 1; }
+          echo "sdk.dir=${sdk}" > local.properties
+          chmod +x gradlew
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4 (v4.4.3)
+        with:
+          cache-read-only: true
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Key file (never printed)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$GEMINI_API_KEY" > "$RUNNER_TEMP/gk.txt"
+          echo "LEGION_GEMINI_KEY_FILE=$RUNNER_TEMP/gk.txt" >> "$GITHUB_ENV"
+
+      # voice_eval.py exits 0 only when every named case ran and passed; a VoiceEvalRun that skipped
+      # writes no run log, which voice_eval.py reports as a failure. Rule fail_twice (the phone ship's):
+      # a failed case runs once more alone and fails the gate only if it fails again.
+      - name: Phone voice eval (laptop harness, invented data)
+        env:
+          LEGION_GRADLE: ./gradlew -Pnokey --no-daemon
+        run: |
+          set -uo pipefail
+          # Raw console text (model replies, tool calls) stays in RUNNER_TEMP and is never uploaded.
+          raw="$RUNNER_TEMP/gate-raw"; mkdir -p "$raw"
+          if [ "$CASES" = default ]; then
+            [ -f tools/voice_eval/gate_cases.txt ] || { echo "::error::no tools/voice_eval/gate_cases.txt at $SHA: run a named list (the run is then partial)"; exit 1; }
+            CASES=$(tr -d '\r' < tools/voice_eval/gate_cases.txt | grep -vE '^[[:space:]]*(#|$)' | paste -sd, -)
+            echo "requested=default" > "$raw/requested.txt"
+          else
+            echo "requested=partial" > "$raw/requested.txt"
+          fi
+          [[ "$CASES" =~ ^[a-z0-9_]+(,[a-z0-9_]+)*$ ]] || { echo "::error::the case list is not a comma list of ids"; exit 1; }
+          echo "$CASES" > "$raw/cases.txt"
+          echo "cases: $(echo "$CASES" | tr ',' '\n' | wc -l) ($(cut -d= -f2 "$raw/requested.txt"))"
+          python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
+            --only "$CASES" --json "$raw/voice.json" > "$raw/voice.txt" 2>&1
+          rc=$?
+          grep -E '^VOICE EVAL|^lengths ' "$raw/voice.txt" || true
+          [ "$rc" = 0 ] && { echo "voice eval passed: every case, first run"; exit 0; }
+          [ -f "$raw/voice.json" ] || { echo "::error::the voice eval run broke (exit $rc, no scorecard): nothing to retry"; exit 1; }
+          failed=$(python - "$CASES" "$raw/voice.json" <<'EOF'
+          import json, sys
+          s = json.load(open(sys.argv[2], encoding="utf-8"))
+          ran = {r["id"] for r in s["cases"]}
+          bad = [r["id"] for r in s["cases"] if not r["pass"] and not r["known_limit"] and not r["proves_nothing"]]
+          bad += [c for c in sys.argv[1].split(",") if c and c not in ran]
+          print(" ".join(bad))
+          EOF
+          )
+          [ -n "$failed" ] || { echo "::error::the voice eval exited $rc but names no failed case"; exit 1; }
+          n=$(echo $failed | wc -w)
+          [ "$n" -le 5 ] || { echo "::error::$n cases failed ($failed): more than 5, so no retries (spend bound)"; exit 1; }
+          twice=""
+          for c in $failed; do
+            python tools/voice_eval.py laptop --cases tools/voice_eval/cases.json --cases tools/voice_eval/reply_length.json \
+              --only "$c" > "$raw/retry-$c.txt" 2>&1 && { echo "retry $c: passed"; echo "$c" >> "$raw/retried-pass.txt"; } || { echo "retry $c: failed again"; twice="$twice $c"; }
+          done
+          [ -z "$twice" ] || { echo "::error::failed twice:$twice"; exit 1; }
+          echo "voice eval passed under fail_twice (retried: $failed)"
+
+      - name: Money specialist eval
+        run: |
+          set -euo pipefail
+          ./gradlew -Pnokey --no-daemon :app:testDebugUnitTest --tests com.kevin.legion.service.MoneySpecialistEvalCasesTest --rerun -q
+          python tools/money_specialist_eval.py --key-file "$LEGION_GEMINI_KEY_FILE" > "$RUNNER_TEMP/gate-raw/money.txt" 2>&1 \
+            || { tail -1 "$RUNNER_TEMP/gate-raw/money.txt"; exit 1; }
+          tail -1 "$RUNNER_TEMP/gate-raw/money.txt"
+
+      - name: Forget the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gk.txt"
+
+      # Only counts, case ids and pass/fail go up (review G1): artifacts on a public repo are readable by
+      # any signed-in user and are not masked.
+      - name: Scorecard only, then scrub (allow-list of names; any key-like text fails the job)
+        id: scrub
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p gate-out
+          raw="$RUNNER_TEMP/gate-raw"
+          if [ -f "$raw/voice.json" ] && [ -f "$raw/cases.txt" ]; then
+            python3 - "$raw" gate-out/voice-scorecard.json <<'EOF'
+          import json, os, sys
+          raw, dst = sys.argv[1], sys.argv[2]
+          first = {c["id"]: c for c in json.load(open(os.path.join(raw, "voice.json"), encoding="utf-8")).get("cases", [])}
+          retried = set()
+          if os.path.exists(os.path.join(raw, "retried-pass.txt")):
+              retried = set(open(os.path.join(raw, "retried-pass.txt")).read().split())
+          requested = open(os.path.join(raw, "requested.txt")).read().strip().split("=", 1)[1]
+          ids = open(os.path.join(raw, "cases.txt")).read().strip().split(",")
+          rows = []
+          for i in ids:
+              c = first.get(i)
+              if c is None:
+                  status = "pass_on_retry" if i in retried else "not_run"
+              elif c.get("pass"):
+                  status = "pass"
+              elif c.get("known_limit"):
+                  status = "known_limit"
+              elif c.get("proves_nothing"):
+                  status = "proves_nothing"
+              else:
+                  status = "pass_on_retry" if i in retried else "fail"
+              rows.append({"id": i, "status": status})
+          ok = all(r["status"] in ("pass", "pass_on_retry", "known_limit", "proves_nothing") for r in rows)
+          json.dump({"requested": requested, "cases": rows, "all_passed": ok}, open(dst, "w", encoding="utf-8"), indent=1)
+          EOF
+          fi
+          if [ -f "$raw/money.txt" ]; then tail -1 "$raw/money.txt" | grep -E '^[0-9]+/[0-9]+ right' > gate-out/money-summary.txt || true; fi
+          s=trusted/.github/scripts/scrub_gate_out.sh
+          [ -f "$s" ] || { echo "::error::no scrub script at $s: nothing is uploaded"; rm -rf gate-out; exit 1; }
+          bash "$s" gate-out voice-scorecard.json money-summary.txt
+
+      - name: Keep the scorecard (only after a successful scrub)
+        if: always() && steps.scrub.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gates-phone-${{ inputs.sha }}
+          path: gate-out/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  engine:
+    needs: cap
+    if: inputs.which == 'all' || inputs.which == 'engine'
+    name: engine realrun gate + one chip turn
+    runs-on: ubuntu-latest
+    environment: gates
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: legion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      SHA: ${{ inputs.sha }}
+      # Throwaway values for a throwaway database, as in server.yml; not secrets.
+      SECRET_KEY: ci-only-not-a-real-secret-key-0000000000
+      DJANGO_DEBUG: 'false'
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      MEDIA_ROOT: /tmp/legion-media
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/legion
+    steps:
+      - name: The key exists (fail closed); at most 2 attempts of this run
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # "Re-run failed jobs" does not re-run `cap`, so this job counts its own attempts.
+          [ "$GITHUB_RUN_ATTEMPT" -le 2 ] || { echo "::error::attempt $GITHUB_RUN_ATTEMPT of this run: at most 2 attempts spend the key. Dispatch a new run (the daily cap counts it). Nothing ran."; exit 1; }
+          [ -n "$GEMINI_API_KEY" ] || { echo "::error::Secret GEMINI_API_KEY is not set in the gates environment. Nothing ran; this is a FAIL, not a skip (see this file's header)."; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+
+      # This run's own commit (the dev tip it was dispatched on): the scrub comes from here, never from
+      # the commit under test.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: trusted
+
+      - name: The commit is on dev (review G3; it runs with Kevin's main key)
+        run: |
+          git merge-base --is-ancestor "$SHA" origin/dev || { echo "::error::$SHA is not on origin/dev. Nothing ran."; exit 1; }
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: false   # this job holds the key: it saves no cache other runs restore (review F4)
+      - name: Environment from the pinned requirements (as server.yml)
+        working-directory: server
+        run: |
+          uv venv --python 3.13
+          uv pip install -r requirements.txt
+
+      - name: Key file (never printed)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$GEMINI_API_KEY" > "$RUNNER_TEMP/gk.txt"
+          echo "LEGION_GEMINI_KEY_FILE=$RUNNER_TEMP/gk.txt" >> "$GITHUB_ENV"
+
+      # Today's laptop ship scripts' step 1c, from the TRUSTED copy (this run's own dev commit): the standard
+      # gate (fail_twice with the heard-back-only retry), one chip turn, and the extra checks the ship names.
+      # Verdicts and spend estimates go to gate-raw/summary.txt; raw pytest output stays on the runner.
+      - name: Engine live gate (standard gate, chip turn, extra checks)
+        env:
+          EXTRAS: ${{ inputs.extra_checks }}
+          EXTRA_CAP: ${{ inputs.extra_cap_usd }}
+        run: |
+          set -euo pipefail
+          [[ "$EXTRAS" =~ ^[a-z0-9_,]*$ ]] || { echo "::error::extra_checks must be a comma list of realrun_<words> names"; exit 1; }
+          s=trusted/.github/scripts/engine_live_gate.sh
+          [ -f "$s" ] || { echo "::error::no engine gate script at $s"; exit 1; }
+          bash "$s" "$GITHUB_WORKSPACE/server" "$RUNNER_TEMP/gate-raw" "$EXTRAS" "$EXTRA_CAP"
+
+      - name: Forget the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/gk.txt"
+
+      # The turns (realrun-out) stay on the runner; only the counts go up (review G1).
+      - name: Scorecard only, then scrub
+        id: scrub
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p gate-out
+          [ -f "$RUNNER_TEMP/gate-raw/summary.txt" ] && cp "$RUNNER_TEMP/gate-raw/summary.txt" gate-out/engine-summary.txt
+          s=trusted/.github/scripts/scrub_gate_out.sh
+          [ -f "$s" ] || { echo "::error::no scrub script at $s: nothing is uploaded"; rm -rf gate-out; exit 1; }
+          bash "$s" gate-out engine-summary.txt
+
+      - name: Keep the scorecard (only after a successful scrub)
+        if: always() && steps.scrub.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gates-engine-${{ inputs.sha }}
+          path: gate-out/
+          if-no-files-found: ignore
+          retention-days: 7

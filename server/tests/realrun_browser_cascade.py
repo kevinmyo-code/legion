@@ -65,7 +65,10 @@ def real(monkeypatch, settings):
         rates = {**throttle.THROTTLE_RATES, "assistant_turn": "1000/min"}
         rates["assistant_turn_ip"] = "1000/min"
         monkeypatch.setattr(throttle, "THROTTLE_RATES", rates)
-    settings.LEGION_DEMO_DAILY_BUDGET_USD = "5"
+    # The demo's own daily budget meters these turns; REALRUN_DEMO_BUDGET_USD lowers it for a gate
+    # run (the cloud gate gives the chip turn 0.10 USD, about ten text calls); default 5 as before.
+    budget = os.environ.get("REALRUN_DEMO_BUDGET_USD", "").strip()
+    settings.LEGION_DEMO_DAILY_BUDGET_USD = budget or "5"
     cache.clear()
     OUT.mkdir(parents=True, exist_ok=True)
 

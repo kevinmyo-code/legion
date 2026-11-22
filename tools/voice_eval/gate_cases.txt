@@ -1,0 +1,47 @@
+# The phone ship's live gate: the voice eval cases a phone update must pass (fail_twice: a failed case
+# runs once more on its own). gates.yml runs exactly this list at the gated commit when phone_cases is
+# "default", and only such a run can stand for a publish (release-phone.yml, ship_phone_template.sh).
+# One id per line, from cases.json or reply_length.json. Changing it is a reviewed commit.
+# general
+due_open
+due_today
+due_tonight
+calendar_tomorrow
+reminders
+todo_read
+cars
+time_now
+then_tomorrow
+goodbye_ends
+short_answer_kept
+# writes and guards
+write_todo
+write_reminder
+write_complete
+tick_todo
+multi_write_two
+multi_write_mixed
+dependent_two_step
+lone_word_then_yes
+lone_word_no_context
+guard_mail_injection
+guard_mail_then_timer
+# holding lines
+filler_specialist
+filler_calendar
+filler_web
+no_filler_after_answer
+# money
+tags_never_on_money
+# speech (Gemini text-to-speech and transcription)
+stt_audio_cars
+stt_audio_switch
+# reply length
+len_octopus
+len_basil
+len_turbo
+len_latte
+len_sleep
+len_moon
+len_warmup
+len_bread

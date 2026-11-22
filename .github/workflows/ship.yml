@@ -1,91 +1,282 @@
-# Ship one commit of the engine from GitHub, by hand only (architecture review Q6).
+# Ship the engine from GitHub, by hand only (cloud-builds step 2, 2026-11-21). It does what the laptop
+# ship_engine_*_1121.sh scripts do, in three jobs:
 #
-# workflow_dispatch ONLY: nothing ships on a push. Kevin clicks "Run workflow", gives the commit,
-# and leaves "dry run" ticked for the plan or unticks it to ship. Same tool as the laptop:
-# deploy/ship.py, with --no-worker (the Claude worker lives on the laptop) and no APK (the phone
-# build is made and published on the laptop).
+#   checks   no credentials: the inputs, dev = main = sha (this workflow pushes NOTHING: dev and main are
+#            already at the commit; the owner's merge put them there), CI green for that exact commit,
+#            the cloud engine gate run for it (gates.yml, verified the way release-phone verifies its
+#            phone gate), the scope (every changed image file pinned by path and blob, frozen files
+#            unchanged, schema files added only and never destructive: deploy/ship_checks.py).
+#   rehearse only when the ship adds schema files: on a throwaway Postgres, the LIVE code keeps serving on
+#            the NEW schema (deploy/rehearse_old_on_new.sh, each side in its own environment).
+#   deploy   the production environment (one approval tap): live state and switch checks, the deploy
+#            window, deploy.py --ci then deploy_job.py --ci, confirmation, probes, the error log, the
+#            rollback text (deploy/ship_engine_deploy.sh). dry_run stops after the read-only checks.
 #
-# Auth is Workload Identity Federation: no JSON key exists anywhere. The setup Kevin does once is in
-# deploy/cloudrun/README.md, "Shipping from GitHub (Workload Identity Federation)". Until it is
-# done this workflow fails at the auth step and changes nothing.
-name: Ship
+# Dispatch from dev only (Run workflow, branch dev), with sha = dev's tip. Auth is Workload Identity
+# Federation (no key anywhere); the deploy identity and its roles: deploy/cloudrun/README.md.
+# deploy/ship.py is not used by this workflow.
+name: Ship engine
+
+run-name: "Ship engine ${{ inputs.dry_run && 'DRY RUN' || 'DEPLOY' }} ${{ inputs.sha }} over ${{ inputs.expect_live_rev }}, gates ${{ inputs.gates_run_id }}${{ inputs.unfreeze != '' && ', CHANGES FROZEN LIVE PATHS' || '' }}"
 
 on:
   workflow_dispatch:
     inputs:
       sha:
-        description: "Commit to ship (full 40-hex SHA; must fast-forward dev and main)"
+        description: "Commit to ship: full 40-hex SHA, must be dev's tip and main's (the run's own commit)"
         required: true
         type: string
+      live_code:
+        description: "Full SHA of the code the live revision runs (proven by hand, never from a label)"
+        required: true
+        type: string
+      expect_live_rev:
+        description: "The live revision now, e.g. legion-00106-sjm (must hold 100% of the traffic)"
+        required: true
+        type: string
+      gates_run_id:
+        description: "Run id of a passed gates.yml run (engine or all) for this sha"
+        required: true
+        type: string
+      image_files:
+        description: "Every changed file under server/ and deploy/ as path:blob, space separated"
+        required: true
+        type: string
+      migrations:
+        description: "Each added schema file as path:blob, space separated (empty: none)"
+        required: false
+        default: ""
+        type: string
+      expected_extras:
+        description: "The gate's extra checks this ship relies on, e.g. realrun_web_carry_checks (empty: none)"
+        required: false
+        default: ""
+        type: string
+      add_checks:
+        description: "Add-only, space separated: unset:<ENV_NAME> frozen:<path> probe:<METHOD>:/api/<path>:<4xx codes>"
+        required: false
+        default: ""
+        type: string
+      unfreeze:
+        description: "Frozen live files this ship changes: '<file>=<why>; ...' (empty: none; shown to the approver)"
+        required: false
+        default: ""
+        type: string
       dry_run:
-        description: "Dry run: read-only checks and the plan, nothing changes"
+        description: "Dry run: every check and the plan, nothing built or deployed"
         required: true
         default: true
         type: boolean
 
 permissions:
-  contents: write   # fast-forward push of dev and main to the shipped commit
-  id-token: write   # the OIDC token Workload Identity Federation exchanges
+  contents: read
 
 concurrency:
-  group: ship
+  group: ship-engine
   cancel-in-progress: false
 
-jobs:
-  ship:
-    runs-on: ubuntu-latest
-    environment: production   # protection rules (required reviewer) live on this environment
-    timeout-minutes: 45
-    steps:
-      - name: Check the input is a full SHA
-        env:
-          SHA: ${{ inputs.sha }}
-        run: |
-          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha must be 40 lowercase hex characters"; exit 1; }
+env:
+  SHA: ${{ inputs.sha }}
+  LIVE_CODE: ${{ inputs.live_code }}
+  EXPECT_LIVE_REV: ${{ inputs.expect_live_rev }}
 
-      - uses: actions/checkout@v4
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      has_migrations: ${{ steps.scope.outputs.has_migrations }}
+      switches: ${{ steps.scope.outputs.switches }}
+      probes: ${{ steps.scope.outputs.probes }}
+    steps:
+      - name: The inputs, and the run is a dispatch of dev at sha
+        env:
+          GATES_RUN_ID: ${{ inputs.gates_run_id }}
+          IMAGE_FILES: ${{ inputs.image_files }}
+          MIGRATIONS: ${{ inputs.migrations }}
+          EXTRAS: ${{ inputs.expected_extras }}
+          ADD_CHECKS: ${{ inputs.add_checks }}
+          UNFREEZE: ${{ inputs.unfreeze }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
+          [[ "$LIVE_CODE" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::live_code must be 40 lowercase hex characters"; exit 1; }
+          [[ "$EXPECT_LIVE_REV" =~ ^legion-[0-9]{5}-[a-z0-9]{3}$ ]] || { echo "::error::expect_live_rev must look like legion-00106-sjm"; exit 1; }
+          [[ "$GATES_RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::gates_run_id must be a run id"; exit 1; }
+          [[ "$IMAGE_FILES" =~ ^[A-Za-z0-9_./:\ -]+$ ]] || { echo "::error::image_files: path:blob pairs only"; exit 1; }
+          [[ "$MIGRATIONS" =~ ^[A-Za-z0-9_./:\ -]*$ ]] || { echo "::error::migrations: path:blob pairs only"; exit 1; }
+          [[ "$EXTRAS" =~ ^[a-z0-9_,\ ]*$ ]] || { echo "::error::expected_extras: check names only"; exit 1; }
+          [[ "$ADD_CHECKS" =~ ^[A-Za-z0-9_:/.,\ -]*$ ]] || { echo "::error::add_checks: unset:/frozen:/probe: entries only"; exit 1; }
+          unfreeze_ok='^[A-Za-z0-9_./=;:,() -]*$'
+          [[ "$UNFREEZE" =~ $unfreeze_ok ]] || { echo "::error::unfreeze: '<file>=<why>; ...' in plain words"; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/dev ] || { echo "::error::dispatch from dev (this run is on $GITHUB_REF)"; exit 1; }
+          [ "$GITHUB_SHA" = "$SHA" ] || { echo "::error::sha $SHA is not the run's own commit $GITHUB_SHA (dev moved, or the wrong sha)"; exit 1; }
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - uses: google-github-actions/auth@v2
+      - name: dev and main are both at sha
+        run: |
+          git fetch -q origin dev main
+          [ "$(git rev-parse origin/dev)" = "$SHA" ] || { echo "::error::dev is $(git rev-parse origin/dev), not $SHA"; exit 1; }
+          [ "$(git rev-parse origin/main)" = "$SHA" ] || { echo "::error::main is $(git rev-parse origin/main), not $SHA: merge dev into main first (fast-forward)"; exit 1; }
+          echo "dev = main = $SHA"
+
+      - name: CI green for this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Each CI workflow that ran on sha (a push, or a dispatch, on dev or main), judged by its newest run
+          # (a passed re-run supersedes a failed one): every one must be green, and the server suite must be
+          # one of them. A push its path filters skipped has no server run: dispatch server.yml on dev first.
+          newest=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA&per_page=100" \
+            --jq '[.workflow_runs[] | select((.event == "push" or .event == "workflow_dispatch") and (.head_branch == "dev" or .head_branch == "main") and (.head_repository.full_name == "'"$GITHUB_REPOSITORY"'") and (.path | test("workflows/(server|frontend|android|headunit)[.]yml$")))] | group_by(.path)[] | max_by(.run_started_at) | [.path, (.conclusion // .status)] | @tsv')
+          echo "$newest"
+          awk -F'\t' '$1 == ".github/workflows/server.yml" && $2 == "success" {f = 1} END {exit !f}' <<<"$newest" \
+            || { echo "::error::no successful server.yml run on $SHA (dev or main)"; exit 1; }
+          not_green=$(printf '%s\n' "$newest" | awk -F'\t' 'NF && $2!="success"')
+          [ -z "$not_green" ] || { echo "::error::not green on $SHA: $not_green"; exit 1; }
+          echo "CI green on $SHA"
+
+      - name: The cloud engine gate for this sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATES_RUN_ID: ${{ inputs.gates_run_id }}
+          EXTRAS: ${{ inputs.expected_extras }}
+        run: |
+          read -r path event repo branch title concl attempt < <(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GATES_RUN_ID" \
+            --jq '[.path, .event, .head_repository.full_name, .head_branch, (.display_title | gsub(" "; "_")), .conclusion, .run_attempt] | @tsv')
+          [ "$path" = .github/workflows/gates.yml ] || { echo "::error::run $GATES_RUN_ID is $path, not gates.yml"; exit 1; }
+          [ "$event" = workflow_dispatch ] && [ "$repo" = "$GITHUB_REPOSITORY" ] && [ "$branch" = dev ] \
+            || { echo "::error::run $GATES_RUN_ID is not a dispatch from dev in this repo ($event, $repo, $branch)"; exit 1; }
+          [ "$concl" = success ] || { echo "::error::gates run $GATES_RUN_ID concluded $concl"; exit 1; }
+          engine=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GATES_RUN_ID/jobs" --jq '[.jobs[] | select(.name | startswith("engine"))] | .[0].conclusion')
+          [ "$engine" = success ] || { echo "::error::the engine job of gates run $GATES_RUN_ID is $engine"; exit 1; }
+          gh run download "$GATES_RUN_ID" -R "$GITHUB_REPOSITORY" -n "gates-engine-$SHA" -D "$RUNNER_TEMP/gatecard" \
+            || { echo "::error::gates run $GATES_RUN_ID kept no engine scorecard for $SHA"; exit 1; }
+          cat "$RUNNER_TEMP/gatecard/engine-summary.txt"
+          python3 deploy/ship_checks.py gate --summary "$RUNNER_TEMP/gatecard/engine-summary.txt" \
+            --title "${title//_/ }" --attempt "$attempt" --fix "$SHA" --expected-extras "$EXTRAS"
+
+      - name: Scope (pinned image files, frozen files, schema files)
+        id: scope
+        env:
+          IMAGE_FILES: ${{ inputs.image_files }}
+          MIGRATIONS: ${{ inputs.migrations }}
+          ADD_CHECKS: ${{ inputs.add_checks }}
+          UNFREEZE: ${{ inputs.unfreeze }}
+        run: |
+          set -o pipefail
+          printf '%s\n' $IMAGE_FILES | sed 's/:\([0-9a-f]\{40\}\)$/ \1/' > "$RUNNER_TEMP/image-files.txt"
+          printf '%s\n' $MIGRATIONS | sed 's/:\([0-9a-f]\{40\}\)$/ \1/' | awk 'NF' > "$RUNNER_TEMP/migrations.txt"
+          python3 deploy/ship_checks.py scope --fix "$SHA" --live-code "$LIVE_CODE" \
+            --image-files "$RUNNER_TEMP/image-files.txt" --migrations "$RUNNER_TEMP/migrations.txt" \
+            --add-checks "$ADD_CHECKS" --unfreeze "$UNFREEZE" | tee "$RUNNER_TEMP/scope.txt"
+          echo "has_migrations=$([ -s "$RUNNER_TEMP/migrations.txt" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          python3 deploy/ship_checks.py plan --add-checks "$ADD_CHECKS" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Ship engine ${SHA:0:8} over $EXPECT_LIVE_REV"
+            if grep -q '^UNFROZEN' "$RUNNER_TEMP/scope.txt"; then
+              echo "**This ship changes frozen live paths:**"
+              grep '^UNFROZEN' "$RUNNER_TEMP/scope.txt" | sed 's/^UNFROZEN by this ship: /- /'
+            else
+              echo "No frozen live path changes."
+            fi
+            [ -z "$ADD_CHECKS" ] || echo "Added checks: \`$ADD_CHECKS\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rehearse:
+    needs: checks
+    if: ${{ needs.checks.outputs.has_migrations == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+
+      - name: Two environments, each from its own commit's requirements (review S6)
+        run: |
+          git show "$LIVE_CODE:server/requirements.txt" > "$RUNNER_TEMP/req-old.txt"
+          git show "$SHA:server/requirements.txt" > "$RUNNER_TEMP/req-new.txt"
+          uv venv -q --python 3.13 "$RUNNER_TEMP/venv-old" && VIRTUAL_ENV="$RUNNER_TEMP/venv-old" uv pip install -q -r "$RUNNER_TEMP/req-old.txt"
+          uv venv -q --python 3.13 "$RUNNER_TEMP/venv-new" && VIRTUAL_ENV="$RUNNER_TEMP/venv-new" uv pip install -q -r "$RUNNER_TEMP/req-new.txt"
+
+      - name: Old code on the new schema (throwaway Postgres)
+        env:
+          PGURL: postgres://postgres:postgres@localhost:5432
+        run: |
+          PY_OLD="$RUNNER_TEMP/venv-old/bin/python" PY_NEW="$RUNNER_TEMP/venv-new/bin/python" \
+            bash deploy/rehearse_old_on_new.sh "$LIVE_CODE" "$SHA"
+
+  deploy:
+    needs: [checks, rehearse]
+    if: ${{ !cancelled() && needs.checks.result == 'success' && (needs.rehearse.result == 'success' || needs.rehearse.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    environment: production   # the required reviewer's one tap; the Google login only works here
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_SHIP_SERVICE_ACCOUNT }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install ship.py's one dependency
-        run: python -m pip install --quiet pyyaml==6.0.3
-
-      - name: Site config (non-secret .env, kept as an environment secret because it holds a contact address)
+      - name: Site config (the CLOUDRUN_ENV environment secret)
         env:
           CLOUDRUN_ENV: ${{ secrets.CLOUDRUN_ENV }}
         run: |
-          [ -n "$CLOUDRUN_ENV" ] || { echo "environment secret CLOUDRUN_ENV is not set; see deploy/cloudrun/README.md"; exit 1; }
+          [ -n "$CLOUDRUN_ENV" ] || { echo "::error::environment secret CLOUDRUN_ENV is not set"; exit 1; }
           printf '%s\n' "$CLOUDRUN_ENV" > deploy/cloudrun/.env
 
       - name: Ship
         env:
-          SHA: ${{ inputs.sha }}
+          FIX: ${{ inputs.sha }}
+          SWITCHES: ${{ needs.checks.outputs.switches }}
+          EXTRA_PROBES: ${{ needs.checks.outputs.probes }}
+          UNFROZEN: ${{ inputs.unfreeze }}
+          MIGRATIONS_IN: ${{ inputs.migrations }}
           DRY: ${{ inputs.dry_run }}
-          GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT }}
+          PROJECT: ${{ vars.GCP_PROJECT }}
+          REGION: us-south1
+          SERVICE: legion
+          JOB: legion-worker
+          ENGINE_URL: ${{ vars.LEGION_ENGINE_URL }}
+          LEGION_ENGINE_TOKEN: ${{ secrets.LEGION_ENGINE_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          args=(--sha "$SHA" --deploy-tree . --no-worker --records "$RUNNER_TEMP/ships")
-          [ "$DRY" = "true" ] && args+=(--dry-run)
-          python deploy/ship.py "${args[@]}"
-
-      - name: Keep the rollback record
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ship-records-${{ inputs.sha }}
-          path: ${{ runner.temp }}/ships
-          if-no-files-found: ignore
-          retention-days: 90
+          [ -n "$PROJECT" ] && [ -n "$ENGINE_URL" ] || { echo "::error::vars GCP_PROJECT and LEGION_ENGINE_URL must be set on the repo"; exit 1; }
+          printf '%s\n' $MIGRATIONS_IN | sed 's/:\([0-9a-f]\{40\}\)$/ \1/' | awk 'NF' > "$RUNNER_TEMP/migrations.txt"
+          MIGRATIONS="$RUNNER_TEMP/migrations.txt" bash deploy/ship_engine_deploy.sh

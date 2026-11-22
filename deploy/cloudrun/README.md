@@ -154,8 +154,14 @@ python deploy/ship.py --sha <40-hex> --deploy-tree ../legion-deploy \
 
 ## Shipping from GitHub (Workload Identity Federation)
 
-`.github/workflows/ship.yml` runs `deploy/ship.py --no-worker` (no laptop, no APK) when someone
-clicks "Run workflow" on the Actions tab. It has no other trigger. It authenticates with Workload
+`.github/workflows/ship.yml` ("Ship engine", 2026-11-21) ships the engine when someone clicks "Run
+workflow" on the Actions tab, from `dev`, for dev's tip once `main` equals it; it pushes nothing.
+It runs `deploy/ship_checks.py` (scope, gate run), `deploy/rehearse_old_on_new.sh` (only when a
+schema file is added), then in the `production` environment `deploy/ship_engine_deploy.sh`:
+`deploy.py --ci` and `deploy_job.py --ci`, which skip `gcloud services enable`, leave out
+`--allow-unauthenticated` (the service's policy already allows it) and suppress build-log streaming,
+so the roles below are enough. `deploy/ship.py` is the earlier design and is not used by it. It
+has no other trigger. It authenticates with Workload
 Identity Federation, so no service-account key exists anywhere. **Nothing below has been created;
 each step is for the project owner to run once.** Replace `PROJECT_ID`, `PROJECT_NUMBER` and
 `OWNER/REPO`.
