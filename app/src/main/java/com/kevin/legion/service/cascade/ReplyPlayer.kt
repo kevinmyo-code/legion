@@ -90,9 +90,15 @@ internal class ReplyPlayer(
         framesWritten = 0
     }
 
-    /** Waits until the last written frame has played, or [timeoutMs]. */
+    /**
+     * Waits until the last written frame has played, or [timeoutMs], or the head has not moved for
+     * [STALL_MS] (2026-11-21: a clip on a track that never started held the play lock for the full 4 s
+     * and pushed the answer back; a stalled head now gives the wait up at once).
+     */
     suspend fun awaitDrained(timeoutMs: Long = DRAIN_TIMEOUT_MS) {
         val deadline = System.currentTimeMillis() + timeoutMs
+        var lastHead = -1L
+        var movedAt = System.currentTimeMillis()
         while (System.currentTimeMillis() < deadline) {
             val head = synchronized(lock) {
                 val t = track ?: return@synchronized null
@@ -104,6 +110,13 @@ internal class ReplyPlayer(
                 }
             } ?: return
             if (head >= framesWritten) return
+            val now = System.currentTimeMillis()
+            if (head != lastHead) {
+                lastHead = head
+                movedAt = now
+            } else if (now - movedAt >= STALL_MS) {
+                return
+            }
             delay(POLL_MS)
         }
     }
@@ -189,6 +202,9 @@ internal class ReplyPlayer(
         private const val BYTES_PER_FRAME = 2
         private const val POLL_MS = 20L
         private const val DRAIN_TIMEOUT_MS = 4_000L
+
+        /** A head that has not moved for this long is stalled: the drain wait gives up. */
+        const val STALL_MS = 500L
         private const val HEAD_MASK = 0xFFFF_FFFFL
         private const val MS_PER_S = 1_000L
     }

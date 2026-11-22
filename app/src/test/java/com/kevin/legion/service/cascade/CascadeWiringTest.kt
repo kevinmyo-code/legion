@@ -600,6 +600,8 @@ class CascadeWiringTest {
         // The cut is made at once by whoever ends it (cutAck), never later from the cancelled clip.
         assertFalse(clip.contains("p.flush()"))
         assertTrue(clip.contains("ackPlaying = false"))
+        // Never held past its own length and a margin: the answer waits on the ack's lock.
+        assertTrue(clip.contains("p.awaitDrained(pcm.size * MS_PER_S / (p.sampleRate * PCM_BYTES_PER_SAMPLE) + ACK_DRAIN_MARGIN_MS)"))
         val cut = bodyOf(s, "cutAck")
         assertTrue(cut.indexOf("fillerJobs.endTurn()") in 0 until cut.indexOf("player?.flush()"))
         assertTrue(s.substring(s.indexOf("private fun ackSteps(")).take(1_500).contains("clipPlayback.during { playAckClip(p, pcm) }"))

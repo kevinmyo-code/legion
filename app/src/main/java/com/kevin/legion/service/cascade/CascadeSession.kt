@@ -1384,9 +1384,22 @@ internal class CascadeSession(
         audit.filler("backchannel", line)
     }
 
-    /** This turn's first-sound line ([TurnGap.firstSoundLine]) the moment there is a first sound. */
+    /**
+     * This turn's first sound was handed over: its line is logged once the playback head moves past
+     * where it is now (the sound is being heard), or the turn ends with it unheard ([TurnGap.silentLine]).
+     */
     private fun logFirstSound() {
-        turnGap?.firstSoundLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
+        val gap = turnGap?.takeIf { it.awaitingHeard() } ?: return
+        val p = player ?: return
+        val from = p.headFrames() ?: 0L
+        scope.launch(loop) {
+            val until = System.currentTimeMillis() + HEARD_WATCH_MS
+            while (System.currentTimeMillis() < until && gap.awaitingHeard()) {
+                if ((p.headFrames() ?: from) > from) gap.heard(System.currentTimeMillis())
+                gap.firstSoundLine()?.let { LiveLatency.log(LiveLatency.TAG, it) }
+                delay(HEARD_POLL_MS)
+            }
+        }
     }
 
     /**
@@ -1399,7 +1412,8 @@ internal class CascadeSession(
         ackPlaying = true
         try {
             withContext(Dispatchers.IO) { p.write(p.startable(pcm), gen) }
-            p.awaitDrained()
+            // Never held past its own length and a margin: the answer waits on this clip's lock.
+            p.awaitDrained(pcm.size * MS_PER_S / (p.sampleRate * PCM_BYTES_PER_SAMPLE) + ACK_DRAIN_MARGIN_MS)
         } finally {
             ackPlaying = false
         }
@@ -3922,6 +3936,13 @@ internal class CascadeSession(
 
         /** A backchannel's audio must be in hand within this, or it is skipped (it is from memory). */
         private const val PCM_BYTES_PER_SAMPLE = 2
+
+        /** How long the first sound's playback head is watched for ([logFirstSound]). */
+        private const val HEARD_WATCH_MS = 6_000L
+        private const val HEARD_POLL_MS = 10L
+
+        /** An acknowledgement's drain wait: its own length plus this, never more. */
+        private const val ACK_DRAIN_MARGIN_MS = 300L
 
         /** How long the phone's own read of today may take at open (normally well under 100 ms). */
         private const val AGENDA_WAIT_MS = 1_000L

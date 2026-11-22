@@ -57,4 +57,49 @@ class ShortClipTest {
         val p = ReplyPlayer(ListenCue.SAMPLE_RATE, { false })
         assertSame(chime, p.startable(chime))
     }
+
+    /**
+     * AudioFlinger's rule for a streaming track that has just started, been flushed or restarted after
+     * an underrun: nothing of it is mixed until the frames waiting reach its start threshold.
+     */
+    private class FillingTrack(private val threshold: Int) {
+        private var waiting = 0
+        var consumed = 0
+            private set
+
+        fun write(frames: Int) {
+            waiting += frames
+        }
+
+        fun mix() {
+            if (waiting >= threshold) {
+                consumed += waiting
+                waiting = 0
+            }
+        }
+    }
+
+    @Test
+    fun `a sub-threshold clip after idle is consumed with the rule, and never without it`() {
+        val clipFrames = 254 * 24 // the 14:41 "Right.", 254 ms at 24 kHz
+        val clip = ByteArray(clipFrames * 2) { 1 }
+        // The shipped build: default threshold (the buffer), clip written as it is. Never mixed.
+        FillingTrack(bufferFrames).apply {
+            write(clip.size / 2)
+            repeat(10) { mix() }
+            assertEquals(0, consumed)
+        }
+        // API 31+: the threshold is one frame. Mixed at once.
+        FillingTrack(ShortClip.startThreshold(34)!!).apply {
+            write(ShortClip.startable(clip, bufferFrames, 34).size / 2)
+            mix()
+            assertEquals(clipFrames, consumed)
+        }
+        // Below API 31: default threshold, but the clip is padded to the buffer. Mixed at once.
+        FillingTrack(bufferFrames).apply {
+            write(ShortClip.startable(clip, bufferFrames, 30).size / 2)
+            mix()
+            assertTrue("$consumed", consumed >= clipFrames)
+        }
+    }
 }
