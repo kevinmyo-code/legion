@@ -842,6 +842,8 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
 
     if tool in PEER_TOOLS:
         return _deny(_peer_reason()), "peer sessions"
+    if tool in READ_TOOLS and C.worker_transcript(paths, inp.get("file_path") or inp.get("path") or ""):
+        return _deny(C.OWN_TRANSCRIPT_REASON), "worker transcripts"
 
     if task is not None and _task_kind(paths, task) == "memory_review":
         out = _memory_review(tool, inp, task, paths)

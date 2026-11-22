@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import sys
 import tempfile
 import time
@@ -351,7 +352,20 @@ class TestHookAndContainment(Base):
     def test_transcripts_are_untrusted_by_default(self):
         t = Path.home() / ".claude" / "projects" / "C--x" / "made-up.jsonl"
         self.assertTrue(C.untrusted_file(self.paths, str(t), None, {}))
+        saved = Path.home() / ".claude" / "projects" / "C--x" / "s-1" / "tool-results" / "b1.txt"
+        self.assertFalse(C.untrusted_file(self.paths, str(saved), None, {}))
         self.assertFalse(C.untrusted_file(self.paths, str(self.root / "notes.md"), None, {}))
+
+    def test_the_workers_own_transcripts_are_never_read_but_its_saved_output_is(self):
+        own = re.sub(r"[^A-Za-z0-9]", "-", str(self.paths.work))
+        base = Path.home() / ".claude" / "projects" / own
+        for tool, key in (("Read", "file_path"), ("Grep", "path"), ("Glob", "path")):
+            with self.subTest(tool=tool):
+                out, rule = self.decide(tool, {key: str(base / "s-1.jsonl"), "pattern": "x"})
+                self.assertEqual(rule, "worker transcripts")
+        out, _ = self.decide("Read", {"file_path": str(base / "s-1" / "tool-results" / "b1.txt")})
+        self.assertIsNone(out)
+        self.assertFalse(C.tainted(self.paths, 41, "agentA", {}))
 
     def test_claude_credentials_file_is_a_credential(self):
         for p in ("C:/Users/x/.claude/.credentials.json", "C:/Users/x/app/credentials.json"):

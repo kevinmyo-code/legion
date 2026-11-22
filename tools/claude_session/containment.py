@@ -119,6 +119,9 @@ GH_WRITE_REASON = (
 ENCODED_REASON = (
     "NETWORK: an encoded PowerShell command cannot be checked, so it never runs. Write the command "
     "out in plain text.")
+OWN_TRANSCRIPT_REASON = (
+    "WORKER TRANSCRIPTS: the worker's own sessions are never read by a helper (their messages "
+    "carry confirmation tokens). Do not retry or work around it.")
 CRED_REASON = (
     "READ-THROUGH: after reading mail, the web or an untrusted file, a task may not read the "
     "worker's own files or a credential file. Do not retry or work around it.")
@@ -220,20 +223,46 @@ def prune(paths: Paths, cutoff: float) -> None:
 # --------------------------------------------------------------------------- untrusted files
 
 
-def default_untrusted() -> list[str]:
-    """Always untrusted, whatever the config says (alfred-sessions 1122): Claude Code's session
-    transcripts hold text other sessions read (mail, web pages, peers' messages), so a helper
-    that reads one, by Read, Grep or `sessions.py read`, is read-through like any web page."""
+def transcripts_root() -> Path | None:
+    """Claude Code's session transcripts, `~/.claude/projects`; None with no home (a bare env)."""
     try:
-        return [str(Path.home() / ".claude" / "projects")]
-    except RuntimeError:  # no home in this environment (a test's bare env): no ~ to read either
-        return []
+        return Path.home() / ".claude" / "projects"
+    except RuntimeError:
+        return None
+
+
+def saved_tool_output(target: str) -> bool:
+    """A file Claude Code saved a large tool result to (`<project>/<session>/tool-results/`). A
+    helper reads back its OWN output there (a long build log); whatever produced it was already
+    judged when it ran, so reading it back is not a new source."""
+    return "tool-results" in Path(norm(target)).parts
+
+
+def worker_transcript(paths: Paths, target: str) -> bool:
+    """The worker's own sessions' transcripts (their messages carry confirmation tokens): never a
+    helper's to read (alfred-sessions 1122). Its saved tool output stays readable."""
+    root = transcripts_root()
+    if root is None or not target or saved_tool_output(target):
+        return False
+    own = re.sub(r"[^A-Za-z0-9]", "-", str(paths.root)).lower()
+    try:
+        rel = Path(norm(target)).relative_to(Path(norm(root)))
+    except ValueError:
+        return False
+    return bool(rel.parts) and rel.parts[0].lower().startswith(own)
 
 
 def untrusted_file(paths: Paths, target: str, task_rec: dict | None, cfg: dict) -> bool:
+    """Read-through when the target is under a configured or task-marked folder, or a file a
+    tainted task wrote. Always (alfred-sessions 1122): any session transcript under
+    `~/.claude/projects` (they hold text other sessions read: mail, web pages, peers' messages),
+    except a helper's own saved tool output."""
     if not target:
         return False
-    roots = default_untrusted() + list(cfg.get("untrusted_paths") or [])
+    root = transcripts_root()
+    if root is not None and is_under(target, root) and not saved_tool_output(target):
+        return True
+    roots = list(cfg.get("untrusted_paths") or [])
     if isinstance(task_rec, dict):
         roots += list(task_rec.get("untrusted") or [])
     if any(r and is_under(target, r) for r in roots):

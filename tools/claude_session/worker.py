@@ -1217,7 +1217,7 @@ class Worker:
                 lines.append(f"This is Kevin's answer to task {parent}'s question, which asked to "
                              "send a message to one of his Claude sessions. If it is a clear yes, "
                              f"run only: {cmd_path(helper_python())} {cmd_path(HERE / 'sessions.py')} "
-                             f"send --task {tid} --token {tok} and put its last line in the "
+                             f"send --task {tid} --token={tok} and put its last line in the "
                              "summary. Not a clear yes: do not run it, report what Kevin said.")
             elif t.get("confirms"):  # the phone marked this as Kevin's answer to task P's question
                 tok = self.issue_token(tid, parent, "yes")
