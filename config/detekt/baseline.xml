@@ -74,7 +74,7 @@
     <ID>CyclomaticComplexMethod:VehicleHealthToolbox.kt:VehicleHealthToolbox$private suspend fun getHealth(context: Context): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getLedgerBalance(context: Context, account: String): JSONObject</ID>
     <ID>CyclomaticComplexMethod:VehicleHealthToolbox.kt:VehicleHealthToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getNextService(context: Context, vehicle: Vehicle): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:VehicleServiceToolbox.kt:VehicleServiceToolbox$private suspend fun getNextService(context: Context, vehicle: Vehicle): JSONObject</ID>
     <ID>CyclomaticComplexMethod:VehicleSensorToolbox.kt:VehicleSensorToolbox$private suspend fun getVehicleData(context: Context, metric: String): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageItem(context: Context, args: JSONObject): JSONObject</ID>
@@ -1246,6 +1246,7 @@
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100</ID>
     <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$100</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100.0</ID>
+    <ID>MagicNumber:VehicleServiceToolbox.kt:VehicleServiceToolbox$100.0</ID>
     <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$100.0</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1000L</ID>
     <ID>MagicNumber:MusicControlToolbox.kt:MusicControlToolbox$1000L</ID>
@@ -3111,7 +3112,7 @@
     <ID>MaxLineLength:ListItemDao.kt:ListItemDao$@Query("SELECT * FROM list_items WHERE triggerPlaceLabel IS NOT NULL AND done = 0 AND deleted = 0 ORDER BY createdAt")</ID>
     <ID>MaxLineLength:ListItemDao.kt:ListItemDao$@Query("UPDATE list_items SET startsAt = NULL, endsAt = NULL, triggerPlaceLabel = NULL, updatedAt = :at WHERE id = :id")</ID>
     <ID>MaxLineLength:VehicleSensorToolbox.kt:VehicleSensorToolbox$"${VehicleController.label(vehicle)} does report ${spec.description.lowercase()}, but I need the "</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"${next.byMiles!!.serviceName}, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} or "</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$"${next.byMiles!!.serviceName}, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} or "</ID>
     <ID>MaxLineLength:VehicleSensorToolbox.kt:VehicleSensorToolbox$"I haven't profiled ${VehicleController.label(vehicle)} yet - plug the adapter into it once and I'll "</ID>
     <ID>MaxLineLength:VehicleCodesToolbox.kt:VehicleCodesToolbox$"The OBD adapter isn't connected, so I can't read any codes - plug it in, or tell me the code you're seeing."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"There's already a checklist called \"${existing.name}\" - pick a different name or add to that one."</ID>
@@ -3154,13 +3155,15 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$*</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$.</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$?:</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$?:</ID>
     <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$GoalController.CloseOutcome.NotFound -&gt; result(false, "I don't see an active ${aspectLabel(aspect)} goal matching that.")</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$MusicAction.SEEK_BACK -&gt; controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$MusicAction.SEEK_FORWARD -&gt; controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
     <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (user's unit, already converted - do not convert again); ") }</ID>
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$SpotifyWebApi.PlaylistResolution.NeedsAuthorization -&gt; SpotifyUriResolution.Failed(spotifyNeedsAuthorizationResult())</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$append(withGuessCaveat("${next.byMiles.serviceName} is soonest by mileage, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles))</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$append(withGuessCaveat("${next.byMiles.serviceName} is soonest by mileage, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$else</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$else</ID>
     <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$headline = healthSummary ?: if (concerns.length() == 1) "1 concern" else "${concerns.length()} concerns"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if</ID>
     <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$if (aspectRaw !in GoalController.ASPECTS) return result(false, "Which aspect - body, notes, fleet, or money?")</ID>
@@ -3175,7 +3178,7 @@
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$is SpotifyWebApi.PlaylistResolution.Unauthorized -&gt; SpotifyUriResolution.Failed(spotifyUnauthorizedResult(resolution.detail))</ID>
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$is SpotifyWebApi.SearchOutcome.Found -&gt; SpotifyUriResolution.Found(outcome.uri, outcome.name, outcome.subtitle)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$message = WorkoutController.logBodyweight(context, args.optDouble("weight"), args.optString("weight_unit", "lbs"))</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$next.byMiles != null -&gt; withGuessCaveat("${next.byMiles.serviceName} is next, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles)</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$next.byMiles != null -&gt; withGuessCaveat("${next.byMiles.serviceName} is next, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$notes += "includes $pendingCount transaction(s) you logged as pending, not yet confirmed by the bank"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$parseNoteDate(args.optString("repeat_end_date")) ?: return result(false, "When should that repeat stop?")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$putIfSet(o, "assembledIn", listOf(spec.plantCity, spec.plantCountry).filter { it.isNotBlank() }.joinToString(", "))</ID>
@@ -3193,10 +3196,10 @@
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, artist.name))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = false, message = "Nothing to undo - no workout, bodyweight, meal, or sleep logged yet.")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = false, message = dateError ?: "I need something to go on — a mileage, how long ago, a date, or that it's never been done.")</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$return result(success = false, message = dateError ?: "I need something to go on — a mileage, how long ago, a date, or that it's never been done.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(true, "Budget set: ${formatMoney(cents, LedgerEntity.US.currency)} a month for $category, from this month on.")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$sameItem &amp;&amp; next.byTime!!.remaining &lt;= 0L -&gt; withGuessCaveat("${next.byMiles!!.serviceName} is due today", next.byMiles)</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$sentenceNoPeriod + if (candidate.isGuess) " - though that interval is LEGION's guess, not one you've confirmed." else "."</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$sameItem &amp;&amp; next.byTime!!.remaining &lt;= 0L -&gt; withGuessCaveat("${next.byMiles!!.serviceName} is due today", next.byMiles)</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$sentenceNoPeriod + if (candidate.isGuess) " - though that interval is LEGION's guess, not one you've confirmed." else "."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$totalObj.put("currency_note", "pending rows span more than one currency - never sum them, read each row's own currency")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val</ID>
     <ID>MaxLineLength:MusicLibraryToolbox.kt:MusicLibraryToolbox$val</ID>
@@ -3205,8 +3208,8 @@
     <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$val healthSummary = if (concerns.length() == 0) "Everything reads normal - no codes, voltage and temperature look fine." else null</ID>
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$val message = SpotifyController.message(outcome, query) + (fallbackNote?.takeIf { succeeded }?.let { " $it" } ?: "")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val message = accepted.workoutPlanMessage ?: "I couldn't put a workout plan together just now - try again in a sec."</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logPastServiceDirect(context, service, mileage, milesAgo, date, neverDone, vehicleId)</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents)</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$val outcome = VehicleController.logPastServiceDirect(context, service, mileage, milesAgo, date, neverDone, vehicleId)</ID>
+    <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents)</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$val state = if (turnOn == null) SpotifyController.toggleShuffle(context) else SpotifyController.setShuffle(context, turnOn)</ID>
     <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$val status = if (args.optString("status", "achieved").trim().lowercase() == "abandoned") "abandoned" else "achieved"</ID>
     <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$val targetValue = if (args.has("target_value") &amp;&amp; !args.isNull("target_value")) args.optDouble("target_value") else null</ID>
@@ -4381,7 +4384,7 @@
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun generateGoalPlanTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:VehicleCodesToolbox.kt:VehicleCodesToolbox$private suspend fun getCodes(context: Context): JSONObject</ID>
     <ID>ReturnCount:VehicleHealthToolbox.kt:VehicleHealthToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun logPastService(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject</ID>
+    <ID>ReturnCount:VehicleServiceToolbox.kt:VehicleServiceToolbox$private suspend fun logPastService(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun logPendingTransaction(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun lookupVin(context: Context): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject</ID>
@@ -4551,8 +4554,9 @@
     <ID>SwallowedException:GmailClient.kt:GmailClient$e: Exception</ID>
     <ID>SwallowedException:GoalPlanAgent.kt:GoalPlanAgent.Companion$e: Exception</ID>
     <ID>SwallowedException:LiveSessionController.kt:LiveSessionController$e: Exception</ID>
-    <ID>SwallowedException:LiveToolbox.kt:LiveToolbox$e2: Exception</ID>
+    <ID>SwallowedException:VehicleServiceToolbox.kt:VehicleServiceToolbox$e2: Exception</ID>
     <ID>SwallowedException:LiveToolbox.kt:LiveToolbox$e: Exception</ID>
+    <ID>SwallowedException:VehicleServiceToolbox.kt:VehicleServiceToolbox$e: Exception</ID>
     <ID>SwallowedException:GoalsToolbox.kt:GoalsToolbox$e: Exception</ID>
     <ID>SwallowedException:MidnightImport.kt:MidnightImport$e: IOException</ID>
     <ID>SwallowedException:Migration59To60Test.kt:Migration59To60Test$e: Exception</ID>
@@ -4651,8 +4655,9 @@
     <ID>TooGenericExceptionCaught:LegionMediaLibraryService.kt:LegionMediaLibraryService$e: Exception</ID>
     <ID>TooGenericExceptionCaught:LegionMediaLibraryService.kt:LegionMediaLibraryService.ProbeLibraryCallback$e: Exception</ID>
     <ID>TooGenericExceptionCaught:LiveSessionController.kt:LiveSessionController$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:LiveToolbox.kt:LiveToolbox$e2: Exception</ID>
+    <ID>TooGenericExceptionCaught:VehicleServiceToolbox.kt:VehicleServiceToolbox$e2: Exception</ID>
     <ID>TooGenericExceptionCaught:LiveToolbox.kt:LiveToolbox$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:VehicleServiceToolbox.kt:VehicleServiceToolbox$e: Exception</ID>
     <ID>TooGenericExceptionCaught:GoalsToolbox.kt:GoalsToolbox$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MaintenanceScheduleReconcile.kt:MaintenanceScheduleReconcile$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MealAgent.kt:MealAgent$e: Exception</ID>

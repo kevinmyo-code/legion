@@ -57,7 +57,7 @@ fun compactDate(epochMs: Long): String =
  * **Do NOT use these for a real instant.** `CodeEvent.timestamp`,
  * `ServiceRecord.date` and `BuildEntry.date` are `System.currentTimeMillis()`
  * captures, and `MaintenanceItem.lastDoneDate` is normalised to LOCAL midnight
- * by `LiveToolbox.parseIsoDate`. All of those are correct through
+ * by `VehicleServiceToolbox.parseIsoDate`. All of those are correct through
  * [shortDate]/[compactDate] and would be wrong here.
  */
 fun documentDate(epochMs: Long): String =

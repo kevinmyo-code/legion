@@ -2,6 +2,7 @@ package com.kevin.legion.vehicle
 
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.VehicleServiceToolbox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -80,7 +81,7 @@ class VehicleDefaultPickTest {
 
     @Test
     fun `no schedule is said by name, not register the car`() {
-        val msg = LiveToolbox.noScheduleMessage("1998 Jeep Cherokee", scheduleEmpty = true)
+        val msg = VehicleServiceToolbox.noScheduleMessage("1998 Jeep Cherokee", scheduleEmpty = true)
         assertEquals(
             "The 1998 Jeep Cherokee has no maintenance schedule on file yet, so nothing can be timed. " +
                 "Set one up on the Fleet tab, or log a service and it starts from there.",
