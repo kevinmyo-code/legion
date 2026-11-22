@@ -46,7 +46,11 @@ REMOVED = "[removed]"
 _INVISIBLE = re.compile(r"[\u200b-\u200f\u2060-\u2064\ufeff\u00ad]")
 FIELD_MAX = 220
 MAX_CARDS = 80
-MAX_BYTES = 64 * 1024
+# Control room C2: the whole backlog rides beside the cards (`clean_backlog`), so the body cap
+# grew from 64 KB to hold it.
+MAX_BYTES = 128 * 1024
+MAX_BACKLOG = 300
+BACKLOG_TITLE_MAX = 120
 MAX_AGE_MIN = 60 * 24 * 365
 _ID = re.compile(r"^[a-z0-9_-]{1,60}$")
 
@@ -71,6 +75,12 @@ _SECRET_SHAPES: tuple[re.Pattern, ...] = (
 _LONG_RUN = re.compile(r"[A-Za-z0-9+_\-=]{32,}")
 
 
+def clean_plain(value, limit: int) -> str:
+    """One line of plain text: invisible characters stripped, whitespace collapsed, capped."""
+    raw = value if isinstance(value, str) else ""
+    return re.sub(r"\s+", " ", _INVISIBLE.sub("", raw)).strip()[:limit]
+
+
 def looks_secret(text: str) -> bool:
     if any(p.search(text) for p in _SECRET_SHAPES):
         return True
@@ -90,6 +100,9 @@ class CleanBoard:
     cards: list[dict]
     build_slot: str
     generated_at: datetime | None
+    # The compact backlog (`clean_backlog`) and how many ideas the laptop had in all.
+    backlog: list[dict] = field(default_factory=list)
+    backlog_total: int = 0
     # Each blanked field as {"card": id, "field": name}: never the value.
     removed: list[dict] = field(default_factory=list)
 
@@ -202,12 +215,47 @@ def clean_board(body) -> CleanBoard:
         card["scored_by"] = clean.text(raw.get("scored_by"), card_id, "scored_by", BY_MAX)
         cards.append(card)
     slot = clean.text(body.get("build_slot"), "board", "build_slot")
+    backlog = clean_backlog(body.get("backlog"), clean)
+    total = body.get("backlog_total")
+    if not isinstance(total, int) or isinstance(total, bool) or total < len(backlog):
+        total = len(backlog)
     return CleanBoard(
         cards=cards,
         build_slot=slot,
         generated_at=_generated(body.get("generated")),
         removed=clean.removed,
+        backlog=backlog,
+        backlog_total=min(total, 100_000),
     )
+
+
+def clean_backlog(value, clean: _Cleaner | None = None) -> list[dict]:
+    """The whole backlog, compact: id, title, RICE, blast tier, age. At most MAX_BACKLOG ideas,
+    in the laptop's order; a bad item is skipped, never a refusal (the cards already stored)."""
+    clean = clean or _Cleaner()
+    if not isinstance(value, list):
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for raw in value[:MAX_BACKLOG]:
+        if not isinstance(raw, dict):
+            continue
+        idea_id = raw.get("id")
+        if not isinstance(idea_id, str) or not _ID.match(idea_id) or idea_id in seen:
+            continue
+        seen.add(idea_id)
+        age = raw.get("age_min")
+        out.append(
+            {
+                "id": idea_id,
+                "title": clean.text(raw.get("title"), idea_id, "title", BACKLOG_TITLE_MAX)
+                or idea_id,
+                "rice": clean.rice(raw.get("rice")),
+                "blast": raw.get("blast") if raw.get("blast") in BLAST_TIERS else "",
+                "age_min": age if isinstance(age, int) and 0 <= age <= MAX_AGE_MIN else 0,
+            }
+        )
+    return out
 
 
 def needs_kevin(cards: list[dict]) -> list[dict]:

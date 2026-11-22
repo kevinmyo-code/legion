@@ -2,6 +2,12 @@
 
 from django.urls import path
 
+from board.answer_views import (
+    AnswerListView,
+    InboxDeliveredView,
+    InboxView,
+    VoteListView,
+)
 from board.idea_views import (
     DeliveredIdeaView,
     IdeaConfirmView,
@@ -26,4 +32,9 @@ urlpatterns = [
         DeliveredIdeaView.as_view(),
         name="board-idea-delivered",
     ),
+    # Control room C2: his answers and votes, and the laptop's pull of them.
+    path("board/answers", AnswerListView.as_view(), name="board-answers"),
+    path("board/votes", VoteListView.as_view(), name="board-votes"),
+    path("board/inbox", InboxView.as_view(), name="board-inbox"),
+    path("board/inbox/delivered", InboxDeliveredView.as_view(), name="board-inbox-delivered"),
 ]

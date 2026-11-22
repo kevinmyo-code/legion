@@ -1765,6 +1765,63 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/board/answers:
+    post:
+      operationId: api_board_answers_create
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnswerTaken'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Changed, or already answered.
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The card left or stopped asking.
   /api/board/ideas:
     post:
       operationId: api_board_ideas_create
@@ -1899,8 +1956,9 @@ paths:
   /api/board/ideas/{idea_id}/delivered:
     post:
       operationId: api_board_ideas_delivered
-      description: 'The laptop''s writer token only: a member''s own sign-in is refused
-        here.'
+      description: |-
+        The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+        the visit's fence in words, as on `BoardView`) and is then refused here.
       parameters:
       - in: path
         name: idea_id
@@ -1912,6 +1970,8 @@ paths:
       - board
       security:
       - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1946,12 +2006,15 @@ paths:
   /api/board/ideas/pending:
     get:
       operationId: api_board_ideas_pending
-      description: 'The laptop''s writer token only: a member''s own sign-in is refused
-        here.'
+      description: |-
+        The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+        the visit's fence in words, as on `BoardView`) and is then refused here.
       tags:
       - board
       security:
       - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1977,6 +2040,148 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: The board is switched off.
+  /api/board/inbox:
+    get:
+      operationId: api_board_inbox
+      description: |-
+        The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+        the visit's fence in words, as on `BoardView`) and is then refused here.
+      tags:
+      - board
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inbox'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+  /api/board/inbox/delivered:
+    post:
+      operationId: api_board_inbox_delivered
+      description: |-
+        The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+        the visit's fence in words, as on `BoardView`) and is then refused here.
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveredRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeliveredRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeliveredRequest'
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivered'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+  /api/board/votes:
+    post:
+      operationId: api_board_votes_create
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VoteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VoteRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoteTaken'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
   /api/board/writer:
     post:
       operationId: api_board_writer_create
@@ -15071,6 +15276,41 @@ components:
         * `differs` - differs
         * `canvas_shows_no_total` - canvas_shows_no_total
         * `nothing_graded` - nothing_graded
+    AnswerRequest:
+      type: object
+      properties:
+        card_id:
+          type: string
+          maxLength: 60
+        ask_sha256:
+          type: string
+          maxLength: 64
+        choice:
+          type: string
+          default: ''
+          maxLength: 200
+        text:
+          type: string
+          default: ''
+          maxLength: 2000
+      required:
+      - ask_sha256
+      - card_id
+    AnswerTaken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+        words:
+          type: string
+          description: What the screen says, word for word.
+      required:
+      - card_id
+      - id
+      - words
     AppEnum:
       enum:
       - phone
@@ -15804,6 +16044,31 @@ components:
       - by
       - choice
       - text
+    BoardBacklogItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        rice:
+          allOf:
+          - $ref: '#/components/schemas/BoardRice'
+          nullable: true
+        blast:
+          type: string
+        age_min:
+          type: integer
+        kevin_vote:
+          type: string
+          description: 'p1, p2, p3, up, down, or blank: his vote sorts first.'
+      required:
+      - age_min
+      - blast
+      - id
+      - kevin_vote
+      - rice
+      - title
     BoardCard:
       type: object
       properties:
@@ -15857,11 +16122,24 @@ components:
           description: 'A backlog idea''s blast forecast: GREEN, YELLOW, RED or blank.'
         scored_by:
           type: string
+        ask_sha256:
+          type: string
+          description: The question's hash; sent back with an answer. Blank if none.
+        answerable:
+          type: boolean
+          description: 'The phone may answer it: a choice question, never a deploy,
+            publish, flag or spend (those are answered in chat).'
+        answer_pending:
+          type: boolean
+          description: His answer was taken and is on its way to the laptop.
       required:
       - age_min
       - answer
+      - answer_pending
+      - answerable
       - ask
       - ask_kind
+      - ask_sha256
       - blast
       - col
       - free_text
@@ -15975,8 +16253,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BoardCard'
+        backlog:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardBacklogItem'
+          description: 'Every backlog idea: his priority first, then RICE.'
+        backlog_total:
+          type: integer
+          description: Ideas on the laptop; more than len(backlog) when the list was
+            cut.
       required:
       - answered_waiting
+      - backlog
+      - backlog_total
       - build_slot
       - cards
       - counts
@@ -18907,6 +19196,47 @@ components:
       - calories_kcal
       - effective_from
       - protein_g
+    Delivered:
+      type: object
+      properties:
+        answers:
+          type: integer
+        votes:
+          type: integer
+      required:
+      - answers
+      - votes
+    DeliveredAnswer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        outcome:
+          $ref: '#/components/schemas/DeliveredAnswerOutcomeEnum'
+      required:
+      - id
+      - outcome
+    DeliveredAnswerOutcomeEnum:
+      enum:
+      - applied
+      - refused
+      type: string
+      description: |-
+        * `applied` - applied
+        * `refused` - refused
+    DeliveredRequest:
+      type: object
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveredAnswer'
+        votes:
+          type: array
+          items:
+            type: string
+            format: uuid
     DemoCallbackResult:
       type: object
       properties:
@@ -20284,6 +20614,62 @@ components:
       - origin_guid
       - store
       - text
+    Inbox:
+      type: object
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxAnswer'
+        votes:
+          type: array
+          items:
+            $ref: '#/components/schemas/InboxVote'
+      required:
+      - answers
+      - votes
+    InboxAnswer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+        ask_sha256:
+          type: string
+        choice:
+          type: string
+        text:
+          type: string
+        at:
+          type: string
+          format: date-time
+      required:
+      - ask_sha256
+      - at
+      - card_id
+      - choice
+      - id
+      - text
+    InboxVote:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+        vote:
+          type: string
+        at:
+          type: string
+          format: date-time
+      required:
+      - at
+      - card_id
+      - id
+      - vote
     IngestOutcome:
       type: object
       description: |-
@@ -28557,6 +28943,43 @@ components:
       - LLM_DERIVED
       type: string
       description: '* `LLM_DERIVED` - LLM_DERIVED'
+    VoteEnum:
+      enum:
+      - p1
+      - p2
+      - p3
+      - up
+      - down
+      - clear
+      type: string
+      description: |-
+        * `p1` - p1
+        * `p2` - p2
+        * `p3` - p3
+        * `up` - up
+        * `down` - down
+        * `clear` - clear
+    VoteRequest:
+      type: object
+      properties:
+        card_id:
+          type: string
+          maxLength: 60
+        vote:
+          $ref: '#/components/schemas/VoteEnum'
+      required:
+      - card_id
+      - vote
+    VoteTaken:
+      type: object
+      properties:
+        card_id:
+          type: string
+        vote:
+          type: string
+      required:
+      - card_id
+      - vote
     Waist:
       type: object
       properties:
