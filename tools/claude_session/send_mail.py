@@ -44,8 +44,8 @@ from email.message import EmailMessage
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent))  # this folder's own modules, after the standard library
-from common import (Paths, TokenRefused, add_task_arg, find_token, load_config,  # noqa: E402
-                    write_json_atomic)
+from common import (TEXT_FILE_CAP_BYTES, Paths, TokenRefused, add_task_arg, find_token,  # noqa: E402
+                    load_config, task_file, write_json_atomic)
 
 ATTACH_CAP_BYTES = 20 * 1024 * 1024  # Gmail refuses over 25 MB after encoding
 
@@ -110,13 +110,18 @@ def prepare(argv: list[str], paths: Paths, cfg: dict, now: float | None = None):
     if cc:
         msg["Cc"] = ", ".join(cc)
     msg["Subject"] = a.subject
-    text = a.body if a.body is not None else Path(a.body_file).read_text(encoding="utf-8")
+    # Body file and attachments only from this task's own folder or its parent task's (the files a
+    # follow-up's yes is about): never any other readable file (review 11-19, round 3).
+    folders = [paths.task_work(a.task)] + ([paths.task_work(int(tok["parent"]))] if tok.get("parent") else [])
+    try:
+        text = a.body if a.body is not None else task_file(
+            a.body_file, folders, TEXT_FILE_CAP_BYTES).read_text(encoding="utf-8")
+        attach = [task_file(raw, folders) for raw in a.attach]
+    except ValueError as e:
+        raise Refused(f"{e}; copy it into the work folder first") from None
     msg.set_content(text)
     total = 0
-    for raw in a.attach:
-        p = Path(raw)
-        if not p.is_file():
-            raise Refused(f"an attachment is missing ({p.name})")
+    for p in attach:
         total += p.stat().st_size
         if total > ATTACH_CAP_BYTES:
             raise Refused("the attachments are over 20 megabytes")

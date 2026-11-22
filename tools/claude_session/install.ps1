@@ -143,7 +143,8 @@ if ($LASTEXITCODE -ne 0) { throw 'worker.py --check failed; fix the config above
 
 # --- Scheduled Task --------------------------------------------------------------------------------
 $user = "$env:USERDOMAIN\$env:USERNAME"
-$action = New-ScheduledTaskAction -Execute $pyw -Argument "`"$Worker`"" -WorkingDirectory $Here
+# -I -S: isolated, no site (no .pth or sitecustomize a helper could plant runs inside the worker).
+$action = New-ScheduledTaskAction -Execute $pyw -Argument "-I -S `"$Worker`"" -WorkingDirectory $Here
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `

