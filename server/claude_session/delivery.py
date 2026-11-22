@@ -40,7 +40,16 @@ _MAKING_VERB = (
     r"\b(?:make|create|turn|export|convert|save|put|write|draft|build|generate|format|print)\b"
 )
 _AS_FORMAT = re.compile(
-    rf"{_MAKING_VERB}[^.?!]{{0,80}}?\b(?:as|into|to)\s+(?:an?\s+)?{_FORMAT}\b", re.I
+    rf"{_MAKING_VERB}[^.?!]{{0,80}}?\b(?:as|into)\s+(?:an?\s+)?{_FORMAT}\b"
+    # "to a document" reads as "attached to a document": the "to" form takes no bare "document".
+    rf"|{_MAKING_VERB}[^.?!]{{0,80}}?\bto\s+(?:an?\s+)?(?!document\b){_FORMAT}\b",
+    re.I,
+)
+# A request that looks for, asks about or checks a file is about one that exists, whatever verb
+# it also holds ("where did I save the lease as a PDF?", "check whether I need to save it as a
+# PDF", "find the receipts I put into a spreadsheet"; re-review 2026-11-22).
+_FINDING = re.compile(
+    r"\b(?:find|where|locate|which|whether|check|did\s+i|make\s+sure)\b", re.I
 )
 # "make me a PDF of ...", "create an Excel sheet with ...": a making verb directly followed by
 # "a/an <format>" (one "me" or "us" between at most), never "document": "make a note about a
@@ -56,6 +65,8 @@ _MAKE_FORMAT = re.compile(
 def asks_for_made_file(request: str) -> bool:
     """True when the words ask for the result itself as a file (PDF, sheet, document)."""
     text = request or ""
+    if _FINDING.search(text):
+        return False
     return bool(_AS_FORMAT.search(text) or _MAKE_FORMAT.search(text))
 
 

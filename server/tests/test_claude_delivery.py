@@ -63,6 +63,11 @@ def test_a_result_asked_for_as_a_file_is_a_made_file(words):
     "read the report as a PDF and tell me the total",
     "is the invoice stored as a document or a photo?",
     "what's in the folder I saved as csv",
+    "find the receipts I put into a spreadsheet",
+    "where did I save the lease as a PDF?",
+    "find the file I had to print as a PDF last week",
+    "can you check whether I need to save it as a PDF before sending",
+    "make sure the invoice I got is attached to a document",
     "",
 ])
 def test_finding_or_reading_a_file_is_not(words):
