@@ -509,12 +509,22 @@ def test_a_legion_part_may_name_the_diagram_boxes_it_lights():
     assert problems(content)
     # An empty name would light every box with no heading; a name past 80 characters is no
     # heading; more than a dozen is no step.
-    for bad in ([""], ["x" * 81], ["Fake"] * 13):
+    for bad in ([""], ["   "], ["x" * 81], ["Fake"] * 13):
         content["legion"]["parts"][0]["lights"] = bad
         assert problems(content), bad
     content["legion"]["parts"][0]["lights"] = ["ok"]
     content["legion"]["parts"][0]["glow"] = True
     assert problems(content)
+
+
+def test_a_legion_part_may_carry_a_shorter_phone_wording():
+    """Blind review D2: the same words, fewer of them, for a phone's small card."""
+    content = fake_content() | fake_projects()
+    content["legion"]["parts"][0]["short"] = "Fewer fake words."
+    assert problems(content) == []
+    for bad in ("", "   ", "x" * 161, 3):
+        content["legion"]["parts"][0]["short"] = bad
+        assert problems(content), bad
 
 
 def test_the_legion_section_may_carry_a_quality_block_and_refuses_a_bad_one():

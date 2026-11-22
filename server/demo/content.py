@@ -186,10 +186,18 @@ _PROJECT_SECTION = _obj(
 MAX_LIGHTS = 12
 _LIGHTS = {
     "type": "array",
-    "items": {"type": "string", "minLength": 1, "maxLength": 80},
+    # Not blank: a name of spaces would normalise to "" and light every box with no heading.
+    "items": {"type": "string", "minLength": 1, "maxLength": 80, "pattern": r"\S"},
     "maxItems": MAX_LIGHTS,
 }
-_LEGION_PART = _obj({"title": _STR, "body": _STR, "lights": _LIGHTS}, optional=("lights",))
+# `short`: the same words, fewer of them, for a phone, where the stage leaves the card little room
+# (blind review D2, 2026-11-22).
+MAX_SHORT = 160
+_SHORT = {"type": "string", "minLength": 1, "maxLength": MAX_SHORT, "pattern": r"\S"}
+_LEGION_PART = _obj(
+    {"title": _STR, "body": _STR, "lights": _LIGHTS, "short": _SHORT},
+    optional=("lights", "short"),
+)
 
 # "Quality for voice agents" inside the LEGION section (Kevin, 2026-11-22): a few figures and the
 # checks behind them, short and visual. Lists, so later checks (a scenario, a card) add rows only.
