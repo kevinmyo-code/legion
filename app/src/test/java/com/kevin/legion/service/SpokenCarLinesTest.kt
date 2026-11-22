@@ -23,7 +23,7 @@ class SpokenCarLinesTest {
     fun `the spoken label is short and still says it is not the standard`() {
         assertTrue(SpokenCarLines.AI_LABEL_SPOKEN.length < com.kevin.legion.vehicle.DtcMeanings.AI_LABEL.length)
         assertTrue(SpokenCarLines.AI_LABEL_SPOKEN.contains("AI"))
-        assertFalse(LiveToolbox.ENGINE_CODES_NOT_READ_SPOKEN.contains("("))
+        assertFalse(VehicleCodesToolbox.ENGINE_CODES_NOT_READ_SPOKEN.contains("("))
     }
 
     @Test

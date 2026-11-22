@@ -1,6 +1,7 @@
 package com.kevin.legion.vehicle.diag
 
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.VehicleCodesToolbox
 import com.kevin.legion.testutil.RoomTestReset
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.DongleCar
@@ -143,9 +144,9 @@ class ClearReadInsteadTest {
         connect(SimCar(BusKind.CAN_11, listOf(pcm)))
         val r = readCodes()
         assertTrue(r.toString(), r.optBoolean("success"))
-        assertEquals(LiveToolbox.NO_ENGINE_CODES, r.getString("message"))
+        assertEquals(VehicleCodesToolbox.NO_ENGINE_CODES, r.getString("message"))
         val spoken = com.kevin.legion.ai.VerbatimSpeech.of(r)
-        assertEquals("spoken by the phone, word for word", LiveToolbox.NO_ENGINE_CODES, spoken)
+        assertEquals("spoken by the phone, word for word", VehicleCodesToolbox.NO_ENGINE_CODES, spoken)
         assertFalse(r.getString("message").contains("everything", ignoreCase = true))
     }
 
@@ -156,9 +157,9 @@ class ClearReadInsteadTest {
         elm.car.ignitionOn = false
         val r = readCodes()
         assertFalse(r.toString(), r.optBoolean("success"))
-        assertEquals(LiveToolbox.ENGINE_CODES_NOT_READ, r.getString("message"))
+        assertEquals(VehicleCodesToolbox.ENGINE_CODES_NOT_READ, r.getString("message"))
         // Heard without the "(OBD mode 03)" parenthesis; the same claim (2026-11-17).
-        assertEquals(LiveToolbox.ENGINE_CODES_NOT_READ_SPOKEN, com.kevin.legion.ai.VerbatimSpeech.of(r))
+        assertEquals(VehicleCodesToolbox.ENGINE_CODES_NOT_READ_SPOKEN, com.kevin.legion.ai.VerbatimSpeech.of(r))
     }
 
     @Test

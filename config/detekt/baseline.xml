@@ -1249,10 +1249,11 @@
     <ID>MagicNumber:MusicControlToolbox.kt:MusicControlToolbox$1000L</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$12</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1900</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$25</ID>
+    <ID>MagicNumber:VehicleCodesToolbox.kt:VehicleCodesToolbox$25</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$30</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$31</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$5</ID>
+    <ID>MagicNumber:VehicleCodesToolbox.kt:VehicleCodesToolbox$5</ID>
     <ID>MagicNumber:MusicLibraryToolbox.kt:MusicLibraryToolbox$5</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$50</ID>
     <ID>MagicNumber:LocationController.kt:LocationController$100f</ID>
@@ -3110,7 +3111,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"${VehicleController.label(vehicle)} does report ${spec.description.lowercase()}, but I need the "</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"${next.byMiles!!.serviceName}, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} or "</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"I haven't profiled ${VehicleController.label(vehicle)} yet - plug the adapter into it once and I'll "</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"The OBD adapter isn't connected, so I can't read any codes - plug it in, or tell me the code you're seeing."</ID>
+    <ID>MaxLineLength:VehicleCodesToolbox.kt:VehicleCodesToolbox$"The OBD adapter isn't connected, so I can't read any codes - plug it in, or tell me the code you're seeing."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"There's already a checklist called \"${existing.name}\" - pick a different name or add to that one."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"Which one? " + match.candidates.joinToString(", ") { "${it.description} (${formatMoney(it.amountCents, it.currency)})" }</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$"category" to schema("string", "The category to assign, spelled exactly as list_budget_categories gives it.")</ID>
@@ -4375,7 +4376,7 @@
     <ID>ReturnCount:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
     <ID>ReturnCount:MusicToolbox.kt:MusicToolbox$internal suspend fun controlMusicQueue(context: Context, query: String): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun generateGoalPlanTool(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun getCodes(context: Context): JSONObject</ID>
+    <ID>ReturnCount:VehicleCodesToolbox.kt:VehicleCodesToolbox$private suspend fun getCodes(context: Context): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun logPastService(context: Context, args: JSONObject, vehicleId: String? = null): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun logPendingTransaction(context: Context, args: JSONObject): JSONObject</ID>
