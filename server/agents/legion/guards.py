@@ -39,8 +39,11 @@ from household.models import is_recruiter
 
 THIRD_PARTY_TOOLS = read_through.THIRD_PARTY_TOOLS
 # Tools whose first call only drafts or counts and whose `confirm: true` call commits (the
-# user-aspect records' bulk delete and tracker authoring, `homes/records_tools.py`).
-CONFIRM_FLAG_TOOLS = frozenset({"delete_aspect_record", "create_aspect", "update_aspect"})
+# user-aspect records' bulk delete and tracker authoring, `homes/records_tools.py`; a backlog
+# idea, `board/tool.py`).
+CONFIRM_FLAG_TOOLS = frozenset(
+    {"delete_aspect_record", "create_aspect", "update_aspect", "add_backlog_idea"}
+)
 CONFIRM_TURNS = 2
 
 NOT_ALLOWED = (

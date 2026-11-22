@@ -1,8 +1,11 @@
 """`Authorization: Token bw1_...`: the laptop's board writer token.
 
-Listed ONLY on `board.views.BoardView`, ahead of `DeviceTokenAuthentication`, and inside it only
-`PUT` is accepted. On every other route a `bw1_` key reaches `DeviceTokenAuthentication` alone,
-which finds no device token for it and answers 401 "Invalid token.": deny by construction.
+Listed ONLY on the views that name it, ahead of `DeviceTokenAuthentication`, and on each only the
+methods that view lists in `writer_methods`: `PUT /api/board` (send the board), `GET
+/api/board/ideas/pending` and `POST /api/board/ideas/<id>/delivered` (pull the member's backlog
+ideas; backlog intake 1122). A view that does not say is `PUT` only. On every other route a `bw1_`
+key reaches `DeviceTokenAuthentication` alone, which finds no device token for it and answers 401
+"Invalid token.": deny by construction.
 
 Every dead key (unknown, revoked, the switch off, an owner no longer an active member of the row's
 household, or a recruiter) gets the same 401 with the device-token words, so a holder cannot tell
@@ -25,8 +28,9 @@ AUTH_HEADER_PREFIX = "Token"
 UNKNOWN = "Invalid token."
 METHOD_REFUSAL = (
     "Nothing was read or written. This is the laptop's board writer token: it may only send the "
-    "board (PUT /api/board)."
+    "board (PUT /api/board) and pick up backlog ideas."
 )
+DEFAULT_METHODS = ("PUT",)
 TOUCH_EVERY = timedelta(minutes=1)
 
 
@@ -69,7 +73,9 @@ class BoardWriterAuthentication(authentication.BaseAuthentication):
         row = live_writer(raw)
         if row is None:
             raise exceptions.AuthenticationFailed(UNKNOWN)
-        if (request.method or "").upper() != "PUT":
+        view = (getattr(request, "parser_context", None) or {}).get("view")
+        allowed = getattr(view, "writer_methods", DEFAULT_METHODS)
+        if (request.method or "").upper() not in allowed:
             raise exceptions.PermissionDenied(METHOD_REFUSAL)
         now = timezone.now()
         if row.writer_last_used_at is None or now - row.writer_last_used_at >= TOUCH_EVERY:

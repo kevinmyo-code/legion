@@ -83,11 +83,21 @@ SCREEN_ONLY_TOOLS: frozenset[str] = frozenset({"show_diagram"})
 # board's cards). A `/mcp` client's model could read `structuredContent`, so `/mcp` neither lists
 # nor runs them; the phone reads `GET /api/board` instead.
 CODE_SPOKEN_ONLY_TOOLS: frozenset[str] = frozenset({"board_status"})
-NOT_ON_MCP: frozenset[str] = SCREEN_ONLY_TOOLS | CODE_SPOKEN_ONLY_TOOLS
+# Tools that write only on the member's yes in a LATER turn (Kevin, 2026-11-22, "read it back
+# first": `add_backlog_idea`). `/mcp` cannot tell one of his turns from the next (a sub-agent may
+# call twice in one breath), so it neither lists nor runs them; the phone has its own gated path
+# (`claude_session` action `idea`, which calls `/api/board/ideas`).
+LATER_YES_ONLY_TOOLS: frozenset[str] = frozenset({"add_backlog_idea"})
+NOT_ON_MCP: frozenset[str] = SCREEN_ONLY_TOOLS | CODE_SPOKEN_ONLY_TOOLS | LATER_YES_ONLY_TOOLS
 
 CODE_SPOKEN_REFUSAL = (
     "Nothing was read. {name} is spoken by LEGION's own voice and is not offered here; the "
     "phone and the web read it themselves."
+)
+
+LATER_YES_REFUSAL = (
+    "Nothing was added. {name} saves only on a yes in the person's next turn, which this client "
+    "cannot tell apart; the phone and the web assistant offer it themselves."
 )
 
 SCREEN_ONLY_REFUSAL = (
@@ -125,6 +135,8 @@ async def _call_tool(ctx, params) -> types.CallToolResult:
         result = refused(SCREEN_ONLY_REFUSAL.format(name=params.name))
     elif params.name in CODE_SPOKEN_ONLY_TOOLS:
         result = refused(CODE_SPOKEN_REFUSAL.format(name=params.name))
+    elif params.name in LATER_YES_ONLY_TOOLS:
+        result = refused(LATER_YES_REFUSAL.format(name=params.name))
     else:
         result = await sync_to_async(run_tool, thread_sensitive=True)(
             request, params.name, params.arguments or {}

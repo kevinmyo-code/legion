@@ -676,6 +676,8 @@ REST_FRAMEWORK = {
         # three a minute on the laptop), and minting its token per MEMBER.
         "board_push": "10/min",
         "board_mint": "5/hour",
+        # Backlog intake drafts per MEMBER (`board/idea_views.py`): each is one scoring model call.
+        "board_idea": "20/day",
     },
 }
 

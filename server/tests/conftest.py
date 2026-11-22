@@ -604,6 +604,18 @@ def _no_decide_model(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_idea_scoring_model(monkeypatch):
+    """No test reaches Google from backlog intake's scoring call: it fails as unreachable (the
+    idea is kept, unscored) unless a test hands it a transport (`tests/test_board_ideas.py`)."""
+    from board import rubric
+
+    def _offline(method, url, headers, body):
+        raise OSError("tests do not reach Google")
+
+    monkeypatch.setattr(rubric, "_transport", _offline)
+
+
+@pytest.fixture(autouse=True)
 def _no_consolidation_model(monkeypatch):
     """No test reaches Google from the memory consolidation job: its call fails as unreachable
     unless a test hands it a transport (`tests/test_member_memory_consolidate.py`)."""

@@ -64,3 +64,69 @@ def board_status(request, arguments: dict):
             REPLAY_AS: f"(Read the factory board aloud. {facts})",
         },
     )
+
+
+# ---- add_backlog_idea (Kevin, 2026-11-22: "yes score each idea", "read it back first") ---------
+
+IDEAS_OFF = "Nothing was added. The factory board is switched off on this engine."
+IDEAS_NOT_FOR_RECRUITER = "Nothing was added. A demo visit has no laptop board."
+NEEDS_TEXT = "Nothing was added: say the idea in words, or pass the id and confirm to answer one."
+
+
+def add_backlog_idea(request, arguments: dict):
+    """Draft (text): score it, store a draft, and read it back by code; the turn ends there, so
+    his answer is his next turn. Confirm (id, confirm true): his yes saves the draft he heard.
+    Confirm false: his no drops it. The read-back and the outcome are spoken by code."""
+    from board import ideas
+    from engine_mcp.tools import (
+        ENDS_TURN,
+        FOR_MODEL,
+        REPLAY_AS,
+        SPEAK_EXACT,
+        SPEAK_VERBATIM,
+        ok,
+        refused,
+    )
+    from household.models import is_recruiter
+    from household.tenancy import household_of
+
+    if not flags.board_enabled():
+        return refused(IDEAS_OFF)
+    user = getattr(request, "user", None)
+    if is_recruiter(user):
+        return refused(IDEAS_NOT_FOR_RECRUITER)
+    idea_id = arguments.get("id")
+    answer = arguments.get("confirm")
+    try:
+        if idea_id and answer is True:
+            idea = ideas.confirm(owner_user=user, idea_id=idea_id)
+            said, note = ideas.SAVED, f"Saved backlog idea {idea.id} on his yes."
+        elif idea_id and answer is False:
+            idea = ideas.discard(owner_user=user, idea_id=idea_id)
+            said, note = ideas.DROPPED, f"Dropped backlog idea {idea.id} on his no."
+        elif (arguments.get("text") or "").strip():
+            idea = ideas.draft(
+                household=household_of(request), owner_user=user, text=arguments["text"]
+            )
+            said = ideas.readback(idea)
+            note = (
+                f"Read back backlog idea {idea.id} and asked whether to add it; nothing is saved. "
+                f"Only on his yes in his next message call add_backlog_idea with id {idea.id} and "
+                f"confirm true; on a no, confirm false."
+            )
+        else:
+            return refused(NEEDS_TEXT)
+    except ideas.Refused as exc:
+        return refused(str(exc))
+    return ok(
+        f"{note} Said to him: {said}",
+        {
+            SPEAK_VERBATIM: [said],
+            SPEAK_EXACT: True,
+            ENDS_TURN: True,
+            FOR_MODEL: f"Done: said to him word for word. {note} The turn ends here.",
+            REPLAY_AS: f"({note})",
+            "id": str(idea.id),
+            "status": idea.status,
+        },
+    )

@@ -244,8 +244,9 @@ TENANT_TABLES: tuple[str, ...] = (
     # `headunit_signin/models.py`). Only a hash of each token is stored.
     "headunit_credentials",
     # The factory board's latest snapshot and its laptop writer's hash, private to the member
-    # (`OWNER_PATHS`; `board/models.py`).
+    # (`OWNER_PATHS`; `board/models.py`). Backlog ideas said to Alfred, private the same way.
     "board_snapshots",
+    "board_ideas",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -349,6 +350,7 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "user_records",
         "headunit_credentials",
         "board_snapshots",
+        "board_ideas",
     }
 )
 
@@ -562,6 +564,8 @@ OWNER_PATHS: dict[str, str] = {
     "headunit_credentials": "owner_user",
     # One row per member, never null: a member reads only their own board.
     "board_snapshots": "owner_user",
+    # Never null: a member's backlog ideas are theirs alone (`board/models.py`).
+    "board_ideas": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

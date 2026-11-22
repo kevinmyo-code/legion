@@ -1765,6 +1765,218 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/board/ideas:
+    post:
+      operationId: api_board_ideas_create
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdeaDraftRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/IdeaDraftRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/IdeaDraftRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdeaDraft'
+          description: Drafted; nothing saved yet.
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/board/ideas/{idea_id}:
+    delete:
+      operationId: api_board_ideas_destroy
+      parameters:
+      - in: path
+        name: idea_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - board
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdeaWords'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+  /api/board/ideas/{idea_id}/confirm:
+    post:
+      operationId: api_board_ideas_confirm
+      parameters:
+      - in: path
+        name: idea_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - board
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdeaWords'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+  /api/board/ideas/{idea_id}/delivered:
+    post:
+      operationId: api_board_ideas_delivered
+      description: 'The laptop''s writer token only: a member''s own sign-in is refused
+        here.'
+      parameters:
+      - in: path
+        name: idea_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - board
+      security:
+      - boardWriterToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdeaWords'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
+  /api/board/ideas/pending:
+    get:
+      operationId: api_board_ideas_pending
+      description: 'The laptop''s writer token only: a member''s own sign-in is refused
+        here.'
+      tags:
+      - board
+      security:
+      - boardWriterToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendingIdeas'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: The board is switched off.
   /api/board/writer:
     post:
       operationId: api_board_writer_create
@@ -15561,11 +15773,27 @@ components:
           items:
             type: string
           description: Lines a voice says word for word, built by code.
+        brief:
+          type: array
+          items:
+            type: string
+          description: '''Where are we'': at most five short lines a voice says word
+            for word.'
+        brief_for_model:
+          type: string
+          description: 'The brief''s freshness and counts only, no card text: what
+            a model may read.'
+        pending_ideas:
+          type: integer
+          description: Ideas said yes to, not on the laptop yet.
       required:
       - age_s
+      - brief
+      - brief_for_model
       - laptop_on
       - laptop_seen_at
       - live
+      - pending_ideas
       - snapshot
       - spoken
       - writer
@@ -15628,11 +15856,22 @@ components:
           description: Minutes since the card changed, as of now.
         stale:
           type: boolean
+        rice:
+          allOf:
+          - $ref: '#/components/schemas/BoardRice'
+          nullable: true
+          description: A backlog idea's score, else null.
+        blast:
+          type: string
+          description: 'A backlog idea''s blast forecast: GREEN, YELLOW, RED or blank.'
+        scored_by:
+          type: string
       required:
       - age_min
       - answer
       - ask
       - ask_kind
+      - blast
       - col
       - free_text
       - id
@@ -15640,7 +15879,9 @@ components:
       - options
       - owner
       - project
+      - rice
       - say
+      - scored_by
       - stale
       - status
       - title
@@ -15653,6 +15894,7 @@ components:
       - cloud
       - decision
       - session
+      - idea
       type: string
       description: |-
         * `agent` - agent
@@ -15661,6 +15903,7 @@ components:
         * `cloud` - cloud
         * `decision` - decision
         * `session` - session
+        * `idea` - idea
     BoardProject:
       type: object
       properties:
@@ -15687,6 +15930,26 @@ components:
       required:
       - card
       - field
+    BoardRice:
+      type: object
+      properties:
+        r:
+          type: string
+        i:
+          type: string
+        c:
+          type: string
+        e:
+          type: string
+        score:
+          type: number
+          format: double
+      required:
+      - c
+      - e
+      - i
+      - r
+      - score
     BoardSnapshot:
       type: object
       properties:
@@ -19891,6 +20154,60 @@ components:
       - name
       - role
       - user_id
+    IdeaDraft:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+        title:
+          type: string
+        scored:
+          type: boolean
+        rice:
+          allOf:
+          - $ref: '#/components/schemas/BoardRice'
+          nullable: true
+        blast:
+          type: string
+        readback:
+          type: string
+          description: 'What a voice says before the yes, word for word: title, score,
+            question.'
+      required:
+      - blast
+      - card_id
+      - id
+      - readback
+      - rice
+      - scored
+      - title
+    IdeaDraftRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          description: The idea in the member's own words.
+          maxLength: 2000
+      required:
+      - text
+    IdeaWords:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+        words:
+          type: string
+          description: What a voice says, word for word.
+      required:
+      - card_id
+      - id
+      - words
     ImportRequest:
       type: object
       properties:
@@ -23840,6 +24157,51 @@ components:
         expires_at:
           type: string
           nullable: true
+    PendingIdea:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        card_id:
+          type: string
+        title:
+          type: string
+        text:
+          type: string
+        rice:
+          allOf:
+          - $ref: '#/components/schemas/BoardRice'
+          nullable: true
+        blast:
+          type: string
+        scored_by:
+          type: string
+        scored:
+          type: boolean
+        confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - blast
+      - card_id
+      - confirmed_at
+      - id
+      - rice
+      - scored
+      - scored_by
+      - text
+      - title
+    PendingIdeas:
+      type: object
+      properties:
+        ideas:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingIdea'
+      required:
+      - ideas
     PendingReview:
       type: object
       properties:

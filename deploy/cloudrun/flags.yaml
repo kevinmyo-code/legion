@@ -45,3 +45,7 @@ flags:
   # deploy, so this is safe to turn on ("1") once the engine change lands. Unset (null) keeps the
   # boot-time migrate, which is a no-op after ship.py's step.
   LEGION_SKIP_MIGRATE: null
+  # The factory board's off-laptop copy and backlog intake (`server/board/`). Must stay unset (off)
+  # until the laptop's push is proven; switching it on is a one-line change here to "on", in its
+  # own reviewed commit, by the ship that turns it on.
+  LEGION_BOARD: null

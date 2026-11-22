@@ -820,6 +820,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/board/ideas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_ideas_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/ideas/{idea_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["api_board_ideas_destroy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/ideas/{idea_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_ideas_confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/ideas/{idea_id}/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The laptop's writer token only: a member's own sign-in is refused here. */
+        post: operations["api_board_ideas_delivered"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/ideas/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The laptop's writer token only: a member's own sign-in is refused here. */
+        get: operations["api_board_ideas_pending"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/board/writer": {
         parameters: {
             query?: never;
@@ -6634,6 +6716,12 @@ export interface components {
             writer: components["schemas"]["BoardWriterInfo"] | null;
             /** @description Lines a voice says word for word, built by code. */
             spoken: string[];
+            /** @description 'Where are we': at most five short lines a voice says word for word. */
+            brief: string[];
+            /** @description The brief's freshness and counts only, no card text: what a model may read. */
+            brief_for_model: string;
+            /** @description Ideas said yes to, not on the laptop yet. */
+            pending_ideas: number;
         };
         BoardAnswer: {
             choice: string;
@@ -6662,6 +6750,11 @@ export interface components {
             /** @description Minutes since the card changed, as of now. */
             age_min: number;
             stale: boolean;
+            /** @description A backlog idea's score, else null. */
+            rice: components["schemas"]["BoardRice"] | null;
+            /** @description A backlog idea's blast forecast: GREEN, YELLOW, RED or blank. */
+            blast: string;
+            scored_by: string;
         };
         /**
          * @description * `agent` - agent
@@ -6670,9 +6763,10 @@ export interface components {
          *     * `cloud` - cloud
          *     * `decision` - decision
          *     * `session` - session
+         *     * `idea` - idea
          * @enum {string}
          */
-        BoardCardKindEnum: "agent" | "ship" | "build" | "cloud" | "decision" | "session";
+        BoardCardKindEnum: "agent" | "ship" | "build" | "cloud" | "decision" | "session" | "idea";
         BoardProject: {
             id: string;
             title: string;
@@ -6682,6 +6776,14 @@ export interface components {
         BoardRemoved: {
             card: string;
             field: string;
+        };
+        BoardRice: {
+            r: string;
+            i: string;
+            c: string;
+            e: string;
+            /** Format: double */
+            score: number;
         };
         BoardSnapshot: {
             /**
@@ -8602,6 +8704,28 @@ export interface components {
             /** Format: date-time */
             joined_at: string;
         };
+        IdeaDraft: {
+            /** Format: uuid */
+            id: string;
+            card_id: string;
+            title: string;
+            scored: boolean;
+            rice: components["schemas"]["BoardRice"] | null;
+            blast: string;
+            /** @description What a voice says before the yes, word for word: title, score, question. */
+            readback: string;
+        };
+        IdeaDraftRequest: {
+            /** @description The idea in the member's own words. */
+            text: string;
+        };
+        IdeaWords: {
+            /** Format: uuid */
+            id: string;
+            card_id: string;
+            /** @description What a voice says, word for word. */
+            words: string;
+        };
         ImportRequest: {
             rows: components["schemas"]["ImportRow"][];
         };
@@ -10511,6 +10635,22 @@ export interface components {
             repeat?: boolean;
             paused?: boolean;
             expires_at?: string | null;
+        };
+        PendingIdea: {
+            /** Format: uuid */
+            id: string;
+            card_id: string;
+            title: string;
+            text: string;
+            rice: components["schemas"]["BoardRice"] | null;
+            blast: string;
+            scored_by: string;
+            scored: boolean;
+            /** Format: date-time */
+            confirmed_at: string | null;
+        };
+        PendingIdeas: {
+            ideas: components["schemas"]["PendingIdea"][];
         };
         PendingReview: {
             change_id: number;
@@ -14605,6 +14745,255 @@ export interface operations {
                 };
             };
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_ideas_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdeaDraftRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["IdeaDraftRequest"];
+                "multipart/form-data": components["schemas"]["IdeaDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Drafted; nothing saved yet. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdeaDraft"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_ideas_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                idea_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdeaWords"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_ideas_confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                idea_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdeaWords"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_ideas_delivered: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                idea_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdeaWords"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_ideas_pending: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingIdeas"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
