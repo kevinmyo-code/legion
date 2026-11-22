@@ -130,10 +130,6 @@ internal object RelativeDay {
         return fixed to "Used ${label(said)}, the day he said, not the date asked for."
     }
 
-    /** The date fixes, in order: his own day word ([corrected]), then the conversation's day ([DateCarry.carried]). */
-    fun resolved(name: String, args: JSONObject, words: String?, turn: TurnDates): Pair<JSONObject, String>? =
-        corrected(name, args, words, turn) ?: DateCarry.carried(name, args, words, turn)
-
     /** The keys holding [args]' one day and that day; null for a range, one side of one, or no ISO day. */
     private fun singleDay(args: JSONObject): Pair<List<String>, LocalDate>? {
         fun iso(k: String) = runCatching { LocalDate.parse(args.optString(k).trim()) }.getOrNull()

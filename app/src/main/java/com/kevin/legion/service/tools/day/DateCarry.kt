@@ -6,10 +6,19 @@ import org.json.JSONObject
 
 /**
  * The day a conversation is about, carried to a follow-up write that names none (2026-11-22). The
- * voice session keeps the day ([nextAboutDay]); [RelativeDay.resolved] applies [carried] after his
+ * voice session keeps the day ([nextAboutDay]); [resolved] applies [carried] after his
  * own day word. Pure.
  */
-object DateCarry {
+internal object DateCarry {
+    /** The date fixes, in order: his own day word ([RelativeDay.corrected]), then the conversation's day. */
+    fun resolved(
+        name: String,
+        args: JSONObject,
+        words: String?,
+        turn: RelativeDay.TurnDates,
+    ): Pair<JSONObject, String>? =
+        RelativeDay.corrected(name, args, words, turn) ?: carried(name, args, words, turn)
+
     /**
      * A dated `manage_item` write put on today while the conversation is about another day and his
      * words name no day at all, moved to the conversation's day, with the note for the result; null
@@ -51,7 +60,7 @@ object DateCarry {
     /**
      * The conversation's day after a call that came back [ok]: a one-day calendar read or a dated
      * write sets it, a calendar read of a range clears it, anything else keeps [current]. [args] are
-     * the ones the call ran with (after [RelativeDay.resolved]).
+     * the ones the call ran with (after [resolved]).
      */
     fun nextAboutDay(current: LocalDate?, name: String, args: JSONObject, ok: Boolean, today: LocalDate): LocalDate? {
         if (!ok) return current

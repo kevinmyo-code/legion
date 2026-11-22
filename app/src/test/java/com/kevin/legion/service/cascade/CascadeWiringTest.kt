@@ -168,11 +168,11 @@ class CascadeWiringTest {
     fun `every tool that takes a date gets his day word, at the one dispatch door, before any toolbox`() {
         val toolbox = stripComments(File(sourceRoot(), "service/LiveToolbox.kt").readText())
         val dispatch = bodyOf(toolbox, "dispatch")
-        val fix = dispatch.indexOf("RelativeDay.resolved(name, args, userText, it)")
+        val fix = dispatch.indexOf("DateCarry.resolved(name, args, userText, it)")
         assertTrue(fix >= 0)
         assertTrue("before the first toolbox and the big when", fix < dispatch.indexOf("EngineToolbox.dispatch(") && fix < dispatch.indexOf("return when (name)"))
         assertTrue("the result carries the note", dispatch.contains("put(\"date_note\", note)"))
-        assertEquals("one path: no tool corrects on its own", 1, Regex("RelativeDay\\.(corrected|resolved)\\(").findAll(toolbox).count())
+        assertEquals("one path: no tool corrects on its own", 1, Regex("(RelativeDay\\.corrected|DateCarry\\.resolved)\\(").findAll(toolbox).count())
         assertTrue("only a voice turn's context carries the day", dispatch.contains("coroutineContext[RelativeDay.TurnDates]"))
         val s = session()
         assertTrue("the session gives the prompt's day and the turn's count", s.contains("RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, aboutDay)"))

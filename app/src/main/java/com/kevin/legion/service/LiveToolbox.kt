@@ -90,6 +90,7 @@ import com.kevin.legion.gmail.GmailAuth
 import com.kevin.legion.gmail.GmailClient
 import com.kevin.legion.gmail.GmailToolLogic
 import com.kevin.legion.checklists.ChecklistController
+import com.kevin.legion.service.tools.day.DateCarry
 import com.kevin.legion.service.tools.day.ListRouting
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.checklists.ChecklistItemMatch
@@ -883,9 +884,9 @@ object LiveToolbox {
         // His own day word wins over a date one day off it, for the calendar and task tools, on the
         // date the voice turn was given (RelativeDay.corrected; 2026-11-17 evening: "and tomorrow?"
         // read today+2); a dated write that names no day goes on the conversation's day
-        // (RelativeDay.carried, 2026-11-22). Only a voice turn carries TurnDates.
+        // (DateCarry.carried, 2026-11-22). Only a voice turn carries TurnDates.
         val turnDates = kotlin.coroutines.coroutineContext[RelativeDay.TurnDates]
-        turnDates?.let { RelativeDay.resolved(name, args, userText, it) }?.let { (fixed, note) ->
+        turnDates?.let { DateCarry.resolved(name, args, userText, it) }?.let { (fixed, note) ->
             return dispatch(context, name, fixed, touchedReadThroughToolThisTurn, userText)?.put("date_note", note)
         }
         // The adapter's car is unknown or only recognised: a live read still runs (its readings are held,
@@ -4433,7 +4434,7 @@ object LiveToolbox {
                 )
             }
             // `date` ahead of the words: the day it landed on, kept inside the audit line's cut so the
-            // voice eval can check a carried day (RelativeDay.carried) on the outcome, not the request.
+            // voice eval can check a carried day (DateCarry.carried) on the outcome, not the request.
             JSONObject().put("success", true).put("date", date.toString()).put(
                 "message",
                 ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase),

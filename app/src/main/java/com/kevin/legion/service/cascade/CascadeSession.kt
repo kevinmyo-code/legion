@@ -402,7 +402,7 @@ internal class CascadeSession(
     /** The date the model's prompt states as today ([RelativeDay.TurnDates]). */
     @Volatile private var promptDay: LocalDate = RelativeDay.today()
 
-    /** The day this conversation is about ([RelativeDay.nextAboutDay]): a follow-up that names none goes there. */
+    /** The day this conversation is about ([DateCarry.nextAboutDay]): a follow-up that names none goes there. */
     @Volatile private var aboutDay: LocalDate? = null
 
     /** Writes that went through and that he has not heard said yet ([OwedWrites]). */
@@ -2496,7 +2496,7 @@ internal class CascadeSession(
         response: JSONObject,
     ) {
         val call = LiveSurface.resolve(name, args)
-        val ran = RelativeDay.resolved(call.name, call.args, words, dates)?.first ?: call.args
+        val ran = DateCarry.resolved(call.name, call.args, words, dates)?.first ?: call.args
         aboutDay = DateCarry.nextAboutDay(aboutDay, call.name, ran, response.optBoolean("success", false), dates.day)
     }
 

@@ -32,7 +32,7 @@ class DateCarryTest {
         assertEquals("19:00", fixed.getString("time"))
         assertTrue(note, note.contains("Wednesday 2027-03-10"))
         // The resolved chain reaches it too, on a call that is not the turn's only date call.
-        assertEquals(tomorrow.toString(), RelativeDay.resolved("manage_item", add("today"), "put dinner with Lee at seven", turn(tomorrow))!!.first.getString("date"))
+        assertEquals(tomorrow.toString(), DateCarry.resolved("manage_item", add("today"), "put dinner with Lee at seven", turn(tomorrow))!!.first.getString("date"))
     }
 
     @Test
