@@ -164,7 +164,10 @@ class ActionListView(_MemberActionView):
 
 
 def _phone_token(request) -> bool:
-    from claude_session.models import ClaudeMachine
+    """A member's own write device token that the engine cannot tie to any Claude worker (bound to
+    a machine, named `claude-session-*`, or scope `claude_worker`: `is_claude_token`, the one
+    check the worker fence uses too)."""
+    from claude_session.tokens import is_claude_token
     from household.models import DeviceToken
 
     token = request.auth
@@ -172,7 +175,7 @@ def _phone_token(request) -> bool:
         isinstance(request.successful_authenticator, DeviceTokenAuthentication)
         and isinstance(token, DeviceToken)
         and token.scope == DeviceToken.SCOPE_WRITE
-        and not ClaudeMachine.objects.filter(token=token).exists()
+        and not is_claude_token(request)
     )
 
 

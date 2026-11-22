@@ -256,7 +256,15 @@ ACTION_PENDING = "pending"
 ACTION_APPROVED = "approved"
 ACTION_DECLINED = "declined"
 ACTION_PULLED = "pulled"
-ACTION_STATUSES = (ACTION_PENDING, ACTION_APPROVED, ACTION_DECLINED, ACTION_PULLED)
+# An approval the laptop did not pull within `board.actions.PULL_WITHIN`.
+ACTION_EXPIRED = "expired"
+ACTION_STATUSES = (
+    ACTION_PENDING,
+    ACTION_APPROVED,
+    ACTION_DECLINED,
+    ACTION_PULLED,
+    ACTION_EXPIRED,
+)
 
 
 class BoardAction(models.Model):
@@ -270,8 +278,9 @@ class BoardAction(models.Model):
     that changed after he saw it is refused. `expires_at` is 30 minutes on the ENGINE's clock.
 
     Life: `pending`, then `approved` (his tap, once) or `declined`; `pulled` once the laptop has
-    taken an approved record. Nothing runs from an approval by itself: the orchestrator re-checks
-    the hash and the head, then runs the pinned ship script."""
+    taken an approved record, or `expired` if it did not within a day. Nothing runs from an
+    approval by itself: the orchestrator re-checks the hash and the head, then runs the pinned ship
+    script."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     household = models.ForeignKey(

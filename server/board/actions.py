@@ -39,6 +39,7 @@ from django.utils import timezone
 from board.models import (
     ACTION_APPROVED,
     ACTION_DECLINED,
+    ACTION_EXPIRED,
     ACTION_PENDING,
     ACTION_PULLED,
     BoardAction,
@@ -71,12 +72,14 @@ FIELDS = frozenset(
 )
 SPEND_CAP_CENTS = 2500
 EXPIRES_AFTER = timedelta(minutes=30)
+# An approval the laptop has not pulled by then is expired (review B): his yes is fresh or nothing.
+PULL_WITHIN = timedelta(hours=24)
 MAX_FLAGS = 8
-SHA = re.compile(r"^[0-9a-f]{40}$")
-FLAG = re.compile(r"^LEGION_[A-Z0-9_]{1,40}$")
+SHA = re.compile(r"[0-9a-f]{40}")
+FLAG = re.compile(r"LEGION_[A-Z0-9_]{1,40}")
 PAYEE_MAX = 60
 PURPOSE_MAX = 120
-_PLAIN = re.compile(r"^[A-Za-z0-9 .,&'()/-]*$")
+_PLAIN = re.compile(r"[A-Za-z0-9 .,&'()/-]*")
 LIVE_FOR_LIST = timedelta(days=1)
 
 NOT_ALLOWED = "Nothing was stored. An action record takes only its typed fields; {name} is not one."
@@ -127,7 +130,7 @@ def validate(body) -> dict:
     }
     if kind in SHIP_KINDS or kind in FLAG_KINDS:
         sha, review = body.get("sha"), body.get("review_ok_sha")
-        if not isinstance(sha, str) or not SHA.match(sha):
+        if not isinstance(sha, str) or not SHA.fullmatch(sha):
             raise Refused(BAD.format(why="A ship or flag record names the full 40-character sha."))
         if review != sha:
             raise Refused(BAD.format(why="The review must have confirmed this same sha."))
@@ -141,7 +144,7 @@ def validate(body) -> dict:
         if (
             not isinstance(flags, list)
             or not 1 <= len(flags) <= MAX_FLAGS
-            or not all(isinstance(f, str) and FLAG.match(f) for f in flags)
+            or not all(isinstance(f, str) and FLAG.fullmatch(f) for f in flags)
             or len(set(flags)) != len(flags)
         ):
             raise Refused(BAD.format(why="A flag record names one to eight LEGION_ switches."))
@@ -158,7 +161,7 @@ def validate(body) -> dict:
         for value, limit, name in ((payee, PAYEE_MAX, "payee"), (purpose, PURPOSE_MAX, "purpose")):
             if not isinstance(value, str) or not value.strip() or len(value) > limit:
                 raise Refused(BAD.format(why=f"A spend names its {name} in plain words."))
-            if not _PLAIN.match(value):
+            if not _PLAIN.fullmatch(value):
                 raise Refused(
                     BAD.format(why=f"The {name} takes letters, digits and . , & ' ( ) / -")
                 )
@@ -271,7 +274,13 @@ def pending_count(owner_user, now=None) -> int:
     ).count()
 
 
-def approved_for(owner_user) -> list[BoardAction]:
+def approved_for(owner_user, now=None) -> list[BoardAction]:
+    """Approved records the laptop may still take: decided within `PULL_WITHIN`. An approval the
+    laptop did not pull in time becomes `expired` here, so a yes never waits for days."""
+    now = now or timezone.now()
+    BoardAction.objects.filter(
+        owner_user=owner_user, status=ACTION_APPROVED, decided_at__lt=now - PULL_WITHIN
+    ).update(status=ACTION_EXPIRED)
     return list(
         BoardAction.objects.filter(owner_user=owner_user, status=ACTION_APPROVED).order_by(
             "decided_at"
@@ -280,9 +289,13 @@ def approved_for(owner_user) -> list[BoardAction]:
 
 
 def mark_pulled(owner_user, action_id, now=None) -> int:
+    now = now or timezone.now()
     return BoardAction.objects.filter(
-        owner_user=owner_user, pk=action_id, status=ACTION_APPROVED
-    ).update(status=ACTION_PULLED, pulled_at=now or timezone.now())
+        decided_at__gte=now - PULL_WITHIN,
+        owner_user=owner_user,
+        pk=action_id,
+        status=ACTION_APPROVED,
+    ).update(status=ACTION_PULLED, pulled_at=now)
 
 
 def as_dict(row: BoardAction, now=None) -> dict:

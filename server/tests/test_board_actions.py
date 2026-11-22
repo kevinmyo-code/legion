@@ -27,6 +27,7 @@ ACTIONS = "/api/board/actions"
 REQUEST = "/api/board/actions/request"
 APPROVED = "/api/board/actions/approved"
 SHA = "1a2b3c4d" * 5
+NL = chr(10)
 
 
 @pytest.fixture(autouse=True)
@@ -113,6 +114,10 @@ def test_only_the_writer_asks(on, auth_client):
             "flags": ["not_a_flag"],
         },
         {"kind": "rm_rf"},
+        # A trailing newline is not a match (fullmatch, not `$`).
+        {**DEPLOY, "sha": SHA + NL, "review_ok_sha": SHA + NL},
+        {**DEPLOY, "kind": "flag_on", "flags": ["LEGION_BOARD" + NL]},
+        {**SPEND, "payee": "Tea Supply Co" + NL},
     ],
 )
 def test_typed_fields_only_and_the_cap(on, auth_client, body):
@@ -218,3 +223,29 @@ def test_a_token_a_claude_machine_holds_cannot_allow(on, auth_client, household_
         worker.credentials(HTTP_AUTHORIZATION=f"Token {raw}")
         assert _tap(worker, action).status_code == 403, scope
     assert BoardAction.objects.get().status == "pending"
+
+
+def test_an_unbound_claude_session_write_token_cannot_allow(on, auth_client, household_user):
+    """A worker token no machine claims any more (or never did) is still the laptop's, not the
+    phone's: `is_claude_token` names it by its `claude-session-` name."""
+    from household.models import DeviceToken
+
+    action = _ask(_laptop(auth_client)).json()
+    _token, raw = DeviceToken.issue(household_user, "claude-session-Old laptop")
+    worker = APIClient()
+    worker.credentials(HTTP_AUTHORIZATION=f"Token {raw}")
+    assert _tap(worker, action).status_code == 403
+    assert BoardAction.objects.get().status == "pending"
+
+
+def test_an_approval_not_pulled_within_a_day_expires(on, auth_client):
+    laptop = _laptop(auth_client)
+    action = _ask(laptop).json()
+    assert _tap(auth_client, action).status_code == 200
+    BoardAction.objects.filter(pk=action["id"]).update(
+        decided_at=timezone.now() - timedelta(hours=25)
+    )
+    assert laptop.get(APPROVED).json()["actions"] == []
+    assert laptop.post(f"{ACTIONS}/{action['id']}/pulled").status_code == 404
+    assert BoardAction.objects.get().status == "expired"
+    assert auth_client.get(ACTIONS).json()["actions"][0]["status"] == "expired"
