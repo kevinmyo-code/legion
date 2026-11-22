@@ -45,17 +45,19 @@ object LiveCards {
      */
     suspend fun refresh(read: suspend (CardSource) -> ConversationCard?) {
         for (card in ConversationCards.state.value.cards) {
-            val source = card.source ?: continue
-            @Suppress("TooGenericExceptionCaught", "SwallowedException") // a failed read keeps the card
-            val fresh = try {
-                read(source)
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                null
-            } ?: continue
-            if (fresh != card) ConversationCards.replace(card, fresh)
+            val fresh = card.source?.let { readOrNull(it, read) }
+            if (fresh != null && fresh != card) ConversationCards.replace(card, fresh)
         }
     }
+
+    @Suppress("TooGenericExceptionCaught", "SwallowedException") // a failed read keeps the card
+    private suspend fun readOrNull(source: CardSource, read: suspend (CardSource) -> ConversationCard?) =
+        try {
+            read(source)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            null
+        }
 
     /** Whether a calendar card in the stack (shown or put away) covers [startMs]: a write there refreshes it. */
     fun calendarShows(state: ConversationCardsState, startMs: Long): Boolean =

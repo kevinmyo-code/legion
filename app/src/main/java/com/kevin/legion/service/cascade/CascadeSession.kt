@@ -59,6 +59,7 @@ import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
 import com.kevin.legion.service.testturn.TestTurns
 import com.kevin.legion.service.tools.LiveSurface
+import com.kevin.legion.service.tools.day.DateCarry
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.ClearCodesVoiceGate
@@ -2449,20 +2450,7 @@ internal class CascadeSession(
                 // A read-through opener (ADR 0090) marks the turn before the loop's own flag can.
                 // The turn's date facts ride in the call's context to the date fix ([RelativeDay.corrected]).
                 // A lone word's write is held before it reaches the controller ([LoneWordWriteGuard]).
-                else -> held ?: run {
-                    val dates = RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, aboutDay)
-                    val words = if (record.fromUser) record.heard else ""
-                    withContext(dates + ClearCodesVoiceGate.HeardVoice(record.voicedMs)) {
-                        host.runTool(
-                            name,
-                            args,
-                            // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
-                            readThrough || record.startMarked,
-                            words,
-                            seq,
-                        )
-                    }.also { response -> noteAboutDay(name, args, words, dates, response) }
-                }
+                else -> held ?: runDated(record, name, args, readThrough, seq)
             }
         } finally {
             toolsInFlight.decrementAndGet()
@@ -2481,6 +2469,24 @@ internal class CascadeSession(
         response
     }
 
+    /** One tool call with the turn's date facts in its context, then the conversation's day noted. */
+    private suspend fun runDated(
+        record: TurnRecord,
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        seq: Long,
+    ): JSONObject {
+        val dates = RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, aboutDay)
+        val words = if (record.fromUser) record.heard else ""
+        val response = withContext(dates + ClearCodesVoiceGate.HeardVoice(record.voicedMs)) {
+            // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
+            host.runTool(name, args, readThrough || record.startMarked, words, seq)
+        }
+        noteAboutDay(name, args, words, dates, response)
+        return response
+    }
+
     /** The conversation's day after this call, read from the args it actually ran with. */
     private fun noteAboutDay(
         name: String,
@@ -2491,7 +2497,7 @@ internal class CascadeSession(
     ) {
         val call = LiveSurface.resolve(name, args)
         val ran = RelativeDay.resolved(call.name, call.args, words, dates)?.first ?: call.args
-        aboutDay = RelativeDay.nextAboutDay(aboutDay, call.name, ran, response.optBoolean("success", false), dates.day)
+        aboutDay = DateCarry.nextAboutDay(aboutDay, call.name, ran, response.optBoolean("success", false), dates.day)
     }
 
     private fun listenerFor(record: TurnRecord, reply: ReplySpeaker) = object : GeminiTextLoop.Listener {
