@@ -2591,6 +2591,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/demo/shop/call-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The after-call card for this visit's latest conversation (reads only) */
+        get: operations["api_demo_shop_call_card_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/shop/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask for a callback from a person (switched off unless LEGION_DEMO_HANDOFF=on) */
+        post: operations["api_demo_shop_callback_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/shop/scenario": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switch this visit into or out of the store-rep scenario */
+        post: operations["api_demo_shop_scenario_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/demo/shop/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The store-rep demo's state for this visit (reads only) */
+        get: operations["api_demo_shop_state_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device-logs/": {
         parameters: {
             query?: never;
@@ -7025,6 +7093,65 @@ export interface components {
             /** Format: date-time */
             readonly deleted_at: string | null;
         };
+        CallCard: {
+            outcome: components["schemas"]["CallCardOutcomeEnum"];
+            outcome_words: string;
+            summary: string[];
+            transcript: components["schemas"]["CallLine"][];
+            turns: components["schemas"]["CallTurn"][];
+            median_first_audio_ms: number | null;
+            /** @description What a CRM would receive: a plain JSON record. */
+            record: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description * `order_placed` - order_placed
+         *     * `needs_human` - needs_human
+         *     * `quoted_not_placed` - quoted_not_placed
+         *     * `browsing` - browsing
+         * @enum {string}
+         */
+        CallCardOutcomeEnum: "order_placed" | "needs_human" | "quoted_not_placed" | "browsing";
+        CallLine: {
+            who: components["schemas"]["WhoEnum"];
+            text: string;
+            typed: boolean;
+            at: string;
+        };
+        CallTurn: {
+            kind: components["schemas"]["CallTurnKindEnum"];
+            spoken: boolean;
+            /** @description Engine-side: from the utterance reaching the engine to its first audio out. */
+            first_audio_ms: number | null;
+            answer_audio_ms: number | null;
+            stt_ms: number | null;
+            turn_ms: number | null;
+        };
+        /**
+         * @description * `greeting` - greeting
+         *     * `turn` - turn
+         * @enum {string}
+         */
+        CallTurnKindEnum: "greeting" | "turn";
+        /**
+         * @description * `off` - off
+         *     * `available` - available
+         *     * `already` - already
+         *     * `day_full` - day_full
+         *     * `no_visit` - no_visit
+         * @enum {string}
+         */
+        CallbackEnum: "off" | "available" | "already" | "day_full" | "no_visit";
+        CallbackRequest: {
+            name: string;
+            /** @description A phone number or an email. */
+            contact: string;
+            /** @default  */
+            note: string;
+            /** @default  */
+            website: string;
+        };
         CashFlow: {
             month: string;
             currency: string;
@@ -7885,6 +8012,12 @@ export interface components {
             protein_g: number;
             /** Format: date */
             effective_from: string;
+        };
+        DemoCallbackResult: {
+            /** @description `sent` or `saved`. */
+            status: string;
+            /** @description What happened, in words. Show it. */
+            detail: string;
         };
         DemoChip: {
             /** @description What the chip shows. */
@@ -9612,7 +9745,7 @@ export interface components {
             lng?: number | null;
         };
         OffRequest: {
-            /** @description list_changes, event_reminders, task_due_morning, game_invite or laptop_health. */
+            /** @description list_changes, event_reminders, task_due_morning, game_invite, laptop_health or demo_callback. */
             kind: string;
         };
         OffResponse: {
@@ -9621,6 +9754,7 @@ export interface components {
             task_due_morning: boolean;
             game_invite?: boolean;
             laptop_health?: boolean;
+            demo_callback?: boolean;
             /** Format: time */
             morning_time: string;
             detail: string;
@@ -10486,6 +10620,7 @@ export interface components {
             task_due_morning: boolean;
             game_invite?: boolean;
             laptop_health?: boolean;
+            demo_callback?: boolean;
             /** Format: time */
             morning_time: string;
         };
@@ -11460,6 +11595,56 @@ export interface components {
          * @enum {string}
          */
         SexEnum: "male" | "female";
+        ShopOrder: {
+            ref: string;
+            status: components["schemas"]["ShopOrderStatusEnum"];
+            lines: components["schemas"]["ShopOrderLine"][];
+            bundle_saving_cents: number;
+            shipping_cents: number;
+            total_cents: number;
+        };
+        ShopOrderLine: {
+            sku: string;
+            name: string;
+            qty: number;
+            unit_cents: number;
+            line_cents: number;
+        };
+        /**
+         * @description * `quoted` - quoted
+         *     * `placed` - placed
+         * @enum {string}
+         */
+        ShopOrderStatusEnum: "quoted" | "placed";
+        ShopProduct: {
+            sku: string;
+            name: string;
+            category: string;
+            price_cents: number;
+            /** @description This visit's count: its placed orders are off. */
+            in_stock: number;
+            blurb: string;
+        };
+        ShopScenarioRequest: {
+            active: boolean;
+        };
+        ShopState: {
+            /** @description The visit is in the store-rep scenario. */
+            active: boolean;
+            shop_name: string;
+            products: components["schemas"]["ShopProduct"][];
+            orders: components["schemas"]["ShopOrder"][];
+            /**
+             * @description What asking for a person would do now: `off` (switched off), `available`, `already` (this visit asked), `day_full` (today's cap is used up), `no_visit`.
+             *
+             *     * `off` - off
+             *     * `available` - available
+             *     * `already` - already
+             *     * `day_full` - day_full
+             *     * `no_visit` - no_visit
+             */
+            callback: components["schemas"]["CallbackEnum"];
+        };
         /**
          * @description `POST /api/auth/signup`.
          *
@@ -12495,6 +12680,12 @@ export interface components {
          * @enum {string}
          */
         WeightSourceEnum: "trend" | "latest";
+        /**
+         * @description * `visitor` - visitor
+         *     * `assistant` - assistant
+         * @enum {string}
+         */
+        WhoEnum: "visitor" | "assistant";
         /**
          * @description Base for every serializer this viewset drives.
          *
@@ -18519,6 +18710,170 @@ export interface operations {
                 };
             };
             /** @description Not a recruiter's live demo visit (signed out, a member, or over). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoRefusal"];
+                };
+            };
+        };
+    };
+    api_demo_shop_call_card_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallCard"];
+                };
+            };
+            /** @description Not a recruiter's visit. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoRefusal"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_shop_callback_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CallbackRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["CallbackRequest"];
+                "multipart/form-data": components["schemas"]["CallbackRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoCallbackResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not a recruiter's visit. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoRefusal"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_demo_shop_scenario_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopScenarioRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["ShopScenarioRequest"];
+                "multipart/form-data": components["schemas"]["ShopScenarioRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopState"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Not a recruiter's visit. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoRefusal"];
+                };
+            };
+        };
+    };
+    api_demo_shop_state_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopState"];
+                };
+            };
+            /** @description Not a recruiter's visit. */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -151,6 +151,8 @@ _TURN = "legion_turn"
 # His words in this turn asked for a change (`heard`), and the exception's mark was written.
 _ASKED = "legion_turn_asked"
 _PROMISED = "legion_turn_promised"
+# His words in this turn, as heard (`heard`): a store-rep order is placed only on a yes in them.
+_WORDS = "legion_turn_words"
 # The record line's source for a carried turn (the phone's LIVE_AUDIT `read_through source=carry`).
 CARRY_SOURCE = "carry"
 _READ = "legion_read_third_party"
@@ -185,11 +187,22 @@ def set_turn(request, conversation_id, turn: int | None, *, carry: bool = False)
     setattr(request, _TURN, TurnRef(conversation_id, turn, carry and turn is not None))
 
 
+def turn_of(request) -> TurnRef | None:
+    """The conversation and turn this request answers, as its door set it, or None."""
+    return getattr(request, _TURN, None)
+
+
 def heard(request, words: str | None) -> None:
     """His words for this turn, once known: whether they ask for a change (fails closed)."""
     from assistant.write_intent import asks_for_change
 
     setattr(request, _ASKED, asks_for_change(words))
+    setattr(request, _WORDS, words or "")
+
+
+def heard_words(request) -> str:
+    """This turn's own words as `heard` was given them, or "" before then (or on no door)."""
+    return getattr(request, _WORDS, "")
 
 
 def promised(request) -> bool:

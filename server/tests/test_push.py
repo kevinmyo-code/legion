@@ -458,6 +458,7 @@ def test_preferences_round_trip_and_default_on(kevin_client):
         "task_due_morning": True,
         "game_invite": True,
         "laptop_health": True,
+        "demo_callback": True,
         "morning_time": "07:30",
     }
     put = kevin_client.put(

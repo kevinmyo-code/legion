@@ -60,6 +60,7 @@ from assistant.session import system_prompt_parts_for, token_request_for
 from assistant.surface import off_registry_tool, refusal_for
 from demo import budget as demo_budget
 from demo import suggestions
+from demo.shop import tools as shop_tools
 from devicelogs import web_conversation
 from engine_mcp import cards
 from engine_mcp.models import Outcome
@@ -787,7 +788,10 @@ TURN_FAILED_AFTER_WRITE = (
     "through. Check it before asking again."
 )
 # The tools that change something: a change that went through stays in the history (finding 5).
-WRITE_TOOLS = frozenset(name for name, tool in TOOLS_BY_NAME.items() if tool.writes)
+# The store-rep demo's order is a write too (`demo/shop/tools.py`): a re-ask never places it twice.
+WRITE_TOOLS = frozenset(
+    name for name, tool in TOOLS_BY_NAME.items() if tool.writes
+) | shop_tools.WRITE_TOOLS
 # Past this the conversation continues in a fresh record (finding 9); the cap is 5 MiB.
 RECORD_ROLLOVER_BYTES = 4 * 1024 * 1024
 # The turn a conversation's opening greeting answers, in its history (`web_conversation.history`).

@@ -13,6 +13,7 @@ from assistant.companions import ResolvedCompanion, companion_for
 from assistant.prompt import build_system_prompt_parts
 from assistant.surface import tools_for, web_description
 from demo.budget import max_session_minutes
+from demo.shop import scenario as shop_scenario
 from household.models import is_recruiter
 from household.timezones import utc_offset_minutes as zone_offset_minutes
 
@@ -37,14 +38,17 @@ def system_prompt_parts_for(
             household.timezone if household is not None else None, now
         )
         from_household = utc_offset_minutes is not None
+    recruiter = is_recruiter(user)
     body, tail = build_system_prompt_parts(
         companion=companion,
         first_name=user.first_name,
         now=now,
         utc_offset_minutes=utc_offset_minutes,
         offset_from_household=from_household,
-        recruiter=is_recruiter(user),
+        recruiter=recruiter,
         cascade=cascade,
+        # A member's turn asks nothing more: only a visitor has a visit to be in a scenario.
+        shop=cascade and recruiter and shop_scenario.active(user),
     )
     return body, tail, companion
 

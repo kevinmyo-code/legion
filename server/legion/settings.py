@@ -631,6 +631,10 @@ REST_FRAMEWORK = {
         # per answer, reads only, but never a free loop. Throttled, the page simply gets none.
         "demo_chips": "30/min",
         "demo_chips_ip": "120/min",
+        # The store-rep demo's routes (`demo/shop/views.py`): state, the switch and the after-call
+        # card per address; the callback form far tighter, on top of its own daily cap.
+        "demo_shop_ip": "60/min",
+        "demo_callback_ip": "3/hour",
         "assistant_turn_ip": (
             os.environ.get("LEGION_ASSISTANT_TURN_IP_RATE", "").strip() or "120/hour"
         ),

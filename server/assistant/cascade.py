@@ -109,6 +109,7 @@ from agents.legion.speech_rules import (
     has_money,  # noqa: F401 - read as cascade.has_money
     is_filler,  # noqa: F401 - read as cascade.is_filler
     is_stop_utterance,
+    states_unbacked_figure,
 )
 from agents.runtime import events as ev
 from agents.runtime.budget import BudgetUsed, LoopLimits
@@ -160,6 +161,9 @@ from assistant.models import AssistantCall
 from assistant.surface import off_registry_tool, refusal_for, tools_for
 from demo import suggestions
 from demo.budget import tester_visit
+from demo.shop import guards as shop_guards
+from demo.shop import scenario as shop_scenario
+from demo.shop import tools as shop_tools
 from demo.tools import spoken_for as about_kevin_spoken_for
 from devicelogs import web_conversation
 from engine_mcp import cards
@@ -461,7 +465,18 @@ class WebDoor:
                 # The one seam between the engines for his profile: on the cascade code speaks it
                 # and the model only picks sections; Live keeps `demo.tools.ABOUT_KEVIN` as it was.
                 self._tools["about_kevin"] = about_kevin_spoken_for(self.user)
+            if self.recruiter:
+                # The store-rep demo (`demo/shop/`): the rep's tools in its scenario, else the
+                # guide's plus its switch. A member's door never asks.
+                self._tools = shop_tools.door_tools(self.user, self._tools)
         return self._tools
+
+    def shop(self) -> bool:
+        """This turn's door is the store rep's (its tools were declared)."""
+        return shop_tools.SHOP_FIND.name in self.tools()
+
+    def visit(self):
+        return shop_scenario.visit_of(self.user) if self.recruiter else None
 
     def declarations(self, spec=None) -> list[dict]:
         if self._declarations is None:
@@ -479,6 +494,8 @@ class WebDoor:
             return False
         if self.not_for_me and self._writes(name):
             return False
+        if self.recruiter and (name in shop_tools.ALL_TOOLS or self.shop()):
+            return True
         return (
             off_registry_tool(name, self.user) is not None
             or refusal_for(name, self.user, {}) is None
@@ -546,6 +563,15 @@ class WebDoor:
             # One reading of his profile per turn: the cap (five sentences and a closing line) is
             # what one turn's speech reserve covers, and the first call's lines are the answer.
             ok, outcome, text, guard = False, Outcome.REFUSED, PROFILE_READ_ONCE, "once"
+        elif self.recruiter and (name in shop_tools.ALL_TOOLS or self.shop()):
+            # The store-rep demo's tools run only where declared; in its scenario nothing else
+            # does (`demo/shop/tools.py`). Same checks as any engine tool.
+            tool = self.tools().get(name)
+            if tool is None:
+                ok, outcome, text, guard = False, Outcome.REFUSED, shop_tools.not_here(name), "shop"
+            else:
+                result = run_engine_tool(self.request, tool, args)
+                ok, outcome, text, guard = not result.is_error, result.outcome, result.text, None
         else:
             refusal = refusal_for(name, self.user, args)
             if refusal is not None:
@@ -1096,7 +1122,8 @@ def _answer(
     report.heard = words
     # Whether HIS words ask for a change (the carry's exception, ADR 0090 amended 2026-11-21).
     read_through.heard(request, words)
-    speaker.exact = spoken_figures.wants_exact(words)
+    # A shop's prices are said exactly, never rounded for speech (`demo/shop/`).
+    speaker.exact = spoken_figures.wants_exact(words) or door.shop()
     heard_at = datetime.now(UTC)
     user_recorded = False
 
@@ -1210,10 +1237,24 @@ def _answer(
     torque_dropped = 0
     # Which sentences are said, held or dropped (`agents/legion/sentence_gate.py`): asked per
     # sentence; the counts, speech and events stay here.
+    # The store rep's sentence check (`demo.shop.guards`): on exactly while its tools are declared.
+    shop_known = shop_guards.visit_cents(door.visit()) if door.shop() else None
+    # Why each of the rep's sentences was dropped: rule names only, never the words.
+    shop_drops: list[str] = []
+
+    def shop_dropped(text: str) -> bool:
+        reason = shop_guards.claim_reason(text, door.calls, shop_known)
+        if reason is None and states_unbacked_figure(text, backed_cents(door.calls)):
+            reason = "engine_figure"
+        if reason is not None:
+            shop_drops.append(reason)
+        return reason is not None
+
     gate = gates.SentenceGate(
         backed=lambda: backed_cents(door.calls),
         torque=lambda: backed_torque(door.calls, torque_topic, about_front_end),
         actions=door.actions,
+        shop=shop_dropped if shop_known is not None else None,
     )
 
     sentences = 0
@@ -1501,7 +1542,26 @@ def _answer(
     if failure is not None:
         yield say(failure)
     elif sentences == 0 and not door.end_requested:
-        yield say(closing.nothing_said_line(door.wrote()))
+        # A store rep whose every sentence was an unbacked claim: code answers from this turn's
+        # lookup (`demo.shop.tools.fallback_lines`).
+        if door.shop() and money_dropped:
+            for line in shop_tools.fallback_lines(door.calls, words):
+                yield say(line)
+        else:
+            yield say(closing.nothing_said_line(door.wrote()))
+    elif door.shop() and money_dropped:
+        # Something survived, but not the option an objection needed (`demo.shop.tools`).
+        extra = shop_tools.objection_addition(door.calls, words, report.said)
+        if extra is not None:
+            yield say(extra)
+    if shop_drops:
+        reasons = ",".join(shop_drops)
+        log.warning("assistant store rep: sentences dropped reasons=%s", reasons)
+        web_conversation.record_lines(
+            request,
+            conversation_id_of(door),
+            [web_conversation.engine_latency_line(datetime.now(UTC), f"shop_dropped {reasons}")],
+        )
     if late.enabled() and not door.cancelled() and not crisis.detect(words):
         # The late-answer path (`agents/legion/late.py`; switched off, not even the cancel check
         # runs here): the one owed line, claimed only now, after
@@ -1532,9 +1592,10 @@ def _answer(
             extra["tools_ms"] = [[c.name, c.ms] for c in door.calls]
         # The follow-up chips: only what ran, signed for this visitor; the page asks for the
         # checked chips after the answer (`demo.suggestions`), never inside the turn.
+        # The guide's chips are not the store rep's (`demo/shop/`): none in its scenario.
         offer = (
             None
-            if door.end_requested
+            if door.end_requested or door.shop()
             else suggestions.turn_offer(
                 door.user, door.calls, " ".join(report.said), report.status
             )
@@ -1617,6 +1678,9 @@ def _greet(
     if door.recruiter:
         later = bool(turn_input.preface)
         text = web_greeting.ack_line() if later else web_greeting.recruiter_hello(companion_name)
+        if door.shop() and not later:
+            # The visit is already the store rep's (`demo/shop/`): the shop's hello instead.
+            text = shop_tools.SHOP_HELLO
     else:
         from greeting import facts
 
@@ -1688,7 +1752,7 @@ def _greet(
             )
     yield from speaker.drain()
     extra = {}
-    if door.recruiter and not turn_input.preface:
+    if door.recruiter and not turn_input.preface and not door.shop():
         # The first greeting carries the examples' offer (`demo.suggestions.EXAMPLES`).
         extra["offer"] = suggestions.examples_offer(door.user)
     yield ev.done("greeting", text, False, **extra)

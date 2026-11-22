@@ -334,13 +334,15 @@ def build_system_prompt_parts(
     offset_from_household: bool = False,
     recruiter: bool = False,
     cascade: bool = False,
+    shop: bool = False,
 ) -> tuple[str, str]:
     """(the stable body, the per-conversation tail: the clock and who is speaking).
 
     The web cascade (ADR 0102) caches the body with the tool declarations as an explicit Gemini
     context cache and sends the tail with each turn, so the clock never breaks the cache. Live
     joins the two (`build_system_prompt`), unchanged. `cascade` swaps in the cascade's own
-    about_kevin sentences (`CASCADE_ABOUT_KEVIN`); Live never passes it."""
+    about_kevin sentences (`CASCADE_ABOUT_KEVIN`); Live never passes it. `shop` (a recruiter on the
+    cascade, in the store-rep scenario) puts the rep's frame in place of the guide's."""
     who = companion.clause
     if companion.delivery:
         who += " " + companion.delivery
@@ -348,6 +350,10 @@ def build_system_prompt_parts(
         who += "\n\n" + RECRUITER_REGISTER
     recruiter_frame = cascade_recruiter_frame() if cascade else RECRUITER_FRAME
     frame = WEB_FRAME + LANGUAGE_RULE + (recruiter_frame if recruiter else MEMORY_CLAUSE)
+    if shop and recruiter and cascade:
+        from demo.shop.prompt import SHOP_FRAME
+
+        frame = LANGUAGE_RULE + SHOP_FRAME
     body = f"{who}\n\n{frame}{web_shared_clauses()}".rstrip()
     clock = time_fact(now, utc_offset_minutes, from_household=offset_from_household)
     speaker = VISITOR_FACT if recruiter else member_fact(first_name)

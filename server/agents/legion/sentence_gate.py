@@ -58,10 +58,19 @@ class SentenceGate:
         backed: Callable[[], set[int] | None],
         torque: Callable[[], TorqueGuard | None],
         actions: Callable[[], list[dict]],
+        shop: Callable[[str], bool] | None = None,
     ):
         self._backed = backed
         self._torque = torque
         self._actions = actions
+        # The store-rep demo's claim check (`demo.shop.guards`, handed in by the web door): True
+        # for a sentence naming a price, discount, stock or delivery no tool backed. Counted as
+        # money. None everywhere else.
+        self._shop = shop or (lambda text: False)
+
+    def money_unbacked(self, text: str) -> bool:
+        # The shop check first, so it sees (and names the reason for) every sentence it drops.
+        return self._shop(text) or states_unbacked_figure(text, self._backed())
 
     def torque_unbacked(self, text: str) -> bool:
         return states_unbacked_torque(text, self._torque())
@@ -83,7 +92,7 @@ class SentenceGate:
             return NO_ANSWER
         if sentences == 0 and is_filler(text):
             return FILLER
-        if (verbatim_said and has_money(text)) or states_unbacked_figure(text, self._backed()):
+        if (verbatim_said and has_money(text)) or self.money_unbacked(text):
             return MONEY
         if self.torque_unbacked(text):
             return TORQUE
@@ -97,7 +106,7 @@ class SentenceGate:
         """A sentence of the ask-again round, untagged."""
         if not text or is_filler(text) or (verbatim_said and has_money(text)):
             return SKIP
-        if states_unbacked_figure(text, self._backed()):
+        if self.money_unbacked(text):
             return MONEY
         if self.torque_unbacked(text):
             return TORQUE
@@ -108,7 +117,7 @@ class SentenceGate:
     def held(self, text: str) -> str:
         """A claim held earlier in the turn, decided at its end: `MONEY` and `TORQUE` are unbacked
         too (the closing line about the change is said in its place, round 2, N1)."""
-        if states_unbacked_figure(text, self._backed()):
+        if self.money_unbacked(text):
             return MONEY
         if self.torque_unbacked(text):
             return TORQUE

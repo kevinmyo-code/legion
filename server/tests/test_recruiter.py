@@ -422,7 +422,9 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
     engine's own suggestions for a turn's signed offer with reads only (`demo/suggestions.py`,
     `tests/test_demo_suggestions.py`). The media door (2026-11-19) serves the files a project
     section's models name, from the visitor's own version of the content, like the asset door
-    (`tests/test_recruiter_media.py`)."""
+    (`tests/test_recruiter_media.py`). The store-rep doors (2026-11-22, `demo/shop/views.py`) read
+    the visit's own scenario, orders and conversation record, switch its own scenario, and take
+    one callback form behind `LEGION_DEMO_HANDOFF` (`tests/test_demo_store_rep.py`)."""
     opened = {p for p, c in ROUTES if _guarded(c) and getattr(c, "allows_recruiter", False)}
     assert opened == {
         "/api/assistant/companion",
@@ -438,6 +440,10 @@ def test_the_doors_a_view_opens_to_recruiters_itself_are_named():
         "/api/demo/content",
         "/api/demo/media/x",
         "/api/demo/session",
+        "/api/demo/shop/call-card",
+        "/api/demo/shop/callback",
+        "/api/demo/shop/scenario",
+        "/api/demo/shop/state",
     }
     assert "/api/device-logs/" not in opened
 

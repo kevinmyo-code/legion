@@ -40,7 +40,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from agents.legion.retention import prune as prune_agent_traces
-from demo.models import DemoVisit
+from demo.models import CallbackRequest, DemoVisit, ShopOrder
 from demo.visit_cleanup import delete_visit_household
 from devicelogs.models import VISIT_RETENTION_DAYS, DeviceLog
 from devicelogs.web_conversation import prune_visit_records
@@ -100,10 +100,18 @@ class Command(BaseCommand):
         from demo import funnel
 
         counts = funnel.prune(VISIT_RETENTION_DAYS)
+        # The store-rep demo (`demo/shop/`): orders and callback requests, a visitor's name and
+        # contact included, go after the same 30 days as the visit records.
+        cutoff = timezone.now() - timedelta(days=VISIT_RETENTION_DAYS)
+        shop = (
+            ShopOrder.objects.filter(created_at__lt=cutoff).delete()[0]
+            + CallbackRequest.objects.filter(created_at__lt=cutoff).delete()[0]
+        )
         self.stdout.write(
             f"Deleted {n_households} expired demo visit household(s) ({rows} rows, visitors "
             f"included) and {n_legacy} older visitor(s) with their tokens, and {records} visit "
             f"conversation record(s) older than {VISIT_RETENTION_DAYS} days, and {runs} procedure "
             f"run(s) past retention, and {traces} agent trace row(s) past retention, and "
-            f"{counts} funnel count row(s) older than {VISIT_RETENTION_DAYS} days."
+            f"{counts} funnel count row(s) older than {VISIT_RETENTION_DAYS} days, and {shop} "
+            f"store-rep order or callback row(s) older than {VISIT_RETENTION_DAYS} days."
         )
