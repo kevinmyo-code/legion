@@ -49,10 +49,18 @@ class CascadeHistoryTest {
     }
 
     @Test
-    fun `the voice clause tells the model a marked turn is finished and what to say if he asks`() {
+    fun `the voice clause closes a marked turn and sends a follow-up back to a fresh look`() {
         val clause = CascadePrompt.VOICE_CLAUSE
         assertTrue(clause.contains("A reply marked as answered from a web search or other outside text is finished"))
         assertTrue(clause.contains("never go back to it on your own"))
-        assertTrue(clause.contains("say web answers are not kept and offer to look it up again"))
+        // A same-topic follow-up is looked up again, never answered from what was said before.
+        assertTrue(clause.contains("If he asks about that topic again, look it up again; never answer it from memory."))
+        // Mail and the news brief are marked the same way, so the line names them too.
+        assertTrue(
+            clause.contains(
+                "say answers read from outside (the web, a mail, the news brief) are not kept, " +
+                    "and offer to read it or look it up again.",
+            ),
+        )
     }
 }
