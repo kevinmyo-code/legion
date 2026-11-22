@@ -390,13 +390,22 @@ class BargeInGateTest {
     fun `an ignored span is no self-interrupt and the voice fires once the 3 s are over`() {
         val g = warmGate()
         feed(g, windows, 0.95f, loud)
-        // The rest of the warm-up passes in real time, playing or not.
-        feed(g, BargeInGate.WARMUP_WINDOWS - windows - 1, 0.1f, 500, playing = false)
+        // The rest of the warm-up passes only while reply audio plays.
+        feed(g, BargeInGate.WARMUP_WINDOWS - windows - 1, 0.1f, 500)
         assertTrue(g.warmingUpNow)
-        feed(g, 1, 0.1f, 500, playing = false)
+        feed(g, 1, 0.1f, 500)
         assertFalse(g.warmingUpNow)
         assertEquals(0, g.selfInterrupts)
         assertTrue(feed(g, windows, 0.95f, loud).single() is Event.Fire)
+    }
+
+    @Test
+    fun `silence between an ack and the reply does not use up the warm-up`() {
+        val g = warmGate()
+        feed(g, 10, 0.1f, 500) // a short ack plays
+        feed(g, 3 * BargeInGate.WARMUP_WINDOWS, 0.1f, 500, playing = false) // the model thinks
+        assertTrue(g.warmingUpNow)
+        assertTrue(feed(g, windows, 0.95f, loud).single() is Event.Ignored)
     }
 
     @Test
