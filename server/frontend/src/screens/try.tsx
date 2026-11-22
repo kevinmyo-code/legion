@@ -3,7 +3,6 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
 import {
-  DEMO_SESSION_KEY,
   enterDemo,
   useDemoContent,
   useDemoSession,
@@ -22,6 +21,7 @@ import {
   useAssistantEngine,
   type ChatCopy,
 } from '@/assistant/assistant-context'
+import { CascadeClient } from '@/assistant/cascade-client'
 import { FamilyAssistant } from '@/components/assistant/family-assistant'
 import { AssistantModals } from '@/components/assistant/assistant-modals'
 import { usePresenter } from '@/components/assistant/cards/presenter-context'
@@ -128,42 +128,89 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   const recruiter = session.data?.role === 'recruiter'
   // A visit's own session is signed in too: a member is someone signed in who is not a visitor.
   // Never decided while the link is entering: entering refetches both, and `me` landing first
-  // briefly read the new visitor as a member, which unmounted the orb (review item 2).
+  // briefly read the new visitor as a member, which unmounted the orb (review item 2). Nor once a
+  // link's visit has ended: `me` may still say signed in until it is asked again.
   const [entering, setEntering] = useState(false)
-  const member = me.data?.signedIn === true && !recruiter && !entering
-  // The link's one entry for this page: started on load, and a tap that comes while it runs waits
-  // on the same promise, so one link never spends two of the per-address tries or seeds two visits.
-  const linkEntry = useRef<Promise<boolean> | null>(null)
+  const [visitEnded, setVisitEnded] = useState(false)
+  const member = me.data?.signedIn === true && !recruiter && !entering && !visitEnded
+  // The link's entry: started once on load, and a tap that comes while it runs waits on the same
+  // one, so one link never spends two of the per-address tries or seeds two visits. It is dropped
+  // when it fails, when the tap waiting on it gives up (its request is aborted), and when the visit
+  // ends, so the next tap enters afresh with the link's code.
+  const linkEntry = useRef<{ done: Promise<boolean>; abort: AbortController } | null>(null)
   const enterLink = useCallback(
-    () =>
-      (linkEntry.current ??= (async () => {
-      setEntering(true)
-      try {
-        const result = await enterDemo(linkCode ?? '', refTag)
-        if (!result.ok) {
-          setLinkError(result.message)
-          return false
+    (signal?: AbortSignal) => {
+      let entry = linkEntry.current
+      if (!entry) {
+        const abort = new AbortController()
+        // This entry is the page's own until it is dropped: it is known by its abort controller.
+        const mine = () => linkEntry.current?.abort === abort
+        const current = () => mine() && !abort.signal.aborted
+        const made: { done: Promise<boolean>; abort: AbortController } = {
+          abort,
+          done: (async () => {
+            setEntering(true)
+            try {
+              const result = await enterDemo(linkCode ?? '', refTag, abort.signal)
+              if (!current()) return false
+              if (!result.ok) {
+                setLinkError(result.message)
+                return false
+              }
+              // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
+              const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
+              if (!current()) return false
+              await queryClient.invalidateQueries()
+              setVisitEnded(false)
+              return current() && chosen?.engine !== 'live'
+            } finally {
+              if (mine() || linkEntry.current === null) setEntering(false)
+            }
+          })(),
         }
-        // The visit's engine before its greeting: Live means the Live page, and no cascade turn.
-        const chosen = await queryClient.fetchQuery(ENGINE_QUERY).catch(() => null)
-        await queryClient.invalidateQueries()
-        return chosen?.engine !== 'live'
-      } finally {
-        setEntering(false)
+        void made.done.then((ok) => {
+          if (!ok && mine()) linkEntry.current = null
+        })
+        linkEntry.current = made
+        entry = made
       }
-    })()),
+      const waited = entry
+      signal?.addEventListener(
+        'abort',
+        () => {
+          if (linkEntry.current !== waited) return
+          waited.abort.abort()
+          linkEntry.current = null
+        },
+        { once: true },
+      )
+      return waited.done
+    },
     [linkCode, refTag, queryClient],
   )
-  // Entered on load once the page knows who is here: never over a visit this browser already holds
-  // (a second click on the resume link inside the two hours), never for a signed-in member (Kevin
-  // checking his own link would be signed out by the visit's login), and only once the page is
-  // actually shown: a prerendered or background tab waits until it is looked at.
+  // A link's visit that ends (its two hours run out) is forgotten: the page waits for a tap, which
+  // enters again. Never on its own: an open tab must not renew a visit nobody is using.
+  const wasRecruiter = useRef(false)
+  useEffect(() => {
+    if (session.isPending) return
+    if (wasRecruiter.current && !recruiter && linkCode !== undefined) {
+      linkEntry.current = null
+      setVisitEnded(true)
+    }
+    wasRecruiter.current = recruiter
+  }, [recruiter, session.isPending, linkCode])
+  // Entered on load once the page knows who is here, once per page: never over a visit this
+  // browser already holds (a second click on the resume link inside the two hours), never for a
+  // signed-in member (Kevin checking his own link would be signed out by the visit's login), and
+  // only once the page is actually shown: a prerendered or background tab waits until it is looked at.
   const settled = !session.isPending && !me.isPending
   const holdsVisit = recruiter || me.data?.signedIn === true
+  const triedOnLoad = useRef(false)
   useEffect(() => {
-    if (linkCode === undefined || !settled || holdsVisit || linkEntry.current) return
+    if (linkCode === undefined || !settled || holdsVisit || triedOnLoad.current) return
     const go = () => {
       if (document.visibilityState !== 'visible') return false
+      triedOnLoad.current = true
       void enterLink()
       return true
     }
@@ -176,28 +223,30 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
   }, [linkCode, settled, holdsVisit, enterLink])
   // The engine's switch (ADR 0102): a visit whose engine is Live gets the Live dock page, so a
   // server-side rollback needs no new web build. Asked once a visit exists (it is the visit's own
-  // answer); before that, the tap's entry asks it before any greeting (`enter` below).
+  // answer); before that, the entry asks it before any greeting (`enterLink` above).
   const engine = useAssistantEngine(recruiter)
   const liveVisit = recruiter && engine.data?.engine === 'live'
 
-  // When the visit runs out, ask again, so the page goes back to the code box
-  // instead of showing an assistant that will refuse.
+  // When the visit runs out, ask again (who is here, too), so the page goes back to the code box,
+  // or for a link to a tap that enters again, instead of showing an assistant that will refuse.
   const expiresAt = recruiter ? session.data?.expires_at : undefined
   useEffect(() => {
     if (!expiresAt) return
     const wait = Date.parse(expiresAt) - Date.now() + 1000
     if (!Number.isFinite(wait)) return
-    const timer = setTimeout(() => void queryClient.invalidateQueries({ queryKey: DEMO_SESSION_KEY }), Math.max(wait, 0))
+    const timer = setTimeout(() => void queryClient.invalidateQueries(), Math.max(wait, 0))
     return () => clearTimeout(timer)
   }, [expiresAt, queryClient])
 
   const awaitingEngine = recruiter && engine.isPending
   if (!member && !liveVisit && !linkError && !awaitingEngine && (linkCode !== undefined || recruiter)) {
-    // Every visitor gets the voice stage and the page under it (Kevin, 2026-11-22: "keep the demo
-    // page with the code in the link same as what i see when i type my code in"): a link with its
+    // Every visitor gets the voice stage and the page under it (Kevin, 2026-11-22: the link shows
+    // the same full page as a typed code): a link with its
     // code (entered on load), a reload of a visit, or a code typed in the box. One branch, so
     // entering never remounts the stage.
-    return <VoiceFirstVisit refTag={refTag} entered={recruiter} expiresAt={expiresAt} enter={enterLink} />
+    return (
+      <VoiceFirstVisit refTag={refTag} entered={recruiter} ended={visitEnded} expiresAt={expiresAt} enter={enterLink} />
+    )
   }
 
   if (session.isPending || me.isPending || awaitingEngine) {
@@ -330,13 +379,16 @@ function expiryWords(iso: string | undefined): string | null {
 function VoiceFirstVisit({
   refTag,
   entered,
+  ended,
   expiresAt,
   enter,
 }: {
   refTag?: string
   entered: boolean
+  /** A link's visit ran out: the next tap enters again. */
+  ended: boolean
   expiresAt?: string
-  enter: () => Promise<boolean>
+  enter: (signal: AbortSignal) => Promise<boolean>
 }) {
   // A browser that already holds a visit (a reload) is not entered again by the tap.
   const enteredRef = useRef(entered)
@@ -348,7 +400,7 @@ function VoiceFirstVisit({
   const queryClient = useQueryClient()
   const voiceFirst = useMemo(
     () => ({
-      prepare: () => (enteredRef.current ? Promise.resolve(true) : enterRef.current()),
+      prepare: (signal: AbortSignal) => (enteredRef.current ? Promise.resolve(true) : enterRef.current(signal)),
       funnelRef: refTag ?? '',
       sessionMinutes: 5,
       // The server switched this visit to Live mid-visit: ask again, and `TryScreen` swaps pages.
@@ -363,7 +415,7 @@ function VoiceFirstVisit({
       sessionLimit={VISITOR_SESSION_ENDED}
       copy={VISITOR_COPY}
     >
-      <VisitorBody entered={entered} expiresAt={expiresAt} />
+      <VisitorBody entered={entered} ended={ended} expiresAt={expiresAt} />
     </AssistantProvider>
   )
 }
@@ -373,8 +425,13 @@ function VoiceFirstVisit({
  * stage, with the page under it. One tree for both, so entering never mounts the stage again (the
  * browser run, 2026-11-19: a remount restarted the orb and the page modal's provider with it).
  */
-function VisitorBody({ entered, expiresAt }: { entered: boolean; expiresAt?: string }) {
+function VisitorBody({ entered, ended, expiresAt }: { entered: boolean; ended: boolean; expiresAt?: string }) {
   const content = useDemoContent(entered)
+  // The visit this conversation entered is over: the next tap enters again (`forgetEntry`).
+  const { client } = useAssistant()
+  useEffect(() => {
+    if (ended && client instanceof CascadeClient) client.forgetEntry()
+  }, [ended, client])
   const access = <AccessNote expiry={expiryWords(expiresAt)} />
   const loaded = entered && content.data && content.data.kind !== 'not-set-up' ? content.data.content : null
   return (
@@ -388,7 +445,7 @@ function VisitorBody({ entered, expiresAt }: { entered: boolean; expiresAt?: str
         )
       ) : (
         <p role="status" className="rc-status">
-          Opening the demo…
+          {ended ? 'Your demo visit has ended. Tap the orb to start a new one.' : 'Opening the demo…'}
         </p>
       )}
     </Shell>

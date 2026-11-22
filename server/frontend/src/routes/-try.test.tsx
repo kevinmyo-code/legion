@@ -12,6 +12,7 @@ import { renderApp } from '@/test/render-app'
 import type { DemoContent, DemoSectionMedia } from '@/api/demo'
 import { FIRST_QUESTIONS, OPENING_TURN, VISITOR_SESSION_ENDED } from '@/screens/try'
 import { RECORDING_NOTICE, STAGE_LINE } from '@/components/demo/voice-stage'
+import { ENTRY_TAP_MS } from '@/assistant/turn-deadline'
 
 /**
  * The recruiter section (recruiter-demo ticket 07): the code box on `/login`,
@@ -222,6 +223,85 @@ describe('/try', () => {
     expect(audio.disposed).toBe(false)
     expect(audio.micOpen).toBe(true)
     expect(engine.demo.enterBodies).toHaveLength(1)
+  })
+
+  test('an entry the conversation gave up on is aborted, never touches the page when it answers late, and the next tap enters afresh', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    renderApp('/try?code=OPEN-SESAME', engine, 'family')
+    const answer = globalThis.fetch
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const entries: Request[] = []
+    vi.stubGlobal('fetch', async (input: Request) => {
+      if (new URL(input.url).pathname === '/api/demo/enter') {
+        entries.push(input)
+        if (entries.length === 1) await held
+      }
+      return answer(input)
+    })
+    const orb = await screen.findByRole('button', { name: /^Talk to / })
+    await waitFor(() => expect(entries).toHaveLength(1))
+    // A tap waits on the entry made on load.
+    await act(async () => {
+      fireEvent.click(orb)
+      await settle()
+    })
+    // Still entering after two seconds: a tap gives up on it, and its request is aborted.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, ENTRY_TAP_MS + 100))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^(Talk to|Interrupt) / }))
+      await settle()
+    })
+    expect(entries[0].signal.aborted).toBe(true)
+    // It answers late, refused: the page does not switch to the code box.
+    engine.demo.enterReply = { status: 403, body: { detail: WRONG_CODE } }
+    await act(async () => {
+      release()
+      await settle()
+    })
+    expect(screen.queryByText(WRONG_CODE)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Access code')).not.toBeInTheDocument()
+    // The next tap makes a fresh request with the link's code, and enters.
+    engine.demo.enterReply = null
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    await waitFor(() => expect(entries).toHaveLength(2))
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+  })
+
+  test('a link visit that runs out waits for a tap, which enters again (never the member preview, never on its own)', async () => {
+    const engine = createEngine({ signedIn: false, assistant: { engine: 'cascade' } })
+    setAudioFactory(() => new FakeAudio())
+    renderApp('/try?code=OPEN-SESAME', engine, 'family')
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
+    expect(engine.demo.enterBodies).toHaveLength(1)
+    // The two hours run out: the engine holds no visit, and the page asks again.
+    engine.demo.session = null
+    engine.demo.ended = true
+    await act(async () => {
+      focusManager.setFocused(false)
+      focusManager.setFocused(true)
+      await settle()
+    })
+    focusManager.setFocused(undefined)
+    expect(await screen.findByText('Your demo visit has ended. Tap the orb to start a new one.')).toBeInTheDocument()
+    expect(screen.queryByText(/^Preview\./)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: sampleContent().hero.title })).not.toBeInTheDocument()
+    await act(settle)
+    expect(engine.demo.enterBodies).toHaveLength(1)
+    // A tap enters again with the link's code.
+    engine.demo.ended = false
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Talk to / }))
+      await settle()
+    })
+    await waitFor(() => expect(engine.demo.enterBodies).toHaveLength(2))
+    expect(await screen.findByRole('heading', { level: 1, name: sampleContent().hero.title })).toBeInTheDocument()
   })
 
   test('a link is not entered while the tab is hidden, and is entered once it is shown', async () => {
