@@ -500,6 +500,18 @@ def test_a_project_section_may_carry_a_demo_link_a_theme_and_an_orb_mark():
     assert problems(content) == []
 
 
+def test_a_legion_part_may_name_the_diagram_boxes_it_lights():
+    """Kevin, 2026-11-22: the words move with the diagram's highlights."""
+    content = fake_content() | fake_projects()
+    content["legion"]["parts"][0]["lights"] = ["Fake engine", "Fake phone"]
+    assert problems(content) == []
+    content["legion"]["parts"][0]["lights"] = "Fake engine"
+    assert problems(content)
+    content["legion"]["parts"][0]["lights"] = ["ok"]
+    content["legion"]["parts"][0]["glow"] = True
+    assert problems(content)
+
+
 def test_the_legion_section_may_carry_a_quality_block_and_refuses_a_bad_one():
     """Kevin, 2026-11-22: "quality for voice agents" inside the LEGION section."""
     content = fake_content() | fake_projects()
