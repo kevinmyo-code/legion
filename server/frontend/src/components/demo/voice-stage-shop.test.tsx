@@ -41,10 +41,12 @@ function serve(active: boolean, log: string[]) {
   })
 }
 
-function mount(log: string[]) {
+function mount(log: string[], hang = false) {
   const audio = new FakeAudio()
   async function* answer(): AsyncGenerator<SseEvent> {
     yield { type: 'turn', data: { conversation_id: 'c-1', turn: 0 } }
+    // Still thinking: the answer never comes.
+    if (hang) await new Promise(() => {})
     yield { type: 'sentence', data: { text: 'Hello.' } }
     yield { type: 'done', data: { status: 'done', final_text: 'Hello.' } }
   }
@@ -167,5 +169,22 @@ describe('the orb beside the store-rep section', () => {
     expect(stageOrb()).toHaveAttribute('aria-label', 'Talk to the store rep')
     await tapOrb()
     expect(log.filter((line) => line.startsWith('scenario'))).toEqual(['scenario rep'])
+  })
+
+  test.each([
+    [true, /^the store rep is thinking/],
+    [false, /^(?!the store rep)\S.* is thinking/],
+  ])('while thinking, the line names who is talking (rep on: %s)', async (active, line) => {
+    const log: string[] = []
+    serve(active, log)
+    mount(log, true)
+    await screen.findByRole('button', { name: active ? 'Back to the LEGION guide' : 'Talk to the store rep' })
+    await act(async () => {
+      fireEvent.change(screen.getByRole('textbox', { name: /^Type to / }), { target: { value: 'Hi there' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      await settle()
+    })
+    expect(document.querySelector('[data-stage="line"]')!.textContent).toMatch(line)
   })
 })

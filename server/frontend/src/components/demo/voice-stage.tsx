@@ -118,7 +118,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       document.body.style.paddingBottom = ''
     }
   }, [shown, glide])
-  const who = name === UNNAMED ? 'the assistant' : name
+  const guide = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
   const sideShown = glide && shown
   const sideChips = Boolean(sideShown && !chipsSeen && !place.pinned && cascade && cascade.chips.length > 0)
@@ -139,6 +139,9 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const shop = useQuery({ queryKey: SHOP_STATE_KEY, queryFn: fetchShopState, staleTime: 5_000, enabled: Boolean(cascade) })
   const switchTo = cascade && shop.data && shop.data.active !== inShop ? inShop : null
   const repNext = switchTo === true
+  // Who is talking: the rep while the visit's scenario is the shop, else the guide.
+  const repOn = Boolean(cascade && shop.data?.active)
+  const who = repOn ? 'the store rep' : guide
 
   const freshIfEnded = () => {
     if (state.phase === 'ended') client.reset()
@@ -175,7 +178,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
             ? TALK_TO_REP
             : STAGE_LINE
 
-  const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : repNext ? TALK_TO_REP : `Talk to ${who}`
+  const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : repNext ? TALK_TO_REP : `Talk to ${switchTo === false ? guide : who}`
 
   // The captions box: newest words at its foot once they no longer fit (`.rc-captions`), measured
   // again whenever the box or its words change size (a resize, a rotation, a late font), so the
@@ -341,7 +344,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
           {heard && heard.kind === 'me' && <p className="text-muted-foreground">You: {heard.text}</p>}
           {said && said.kind === 'ai' && (
             <p>
-              {who === 'the assistant' ? 'Assistant' : who}: {said.text}
+              {repOn ? 'Store rep' : who === 'the assistant' ? 'Assistant' : who}: {said.text}
             </p>
           )}
           {sys && sys.kind === 'sys' && <p className="text-muted-foreground italic">{sys.text}</p>}
