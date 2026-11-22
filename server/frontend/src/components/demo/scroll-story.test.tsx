@@ -332,6 +332,41 @@ describe('the LEGION scene', () => {
     expect(container.querySelector('.rc-scene-overlay text')).toBeNull()
   })
 
+  test("a phone's shots follow the scroll: a marker per shot, and nothing pans on its own", () => {
+    fakeIO()
+    vi.useFakeTimers()
+    media((query) => !query.includes('min-width'))
+    // A small phone frame: no two of the invented boxes fit together at a readable size.
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(200)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(150)
+    try {
+      const parts = [
+        { title: 'All three', body: 'Invented.', lights: ['Fake phone', 'Fake engine', 'Fake bank'] },
+        { title: 'One', body: 'Invented too.', lights: ['Fake engine'], short: 'Short.' },
+      ]
+      const { container } = render(<LegionScene svg={NAMED} caption="" parts={parts} lead={(t) => t} />)
+      const scene = container.querySelector('.rc-scene')!
+      expect(container.querySelectorAll('[data-step="0"]')).toHaveLength(3)
+      expect(container.querySelectorAll('[data-step="1"]')).toHaveLength(1)
+      expect(scene).toHaveAttribute('data-shot-now', '0')
+      // Time alone changes nothing.
+      act(() => vi.advanceTimersByTime(20_000))
+      expect(scene).toHaveAttribute('data-shot-now', '0')
+      // The visitor scrolls to the third shot's marker.
+      inView(container.querySelector('[data-step="0"][data-shot="2"]')!)
+      expect(scene).toHaveAttribute('data-shot-now', '2')
+      inView(container.querySelector('[data-step="1"][data-shot="0"]')!)
+      expect(scene).toHaveAttribute('data-step-now', '1')
+      expect(scene).toHaveAttribute('data-shot-now', '0')
+      // A part with a phone wording carries both; the CSS shows one.
+      expect(container.querySelector('.rc-part-short')).toHaveTextContent('Short.')
+      expect(container.querySelector('.rc-part-full')).toHaveTextContent('Invented too.')
+    } finally {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
+  })
+
   test('width alone decides the whole diagram: a desk visitor with reduced motion sees it whole', () => {
     fakeIO()
     media((query) => query === '(min-width: 900px)')

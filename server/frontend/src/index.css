@@ -1083,16 +1083,28 @@
         margin-top: -100svh;
         pointer-events: none;
     }
-    .recruiter .rc-scene-steps > div {
+    .recruiter .rc-scene-steps [data-step] {
         height: 75svh;
+    }
+    /* A phone step's further shots: shorter, so a step of three shots is not three screens. */
+    .recruiter .rc-scene-steps [data-shot]:not([data-shot="0"]) {
+        height: 55svh;
     }
     /* The first is a screen tall: its middle reaches the middle of the screen just as the stage
        pins, so the first step is never read while the stage is still sliding up. */
-    .recruiter .rc-scene-steps > div:first-child {
+    .recruiter .rc-scene-steps > .rc-scene-part:first-child > [data-shot="0"] {
         height: 100svh;
     }
-    .recruiter .rc-scene-steps > div:last-child {
+    .recruiter .rc-scene-steps > .rc-scene-part:last-child > [data-step]:last-child {
         height: 100svh;
+    }
+    /* The caption sits in the stage at desk width; on a phone under the scene (below). */
+    .recruiter .rc-scene-caption-after {
+        display: none;
+    }
+    /* A part's shorter phone wording (`short`): one of the two shows, never both. */
+    .recruiter .rc-part-short {
+        display: none;
     }
     .recruiter .rc-scene-figure {
         flex: none;
@@ -1163,7 +1175,10 @@
         stroke-width: 2;
         transform-box: fill-box;
         transform-origin: center;
-        animation: rc-scene-pulse 2.2s ease-out infinite;
+        opacity: 0;
+        /* A few breaths when the step comes up, then rest (under five seconds, WCAG 2.2.2); the
+           next step starts them again. */
+        animation: rc-scene-pulse 2.2s ease-out 2;
     }
     @keyframes rc-scene-pulse {
         from {
@@ -1194,7 +1209,8 @@
         stroke: #ffffff;
         stroke-width: 1.5;
         opacity: 0;
-        animation: rc-scene-packet 1.8s linear infinite;
+        /* Two trips when the step comes up, then rest (a new step sends them again). */
+        animation: rc-scene-packet 1.8s linear 2;
         animation-delay: 0.5s;
     }
     .recruiter .rc-scene-packet-back {
@@ -1291,6 +1307,19 @@
         }
         .recruiter .rc-scene-card::before {
             display: none;
+        }
+        .recruiter .rc-scene-caption {
+            display: none;
+        }
+        .recruiter .rc-scene-caption-after {
+            display: block;
+            margin-top: calc(0.6 * var(--u));
+        }
+        .recruiter .rc-part-full {
+            display: none;
+        }
+        .recruiter .rc-part-short {
+            display: inline;
         }
     }
     /* Reduced motion: the same steps; nothing travels, pulses or slides, a change is a short fade. */

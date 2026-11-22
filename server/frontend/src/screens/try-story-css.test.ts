@@ -64,6 +64,23 @@ describe('the LEGION scene (Kevin, 2026-11-22: the words move with the highlight
     expect(card?.body).toMatch(/min-height\s*:\s*0/)
   })
 
+  test('the pulse and the packets run a couple of cycles per step, then rest (never endless)', () => {
+    for (const sel of ['.recruiter .rc-scene-pulse', '.recruiter .rc-scene-packet']) {
+      const rule = all.find((r) => r.selector.trim() === sel && !r.within.includes('@media'))
+      expect(rule?.body, sel).toMatch(/animation\s*:[^;]*\s2\s*;?/)
+      expect(rule?.body, sel).not.toMatch(/infinite/)
+    }
+  })
+
+  test('a phone shows the shorter wording and the caption under the scene; a desk the full ones', () => {
+    const desk = all.filter((r) => !r.within.includes('@media'))
+    expect(desk.some((r) => r.selector.includes('.rc-part-short') && /display\s*:\s*none/.test(r.body))).toBe(true)
+    expect(desk.some((r) => r.selector.includes('.rc-scene-caption-after') && /display\s*:\s*none/.test(r.body))).toBe(true)
+    const phone = all.filter((r) => /max-width:\s*899px/.test(r.within))
+    expect(phone.some((r) => r.selector.includes('.rc-part-full') && /display\s*:\s*none/.test(r.body))).toBe(true)
+    expect(phone.some((r) => r.selector.trim().endsWith('.rc-scene-caption') && /display\s*:\s*none/.test(r.body))).toBe(true)
+  })
+
   test('print shows every part, in order, unpinned', () => {
     const print = all.filter((r) => r.within.includes('print'))
     expect(print.some((r) => r.selector.includes('.rc-scene-stage') && /position\s*:\s*static/.test(r.body))).toBe(true)

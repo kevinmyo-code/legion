@@ -218,13 +218,15 @@ export function useStorySections(root: RefObject<HTMLElement | null>, on: boolea
 
 /**
  * The step crossing the scene's reading line (`margin`, an IntersectionObserver root margin: the
- * middle of the screen by default): `onStep(index)` for each element under `root` marked `[data-step]`.
+ * middle of the screen by default): `onStep(index, element)` for each element under `root` marked
+ * `[data-step]`. `deps` changing (markers added or removed) watches them again.
  */
 export function useSceneSteps(
   root: RefObject<HTMLElement | null>,
   on: boolean,
-  onStep: (index: number) => void,
+  onStep: (index: number, element: HTMLElement) => void,
   margin = '-45% 0px -45% 0px',
+  deps?: unknown,
 ) {
   useEffect(() => {
     const element = root.current
@@ -232,12 +234,12 @@ export function useSceneSteps(
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) onStep(Number((entry.target as HTMLElement).dataset.step))
+          if (entry.isIntersecting) onStep(Number((entry.target as HTMLElement).dataset.step), entry.target as HTMLElement)
         }
       },
       { rootMargin: margin },
     )
     element.querySelectorAll('[data-step]').forEach((step) => observer.observe(step))
     return () => observer.disconnect()
-  }, [root, on, onStep, margin])
+  }, [root, on, onStep, margin, deps])
 }

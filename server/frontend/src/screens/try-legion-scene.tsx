@@ -287,6 +287,8 @@ export interface ScenePart {
   body: string
   /** The headings of the boxes this part is about. */
   lights?: string[]
+  /** A shorter wording of `body`, read on a phone (the same facts, fewer words). */
+  short?: string
 }
 
 export function LegionScene({
@@ -308,9 +310,14 @@ export function LegionScene({
   const diagram = useMemo(() => readDiagram(svg), [svg])
   const src = useMemo(() => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, [svg])
   const aspect = useMemo(() => diagramAspect(svg), [svg])
-  const onStep = useCallback((index: number) => setStep(index), [])
-  // The step is the marker at the middle of the screen.
-  useSceneSteps(root, true, onStep, '-50% 0px -50% 0px')
+  // The step, and the shot within it, are the marker at the middle of the screen: a phone step
+  // whose lit boxes need more than one readable shot has one marker per shot, so the visitor's own
+  // scroll moves the stage between them (nothing pans on its own).
+  const [shot, setShot] = useState(0)
+  const onStep = useCallback((index: number, element: HTMLElement) => {
+    setStep(index)
+    setShot(Number(element.dataset.shot ?? 0) || 0)
+  }, [])
   const motion = useStoryMotion()
   // 900 px and up the whole diagram shows and the card slides under the lit boxes, motion or not;
   // narrower the diagram zooms to them and the card is as wide as the stage.
@@ -347,19 +354,21 @@ export function LegionScene({
     return () => observer.disconnect()
   }, [])
 
-  // A phone: the step's lit boxes in readable shots; more than one, and the stage moves between
-  // them while the step is on screen (with motion it glides, without it changes in place, slower).
+  // A phone: each part's lit boxes in readable shots (one marker each, below). Wide: one shot.
+  const shotsPerPart = useMemo(
+    () =>
+      parts.map((part, index) => {
+        if (!diagram || wide || size.width === 0) return 1
+        const boxes = litBoxes(diagram, part.lights, index, parts.length)
+        return Math.max(1, phoneShots(diagram, boxes, size.width, size.height).length)
+      }),
+    [diagram, wide, parts, size.width, size.height],
+  )
   const shots = useMemo(
     () => (diagram && !wide && size.width > 0 ? phoneShots(diagram, lit, size.width, size.height) : [lit]),
     [diagram, wide, lit, size.width, size.height],
   )
-  const [shot, setShot] = useState(0)
-  useEffect(() => setShot(0), [step])
-  useEffect(() => {
-    if (shots.length < 2 || !visible) return
-    const timer = setInterval(() => setShot((n) => (n + 1) % shots.length), motion ? 2600 : 4000)
-    return () => clearInterval(timer)
-  }, [shots.length, visible, motion])
+  useSceneSteps(root, true, onStep, '-50% 0px -50% 0px', shotsPerPart.join(','))
   const inView = shots[Math.min(shot, shots.length - 1)] ?? lit
   const framing =
     diagram && size.width > 0
@@ -379,6 +388,8 @@ export function LegionScene({
       data-motion={motion ? 'on' : 'off'}
       data-visible={visible ? 'true' : 'false'}
       data-framing={wide ? 'whole' : 'zoom'}
+      data-step-now={step}
+      data-shot-now={Math.min(shot, shots.length - 1)}
       data-shots={shots.length}
       style={{ '--scene-steps': parts.length } as CSSProperties}
     >
@@ -410,9 +421,10 @@ export function LegionScene({
                         <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} pathLength={1} />
                         {on && (
                           <>
-                            <circle className="rc-scene-packet" cx={e.x1} cy={e.y1} r={4} style={{ '--dx': `${e.x2 - e.x1}px`, '--dy': `${e.y2 - e.y1}px` } as CSSProperties} />
+                            <circle key={`f${step}`} className="rc-scene-packet" cx={e.x1} cy={e.y1} r={4} style={{ '--dx': `${e.x2 - e.x1}px`, '--dy': `${e.y2 - e.y1}px` } as CSSProperties} />
                             {e.both && (
                               <circle
+                                key={`b${step}`}
                                 className="rc-scene-packet rc-scene-packet-back"
                                 cx={e.x2}
                                 cy={e.y2}
@@ -429,14 +441,15 @@ export function LegionScene({
                     <g key={`b${i}`} className="rc-scene-node" data-on={lit.includes(i) ? 'true' : 'false'}>
                       <rect className="rc-scene-glow" x={b.x - 3} y={b.y - 3} width={b.w + 6} height={b.h + 6} rx={6} />
                       <rect className="rc-scene-ring" x={b.x - 1} y={b.y - 1} width={b.w + 2} height={b.h + 2} rx={4} />
-                      {lit.includes(i) && <rect className="rc-scene-pulse" x={b.x - 1} y={b.y - 1} width={b.w + 2} height={b.h + 2} rx={4} />}
+                      {lit.includes(i) && <rect key={`p${step}`} className="rc-scene-pulse" x={b.x - 1} y={b.y - 1} width={b.w + 2} height={b.h + 2} rx={4} />}
                     </g>
                   ))}
                 </svg>
               </div>
             )}
           </div>
-          {caption && <figcaption className="rc-figcaption">{caption}</figcaption>}
+          {/* In the stage at desk width; on a phone below the scene (CSS), so the card has room. */}
+          {caption && <figcaption className="rc-figcaption rc-scene-caption">{caption}</figcaption>}
         </figure>
         {/* The words, once each, in order: the step's shows, under the boxes it lights. */}
         <ol
@@ -447,18 +460,37 @@ export function LegionScene({
           {parts.map((part, index) => (
             <li key={part.title} data-on={index === step ? 'true' : 'false'} aria-current={index === step ? 'step' : undefined}>
               <p>
-                <b>{lead(part.title)}</b> {part.body}
+                <b>{lead(part.title)}</b>{' '}
+                {part.short ? (
+                  // A phone reads the shorter wording (CSS shows one of the two, never both).
+                  <>
+                    <span className="rc-part-full">{part.body}</span>
+                    <span className="rc-part-short">{part.short}</span>
+                  </>
+                ) : (
+                  part.body
+                )}
               </p>
             </li>
           ))}
         </ol>
       </div>
-      {/* One marker per part, scrolling past the pinned stage: the one at the middle is the step. */}
+      {/* One marker per part (per shot on a phone), scrolling past the pinned stage: the one at
+          the middle is the step. */}
       <div className="rc-scene-steps" aria-hidden="true">
         {parts.map((part, index) => (
-          <div key={part.title} data-step={index} />
+          <div key={part.title} className="rc-scene-part">
+            {Array.from({ length: shotsPerPart[index] }, (_, k) => (
+              <div key={k} data-step={index} data-shot={k} />
+            ))}
+          </div>
         ))}
       </div>
+      {caption && (
+        <p className="rc-figcaption rc-scene-caption-after" aria-hidden="true">
+          {caption}
+        </p>
+      )}
     </div>
   )
 }

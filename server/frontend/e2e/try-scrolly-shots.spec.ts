@@ -120,56 +120,96 @@ async function open(page: Page) {
   await page.waitForTimeout(600)
 }
 
-async function toStep(page: Page, index: number, settle: number) {
-  await page.evaluate((i) => {
-    const marker = document.querySelector(`[data-scene="legion"] [data-step="${i}"]`)
-    if (!marker) return
+/** Every marker in order: the step it shows and, on a phone, the shot within the step. */
+function markers(page: Page) {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-scene="legion"] [data-step]')).map((m) => ({
+      step: Number((m as HTMLElement).dataset.step),
+      shot: Number((m as HTMLElement).dataset.shot ?? 0),
+    })),
+  )
+}
+
+/**
+ * Scrolls marker `n` to the middle of the screen, waits until the stage says it shows that step and
+ * shot, then until the diagram has stopped moving (its transform the same over a few frames).
+ */
+async function toMarker(page: Page, n: number, settled = true) {
+  const want = await page.evaluate((i) => {
+    const marker = document.querySelectorAll('[data-scene="legion"] [data-step]')[i] as HTMLElement | undefined
+    if (!marker) return null
     const r = marker.getBoundingClientRect()
     window.scrollTo(0, window.scrollY + r.top + r.height / 2 - window.innerHeight / 2)
-  }, index)
-  await page.waitForTimeout(settle)
+    return { step: marker.dataset.step ?? '0', shot: marker.dataset.shot ?? '0' }
+  }, n)
+  if (!want) return
+  await page.waitForFunction(
+    (w) => {
+      const scene = document.querySelector('[data-scene="legion"]')
+      return scene?.getAttribute('data-step-now') === w.step && scene?.getAttribute('data-shot-now') === w.shot
+    },
+    want,
+    { timeout: 10_000 },
+  )
+  if (!settled) return
+  await page.waitForFunction(
+    () => {
+      const layer = document.querySelector('.rc-scene-layer') as HTMLElement | null
+      const w = window as unknown as { __last?: string; __same?: number }
+      const now = layer ? getComputedStyle(layer).transform : ''
+      w.__same = now === w.__last ? (w.__same ?? 0) + 1 : 0
+      w.__last = now
+      // Still for six polls, and the card's words faded in.
+      const on = document.querySelector('.rc-scene-card li[data-on="true"]')
+      return w.__same >= 6 && (!on || Number(getComputedStyle(on).opacity) > 0.99)
+    },
+    undefined,
+    { polling: 100, timeout: 10_000 },
+  )
 }
 
 const SIZES = [
   { name: 'desk', width: 1440, height: 900 },
   { name: 'phone', width: 390, height: 844 },
+  // Safari's bars up on a 390 px iPhone: the small viewport is about 664 px tall.
+  { name: 'phone-bars', width: 390, height: 664 },
 ] as const
 
 for (const size of SIZES) {
-  test(`the LEGION stage at ${size.width} px`, async ({ browser }) => {
-    test.setTimeout(240_000)
+  test(`the LEGION stage at ${size.width} x ${size.height}`, async ({ browser }) => {
+    test.setTimeout(300_000)
     fs.mkdirSync(OUT, { recursive: true })
-    const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, deviceScaleFactor: size.name === 'phone' ? 2 : 1 })
+    const phone = size.width < 900
+    const context = await browser.newContext({ viewport: { width: size.width, height: size.height }, deviceScaleFactor: phone ? 2 : 1 })
     const page = await context.newPage()
     await open(page)
-    const steps = await page.evaluate(() => document.querySelectorAll('[data-scene="legion"] [data-step]').length)
-    expect(steps).toBeGreaterThan(0)
+    const all = await markers(page)
+    expect(all.length).toBeGreaterThan(0)
     const numbers: Record<string, unknown>[] = []
-    for (let i = 0; i < steps; i++) {
-      await toStep(page, i, 1400)
-      await page.screenshot({ path: path.join(OUT, `${size.name}-step-${i + 1}.png`) })
-      // A phone step whose lit boxes do not fit at a readable size pans between them: each shot.
-      const shots = await page.evaluate(() => Number(document.querySelector('[data-scene="legion"]')?.getAttribute('data-shots') ?? 1))
-      for (let k = 1; k < shots; k++) {
-        await page.waitForTimeout(2700)
-        await page.screenshot({ path: path.join(OUT, `${size.name}-step-${i + 1}-shot-${k + 1}.png`) })
-      }
+    for (let n = 0; n < all.length; n++) {
+      const { step, shot } = all[n]
+      await toMarker(page, n)
+      await page.screenshot({ path: path.join(OUT, `${size.name}-step-${step + 1}${shot ? `-shot-${shot + 1}` : ''}.png`) })
       numbers.push(
         await page.evaluate(() => {
           const stage = document.querySelector('.rc-scene-stage')!.getBoundingClientRect()
           const frame = document.querySelector('.rc-scene-frame')!.getBoundingClientRect()
+          const cardEl = document.querySelector('.rc-scene-card') as HTMLElement
           const active = document.querySelector('.rc-scene-card li[data-on="true"]')
           const card = active?.getBoundingClientRect()
-          const lit = Array.from(document.querySelectorAll('.rc-scene-node[data-on="true"] .rc-scene-ring')).map((n) => n.getBoundingClientRect())
+          const lit = Array.from(document.querySelectorAll('.rc-scene-node[data-on="true"] .rc-scene-ring')).map((b) => b.getBoundingClientRect())
           const inFrame = lit.every((b) => b.left >= frame.left - 2 && b.right <= frame.right + 2 && b.top >= frame.top - 2 && b.bottom <= frame.bottom + 2)
           const layer = document.querySelector('.rc-scene-layer') as HTMLElement | null
           const scale = layer ? new DOMMatrixReadOnly(getComputedStyle(layer).transform).a * 2 : 0
           return {
             step: active?.textContent?.slice(0, 40),
+            shot: document.querySelector('[data-scene="legion"]')?.getAttribute('data-shot-now'),
             // Pixels per diagram unit: the headings are 15 units, so 0.8 reads at 12 px.
             pxPerUnit: Math.round(scale * 100) / 100,
             stageTop: Math.round(stage.top),
             cardOnScreen: Boolean(card && card.top >= 0 && card.bottom <= window.innerHeight),
+            // The card's words fit it: no inner scroll needed.
+            cardFits: cardEl.scrollHeight <= cardEl.clientHeight + 1,
             lit: lit.length,
             litInFrame: inFrame,
             litEdges: document.querySelectorAll('.rc-scene-edge[data-on="true"]').length,
@@ -177,19 +217,21 @@ for (const size of SIZES) {
         }),
       )
     }
-    // One frame mid-transition: from the first step to the third, caught after 250 ms.
-    await toStep(page, 0, 1400)
-    await toStep(page, Math.min(2, steps - 1), 250)
+    // One frame mid-transition: from the first marker to the third, caught after 250 ms.
+    await toMarker(page, 0)
+    await toMarker(page, Math.min(2, all.length - 1), false)
+    await page.waitForTimeout(250)
     await page.screenshot({ path: path.join(OUT, `${size.name}-mid-transition.png`) })
     const overflowX = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await toStep(page, Math.min(1, steps - 1), 600)
+    await toMarker(page, Math.min(1, all.length - 1))
     await page.screenshot({ path: path.join(OUT, `${size.name}-reduced-motion.png`) })
-    fs.writeFileSync(path.join(OUT, `${size.name}-numbers.json`), JSON.stringify({ steps: numbers, overflowX }, null, 1))
+    fs.writeFileSync(path.join(OUT, `${size.name}-numbers.json`), JSON.stringify({ markers: numbers, overflowX }, null, 1))
     expect(overflowX).toBe(0)
     for (const n of numbers) {
       expect(n.cardOnScreen, JSON.stringify(n)).toBe(true)
-      if (size.name === 'phone') expect(n.pxPerUnit as number, JSON.stringify(n)).toBeGreaterThanOrEqual(0.79)
+      expect(n.cardFits, JSON.stringify(n)).toBe(true)
+      if (phone) expect(n.pxPerUnit as number, JSON.stringify(n)).toBeGreaterThanOrEqual(0.79)
       else expect(n.litInFrame, JSON.stringify(n)).toBe(true)
     }
     await context.close()
