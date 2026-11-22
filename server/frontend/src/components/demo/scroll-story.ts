@@ -45,7 +45,7 @@ export function useStoryGlide(): boolean {
 }
 
 export type OrbSide = 'left' | 'right'
-/** The mark the orb takes on beside a section (Kevin, 2026-11-22: the Q at the Quanex section). */
+/** The mark the orb takes on beside a section (Kevin, 2026-11-22: the Q at the finance voice section). */
 export type OrbMark = 'q'
 export interface OrbPlace {
   side: OrbSide
@@ -96,7 +96,7 @@ export function useOrbPlace(): OrbPlace {
   )
 }
 
-const THEMES: readonly SectionTheme[] = ['legion', 'quanex', 'midcon', 'aw4']
+const THEMES: readonly SectionTheme[] = ['legion', 'ledger', 'midcon', 'aw4']
 
 /**
  * The palette and the orb's mark follow the section at the middle of the screen (Kevin,

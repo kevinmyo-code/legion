@@ -58,7 +58,7 @@ export interface DemoQuality {
 }
 
 /** A section's palette (`index.css` `[data-theme]`); the page blends to it as it scrolls in. */
-export type SectionTheme = 'legion' | 'quanex' | 'midcon' | 'aw4'
+export type SectionTheme = 'legion' | 'ledger' | 'midcon' | 'aw4'
 
 /**
  * A clip slot that may not be filled yet: with `video` the page plays it, without one it says

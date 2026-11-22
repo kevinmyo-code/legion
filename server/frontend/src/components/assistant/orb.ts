@@ -54,7 +54,7 @@ export class OrbRenderer {
   private t = 0
   private rot = 0
   private level = 0
-  // A mark the points gather into (the Q at the Quanex section, Kevin 2026-11-22): one target per
+  // A mark the points gather into (a letter, the finance voice demo's Q, Kevin 2026-11-22): one target per
   // point, x and y in the orb's radius units, and how far the points have gone toward it (0..1).
   private mark: Float32Array | null = null
   private markGoal = 0

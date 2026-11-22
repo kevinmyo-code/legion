@@ -494,7 +494,7 @@ def test_a_project_section_may_carry_a_demo_link_a_theme_and_an_orb_mark():
     content = fake_content() | fake_projects()
     content["project_sections"][0].update(
         link={"href": "https://demo.example.test", "label": "Try the live demo"},
-        theme="quanex",
+        theme="ledger",
         orb_mark="q",
     )
     assert problems(content) == []

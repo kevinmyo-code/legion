@@ -151,8 +151,8 @@ RESERVED_SECTION_IDS = (
 
 # The page's section palettes (Kevin, 2026-11-22: "the vibe will change for each section"): the
 # page blends to a section's palette as it scrolls in. Named in `index.css` (`[data-theme]`).
-SECTION_THEMES = ("legion", "quanex", "midcon", "aw4")
-# A mark the orb takes on beside a section (Kevin, 2026-11-22: the orb becomes the Quanex voice
+SECTION_THEMES = ("legion", "ledger", "midcon", "aw4")
+# A mark the orb takes on beside a section (Kevin, 2026-11-22: the orb becomes the finance voice
 # demo's Q at its section). Only a letter drawn from a system font: no logo file is shipped.
 ORB_MARKS = ("q",)
 

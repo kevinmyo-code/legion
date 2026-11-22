@@ -845,7 +845,7 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     content.project_sections![0] = {
       ...content.project_sections![0],
       link: { href: 'https://demo.example.test', label: 'Try the fake demo' },
-      theme: 'quanex',
+      theme: 'ledger',
       orb_mark: 'q',
     }
     engine.demo.content = content
@@ -855,7 +855,7 @@ describe('/try: the Projects strip and project sections (Kevin, 2026-11-05)', ()
     expect(link).toHaveAttribute('href', 'https://demo.example.test')
     expect(link).toHaveAttribute('target', '_blank')
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
-    expect(section).toHaveAttribute('data-theme', 'quanex')
+    expect(section).toHaveAttribute('data-theme', 'ledger')
     expect(section).toHaveAttribute('data-orb-mark', 'q')
     // The page starts in LEGION's mood; the sections' own come as they reach the middle (a browser).
     expect(section.closest('.recruiter')).toHaveAttribute('data-page-theme', 'legion')

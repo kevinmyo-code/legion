@@ -28,7 +28,7 @@ export function VoiceOrb({
   /** How many points (default 1500) and how big each is (default 1): a small orb wants fewer and smaller. */
   points?: number
   dot?: number
-  /** A mark the points gather into ('q': the Quanex voice demo's Q, Kevin 2026-11-22), or none. */
+  /** A mark the points gather into ('q': the finance voice demo's Q, Kevin 2026-11-22), or none. */
   mark?: 'q' | null
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -118,7 +118,7 @@ const glyphCache = new Map<string, Float32Array>()
 
 /**
  * The mark's points: the letter drawn once off screen in the heaviest system sans there is, as the
- * Quanex voice demo draws its Q (a letter in a system font, no logo file), sampled to one target
+ * finance voice demo draws its Q (a letter in a system font, no logo file), sampled to one target
  * per point. No 2D canvas (jsdom): a ring.
  */
 function glyphTargets(mark: 'q', count: number): Float32Array {

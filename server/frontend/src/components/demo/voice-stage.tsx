@@ -13,7 +13,7 @@ import { useOrbPlace, useStoryGlide, useStoryMotion } from '@/components/demo/sc
 /**
  * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"). A long
  * spoken opening and a page to read before talking lose people, so: one large orb and one line;
- * the tap that opens the audio is the tap that enters the visit, and the opening is about five
+ * the visit is entered as the page opens (Kevin, 2026-11-22), the tap opens the audio, and the opening is about five
  * seconds. Under the orb, for people who
  * cannot talk: the engine's suggestion chips (answered aloud once the greeting, recording notice
  * included, has played to its end; typed before that), the one-minute tour, captions always on, and a
@@ -214,9 +214,9 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       </div>
       {flight ? (
         // One orb for the whole page (Kevin, 2026-11-22: "one continous flow"): always mounted and
-        // drawn, flown by `useOrbFlight`. It answers a tap all the way (at the top it lies exactly
-        // over the stage's button, the same control); until it lands it is out of the
-        // accessibility tree and the tab order, where the stage's button stands for it.
+        // drawn, flown by `useOrbFlight`. Until it lands it takes no tap (CSS: it would cover the
+        // chips and links it passes) and is out of the accessibility tree and the tab order; the
+        // stage's button under it at the top is the control then.
         <div
           data-stage="side"
           data-shown={shown ? 'true' : 'false'}

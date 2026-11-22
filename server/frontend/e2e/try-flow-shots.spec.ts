@@ -10,7 +10,7 @@ import { sampleContent } from '../src/test/engine-demo'
 /**
  * The /try flow of 2026-11-22 in a REAL browser, for LOOKING (Kevin: "one continous flow", "more
  * energetic mood", "the vibe will change for each section", the orb turning into the Q at the
- * Quanex voice section). Screenshots at 1440 x 900, 1000 x 800 and 390 x 844: the top, the orb in
+ * finance voice section). Screenshots at 1440 x 900, 1000 x 800 and 390 x 844: the top, the orb in
  * flight, each section with the orb at rest, the blend and the morph caught midway, reduced
  * motion; plus numbers: the orb's path per scroll step (it never jumps or vanishes), long frames
  * while scrolling, and sideways overflow at 390 px. Fake engine; invented content unless the owner
@@ -49,7 +49,7 @@ function invented(): DemoContent {
       },
     },
     project_sections: [
-      { id: 'fake-voice', title: 'Fake voice', intro: LOREM, parts: parts(4, 'Voice'), theme: 'quanex', orb_mark: 'q', link: { href: 'https://demo.example.test', label: 'Try the fake demo' } },
+      { id: 'fake-voice', title: 'Fake voice', intro: LOREM, parts: parts(4, 'Voice'), theme: 'ledger', orb_mark: 'q', link: { href: 'https://demo.example.test', label: 'Try the fake demo' } },
       { id: 'fake-ops', title: 'Fake operations', intro: LOREM, parts: parts(4, 'Ops'), theme: 'midcon' },
       { id: 'fake-garage', title: 'Fake garage', intro: LOREM, parts: parts(4, 'Garage'), theme: 'aw4' },
     ],
@@ -148,12 +148,31 @@ for (const size of SIZES) {
 
     // The orb's path, a few pixels of scroll at a time from the top through the first sections.
     const path_: { y: number; x: number; cy: number; w: number }[] = []
+    // In flight the orb passes over the stage's controls: a tap on any of them must reach it.
+    const stolen: string[] = []
     for (let y = 0; y <= 1400; y += 20) {
       await page.evaluate((to) => window.scrollTo(0, to), y)
       await page.waitForTimeout(40)
       const box = await orbBox(page)
       if (box) path_.push({ y, x: Math.round(box.x), cy: Math.round(box.y), w: Math.round(box.w) })
+      stolen.push(
+        ...(await page.evaluate((at) => {
+          const flyer = document.querySelector('.rc-flyer')
+          const controls = Array.from(document.querySelectorAll('[data-stage="tour"], [data-stage="form"] button, [data-stage="form"] input, [data-stage="ask"] a, [data-stage="chips-room"] button'))
+          const out: string[] = []
+          for (const c of controls) {
+            const r = c.getBoundingClientRect()
+            const cx = r.left + r.width / 2
+            const cy = r.top + r.height / 2
+            if (r.width === 0 || cy < 0 || cy > window.innerHeight) continue
+            const hit = document.elementFromPoint(cx, cy)
+            if (flyer && hit && flyer.contains(hit)) out.push(`${at}: ${c.textContent?.trim() || c.getAttribute('aria-label') || c.tagName}`)
+          }
+          return out
+        }, y)),
+      )
     }
+    numbers.tapsTakenByTheFlyingOrb = stolen
     let biggestStep = 0
     for (let i = 1; i < path_.length; i++) biggestStep = Math.max(biggestStep, Math.hypot(path_[i].x - path_[i - 1].x, path_[i].cy - path_[i - 1].cy))
     numbers.orbPath = path_
@@ -263,6 +282,7 @@ for (const size of SIZES) {
     }
     fs.writeFileSync(path.join(OUT, `${size.name}-numbers.json`), JSON.stringify(numbers, null, 1))
     expect(numbers.overflowX).toBe(0)
+    expect(stolen).toEqual([])
     await context.close()
   })
 }

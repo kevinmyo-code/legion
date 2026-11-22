@@ -357,8 +357,8 @@
         --rc-glow-2 1200ms ease,
         --rc-glow-3 1200ms ease;
 }
-/* The Quanex voice demo's own palette (its stylesheet): cool grey paper, deep green. */
-.recruiter[data-page-theme="quanex"] {
+/* "ledger": the finance voice demo's own palette (its stylesheet): cool grey paper, deep green. */
+.recruiter[data-page-theme="ledger"] {
     --rc-paper: #f4f6f7;
     --rc-ink: #14181c;
     --rc-meta: #4f5964;
@@ -782,6 +782,11 @@
         pointer-events: auto;
         transform-origin: 50% 50%;
         will-change: transform;
+    }
+    /* In flight it takes no tap: it passes over the chips, the typing box and the links, which
+       keep theirs. At the top the stage's own button lies under it and takes the tap. */
+    .recruiter .rc-voice-side:not([data-shown="true"]) .rc-flyer {
+        pointer-events: none;
     }
     .recruiter .rc-side-words {
         --side-x: calc(100vw - 14rem);
