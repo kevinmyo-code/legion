@@ -1234,7 +1234,12 @@ object LiveToolbox {
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
             // (ticket 10) - car items are now just items on the list named "Car".
             // remove reaches calendar entries too, asked first (2026-11-22, EventRemoval).
-            "manage_item" -> nameIt(removeCalendarEntry(context, args, userText) ?: manageItem(context, args), args)
+            // schedule moves one, and an add right after one may be a correction to it (EventMove).
+            "manage_item" -> nameIt(
+                removeCalendarEntry(context, args, userText) ?: moveCalendarEntry(context, args, userText)
+                    ?: manageItem(context, args),
+                args,
+            )
             "read_list" -> readList(context)
             // "manage_grocery" retired one-today ticket 10 slice B, 2026-09-05 - named explicitly
             // (never falling through to the generic "Unknown tool" branch below) so a model that
@@ -4265,6 +4270,29 @@ object LiveToolbox {
 
     private fun isRemove(args: JSONObject) = args.optString("action").trim().lowercase() == "remove"
 
+    /**
+     * `manage_item schedule` for a calendar entry (moved, EventMove), or an `add` that corrects the
+     * entry just added or moved. Null when neither applies, or a date or time does not read: the
+     * reminder and add paths run as before and word their own refusals.
+     */
+    private suspend fun moveCalendarEntry(context: Context, args: JSONObject, userText: String?): JSONObject? {
+        val item = args.optString("item").trim()
+        val dateArg = args.optString("date").trim()
+        val timeArg = args.optString("time").trim()
+        val date = parseNoteLocalDate(dateArg)
+        val time = parseNoteLocalTime(timeArg)
+        val unreadable = dateArg.isNotEmpty() && date == null || timeArg.isNotEmpty() && time == null
+        return when {
+            unreadable -> null
+            args.optString("action").trim().lowercase() == "add" ->
+                com.kevin.legion.service.tools.day.EventMove.followUp(context, item, date, time, userText)
+            args.optString("action").trim().lowercase() != "schedule" || item.isBlank() -> null
+            else -> com.kevin.legion.service.tools.day.EventMove.move(
+                context, item, date, time, NotesController.openItemsForList(context, theList(context).id),
+            )
+        }
+    }
+
     /** Dispatches `manage_item`: add / tick / untick / remove / schedule / skip one item. */
     private suspend fun manageItem(context: Context, args: JSONObject): JSONObject {
         val action = args.optString("action").trim().lowercase()
@@ -4272,7 +4300,7 @@ object LiveToolbox {
         val list = theList(context)
 
         if (action == "add") {
-            if (itemArg.isBlank()) return result(false, "What should I add?")
+            if (itemArg.isBlank()) return result(false, "Nothing was added: add what?").put("needs_answer", true)
 
             // **`add` honours `date`/`time`** (bug, 2026-08-11). It previously called addItem with
             // the text alone and dropped both arguments on the floor while still replying "Added
@@ -4436,7 +4464,7 @@ object LiveToolbox {
         }
 
         return try {
-            com.kevin.legion.backend.EventsAppointmentWriter.addEvent(
+            val added = com.kevin.legion.backend.EventsAppointmentWriter.addEvent(
                 context = context,
                 title = itemArg,
                 startsAtMs = startMs,
@@ -4445,6 +4473,7 @@ object LiveToolbox {
                 source = DatesAspectSeeder.SOURCE_LEGION,
                 kind = EventKind.EVENT,
             )
+            com.kevin.legion.service.tools.day.EventMove.noteTouched(added.id)
             // The day it landed on takes the screen unless a card already shows it (LiveCards). The
             // row is saved by now: a failed card read must never turn this into "couldn't save".
             val zone = RelativeDay.clock().zone

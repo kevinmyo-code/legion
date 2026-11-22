@@ -93,6 +93,9 @@ internal object EventRemovalWords {
         }
     }
 
+    /** "also", "another", "too", "second" in his words: a second entry is meant, not a correction. */
+    fun saysAnother(text: String?): Boolean = tokens(text.orEmpty()).any { it in ANOTHER_WORDS }
+
     /** Nothing was removed. [asks]: the message is a question to him, and `needs_answer` says so, so
      * his next one word may answer it (the cascade's LoneWordWriteGuard.asks). */
     fun fail(message: String, asks: Boolean = false): JSONObject {
@@ -117,5 +120,6 @@ internal object EventRemovalWords {
         "thank", "you", "yes", "sir",
     )
     private val REMINDER_WORDS = setOf("reminder", "reminders", "todo")
+    private val ANOTHER_WORDS = setOf("also", "another", "too", "second", "both", "extra")
     private val ENTRY_WORDS = setOf("calendar", "event", "appointment", "entry", "meeting")
 }

@@ -178,6 +178,7 @@ internal class VoiceEvalHarness(
     private suspend fun runTurns(case: EvalCase) {
         // A new conversation, as the session's release: no remove question carries over.
         com.kevin.legion.service.tools.day.EventRemoval.reset()
+        com.kevin.legion.service.tools.day.EventMove.reset()
         val audit = LiveAudit(sink = { out(LiveAudit.TAG, it) }, onSession = {})
         audit.enabled = true
         audit.sessionStart("eval+${prefix.model}", emptySet())

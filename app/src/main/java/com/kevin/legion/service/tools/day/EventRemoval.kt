@@ -68,6 +68,9 @@ internal object EventRemoval {
     /** His turns so far, counted by the voice session ([turnStarted]); a question is answerable in the next. */
     @Volatile private var turn = 0L
 
+    /** The turn he is in (EventMove reads it for "the entry just discussed"). */
+    val currentTurn: Long get() = turn
+
     /** Test seam: the clock the question's age is read on. */
     @Volatile internal var clock: () -> Long = System::currentTimeMillis
 

@@ -3632,6 +3632,7 @@ internal class CascadeSession(
     private suspend fun release(reason: String) {
         // The conversation is over: no remove question outlives it.
         EventRemoval.reset()
+        com.kevin.legion.service.tools.day.EventMove.reset()
         // Called from inside a turn too (a hand-over, a dismissal): that turn must not cancel
         // itself, or the step after release (opening Live) would never run.
         val caller = kotlin.coroutines.coroutineContext[Job]

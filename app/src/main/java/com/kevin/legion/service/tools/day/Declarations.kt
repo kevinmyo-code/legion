@@ -63,7 +63,7 @@ internal object Declarations {
                 "to-do with no trigger is manage_checklist list=Todo (create it if missing). " +
                 "A grocery or shopping item is manage_checklist list=Groceries, never here. " +
                 "kind=appointment puts a dated item on his calendar: it passes at its time, is " +
-                "NEVER tickable (say so if asked); remove deletes one (asks first). Pass a date or " +
+                "NEVER tickable (say so if asked); schedule moves one, remove deletes one (asks first). Pass a date or " +
                 "time on the same add call, never add then schedule. item fuzzily matches existing " +
                 "text, never a position. A recurring item cannot be ticked: edit its repeat.",
             params = obj(
