@@ -142,19 +142,20 @@ LISTED_SHELL_OK = re.compile(
 )
 
 
-def _is_lone_report(command: str, task: int | None = None) -> bool:
+def _is_lone_report(command: str, task: int | None = None, tool: str = "PowerShell") -> bool:
     """This folder's report.py, alone (`_is_our_lone_script`): its free text (a summary) must not
     trip the ask list. Any other report.py, or one with something expandable, is an ordinary
     command (2026-11-22 review F1: the old check stripped quoted text and took any `python`)."""
-    return _is_our_lone_script(command, "report.py", task)
+    return _is_our_lone_script(command, "report.py", task, tool)
 
 
-def _plain(path: str) -> str:
+def _plain(path: str, bash: bool = False) -> str:
     """A path as TEXT, compared without resolving anything (re-review A1/A2: realpath collapsed
     `x/$(cmd)/..`). ASCII case and slashes only (non-ASCII never gets here, so no Unicode case
-    folding such as the Kelvin sign); Git Bash's `/c/` is `c:/`."""
+    folding such as the Kelvin sign). Git Bash's `/c/X` is `c:/X` ONLY for Bash: PowerShell and
+    python.exe read `/c/X` as `<drive>:\\c\\X` (review round 4b)."""
     t = "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in str(path).replace("\\", "/"))
-    g = re.match(r"^/([a-z])/(.*)$", t)
+    g = re.match(r"^/([a-z])/(.*)$", t) if bash else None
     return f"{g.group(1)}:/{g.group(2)}" if g else t
 
 
@@ -227,7 +228,8 @@ def _quoted_split(text: str) -> list[str]:
     return out
 
 
-def _is_our_lone_script(command: str, script: str, task: int | None = None) -> bool:
+def _is_our_lone_script(command: str, script: str, task: int | None = None,
+                        tool: str = "PowerShell") -> bool:
     """`<worker's python> <this folder>/<script> ...` alone (review F1, re-review A1-A3, round 3).
 
     - Every character is on the allowlist above (`_plain_words`); a leading PowerShell `&` call
@@ -242,9 +244,10 @@ def _is_our_lone_script(command: str, script: str, task: int | None = None) -> b
     words = _plain_words(text)
     if words is None or _DOTDOT.search(text.replace("\\", "/")):
         return False
-    if len(words) < 2 or _plain(words[0]) != _own_python():
+    bash = tool == "Bash"
+    if len(words) < 2 or _plain(words[0], bash) != _own_python():
         return False
-    if _plain(words[1]) != _plain(str(HERE / script)):
+    if _plain(words[1], bash) != _plain(str(HERE / script)):
         return False
     tasks: list[str] = []
     args = words[2:]
@@ -282,8 +285,74 @@ def _worker_internal(path, paths: Paths) -> bool:
     history. Tokens live here, so a helper writing one would be forging Kevin's yes. Also the
     worker's own code (this folder): the hook trusts scripts here by path, so no helper may
     write or plant one (review round 3)."""
-    return is_under(path, paths.ships) or is_under(path, HERE) or (
-        is_under(path, paths.root) and not is_under(path, paths.work))
+    return (is_under(path, paths.ships) or is_under(path, HERE) or is_under(path, _shadow(HERE))
+            or (is_under(path, paths.root) and not is_under(path, paths.work)))
+
+
+def _shadow(folder: Path) -> str:
+    """Where PowerShell or python.exe would put Git Bash's spelling of [folder]: `/c/Users/x` read
+    there is `C:\\c\\Users\\x` (review round 4b). No helper may write there either."""
+    drive, rest = os.path.splitdrive(str(folder))
+    letter = drive.rstrip(":").lower()
+    return f"{drive}{os.sep}{letter}{rest}" if letter else str(folder)
+
+
+def _code_spellings() -> tuple[str, ...]:
+    """The worker code folder as text, in every spelling a command could name it."""
+    here = _plain(str(HERE))
+    drive, rest = here.split(":", 1) if ":" in here else ("", here)
+    return tuple(x for x in (here, f"/{drive}{rest}" if drive else "", _plain(_shadow(HERE))) if x)
+
+
+def _names_worker_code(command: str, cwd: str) -> bool:
+    """Orchestrator ruling 2026-11-22 (review round 4b): a shell command that names the worker's
+    code folder, or runs inside it, is denied to every helper, tainted or not; Kevin changes the
+    worker through git. The one exception is the worker's own python running one script of that
+    folder as its first two words (a lone contained script was allowed above; build_lock.py and
+    warm_worktree.py runs go on to the normal rules), and then only if nothing after those two
+    words names the folder again."""
+    text = re.sub(r"^\s*&\s+", "", command or "")
+    lead = re.match(r'^\s*("[^"]*"|\S+)\s+("[^"]*"|\S+)', text)
+    if lead:
+        py, script = (w.strip('"') for w in lead.groups())
+        if (_plain(py, True) == _own_python()
+                and _plain(script, True).rsplit("/", 1)[0] == _plain(str(HERE))):
+            text = text[lead.end():]
+    flat = text.replace("\\", "/").lower()
+    if any(x in flat for x in _code_spellings()):
+        return True
+    if cwd and (is_under(cwd, HERE) or is_under(cwd, _shadow(HERE))):
+        return True
+    return any(t is not None and (is_under(t, HERE) or is_under(t, _shadow(HERE)))
+               for t in _targets(text, cwd))
+
+
+def _worker_code_reason() -> str:
+    return ("WORKER CODE: the worker's own scripts are Kevin's to change, through git, never a "
+            "helper's, tainted or not. A shell command may name that folder only to run one of "
+            "its scripts with the worker's python. Do not retry or work around it.")
+
+
+COPY_RE = re.compile(r"(?:^|[;&|\n(])\s*(?:cp|copy|Copy-Item|cpi)(?:\.exe)?\s+([^;&|\n]+)", re.I)
+
+
+def _copy_overwrites(command: str, cwd: str, paths: Paths) -> bool:
+    """`cp a b` / `Copy-Item a b` with no force flag still overwrites an existing b (review round 4b
+    debt): ask when the destination (the last word) is an existing file outside the scratch
+    folders. A destination that is a folder, or does not exist yet, makes a new file."""
+    for m in COPY_RE.finditer(command or ""):
+        words = [w.strip("\"'") for w in m.group(1).split() if not w.startswith("-")]
+        if len(words) < 2:
+            continue
+        dest = _to_os_path(words[-1])
+        if not os.path.isabs(dest):
+            dest = os.path.join(cwd or ".", dest)
+        try:
+            if os.path.isfile(dest) and not _scratch(dest, paths):
+                return True
+        except (OSError, ValueError):
+            return True
+    return False
 
 
 def _worker_files_reason() -> str:
@@ -471,9 +540,9 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
         return None
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_lone_report(command):
+        if _is_lone_report(command, tool=tool):
             return None
-        if _is_our_lone_script(command, "send_mail.py"):
+        if _is_our_lone_script(command, "send_mail.py", tool=tool):
             return None  # ruling 18: send_mail.py itself allows only text to Kevin from here
         for seg in re.split(r"&&|\|\||;|\|", command):
             if not seg.strip():
@@ -564,7 +633,8 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
     own_work = paths.task_work(task) if task is not None else None
     is_tainted = C.tainted(paths, task, agent, tasks)
     command = (inp.get("command", "") or "") if tool in SHELL_TOOLS else ""
-    ours = bool(command) and any(_is_our_lone_script(command, s, task) for s in CONTAINED_SCRIPTS)
+    ours = bool(command) and any(_is_our_lone_script(command, s, task, tool)
+                                 for s in CONTAINED_SCRIPTS)
 
     if not agent and (tool in WRITE_TOOLS or (tool in SHELL_TOOLS and not ours)):
         # The main window only dispatches, and it reads every helper's final message (derived
@@ -660,12 +730,18 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
 
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
-        if _is_lone_report(command, task):
+        if _is_lone_report(command, task, tool):
             return None, ""
-        if any(_is_our_lone_script(command, s, task) for s in SHIP_SCRIPTS):
+        if any(_is_our_lone_script(command, s, task, tool) for s in SHIP_SCRIPTS):
             return None, "ship"  # ship.py / undo.py check Kevin's yes token themselves
         if _pushes(command) or SHIP_TOOLS.search(command):
             return _deny(_ship_reason()), "ship only"
+        if _names_worker_code(command, cwd):
+            return _deny(_worker_code_reason()), "worker code"
+        if _copy_overwrites(command, cwd, paths):
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason(OVERWRITE_LABEL)), OVERWRITE_LABEL
         if _names_skills(command, cwd, paths) and (SKILL_WRITE_RE.search(command) or any(
                 re.search(pat, command, re.I) for _l, kind, pat in RULES if kind == "path")):
             if _confirmed(paths, task, now):
