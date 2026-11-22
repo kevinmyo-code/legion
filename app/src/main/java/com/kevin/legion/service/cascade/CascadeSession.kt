@@ -1034,6 +1034,9 @@ internal class CascadeSession(
     // --- turns -----------------------------------------------------------------------------------
 
     private val sink = object : TurnTaker.Sink {
+        // Call audio just started or moved device: its echo canceller is still learning the room.
+        override fun echoWarmingUp() = callAudio?.warmingUp == true
+
         override fun sendActivityStart() {
             val b = backend ?: return
             var self: TurnUtterance? = null

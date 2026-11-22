@@ -42,6 +42,13 @@ package com.kevin.legion.service.turn
  *    first 320 ms of every reply ran at a threshold of 18,000, thirty times the real echo. One gate
  *    per [TurnTaker], one taker per socket: the seed never outlives the session.
  *
+ * **Echo warm-up (2026-11-21; LiveKit and Unmute both ignore interruptions for 3 s).** The platform
+ * echo canceller needs a few seconds to learn the room after call audio starts or the route moves
+ * (speaker, earpiece, headset). While the caller says so ([onWindow]'s `warmingUp`, true for
+ * [WARMUP_MS] after the change, [warmingUp]), a span that would fire is reported as [Event.Ignored]
+ * instead: nothing is flushed, no verdict is watched, nothing counts as a self-interrupt, and the span
+ * starts over, so a voice that goes on fires as soon as the window closes.
+ *
  * The gate says nothing unless it fires, so each reply also keeps a [ReplyStats] (A25,
  * 2026-10-28: armed on every reply, zero fires, and no way to tell why). [onReplyEnd] hands it back
  * once per reply; it is null when no reply was open, so a second end (flush, then drain) is silent.
@@ -65,6 +72,13 @@ internal class BargeInGate {
             val selfInterrupts: Int,
             val nowDisabled: Boolean,
         ) : Event
+
+        /** A span that would have fired, dropped for [reason]; the span starts over. */
+        data class Ignored(val reason: String, val level: Int, val threshold: Int) : Event {
+            companion object {
+                const val WARMUP = "warmup"
+            }
+        }
     }
 
     /**
@@ -174,19 +188,20 @@ internal class BargeInGate {
     fun threshold(): Int = maxOf(MIN_LEVEL, (echoFloor() * ECHO_MARGIN).toInt())
 
     /**
-     * One window. [playing] is true while the reply is audible. Returns a [Event.Fire] when the user
-     * is talking over it, a [Event.Verdict] when a fire's watch period ends, otherwise null.
+     * One window. [playing] is true while the reply is audible; [warmingUp] while the echo canceller is
+     * still settling. Returns a [Event.Fire] when the user is talking over it, [Event.Ignored] when he
+     * would be but the warm-up holds it, a [Event.Verdict] when a fire's watch period ends, else null.
      */
-    fun onWindow(prob: Float, level: Int, playing: Boolean): Event? {
+    fun onWindow(prob: Float, level: Int, playing: Boolean, warmingUp: Boolean = false): Event? {
         if (userGuardLeft > 0) userGuardLeft--
         return when {
             verdictWindowsLeft > 0 -> watch(prob)
             !armed || !playing || disabled -> null
-            else -> listen(prob, level)
+            else -> listen(prob, level, warmingUp)
         }
     }
 
-    private fun listen(prob: Float, level: Int): Event? {
+    private fun listen(prob: Float, level: Int, warmingUp: Boolean): Event? {
         val threshold = threshold()
         val qualifies = prob >= PROB && level >= threshold
         count(prob, level, threshold, qualifies)
@@ -212,6 +227,16 @@ internal class BargeInGate {
             if (spanProb[i] > maxProb) maxProb = spanProb[i]
             if (spanLevel[i] > maxLevel) maxLevel = spanLevel[i]
         }
+        return if (warmingUp) {
+            resetRun()
+            Event.Ignored(Event.Ignored.WARMUP, maxLevel, threshold)
+        } else {
+            fire(maxProb, maxLevel, threshold, inSpan)
+        }
+    }
+
+    /** The span fired: watch for the verdict, and hold the user guard. */
+    private fun fire(maxProb: Float, maxLevel: Int, threshold: Int, inSpan: Int): Event.Fire {
         val fire = Event.Fire(maxProb, maxLevel, echoFloor(), threshold, inSpan * WINDOW_MS)
         fireLevel = maxLevel
         fireThreshold = threshold
@@ -288,5 +313,12 @@ internal class BargeInGate {
         const val MAX_SELF_INTERRUPTS = 2
         /** A fire whose peak was at least this many times its threshold was the user, not echo. */
         const val CLEARLY_USER_FACTOR = 2
+
+        /** How long after call audio starts or the route moves a would-be fire is ignored. */
+        const val WARMUP_MS = 3_000L
+
+        /** True for [WARMUP_MS] after [changedAtMs] (null: no change recorded, so no warm-up). */
+        fun warmingUp(changedAtMs: Long?, nowMs: Long): Boolean =
+            changedAtMs != null && nowMs - changedAtMs in 0 until WARMUP_MS
     }
 }

@@ -3,6 +3,7 @@ package com.kevin.legion.service.turn
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 
 /**
@@ -23,12 +24,19 @@ internal class CallAudioMode(
      * honours a selection, so a test passes one that refuses the earpiece.
      */
     private val routedType: (AudioManager) -> Int? = { currentDeviceType(it) },
+    private val clock: () -> Long = { SystemClock.elapsedRealtime() },
 ) {
     private var active = false
     private var prevMode = AudioManager.MODE_NORMAL
     private var prevSpeaker = false
     private var bluetoothSco = false
     private var earpieceOn = false
+
+    /** When call audio last started or moved device; the barge-in echo warm-up runs from here. */
+    private var pathChangedAtMs: Long? = null
+
+    /** The echo canceller is still settling: barge-in fires are ignored ([BargeInGate.WARMUP_MS]). */
+    val warmingUp: Boolean @Synchronized get() = active && BargeInGate.warmingUp(pathChangedAtMs, clock())
 
     /** True while this conversation listens through a Bluetooth hands-free mic ([enterBluetooth]). */
     val onBluetoothMic: Boolean @Synchronized get() = active && bluetoothSco
@@ -47,6 +55,7 @@ internal class CallAudioMode(
             active = true
             ownCommActive = true
             audio.mode = AudioManager.MODE_IN_COMMUNICATION
+            pathChangedAtMs = clock()
             "entered prevMode=$prevMode mode=${audio.mode} ${select(earpiece)}"
         }.getOrElse { "enter failed: ${it.message}" }.also { Log.i(TAG, it) }
     }
@@ -60,6 +69,7 @@ internal class CallAudioMode(
     @Synchronized
     fun retarget(earpiece: Boolean): String {
         if (!active || bluetoothSco) return "retarget skipped: not in call audio"
+        pathChangedAtMs = clock()
         return runCatching { "retarget ${select(earpiece)}" }
             .getOrElse { "retarget failed: ${it.message}" }.also { Log.i(TAG, it) }
     }

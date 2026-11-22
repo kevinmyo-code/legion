@@ -49,6 +49,9 @@ internal class TurnTaker(
         fun onSileroFailed(reason: String)
         fun onSmartTurnFailed(reason: String)
         fun log(tag: String, message: String)
+
+        /** The echo canceller is still settling after a route change ([BargeInGate.WARMUP_MS]). */
+        fun echoWarmingUp(): Boolean = false
     }
 
     private val lock = Any()
@@ -191,7 +194,7 @@ internal class TurnTaker(
     /** One window through the echo gate. Returns STARTED/BARGED bits. Must hold [lock]. */
     private fun gateWindow(prob: Float, level: Int, playing: Boolean): Int {
         var outcome = 0
-        when (val ev = gate.onWindow(prob, level, playing)) {
+        when (val ev = gate.onWindow(prob, level, playing, playing && sink.echoWarmingUp())) {
             is BargeInGate.Event.Fire -> {
                 bargedThisReply = true
                 startOnsetWindows = BargeInGate.SPAN_WINDOWS + 1
@@ -223,6 +226,10 @@ internal class TurnTaker(
                     sink.onBargeInDisabled(ev.selfInterrupts)
                 }
             }
+            is BargeInGate.Event.Ignored -> sink.log(
+                BARGE_TAG,
+                "bargein_ignored reason=${ev.reason} level=${ev.level} threshold=${ev.threshold}",
+            )
             null -> Unit
         }
         return outcome
