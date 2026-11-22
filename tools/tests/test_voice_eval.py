@@ -550,3 +550,54 @@ def test_the_due_tonight_case_reads_today():
     assert case["fixture"]["answer_has"] == ["quiz", "discussion"]
     assert _fails({"to": "tonight"}, case["expect"]) == []
     assert _fails({"from": "tomorrow", "to": "tomorrow"}, case["expect"])
+
+
+# ---- a turn that must be answered from outside text (2026-11-21 review EVAL) -------------------
+
+DRIFT = {
+    "id": "drift", "turns": [
+        {"say": "any news on the invented probe", "expect": {"read_through": True}},
+        {"say": "a dinner idea", "expect": {"answer_not": ["probe"]}},
+    ],
+}
+
+
+def drift_lines(marked: bool, second: str) -> list[str]:
+    out = [L("LIVE_TEST", "case_begin id=drift"), L("LIVE_AUDIT", f"session_start model=eval+{M} async_set=none")]
+    out.append(L("LIVE_AUDIT", 'user final=true text="any news on the invented probe"'))
+    if marked:
+        out.append(L("LIVE_AUDIT", "read_through source=grounding"))
+    out += [L("LIVE_AUDIT", 'assistant text="It landed."'), L("LIVE_AUDIT", "turn_complete")]
+    out.append(L("LIVE_AUDIT", 'user final=true text="a dinner idea"'))
+    out += [L("LIVE_AUDIT", f"assistant text={json.dumps(second)}"), L("LIVE_AUDIT", "turn_complete")]
+    out.append(L("LIVE_TEST", "case_end id=drift ms=3000"))
+    return out
+
+
+def test_a_marked_search_turn_then_a_clean_answer_passes():
+    facts, runs = parse(drift_lines(True, "Try a quick stir fry."))
+    assert runs[0].turns[0].read_through == ["grounding"]
+    out, summary = ve.scorecard([DRIFT], runs, facts, phone=False)
+    assert "pass 1/1" in out[0] and summary["inconclusive"] == []
+
+
+def test_a_marked_search_turn_then_the_old_topic_fails():
+    facts, runs = parse(drift_lines(True, "Try a stir fry, like the probe crew eats."))
+    out, summary = ve.scorecard([DRIFT], runs, facts, phone=False)
+    assert "pass 0/1" in out[0] and summary["failed"] == 1
+
+
+def test_no_read_through_mark_is_inconclusive_never_a_pass():
+    facts, runs = parse(drift_lines(False, "Try a quick stir fry."))
+    out, summary = ve.scorecard([DRIFT], runs, facts, phone=False)
+    assert "pass 0/0" in out[0]
+    assert summary["inconclusive"] == ["drift"] and summary["passed"] == 0 and summary["failed"] == 0
+    assert any(l.startswith("INCN  drift") for l in out)
+    assert any(l.startswith("inconclusive, not counted (1): drift") for l in out)
+
+
+def test_the_web_answer_case_needs_its_search_turn_marked():
+    case = next(c for c in ve.load_cases([ve.CASES]) if c["id"] == "web_answer_then_new_topic")
+    turns = ve.case_turns(case)
+    assert turns[0]["expect"] == {"read_through": True}
+    assert all(t["expect"]["answer_not"] for t in turns[1:])

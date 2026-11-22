@@ -49,6 +49,12 @@ internal class TurnTaker(
         fun onSileroFailed(reason: String)
         fun onSmartTurnFailed(reason: String)
         fun log(tag: String, message: String)
+
+        /**
+         * True once after call audio starts or its routed device changes ([BargeInGate.startWarmUp]
+         * runs at the next reply audio). Live never changes the path this way: false.
+         */
+        fun takeAudioPathChange(): Boolean = false
     }
 
     private val lock = Any()
@@ -59,7 +65,9 @@ internal class TurnTaker(
         smartAvailable = config.smartTurn && smartTurn != null,
         baseMs = endBaseMs,
         finishedMs = endFinishedMs,
+        earlyEnd = config.earlyEnd,
     )
+    private val earlyEnds = EarlyEndWatch()
     private val gate = BargeInGate()
 
     private val ring = ByteArray(maxOf(PRE_ROLL_MS, BARGE_PRE_ROLL_MS) * BYTES_PER_MS)
@@ -160,6 +168,7 @@ internal class TurnTaker(
             else -> minOf(windowsSincePlaying + 1, MAX_WINDOWS_SINCE_PLAYING)
         }
         appendFloatRing()
+        earlyEnds.onWindow()
         if (policy.inActivity) appendTurn(window, 0, window.size)
         if (prob >= EndOfTurnPolicy.START_PROB && !playing) sink.onLocalSpeech()
         var outcome = if (bargeIn) gateWindow(prob, level, playing) else 0
@@ -191,6 +200,11 @@ internal class TurnTaker(
     /** One window through the echo gate. Returns STARTED/BARGED bits. Must hold [lock]. */
     private fun gateWindow(prob: Float, level: Int, playing: Boolean): Int {
         var outcome = 0
+        // The first reply audio on a new path starts the echo warm-up (LiveKit: the agent's first speech).
+        if (playing && sink.takeAudioPathChange()) {
+            gate.startWarmUp()
+            sink.log(BARGE_TAG, "warmup_start ms=${BargeInGate.WARMUP_MS}")
+        }
         when (val ev = gate.onWindow(prob, level, playing)) {
             is BargeInGate.Event.Fire -> {
                 bargedThisReply = true
@@ -203,6 +217,7 @@ internal class TurnTaker(
                 )
                 if (manual) {
                     policy.forceStart()?.let {
+                        noteStart(BargeInGate.SPAN_WINDOWS + 1)
                         // The whole span the gate fired on, so the onset of a short word is in it.
                         beginTurnAudio(BargeInGate.SPAN_WINDOWS + 1)
                         outcome = outcome or STARTED
@@ -223,6 +238,10 @@ internal class TurnTaker(
                     sink.onBargeInDisabled(ev.selfInterrupts)
                 }
             }
+            is BargeInGate.Event.Ignored -> sink.log(
+                BARGE_TAG,
+                "bargein_ignored reason=${ev.reason} level=${ev.level} threshold=${ev.threshold}",
+            )
             null -> Unit
         }
         return outcome
@@ -235,6 +254,7 @@ internal class TurnTaker(
             when (a) {
                 is EndOfTurnPolicy.Action.StartActivity -> {
                     startOnsetWindows = a.onsetWindows
+                    noteStart(a.onsetWindows)
                     beginTurnAudio(a.onsetWindows)
                     out = out or STARTED
                     sink.onUserTurnStart(bargeIn = false)
@@ -244,6 +264,7 @@ internal class TurnTaker(
                     sink.sendActivityEnd()
                     // The user was talking until a moment ago: the next reply must not learn them.
                     gate.onUserTurnEnd()
+                    earlyEnds.onEnd(early = a.reason == EndOfTurnPolicy.Reason.EARLY)
                     sink.onEndOfTurn(a)
                     out = out or ENDED
                 }
@@ -251,6 +272,11 @@ internal class TurnTaker(
             }
         }
         return out
+    }
+
+    /** A turn starts: was it him going on after an early end? Must hold [lock]. */
+    private fun noteStart(onsetWindows: Int) {
+        earlyEnds.onStart(onsetWindows)?.let { sink.log(LATENCY_TAG, EarlyEndWatch.line(it)) }
     }
 
     private fun forward(

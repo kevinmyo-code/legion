@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // test fixtures read best on one line
+
 package com.kevin.legion.service.cascade
 
 import org.junit.Assert.assertEquals
@@ -9,12 +11,12 @@ import org.junit.Test
 class DiagFilterTest {
 
     @Test
-    fun `codes, module counts and verdict words are restatements`() {
+    fun `bare codes, module counts and bare verdicts are restatements`() {
         for (s in listOf(
             "Clean bill.", "The engine's clear.", "All good.", "Nothing wrong there.", "It's fine.",
-            "Seven modules answered.", "3 module(s) answered.", "P0420 is still there.",
-            "P zero four two zero again.", "p 0 4 2 0.", "Looks healthy.", "No problems.",
-            "One stored code, P-zero-four-twenty, for catalyst efficiency.", "Checking.", "On it.",
+            "Seven modules answered.", "3 module(s) answered.", "P0420 is still there.", "P0420 is gone.",
+            "P zero four two zero again.", "p 0 4 2 0.", "Looks healthy.", "No problems.", "Okay.",
+            "Checking.", "On it.", "You have P0420 stored.",
         )) {
             assertTrue(s, DiagFilter.restatesResult(s))
         }
@@ -30,6 +32,63 @@ class DiagFilterTest {
         }
     }
 
+    // 2026-11-21 (the engine twin's review, V1): a warning was dropped for holding a verdict word.
+    @Test
+    fun `a sentence with a safety cue is never dropped, whatever else it says`() {
+        for (s in listOf(
+            "It's not okay to drive: pull over.", "It's not ok to drive, pull over.",
+            "If the check engine light is flashing, stop driving.", "Don't drive it until the codes are clear.",
+            "Do not drive it if it's overheating.", "Clean, but if you see smoke, pull over.",
+            "The brakes are fine, just get them looked at.", "Oil pressure is okay.", "A temperature warning is not fine.",
+            "If it has overheated, it's not okay to keep going.", "That burning smell is not fine.", "Pull off at the next exit, okay.",
+        )) {
+            assertFalse(s, DiagFilter.restatesResult(s))
+            assertFalse(s, DiagFilter.restatesResult(s, said = s))
+        }
+        assertEquals(DiagFilter.SAFETY_CUES.size, DiagFilter.SAFETY_CUES.toSet().size)
+    }
+
+    @Test
+    fun `a verdict word inside other content passes`() {
+        for (s in listOf(
+            "I can clear them if you say yes.", "It's clear tonight, by the way.",
+            "That one is fine to drive on for now, but book it in this week.",
+        )) {
+            assertFalse(s, DiagFilter.restatesResult(s))
+        }
+    }
+
+    // Review D1, 2026-11-21: the model may explain a code the phone said, never say one itself.
+    @Test
+    fun `a code explained passes only when every code in it was in the spoken line`() {
+        val said = "One stored engine code: P0301, cylinder 1 misfire detected."
+        for (s in listOf("P0301 means cylinder 1 is misfiring.", "P0301 usually points to a plug or a coil on cylinder 1.")) {
+            assertFalse(s, DiagFilter.restatesResult(s, said))
+            // With no spoken line to check against, a code is never the model's to say.
+            assertTrue(s, DiagFilter.restatesResult(s))
+        }
+        // A code the line did not say, or a garbled one, is dropped.
+        assertTrue(DiagFilter.restatesResult("P0302 means cylinder 2 is misfiring.", said))
+        assertTrue(DiagFilter.restatesResult("P0301 and P0302 both point to the coils.", said))
+        assertTrue(DiagFilter.restatesResult("One stored code, P-zero-four-twenty, for catalyst efficiency.", said))
+        // Said in words, the same code: an explanation of it passes.
+        assertFalse(DiagFilter.restatesResult("P zero three oh one means a misfire on cylinder 1.", said))
+        assertEquals(setOf("P0301"), DiagFilter.codesIn("p 0 3 0 1, or P zero three oh one, or P0301"))
+        // Word for word from the line: a repeat, dropped (with or without a code in it).
+        assertTrue(DiagFilter.restatesResult("P0301, cylinder 1 misfire detected.", said))
+        assertTrue(DiagFilter.restatesResult("Cylinder 1 misfire detected.", said))
+        // Too short to call a repeat on its own.
+        assertFalse(DiagFilter.restatesResult("Misfire detected.", said))
+    }
+
+    @Test
+    fun `a module count is dropped only when the rest says nothing new`() {
+        for (s in listOf("Seven modules answered.", "3 module(s) answered.", "All modules responded.")) {
+            assertTrue(s, DiagFilter.restatesResult(s))
+        }
+        assertFalse(DiagFilter.restatesResult("Two modules flagged faults, get it checked today."))
+    }
+
     @Test
     fun `the stream drops whole sentences and keeps the rest in order`() {
         val f = DiagFilter()
@@ -38,5 +97,14 @@ class DiagFilterTest {
         assertEquals("Want me to look one up? ", out)
         assertEquals("", tail)
         assertEquals(2, f.dropped)
+    }
+
+    @Test
+    fun `in the stream a warning after a verdict is said, the verdict is not`() {
+        val f = DiagFilter("No stored engine codes.")
+        val out = f.feed("All clear. It's not okay to drive: ") + f.feed("pull over.")
+        val tail = f.flush()
+        assertEquals("It's not okay to drive: pull over.", out + tail)
+        assertEquals(1, f.dropped)
     }
 }

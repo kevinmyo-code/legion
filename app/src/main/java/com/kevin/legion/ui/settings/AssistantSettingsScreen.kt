@@ -99,6 +99,7 @@ fun AssistantSettingsScreen(
     val wakeEngineNote by WakeWordEngine.engineNote.collectAsState()
     var temperatureUnit by remember { mutableStateOf(Temp.unit(context)) }
     var smartEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.smartEndOfTurn(context)) }
+    var earlyEndOfTurn by remember { mutableStateOf(VoiceTurnSettings.earlyEndOfTurn(context)) }
     var bargeIn by remember { mutableStateOf(VoiceTurnSettings.bargeIn(context)) }
     var speculate by remember { mutableStateOf(VoiceEngineSettings.speculate(context)) }
     var bluetoothMic by remember { mutableStateOf(VoiceTurnSettings.bluetoothMic(context)) }
@@ -239,6 +240,19 @@ fun AssistantSettingsScreen(
                     onToggle = { on ->
                         VoiceTurnSettings.setSmartEndOfTurn(context, on)
                         smartEndOfTurn = on
+                    },
+                )
+
+                // 2026-11-21: a clear "done" ends the turn at 300 ms instead of 500 (EndOfTurnPolicy).
+                Spacer(Modifier.height(8.dp))
+                VoiceTurnRow(
+                    title = "End clear turns sooner",
+                    explanation = "when you clearly sound finished, the answer starts a moment sooner. " +
+                        "Turn off if it cuts you off. Needs smart end of turn. Applies from the next conversation.",
+                    enabled = earlyEndOfTurn,
+                    onToggle = { on ->
+                        VoiceTurnSettings.setEarlyEndOfTurn(context, on)
+                        earlyEndOfTurn = on
                     },
                 )
 

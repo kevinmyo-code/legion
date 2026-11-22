@@ -13,9 +13,10 @@
 - **Outside text, by class** (engine-brain E2, plan 1119 section 5): the callers pass `outside`,
   the names whose results were outside text in this turn (`TurnState.outside`: an engine
   third-party tool, a relayed read-through call, whatever its name). Their results are stubbed,
-  and so is everything the model said or asked after the first of them (its words and the
-  arguments of its later calls can carry that text on). Names alone never decide it: a relayed
-  `browser` or `look_up` matches no mail pattern.
+  their own arguments too (a search query names the topic), and so is everything the model said
+  or asked after the first of them (its words and the arguments of its later calls can carry that
+  text on). The model's words become `OUTSIDE_ANSWER_NOTE`: answered, not kept, done. Names
+  alone never decide it: a relayed `browser` or `look_up` matches no mail pattern.
 """
 
 from __future__ import annotations
@@ -23,13 +24,19 @@ from __future__ import annotations
 import json
 import re
 
-from agents.graph.state import OUTSIDE_REPLY_STUB
-
 RESULT_CHARS = 400
 ARG_CHARS = 200
 MAIL_STUB = "A mail tool ran. Its content is never stored (ADR 0099)."
 OUTSIDE_STUB = "Outside text was read here. It is never stored (ADR 0090)."
 OUTSIDE_ARGS = {"note": "[after an outside read: not kept]"}
+# What the next turn replays in place of a reply after an outside read: the phone's
+# `CascadePrompt.OUTSIDE_ANSWER_NOTE`, word for word (tests/test_agents_outside_answer.py pins it).
+# The stored `final_text` and the done event keep `OUTSIDE_REPLY_STUB`: those are records, not
+# words the model reads.
+OUTSIDE_ANSWER_NOTE = (
+    "(Answered from a web search or other outside text. That answer was not kept. "
+    "Done unless he asks again.)"
+)
 # Stage 4's tools (`mail_*`, `gmail_*`, `read_mail`, `send_mail`, `draft_mail`).
 _MAIL = re.compile(r"(^|_)(mail|gmail|email|inbox)(_|$)", re.IGNORECASE)
 # Nine or more digits, spaces or dashes between them allowed (an SSN, an account number), never a
@@ -90,8 +97,9 @@ def _stub_response(resp: dict, note: str) -> dict:
 
 def history_for_storage(messages: list[dict], outside=()) -> list[dict]:
     """The turn's history items as they may be stored: every mail tool response replaced by the
-    stub, and the call's arguments with it; every response of an `outside` call stubbed, and from
-    the first of them on, every later response, the model's words and its calls' arguments too."""
+    stub, and the call's arguments with it; every `outside` call's arguments and response
+    stubbed, and from the first of them on, every later response and call's arguments too; the
+    model's words after it become one `OUTSIDE_ANSWER_NOTE` per reply."""
     outside = frozenset(outside)
     seen_outside = False
     out = []
@@ -102,7 +110,9 @@ def history_for_storage(messages: list[dict], outside=()) -> list[dict]:
             resp = part.get("functionResponse")
             if isinstance(call, dict) and is_mail_tool(call.get("name", "")):
                 part = {**part, "functionCall": {**call, "args": {}}}
-            elif isinstance(call, dict) and seen_outside:
+            elif isinstance(call, dict) and (seen_outside or call.get("name") in outside):
+                # The call that read outside text keeps its name, not its query: the query names
+                # the topic, and a replayed topic is one the model goes back to.
                 part = {**part, "functionCall": {**call, "args": dict(OUTSIDE_ARGS)}}
             elif isinstance(resp, dict) and is_mail_tool(resp.get("name", "")):
                 part = _stub_response(resp, MAIL_STUB)
@@ -112,7 +122,11 @@ def history_for_storage(messages: list[dict], outside=()) -> list[dict]:
                 seen_outside = True
                 part = _stub_response(resp, OUTSIDE_STUB)
             elif seen_outside and "text" in part and content.get("role") == "model":
-                part = {**part, "text": OUTSIDE_REPLY_STUB}
+                # One note per reply: it was answered and is done (a bare placeholder read as an
+                # unanswered question the model kept going back to).
+                if any(p.get("text") == OUTSIDE_ANSWER_NOTE for p in parts):
+                    continue
+                part = {**part, "text": OUTSIDE_ANSWER_NOTE}
             parts.append(part)
         out.append({**content, "parts": parts})
     return json.loads(json.dumps(out, default=str))

@@ -8229,3 +8229,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 - **Not a new ruling by Kevin:** the re-check found that the exception could be set by a change the page or the model asked for, which is outside his ruling (he accepted page text shaping a change HE asked for). The exception now needs his own words in the turn to ask for a change; otherwise the refusal promises nothing and the next turn is carried. It fails closed.
 - ADR 0090 (amended 2026-11-21).
+
+## 2026-11-21 - The web-search caution on the /try demo too (Kevin)
+
+- **Ruling:** the demo gets the member rule (the carry, A2, only when the visitor's own words asked for the change). His word covers this change only; the rest of the demo (prompt, persona, delivery text, household data, chips, tour) stays frozen. It ships only on his word.
+- ADR 0090 (amended 2026-11-21).

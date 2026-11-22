@@ -199,8 +199,8 @@ class EndOfTurnPolicyTest {
 
     // --- the cascade's "finished" end (Kevin, 2026-11-19, the web's rule) ---------------------------
 
-    private fun cascadeSpeaking(): EndOfTurnPolicy {
-        val p = EndOfTurnPolicy(true, finishedMs = EndOfTurnPolicy.FINISHED_MS)
+    private fun cascadeSpeaking(early: Boolean = true): EndOfTurnPolicy {
+        val p = EndOfTurnPolicy(true, finishedMs = EndOfTurnPolicy.FINISHED_MS, earlyEnd = early)
         repeat(20) { p.onWindow(speech) }
         return p
     }
@@ -209,7 +209,8 @@ class EndOfTurnPolicyTest {
     fun `with the finished end on, a done verdict before 500 ms ends the turn at 500 ms`() {
         val p = cascadeSpeaking()
         val check = actions(p, 256).filterIsInstance<Action.RequestCheck>().single()
-        assertTrue(p.onCheckResult(check.checkId, 0.9f).isEmpty())
+        // Done, but under the early threshold: the 500 ms rule.
+        assertTrue(p.onCheckResult(check.checkId, 0.6f).isEmpty())
         val end = silence(p, 400).map { it.second }.filterIsInstance<Action.EndActivity>().single()
         assertEquals(Reason.FINISHED, end.reason)
         assertEquals(512, end.silenceMs)
@@ -247,5 +248,110 @@ class EndOfTurnPolicyTest {
         assertTrue(p.onWindow(speech).single() is Action.SpeechResumed)
         val end = actions(p, 800).filterIsInstance<Action.EndActivity>().single()
         assertEquals(Reason.BASE, end.reason)
+    }
+
+    // --- the early end: a clear "done" ends the turn at about 300 ms (2026-11-21) -------------------
+    // The policy sees no words on any path (cloud STT runs after the end), so the only guard against a
+    // mid-sentence pause is the score itself plus the structure: the FIRST verdict of the silence.
+
+    /** Silence up to [arriveMs], the first check, its [score] landing there; what the result returned. */
+    private fun firstVerdict(p: EndOfTurnPolicy, arriveMs: Int, score: Float): List<Action> {
+        val check = actions(p, arriveMs).filterIsInstance<Action.RequestCheck>().single()
+        assertEquals(EndOfTurnPolicy.GATE_MS, check.silenceMs)
+        return p.onCheckResult(check.checkId, score)
+    }
+
+    @Test
+    fun `a clear done landing before the early mark ends the turn at the first window past it`() {
+        val p = cascadeSpeaking()
+        assertTrue(firstVerdict(p, 288, 0.97f).isEmpty())
+        val end = actions(p, 400).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.EARLY, end.reason)
+        assertEquals(320, end.silenceMs)
+    }
+
+    @Test
+    fun `a clear done landing after the early mark ends the turn on arrival`() {
+        val p = cascadeSpeaking()
+        val end = firstVerdict(p, 352, 0.97f).single() as Action.EndActivity
+        assertEquals(Reason.EARLY, end.reason)
+        assertEquals(352, end.silenceMs)
+        assertEquals(0.97f, end.scores.last().score)
+    }
+
+    @Test
+    fun `the early threshold is inclusive at 0_95 and 0_94 keeps the 500 ms rule`() {
+        // Drive logs: clear turns scored 0.97-0.98; the two he talked past scored 0.94.
+        assertEquals(0.95f, EndOfTurnPolicy.EARLY_THRESHOLD)
+        val at = cascadeSpeaking()
+        val early = firstVerdict(at, 352, 0.95f).single() as Action.EndActivity
+        assertEquals(Reason.EARLY, early.reason)
+        val under = cascadeSpeaking()
+        assertTrue(firstVerdict(under, 352, 0.94f).isEmpty())
+        val end = actions(under, 400).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.FINISHED, end.reason)
+        assertEquals(512, end.silenceMs)
+    }
+
+    @Test
+    fun `a high score after a not-done in the same silence never ends early`() {
+        val held = cascadeSpeaking()
+        val second = firstVerdict(held, 224, 0.2f).single() as Action.RequestCheck
+        actions(held, 64)
+        assertTrue(held.onCheckResult(second.checkId, 0.99f).isEmpty())
+        val end = actions(held, 400).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.FINISHED, end.reason)
+        assertEquals(512, end.silenceMs)
+    }
+
+    @Test
+    fun `speech resuming between a clear done and the early mark cancels the early end`() {
+        val p = cascadeSpeaking()
+        assertTrue(firstVerdict(p, 288, 0.95f).isEmpty())
+        assertTrue(p.onWindow(speech).single() is Action.SpeechResumed)
+        val end = actions(p, 800).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.BASE, end.reason)
+        assertEquals(704, end.silenceMs)
+    }
+
+    @Test
+    fun `a slow phone whose clear done lands after 500 ms behaves as today`() {
+        val p = cascadeSpeaking()
+        val end = firstVerdict(p, 544, 0.95f).single() as Action.EndActivity
+        assertEquals(Reason.FINISHED, end.reason)
+        assertEquals(544, end.silenceMs)
+    }
+
+    @Test
+    fun `without the finished end a clear done still waits for the base`() {
+        val live = speaking()
+        assertTrue(firstVerdict(live, 288, 0.99f).isEmpty())
+        val end = actions(live, 500).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.BASE, end.reason)
+        assertEquals(704, end.silenceMs)
+        // The laptop plan: its service ends turns, the phone's end is only the cap.
+        val cap = EndOfTurnPolicy(true, baseMs = EndOfTurnPolicy.CAP_MS, finishedMs = EndOfTurnPolicy.CAP_MS)
+        repeat(20) { cap.onWindow(speech) }
+        assertTrue(firstVerdict(cap, 288, 0.99f).isEmpty())
+        assertTrue(actions(cap, 2_000).none { it is Action.EndActivity })
+    }
+
+    @Test
+    fun `with the early end switched off a clear done keeps the 500 ms rule`() {
+        val off = cascadeSpeaking(early = false)
+        assertTrue(firstVerdict(off, 288, 0.99f).isEmpty())
+        val end = actions(off, 400).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.FINISHED, end.reason)
+        assertEquals(512, end.silenceMs)
+    }
+
+    @Test
+    fun `smart turn failing leaves silence only, never an early end`() {
+        val p = cascadeSpeaking()
+        val check = actions(p, 288).filterIsInstance<Action.RequestCheck>().single()
+        assertTrue(p.onCheckFailed(check.checkId).isEmpty())
+        val end = actions(p, 500).filterIsInstance<Action.EndActivity>().single()
+        assertEquals(Reason.FALLBACK, end.reason)
+        assertEquals(704, end.silenceMs)
     }
 }

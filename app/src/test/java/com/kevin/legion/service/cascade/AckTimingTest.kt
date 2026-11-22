@@ -160,7 +160,7 @@ class AckTimingTest {
         assertEquals("only the cue wait", listOf("cueWait)"), due.split("delay(").drop(1).map { it.substringBefore(")") + ")" })
         val clip = body("private suspend fun playAckClip(", "/** The clip whose audio [clipListen] keeps")
         assertFalse(clip.contains("delay("))
-        val started = body("private fun noteAckStarted(", "/** This turn's first-sound line")
+        val started = body("private fun noteAckStarted(", "private fun logFirstSound(")
         assertFalse(started.contains("delay("))
         // AckRun's one wait is the named delay from the end-of-turn decision.
         val run = File(sourceRoot(), "service/cascade/AckRun.kt").readText()

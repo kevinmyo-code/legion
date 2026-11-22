@@ -1,8 +1,8 @@
 """The carry on the web door (the owner's ruling, 2026-11-21, ADR 0090 amended): a turn that read
 outside text (a web search, the brief's news, a GitHub result) taints his NEXT turn too: every
 write there is refused in the carried read-through words, the turn still answers what it can, and
-the carry clears after that one turn. Members only: a demo visit keeps today's behaviour
-(`read_through.CARRY_ON_DEMO`). Fake model, fake speech; every name is invented."""
+the carry clears after that one turn. A demo visit gets the same rule (the owner's word, 2026-11-21:
+`tests/test_web_carry_demo.py`). Fake model, fake speech; every name is invented."""
 
 # ruff: noqa: F811 - the fixtures are imported from the cascade tests
 
@@ -127,17 +127,6 @@ def test_a_carried_turn_that_searches_again_uses_the_same_turn_words(member, eng
     assert _said(events) == ["Entry is free.", cascade.READ_THROUGH_WAIT]
 
 
-def test_a_demo_visit_keeps_todays_behaviour(visitor, engine):
-    assert read_through.CARRY_ON_DEMO is False
-    conversation = _search_turn(visitor, engine)
-    engine.model = FakeModel(
-        [call("add_event", {"fields": {"title": "Museum visit"}}), say("Added it.")]
-    )
-    events = _events(_post(visitor, text="Add that.", conversation_id=conversation))
-    assert _tools(events)[0]["ok"] is True
-    assert _said(events) == ["Added it."]
-
-
 def test_a_nothing_heard_request_between_neither_spends_nor_breaks_the_carry(member, engine):
     from tests.test_assistant_cascade import PCM, FakeSpeech
 
@@ -169,15 +158,6 @@ def test_a_carried_turn_writes_the_carry_record_line_and_a_plain_turn_does_not(m
     engine.model = FakeModel([say("Still nothing.")])
     _events(_post(member, text="And now?", conversation_id=conversation))
     assert _record(conversation).count("read_through source=carry") == 1
-
-
-def test_a_demo_visit_writes_no_carry_record_line(visitor, engine):
-    from tests.test_assistant_cascade import _record
-
-    conversation = _search_turn(visitor, engine)
-    engine.model = FakeModel([say("Nothing is on today.")])
-    _events(_post(visitor, text="What's on today?", conversation_id=conversation))
-    assert "read_through source=carry" not in _record(conversation)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -315,18 +295,3 @@ def test_d_with_no_words_that_ask_the_exception_fails_closed():
         read_through.heard(request, words)
         assert read_through.note_refused(request) is False
     assert read_through.promised(request) is False
-
-
-def test_a_demo_visit_keeps_todays_refusal_words_for_a_write_the_page_asked_for(visitor, engine):
-    engine.model = FakeModel(
-        [
-            call("web_search", {"query": "invented fair"}),
-            call("add_event", {"fields": {"title": "Page says add me"}}),
-            say("The fair is on Saturday."),
-        ]
-    )
-    events = _events(_post(visitor, text="When is the invented fair?"))
-    assert _tools(events)[1]["text"] == read_through.WRITE_REFUSAL.format(
-        verb="changed", name="add_event"
-    )
-    assert _said(events)[-1] == cascade.READ_THROUGH_WAIT

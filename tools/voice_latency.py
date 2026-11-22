@@ -8,10 +8,11 @@ The phone writes these lines from GeminiLiveSession / LiveToolbox (see LiveLaten
                                            toolCall received to toolResponse sent; any other
                                            trailing key=value field is ignored
     ask_engine_ms=<n> model=<id> result=<type>
-    eot_ms=<n> eot_reason=<base|extended|cap|fallback> eot_longest_silence_ms=<n> st_checks=<n>
+    eot_ms=<n> eot_reason=<base|extended|cap|fallback|finished|early> eot_longest_silence_ms=<n> st_checks=<n>
         st_scores=<score@asked>arrived,...>  silence before the phone's activityEnd (local end of turn);
                                            extended = a Smart Turn hold carried some silence of the
-                                           turn past 700 ms; st_scores holds the last 4 checks only
+                                           turn past 700 ms; st_scores holds the last 4 checks only;
+                                           early adds eot_early=1 score=<p>
     eot_reply_ms=<n>                       the phone's activityEnd to first reply audio
     st_score=<p> st_asked_at_ms=<n> st_arrive_ms=<n> st_feat_ms=<n> st_infer_ms=<n> ...
                                            one Smart Turn check; asked/arrived are ms of silence

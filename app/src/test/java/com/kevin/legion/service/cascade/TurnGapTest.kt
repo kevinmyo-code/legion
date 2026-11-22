@@ -54,27 +54,39 @@ class TurnGapTest {
     }
 
     @Test
-    fun `every turn gets one first-sound line, from end of turn and from his last voiced frame`() {
+    fun `first_sound_ms is when it was heard, handed_ms when it was handed over, every turn`() {
         val ack = TurnGap(eotAtMs = 10_700, speechEndAtMs = 10_000)
-        ack.started(TurnGap.BACKCHANNEL, 10_740)
-        assertEquals("first_sound_ms=40 first_sound_after_speech_ms=740 kind=ack skip=-", ack.firstSoundLine())
+        ack.started(TurnGap.BACKCHANNEL, 10_715)
+        // Handed over, not yet heard: no line yet.
+        assertNull(ack.firstSoundLine())
+        ack.heard(10_760)
+        assertEquals("first_sound_ms=60 handed_ms=15 first_sound_after_speech_ms=760 kind=ack skip=-", ack.firstSoundLine())
         assertNull("once a turn", ack.firstSoundLine())
         assertNull(ack.silentLine())
+
+        // 2026-11-21: an ack handed over at 15 ms and never heard used to log first_sound_ms=15.
+        val stuck = TurnGap(eotAtMs = 0, speechEndAtMs = 0)
+        stuck.started(TurnGap.BACKCHANNEL, 15)
+        assertNull(stuck.firstSoundLine())
+        assertEquals("first_sound_ms=none handed_ms=15 first_sound_after_speech_ms=none kind=ack skip=-", stuck.silentLine())
 
         val wait = TurnGap(eotAtMs = 0, speechEndAtMs = 0)
         wait.noteSkip("no_clip_fits")
         wait.started(TurnGap.WAIT, 1_500)
-        assertEquals("first_sound_ms=1500 first_sound_after_speech_ms=none kind=wait skip=no_clip_fits", wait.firstSoundLine())
+        wait.heard(1_560)
+        assertEquals("first_sound_ms=1560 handed_ms=1500 first_sound_after_speech_ms=none kind=wait skip=no_clip_fits", wait.firstSoundLine())
 
         val answer = TurnGap(eotAtMs = 0, speechEndAtMs = 0)
         answer.noteSkip("answer_first")
         answer.answerHeard(900)
-        assertEquals("first_sound_ms=900 first_sound_after_speech_ms=none kind=answer skip=answer_first", answer.firstSoundLine())
+        answer.heard(950)
+        assertEquals("first_sound_ms=950 handed_ms=900 first_sound_after_speech_ms=none kind=answer skip=answer_first", answer.firstSoundLine())
 
         val none = TurnGap(eotAtMs = 0)
         none.noteSkip("goodbye")
-        assertNull(none.firstSoundLine())
-        assertEquals("first_sound_ms=none first_sound_after_speech_ms=none kind=none skip=goodbye", none.silentLine())
+        none.heard(100)
+        assertNull("nothing handed over: nothing to hear", none.firstSoundLine())
+        assertEquals("first_sound_ms=none handed_ms=none first_sound_after_speech_ms=none kind=none skip=goodbye", none.silentLine())
         assertNull(none.silentLine())
     }
 }

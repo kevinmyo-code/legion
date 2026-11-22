@@ -32,6 +32,12 @@ interface SttUtterance {
 
     /** Waits at most [timeoutMs] after this call for the final text. Never throws. */
     suspend fun result(timeoutMs: Long): SttResult
+
+    /**
+     * The final text if it is already in, without waiting or asking for it; null otherwise. The laptop
+     * ends a turn with its final already sent (contract 4b), so at that end of turn the words are known.
+     */
+    fun finalText(): String? = null
 }
 
 sealed interface SttResult {

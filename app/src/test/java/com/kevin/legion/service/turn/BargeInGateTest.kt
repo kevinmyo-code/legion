@@ -367,4 +367,51 @@ class BargeInGateTest {
     fun `no reply open means no stats`() {
         assertNull(BargeInGate().onReplyEnd())
     }
+
+    // --- the echo warm-up (2026-11-21, LiveKit's way: 3 s from the first reply audio after a change) ---
+
+    private fun warmGate() = gate().apply { startWarmUp() }
+
+    @Test
+    fun `while the echo canceller warms up a sustained voice is ignored, never a fire`() {
+        val g = warmGate()
+        val events = feed(g, windows * 3, 0.95f, loud)
+        assertTrue(events.all { it is Event.Ignored })
+        val ignored = events.first() as Event.Ignored
+        assertEquals(Event.Ignored.WARMUP, ignored.reason)
+        assertEquals(loud, ignored.level)
+        // One ignored line per full span, not one per window.
+        assertEquals(3, events.size)
+        assertTrue(g.armedNow)
+        assertFalse(g.onReplyEnd()!!.fired)
+    }
+
+    @Test
+    fun `an ignored span is no self-interrupt and the voice fires once the 3 s are over`() {
+        val g = warmGate()
+        feed(g, windows, 0.95f, loud)
+        // The rest of the warm-up passes only while reply audio plays.
+        feed(g, BargeInGate.WARMUP_WINDOWS - windows - 1, 0.1f, 500)
+        assertTrue(g.warmingUpNow)
+        feed(g, 1, 0.1f, 500)
+        assertFalse(g.warmingUpNow)
+        assertEquals(0, g.selfInterrupts)
+        assertTrue(feed(g, windows, 0.95f, loud).single() is Event.Fire)
+    }
+
+    @Test
+    fun `silence between an ack and the reply does not use up the warm-up`() {
+        val g = warmGate()
+        feed(g, 10, 0.1f, 500) // a short ack plays
+        feed(g, 3 * BargeInGate.WARMUP_WINDOWS, 0.1f, 500, playing = false) // the model thinks
+        assertTrue(g.warmingUpNow)
+        assertTrue(feed(g, windows, 0.95f, loud).single() is Event.Ignored)
+    }
+
+    @Test
+    fun `the warm-up is three seconds of windows and no warm-up means no ignoring`() {
+        assertEquals(3_000L, BargeInGate.WARMUP_MS)
+        assertEquals(94, BargeInGate.WARMUP_WINDOWS)
+        assertTrue(feed(gate(), windows, 0.95f, loud).single() is Event.Fire)
+    }
 }

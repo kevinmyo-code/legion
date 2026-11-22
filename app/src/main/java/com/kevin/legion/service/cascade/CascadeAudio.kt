@@ -63,12 +63,23 @@ internal class CascadeAudio(private val ctx: Context, private val audio: AudioMa
         LiveLatency.log(TurnTaker.BARGE_TAG, "bluetooth mic routed=${CallAudioMode.handsFreeRouted(audio)} (cascade)")
     }
 
-    /** Calls [onBluetooth] once when a Bluetooth sink appears while barge-in is on. */
-    fun watchForBluetooth(onBluetooth: () -> Unit) {
+    /**
+     * Calls [onBluetooth] when a Bluetooth sink appears while barge-in is on, and [onOutputsChanged]
+     * when any other output comes or goes (a wired headset: the echo path may have moved).
+     */
+    fun watchForBluetooth(onOutputsChanged: () -> Unit = {}, onBluetooth: () -> Unit) {
         if (routeCallback != null) return
         val cb = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) {
-                if (added.any { it.isSink && CallAudioMode.isBluetooth(it.type) }) onBluetooth()
+                if (added.any { it.isSink && CallAudioMode.isBluetooth(it.type) }) {
+                    onBluetooth()
+                } else if (added.any { it.isSink }) {
+                    onOutputsChanged()
+                }
+            }
+
+            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) {
+                if (removed.any { it.isSink }) onOutputsChanged()
             }
         }
         routeCallback = cb

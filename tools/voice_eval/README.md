@@ -118,6 +118,9 @@ sent typed and the scorecard says why.
   fix; phone: every calendar call's own `from`/`to` argument).
 - `missed`: the transcript guard dropped the words and the spoken miss was said (laptop; a model
   saying "didn't catch" does not count).
+- `read_through: true`: a precondition, not a check. The turn must carry a read-through mark (it
+  was answered from outside text, e.g. a search). Without one the case tested nothing and is
+  reported `INCN` (inconclusive), on its own "inconclusive, not counted" line, never as a pass.
 - `proves_nothing_on` (case level): the layer where the case cannot fail when its feature breaks,
   with why and the unit test that does prove it. It still runs; a PASS there shows as `N/A` and is
   left out of the pass count, on its own "not counted" line; a FAIL is shown and counted.

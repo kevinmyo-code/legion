@@ -58,6 +58,18 @@ class CascadeRulesTest {
     }
 
     @Test
+    fun `the early end follows its switch and needs Smart Turn on the phone`() {
+        fun plan(serviceEnds: Boolean, smart: Boolean, early: Boolean) = CascadeRules.turnPlan(
+            serviceEndsTurns = serviceEnds, smartSetting = smart, smartTurnReady = true,
+            bargeSetting = true, route = AudioRoute.PHONE_SPEAKER, inCall = false, earlySetting = early,
+        ).config.earlyEnd
+        assertTrue(plan(serviceEnds = false, smart = true, early = true))
+        assertFalse(plan(serviceEnds = false, smart = true, early = false))
+        assertFalse(plan(serviceEnds = false, smart = false, early = true))
+        assertFalse(plan(serviceEnds = true, smart = true, early = true))
+    }
+
+    @Test
     fun `Bluetooth and a phone call keep the half-duplex rule, and local turn detection still runs`() {
         for ((route, inCall) in listOf(AudioRoute.BLUETOOTH to false, AudioRoute.PHONE_SPEAKER to true)) {
             val p = CascadeRules.turnPlan(false, true, true, bargeSetting = true, route = route, inCall = inCall)

@@ -77,7 +77,10 @@ internal object CascadeRules {
         /** The phone's silence end: the policy base, or the cap when it is only the safety net. */
         val endBaseMs: Int,
         val serviceEndsTurns: Boolean,
-        /** The silence end after a Smart Turn "done" ([EndOfTurnPolicy.FINISHED_MS]); [endBaseMs] when off. */
+        /**
+         * The silence end after a Smart Turn "done" ([EndOfTurnPolicy.FINISHED_MS]; a clear one ends at
+         * [EndOfTurnPolicy.EARLY_MS]); [endBaseMs] when off.
+         */
         val endFinishedMs: Int = endBaseMs,
     ) {
         /** What a phone-side end means in this plan. */
@@ -163,6 +166,7 @@ internal object CascadeRules {
         bargeSetting: Boolean,
         route: AudioRoute,
         inCall: Boolean,
+        earlySetting: Boolean = false,
     ): TurnPlan {
         val barge = OpeningRule.bargeIn(bargeSetting, route, inCall)
         val smart = !serviceEndsTurns && smartSetting && smartTurnReady
@@ -172,10 +176,13 @@ internal object CascadeRules {
             append(if (barge) ", barge-in on ${route.name.lowercase()}" else ", half-duplex")
         }
         return TurnPlan(
-            config = TurnConfig(manualActivity = true, bargeIn = barge, smartTurn = smart, note = note),
+            config = TurnConfig(
+                manualActivity = true, bargeIn = barge, smartTurn = smart, note = note,
+                earlyEnd = smart && earlySetting,
+            ),
             endBaseMs = if (serviceEndsTurns) EndOfTurnPolicy.CAP_MS else EndOfTurnPolicy.BASE_MS,
             serviceEndsTurns = serviceEndsTurns,
-            // Only when Smart Turn runs on the phone: its "done" ends the turn at 500 ms, else the base.
+            // Only when Smart Turn runs on the phone: a "done" ends the turn at 500 ms (clear: 300), else the base.
             endFinishedMs = when {
                 smart -> EndOfTurnPolicy.FINISHED_MS
                 serviceEndsTurns -> EndOfTurnPolicy.CAP_MS
@@ -210,7 +217,22 @@ object CascadePrompt {
             "holding line (checking, one moment, let me look) before or instead of a tool call: the app " +
             "plays its own while a tool runs, so call the tool, then answer. " +
             "Now and then, in a casual moment only, one of <chuckle>, <laugh>, <sigh> or <short pause> may go " +
-            "in a sentence; never with figures, codes or bad news."
+            "in a sentence; never with figures, codes or bad news. " +
+            "A reply marked as answered from a web search or other outside text is finished: never go back " +
+            "to it on your own. If he asks about that topic again, look it up again; never answer it from " +
+            "memory. If he asks what you said there or where you read it, say answers read from outside (the " +
+            "web, a mail, the news brief) are not kept, and offer to read it or look it up again."
+
+    /**
+     * What history keeps in place of a reply that read outside text (ADR 0090: never the text).
+     * It says the question was answered and is closed: a bare placeholder left it looking
+     * unanswered, and the model kept going back to it. The engine replays the same words
+     * (`agents.legion.redact.OUTSIDE_ANSWER_NOTE`, a server test pins them equal). Not the audit
+     * log's marker ([com.kevin.legion.service.LiveAudit.REDACTED]): that one is for records.
+     */
+    const val OUTSIDE_ANSWER_NOTE =
+        "(Answered from a web search or other outside text. That answer was not kept. " +
+            "Done unless he asks again.)"
 
     data class Split(val cacheable: String, val volatile: String)
 
@@ -253,6 +275,13 @@ object CascadePrompt {
         }
         return contents
     }
+
+    /**
+     * What history keeps of a reply: the words said, or for a read-through reply (mail, web)
+     * [OUTSIDE_ANSWER_NOTE] in their place, never the outside text. One rule for [CascadeSession]
+     * and the voice eval harness, so the eval replays what a spoken conversation keeps.
+     */
+    fun keptReply(said: String, readThrough: Boolean): String = if (readThrough) OUTSIDE_ANSWER_NOTE else said
 }
 
 /**
