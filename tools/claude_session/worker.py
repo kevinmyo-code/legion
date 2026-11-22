@@ -425,7 +425,9 @@ class Worker:
 
     def write_settings(self) -> None:
         hook = HERE / "asklist_hook.py"
-        command = f"{cmd_path(helper_python())} -I {cmd_path(hook)}"  # isolated (round 4d)
+        # -I (round 4d) and -S (round 4 R4-1): no user site, no PYTHON* environment and no `site`,
+        # so no .pth or sitecustomize runs before the hook; the hook refuses every call otherwise.
+        command = f"{cmd_path(helper_python())} -I -S {cmd_path(hook)}"
         # Containment (2026-11-10): reads, web, Gmail and Agent go through the hook on every
         # machine, so a read-through source marks its task before it runs.
         matcher = "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|" + containment.HOOK_MATCHER_EXTRA
