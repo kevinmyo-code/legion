@@ -540,6 +540,22 @@ def test_a_backlog_idea_is_read_back_then_saved_on_one_later_yes(seeded, monkeyp
     from board.models import IDEA_DRAFT, IDEA_PENDING, BoardIdea
 
     monkeypatch.setenv("LEGION_BOARD", "on")
+    fixed = "11111111-2222-4333-8444-555555555555"
+    field = BoardIdea._meta.get_field("id")
+    # Django caches a field's default as `_get_default`: new ideas get `fixed` as their id.
+    new_id = __import__("uuid").UUID(fixed)
+    monkeypatch.setattr(field, "_get_default", lambda: new_id, raising=False)
+    # Draft and confirm in ONE turn: refused, nothing saved.
+    one_turn = m.FakeModel(
+        [
+            m.call("add_backlog_idea", {"text": "A louder chime"}),
+            m.call("add_backlog_idea", {"id": fixed, "confirm": True}),
+            m.say("Saved."),
+        ]
+    )
+    _turn(seeded, "add a louder chime to the backlog, yes", one_turn)
+    assert BoardIdea.objects.get().status == IDEA_DRAFT
+    BoardIdea.objects.all().delete()
     drafting = m.FakeModel(
         [m.call("add_backlog_idea", {"text": "A quieter wake chime"}), m.say("Shall I?")]
     )
@@ -549,6 +565,11 @@ def test_a_backlog_idea_is_read_back_then_saved_on_one_later_yes(seeded, monkeyp
     said = " ".join(e.data["text"] for e in events if e.type == "sentence")
     assert "Backlog idea: A quieter wake chime." in said
     BoardIdea.objects.filter(pk=idea.pk).update(created_at=timezone.now() - td(seconds=30))
+    not_yes = m.FakeModel(
+        [m.call("add_backlog_idea", {"id": str(idea.pk), "confirm": True}), m.say("Done.")]
+    )
+    _turn(seeded, "hmm, not sure", not_yes, conversation)
+    assert BoardIdea.objects.get().status == IDEA_DRAFT
     after_yes = m.FakeModel(
         [m.call("add_backlog_idea", {"id": str(idea.pk), "confirm": True}), m.say("Done.")]
     )

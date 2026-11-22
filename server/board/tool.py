@@ -97,16 +97,20 @@ def add_backlog_idea(request, arguments: dict):
         return refused(IDEAS_NOT_FOR_RECRUITER)
     idea_id = arguments.get("id")
     answer = arguments.get("confirm")
+    turn = ideas.turn_of(request)
     try:
         if idea_id and answer is True:
-            idea = ideas.confirm(owner_user=user, idea_id=idea_id)
+            idea = ideas.confirm_by_voice(owner_user=user, idea_id=idea_id, turn=turn)
             said, note = ideas.SAVED, f"Saved backlog idea {idea.id} on his yes."
         elif idea_id and answer is False:
             idea = ideas.discard(owner_user=user, idea_id=idea_id)
             said, note = ideas.DROPPED, f"Dropped backlog idea {idea.id} on his no."
         elif (arguments.get("text") or "").strip():
             idea = ideas.draft(
-                household=household_of(request), owner_user=user, text=arguments["text"]
+                household=household_of(request),
+                owner_user=user,
+                text=arguments["text"],
+                turn=turn,
             )
             said = ideas.readback(idea)
             note = (

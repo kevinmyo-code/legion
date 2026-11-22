@@ -8,15 +8,23 @@ and saves only on his explicit yes in his NEXT turn; no save on silence or a no)
 1. `draft`: the text is cleaned, scored (one model call) and stored as a `draft` row. The caller
    reads `readback(idea)` aloud. Nothing reaches the laptop from a draft.
 2. `confirm`: on his yes, the SAME row (the score he heard, never re-scored) becomes `pending`.
-   A draft confirmed sooner than `MIN_CONFIRM_SECONDS` after it was made is refused: a reply was
-   not read back and answered in that time, so it cannot be his next turn. A draft not confirmed
-   within `DRAFT_TTL` is dead (`confirm` refuses, `pending_for` never sees it).
+   Only the newest unanswered draft can be confirmed. A draft confirmed sooner than
+   `MIN_CONFIRM_SECONDS` after it was made is refused: a reply was not read back and answered in
+   that time. A draft not confirmed within `DRAFT_TTL` is dead (`confirm` refuses, `pending_for`
+   never sees it).
 
-**Who enforces "his next turn".** The engine brain holds the `confirm: true` call for a yes in a
-later turn (`agents.legion.guards.CONFIRM_FLAG_TOOLS`); the phone gates its own `idea` action on
-the words of a later turn (`IdeaSaveGate`, phone); `/mcp` is never offered the tool
-(`engine_mcp.server.LATER_YES_ONLY_TOOLS`), since nothing there can tell one turn from the next.
-The time floor here is the engine's own last line, on every door.
+**Who enforces "his next turn".** A voice door's confirm (`confirm(..., turn=...)`, from the
+`add_backlog_idea` tool) must come from a LATER turn of the SAME conversation than the draft, and
+that turn's own words must be a yes (`agents.legion.guards.is_yes`): code decides, not the model,
+and one yes is enough. The draft stores its conversation and turn (`draft_conversation`,
+`draft_turn`). The turn comes from `turn_of(request)`: the engine brain sets it (`set_turn`, in
+`agents.legion.turn.run_turn`), the web cascade's own turn numbers are used (its
+`read_through.set_turn(..., carry=True)`). A door that cannot tell his turns apart (Live, the web
+tool door, whose turn is the model's count) has no turn here, so its confirm is refused in words:
+say yes on the phone or in the web chat. The phone confirms through `POST
+/api/board/ideas/<id>/confirm` (no turn here) after its own word check on a later turn
+(`IdeaSaveGate`). `/mcp` is never offered the tool (`engine_mcp.server.LATER_YES_ONLY_TOOLS`). The
+time floor is the engine's last line on every door.
 
 **Safety.** The text is the member's own words, but it is still data: hidden characters are
 stripped, it is capped at `board.cards.FIELD_MAX`, a key-shaped text is refused, and the card id is
@@ -27,6 +35,7 @@ starts work from an idea: it becomes a `queued` card and the orchestrator promot
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
@@ -61,12 +70,61 @@ TOO_SOON = (
     "Nothing was saved yet: the idea has to be read back and answered first. Read it back and "
     "ask; save it only on a yes in the next message."
 )
+NO_TURN_DOOR = (
+    "Nothing was saved. This voice cannot tell your answer from the read-back, so say yes on the "
+    "phone or in the web chat."
+)
+SAME_TURN = (
+    "Nothing was saved yet: the idea was only just read back. Wait for his answer; save it only "
+    "on his yes in his next message."
+)
+OTHER_CONVERSATION = (
+    "Nothing was saved: that idea was read back in another conversation. Say yes where you heard "
+    "it, or say the idea again."
+)
+NOT_A_YES = (
+    "Nothing was saved: his answer was not a clear yes. Ask whether to add it, and save it only "
+    "on a yes."
+)
+SUPERSEDED = "Nothing was saved: a newer idea was read back since. Answer that one."
 SAVED = "Added to the backlog as queued. Nothing starts until you pick it."
 DROPPED = "Dropped. Nothing was added to the backlog."
 
 
 class Refused(ValueError):
     """Nothing was stored or changed; `str()` says what did not happen."""
+
+
+@dataclass(frozen=True)
+class Turn:
+    """One of his turns on a voice door: its conversation, its number and his own words."""
+
+    conversation: str
+    number: int
+    words: str
+
+
+_TURN_ATTR = "legion_idea_turn"
+
+
+def set_turn(request, conversation, number: int, words: str) -> None:
+    """The engine brain's turn, for `turn_of` (its turn numbers are his own turns)."""
+    setattr(request, _TURN_ATTR, Turn(str(conversation), int(number), words or ""))
+
+
+def turn_of(request) -> Turn | None:
+    """His turn on this request's door, or None on a door that cannot tell his turns apart."""
+    found = getattr(request, _TURN_ATTR, None)
+    if found is not None:
+        return found
+    from assistant import read_through
+
+    ref = read_through.turn_of(request)
+    # `carry` is set only by a door whose turn numbers are the person's own (the web cascade);
+    # the Live tool door's number is the model's count, so it gives no turn here.
+    if ref is None or not ref.carry or ref.turn is None or ref.conversation_id is None:
+        return None
+    return Turn(str(ref.conversation_id), ref.turn, read_through.heard_words(request))
 
 
 def clean_text(raw) -> str:
@@ -95,7 +153,7 @@ def _today_start(now):
     return local.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def draft(*, household, owner_user, text, now=None, transport=None) -> BoardIdea:
+def draft(*, household, owner_user, text, now=None, transport=None, turn=None) -> BoardIdea:
     now = now or timezone.now()
     clean = clean_text(text)
     if not clean:
@@ -107,18 +165,24 @@ def draft(*, household, owner_user, text, now=None, transport=None) -> BoardIdea
     ).count()
     if made_today >= DRAFTS_PER_DAY:
         raise Refused(TOO_MANY)
-    # Older drafts he never answered are dropped: only the newest read-back can be said yes to.
-    BoardIdea.objects.filter(owner_user=owner_user, status=IDEA_DRAFT).update(status=IDEA_DROPPED)
     scores = rubric.score_or_unscored(clean, transport=transport)
-    return BoardIdea.objects.create(
-        household=household,
-        owner_user=owner_user,
-        title=title_of(clean),
-        text=clean,
-        scores=scores,
-        status=IDEA_DRAFT,
-        created_at=now,
-    )
+    with transaction.atomic():
+        # Older drafts he never answered are dropped: only the newest read-back can be said yes
+        # to. Two drafts at once: `confirm` still takes only the newest (`SUPERSEDED`).
+        BoardIdea.objects.filter(owner_user=owner_user, status=IDEA_DRAFT).update(
+            status=IDEA_DROPPED
+        )
+        return BoardIdea.objects.create(
+            household=household,
+            owner_user=owner_user,
+            title=title_of(clean),
+            text=clean,
+            scores=scores,
+            status=IDEA_DRAFT,
+            created_at=now,
+            draft_conversation=turn.conversation if turn else "",
+            draft_turn=turn.number if turn else None,
+        )
 
 
 def _own(owner_user, idea_id):
@@ -128,12 +192,44 @@ def _own(owner_user, idea_id):
         return None
 
 
-def confirm(*, owner_user, idea_id, now=None) -> BoardIdea:
+def _voice_refusal(idea: BoardIdea, turn: Turn | None) -> str | None:
+    """Why a voice door's confirm may not save this draft now, or None: a later turn of the same
+    conversation, whose own words are a yes."""
+    from agents.legion.guards import is_yes
+
+    if turn is None:
+        return NO_TURN_DOOR
+    if idea.draft_turn is None or idea.draft_conversation != turn.conversation:
+        return OTHER_CONVERSATION
+    if turn.number <= idea.draft_turn:
+        return SAME_TURN
+    if not is_yes(turn.words):
+        return NOT_A_YES
+    return None
+
+
+def confirm_by_voice(*, owner_user, idea_id, turn: Turn | None, now=None) -> BoardIdea:
+    """A voice door's confirm (the `add_backlog_idea` tool): `confirm` plus the turn rules."""
+    return confirm(owner_user=owner_user, idea_id=idea_id, now=now, voice=True, turn=turn)
+
+
+def confirm(*, owner_user, idea_id, now=None, voice=False, turn=None) -> BoardIdea:
     now = now or timezone.now()
     with transaction.atomic():
         idea = _own(owner_user, idea_id)
         if idea is None or idea.status != IDEA_DRAFT:
             raise Refused(NO_DRAFT)
+        newer = (
+            BoardIdea.objects.filter(owner_user=owner_user, status=IDEA_DRAFT)
+            .exclude(pk=idea.pk)
+            .filter(created_at__gte=idea.created_at)
+        )
+        if newer.exists():
+            raise Refused(SUPERSEDED)
+        if voice:
+            refusal = _voice_refusal(idea, turn)
+            if refusal is not None:
+                raise Refused(refusal)
         age = now - idea.created_at
         if age < timedelta(seconds=MIN_CONFIRM_SECONDS):
             raise Refused(TOO_SOON)

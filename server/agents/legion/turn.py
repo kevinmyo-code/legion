@@ -191,6 +191,10 @@ def run_turn(
     relay_turn.close_paused(conversation, seq)
     relay_turn.close_stale(conversation.household_id, conversation.owner_user_id)
     facts = dict(client_facts or {})
+    # His turn, for a tool that saves only on his yes in a LATER turn (`board.ideas`).
+    from board import ideas as board_ideas
+
+    board_ideas.set_turn(request, conversation.id, seq, transcript)
     # What he heard of an earlier answer, before that history is read into this turn.
     facts_of.trim_heard(conversation, facts)
     try:
