@@ -1242,6 +1242,7 @@
     <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x0C</ID>
     <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x10</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$10</ID>
+    <ID>MagicNumber:BodyLogToolbox.kt:BodyLogToolbox$10</ID>
     <ID>MagicNumber:BodyReadToolbox.kt:BodyReadToolbox$10</ID>
     <ID>MagicNumber:MusicLibraryToolbox.kt:MusicLibraryToolbox$10</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100</ID>
@@ -3171,6 +3172,7 @@
     <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$else</ID>
     <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$headline = healthSummary ?: if (concerns.length() == 1) "1 concern" else "${concerns.length()} concerns"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$if</ID>
+    <ID>MaxLineLength:BodyLogToolbox.kt:BodyLogToolbox$if</ID>
     <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$if</ID>
     <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$if (aspectRaw !in GoalController.ASPECTS) return result(false, "Which aspect - body, notes, fleet, or money?")</ID>
     <ID>MaxLineLength:VehicleHealthToolbox.kt:VehicleHealthToolbox$if (coolant != null &amp;&amp; coolant &gt;= HOT_COOLANT_C) concerns.put("Coolant is running hot (${Temp.text(context, coolant.toDouble())}).")</ID>
@@ -3201,7 +3203,7 @@
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, action))</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, artist.name))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = false, message = "Nothing to undo - no workout, bodyweight, meal, or sleep logged yet.")</ID>
+    <ID>MaxLineLength:BodyLogToolbox.kt:BodyLogToolbox$return result(success = false, message = "Nothing to undo - no workout, bodyweight, meal, or sleep logged yet.")</ID>
     <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$return result(success = false, message = dateError ?: "I need something to go on — a mileage, how long ago, a date, or that it's never been done.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(true, "Budget set: ${formatMoney(cents, LedgerEntity.US.currency)} a month for $category, from this month on.")</ID>
     <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$sameItem &amp;&amp; next.byTime!!.remaining &lt;= 0L -&gt; withGuessCaveat("${next.byMiles!!.serviceName} is due today", next.byMiles)</ID>
@@ -4562,6 +4564,7 @@
     <ID>SwallowedException:LiveSessionController.kt:LiveSessionController$e: Exception</ID>
     <ID>SwallowedException:VehicleServiceToolbox.kt:VehicleServiceToolbox$e2: Exception</ID>
     <ID>SwallowedException:LiveToolbox.kt:LiveToolbox$e: Exception</ID>
+    <ID>SwallowedException:BodyLogToolbox.kt:BodyLogToolbox$e: Exception</ID>
     <ID>SwallowedException:VehicleServiceToolbox.kt:VehicleServiceToolbox$e: Exception</ID>
     <ID>SwallowedException:GoalsToolbox.kt:GoalsToolbox$e: Exception</ID>
     <ID>SwallowedException:MidnightImport.kt:MidnightImport$e: IOException</ID>
@@ -4663,6 +4666,7 @@
     <ID>TooGenericExceptionCaught:LiveSessionController.kt:LiveSessionController$e: Exception</ID>
     <ID>TooGenericExceptionCaught:VehicleServiceToolbox.kt:VehicleServiceToolbox$e2: Exception</ID>
     <ID>TooGenericExceptionCaught:LiveToolbox.kt:LiveToolbox$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:BodyLogToolbox.kt:BodyLogToolbox$e: Exception</ID>
     <ID>TooGenericExceptionCaught:VehicleServiceToolbox.kt:VehicleServiceToolbox$e: Exception</ID>
     <ID>TooGenericExceptionCaught:GoalsToolbox.kt:GoalsToolbox$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MaintenanceScheduleReconcile.kt:MaintenanceScheduleReconcile$e: Exception</ID>
