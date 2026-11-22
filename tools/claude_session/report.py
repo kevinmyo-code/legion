@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import STATUSES, Paths, write_json_atomic  # noqa: E402
+from common import STATUSES, Paths, write_json_atomic, add_task_arg  # noqa: E402
 
 
 def _file_entry(raw: str) -> dict:
@@ -34,7 +34,7 @@ def _file_entry(raw: str) -> dict:
 
 def build(argv: list[str]) -> dict:
     ap = argparse.ArgumentParser(prog="report.py", allow_abbrev=False, description=__doc__.splitlines()[0])
-    ap.add_argument("--task", type=int, required=True)
+    add_task_arg(ap)
     ap.add_argument("--status", required=True, choices=STATUSES)
     ap.add_argument("--summary", default="")
     ap.add_argument("--question", default="")

@@ -42,7 +42,10 @@ Copy these rules into every helper prompt, with the task number filled in:
      The question goes in `--question`, never in `--summary`. report.py refuses otherwise.
 3. The summary is spoken to someone listening in a car: one or two short sentences, figures and
    file names in words ("AW4 wiring rev C, two megabytes, in Downloads"), no paths, no markdown,
-   no lists.
+   no lists. Plain words only, in one pair of double quotes: letters, digits, spaces and
+   `. , : ? ! ( ) - + = / @`. No apostrophes or other quotes, no `$ % & # * ; ~` or backslash, no
+   accented letters ("it is", not "it's"). Every command for this folder's scripts follows the
+   same rule, paths with forward slashes; the hook refuses anything else.
 4. List found files with `--found`. Never upload, copy elsewhere, or send a file unless the task
    message says Kevin asked for it.
 5. The ask list. Before any of these, stop and report `needs_confirmation` with one question:

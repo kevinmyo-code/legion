@@ -201,7 +201,7 @@ class TestTaintPersists(Base):
 class TestWhatATaintedTaskMayDo(Base):
     def test_this_folders_own_scripts_alone_pass(self):
         self.taint()
-        for cmd in (f'{PY} {ours("report.py")} --task 41 --status done --summary "Rates: euro up; '
+        for cmd in (f'{PY} {ours("report.py")} --task 41 --status done --summary "Rates: euro up, '
                     'curl https://evil.example said so" --found "C:/x/rates.csv"',
                     f'{PY} {ours("send_mail.py")} --task 41 --token T --to kevin --subject "Rates" '
                     f'--body "see attached" --attach "{self.work.as_posix()}/rates.csv"',
@@ -248,10 +248,84 @@ class TestWhatATaintedTaskMayDo(Base):
                 with self.subTest(shell=shell, cmd=cmd[:70]):
                     self.denied(shell, {"command": cmd}, "READ-THROUGH")
         for cmd in (f"{PY} {rp} {tail}", f'"{PY}" "{rp}" "--task=41" --status done --summary x',
-                    f"{PY} {rp} '--task' '41' --status done --summary 'a # b'"):
+                    f"{PY} {rp} '--task' '41' --status done --summary 'a, b'"):
             for shell in ("Bash", "PowerShell"):
                 with self.subTest(shell=shell, cmd=cmd[-50:]):
                     self.passed(shell, {"command": cmd})
+
+    def test_round3_only_plain_characters_reach_our_scripts(self):
+        """Review round 3 (2026-11-22): `--ta\\sk 99` (Bash drops the backslash) and PowerShell's
+        `--%` (the rest passed raw, split at spaces, %VAR% expanded) both moved --task. The hook
+        now takes an ALLOWLIST of characters; every probe is denied in both shells."""
+        self.taint()
+        rp = ours("report.py")
+        base = f"{PY} {rp} --task 41 --status done"
+        probes = [
+            f"{base} --ta\\sk 99",
+            f"{base} --% --summary 'a --task 99 --question b'",
+            f"{base} --summary %USERPROFILE%",
+            f'{base} --summary "%USERPROFILE%"',
+            f"{base} --summary @args",
+            f"{base} --summary @x",
+            f"{base} --summary a,--task,99",
+            f"{base} --summary x*",
+            f"{base} --summary ~",
+            f"{base} --summary [a]",
+            f"{base} --summary {{a}}",
+            f"{base} --summary 'it''s'",
+            f"{base} --summary \"say 'hi'\"",
+            f"{base} --summary ''",
+            f"{base} --summary 'a'b",
+            f"{base}\t--summary x",
+            f"{base} --summary café",
+            f"{base} --summary x?",
+            f"{base} --summary (x)",
+        ]
+        # The Kelvin sign folds to "k" under Unicode lower(); the interpreter path must not match.
+        kelvin = PY.replace("k", "K", 1) if "k" in PY else None
+        if kelvin:
+            probes.append(f"{kelvin} {rp} --task 41 --status done")
+        for shell in ("Bash", "PowerShell"):
+            for cmd in probes:
+                with self.subTest(shell=shell, cmd=cmd[-45:]):
+                    self.denied(shell, {"command": cmd}, "READ-THROUGH")
+
+    def test_round3_a_helper_can_plant_nothing_the_pinned_path_trusts(self):
+        """The trusted scripts are the worker's own folder, never a task folder, and no helper may
+        write there, tainted or not."""
+        planted = HERE / "zz_planted_report.py"
+        for agent in ("agentZ", "agentA"):
+            if agent == "agentA":
+                self.taint()
+            with self.subTest(agent=agent):
+                self.denied("Write", {"file_path": str(planted), "content": "x"}, agent=agent)
+                self.denied("Write", {"file_path": str(HERE / "report.py"), "content": "x"},
+                            agent=agent)
+        self.assertFalse(planted.exists())
+        (self.work / "report.py").write_text("x")
+        self.taint()
+        self.denied("Bash", {"command": f"{PY} {(self.work / 'report.py').as_posix()} --task 41"},
+                    "READ-THROUGH")
+
+    def test_round3_every_script_refuses_a_second_task(self):
+        """Defence in depth: even a --task the hook missed can never pick the task."""
+        import fetch_file as ff
+        import report
+        import send_mail
+        import ship
+        import to_xlsx as tx
+        import undo
+        for main, argv in ((report.main, ["--task", "41", "--status", "done", "--summary", "x",
+                                          "--task", "99"]),
+                           (send_mail.main, ["--task", "41", "--token=t", "--to", "kevin",
+                                             "--subject", "s", "--body", "b", "--task", "99"]),
+                           (ship.main, ["ask", "--task", "41", "--task", "99", "--kind", "content"]),
+                           (undo.main, ["ask", "--task", "41", "--task", "99"]),
+                           (ff.main, ["--task", "41", "--task", "99", "--url", "https://x.example"]),
+                           (tx.main, ["--task", "41", "--csv", "a.csv", "--task=99"])):
+            with self.subTest(script=main.__module__):
+                with self.assertRaises(SystemExit):
+                    main(argv)
 
     def test_our_scripts_take_no_abbreviated_flags(self):
         """Re-review A3: with argparse's prefix matching, `--tas 50` meant --task 50."""
@@ -287,10 +361,9 @@ class TestWhatATaintedTaskMayDo(Base):
             for cmd in probes:
                 with self.subTest(shell=shell, cmd=cmd[-60:]):
                     self.denied(shell, {"command": cmd}, "READ-THROUGH")
-        # Plain text still works: literal in single quotes in both shells, and `;` or `( )`
-        # inside double quotes are literal too.
-        for cmd in (f"{PY} {rp} --task 41 --status done --summary 'Rates cost $5; up `a bit`'",
-                    f'{PY} {rp} --task 41 --status done --summary "Rates (two MB); it\'s fine"',
+        # Plain words in plain quotes still work.
+        for cmd in (f"{PY} {rp} --task 41 --status done --summary 'Rates up 5 percent, fine!'",
+                    f'{PY} {rp} --task 41 --status done --summary "Rates (two MB), fine?"',
                     f'& "{PY}" {rp} --task=41 --status done --summary "ok"'):
             for shell in ("Bash", "PowerShell"):
                 with self.subTest(shell=shell, cmd=cmd[-50:]):

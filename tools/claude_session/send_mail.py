@@ -27,7 +27,8 @@ from email.message import EmailMessage
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import Paths, TokenRefused, find_token, load_config, write_json_atomic  # noqa: E402
+from common import (Paths, TokenRefused, add_task_arg, find_token, load_config,  # noqa: E402
+                    write_json_atomic)
 
 ATTACH_CAP_BYTES = 20 * 1024 * 1024  # Gmail refuses over 25 MB after encoding
 
@@ -56,7 +57,7 @@ def _find_token(paths: Paths, task: int, token: str, now: float) -> tuple[Path, 
 def prepare(argv: list[str], paths: Paths, cfg: dict, now: float | None = None):
     now = time.time() if now is None else now
     ap = argparse.ArgumentParser(prog="send_mail.py", allow_abbrev=False)
-    ap.add_argument("--task", type=int, required=True)
+    add_task_arg(ap)
     ap.add_argument("--token", required=True)
     ap.add_argument("--to", action="append", required=True, help="address, or 'kevin'")
     ap.add_argument("--subject", required=True)

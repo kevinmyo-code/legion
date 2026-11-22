@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import argparse
 import os
 import tempfile
 from pathlib import Path
@@ -137,3 +138,21 @@ def load_config(paths: Paths) -> dict:
     cfg = read_json(paths.config, {}) or {}
     cfg.setdefault("scope", "listed")
     return cfg
+
+
+class TaskOnce(argparse.Action):
+    """`--task` given twice is refused, not "the last one wins" (review round 3, 2026-11-22): the
+    hook checks one --task, so a second copy the hook missed must never pick the task."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if getattr(namespace, self.dest, None) is not None:
+            parser.error("--task given more than once")
+        setattr(namespace, self.dest, values)
+
+
+def add_task_arg(ap: "argparse.ArgumentParser") -> None:
+    """The one `--task N` every contained script takes. Its parser must also have
+    allow_abbrev=False and no fromfile_prefix_chars (`@file` would read arguments from a file)."""
+    if ap.allow_abbrev or ap.fromfile_prefix_chars:
+        raise ValueError("a contained script's parser must not abbreviate or read @files")
+    ap.add_argument("--task", type=int, required=True, action=TaskOnce)

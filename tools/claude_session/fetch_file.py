@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import containment as C  # noqa: E402
-from common import Paths, load_config  # noqa: E402
+from common import Paths, load_config, add_task_arg  # noqa: E402
 
 CAP_BYTES = 100 * 1024 * 1024
 DEFAULT_HOSTS = ("standardebooks.org", "gutenberg.org", "gutenberg.pglaf.org", "wikisource.org",
@@ -96,7 +96,7 @@ def fetch(paths: Paths, cfg: dict, task: int, url: str, name: str | None, opener
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="fetch_file.py", allow_abbrev=False)
-    ap.add_argument("--task", type=int, required=True)
+    add_task_arg(ap)
     ap.add_argument("--url", required=True)
     ap.add_argument("--name")
     a = ap.parse_args(argv)
