@@ -194,6 +194,10 @@ for (const size of SIZES) {
     await page.screenshot({ path: path.join(OUT, `${size.name}-2-section.png`) })
     const talk = page.getByRole('button', { name: 'Talk to the store rep' })
     await expect(talk).toBeVisible()
+    await talk.scrollIntoViewIfNeeded()
+    await page.evaluate(() => window.scrollBy(0, -window.innerHeight * 0.25))
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: path.join(OUT, `${size.name}-2b-controls.png`) })
     // The after-call card, in the section (the end of a call shows it by itself; here, its button).
     await page.getByRole('button', { name: 'After-call record' }).click()
     const card = page.getByTestId('call-card')
