@@ -91,7 +91,7 @@ class _TextStream:
 
     _DONE = object()
 
-    def __init__(self, eng: "KyutaiTts", voice: str, speed: float):
+    def __init__(self, eng: "KyutaiTts", voice: str, speed: float, on_word: core.OnWord | None = None):
         self.text_q: queue.Queue = queue.Queue()
         self.audio_q: queue.Queue = queue.Queue()
         self.aborted = False
@@ -100,7 +100,8 @@ class _TextStream:
         self._ended = False
 
         def produce():
-            gen = eng.synth_stream(iter(self.text_q.get, None), voice, speed)
+            kw = {"on_word": on_word} if on_word is not None else {}  # an engine without word times: as before
+            gen = eng.synth_stream(iter(self.text_q.get, None), voice, speed, **kw)
             try:
                 for chunk in gen:
                     if self.aborted:
@@ -160,6 +161,7 @@ class _TextStream:
 
 class KyutaiTts(core.KyutaiTts):
     text_streaming = True
+    word_times = True         # tts.word: each word's start in the line's audio (contract 4d, 2026-11-21)
     max_sessions = 1
 
     def __init__(self, *a, **kw):
@@ -181,5 +183,5 @@ class KyutaiTts(core.KyutaiTts):
         self.allowlist = list(core.VOICES)   # fixed ids; the engine maps each to one file in kyutai/tts-voices
         self.voices = self.allowlist
 
-    def open_text_stream(self, voice: str, speed: float):
-        return _TextStream(self, voice, speed)
+    def open_text_stream(self, voice: str, speed: float, on_word: core.OnWord | None = None):
+        return _TextStream(self, voice, speed, on_word)

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import collections
+import functools
 import hmac
 import ipaddress
 import json
@@ -151,8 +153,14 @@ class Service:
                              "partials": bool(getattr(self.stt, "partials", False)),
                              "text_streaming": bool(getattr(self.tts, "text_streaming", False)),
                              "maybe_end": bool(getattr(self.stt, "end_of_turn", False)
-                                               and getattr(self.stt, "maybe_end", False))},
+                                               and getattr(self.stt, "maybe_end", False)),
+                             "word_times": self.word_times},
         }
+
+    @property
+    def word_times(self) -> bool:
+        """The voice reports where each word starts in its audio (tts.word, contract 4d)."""
+        return bool(getattr(self.tts, "word_times", False))
 
     def authorized(self, request: web.Request) -> bool:
         got = request.headers.get("Authorization", "")
@@ -249,6 +257,22 @@ class Conversation:
         async with self.send_lock:
             if not self.ws.closed:
                 await self.ws.send_bytes(HEADER.pack(KIND_TTS, tid) + pcm)
+
+    def word_sink(self) -> tuple[collections.deque, dict]:
+        """Where the voice's thread drops (word, start_ms) pairs, and the keyword that hands it the
+        callback (empty for a voice without word times, so its synth signature stays as it was)."""
+        words: collections.deque = collections.deque()
+        return words, ({"on_word": lambda w, ms: words.append((w, ms))} if self.svc.word_times else {})
+
+    async def send_words(self, tid: int, words: collections.deque) -> None:
+        """tts.word for each word taken so far. Called before the audio that follows, so a word's
+        event never comes after the frame holding its start; nothing once the id is cancelled."""
+        while words:
+            if tid in self.tts_cancelled:
+                words.clear()
+                return
+            w, ms = words.popleft()
+            await self.send_json({"type": "tts.word", "id": tid, "text": w, "start_ms": ms})
 
     async def error(self, code: str, message: str, id_: int | None = None, retry: bool = False) -> None:
         await self.send_json({"type": "error", "id": id_, "code": code, "message": message, "retry": retry})
@@ -524,7 +548,9 @@ class Conversation:
 
     async def _speak_stream(self, tid: int, voice: str, speed: float, t_rx: float) -> None:
         st = self.tts_streams[tid]
-        opening = asyncio.ensure_future(self.svc.tts_gpu.run(self.svc.tts.open_text_stream, voice, speed))
+        words, kw = self.word_sink()
+        opening = asyncio.ensure_future(
+            self.svc.tts_gpu.run(functools.partial(self.svc.tts.open_text_stream, voice, speed, **kw)))
         try:
             sess = await asyncio.shield(opening)
         except asyncio.CancelledError:
@@ -534,7 +560,7 @@ class Conversation:
             log.exception("tts stream open failed")
             return await self.error("internal", type(exc).__name__, tid)
         try:
-            await self._stream_line(tid, st, sess, t_rx)
+            await self._stream_line(tid, st, sess, t_rx, words)
         except asyncio.CancelledError:
             # The socket closed mid-line (review F8, 2026-11-20). The speech thread holds the engine
             # lock until its text ends; without this abort it waited for text forever and every later
@@ -546,11 +572,12 @@ class Conversation:
         if not opening.cancelled() and opening.exception() is None:
             self.svc.tts_gpu.pool.submit(opening.result().abort)
 
-    async def _stream_line(self, tid: int, st: dict, sess, t_rx: float) -> None:
+    async def _stream_line(self, tid: int, st: dict, sess, t_rx: float, words: collections.deque) -> None:
         first_ms, samples, ended, end_sent = None, 0, False, False
 
         async def send(chunk) -> None:
             nonlocal first_ms, samples
+            await self.send_words(tid, words)
             raw = np.asarray(chunk, dtype=np.int16)
             for i in range(0, len(raw), TTS_FRAME_SAMPLES):
                 if tid in self.tts_cancelled:
@@ -599,13 +626,15 @@ class Conversation:
                  samples * 1000 // E.TTS_RATE, cancelled)
         if st.get("errored"):
             return  # the over-cap error already closed this id
+        await self.send_words(tid, words)
         msg = {"type": "tts.done", "id": tid, "audio_ms": samples * 1000 // E.TTS_RATE, "first_audio_ms": first_ms}
         if cancelled:
             msg["cancelled"] = True
         await self.send_json(msg)
 
     async def _speak(self, tid: int, text: str, voice: str, speed: float, t_rx: float) -> None:
-        gen = self.svc.tts.synth(text, voice, speed)
+        words, kw = self.word_sink()
+        gen = self.svc.tts.synth(text, voice, speed, **kw)
         sentinel = object()
         first_ms, samples, first = None, 0, True
         while True:
@@ -623,6 +652,7 @@ class Conversation:
             if chunk is sentinel:
                 break
             first = False
+            await self.send_words(tid, words)
             raw = np.asarray(chunk, dtype=np.int16)
             for i in range(0, len(raw), TTS_FRAME_SAMPLES):
                 if tid in self.tts_cancelled:
@@ -635,6 +665,7 @@ class Conversation:
         self.svc.slow_strikes = 0
         log.info("tts id=%s chars=%d first_ms=%s audio_ms=%d cancelled=%s", tid, len(text), first_ms,
                  samples * 1000 // E.TTS_RATE, cancelled)
+        await self.send_words(tid, words)
         msg = {"type": "tts.done", "id": tid, "audio_ms": samples * 1000 // E.TTS_RATE, "first_audio_ms": first_ms}
         if cancelled:
             msg["cancelled"] = True

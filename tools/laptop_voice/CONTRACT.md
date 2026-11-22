@@ -33,7 +33,7 @@ Response `200`, JSON:
   "version": "0.1.0",
   "stt": {"model": "whisper-large-v3-turbo", "languages": "multi", "sample_rate": 16000, "end_of_turn": false, "partials": false},
   "tts": {"model": "kokoro-v1.0", "voices": ["am_puck", "am_michael", "bm_george"], "default_voice": "am_puck", "sample_rate": 24000, "text_streaming": false},
-  "capabilities": {"end_of_turn": false, "partials": false, "text_streaming": false},
+  "capabilities": {"end_of_turn": false, "partials": false, "text_streaming": false, "maybe_end": false, "word_times": false},
   "ram_pct": 71.5,
   "gpu_free_mb": 5120,
   "queue": 0,
@@ -121,6 +121,18 @@ Some voice models (Kyutai TTS) can start speaking while the text is still arrivi
 - `tts.speak` requests on one connection are synthesized **in order of arrival** (FIFO). STT work runs independently of TTS.
 - Text is spoken as given. The phone normalises numbers ("$1,284.17" to words) before sending, as it does for its own voice.
 
+### 4d. Where each word starts in the audio (optional, added 2026-11-21, see Changelog)
+
+`capabilities.word_times` in `ready` and `/health` says whether the voice reports, for each word of a TTS id, where that word starts in the id's audio. True on Kyutai; false on Kokoro and on every older service (an old service has no such field: treat a missing field as false).
+
+- **`tts.word` `{id, text, start_ms}`**, laptop to phone, one per word, in speaking order, for both `tts.speak` and `tts.stream.*` ids.
+- **`start_ms`** counts from the first sample of THAT id's audio (the first `0x02` frame for the id is 0 ms), never wall clock, never across ids. Integer ms.
+- **It is a schedule, not a receipt.** Kyutai takes a word about 1.3 s before its audio is made, and the event goes out then. So a word's event never comes after the frame that holds its start, and a cut id may carry events for words that never got audio (`start_ms` past what arrived). What was HEARD is decided on the phone: a word counts once the phone's playback position for that id has passed its `start_ms`.
+- **Accuracy:** Kyutai's stamps come from the model's own word timing (text step, 80 ms frames), traced from the model code, not measured on audio: within about 80 to 160 ms, biased late by one frame on purpose (an early stamp would count an unheard word as heard).
+- **`text`** is the word as the voice read it, which may differ slightly from what was sent: Kyutai drops `(`, `)` and turns `:` into a space, and a word is cut at whitespace with its punctuation attached (`"nine."`). Rebuild the heard text from the events' words; do not match them against the sent string character by character.
+- **Order:** every `tts.word` for an id comes before its `tts.done`. None after `tts.done`, none after an `error` that names the id, and none once the phone has sent `tts.cancel` for it (any already in flight may still arrive).
+- A phone that ignores `tts.word` loses nothing: the type is unknown to it and dropped (section 5).
+
 ## 5. Messages, laptop to phone
 
 | type | Fields | Meaning |
@@ -129,6 +141,7 @@ Some voice models (Kyutai TTS) can start speaking while the text is still arrivi
 | `stt.partial` | `id`, `text` | Best effort, may never come. The phone must not depend on it. With a streaming STT model (Kyutai) it carries the running transcript of the utterance so far (replace, do not append). |
 | `stt.pause` | `id`, `prob` (0 to 1), `silence_ms` (int or null) | Only when `capabilities.end_of_turn` is true: the model's current probability that the speaker has finished (section 4b). Replaces the earlier `stt.endpoint` name. |
 | `stt.final` | `id`, `text`, `lang` (detected or forced, ISO 639-1), `lang_prob` (0 to 1, or null), `audio_ms`, `decode_ms`, `reason` (`client_end` / `end_of_turn` / `cancelled`), optional `cancelled` (true) | One per utterance that was started (unless cancelled before any audio). |
+| `tts.word` | `id`, `text`, `start_ms` (ms from the first sample of this id's audio) | Only when `capabilities.word_times` is true: where one word starts (section 4d). Comes before the frame holding that start and before `tts.done`. |
 | `tts.done` | `id`, `audio_ms`, `first_audio_ms` (laptop-side ms from request receipt to first frame sent), optional `cancelled` (true) | Last message for that TTS id; all its audio frames come before it. |
 | `pong` | `t` | Reply to `ping` |
 | `error` | `id` (int or null), `code`, `message`, `retry` (bool) | See below. After an error that names an id, nothing more comes for that id. |
@@ -205,3 +218,8 @@ phone  -> {"type":"bye"}
   - NEW Kyutai voice keys, all the SAME speaker (ex03), one per mood: `ex03_default`, `ex03_calm`, `ex03_happy`, `ex03_sympathetic`, `ex03_awe`, `ex03_sarcastic`, `ex03_whisper`, `ex03_confused`, `ex03_sleepy`, `ex03_laughing`, `ex03_fast`, `ex03_enunciated`, `ex03_projected`, `ex03_narration`. Kyutai has no mood tags: the mood is the reference clip.
   - A mood per reply needs nothing new: send it as the optional `voice` on `tts.speak` / `tts.stream.start` (section 4). A message without `voice` gets the conversation's voice (`hello.voice`, else `default_voice`). A key outside `ready.tts.voices` gets `bad_request`.
   - Licence: the Expresso clips are CC BY-NC 4.0. Use them on the owner's own laptop and phone only, never in the recruiter demo or a public build.
+- **2026-11-21, ADDITIVE, protocol stays 1 (heard-words history, voice report 1120 section 9 idea 1):**
+  - NEW `capabilities.word_times` in `ready` and `/health` (true on Kyutai only).
+  - NEW `tts.word {id, text, start_ms}` (section 4d): where each word starts in its id's audio, so the phone can keep in history only the words that actually played before a barge-in, instead of whole clips (up to 1,000 chars) whose audio had merely started.
+  - Old phones drop the unknown type (`LaptopVoiceConnection.kt` `else -> Unit`); a new phone on an old service sees no `word_times` and keeps the whole-clip rule.
+  - The phone half (cut history at the playback position) is not built yet.

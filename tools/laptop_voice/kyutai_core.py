@@ -286,6 +286,25 @@ VOICES = {
 }
 
 
+OnWord = tp.Callable[[str, int], None]
+
+# Frames added to every word stamp so it is never early: an early stamp would let the phone count a
+# word as heard before it played, which is the bug the stamps exist to fix (2026-11-21).
+WORD_LAG_FRAMES = 1
+
+
+def word_start_ms(step: int, frame_rate: float) -> int:
+    """Where a word the model took at text step `step` starts in that line's own audio, in ms.
+
+    Traced from moshi 0.2.13 (models/tts.py), not measured on audio: the model is trained with the
+    audio `delay_steps` frames (1.28 s) behind the text, so audio frame p belongs to text step
+    p - delay_steps. Every audio token before frame delay_steps is forced to the "zero" token (-1),
+    and _step skips any frame holding -1, so the first frame yielded is frame delay_steps and the
+    k-th frame yielded belongs to text step k. moshi's own offline path drops the same frames
+    (plus 2 against a click), so the alignment is good to about one or two frames (80 to 160 ms)."""
+    return round((step + WORD_LAG_FRAMES) * 1000 / frame_rate)
+
+
 class KyutaiTts:
     name = "kyutai-tts-1.6b-en_fr"
     sample_rate = 24000
@@ -424,19 +443,22 @@ class KyutaiTts:
         return script_to_entries(self.m.tokenizer, self.m.machine.token_ids, self.m.mimi.frame_rate, [text],
                                  multi_speaker=first and self.m.multi_speaker, padding_between=1)
 
-    def synth(self, text: str, voice: str | None = None, speed: float = 1.0) -> tp.Iterator[np.ndarray]:
+    def synth(self, text: str, voice: str | None = None, speed: float = 1.0,
+              on_word: OnWord | None = None) -> tp.Iterator[np.ndarray]:
         """Whole text known. Yields 24 kHz int16 chunks (1920 samples) as soon as each exists."""
-        yield from self.synth_stream([text], voice, speed)
+        yield from self.synth_stream([text], voice, speed, on_word)
 
     def synth_stream(self, text_iter: tp.Iterable[str], voice: str | None = None,
-                     speed: float = 1.0) -> tp.Iterator[np.ndarray]:
+                     speed: float = 1.0, on_word: OnWord | None = None) -> tp.Iterator[np.ndarray]:
         """Text arrives incrementally (LLM deltas of any size). Words are cut at whitespace; a word is
         sent to the model once the next whitespace arrives (or at end of stream). The model needs
         `second_stream_ahead` words queued beyond the one being spoken, so audio starts after
         ~2-3 words and stalls (no audio, client buffer underruns) if the LLM falls behind speech.
-        For a queue.Queue, pass iter(q.get, None) and put None at the end."""
+        For a queue.Queue, pass iter(q.get, None) and put None at the end.
+        on_word(word, start_ms) is called on this thread as the model takes each word, about 1.3 s
+        before that word's audio is yielded (see word_start_ms)."""
         with self.lock:
-            yield from self._synth_held(text_iter, voice, speed)
+            yield from self._synth_held(text_iter, voice, speed, on_word=on_word)
 
     def try_warm(self, text: str = "Ready.") -> bool:
         """Keep-warm: one synthesis with the default voice up to its first audio chunk, or False at
@@ -456,7 +478,7 @@ class KyutaiTts:
         return True
 
     def _synth_held(self, text_iter: tp.Iterable[str], voice: str | None,
-                    speed: float) -> tp.Iterator[np.ndarray]:
+                    speed: float, on_word: OnWord | None = None) -> tp.Iterator[np.ndarray]:
         """synth_stream's body; the caller holds self.lock."""
         voice = voice or self.default_voice
         with torch.no_grad(), contextlib.ExitStack() as es:
@@ -472,6 +494,17 @@ class KyutaiTts:
                 es.enter_context(stack)
             if True:
                 buf, first = "", True
+                reported = 0
+
+                def step():
+                    nonlocal reported
+                    pcm = self._step(g, st)
+                    if on_word is not None:
+                        said = st["state"].transcript  # (word, text step), filled by the model's text hook
+                        for word, s in said[reported:]:
+                            on_word(word, word_start_ms(s, m.mimi.frame_rate))
+                        reported = len(said)
+                    return pcm
 
                 def push_words(words):
                     nonlocal first
@@ -480,7 +513,7 @@ class KyutaiTts:
                             st["state"].entries.append(e)
                         first = False
                         while len(st["state"].entries) > m.machine.second_stream_ahead:
-                            pcm = self._step(g, st)
+                            pcm = step()
                             if pcm is not None:
                                 yield pcm
 
@@ -497,11 +530,11 @@ class KyutaiTts:
                     yield from push_words([buf.strip()])
                 # drain
                 while len(st["state"].entries) > 0 or st["state"].end_step is not None:
-                    pcm = self._step(g, st)
+                    pcm = step()
                     if pcm is not None:
                         yield pcm
                 for _ in range(m.delay_steps + max(m.lm.delays) + 8):
-                    pcm = self._step(g, st)
+                    pcm = step()
                     if pcm is not None:
                         yield pcm
 

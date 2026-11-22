@@ -37,6 +37,10 @@ class SttEngine(Protocol):
 
 
 class TtsEngine(Protocol):
+    """An engine with `word_times = True` also takes `on_word(word, start_ms)` on `synth` (and on
+    `open_text_stream`, if it streams text): called from the engine's thread, start_ms counted from
+    the first sample of that line, never later than the audio holding that start is yielded."""
+
     name: str
     voices: list[str]
     default_voice: str
@@ -167,19 +171,28 @@ class FakeStt:
 
 
 class FakeTts:
-    """For tests: 220 Hz tone, 60 ms per character, with an optional delay per piece."""
+    """For tests: 220 Hz tone, 60 ms per character, with an optional delay per piece. word_times:
+    report each word's start like Kyutai (the character offset in its piece, so it is exact)."""
 
     name = "fake-tts"
     voices = ["am_puck", "am_michael"]
     default_voice = "am_puck"
 
-    def __init__(self, delay_s: float = 0.0):
+    def __init__(self, delay_s: float = 0.0, word_times: bool = False):
         self.delay_s = delay_s
+        self.word_times = word_times
 
-    def synth(self, text: str, voice: str, speed: float) -> Iterator[np.ndarray]:
+    def synth(self, text: str, voice: str, speed: float, on_word=None) -> Iterator[np.ndarray]:
+        at = 0  # samples of this line so far
         for piece in split_for_speech(text):
             time.sleep(self.delay_s)
+            if on_word is not None:
+                col = 0
+                for w in piece.split(" "):
+                    on_word(w, (at + int(TTS_RATE * 0.06 * col / speed)) * 1000 // TTS_RATE)
+                    col += len(w) + 1
             n = int(TTS_RATE * 0.06 * len(piece) / speed)
+            at += n
             t = np.arange(n) / TTS_RATE
             yield (np.sin(2 * np.pi * 220 * t) * 8000).astype(np.int16)
 
@@ -273,11 +286,11 @@ class FakeStreamingTts(FakeTts):
     name = "fake-stream-tts"
     text_streaming = True
 
-    def __init__(self, delay_s: float = 0.0, word_s: float = 0.0):
-        super().__init__(delay_s)
+    def __init__(self, delay_s: float = 0.0, word_s: float = 0.0, word_times: bool = False):
+        super().__init__(delay_s, word_times)
         self.word_s = word_s
 
-    def open_text_stream(self, voice: str, speed: float):
+    def open_text_stream(self, voice: str, speed: float, on_word=None):
         word_s = self.word_s
 
         class Sess:
@@ -285,6 +298,7 @@ class FakeStreamingTts(FakeTts):
             ended = False
             done = False
             ready_at = 0.0
+            at = 0  # samples of this line so far
 
             def push(self, text: str) -> None:
                 self.buf += text
@@ -311,6 +325,9 @@ class FakeStreamingTts(FakeTts):
                 self.ready_at = time.monotonic() + word_s
                 word, self.buf = self.buf.lstrip().split(" ", 1)
                 n = int(TTS_RATE * 0.06 * len(word))
+                if on_word is not None:
+                    on_word(word, self.at * 1000 // TTS_RATE)
+                self.at += n
                 return (np.sin(2 * np.pi * 220 * np.arange(n) / TTS_RATE) * 8000).astype(np.int16)
 
             def abort(self) -> None:

@@ -173,7 +173,7 @@ def test_tts_warm_takes_the_engine_lock_before_the_gpu_lock_and_never_waits():
     gpu = _Watched("gpu", threading.RLock(), on_acquire, stuck)
     eng.gpu_lock = gpu
 
-    def held(text_iter, voice, speed):  # stands in for the model loop: GPU lock per step
+    def held(text_iter, voice, speed, on_word=None):  # stands in for the model loop: GPU lock per step
         for _ in text_iter:
             for _ in range(2):
                 with gpu:
