@@ -73,7 +73,7 @@ internal class DiagFilter(private val said: String? = null) : SentenceFilter {
         /** The words a bare verdict or a bare code mention is made of: any other word says something new. */
         private val BARE = (
             "a all an and are again be bill car car's clean clear cleared code codes completely engine engine's " +
-                "everything everything's fine good got has have health healthy here is issue issues it it's its " +
+                "everything everything's fine gone good got has have health healthy here is issue issues it it's its " +
                 "look looking looks no nothing of ok okay one pending pretty problem problems right seem seems " +
                 "set so still stored that that's the there there's this totally very was with wrong you you're " +
                 "your zero oh two three four five six seven eight nine"

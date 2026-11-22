@@ -14,7 +14,7 @@ class DiagFilterTest {
     fun `bare codes, module counts and bare verdicts are restatements`() {
         for (s in listOf(
             "Clean bill.", "The engine's clear.", "All good.", "Nothing wrong there.", "It's fine.",
-            "Seven modules answered.", "3 module(s) answered.", "P0420 is still there.",
+            "Seven modules answered.", "3 module(s) answered.", "P0420 is still there.", "P0420 is gone.",
             "P zero four two zero again.", "p 0 4 2 0.", "Looks healthy.", "No problems.", "Okay.",
             "Checking.", "On it.", "You have P0420 stored.",
         )) {
