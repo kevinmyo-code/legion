@@ -84,3 +84,22 @@ speech window, the ring also holds up to 100 ms of mic buffer after that window,
 drain the policy does not listen for up to ~180 ms, so 400 ms reached only 76 to 176 ms before the
 first counted window. 544 ms (the barge-in figure) reaches 220 to 320 ms. Every start now logs a
 `pre_roll_ms=` line so the phone can confirm it. Silero's start threshold is unchanged.
+
+## Amendment, 2026-11-21: a 3 s echo warm-up before barge-in may fire
+
+The platform echo canceller needs some playback to learn the room each time the echo path is new.
+**For 3 s from the first reply audio after call audio starts, or after its routed device really
+changes, a span that would fire is ignored instead** (logged `bargein_ignored reason=warmup`): no
+flush, no verdict watch, no self-interrupt count, and a voice that goes on fires once the 3 s are
+over. This follows LiveKit, which starts its 3 s timer at the agent's first speech; Unmute also
+ignores interruptions for its first 3 s.
+
+- **A new path:** entering call audio; a speaker / earpiece / headset switch only when the routed
+  communication device actually changes (a toggle tap that lands on the same device does not count);
+  an output device plugged or pulled while barge-in is on, again only if the routed device moved.
+- **"Reply audio played":** the first mic window that arrives while the conversation says playback
+  is active (the reply, a filler or a wait line). The AudioTrack's playback head is not read for this
+  yet; that signal arrives with the audio-player change.
+- The trigger rules, the echo floor and the self-interrupt verdict above are unchanged. Live is
+  unchanged.
+
