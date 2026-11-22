@@ -91,6 +91,7 @@ import com.kevin.legion.gmail.GmailClient
 import com.kevin.legion.gmail.GmailToolLogic
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.service.tools.day.DateCarry
+import com.kevin.legion.service.tools.day.EventRemoval
 import com.kevin.legion.service.tools.day.ListRouting
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.checklists.ChecklistItemMatch
@@ -1230,7 +1231,7 @@ object LiveToolbox {
             )
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
             // (ticket 10) - car items are now just items on the list named "Car".
-            "manage_item" -> nameIt(manageItem(context, args), args)
+            "manage_item" -> nameIt(manageItem(context, args, userText), args)
             "read_list" -> readList(context)
             // "manage_grocery" retired one-today ticket 10 slice B, 2026-09-05 - named explicitly
             // (never falling through to the generic "Unknown tool" branch below) so a model that
@@ -4243,8 +4244,9 @@ object LiveToolbox {
      */
     private suspend fun theList(context: Context): ItemList = NotesController.theList(context)
 
-    /** Dispatches `manage_item`: add / tick / untick / remove / schedule / skip one item. */
-    private suspend fun manageItem(context: Context, args: JSONObject): JSONObject {
+    /** Dispatches `manage_item`: add / tick / untick / remove / schedule / skip one item. [userText]
+     * is his words this turn: a calendar entry's remove needs his yes in a later turn (EventRemoval). */
+    private suspend fun manageItem(context: Context, args: JSONObject, userText: String?): JSONObject {
         val action = args.optString("action").trim().lowercase()
         val itemArg = args.optString("item").trim()
         val list = theList(context)
@@ -4316,13 +4318,19 @@ object LiveToolbox {
         }
 
         if (itemArg.isBlank()) return result(false, "Which item?")
-        return when (val match = NotesController.findItem(context, list.id, itemArg)) {
+        val match = NotesController.findItem(context, list.id, itemArg)
+        // remove reaches calendar entries too, asked first (2026-11-22); `date` narrows which day.
+        val removeDay = args.optString("date").trim().takeIf { action == "remove" && it.isNotEmpty() }?.let {
+            parseNoteLocalDate(it) ?: return result(false, "I couldn't read \"$it\" as a date - try yyyy-MM-dd.")
+        }
+        if (action == "remove") EventRemoval.remove(context, itemArg, removeDay, userText, match)?.let { return it }
+        return when (match) {
             is ItemMatch.NoMatch -> {
                 // One-today ticket 02, "ticking an appointment": tick/untick only, and only after a
                 // reminder match genuinely came back empty - a title that matches a reminder is
-                // never shadowed by a calendar-table row of the same name. remove/schedule/skip stay
-                // reminder-only (no CRUD surface for a calendar-table row beyond done/not-done
-                // today). One-today ticket 08 narrowed [tickOrUntickAppointment] itself to match
+                // never shadowed by a calendar-table row of the same name. schedule/skip stay
+                // reminder-only; remove reached calendar entries above (EventRemoval, asked first).
+                // One-today ticket 08 narrowed [tickOrUntickAppointment] itself to match
                 // only a task, never an event - see [NotesController.openAppointments]'s own doc
                 // comment - so this branch now genuinely finds nothing for a class/event title,
                 // which is correct.
@@ -4331,7 +4339,7 @@ object LiveToolbox {
                     "schedule" -> scheduleTodoLine(context, list, itemArg, args)
                         ?: result(false, "I don't see \"$itemArg\" on your list - add it?")
                     "remove" -> removeTodoLine(context, itemArg)
-                        ?: result(false, "I don't see \"$itemArg\" on your list - add it?")
+                        ?: result(false, EventRemoval.nothingFound(itemArg, removeDay))
                     else -> result(false, "I don't see \"$itemArg\" on your list - add it?")
                 }
             }
