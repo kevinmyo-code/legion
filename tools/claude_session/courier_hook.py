@@ -41,8 +41,12 @@ sys.path.append(str(Path(__file__).resolve().parent))  # own modules after the s
 from common import Paths, read_json, write_json_atomic  # noqa: E402
 
 RECIPIENT_FIELDS = ("to", "recipient")
-TEXT_FIELDS = ("message", "content")
-KNOWN = set(RECIPIENT_FIELDS) | set(TEXT_FIELDS) | {"recipient_kind", "type", "summary"}
+# `message` is what the model wrote and what is delivered. `content` is the harness's own preview
+# of it, cut with an ellipsis past about 50 characters (seen on the real CLI, 2026-11-22): it must
+# be the message or a prefix of it ending in the ellipsis, never anything else.
+PREVIEW_FIELD = "content"
+ELLIPSIS = "…"
+KNOWN = set(RECIPIENT_FIELDS) | {"message", PREVIEW_FIELD, "recipient_kind", "type", "summary"}
 SUMMARY = "Message from Kevin, via LEGION"  # sessions.COURIER_SUMMARY
 PASS_TOOLS = ("ListAgents", "ToolSearch")
 
@@ -59,10 +63,9 @@ def check(inp: dict, plan: dict | None) -> str | None:
     if not isinstance(inp, dict) or set(inp) - KNOWN:
         return "Use only to, summary and message. Nothing was sent."
     to = [inp[k] for k in RECIPIENT_FIELDS if k in inp]
-    text = [inp[k] for k in TEXT_FIELDS if k in inp]
     if not to or any(t != plan.get("name") for t in to):
         return f"The message goes only to {json.dumps(plan.get('name'))}. Nothing was sent."
-    if not text or any(t != plan.get("text") for t in text):
+    if inp.get("message") != plan.get("text") or not _preview_ok(inp, plan.get("text")):
         return ("The message must be exactly the text between the markers, character for "
                 "character, nothing added or changed. Nothing was sent; try once more.")
     if inp.get("recipient_kind", "name") != "name" or inp.get("type", "message") != "message":
@@ -70,6 +73,15 @@ def check(inp: dict, plan: dict | None) -> str | None:
     if "summary" in inp and inp["summary"] != SUMMARY:
         return f"Use the summary {json.dumps(SUMMARY)} exactly. Nothing was sent."
     return None
+
+
+def _preview_ok(inp: dict, text) -> bool:
+    if PREVIEW_FIELD not in inp:
+        return True
+    p = inp[PREVIEW_FIELD]
+    if not isinstance(p, str) or not isinstance(text, str):
+        return False
+    return p == text or (p.endswith(ELLIPSIS) and len(p) > 1 and text.startswith(p[:-1]))
 
 
 def decide(event: dict, paths: Paths) -> dict | None:

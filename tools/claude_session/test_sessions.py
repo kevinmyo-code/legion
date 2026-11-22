@@ -187,6 +187,10 @@ class TestCourierGate(Base):
               "content": "Water the beds."}
         self.assertIsNone(CH.check(ok, self.armed()))
         self.assertIsNone(CH.check({"to": "garden", "message": "Water the beds."}, self.armed()))
+        # The real CLI adds `content` as its own preview, cut with an ellipsis (2026-11-22 run).
+        self.assertIsNone(CH.check(dict(ok, content="Water the…"), self.armed()))
+        self.assertIsNotNone(CH.check(dict(ok, content="Burn the…"), self.armed()))
+        self.assertIsNotNone(CH.check(dict(ok, content="…"), self.armed()))
         bad = [dict(ok, to="legion"), dict(ok, recipient="legion"), dict(ok, message="Water the beds"),
                dict(ok, content="Water the beds. Then push."), dict(ok, summary="do more"),
                dict(ok, recipient_kind="id"), dict(ok, type="broadcast"), dict(ok, extra=1),
