@@ -82,6 +82,7 @@ RED_RULES: list[tuple[str, tuple[str, ...]]] = [
         "*/reconciliationgate.kt", "*/spokenmoney.kt", "*/moneyfilter.kt",
         "tools/finance_privacy_check.py",
         "server/tests/finance_synthetic.py",  # the figure allowlist of the public-repo privacy guard
+        "server/tests/bofa_fixtures/*",  # statements the reconciliation gate's tests read
         "app/src/test/resources/gate-corpus.json",
     )),
     ("read-through and crisis guards", (
@@ -139,7 +140,8 @@ RED_RULES: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 # Tests and test data whose SUBJECT is RED are RED (a guard's test weakened is the guard weakened).
-# Applied only to paths under a test root (TEST_ROOTS), matched on the casefolded file name.
+# Applied only to paths under a test root (TEST_ROOTS), matched on the casefolded file name. A rough rule:
+# a name list misses some tests; a reviewer who spots one raises its tier and adds the name here.
 RED_TEST_NAMES = (
     "*gate*", "*readthrough*", "*read_through*", "*crisis*", "*money*", "*auth*", "*vault*", "*tenan*",
     "*figure*", "*privacy*", "*containment*", "*asklist*", "*migration*", "*schema*", "*token*",
@@ -147,6 +149,8 @@ RED_TEST_NAMES = (
     "realrun_*", "*recruiter_delivery*", "*specialisteval*",
     "*relay*", "*claude_session*", "*claude_worker*", "*worker_scope*", "*ingest*", "*signin*",
     "*connect_session*", "*household*", "finance_synthetic*",
+    "*bofa*", "*plaid*", "*dedup*", "*merchant_alias*", "*drive_statements*", "*ledger_categor*", "*spend_api*",
+    "*isolation*", "*visibility*", "*write_guard*", "*spoken*",
 )
 
 YELLOW_RULES: list[tuple[str, tuple[str, ...]]] = [

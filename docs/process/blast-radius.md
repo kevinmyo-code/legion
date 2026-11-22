@@ -33,7 +33,10 @@ The reviewer gets only the task text and the full diff, never the author's plan 
 **Tests and test data of a RED subject are RED.** A test under a test root whose name points at a RED
 subject (gate, read-through, crisis, money, auth, vault, privacy, migration, schema, relay, the
 worker, ingest, sign-in, connect session, household, the synthetic finance allowlist, the ship and
-release tools, the gate's own cases) is RED: weakening a guard's test weakens the guard.
+release tools, the gate's own cases, bank statements and sync, dedup, categorising, tenant isolation,
+visibility, write guards, spoken figures) is RED: weakening a guard's test weakens the guard. The name
+list is a rough rule and will miss some tests: a reviewer who spots a test of a RED subject that tiers
+lower raises its tier, and the name goes into the script.
 
 **Case does not lower a tier.** Matching ignores case, and a path that differs only in case from
 another tracked path is RED: on a Windows checkout the two collide.
