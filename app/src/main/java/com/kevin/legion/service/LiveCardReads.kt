@@ -10,6 +10,7 @@ import com.kevin.legion.assistant.cards.PhoneCards
 import com.kevin.legion.calendar.CalendarWindowRead
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.data.local.CarDatabase
+import com.kevin.legion.data.local.Event
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.ui.notes.buildInboxRows
@@ -42,8 +43,9 @@ object LiveCardReads {
     }
 
     /** `read_calendar`'s card for the window, from [events] when the caller already read them. */
-    fun calendarCard(events: List<com.kevin.legion.data.local.Event>, startMs: Long, endMs: Long): ConversationCard.Timeline =
-        PhoneCards.calendar(events, RelativeDay.clock().zone, startMs).copy(source = CardSource.Calendar(startMs, endMs))
+    fun calendarCard(events: List<Event>, startMs: Long, endMs: Long): ConversationCard.Timeline =
+        PhoneCards.calendar(events, RelativeDay.clock().zone, startMs)
+            .copy(source = CardSource.Calendar(startMs, endMs))
 
     private suspend fun calendar(context: Context, startMs: Long, endMs: Long): ConversationCard {
         val zone = RelativeDay.clock().zone
@@ -53,10 +55,14 @@ object LiveCardReads {
 
     /** `manage_checklist read`'s card; null when the list is gone or could not be read. */
     suspend fun checklist(context: Context, checklistId: Long): ConversationCard.Checklist? {
-        val list = CarDatabase.getDatabase(context).checklistDao().getById(checklistId) ?: return null
-        val loaded = ChecklistController.itemsWithTickState(context, checklistId)
-            as? ChecklistController.ChecklistItemsResult.Loaded ?: return null
-        return checklistCard(list.id, list.name, loaded.items.map { ChecklistLine(it.item.text, it.ticked) })
+        val list = CarDatabase.getDatabase(context).checklistDao().getById(checklistId)
+        val loaded = list?.let { ChecklistController.itemsWithTickState(context, it.id) }
+            as? ChecklistController.ChecklistItemsResult.Loaded
+        return if (list == null || loaded == null) {
+            null
+        } else {
+            checklistCard(list.id, list.name, loaded.items.map { ChecklistLine(it.item.text, it.ticked) })
+        }
     }
 
     fun checklistCard(checklistId: Long, name: String, lines: List<ChecklistLine>): ConversationCard.Checklist =

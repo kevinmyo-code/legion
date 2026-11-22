@@ -47,7 +47,8 @@ class EventsAppointmentWriterTest {
         override suspend fun fetchActive(): Result<List<RemoteEvent>> = Result.success(emptyList())
         /** What a pull sees; empty unless a test seeds it. */
         val changed = mutableListOf<RemoteEvent>()
-        override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> = Result.success(changed.toList())
+        override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> =
+            Result.success(changed.toList())
         override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> {
             upsertCalls += (serverId ?: "") to fields
             return upsertResult

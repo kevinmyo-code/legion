@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength") // fixtures and phrase lists read best on one line
+
 package com.kevin.legion.assistant.cards
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi

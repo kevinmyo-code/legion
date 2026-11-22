@@ -46,7 +46,7 @@ object LiveCards {
     suspend fun refresh(read: suspend (CardSource) -> ConversationCard?) {
         for (card in ConversationCards.state.value.cards) {
             val source = card.source ?: continue
-            @Suppress("TooGenericExceptionCaught") // any failed read keeps the card; it never ends the follow
+            @Suppress("TooGenericExceptionCaught", "SwallowedException") // a failed read keeps the card
             val fresh = try {
                 read(source)
             } catch (e: Exception) {
@@ -57,7 +57,7 @@ object LiveCards {
         }
     }
 
-    /** Whether a calendar card in the stack (shown or put away) covers [startMs]: a write there refreshes it in place. */
+    /** Whether a calendar card in the stack (shown or put away) covers [startMs]: a write there refreshes it. */
     fun calendarShows(state: ConversationCardsState, startMs: Long): Boolean =
         state.cards.any { c ->
             val s = c.source

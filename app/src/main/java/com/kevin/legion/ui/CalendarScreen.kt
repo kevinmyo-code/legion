@@ -757,7 +757,8 @@ fun CalendarScreen(
  * [onEdit]/[onRemove] added one-today ticket 10 slice C, 2026-09-05 (this screen's own file doc
  * comment has the full account) - both null for [checklistsToday]'s own rows; [onEdit] null for
  * [scheduleRows]'s events, which get [onRemove] alone (2026-11-22, through
- * [NotesController.removeAppointment]); both non-null for a real [ListItem] reminder in [dayRows]. [onEdit] wraps the label column in the same tap-to-edit
+ * [NotesController.removeAppointment]); both non-null for a real [ListItem] reminder in [dayRows].
+ * [onEdit] wraps the label column in the same tap-to-edit
  * `Modifier.clickable` the retired `InboxRow` used; [onRemove] renders the same REMOVE stamp that
  * row's own separate button did, wired to [NotesController.removeItem] through [CalendarScreen]'s
  * own call site rather than a second write path here.
