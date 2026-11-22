@@ -250,6 +250,8 @@ class Utterance:
     turn_id: object | None = None
     # The streamed door's result (`streaming.Streamed`): its transcript, usage and marks.
     streamed: object | None = None
+    # The streamed door's draft-start (`agents/legion/preempt.Drafter`, dark), or None.
+    drafter: object | None = None
 
     @property
     def spoken(self) -> bool:
@@ -355,16 +357,24 @@ def voice_turn(
         # He asked for exact figures: nothing is rounded when spoken (the web door's rule; its
         # second half, exact after a write, needs the tool event's write flag: slice E3).
         speaker.exact = spoken_figures.wants_exact(words)
+        model, draft_now = model_for(), None
+        drafter = utterance.drafter
+        if drafter is not None:
+            # A draft on his final words answers the first round (`preempt.py`), on its own clock.
+            model, draft_now = drafter.primed(words, model)
         events = run_turn(
             request,
             words,
-            model_for(),
+            model,
             conversation=conversation_for(),
+            now=draft_now,
             voice={"spoken": speaker.enabled, "exact": speaker.exact},
             go=utterance.go,
             client_facts=utterance.client_facts,
             turn_id=utterance.turn_id,
         )
+        if drafter is not None:
+            events = drafter.watch(events)
         status = yield from _answer(
             request,
             events,
@@ -380,6 +390,9 @@ def voice_turn(
             origin,
         )
     finally:
+        if utterance.drafter is not None:
+            # Drafts not used are stopped and paid for, turn or no turn.
+            utterance.drafter.close()
         streamed = utterance.streamed
         _close_speech(
             request,

@@ -48,7 +48,7 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from agents import turn_locks, turn_options
-from agents.legion import flags, limbs
+from agents.legion import flags, limbs, preempt
 from agents.legion.turn import cancel, open_conversation
 from agents.runtime import events as ev
 from agents.runtime.model import GeminiClient
@@ -583,11 +583,19 @@ class AgentTurnStreamView(_SwitchedAgentsView):
                 {"detail": KEY_ABSENT, "code": "no_key"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        # Draft-start (dark, `preempt.py`): the model's first round on the running guess.
+        drafter = preempt.drafter_for(request, data, options, lambda: GeminiClient(key=gemini_key))
         try:
             streamed = streaming.take_utterance(
-                reader, key=key, max_audio_bytes=MAX_AUDIO_BYTES, arrived_at=arrived
+                reader,
+                key=key,
+                max_audio_bytes=MAX_AUDIO_BYTES,
+                arrived_at=arrived,
+                on_interim=drafter.heard if drafter is not None else None,
             )
         except streaming.FrameError as exc:
+            if drafter is not None:
+                drafter.close()
             prompt, output = getattr(exc, "spent", (0, 0))
             if prompt or output:
                 stage.meter_speech(
@@ -600,6 +608,8 @@ class AgentTurnStreamView(_SwitchedAgentsView):
         # the member's stream lock, until the answer's response closes.
         conversation_held = turn_locks.hold_conversation(data.get("conversation_id"))
         if conversation_held is None:
+            if drafter is not None:
+                drafter.close()
             return _refuse(streaming.STREAM_BUSY, "stream_busy", status.HTTP_409_CONFLICT)
         self._conversation_held = conversation_held
         utterance = pipeline.Utterance(

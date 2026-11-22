@@ -48,7 +48,9 @@ under the 32 MiB HTTP/1 cap (a 28 s utterance is 0.9 MB).
   the write gate in the turn).
 - A transcript the service blocks is refused as the batch path refuses it (`stt_blocked`), and
   is not handed to the batch path for a second try.
-- Partial transcripts are not used for anything (no warm-up, no draft round) in this slice.
+- The running guess of his words (`TranscribeSession.interim`) is handed, after each piece of
+  audio, to `on_interim` when the caller gives one: the draft-start (`agents/legion/preempt.py`,
+  dark), which never makes it a transcript. Nothing else reads it.
 """
 
 from __future__ import annotations
@@ -263,6 +265,7 @@ def take_utterance(
     max_audio_bytes: int,
     arrived_at: float,
     clock: Callable[[], float] = time.monotonic,
+    on_interim: Callable[[str], None] | None = None,
 ) -> Streamed:
     """Reads the audio frames up to `E`, feeding a streaming session as they come, and returns
     the final transcript with the audio held. Raises `FrameError` (hung up, gap, too long, bad
@@ -280,7 +283,9 @@ def take_utterance(
         session, failure = None, str(exc)
     pcm = bytearray()
     try:
-        return _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms)
+        return _read_and_finish(
+            reader, session, failure, pcm, marks, max_audio_bytes, ms, on_interim
+        )
     except FrameError as exc:
         # Nothing runs, but audio already sent to the session was paid for (a session that
         # failed mid-stream included: `sent_bytes` counts only what was sent).
@@ -291,7 +296,9 @@ def take_utterance(
             session.close()
 
 
-def _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms) -> Streamed:
+def _read_and_finish(
+    reader, session, failure, pcm, marks, max_audio_bytes, ms, on_interim=None
+) -> Streamed:
     dead = None
     try:
         while True:
@@ -316,6 +323,8 @@ def _read_and_finish(reader, session, failure, pcm, marks, max_audio_bytes, ms) 
                         session.close()
                         dead = session
                         session, failure = None, str(exc)
+                    if session is not None and on_interim is not None:
+                        on_interim(session.interim)
             elif kind == b"E":
                 marks["end_signal_ms"] = ms()
                 total = json_payload(payload).get("bytes")
