@@ -38,7 +38,7 @@ internal object EventRemovalWords {
 
     /** The calendar day a row is on: an all-day row is UTC midnight of its date (activeByKindInLocalWindow). */
     fun rowDay(row: Event, zone: ZoneId): LocalDate? = row.startsAt?.let {
-        if (row.allDay) Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() else localDay(it)
+        Instant.ofEpochMilli(it).atZone(if (row.allDay) ZoneOffset.UTC else zone).toLocalDate()
     }
 
     /** The local day of an instant (a reminder's due time), on the pinned clock's zone. */

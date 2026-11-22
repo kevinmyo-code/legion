@@ -4254,11 +4254,10 @@ object LiveToolbox {
      */
     private suspend fun removeCalendarEntry(context: Context, args: JSONObject, userText: String?): JSONObject? {
         val item = args.optString("item").trim()
-        if (!isRemove(args) || item.isBlank()) return null
-        // A date that does not read leaves the calendar alone: the reminder path runs as before.
         val dateArg = args.optString("date").trim()
         val day = parseNoteLocalDate(dateArg)
-        if (dateArg.isNotEmpty() && day == null) return null
+        // A date that does not read leaves the calendar alone: the reminder path runs as before.
+        if (!isRemove(args) || item.isBlank() || dateArg.isNotEmpty() && day == null) return null
         val reminders = NotesController.openItemsForList(context, theList(context).id)
         return EventRemoval.remove(context, item, day, userText, reminders)
     }
