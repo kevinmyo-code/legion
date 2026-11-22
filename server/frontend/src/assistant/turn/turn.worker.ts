@@ -31,6 +31,15 @@ export type FromWorker =
 
 const WINDOW = 512
 const CONTEXT = 64
+/** Runs before the speed check that are not timed (graph compile), then the timed runs. */
+const SILERO_WARMUP = 5
+const SILERO_TIMED = 15
+const SMART_TIMED = 3
+
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b)
+  return s[Math.floor(s.length / 2)]
+}
 // The worker's own scope, typed by hand: the webworker lib cannot share the app's DOM program.
 const scope = self as unknown as {
   postMessage(message: FromWorker): void
@@ -87,20 +96,33 @@ async function init(sileroUrl?: string, smartUrl?: string) {
         smart = null
       }
     }
-    // Measure once on silence, the way the page decides whether this device is fast enough.
-    let t = performance.now()
+    // Measure on silence, the way the page decides whether this device is fast enough: after a
+    // warm-up, as the median. The first runs pay for compiling the graph (2026-11-22, a 22-core
+    // laptop: the mean of the first five Silero windows was 23.6 ms, steady state p50 1.6 ms, p95
+    // 6.6 ms), and judging those turned the models off on a machine that runs them easily.
     let sileroMs = 0
     if (silero) {
-      for (let i = 0; i < 5; i++) await prob(new Float32Array(WINDOW))
-      sileroMs = (performance.now() - t) / 5
+      for (let i = 0; i < SILERO_WARMUP; i++) await prob(new Float32Array(WINDOW))
+      const times: number[] = []
+      for (let i = 0; i < SILERO_TIMED; i++) {
+        const t = performance.now()
+        await prob(new Float32Array(WINDOW))
+        times.push(performance.now() - t)
+      }
+      sileroMs = median(times)
       state = new Float32Array(2 * 128)
       input.fill(0)
     }
     let smartMs: number | null = null
     if (smart) {
-      t = performance.now()
       await score(new Float32Array(16000 * 3), -1)
-      smartMs = performance.now() - t
+      const times: number[] = []
+      for (let i = 0; i < SMART_TIMED; i++) {
+        const t = performance.now()
+        await score(new Float32Array(16000 * 3), -1)
+        times.push(performance.now() - t)
+      }
+      smartMs = median(times)
       mel.resetTurn()
     }
     post({ type: 'ready', sileroMs, smartMs, loadMs: performance.now() - started, smartError })
