@@ -219,3 +219,76 @@ def test_the_allowlist_lives_in_the_limb_contract_file():
     raw = json.loads(limb_verbatim.CLASSES_FILE.read_text(encoding="utf-8"))
     assert raw["limb_verbatim_tools"] == ["get_codes"]
     assert frozenset(raw["limb_verbatim_tools"]) == limb_verbatim.TOOLS
+
+
+# ---- review 1121: safety words survive, only a bare verdict is a restatement (V1) --------------
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "If the light starts flashing it's not okay to drive: pull over.",
+        "It's fine for now, but stop driving if it starts to overheat.",
+        "Don't drive it far, the oil pressure looks fine but the code is real.",
+        "Do not drive it if you see smoke.",
+        "If the temperature warning comes on, it's not okay to keep going.",
+        "It's overheating, so the brakes are fine but pull over now.",
+        "P0420 is fine to watch, but if the brakes feel soft, stop.",
+    ],
+)
+def test_a_sentence_with_a_safety_cue_is_never_dropped(sentence):
+    assert not limb_verbatim.restates_result(sentence)
+
+
+def test_the_safety_cues_live_in_one_list():
+    assert {"pull over", "stop driving", "don't drive", "do not drive", "flashing"} <= set(
+        limb_verbatim.SAFETY_CUES
+    )
+    assert {"overheating", "overheat", "smoke", "brakes", "oil pressure"} <= set(
+        limb_verbatim.SAFETY_CUES
+    )
+    assert "temperature warning" in limb_verbatim.SAFETY_CUES
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "It's clear tonight, so the drive home should be easy.",
+        "I can clear them if you say yes.",
+        "Your oil change is fine to leave until next month.",
+        "Okay, I'll keep an eye on it next time you ask.",
+    ],
+)
+def test_a_verdict_word_inside_other_content_is_not_a_restatement(sentence):
+    assert not limb_verbatim.restates_result(sentence)
+
+
+def test_a_safety_warning_after_the_codes_is_said(auth_client, codes_limb, engine):
+    warning = "If the light starts flashing it's not okay to drive: pull over."
+    _turn, rest = answered(
+        auth_client,
+        engine,
+        codes_result(),
+        reply=m.say(f"All good. {warning} I can clear them if you say yes."),
+    )
+    assert said(rest) == [SAID, warning, "I can clear them if you say yes."]
+
+
+# ---- review 1121: the device line passes the money and torque checks (V2) ----------------------
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "One stored code, P0455: a gas cap costs about $25.",
+        "One stored code, P0455: a new cap is about twenty five dollars.",
+        "One stored code, P0420: torque the sensor to 30 ft-lbs.",
+    ],
+)
+def test_a_device_line_stating_money_or_torque_falls_back_to_the_model(
+    auth_client, codes_limb, engine, line
+):
+    _turn, rest = answered(auth_client, engine, codes_result(said=line), reply=m.say("Clean bill."))
+    assert line not in said(rest)
+    # No device line was said, so nothing filters the model either.
+    assert said(rest)[0] == "Clean bill."
