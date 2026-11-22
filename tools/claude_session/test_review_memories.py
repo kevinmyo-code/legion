@@ -177,8 +177,11 @@ class HookCase(unittest.TestCase):
 
     def test_an_ordinary_task_is_untouched(self):
         self.assertEqual(self.decide("Bash", {"command": "git status"}, "agentA"), "pass")
+        # a new file outside its own work folder asks (outside_writes.py, review round 4)
         self.assertEqual(self.decide("Write", {"file_path": str(self.root / "new.md")}, "agentA"),
-                         "pass")
+                         "deny")
+        self.assertEqual(self.decide("Write", {"file_path": str(self.paths.task_work(8) / "new.md")},
+                                     "agentA"), "pass")
 
 
 class TestReviewTask(WorkerCase):

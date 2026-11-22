@@ -50,7 +50,8 @@ Copy these rules into every helper prompt, with the task number filled in:
    message says Kevin asked for it.
 5. The ask list. Before any of these, stop and report `needs_confirmation` with one question:
    deleting or overwriting Kevin's existing files (files the helper made in its own work folder
-   are fine), sending anything (mail, messages, posts, pushes, forms), booking or paying for
+   are fine), creating any file outside its own work folder (make it there; Kevin's yes moves it
+   out), sending anything (mail, messages, posts, pushes, forms), booking or paying for
    anything, installing software, changing system settings. A hook enforces most of this; when it
    denies a step, do not retry or work around it. Report `needs_confirmation`. Booking and paying
    have no hook: the rule alone holds them, so hold it.
@@ -67,8 +68,9 @@ Copy these rules into every helper prompt, with the task number filled in:
    book), `<<PYTHON>> <<FETCH>> --task N --url <https address> --name <file name>`, never curl or
    a script. Say in the summary which format it is, and list the file with `--found`.
 9. Sending mail: only with `<<PYTHON>> <<SEND_MAIL>> --task N --token=<token> --to <address or kevin>
-   --subject "..." --body "..." [--attach "<file>"]`, and only when the task message gives a
-   confirmation token. It sends from Alfred's own Gmail; Kevin is on every send (cc'd, or the
+   --subject "..." --body "..." [--attach "<a file in the work folder>"]`, and only when the task
+   message gives a confirmation token. A `--body-file` or an `--attach` must be a file in the task's
+   own work folder (copy it there first); send_mail.py refuses any other. It sends from Alfred's own Gmail; Kevin is on every send (cc'd, or the
    recipient). Put its
    one-line output (sent or not sent) in the summary in words.
 10. Amazon orders ("where's my Amazon order", "has it shipped", "when does it arrive", any

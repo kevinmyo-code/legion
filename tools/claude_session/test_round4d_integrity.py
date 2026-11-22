@@ -116,7 +116,7 @@ class Round4dPlants(unittest.TestCase):
         in_script = mark.read_text().splitlines() if mark.exists() else []
         ev = {"tool_name": "Bash", "tool_input": {"command": "ls"}, "cwd": str(root),
               "agent_id": "x"}
-        hk = subprocess.run([PY, str(folder / "asklist_hook.py")], env=env, input=json.dumps(ev),
+        hk = subprocess.run([PY, "-I", "-S", str(folder / "asklist_hook.py")], env=env, input=json.dumps(ev),
                             capture_output=True, text=True, timeout=60)
         in_hook = (mark.read_text().splitlines() if mark.exists() else [])[len(in_script):]
         return chk, in_script, in_hook, hk
@@ -168,13 +168,14 @@ class Round4dDecisions(unittest.TestCase):
              {"command": f"{py} -I -c \"import sys; sys.path.append('x'); import integrity; "
                          f"integrity.write_manifest()\""}, "agentB", None, "deny"),
             ("D3 cp onto manifest", "Bash", {"command": f"cp {src} {man}"}, "agentB", None, "deny"),
-            # Kevin's call (an OS change to the python install), not attempted here:
+            # Refused outright since the port of round 4 R4-1 (outside_writes.py: the python's tree
+            # and user site are what the hook runs on), even for a trusted helper:
             ("D4 Write usercustomize.py (user site)", "Write",
              {"file_path": os.path.join(usite, "usercustomize.py"), "content": "x"}, "agentB", None,
-             "allow"),
+             "deny"),
             ("D5 Write evil.pth (site-packages)", "Write",
              {"file_path": os.path.join(sys.prefix, "Lib", "site-packages", "zz-evil.pth"),
-              "content": "import os"}, "agentB", None, "allow"),
+              "content": "import os"}, "agentB", None, "deny"),
             # Built at run time; the integrity check now sees the folder it makes (Round4dPlants).
             ("D6 Join-Path plant pkg dir (V12b class)", "PowerShell",
              {"command": f"New-Item -ItemType Directory (Join-Path '{parent}' "

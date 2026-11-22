@@ -102,7 +102,24 @@ _CHANGED = ("WORKER CODE CHANGED: the laptop worker's own scripts are not the de
             "so they are not trusted until Kevin checks the laptop. Do not retry or work around "
             "it. Say in your final message that the laptop worker needs attention.")
 
+ISOLATION_REASON = ("The ask-list hook is not running isolated (`python -I -S`), so a file on its "
+                    "python's path could have changed it: every call is refused until the worker "
+                    "starts it with -I -S. Stop and report --status failed.")
+
+
+def isolated() -> bool:
+    """`python -I -S`: no user site, no PYTHON* environment, no `site` (so no `.pth` file and no
+    sitecustomize ran before this code; review round 4 R4-1, and round 4d's D4/D5). Anything else
+    and the hook cannot trust itself."""
+    return bool(sys.flags.isolated) and bool(sys.flags.no_site) and "site" not in sys.modules
+
+
 if __name__ == "__main__":
+    if not isolated():
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PreToolUse", "permissionDecision": "deny",
+            "permissionDecisionReason": ISOLATION_REASON}}))
+        sys.exit(0)
     # Before anything from this folder is imported: a changed folder could otherwise run its own
     # code inside this hook and answer for it. Every tool call is refused until it is fixed.
     _ok, _why = _deployed(_worker_root())
@@ -115,6 +132,7 @@ if __name__ == "__main__":
 sys.path.append(str(HERE))  # this folder's own modules, after the standard library
 from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
 import containment as C  # noqa: E402
+import outside_writes as OW  # noqa: E402
 
 SHELL_TOOLS = ("Bash", "PowerShell")
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
@@ -487,6 +505,12 @@ def _ship_reason() -> str:
 def _deny(reason: str) -> dict:
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                    "permissionDecisionReason": reason}}
+
+
+def _hard_place_reason() -> str:
+    return ("PROTECTED: this would write where the worker's python, this hook or the worker's own "
+            "files live (or the gh install). That cannot be confirmed. Do not retry or work around "
+            "it. Report what you needed with --status failed.")
 
 
 def _ask_reason(label: str) -> str:
@@ -897,6 +921,19 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             if _confirmed(paths, task, now):
                 return None, "confirmed"
             return _deny(_ask_reason("change one of Kevin's worker skills")), "skills"
+        # Outside the task's own folder (outside_writes.py): a new file, or a protected place, asks;
+        # what the hook itself runs on is refused.
+        tasks = (read_json(paths.state, {}) or {}).get("tasks") or {}
+        where = OW.file_verdict(target, paths, task, tasks.get(str(task))) if target else None
+        if where == OW.WORKER:
+            return _deny(_worker_files_reason()), "worker files"
+        if where == OW.HARD:
+            return _deny(_hard_place_reason()), "hook's own files"
+        if where == OW.ASK:
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason("create a file outside its work folder, or change a protected "
+                                     "one")), "outside work"
         if target and Path(target).exists() and not _scratch(target, paths):
             if _confirmed(paths, task, now):
                 return None, "confirmed"
@@ -924,6 +961,15 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             return _deny(_ship_reason()), "ship only"
         if _names_worker_code(command, cwd, tool):
             return _deny(_worker_code_reason()), "worker code"
+        where = OW.shell_verdict(command, cwd, paths)
+        if where and where[0] == OW.WORKER:
+            return _deny(_worker_files_reason()), "worker files"
+        if where and where[0] == OW.HARD:
+            return _deny(_hard_place_reason()), "hook's own files"
+        if where:
+            if _confirmed(paths, task, now):
+                return None, "confirmed"
+            return _deny(_ask_reason(f"write into a protected place ({where[1]})")), "outside work"
         if _copy_overwrites(command, cwd, paths):
             if _confirmed(paths, task, now):
                 return None, "confirmed"

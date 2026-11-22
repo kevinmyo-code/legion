@@ -158,7 +158,7 @@ def run_hook_calls(agent: str, calls: list, work: str) -> None:
     for c in calls:
         event = {"hook_event_name": "PreToolUse", "session_id": SESSION, "agent_id": agent,
                  "cwd": work, "tool_name": c["tool"], "tool_input": _fill(c.get("input") or {}, subs)}
-        r = subprocess.run([sys.executable, str(HERE / "asklist_hook.py")], input=json.dumps(event),
+        r = subprocess.run([sys.executable, "-I", "-S", str(HERE / "asklist_hook.py")], input=json.dumps(event),
                            capture_output=True, text=True)
         out = json.loads(r.stdout) if r.stdout.strip() else None
         decision = (out or {}).get("hookSpecificOutput", {}).get("permissionDecision", "pass")
