@@ -486,3 +486,19 @@ def test_funnel_rows_age_out_with_the_visitor_retention():
     funnel.count("page_load", "x")
     assert funnel.prune(30) == 1
     assert DemoFunnelDay.objects.count() == 1
+
+
+def test_the_tour_is_four_beats_the_context_diagram_first_and_no_workflow(
+    visitor_user, tmp_path, monkeypatch
+):
+    """Lighter since 2026-11-22: his first sentence, the LEGION context diagram, the live card,
+    the resume; no workflow diagram beat, even with every view available."""
+    from diagrams import catalogue
+
+    load_fake(tmp_path)
+    views = {"legion": ["components", "containers", "context"], "workflow": ["loop", "roles"]}
+    monkeypatch.setattr(catalogue, "available", lambda user, project: views.get(project, []))
+    beats = tour.beats_for(visitor_user)
+    assert [b.key for b in beats] == ["who", "legion", "live", "resume"]
+    assert beats[1].args == {"project": "legion", "view": "context"}
+    assert all(b.key != "workflow" for b in beats)
