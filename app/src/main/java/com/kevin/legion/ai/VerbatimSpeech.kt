@@ -20,7 +20,16 @@ object VerbatimSpeech {
 
     /** Budget left, a category's spend, top categories (2026-11-19); its `total` view is not marked. */
     const val BUDGET = "get_monthly_spend"
-    val TOOLS: Set<String> = setOf(BALANCE, DIAGNOSTICS, BUDGET)
+
+    /** `claude_session`'s factory board actions only (`where`, `idea`; backlog intake 1122). */
+    const val CLAUDE_SESSION = "claude_session"
+    val TOOLS: Set<String> = setOf(BALANCE, DIAGNOSTICS, BUDGET, CLAUDE_SESSION)
+
+    /**
+     * Marks words the model must never read (the factory board's card titles, which agents write):
+     * [forModel] strips them, and [KEY], from the copy the model is handed. The phone still speaks them.
+     */
+    const val PRIVATE = "verbatim_private"
 
     /** The words to speak from a result the cascade received, or null. */
     fun of(response: JSONObject?): String? {
@@ -39,6 +48,16 @@ object VerbatimSpeech {
         require(from in TOOLS) { "$from is not on the verbatim allowlist" }
         if (words.isNotBlank()) result.put(KEY, words.trim()).put(FROM, from)
         return result
+    }
+
+    /** [mark], and the words kept from the model's copy ([forModel]). Returns [result]. */
+    fun markPrivate(result: JSONObject, words: String, from: String): JSONObject =
+        mark(result, words, from).apply { if (words.isNotBlank()) put(PRIVATE, true) }
+
+    /** What the model is handed: [response] as it is, or a copy without private spoken words. */
+    fun forModel(response: JSONObject): JSONObject {
+        if (!response.optBoolean(PRIVATE)) return response
+        return unmark(JSONObject(response.toString())).apply { remove(PRIVATE) }
     }
 
     /** [result] with its words no longer marked to be spoken by the phone. Returns [result]. */
