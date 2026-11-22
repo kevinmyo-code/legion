@@ -20,6 +20,7 @@ import type { SectionTheme } from '@/api/demo'
 const MOTION = '(prefers-reduced-motion: no-preference)'
 /** The orb rides beside the sections only where there is room beside them. */
 const GLIDE = '(min-width: 900px) and (prefers-reduced-motion: no-preference)'
+const WIDE = '(min-width: 900px)'
 
 function useQuery(query: string): boolean {
   return useSyncExternalStore(
@@ -37,6 +38,11 @@ function useQuery(query: string): boolean {
 /** Reveals, pinned scenes, the model turning with the scroll: any width, motion allowed. */
 export function useStoryMotion(): boolean {
   return useQuery(MOTION)
+}
+
+/** Room for a whole wide picture beside the reading column: 900 px and up, motion or not. */
+export function useStoryWide(): boolean {
+  return useQuery(WIDE)
 }
 
 /** The orb glides to the side of each section (else it docks at the foot, as before). */

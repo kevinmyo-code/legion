@@ -148,6 +148,12 @@ for (const size of SIZES) {
     for (let i = 0; i < steps; i++) {
       await toStep(page, i, 1400)
       await page.screenshot({ path: path.join(OUT, `${size.name}-step-${i + 1}.png`) })
+      // A phone step whose lit boxes do not fit at a readable size pans between them: each shot.
+      const shots = await page.evaluate(() => Number(document.querySelector('[data-scene="legion"]')?.getAttribute('data-shots') ?? 1))
+      for (let k = 1; k < shots; k++) {
+        await page.waitForTimeout(2700)
+        await page.screenshot({ path: path.join(OUT, `${size.name}-step-${i + 1}-shot-${k + 1}.png`) })
+      }
       numbers.push(
         await page.evaluate(() => {
           const stage = document.querySelector('.rc-scene-stage')!.getBoundingClientRect()
@@ -156,8 +162,12 @@ for (const size of SIZES) {
           const card = active?.getBoundingClientRect()
           const lit = Array.from(document.querySelectorAll('.rc-scene-node[data-on="true"] .rc-scene-ring')).map((n) => n.getBoundingClientRect())
           const inFrame = lit.every((b) => b.left >= frame.left - 2 && b.right <= frame.right + 2 && b.top >= frame.top - 2 && b.bottom <= frame.bottom + 2)
+          const layer = document.querySelector('.rc-scene-layer') as HTMLElement | null
+          const scale = layer ? new DOMMatrixReadOnly(getComputedStyle(layer).transform).a * 2 : 0
           return {
             step: active?.textContent?.slice(0, 40),
+            // Pixels per diagram unit: the headings are 15 units, so 0.8 reads at 12 px.
+            pxPerUnit: Math.round(scale * 100) / 100,
             stageTop: Math.round(stage.top),
             cardOnScreen: Boolean(card && card.top >= 0 && card.bottom <= window.innerHeight),
             lit: lit.length,
@@ -179,7 +189,8 @@ for (const size of SIZES) {
     expect(overflowX).toBe(0)
     for (const n of numbers) {
       expect(n.cardOnScreen, JSON.stringify(n)).toBe(true)
-      expect(n.litInFrame, JSON.stringify(n)).toBe(true)
+      if (size.name === 'phone') expect(n.pxPerUnit as number, JSON.stringify(n)).toBeGreaterThanOrEqual(0.79)
+      else expect(n.litInFrame, JSON.stringify(n)).toBe(true)
     }
     await context.close()
   })

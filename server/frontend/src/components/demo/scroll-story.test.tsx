@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import { useRef } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { cardOffset, diagramAspect, diagramLayers, frameDiagram, layerFor, LegionScene, litBoxes, litEdges, readDiagram } from '@/screens/try-legion-scene'
+import { cardOffset, diagramAspect, diagramLayers, frameDiagram, layerFor, LegionScene, litBoxes, litEdges, phoneShots, readDiagram } from '@/screens/try-legion-scene'
 
 import { resetOrbPlace, useOrbPlace, useStoryGlide, useStoryMotion, useStorySections } from './scroll-story'
 
@@ -282,6 +282,16 @@ describe('the LEGION scene', () => {
     expect(zoomed.y + 30 * zoomed.scale).toBeCloseTo(100)
   })
 
+  test('a phone never shrinks the picture past readable: wide lit groups become a sequence of shots', () => {
+    const d = readDiagram(NAMED)!
+    // A small frame: no two boxes fit together at 0.8 px a unit, so each is its own shot.
+    expect(phoneShots(d, [2, 0, 1], 200, 150, 0.8)).toEqual([[0], [1], [2]])
+    // A frame wide enough: all three in one shot.
+    expect(phoneShots(d, [0, 1, 2], 400, 200, 0.8)).toEqual([[0, 1, 2]])
+    // Never under the floor, even when the boxes asked for do not fit (centred, cropped).
+    expect(frameDiagram(d, [0, 1, 2], 200, 150, true, 0.8).scale).toBe(0.8)
+  })
+
   test('the card sits under the lit boxes, inside the frame', () => {
     expect(cardOffset(500, 1000, 400)).toBe(300)
     expect(cardOffset(50, 1000, 400)).toBe(0)
@@ -320,6 +330,23 @@ describe('the LEGION scene', () => {
     expect(screen.getByRole('img', { name: 'An invented caption.' }).tagName).toBe('IMG')
     expect(container.querySelector('.rc-scene-overlay')).toHaveAttribute('aria-hidden', 'true')
     expect(container.querySelector('.rc-scene-overlay text')).toBeNull()
+  })
+
+  test('width alone decides the whole diagram: a desk visitor with reduced motion sees it whole', () => {
+    fakeIO()
+    media((query) => query === '(min-width: 900px)')
+    const { container } = render(<LegionScene svg={NAMED} caption="" parts={[{ title: 'One', body: 'Invented.' }]} lead={(t) => t} />)
+    const scene = container.querySelector('.rc-scene')!
+    expect(scene).toHaveAttribute('data-motion', 'off')
+    expect(scene).toHaveAttribute('data-framing', 'whole')
+  })
+
+  test('narrow, with motion or without, the diagram zooms to the lit boxes', () => {
+    fakeIO()
+    media((query) => !query.includes('min-width'))
+    const { container } = render(<LegionScene svg={NAMED} caption="" parts={[{ title: 'One', body: 'Invented.' }]} lead={(t) => t} />)
+    expect(container.querySelector('.rc-scene')).toHaveAttribute('data-framing', 'zoom')
+    expect(container.querySelector('.rc-scene')).toHaveAttribute('data-motion', 'on')
   })
 
   test('reduced motion keeps the steps: the scene says so, and the CSS drops the travel', () => {

@@ -45,15 +45,23 @@ describe('the LEGION scene (Kevin, 2026-11-22: the words move with the highlight
     expect(stage?.body).toMatch(/height\s*:\s*100svh/)
   })
 
-  test('on a phone the stage stops above the foot bar', () => {
+  test('on a phone the stage stops above the foot bar and its safe area', () => {
     const phone = all.filter((r) => r.selector.includes('.rc-scene-stage') && /max-width:\s*899px/.test(r.within))
-    expect(phone.some((r) => /height\s*:\s*calc\(100svh\s*-\s*72px\)/.test(r.body))).toBe(true)
+    expect(phone.some((r) => /height\s*:\s*calc\(100svh\s*-\s*76px\s*-\s*env\(safe-area-inset-bottom/.test(r.body))).toBe(true)
   })
 
   test('on a screen too short for it the stage is not pinned and every part shows, so nothing pinned covers its words', () => {
     const short = all.filter((r) => /max-height:\s*499px/.test(r.within))
     expect(short.some((r) => r.selector.includes('.rc-scene-stage') && /position\s*:\s*static/.test(r.body))).toBe(true)
     expect(short.some((r) => r.selector.includes('.rc-scene-card li') && /opacity\s*:\s*1/.test(r.body))).toBe(true)
+  })
+
+  test('text at 200% never runs off the stage: the card scrolls inside it', () => {
+    const stage = all.find((r) => r.selector.trim() === '.recruiter .rc-scene-stage' && !r.within.includes('@media'))
+    expect(stage?.body).toMatch(/overflow\s*:\s*hidden/)
+    const card = all.find((r) => r.selector.trim() === '.recruiter .rc-scene-card' && !r.within.includes('@media'))
+    expect(card?.body).toMatch(/overflow-y\s*:\s*auto/)
+    expect(card?.body).toMatch(/min-height\s*:\s*0/)
   })
 
   test('print shows every part, in order, unpinned', () => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
-import { useSceneSteps, useStoryGlide, useStoryMotion } from '@/components/demo/scroll-story'
+import { useSceneSteps, useStoryMotion, useStoryWide } from '@/components/demo/scroll-story'
 
 /**
  * The LEGION section as one scrollytelling stage (Kevin, 2026-11-22: the words should move with
@@ -228,17 +228,50 @@ const LAYOUT = 2
 // Room kept around the lit boxes when zoomed to them, in diagram units.
 const PAD = 18
 
+// On a phone the picture is never shown smaller than this many pixels per diagram unit: the
+// diagram's headings are 15 units tall, so they read at 12 px or more (blind review F11).
+export const PHONE_MIN_SCALE = 0.8
+
+function fitScale(boxes: readonly DiagramBox[], width: number, height: number): number {
+  const b = bounds(boxes)
+  return Math.min(width / (b.w + 2 * PAD), height / (b.h + 2 * PAD))
+}
+
+/**
+ * A phone's shots of a step: its lit boxes in groups that each fit the frame at `minScale` or more,
+ * in reading order (left to right, then down). One group when they all fit; otherwise the stage
+ * pans from one group to the next, a zoomed sequence, rather than shrinking the picture unreadable.
+ */
+export function phoneShots(diagram: Diagram, lit: readonly number[], width: number, height: number, minScale = PHONE_MIN_SCALE): number[][] {
+  const order = [...lit].filter((i) => diagram.boxes[i]).sort((a, b) => diagram.boxes[a].x - diagram.boxes[b].x || diagram.boxes[a].y - diagram.boxes[b].y)
+  const shots: number[][] = []
+  for (const index of order) {
+    const current = shots[shots.length - 1]
+    if (current && fitScale([...current, index].map((i) => diagram.boxes[i]), width, height) >= minScale) current.push(index)
+    else shots.push([index])
+  }
+  return shots
+}
+
 /**
  * Where the diagram sits in a `width` x `height` frame: the whole of it, centred; or, zooming, the
- * lit boxes with a little room around them, centred, never past `MAX_ZOOM` times the whole.
+ * boxes given with a little room around them, centred, never past `MAX_ZOOM` times the whole and
+ * never under `minScale` (a box too big for the frame at that scale is centred and cropped).
  */
-export function frameDiagram(diagram: Diagram, lit: readonly number[], width: number, height: number, zoom: boolean): Framing {
+export function frameDiagram(
+  diagram: Diagram,
+  lit: readonly number[],
+  width: number,
+  height: number,
+  zoom: boolean,
+  minScale = 0,
+): Framing {
   const v = diagram.view
   const whole = Math.min(width / v.w, height / v.h)
   const boxes = lit.map((i) => diagram.boxes[i]).filter(Boolean)
   const target = zoom && boxes.length > 0 ? bounds(boxes) : null
   const area = target ? { x: target.x - PAD, y: target.y - PAD, w: target.w + 2 * PAD, h: target.h + 2 * PAD } : { x: v.x, y: v.y, w: v.w, h: v.h }
-  const scale = target ? Math.min(width / area.w, height / area.h, whole * MAX_ZOOM) : whole
+  const scale = target ? Math.max(Math.min(width / area.w, height / area.h, whole * MAX_ZOOM), minScale) : whole
   const cx = area.x + area.w / 2
   const cy = area.y + area.h / 2
   return { scale, x: width / 2 - (cx - v.x) * scale, y: height / 2 - (cy - v.y) * scale }
@@ -279,9 +312,9 @@ export function LegionScene({
   // The step is the marker at the middle of the screen.
   useSceneSteps(root, true, onStep, '-50% 0px -50% 0px')
   const motion = useStoryMotion()
-  // 900 px and up the whole diagram shows and the card slides under the lit boxes; narrower the
-  // diagram zooms to them and the card is as wide as the stage.
-  const wide = useStoryGlide()
+  // 900 px and up the whole diagram shows and the card slides under the lit boxes, motion or not;
+  // narrower the diagram zooms to them and the card is as wide as the stage.
+  const wide = useStoryWide()
   const lit = useMemo(
     () => (diagram ? litBoxes(diagram, parts[step]?.lights, step, parts.length) : []),
     [diagram, parts, step],
@@ -314,7 +347,24 @@ export function LegionScene({
     return () => observer.disconnect()
   }, [])
 
-  const framing = diagram && size.width > 0 ? frameDiagram(diagram, lit, size.width, size.height, !wide) : null
+  // A phone: the step's lit boxes in readable shots; more than one, and the stage moves between
+  // them while the step is on screen (with motion it glides, without it changes in place, slower).
+  const shots = useMemo(
+    () => (diagram && !wide && size.width > 0 ? phoneShots(diagram, lit, size.width, size.height) : [lit]),
+    [diagram, wide, lit, size.width, size.height],
+  )
+  const [shot, setShot] = useState(0)
+  useEffect(() => setShot(0), [step])
+  useEffect(() => {
+    if (shots.length < 2 || !visible) return
+    const timer = setInterval(() => setShot((n) => (n + 1) % shots.length), motion ? 2600 : 4000)
+    return () => clearInterval(timer)
+  }, [shots.length, visible, motion])
+  const inView = shots[Math.min(shot, shots.length - 1)] ?? lit
+  const framing =
+    diagram && size.width > 0
+      ? frameDiagram(diagram, wide ? lit : inView, size.width, size.height, !wide, wide ? 0 : PHONE_MIN_SCALE)
+      : null
   const litArea = diagram && lit.length > 0 ? bounds(lit.map((i) => diagram.boxes[i])) : null
   const litCentre = framing && litArea ? framing.x + (litArea.x - diagram!.view.x + litArea.w / 2) * framing.scale : size.width / 2
   const shift = wide ? cardOffset(litCentre, size.width, size.card) : 0
@@ -328,6 +378,8 @@ export function LegionScene({
       data-scene="legion"
       data-motion={motion ? 'on' : 'off'}
       data-visible={visible ? 'true' : 'false'}
+      data-framing={wide ? 'whole' : 'zoom'}
+      data-shots={shots.length}
       style={{ '--scene-steps': parts.length } as CSSProperties}
     >
       <div className="rc-scene-stage">
