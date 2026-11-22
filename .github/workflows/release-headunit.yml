@@ -38,11 +38,11 @@ on:
         required: true
         type: string
       abi:
-        description: "Which ABI split ships (headunit/CLAUDE.md: publish the arm64 one)"
+        description: "Which ABI split ships (the head unit is 32-bit: armeabi-v7a; headunit/CLAUDE.md)"
         required: true
-        default: arm64-v8a
+        default: armeabi-v7a
         type: choice
-        options: [arm64-v8a, armeabi-v7a]
+        options: [armeabi-v7a, arm64-v8a]
       dry_run:
         description: "Dry run: build and check; publish nothing"
         required: true
