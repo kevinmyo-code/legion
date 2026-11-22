@@ -9,10 +9,11 @@ the machine is fixed (create with a machine, assign, claim), never on a workflow
   `can_mail: false` becomes `files` (ADR 0080: to the phone) on a `full` machine, and nothing on a
   `listed` one (it returns summaries only, ruling 5). Unknown (`can_mail` null, a worker from
   before the field) keeps the mail as asked.
-- **Asking for something MADE as a file is asking for the file.** A making verb with "as a PDF",
-  "into a spreadsheet", or "make me a PDF of ..." with no delivery of its own becomes `files` on a `full`
-  machine, so the made file is requested at finish and opens on his phone. Finding an existing
-  file ("find the AW4 wiring PDF") is not this: it keeps the found-file offer (send on his yes).
+- **Asking for something MADE as a file is asking for the file.** A making verb with "as a PDF"
+  or "into a spreadsheet", or "make me a PDF of ...", with no delivery of its own becomes `files`
+  on a `full` machine, so the made file is requested at finish and opens on his phone. Finding an
+  existing file ("find the AW4 wiring PDF", "the lease I saved as a PDF") is not this: it keeps
+  the found-file offer (send on his yes).
 """
 
 from __future__ import annotations

