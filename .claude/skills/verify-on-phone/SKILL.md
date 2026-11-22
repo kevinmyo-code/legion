@@ -19,6 +19,15 @@ never this sentence). Everything on it is his: messages, money, memories, contac
 - A change's verification step says "on the phone" and the phone answers `preflight`.
 - Before reporting a phone ticket `built`: if the phone is reachable, run its device steps.
 - Not for performance numbers, wake-word tests, or anything needing a voice: those stay Kevin's.
+- **After a phone update, run its scripted suite first:** `python tools/verify_phone run <suite>`
+  (`list` shows them; `--dry-run` runs it on the fake phone). It replaces the post-update checklist.
+  A new update with new behaviour gets a new suite under `tools/verify_phone/suites/`, each check
+  naming the app code it reads so `python tools/verify_phone stale --base origin/dev` can flag it.
+  Its write turns name the only tools they may use (`allow_tools`). A build whose test-turn door
+  has `allow_tools` refuses any other tool before it runs. **On an older build (263261832 and
+  before) a write turn may run any tool: a mail, money, message or call tool is caught only after
+  it ran.** The run then stops, sends no further turn, and lists what it left behind. The log's
+  `door_preventive` says which kind of build it was.
 
 ## The rules (the CLI enforces these; the skill only explains them)
 
