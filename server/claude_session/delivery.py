@@ -10,7 +10,8 @@ the machine is fixed (create with a machine, assign, claim), never on a workflow
   `listed` one (it returns summaries only, ruling 5). Unknown (`can_mail` null, a worker from
   before the field) keeps the mail as asked.
 - **Asking for something MADE as a file is asking for the file.** A making verb with "as a PDF"
-  or "into a spreadsheet", or "make me a PDF of ...", with no delivery of its own becomes `files`
+  or "into a spreadsheet", or "make me a PDF of ...", with no delivery of its own or a page
+  (`phone`, which is HTML) becomes `files`
   on a `full` machine, so the made file is requested at finish and opens on his phone. Finding an
   existing file ("find the AW4 wiring PDF", "the lease I saved as a PDF") is not this: it keeps
   the found-file offer (send on his yes).
@@ -23,6 +24,7 @@ import re
 from claude_session.models import (
     DELIVER_EMAIL_SELF,
     DELIVER_FILES,
+    DELIVER_PHONE,
     KIND_ASK,
     SCOPE_LISTED,
     ClaudeMachine,
@@ -80,6 +82,8 @@ def settle(
     listed = machine.scope == SCOPE_LISTED
     if deliver == DELIVER_EMAIL_SELF and machine.can_mail is False:
         return None if listed else DELIVER_FILES
-    if deliver is None and not listed and asks_for_made_file(request):
+    # A page (`phone`) is HTML; "as a PDF" asks for the file itself (task 32, 2026-11-22: the phone
+    # sent page=true, the helper was told to write one HTML page, and no PDF was made).
+    if deliver in (None, DELIVER_PHONE) and not listed and asks_for_made_file(request):
         return DELIVER_FILES
     return deliver

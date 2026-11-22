@@ -127,6 +127,20 @@ def test_a_pdf_asked_for_with_no_delivery_goes_to_the_phone_on_a_full_machine_on
     assert _deliver(plain["id"]) is None
 
 
+def test_a_page_asked_for_as_a_pdf_becomes_the_pdf_file(token_a):
+    """Task 32 (2026-11-22): the phone sent page=true for a plan "as a PDF"; a page is HTML, so
+    the helper made HTML and no PDF reached the phone. A made-file request wins over a page."""
+    _beat(token_a)
+    made = _create(token_a, "Make a one-page weekend plan for Springfield as a PDF",
+                   deliver="phone")
+    assert _deliver(made["id"]) == "files"
+    page = _create(token_a, "a researched write-up on garden walks", deliver="phone")
+    assert _deliver(page["id"]) == "phone"
+    _beat(token_a, "work laptop", scope="listed")
+    listed = _create(token_a, "make the build notes as a PDF", machine="work laptop")
+    assert _deliver(listed["id"]) is None
+
+
 def test_settled_when_the_machine_is_picked_later(token_a):
     _beat(token_a, can_mail=False)
     _beat(token_a, "work laptop", scope="listed")
