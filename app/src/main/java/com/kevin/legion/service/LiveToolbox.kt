@@ -63,7 +63,6 @@ import com.kevin.legion.media.MusicController
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
-import com.kevin.legion.media.VolumeController
 import com.kevin.legion.backend.EventsAppointmentWriter
 import com.kevin.legion.calendar.TaskDoneMatcher
 import com.kevin.legion.data.local.OutboxTarget
@@ -135,11 +134,10 @@ import com.kevin.legion.sitrep.SitrepBuilder
 import com.kevin.legion.sitrep.SitrepModule
 import com.kevin.legion.voice.VoiceNoteController
 import com.kevin.legion.voice.VoiceNoteStartResult
-import com.kevin.legion.service.MusicToolbox.SpotifyUriResolution
-import com.kevin.legion.service.MusicToolbox.resolveSpotifyUri
 import com.kevin.legion.service.MusicToolbox.spotifyNeedsAuthorizationResult
 import com.kevin.legion.service.MusicToolbox.spotifyUnauthorizedResult
 import com.kevin.legion.service.MusicToolbox.spotifyUnreachableResult
+import com.kevin.legion.service.MusicToolbox.controlMusicQueue
 
 /**
  * The function tools the Live session exposes to Gemini, plus their dispatch.
@@ -1133,7 +1131,6 @@ object LiveToolbox {
             "get_next_service" -> withResolvedVehicle(context, args) { getNextService(context, it) }
             "ask_maintenance" -> withResolvedVehicle(context, args) { askMaintenance(context, args, it) }
             "control_music" -> controlMusic(context, args)
-            "control_volume" -> controlVolume(context, args)
             "get_current_location" -> getCurrentLocation(context)
             "area_info" -> areaInfo(context, args)
             "get_reported_crime_history" -> getReportedCrimeHistory(context, args)
@@ -6570,27 +6567,6 @@ object LiveToolbox {
         }
 
     /**
-     * Adjusts the head unit's media volume on-device ([VolumeController]) - no
-     * cloud needed once the intent is known. Reports the resulting level so Zero
-     * can confirm where it landed.
-     */
-    private fun controlVolume(context: Context, args: JSONObject): JSONObject {
-        val pct = when (val action = args.optString("action")) {
-            "up" -> VolumeController.raise(context)
-            "down" -> VolumeController.lower(context)
-            "set" -> {
-                val level = args.optInt("level", -1)
-                if (level < 0) return result(success = false, message = "What level should I set it to?")
-                VolumeController.setPercent(context, level)
-            }
-            "mute" -> VolumeController.mute(context, true)
-            "unmute" -> VolumeController.mute(context, false)
-            else -> return result(success = false, message = "Unknown volume action: $action")
-        }
-        return result(success = true, message = null).put("volumePercent", pct)
-    }
-
-    /**
      * The permission/providers-off/no-fix/available branch [getCurrentLocation] decides on, lifted
      * out to its own type (command-center ticket 08, drift-debt half) because
      * `ui/FleetScreen.kt`'s `currentLocationReadout` used to RESTATE this exact branch order in a
@@ -6826,33 +6802,6 @@ object LiveToolbox {
         val place = args.optString("place").ifBlank { null }
         val message = CrimeHistory.historyNear(context, loc.latitude, loc.longitude, place, offenseType)
         return result(success = true, message = message)
-    }
-
-    /**
-     * `control_music`'s `queue` action (ticket 04, `.scratch/spotify-voice/issues/04-queue.md`):
-     * resolves [query] through [resolveSpotifyUri] - the identical path [playMusic] uses - then
-     * [SpotifyController.queueUri]. "Play X next" and "add X to the queue" are the same operation
-     * to Spotify (there is no insert-at-position), which is why they share one action and one
-     * spoken line ([SpotifyController.message] for [SpotifyController.QueueOutcome] says so).
-     */
-    private suspend fun controlMusicQueue(context: Context, query: String): JSONObject {
-        if (query.isBlank()) return result(success = false, message = "What should I queue?")
-
-        val (uri, pickedLabel) = when (val resolved = resolveSpotifyUri(context, query, "song")) {
-            is SpotifyUriResolution.Found -> resolved.uri to
-                SpotifyController.pickedLabel(resolved.name, resolved.subtitle)
-            is SpotifyUriResolution.Failed -> return resolved.toolResult
-        }
-
-        val outcome = SpotifyController.queueUri(context, uri)
-        // Names the track Spotify resolved, not the user's own words: the queue line used to echo
-        // the query ("Queued \"Ugly by The Gazette\"") whatever had actually been found, the same
-        // wrong-song blind spot play_music had (voice audit finding 4, S18). Falls back to the
-        // query only when the resolution carried no name.
-        return result(
-            success = SpotifyController.succeeded(outcome),
-            message = SpotifyController.message(outcome, pickedLabel ?: query),
-        )
     }
 
     /**
