@@ -91,7 +91,9 @@ class SevereAlertAlarmTest {
         assertEquals(ProactiveUrgency.Alarm("a1", 2), extreme.urgency)
         val update = SevereAlertPolling.raise(alert("a2", "Severe", "a1"), "", null)
         assertEquals(ProactiveUrgency.Alarm("a2", 1, listOf("a1")), update.urgency)
-        assertEquals(ProactiveUrgency.Ordinary, SevereAlertPolling.raise(alert("a1", "Moderate"), "", null).urgency)
+        // A Moderate alert stays ordinary, except a Tornado Warning, which rings at any severity (2026-11-22).
+        val moderate = SevereAlertPolling.raise(event("Hurricane Watch", "a1", "Moderate"), "", null)
+        assertEquals(ProactiveUrgency.Ordinary, moderate.urgency)
     }
 
     @Test
