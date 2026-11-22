@@ -44,7 +44,8 @@ class EmergencyRingRulesTest {
     @Test
     fun `a rise in severity within the series follows the named policy`() {
         val records = mapOf("a1" to Record(1, now, "a1"))
-        assertEquals(EmergencyRingRules.RING_AGAIN_WHEN_SEVERITY_RISES, EmergencyRingRules.isNew(alarm("a2", 2, "a1"), records))
+        val rise = EmergencyRingRules.isNew(alarm("a2", 2, "a1"), records)
+        assertEquals(EmergencyRingRules.RING_AGAIN_WHEN_SEVERITY_RISES, rise)
         assertFalse(EmergencyRingRules.isNew(alarm("a1", 1), mapOf("a1" to Record(2, now, "a1"))))
     }
 
