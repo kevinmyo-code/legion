@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useSyncExternalStore, type RefObject } from 'react'
 
 import type { SectionTheme } from '@/api/demo'
+import { ORB_MARKS, type OrbMark } from '@/components/assistant/orb-marks'
 
 /**
  * /try as a scroll story (Kevin, 2026-11-19, from the prototype captures: "B bolder"). The rules
@@ -52,7 +53,7 @@ export function useStoryGlide(): boolean {
 
 export type OrbSide = 'left' | 'right'
 /** The mark the orb takes on beside a section (Kevin, 2026-11-22: the Q at the finance voice section). */
-export type OrbMark = 'q'
+export type { OrbMark }
 export interface OrbPlace {
   side: OrbSide
   /** Beside a pinned scene the orb rides alone: its line and chips would cover the scene. */
@@ -102,7 +103,7 @@ export function useOrbPlace(): OrbPlace {
   )
 }
 
-const THEMES: readonly SectionTheme[] = ['legion', 'ledger', 'midcon', 'aw4']
+const THEMES: readonly SectionTheme[] = ['legion', 'ledger', 'midcon', 'aw4', 'shop']
 
 /**
  * The palette and the orb's mark follow the section at the middle of the screen (each section has
@@ -121,7 +122,8 @@ export function useSectionThemes(root: RefObject<HTMLElement | null>, deps: unkn
           if (!entry.isIntersecting) continue
           const target = entry.target as HTMLElement
           const theme = THEMES.find((t) => t === target.dataset.theme) ?? 'legion'
-          setOrbPlace({ theme, mark: target.dataset.orbMark === 'q' ? 'q' : null, placed: place.placed })
+          const mark = ORB_MARKS.find((m) => m === target.dataset.orbMark) ?? null
+          setOrbPlace({ theme, mark, placed: place.placed })
         }
         const first = sections[0]
         if (first && first.getBoundingClientRect().top > window.innerHeight / 2) {

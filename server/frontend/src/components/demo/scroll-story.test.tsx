@@ -4,7 +4,9 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { cardOffset, diagramAspect, diagramLayers, frameDiagram, layerFor, LegionScene, litBoxes, litEdges, phoneShots, readDiagram } from '@/screens/try-legion-scene'
 
-import { resetOrbPlace, useOrbPlace, useStoryGlide, useStoryMotion, useStorySections } from './scroll-story'
+import { SHOP_MARK } from '@/components/assistant/orb-marks'
+
+import { resetOrbPlace, useOrbPlace, useSectionThemes, useStoryGlide, useStoryMotion, useStorySections } from './scroll-story'
 
 /**
  * The /try scroll story (Kevin, 2026-11-19, "B bolder"): sections rise in as they arrive, the orb
@@ -402,3 +404,39 @@ const NAMED = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
   <line x1="92" y1="30" x2="158" y2="30" marker-start="url(#a)" marker-end="url(#a)"/>
   <line x1="242" y1="30" x2="308" y2="30" marker-end="url(#a)"/>
 </svg>`
+
+describe('the section moods and marks', () => {
+  function Moods() {
+    const main = useRef<HTMLElement>(null)
+    useSectionThemes(main, 'invented')
+    const place = useOrbPlace()
+    return (
+      <main ref={main}>
+        <p data-testid="mood">{`${place.theme} ${place.mark ?? 'none'}`}</p>
+        <section data-testid="plain" data-orb-side="right" />
+        <section data-testid="shop" data-orb-side="left" data-theme="shop" data-orb-mark="larkspur" />
+        <section data-testid="odd" data-orb-side="right" data-theme="neon" data-orb-mark="logo" />
+      </main>
+    )
+  }
+
+  test("the store rep's section turns the page to its mood and the orb into the shop's mark; unknown ones are ignored", () => {
+    fakeIO()
+    render(<Moods />)
+    inView(screen.getByTestId('shop'), '-50% 0px -50% 0px')
+    expect(screen.getByTestId('mood')).toHaveTextContent('shop larkspur')
+    inView(screen.getByTestId('odd'), '-50% 0px -50% 0px')
+    expect(screen.getByTestId('mood')).toHaveTextContent('legion none')
+  })
+
+  test("the shop's mark is drawn inside its own 100 x 100 box", () => {
+    for (const [ax, ay, bx, by, cx, cy] of SHOP_MARK.pine) for (const v of [ax, ay, bx, by, cx, cy]) expect(v).toBeGreaterThanOrEqual(0)
+    for (const [x, y, r] of SHOP_MARK.florets) {
+      expect(x - r).toBeGreaterThanOrEqual(0)
+      expect(x + r).toBeLessThanOrEqual(100)
+      expect(y - r).toBeGreaterThanOrEqual(0)
+      expect(y + r).toBeLessThanOrEqual(100)
+    }
+    expect(SHOP_MARK.trunk.y + SHOP_MARK.trunk.h).toBeLessThanOrEqual(100)
+  })
+})

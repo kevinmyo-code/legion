@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 
 import type { AudioLevels } from '@/assistant/audio'
 
+import { drawMark, type OrbMark } from './orb-marks'
 import { markTargets, OrbRenderer, parseColour, type OrbColours, type OrbMode } from './orb'
 
 /**
@@ -28,8 +29,9 @@ export function VoiceOrb({
   /** How many points (default 1500) and how big each is (default 1): a small orb wants fewer and smaller. */
   points?: number
   dot?: number
-  /** A mark the points gather into ('q': the finance voice demo's Q, Kevin 2026-11-22), or none. */
-  mark?: 'q' | null
+  /** A mark the points gather into (`orb-marks.ts`: the finance demo's Q, the made-up shop's
+   * pine and larkspur), or none. */
+  mark?: OrbMark | null
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<OrbRenderer | null>(null)
@@ -121,7 +123,7 @@ const glyphCache = new Map<string, Float32Array>()
  * finance voice demo draws its Q (a letter in a system font, no logo file), sampled to one target
  * per point. No 2D canvas (jsdom): a ring.
  */
-function glyphTargets(mark: 'q', count: number): Float32Array {
+function glyphTargets(mark: OrbMark, count: number): Float32Array {
   const key = `${mark}:${count}`
   const cached = glyphCache.get(key)
   if (cached) return cached
@@ -130,11 +132,7 @@ function glyphTargets(mark: 'q', count: number): Float32Array {
   const ctx = canvas.getContext('2d')
   const alpha = new Uint8ClampedArray(GLYPH_PX * GLYPH_PX)
   if (ctx) {
-    ctx.fillStyle = '#000'
-    ctx.font = `900 ${Math.round(GLYPH_PX * 0.9)}px "Arial Black", "Segoe UI Black", Impact, "Helvetica Neue", Arial, sans-serif`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(mark.toUpperCase(), GLYPH_PX / 2, GLYPH_PX / 2 + 3)
+    drawMark(ctx, mark, GLYPH_PX)
     const rgba = ctx.getImageData(0, 0, GLYPH_PX, GLYPH_PX).data
     for (let i = 0; i < alpha.length; i++) alpha[i] = rgba[i * 4 + 3]
   }

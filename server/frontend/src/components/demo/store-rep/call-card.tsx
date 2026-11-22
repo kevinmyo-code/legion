@@ -2,7 +2,6 @@ import { Check, Copy } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { type CallCard, latencyRows, OUTCOME_TONE } from '@/lib/store-rep'
 
@@ -103,30 +102,5 @@ function RecordView({ record }: { record: Record<string, unknown> }) {
         {text}
       </pre>
     </div>
-  )
-}
-
-export function CallCardDialog({
-  card,
-  open,
-  onOpenChange,
-}: {
-  card: CallCard | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>After the call</DialogTitle>
-          <DialogDescription>
-            What a business system would receive from this call: outcome, summary, transcript and a record, built by
-            code from the engine&apos;s own log.
-          </DialogDescription>
-        </DialogHeader>
-        {card ? <CallCardView card={card} /> : <p className="text-muted-foreground">No call on this visit yet.</p>}
-      </DialogContent>
-    </Dialog>
   )
 }

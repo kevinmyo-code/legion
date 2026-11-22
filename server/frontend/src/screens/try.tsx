@@ -28,7 +28,7 @@ import { usePresenter } from '@/components/assistant/cards/presenter-context'
 import { RESUME_ALT } from '@/components/assistant/cards/resume'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
-import { StoreRepPanel } from '@/components/demo/store-rep/store-rep-panel'
+import { StoreRepSection } from '@/components/demo/store-rep/store-rep-section'
 import { useSurface } from '@/lib/surface'
 import { postFunnel } from '@/assistant/deps'
 import { VoiceStage } from '@/components/demo/voice-stage'
@@ -417,7 +417,6 @@ function VoiceFirstVisit({
       copy={VISITOR_COPY}
     >
       <VisitorBody entered={entered} ended={ended} expiresAt={expiresAt} />
-      {entered && <StoreRepPanel />}
     </AssistantProvider>
   )
 }
@@ -718,7 +717,7 @@ function Section({
   /** Its palette (`index.css` `[data-page-theme]`); none is LEGION's. */
   theme?: SectionTheme
   /** The mark the orb takes on beside it. */
-  mark?: 'q'
+  mark?: 'q' | 'larkspur'
   children: ReactNode
 }) {
   return (
@@ -832,6 +831,9 @@ function ProjectSection({ section, side }: { section: DemoProjectSection; side?:
           </a>
         </p>
       )}
+      {/* A live demo this page draws itself (Kevin, 2026-11-22: the store rep as its own section),
+          right under the pitch so its control is the first thing to tap. */}
+      {section.widget === 'store_rep' && <StoreRepSection />}
       {section.diagram_svg && <Diagram svg={section.diagram_svg} caption={section.diagram_caption ?? ''} />}
       {section.parts.length > 0 && (
         <div className="rc-runin">

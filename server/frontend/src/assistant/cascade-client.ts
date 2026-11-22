@@ -417,8 +417,12 @@ export class CascadeClient {
    * mic and the playback context open before anything is awaited, and the greeting request starts
    * in the same tap (the iPhone and Safari rule, spec 29). With the conversation already open (the
    * assistant thinking or speaking), it interrupts and listens again (spec 20, 21).
+   *
+   * `before`: something the greeting must wait for, started in the same tap (the store-rep switch,
+   * so the greeting is the rep's); the mic and the playback still open at once. It applies to a
+   * conversation this tap opens: a caller that wants a fresh greeting resets the client first.
    */
-  startVoice(): Promise<void> {
+  startVoice(before?: Promise<unknown>): Promise<void> {
     if (this.state.phase === 'ended' || this.disposed) return Promise.resolve()
     if (this.voiceOpen) {
       // Taps while the visit is being entered are ignored: a double tap on first contact is one.
@@ -453,7 +457,7 @@ export class CascadeClient {
     this.deps.funnel?.('orb_tap')
     this.loadDetector()
     if (this.resumeOnTap && this.conversationId) this.listen()
-    else void this.greetAfterPrepare()
+    else void this.greetAfterPrepare(before)
     this.resumeOnTap = false
     return opened.then(
       () => {
@@ -471,9 +475,30 @@ export class CascadeClient {
     )
   }
 
-  private greetAfterPrepare() {
+  private greetAfterPrepare(before?: Promise<unknown>) {
     return this.afterPrepare(
-      () => this.turn({ greet: true }, true),
+      async () => {
+        if (before) {
+          // The orb shows thinking while the switch lands; a tap or a close meanwhile (the turn
+          // generation moves, or the voice closes) means no greeting at all.
+          const generation = this.turnGeneration
+          this.awaiting = true
+          this.refresh()
+          await before.catch(() => undefined)
+          const gone = generation !== this.turnGeneration || !this.voiceOpen || this.disposed
+          if (gone) {
+            // Closed by the mic failing (no tap cut the wait): the thinking state is still ours to clear.
+            if (generation === this.turnGeneration) {
+              this.awaiting = false
+              this.refresh()
+            }
+            return
+          }
+          this.awaiting = false
+          this.refresh()
+        }
+        await this.turn({ greet: true }, true)
+      },
       () => {
         this.voiceOpen = false
         this.micGeneration += 1

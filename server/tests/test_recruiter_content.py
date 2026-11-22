@@ -500,6 +500,18 @@ def test_a_project_section_may_carry_a_demo_link_a_theme_and_an_orb_mark():
     assert problems(content) == []
 
 
+def test_a_project_section_may_hold_the_store_rep_with_its_mood_and_mark():
+    """Kevin, 2026-11-22: the store rep as a section of its own, the orb turning into its mark."""
+    content = fake_content() | fake_projects()
+    content["project_sections"][0].update(widget="store_rep", theme="shop", orb_mark="larkspur")
+    assert problems(content) == []
+    for key, bad in (("widget", "chat"), ("theme", "forest"), ("orb_mark", "logo")):
+        broken = fake_content() | fake_projects()
+        broken["project_sections"][0][key] = bad
+        found = problems(broken)
+        assert found and found[0].startswith(f"project_sections/0/{key}"), (key, found)
+
+
 def test_a_legion_part_may_name_the_diagram_boxes_it_lights():
     """Kevin, 2026-11-22: the words move with the diagram's highlights."""
     content = fake_content() | fake_projects()
