@@ -175,7 +175,7 @@ class CascadeWiringTest {
         assertEquals("one path: no tool corrects on its own", 1, Regex("(RelativeDay\\.corrected|DateCarry\\.resolved)\\(").findAll(toolbox).count())
         assertTrue("only a voice turn's context carries the day", dispatch.contains("coroutineContext[RelativeDay.TurnDates]"))
         val s = session()
-        assertTrue("the session gives the prompt's day and the turn's count", s.contains("RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, aboutDay)"))
+        assertTrue("the session gives the prompt's day and the turn's count", s.contains("RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, conversationDay.day)"))
         assertTrue("counted before the round runs", s.contains("RelativeDay.isDateCall("))
     }
 

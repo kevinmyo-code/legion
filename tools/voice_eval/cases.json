@@ -583,7 +583,7 @@
     },
     {
       "id": "date_carry_tomorrow",
-      "why": "2026-11-22: after a read of tomorrow, a follow-up add that named no day went on today. A dated write that names no day goes on the day the conversation is about (RelativeDay.carried); judged on the day it landed, not the day the model asked for",
+      "why": "2026-11-22: after a read of tomorrow, a follow-up add at a clock time with no day went on today. The next turn's clock-timed write that names no day goes on the later day the last turn was about (DateCarry.carried); judged on the day it landed, not the day the model asked for",
       "turns": [
         {"say": "what's on my calendar tomorrow", "expect": {"calls": ["day/read_calendar"], "read_day": ["{today+1}"]}},
         {

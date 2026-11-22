@@ -59,6 +59,7 @@ import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
 import com.kevin.legion.service.testturn.TestTurns
 import com.kevin.legion.service.tools.LiveSurface
+import com.kevin.legion.service.tools.day.ConversationDay
 import com.kevin.legion.service.tools.day.DateCarry
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.vehicle.ActiveVehicle
@@ -402,8 +403,8 @@ internal class CascadeSession(
     /** The date the model's prompt states as today ([RelativeDay.TurnDates]). */
     @Volatile private var promptDay: LocalDate = RelativeDay.today()
 
-    /** The day this conversation is about ([DateCarry.nextAboutDay]): a follow-up that names none goes there. */
-    @Volatile private var aboutDay: LocalDate? = null
+    /** The day the last turn was about, offered to this turn's clock-timed writes ([DateCarry.carried]). */
+    private val conversationDay = ConversationDay()
 
     /** Writes that went through and that he has not heard said yet ([OwedWrites]). */
     private val owed = OwedWrites()
@@ -1745,6 +1746,8 @@ internal class CascadeSession(
     ) {
         turn = record
         if (record.fromUser) record.askedBefore = lastTurnAsked
+        // The day the last turn was about is this turn's to carry, and no later turn's (DateCarry).
+        if (record.fromUser) conversationDay.startTurn()
         // ADR 0090 gap 5: the turn after a read-through opener starts marked, as on Live.
         if (readThroughCarry.startTurn(record.fromUser, record.startMarked)) {
             record.startMarked = true
@@ -2477,7 +2480,7 @@ internal class CascadeSession(
         readThrough: Boolean,
         seq: Long,
     ): JSONObject {
-        val dates = RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, aboutDay)
+        val dates = RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, conversationDay.day)
         val words = if (record.fromUser) record.heard else ""
         val response = withContext(dates + ClearCodesVoiceGate.HeardVoice(record.voicedMs)) {
             // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
@@ -2497,7 +2500,7 @@ internal class CascadeSession(
     ) {
         val call = LiveSurface.resolve(name, args)
         val ran = DateCarry.resolved(call.name, call.args, words, dates)?.first ?: call.args
-        aboutDay = DateCarry.nextAboutDay(aboutDay, call.name, ran, response.optBoolean("success", false), dates.day)
+        conversationDay.note(call.name, ran, response.optBoolean("success", false), dates.day)
     }
 
     private fun listenerFor(record: TurnRecord, reply: ReplySpeaker) = object : GeminiTextLoop.Listener {
