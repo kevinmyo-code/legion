@@ -150,7 +150,8 @@ class ClaudeSessionToolboxTest {
     fun `a spoken yes never sends a message to a Claude session, the screen's Yes does`() {
         val card = task(
             44, ClaudeTask.NEEDS_CONFIRMATION,
-            question = ClaudeTask.SESSION_SEND_PREFIX + "garden (garden) on the Alienware: \"Water the beds.\" Send it?",
+            question = ClaudeTask.SESSION_SEND_PREFIX +
+                "garden (garden) on the Alienware: \"Water the beds.\" Send it?",
         )
         backend.taskById[44] = card
         val out = call("action" to "answer", "task_id" to 44, "yes" to true)
@@ -169,10 +170,10 @@ class ClaudeSessionToolboxTest {
         )
         assertEquals(
             "Session planner (garden) on the Alienware, waiting on you",
-            ClaudeSessionToolbox.sessionLine(named),
+            named.spokenLine,
         )
         val unnamed = named.copy(name = "", state = "idle")
-        assertEquals("Session garden on the Alienware, idle", ClaudeSessionToolbox.sessionLine(unnamed))
+        assertEquals("Session garden on the Alienware, idle", unnamed.spokenLine)
     }
 
     @Test

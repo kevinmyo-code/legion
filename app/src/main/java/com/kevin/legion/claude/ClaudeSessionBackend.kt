@@ -49,6 +49,13 @@ data class ClaudeCodeSession(
     /** What Alfred calls it: its name, else its project folder. */
     val spokenName: String get() = name.ifBlank { project.ifBlank { "unnamed" } }
 
+    /** `check`'s line for it, by its own name when it has one (alfred-sessions 2026-11-22). */
+    val spokenLine: String get() {
+        val doing = lastPromptSummary?.let { ": $it" } ?: ""
+        val folder = if (name.isNotBlank() && project.isNotBlank()) " ($project)" else ""
+        return "Session $spokenName$folder on the $machine, " + (if (waitingOnYou) "waiting on you" else state) + doing
+    }
+
     companion object {
         const val STATE_WAITING = "waiting"
     }
