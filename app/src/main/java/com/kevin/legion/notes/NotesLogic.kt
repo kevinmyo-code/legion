@@ -48,6 +48,7 @@ fun matchItem(query: String, items: List<ListItem>): ItemMatch {
  * [matchItem]'s three tiers over any rows, by the text [text] gives each: the first tier that
  * matches anything, all of its matches. Empty when nothing matches.
  */
+@Suppress("ReturnCount") // one return per tier, most confident first
 fun <T> bestTextMatches(query: String, items: List<T>, text: (T) -> String): List<T> {
     val q = query.trim().lowercase()
     if (q.isBlank() || items.isEmpty()) return emptyList()

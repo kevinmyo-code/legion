@@ -291,7 +291,7 @@ class EventRemovalTest {
         assertTrue(dao.getById(row.id)!!.deleted)
         val queued = CarDatabase.getDatabase(context).outboxDao().getAll()
             .single { it.targetTable == OutboxTarget.EVENTS }
-        assertEquals(OutboxOperation.DELETE, queued.operation)
+        assertEquals(OutboxOperation.SOFT_DELETE, queued.operation)
         assertEquals(row.id, queued.localId)
     }
 
@@ -310,7 +310,8 @@ class EventRemovalTest {
     fun `the day card on screen drops the entry in place`() = runBlocking {
         seed("Team supper")
         LiveToolbox.dispatch(context, "read_calendar", JSONObject().put("from", "$today").put("to", "$today"))
-        fun titles() = (ConversationCards.state.value.cards.single() as ConversationCard.Timeline).items.map { it.title }
+        fun titles() =
+            (ConversationCards.state.value.cards.single() as ConversationCard.Timeline).items.map { it.title }
         assertEquals(listOf("Team supper"), titles())
 
         remove("team supper", "remove team supper")
@@ -327,22 +328,24 @@ class EventRemovalTest {
         fun row(start: Long, allDay: Boolean) = Event(
             serverId = null, title = "x", startsAt = start, source = "legion", allDay = allDay, updatedAtMs = 1L,
         )
-        val at = { d: LocalDate, h: Int, m: Int -> d.atTime(h, m).atZone(zone).toInstant().toEpochMilli() }
-        assertEquals("today at 7 pm", EventRemoval.whenPhrase(row(at(today, 19, 0), false), today, zone))
-        assertEquals("tomorrow at 9:30 am", EventRemoval.whenPhrase(row(at(today.plusDays(1), 9, 30), false), today, zone))
-        assertEquals("tomorrow at 12 pm", EventRemoval.whenPhrase(row(at(today.plusDays(1), 12, 0), false), today, zone))
-        assertEquals("Fri Mar 12 at 12 am", EventRemoval.whenPhrase(row(at(today.plusDays(3), 0, 0), false), today, zone))
+        fun timed(days: Long, h: Int, m: Int) = EventRemovalWords.whenPhrase(
+            row(today.plusDays(days).atTime(h, m).atZone(zone).toInstant().toEpochMilli(), false), today, zone,
+        )
+        assertEquals("today at 7 pm", timed(0, 19, 0))
+        assertEquals("tomorrow at 9:30 am", timed(1, 9, 30))
+        assertEquals("tomorrow at 12 pm", timed(1, 12, 0))
+        assertEquals("Fri Mar 12 at 12 am", timed(3, 0, 0))
         val allDay = today.plusDays(3).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        assertEquals("Fri Mar 12, all day", EventRemoval.whenPhrase(row(allDay, true), today, zone))
+        assertEquals("Fri Mar 12, all day", EventRemovalWords.whenPhrase(row(allDay, true), today, zone))
     }
 
     @Test
     fun `a plain no is a no, and a yes or a question is not`() {
-        assertTrue(EventRemoval.isPlainNo("no"))
-        assertTrue(EventRemoval.isPlainNo("nah, leave it"))
-        assertTrue(EventRemoval.isPlainNo("never mind"))
-        assertFalse(EventRemoval.isPlainNo("yes"))
-        assertFalse(EventRemoval.isPlainNo("what time is it"))
+        assertTrue(EventRemovalWords.isPlainNo("no"))
+        assertTrue(EventRemovalWords.isPlainNo("nah, leave it"))
+        assertTrue(EventRemovalWords.isPlainNo("never mind"))
+        assertFalse(EventRemovalWords.isPlainNo("yes"))
+        assertFalse(EventRemovalWords.isPlainNo("what time is it"))
     }
 
     private class FakeEventsBackend : EventsBackend {

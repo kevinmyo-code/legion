@@ -8,14 +8,12 @@ import com.kevin.legion.data.local.activeByKindInLocalWindow
 import com.kevin.legion.notes.ItemMatch
 import com.kevin.legion.notes.NotesController
 import com.kevin.legion.notes.bestTextMatches
+import com.kevin.legion.service.tools.day.EventRemovalWords.isPlainNo
+import com.kevin.legion.service.tools.day.EventRemovalWords.normalise
+import com.kevin.legion.service.tools.day.EventRemovalWords.whenPhrase
 import com.kevin.legion.vehicle.ClearCodesVoiceGate
-import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import org.json.JSONObject
 
 /**
@@ -84,7 +82,8 @@ internal object EventRemoval {
         val dao = CarDatabase.getDatabase(context).eventDao()
         val fromMs = from.atStartOfDay(zone).toInstant().toEpochMilli()
         val toMs = to.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-        val events = bestTextMatches(phrase, dao.activeByKindInLocalWindow(EventKind.EVENT, fromMs, toMs, zone)) { it.title }
+        val inWindow = dao.activeByKindInLocalWindow(EventKind.EVENT, fromMs, toMs, zone)
+        val events = bestTextMatches(phrase, inWindow) { it.title }
         val reminderNames = when (reminders) {
             is ItemMatch.Resolved -> listOf(reminders.item.text)
             is ItemMatch.Ambiguous -> reminders.candidates.map { it.text }
@@ -102,7 +101,11 @@ internal object EventRemoval {
     /** The line for a remove that matched nothing anywhere, naming where it looked. */
     fun nothingFound(phrase: String, day: LocalDate?): String {
         val (from, to) = window(day, RelativeDay.today())
-        val where = if (from == to) "on ${dayWords(from, RelativeDay.today())}" else "from today through ${to.format(SHORT_DAY)}"
+        val where = if (from == to) {
+            "on ${EventRemovalWords.dayWords(from, RelativeDay.today())}"
+        } else {
+            "from today through ${to.format(EventRemovalWords.SHORT_DAY)}"
+        }
         return "Nothing was removed: no reminder, to-do or calendar entry $where matches \"$phrase\". " +
             "If it is on another day, ask with that day."
     }
@@ -114,25 +117,30 @@ internal object EventRemoval {
     @Suppress("ReturnCount") // each condition that makes it a fresh request returns on its own line
     private suspend fun answer(context: Context, phrase: String, userText: String?): JSONObject? {
         val ask = pending ?: return null
-        if (clock() - ask.atMs > TTL_MS) {
-            pending = null
-            return null
-        }
         val words = normalise(userText)
-        // The asking turn calling again, or no words to judge (a typed tool call with no turn): ask again.
-        if (words.isEmpty() || words == ask.askWords) return null
-        val sameEntry = bestTextMatches(phrase, listOf(ask.title)) { it }.isNotEmpty()
-        val voiced = kotlin.coroutines.coroutineContext[ClearCodesVoiceGate.HeardVoice]?.voicedMs
-        val heard = voiced == null || voiced >= ClearCodesVoiceGate.YES_MIN_VOICED_MS
+        // Too old, the asking turn calling again, or no words to judge (a tool call with no turn).
+        if (clock() - ask.atMs > TTL_MS) pending = null
+        if (pending == null || words.isEmpty() || words == ask.askWords) return null
         pending = null
+        val sameEntry = bestTextMatches(phrase, listOf(ask.title)) { it }.isNotEmpty()
         if (sameEntry && isPlainNo(userText.orEmpty())) {
             return fail("Nothing was removed: his answer was no, so \"${ask.title}\" stays on the calendar.")
         }
-        if (!sameEntry || !heard || !ClearCodesVoiceGate.isExplicitYes(userText.orEmpty())) return null
+        return if (sameEntry && plainYes(userText.orEmpty())) removeAsked(context, ask) else null
+    }
+
+    /** A plain yes, carried by enough voice when the turn measured it (the clear's rule). */
+    private suspend fun plainYes(text: String): Boolean {
+        val voiced = kotlin.coroutines.coroutineContext[ClearCodesVoiceGate.HeardVoice]?.voicedMs
+        return (voiced == null || voiced >= ClearCodesVoiceGate.YES_MIN_VOICED_MS) &&
+            ClearCodesVoiceGate.isExplicitYes(text)
+    }
+
+    /** Removes exactly the row the question named, through the Calendar screen's funnel. */
+    private suspend fun removeAsked(context: Context, ask: Ask): JSONObject {
         val row = CarDatabase.getDatabase(context).eventDao().getById(ask.eventId)
-        if (row == null || row.deleted || row.kind != EventKind.EVENT) {
-            return fail("Nothing was removed: \"${ask.title}\" is no longer on the calendar.")
-        }
+            ?.takeIf { !it.deleted && it.kind == EventKind.EVENT }
+            ?: return fail("Nothing was removed: \"${ask.title}\" is no longer on the calendar.")
         val whenWords = whenPhrase(row, RelativeDay.today(), RelativeDay.clock().zone)
         return if (NotesController.removeAppointment(context, row.id)) {
             JSONObject().put("success", true).put("title", row.title)
@@ -180,7 +188,8 @@ internal object EventRemoval {
         toMs: Long,
         zone: ZoneId,
     ): JSONObject? {
-        val tasks = bestTextMatches(phrase, dao.activeByKindInLocalWindow(EventKind.TASK, fromMs, toMs, zone)) { it.title }
+        val inWindow = dao.activeByKindInLocalWindow(EventKind.TASK, fromMs, toMs, zone)
+        val tasks = bestTextMatches(phrase, inWindow) { it.title }
         if (tasks.isEmpty()) return null
         return fail(
             "Nothing was removed: \"${tasks.first().title}\" is coursework, and coursework is not deleted, " +
@@ -188,52 +197,9 @@ internal object EventRemoval {
         )
     }
 
-    /** The entry's day in words (today, tomorrow, or a short date) and its clock time, or "all day". */
-    fun whenPhrase(row: Event, today: LocalDate, zone: ZoneId): String {
-        val start = row.startsAt ?: return "with no time"
-        if (row.allDay) {
-            // An all-day row is UTC midnight of its date (activeByKindInLocalWindow's doc comment).
-            return "${dayWords(Instant.ofEpochMilli(start).atZone(ZoneOffset.UTC).toLocalDate(), today)}, all day"
-        }
-        val at = Instant.ofEpochMilli(start).atZone(zone)
-        return "${dayWords(at.toLocalDate(), today)} at ${clockWords(at.toLocalTime())}"
-    }
-
-    private fun dayWords(date: LocalDate, today: LocalDate): String = when (date) {
-        today -> "today"
-        today.plusDays(1) -> "tomorrow"
-        today.minusDays(1) -> "yesterday"
-        else -> date.format(SHORT_DAY)
-    }
-
-    private fun clockWords(t: LocalTime): String {
-        val hour = if (t.hour % HALF_DAY == 0) HALF_DAY else t.hour % HALF_DAY
-        val half = if (t.hour < HALF_DAY) "am" else "pm"
-        return if (t.minute == 0) "$hour $half" else "$hour:${"%02d".format(t.minute)} $half"
-    }
-
-    /** A plain no: a no word and no yes word. Errs to false (then it is only asked again). */
-    internal fun isPlainNo(text: String): Boolean {
-        val tokens = tokens(text)
-        val joined = " ${tokens.joinToString(" ")} "
-        val no = tokens.any { it in NO_WORDS } || NO_PHRASES.any { joined.contains(" $it ") }
-        return no && !ClearCodesVoiceGate.isExplicitYes(text)
-    }
-
     private fun asking(message: String): JSONObject =
         // `needs_answer`: his next one word may answer it (the cascade's LoneWordWriteGuard.asks).
         fail(message).put("needs_answer", true)
 
     private fun fail(message: String): JSONObject = JSONObject().put("success", false).put("message", message)
-
-    private fun tokens(text: String): List<String> =
-        text.lowercase().replace('’', '\'').replace(Regex("[^a-z' ]"), " ")
-            .split(' ').map { it.trim('\'') }.filter { it.isNotEmpty() }
-
-    private fun normalise(text: String?): String = tokens(text.orEmpty()).joinToString(" ")
-
-    private const val HALF_DAY = 12
-    private val SHORT_DAY = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
-    private val NO_WORDS = setOf("no", "nope", "nah", "don't", "dont", "cancel", "keep")
-    private val NO_PHRASES = listOf("never mind", "leave it", "not that")
 }

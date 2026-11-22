@@ -1231,7 +1231,8 @@ object LiveToolbox {
             )
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
             // (ticket 10) - car items are now just items on the list named "Car".
-            "manage_item" -> nameIt(manageItem(context, args, userText), args)
+            // remove reaches calendar entries too, asked first (2026-11-22, EventRemoval).
+            "manage_item" -> nameIt(removeCalendarEntry(context, args, userText) ?: manageItem(context, args), args)
             "read_list" -> readList(context)
             // "manage_grocery" retired one-today ticket 10 slice B, 2026-09-05 - named explicitly
             // (never falling through to the generic "Unknown tool" branch below) so a model that
@@ -4244,9 +4245,24 @@ object LiveToolbox {
      */
     private suspend fun theList(context: Context): ItemList = NotesController.theList(context)
 
-    /** Dispatches `manage_item`: add / tick / untick / remove / schedule / skip one item. [userText]
-     * is his words this turn: a calendar entry's remove needs his yes in a later turn (EventRemoval). */
-    private suspend fun manageItem(context: Context, args: JSONObject, userText: String?): JSONObject {
+    /**
+     * `manage_item remove` for a calendar entry, before the reminder path: asked first, removed on his
+     * yes in a later turn ([userText], EventRemoval). Null when no calendar entry is involved; `date`
+     * narrows which day.
+     */
+    @Suppress("ReturnCount") // not a remove, an unreadable date, or the entry's answer
+    private suspend fun removeCalendarEntry(context: Context, args: JSONObject, userText: String?): JSONObject? {
+        val item = args.optString("item").trim()
+        if (args.optString("action").trim().lowercase() != "remove" || item.isBlank()) return null
+        val dateArg = args.optString("date").trim()
+        val day = if (dateArg.isEmpty()) null else parseNoteLocalDate(dateArg)
+            ?: return result(false, "I couldn't read \"$dateArg\" as a date - try yyyy-MM-dd.")
+        val reminders = NotesController.findItem(context, theList(context).id, item)
+        return EventRemoval.remove(context, item, day, userText, reminders)
+    }
+
+    /** Dispatches `manage_item`: add / tick / untick / remove / schedule / skip one item. */
+    private suspend fun manageItem(context: Context, args: JSONObject): JSONObject {
         val action = args.optString("action").trim().lowercase()
         val itemArg = args.optString("item").trim()
         val list = theList(context)
@@ -4318,13 +4334,7 @@ object LiveToolbox {
         }
 
         if (itemArg.isBlank()) return result(false, "Which item?")
-        val match = NotesController.findItem(context, list.id, itemArg)
-        // remove reaches calendar entries too, asked first (2026-11-22); `date` narrows which day.
-        val removeDay = args.optString("date").trim().takeIf { action == "remove" && it.isNotEmpty() }?.let {
-            parseNoteLocalDate(it) ?: return result(false, "I couldn't read \"$it\" as a date - try yyyy-MM-dd.")
-        }
-        if (action == "remove") EventRemoval.remove(context, itemArg, removeDay, userText, match)?.let { return it }
-        return when (match) {
+        return when (val match = NotesController.findItem(context, list.id, itemArg)) {
             is ItemMatch.NoMatch -> {
                 // One-today ticket 02, "ticking an appointment": tick/untick only, and only after a
                 // reminder match genuinely came back empty - a title that matches a reminder is
@@ -4339,7 +4349,7 @@ object LiveToolbox {
                     "schedule" -> scheduleTodoLine(context, list, itemArg, args)
                         ?: result(false, "I don't see \"$itemArg\" on your list - add it?")
                     "remove" -> removeTodoLine(context, itemArg)
-                        ?: result(false, EventRemoval.nothingFound(itemArg, removeDay))
+                        ?: result(false, EventRemoval.nothingFound(itemArg, parseNoteLocalDate(args.optString("date"))))
                     else -> result(false, "I don't see \"$itemArg\" on your list - add it?")
                 }
             }
