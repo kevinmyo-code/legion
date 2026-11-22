@@ -18,7 +18,8 @@ car Bluetooth, when Silero cannot load, or with the switch off.
 - **End of turn:** Silero VAD v6.2 decides speech and silence. The turn ends after **700 ms** of
   silence. A Pipecat Smart Turn v3.2 check starts at 192 ms of silence. If it says "not done" before
   700 ms, the turn is held: checks run back to back until one says done, up to a 2.5 s cap. **Smart
-  Turn can only extend a turn, never end one early.** No Smart Turn means silence only.
+  Turn can only extend a turn, never end one early** (Live; the cascade amended 2026-11-21, below).
+  No Smart Turn means silence only.
 - **Barge-in:** call-style audio (MODE_IN_COMMUNICATION, voice-communication playback and capture
   with AEC), only during a conversation. The mic stays open while Alfred speaks. Speech
   interrupts only when Silero is confident and above the reply's own echo for 256 ms of any
@@ -84,3 +85,28 @@ speech window, the ring also holds up to 100 ms of mic buffer after that window,
 drain the policy does not listen for up to ~180 ms, so 400 ms reached only 76 to 176 ms before the
 first counted window. 544 ms (the barge-in figure) reaches 220 to 320 ms. Every start now logs a
 `pre_roll_ms=` line so the phone can confirm it. Silero's start threshold is unchanged.
+
+## Amendment, 2026-11-21: on the cascade, a clear "done" ends the turn early
+
+Applies to the cascade only; Live keeps the extend-only rule above. Since 2026-11-19 the cascade
+already ended a turn at 500 ms of silence when Smart Turn's verdict before the base said "done"
+(score >= 0.5). With Smart Turn on 4 threads, the first check (at 192 ms) now lands at 288 to 416 ms
+of silence on the A25 (one cloud-voice session, n=23), so the reason this ADR gave for extend-only no
+longer holds there.
+
+- **The rule:** when the FIRST verdict of a silence scores **>= 0.95** and lands before 500 ms, the
+  turn ends at 300 ms of silence, or on arrival if later. Logged `eot_reason=early eot_early=1
+  score=<p>`.
+- **Unchanged:** a silence that already heard "not done" keeps the 500 ms rule however high a later
+  check scores; a verdict landing at or after 500 ms ends as before; the 700 ms base, the 2.5 s cap,
+  silence-only without Smart Turn, and the laptop voice (its service ends turns; Smart Turn is off).
+- **Why 0.95:** in that session the clear turns scored 0.97 to 0.98, and the two high verdicts he then
+  talked past scored 0.94. The policy sees no words (cloud STT runs after the end), so the score is
+  the only guard against a pause that sounds finished.
+- **Off switch:** Settings > Assistant, "End clear turns sooner", default on; off restores the
+  500 ms rule with no release.
+- **Measured afterwards:** `eot_early_resumed=1 after_ms=<n>` is logged when he starts again within
+  1.5 s of an early end, so drive logs give the real false-end rate. A false end that he talks past
+  while its speech-to-text is still running is not merged into his next words today: the first half
+  is answered on its own. That gap predates this rule (any end can open it); its fix is a separate
+  change.
