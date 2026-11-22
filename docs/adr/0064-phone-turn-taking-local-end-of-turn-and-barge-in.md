@@ -88,8 +88,8 @@ first counted window. 544 ms (the barge-in figure) reaches 220 to 320 ms. Every 
 ## Amendment, 2026-11-21: a 3 s echo warm-up before barge-in may fire
 
 The platform echo canceller needs some playback to learn the room each time the echo path is new.
-**For 3 s from the first reply audio after call audio starts, or after its routed device really
-changes, a span that would fire is ignored instead** (logged `bargein_ignored reason=warmup`): no
+**For the first 3 s of reply audio played after call audio starts, or after its routed device
+really changes, a span that would fire is ignored instead** (silence between replies does not count) (logged `bargein_ignored reason=warmup`): no
 flush, no verdict watch, no self-interrupt count, and a voice that goes on fires once the 3 s are
 over. This follows LiveKit, which starts its 3 s timer at the agent's first speech; Unmute also
 ignores interruptions for its first 3 s.
