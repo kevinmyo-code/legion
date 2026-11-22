@@ -487,6 +487,11 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
         for rx in (expand(r, today) for r in expect.get("result_has", [])):
             if not any(c.success and re.search(rx, c.response or "", re.I) for c in turn.calls):
                 fails.append(f"no successful tool result has /{rx}/")
+    # The change must NOT land in this turn (2026-11-22: a calendar entry's remove asks first and
+    # removes only on his yes in the next turn). Holds on every layer: a refused write never succeeds.
+    for spec in expect.get("not_succeeded", []):
+        if any(matches(c, spec) and c.success for c in turn.calls):
+            fails.append(f"a call {spec} succeeded in a turn where nothing may change")
     # A question that only reads must not change anything (2026-11-15: "which cars do I have"
     # called car/switch_vehicle on the laptop eval).
     if not write:

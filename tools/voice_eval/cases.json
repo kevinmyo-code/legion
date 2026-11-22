@@ -605,20 +605,100 @@
     },
     {
       "id": "delete_event_confirmed",
-      "why": "2026-11-22: asked to remove a calendar entry made by voice, the assistant said entries cannot be removed. manage_item remove now reaches calendar entries: the first turn reads the entry back and asks (nothing removed), the yes removes it (EventRemoval, unit-tested)",
+      "why": "2026-11-22: asked to remove a calendar entry made by voice, the assistant said entries cannot be removed. manage_item remove now reaches calendar entries: the first turn reads the entry back and asks (nothing removed), the plain yes in the next turn removes it (EventRemoval)",
       "turns": [
-        {"say": "remove the dentist cleaning from my calendar", "expect": {"calls": ["manage_item/remove"], "answer_has": ["(?i)dentist"]}},
+        {
+          "say": "remove the dentist cleaning from my calendar",
+          "expect": {
+            "calls": [
+              "manage_item/remove"
+            ],
+            "not_succeeded": [
+              "manage_item/remove"
+            ],
+            "answer_has": [
+              "(?i)dentist"
+            ]
+          }
+        },
         {
           "say": "Yes.",
           "expect": {
-            "calls": ["manage_item/remove"],
-            "succeeded": ["manage_item/remove"],
+            "calls": [
+              "manage_item/remove"
+            ],
+            "succeeded": [
+              "manage_item/remove"
+            ],
             "not_held": true,
-            "result_has": ["Dentist cleaning"]
+            "result_has": [
+              "Dentist cleaning"
+            ]
           }
         }
       ],
-      "write": true
+      "write": true,
+      "proves_nothing_on": "phone: test mode refuses the first turn's remove, so no question is armed and nothing can land either way; EventRemovalTest proves the ask, the yes and the refusals"
+    },
+    {
+      "id": "delete_event_declined",
+      "why": "2026-11-22 review: a no to the remove question removes nothing",
+      "turns": [
+        {
+          "say": "remove the dentist cleaning from my calendar",
+          "expect": {
+            "calls": [
+              "manage_item/remove"
+            ],
+            "not_succeeded": [
+              "manage_item/remove"
+            ],
+            "answer_has": [
+              "(?i)dentist"
+            ]
+          }
+        },
+        {
+          "say": "No, keep it.",
+          "expect": {
+            "not_succeeded": [
+              "manage_item/remove"
+            ]
+          }
+        }
+      ],
+      "write": true,
+      "proves_nothing_on": "phone: test mode refuses the first turn's remove, so no question is armed and nothing can land either way; EventRemovalTest proves the ask, the yes and the refusals"
+    },
+    {
+      "id": "delete_event_qualified_yes",
+      "why": "2026-11-22 review: a yes that names something else ('the other one') is a new request, never a yes to the asked entry",
+      "turns": [
+        {
+          "say": "remove the dentist cleaning from my calendar",
+          "expect": {
+            "calls": [
+              "manage_item/remove"
+            ],
+            "not_succeeded": [
+              "manage_item/remove"
+            ],
+            "answer_has": [
+              "(?i)dentist"
+            ]
+          }
+        },
+        {
+          "say": "Yes, the other one.",
+          "expect": {
+            "not_succeeded": [
+              "manage_item/remove"
+            ]
+          }
+        }
+      ],
+      "write": true,
+      "proves_nothing_on": "phone: test mode refuses the first turn's remove, so no question is armed and nothing can land either way; EventRemovalTest proves the ask, the yes and the refusals"
     }
   ]
 }
