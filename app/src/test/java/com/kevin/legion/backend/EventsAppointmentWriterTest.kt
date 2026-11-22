@@ -45,7 +45,10 @@ class EventsAppointmentWriterTest {
         val softDeleteCalls = mutableListOf<String>()
 
         override suspend fun fetchActive(): Result<List<RemoteEvent>> = Result.success(emptyList())
-        override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> = Result.success(emptyList())
+        /** What a pull sees; empty unless a test seeds it. */
+        val changed = mutableListOf<RemoteEvent>()
+        override suspend fun fetchChangedSince(sinceMs: Long): Result<List<RemoteEvent>> =
+            Result.success(changed.toList())
         override suspend fun upsert(serverId: String?, fields: EventFields): Result<RemoteEvent> {
             upsertCalls += (serverId ?: "") to fields
             return upsertResult
@@ -257,6 +260,55 @@ class EventsAppointmentWriterTest {
         EventsAppointmentWriter.deleteEvent(context, existing)
         assertNull(CarDatabase.getDatabase(context).eventDao().getById(existing.id))
         assertTrue(backend.softDeleteCalls.isEmpty())
+    }
+
+    // 2026-11-22: an event the assistant added, deleted by hand before any pull filled its server
+    // id in, was hard-deleted with no tombstone, and the next pull put it back.
+
+    @Test
+    fun `deleting a pushed event before a pull keeps a tombstone, and the pull sends it`() = runBlocking {
+        val row = EventsAppointmentWriter.addEvent(
+            context, "Lunch with Pat", startsAtMs = 1000L, endsAtMs = 2000L, allDay = false,
+            source = "legion", kind = EventKind.EVENT,
+        )
+        assertTrue(CarDatabase.getDatabase(context).outboxDao().getAll().isEmpty())
+
+        EventsAppointmentWriter.deleteEvent(context, row)
+        val tombstone = CarDatabase.getDatabase(context).eventDao().getById(row.id)
+        assertTrue(tombstone != null && tombstone.deleted)
+
+        backend.changed += ackFor(row, done = false).copy(
+            serverId = "server-uuid-9", originGuid = row.guid, kind = EventKind.EVENT, updatedAtMs = 1_500L,
+        )
+        EventsSync.pull(context, backend)
+
+        assertEquals(listOf("server-uuid-9"), backend.softDeleteCalls)
+        val after = CarDatabase.getDatabase(context).eventDao().getAll()
+        assertEquals(1, after.size)
+        assertTrue(after.single().deleted)
+        assertEquals("server-uuid-9", after.single().serverId)
+    }
+
+    @Test
+    fun `deleting an event whose create is still queued cancels the create and keeps a tombstone`() = runBlocking {
+        // The queued push may have reached the server before it timed out: the tombstone is what a
+        // later pull matches, so the event never comes back.
+        backend.uploadResult = Result.failure(EventsBackendException("timed out"))
+        val row = EventsAppointmentWriter.addEvent(
+            context, "Lunch with Pat", startsAtMs = 1000L, endsAtMs = 2000L, allDay = false,
+            source = "legion", kind = EventKind.EVENT,
+        )
+        EventsAppointmentWriter.deleteEvent(context, row)
+        val tombstone = CarDatabase.getDatabase(context).eventDao().getById(row.id)
+        assertTrue(tombstone != null && tombstone.deleted)
+        assertTrue(CarDatabase.getDatabase(context).outboxDao().getAll().isEmpty())
+
+        backend.changed += ackFor(row, done = false).copy(
+            serverId = "server-uuid-7", originGuid = row.guid, kind = EventKind.EVENT, updatedAtMs = 1_500L,
+        )
+        EventsSync.pull(context, backend)
+        assertEquals(listOf("server-uuid-7"), backend.softDeleteCalls)
+        assertTrue(CarDatabase.getDatabase(context).eventDao().getAll().single().deleted)
     }
 
     // ------------------------------------------------------------------------- setDone (the tick)

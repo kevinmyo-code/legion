@@ -28,6 +28,12 @@ sealed class ConversationCard {
      */
     abstract val provenance: CardProvenance?
 
+    /**
+     * Phone only, not on the wire: the data the card was read from, so it is read again in place
+     * when that data changes while the card is up ([LiveCards], 2026-11-22). Null for a snapshot.
+     */
+    open val source: CardSource? get() = null
+
     /** `unit` is "usd" (values are Long cents) or "" (counts). At most [MAX_POINTS] points. */
     data class Bars(
         override val title: String,
@@ -53,6 +59,7 @@ sealed class ConversationCard {
         override val period: String? = null,
         override val note: String? = null,
         override val provenance: CardProvenance? = null,
+        override val source: CardSource? = null,
     ) : ConversationCard() {
         override val kind: String get() = "timeline"
     }
@@ -106,6 +113,7 @@ sealed class ConversationCard {
         override val period: String? = null,
         override val note: String? = null,
         override val provenance: CardProvenance? = null,
+        override val source: CardSource? = null,
     ) : ConversationCard() {
         override val kind: String get() = "checklist"
     }

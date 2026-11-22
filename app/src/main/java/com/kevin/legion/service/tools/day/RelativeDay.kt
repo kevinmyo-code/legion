@@ -90,8 +90,13 @@ internal object RelativeDay {
      * review: a call landing just after midnight moved a right "tomorrow" a day on), [startedAt] the
      * turn's local time, and [onlyDateCall] whether this is the turn's only date-taking call so far.
      */
-    class TurnDates(val day: LocalDate, val startedAt: LocalTime, val onlyDateCall: Boolean) :
-        AbstractCoroutineContextElement(TurnDates) {
+    class TurnDates(
+        val day: LocalDate,
+        val startedAt: LocalTime,
+        val onlyDateCall: Boolean,
+        /** The day the conversation is about so far ([DateCarry.nextAboutDay]); null for none or a range. */
+        val aboutDay: LocalDate? = null,
+    ) : AbstractCoroutineContextElement(TurnDates) {
         companion object Key : CoroutineContext.Key<TurnDates>
     }
 
@@ -140,7 +145,7 @@ internal object RelativeDay {
     private val WINDOW_WORDS = mapOf(1L to "tomorrow", -1L to "yesterday")
     private val DATE_KEYS = listOf("date", "from", "to")
     private val DAY_WORDS = mapOf("today" to 0L, "tonight" to 0L, "tomorrow" to 1L)
-    private val BLOCKERS = setOf(
+    internal val BLOCKERS = setOf(
         "not", "from", "after", "before", "next", "last", "week", "weekend", "fortnight", "month", "yesterday",
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february",
         "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",

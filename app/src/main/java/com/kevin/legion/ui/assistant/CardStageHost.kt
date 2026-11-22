@@ -35,6 +35,7 @@ fun CardStageOverlay(onOpen: (CardDestination) -> Unit, modifier: Modifier = Mod
     SoftTheme {
         CardStageSurface(
             cards,
+            arrival = state.serial,
             onClose = ConversationCards::close,
             onOpen = { where ->
                 ConversationCards.dismiss()
@@ -57,6 +58,7 @@ internal fun CardStageSurface(
     onOpen: ((CardDestination) -> Unit)?,
     onCloseAll: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    arrival: Long? = null,
 ) {
     Box(
         modifier
@@ -70,6 +72,20 @@ internal fun CardStageSurface(
             .padding(horizontal = 16.dp)
             .padding(top = 8.dp),
     ) {
-        CardStage(cards, onClose = onClose, onOpen = onOpen, onCloseAll = onCloseAll)
+        CardStage(cards, onClose = onClose, onOpen = onOpen, onCloseAll = onCloseAll, arrival = arrival)
+    }
+}
+
+/**
+ * One key per page that survives a live card read again in place: its source, numbered when two
+ * pages share one; a card with no source keeps its object identity. A new key would rebuild the page
+ * and drop a long card's scroll on every refresh. Strings, so a key can be saved in a Bundle.
+ */
+internal fun pageKeys(pages: List<ConversationCard>): List<String> {
+    val seen = HashMap<String, Int>()
+    return pages.map { card ->
+        val base = card.source?.toString() ?: "card@" + System.identityHashCode(card)
+        val n = seen.merge(base, 1, Int::plus) ?: 1
+        if (n == 1) base else "$base#$n"
     }
 }

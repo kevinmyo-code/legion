@@ -59,6 +59,8 @@ import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
 import com.kevin.legion.service.testturn.TestTurns
 import com.kevin.legion.service.tools.LiveSurface
+import com.kevin.legion.service.tools.day.ConversationDay
+import com.kevin.legion.service.tools.day.DateCarry
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.vehicle.ActiveVehicle
 import com.kevin.legion.vehicle.ClearCodesVoiceGate
@@ -254,7 +256,8 @@ internal class CascadeSession(
     private var player: ReplyPlayer? = null
     private var callAudio: CallAudioMode? = null
     private var micJob: Job? = null
-    @Volatile private var micClaimed = false
+    /** The mic claim, released as the claimant it was asked as (a ring's too). */
+    private val micHold = MicArbiter.Hold(micClaimant)
     private var focus: AudioFocusRequest? = null
     private var auditStarted = false
     private var oneShotRequested = false
@@ -400,6 +403,9 @@ internal class CascadeSession(
     /** The date the model's prompt states as today ([RelativeDay.TurnDates]). */
     @Volatile private var promptDay: LocalDate = RelativeDay.today()
 
+    /** The day the last turn was about, offered to this turn's clock-timed writes ([DateCarry.carried]). */
+    private val conversationDay = ConversationDay()
+
     /** Writes that went through and that he has not heard said yet ([OwedWrites]). */
     private val owed = OwedWrites()
 
@@ -511,14 +517,13 @@ internal class CascadeSession(
         if (listens) {
             // The mic first, as Live claimed it before it connected: the wake capture lets go while
             // the backend opens, so the first capture is not refused.
-            if (!MicArbiter.request(micClaimant) { scope.launch(loop) { onMicPreempted() } }) {
+            if (!micHold.take { scope.launch(loop) { onMicPreempted() } }) {
                 LaptopPrewarm.cancel("open_aborted")
                 host.notice("Didn't start - the microphone is in use")
                 shutdown("mic_held")
                 host.closed("mic_held")
                 return
             }
-            micClaimed = true
         }
         LiveLatency.log(LiveLatency.TAG, "open_mic_ms=${System.currentTimeMillis() - started}")
         if (listens && opening == OpeningRule.Opening.CHIME) openMicNow()
@@ -1741,6 +1746,8 @@ internal class CascadeSession(
     ) {
         turn = record
         if (record.fromUser) record.askedBefore = lastTurnAsked
+        // The day the last turn was about is this turn's to carry, and no later turn's (DateCarry).
+        if (record.fromUser) conversationDay.startTurn()
         // ADR 0090 gap 5: the turn after a read-through opener starts marked, as on Live.
         if (readThroughCarry.startTurn(record.fromUser, record.startMarked)) {
             record.startMarked = true
@@ -2446,19 +2453,7 @@ internal class CascadeSession(
                 // A read-through opener (ADR 0090) marks the turn before the loop's own flag can.
                 // The turn's date facts ride in the call's context to the date fix ([RelativeDay.corrected]).
                 // A lone word's write is held before it reaches the controller ([LoneWordWriteGuard]).
-                else -> held ?: withContext(
-                    RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1) +
-                        ClearCodesVoiceGate.HeardVoice(record.voicedMs),
-                ) {
-                    host.runTool(
-                        name,
-                        args,
-                        // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
-                        readThrough || record.startMarked,
-                        if (record.fromUser) record.heard else "",
-                        seq,
-                    )
-                }
+                else -> held ?: runDated(record, name, args, readThrough, seq)
             }
         } finally {
             toolsInFlight.decrementAndGet()
@@ -2475,6 +2470,37 @@ internal class CascadeSession(
             ),
         )
         response
+    }
+
+    /** One tool call with the turn's date facts in its context, then the conversation's day noted. */
+    private suspend fun runDated(
+        record: TurnRecord,
+        name: String,
+        args: JSONObject,
+        readThrough: Boolean,
+        seq: Long,
+    ): JSONObject {
+        val dates = RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, conversationDay.day)
+        val words = if (record.fromUser) record.heard else ""
+        val response = withContext(dates + ClearCodesVoiceGate.HeardVoice(record.voicedMs)) {
+            // The loop's flag leaves out this call's own mark; an opener or carry mark stays.
+            host.runTool(name, args, readThrough || record.startMarked, words, seq)
+        }
+        noteAboutDay(name, args, words, dates, response)
+        return response
+    }
+
+    /** The conversation's day after this call, read from the args it actually ran with. */
+    private fun noteAboutDay(
+        name: String,
+        args: JSONObject,
+        words: String,
+        dates: RelativeDay.TurnDates,
+        response: JSONObject,
+    ) {
+        val call = LiveSurface.resolve(name, args)
+        val ran = DateCarry.resolved(call.name, call.args, words, dates)?.first ?: call.args
+        conversationDay.note(call.name, ran, response.optBoolean("success", false), dates.day)
     }
 
     private fun listenerFor(record: TurnRecord, reply: ReplySpeaker) = object : GeminiTextLoop.Listener {
@@ -3421,7 +3447,7 @@ internal class CascadeSession(
 
     private fun onMicPreempted() {
         if (closing.get()) return
-        micClaimed = false
+        micHold.lost()
         scope.launch(loop) {
             LiveLatency.log("LIVE_TURN", "cascade preempted by a higher-priority mic claimant")
             shutdown("preempted")
@@ -3651,8 +3677,7 @@ internal class CascadeSession(
         step("turn") { turnTaker?.reset() }
         step("call_watch") { callWatch.stop() }
         // The mic is closed: its claim goes now, so the wake word re-arms without waiting on the chime.
-        step("mic_claim") { if (micClaimed) MicArbiter.release(MicArbiter.Claimant.LIVE_TURN) }
-        micClaimed = false
+        step("mic_claim") { micHold.drop() }
         val micReleasedMs = System.currentTimeMillis() - releaseStartMs
         // The closing chime, before the player and the route go (Bluetooth would cut it off).
         val chimed = try {

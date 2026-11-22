@@ -192,7 +192,7 @@ object EventsSync {
             if (remote.kind !in KNOWN_KINDS) unrecognizedKinds += remote.kind
 
             // See this object's own class doc for why guid/originGuid is checked before serverId.
-            val local = remote.originGuid?.let { localByGuid[it] } ?: localByServerId[remote.serverId]
+            val local = fresh(db, remote.originGuid?.let { localByGuid[it] } ?: localByServerId[remote.serverId])
 
             if (local == null && remote.deleted) {
                 // Traced 2026-09-02 (the 88-row bug, see PullReport.skippedTombstoneNoLocalMatch's
@@ -211,6 +211,15 @@ object EventsSync {
                 // engine ancestor" branch [EventsReconcile]'s own toReplica already documents.
                 db.eventDao().insert(remote.toInsertedEvent())
                 inserted++
+                continue
+            }
+
+            if (local.deleted && local.serverId == null && !remote.deleted) {
+                // Deleted here before any pull told this phone the server id
+                // ([EventsAppointmentWriter.deleteEvent]): send the tombstone now, never take the
+                // server's live copy back (2026-11-22, a deleted event came back on the next pull).
+                EventsAppointmentWriter.deleteEvent(context, local.copy(serverId = remote.serverId))
+                tombstoned++
                 continue
             }
 
@@ -281,6 +290,12 @@ object EventsSync {
             unrecognizedKinds = unrecognizedKinds.toList(),
         )
     }
+
+    /**
+     * [row] read again, not the snapshot taken before the pull's loop: a delete or edit made by hand
+     * while the pull runs must not be merged over with the stale copy (review of 79c642b9).
+     */
+    private suspend fun fresh(db: CarDatabase, row: Event?): Event? = row?.let { db.eventDao().getById(it.id) ?: it }
 
     /** A brand-new local row for a server event with no local match at all. */
     private fun RemoteEvent.toInsertedEvent(): Event = Event(

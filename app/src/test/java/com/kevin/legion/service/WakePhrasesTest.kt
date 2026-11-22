@@ -113,6 +113,31 @@ class WakePhrasesTest {
         assertFalse(WakePhrases.isSleepPhrase("Goodbye, Jarvis.", "Alfred"))
     }
 
+    /** 2026-11-22: a thanks before the name and the stop kept the stop from matching. */
+    @Test
+    fun `thanks and the name before a stop are set aside`() {
+        for (s in listOf(
+            "Thanks, Alfred, that's all.", "Thank you Alfred, that's it.", "Thanks Alfred. That's all.",
+            "Cheers, Alfred, we're done.", "Okay, thanks, never mind.", "Thank you, that's all.",
+        )) {
+            assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        }
+        for (s in listOf("Thanks, Alfred.", "Thank you.", "Thanks, Alfred, add eggs.", "Thanks, that's all the milk")) {
+            assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        }
+    }
+
+    /** After a question the thanks is set aside too, and only a hard stop still ends it. */
+    @Test
+    fun `after a question a thanks before a hard stop ends it, before a soft one it does not`() {
+        for (s in listOf("Thanks, goodbye.", "Thank you, Alfred, stop.", "Cheers, bye.")) {
+            assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred", afterQuestion = true))
+        }
+        for (s in listOf("Thanks, that's all.", "Thank you, Alfred, that's it.", "Thanks, never mind.")) {
+            assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred", afterQuestion = true))
+        }
+    }
+
     @Test
     fun `sentences that only use those words never end it`() {
         for (s in listOf(

@@ -606,7 +606,17 @@ fun CalendarScreen(
                     if (scheduleRows.isEmpty()) {
                         DayNote("Nothing on the calendar this day.")
                     } else {
-                        scheduleRows.forEach { row -> CalendarDayRow(row = row, onToggle = {}) }
+                        // An event is deletable by hand too (2026-11-22: one the assistant added could
+                        // not be removed from this screen); the same funnel the Matrix calendar uses.
+                        scheduleRows.forEach { row ->
+                            CalendarDayRow(
+                                row = row,
+                                onToggle = {},
+                                onRemove = {
+                                    scope.launch { NotesController.removeAppointment(context, row.id); reloadNonce++ }
+                                },
+                            )
+                        }
                     }
                 }
                 // Suggestions sit BELOW the plans, in their own section with their own words.
@@ -745,9 +755,10 @@ fun CalendarScreen(
  * `ui/notes/InboxScreen.kt`'s own `InboxRow` - see [CalendarScreen]'s own call-site comment for why.
  *
  * [onEdit]/[onRemove] added one-today ticket 10 slice C, 2026-09-05 (this screen's own file doc
- * comment has the full account) - both null for [scheduleRows]'s events and [checklistsToday]'s own
- * rows (neither ever calls this composable with either set), non-null only for a real [ListItem]
- * reminder in [dayRows]. [onEdit] wraps the label column in the same tap-to-edit
+ * comment has the full account) - both null for [checklistsToday]'s own rows; [onEdit] null for
+ * [scheduleRows]'s events, which get [onRemove] alone (2026-11-22, through
+ * [NotesController.removeAppointment]); both non-null for a real [ListItem] reminder in [dayRows].
+ * [onEdit] wraps the label column in the same tap-to-edit
  * `Modifier.clickable` the retired `InboxRow` used; [onRemove] renders the same REMOVE stamp that
  * row's own separate button did, wired to [NotesController.removeItem] through [CalendarScreen]'s
  * own call site rather than a second write path here.

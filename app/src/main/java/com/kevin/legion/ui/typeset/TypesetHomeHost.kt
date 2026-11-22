@@ -147,6 +147,7 @@ fun TypesetHomeHost(
             status = status,
             night = edition == TypesetEdition.NIGHT,
             cards = cards.visible,
+            cardSerial = cards.serial,
             actions = actions,
             dock = dockSlots.map(::slotTile),
             groups = groups,

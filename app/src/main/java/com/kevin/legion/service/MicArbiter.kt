@@ -168,4 +168,27 @@ object MicArbiter {
 
     /** Who holds the microphone right now, or null if nobody has claimed it. */
     fun current(): Claimant? = synchronized(lock) { holder }
+
+    /**
+     * One owner's claim as [claimant]: what [drop] releases is always what [take] asked for.
+     * Why (2026-11-22): a cascade opened for a ring asked as [Claimant.RING_LISTENING] and released
+     * a hard-coded [Claimant.LIVE_TURN], a no-op, so the ring's claim outlived it and every
+     * [Claimant.WAKE_WORD] request was refused until the app was force-stopped.
+     */
+    class Hold(val claimant: Claimant) {
+        @Volatile var held: Boolean = false
+            private set
+
+        fun take(onPreempted: Listener? = null): Boolean = request(claimant, onPreempted).also { held = it }
+
+        /** The arbiter already took it away ([Listener.onMicPreempted]): nothing left to release. */
+        fun lost() {
+            held = false
+        }
+
+        fun drop() {
+            if (held) release(claimant)
+            held = false
+        }
+    }
 }

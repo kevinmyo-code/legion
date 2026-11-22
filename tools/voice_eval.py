@@ -484,7 +484,7 @@ def check_turn(turn: Turn, expect: dict, today: datetime.date, *, phone: bool, w
         for spec in expect.get("succeeded", []):
             if not any(matches(c, spec) and c.success for c in turn.calls):
                 fails.append(f"no successful call {spec}; saw {seen}")
-        for rx in expect.get("result_has", []):
+        for rx in (expand(r, today) for r in expect.get("result_has", [])):
             if not any(c.success and re.search(rx, c.response or "", re.I) for c in turn.calls):
                 fails.append(f"no successful tool result has /{rx}/")
     # A question that only reads must not change anything (2026-11-15: "which cars do I have"

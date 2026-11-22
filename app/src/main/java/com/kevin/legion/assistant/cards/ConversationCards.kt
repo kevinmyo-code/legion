@@ -90,6 +90,18 @@ object ConversationCards {
         }
     }
 
+    /**
+     * [old] read again as [new], in its place ([LiveCards]). Matched by identity like [close], so a
+     * card closed meanwhile stays closed. Not a new card: [ConversationCardsState.serial] and
+     * [ConversationCardsState.dismissed] are left alone, so a hidden stack stays hidden.
+     */
+    fun replace(old: ConversationCard, new: ConversationCard) {
+        _state.update { current ->
+            val at = current.cards.indexOfLast { it === old }
+            if (at < 0) current else current.copy(cards = current.cards.toMutableList().also { it[at] = new })
+        }
+    }
+
     fun end() {
         _state.value = ConversationCardsState()
     }

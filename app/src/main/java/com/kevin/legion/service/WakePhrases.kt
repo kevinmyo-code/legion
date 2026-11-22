@@ -118,11 +118,18 @@ object WakePhrases {
     /** The stops that are never an answer to a question: these end the conversation even after one. */
     val HARD_STOPS: Set<String> = setOf("stop", "goodbye", "good bye", "bye", "bye bye", "go away", "stand down")
 
-    private val LEAD_INS = setOf("hey", "ok", "okay")
+    /**
+     * What may come before a stop and is set aside. Thanks too (2026-11-22, closing by voice was
+     * unreliable): "Thanks, Alfred, that's all" kept its thanks, so it matched no phrase and the
+     * close rested on the model calling end_conversation.
+     */
+    private val LEAD_INS: List<List<String>> =
+        listOf("thank you", "thanks", "cheers", "hey", "ok", "okay").map { it.split(' ') }
 
     /**
-     * [t] (normalised) is a stop phrase once the companion's [name] (normalised, at either end) and a
-     * leading hey/ok/okay are set aside: "Goodbye, Alfred", "Alfred, stop", "ok bye".
+     * [t] (normalised) is a stop phrase once the companion's [name] (normalised, at either end) and
+     * leading hey/ok/okay/thanks are set aside: "Goodbye, Alfred", "Alfred, stop", "ok bye",
+     * "Thanks, Alfred, that's all". A lead-in is never the whole turn: "thanks" alone stays a turn.
      */
     private fun isStopPhrase(t: String, name: String, phrases: Set<String>): Boolean {
         if (t in phrases) return true
@@ -134,8 +141,9 @@ object WakePhrases {
             if (words.takeLast(nameWords.size) == nameWords) words = words.dropLast(nameWords.size)
         }
         dropName()
-        while (words.size > 1 && words.first() in LEAD_INS && words.joinToString(" ") !in phrases) {
-            words = words.drop(1)
+        while (words.joinToString(" ") !in phrases) {
+            val lead = LEAD_INS.firstOrNull { it.size < words.size && words.take(it.size) == it } ?: break
+            words = words.drop(lead.size)
             dropName()
         }
         return words.joinToString(" ") in phrases

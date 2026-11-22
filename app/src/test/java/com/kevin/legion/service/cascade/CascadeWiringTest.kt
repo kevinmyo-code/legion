@@ -69,7 +69,7 @@ class CascadeWiringTest {
         val liveAt = body.indexOf("host.handOverToLive(")
         assertTrue(releaseAt >= 0 && liveAt > releaseAt)
         val release = bodyOf(s, "releaseNow")
-        for (step in listOf("cancelAndJoin()", "player?.release()", "exit(", "abandonFocus()", "MicArbiter.release(", "backend?.close(")) {
+        for (step in listOf("cancelAndJoin()", "player?.release()", "exit(", "abandonFocus()", "micHold.drop()", "backend?.close(")) {
             assertTrue("releaseNow() no longer does $step", release.contains(step))
         }
     }
@@ -168,14 +168,14 @@ class CascadeWiringTest {
     fun `every tool that takes a date gets his day word, at the one dispatch door, before any toolbox`() {
         val toolbox = stripComments(File(sourceRoot(), "service/LiveToolbox.kt").readText())
         val dispatch = bodyOf(toolbox, "dispatch")
-        val fix = dispatch.indexOf("RelativeDay.corrected(name, args, userText, it)")
+        val fix = dispatch.indexOf("DateCarry.resolved(name, args, userText, it)")
         assertTrue(fix >= 0)
         assertTrue("before the first toolbox and the big when", fix < dispatch.indexOf("EngineToolbox.dispatch(") && fix < dispatch.indexOf("return when (name)"))
         assertTrue("the result carries the note", dispatch.contains("put(\"date_note\", note)"))
-        assertEquals("one path: no tool corrects on its own", 1, Regex("RelativeDay\\.corrected\\(").findAll(toolbox).count())
+        assertEquals("one path: no tool corrects on its own", 1, Regex("(RelativeDay\\.corrected|DateCarry\\.resolved)\\(").findAll(toolbox).count())
         assertTrue("only a voice turn's context carries the day", dispatch.contains("coroutineContext[RelativeDay.TurnDates]"))
         val s = session()
-        assertTrue("the session gives the prompt's day and the turn's count", s.contains("RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1)"))
+        assertTrue("the session gives the prompt's day and the turn's count", s.contains("RelativeDay.TurnDates(promptDay, record.startedAt, record.dateCalls <= 1, conversationDay.day)"))
         assertTrue("counted before the round runs", s.contains("RelativeDay.isDateCall("))
     }
 
@@ -372,7 +372,8 @@ class CascadeWiringTest {
         val s = session()
         assertTrue(bodyOf(s, "newTextLoop").contains("isMutating = CascadeRules::isWrite"))
         val exec = bodyOf(s, "executorFor")
-        assertTrue(exec.indexOf("claimWrite(record, name)") in 0 until exec.indexOf("host.runTool("))
+        assertTrue(exec.indexOf("claimWrite(record, name)") in 0 until exec.indexOf("runDated("))
+        assertTrue(bodyOf(s, "runDated").contains("host.runTool("))
         assertTrue(bodyOf(s, "claimWrite").contains("record.writeCalled = true"))
     }
 
@@ -483,7 +484,7 @@ class CascadeWiringTest {
         val exec = bodyOf(s, "executorFor")
         // Logged under the called name with its args; LiveAudit redacts on the resolved call (LiveAuditTest).
         assertTrue(exec.contains("audit.toolCall(id, name, false, args.toString())"))
-        assertTrue(exec.contains("readThrough || record.startMarked,"))
+        assertTrue(bodyOf(s, "runDated").contains("readThrough || record.startMarked,"))
         assertTrue(bodyOf(s, "recordTurn").contains("if (fromUser && said.isNotBlank()) readThroughCarry.answered()"))
         val answer = bodyOf(s, "answerTurn")
         val carryAt = answer.indexOf("readThroughCarry.startTurn(record.fromUser, record.startMarked)")

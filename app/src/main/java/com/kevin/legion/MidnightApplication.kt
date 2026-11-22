@@ -264,6 +264,11 @@ class MidnightApplication : Application() {
         // Turn cues need the speaker wired before the first trip starts. Gated off under Robolectric
         // for the reason the Room blocks below are: it would construct the nav controller in every test.
         if (!isRunningUnderRobolectric()) navCueSpeaker.attach(mainScope)
+        // Answer cards that follow their data while they are up (2026-11-22). Gated off under
+        // Robolectric like the Room blocks below: it would open the database in every test.
+        if (!isRunningUnderRobolectric()) {
+            appScope.launch { com.kevin.legion.service.LiveCardReads.follow(this@MidnightApplication) }
+        }
         // Token metering (2026-09-06). Seeded here for the same L12 reason as the caches
         // around it: SubAgent's REST calls run from ledger, pantry and the vehicle agents
         // whether or not the assistant service is switched on, and a meter that only woke

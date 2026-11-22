@@ -108,7 +108,7 @@ sent typed and the scorecard says why.
 - `no_empty_claim`: fails a reply that says nothing is due while a tool result in that turn shows an
   open task (`"done":false`).
 - `succeeded`: a matching call came back `success: true`; `result_has`: a successful call's result
-  matches the regex. Outcome checks, so a write may reach its row by any tool (2026-11-15: a tick
+  matches the regex (`{today+1}` and the like expand first). Outcome checks, so a write may reach its row by any tool (2026-11-15: a tick
   sent to the wrong list still completes the right row). Skipped on a phone write that test mode
   refuses.
 - `fixture`: checks that hold only on the made-up data (layer 1; `answer_has`, `answer_not`,

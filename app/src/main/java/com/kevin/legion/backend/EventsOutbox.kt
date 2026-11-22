@@ -466,16 +466,11 @@ object EventsAppointmentWriter {
      * configured install with a real [Event.serverId], pushes via [EventsBackend.softDelete] and
      * enqueues an [OutboxOperation.SOFT_DELETE] entry on failure.
      *
-     * **A [Event.serverId] of null is the one case this hard-deletes, not soft-deletes** - the
-     * row's own [addEvent] create never reached the server (see [updateEvent]'s own doc comment for
-     * why null means exactly that), so there is nothing server-side to tombstone; the still-queued
-     * create is cancelled outright ([cancelPendingCreate]) and the local row goes with it. **Known,
-     * narrow gap, stated rather than hidden:** [EventsOutboxDrain]/[EventsSync.maybeAutoPull] run
-     * fire-and-forget on foreground, so there is a real (if short) window where a create has
-     * already drained successfully but the following pull has not yet run to fill in a real
-     * [Event.serverId] - a delete landing in exactly that window hard-deletes locally with no
-     * tombstone sent, and the row could in principle survive server-side. Not solved here; flagged
-     * for the same follow-up this ticket's own map entry names for the other five aspects.
+     * **A [Event.serverId] of null** means no pull has told this phone the server id yet, whether the
+     * create is still queued or already reached the server (a create's push does not return one, and
+     * a timed-out push may have committed). Any queued create is cancelled and the row is kept as a
+     * local tombstone; [EventsSync.pull], matching it by guid, sends the delete once it learns the id.
+     * A hard delete here used to leave the pull nothing to match, and the event came back (2026-11-22).
      */
     suspend fun deleteEvent(context: Context, existing: Event): Boolean {
         val db = CarDatabase.getDatabase(context)
@@ -486,13 +481,18 @@ object EventsAppointmentWriter {
         }
 
         val serverId = existing.serverId
+        val now = System.currentTimeMillis()
         if (serverId == null) {
+            // No server id yet: the create may or may not have reached the server (a push that timed
+            // out after the server committed is queued too). Cancel any queued create and keep a local
+            // tombstone either way: a hard delete left the pull nothing to match by guid, and the next
+            // pull put the event back (2026-11-22). [EventsSync.pull] sends the delete once it has the
+            // id; a tombstone the server never heard of is never matched and costs nothing.
             cancelPendingCreate(db, existing.id)
-            db.eventDao().deleteById(existing.id)
+            db.eventDao().update(existing.copy(deleted = true, updatedAtMs = now))
             return true
         }
 
-        val now = System.currentTimeMillis()
         db.eventDao().update(existing.copy(deleted = true, updatedAtMs = now))
         val result = backend.softDelete(serverId)
         if (result.isFailure) {
