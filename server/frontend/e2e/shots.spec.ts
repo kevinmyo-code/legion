@@ -97,11 +97,11 @@ const ROUTES: Shot[] = [
   // One place to type (Kevin, 2026-11-03): the desk dock open on load, pinned on
   // /try; a phone's one Ask bar on /try, and the sheet it opens.
   { name: 'home-dock', url: '/', ready: /Next up|On today/, engine: seeded, labels: ['try-dock'], viewportOnly: true },
-  { name: 'try-dock', url: '/try', ready: 'What to look for', engine: visitor, labels: ['try-dock'], viewportOnly: true },
+  { name: 'try-dock', url: '/try', ready: 'Experience', engine: visitor, labels: ['try-dock'], viewportOnly: true },
   {
     name: 'try-sheet',
     url: '/try',
-    ready: 'What to look for',
+    ready: 'Experience',
     engine: visitor,
     labels: ['try-dock'],
     viewportOnly: true,
