@@ -33,8 +33,11 @@ GAME_INVITE = "game_invite"
 # laptop-health (2026-11-10): a Claude worker machine went silent, ran hot, or ran out of disk
 # or RAM. Sent by the heartbeat and the push tick (`claude_session/health.py`).
 LAPTOP_HEALTH = "laptop_health"
+# The store-rep demo (2026-11-22): a /try visitor asked for a callback (`demo/shop/callback.py`).
+# Sent to the engine household's owners only, and only while `LEGION_DEMO_HANDOFF=on`.
+DEMO_CALLBACK = "demo_callback"
 KINDS: tuple[str, ...] = (
-    LIST_CHANGES, EVENT_REMINDERS, TASK_DUE_MORNING, GAME_INVITE, LAPTOP_HEALTH,
+    LIST_CHANGES, EVENT_REMINDERS, TASK_DUE_MORNING, GAME_INVITE, LAPTOP_HEALTH, DEMO_CALLBACK,
 )
 DEFAULT_MORNING_TIME = datetime.time(7, 30)
 
@@ -74,6 +77,8 @@ class PushPreference(models.Model):
     task_due_morning = models.BooleanField(default=True)
     game_invite = models.BooleanField(default=True)
     laptop_health = models.BooleanField(default=True)
+    # `db_default` too: the revision before this one inserts preferences without the column.
+    demo_callback = models.BooleanField(default=True, db_default=True)
     morning_time = models.TimeField(default=DEFAULT_MORNING_TIME)
     updated_at = models.DateTimeField(db_default=Now())
 

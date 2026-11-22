@@ -6095,6 +6095,148 @@ paths:
                 $ref: '#/components/schemas/DemoRefusal'
           description: Not a recruiter's live demo visit (signed out, a member, or
             over).
+  /api/demo/shop/call-card:
+    get:
+      operationId: api_demo_shop_call_card_retrieve
+      summary: The after-call card for this visit's latest conversation (reads only)
+      tags:
+      - demo
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallCard'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoRefusal'
+          description: Not a recruiter's visit.
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/demo/shop/callback:
+    post:
+      operationId: api_demo_shop_callback_create
+      summary: Ask for a callback from a person (switched off unless LEGION_DEMO_HANDOFF=on)
+      tags:
+      - demo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallbackRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CallbackRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CallbackRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoCallbackResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoRefusal'
+          description: Not a recruiter's visit.
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+  /api/demo/shop/scenario:
+    post:
+      operationId: api_demo_shop_scenario_create
+      summary: Switch this visit into or out of the store-rep scenario
+      tags:
+      - demo
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShopScenarioRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ShopScenarioRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ShopScenarioRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShopState'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoRefusal'
+          description: Not a recruiter's visit.
+  /api/demo/shop/state:
+    get:
+      operationId: api_demo_shop_state_retrieve
+      summary: The store-rep demo's state for this visit (reads only)
+      tags:
+      - demo
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShopState'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoRefusal'
+          description: Not a recruiter's visit.
   /api/device-logs/:
     get:
       operationId: api_device_logs_list
@@ -16357,6 +16499,138 @@ components:
       - title
       - updated_at
       - vehicle_id
+    CallCard:
+      type: object
+      properties:
+        outcome:
+          $ref: '#/components/schemas/CallCardOutcomeEnum'
+        outcome_words:
+          type: string
+        summary:
+          type: array
+          items:
+            type: string
+        transcript:
+          type: array
+          items:
+            $ref: '#/components/schemas/CallLine'
+        turns:
+          type: array
+          items:
+            $ref: '#/components/schemas/CallTurn'
+        median_first_audio_ms:
+          type: integer
+          nullable: true
+        record:
+          type: object
+          additionalProperties: {}
+          description: 'What a CRM would receive: a plain JSON record.'
+      required:
+      - median_first_audio_ms
+      - outcome
+      - outcome_words
+      - record
+      - summary
+      - transcript
+      - turns
+    CallCardOutcomeEnum:
+      enum:
+      - order_placed
+      - needs_human
+      - quoted_not_placed
+      - browsing
+      type: string
+      description: |-
+        * `order_placed` - order_placed
+        * `needs_human` - needs_human
+        * `quoted_not_placed` - quoted_not_placed
+        * `browsing` - browsing
+    CallLine:
+      type: object
+      properties:
+        who:
+          $ref: '#/components/schemas/WhoEnum'
+        text:
+          type: string
+        typed:
+          type: boolean
+        at:
+          type: string
+      required:
+      - at
+      - text
+      - typed
+      - who
+    CallTurn:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/CallTurnKindEnum'
+        spoken:
+          type: boolean
+        first_audio_ms:
+          type: integer
+          nullable: true
+          description: 'Engine-side: from the utterance reaching the engine to its
+            first audio out.'
+        answer_audio_ms:
+          type: integer
+          nullable: true
+        stt_ms:
+          type: integer
+          nullable: true
+        turn_ms:
+          type: integer
+          nullable: true
+      required:
+      - answer_audio_ms
+      - first_audio_ms
+      - kind
+      - spoken
+      - stt_ms
+      - turn_ms
+    CallTurnKindEnum:
+      enum:
+      - greeting
+      - turn
+      type: string
+      description: |-
+        * `greeting` - greeting
+        * `turn` - turn
+    CallbackEnum:
+      enum:
+      - 'off'
+      - available
+      - already
+      - day_full
+      - no_visit
+      type: string
+      description: |-
+        * `off` - off
+        * `available` - available
+        * `already` - already
+        * `day_full` - day_full
+        * `no_visit` - no_visit
+    CallbackRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 60
+        contact:
+          type: string
+          description: A phone number or an email.
+          maxLength: 120
+        note:
+          type: string
+          default: ''
+          maxLength: 280
+        website:
+          type: string
+          default: ''
+      required:
+      - contact
+      - name
     CashFlow:
       type: object
       properties:
@@ -18357,6 +18631,18 @@ components:
       - calories_kcal
       - effective_from
       - protein_g
+    DemoCallbackResult:
+      type: object
+      properties:
+        status:
+          type: string
+          description: '`sent` or `saved`.'
+        detail:
+          type: string
+          description: What happened, in words. Show it.
+      required:
+      - detail
+      - status
     DemoChip:
       type: object
       properties:
@@ -21846,8 +22132,8 @@ components:
       properties:
         kind:
           type: string
-          description: list_changes, event_reminders, task_due_morning, game_invite
-            or laptop_health.
+          description: list_changes, event_reminders, task_due_morning, game_invite,
+            laptop_health or demo_callback.
       required:
       - kind
     OffResponse:
@@ -21862,6 +22148,8 @@ components:
         game_invite:
           type: boolean
         laptop_health:
+          type: boolean
+        demo_callback:
           type: boolean
         morning_time:
           type: string
@@ -23779,6 +24067,8 @@ components:
         game_invite:
           type: boolean
         laptop_health:
+          type: boolean
+        demo_callback:
           type: boolean
         morning_time:
           type: string
@@ -25919,6 +26209,120 @@ components:
       description: |-
         * `male` - male
         * `female` - female
+    ShopOrder:
+      type: object
+      properties:
+        ref:
+          type: string
+        status:
+          $ref: '#/components/schemas/ShopOrderStatusEnum'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShopOrderLine'
+        bundle_saving_cents:
+          type: integer
+        shipping_cents:
+          type: integer
+        total_cents:
+          type: integer
+      required:
+      - bundle_saving_cents
+      - lines
+      - ref
+      - shipping_cents
+      - status
+      - total_cents
+    ShopOrderLine:
+      type: object
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        qty:
+          type: integer
+        unit_cents:
+          type: integer
+        line_cents:
+          type: integer
+      required:
+      - line_cents
+      - name
+      - qty
+      - sku
+      - unit_cents
+    ShopOrderStatusEnum:
+      enum:
+      - quoted
+      - placed
+      type: string
+      description: |-
+        * `quoted` - quoted
+        * `placed` - placed
+    ShopProduct:
+      type: object
+      properties:
+        sku:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        price_cents:
+          type: integer
+        in_stock:
+          type: integer
+          description: 'This visit''s count: its placed orders are off.'
+        blurb:
+          type: string
+      required:
+      - blurb
+      - category
+      - in_stock
+      - name
+      - price_cents
+      - sku
+    ShopScenarioRequest:
+      type: object
+      properties:
+        active:
+          type: boolean
+      required:
+      - active
+    ShopState:
+      type: object
+      properties:
+        active:
+          type: boolean
+          description: The visit is in the store-rep scenario.
+        shop_name:
+          type: string
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShopProduct'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShopOrder'
+        callback:
+          allOf:
+          - $ref: '#/components/schemas/CallbackEnum'
+          description: |-
+            What asking for a person would do now: `off` (switched off), `available`, `already` (this visit asked), `day_full` (today's cap is used up), `no_visit`.
+
+            * `off` - off
+            * `available` - available
+            * `already` - already
+            * `day_full` - day_full
+            * `no_visit` - no_visit
+      required:
+      - active
+      - callback
+      - orders
+      - products
+      - shop_name
     SignupRequest:
       type: object
       description: |-
@@ -27980,6 +28384,14 @@ components:
       description: |-
         * `trend` - trend
         * `latest` - latest
+    WhoEnum:
+      enum:
+      - visitor
+      - assistant
+      type: string
+      description: |-
+        * `visitor` - visitor
+        * `assistant` - assistant
     WorkoutPlan:
       type: object
       description: |-

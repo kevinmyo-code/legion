@@ -29,8 +29,19 @@ from engine_mcp.tools import ENDS_TURN, FOR_MODEL, REPLAY_AS, SPEAK_EXACT, SPEAK
 # `about_kevin`: his profile, spoken by code and never by the model (2026-11-18, `demo/tools.py`).
 # `board_status`: the factory board, spoken by code; the model never sees a card (`board/tool.py`).
 # `show_part`: where a Jeep fastener is and its checked torque (garage, 2026-11-20).
+# The store-rep demo's switch, read-back, placed order and hand-off (`demo/shop/tools.py`).
 VERBATIM_TOOLS: frozenset[str] = frozenset(
-    {"account_balances", "about_kevin", "board_status", "show_part"}
+    {
+        "account_balances",
+        "about_kevin",
+        "board_status",
+        "show_part",
+        "start_store_demo",
+        "leave_store_demo",
+        "shop_quote",
+        "shop_place_order",
+        "shop_handoff",
+    }
 )
 
 # The phone's `ScriptedLines.FILLERS` (spec 22): what a reply that opens with only these is

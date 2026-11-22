@@ -175,5 +175,6 @@ def test_a_visitor_turn_asks_once_whether_it_is_carried_and_makes_no_paid_call(v
     assert len(sql) == RECRUITER_TURN_QUERIES
 
 
-# Measured on this branch for the turn above; 3 more than before the demo had the carry.
-RECRUITER_TURN_QUERIES = 75
+# Measured on this branch for the turn above; 3 more than before the demo had the carry, and one
+# more for the visit's scenario (the store-rep demo, `demo.shop.scenario.visit_of`, read once).
+RECRUITER_TURN_QUERIES = 76

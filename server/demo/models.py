@@ -129,12 +129,99 @@ class DemoVisit(models.Model):
     ref = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
+    # Which scenario the visit's assistant plays (Kevin, 2026-11-22, `demo/shop/`): "" is the
+    # LEGION guide, "shop" the store rep of a made-up shop. Set only by `demo.shop.scenario`.
+    # `db_default` too: the revision before this one inserts visits without the column.
+    scenario = models.CharField(max_length=16, blank=True, default="", db_default="")
 
     class Meta:
         indexes = [models.Index(fields=["expires_at"])]
 
     def __str__(self) -> str:
         return f"Demo visit {self.created_at:%Y-%m-%d %H:%M} (ref {self.ref or 'none'})"
+
+
+class ShopOrder(models.Model):
+    """One order in the store-rep demo (`demo/shop/`), inside one visit and nowhere else.
+
+    Made-up goods at made-up prices: nothing is charged or shipped. `quoted` is the read-back the
+    visitor has heard; `placed` follows only their yes in a LATER turn (`demo.shop.tools`). Lines
+    and totals are code's, in integer cents, from the catalogue (`demo.shop.catalogue`), never the
+    model's. Deleted with its visit, and after `VISIT_RETENTION_DAYS` by `prune_demo_visitors`."""
+
+    QUOTED = "quoted"
+    PLACED = "placed"
+
+    visit = models.ForeignKey(DemoVisit, on_delete=models.CASCADE, related_name="shop_orders")
+    ref = models.CharField(max_length=16)
+    status = models.CharField(max_length=8, default=QUOTED)
+    # [{"sku", "qty", "unit_cents", "line_cents"}]
+    lines = models.JSONField()
+    bundle_saving_cents = models.IntegerField(default=0)
+    shipping_cents = models.IntegerField(default=0)
+    total_cents = models.IntegerField()
+    # The turn that heard the read-back: the yes must come in a later one.
+    conversation_id = models.UUIDField(null=True, blank=True)
+    quoted_turn = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    placed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(total_cents__gte=0), name="demo_shop_order_total_nonneg"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=("quoted", "placed")),
+                name="demo_shop_order_status_valid",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Demo shop order {self.ref} ({self.status})"
+
+
+class CallbackRequest(models.Model):
+    """A visitor asked for a person (the hand-off to Kevin, his 2026-11-22 ruling): what they left
+    and whether Kevin was told. Their own name and contact, typed by them in a form, kept
+    `VISIT_RETENTION_DAYS` like the visit records. Nothing here is ever dialled."""
+
+    visit = models.ForeignKey(
+        DemoVisit, null=True, on_delete=models.SET_NULL, related_name="callbacks"
+    )
+    ref = models.CharField(max_length=64, blank=True, default="")
+    # A keyed hash of the caller's address (`demo.shop.callback.address_key`): one per day.
+    address_key = models.CharField(max_length=64, blank=True, default="")
+    name = models.CharField(max_length=60)
+    contact = models.CharField(max_length=120)
+    note = models.CharField(max_length=280, blank=True, default="")
+    # Code-built from the visit's orders (`demo.shop.callback.summary`): never the model's words.
+    summary = models.CharField(max_length=400, blank=True, default="")
+    # `push.dispatch.send_now`'s answer per owner, or "push_off".
+    delivery = models.CharField(max_length=40, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        # Never the name or contact: neither belongs in a log line.
+        return f"Demo callback {self.created_at:%Y-%m-%d %H:%M} ({self.delivery or 'pending'})"
+
+
+class DemoCallbackDay(models.Model):
+    """How many callbacks were taken on one UTC day, across every visitor: the cap is held by one
+    conditional UPDATE (`demo.shop.callback.take_slot`), like `DemoBudgetDay`."""
+
+    day = models.DateField(unique=True)
+    count = models.IntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(count__gte=0), name="demo_callback_day_nonneg"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"Demo callbacks {self.day}: {self.count}"
 
 
 class RecruiterContent(models.Model):

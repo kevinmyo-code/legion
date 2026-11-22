@@ -28,6 +28,7 @@ import { usePresenter } from '@/components/assistant/cards/presenter-context'
 import { RESUME_ALT } from '@/components/assistant/cards/resume'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
+import { StoreRepPanel } from '@/components/demo/store-rep/store-rep-panel'
 import { useSurface } from '@/lib/surface'
 import { postFunnel } from '@/assistant/deps'
 import { VoiceStage } from '@/components/demo/voice-stage'
@@ -416,6 +417,7 @@ function VoiceFirstVisit({
       copy={VISITOR_COPY}
     >
       <VisitorBody entered={entered} ended={ended} expiresAt={expiresAt} />
+      {entered && <StoreRepPanel />}
     </AssistantProvider>
   )
 }
