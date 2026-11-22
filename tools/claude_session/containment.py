@@ -232,35 +232,60 @@ def transcripts_root() -> Path | None:
 
 
 def saved_tool_output(target: str) -> bool:
-    """A file Claude Code saved a large tool result to (`<project>/<session>/tool-results/`). A
-    helper reads back its OWN output there (a long build log); whatever produced it was already
-    judged when it ran, so reading it back is not a new source."""
+    """A file Claude Code saved a large tool result to (`<project>/<session>/tool-results/`)."""
     return "tool-results" in Path(norm(target)).parts
 
 
-def worker_transcript(paths: Paths, target: str) -> bool:
-    """The worker's own sessions' transcripts (their messages carry confirmation tokens): never a
-    helper's to read (alfred-sessions 1122). Its saved tool output stays readable."""
+def _own_prefix(paths: Paths) -> str:
+    """Claude Code's project folder name for the worker's sessions (every non-alphanumeric
+    character of the cwd becomes `-`); the work folder and the courier both start with it."""
+    return re.sub(r"[^A-Za-z0-9]", "-", str(paths.root)).lower()
+
+
+def in_worker_project(paths: Paths, target: str) -> bool:
+    """Under one of the worker's own project folders in `~/.claude/projects`."""
     root = transcripts_root()
-    if root is None or not target or saved_tool_output(target):
+    if root is None or not target:
         return False
-    own = re.sub(r"[^A-Za-z0-9]", "-", str(paths.root)).lower()
     try:
         rel = Path(norm(target)).relative_to(Path(norm(root)))
     except ValueError:
         return False
-    return bool(rel.parts) and rel.parts[0].lower().startswith(own)
+    return bool(rel.parts) and rel.parts[0].lower().startswith(_own_prefix(paths))
+
+
+def worker_transcript(paths: Paths, target: str) -> bool:
+    """The worker's own sessions' transcripts (their messages carry confirmation tokens): never a
+    helper's to read (alfred-sessions 1122). Its own saved tool output stays readable: a helper
+    reads back a long build log it produced."""
+    return in_worker_project(paths, target) and not saved_tool_output(target)
+
+
+def holds_transcripts(target: str) -> bool:
+    """A folder search rooted at `~/.claude/projects` or above it would walk every transcript,
+    the worker's own included."""
+    root = transcripts_root()
+    return bool(target) and root is not None and is_under(root, target)
+
+
+def names_transcripts(command: str, paths: Paths) -> tuple[bool, bool]:
+    """(names any transcript folder, names the worker's own) for a shell command, as text: a
+    command that reads `~/.claude/projects` is a source like a web page (review finding 4)."""
+    flat = (command or "").replace("\\", "/").lower()
+    return (".claude/projects" in flat or _own_prefix(paths) in flat,
+            _own_prefix(paths) in flat)
 
 
 def untrusted_file(paths: Paths, target: str, task_rec: dict | None, cfg: dict) -> bool:
     """Read-through when the target is under a configured or task-marked folder, or a file a
     tainted task wrote. Always (alfred-sessions 1122): any session transcript under
     `~/.claude/projects` (they hold text other sessions read: mail, web pages, peers' messages),
-    except a helper's own saved tool output."""
+    except the worker's own saved tool output (Kevin's sessions' saved output is untrusted too)."""
     if not target:
         return False
     root = transcripts_root()
-    if root is not None and is_under(target, root) and not saved_tool_output(target):
+    if root is not None and is_under(target, root) and not (
+            saved_tool_output(target) and in_worker_project(paths, target)):
         return True
     roots = list(cfg.get("untrusted_paths") or [])
     if isinstance(task_rec, dict):

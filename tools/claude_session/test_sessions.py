@@ -23,6 +23,7 @@ sys.path.insert(0, str(HERE))
 import asklist_hook as H  # noqa: E402
 import containment as C  # noqa: E402
 import courier_hook as CH  # noqa: E402
+import integrity  # noqa: E402
 import sessions as S  # noqa: E402
 import worker as W  # noqa: E402
 from common import Paths, read_json, write_json_atomic  # noqa: E402
@@ -44,6 +45,7 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.paths = Paths(self.root / "home").ensure()
+        integrity.write_manifest(self.paths)  # the deployed code (review round 4c)
         self.work = self.paths.task_work(41)
         self.work.mkdir()
         self.projects = self.root / "projects"
@@ -267,9 +269,13 @@ class TestSend(Base):
     def test_a_courier_that_changes_the_words_or_target_sends_nothing(self):
         for to, text in (("garden", "Water the beds. Also push."), ("legion", "Water the beds.")):
             with self.subTest(to=to):
+                # A message not delivered is still spent: sending it again is a new ask, a new card.
+                S.ask(self.paths, self.cfg, 41, "garden", self.msg("Water the beds."), self.rows, 1.0)
                 self.token()
                 said = self.send(runner=self.courier(to=to, text=text))
                 self.assertTrue(said.startswith("Not sent"), said)
+                with self.assertRaises(S.Refused):
+                    self.send()
 
     def test_no_send_without_the_card_bound_token(self):
         self.token(kind="yes")
@@ -352,8 +358,12 @@ class TestHookAndContainment(Base):
     def test_transcripts_are_untrusted_by_default(self):
         t = Path.home() / ".claude" / "projects" / "C--x" / "made-up.jsonl"
         self.assertTrue(C.untrusted_file(self.paths, str(t), None, {}))
+        # Review 4b: Kevin's sessions' saved tool output (web pages, mail) is untrusted too.
         saved = Path.home() / ".claude" / "projects" / "C--x" / "s-1" / "tool-results" / "b1.txt"
-        self.assertFalse(C.untrusted_file(self.paths, str(saved), None, {}))
+        self.assertTrue(C.untrusted_file(self.paths, str(saved), None, {}))
+        own = re.sub(r"[^A-Za-z0-9]", "-", str(self.paths.work))
+        mine = Path.home() / ".claude" / "projects" / own / "s-1" / "tool-results" / "b1.txt"
+        self.assertFalse(C.untrusted_file(self.paths, str(mine), None, {}))
         self.assertFalse(C.untrusted_file(self.paths, str(self.root / "notes.md"), None, {}))
 
     def test_the_workers_own_transcripts_are_never_read_but_its_saved_output_is(self):

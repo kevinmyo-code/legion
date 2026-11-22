@@ -54,6 +54,7 @@ import re
 import subprocess
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent))  # own modules after the stdlib
@@ -68,6 +69,7 @@ TURN_CHARS = 800
 EXCERPT_CHARS = 8000
 TAIL_BYTES = 2 * 1024 * 1024  # a two-turn transcript was 463 KB: read the end, never the whole
 TEXT_MAX = 2000
+SUMMARY_MAX = 400  # a task that read a transcript sends at most this much summary off the laptop
 SEND_KIND = "session_send"
 COURIER_TOOLS = "ListAgents,SendMessage,ToolSearch"
 COURIER_SUMMARY = "Message from Kevin, via LEGION"
@@ -76,6 +78,17 @@ COURIER_TIMEOUT_S = 180
 # state `blocked` that ListAgents did not list (probe 0), and finished ones.
 UNREACHABLE_STATES = {"blocked", "done", "completed", "failed", "stopped", "ended"}
 TOKENISH = re.compile(r"[A-Za-z0-9_\-+/=]{32,}")
+# Review finding 9: `!` shell turns and local command output are tool output, never a turn.
+SHELL_BLOCKS = re.compile(
+    r"<(bash-input|bash-stdout|bash-stderr|local-command-stdout|local-command-stderr)>.*?</\1>",
+    re.S)
+URL_USERINFO = re.compile(r"(\b[a-z][a-z0-9+.-]*://)[^/\s@]+@", re.I)
+SECRET_VALUE = re.compile(
+    r"\b(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|auth)"
+    r"(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|\S+)", re.I)
+# Review finding 3: what Kevin cannot see on the card never goes: format (zero-width, bidi, tags),
+# private-use, unassigned and surrogate characters, and controls other than a newline.
+HIDDEN_CATEGORIES = {"Cf", "Co", "Cn", "Cs", "Cc"}
 
 
 class Refused(Exception):
@@ -180,6 +193,9 @@ def _text_of(entry: dict) -> tuple[str, str] | None:
     else:
         return None
     text = re.sub(r"<system-reminder>.*?</system-reminder>", "", text, flags=re.S)
+    text = SHELL_BLOCKS.sub("", text)
+    text = URL_USERINFO.sub(r"\1[removed]@", text)
+    text = SECRET_VALUE.sub(r"\1\2[removed]", text)
     text = TOKENISH.sub("[long string removed]", " ".join(text.split()))
     return (kind, text) if text else None
 
@@ -260,6 +276,11 @@ def ask(paths: Paths, cfg: dict, task: int, wanted: str, text_file: str, rows: l
         text = f.read_text(encoding="utf-8").strip()
     except (OSError, UnicodeDecodeError):
         raise Refused("the message file could not be read as text") from None
+    text = unicodedata.normalize("NFC", text)
+    hidden = [c for c in text if c != "\n" and unicodedata.category(c) in HIDDEN_CATEGORIES]
+    if hidden:
+        raise Refused(f"the message holds {len(hidden)} invisible or control characters (for "
+                      f"example U+{ord(hidden[0]):04X}); write it in plain visible text")
     if not text:
         raise Refused("the message is empty")
     if len(text) > TEXT_MAX:
@@ -384,6 +405,10 @@ def send(paths: Paths, cfg: dict, task: int, token: str, rows: list[dict], now: 
     plan = pinned_plan(paths, tok.get("parent") or -1)
     if plan is None or plan["sha256"] != tok["plan_sha"]:
         raise Refused("the message changed after Kevin saw it; nothing was sent")
+    if plan.get("spent_at"):
+        # Review finding 2: one yes, one send. A second yes to the same card (or a retry after a
+        # slow send) never sends it again; a new message is a new ask and a new card.
+        raise Refused("this message was already sent once; ask again for a new card to resend it")
     live = [r for r in rows if r.get("sessionId") == plan["session_id"]]
     if not live or _state(live[0]).lower() in UNREACHABLE_STATES:
         raise Refused(f"session {plan['name']} is no longer running, so nothing was sent")
@@ -395,6 +420,7 @@ def send(paths: Paths, cfg: dict, task: int, token: str, rows: list[dict], now: 
     preflight(python, env)
     tok["send_used"] = True  # spent before anything leaves: a crash never re-sends
     write_json_atomic(tok_path, tok)
+    write_json_atomic(plan_path(paths, plan["task"]), {**plan, "spent_at": now})
     write_json_atomic(sending_path(paths), {"sha256": plan["sha256"], "name": plan["name"],
                                             "text": plan["text"], "state": "armed", "at": now})
     courier_dir = paths.sends / "courier"

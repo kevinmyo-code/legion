@@ -77,8 +77,31 @@ def session_name(session_id: str, sessions_dir: Path | None = None) -> str:
     return ""
 
 
+# Orchestrator ruling 2026-11-22 (review finding 8): "waiting" means a permission prompt or a
+# question to Kevin, never the idle prompt Claude Code also raises a minute after each turn.
+WAITING_TYPES = {"permission_prompt", "elicitation_dialog"}
+NOT_WAITING_TYPES = {"idle_prompt": "idle", "auth_success": None}
+
+
+def notification_state(event: dict) -> str | None:
+    """`waiting`, `idle`, or None (report nothing) for a Notification hook event. By its
+    `notification_type`; an event without one is judged by its message ("needs your permission"
+    or a question is waiting; "waiting for your input" is idle)."""
+    kind = str(event.get("notification_type") or "")
+    if kind in WAITING_TYPES:
+        return "waiting"
+    if kind in NOT_WAITING_TYPES:
+        return NOT_WAITING_TYPES[kind]
+    message = str(event.get("message") or "").lower()
+    if "permission" in message or "approval" in message or "question" in message:
+        return "waiting"
+    return "idle"
+
+
 def build_payload(event: dict, cfg: dict, sessions_dir: Path | None = None) -> dict | None:
     state = STATES.get(event.get("hook_event_name") or "")
+    if event.get("hook_event_name") == "Notification":
+        state = notification_state(event)
     sid = event.get("session_id")
     if not state or not sid or not cfg.get("name"):
         return None

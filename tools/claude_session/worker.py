@@ -762,6 +762,10 @@ class Worker:
             status = "needs_confirmation"
             question = files_question(len(found), sum(f["size"] for f in found))
             log.info("task %s over the files caps (%s files); asking first", t["id"], len(found))
+        if self.session_read(t["id"]):
+            # Review finding 9: a task that read a session transcript says where it stands in a
+            # sentence or two; a long summary could carry the transcript off the laptop.
+            summary = summary[:sessions.SUMMARY_MAX]
         if status == "needs_confirmation" and self.scope == "full":
             plan = sessions.pinned_plan(self.paths, t["id"])
             if plan is not None:
@@ -787,6 +791,11 @@ class Worker:
             self.pending.remove(p)
         self.dirty = True
         log.info("task %s finished %s found=%s", t["id"], status, len(found))
+
+    def session_read(self, tid) -> bool:
+        """Did task `tid` read a Claude session transcript (its read-through mark says so)?"""
+        mark = read_json(self.paths.taint / f"task-{int(tid)}.json", None) or {}
+        return "session_transcript" in (mark.get("sources") or [])
 
     def check_timers(self, now: float) -> None:
         for t in self.running():
@@ -1210,7 +1219,14 @@ class Worker:
                              f"{t['workflow']} skill again.")
             lines.append(f"Kevin now says: {t['request']}")
             plan_sha = (p or {}).get("send_plan_sha") if t.get("confirms") else None
-            if plan_sha:
+            if plan_sha and p.get("send_answered"):
+                # Review finding 2: one card, one yes, one token. A second yes to the same card
+                # mints nothing; sessions.py also refuses a plan that was already sent.
+                lines.append(f"Kevin already said yes to task {parent}'s message card once. Do not "
+                             "send anything. Report done saying the message was already handled.")
+            elif plan_sha:
+                p["send_answered"] = True
+                self.dirty = True
                 # A yes to a message card unlocks that one message and nothing else: no `yes`
                 # token, so ship.py, send_mail.py and the ask list stay shut (alfred-sessions).
                 tok = self.issue_token(tid, parent, sessions.SEND_KIND, plan_sha=plan_sha)

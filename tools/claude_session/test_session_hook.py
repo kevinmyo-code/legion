@@ -53,6 +53,21 @@ class HookTest(unittest.TestCase):
         self.run_hook(event("Stop"))
         self.assertEqual(self.engine.sessions[-1]["name"], "builder one")
 
+    def test_only_a_prompt_or_a_question_is_waiting(self):
+        """Orchestrator ruling 2026-11-22: the idle prompt after a turn is not waiting on Kevin."""
+        cases = [({"notification_type": "permission_prompt"}, "waiting"),
+                 ({"notification_type": "elicitation_dialog"}, "waiting"),
+                 ({"notification_type": "idle_prompt"}, "idle"),
+                 ({"message": "Claude needs your permission to use Bash"}, "waiting"),
+                 ({"message": "Claude is waiting for your input"}, "idle")]
+        for extra, want in cases:
+            with self.subTest(extra=extra):
+                self.run_hook(event("Notification", **extra))
+                self.assertEqual(self.engine.sessions[-1]["state"], want)
+        before = len(self.engine.sessions)
+        self.run_hook(event("Notification", notification_type="auth_success"))
+        self.assertEqual(len(self.engine.sessions), before)
+
     def test_no_session_file_sends_a_blank_name(self):
         self.run_hook(event("Stop"))
         self.assertEqual(self.engine.sessions[-1]["name"], "")
@@ -67,7 +82,7 @@ class HookTest(unittest.TestCase):
         want = {"SessionStart": "working", "UserPromptSubmit": "working",
                 "Notification": "waiting", "Stop": "idle", "SessionEnd": "ended"}
         for name in want:
-            self.run_hook(event(name, prompt="hi"))
+            self.run_hook(event(name, prompt="hi", notification_type="permission_prompt"))
         self.assertEqual([s["state"] for s in self.engine.sessions], list(want.values()))
         s = self.engine.sessions[0]
         self.assertEqual((s["machine"], s["session_id"], s["project"]),
