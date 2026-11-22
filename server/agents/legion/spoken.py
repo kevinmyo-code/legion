@@ -88,6 +88,8 @@ class _Memory:
     # A device's diagnostics line was said (`limb_verbatim.py`); restatements dropped after it.
     device_said: bool = False
     restated_dropped: int = 0
+    # The device's own line, what a model sentence is checked against (`restates_result`).
+    device_line: str = ""
     backed: list[int] | None = None
     end: bool = False
     # The writes that went through (`tool.write_fact`), for the done line.
@@ -112,6 +114,7 @@ class _Memory:
                 heard=list(self.heard),
                 held=[list(h) for h in self.held],
                 facts=list(self.facts),
+                device_line=self.device_line,
             )
         return out
 
@@ -130,6 +133,7 @@ class _Memory:
             verbatim_said=bool(raw.get("verbatim_said")),
             device_said=bool(raw.get("device_said")),
             restated_dropped=int(raw.get("restated_dropped") or 0),
+            device_line=str(raw.get("device_line") or ""),
             backed=list(raw["backed"]) if raw.get("backed") is not None else None,
             end=bool(raw.get("end")),
             facts=list(raw.get("facts") or []),
@@ -220,6 +224,7 @@ class SpokenTurn:
         m = self.memory
         if call.no_restating:
             m.device_said = True
+            m.device_line = " ".join(filter(None, (m.device_line, *call.verbatim)))
         elif not (call.ends_turn or not m.verbatim_said):
             return
         elif not call.ends_turn:
@@ -248,7 +253,7 @@ class SpokenTurn:
         )
         if verdict == gates.SAY and states_unbacked_spelled(text, self._backed()):
             m.money_dropped += 1
-        elif verdict == gates.SAY and m.device_said and restates_result(text):
+        elif verdict == gates.SAY and m.device_said and restates_result(text, m.device_line):
             m.restated_dropped += 1
         elif verdict == gates.SAY and m.said and is_wait_line(text):
             # The phone's `TrailingFiller`: once the answer has begun, a filler line is not said.
@@ -293,7 +298,9 @@ class SpokenTurn:
                     m.torque_dropped += 1
                 elif verdict == gates.HOLD:
                     m.held.append([text, tagged])
-                elif verdict == gates.SAY and m.device_said and restates_result(text):
+                elif (
+                    verdict == gates.SAY and m.device_said and restates_result(text, m.device_line)
+                ):
                     m.restated_dropped += 1
                 elif verdict == gates.SAY:
                     yield self._say(text, tagged)
