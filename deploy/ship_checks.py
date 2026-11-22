@@ -6,7 +6,8 @@ functions (tested in server/tests/test_ship_checks.py) plus a small command line
     python deploy/ship_checks.py scope --fix <sha> --live-code <sha> --image-files <file> [--migrations <file>]
     python deploy/ship_checks.py gate --summary <engine-summary.txt> --title <run title> --attempt <n>
         --fix <sha> --expected-extras "<a,b>"
-    python deploy/ship_checks.py switches --extra "<NAMES>"
+        [--add-checks "<unset:NAME frozen:path probe:M:/api/x:404>"] [--unfreeze "<file>=<why>; ..."]
+    python deploy/ship_checks.py plan --add-checks "<...>"
 
 Prints what it checked; exits 1 with every problem listed. Stdlib only.
 """
@@ -49,6 +50,34 @@ SWITCHES = (
 )
 # Also unset on every ship (not switches: settings this deploy path must never carry).
 ALSO_UNSET = ("LEGION_SKIP_MIGRATE", "LEGION_WEB_EARLY_TRANSCRIPTS", "LEGION_WEB_AUDIO_FIRST_ROUND")
+# The live surfaces a ship must leave identical to the live code (review D1): the /try demo, the web app,
+# the personas and prompt, the frozen demo delivery and its test, settings, households, fixtures, the MCP
+# door, the API contract, the agents runtime and graph. The union of the laptop ship scripts'
+# FROZEN_LIVE_PATHS (2026-11-21). A path is the file itself or everything under that folder. The
+# `add_checks` input may add paths (frozen:<path>); only the `unfreeze` input, naming each changed file
+# and why, lets a ship change one, and the run prints it for the approver.
+FROZEN_LIVE = (
+    "server/demo",
+    "server/frontend",
+    "server/greeting",
+    "server/assistant/tour.py",
+    "server/assistant/surface.py",
+    "server/assistant/views.py",
+    "server/assistant/personas.py",
+    "server/assistant/companions.py",
+    "server/assistant/prompt.py",
+    "server/tests/test_recruiter_delivery_frozen.py",
+    "server/tests/fixtures",
+    "server/household",
+    "server/legion",
+    "server/engine_mcp",
+    "server/openapi.yaml",
+    "server/agents/runtime",
+    "server/agents/graph",
+)
+PROBE_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+PROBE_PATH = re.compile(r"^/api/[A-Za-z0-9_./-]+$")
+REPO_PATH = re.compile(r"^(server|deploy)/[A-Za-z0-9_./-]+$")
 DESTRUCTIVE = re.compile(r"RemoveField|DeleteModel|AlterField|RenameField|RenameModel")
 MIGRATION_PATH = re.compile(r"^server/([^/]+)/migrations/(\d{4}_[A-Za-z0-9_]+)\.py$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -132,6 +161,79 @@ def switch_names(extra: str) -> list[str]:
     return names
 
 
+def parse_add_checks(text: str) -> dict[str, list]:
+    """The add-only input: space-separated `unset:<ENV_NAME>`, `frozen:<path>`,
+    `probe:<METHOD>:<path>:<codes>` (codes 4xx only, comma separated: a dark route must refuse)."""
+    out: dict[str, list] = {"unset": [], "frozen": [], "probes": []}
+    for tok in text.split():
+        kind, _, rest = tok.partition(":")
+        if kind == "unset" and NAME.match(rest):
+            out["unset"].append(rest)
+        elif kind == "frozen" and REPO_PATH.match(rest) and ".." not in rest:
+            out["frozen"].append(rest.rstrip("/"))
+        elif kind == "probe":
+            parts = rest.split(":")
+            if len(parts) != 3:
+                raise ValueError(f"probe must be probe:<METHOD>:<path>:<codes>: {tok!r}")
+            method, path, codes = parts
+            code_list = codes.split(",")
+            if (
+                method not in PROBE_METHODS
+                or not PROBE_PATH.match(path)
+                or ".." in path
+                or not all(re.fullmatch(r"4\d\d", c) for c in code_list)
+            ):
+                raise ValueError(f"probe needs a method, an /api/ path and 4xx codes only: {tok!r}")
+            out["probes"].append((method, path, code_list))
+        else:
+            raise ValueError(
+                f"not unset:<NAME>, frozen:<path> or probe:<M>:<path>:<codes>: {tok!r}"
+            )
+    return out
+
+
+def parse_unfreeze(text: str) -> dict[str, str]:
+    """`<file>=<why>; <file>=<why>`: each frozen file this ship changes, by exact path, with a reason."""
+    out: dict[str, str] = {}
+    for part in text.split(";"):
+        if not part.strip():
+            continue
+        path, sep, why = part.partition("=")
+        path, why = path.strip(), why.strip()
+        if not sep or not REPO_PATH.match(path) or ".." in path:
+            raise ValueError(f"unfreeze entries are '<file>=<why>': {part.strip()!r}")
+        if len(why) < 8:
+            raise ValueError(f"unfreeze {path} needs a reason in words")
+        if path in out:
+            raise ValueError(f"unfreeze lists {path} twice")
+        out[path] = why
+    return out
+
+
+def is_frozen(path: str, frozen: tuple[str, ...] | list[str]) -> bool:
+    return any(path == f or path.startswith(f + "/") for f in frozen)
+
+
+def frozen_live_problems(
+    changed_paths: list[str], frozen: list[str], unfreeze: dict[str, str]
+) -> list[str]:
+    """Every changed file under a frozen path must be named in `unfreeze`; every unfreeze entry must be
+    a frozen file this ship really changes (no blanket or stale entries)."""
+    problems = []
+    changed = set(changed_paths)
+    for p in sorted(changed):
+        if is_frozen(p, frozen) and p not in unfreeze:
+            problems.append(
+                f"frozen live path changed: {p} (name it in unfreeze with a reason, or leave it)"
+            )
+    for p in sorted(unfreeze):
+        if not is_frozen(p, frozen):
+            problems.append(f"unfreeze names {p}, which is not frozen")
+        elif p not in changed:
+            problems.append(f"unfreeze names {p}, which this ship does not change")
+    return problems
+
+
 def gate_problems(
     summary: str, title: str, attempt: int, fix: str, expected_extras: list[str]
 ) -> list[str]:
@@ -186,9 +288,16 @@ def cmd_scope(a) -> list[str]:
     ).split()
     changed = {p: blob_at(a.fix, p) for p in paths}
     problems = image_problems(changed, pinned)
-    problems += frozen_problems(
-        git("diff", "--no-renames", "--name-only", a.live_code, a.fix).split()
-    )
+    all_changed = git("diff", "--no-renames", "--name-only", a.live_code, a.fix).split()
+    problems += frozen_problems(all_changed)
+    frozen = list(FROZEN_LIVE) + [
+        f for f in parse_add_checks(a.add_checks)["frozen"] if f not in FROZEN_LIVE
+    ]
+    unfreeze = parse_unfreeze(a.unfreeze)
+    problems += frozen_live_problems(all_changed, frozen, unfreeze)
+    print(f"frozen live paths ({len(frozen)}): {' '.join(frozen)}")
+    for p, why in sorted(unfreeze.items()):
+        print(f"UNFROZEN by this ship: {p}: {why}")
     mig_pins = parse_pins(open(a.migrations, encoding="utf-8").read()) if a.migrations else {}
     status = [
         tuple(line.split("\t", 1))
@@ -248,12 +357,20 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--attempt", type=int, required=True)
     g.add_argument("--fix", required=True)
     g.add_argument("--expected-extras", default="")
-    w = sub.add_parser("switches")
-    w.add_argument("--extra", default="")
+    s.add_argument(
+        "--add-checks", default="", help="the add-only input (frozen:<path> entries used here)"
+    )
+    s.add_argument(
+        "--unfreeze", default="", help="'<file>=<why>; ...' frozen files this ship changes"
+    )
+    w = sub.add_parser("plan", help="print switches= and probes= lines for $GITHUB_OUTPUT")
+    w.add_argument("--add-checks", default="")
     a = ap.parse_args(argv)
     try:
-        if a.cmd == "switches":
-            print(" ".join(switch_names(a.extra) + list(ALSO_UNSET)))
+        if a.cmd == "plan":
+            add = parse_add_checks(a.add_checks)
+            print("switches=" + " ".join(switch_names(" ".join(add["unset"])) + list(ALSO_UNSET)))
+            print("probes=" + ";".join(f"{m} {p} {','.join(c)}" for m, p, c in add["probes"]))
             return 0
         problems = cmd_scope(a) if a.cmd == "scope" else cmd_gate(a)
     except (ValueError, OSError, subprocess.CalledProcessError) as exc:

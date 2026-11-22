@@ -82,6 +82,58 @@ def test_switches_can_only_grow():
         sc.switch_names("not-a-name")
 
 
+def test_add_checks_parse_and_only_add():
+    add = sc.parse_add_checks(
+        "unset:LEGION_NEW frozen:server/board/ probe:POST:/api/board/x:401,403,404"
+    )
+    assert add == {
+        "unset": ["LEGION_NEW"],
+        "frozen": ["server/board"],
+        "probes": [("POST", "/api/board/x", ["401", "403", "404"])],
+    }
+    for bad in (
+        "probe:GET:/api/x:200",
+        "probe:GET:/health:404",
+        "probe:GET:/api/../x:404",
+        "frozen:app/x.kt",
+        "unset:lower",
+        "remove:server/demo",
+    ):
+        with pytest.raises(ValueError):
+            sc.parse_add_checks(bad)
+
+
+def test_unfreeze_needs_exact_files_and_reasons():
+    assert sc.parse_unfreeze("server/demo/a.py=the demo delivery text; ") == {
+        "server/demo/a.py": "the demo delivery text"
+    }
+    with pytest.raises(ValueError):
+        sc.parse_unfreeze("server/demo/a.py=")
+    with pytest.raises(ValueError):
+        sc.parse_unfreeze("server/demo/a.py")
+    with pytest.raises(ValueError):
+        sc.parse_unfreeze("server/demo/a.py=reason one here;server/demo/a.py=reason two here")
+
+
+def test_frozen_live_paths_hold_unless_named_with_a_reason():
+    frozen = list(sc.FROZEN_LIVE)
+    assert "server/demo" in frozen and "server/frontend" in frozen and "server/legion" in frozen
+    assert sc.frozen_live_problems(["server/agents/legion/turn.py"], frozen, {}) == []
+    assert sc.frozen_live_problems(["server/demo/x.py"], frozen, {}) == [
+        "frozen live path changed: server/demo/x.py"
+        " (name it in unfreeze with a reason, or leave it)"
+    ]
+    assert sc.frozen_live_problems(["server/demo/x.py"], frozen, {"server/demo/x.py": "why"}) == []
+    assert sc.frozen_live_problems([], frozen, {"server/demo/x.py": "why"}) == [
+        "unfreeze names server/demo/x.py, which this ship does not change"
+    ]
+    assert sc.frozen_live_problems(["server/agents/a.py"], frozen, {"server/agents/a.py": "w"}) == [
+        "unfreeze names server/agents/a.py, which is not frozen"
+    ]
+    # server/demos is not under server/demo
+    assert sc.frozen_live_problems(["server/demos/x.py"], frozen, {}) == []
+
+
 def _card(*extra: str) -> str:
     return "\n".join(
         ["gate: PASS first run (spent about $0.04)", "chip turn: PASS", *extra, "RESULT: PASS"]
