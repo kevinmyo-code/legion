@@ -78,7 +78,7 @@
     <ID>CyclomaticComplexMethod:VehicleSensorToolbox.kt:VehicleSensorToolbox$private suspend fun getVehicleData(context: Context, metric: String): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageChecklist(context: Context, args: JSONObject): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageItem(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun manageVehicle(context: Context, args: JSONObject): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:VehicleManageToolbox.kt:VehicleManageToolbox$private suspend fun manageVehicle(context: Context, args: JSONObject): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun resolveSpotifyUri(context: Context, query: String, type: String): SpotifyUriResolution</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun scheduleItem( context: Context, list: ItemList, item: com.kevin.legion.data.local.ListItem, args: JSONObject, ): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$suspend fun dispatch( context: Context, name: String, args: JSONObject, touchedReadThroughToolThisTurn: Boolean = false, ): JSONObject?</ID>
@@ -1251,7 +1251,7 @@
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1000L</ID>
     <ID>MagicNumber:MusicControlToolbox.kt:MusicControlToolbox$1000L</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$12</ID>
-    <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1900</ID>
+    <ID>MagicNumber:VehicleManageToolbox.kt:VehicleManageToolbox$1900</ID>
     <ID>MagicNumber:VehicleCodesToolbox.kt:VehicleCodesToolbox$25</ID>
     <ID>MagicNumber:VehicleHealthToolbox.kt:VehicleHealthToolbox$30</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$31</ID>
@@ -3190,7 +3190,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result</ID>
     <ID>MaxLineLength:VehicleSensorToolbox.kt:VehicleSensorToolbox$result</ID>
     <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$result(success = true, message = "That went past the end of the track, so Spotify moved on to the next song.")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")</ID>
+    <ID>MaxLineLength:VehicleManageToolbox.kt:VehicleManageToolbox$result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result(true, if (action == "tick") "Marked \"${row.title}\" attended." else "Marked \"${row.title}\" not attended.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return mailCardFailure(GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error)))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(false, "A weekly checklist needs which days - say something like 'Monday, Wednesday, Friday'.")</ID>

@@ -9,7 +9,7 @@ package com.kevin.legion.ui.fleet
  * **This object never writes anything.** Both forms route through the exact functions the
  * `manage_vehicle` voice tool already calls - [com.kevin.legion.vehicle.VehicleController.addVehicle]
  * for ADD, [com.kevin.legion.vehicle.VehicleController.correctVehicle] (name-only, the same shape
- * `manage_vehicle`'s `"rename"` action uses - see `LiveToolbox.manageVehicle`) for RENAME. There is
+ * `manage_vehicle`'s `"rename"` action uses - see `VehicleManageToolbox.manageVehicle`) for RENAME. There is
  * deliberately no second write path here; this file only decides whether the form's CONFIRM button
  * should be enabled, and echoes back a plain-words reason when it is not.
  */

@@ -901,6 +901,7 @@ object LiveToolbox {
         // ADR 0085: a manage_item add/remove naming a proposed to-do answers it; null otherwise.
         OpenLoopsToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
+        VehicleManageToolbox.dispatch(context, name, args)?.let { return it }
         VehicleRecordsToolbox.dispatch(context, name, args)?.let { return it }
         VehicleServiceToolbox.dispatch(context, name, args)?.let { return it }
         VehicleHealthToolbox.dispatch(context, name, args)?.let { return it }
@@ -1162,7 +1163,6 @@ object LiveToolbox {
             "get_sleep_gap" -> getSleepGap(context)
             "list_recent_sleep" -> listRecentSleep(context, args.optInt("count", 10))
             "undo_last_log" -> undoLastLog(context)
-            "manage_vehicle" -> manageVehicle(context, args)
             "search_mail" -> searchMail(context, args)
             "read_mail" -> readMail(context, args)
             "track_package" -> trackPackage(context)
@@ -1457,92 +1457,6 @@ object LiveToolbox {
      * touches [ActiveVehicle]; resolving "the other car" must not switch which
      * one is actually active (verification gate 3).
      */
-    /**
-     * The whole fleet-ownership surface behind one tool (see the registration's
-     * comment for why it is one tool and not five).
-     *
-     * `add` is the only action that does not resolve a vehicle first - it is the
-     * only one that must not be able to reach an existing row. Every other action
-     * goes through [withResolvedVehicle], so an unknown or ambiguous car comes
-     * back as a question to the driver rather than landing on whichever car
-     * happened to be active. That distinction IS the bug this tool fixes.
-     */
-    private suspend fun manageVehicle(context: Context, args: JSONObject): JSONObject {
-        val year = args.optInt("year").takeIf { it >= 1900 }
-        val make = args.optString("make").takeIf { it.isNotBlank() }
-        val model = args.optString("model").takeIf { it.isNotBlank() }
-        val trim = args.optString("trim").takeIf { it.isNotBlank() }
-        val name = args.optString("name").takeIf { it.isNotBlank() }
-
-        val action = args.optString("action")
-
-        // VehicleResolver.resolveVehicle treats a blank `vehicle` as "the active
-        // car". For a READ that is a sane default; for an edit it is precisely
-        // the failure being fixed here - an unnamed "correct" would silently
-        // rewrite whatever car happened to be active, which is how the Outlander
-        // became an F-150. Every editing action must name its target out loud.
-        if (action != "add" && args.optString("vehicle").isBlank()) {
-            // 2026-11-15 voice eval: "which cars do I have on file" called switch_vehicle with no car.
-            // Nothing changes without a named car; the refusal says where a read goes instead.
-            return result(false, needsACar(action))
-        }
-
-        return when (action) {
-            "add" -> result(
-                success = make != null && model != null,
-                message = VehicleController.addVehicle(
-                    context,
-                    year = year ?: 0,
-                    make = make.orEmpty(),
-                    model = model.orEmpty(),
-                    trim = trim.orEmpty(),
-                    name = name.orEmpty(),
-                ),
-            )
-            "correct" -> withResolvedVehicle(context, args) {
-                result(true, VehicleController.correctVehicle(
-                    context, it.obdMac, year = year, make = make, model = model, trim = trim,
-                ))
-            }
-            "rename" -> withResolvedVehicle(context, args) {
-                if (name == null) result(false, "What would you like me to call it?")
-                else result(true, VehicleController.correctVehicle(context, it.obdMac, name = name))
-            }
-            "switch" -> withResolvedVehicle(context, args) { switchTo(context, it) }
-            "adapter" -> withResolvedVehicle(context, args) { adapterIn(context, it) }
-            "archive" -> withResolvedVehicle(context, args) {
-                VehicleController.archive(context, it.obdMac)
-                result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")
-            }
-            // Deliberately NOT withResolvedVehicle: VehicleResolver only ever
-            // matches against the non-archived roster (see its own comment), so
-            // routing unarchive through it makes the one action whose target is
-            // archived by definition permanently unreachable.
-            "unarchive" -> {
-                val query = args.optString("vehicle")
-                // Matching, not labelling - kept on displayLabel's trim-inclusive spec deliberately
-                // (ticket 04's label rule is about how a car is NAMED to the driver, not what a
-                // spoken query is matched against; narrowing this to the label string would drop
-                // trim as a matchable word, e.g. "the Limited", for no gain).
-                val hits = VehicleController.allVehiclesIncludingArchived(context)
-                    .filter { it.archived }
-                    .filter {
-                        it.name.equals(query, true) || it.model.equals(query, true) ||
-                            VehicleController.displayLabel(it).contains(query, true)
-                    }
-                when (hits.size) {
-                    1 -> {
-                        VehicleController.unarchive(context, hits[0].obdMac)
-                        result(true, "The ${VehicleController.label(hits[0])} is back on the roster.")
-                    }
-                    0 -> result(false, "I don't have an archived car matching \"$query\".")
-                    else -> result(false, "\"$query\" matches more than one archived car - " +
-                        "${hits.joinToString(", ") { VehicleController.label(it) }}. Which one?")
-                }
-            }
-            else -> result(false, "I don't know how to \"$action\" a car.")
-        }
-    }
 
     // --- Gmail (ticket 15, google-account-integration) -------------------
     //
@@ -1949,43 +1863,6 @@ object LiveToolbox {
 
     private const val TASK_WINDOW_AHEAD_MS = 7L * 24 * 60 * 60 * 1000
     private val RELATIVE_WORDS = setOf("today", "tonight", "tomorrow", "yesterday")
-    /**
-     * `manage_vehicle switch` once the car is resolved. With the dongle connected this also answers
-     * "which car is it in" (2026-11-15), and can refuse (a VIN conflict), so the flag is the
-     * outcome's, never a hardcoded true. Already the selected car with no dongle connected: nothing
-     * to change, and the result says so.
-     */
-    private suspend fun switchTo(context: Context, car: Vehicle): JSONObject {
-        // `changed` and `vehicle` (the app's label) let code say the outcome in words (2026-11-19).
-        val label = VehicleController.label(car)
-        val noDongle = com.kevin.legion.vehicle.DongleCarController.state.value == null
-        if (ActiveVehicle.selected(context) == car.obdMac && noDongle) {
-            return result(true, "The $label was already the selected car; nothing changed.")
-                .put("changed", false).put("vehicle", label)
-        }
-        val outcome = VehicleController.switchToOutcome(context, car.obdMac)
-        val out = result(outcome.success, outcome.message).put("changed", outcome.changed == true).put("vehicle", label)
-        // A pick never answers the which-car question; while it is open, his turn still carries it (R2-2).
-        val heard = kotlin.coroutines.coroutineContext[RelativeDay.TurnDates] != null
-        return if (heard) com.kevin.legion.vehicle.AdapterBinding.annotate(context, out) else out
-    }
-
-    /** The refusal for a `manage_vehicle` [action] called with no car named. */
-    private fun needsACar(action: String): String = when (action) {
-        "switch" -> SWITCH_NEEDS_A_CAR
-        "adapter" -> "Nothing changed: say which car the adapter is in."
-        else -> "Which car do you mean? Tell me and I'll $action it."
-    }
-
-    /** `manage_vehicle adapter`: [VehicleController.adapterIn], with what code needs to say it. */
-    private suspend fun adapterIn(context: Context, car: Vehicle): JSONObject {
-        val r = VehicleController.adapterIn(context, car.obdMac)
-        return result(r.outcome.success, r.outcome.message).put("changed", r.outcome.changed == true)
-            .put("vehicle", VehicleController.label(car)).put("readings_moved", r.readingsMoved)
-    }
-
-    private const val SWITCH_NEEDS_A_CAR = "Nothing was switched: switch_vehicle changes which car is selected " +
-        "and needs the car's name. To say which cars he has, call ask ask_fleet."
     private const val TASK_WINDOW_BEHIND_MS = 30L * 24 * 60 * 60 * 1000
 
     /** The write half of [completeTask]: one [EventsAppointmentWriter.setDone] per row, each
