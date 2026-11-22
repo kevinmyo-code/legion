@@ -75,7 +75,7 @@ async def test_speech_in_text_out():
         assert ev["id"] == 7 and ev["text"] == "set a timer for twelve minutes"
         assert ev["audio_ms"] == 2000 and ev["lang"] == "en" and ev["reason"] == "client_end"
         assert ready["capabilities"] == {"end_of_turn": False, "partials": False, "text_streaming": False,
-                                         "maybe_end": False}
+                                         "maybe_end": False, "word_times": False}
         assert ready["stt"]["end_of_turn"] is False
     finally:
         await c.close(); await server.close()

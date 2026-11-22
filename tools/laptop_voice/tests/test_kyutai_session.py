@@ -207,6 +207,72 @@ def test_tts_warm_takes_the_engine_lock_before_the_gpu_lock_and_never_waits():
     assert "warm" in results
 
 
+# ---- word start times (tts.word, 2026-11-21)
+class _ScriptedTtsModel:
+    """Stands in for the moshi model inside KyutaiTts._synth_held: no CUDA, no weights. Each step
+    consumes the next queued word at that step (as moshi's StateMachine.process does into
+    State.transcript) and, like the real stream, yields audio only from step `lead` on: the frames
+    before it hold the -1 "zero" token and are skipped (kyutai_core._step)."""
+
+    FRAME = 1920  # samples per 80 ms frame at 24 kHz
+
+    def __init__(self, eng, consume_every: int = 3, lead: int = 4):
+        from types import SimpleNamespace
+        self.consume_every, self.lead = consume_every, lead
+        self.state = SimpleNamespace(entries=[], end_step=None, transcript=[])
+        self.st = {"offset": 0, "state": self.state}
+        eng.m = SimpleNamespace(mimi=SimpleNamespace(frame_rate=12.5), delay_steps=0,
+                                lm=SimpleNamespace(delays=[0]), machine=SimpleNamespace(second_stream_ahead=0))
+        eng.persistent = True
+        eng.default_voice = "ex03_default"
+        eng.lock = threading.Lock()
+        eng._acquire = lambda voice, speed: (None, self.st, None)
+        eng._entries = lambda w, first: [w]
+        eng._step = self.step
+
+    def step(self, g, st):
+        s = st["offset"]
+        if s % self.consume_every == 0 and self.state.entries:
+            self.state.transcript.append((self.state.entries.pop(0), s))
+        elif not self.state.entries and self.state.end_step is None:
+            self.state.end_step = s
+        st["offset"] += 1
+        return np.zeros(self.FRAME, np.int16) if s >= self.lead else None
+
+
+def test_tts_reports_each_word_at_its_consumption_step_plus_the_late_bias():
+    """A word the model takes at text step s starts at about s frames into the id's audio: moshi
+    trains the audio delay_steps behind the text, and every frame before delay_steps is skipped, so
+    the stream's frame k lines up with text step k. One frame is added so a stamp is never early."""
+    eng = core.KyutaiTts.__new__(core.KyutaiTts)
+    model = _ScriptedTtsModel(eng)
+    got = []
+    chunks = list(eng.synth_stream(["Your train ", "leaves at nine."], on_word=lambda w, ms: got.append((w, ms))))
+    steps = [s for _, s in model.state.transcript]
+    assert [w for w, _ in got] == ["Your", "train", "leaves", "at", "nine."]
+    assert [ms for _, ms in got] == [(s + core.WORD_LAG_FRAMES) * 80 for s in steps]
+    assert core.WORD_LAG_FRAMES >= 1, "biased late: an early stamp would count an unheard word as heard"
+    assert chunks, "audio still flows"
+
+
+def test_tts_without_a_word_callback_is_unchanged():
+    eng = core.KyutaiTts.__new__(core.KyutaiTts)
+    _ScriptedTtsModel(eng)
+    assert len(list(eng.synth("Twelve minutes, running."))) > 0
+
+
+def test_text_stream_passes_the_word_callback_to_the_model_thread():
+    from laptop_voice import kyutai as K
+    eng = K.KyutaiTts.__new__(K.KyutaiTts)
+    _ScriptedTtsModel(eng)
+    got = []
+    sess = eng.open_text_stream("ex03_default", 1.0, on_word=lambda w, ms: got.append((w, ms)))
+    assert isinstance(sess, K._TextStream)
+    sess.push("Turn left here.")
+    audio = sess.finish()
+    assert audio and [w for w, _ in got] == ["Turn", "left", "here."]
+
+
 # ---- Alfred's moods (2026-11-20): one speaker (Expresso ex03), one reference clip per mood
 EXPRESSO = __import__("re").compile(r"expresso/(ex\d\d)-(ex\d\d)_([a-z-]+)_\d{3}_channel([12])_\d+s\.wav")
 # key mood -> the Expresso style in the file name, where they differ
