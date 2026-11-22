@@ -27,6 +27,23 @@ Logs carry ids, statuses, counts and exit codes. Never a request, a summary, a q
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import argparse
 import collections
 import ctypes
@@ -46,7 +63,7 @@ import uuid
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+sys.path.append(str(HERE))  # this folder's own modules, after the standard library
 from common import (DELIVER_EMAIL_SELF, DELIVER_FILES, DELIVER_PHONE, FILES_MAX_COUNT,  # noqa: E402
                     FILES_MAX_TOTAL_BYTES, PAGE_CAP_BYTES, UPLOAD_CAP_BYTES, Paths, is_under,
                     load_config,
@@ -408,7 +425,7 @@ class Worker:
 
     def write_settings(self) -> None:
         hook = HERE / "asklist_hook.py"
-        command = f"{cmd_path(helper_python())} {cmd_path(hook)}"
+        command = f"{cmd_path(helper_python())} -I {cmd_path(hook)}"  # isolated (round 4d)
         # Containment (2026-11-10): reads, web, Gmail and Agent go through the hook on every
         # machine, so a read-through source marks its task before it runs.
         matcher = "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|" + containment.HOOK_MATCHER_EXTRA
@@ -436,7 +453,7 @@ class Worker:
                      "only: never --found, never upload, no web. Mail only as text to Kevin himself, and only "
                      "when the task message gives a token. No Gmail here: rule 10 does "
                      "not apply on this machine.")
-        for k, v in {"<<MACHINE>>": self.name, "<<PYTHON>>": cmd_path(helper_python()),
+        for k, v in {"<<MACHINE>>": self.name, "<<PYTHON>>": cmd_path(helper_python()) + " -I",
                      "<<REPORT>>": cmd_path(HERE / "report.py"),
                      "<<SEND_MAIL>>": cmd_path(HERE / "send_mail.py"),
                      # alfred-builds tickets 03, 05, 08: the ship step, undo, the build lock.
@@ -1147,7 +1164,7 @@ class Worker:
         tid = t["id"]
         text = (HERE / "memory_review_prompt.md").read_text(encoding="utf-8")
         for k, v in {"<<TASK>>": str(tid), "<<WORK>>": str(work),
-                     "<<PYTHON>>": cmd_path(helper_python()),
+                     "<<PYTHON>>": cmd_path(helper_python()) + " -I",
                      "<<REVIEW>>": cmd_path(HERE / "review_memories.py"),
                      "<<REPORT>>": cmd_path(HERE / "report.py")}.items():
             text = text.replace(k, v)

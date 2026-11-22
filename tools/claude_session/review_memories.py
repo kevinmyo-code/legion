@@ -27,6 +27,23 @@ Engine down or refusing: says so in words and exits 1. Nothing retries in a loop
 """
 from __future__ import annotations
 
+# ruff: noqa: E402
+# Review round 4d: these lines run before any other import. Python puts this script's own folder
+# first on the path, so a file planted here (`json.py`, a `json/` package, `json.pyc`) would
+# shadow the standard library: the folder is taken off the front and added back at the END, so
+# only this folder's own modules come from it. Bytecode is never read from or written to a
+# `__pycache__` here (`sys.pycache_prefix`, a folder under the worker's own root that no helper
+# may write), so a forged cached .pyc beside the source is never loaded.
+import sys
+
+sys.path[:] = [_p for _p in sys.path if _p.replace("\\", "/").rstrip("/").lower()
+               != __file__.replace("\\", "/").rsplit("/", 1)[0].lower()]
+import os
+
+sys.pycache_prefix = os.path.join(os.environ.get("LEGION_CLAUDE_HOME") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming"), "legion-claude"),
+    "pycache")
+
 import argparse
 import json
 import re
@@ -35,7 +52,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parent))  # this folder's own modules, after the standard library
 from common import Paths, load_config, read_json, write_json_atomic  # noqa: E402
 
 API = "/api/member-memories/review/"
