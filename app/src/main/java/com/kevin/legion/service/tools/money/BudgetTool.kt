@@ -2,6 +2,8 @@ package com.kevin.legion.service.tools.money
 
 import android.content.Context
 import com.kevin.legion.ai.VerbatimSpeech
+import com.kevin.legion.assistant.cards.BudgetCards
+import com.kevin.legion.assistant.cards.ToolCards
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.finance.BudgetVoice
 import com.kevin.legion.finance.FinanceController
@@ -40,6 +42,8 @@ internal object BudgetTool {
         val (month, monthNote) = SpendMonth.resolve(args.optString("month"), current)
         val at = BudgetVoice.At(month = month, current = current, nowMs = now)
         val read = FinanceController.forApp(context).budgets(month)
+        // Every budget view puts the budget card up, as the total view puts up its spending card.
+        BudgetCards.pace(read, now)?.let(ToolCards::publish)
         val answer = when (view) {
             "left" -> BudgetVoice.left(read, at)
             "top" -> BudgetVoice.top(read, at)
