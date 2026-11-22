@@ -71,7 +71,13 @@ object ClaudeResultPolling {
                 try {
                     com.kevin.legion.watches.WatchPolling.poller(app).maybePoll()
                 } finally {
-                    scheduled.maybePoll()
+                    try {
+                        scheduled.maybePoll()
+                    } finally {
+                        // alfred-sessions (Kevin 2026-11-22): any Claude session that starts
+                        // waiting on him, once per wait, rate-limited.
+                        sessionWaits(app).maybePoll()
+                    }
                 }
             } finally {
                 // Daily-loops ticket 05: leave-by estimates ride this loop at their own 15-minute floor.
@@ -92,6 +98,45 @@ object ClaudeResultPolling {
                 announce = { id, text, hint -> announce(app, id, text, hint, scheduled = true) },
             ).also { scheduled = it }
         }
+
+    @Volatile private var waits: SessionWaitingPoller? = null
+
+    /** The ONE [SessionWaitingPoller] for the process (its cadence and limits live in the instance). */
+    private fun sessionWaits(app: Context): SessionWaitingPoller =
+        waits ?: synchronized(this) {
+            waits ?: SessionWaitingPoller(
+                controller = { ClaudeSessionController.forContext(app) },
+                seen = SessionWaitSeenStore(app),
+                watch = ClaudeWatchStore(app),
+                announce = { key, text -> announceWait(app, key, text) },
+            ).also { waits = it }
+        }
+
+    /**
+     * A session waiting on him: the open conversation's note, else a proactive raise in the
+     * "Claude tasks" category (spoken when allowed, posted when not). No question, so no mic.
+     */
+    private suspend fun announceWait(context: Context, key: String, text: String): ClaudeDelivery {
+        val note = "[Claude session waiting, from the laptop's own report] $text Tell the user this " +
+            "now in one short sentence. Say nothing else about it."
+        if (LiveNotes.offer("claude_wait_$key", note)) return ClaudeDelivery.DELIVERED
+        val raise = ProactiveRaise(
+            // One rule per wait, so brushing one off never suppresses the next.
+            ruleId = "claude_session_wait_$key",
+            category = ProactiveCategory.CLAUDE_TASKS,
+            reason = text,
+            facts = text,
+            prompt = "One of the user's Claude Code sessions on their laptop is waiting on them. The " +
+                "facts, and the only things you may say about it: $text Tell the user in one short " +
+                "sentence. Mention no other subject.",
+            listensForReply = false,
+            listenHoldMs = 0L,
+        )
+        return when (ProactiveBus.speakIfAllowed(context, raise)) {
+            ProactiveBus.RaiseOutcome.NotNow -> ClaudeDelivery.RETRY
+            else -> ClaudeDelivery.DELIVERED
+        }
+    }
 
     /**
      * Opens task [taskId]'s delivered files over LEGION, only while one of LEGION's screens is in

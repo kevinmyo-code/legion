@@ -330,6 +330,13 @@ class ClaudeCodeSession(models.Model):
     state = models.TextField()
     # Never stored for a `listed` machine (ruling 5): the view drops it.
     last_prompt_summary = models.TextField(null=True, blank=True)
+    # The session's own name (`/rename`, `--name`), from a `full` machine only; blank when unknown.
+    # A report without one keeps the stored name (alfred-sessions 1122).
+    # db_default too: the engine revision still serving during a rollout inserts rows without it.
+    name = models.TextField(blank=True, default="", db_default="")
+    # When this waiting episode began: set on the change INTO `waiting`, cleared on any other
+    # state. The Notification hook repeats `waiting`, so this, not each report, keys an alert.
+    waiting_since = models.DateTimeField(null=True, blank=True)
     # The laptop's clock, as sent. Ordering and retention use last_seen_at.
     reported_at = models.DateTimeField(null=True, blank=True)
     last_seen_at = models.DateTimeField()

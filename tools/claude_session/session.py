@@ -26,6 +26,8 @@ ALLOWED_FULL = ["Bash", "PowerShell", "Read", "Write", "Edit", "Glob", "Grep", "
 # The work laptop: the hook confines these to the repos root (reads) and the work folder (writes).
 ALLOWED_LISTED = ["Bash", "PowerShell", "Read", "Write", "Edit", "Glob", "Grep", "Agent", "TaskStop"]
 
+COURIER_ONLY = ["SendMessage", "ListAgents"]
+
 # Only project and local: no user settings, so Kevin's own hooks (ticket 06 reporter) and plugins
 # do not run for the worker's session. cwd is the worker's work folder, which has neither.
 SETTING_SOURCES = "project,local"
@@ -68,6 +70,9 @@ def build_command(claude_cmd: list[str], *, settings: Path, prompt: str, session
     for d in add_dirs:
         cmd += ["--add-dir", d]
     cmd += ["--allowedTools", *(ALLOWED_FULL if scope == "full" else ALLOWED_LISTED)]
+    # Review finding 5: other sessions are the courier's alone (sessions.py send). SendMessage needs
+    # no permission, so the ask-list hook is not enough on its own: a broken hook fails open.
+    cmd += ["--disallowedTools", *COURIER_ONLY]
     cmd += ["--resume", session_id] if resume else ["--session-id", session_id]
     return cmd
 

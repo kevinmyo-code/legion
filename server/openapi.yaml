@@ -17683,6 +17683,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        name:
+          type: string
+          default: ''
+          maxLength: 200
       required:
       - machine
       - session_id
@@ -17762,6 +17766,11 @@ components:
       properties:
         machine:
           type: string
+        session_id:
+          type: string
+        name:
+          type: string
+          description: The session's own name; blank when unknown.
         project:
           type: string
         state:
@@ -17772,12 +17781,20 @@ components:
         last_seen_at:
           type: string
           format: date-time
+        waiting_since:
+          type: string
+          format: date-time
+          nullable: true
+          description: Start of the current wait on Kevin; null unless waiting.
       required:
       - last_prompt_summary
       - last_seen_at
       - machine
+      - name
       - project
+      - session_id
       - state
+      - waiting_since
     ClaudeTaskCreate:
       type: object
       properties:

@@ -261,6 +261,9 @@ private data class SessionRow(
     val state: String,
     @SerialName("last_prompt_summary") val lastPromptSummary: String? = null,
     @SerialName("last_seen_at") val lastSeenAt: String? = null,
+    @SerialName("session_id") val sessionId: String = "",
+    val name: String = "",
+    @SerialName("waiting_since") val waitingSince: String? = null,
 )
 
 @Serializable
@@ -355,7 +358,10 @@ class DjangoClaudeSessionBackend(private val http: EngineHttp) : ClaudeSessionBa
                     )
                 },
                 sessions = parsed.sessions.map {
-                    ClaudeCodeSession(it.machine, it.project, it.state, it.lastPromptSummary, instant(it.lastSeenAt))
+                    ClaudeCodeSession(
+                        it.machine, it.project, it.state, it.lastPromptSummary, instant(it.lastSeenAt),
+                        sessionId = it.sessionId, name = it.name, waitingSince = instant(it.waitingSince),
+                    )
                 },
                 workflowsKnown = parsed.machines.any { it.workflows != null },
             )

@@ -232,6 +232,10 @@ class ClaudeWording(
     companion object {
         const val NO_MACHINE_EVER = "No machine has ever connected to the Claude session, so nothing was sent."
         const val EMPTY_REQUEST = "What should the Claude session do? Nothing was sent."
+
+        /** A message to a Claude session is approved on the screen, where its exact text is. */
+        const val SEND_CARD_ON_SCREEN =
+            "Nothing was sent. The exact message is on the Claude session screen: read it there and tap Yes to send it."
         private val TIME = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
         private val DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
         private const val REQUEST_SHOWN = 80

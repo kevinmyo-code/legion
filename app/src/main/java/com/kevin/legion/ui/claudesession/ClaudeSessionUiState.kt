@@ -115,7 +115,14 @@ object ClaudeSessionRows {
     fun tasks(
         overview: ClaudeOverview,
         wording: ClaudeWording = ClaudeWording(),
-    ): List<TaskRowUi> = overview.tasks.map { t ->
+    ): List<TaskRowUi> {
+        // One message card, one yes (alfred-sessions review 2; the orchestrator's ruling keeps every
+        // other card's retry): once a yes to a message card went, it has no Yes button.
+        val answered = overview.tasks.filter { it.confirms }.mapNotNull { it.parent }.toSet()
+        return overview.tasks.map { t -> row(t, overview, wording, answered) }
+    }
+
+    private fun row(t: ClaudeTask, overview: ClaudeOverview, wording: ClaudeWording, answered: Set<Int>) =
         TaskRowUi(
             id = t.id,
             request = t.request,
@@ -128,7 +135,7 @@ object ClaudeSessionRows {
             files = t.files.filterNot { t.wantsPage && it.isPage }
                 .map { FileRowUi(it.id, it.name, ClaudeWording.size(it.size), it.uploaded, it.requested) },
             filesMayCome = !overview.summariesOnly(t),
-            needsConfirmation = t.needsConfirmation,
+            needsConfirmation = t.needsConfirmation && !(t.isSessionSendCard && t.id in answered),
             needsMachine = t.status == ClaudeTask.NEEDS_MACHINE,
             pageTitle = t.pages.firstOrNull()?.title,
             pageWaiting = t.wantsPage && t.pages.isEmpty() && t.status == ClaudeTask.DONE,
@@ -137,7 +144,6 @@ object ClaudeSessionRows {
             scheduled = t.isScheduled,
             workflow = t.workflow?.let { ClaudeWorkflowWording.spoken(it).replaceFirstChar(Char::uppercase) },
         )
-    }
 
     /** Newest first, each with its time in the phone's zone ("3:40 PM", "yesterday 9:05 PM"). */
     fun steps(list: List<ClaudeStep>, wording: ClaudeWording): List<StepRowUi> =
