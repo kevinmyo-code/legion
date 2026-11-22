@@ -561,11 +561,48 @@ def test_sessions_from_a_full_machine_keep_the_prompt_summary(token_a):
     token_a.post(f"{API}sessions/", {**body, "state": "waiting"}, format="json")
     sessions = token_a.get(f"{API}status/").data["sessions"]
     assert sessions == [
-        {"machine": "Alienware", "project": "legion", "state": "waiting",
-         "last_prompt_summary": "fixing the heartbeat",
-         "last_seen_at": sessions[0]["last_seen_at"]}
+        {"machine": "Alienware", "session_id": "s-1", "name": "", "project": "legion",
+         "state": "waiting", "last_prompt_summary": "fixing the heartbeat",
+         "last_seen_at": sessions[0]["last_seen_at"],
+         "waiting_since": sessions[0]["waiting_since"]}
     ]
+    assert sessions[0]["waiting_since"] is not None
     assert ClaudeCodeSession.objects.count() == 1
+
+
+def test_a_session_name_is_kept_until_a_new_one_comes(token_a):
+    _beat(token_a)
+    body = {"machine": "Alienware", "session_id": "s-1", "project": "legion", "state": "working",
+            "name": "builder"}
+    token_a.post(f"{API}sessions/", body, format="json")
+    token_a.post(f"{API}sessions/", {**body, "name": ""}, format="json")
+    assert token_a.get(f"{API}status/").data["sessions"][0]["name"] == "builder"
+    token_a.post(f"{API}sessions/", {**body, "name": "reviewer"}, format="json")
+    assert token_a.get(f"{API}status/").data["sessions"][0]["name"] == "reviewer"
+
+
+def test_a_listed_machine_keeps_no_session_name(token_a):
+    _beat(token_a, "work laptop", scope="listed")
+    token_a.post(f"{API}sessions/", {"machine": "work laptop", "session_id": "w-1",
+                                     "project": "erp", "state": "working", "name": "secret"},
+                 format="json")
+    assert ClaudeCodeSession.objects.get().name == ""
+
+
+def test_waiting_since_marks_the_start_of_one_wait(token_a):
+    _beat(token_a)
+    body = {"machine": "Alienware", "session_id": "s-1", "project": "p", "state": "waiting"}
+    token_a.post(f"{API}sessions/", body, format="json")
+    first = ClaudeCodeSession.objects.get().waiting_since
+    assert first is not None
+    ClaudeCodeSession.objects.update(waiting_since=first - datetime.timedelta(minutes=5))
+    token_a.post(f"{API}sessions/", body, format="json")  # the hook repeats `waiting`
+    assert ClaudeCodeSession.objects.get().waiting_since == first - datetime.timedelta(minutes=5)
+    token_a.post(f"{API}sessions/", {**body, "state": "working"}, format="json")
+    assert ClaudeCodeSession.objects.get().waiting_since is None
+    token_a.post(f"{API}sessions/", body, format="json")
+    again = ClaudeCodeSession.objects.get().waiting_since
+    assert again is not None and again > first - datetime.timedelta(minutes=5)
 
 
 def test_sessions_from_a_listed_machine_drop_the_prompt_summary(token_a):

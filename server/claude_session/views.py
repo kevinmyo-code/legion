@@ -784,10 +784,13 @@ class StatusView(APIView):
                 "sessions": [
                     {
                         "machine": row.machine.name,
+                        "session_id": row.session_id,
+                        "name": row.name,
                         "project": row.project,
                         "state": row.state,
                         "last_prompt_summary": row.last_prompt_summary,
                         "last_seen_at": row.last_seen_at,
+                        "waiting_since": row.waiting_since,
                     }
                     for row in sessions
                 ],
@@ -1518,18 +1521,32 @@ class SessionReportView(APIView):
                 household=household, name=data["machine"].strip(), scope=SCOPE_LISTED
             )
         keep_summary = machine.scope != SCOPE_LISTED
-        ClaudeCodeSession.objects.update_or_create(
-            household=household,
-            machine=machine,
-            session_id=data["session_id"],
-            defaults={
-                "project": data["project"],
-                "state": data["state"],
-                "last_prompt_summary": data["last_prompt_summary"] if keep_summary else None,
-                "reported_at": data["at"],
-                "last_seen_at": now,
-            },
-        )
+        with transaction.atomic():
+            row = (
+                ClaudeCodeSession.objects.select_for_update()
+                .filter(household=household, machine=machine, session_id=data["session_id"])
+                .first()
+            )
+            if row is None:
+                row = ClaudeCodeSession(
+                    household=household, machine=machine, session_id=data["session_id"]
+                )
+            if data["state"] != SESSION_WAITING:
+                row.waiting_since = None
+            elif row.pk is None or row.state != SESSION_WAITING or row.waiting_since is None:
+                # A new wait on Kevin; a repeated `waiting` (the Notification hook fires more
+                # than once) keeps the episode it is part of.
+                row.waiting_since = now
+            row.project = data["project"]
+            row.state = data["state"]
+            row.last_prompt_summary = data["last_prompt_summary"] if keep_summary else None
+            if keep_summary and data["name"].strip():
+                row.name = data["name"].strip()  # a report without a name keeps the stored one
+            elif not keep_summary:
+                row.name = ""
+            row.reported_at = data["at"]
+            row.last_seen_at = now
+            row.save()
         return Response(
             {
                 "machine": machine.name,
