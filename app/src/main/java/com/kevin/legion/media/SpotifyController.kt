@@ -687,7 +687,7 @@ object SpotifyController {
 
     /**
      * Which library write `control_music` asked for. Kept as its own enum (rather than reusing
-     * [LiveToolbox.MusicAction][com.kevin.legion.service.LiveToolbox.MusicAction] here, which
+     * [MusicControlToolbox.MusicAction][com.kevin.legion.service.MusicControlToolbox.MusicAction] here, which
      * would be a service-layer type leaking into media) so [message] below can hold all four
      * verbs' wording in one place.
      */

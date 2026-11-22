@@ -68,9 +68,9 @@
     <ID>CyclomaticComplexMethod:LiveSessionController.kt:LiveSessionController$private fun handleEvent(event: LiveEvent)</ID>
     <ID>CyclomaticComplexMethod:LiveSessionController.kt:LiveSessionController$private fun handleToolCall(call: LiveEvent.ToolCall)</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$internal fun mapGoalPlanResult(outcome: GoalPlanResult): JSONObject</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusic(context: Context, args: JSONObject): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getHealth(context: Context): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getLedgerBalance(context: Context, account: String): JSONObject</ID>
     <ID>CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private suspend fun getMpg(context: Context, vehicle: Vehicle): JSONObject</ID>
@@ -1246,6 +1246,7 @@
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100.0</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1000L</ID>
+    <ID>MagicNumber:MusicControlToolbox.kt:MusicControlToolbox$1000L</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$12</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$1900</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$25</ID>
@@ -3151,8 +3152,8 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$.</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$?:</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$GoalController.CloseOutcome.NotFound -&gt; result(false, "I don't see an active ${aspectLabel(aspect)} goal matching that.")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$MusicAction.SEEK_BACK -&gt; controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$MusicAction.SEEK_FORWARD -&gt; controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
+    <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$MusicAction.SEEK_BACK -&gt; controlMusicSeek(context, forward = false, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
+    <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$MusicAction.SEEK_FORWARD -&gt; controlMusicSeek(context, forward = true, seconds = args.optInt("seconds", DEFAULT_SEEK_SECONDS))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$ObdBluetoothManager.getCoolantTemp()?.let { readings.append("coolant ${Temp.text(context, it.toDouble())} (user's unit, already converted - do not convert again); ") }</ID>
     <ID>MaxLineLength:MusicToolbox.kt:MusicToolbox$SpotifyWebApi.PlaylistResolution.NeedsAuthorization -&gt; SpotifyUriResolution.Failed(spotifyNeedsAuthorizationResult())</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$append(withGuessCaveat("${next.byMiles.serviceName} is soonest by mileage, about ${VehicleController.formatRemaining(next.byMiles.remaining, miles)} out", next.byMiles))</ID>
@@ -3179,13 +3180,13 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$reading(0x05, c) { put("temperature", Temp.convert(c!!.toDouble(), unit)).put("temperatureUnit", unit.symbol) }</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$reading(0x0F, iat) { put("temperature", Temp.convert(iat!!.toDouble(), unit)).put("temperatureUnit", unit.symbol) }</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result(success = true, message = "That went past the end of the track, so Spotify moved on to the next song.")</ID>
+    <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$result(success = true, message = "That went past the end of the track, so Spotify moved on to the next song.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result(true, "Archived the ${VehicleController.label(it)}. Nothing was deleted - its history is still there.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$result(true, if (action == "tick") "Marked \"${row.title}\" attended." else "Marked \"${row.title}\" not attended.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return mailCardFailure(GmailToolLogic.causeForFailure(GmailAuth.looksLikeNetworkFailure(tokenResult.error)))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(false, "A weekly checklist needs which days - say something like 'Monday, Wednesday, Friday'.")</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, action))</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, artist.name))</ID>
+    <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, action))</ID>
+    <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, artist.name))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = SpotifyController.succeeded(outcome), message = SpotifyController.message(outcome, query))</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = false, message = "Nothing to undo - no workout, bodyweight, meal, or sleep logged yet.")</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$return result(success = false, message = dateError ?: "I need something to go on — a mileage, how long ago, a date, or that it's never been done.")</ID>
@@ -3202,7 +3203,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val message = accepted.workoutPlanMessage ?: "I couldn't put a workout plan together just now - try again in a sec."</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logPastServiceDirect(context, service, mileage, milesAgo, date, neverDone, vehicleId)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents)</ID>
-    <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val state = if (turnOn == null) SpotifyController.toggleShuffle(context) else SpotifyController.setShuffle(context, turnOn)</ID>
+    <ID>MaxLineLength:MusicControlToolbox.kt:MusicControlToolbox$val state = if (turnOn == null) SpotifyController.toggleShuffle(context) else SpotifyController.setShuffle(context, turnOn)</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val status = if (args.optString("status", "achieved").trim().lowercase() == "abandoned") "abandoned" else "achieved"</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val targetValue = if (args.has("target_value") &amp;&amp; !args.isNull("target_value")) args.optDouble("target_value") else null</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$val value = if (args.has("value") &amp;&amp; !args.isNull("value")) args.optDouble("value") else null</ID>
@@ -4362,7 +4363,7 @@
     <ID>ReturnCount:LegionMediaLibraryService.kt:LegionMediaLibraryService.ProbeLibraryCallback$override fun onSetMediaItems( mediaSession: MediaSession, controller: MediaSession.ControllerInfo, mediaItems: MutableList&lt;MediaItem&gt;, startIndex: Int, startPositionMs: Long, ): ListenableFuture&lt;MediaSession.MediaItemsWithStartPosition&gt;</ID>
     <ID>ReturnCount:LiveSessionController.kt:LiveSessionController$fun onTap(fromWakeWord: Boolean = false)</ID>
     <ID>ReturnCount:LiveSessionController.kt:LiveSessionController$private fun isOnline(): Boolean</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject</ID>
+    <ID>ReturnCount:MusicControlToolbox.kt:MusicControlToolbox$internal suspend fun controlMusicTransport(context: Context, action: MusicAction): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$internal suspend fun mailExtraction( context: Context, query: String, noMatchMessage: String, extractionPrompt: String, ): JSONObject</ID>
     <ID>ReturnCount:MusicToolbox.kt:MusicToolbox$private fun controlVolume(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private fun parseCalendarWindow(from: String, to: String, zone: java.time.ZoneId): Pair&lt;Long, Long&gt;?</ID>
@@ -4371,7 +4372,7 @@
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun askAdvisorTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun checkReadiness(): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun closeGoalTool(context: Context, args: JSONObject): JSONObject</ID>
-    <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
+    <ID>ReturnCount:MusicControlToolbox.kt:MusicControlToolbox$private suspend fun controlMusicAddToPlaylist(context: Context, playlistName: String): JSONObject</ID>
     <ID>ReturnCount:MusicToolbox.kt:MusicToolbox$internal suspend fun controlMusicQueue(context: Context, query: String): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun generateGoalPlanTool(context: Context, args: JSONObject): JSONObject</ID>
     <ID>ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun getCodes(context: Context): JSONObject</ID>

@@ -14,7 +14,7 @@ import org.robolectric.RuntimeEnvironment
  * hands paths this ticket lifted out of `private` LiveToolbox functions must reach the exact SAME
  * function `dispatch` reaches, not two call sites that happen to agree today.
  * [LiveToolbox.resolveCurrentLocation] (the `ui/FleetScreen.kt` restatement `getCurrentLocation`
- * used to have) and [LiveToolbox.controlMusicTransport] (the `ui/media/MediaTransport.kt`
+ * used to have) and [MusicControlToolbox.controlMusicTransport] (the `ui/media/MediaTransport.kt`
  * restatement `control_music` used to have) are both pure local reads/writes - no network, no
  * Google account - so they are safe to call directly under Robolectric.
  *
@@ -65,10 +65,10 @@ class LiveToolboxWorldCardSharedFunctionTest {
 
     @Test
     fun `controlMusicTransport direct call and control_music PLAY dispatch reach the identical function`() = runBlocking {
-        val direct = LiveToolbox.controlMusicTransport(context, LiveToolbox.MusicAction.PLAY)
+        val direct = MusicControlToolbox.controlMusicTransport(context, MusicControlToolbox.MusicAction.PLAY)
         val dispatched = LiveToolbox.dispatch(
             context, "control_music",
-            JSONObject().put("action", LiveToolbox.MusicAction.PLAY.wireValue),
+            JSONObject().put("action", MusicControlToolbox.MusicAction.PLAY.wireValue),
         )
         assertJsonEquals(direct, dispatched!!)
     }
