@@ -96,8 +96,8 @@ CODE_SPOKEN_REFUSAL = (
 )
 
 LATER_YES_REFUSAL = (
-    "Nothing was added. {name} saves only on a yes in the person's next turn, which this client "
-    "cannot tell apart; the phone and the web assistant offer it themselves."
+    "Nothing was written. {name} saves only on a yes in the person's next turn, which this "
+    "client cannot tell apart; the phone and the web assistant offer it themselves."
 )
 
 SCREEN_ONLY_REFUSAL = (

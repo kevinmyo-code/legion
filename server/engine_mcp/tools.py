@@ -3617,7 +3617,7 @@ TOOLS: tuple[EngineTool, ...] = (
         description=(
             "Adds an idea to the member's backlog on his laptop board (\"add to the backlog\", "
             "\"idea for LEGION\"). First call with text: the engine scores it and reads it back; "
-            "the turn ends. Only on his yes in his next message call again with that id and "
+            "the turn ends. Only on his yes in his next turn call again with that id and "
             "confirm true; on a no, confirm false. Nothing starts from an idea." + _WRITE_NOTE
         ),
         input_schema=_object(

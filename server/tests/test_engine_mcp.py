@@ -382,7 +382,11 @@ def test_every_write_tool_refuses_a_read_token_and_writes_nothing(mcp_read, auth
     calls = _write_calls(
         seeded["checklist"], seeded["item"], seeded["event"], seeded["purchase"]
     )
-    assert set(calls) == {tool.name for tool in TOOLS if tool.writes}
+    # A later-yes-only tool is never run over /mcp at all (`LATER_YES_ONLY_TOOLS`, refused before
+    # any token check; `test_tenancy.py` and `test_board_ideas.py` cover it).
+    from engine_mcp.server import LATER_YES_ONLY_TOOLS
+
+    assert set(calls) == {tool.name for tool in TOOLS if tool.writes} - LATER_YES_ONLY_TOOLS
 
     def everything():
         feed = dict(auth_client.get("/api/changes").data)

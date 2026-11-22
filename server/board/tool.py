@@ -111,7 +111,7 @@ def add_backlog_idea(request, arguments: dict):
             said = ideas.readback(idea)
             note = (
                 f"Read back backlog idea {idea.id} and asked whether to add it; nothing is saved. "
-                f"Only on his yes in his next message call add_backlog_idea with id {idea.id} and "
+                f"Only on his yes in his next turn call add_backlog_idea with id {idea.id} and "
                 f"confirm true; on a no, confirm false."
             )
         else:
