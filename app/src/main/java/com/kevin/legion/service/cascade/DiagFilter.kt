@@ -7,8 +7,9 @@ package com.kevin.legion.service.cascade
  * turned "No stored engine codes ... pending codes and the other modules were not read" into
  * "Clean bill"). The sibling of [MoneyFilter], same sentence-by-sentence stream. Pure.
  *
- * Dropped ([restatesResult]): a module count ("seven modules", "3 module(s)"); a bare trouble code
- * ("P0420 is still there.", "P zero four two zero again."); a bare verdict ("Clean bill.", "All good.");
+ * Dropped ([restatesResult]): a bare module count ("Seven modules answered."); a bare trouble code
+ * ("P0420 is still there.", "P zero four two zero again."), or any code the spoken line did not say;
+ * a bare verdict ("Clean bill.", "All good.");
  * a bare scripted filler line ("Checking."); or a sentence repeating the spoken line word for word.
  *
  * **Never dropped (2026-11-21, review of the engine twin, V1):** a sentence with a safety cue
@@ -62,8 +63,8 @@ internal class DiagFilter(private val said: String? = null) : SentenceFilter {
 
         /** A warning about driving the car: never dropped. The engine's list, the one list. */
         val SAFETY_CUES = listOf(
-            "pull over", "stop driving", "don't drive", "do not drive", "flashing", "overheating", "overheat",
-            "smoke", "brakes", "oil pressure", "temperature warning",
+            "pull over", "pull off", "stop driving", "don't drive", "do not drive", "flashing", "overheating",
+            "overheated", "overheat", "smoke", "burning", "brakes", "oil pressure", "temperature warning",
         )
         private val SAFETY = Regex(
             "\\b(" + SAFETY_CUES.joinToString("|") { Regex.escape(it) } + ")\\b",
@@ -78,7 +79,15 @@ internal class DiagFilter(private val said: String? = null) : SentenceFilter {
                 "set so still stored that that's the there there's this totally very was with wrong you you're " +
                 "your zero oh two three four five six seven eight nine"
             ).split(" ").toSet()
+        /** A module-count sentence made only of these (and [BARE]) says nothing new ("Seven modules answered."). */
+        private val COUNT_BARE = setOf(
+            "answered", "responded", "replied", "read", "scanned", "checked", "were", "came", "back", "up", "in",
+            "out", "on", "reported", "module", "modules", "computers", "controllers", "ecus",
+        )
         private val WORD = Regex("[a-z]+(?:'[a-z]+)?")
+        private val DIGIT_WORDS = listOf("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+        private val JOINED_CODE = Regex("\\b[pcbu][0-3][0-9a-f]{3}\\b")
+        private val CODE_GAP = Regex("(?<=\\b[pcbu]|[0-9])[\\s-]+(?=[0-9])")
         private const val ENDS = ".!?\u2026"
 
         /** Fewest words for a sentence to count as repeating the spoken line. */
@@ -92,14 +101,34 @@ internal class DiagFilter(private val said: String? = null) : SentenceFilter {
             val text = sentence.replace('\u2019', '\'')
             if (SAFETY.containsMatchIn(text)) return false
             val core = text.trim().trimEnd(*ENDS.toCharArray()).lowercase()
-            return COUNT.containsMatchIn(text) ||
-                (CODE.containsMatchIn(text) && bare(CODE.replace(core, " "))) ||
+            return (COUNT.containsMatchIn(text) && bare(COUNT.replace(core, " "), COUNT_BARE)) ||
+                (CODE.containsMatchIn(text) && codeRestates(core, said)) ||
                 (VERDICT.containsMatchIn(text) && bare(core)) ||
                 repeats(core, said) ||
                 LeadingFiller.core(sentence) in LeadingFiller.CORES
         }
 
-        private fun bare(core: String): Boolean = WORD.findAll(core).all { it.value in BARE }
+        private fun bare(core: String, more: Set<String> = emptySet()): Boolean =
+            WORD.findAll(core).all { it.value in BARE || it.value in more }
+
+        /**
+         * A sentence naming a code restates the read when it says nothing else, or when any code in it
+         * was not in the spoken line: the model may explain a code it was given, never say one itself
+         * (review D1, 2026-11-21: the text model garbles figures, the reason the line is spoken by code).
+         */
+        private fun codeRestates(core: String, said: String?): Boolean {
+            if (bare(CODE.replace(core, " "))) return true
+            val codes = codesIn(core)
+            return codes.isEmpty() || said == null || !codesIn(said).containsAll(codes)
+        }
+
+        /** The codes in [text], written as P0301 whether said "P0301", "p 0 3 0 1" or "P zero three oh one". */
+        fun codesIn(text: String): Set<String> {
+            var t = text.lowercase()
+            DIGIT_WORDS.forEachIndexed { d, w -> t = t.replace(Regex("\\b$w\\b"), "$d") }
+            t = t.replace(Regex("\\boh\\b"), "0").replace(CODE_GAP, "")
+            return JOINED_CODE.findAll(t).map { it.value.uppercase() }.toSet()
+        }
 
         /** The sentence is the spoken line, or a run of it, word for word. */
         private fun repeats(core: String, said: String?): Boolean {

@@ -40,6 +40,7 @@ class DiagFilterTest {
             "If the check engine light is flashing, stop driving.", "Don't drive it until the codes are clear.",
             "Do not drive it if it's overheating.", "Clean, but if you see smoke, pull over.",
             "The brakes are fine, just get them looked at.", "Oil pressure is okay.", "A temperature warning is not fine.",
+            "If it has overheated, it's not okay to keep going.", "That burning smell is not fine.", "Pull off at the next exit, okay.",
         )) {
             assertFalse(s, DiagFilter.restatesResult(s))
             assertFalse(s, DiagFilter.restatesResult(s, said = s))
@@ -57,21 +58,35 @@ class DiagFilterTest {
         }
     }
 
+    // Review D1, 2026-11-21: the model may explain a code the phone said, never say one itself.
     @Test
-    fun `a code explained passes, unless it repeats the spoken line word for word`() {
+    fun `a code explained passes only when every code in it was in the spoken line`() {
         val said = "One stored engine code: P0301, cylinder 1 misfire detected."
-        for (s in listOf(
-            "P0301 means cylinder 1 is misfiring.", "P0301 usually points to a plug or a coil on cylinder 1.",
-            "One stored code, P-zero-four-twenty, for catalyst efficiency.",
-        )) {
-            assertFalse(s, DiagFilter.restatesResult(s))
+        for (s in listOf("P0301 means cylinder 1 is misfiring.", "P0301 usually points to a plug or a coil on cylinder 1.")) {
             assertFalse(s, DiagFilter.restatesResult(s, said))
+            // With no spoken line to check against, a code is never the model's to say.
+            assertTrue(s, DiagFilter.restatesResult(s))
         }
+        // A code the line did not say, or a garbled one, is dropped.
+        assertTrue(DiagFilter.restatesResult("P0302 means cylinder 2 is misfiring.", said))
+        assertTrue(DiagFilter.restatesResult("P0301 and P0302 both point to the coils.", said))
+        assertTrue(DiagFilter.restatesResult("One stored code, P-zero-four-twenty, for catalyst efficiency.", said))
+        // Said in words, the same code: an explanation of it passes.
+        assertFalse(DiagFilter.restatesResult("P zero three oh one means a misfire on cylinder 1.", said))
+        assertEquals(setOf("P0301"), DiagFilter.codesIn("p 0 3 0 1, or P zero three oh one, or P0301"))
         // Word for word from the line: a repeat, dropped (with or without a code in it).
         assertTrue(DiagFilter.restatesResult("P0301, cylinder 1 misfire detected.", said))
         assertTrue(DiagFilter.restatesResult("Cylinder 1 misfire detected.", said))
         // Too short to call a repeat on its own.
         assertFalse(DiagFilter.restatesResult("Misfire detected.", said))
+    }
+
+    @Test
+    fun `a module count is dropped only when the rest says nothing new`() {
+        for (s in listOf("Seven modules answered.", "3 module(s) answered.", "All modules responded.")) {
+            assertTrue(s, DiagFilter.restatesResult(s))
+        }
+        assertFalse(DiagFilter.restatesResult("Two modules flagged faults, get it checked today."))
     }
 
     @Test
