@@ -197,7 +197,6 @@ export function turnForm(request: TurnRequest): FormData {
   }
   if (request.text) form.append('text', request.text)
   if (request.spoken && request.text) form.append('spoken', 'true')
-  if (request.tour !== undefined) form.append('tour', String(request.tour))
   if (request.greet) {
     form.append('greet', 'true')
     if (request.greetingHistory) form.append('greeting_history', JSON.stringify(request.greetingHistory))
@@ -220,7 +219,6 @@ async function startTurn(request: TurnRequest, signal: AbortSignal): Promise<Tur
       ...(request.text ? { text: request.text } : {}),
       greet: Boolean(request.greet),
       spoken: Boolean(request.spoken),
-      ...(request.tour !== undefined ? { tour: request.tour } : {}),
       conversation_id: request.conversationId,
       utc_offset_minutes: request.utcOffsetMinutes,
       ...(request.preface ? { preface: request.preface } : {}),

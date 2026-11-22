@@ -7,7 +7,6 @@ only `test_*.py`); run it by name with a key, as `realrun_web_cascade.py`:
 
 As a recruiter visitor (an invented content folder, `tests/test_recruiter_content.fake_content`):
 - the opening: its first audio and how long it is;
-- the tour, beat by beat: what was shown and said, first audio per beat;
 - fillers: questions that need a tool, spoken; each filler heard names the tool that ran;
 - speculation: `POST /api/assistant/transcribe` then the words as a spoken turn, against the audio
   turn, first audio each;
@@ -97,7 +96,6 @@ def _post(real, client, label, **fields):
         "reply_audio_ms": audio_bytes // 48,
         "wall_ms": int((time.monotonic() - started) * 1000),
         "cost_usd": done.get("cost_usd"),
-        "tour": done.get("tour"),
         "conversation_id": next((d["conversation_id"] for k, d in events if k == "turn"), None),
     }
     reply = next((d for k, d in events if k == "_pcm"), b"")
@@ -140,21 +138,6 @@ def test_realrun_demo_voice_first(real, tmp_path, monkeypatch):
     assert opening["said"] and "train" not in opening["said"].lower()
     cid = opening["conversation_id"]
 
-    # The tour, as the page plays it.
-    beat, beats = 0, []
-    for _ in range(8):
-        row = _post(real, visitor, f"tour-{beat}", tour=beat, conversation_id=cid)
-        beats.append(row)
-        nxt = (row["tour"] or {}).get("next")
-        if nxt is None:
-            break
-        beat = nxt
-    from assistant.speech_tags import untagged as strip
-    from assistant.tour import END_LINE
-
-    assert strip(END_LINE) in beats[-1]["said"], beats[-1]
-    assert any(t[0] == "show_resume" for b in beats for t in b["tools"]), beats
-
     # Fillers say what ran.
     mismatched = []
     for key, _expect in FILLER_CASES:
@@ -177,7 +160,7 @@ def test_realrun_demo_voice_first(real, tmp_path, monkeypatch):
 
     # Expression tags: never read aloud, never on a money answer, never in what is shown.
     spoken_tags = []
-    for row in (opening, beats[-1], spec):
+    for row in (opening, spec):
         back = _heard_back(real, row)
         if TAG_WORDS.search(back):
             spoken_tags.append((row["case"], back))

@@ -61,7 +61,6 @@ one `cascade_turn` line on the record and in the log, numbers only, never words.
 from __future__ import annotations
 
 import base64
-import dataclasses
 import functools
 import logging
 import queue
@@ -156,7 +155,7 @@ from agents.voice.stage import (  # noqa: F401 - prices read as cascade.X
     transcribe,
     turn_cost_usd,
 )
-from assistant import echo, fillers, read_through, speech_tags, spoken_figures, tour, web_greeting
+from assistant import echo, fillers, read_through, speech_tags, spoken_figures, web_greeting
 from assistant.models import AssistantCall
 from assistant.surface import off_registry_tool, refusal_for, tools_for
 from demo import suggestions
@@ -665,8 +664,6 @@ class TurnInput:
     # that was playing: only then is the transcript checked for an echo (round 4 ruling).
     barge_in: bool = False
     last_reply: str = ""
-    # The one-minute tour (`assistant/tour.py`): the beat to play, or None.
-    tour_beat: int | None = None
     # A tapped suggestion chip offered to this visitor (`demo.suggestions.chip_for`): its checked
     # lookup is the turn's first round, never the model's pick.
     chip: object | None = None
@@ -732,7 +729,7 @@ class TurnReport:
     said: list[str] = field(default_factory=list)
     timings: dict = field(default_factory=dict)
     # What the conversation's history replays for some of `said` (by index): a marker in place of
-    # a sentence the model must never see again (his profile, a tour line about him), or "" to
+    # a sentence the model must never see again (his profile), or "" to
     # replay nothing for it. The record still keeps `said` as it was.
     replay: dict[int, str] = field(default_factory=dict)
 
@@ -963,13 +960,7 @@ def run_turn(
     else:
         counted = CountingModel(model)
         model = counted
-    speak = (
-        turn_input.audio is not None
-        or turn_input.greet
-        or turn_input.spoken
-        # A tour beat is narrated; a typed question during it is a typed turn (round 3 N9).
-        or (turn_input.tour_beat is not None and not turn_input.text)
-    )
+    speak = turn_input.audio is not None or turn_input.greet or turn_input.spoken
     system = cached_system(system)
     yield ev.Event("turn", {"conversation_id": str(conversation_id), "turn": turn})
     door = WebDoor(request, conversation_id, turn)
@@ -1007,42 +998,6 @@ def run_turn(
                 companion_name,
             )
             return
-        if turn_input.tour_beat is not None:
-            words = None
-            if turn_input.audio is not None:
-                # Said during the tour: "skip" and "stop" steer it; anything else is a question.
-                try:
-                    heard = transcribe(speech, turn_input.audio, timings)
-                except SpeechFailure as exc:
-                    timings["stt_failed"] = str(exc)
-                    report.status = "stt_failed"
-                    # Said, as on the answer path (round 2 turn review 7).
-                    speaker.add(MISSED_LINE)
-                    yield from speaker.drain()
-                    yield ev.error(STT_FAILED)
-                    return
-                words = heard.text
-                yield ev.Event("heard", {"text": words})
-            elif turn_input.text:
-                # Typed during the tour: the same as said (2026-11-17, the page sends the beat).
-                words = turn_input.text.strip()
-            if words is not None and not words.strip():
-                # No speech during the tour: silence, as on the answer path.
-                report.status = "nothing_heard"
-                yield ev.done("nothing_heard", "", False, ignored="no_speech")
-                return
-            if turn_input.audio is not None:
-                timings["speech_fetched"] = filler_audio.warm(speech, voice)
-            if words is None or tour.is_skip(words) or tour.is_stop(words):
-                yield from _tour(request, door, speaker, report, turn_input.tour_beat, words)
-                return
-            turn_input = dataclasses.replace(
-                turn_input,
-                audio=None,
-                text=words,
-                spoken=turn_input.audio is not None or turn_input.spoken,
-                tour_beat=None,
-            )
         yield from _answer(
             request,
             turn_input,
@@ -1637,68 +1592,6 @@ def _not_for_me(request, door, speaker, report, timings):
 
 def conversation_id_of(door: WebDoor):
     return door.conversation_id
-
-
-def _tour(request, door, speaker, report, beat: int, words: str | None):
-    """One beat of the one-minute tour (`assistant/tour.py`): its visual through the tool door,
-    its sentence from code. Skips beats with nothing to show; "stop" ends the tour."""
-    report.status = "tour"
-    if words is not None and tour.is_stop(words):
-        report.said.append(speech_tags.untagged(tour.STOPPED_LINE))
-        speaker.add(tour.STOPPED_LINE, expressive=True)
-        yield ev.Event("sentence", {"text": speech_tags.untagged(tour.STOPPED_LINE)})
-        yield from speaker.drain()
-        yield ev.done(
-            "tour",
-            speech_tags.untagged(tour.STOPPED_LINE),
-            False,
-            tour={"beat": beat, "next": None},
-        )
-        return
-    beats = tour.beats_for(request.user) if door.recruiter else []
-    index = beat
-    said = ""
-    while index < len(beats):
-        said, ran = tour.run_beat(door, beats[index])
-        done = door.calls[-1] if beats[index].tool and door.calls else None
-        if done is not None and ran:
-            payload = {"name": done.name, "ok": done.ok, "outcome": done.outcome}
-            if door.strip:
-                payload["ms"] = done.ms
-            payload["text"] = done.text
-            if done.card is not None:
-                payload["card"] = done.card
-            yield ev.Event("tool", payload)
-        if ran and said:
-            break
-        index += 1
-    nxt = index + 1 if index + 1 < len(beats) else None
-    if index >= len(beats):
-        said, nxt = tour.END_LINE, None
-    # Only the tour's own code lines may carry a tag; words from the content never do.
-    about_him = index < len(beats) and beats[index].about_him
-    # His profile's own sentences are shown and said exactly as written (no tag stripper, no figure
-    # rounding), as `about_kevin` says them.
-    shown = said if about_him else speech_tags.untagged(said)
-    if about_him:
-        speaker.exact = True
-    # A beat that states facts about him (his profile): history replays which beat was read, never
-    # its words, so no later turn can reword them (2026-11-18). A diagram's caption is about the
-    # project and stays, so a follow-up about the diagram still has it.
-    marker = f"(Tour line read aloud: {beats[index].key}.)" if about_him else None
-    report.say(shown, marker)
-    report.timings["sentences"] = 1
-    speaker.add(said, expressive=said in tour.CODE_LINES)
-    yield ev.Event("sentence", {"text": shown})
-    yield from speaker.drain()
-    if nxt is None and said != tour.END_LINE:
-        report.said.append(speech_tags.untagged(tour.END_LINE))
-        speaker.add(tour.END_LINE, expressive=True)
-        yield ev.Event("sentence", {"text": speech_tags.untagged(tour.END_LINE)})
-        yield from speaker.drain()
-    yield ev.done(
-        "tour", " ".join(report.said), False, tour={"beat": index, "next": nxt, "of": len(beats)}
-    )
 
 
 def _greet(

@@ -8,7 +8,7 @@ They live only on the text sent to speech:
   2026-11-17 for both voices (`.legion/reports/tag-heard-test-1117.json`: synthesised, transcribed
   back, the tag word never spoken, the length sane). Any other tag is removed; `<long pause>` (about
   1.5 s) and the non-human or distressed sounds are never allowed.
-- **Where:** casual sentences, liberally: code-written lines (the opening, the tour, sign-offs, a
+- **Where:** casual sentences, liberally: code-written lines (the opening, sign-offs, a
   thinking sound on some fillers) and the model (`PROMPT_LINE`). Never on a sentence with a
   figure, date or time, a refusal or error, or a confirmation of a change (`casual`), and never on
   a code line that is not expressive (verbatim figures, failures, the recording notice).

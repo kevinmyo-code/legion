@@ -936,13 +936,13 @@ paths:
         `speech_failed` {reason}; `speech_stopped` {reason} (the rest of the answer
         is shown, not spoken); `done` {status, final_text, writes_ran, words?, end?
         (the conversation closes), ignored? (`not_addressed`, `unsure` or `no_speech`:
-        nothing was answered), tour? {beat, next, of}, cost_usd? and tools_ms? (the
-        demo tester visit''s estimated turn cost and each tool''s time; no other caller
-        gets them)}; `error` {words}. A typed turn gets no `audio`. Every refusal
-        body is {detail, code}: `bad_request` (400), `no_conversation` (404), `live_engine`,
-        `time_limit`, `busy` (with `retry_ms`) and `duplicate` (409), `too_long` (413),
-        `member_cap`, `demo_full`, `budget` and `throttled` (429), `no_key` (503).
-        `turn_id` names the turn for `POST /api/assistant/turn/cancel`.'
+        nothing was answered), cost_usd? and tools_ms? (the demo tester visit''s estimated
+        turn cost and each tool''s time; no other caller gets them)}; `error` {words}.
+        A typed turn gets no `audio`. Every refusal body is {detail, code}: `bad_request`
+        (400), `no_conversation` (404), `live_engine`, `time_limit`, `busy` (with
+        `retry_ms`) and `duplicate` (409), `too_long` (413), `member_cap`, `demo_full`,
+        `budget` and `throttled` (429), `no_key` (503). `turn_id` names the turn for
+        `POST /api/assistant/turn/cancel`.'
       summary: One assistant turn on the engine's voice pipeline, answered as Server-Sent
         Events
       tags:
@@ -15209,15 +15209,6 @@ components:
           nullable: true
           description: The browser's own id for this turn, so it can be stopped with
             `POST /api/assistant/turn/cancel`.
-        tour:
-          type: integer
-          maximum: 20
-          minimum: 0
-          nullable: true
-          description: 'A demo visit''s one-minute tour: the beat to play (from 0).
-            With `audio` or `text`, what was said or typed during the tour: ''skip''
-            plays this beat, ''stop'' ends the tour, anything else is a question and
-            the tour ends.'
         greet:
           type: boolean
           default: false

@@ -54,7 +54,7 @@ from the web door's and are listed under "Differences".
 Differences from the web door, kept on purpose in V1: `turn` and `tool` carry the agent turn's own
 fields (the eval runner and the limb contract read them); `heard` follows `turn` here because the
 turn row is made from the transcript; `crisis` is this door's only. The web door's `greeting`,
-`offer`, `tour`, `cost_usd`, `tools_ms` and `words` are the web's alone.
+`offer`, `cost_usd`, `tools_ms` and `words` are the web's alone.
 
 ## What a turn's speech may cost (review 2026-11-19, C3)
 

@@ -54,7 +54,6 @@ class Chip:
 
 
 # Before the first turn: about him, how LEGION is built, his résumé, one demo-household question.
-# The one-minute tour keeps its own control on the stage (it is not a question).
 EXAMPLES: tuple[Chip, ...] = (
     Chip(
         "about", "About Kevin", "Tell me about Kevin.", "about_kevin", {"sections": ["overview"]},
