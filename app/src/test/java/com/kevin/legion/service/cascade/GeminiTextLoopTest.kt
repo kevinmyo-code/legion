@@ -588,6 +588,27 @@ class GeminiTextLoopTest {
     }
 
     @Test
+    fun `the factory board's words are spoken but never handed to the model`() = runBlocking<Unit> {
+        val board = "Fresh. 1 in flight. Working on Pick a teapot."
+        val tool = TextToolExecutor { _, _, _ ->
+            com.kevin.legion.ai.VerbatimSpeech.markPrivate(
+                JSONObject().put("success", true).put("message", "Fresh. 1 in flight."),
+                board,
+                "claude_session",
+            )
+        }
+        val t = Scripted(ok(callEv("get_weather")), ok(textEv("Anything else?")))
+        val l = Collect()
+        val r = loop(t).answer(prefix, contents, tool, l)
+        assertTrue(r.verbatimSpoken)
+        assertTrue(l.text.toString().startsWith(board))
+        // The second request (after the tool) carries the tool's result: the counts, not the words.
+        val sent = t.bodies[1].toString()
+        assertFalse(sent, sent.contains("teapot"))
+        assertTrue(sent, sent.contains("Fresh. 1 in flight."))
+    }
+
+    @Test
     fun `only a tool on the allowlist may have its words spoken`() = runBlocking<Unit> {
         val t = Scripted(ok(callEv("get_weather")), ok(textEv("It is mild.")))
         val l = Collect()

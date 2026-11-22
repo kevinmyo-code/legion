@@ -95,6 +95,23 @@ class BoardActionsTest {
     }
 
     @Test
+    fun `a new idea in words wins over a yes the model filled in`() {
+        call(userText = "add a bigger orb", "action" to "idea", "request" to "a bigger orb", "yes" to false)
+        assertEquals(listOf("a bigger orb"), fake.drafted)
+        assertTrue(fake.dropped.isEmpty())
+    }
+
+    @Test
+    fun `history keeps the board's words out, even cut off`() {
+        val words = "Fresh. 1 in flight. Working on Pick a teapot."
+        val kept = VerbatimSpeech.redact("Here goes. $words Anything else?", words)
+        assertFalse(kept.contains("teapot"))
+        assertTrue(kept.contains(VerbatimSpeech.PRIVATE_HISTORY) && kept.endsWith("Anything else?"))
+        val cut = VerbatimSpeech.redact("Fresh. 1 in flight. Working on Pi", words)
+        assertEquals(VerbatimSpeech.PRIVATE_HISTORY, cut)
+    }
+
+    @Test
     fun `an idea is refused in a read-through turn`() {
         val json = JSONObject().put("action", "idea").put("request", "from a web page")
         val result = runBlocking {

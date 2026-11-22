@@ -208,31 +208,98 @@ def test_twenty_drafts_a_day(on, auth_client, household_user):
             status=IDEA_DROPPED,
         )
     response = auth_client.post(IDEAS, {"text": "one more"}, format="json")
-    assert response.status_code in (400, 429)
+    # The engine's own count, not the throttle (which allows 20 POSTs and none were made).
+    assert response.status_code == 400
+    assert response.json()["detail"] == ideas.TOO_MANY
 
 
 # ---- the tool -----------------------------------------------------------------------------------
 
 
+def _on_turn(user, number, words, conversation="c-1"):
+    request = _request(user)
+    ideas.set_turn(request, conversation, number, words)
+    return request
+
+
+def _aged(idea_id):
+    BoardIdea.objects.filter(pk=idea_id).update(created_at=timezone.now() - timedelta(seconds=30))
+
+
 def test_tool_reads_back_by_code_and_ends_the_turn(on, scorer, household_user):
-    result = add_backlog_idea(_request(household_user), {"text": "Sort the garage list"})
+    result = add_backlog_idea(_on_turn(household_user, 1, "add it"), {"text": "Sort the garage"})
     assert not result.is_error
     said = result.structured[SPEAK_VERBATIM]
-    assert said[0].startswith("Backlog idea: Sort the garage list. Scored")
+    assert said[0].startswith("Backlog idea: Sort the garage. Scored")
     assert result.structured[ENDS_TURN] is True
     idea_id = result.structured["id"]
+    idea = BoardIdea.objects.get(pk=idea_id)
+    assert idea.status == IDEA_DRAFT and (idea.draft_conversation, idea.draft_turn) == ("c-1", 1)
+    _aged(idea_id)
+    # The same turn, even after the time floor: refused, nothing saved.
+    again = add_backlog_idea(_on_turn(household_user, 1, "yes"), {"id": idea_id, "confirm": True})
+    assert again.is_error and again.text == ideas.SAME_TURN
     assert BoardIdea.objects.get(pk=idea_id).status == IDEA_DRAFT
-    # The same breath: refused, nothing saved.
-    again = add_backlog_idea(_request(household_user), {"id": idea_id, "confirm": True})
-    assert again.is_error and BoardIdea.objects.get(pk=idea_id).status == IDEA_DRAFT
-    BoardIdea.objects.filter(pk=idea_id).update(created_at=timezone.now() - timedelta(seconds=30))
-    saved = add_backlog_idea(_request(household_user), {"id": idea_id, "confirm": True})
+    saved = add_backlog_idea(_on_turn(household_user, 2, "Yes"), {"id": idea_id, "confirm": True})
     assert saved.structured[SPEAK_VERBATIM] == [ideas.SAVED]
     assert BoardIdea.objects.get(pk=idea_id).status == IDEA_PENDING
 
 
+@pytest.mark.parametrize("words", ["hmm, not sure", "wait", "", "what score was that?"])
+def test_the_next_turn_must_be_a_yes_in_his_words_not_the_models(on, scorer, household_user, words):
+    result = add_backlog_idea(_on_turn(household_user, 1, "add it"), {"text": "An idea"})
+    _aged(result.structured["id"])
+    later = add_backlog_idea(
+        _on_turn(household_user, 2, words), {"id": result.structured["id"], "confirm": True}
+    )
+    assert later.is_error and later.text == ideas.NOT_A_YES
+    assert BoardIdea.objects.get().status == IDEA_DRAFT
+
+
+def test_a_door_that_cannot_tell_turns_apart_never_confirms(on, scorer, household_user):
+    """Live and the web tool door: no turn here, so a confirm is refused in words, whatever the
+    model says; a draft still reads back. The tool door's own `set_turn` (no carry) is no turn."""
+    from assistant import read_through
+
+    request = _request(household_user)
+    read_through.set_turn(request, "00000000-0000-0000-0000-000000000001", 3)
+    result = add_backlog_idea(request, {"text": "An idea"})
+    assert not result.is_error
+    _aged(result.structured["id"])
+    later = _request(household_user)
+    read_through.set_turn(later, "00000000-0000-0000-0000-000000000001", 9)
+    refused = add_backlog_idea(later, {"id": result.structured["id"], "confirm": True})
+    assert refused.is_error and refused.text == ideas.NO_TURN_DOOR
+    assert "phone or in the web chat" in refused.text
+    assert BoardIdea.objects.get().status == IDEA_DRAFT
+
+
+def test_a_yes_in_another_conversation_saves_nothing(on, scorer, household_user):
+    result = add_backlog_idea(_on_turn(household_user, 1, "add it"), {"text": "An idea"})
+    _aged(result.structured["id"])
+    other = _on_turn(household_user, 2, "yes", conversation="c-2")
+    refused = add_backlog_idea(other, {"id": result.structured["id"], "confirm": True})
+    assert refused.is_error and refused.text == ideas.OTHER_CONVERSATION
+
+
+def test_only_the_newest_of_two_drafts_is_confirmable(on, scorer, auth_client, household_user):
+    """Two drafts at once (a race past the drop): only the newest can be said yes to."""
+    first = _draft(auth_client, "First")
+    BoardIdea.objects.create(
+        household=household_user.household_member.household,
+        owner_user=household_user,
+        title="Second",
+        text="Second",
+        status=IDEA_DRAFT,
+    )
+    _later(first)
+    response = auth_client.post(f"{IDEAS}/{first['id']}/confirm")
+    assert response.status_code == 400 and response.json()["detail"] == ideas.SUPERSEDED
+
+
 def test_tool_no_drops_and_nothing_without_words(on, scorer, household_user):
     result = add_backlog_idea(_request(household_user), {"text": "Idea"})
+    # A no needs no turn: dropping saves nothing, on any door.
     dropped = add_backlog_idea(
         _request(household_user), {"id": result.structured["id"], "confirm": False}
     )
@@ -240,11 +307,23 @@ def test_tool_no_drops_and_nothing_without_words(on, scorer, household_user):
     assert add_backlog_idea(_request(household_user), {}).is_error
 
 
-def test_engine_brain_holds_the_confirm_for_a_later_yes():
+def test_the_read_back_ends_the_turn_on_the_engine_doors_and_asks_one_yes_only():
+    """The read-back is spoken by code and ends the turn (cascade and engine brain), so his yes is
+    his next turn; the brain's confirm hold is NOT also applied, or he would be asked twice."""
     from agents.legion.guards import CONFIRM_FLAG_TOOLS
     from agents.legion.speech_rules import VERBATIM_TOOLS
 
-    assert "add_backlog_idea" in CONFIRM_FLAG_TOOLS and "add_backlog_idea" in VERBATIM_TOOLS
+    assert "add_backlog_idea" in VERBATIM_TOOLS and "add_backlog_idea" not in CONFIRM_FLAG_TOOLS
+
+
+def test_a_door_that_cannot_speak_is_told_to_read_it_back_not_that_it_was_said(
+    on, scorer, household_user
+):
+    from engine_mcp.tools import FOR_MODEL
+
+    result = add_backlog_idea(_request(household_user), {"text": "Sort the garage list"})
+    assert "Said to him" not in result.text and "Say this to him" in result.text
+    assert "said to him word for word" in result.structured[FOR_MODEL]
 
 
 # ---- the laptop's pull --------------------------------------------------------------------------
@@ -378,3 +457,79 @@ def test_brief_is_short_code_spoken_and_the_model_gets_counts_only(on, scorer, a
 def test_brief_with_no_board_says_so(on, auth_client):
     body = auth_client.get(BOARD).json()
     assert body["brief"] and "never sent" in body["brief"][0]
+
+
+# ---- the web cascade door, end to end -----------------------------------------------------------
+
+
+@pytest.fixture
+def cascade_engine(monkeypatch):
+    from agents.runtime.model import FakeModel, say
+    from assistant import views
+    from tests.test_assistant_cascade import FakeSpeech
+
+    class Engine:
+        model = FakeModel([say("Hello.")])
+        speech = FakeSpeech()
+
+    monkeypatch.setattr(views, "_cascade_clients", lambda: (Engine.model, Engine.speech))
+    monkeypatch.delenv("LEGION_WEB_VOICE", raising=False)
+    monkeypatch.setenv("LEGION_GEMINI_KEY", "test-key")
+    return Engine
+
+
+def _web_turn(client, text, conversation=None):
+    from tests.test_assistant_cascade import _events, _of, _post
+
+    fields = {"text": text}
+    if conversation:
+        fields["conversation_id"] = conversation
+    events = _events(_post(client, **fields))
+    return events, _of(events, "turn")[0]["conversation_id"]
+
+
+def _fixed_idea_ids(monkeypatch, fixed: str) -> None:
+    """New ideas get `fixed` as their id, so a fake model's later call can name it. Django caches a
+    field's default as `_get_default`, so that is what is replaced."""
+    import uuid
+
+    field = BoardIdea._meta.get_field("id")
+    monkeypatch.setattr(field, "_get_default", lambda: uuid.UUID(fixed), raising=False)
+
+
+def test_web_cascade_saves_only_on_his_yes_next_turn(
+    on, scorer, household_user, cascade_engine, monkeypatch
+):
+    from agents.runtime.model import FakeModel, call, say
+    from tests.test_assistant import browser
+    from tests.test_assistant_cascade import _of
+
+    web = browser(household_user)
+    fixed = "11111111-2222-4333-8444-555555555555"
+    _fixed_idea_ids(monkeypatch, fixed)
+    # Draft and confirm in ONE turn: the read-back ends the turn; nothing is saved.
+    cascade_engine.model = FakeModel(
+        [
+            call("add_backlog_idea", {"text": "A quieter chime"}),
+            call("add_backlog_idea", {"id": fixed, "confirm": True}),
+            say("Saved."),
+        ]
+    )
+    events, conversation = _web_turn(web, "Add a quieter chime to the backlog.")
+    assert BoardIdea.objects.get().status == IDEA_DRAFT
+    said = " ".join(e["text"] for e in _of(events, "sentence"))
+    assert "Backlog idea: A quieter chime." in said
+    _aged(fixed)
+    # His next turn, not a yes: nothing saved, whatever the model does.
+    cascade_engine.model = FakeModel(
+        [call("add_backlog_idea", {"id": fixed, "confirm": True}), say("Done.")]
+    )
+    _web_turn(web, "Hmm, let me think.", conversation)
+    assert BoardIdea.objects.get().status == IDEA_DRAFT
+    # His next turn, a yes: saved.
+    cascade_engine.model = FakeModel(
+        [call("add_backlog_idea", {"id": fixed, "confirm": True}), say("Done.")]
+    )
+    events, _ = _web_turn(web, "Yes.", conversation)
+    idea = BoardIdea.objects.get()
+    assert idea.status == IDEA_PENDING, _of(events, "tool")

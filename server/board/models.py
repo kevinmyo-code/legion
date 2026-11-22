@@ -140,6 +140,10 @@ class BoardIdea(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     confirmed_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
+    # The voice turn that read it back (`board.ideas.Turn`): a voice confirm must come from a later
+    # turn of the same conversation. Blank and null when drafted through REST (the phone).
+    draft_conversation = models.CharField(max_length=64, blank=True, default="")
+    draft_turn = models.IntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "board_ideas"

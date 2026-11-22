@@ -51,8 +51,10 @@ object BoardActions {
             "where" -> where(context)
             "needs" -> needs(context)
             else -> {
-                val yes = if (args.has("yes")) args.optBoolean("yes") else null
-                idea(context, args.optString("request"), yes, userText)
+                // A new idea in words wins over a `yes` the model filled in by default.
+                val request = args.optString("request")
+                val yes = if (args.has("yes") && request.isBlank()) args.optBoolean("yes") else null
+                idea(context, request, yes, userText)
             }
         }
 
@@ -83,7 +85,9 @@ object BoardActions {
     suspend fun where(context: Context): JSONObject =
         when (val out = backendFactory(context).brief()) {
             is BoardOutcome.Failed -> result(false, out.sentence)
-            is BoardOutcome.Ok -> {
+            is BoardOutcome.Ok -> if (out.value.lines.isEmpty()) {
+                result(false, "The engine sent no words for the board. Nothing was read aloud.")
+            } else {
                 publishCard(out.value)
                 val said = out.value.lines.joinToString(" ")
                 VerbatimSpeech.markPrivate(

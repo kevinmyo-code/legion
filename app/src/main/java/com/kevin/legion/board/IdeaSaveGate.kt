@@ -64,12 +64,11 @@ class IdeaSaveGate(private val clock: () -> Long = System::currentTimeMillis) {
         const val NOT_A_YES =
             "Nothing was saved: that was not a clear yes. Ask whether to add it, and save it only on a yes."
 
-        private val YES_WORDS = setOf(
-            "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "add", "save", "do", "go", "please", "correct",
-        )
+        private val YES_WORDS = setOf("yes", "yeah", "yep", "yup", "sure", "add", "save", "correct")
         private val NOT_YES_WORDS = setOf(
             "no", "nope", "nah", "not", "don't", "dont", "never", "stop", "wait", "hold", "cancel", "later",
             "actually", "maybe", "change", "edit", "instead", "unless", "but", "why", "what", "how", "if",
+            "drop", "forget", "skip", "away", "scrap", "delete", "remove",
         )
         private val QUESTION_OPENERS = setOf("can", "could", "would", "will", "should", "is", "are", "did", "does")
 

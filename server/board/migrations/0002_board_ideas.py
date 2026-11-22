@@ -88,6 +88,8 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(default=django.utils.timezone.now)),
                 ("confirmed_at", models.DateTimeField(blank=True, null=True)),
                 ("delivered_at", models.DateTimeField(blank=True, null=True)),
+                ("draft_conversation", models.CharField(blank=True, default="", max_length=64)),
+                ("draft_turn", models.IntegerField(blank=True, null=True)),
                 (
                     "household",
                     models.ForeignKey(
