@@ -147,6 +147,19 @@ class ClaudeSessionToolboxTest {
     }
 
     @Test
+    fun `a session is spoken by its own name, else by its folder`() {
+        val named = com.kevin.legion.claude.ClaudeCodeSession(
+            "Alienware", "garden", "waiting", null, null, sessionId = "s-1", name = "planner",
+        )
+        assertEquals(
+            "Session planner (garden) on the Alienware, waiting on you",
+            ClaudeSessionToolbox.sessionLine(named),
+        )
+        val unnamed = named.copy(name = "", state = "idle")
+        assertEquals("Session garden on the Alienware, idle", ClaudeSessionToolbox.sessionLine(unnamed))
+    }
+
+    @Test
     fun `check names one step per running task, never the kept history`() {
         backend.machines(machine("Alienware", state = "busy", running = listOf(41)))
         val history = listOf(

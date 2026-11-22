@@ -1,6 +1,7 @@
 package com.kevin.legion.service
 
 import android.content.Context
+import com.kevin.legion.claude.ClaudeCodeSession
 import com.kevin.legion.claude.ClaudeMachine
 import com.kevin.legion.claude.ClaudeModalHolder
 import com.kevin.legion.claude.ClaudeOutcome
@@ -246,12 +247,19 @@ object ClaudeSessionToolbox {
             lines += c.wording.result(t, summariesOnly = true) + files
             consumeAnnouncement(t, watch)
         }
-        o.status.sessions.filter { wanted(it.machine) }.forEach { s ->
-            val doing = s.lastPromptSummary?.let { ": $it" } ?: ""
-            lines += "Session on the ${s.machine}, ${s.project.ifBlank { "no project" }}, " +
-                (if (s.waitingOnYou) "waiting on you" else s.state) + doing
-        }
+        o.status.sessions.filter { wanted(it.machine) }.forEach { lines += sessionLine(it) }
         return result(true, lines.joinToString("\n"))
+    }
+
+    /**
+     * One interactive session, by its own name when it has one (alfred-sessions 2026-11-22), so
+     * "summarise the builder session" has a name to say back.
+     */
+    internal fun sessionLine(s: ClaudeCodeSession): String {
+        val doing = s.lastPromptSummary?.let { ": $it" } ?: ""
+        val folder = if (s.name.isNotBlank() && s.project.isNotBlank()) " (${s.project})" else ""
+        return "Session ${s.spokenName}$folder on the ${s.machine}, " +
+            (if (s.waitingOnYou) "waiting on you" else s.state) + doing
     }
 
     /**

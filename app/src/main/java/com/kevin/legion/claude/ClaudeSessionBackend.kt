@@ -37,8 +37,17 @@ data class ClaudeCodeSession(
     /** Null on the work laptop: its prompts never reach the engine (ruling 5). */
     val lastPromptSummary: String?,
     val lastSeenAt: Instant?,
+    /** Claude Code's own id for the session; blank from an engine before alfred-sessions. */
+    val sessionId: String = "",
+    /** The session's own name (`/rename`); blank when unknown or from the work laptop. */
+    val name: String = "",
+    /** When its current wait on Kevin began; null unless waiting. One alert per wait keys on it. */
+    val waitingSince: Instant? = null,
 ) {
     val waitingOnYou: Boolean get() = state == STATE_WAITING
+
+    /** What Alfred calls it: its name, else its project folder. */
+    val spokenName: String get() = name.ifBlank { project.ifBlank { "unnamed" } }
 
     companion object {
         const val STATE_WAITING = "waiting"
