@@ -69,15 +69,15 @@ internal class TestTurnDriver(
         )
     }
 
-    override fun turn(id: String, text: String, allowWrites: Boolean): String? = onMain("timeout") {
-        val c = ensureOpen(id, allowWrites) ?: return@onMain lastRefusal
-        TestTurns.log("turn id=$id writes=$allowWrites chars=${text.length}")
+    override fun turn(id: String, text: String, writes: TestWrites): String? = onMain("timeout") {
+        val c = ensureOpen(id, writes) ?: return@onMain lastRefusal
+        TestTurns.log("turn id=$id writes=$writes chars=${text.length}")
         if (c.testTurn(text)) null else "not_taken"
     }
 
-    override fun audio(id: String, pcm: ByteArray, allowWrites: Boolean, barge: Boolean): String? = onMain("timeout") {
-        val c = ensureOpen(id, allowWrites) ?: return@onMain lastRefusal
-        TestTurns.log("audio id=$id writes=$allowWrites barge=$barge ms=${pcm.size / BYTES_PER_MS}")
+    override fun audio(id: String, pcm: ByteArray, writes: TestWrites, barge: Boolean): String? = onMain("timeout") {
+        val c = ensureOpen(id, writes) ?: return@onMain lastRefusal
+        TestTurns.log("audio id=$id writes=$writes barge=$barge ms=${pcm.size / BYTES_PER_MS}")
         if (c.testAudio(pcm, barge)) null else "not_taken"
     }
 
@@ -97,17 +97,17 @@ internal class TestTurnDriver(
 
     /** The open test conversation, opening one if none is open. Null (and [lastRefusal]) when not. */
     @Suppress("ReturnCount") // one worded refusal per way it cannot open
-    private fun ensureOpen(id: String, allowWrites: Boolean): CascadeSession? {
+    private fun ensureOpen(id: String, writes: TestWrites): CascadeSession? {
         val c = current()?.takeIf { it.isOpen }
         if (c != null && !owns(c)) {
             lastRefusal = "real_conversation"
             return null
         }
         if (c != null) {
-            test?.touch(id, allowWrites)
+            test?.touch(id, writes)
             return c
         }
-        val session = TestSession(id, allowWrites)
+        val session = TestSession(id, writes)
         test = session
         testCascade = null
         val why = openTest(session)

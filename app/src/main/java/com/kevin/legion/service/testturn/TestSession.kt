@@ -1,15 +1,15 @@
 package com.kevin.legion.service.testturn
 
 /**
- * One test conversation ([TestTurns]): which case is running, whether that case allows writes,
+ * One test conversation ([TestTurns]): which case is running, what that case may change ([TestWrites]),
  * its microphone ([TestMic]) and the times the phone's own watchdog closes it by. Lives exactly as
  * long as its conversation, so test mode can never outlive it or reach a real conversation.
  */
-class TestSession(id: String, allowWrites: Boolean, val openedAtMs: Long = System.currentTimeMillis()) {
+class TestSession(id: String, writes: TestWrites, val openedAtMs: Long = System.currentTimeMillis()) {
     @Volatile var id: String = id
         private set
 
-    @Volatile var allowWrites: Boolean = allowWrites
+    @Volatile var writes: TestWrites = writes
         private set
 
     @Volatile var lastCommandAtMs: Long = openedAtMs
@@ -18,9 +18,9 @@ class TestSession(id: String, allowWrites: Boolean, val openedAtMs: Long = Syste
     val mic = TestMic()
 
     /** The next command from the computer: its case and write rule apply from now on. */
-    fun touch(id: String, allowWrites: Boolean, now: Long = System.currentTimeMillis()) {
+    fun touch(id: String, writes: TestWrites, now: Long = System.currentTimeMillis()) {
         this.id = id
-        this.allowWrites = allowWrites
+        this.writes = writes
         lastCommandAtMs = now
     }
 

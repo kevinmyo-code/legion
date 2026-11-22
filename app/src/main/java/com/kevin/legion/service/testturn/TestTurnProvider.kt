@@ -12,8 +12,9 @@ import com.kevin.legion.service.cascade.EngineBrainSettings
 /**
  * The adb door for test turns. Reached with `adb shell content call --uri
  * content://com.kevin.legion.testturn --method <status|turn|audio|end|engine_brain> [--arg ...] [--extra id:s:..]
- * [--extra writes:b:true]`; `content call` prints the returned Bundle, which is how the CLI reads
- * status on a non-debuggable build.
+ * [--extra writes:b:true | --extra allow_tools:s:manage_item,manage_checklist]`; `content call`
+ * prints the returned Bundle, which is how the CLI reads status on a non-debuggable build.
+ * `allow_tools` (resolved tool names) lets only those tools change anything ([TestWrites]).
  *
  * Exported, because adb's shell is another uid; **only the shell (2000) or root (0) is answered**,
  * checked against the binder caller, which an app cannot forge. Every other caller gets
@@ -43,7 +44,7 @@ class TestTurnProvider : ContentProvider() {
                 method = method,
                 arg = arg,
                 id = extras?.getString("id").orEmpty().ifBlank { "adb" },
-                allowWrites = extras?.getBoolean("writes", false) == true,
+                writes = TestWrites.from(extras?.getBoolean("writes", false) == true, extras?.getString("allow_tools")),
                 enabled = TestTurnSettings.allowed(ctx),
                 barge = extras?.getBoolean("barge", false) == true,
                 host = TestTurns.host,

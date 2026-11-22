@@ -14,6 +14,39 @@ import org.json.JSONObject
  * `TestTurnPolicyTest` fails on any reachable tool name that is in neither [READS] nor
  * [REFUSED], so a new tool forces a decision here instead of slipping through.
  */
+/**
+ * What a test turn may change (2026-11-22): nothing ([NONE]), anything ([ALL], the `writes` switch),
+ * or only the tools named in [only] (`allow_tools`, resolved names). A named list is the safe one: a
+ * scripted check that adds a list item can then never send mail or touch money, whatever the model
+ * calls, because the refusal comes before the tool runs.
+ */
+data class TestWrites(val all: Boolean = false, val only: Set<String> = emptySet()) {
+    /** [name] is a resolved tool name ([LiveSurface.resolve]). */
+    fun allows(name: String): Boolean = all || name in only
+
+    /** For the log: `none`, `all`, or the named tools. */
+    override fun toString(): String = when {
+        all -> "all"
+        only.isEmpty() -> "none"
+        else -> only.sorted().joinToString(",")
+    }
+
+    companion object {
+        val NONE = TestWrites()
+        val ALL = TestWrites(all = true)
+
+        /** The door's extras: a non-blank `allow_tools` wins over `writes` and narrows it to those tools. */
+        fun from(writes: Boolean, allowTools: String?): TestWrites {
+            val named = allowTools.orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+            return when {
+                named.isNotEmpty() -> TestWrites(only = named)
+                writes -> ALL
+                else -> NONE
+            }
+        }
+    }
+}
+
 object TestTurnPolicy {
     /** Read-only whatever the arguments: [ToolReads.READS], the one read list (moved 2026-11-17). */
     val READS: Set<String> = ToolReads.READS
@@ -57,11 +90,11 @@ object TestTurnPolicy {
 
     /**
      * The refusal for a wire call ([wireName] as the model sent it), or null when it may run: a
-     * read, or any tool when [allowWrites]. Never throws.
+     * read, or a tool [writes] allows. Never throws.
      */
-    fun refusal(wireName: String, wireArgs: JSONObject, allowWrites: Boolean): JSONObject? {
+    fun refusal(wireName: String, wireArgs: JSONObject, writes: TestWrites): JSONObject? {
         val (name, args) = LiveSurface.resolve(wireName, wireArgs)
-        return if (allowWrites || isRead(name, args)) {
+        return if (writes.allows(name) || isRead(name, args)) {
             null
         } else {
             JSONObject().put("success", false).put("test_mode", true).put("tool", name).put("message", MESSAGE)

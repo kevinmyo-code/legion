@@ -69,7 +69,35 @@ class TestTurnPolicyTest {
 
     @Test
     fun `a case that allows writes runs them`() {
-        assertNull(TestTurnPolicy.refusal("manage_item", JSONObject().put("action", "add"), allowWrites = true))
+        assertNull(TestTurnPolicy.refusal("manage_item", JSONObject().put("action", "add"), TestWrites.ALL))
+    }
+
+    @Test
+    fun `a named allow list runs only those tools, refusing the rest before they run`() {
+        val only = TestWrites.from(writes = true, allowTools = " manage_checklist , manage_item ")
+        assertEquals(setOf("manage_checklist", "manage_item"), only.only)
+        assertNull(TestTurnPolicy.refusal("manage_checklist", JSONObject().put("action", "add"), only))
+        // Resolved names: an action tool reaching a listed tool is allowed, any other is refused.
+        assertNull(TestTurnPolicy.refusal("day", JSONObject().put("action", "read_calendar"), only))
+        for ((name, args) in listOf(
+            "email" to JSONObject().put("to", "invented"),
+            "phone" to JSONObject().put("action", "place_call").put("target", "invented"),
+            "set_budget" to JSONObject().put("category", "invented"),
+            "memory" to JSONObject().put("action", "remember").put("text", "invented"),
+        )) {
+            val r = TestTurnPolicy.refusal(name, args, only)
+            assertNotNull(name, r)
+            assertEquals(true, r!!.getBoolean("test_mode"))
+        }
+    }
+
+    @Test
+    fun `the door's extras pick the write rule`() {
+        assertEquals(TestWrites.NONE, TestWrites.from(writes = false, allowTools = null))
+        assertEquals(TestWrites.ALL, TestWrites.from(writes = true, allowTools = " "))
+        assertEquals(TestWrites(only = setOf("timer_start")), TestWrites.from(writes = false, allowTools = "timer_start"))
+        assertEquals("none", TestWrites.NONE.toString())
+        assertEquals("a,b", TestWrites(only = setOf("b", "a")).toString())
     }
 
     @Test
@@ -89,6 +117,6 @@ class TestTurnPolicyTest {
     private fun refuse(name: String, vararg args: Pair<String, Any>): JSONObject? {
         val o = JSONObject()
         for ((k, v) in args) o.put(k, v)
-        return TestTurnPolicy.refusal(name, o, allowWrites = false)
+        return TestTurnPolicy.refusal(name, o, TestWrites.NONE)
     }
 }

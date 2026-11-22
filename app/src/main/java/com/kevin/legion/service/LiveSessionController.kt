@@ -931,7 +931,7 @@ class LiveSessionController(context: Context) {
             showNotice = { CompanionPhase.showNotice(it) },
             tool = { name, args, readThrough, userText, turnSeq ->
                 // A test conversation (adb): every tool through TestTurnPolicy first, deny by default.
-                test?.let { t -> TestTurnPolicy.refusal(name, args, t.allowWrites) }
+                test?.let { t -> TestTurnPolicy.refusal(name, args, t.writes) }
                     ?.also { TestTurns.log("refused tool=$name id=${test?.id}") }
                     ?: cascadeTool(name, args, readThrough, userText, turnSeq, keepRecord = test == null)
             },

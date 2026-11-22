@@ -35,13 +35,13 @@ object TestTurns {
         fun status(): Map<String, Any>
 
         /** Kevin's words as a turn of a test conversation, opened if none is. Null, or why not. */
-        fun turn(id: String, text: String, allowWrites: Boolean): String?
+        fun turn(id: String, text: String, writes: TestWrites): String?
 
         /**
          * A 16 kHz mono PCM16 clip fed in place of the mic of a test conversation, once the open and
          * any reply have finished, or at once with [barge] (to talk over a reply). Null, or why not.
          */
-        fun audio(id: String, pcm: ByteArray, allowWrites: Boolean, barge: Boolean): String?
+        fun audio(id: String, pcm: ByteArray, writes: TestWrites, barge: Boolean): String?
 
         /** Closes the test conversation (a no-op when none is open). */
         fun end(reason: String)
@@ -84,23 +84,27 @@ object TestTurnCommands {
         method: String,
         arg: String?,
         id: String,
-        allowWrites: Boolean,
+        writes: TestWrites,
         enabled: Boolean,
         host: TestTurns.Host?,
         barge: Boolean = false,
         readClip: (String) -> ByteArray?,
     ): Map<String, Any> {
         if (method == "status") {
-            val base = mapOf<String, Any>("ok" to true, "enabled" to enabled, "service" to (host != null))
+            // `allow_tools`: this build honours a named write list (TestWrites), so a caller can tell
+            // a refusal-before-the-tool from an older build where `writes` lets every tool run.
+            val base = mapOf<String, Any>(
+                "ok" to true, "enabled" to enabled, "service" to (host != null), "allow_tools" to true,
+            )
             return if (host != null && enabled) base + host.status() else base
         }
         if (!enabled) return error("disabled: Settings, Assistant, Allow test turns from a computer is off")
         if (host == null) return error("service_not_running")
         val why = when (method) {
-            "turn" -> if (arg.isNullOrBlank()) "no_text" else host.turn(id, arg.trim(), allowWrites)
+            "turn" -> if (arg.isNullOrBlank()) "no_text" else host.turn(id, arg.trim(), writes)
             "audio" -> {
                 val pcm = arg?.let(readClip) ?: return error(BAD_CLIP)
-                host.audio(id, pcm, allowWrites, barge)
+                host.audio(id, pcm, writes, barge)
             }
             "end" -> {
                 host.end("cli")

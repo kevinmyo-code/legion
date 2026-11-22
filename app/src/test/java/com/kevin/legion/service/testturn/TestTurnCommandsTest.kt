@@ -18,16 +18,16 @@ import java.nio.ByteOrder
 class TestTurnCommandsTest {
 
     private class FakeHost : TestTurns.Host {
-        val turns = mutableListOf<Triple<String, String, Boolean>>()
+        val turns = mutableListOf<Triple<String, String, TestWrites>>()
         var clips = 0
         var ended = 0
         var refuse: String? = null
         override fun status() = mapOf<String, Any>("conversation" to "none", "turns_answered" to 0)
-        override fun turn(id: String, text: String, allowWrites: Boolean): String? {
-            turns.add(Triple(id, text, allowWrites))
+        override fun turn(id: String, text: String, writes: TestWrites): String? {
+            turns.add(Triple(id, text, writes))
             return refuse
         }
-        override fun audio(id: String, pcm: ByteArray, allowWrites: Boolean, barge: Boolean): String? {
+        override fun audio(id: String, pcm: ByteArray, writes: TestWrites, barge: Boolean): String? {
             clips++
             return refuse
         }
@@ -37,7 +37,7 @@ class TestTurnCommandsTest {
     }
 
     private fun handle(method: String, arg: String? = null, enabled: Boolean = true, host: TestTurns.Host? = FakeHost(), clip: ByteArray? = null) =
-        TestTurnCommands.handle(method, arg, "case1", false, enabled, host) { clip }
+        TestTurnCommands.handle(method, arg, "case1", TestWrites.NONE, enabled, host) { clip }
 
     @Test
     fun `status answers even when off, and says so`() {
@@ -45,6 +45,7 @@ class TestTurnCommandsTest {
         assertEquals(true, off["ok"])
         assertEquals(false, off["enabled"])
         assertNull(off["conversation"])
+        assertEquals(true, off["allow_tools"])
         val on = handle("status")
         assertEquals("none", on["conversation"])
         assertEquals(true, on["service"])
@@ -70,11 +71,11 @@ class TestTurnCommandsTest {
     @Test
     fun `a turn reaches the host with its case and write rule, and a host refusal comes back`() {
         val host = FakeHost()
-        assertEquals(true, TestTurnCommands.handle("turn", " what's due ", "c9", true, true, host) { null }["ok"])
-        assertEquals(Triple("c9", "what's due", true), host.turns.single())
+        assertEquals(true, TestTurnCommands.handle("turn", " what's due ", "c9", TestWrites.ALL, true, host) { null }["ok"])
+        assertEquals(Triple("c9", "what's due", TestWrites.ALL), host.turns.single())
         host.refuse = "real_conversation"
-        assertEquals("real_conversation", TestTurnCommands.handle("turn", "x", "c9", false, true, host) { null }["error"])
-        TestTurnCommands.handle("end", null, "c9", false, true, host) { null }
+        assertEquals("real_conversation", TestTurnCommands.handle("turn", "x", "c9", TestWrites.NONE, true, host) { null }["error"])
+        TestTurnCommands.handle("end", null, "c9", TestWrites.NONE, true, host) { null }
         assertEquals(1, host.ended)
     }
 
@@ -113,12 +114,12 @@ class TestTurnCommandsTest {
 
     @Test
     fun `a test session expires when idle or too long open`() {
-        val s = TestSession("c1", allowWrites = false, openedAtMs = 0)
+        val s = TestSession("c1", TestWrites.NONE, openedAtMs = 0)
         assertNull(s.expired(now = 1_000))
         assertEquals("idle", s.expired(now = TestTurns.IDLE_CLOSE_MS + 1))
-        s.touch("c2", allowWrites = true, now = TestTurns.MAX_OPEN_MS - 10)
+        s.touch("c2", TestWrites.ALL, now = TestTurns.MAX_OPEN_MS - 10)
         assertEquals("c2", s.id)
-        assertEquals(true, s.allowWrites)
+        assertEquals(TestWrites.ALL, s.writes)
         assertNull(s.expired(now = TestTurns.MAX_OPEN_MS - 5))
         assertEquals("max_open", s.expired(now = TestTurns.MAX_OPEN_MS + 1))
     }
