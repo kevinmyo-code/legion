@@ -1899,8 +1899,9 @@ paths:
   /api/board/ideas/{idea_id}/delivered:
     post:
       operationId: api_board_ideas_delivered
-      description: 'The laptop''s writer token only: a member''s own sign-in is refused
-        here.'
+      description: |-
+        The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+        the visit's fence in words, as on `BoardView`) and is then refused here.
       parameters:
       - in: path
         name: idea_id
@@ -1912,6 +1913,8 @@ paths:
       - board
       security:
       - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1946,12 +1949,15 @@ paths:
   /api/board/ideas/pending:
     get:
       operationId: api_board_ideas_pending
-      description: 'The laptop''s writer token only: a member''s own sign-in is refused
-        here.'
+      description: |-
+        The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+        the visit's fence in words, as on `BoardView`) and is then refused here.
       tags:
       - board
       security:
       - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
       responses:
         '200':
           content:

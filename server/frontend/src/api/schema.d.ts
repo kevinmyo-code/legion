@@ -877,7 +877,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description The laptop's writer token only: a member's own sign-in is refused here. */
+        /**
+         * @description The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+         *     the visit's fence in words, as on `BoardView`) and is then refused here.
+         */
         post: operations["api_board_ideas_delivered"];
         delete?: never;
         options?: never;
@@ -892,7 +895,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description The laptop's writer token only: a member's own sign-in is refused here. */
+        /**
+         * @description The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+         *     the visit's fence in words, as on `BoardView`) and is then refused here.
+         */
         get: operations["api_board_ideas_pending"];
         put?: never;
         post?: never;
