@@ -49,3 +49,8 @@ flags:
   # until the laptop's push is proven; switching it on is a one-line change here to "on", in its
   # own reviewed commit, by the ship that turns it on.
   LEGION_BOARD: null
+  # Control room C3: the laptop's action records (deploy, publish, flag, spend) and his
+  # biometric-confirmed tap (`server/board/actions.py`). Needs LEGION_BOARD on as well. Must stay
+  # unset (off) until Kevin rules on the deploy path's settings rule; switching it on is its own
+  # reviewed change here.
+  LEGION_BOARD_ACTIONS: null

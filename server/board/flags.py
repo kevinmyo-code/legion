@@ -20,3 +20,14 @@ BOARD_ENV = "LEGION_BOARD"
 
 def board_enabled() -> bool:
     return os.environ.get(BOARD_ENV, "").strip().lower() == "on"
+
+
+# Control room C3 (2026-11-22): the action records (`board.actions`) have their OWN dark switch,
+# because `LEGION_BOARD` goes on for C2 first. Both must be on for any `/api/board/actions` route;
+# off, each is a 404 before authentication. Pinned unset in `deploy/cloudrun/flags.yaml`; it stays
+# off until Kevin has seen the settings rule for the deploy path (C3's open question 1).
+ACTIONS_ENV = "LEGION_BOARD_ACTIONS"
+
+
+def actions_enabled() -> bool:
+    return board_enabled() and os.environ.get(ACTIONS_ENV, "").strip().lower() == "on"

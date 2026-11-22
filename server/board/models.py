@@ -246,3 +246,80 @@ class BoardVote(AppendOnly):
 
     def __str__(self) -> str:
         return f"vote {self.pk}"
+
+
+ACTION_PENDING = "pending"
+ACTION_APPROVED = "approved"
+ACTION_DECLINED = "declined"
+ACTION_PULLED = "pulled"
+ACTION_STATUSES = (ACTION_PENDING, ACTION_APPROVED, ACTION_DECLINED, ACTION_PULLED)
+
+
+class BoardAction(models.Model):
+    """One thing only Kevin may allow, asked by the laptop and allowed by his tap (control room
+    C3, `board.actions`, DARK behind `LEGION_BOARD_ACTIONS`).
+
+    `public.board_actions`, tenanted and private to its member. Made ONLY by the laptop's writer
+    token, from TYPED fields (`kind` and the scope columns): no free text decides anything, and
+    `payee`/`purpose` are shown as quoted data. `record_sha256` is the engine's hash of exactly
+    those fields (`board.actions.record_hash`); the phone sends it back with the tap, so a record
+    that changed after he saw it is refused. `expires_at` is 30 minutes on the ENGINE's clock.
+
+    Life: `pending`, then `approved` (his tap, once) or `declined`; `pulled` once the laptop has
+    taken an approved record. Nothing runs from an approval by itself: the orchestrator re-checks
+    the hash and the head, then runs the pinned ship script."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        "household.Household", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
+    owner_user = models.ForeignKey(
+        "household.User", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
+    kind = models.CharField(max_length=20)
+    sha = models.CharField(max_length=40, blank=True, default="")
+    tier = models.CharField(max_length=8, blank=True, default="")
+    review_ok_sha = models.CharField(max_length=40, blank=True, default="")
+    ci_green = models.BooleanField(default=False)
+    flags = models.JSONField(default=list, blank=True)
+    amount_cents = models.IntegerField(null=True, blank=True)
+    payee = models.CharField(max_length=60, blank=True, default="")
+    purpose = models.CharField(max_length=120, blank=True, default="")
+    record_sha256 = models.CharField(max_length=64)
+    status = models.CharField(max_length=12, default=ACTION_PENDING)
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    decided_at = models.DateTimeField(null=True, blank=True)
+    pulled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "board_actions"
+        indexes = [models.Index(fields=["owner_user", "status"], name="board_actions_owner_status")]
+
+    def __str__(self) -> str:
+        return f"action {self.pk}"
+
+
+class BoardActionTap(AppendOnly):
+    """The append-only tap log: every Allow or Decline he sent, with what it came to (`applied`,
+    `stale`, `expired`, `replay`, `changed`). Never updated, never deleted."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    household = models.ForeignKey(
+        "household.Household", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
+    owner_user = models.ForeignKey(
+        "household.User", on_delete=models.CASCADE, related_name="+", db_constraint=False
+    )
+    action_id = models.UUIDField()
+    decision = models.CharField(max_length=10)
+    record_sha256 = models.CharField(max_length=64, blank=True, default="")
+    result = models.CharField(max_length=10)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "board_action_taps"
+        indexes = [models.Index(fields=["owner_user", "action_id"], name="board_taps_owner_action")]
+
+    def __str__(self) -> str:
+        return f"tap {self.pk}"

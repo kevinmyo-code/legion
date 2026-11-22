@@ -118,6 +118,8 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 # Backlog intake 1122: LEGION_BOARD=on opens the factory board's routes and tools (`server/board/`,
 #   board_status, add_backlog_idea and the laptop's writer token); unset or anything else is off.
 #   Switching it on also switches on the intake's scoring model call (one per idea, 20 a day).
+# Control room C3: LEGION_BOARD_ACTIONS=on (with LEGION_BOARD=on) opens the action records
+#   (`server/board/actions.py`); unset or anything else is off.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -134,7 +136,7 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_DEMO_COST_PER_TEXT_CALL_USD", "LEGION_ASSISTANT_TURN_RATE",
     "LEGION_ASSISTANT_TURN_IP_RATE", "LEGION_WEB_EARLY_TRANSCRIPTS", "LEGION_DEMO_REFS",
     "LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD",
-    "LEGION_BOARD",
+    "LEGION_BOARD", "LEGION_BOARD_ACTIONS",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because

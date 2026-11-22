@@ -2,6 +2,14 @@
 
 from django.urls import path
 
+from board.action_views import (
+    ActionAllowView,
+    ActionDeclineView,
+    ActionListView,
+    ActionRequestView,
+    ApprovedActionsView,
+    PulledActionView,
+)
 from board.answer_views import (
     AnswerListView,
     InboxDeliveredView,
@@ -37,4 +45,21 @@ urlpatterns = [
     path("board/votes", VoteListView.as_view(), name="board-votes"),
     path("board/inbox", InboxView.as_view(), name="board-inbox"),
     path("board/inbox/delivered", InboxDeliveredView.as_view(), name="board-inbox-delivered"),
+    # Control room C3 (dark behind LEGION_BOARD_ACTIONS too): action records and his tap.
+    path("board/actions", ActionListView.as_view(), name="board-actions"),
+    path("board/actions/request", ActionRequestView.as_view(), name="board-actions-request"),
+    path("board/actions/approved", ApprovedActionsView.as_view(), name="board-actions-approved"),
+    path(
+        "board/actions/<uuid:action_id>/allow", ActionAllowView.as_view(), name="board-action-allow"
+    ),
+    path(
+        "board/actions/<uuid:action_id>/decline",
+        ActionDeclineView.as_view(),
+        name="board-action-decline",
+    ),
+    path(
+        "board/actions/<uuid:action_id>/pulled",
+        PulledActionView.as_view(),
+        name="board-action-pulled",
+    ),
 ]

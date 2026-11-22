@@ -1765,6 +1765,288 @@ paths:
               schema:
                 $ref: '#/components/schemas/Detail'
           description: ''
+  /api/board/actions:
+    get:
+      operationId: api_board_actions_list
+      tags:
+      - board
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionList'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Action records are switched off.
+  /api/board/actions/{action_id}/allow:
+    post:
+      operationId: api_board_actions_allow
+      parameters:
+      - in: path
+        name: action_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TapRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TapRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TapRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tap'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Changed, or already decided.
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Expired.
+  /api/board/actions/{action_id}/decline:
+    post:
+      operationId: api_board_actions_decline
+      parameters:
+      - in: path
+        name: action_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TapRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TapRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TapRequest'
+        required: true
+      security:
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tap'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Changed, or already decided.
+        '410':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Expired.
+  /api/board/actions/{action_id}/pulled:
+    post:
+      operationId: api_board_actions_pulled
+      parameters:
+      - in: path
+        name: action_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - board
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tap'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Action records are switched off.
+  /api/board/actions/approved:
+    get:
+      operationId: api_board_actions_approved
+      tags:
+      - board
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionList'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Action records are switched off.
+  /api/board/actions/request:
+    post:
+      operationId: api_board_actions_request
+      tags:
+      - board
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ActionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ActionRequest'
+        required: true
+      security:
+      - boardWriterToken: []
+      - deviceToken: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Action'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Detail'
+          description: Action records are switched off.
   /api/board/answers:
     post:
       operationId: api_board_answers_create
@@ -15149,6 +15431,104 @@ components:
           type: integer
       required:
       - acked
+    Action:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          description: deploy_engine, publish_phone, publish_headunit, flag_on, flag_off
+            or spend.
+        sha:
+          type: string
+        tier:
+          type: string
+        review_ok_sha:
+          type: string
+        ci_green:
+          type: boolean
+        flags:
+          type: array
+          items:
+            type: string
+        amount_cents:
+          type: integer
+          nullable: true
+        payee:
+          type: string
+          description: Quoted data, never instructions.
+        purpose:
+          type: string
+          description: Quoted data, never instructions.
+        record_sha256:
+          type: string
+        status:
+          type: string
+          description: pending, approved, declined, pulled or expired.
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: The engine's clock.
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - amount_cents
+      - ci_green
+      - created_at
+      - decided_at
+      - expires_at
+      - flags
+      - id
+      - kind
+      - payee
+      - purpose
+      - record_sha256
+      - review_ok_sha
+      - sha
+      - status
+      - tier
+    ActionList:
+      type: object
+      properties:
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Action'
+      required:
+      - actions
+    ActionRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          description: One of the record kinds; see ActionSerializer.
+        sha:
+          type: string
+        tier:
+          type: string
+        review_ok_sha:
+          type: string
+        ci_green:
+          type: boolean
+        flags:
+          type: array
+          items:
+            type: string
+        amount_cents:
+          type: integer
+        payee:
+          type: string
+        purpose:
+          type: string
+      required:
+      - kind
     ActivityLevelEnum:
       enum:
       - sedentary
@@ -27831,6 +28211,28 @@ components:
       - outcome
       - report
       - sentence
+    Tap:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        words:
+          type: string
+      required:
+      - id
+      - status
+      - words
+    TapRequest:
+      type: object
+      properties:
+        record_sha256:
+          type: string
+          maxLength: 64
+      required:
+      - record_sha256
     TaskKindEnum:
       enum:
       - reminder
