@@ -1242,8 +1242,10 @@
     <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x0C</ID>
     <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$0x10</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$10</ID>
+    <ID>MagicNumber:BodyReadToolbox.kt:BodyReadToolbox$10</ID>
     <ID>MagicNumber:MusicLibraryToolbox.kt:MusicLibraryToolbox$10</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100</ID>
+    <ID>MagicNumber:BodyReadToolbox.kt:BodyReadToolbox$100</ID>
     <ID>MagicNumber:VehicleSensorToolbox.kt:VehicleSensorToolbox$100</ID>
     <ID>MagicNumber:LiveToolbox.kt:LiveToolbox$100.0</ID>
     <ID>MagicNumber:VehicleServiceToolbox.kt:VehicleServiceToolbox$100.0</ID>
@@ -3156,6 +3158,7 @@
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$.</ID>
     <ID>MaxLineLength:VehicleRecordsToolbox.kt:VehicleRecordsToolbox$.</ID>
     <ID>MaxLineLength:LiveToolbox.kt:LiveToolbox$?:</ID>
+    <ID>MaxLineLength:BodyReadToolbox.kt:BodyReadToolbox$?:</ID>
     <ID>MaxLineLength:VehicleRecordsToolbox.kt:VehicleRecordsToolbox$?:</ID>
     <ID>MaxLineLength:VehicleServiceToolbox.kt:VehicleServiceToolbox$?:</ID>
     <ID>MaxLineLength:GoalsToolbox.kt:GoalsToolbox$GoalController.CloseOutcome.NotFound -&gt; result(false, "I don't see an active ${aspectLabel(aspect)} goal matching that.")</ID>

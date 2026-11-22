@@ -9,8 +9,6 @@ import com.kevin.legion.service.tools.schema
 import android.content.Context
 import android.content.Intent
 import com.kevin.legion.MidnightEvents
-import com.kevin.legion.finance.noteOrNull
-import com.kevin.legion.finance.valueOrNull
 import com.kevin.legion.ai.AgentResult
 import com.kevin.legion.bodycoach.BodyCoachText
 import com.kevin.legion.ai.AgentTool
@@ -899,6 +897,7 @@ object LiveToolbox {
         // ADR 0085: a manage_item add/remove naming a proposed to-do answers it; null otherwise.
         OpenLoopsToolbox.dispatch(context, name, args, touchedReadThroughToolThisTurn)?.let { return it }
         BodyCoachToolbox.dispatch(context, name, args)?.let { return it }
+        BodyReadToolbox.dispatch(context, name, args)?.let { return it }
         VehicleBuildToolbox.dispatch(context, name, args)?.let { return it }
         VehicleManageToolbox.dispatch(context, name, args)?.let { return it }
         VehicleRecordsToolbox.dispatch(context, name, args)?.let { return it }
@@ -1122,8 +1121,6 @@ object LiveToolbox {
                 WorkoutController.logBodyweight(
                     context, args.optDouble("weight"), args.optString("weight_unit", "lbs"),
                 ).let { result(it.success, it.message) }
-            "get_workout_gap" -> getWorkoutGap(context)
-            "list_recent_workouts" -> listRecentWorkouts(context, args.optInt("count", 10))
             "log_meal" ->
                 MealController.logMeal(context, args.optString("description"))
                     .let { result(it.success, it.message) }
@@ -1149,14 +1146,10 @@ object LiveToolbox {
             "get_monthly_spend" -> com.kevin.legion.service.tools.money.BudgetTool.viewOf(args)
                 ?.let { com.kevin.legion.service.tools.money.BudgetTool.answer(context, it, args) }
                 ?: getMonthlySpend(context, args.optString("month"))
-            "get_meal_gap" -> getMealGap(context)
-            "list_recent_meals" -> listRecentMeals(context, args.optInt("count", 10))
             "log_sleep" -> logSleep(context, args)
             "set_sleep_target" ->
                 com.kevin.legion.sleep.SleepController.setTarget(context, args.optDouble("hours"))
                     .let { result(it.success, it.message) }
-            "get_sleep_gap" -> getSleepGap(context)
-            "list_recent_sleep" -> listRecentSleep(context, args.optInt("count", 10))
             "undo_last_log" -> undoLastLog(context)
             "search_mail" -> searchMail(context, args)
             "read_mail" -> readMail(context, args)
@@ -2664,35 +2657,6 @@ object LiveToolbox {
         return result(success = outcome.success, message = outcome.message)
     }
 
-    /** Sessions done of planned this week, from the engine's workout (workouts, 2026-11-06). */
-    private suspend fun getWorkoutGap(context: Context): JSONObject {
-        val read = com.kevin.legion.bodycoach.WorkoutSessionController.forApp(context).today()
-        val week = read.valueOrNull?.week
-            ?: return result(success = false, message = (read.noteOrNull ?: "The workout could not be read.") + " Nothing is known about this week.")
-        val out = JSONObject()
-            .put("success", true)
-            .put("sessionsPlanned", week.planned)
-            .put("sessionsDone", week.done)
-            .put("sessionsRemaining", (week.planned - week.done).coerceAtLeast(0))
-            .put("reported", true)
-        read.noteOrNull?.let { out.put("savedCopy", it) }
-        return out
-    }
-
-    /** Recent workout set logs. */
-    private suspend fun listRecentWorkouts(context: Context, count: Int): JSONObject {
-        val logs = WorkoutController.recentSets(context, count.coerceIn(1, 100))
-        val arr = JSONArray()
-        for (l in logs) {
-            val o = JSONObject().put("exercise", l.exercise).put("sets", l.sets)
-            l.reps?.let { o.put("reps", it) }
-            l.weightValue?.let { o.put("weight", it) }
-            l.weightUnit?.let { o.put("weightUnit", it) }
-            arr.put(o)
-        }
-        return JSONObject().put("success", true).put("count", logs.size).put("sets", arr)
-    }
-
     /**
      * D27: today's macro gap - or "not logged", NEVER a zero-actual gap, per
      * [com.kevin.legion.meals.DailyMealGap]'s sealed shape making the mistake structurally
@@ -2914,57 +2878,6 @@ object LiveToolbox {
         return result(r.success, r.message)
     }
 
-    private suspend fun getMealGap(context: Context): JSONObject {
-        return when (val gap = MealController.dayGap(context)) {
-            is com.kevin.legion.meals.DailyMealGap.NotLogged ->
-                JSONObject().put("success", true).put("logged", false)
-                    .put("message", "Nothing logged today - not zero, just not logged yet.")
-            is com.kevin.legion.meals.DailyMealGap.Logged -> JSONObject()
-                .put("success", true)
-                .put("logged", true)
-                .put("caloriesTarget", gap.gap.target.caloriesKcal)
-                .put("caloriesActual", gap.gap.actual.caloriesKcal)
-                .put("caloriesRemaining", gap.gap.gap.caloriesKcal)
-                .put("proteinTargetG", gap.gap.target.proteinG)
-                .put("proteinActualG", gap.gap.actual.proteinG)
-                .put("carbsTargetG", gap.gap.target.carbsG)
-                .put("carbsActualG", gap.gap.actual.carbsG)
-                .put("fatTargetG", gap.gap.target.fatG)
-                .put("fatActualG", gap.gap.actual.fatG)
-                .put("reported", gap.gap.tier == com.kevin.legion.plan.TrustTier.REPORTED)
-        }
-    }
-
-    /** Recent meal logs - macro fields are estimates, see the tool's own description. */
-    private suspend fun listRecentMeals(context: Context, count: Int): JSONObject {
-        val meals = MealController.recentMeals(context, count.coerceIn(1, 100))
-        val arr = JSONArray()
-        for (m in meals) arr.put(mealRow(m))
-        return JSONObject().put("success", true).put("count", meals.size).put("meals", arr)
-    }
-
-    /**
-     * One `list_recent_meals` row. The date it was logged, as an ISO date and a weekday in the
-     * phone's zone, the same local day [com.kevin.legion.meals.dayStartEpoch] buckets "today" by
-     * (async-lookups ticket 07; ticket 04 run 3, F7: without it, "what did I eat yesterday" could
-     * only be answered as "the records don't specify dates").
-     */
-    internal fun mealRow(
-        m: com.kevin.legion.data.local.MealLog,
-        zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
-    ): JSONObject {
-        val day = java.time.Instant.ofEpochMilli(m.loggedAt).atZone(zone).toLocalDate()
-        val o = JSONObject()
-            .put("description", m.description)
-            .put("date", day.toString())
-            .put("weekday", day.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US))
-        m.caloriesKcal?.let { o.put("estimatedCaloriesKcal", it) }
-        m.proteinG?.let { o.put("estimatedProteinG", it) }
-        m.carbsG?.let { o.put("estimatedCarbsG", it) }
-        m.fatG?.let { o.put("estimatedFatG", it) }
-        return o
-    }
-
     /**
      * Ticket 11 D36 (extended to sleep 2026-08-07): finds the single most recent row across the
      * four tables [log_workout_set], [log_bodyweight], [log_meal], and [log_sleep] can write,
@@ -3030,41 +2943,6 @@ object LiveToolbox {
             sleepDateOverride = sleepDateOverride,
         )
         return result(success = outcome.success, message = outcome.message)
-    }
-
-    /** Tonight's (today's wake-date's) sleep gap, worded for the model to speak. */
-    private suspend fun getSleepGap(context: Context): JSONObject {
-        return when (val gap = com.kevin.legion.sleep.SleepController.gapFor(context)) {
-            is com.kevin.legion.sleep.SleepGap.NotLogged ->
-                JSONObject().put("success", true).put("logged", false)
-                    .put("message", "Nothing logged for last night - not zero, just not logged yet (or no target set).")
-            is com.kevin.legion.sleep.SleepGap.Logged -> JSONObject()
-                .put("success", true)
-                .put("logged", true)
-                .put("targetMinutes", gap.gap.target)
-                .put("actualMinutes", gap.gap.actual)
-                .put("gapMinutes", gap.gap.gap)
-                .put("reported", gap.gap.tier == com.kevin.legion.plan.TrustTier.REPORTED)
-        }
-    }
-
-    /** Recent sleep logs. */
-    private suspend fun listRecentSleep(context: Context, count: Int): JSONObject {
-        val logs = com.kevin.legion.sleep.SleepController.recentSleep(context, count.coerceIn(1, 100))
-        val arr = JSONArray()
-        for (l in logs) {
-            val o = JSONObject()
-                .put("date", documentDate(l.sleepDate))
-                .put("durationMinutes", l.durationMinutes)
-            l.quality?.let { o.put("quality", it) }
-            l.notes?.let { o.put("notes", it) }
-            arr.put(o)
-        }
-        com.kevin.legion.assistant.cards.DomainToolCards.sleep(
-            logs.map { it.sleepDate to it.durationMinutes },
-            runCatching { com.kevin.legion.sleep.SleepController.currentTargetMinutes(context) }.getOrNull(),
-        )
-        return JSONObject().put("success", true).put("count", logs.size).put("nights", arr)
     }
 
     /**
