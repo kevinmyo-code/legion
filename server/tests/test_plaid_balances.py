@@ -154,6 +154,26 @@ def test_with_no_time_from_plaid_a_stored_balance_keeps_its_own(fake, item, hous
     assert any("did not say when it last read the bank" in note for note in run.last_report.notes)
 
 
+def test_a_first_link_with_no_status_keeps_an_undated_balance(
+    fake, item, household_a, auth_client
+):
+    """Nothing stored yet AND no time from Plaid: the figure is kept and left
+    undated, and net cash says in words that it has no as-of rather than
+    inventing one. Plaid's own update time arrives on a later sync."""
+    fake.item["transactions_last_successful_update"] = None
+    fake.page(None, "c1", accounts=[])
+    fake.accounts = [CHECKING_WITH_BALANCE]
+
+    assert sync(household_a).outcome == "ok"
+
+    stored = balances(item)["acc-chk"]
+    assert stored["balance_current_cents"] == 123_456
+    assert stored["balance_as_of"] is None
+    body = auth_client.get("/api/finance/net-cash").data
+    assert body["available"] is False
+    assert "no as-of time was stored with its balance" in body["reason"]
+
+
 def test_a_fresh_account_record_still_updates_its_name(fake, item, household_a):
     """Keeping a dated balance keeps the BALANCE, not the whole record."""
     fake.page(None, "c1", accounts=[])

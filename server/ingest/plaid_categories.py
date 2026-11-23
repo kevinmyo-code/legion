@@ -80,12 +80,15 @@ BY_DETAILED: dict[str, str | None] = {
     "GENERAL_MERCHANDISE_PET_SUPPLIES": "Pets",
     "MEDICAL_VETERINARY_SERVICES": "Pets",
     "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS": "Health",
-    # Money between his own places. Only the two that plainly are.
-    "TRANSFER_IN_ACCOUNT_TRANSFER": "Transfers",
-    "TRANSFER_OUT_ACCOUNT_TRANSFER": "Transfers",
-    "TRANSFER_IN_SAVINGS": "Transfers",
-    "TRANSFER_OUT_SAVINGS": "Transfers",
 }
+
+# Deliberately NOT mapped to "Transfers", though they look like it: Plaid's own
+# descriptions for `TRANSFER_IN/OUT_ACCOUNT_TRANSFER` say only "transfers from
+# another account" / "to another account", which covers money sent to another
+# PERSON as readily as money moved between his own accounts, and the SAVINGS
+# rows do not say whose savings. "Transfers" is excluded from every spend
+# total (`ingest/category_flags.py`), so a wrong guess there does not mislabel
+# a row, it removes money from his spending. That is his ruling to make.
 
 
 def _plain(value: Any) -> str | None:
