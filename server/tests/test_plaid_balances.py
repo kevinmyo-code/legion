@@ -34,6 +34,7 @@ from tests.test_plaid import (
     LAST_BANK_READ,
     LAST_BANK_READ_ISO,
     FakePlaid,
+    bank_rows,
     sync,
     txn,
 )
@@ -215,17 +216,48 @@ def test_a_sign_in_error_from_the_balance_call_asks_for_a_sign_in(fake, item, ho
     assert item.needs_sign_in_since is not None
 
 
-def test_any_other_balance_error_stops_the_sync_and_keeps_the_cursor(fake, item, household_a):
-    """Nothing is half-applied: the cursor is saved at the end, so the whole
-    sync is read again next time."""
-    fake.page(None, "c1", added=[txn("t1")], accounts=[])
+def test_a_balance_error_never_stops_the_transactions(fake, item, household_a):
+    """The balances are a label on a figure; the transactions are the money.
+    So a failed balance refresh degrades: the page's own accounts stand in,
+    every stored balance keeps its figure and its stamp, the report says so in
+    words, and the rows commit (review of 2026-11-23)."""
+    fake.page(None, "c1", added=[txn("t1")])
+    fake.accounts = [CHECKING_WITH_BALANCE, CARD_WITH_BALANCE]
+    assert sync(household_a).outcome == "ok"
+    before = balances(item)["acc-card"]
+
+    fake.page("c1", "c2", added=[txn("t2")])
     fake.accounts_get_errors.append(plaid_client.PlaidError("INTERNAL_SERVER_ERROR", "later"))
 
     run = sync(household_a)
 
-    assert run.outcome == "failed"
+    assert run.outcome == "ok"
+    assert run.rows_written == 1
     item.refresh_from_db()
-    assert item.cursor is None
+    assert item.cursor == "c2"
+    assert bank_rows(household_a)[-1].bank_transaction_id == "t2"
+    after = balances(item)["acc-card"]
+    assert after["balance_current_cents"] == before["balance_current_cents"]
+    assert after["balance_as_of"] == before["balance_as_of"]
+    assert any("INTERNAL_SERVER_ERROR" in note for note in run.last_report.notes)
+
+
+def test_a_balance_call_that_fails_outside_plaids_own_errors_also_degrades(
+    fake, item, household_a
+):
+    """`plaid_client._call` wraps `plaid.ApiException` only, so a socket or
+    deserialisation error from this one call arrives as itself. It must not be
+    the one shape that still kills the sync."""
+    fake.page(None, "c1", added=[txn("t1")])
+    fake.accounts_get_errors.append(OSError("connection reset"))
+
+    run = sync(household_a)
+
+    assert run.outcome == "ok"
+    assert run.rows_written == 1
+    item.refresh_from_db()
+    assert item.cursor == "c1"
+    assert any("OSError" in note for note in run.last_report.notes)
 
 
 def test_net_cash_as_of_moves_on_a_quiet_sync(fake, item, household_a, auth_client):

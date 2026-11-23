@@ -825,10 +825,23 @@ class SyncOutcome:
     report: SyncReport | None = None
 
 
+def _balance_call_failed(reason: str) -> str:
+    """The sync report's sentence for a balance refresh that did not happen.
+    Names the reason, because "the balances are old" with no cause is a line
+    nobody can act on."""
+    return (
+        f"Plaid would not say what the balances are right now ({reason}), so each balance "
+        "kept the figure and the as-of time it already had. The transactions in this sync "
+        "were stored."
+    )
+
+
 def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
     """One Item, end to end. Never raises for a sign-in problem: it is stored
     on the Item and returned as `needs_login`, so a caller's rollback cannot
-    lose it. Other Plaid errors raise `PlaidError` (recorded `failed`)."""
+    lose it. A balance refresh that fails is reported and the transactions
+    still commit. Other Plaid errors from `/item/get` or `/transactions/sync`
+    raise `PlaidError` (recorded `failed`)."""
     household = item.household
     token = access_token_of(item)
     try:
@@ -873,15 +886,29 @@ def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
     # loop's `accounts` holds only the accounts with transactions in that
     # response, so on a quiet run it refreshes nothing and the stored as-of
     # froze. This call is free and covers them all; it goes last into the merge
-    # so its balances win. A failure here is not swallowed: the cursor has not
-    # been saved, so the whole sync is re-read next time.
+    # so its balances win.
+    #
+    # **A failure here never stops the transaction half** (review of
+    # 2026-11-23). Before this feature `/accounts/get` was not called at all, so
+    # a balance problem could not hold up ingestion, and the failures are the
+    # ordinary transient ones. So: a sign-in error still asks for a sign-in,
+    # and ANY other failure degrades to the page's own accounts (which carry no
+    # balances, so `_keeping_dated_balance` keeps each stored figure and its
+    # stored as-of), says so in the sync report, and lets the transactions
+    # commit. Every exception, not only `PlaidError`: `plaid_client._call`
+    # wraps `plaid.ApiException` alone, so a socket or deserialisation error
+    # from this one call arrives as itself.
+    fresh_accounts: list = []
+    balance_note: str | None = None
     try:
         fresh_accounts = gw.accounts_get(token).get("accounts") or []
     except plaid_client.PlaidError as exc:
         if exc.needs_sign_in:
             _mark_sign_in(item, exc.code)
             return SyncOutcome("needs_login", sign_in_sentence(item))
-        raise
+        balance_note = _balance_call_failed(exc.code or "no error code")
+    except Exception as exc:
+        balance_note = _balance_call_failed(type(exc).__name__)
 
     with transaction.atomic():
         synced_at = timezone.now()
@@ -889,7 +916,9 @@ def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
         report = apply_changes(
             household, added=added, modified=modified, removed=removed, accounts=merged
         )
-        if read_at is None:
+        if balance_note is not None:
+            report.notes.append(balance_note)
+        elif read_at is None:
             report.notes.append(
                 "Plaid did not say when it last read the bank, so each balance kept the as-of "
                 "time it already had."
