@@ -243,7 +243,7 @@ def _commit(payload: dict[str, Any], household):
                 provenance=Provenance.UNRECONCILED,
                 created_at=Now(),
             )
-            for line, (category, pending) in zip(to_insert, categorised, strict=True)
+            for line, (category, pending, _origin) in zip(to_insert, categorised, strict=True)
         ]
     )
 

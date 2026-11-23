@@ -191,6 +191,49 @@ alter table public.ledger_transactions
 """
 
 
+PLAID_CATEGORY_SQL = f"""
+alter table public.ledger_transactions add column if not exists plaid_category jsonb;
+alter table public.ledger_transactions add column if not exists category_origin text;
+
+alter table public.ledger_transactions
+    drop constraint if exists ledger_txn_plaid_fields_only_on_bank_rows;
+alter table public.ledger_transactions
+    add constraint ledger_txn_plaid_fields_only_on_bank_rows check (
+        provenance = '{BANK_API}' or (plaid_category is null and category_origin is null)
+    );
+
+alter table public.ledger_transactions
+    drop constraint if exists ledger_txn_category_origin_values;
+alter table public.ledger_transactions
+    add constraint ledger_txn_category_origin_values check (
+        category_origin is null
+        or (category_origin in ('rule', 'plaid') and category is not null)
+    );
+"""
+
+PLAID_CATEGORY_DROP_SQL = """
+alter table public.ledger_transactions
+    drop constraint if exists ledger_txn_category_origin_values;
+alter table public.ledger_transactions
+    drop constraint if exists ledger_txn_plaid_fields_only_on_bank_rows;
+alter table public.ledger_transactions drop column if exists category_origin;
+alter table public.ledger_transactions drop column if exists plaid_category;
+"""
+
+
+def apply_plaid_category(cursor) -> str | None:
+    """Adds the two columns that keep a bank row's category evidence
+    (`ingest/plaid_categories.py`): `plaid_category`, the raw object Plaid sent
+    about the transaction's intent, and `category_origin`, which of the two
+    sources wrote the row's category. Additive, and only ever set on a
+    `BANK_API` row, by check constraint. None when it ran, else why not."""
+    cursor.execute("select to_regclass('public.ledger_transactions')")
+    if cursor.fetchone()[0] is None:
+        return "public.ledger_transactions does not exist here; nothing changed."
+    cursor.execute(PLAID_CATEGORY_SQL)
+    return None
+
+
 def apply_ledger_bank_rows(cursor) -> str | None:
     """Applies `LEDGER_BANK_ROWS_SQL` when `ledger_transactions` exists and
     already carries `household_id` (ADR 0045). None when it ran, else why not.

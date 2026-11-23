@@ -191,6 +191,14 @@ class LedgerTransaction(models.Model):
     # (`ingest/bank_api_sql.py`, migration 0021).
     bank_transaction_id = models.TextField(null=True)
     bank_pending = models.BooleanField(default=False)
+    # ADR 0057 and section 4 rule 8: what Plaid said about this transaction's
+    # intent (`personal_finance_category`, raw), kept whether or not it decided
+    # the category, and which source the stored `category` came from (`rule` or
+    # `plaid`). Set only on a `BANK_API` row, by check constraint
+    # (`ingest/bank_api_sql.py`, migration 0028). `ingest/plaid_categories.py`
+    # holds the map.
+    plaid_category = models.JSONField(null=True)
+    category_origin = models.TextField(null=True)
 
     household = household_field()
 

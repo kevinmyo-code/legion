@@ -25,8 +25,10 @@ one exception and it is narrow on purpose.
    at the last busy run.
 4. One transaction applies it all and only then saves the new cursor, so a
    failure re-reads the same changes next time instead of skipping them:
-   - **added**: inserted (category from the household's rules at insert, the
-     only write the immutability trigger allows);
+   - **added**: inserted (category at insert, the only write the immutability
+     trigger allows: the household's own rules first, then the category Plaid
+     sent with the transaction, whose raw object is stored beside it;
+     `ingest/plaid_categories.py`);
    - **modified**: the old row is deleted and a new one inserted (the trigger
      refuses UPDATE on every row, and `/api/changes` keys this table on
      `created_at`, so a changed row must be a new row for a client to see it).
@@ -60,7 +62,7 @@ from django.db.models import Max, Min
 from django.db.models.functions import Now
 from django.utils import timezone
 
-from ingest import plaid_client, vault
+from ingest import plaid_categories, plaid_client, vault
 from ingest.bank_api_sql import SUPERSEDE_SETTING
 from ingest.category_rules import category_for_insert, household_rules
 from ingest.models import IngestRun, PlaidItem
@@ -398,7 +400,42 @@ def _put_override(household, target: LedgerTransaction, snap: _Override) -> str:
 # =============================================================================
 
 
-def _build_row(household, txn: dict, accounts: dict[str, Account], rules) -> LedgerTransaction:
+@dataclass
+class _Categoriser:
+    """What decides one sync's categories: the household's own rules, the
+    category names it actually has, and a tally of what Plaid asked for that
+    neither could place.
+
+    Kevin, 2026-11-23: *"accept plaid's category"*, his rules first. The tally
+    is reported in words at the end of the sync, because a Plaid taxonomy
+    value nobody mapped is a decision owed, not a silent drop (section 4 rule
+    6's posture: never quietly skip what you did not recognise)."""
+
+    rules: list
+    known: set[str]
+    unmapped: dict[str, int] = field(default_factory=dict)
+
+    def _note(self, value: str) -> None:
+        self.unmapped[value] = self.unmapped.get(value, 0) + 1
+
+    def of(self, description: str, raw: Any) -> tuple[str | None, bool, str | None, dict | None]:
+        """`(category, category_pending, origin, the raw object to store)`."""
+        kept = plaid_categories.evidence(raw)
+        suggested, said = plaid_categories.category_for(kept)
+        if suggested is not None and suggested not in self.known:
+            said = f"{said} (this household has no {suggested!r} category)"
+            suggested = None
+        category, pending, origin = category_for_insert(
+            None, description, self.rules, suggested
+        )
+        if category is None and said:
+            self._note(said)
+        return category, pending, origin, kept
+
+
+def _build_row(
+    household, txn: dict, accounts: dict[str, Account], categoriser: _Categoriser
+) -> LedgerTransaction:
     account = accounts.get(str(txn.get("account_id") or ""))
     if account is None:
         raise PlaidDataError("it names an account Plaid did not list")
@@ -414,7 +451,9 @@ def _build_row(household, txn: dict, accounts: dict[str, Account], rules) -> Led
     description = (txn.get("original_description") or txn.get("name") or "").strip()
     if not description:
         description = (txn.get("merchant_name") or "").strip() or "(no description from the bank)"
-    category, pending_category = category_for_insert(None, description, rules)
+    category, pending_category, origin, plaid_category = categoriser.of(
+        description, txn.get("personal_finance_category")
+    )
     transaction_id = str(txn["transaction_id"])
     return LedgerTransaction(
         id=uuid.uuid4(),
@@ -434,6 +473,8 @@ def _build_row(household, txn: dict, accounts: dict[str, Account], rules) -> Led
         created_at=Now(),
         bank_transaction_id=transaction_id,
         bank_pending=bool(txn.get("pending")),
+        plaid_category=plaid_category,
+        category_origin=origin,
     )
 
 
@@ -457,7 +498,9 @@ def apply_changes(
 ) -> SyncReport:
     """Apply one `/transactions/sync` result. The caller holds the transaction."""
     report = SyncReport()
-    rules = household_rules(household)
+    categoriser = _Categoriser(
+        household_rules(household), plaid_categories.household_categories(household)
+    )
     by_account = account_map(accounts)
 
     upserts: dict[str, tuple[dict, bool]] = {}
@@ -485,7 +528,7 @@ def apply_changes(
     posted_links: list[tuple[str, LedgerTransaction]] = []  # (pending bank id, posted row)
     for transaction_id, (txn, is_added) in upserts.items():
         try:
-            row = _build_row(household, txn, by_account, rules)
+            row = _build_row(household, txn, by_account, categoriser)
         except (PlaidDataError, KeyError) as exc:
             report.notes.append(
                 f"A bank transaction dated {txn.get('date')} was not stored: {exc}."
@@ -541,6 +584,11 @@ def apply_changes(
         outcome = _put_override(household, new_by_bank_id[bank_id], snap)
         if outcome == MOVED:
             report.categories_moved += 1
+    for said, count in sorted(categoriser.unmapped.items()):
+        report.notes.append(
+            f"Plaid called {count} new transaction(s) {said}, which is not one of your "
+            f"categories, so they were left uncategorised."
+        )
     for row in dropped_with_removal:
         snap = snaps.pop(row.id, None)
         if snap is not None:
