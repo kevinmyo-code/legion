@@ -430,6 +430,42 @@ class CascadeRulesTest {
     }
 
     @Test
+    fun `an item whose own name ends on the word to keeps it in the done line`() {
+        fun said(name: String, action: String, result: JSONObject) =
+            ScriptedLines.doneLine(listOf(ScriptedLines.writeFact(name, action, result.put("success", true), true)))
+        // The dangling "to" above belongs to the joiner of an add that names a list, so it may only
+        // be dropped from a clause the line's cut actually shortened. A whole clause that simply
+        // ends on the word "to" is the item's own name and is said in full (2026-11-23 review).
+        val timed = JSONObject().put("item", "Decide which shop to drive to")
+            .put("message", "Added. Anything else?")
+        // A remove's own result carries no title key today, so the live line is "removed it.";
+        // pinned here because every non-add phrase reads the same title keys and one of them will.
+        val removed = JSONObject().put("item", "Find someone to talk to")
+            .put("message", """Took "Find someone to talk to" off the invented list.""")
+        // A tick's result names its list, and "ticked off %s" never takes the joiner, so the tail
+        // here is the item's.
+        val ticked = JSONObject().put("item", "Pick a day to move the invented sofa to")
+            .put("list", "Invented chores")
+        val appointment = JSONObject().put("date", "2027-04-02")
+            .put("item", "Visit the invented clinic I was referred to")
+            .put("message", "Saved it for Friday 2 April at 15:00.")
+        assertEquals(
+            listOf(
+                "Done: added Decide which shop to drive to.",
+                "Done: removed Find someone to talk to.",
+                "Done: ticked off Pick a day to move the invented sofa to.",
+                "Done: added Visit the invented clinic I was referred to.",
+            ),
+            listOf(
+                said("manage_item", "add", timed),
+                said("manage_item", "remove", removed),
+                said("manage_checklist", "tick", ticked),
+                said("manage_item", "add", appointment),
+            ),
+        )
+    }
+
+    @Test
     fun `a hand-over says an owed write only while the voice works, never on a crash`() {
         assertTrue(CascadeRules.handOverSaysOwed("prompt", phoneFault = false))
         assertTrue(CascadeRules.handOverSaysOwed("stt", phoneFault = false))

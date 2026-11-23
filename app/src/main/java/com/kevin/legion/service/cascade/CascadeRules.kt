@@ -485,7 +485,11 @@ object ScriptedLines {
         // Clause by clause while it fits; the rest is counted, never dropped unsaid. Only a first
         // clause too long on its own is trimmed.
         val room = MAX_DONE_CHARS - (if (done.size > 1) "Done: ; and 99 more." else "Done: .").length
-        var kept = done.take(1).map { it.cutOnWord(room).removeSuffix(LIST_JOINER.trimEnd()) }
+        // Only a clause the cut actually shortened can be hanging on the joiner's "to"; a clause
+        // said in full ends on the item's own name, and dropping "to" there renames it (2026-11-23).
+        var kept = done.take(1).map { clause ->
+            clause.cutOnWord(room).let { if (it == clause) it else it.removeSuffix(LIST_JOINER.trimEnd()) }
+        }
         for (c in done.drop(1)) {
             val rest = done.size - kept.size - 1
             val tail = if (rest > 0) listOf("and $rest more") else emptyList()
