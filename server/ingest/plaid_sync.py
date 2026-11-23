@@ -12,12 +12,18 @@ one exception and it is narrow on purpose.
 ## One sync
 
 1. `/item/get`: the consent expiry and any error on the Item are stored on
-   `plaid_items`. An error the person fixes by signing in again
-   (`plaid_client.SIGN_IN_ERROR_CODES`) stops the run as `needs_login`, said
-   in words on `/api/freshness`.
+   `plaid_items`, and `status.transactions.last_successful_update` is read as
+   the time PLAID last reached the bank. An error the person fixes by signing
+   in again (`plaid_client.SIGN_IN_ERROR_CODES`) stops the run as
+   `needs_login`, said in words on `/api/freshness`.
 2. `/transactions/sync` from the stored cursor, every page, restarting the
    whole loop from the starting cursor if Plaid says the data moved mid-way.
-3. One transaction applies it all and only then saves the new cursor, so a
+3. `/accounts/get`: every account on the Item with its balance, stamped with
+   the time from step 1. Free. `/transactions/sync` returns only the accounts
+   that had transactions in that response, so without this step a quiet run
+   refreshed no balance and `net_cash`'s `min(as_of)` (ADR 0094) stayed frozen
+   at the last busy run.
+4. One transaction applies it all and only then saves the new cursor, so a
    failure re-reads the same changes next time instead of skipping them:
    - **added**: inserted (category from the household's rules at insert, the
      only write the immutability trigger allows);
@@ -28,7 +34,7 @@ one exception and it is narrow on purpose.
    - **pending to posted**: a posted row whose `pending_transaction_id` names
      a stored pending row replaces it, carrying its category;
    - **removed**: deleted.
-4. **The feed replaces the file-derived rows it covers** (`replace_older_rows`).
+5. **The feed replaces the file-derived rows it covers** (`replace_older_rows`).
 
 ## Money
 
@@ -158,17 +164,26 @@ def _balance_cents(value: Any) -> int | None:
         return None
 
 
-def account_record(raw: dict, synced_at: datetime.datetime | None = None) -> dict:
+def account_record(raw: dict, read_at: datetime.datetime | None = None) -> dict:
     """What `plaid_items.accounts` keeps for one account, its balance included.
 
     **Kevin, 2026-11-03: "store them".** This kept no balance until then. The
     bank's own balance is fact like its transactions (ADR 0057, amended), and
     is stored as the figure it was AT ITS AS-OF TIME, never as "now":
-    `balance_as_of` is Plaid's own `last_updated_datetime` when it sends one,
-    else the moment this sync read it. Plaid's raw shape is kept: `current` is
-    the balance (for a credit account, the amount owed, a positive number),
-    `available` is what may be spent (for credit, the credit left); either may
-    be absent. Cents through `Decimal(str(x))` (`to_cents`), never a float."""
+    `balance_as_of` is Plaid's own `last_updated_datetime` when it sends one
+    (Capital One and Apple Card only), else `read_at`, which is the last time
+    PLAID read the bank (`/item/get`'s
+    `status.transactions.last_successful_update`), never the moment this sync
+    ran. Plaid's balances are cached and documented as the balance at the last
+    successful Item update, so stamping them with LEGION's own read time
+    asserted a freshness the figure does not have. With no honest time at all
+    the as-of is None and `merge_accounts` keeps the dated balance already
+    stored rather than replacing it with an undatable one.
+
+    Plaid's raw shape is kept: `current` is the balance (for a credit account,
+    the amount owed, a positive number), `available` is what may be spent (for
+    credit, the credit left); either may be absent. Cents through
+    `Decimal(str(x))` (`to_cents`), never a float."""
     balances = raw.get("balances") or {}
     stated = balances.get("last_updated_datetime")
     if isinstance(stated, datetime.datetime):
@@ -187,9 +202,33 @@ def account_record(raw: dict, synced_at: datetime.datetime | None = None) -> dic
         "balance_available_cents": available,
         "balance_currency": balances.get("iso_currency_code") if has_balance else None,
         "balance_as_of": (
-            (stated or (synced_at.isoformat() if synced_at else None)) if has_balance else None
+            (stated or (read_at.isoformat() if read_at else None)) if has_balance else None
         ),
     }
+
+
+# The four fields of one account's balance. They move together: a figure and
+# the time it was true at are one fact, and splitting them is how a stale
+# figure comes to wear a fresh time.
+BALANCE_FIELDS = (
+    "balance_current_cents",
+    "balance_available_cents",
+    "balance_currency",
+    "balance_as_of",
+)
+
+
+def _keeping_dated_balance(record: dict, stored: dict | None) -> dict:
+    """`record`, but carrying the stored balance when Plaid dated the stored
+    one and not this one.
+
+    The rest of the record (name, mask, type) is the fresh one's, so a renamed
+    account still updates. Without this an undated balance would either lose
+    the net cash figure outright (`finance/net_cash.py` has no figure for an
+    account with no as-of) or, worse, wear the previous read's time."""
+    if record.get("balance_as_of") or stored is None or not stored.get("balance_as_of"):
+        return record
+    return {**record, **{name: stored.get(name) for name in BALANCE_FIELDS}}
 
 
 def account_map(records: list[dict]) -> dict[str, Account]:
@@ -211,13 +250,21 @@ def account_map(records: list[dict]) -> dict[str, Account]:
 
 
 def merge_accounts(
-    stored: list[dict], fresh: list[dict], synced_at: datetime.datetime | None = None
+    stored: list[dict], fresh: list[dict], read_at: datetime.datetime | None = None
 ) -> list[dict]:
+    """The stored account records with `fresh` laid over them by `account_id`.
+
+    An account absent from `fresh` keeps its stored record untouched: Plaid
+    returns active accounts only, and a closed one is not news. `read_at` is
+    the last time Plaid read the bank; see `account_record`. Later entries of
+    `fresh` win, so the caller puts its best balance source last."""
     by_id = {r.get("account_id"): r for r in stored if r.get("account_id")}
     for raw in fresh:
-        record = account_record(raw, synced_at)
+        record = account_record(raw, read_at)
         if record["account_id"]:
-            by_id[record["account_id"]] = record
+            by_id[record["account_id"]] = _keeping_dated_balance(
+                record, by_id.get(record["account_id"])
+            )
     return sorted(by_id.values(), key=lambda r: (r.get("name") or "", r["account_id"]))
 
 
@@ -747,6 +794,9 @@ def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
     if item.error_code in plaid_client.SIGN_IN_ERROR_CODES:
         _mark_sign_in(item, item.error_code)
         return SyncOutcome("needs_login", sign_in_sentence(item))
+    # The last time PLAID read the bank, which is what the balances below are
+    # as of. Nullable: Plaid sends no status for an Item it has never updated.
+    read_at = _datetime(info.get("transactions_last_successful_update"))
 
     start = item.cursor
     for attempt in range(1, MAX_SYNC_ATTEMPTS + 1):
@@ -771,12 +821,31 @@ def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
                 continue
             raise
 
+    # Every account on the Item, with Plaid's balances, every sync. The page
+    # loop's `accounts` holds only the accounts with transactions in that
+    # response, so on a quiet run it refreshes nothing and the stored as-of
+    # froze. This call is free and covers them all; it goes last into the merge
+    # so its balances win. A failure here is not swallowed: the cursor has not
+    # been saved, so the whole sync is re-read next time.
+    try:
+        fresh_accounts = gw.accounts_get(token).get("accounts") or []
+    except plaid_client.PlaidError as exc:
+        if exc.needs_sign_in:
+            _mark_sign_in(item, exc.code)
+            return SyncOutcome("needs_login", sign_in_sentence(item))
+        raise
+
     with transaction.atomic():
         synced_at = timezone.now()
-        merged = merge_accounts(item.accounts or [], accounts, synced_at)
+        merged = merge_accounts(item.accounts or [], accounts + fresh_accounts, read_at)
         report = apply_changes(
             household, added=added, modified=modified, removed=removed, accounts=merged
         )
+        if read_at is None:
+            report.notes.append(
+                "Plaid did not say when it last read the bank, so each balance kept the as-of "
+                "time it already had."
+            )
         replace_older_rows(household, report)
         item.accounts = merged
         item.cursor = cursor

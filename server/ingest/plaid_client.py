@@ -68,6 +68,8 @@ class PlaidGateway(Protocol):
 
     def get_item(self, access_token: str) -> dict[str, Any]: ...
 
+    def accounts_get(self, access_token: str) -> dict[str, Any]: ...
+
     def sync_transactions(self, access_token: str, cursor: str | None) -> dict[str, Any]: ...
 
 
@@ -200,13 +202,40 @@ class LivePlaidGateway:
         body = self._call(self._client.item_get, ItemGetRequest(access_token=access_token))
         item = body.get("item") or {}
         error = item.get("error") or {}
+        # The top-level `status` object is a SIBLING of `item`, not a field of
+        # it. `status.transactions.last_successful_update` is the last time
+        # Plaid itself read this bank, and Plaid documents it as updating "each
+        # time Plaid successfully connects with the institution, regardless of
+        # whether any new data is available". That is the honest as-of for the
+        # balances `/accounts/get` returns, which "reflect the balance at the
+        # time of the last successful Item update". Both are nullable.
+        status = body.get("status")
+        transactions = (status or {}).get("transactions") if isinstance(status, dict) else None
+        if not isinstance(transactions, dict):
+            transactions = {}
         return {
             "item_id": item.get("item_id"),
             "institution_id": item.get("institution_id"),
             "institution_name": item.get("institution_name"),
             "consent_expiration_time": item.get("consent_expiration_time"),
             "error_code": error.get("error_code") if isinstance(error, dict) else None,
+            "transactions_last_successful_update": transactions.get("last_successful_update"),
         }
+
+    def accounts_get(self, access_token: str):
+        """Every account Plaid holds for this Item, with its cached balances.
+
+        Free, and unlike `/transactions/sync`'s `accounts` field it does not
+        depend on an account having had a transaction in this response, which
+        is what froze the stored as-of time. Plaid returns active accounts
+        only, so a closed account is simply absent and `merge_accounts` keeps
+        what it already had for it."""
+        from plaid.model.accounts_get_request import AccountsGetRequest
+
+        body = self._call(
+            self._client.accounts_get, AccountsGetRequest(access_token=access_token)
+        )
+        return {"accounts": [_value(a) for a in body.get("accounts") or []]}
 
     def sync_transactions(self, access_token: str, cursor: str | None):
         from plaid.model.transactions_sync_request import TransactionsSyncRequest
