@@ -2807,8 +2807,8 @@ object LiveToolbox {
      * driver said, so it is formatted directly rather than composed into millis and reinterpreted. */
     private val NOTE_DISPLAY_DATE_FORMAT = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy")
 
-    /** How long a voice-created Google Calendar appointment with a specific time (not all-day)
-     * lasts when the driver never states a duration - ticket 14's `manage_item` doesn't expose an
+    /** How long a voice-created appointment with a specific time (not all-day), on LEGION's own
+     * calendar, lasts when the driver never states a duration - ticket 14's `manage_item` doesn't expose an
      * end-time argument, matching CLAUDE.md's tool-budget posture (this ticket's own instruction:
      * "prefer extending the existing notes tools... every tool is prompt tokens"). An hour is the
      * same default the AOSP Calendar app's own "new event" flow uses. */
@@ -2954,9 +2954,10 @@ object LiveToolbox {
             }
 
             if (kind is ScheduleIntentResolver.Kind.Appointment) {
-                // A calendar event needs SOMETHING to put on the calendar - CalendarContract's
-                // DTSTART is a hard requirement (research doc §1.3), and asking "when" here is
-                // cheaper and more honest than inventing a date.
+                // A calendar event needs SOMETHING to put on the calendar: a row with no
+                // `startsAt` is skipped by every calendar read, so a dateless appointment would
+                // be saved and then invisible. Asking "when" is cheaper and more honest than
+                // inventing a date.
                 if (date == null) {
                     return result(false, "What date is that for? I need one to put it on your calendar.")
                 }
