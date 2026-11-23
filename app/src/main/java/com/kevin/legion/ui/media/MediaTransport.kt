@@ -2,10 +2,11 @@ package com.kevin.legion.ui.media
 
 import android.content.Context
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.MusicControlToolbox
 
 /**
  * The hands path onto the SAME two-backend transport dispatch `control_music` uses
- * ([LiveToolbox.controlMusicTransport]). Kept as its own object rather than inlined in
+ * ([MusicControlToolbox.controlMusicTransport]). Kept as its own object rather than inlined in
  * [MediaScreen] so `ui/home/HomeScreen.kt`'s `NowPlayingRow` (home-launcher ticket 03 - deleted
  * `ui/media/MediaMiniBar.kt`'s own successor, same play/pause control) shares the identical
  * dispatch rather than a second copy of it.
@@ -15,7 +16,7 @@ import com.kevin.legion.service.LiveToolbox
  * `controlMusicTransport` was `private` and Kotlin's `private` is file-scoped even within the
  * same module - there was no legal way to call it. That function is `internal` now, so [run]
  * calls it directly: one ordering, read by both the voice tool and this screen, rather than two
- * copies that could quietly disagree about which backend goes first. [LiveToolbox.musicFailureMessage]
+ * copies that could quietly disagree about which backend goes first. [MusicControlToolbox.musicFailureMessage]
  * is reused for the same reason it already was - the sentence a driver reads here for "I can't
  * reach the transport controls" is the literal same String the assistant would have spoken for
  * the identical failure.
@@ -27,14 +28,14 @@ object MediaTransport {
     /** True on success. On failure, [failureMessage] names which of the two reasons it was. */
     suspend fun run(context: Context, action: Action): Boolean {
         val musicAction = when (action) {
-            Action.PLAY -> LiveToolbox.MusicAction.PLAY
-            Action.PAUSE -> LiveToolbox.MusicAction.PAUSE
-            Action.NEXT -> LiveToolbox.MusicAction.NEXT
-            Action.PREVIOUS -> LiveToolbox.MusicAction.PREVIOUS
+            Action.PLAY -> MusicControlToolbox.MusicAction.PLAY
+            Action.PAUSE -> MusicControlToolbox.MusicAction.PAUSE
+            Action.NEXT -> MusicControlToolbox.MusicAction.NEXT
+            Action.PREVIOUS -> MusicControlToolbox.MusicAction.PREVIOUS
         }
-        return LiveToolbox.controlMusicTransport(context, musicAction).optBoolean("success")
+        return MusicControlToolbox.controlMusicTransport(context, musicAction).optBoolean("success")
     }
 
     /** Same wording `control_music` itself would speak for this exact failure - see this object's own doc. */
-    fun failureMessage(context: Context): String = LiveToolbox.musicFailureMessage(context)
+    fun failureMessage(context: Context): String = MusicControlToolbox.musicFailureMessage(context)
 }

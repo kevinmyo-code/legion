@@ -363,7 +363,7 @@ fun AddCarDialog(
  *
  * Writes ONLY the `name` field, via [com.kevin.legion.vehicle.VehicleController.correctVehicle] -
  * the exact shape the `manage_vehicle` voice tool's `"rename"` action already uses
- * (`LiveToolbox.manageVehicle`), never the wider "correct the badge" form
+ * (`VehicleManageToolbox.manageVehicle`), never the wider "correct the badge" form
  * [com.kevin.legion.vehicle.VehicleController.correctVehicle]'s `make`/`model`/`year` params cover.
  * [otherLabels] must already exclude the car being renamed - see [CarManageResolver.validateRename].
  */

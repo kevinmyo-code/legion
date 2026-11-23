@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.kevin.legion.location.AirNow
-import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.PlacesToolbox
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.theme.LegionType
 import com.kevin.legion.ui.theme.LocalLegionSemantics
@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Current area name + AirNow air quality, on glass (command-center ticket 08). Location half
- * calls [LiveToolbox.resolveCurrentLocation] - the same function `get_current_location` resolves
+ * calls [PlacesToolbox.resolveCurrentLocation] - the same function `get_current_location` resolves
  * against (widened `internal` for the drift-debt half of this same ticket) - never a second
  * Geocoder call re-deriving the permission/providers/fix branches. Air-quality half is this
  * ticket's own first consumer of [AirNow].
@@ -50,18 +50,18 @@ private sealed class AreaCardState {
     data class LocationFailed(val message: String) : AreaCardState()
 }
 
-internal fun locationFailureMessage(readout: LiveToolbox.LocationReadout): String = when (readout) {
-    LiveToolbox.LocationReadout.NoPermission -> "Location permission not granted - grant it to see the area."
-    LiveToolbox.LocationReadout.ProvidersOff -> "Location services are off on the phone."
-    LiveToolbox.LocationReadout.NoFix -> "No GPS fix yet - try again in a moment."
-    is LiveToolbox.LocationReadout.Available -> error("Available is not a failure - caller must branch first")
+internal fun locationFailureMessage(readout: PlacesToolbox.LocationReadout): String = when (readout) {
+    PlacesToolbox.LocationReadout.NoPermission -> "Location permission not granted - grant it to see the area."
+    PlacesToolbox.LocationReadout.ProvidersOff -> "Location services are off on the phone."
+    PlacesToolbox.LocationReadout.NoFix -> "No GPS fix yet - try again in a moment."
+    is PlacesToolbox.LocationReadout.Available -> error("Available is not a failure - caller must branch first")
 }
 
 /** The one line naming where "here" is, reused verbatim shape from
  * `ui/FleetScreen.kt`'s `currentLocationReadout` (both ultimately read the same
- * [LiveToolbox.LocationReadout.Available] fields) but without that screen's "Current location:"
+ * [PlacesToolbox.LocationReadout.Available] fields) but without that screen's "Current location:"
  * prefix - this card's own [DeckPane] header already says where the reading is FROM. */
-internal fun areaLine(available: LiveToolbox.LocationReadout.Available): String =
+internal fun areaLine(available: PlacesToolbox.LocationReadout.Available): String =
     available.label ?: "${available.coords} (couldn't resolve an address)"
 
 /** [AirNow.Reading] rendered as one line. Every branch is worded, never blank - see this file's
@@ -83,8 +83,8 @@ fun AreaCard(modifier: Modifier = Modifier) {
     fun refresh() {
         state = AreaCardState.Loading
         scope.launch {
-            when (val readout = LiveToolbox.resolveCurrentLocation(context)) {
-                is LiveToolbox.LocationReadout.Available -> {
+            when (val readout = PlacesToolbox.resolveCurrentLocation(context)) {
+                is PlacesToolbox.LocationReadout.Available -> {
                     val aqi = AirNow.current(readout.lat, readout.lon)
                     state = AreaCardState.Ready(
                         locationLine = areaLine(readout),

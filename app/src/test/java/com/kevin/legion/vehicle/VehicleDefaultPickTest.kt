@@ -2,6 +2,8 @@ package com.kevin.legion.vehicle
 
 import com.kevin.legion.data.local.Vehicle
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.VehicleRecordsToolbox
+import com.kevin.legion.service.VehicleServiceToolbox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -80,7 +82,7 @@ class VehicleDefaultPickTest {
 
     @Test
     fun `no schedule is said by name, not register the car`() {
-        val msg = LiveToolbox.noScheduleMessage("1998 Jeep Cherokee", scheduleEmpty = true)
+        val msg = VehicleServiceToolbox.noScheduleMessage("1998 Jeep Cherokee", scheduleEmpty = true)
         assertEquals(
             "The 1998 Jeep Cherokee has no maintenance schedule on file yet, so nothing can be timed. " +
                 "Set one up on the Fleet tab, or log a service and it starts from there.",
@@ -92,12 +94,12 @@ class VehicleDefaultPickTest {
     @Test
     fun `recalls use the stated identity only for missing fields`() {
         val blank = car("car:x", "XJ", 0, "", "")
-        val s = LiveToolbox.statedIdentity(blank, 1998, "Jeep", "Cherokee")!!
-        assertEquals(LiveToolbox.StatedIdentity(1998, "Jeep", "Cherokee", listOf("year", "make", "model")), s)
+        val s = VehicleRecordsToolbox.statedIdentity(blank, 1998, "Jeep", "Cherokee")!!
+        assertEquals(VehicleRecordsToolbox.StatedIdentity(1998, "Jeep", "Cherokee", listOf("year", "make", "model")), s)
         // Complete record: the record wins, nothing stated is used.
-        assertNull(LiveToolbox.statedIdentity(jeep, 2001, "Jeep", "Cherokee"))
+        assertNull(VehicleRecordsToolbox.statedIdentity(jeep, 2001, "Jeep", "Cherokee"))
         // The question does not fill the gap: refuse as before.
-        assertNull(LiveToolbox.statedIdentity(blank, 1998, "Jeep", ""))
+        assertNull(VehicleRecordsToolbox.statedIdentity(blank, 1998, "Jeep", ""))
     }
 
     // Phone audit 2026-11-10: asked about a car the household does not own, the fleet lookup read

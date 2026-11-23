@@ -26,7 +26,7 @@ class LiveToolboxMealRowTest {
 
     @Test
     fun `a row carries the ISO date and weekday in the phone's zone`() {
-        val row = LiveToolbox.mealRow(meal(ZonedDateTime.of(2026, 10, 27, 19, 30, 0, 0, chicago)), chicago)
+        val row = BodyReadToolbox.mealRow(meal(ZonedDateTime.of(2026, 10, 27, 19, 30, 0, 0, chicago)), chicago)
         assertEquals("2026-10-27", row.getString("date"))
         assertEquals("Tuesday", row.getString("weekday"))
         assertEquals("Chicken and rice", row.getString("description"))
@@ -37,7 +37,7 @@ class LiveToolboxMealRowTest {
     @Test
     fun `a late-evening meal stays on its local day, not the UTC one`() {
         // 23:30 in Chicago is already the next day in UTC.
-        val row = LiveToolbox.mealRow(meal(ZonedDateTime.of(2026, 10, 27, 23, 30, 0, 0, chicago)), chicago)
+        val row = BodyReadToolbox.mealRow(meal(ZonedDateTime.of(2026, 10, 27, 23, 30, 0, 0, chicago)), chicago)
         assertEquals("2026-10-27", row.getString("date"))
     }
 

@@ -1,7 +1,7 @@
 package com.kevin.legion.ui.world
 
 import com.kevin.legion.location.AirNow
-import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.PlacesToolbox
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -10,7 +10,7 @@ import org.junit.Test
 /**
  * Pure-function coverage for [AreaCard]'s two failure-mapping functions (command-center ticket
  * 08) - [locationFailureMessage] (no permission / providers off / no fix, the three ways
- * [LiveToolbox.resolveCurrentLocation] can fail before there is even an area to check) and
+ * [PlacesToolbox.resolveCurrentLocation] can fail before there is even an area to check) and
  * [aqiLine] (the ticket's own "a missing reading is NEVER rendered as clean air" rule, at the
  * function that actually decides what gets rendered). Same posture as
  * the retired PackageFlightCardFailureLineTest did - no Compose harness in this repo, so the mapping function
@@ -23,16 +23,16 @@ class AreaCardFailureLineTest {
     @Test
     fun `the three location failure branches produce distinct lines`() {
         val lines = listOf(
-            locationFailureMessage(LiveToolbox.LocationReadout.NoPermission),
-            locationFailureMessage(LiveToolbox.LocationReadout.ProvidersOff),
-            locationFailureMessage(LiveToolbox.LocationReadout.NoFix),
+            locationFailureMessage(PlacesToolbox.LocationReadout.NoPermission),
+            locationFailureMessage(PlacesToolbox.LocationReadout.ProvidersOff),
+            locationFailureMessage(PlacesToolbox.LocationReadout.NoFix),
         )
         assertEquals(lines.size, lines.toSet().size)
     }
 
     @Test
     fun `NoPermission names the fix, not just the symptom`() {
-        assertTrue(locationFailureMessage(LiveToolbox.LocationReadout.NoPermission).contains("permission"))
+        assertTrue(locationFailureMessage(PlacesToolbox.LocationReadout.NoPermission).contains("permission"))
     }
 
     // ------------------------------------------------------------------ aqiLine (never renders "clean air" for a miss)

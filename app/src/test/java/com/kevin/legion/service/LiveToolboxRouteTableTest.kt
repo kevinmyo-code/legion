@@ -38,13 +38,14 @@ class LiveToolboxRouteTableTest {
         assertTrue("LiveToolbox.dispatch not found", dispatch >= 0)
         val labels = branchLabels(toolbox, toolbox.indexOf("return when (name) {", dispatch)).toMutableList()
         for (file in splitFiles()) {
+            // The toolbox's own dispatch `when`, not a handler's inner `when (name)` (navVoiceTool
+            // switches on the four navigation names it was routed).
             val text = MainSource.read(listOf(file))
-            var at = text.indexOf("when (name) {")
+            val door = text.indexOf("    suspend fun dispatch(")
+            assertTrue("$file has no dispatch", door >= 0)
+            val at = text.indexOf("when (name) {", door)
             assertTrue("$file routes nothing with when (name)", at >= 0)
-            while (at >= 0) {
-                labels += branchLabels(text, at)
-                at = text.indexOf("when (name) {", at + 1)
-            }
+            labels += branchLabels(text, at)
         }
         return labels
     }

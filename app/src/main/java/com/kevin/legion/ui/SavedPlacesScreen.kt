@@ -37,7 +37,7 @@ import com.kevin.legion.data.local.TaggedPlace
 import com.kevin.legion.location.GeocodedAddress
 import com.kevin.legion.location.LocationController
 import com.kevin.legion.location.PlaceController
-import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.PlacesToolbox
 import com.kevin.legion.ui.common.DeckButton
 import com.kevin.legion.ui.common.DeckPane
 import com.kevin.legion.ui.common.DeckScreenHeader
@@ -483,15 +483,15 @@ private fun ConfirmDialog(
 
 /**
  * The current-location line at the top of [SavedPlacesScreen]. Calls
- * [LiveToolbox.resolveCurrentLocation] directly, the same function `get_current_location` resolves
+ * [PlacesToolbox.resolveCurrentLocation] directly, the same function `get_current_location` resolves
  * against, and only re-words the four outcomes. One decision, two renderers.
  */
 private suspend fun currentLocationReadout(context: Context): String =
-    when (val readout = LiveToolbox.resolveCurrentLocation(context)) {
-        LiveToolbox.LocationReadout.NoPermission -> "Current location: unknown (no location permission)."
-        LiveToolbox.LocationReadout.ProvidersOff -> "Current location: unknown (location services are off)."
-        LiveToolbox.LocationReadout.NoFix -> "Current location: unknown (no GPS fix yet)."
-        is LiveToolbox.LocationReadout.Available ->
+    when (val readout = PlacesToolbox.resolveCurrentLocation(context)) {
+        PlacesToolbox.LocationReadout.NoPermission -> "Current location: unknown (no location permission)."
+        PlacesToolbox.LocationReadout.ProvidersOff -> "Current location: unknown (location services are off)."
+        PlacesToolbox.LocationReadout.NoFix -> "Current location: unknown (no GPS fix yet)."
+        is PlacesToolbox.LocationReadout.Available ->
             if (readout.label != null) {
                 "Current location: ${readout.label} ${readout.coords}"
             } else {

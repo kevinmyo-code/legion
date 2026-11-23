@@ -11,7 +11,7 @@ import com.kevin.legion.meals.DailyMealGap
 import com.kevin.legion.meals.MacroTotals
 import com.kevin.legion.plan.PlanGap
 import com.kevin.legion.plan.TrustTier
-import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.service.PlacesToolbox
 import com.kevin.legion.ui.fleet.DueRowView
 import java.time.YearMonth
 import org.junit.Assert.assertEquals
@@ -347,21 +347,21 @@ class HomeTileReadingsTest {
     fun `location refused states only its own message, never a half-populated area line`() {
         assertEquals(
             "Location permission not granted - grant it to see the area.",
-            areaAqiLine(LiveToolbox.LocationReadout.NoPermission, aqi = null),
+            areaAqiLine(PlacesToolbox.LocationReadout.NoPermission, aqi = null),
         )
         assertEquals(
             "Location services are off on the phone.",
-            areaAqiLine(LiveToolbox.LocationReadout.ProvidersOff, aqi = null),
+            areaAqiLine(PlacesToolbox.LocationReadout.ProvidersOff, aqi = null),
         )
         assertEquals(
             "No GPS fix yet - try again in a moment.",
-            areaAqiLine(LiveToolbox.LocationReadout.NoFix, aqi = null),
+            areaAqiLine(PlacesToolbox.LocationReadout.NoFix, aqi = null),
         )
     }
 
     @Test
     fun `a resolved location with no AQI reading yet says so in words, not a blank`() {
-        val available = LiveToolbox.LocationReadout.Available(
+        val available = PlacesToolbox.LocationReadout.Available(
             label = "Houston, TX", coords = "29.7,-95.3", lat = 29.7, lon = -95.3,
         )
         val line = areaAqiLine(available, aqi = null)

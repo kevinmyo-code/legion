@@ -15,7 +15,24 @@ import java.io.File
 object MainSource {
 
     /** `service/LiveToolbox.kt` and the toolboxes split out of it. */
-    val LIVE_TOOLBOX = listOf("service/LiveToolbox.kt", "service/MusicToolbox.kt")
+    val LIVE_TOOLBOX = listOf(
+        "service/LiveToolbox.kt",
+        "service/MusicToolbox.kt",
+        "service/MusicLibraryToolbox.kt",
+        "service/MusicControlToolbox.kt",
+        "service/GoalsToolbox.kt",
+        "service/AdvisorToolbox.kt",
+        "service/VehicleCodesToolbox.kt",
+        "service/VehicleSensorToolbox.kt",
+        "service/VehicleHealthToolbox.kt",
+        "service/VehicleServiceToolbox.kt",
+        "service/VehicleRecordsToolbox.kt",
+        "service/VehicleManageToolbox.kt",
+        "service/VehicleBuildToolbox.kt",
+        "service/BodyReadToolbox.kt",
+        "service/BodyLogToolbox.kt",
+        "service/PlacesToolbox.kt",
+    )
 
     /** `service/cascade/CascadeSession.kt` and the files split out of it. */
     val CASCADE_SESSION = listOf("service/cascade/CascadeSession.kt")

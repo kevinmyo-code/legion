@@ -123,11 +123,11 @@ class LiveToolboxHistoryUriTest {
 
     @Test
     fun `replayabilityNote is null when nothing in the list is missing a URI`() {
-        assertNull(LiveToolbox.replayabilityNote(listOf(entry("spotify:track:1"), entry("spotify:track:2"))))
+        assertNull(MusicLibraryToolbox.replayabilityNote(listOf(entry("spotify:track:1"), entry("spotify:track:2"))))
     }
 
     @Test
     fun `replayabilityNote fires when at least one row has no URI`() {
-        assertTrue(LiveToolbox.replayabilityNote(listOf(entry("spotify:track:1"), entry(null))) != null)
+        assertTrue(MusicLibraryToolbox.replayabilityNote(listOf(entry("spotify:track:1"), entry(null))) != null)
     }
 }

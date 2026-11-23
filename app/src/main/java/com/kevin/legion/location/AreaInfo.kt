@@ -229,7 +229,7 @@ object AreaInfo {
     /**
      * FEMA declarations are keyed by state + county (`fipsStateCode`/`fipsCountyCode`), not by a
      * point, so this reverse-geocodes the live fix down to a US state first (Android's own
-     * `Geocoder`, same mechanism `LiveToolbox.getCurrentLocation` already uses) and queries by
+     * `Geocoder`, same mechanism `PlacesToolbox.getCurrentLocation` already uses) and queries by
      * state - narrower than the source's own county granularity would allow, but resolving a county
      * NAME to FEMA's numeric `fipsCountyCode` needs a lookup table this ticket does not build, and
      * state-level is still honest: every row returned genuinely is FEMA data for the state the fix

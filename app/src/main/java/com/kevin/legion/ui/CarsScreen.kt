@@ -217,7 +217,7 @@ fun CarsScreen(onBack: () -> Unit) {
         onAddCar = { year, make, model, trim, name, engine ->
             scope.launch {
                 // Same call the manage_vehicle voice tool's "add" action makes
-                // (LiveToolbox.manageVehicle) - no second write path. addVehicle
+                // (VehicleManageToolbox.manageVehicle) - no second write path. addVehicle
                 // never touches ActiveVehicle.select itself (see its own doc:
                 // adding a second car mid-drive must not silently move which
                 // car is active), so nothing here needs to re-notify a live

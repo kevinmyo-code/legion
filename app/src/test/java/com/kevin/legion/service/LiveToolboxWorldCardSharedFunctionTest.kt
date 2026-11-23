@@ -13,8 +13,8 @@ import org.robolectric.RuntimeEnvironment
  * Command-center ticket 08's drift-debt half, proved rather than asserted by doc comment: the
  * hands paths this ticket lifted out of `private` LiveToolbox functions must reach the exact SAME
  * function `dispatch` reaches, not two call sites that happen to agree today.
- * [LiveToolbox.resolveCurrentLocation] (the `ui/FleetScreen.kt` restatement `getCurrentLocation`
- * used to have) and [LiveToolbox.controlMusicTransport] (the `ui/media/MediaTransport.kt`
+ * [PlacesToolbox.resolveCurrentLocation] (the `ui/FleetScreen.kt` restatement `getCurrentLocation`
+ * used to have) and [MusicControlToolbox.controlMusicTransport] (the `ui/media/MediaTransport.kt`
  * restatement `control_music` used to have) are both pure local reads/writes - no network, no
  * Google account - so they are safe to call directly under Robolectric.
  *
@@ -47,16 +47,16 @@ class LiveToolboxWorldCardSharedFunctionTest {
         // No GPS fix ever exists under Robolectric with no LocationController.init side effects
         // wired to a real provider, so this always lands on one of the three failure branches -
         // deterministic either way, and it is the BRANCH VALUE under test, not which one it lands on.
-        val readout = LiveToolbox.resolveCurrentLocation(context)
+        val readout = PlacesToolbox.resolveCurrentLocation(context)
         val getCurrentLocationResult = LiveToolbox.dispatch(context, "get_current_location", JSONObject())
         assertTrue(getCurrentLocationResult != null)
         when (readout) {
-            LiveToolbox.LocationReadout.NoPermission, LiveToolbox.LocationReadout.ProvidersOff, LiveToolbox.LocationReadout.NoFix ->
+            PlacesToolbox.LocationReadout.NoPermission, PlacesToolbox.LocationReadout.ProvidersOff, PlacesToolbox.LocationReadout.NoFix ->
                 assertTrue(
                     "get_current_location must fail exactly when resolveCurrentLocation says there's no fix",
                     !getCurrentLocationResult!!.optBoolean("success"),
                 )
-            is LiveToolbox.LocationReadout.Available ->
+            is PlacesToolbox.LocationReadout.Available ->
                 assertTrue(getCurrentLocationResult!!.optBoolean("success"))
         }
     }
@@ -65,10 +65,10 @@ class LiveToolboxWorldCardSharedFunctionTest {
 
     @Test
     fun `controlMusicTransport direct call and control_music PLAY dispatch reach the identical function`() = runBlocking {
-        val direct = LiveToolbox.controlMusicTransport(context, LiveToolbox.MusicAction.PLAY)
+        val direct = MusicControlToolbox.controlMusicTransport(context, MusicControlToolbox.MusicAction.PLAY)
         val dispatched = LiveToolbox.dispatch(
             context, "control_music",
-            JSONObject().put("action", LiveToolbox.MusicAction.PLAY.wireValue),
+            JSONObject().put("action", MusicControlToolbox.MusicAction.PLAY.wireValue),
         )
         assertJsonEquals(direct, dispatched!!)
     }

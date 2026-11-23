@@ -4,6 +4,7 @@ import android.content.Context
 import com.kevin.legion.media.NowPlayingController
 import com.kevin.legion.media.SpotifyController
 import com.kevin.legion.media.SpotifyWebApi
+import com.kevin.legion.media.VolumeController
 import com.kevin.legion.service.LiveToolbox.result
 import org.json.JSONObject
 
@@ -25,6 +26,7 @@ object MusicToolbox {
             args.optString("spotifyUri", "").ifBlank { null },
             args.optString("artist", "").ifBlank { null },
         )
+        "control_volume" -> controlVolume(context, args)
         else -> null
     }
 
@@ -33,7 +35,7 @@ object MusicToolbox {
      * [JSONObject] ready to return as-is. Kept as its own tiny sealed type rather than a nullable
      * String so a caller cannot forget to check which one it got.
      */
-    internal sealed interface SpotifyUriResolution {
+    private sealed interface SpotifyUriResolution {
         /**
          * [name]/[subtitle] (ticket 07) are Spotify's OWN name for whatever [uri] resolved to, so
          * `play_music` can say what it actually picked ("Discovery, Daft Punk") instead of echoing
@@ -62,7 +64,7 @@ object MusicToolbox {
      * to the result.
      */
     @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod") // one resolution cascade; a split scatters it
-    internal suspend fun resolveSpotifyUri(
+    private suspend fun resolveSpotifyUri(
         context: Context,
         query: String,
         type: String,
@@ -295,5 +297,53 @@ object MusicToolbox {
         // scope item 2). Never appended on failure: a failed play has nothing to caveat further.
         val message = SpotifyController.message(outcome, query) + (fallbackNote?.takeIf { succeeded }?.let { " $it" } ?: "")
         return result(success = succeeded, message = message)
+    }
+
+    /**
+     * Adjusts the head unit's media volume on-device ([VolumeController]) - no
+     * cloud needed once the intent is known. Reports the resulting level so Zero
+     * can confirm where it landed.
+     */
+    private fun controlVolume(context: Context, args: JSONObject): JSONObject {
+        val pct = when (val action = args.optString("action")) {
+            "up" -> VolumeController.raise(context)
+            "down" -> VolumeController.lower(context)
+            "set" -> {
+                val level = args.optInt("level", -1)
+                if (level < 0) return result(success = false, message = "What level should I set it to?")
+                VolumeController.setPercent(context, level)
+            }
+            "mute" -> VolumeController.mute(context, true)
+            "unmute" -> VolumeController.mute(context, false)
+            else -> return result(success = false, message = "Unknown volume action: $action")
+        }
+        return result(success = true, message = null).put("volumePercent", pct)
+    }
+
+    /**
+     * `control_music`'s `queue` action (ticket 04, `.scratch/spotify-voice/issues/04-queue.md`):
+     * resolves [query] through [resolveSpotifyUri] - the identical path [playMusic] uses - then
+     * [SpotifyController.queueUri]. "Play X next" and "add X to the queue" are the same operation
+     * to Spotify (there is no insert-at-position), which is why they share one action and one
+     * spoken line ([SpotifyController.message] for [SpotifyController.QueueOutcome] says so).
+     */
+    internal suspend fun controlMusicQueue(context: Context, query: String): JSONObject {
+        if (query.isBlank()) return result(success = false, message = "What should I queue?")
+
+        val (uri, pickedLabel) = when (val resolved = resolveSpotifyUri(context, query, "song")) {
+            is SpotifyUriResolution.Found -> resolved.uri to
+                SpotifyController.pickedLabel(resolved.name, resolved.subtitle)
+            is SpotifyUriResolution.Failed -> return resolved.toolResult
+        }
+
+        val outcome = SpotifyController.queueUri(context, uri)
+        // Names the track Spotify resolved, not the user's own words: the queue line used to echo
+        // the query ("Queued \"Ugly by The Gazette\"") whatever had actually been found, the same
+        // wrong-song blind spot play_music had (voice audit finding 4, S18). Falls back to the
+        // query only when the resolution carried no name.
+        return result(
+            success = SpotifyController.succeeded(outcome),
+            message = SpotifyController.message(outcome, pickedLabel ?: query),
+        )
     }
 }
