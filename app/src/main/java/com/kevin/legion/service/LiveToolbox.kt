@@ -3103,10 +3103,17 @@ object LiveToolbox {
             )
             // `date` ahead of the words: the day it landed on, kept inside the audit line's cut so the
             // voice eval can check a carried day (DateCarry.carried) on the outcome, not the request.
-            JSONObject().put("success", true).put("date", date.toString()).put(
-                "message",
-                ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase),
-            )
+            JSONObject().put("success", true).put("date", date.toString())
+                // What the phone's done line names (2026-11-19), the same key the reminder branch
+                // puts there. Without it CascadeRules finds no title and says "Done: added it."
+                // After `date`, so the day stays inside the audit line's cut.
+                .put("item", itemArg)
+                .put(
+                    "message",
+                    ScheduleIntentResolver.confirmationPhrase(
+                        ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase,
+                    ),
+                )
         } catch (e: Exception) {
             // A genuine Room failure (disk full, etc) - worded, never a silent "added" - same "no
             // false success" contract every write in this file holds (CLAUDE.md §7). A push
