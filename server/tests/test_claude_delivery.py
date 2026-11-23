@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from claude_session.delivery import asks_for_made_file
+from claude_session.delivery import asks_for_made_file, in_task_folder
 from claude_session.models import ClaudeMachine, ClaudeTask
 
 pytestmark = pytest.mark.django_db
@@ -45,6 +45,12 @@ def _deliver(task_id):
     "turn the budget into a spreadsheet",
     "save it as a PDF for me",
     "write it up as a Word document",
+    # Re-review r2: a topic word that is not about the format still asks for the file.
+    "make a comparison of three laptops as a PDF",
+    "make a guide for the dog sitter as a PDF",
+    "write up a study guide for my exam as a PDF",
+    "make me a list of apps for budgeting as a PDF",
+    "write me steps to change the oil, as a PDF",
 ])
 def test_a_result_asked_for_as_a_file_is_a_made_file(words):
     assert asks_for_made_file(words)
@@ -135,6 +141,8 @@ def test_a_pdf_asked_for_with_no_delivery_goes_to_the_phone_on_a_full_machine_on
     "Build a guide page on how to print a spreadsheet as a PDF",
     "Write a page about the best way to put receipts into a spreadsheet",
     "a researched write-up on garden walks",
+    "a page about PDF tools",
+    "page on how the IRS wants returns sent in PDF format",
 ])
 def test_a_page_about_a_file_format_stays_a_page(token_a, words):
     """RED review 2026-11-22: the format word is the topic, not the deliverable."""
@@ -147,6 +155,9 @@ def test_a_page_about_a_file_format_stays_a_page(token_a, words):
     "write up the itinerary and make it a PDF",
     "send me a PDF of the reading list",
     "a PDF version of the packing list",
+    "make a comparison of three laptops as a PDF",
+    "research the best tools for tiling a bathroom and make it a PDF",
+    "turn my notes into a PDF",
 ])
 def test_a_page_asked_for_as_a_pdf_becomes_the_pdf_file(token_a, words):
     """Task 32 (2026-11-22): the phone sent page=true for a plan "as a PDF"; a page is HTML, so
@@ -163,10 +174,19 @@ def test_a_pdf_page_on_the_work_laptop_is_refused_not_flipped(token_a):
     assert r.status_code == 400
 
 
+def _finish_found(client, task_id, found):
+    client.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    r = client.post(f"{API}tasks/{task_id}/finish/",
+                    {"status": "done", "summary": "Done.", "found": found}, format="json")
+    assert r.status_code == 200, r.data
+    return {f["name"]: f["requested"] for f in r.data["files"]}
+
+
 def test_a_made_file_task_sends_only_what_it_made_in_its_own_folder(token_a):
     """Made means made: a file the helper found elsewhere (his own scan) is never sent."""
     _beat(token_a)
     made = _create(token_a, "make a one-page weekend plan for Austin as a PDF", deliver="phone")
+    assert ClaudeTask.objects.get(pk=made["id"]).made_only is True
     token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
     finished = token_a.post(
         f"{API}tasks/{made['id']}/finish/",
@@ -181,6 +201,37 @@ def test_a_made_file_task_sends_only_what_it_made_in_its_own_folder(token_a):
     assert finished.status_code == 200
     assert {f["name"]: f["requested"] for f in finished.data["files"]} == {
         "austin.pdf": True, "scan.pdf": False, "other.pdf": False}
+
+
+def test_made_only_comes_from_the_engines_own_flip_not_the_words(token_a):
+    """RED review r2: "send me the lease PDF" arrives as files from the phone. The engine did not
+    flip it, so the lease it found in Documents is sent, as on base."""
+    _beat(token_a)
+    sent = _create(token_a, "send me the lease PDF", deliver="files")
+    assert ClaudeTask.objects.get(pk=sent["id"]).made_only is None
+    got = _finish_found(token_a, sent["id"],
+                        [{"path": "C:/Users/k/Documents/lease.pdf", "name": "lease.pdf",
+                          "size": 900}])
+    assert got == {"lease.pdf": True}
+
+
+def test_a_no_delivery_flip_is_made_only_too_and_takes_a_windows_path(token_a):
+    _beat(token_a)
+    made = _create(token_a, "make a guide for the dog sitter as a PDF")
+    assert ClaudeTask.objects.get(pk=made["id"]).made_only is True
+    tid = made["id"]
+    got = _finish_found(token_a, tid, [
+        {"path": rf"C:\Users\k\AppData\Roaming\legion-claude\work\task-{tid}\guide.pdf",
+         "name": "guide.pdf", "size": 900},
+        {"path": r"C:\Users\k\Documents\scan.pdf", "name": "scan.pdf", "size": 900}])
+    assert got == {"guide.pdf": True, "scan.pdf": False}
+
+
+def test_mail_on_a_laptop_without_mail_is_files_but_not_made_only(token_a):
+    _beat(token_a, can_mail=False)
+    t = _create(token_a, "email me my resume", deliver="email_self")
+    row = ClaudeTask.objects.get(pk=t["id"])
+    assert (row.deliver, row.made_only) == ("files", None)
 
 
 def test_a_plain_files_task_still_sends_what_it_found(token_a):
@@ -215,3 +266,15 @@ def test_settled_at_claim_for_a_task_queued_with_no_machine(token_a):
     claimed = token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
     assert claimed.data[0]["deliver"] == "files"
     assert _deliver(queued["id"]) == "files"
+
+
+@pytest.mark.parametrize(("path", "inside"), [
+    (r"C:\Users\k\AppData\Roaming\legion-claude\work\task-32\sf.pdf", True),
+    (r"\\?\C:\w\work\task-32\sf.pdf", True),
+    ("C:/w/work/task-32/sf.pdf", True),
+    (r"C:\w\work\task-320\sf.pdf", False),
+    (r"C:\w\work\task-32\sub\sf.pdf", False),
+    (r"C:\Users\k\Documents\sf.pdf", False),
+])
+def test_in_task_folder_backslash_and_slash_paths(path, inside):
+    assert in_task_folder(32, path) is inside

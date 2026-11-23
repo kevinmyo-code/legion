@@ -18,8 +18,10 @@ the machine is fixed (create with a machine, assign, claim), never on a workflow
 - **A page asked for as a PDF is the PDF.** `deliver: phone` (the phone's page=true) becomes
   `files` only on a deliverable phrase: "as a PDF", "make it a PDF", "send me a PDF", "PDF
   version". When unsure it stays a page.
-- **Made means made.** For such a files task the engine requests at finish only files directly in
-  the task's own work folder (`made_only`, `in_task_folder`), never one found elsewhere.
+- **Made means made.** When settle itself made a task `files` it marks `made_only`, and at
+  finish the engine requests only files directly in the task's own work folder
+  (`in_task_folder`), never one found elsewhere. A task the phone sent as `files` ("send me the
+  lease PDF") sends what it found, as before.
 """
 
 from __future__ import annotations
@@ -71,10 +73,15 @@ _MAKE_FORMAT = re.compile(
 
 # The format word is the TOPIC, not the deliverable: "a page on how to convert a Word doc into a
 # PDF", "explaining how to export my notes to Excel", "comparing tools that turn scans into a
-# PDF", "I will print it as a PDF later" (RED review 2026-11-22). When unsure, no file.
+# PDF", "I will print it as a PDF later" (RED reviews 2026-11-22). Only clauses that make the
+# format the subject count, so "a comparison of three laptops as a PDF" or "a guide for the dog
+# sitter as a PDF" still ask for the PDF.
 _TOPIC = re.compile(
-    r"\b(?:how\s+(?:to|do|can)|explain\w*|about|compar\w*|later|guides?|tutorials?|tools?"
-    r"|ways?\s+to|steps?\s+to|apps?|software|programs?)\b",
+    rf"\bhow\s+\w+\b[^.?!]{{0,60}}?\b{_FORMAT}s?\b"
+    r"|\b(?:tools?|apps?|software|programs?|ways?|steps?)\s+(?:that|to|for|which)\s+(?:\w+\s+){0,2}"
+    r"(?:convert|turn|export|print|save|put|make)\w*\b"
+    r"|\blater\b"
+    rf"|\b(?:about|on|explaining)\s+(?:a\s+|the\s+)?{_FORMAT}s?\b",
     re.I,
 )
 # What turns a requested PAGE into a PDF: the result itself named as a PDF, nothing looser.
@@ -101,18 +108,20 @@ def page_wants_pdf(request: str) -> bool:
     text = request or ""
     if _FINDING.search(text) or _TOPIC.search(text):
         return False
-    return bool(_PDF_DELIVERABLE.search(text))
-
-
-def made_only(task_id: int, request: str) -> bool:
-    """A files task that exists because a result was asked for as a file: only what the task made,
-    in its own work folder, may go to the phone, never a file "found by name" elsewhere."""
-    return asks_for_made_file(request) or page_wants_pdf(request)
+    return bool(_PDF_DELIVERABLE.search(text)) or asks_for_made_file(text)
 
 
 def in_task_folder(task_id: int, path: str) -> bool:
     """`path` sits directly in the worker's `work/task-<id>/` folder (the worker's layout)."""
     return re.search(rf"[\\/]task-{int(task_id)}[\\/][^\\/]+$", path or "") is not None
+
+
+def flipped(before: str | None, after: str | None) -> bool:
+    """This settle made the task `files` (from a page or no delivery): its files are made, not
+    found, so only those in its own folder go up (`ClaudeTask.made_only`, RED review r2)."""
+    # Not from `email_self`: "email me my resume" on a laptop without mail sends the resume it
+    # finds, as a files task would.
+    return after == DELIVER_FILES and before in (None, DELIVER_PHONE)
 
 
 def settle(

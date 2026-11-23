@@ -546,7 +546,9 @@ class TaskListCreateView(APIView):
             deliver = DELIVER_FILES
         # No mail where none can be sent; a file asked for as the result goes to the phone.
         # Settled again at assign or claim when no machine is known yet.
-        deliver = delivery.settle(deliver, data["request"], kind, machine)
+        settled = delivery.settle(deliver, data["request"], kind, machine)
+        made_only = True if delivery.flipped(deliver, settled) else None
+        deliver = settled
 
         # Ticket 09 and ADR 0080: a page or files never come from a `listed` machine.
         listed = machine is not None and machine.scope == SCOPE_LISTED
@@ -570,6 +572,7 @@ class TaskListCreateView(APIView):
             workflow=workflow,
             params=params,
             deliver=deliver,
+            made_only=made_only,
             confirms=data["confirms"],
             request=data["request"],
             status=status,
@@ -681,8 +684,11 @@ class TaskAssignView(APIView):
                     return refused
             task.machine = machine
             task.status = QUEUED
-            task.deliver = delivery.settle(task.deliver, task.request, task.kind, machine)
-            task.save(update_fields=["machine", "status", "deliver"])
+            settled = delivery.settle(task.deliver, task.request, task.kind, machine)
+            if delivery.flipped(task.deliver, settled):
+                task.made_only = True
+            task.deliver = settled
+            task.save(update_fields=["machine", "status", "deliver", "made_only"])
         return Response(_created(task, machine, now))
 
 
@@ -993,8 +999,12 @@ class ClaimView(APIView):
                 task.machine = machine
                 task.status = RUNNING
                 task.started_at = now
-                task.deliver = delivery.settle(task.deliver, task.request, task.kind, machine)
-                task.save(update_fields=["machine", "status", "started_at", "deliver"])
+                settled = delivery.settle(task.deliver, task.request, task.kind, machine)
+                if delivery.flipped(task.deliver, settled):
+                    task.made_only = True
+                task.deliver = settled
+                task.save(update_fields=["machine", "status", "started_at", "deliver",
+                                         "made_only"])
         if not claimed:
             return Response(status=http.HTTP_204_NO_CONTENT)
         return Response([task_row(task, now) for task in claimed])
@@ -1209,7 +1219,7 @@ class FinishView(APIView):
                     )
                 # A result asked for as a file sends only what the task made in its own folder
                 # (RED review 2026-11-22), never a file it "found by name" elsewhere.
-                made = wants_files and delivery.made_only(task.id, task.request)
+                made = wants_files and task.made_only is True
                 ClaudeTaskFile.objects.bulk_create(
                     ClaudeTaskFile(
                         household=household, task=task, path=f["path"], name=f["name"],

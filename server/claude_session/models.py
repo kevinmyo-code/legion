@@ -223,6 +223,10 @@ class ClaudeTask(models.Model):
     workflow = models.TextField(null=True, blank=True)
     params = models.TextField(null=True, blank=True)
     deliver = models.TextField(null=True, blank=True)
+    # The engine itself settled this task to `files` (a page or no delivery asked for a made file,
+    # `claude_session.delivery`): only files in its own work folder go to the phone. Null on
+    # every older row and on a task the client sent as `files`.
+    made_only = models.BooleanField(null=True, blank=True)
     # True only on a follow-up that is Kevin's yes to a `needs_confirmation`
     # parent. The worker unlocks the asked ask-list step only when it is set.
     confirms = models.BooleanField(default=False)
