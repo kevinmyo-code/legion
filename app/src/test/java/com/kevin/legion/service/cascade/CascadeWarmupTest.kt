@@ -2,6 +2,7 @@
 
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.testutil.MainSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -122,7 +123,7 @@ class CascadeWarmupTest {
 
     @Test
     fun `the session drops a failed draft at confirmation and the cloud loop is capped`() {
-        val s = source("service/cascade/CascadeSession.kt")
+        val s = MainSource.read(MainSource.CASCADE_SESSION)
         assertTrue(s.contains("answer.unusableReason != null"))
         assertTrue(s.contains("u.cloudDraftBudgetLeft"))
         assertTrue(s.contains("u.spendCloudDraft()"))
@@ -132,7 +133,7 @@ class CascadeWarmupTest {
 
     @Test
     fun `the laptop connects while the mic and turn models get ready, and an abandoned open lets it go`() {
-        val s = source("service/cascade/CascadeSession.kt")
+        val s = MainSource.read(MainSource.CASCADE_SESSION)
         val open = s.substring(s.indexOf("private suspend fun openNow"))
         val prewarm = open.indexOf("LaptopPrewarm.start(ctx, \"open\")")
         assertTrue(prewarm in 0 until open.indexOf("micHold.take"))

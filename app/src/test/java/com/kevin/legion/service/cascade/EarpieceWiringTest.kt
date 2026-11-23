@@ -1,5 +1,6 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.testutil.MainSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -102,7 +103,7 @@ class EarpieceWiringTest {
         assertFalse("the follower never sets the mode", earpiece.contains(".mode ="))
     }
 
-    private fun session() = stripComments(File(sourceRoot(), "service/cascade/CascadeSession.kt").readText())
+    private fun session() = stripComments(MainSource.read(MainSource.CASCADE_SESSION))
 
     private fun bodyOf(source: String, name: String): String {
         val signature = Regex("fun $name\\(").find(source)?.range?.first ?: error("no fun $name(")

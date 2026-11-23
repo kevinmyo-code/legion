@@ -3,6 +3,7 @@
 package com.kevin.legion.service.cascade
 
 import com.kevin.legion.service.LiveToolbox
+import com.kevin.legion.testutil.MainSource
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -102,8 +103,7 @@ class ToolFillersTest {
 
     @Test
     fun `the session says the chosen line, generic or own, and fetches the own one`() {
-        val s = java.io.File(listOf("src/main/java", "app/src/main/java").map { java.io.File(it) }.first { it.isDirectory },
-            "com/kevin/legion/service/cascade/CascadeSession.kt").readText()
+        val s = MainSource.read(MainSource.CASCADE_SESSION)
         val body = s.substring(s.indexOf("private fun sayToolFiller("), s.indexOf("private fun newSpeaker("))
         assertTrue(body.contains("ToolFillers.choose("))
         assertTrue(body.contains("choice.fetch?.let { tts?.warm("))

@@ -2,6 +2,7 @@
 
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.testutil.MainSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -144,7 +145,7 @@ class AckTimingTest {
 
     @Test
     fun `the session runs this same code, and nothing on its path waits but the named cue wait`() {
-        val s = File(sourceRoot(), "service/cascade/CascadeSession.kt").readText()
+        val s = MainSource.read(MainSource.CASCADE_SESSION)
         fun body(start: String, end: String) = s.substring(s.indexOf(start), s.indexOf(end))
         assertTrue(s.contains("fillerJobs.startBackchannel { playBackchannel(seq, eotAtMs) }"))
         val play = body("private suspend fun playBackchannel(", "private fun ackSteps(")
