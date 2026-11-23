@@ -163,6 +163,9 @@ RECRUITER_EXCLUDED: dict[str, str] = {
     ),
     # The factory board is a real member's laptop status; a visit has none.
     "board_status": "it reads a real member's laptop board, which is not part of a demo visit",
+    "add_backlog_idea": (
+        "it adds to a real member's laptop backlog, which is not part of a demo visit"
+    ),
     "list_tables": (
         "its answer names every table, body and memory included, as readable and writable; "
         "for a recruiter that is false. The record tools' own table enums, narrowed below, "

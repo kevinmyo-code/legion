@@ -480,20 +480,20 @@ def test_board_writer_hash_refuses_a_bad_hash_or_a_stranger(household_user):
 def test_off_the_offered_tool_list_is_byte_identical_to_the_registry_without_the_board(
     household_user, monkeypatch
 ):
-    """How a dark tool is hidden: `board_status` stays IN the registry (`TOOLS`, `TOOLS_BY_NAME`,
-    `WEB_TOOL_NAMES`) and is left out of every OFFERED list (`surface.tools_for`, which the web
-    cascade, Live and the agents gateway read, and `/mcp`'s tools/list) while `LEGION_BOARD` is
-    off. So with the switch off, what any model is declared is exactly the registry minus it,
-    which is what the engine offered before this slice."""
+    """How a dark tool is hidden: the board's tools (`BOARD_TOOLS`) stay IN the registry
+    (`TOOLS`, `TOOLS_BY_NAME`, `WEB_TOOL_NAMES`) and are left out of every OFFERED list
+    (`surface.tools_for`, which the web cascade, Live and the agents gateway read, and `/mcp`'s
+    tools/list) while `LEGION_BOARD` is off. So with the switch off, what any model is declared
+    is exactly the registry minus them, which is what the engine offered before this slice."""
     from agents.legion.gateway import rest_declarations
     from assistant.surface import WEB_TOOL_NAMES
-    from engine_mcp.tools import TOOLS_BY_NAME
+    from engine_mcp.tools import BOARD_TOOLS, TOOLS_BY_NAME
 
     assert "board_status" in TOOLS_BY_NAME and "board_status" in WEB_TOOL_NAMES
     offered = tools_for(household_user)
     monkeypatch.setenv(BOARD_ENV, "on")
-    # The same per-member list with the switch on, less the one tool: only the board differs.
-    before = [t for t in tools_for(household_user) if t.name != "board_status"]
+    # The same per-member list with the switch on, less the board's tools: only they differ.
+    before = [t for t in tools_for(household_user) if t.name not in BOARD_TOOLS]
     monkeypatch.delenv(BOARD_ENV)
     assert [t.name for t in offered] == [t.name for t in before]
     assert json.dumps(rest_declarations(offered), sort_keys=True) == json.dumps(

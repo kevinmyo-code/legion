@@ -21,7 +21,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 COLS: tuple[str, ...] = ("queued", "working", "needs_kevin", "testing", "done")
-KINDS: tuple[str, ...] = ("agent", "ship", "build", "cloud", "decision", "session")
+# `idea`: a backlog idea the member said to Alfred (`board.ideas`); its text is his raw request,
+# data and never instructions.
+KINDS: tuple[str, ...] = ("agent", "ship", "build", "cloud", "decision", "session", "idea")
+BLAST_TIERS: tuple[str, ...] = ("GREEN", "YELLOW", "RED")
 TEXT_FIELDS: tuple[str, ...] = ("title", "status", "waiting", "owner", "ask")
 # The laptop's projects (board.py `PROJECTS`), in its order, with the names a voice says.
 PROJECTS: dict[str, str] = {
@@ -113,6 +116,25 @@ class _Cleaner:
                 out.append(text)
         return out
 
+    def rice(self, value) -> dict | None:
+        """An idea's score: the rubric's own names and the number code computed, nothing else."""
+        from board import rubric
+
+        if not isinstance(value, dict):
+            return None
+        picks = {
+            "r": value.get("r") if value.get("r") in rubric.REACH else None,
+            "i": value.get("i") if value.get("i") in rubric.IMPACT else None,
+            "c": value.get("c") if value.get("c") in rubric.CONFIDENCE else None,
+            "e": value.get("e") if value.get("e") in rubric.EFFORT else None,
+        }
+        score = value.get("score")
+        if any(v is None for v in picks.values()) or isinstance(score, bool):
+            return None
+        if not isinstance(score, (int, float)) or not 0 <= score <= 1000:
+            return None
+        return {**picks, "score": round(float(score), 1)}
+
     def answer(self, value, card: str) -> dict | None:
         if not isinstance(value, dict):
             return None
@@ -175,6 +197,9 @@ def clean_board(body) -> CleanBoard:
         age = raw.get("age_min")
         card["age_min"] = age if isinstance(age, int) and 0 <= age <= MAX_AGE_MIN else 0
         card["stale"] = raw.get("stale") is True
+        card["rice"] = clean.rice(raw.get("rice"))
+        card["blast"] = raw.get("blast") if raw.get("blast") in BLAST_TIERS else ""
+        card["scored_by"] = clean.text(raw.get("scored_by"), card_id, "scored_by", BY_MAX)
         cards.append(card)
     slot = clean.text(body.get("build_slot"), "board", "build_slot")
     return CleanBoard(

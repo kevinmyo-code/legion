@@ -39,7 +39,9 @@ from household.models import is_recruiter
 
 THIRD_PARTY_TOOLS = read_through.THIRD_PARTY_TOOLS
 # Tools whose first call only drafts or counts and whose `confirm: true` call commits (the
-# user-aspect records' bulk delete and tracker authoring, `homes/records_tools.py`).
+# user-aspect records' bulk delete and tracker authoring, `homes/records_tools.py`). Not
+# `add_backlog_idea`: its read-back ends the turn by itself (`speech_rules.VERBATIM_TOOLS`), so his
+# yes is already a later turn; holding it here too would ask him for a second yes.
 CONFIRM_FLAG_TOOLS = frozenset({"delete_aspect_record", "create_aspect", "update_aspect"})
 CONFIRM_TURNS = 2
 

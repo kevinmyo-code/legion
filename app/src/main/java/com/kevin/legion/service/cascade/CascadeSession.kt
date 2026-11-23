@@ -15,6 +15,7 @@ import com.kevin.legion.ai.CrisisDetector
 import com.kevin.legion.ai.GeminiKeyProvider
 import com.kevin.legion.ai.GeminiUsageMeter
 import com.kevin.legion.ai.KeyHealth
+import com.kevin.legion.ai.VerbatimSpeech
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ConversationAudit
 import com.kevin.legion.data.local.auditContent
@@ -441,6 +442,9 @@ internal class CascadeSession(
         val writes = TurnWrites()
         @Volatile var readThrough = false
         @Volatile var fillerPlayed = false
+
+        /** Words the phone spoke that the model must never read back ([VerbatimSpeech.PRIVATE]). */
+        @Volatile var privateSpoken: String? = null
 
         /**
          * Marked before any tool ran (ADR 0090): a read-through opener, or the turn after one
@@ -1868,7 +1872,8 @@ internal class CascadeSession(
                     // Nothing more can be said: the owed line goes to the record and the panel.
                     val line = owed.writeDown()?.also { host.notice(it) }
                     val kept = listOfNotNull(line, words.ifBlank { null }).joinToString(" ")
-                    recordTurn(heard, withWrites(kept, record), record.readThrough, seq, record.fromUser)
+                    val keptWords = VerbatimSpeech.redact(withWrites(kept, record), record.privateSpoken)
+                    recordTurn(heard, keptWords, record.readThrough, seq, record.fromUser)
                 }
                 val again = if (voice.kind == SpeechBackend.Kind.CLOUD) {
                     null
@@ -1889,7 +1894,8 @@ internal class CascadeSession(
             // Without the model's own leading "Checking.", as the speaker dropped it ([LeadingFiller]).
             val said = reply.spoken().ifBlank { LeadingFiller.strip(result.text) }
             val kept = if (outcome == ReplySpeaker.Outcome.Interrupted) withWrites(reply.spoken(), record) else said
-            recordTurn(heard, kept, record.readThrough, seq, record.fromUser)
+            val keptWords = VerbatimSpeech.redact(kept, record.privateSpoken)
+            recordTurn(heard, keptWords, record.readThrough, seq, record.fromUser)
             owe(record, cutOff = outcome != ReplySpeaker.Outcome.Played)
             answeredOnce = true
             turnsAnswered.incrementAndGet()
@@ -1902,7 +1908,8 @@ internal class CascadeSession(
                 // A write that finished and was not heard is said at the next thing said ([owed]).
                 owe(record, cutOff = true)
                 if (!record.merged && (carry.isBlank() || record.toolsRan.isNotEmpty())) {
-                    recordTurn(heard, withWrites(reply.spoken(), record), record.readThrough, seq, record.fromUser)
+                    val spoken = VerbatimSpeech.redact(withWrites(reply.spoken(), record), record.privateSpoken)
+                    recordTurn(heard, spoken, record.readThrough, seq, record.fromUser)
                 }
             }
             throw e
@@ -2548,6 +2555,7 @@ internal class CascadeSession(
         }
 
         override fun onToolResult(name: String, args: JSONObject, response: JSONObject, ms: Long, writeDone: Boolean) {
+            VerbatimSpeech.privateWords(response)?.let { record.privateSpoken = it }
             val write = CascadeRules.isWrite(name, args)
             if (write) noteChange(response)
             if (writeDone) synchronized(record) { record.writesDone.add(name) }

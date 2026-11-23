@@ -24,7 +24,8 @@ import org.json.JSONObject
  * machine?", Kevin 2026-11-01), `quiet` (the one-instruction silence of the result
  * announcements) and `open_page` (ticket 09: a `page: true` task's web page, opened in LEGION's
  * browser through [ClaudePageOpener], on his yes). `files: true` on `send` (ADR 0080) asks for the
- * files he named on his phone; they open there when they land, no second yes.
+ * files he named on his phone; they open there when they land, no second yes. `where` and `idea`
+ * (backlog intake 1122) read the factory board and add a backlog idea ([BoardActions]).
  * `tools/voice_guide.py` and `VoiceGuideDataTest` scan this file.
  *
  * **Every action calls [ClaudeSessionController]**, the controller the Claude session screen calls
@@ -51,7 +52,8 @@ object ClaudeSessionToolbox {
             "reads results already in; \"ask Claude to...\" is always a new send or workflow; answer follows up a " +
             "task (yes=true only for his yes to its question); assign picks the machine it asked for; " +
             "send_file only on his yes to a found file; open_page opens a task's page on his yes; " +
-            "quiet/unquiet stop/restart result announcements. A sent task is not done."
+            "quiet/unquiet stop/restart result announcements; where reads the board; idea adds a backlog idea. " +
+            "A sent task is not done."
 
     fun declarations(): JSONArray = JSONArray().put(
         fn(
@@ -65,7 +67,7 @@ object ClaudeSessionToolbox {
                         null,
                         listOf(
                             "send", "workflow", "check", "answer", "assign", "send_file", "open_page", "quiet",
-                            "unquiet",
+                            "unquiet", "where", "idea",
                         ),
                     ),
                 )
@@ -116,6 +118,7 @@ object ClaudeSessionToolbox {
         name: String,
         args: JSONObject,
         touchedReadThroughToolThisTurn: Boolean = false,
+        userText: String? = null,
     ): JSONObject? {
         if (name != TOOL_NAME) return null
         val action = args.optString("action")
@@ -167,6 +170,7 @@ object ClaudeSessionToolbox {
                 watchFactory(context).setAnnouncements(true)
                 result(true, "Result announcements are on again.")
             }
+            "where", "idea" -> BoardActions.dispatch(context, action, args, userText)
             else -> result(
                 false,
                 "Say whether to send, run a workflow, check, answer, assign or send a file. Nothing was sent.",
@@ -174,12 +178,13 @@ object ClaudeSessionToolbox {
         }
     }
 
-    /** The actions a read-through turn may not take: each starts Claude work on a laptop. */
-    private val READ_THROUGH_GUARDED = setOf("workflow")
+    /** The actions a read-through turn may not take: each starts Claude work on a laptop, or puts
+     * words on his backlog (`idea`: text a page or a mail wrote must never become an idea). */
+    private val READ_THROUGH_GUARDED = setOf("workflow", "idea")
 
     internal const val READ_THROUGH_REFUSAL =
-        "Nothing was started. I don't start a Claude workflow in the same breath as reading mail, a web page, " +
-            "the camera or a spoken brief, on purpose. Ask me again in your own words."
+        "Nothing was started or added. I don't start a Claude workflow or add a backlog idea in the same breath " +
+            "as reading mail, a web page, the camera or a spoken brief, on purpose. Ask me again in your own words."
 
     /**
      * A task the engine now holds (sent, queued, or waiting for a machine) opens the task dialog

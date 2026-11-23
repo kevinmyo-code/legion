@@ -150,6 +150,11 @@ RECRUITER_DENIED: dict[str, str] = {
     # The factory board is a real member's laptop status.
     "board.views.BoardView": "a demo visit has no laptop board",
     "board.views.BoardWriterView": "a demo visit has no laptop board",
+    "board.idea_views.IdeaListView": "a demo visit has no laptop backlog",
+    "board.idea_views.IdeaConfirmView": "a demo visit has no laptop backlog",
+    "board.idea_views.IdeaDetailView": "a demo visit has no laptop backlog",
+    "board.idea_views.PendingIdeasView": "a demo visit has no laptop backlog",
+    "board.idea_views.DeliveredIdeaView": "a demo visit has no laptop backlog",
     "household.households.InviteListCreateView": _SETTINGS,
     "household.households.InviteDetailView": _SETTINGS,
     "household.households.MemberDetailView": _SETTINGS,

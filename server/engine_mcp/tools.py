@@ -2570,12 +2570,21 @@ def _board_status(request, args) -> ToolResult:
     return board_status(request, args)
 
 
+def _add_backlog_idea(request, args) -> ToolResult:
+    from board.tool import add_backlog_idea
+
+    return add_backlog_idea(request, args)
+
+
+BOARD_TOOLS: frozenset[str] = frozenset({"board_status", "add_backlog_idea"})
+
+
 def dark_tools() -> frozenset[str]:
     """Registry tools left out of every tool list while their switch is off, so a dark feature
     changes no declaration anyone is sent."""
     from board.flags import board_enabled
 
-    return frozenset() if board_enabled() else frozenset({"board_status"})
+    return frozenset() if board_enabled() else BOARD_TOOLS
 
 
 def _github_status(request, args) -> ToolResult:
@@ -3598,6 +3607,28 @@ TOOLS: tuple[EngineTool, ...] = (
         input_schema=_object({}),
         handler=_board_status,
         writes=False,
+    ),
+    # Backlog intake (Kevin, 2026-11-22): "yes score each idea", "read it back first". Code reads
+    # the idea back with its score and the turn ends; only his yes in his NEXT turn saves it
+    # (`board/ideas.py`). DARK with the board; never on `/mcp` (`engine_mcp.server`).
+    EngineTool(
+        name="add_backlog_idea",
+        title="Add a backlog idea",
+        description=(
+            "Adds an idea to the member's backlog on his laptop board (\"add to the backlog\", "
+            "\"idea for LEGION\"). First call with text: the engine scores it and reads it back; "
+            "the turn ends. Only on his yes in his next turn call again with that id and "
+            "confirm true; on a no, confirm false. Nothing starts from an idea." + _WRITE_NOTE
+        ),
+        input_schema=_object(
+            {
+                "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+                "id": _UUID,
+                "confirm": {"type": "boolean"},
+            }
+        ),
+        handler=_add_backlog_idea,
+        writes=True,
     ),
     # Memory v2 (ADR 0075, memory-and-vault ticket 02).
     EngineTool(
