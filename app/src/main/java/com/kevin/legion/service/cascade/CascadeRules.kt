@@ -436,7 +436,7 @@ object ScriptedLines {
     ): WriteFact {
         val key = listOf("$name/$action", action, name).firstOrNull { it.isNotEmpty() && it in PHRASES }
         val titleKeys = TITLE_KEYS_FOR[key] ?: TITLE_KEYS
-        val title = field(response, titleKeys).take(MAX_TITLE)
+        val title = field(response, titleKeys).cutOnWord(MAX_TITLE)
         // A phrase whose own field is missing (an older result shape) falls to the generic line.
         // A switch that moved this drive's live readings to the car says so (`rebound`, the adapter's field).
         // The adapter branch's live rebind: this drive's readings moved to the car (`readings_moved`).
@@ -452,7 +452,7 @@ object ScriptedLines {
         return WriteFact(
             phrase = phrase,
             title = title,
-            list = field(response, listOf("list")).take(MAX_TITLE),
+            list = field(response, listOf("list")).cutOnWord(MAX_TITLE),
             ok = ok,
             changed = response.optBoolean("changed", !router),
             silent = name in SILENT || "$name/$action" in SILENT,
@@ -485,7 +485,7 @@ object ScriptedLines {
         // Clause by clause while it fits; the rest is counted, never dropped unsaid. Only a first
         // clause too long on its own is trimmed.
         val room = MAX_DONE_CHARS - (if (done.size > 1) "Done: ; and 99 more." else "Done: .").length
-        var kept = done.take(1).map { it.take(room) }
+        var kept = done.take(1).map { it.cutOnWord(room) }
         for (c in done.drop(1)) {
             val rest = done.size - kept.size - 1
             val tail = if (rest > 0) listOf("and $rest more") else emptyList()
@@ -569,8 +569,27 @@ object ScriptedLines {
     }
 
     private val TITLE_KEYS = listOf("title", "text", "item", "name")
-    private const val MAX_TITLE = 40
     const val MAX_DONE_CHARS = 80
+
+    /**
+     * The longest title or list name a fact carries. It is [MAX_DONE_CHARS], not a tighter number
+     * of its own: a tighter cap is a second limit on the same sentence, and it fired FIRST, so a
+     * 46-character item was cut to 40 and spoken mid-word although the whole clause fitted the
+     * spoken line (2026-11-23 voice log). [doneLine] bounds the line; this only stops
+     * [unconfirmedLine] reading a whole paragraph back.
+     */
+    private const val MAX_TITLE = MAX_DONE_CHARS
+
+    /**
+     * At most [n] characters, cut at the last space inside [n] rather than mid-word, so a line that
+     * has to be shortened still ends on a whole word. Shorter than [n] already: unchanged.
+     */
+    private fun String.cutOnWord(n: Int): String {
+        if (length <= n) return this
+        val cut = take(n)
+        val space = cut.lastIndexOf(' ')
+        return (if (space > 0) cut.take(space) else cut).trimEnd()
+    }
 
     /** The routers (`ask_engine`, `ask_fleet`...): a write through one counts only on `changed: true`. */
     private const val ROUTER_PREFIX = "ask_"

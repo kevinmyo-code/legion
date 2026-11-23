@@ -396,6 +396,24 @@ class CascadeRulesTest {
     }
 
     @Test
+    fun `a long item is said by its whole name, and a title too long for the line ends on a word`() {
+        fun add(item: String) =
+            ScriptedLines.writeFact("manage_item", "add", JSONObject().put("success", true).put("item", item), true)
+        // Over 40 characters, and the whole clause still fits the spoken line, so nothing may be
+        // cut here. A title cap
+        // used to fire inside a sentence that had room for all of it, and the item was spoken
+        // mid-word (2026-11-23 voice log).
+        val whole = "Order a new chain for the invented bicycle"
+        assertEquals("Done: added $whole.", ScriptedLines.doneLine(listOf(add(whole))))
+        // A title no line could carry is still cut, but never mid-word.
+        val words = (1..40).map { "word$it" }
+        val line = ScriptedLines.doneLine(listOf(add(words.joinToString(" "))))!!
+        assertTrue(line, line.length <= ScriptedLines.MAX_DONE_CHARS)
+        val said = line.removePrefix("Done: added ").removeSuffix(".").split(" ")
+        assertTrue(line, said.isNotEmpty() && said.all { it in words })
+    }
+
+    @Test
     fun `a hand-over says an owed write only while the voice works, never on a crash`() {
         assertTrue(CascadeRules.handOverSaysOwed("prompt", phoneFault = false))
         assertTrue(CascadeRules.handOverSaysOwed("stt", phoneFault = false))
