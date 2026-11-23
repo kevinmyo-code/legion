@@ -25,9 +25,8 @@ What a successful entry leaves behind:
 - a `DemoVisit` row carrying the `ref` and the household.
 
 All of it in one transaction: a seed that fails leaves nothing behind, and a
-claim that fails puts the spare back, so "Nothing was created" stays true. Only
-a visit that committed starts the pool's refill (`demo.spares.refill_soon`),
-after the commit and off the response's path. The shared "Demo" household
+claim that fails puts the spare back, so "Nothing was created" stays true. The
+request never refills the pool; the hourly `prune_demo_visitors` does. The shared "Demo" household
 (`household.demo`) is no longer joined by anyone; `seed_demo_household`
 keeps building it for previews and tests.
 """
@@ -169,7 +168,6 @@ class DemoEnterView(APIView):
         except Exception:  # noqa: BLE001 - any seed failure; the transaction rolled back
             logger.exception("demo enter: seeding the visit household failed")
             return _refuse(SEED_FAILED, status.HTTP_503_SERVICE_UNAVAILABLE)
-        spares.refill_soon()
 
         login(request, user, backend="django.contrib.auth.backends.ModelBackend")
         request.session.set_expiry(int(VISIT_LENGTH.total_seconds()))

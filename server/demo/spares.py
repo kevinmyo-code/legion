@@ -14,7 +14,9 @@ now would be:
 
 - on the day it was seeded for, in the demo's own zone (every seeded row is relative to that
   day), and on the same UTC day;
-- by the seed it was made with (`seed_version`: a deploy that changes the seed retires it);
+- by the build it was made with (`seed_version`: a hash of every server `.py` and `.yaml`
+  file, taken once per process, so any deploy retires every older spare; the service and the
+  `legion-worker` job run one image, so they agree);
 - younger than `MAX_AGE`, so no job keyed on wall time has touched it that a fresh seed would
   have escaped (`prune_ticked_items` drops Groceries lines 24 h after their tick, and a tick's
   time is the seed's).
@@ -22,46 +24,48 @@ now would be:
 Anything else is deleted whole (`demo.visit_cleanup.delete_visit_household`), never re-dated:
 by the next refill and by the hourly `prune_demo_visitors`.
 
-Refill: after each visit commits, on a thread (`refill_soon`), so it is never in the response's
-path. Best effort, because Cloud Run may throttle the CPU once the response is sent; the hourly
-`prune_demo_visitors` refills too. One refill at a time across every instance (an advisory
-lock), so two never overshoot the pool. Pool size: `LEGION_DEMO_SPARE_POOL` (default 2; 0 turns
-the pool off and the next refill deletes every spare), and 0 while no demo code is live.
+Refill: only the hourly `prune_demo_visitors` job, never the request process (review 1122: a
+thread Cloud Run starves after the response would sit in an open transaction holding locks a
+ship's migration needs). A second visitor inside the hour seeds inline. Each refill transaction
+sets its own `lock_timeout` and `idle_in_transaction_session_timeout`, so it can never hold a
+migration up for long. One refill at a time across the engine (an advisory lock). Pool size:
+`LEGION_DEMO_SPARE_POOL` (default 2; 0 turns the pool off and the next refill deletes every
+spare), and 0 while no demo code is live.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import hashlib
-import logging
-import threading
+import os
 import uuid
 import zoneinfo
-from functools import cache
 from pathlib import Path
 
 from django.conf import settings
 from django.db import connection, transaction
 from django.utils import timezone
 
-from demo.briefing import DEMO_PROCEDURES, seed_visit_procedures
+from demo.briefing import seed_visit_procedures
 from demo.models import DemoCode, SpareVisitHousehold
 from demo.visit_cleanup import delete_visit_household
 from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import Household
 from ingest.models import IngestRun
 
-logger = logging.getLogger(__name__)
-
 DEFAULT_POOL = 2
 # Under `TICKED_ITEM_TTL` (24 h) less a whole visit (2 h), with room to spare.
 MAX_AGE = dt.timedelta(hours=20)
 # Two-int advisory lock key, in its own space beside `assistant.turn_slots`'s.
 _LOCK = (0x5350, 1)  # "SP"
-_SEED_SOURCES = (
-    Path(__file__).resolve().parent.parent / "household" / "demo_seed.py",
-    Path(__file__).resolve().parent / "briefing.py",
+# Each refill transaction's own limits (SET LOCAL): a lock it cannot get in time fails the
+# refill, never a migration waiting behind it, and a transaction left idle is ended by Postgres.
+_TXN_LIMITS = (
+    "SET LOCAL lock_timeout = '5s'",
+    "SET LOCAL idle_in_transaction_session_timeout = '30s'",
 )
+_SERVER_ROOT = Path(__file__).resolve().parent.parent
+_NOT_BUILD = {"frontend", "node_modules", "tests", "static", "media", "__pycache__"}
 
 
 def pool_size() -> int:
@@ -75,15 +79,27 @@ def pool_size() -> int:
         return DEFAULT_POOL
 
 
-@cache
-def seed_version() -> str:
-    """A hash of the seed's own source and the visit procedures it writes. A spare made by an
-    older seed than the running one is never handed out."""
+def _build_key() -> str:
+    """A hash of every `.py` and `.yaml` file of the server this process runs (tests, the web
+    build and caches left out). Any deploy changes it; the service and the job, one image,
+    agree on it. Not `K_REVISION`: the job has no service revision."""
     digest = hashlib.sha256()
-    for path in (*_SEED_SOURCES, *sorted(DEMO_PROCEDURES.glob("*.yaml"))):
-        digest.update(path.name.encode())
-        digest.update(path.read_bytes())
+    for directory, subdirs, files in os.walk(_SERVER_ROOT):
+        subdirs[:] = sorted(d for d in subdirs if d not in _NOT_BUILD and not d.startswith("."))
+        for name in sorted(files):
+            if name.endswith((".py", ".yaml")):
+                path = Path(directory) / name
+                digest.update(path.relative_to(_SERVER_ROOT).as_posix().encode())
+                digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+_BUILD_KEY = _build_key()
+
+
+def seed_version() -> str:
+    """The build a spare was seeded by. A spare from any other build is never handed out."""
+    return _BUILD_KEY
 
 
 def seed_day(now: dt.datetime | None = None) -> dt.date:
@@ -151,6 +167,7 @@ def discard(now: dt.datetime | None = None, *, keep: int | None = None) -> int:
     gone = 0
     for pk in [*stale, *unwanted]:
         with transaction.atomic():
+            _limit_this_transaction()
             spare = (
                 SpareVisitHousehold.objects.select_for_update(skip_locked=True, of=("self",))
                 .select_related("household")
@@ -177,7 +194,10 @@ def refill(size: int | None = None) -> dict[str, int]:
     """Discards what may not be handed out, then seeds spares until `size` (the pool size) are
     ready. Each spare is seeded and marked in one transaction, so a half-seeded one is never
     claimable. Another refill already running anywhere means this one does nothing."""
-    size = pool_size() if size is None or not DemoCode.live().exists() else size
+    if size is None:
+        size = pool_size()
+    elif not DemoCode.live().exists():
+        size = 0
     with connection.cursor() as cursor:
         cursor.execute("select pg_try_advisory_lock(%s, %s)", list(_LOCK))
         if not cursor.fetchone()[0]:
@@ -188,6 +208,7 @@ def refill(size: int | None = None) -> dict[str, int]:
         while seeded < size and _fresh(timezone.now()).count() < size:
             day = seed_day()
             with transaction.atomic():
+                _limit_this_transaction()
                 household = make_visit_household(today=day)
                 SpareVisitHousehold.objects.create(
                     household=household, seeded_for=day, seed_version=seed_version()
@@ -199,22 +220,7 @@ def refill(size: int | None = None) -> dict[str, int]:
             cursor.execute("select pg_advisory_unlock(%s, %s)", list(_LOCK))
 
 
-def _spawn(work) -> None:
-    threading.Thread(target=work, name="legion-demo-spares", daemon=True).start()
-
-
-def _refill_on_thread() -> None:
-    try:
-        refill()
-    except Exception:  # noqa: BLE001 - a failed refill only means the next visit seeds inline
-        logger.exception("demo spares: the refill failed; the next visit seeds inline")
-    finally:
-        connection.close()
-
-
-def refill_soon() -> None:
-    """Tops the pool up on a thread once the caller's transaction commits: never in the
-    response's path, and never for a request that created nothing."""
-    if pool_size() == 0:
-        return
-    transaction.on_commit(lambda: _spawn(_refill_on_thread))
+def _limit_this_transaction() -> None:
+    with connection.cursor() as cursor:
+        for statement in _TXN_LIMITS:
+            cursor.execute(statement)

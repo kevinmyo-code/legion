@@ -113,26 +113,60 @@ def test_a_claimed_spare_is_the_household_an_inline_seed_makes(code, settings):
 
 
 @pytest.mark.django_db
-def test_an_empty_pool_seeds_inline_and_starts_one_refill_after_the_commit(
-    code, monkeypatch, django_capture_on_commit_callbacks
+def test_an_empty_pool_seeds_inline_and_the_request_refills_nothing(
+    code, django_capture_on_commit_callbacks
 ):
-    spawned = []
-    monkeypatch.setattr(spares, "_spawn", spawned.append)
-    with django_capture_on_commit_callbacks(execute=True):
+    """The request never refills (review 1122): only the hourly prune does."""
+    with django_capture_on_commit_callbacks(execute=True) as callbacks:
         response = _enter(code, "empty")
     assert response.status_code == 201, response.data
     assert _visit_household("empty").is_demo_visit
-    assert spawned == [spares._refill_on_thread]
+    assert callbacks == []
+    assert not SpareVisitHousehold.objects.exists()
 
 
 @pytest.mark.django_db
-def test_a_refused_entry_starts_no_refill(code, monkeypatch, django_capture_on_commit_callbacks):
-    spawned = []
-    monkeypatch.setattr(spares, "_spawn", spawned.append)
-    with django_capture_on_commit_callbacks(execute=True):
-        assert _enter("not-the-code").status_code == 403
-    assert spawned == []
+def test_a_refused_entry_creates_nothing(code):
+    assert _enter("not-the-code").status_code == 403
     assert not Household.objects.filter(is_demo_visit=True).exists()
+
+
+def test_the_seed_version_covers_the_whole_server_build():
+    """Any server file, not only the seed's own, changes it (review 1122): the gate, the
+    serializers and the models a seed runs through are all part of what a spare is."""
+    from pathlib import Path
+
+    root = Path(spares.__file__).resolve().parent.parent
+    files = {
+        p.relative_to(root).as_posix()
+        for p in root.rglob("*")
+        if p.suffix in (".py", ".yaml")
+        and not ({"tests", "frontend", "node_modules", "__pycache__"} & set(p.parts))
+        and not any(part.startswith(".") for part in p.relative_to(root).parts)
+    }
+    for needed in (
+        "ingest/views.py",
+        "api/events.py",
+        "household/demo_seed.py",
+        "demo/procedures/morning_briefing.yaml",
+        "legion/settings.py",
+    ):
+        assert needed in files
+    assert spares.seed_version() == spares._build_key()
+    assert len(spares.seed_version()) == 64
+
+
+@pytest.mark.django_db
+def test_a_refill_transaction_cannot_wait_long_for_a_lock(code):
+    """Each refill transaction sets its own limits, so it can never hold a ship's migration up
+    (review 1122)."""
+    with transaction.atomic():
+        spares._limit_this_transaction()
+        with connection.cursor() as cursor:
+            cursor.execute("show lock_timeout")
+            assert cursor.fetchone()[0] == "5s"
+            cursor.execute("show idle_in_transaction_session_timeout")
+            assert cursor.fetchone()[0] == "30s"
 
 
 @pytest.mark.django_db

@@ -27,10 +27,9 @@ the 30-day backstop for recruiter runs and the 60-day sweep for members'
 (also run inline at each new run).
 
 **And the spare visit households** (`demo.spares`, demo-enter-slow 2026-11-22): every spare
-that may no longer be handed out (seeded for an earlier day, by an older seed, or too long ago)
+that may no longer be handed out (seeded for an earlier day, by another build, or too long ago)
 is deleted whole, like an expired visit's household, and the pool is topped back up to
-`LEGION_DEMO_SPARE_POOL`. This hourly run is the refill's backstop: `/enter` also starts one
-after each visit, on a thread Cloud Run may starve.
+`LEGION_DEMO_SPARE_POOL`. This hourly run is the only refill: the request never refills.
 
 **And agent turn traces past retention** (`agents.legion.retention.prune`, engine-brain ticket
 02, ADR 0100): checkpoints at 7 days, turn content at 30, model-call numbers at 90. Also run

@@ -318,6 +318,10 @@ LEGION_DEMO_MAX_SESSION_MINUTES = (
 # time, so `/api/demo/enter` claims one instead of seeding inline (about 16 s on Cloud Run).
 # Default 2. 0 turns the pool off: every visit seeds inline, as before, and the hourly prune
 # deletes any spare left over. Parsed in `demo.spares.pool_size`, which falls back to 2.
+# SHIP NOTE, before any rollback to a revision without `demo.spares`: set this to 0 on the job
+# and run this revision's `manage.py prune_demo_visitors` once, so it deletes every spare, then
+# roll back. Older code neither cleans spares up nor skips them in `morning_brief`, so each one
+# would cost a paid News call every hour after 05:00 local, for good.
 LEGION_DEMO_SPARE_POOL = os.environ.get("LEGION_DEMO_SPARE_POOL", "").strip() or "2"
 
 MIDDLEWARE = [
