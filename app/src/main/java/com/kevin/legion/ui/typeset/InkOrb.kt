@@ -60,13 +60,18 @@ fun InkOrb(
     }
     LaunchedEffect(still) {
         if (still) return@LaunchedEffect
+        val frames = OrbFrames()
         var last = 0L
         while (true) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceAtMost(0.1f)
                 last = now
-                sim.step(dt, currentPhase)
-                frame = now
+                // At rest only every fourth callback draws. The skipped time is carried into the
+                // next step, so the orb turns at exactly the same rate (OrbFrames).
+                frames.frame(dt, currentPhase)?.let { step ->
+                    sim.step(step, currentPhase)
+                    frame = now
+                }
             }
         }
     }
@@ -94,6 +99,41 @@ fun TypesetOrb(phase: OrbPhase, modifier: Modifier = Modifier, level: () -> Floa
     )
 }
 
+/**
+ * How many frame callbacks one drawn frame costs while the orb is AT REST. The orb's loop used to
+ * draw on every callback in every phase, so an idle front page redrew the whole screen at the
+ * display's full rate for as long as it was visible (2026-11-23: it is about 90% of the phone's
+ * raw log lines). 4 is about 30 fps on a 120 Hz phone and a quarter of the draws.
+ *
+ * This is the whole setting: raise it to slow the rest state further, and [Int.MAX_VALUE] holds the
+ * orb completely still. Only IDLE is paced; every other phase draws on every callback.
+ */
+private const val IDLE_EVERY = 4
+
+/**
+ * Which frame callbacks the orb draws on. Pure, so the composable above is one call and this is
+ * what a test drives.
+ *
+ * A skipped callback is not lost time: its `dt` is carried into the next step, so the rotation
+ * after a second is the same as it was before the pacing. A phase other than [OrbPhase.IDLE] steps
+ * at once, so leaving rest is never delayed.
+ */
+internal class OrbFrames(private val idleEvery: Int = IDLE_EVERY) {
+    private var pending = 0f
+    private var skipped = 0
+
+    /** The time to step the simulation with on this callback, or null when it draws nothing. */
+    fun frame(dt: Float, phase: OrbPhase): Float? {
+        pending += dt
+        skipped++
+        if (phase == OrbPhase.IDLE && skipped < idleEvery) return null
+        skipped = 0
+        val step = pending
+        pending = 0f
+        return step
+    }
+}
+
 /** The orb's simulation: point positions, eased mode parameters, time and spin. */
 internal class OrbSim {
     private val pts = FloatArray(N * 4).also { a ->
@@ -117,6 +157,9 @@ internal class OrbSim {
 
     /** The eased spin rate: read by tests. */
     internal val spin: Float get() = cur[SPIN]
+
+    /** How far the orb has turned, in radians: read by tests, so pacing cannot change the look. */
+    internal val turn: Float get() = rot
 
     fun step(dt: Float, phase: OrbPhase) {
         val goal = MODES.getValue(phase)
