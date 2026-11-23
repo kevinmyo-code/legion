@@ -13,6 +13,24 @@ import org.junit.Test
  */
 class LiveAuditTest {
 
+    /**
+     * Kevin, 2026-11-23: a goodbye sometimes did not close the conversation and no log said why. One
+     * line per whole-turn decision, with the free text LAST as the format requires, so the next
+     * failure is readable in LIVE_AUDIT without a device repro.
+     */
+    @Test
+    fun `every farewell decision is one line, matched or not, text last`() {
+        audit.goodbye("bye bye", matched = true, afterQuestion = false, voicedMs = 40, honoured = false)
+        audit.goodbye("add eggs", matched = false, afterQuestion = true, voicedMs = null, honoured = false)
+        assertEquals(
+            listOf(
+                """goodbye matched=true honoured=false after_question=false voiced_ms=40 text="bye bye"""",
+                """goodbye matched=false honoured=false after_question=true voiced_ms=-1 text="add eggs"""",
+            ),
+            lines.toList(),
+        )
+    }
+
     private val lines = mutableListOf<String>()
     private val audit = LiveAudit(sink = { lines += it }).apply { enabled = true }
 

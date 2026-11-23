@@ -1662,7 +1662,9 @@ internal class CascadeSession(
                 val lost = u.engine?.takeIf { stt.reason != EngineUtterance.SWITCHED_OFF }
                 if (lost != null) return engineFailed(lost, stt.reason == EngineUtterance.MISSED)
                 val recovered = recoverWords(u, stt.reason) ?: return
-                if (endsConversation(recovered)) return endByStop(u, recovered)
+                val recoveredStop = endsConversation(recovered)
+                noteGoodbye(recovered, recoveredStop, recoveredStop, null)
+                if (recoveredStop) return endByStop(u, recovered)
                 recovered
             }
             is SttResult.Text -> {
@@ -1671,7 +1673,8 @@ internal class CascadeSession(
                 // A stop over no voice (a burst read as "Bye.") is not a stop; the guard below decides it.
                 // Either way a stop phrase never restarts the request it interrupted: that is dropped.
                 val stopWords = endsConversation(stt.text)
-                val stop = stopWords && SttGuard.stopVoiced(stt.voicedMs)
+                val stop = stopWords && SttGuard.stopVoiced(stt.text, stt.voicedMs)
+                noteGoodbye(stt.text, stopWords, stop, stt.voicedMs)
                 if (stopWords && !stop) {
                     discardDraftOf(u, "not_answered")
                     carry = ""
@@ -2151,6 +2154,22 @@ internal class CascadeSession(
         val afterQuestion = FollowUpWindow.isQuestion(lastClipText)
         return WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = afterQuestion) ||
             RingControl.voiceStops(words, CompanionProfile.name(ctx))
+    }
+
+    /**
+     * Every whole-turn stop decision goes to `LIVE_AUDIT` ([LiveAudit.goodbye]), matched or not, so the
+     * next conversation that does not close says in the log why (Kevin, 2026-11-23). Only whole turns:
+     * a running partial is weighed by the backchannel rule many times a turn and its text is in no log.
+     */
+    private fun noteGoodbye(words: String, matched: Boolean, honoured: Boolean, voicedMs: Long?) {
+        if (words.isBlank()) return
+        audit.goodbye(
+            Farewells.normalise(words),
+            matched = matched,
+            afterQuestion = FollowUpWindow.isQuestion(lastClipText),
+            voicedMs = voicedMs,
+            honoured = honoured,
+        )
     }
 
     /**

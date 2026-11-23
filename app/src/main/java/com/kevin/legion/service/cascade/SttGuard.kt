@@ -65,8 +65,7 @@ internal object SttGuard {
     ): Verdict {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Verdict.Keep("")
-        val oneWord = trimmed.split(Regex("\\s+")).count { w -> w.any { it.isLetterOrDigit() } } <= 1
-        if (oneWord && voicedMs != null && voicedMs < MIN_VOICED_MS) return Verdict.Drop(NOISE)
+        if (oneWord(trimmed) && voicedMs != null && voicedMs < MIN_VOICED_MS) return Verdict.Drop(NOISE)
         // Scripts none of his languages use (CJK, Cyrillic, Arabic...) are removed word by word; words in
         // his languages' scripts stay.
         val scripts = accepted.map { it.script }.toSet() + Character.UnicodeScript.LATIN
@@ -117,12 +116,24 @@ internal object SttGuard {
     /** A single word over less than this much voice is noise (2026-11-18 r2: kept low, to be tuned on car audio). */
     const val MIN_VOICED_MS = 60L
 
+    /** One word, by the same count [verdict]'s noise rule uses. */
+    private fun oneWord(text: String): Boolean =
+        text.split(Regex("\\s+")).count { w -> w.any { it.isLetterOrDigit() } } <= 1
+
     /**
      * A stop may end the conversation: its audio carried a voice by the same measure as any speech
      * ([MIN_VOICED_MS]; 2026-11-18 r3: a quiet "Stop." in road noise must still stop), or nothing was
      * measured.
+     *
+     * **[text] decides which rule applies, because this one must not be stricter than [verdict]**
+     * (Kevin, 2026-11-23: "bye bye" sometimes did not close). The voice floor is the NOISE rule, and
+     * that rule only ever drops a single word. A two-word stop under the floor used to be refused as
+     * a stop and then kept by [verdict] as ordinary speech, so "bye bye" went to the model and the
+     * conversation stayed open on an answer. A stop is now refused only where the same words would
+     * have been dropped as noise anyway.
      */
-    fun stopVoiced(voicedMs: Long?): Boolean = voicedMs == null || voicedMs >= MIN_VOICED_MS
+    fun stopVoiced(text: String, voicedMs: Long?): Boolean =
+        voicedMs == null || voicedMs >= MIN_VOICED_MS || !oneWord(text)
     const val VOICE_OVER_FLOOR_DB = 12.0
     private const val WINDOW_MS = 30L
     private const val SAMPLE_RATE = 16_000

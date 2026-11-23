@@ -110,6 +110,21 @@ internal class LiveAudit(
      */
     fun usage(fields: String) = emit("usage $fields")
 
+    /**
+     * Every whole-turn farewell decision (Kevin, 2026-11-23: "that'll be all" and "bye bye" sometimes
+     * did not close the conversation, and nothing in a log said whether the words were heard, whether
+     * the rule matched them, or whether the voice floor then refused the stop). [matched] is the rule's
+     * verdict on the words, [honoured] what the turn did with it; they differ exactly when the stop was
+     * refused for want of voice. [text] is his turn as the rule normalised it: his own words, which
+     * `user` logs anyway, and nothing else.
+     */
+    @Synchronized
+    fun goodbye(text: String, matched: Boolean, afterQuestion: Boolean, voicedMs: Long?, honoured: Boolean) =
+        emit(
+            "goodbye matched=$matched honoured=$honoured after_question=$afterQuestion " +
+                "voiced_ms=${voicedMs ?: -1} text=${quote(text)}",
+        )
+
     /** The scripted opening line played on a tap or wake word (F2): a clip id, or `earcon[:why]`. */
     fun listenCue(label: String) = emit("listen_cue clip=${token(label)}")
 

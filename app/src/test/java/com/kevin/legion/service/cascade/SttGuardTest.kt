@@ -90,10 +90,17 @@ class SttGuardTest {
 
     @Test
     fun `a stop needs the same voice as any speech, or nothing measured`() {
-        assertTrue(SttGuard.stopVoiced(null))
-        assertTrue("a quiet stop in road noise", SttGuard.stopVoiced(60))
-        assertTrue(!SttGuard.stopVoiced(0))
-        assertTrue(!SttGuard.stopVoiced(59))
+        assertTrue(SttGuard.stopVoiced("stop", null))
+        assertTrue("a quiet stop in road noise", SttGuard.stopVoiced("stop", 60))
+        assertTrue(!SttGuard.stopVoiced("stop", 0))
+        assertTrue(!SttGuard.stopVoiced("stop", 59))
+        // Kevin, 2026-11-23: a two-word goodbye under the floor is kept by the guard as ordinary
+        // speech, so refusing it as a stop sent "bye bye" to the model and left the conversation
+        // open. The stop rule is never stricter than the noise rule it borrows its floor from.
+        for (words in listOf("bye bye", "good night", "that will be all", "okay bye")) {
+            assertTrue(words, SttGuard.stopVoiced(words, 0))
+            assertTrue(words, SttGuard.verdict(words, 0) is SttGuard.Verdict.Keep)
+        }
     }
 
     @Test
