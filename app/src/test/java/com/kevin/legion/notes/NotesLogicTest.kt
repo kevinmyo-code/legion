@@ -21,6 +21,16 @@ class NotesLogicTest {
     // --------------------------------------------------------------------------------- matchItem
 
     @Test
+    fun `a shared stop word is no match, and the tier says how strong a match is`() {
+        val items = listOf(item(1, "The big game"), item(2, "Call the landlord"))
+        assertEquals(ItemMatch.NoMatch, matchItem("and the rest", items))
+        assertEquals(TextMatches.EXACT, tieredTextMatches("call the landlord", items) { it.text }.tier)
+        assertEquals(TextMatches.SUBSTRING, tieredTextMatches("landlord", items) { it.text }.tier)
+        assertEquals(TextMatches.WORDS, tieredTextMatches("phone landlord today", items) { it.text }.tier)
+        assertEquals(TextMatches.NONE, tieredTextMatches("invented", items) { it.text }.tier)
+    }
+
+    @Test
     fun `exact case-insensitive match resolves`() {
         val items = listOf(item(1, "Tent"), item(2, "Batteries"))
         val result = matchItem("tent", items)

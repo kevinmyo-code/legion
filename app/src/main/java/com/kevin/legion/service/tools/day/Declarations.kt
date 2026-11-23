@@ -63,14 +63,14 @@ internal object Declarations {
                 "to-do with no trigger is manage_checklist list=Todo (create it if missing). " +
                 "A grocery or shopping item is manage_checklist list=Groceries, never here. " +
                 "kind=appointment puts a dated item on his calendar: it passes at its time, is " +
-                "NEVER tickable (say so if asked), and is edited on the calendar. Pass a date or " +
+                "NEVER tickable (say so if asked); schedule moves one, remove deletes one (asks first). Pass a date or " +
                 "time on the same add call, never add then schedule. item fuzzily matches existing " +
                 "text, never a position. A recurring item cannot be ticked: edit its repeat.",
             params = obj(
                 "action" to schema("string", "What to do.",
                     enum = listOf("add", "tick", "untick", "remove", "schedule", "skip")),
                 "item" to schema("string", "For 'add', the new item's text. For every other action, which existing item to match, in the user's words."),
-                "date" to schema("string", "Calendar date, yyyy-MM-dd. For 'add'/'schedule': the item's due date - always pass it on 'add' if the user said one. For 'skip': which occurrence to skip."),
+                "date" to schema("string", "Calendar date, yyyy-MM-dd. For 'add'/'schedule': the item's due date - always pass it on 'add' if the user said one. For 'skip'/'remove': which day."),
                 "time" to schema("string", "24-hour HH:mm. For 'add'/'schedule' only if a specific time was given - omit for an all-day item. Requires 'date'."),
                 "kind" to schema("string", "'add' with a date: appointment goes on his calendar " +
                     "('dentist Tuesday at 3'); reminder stays private ('remind me to call mom'). " +

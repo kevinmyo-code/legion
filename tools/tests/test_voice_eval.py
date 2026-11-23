@@ -601,3 +601,19 @@ def test_the_web_answer_case_needs_its_search_turn_marked():
     turns = ve.case_turns(case)
     assert turns[0]["expect"] == {"read_through": True}
     assert all(t["expect"]["answer_not"] for t in turns[1:])
+
+
+def test_a_remove_that_lands_where_nothing_may_change_fails():
+    # 2026-11-22: a calendar entry's remove asks first; a removal in the asking turn is a failure.
+    case = {"id": "del", "say": "remove the dentist cleaning", "write": True,
+            "expect": {"calls": ["manage_item/remove"], "not_succeeded": ["manage_item/remove"]}}
+    asked = '{"success":false,"needs_answer":true,"message":"Remove \\"Dentist cleaning\\", today at 3 pm?"}'
+    _, runs = parse(case_lines("del", "remove the dentist cleaning",
+                               [("manage_item", {"action": "remove", "item": "dentist cleaning"}, asked)],
+                               "Remove the dentist cleaning, today at 3 pm?"))
+    assert ve.score_case(case, runs[0], phone=False).passed
+    removed = '{"success":true,"title":"Dentist cleaning","message":"Removed \\"Dentist cleaning\\"."}'
+    _, runs = parse(case_lines("del", "remove the dentist cleaning",
+                               [("manage_item", {"action": "remove", "item": "dentist cleaning"}, removed)], "Done."))
+    v = ve.score_case(case, runs[0], phone=False)
+    assert any("succeeded in a turn where nothing may change" in f for f in v.failures)

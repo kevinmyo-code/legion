@@ -87,6 +87,8 @@ class TypedChat(
         inFlight = true
         onInFlightChanged(true)
         val turnSeq = clock()
+        // His turn, counted as on voice: a calendar remove question is answerable in the next one (EventRemoval).
+        com.kevin.legion.service.tools.day.EventRemoval.turnStarted()
         scope.launch {
             val result = try {
                 engine.answer(

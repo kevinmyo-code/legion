@@ -91,6 +91,7 @@ import com.kevin.legion.gmail.GmailClient
 import com.kevin.legion.gmail.GmailToolLogic
 import com.kevin.legion.checklists.ChecklistController
 import com.kevin.legion.service.tools.day.DateCarry
+import com.kevin.legion.service.tools.day.EventRemoval
 import com.kevin.legion.service.tools.day.ListRouting
 import com.kevin.legion.service.tools.day.RelativeDay
 import com.kevin.legion.checklists.ChecklistItemMatch
@@ -881,6 +882,8 @@ object LiveToolbox {
             if (r.name != name) return dispatch(context, r.name, r.args, touchedReadThroughToolThisTurn, userText)
         }
         LiveSurface.unknownAction(name, args)?.let { return it }
+        // A calendar-entry remove question waits only for the remove that answers it (EventRemoval).
+        if (name != "manage_item" || !isRemove(args)) EventRemoval.reset()
         // His own day word wins over a date one day off it, for the calendar and task tools, on the
         // date the voice turn was given (RelativeDay.corrected; 2026-11-17 evening: "and tomorrow?"
         // read today+2); a dated write that names no day goes on the conversation's day
@@ -1230,7 +1233,13 @@ object LiveToolbox {
             )
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
             // (ticket 10) - car items are now just items on the list named "Car".
-            "manage_item" -> nameIt(manageItem(context, args), args)
+            // remove reaches calendar entries too, asked first (2026-11-22, EventRemoval).
+            // schedule moves one, and an add right after one may be a correction to it (EventMove).
+            "manage_item" -> nameIt(
+                removeCalendarEntry(context, args, userText) ?: moveCalendarEntry(context, args, userText)
+                    ?: manageItem(context, args),
+                args,
+            )
             "read_list" -> readList(context)
             // "manage_grocery" retired one-today ticket 10 slice B, 2026-09-05 - named explicitly
             // (never falling through to the generic "Unknown tool" branch below) so a model that
@@ -4243,6 +4252,53 @@ object LiveToolbox {
      */
     private suspend fun theList(context: Context): ItemList = NotesController.theList(context)
 
+    /**
+     * `manage_item remove` for a calendar entry, before the reminder path: asked first, removed on his
+     * yes in a later turn ([userText], EventRemoval). Null when no calendar entry is involved; `date`
+     * narrows which day.
+     */
+    private suspend fun removeCalendarEntry(context: Context, args: JSONObject, userText: String?): JSONObject? {
+        val item = args.optString("item").trim()
+        val dateArg = args.optString("date").trim()
+        val day = parseNoteLocalDate(dateArg)
+        // A date that does not read leaves the calendar alone: the reminder path runs as before.
+        val unreadable = dateArg.isNotEmpty() && day == null
+        if (!isRemove(args) || item.isBlank() || unreadable) return null
+        val reminders = NotesController.openItemsForList(context, theList(context).id)
+        return EventRemoval.remove(context, item, day, userText, reminders)
+    }
+
+    private fun isRemove(args: JSONObject) = args.optString("action").trim().lowercase() == "remove"
+
+    /**
+     * `manage_item schedule` for a calendar entry (moved, EventMove), or an `add` that corrects the
+     * entry just added or moved. Null when neither applies, or a date or time does not read: the
+     * reminder and add paths run as before and word their own refusals.
+     */
+    private suspend fun moveCalendarEntry(context: Context, args: JSONObject, userText: String?): JSONObject? {
+        val item = args.optString("item").trim()
+        val dateArg = args.optString("date").trim()
+        val timeArg = args.optString("time").trim()
+        val date = parseNoteLocalDate(dateArg)
+        val time = parseNoteLocalTime(timeArg)
+        val unreadable = dateArg.isNotEmpty() && date == null || timeArg.isNotEmpty() && time == null
+        val action = args.optString("action").trim().lowercase()
+        // Only an add that could be an appointment corrects one: a reminder add never moves an entry.
+        val appointmentAdd = args.optString("kind").trim().lowercase() in setOf("", "appointment")
+        return when {
+            unreadable -> null
+            action == "add" -> if (appointmentAdd) {
+                com.kevin.legion.service.tools.day.EventMove.followUp(context, item, date, time, userText)
+            } else {
+                null
+            }
+            action != "schedule" || item.isBlank() -> null
+            else -> com.kevin.legion.service.tools.day.EventMove.move(
+                context, item, date, time, NotesController.openItemsForList(context, theList(context).id), userText,
+            )
+        }
+    }
+
     /** Dispatches `manage_item`: add / tick / untick / remove / schedule / skip one item. */
     private suspend fun manageItem(context: Context, args: JSONObject): JSONObject {
         val action = args.optString("action").trim().lowercase()
@@ -4250,7 +4306,7 @@ object LiveToolbox {
         val list = theList(context)
 
         if (action == "add") {
-            if (itemArg.isBlank()) return result(false, "What should I add?")
+            if (itemArg.isBlank()) return result(false, "Nothing was added: add what?").put("needs_answer", true)
 
             // **`add` honours `date`/`time`** (bug, 2026-08-11). It previously called addItem with
             // the text alone and dropped both arguments on the floor while still replying "Added
@@ -4320,9 +4376,9 @@ object LiveToolbox {
             is ItemMatch.NoMatch -> {
                 // One-today ticket 02, "ticking an appointment": tick/untick only, and only after a
                 // reminder match genuinely came back empty - a title that matches a reminder is
-                // never shadowed by a calendar-table row of the same name. remove/schedule/skip stay
-                // reminder-only (no CRUD surface for a calendar-table row beyond done/not-done
-                // today). One-today ticket 08 narrowed [tickOrUntickAppointment] itself to match
+                // never shadowed by a calendar-table row of the same name. schedule/skip stay
+                // reminder-only; remove reached calendar entries above (EventRemoval, asked first).
+                // One-today ticket 08 narrowed [tickOrUntickAppointment] itself to match
                 // only a task, never an event - see [NotesController.openAppointments]'s own doc
                 // comment - so this branch now genuinely finds nothing for a class/event title,
                 // which is correct.
@@ -4331,7 +4387,7 @@ object LiveToolbox {
                     "schedule" -> scheduleTodoLine(context, list, itemArg, args)
                         ?: result(false, "I don't see \"$itemArg\" on your list - add it?")
                     "remove" -> removeTodoLine(context, itemArg)
-                        ?: result(false, "I don't see \"$itemArg\" on your list - add it?")
+                        ?: result(false, EventRemoval.nothingFound(itemArg, parseNoteLocalDate(args.optString("date"))))
                     else -> result(false, "I don't see \"$itemArg\" on your list - add it?")
                 }
             }
@@ -4414,7 +4470,7 @@ object LiveToolbox {
         }
 
         return try {
-            com.kevin.legion.backend.EventsAppointmentWriter.addEvent(
+            val added = com.kevin.legion.backend.EventsAppointmentWriter.addEvent(
                 context = context,
                 title = itemArg,
                 startsAtMs = startMs,
@@ -4423,6 +4479,7 @@ object LiveToolbox {
                 source = DatesAspectSeeder.SOURCE_LEGION,
                 kind = EventKind.EVENT,
             )
+            com.kevin.legion.service.tools.day.EventMove.noteTouched(added.id)
             // The day it landed on takes the screen unless a card already shows it (LiveCards). The
             // row is saved by now: a failed card read must never turn this into "couldn't save".
             val zone = RelativeDay.clock().zone

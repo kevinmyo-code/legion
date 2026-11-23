@@ -366,9 +366,14 @@ object EventsAppointmentWriter {
             return true
         }
 
+        // Queued before the push and drained once it lands, as for a delete: a push cut short (the voice
+        // tool's time limit cancels it) still leaves the change queued (review 2026-11-22).
+        val queued = enqueueUpdate(db, updated)
         val result = backend.upsert(serverId, updated.toEventFields())
-        if (result.isFailure) {
-            enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+        if (result.isSuccess) {
+            db.outboxDao().delete(queued)
+        } else {
+            db.outboxDao().recordAttempt(queued, 0, result.exceptionOrNull()?.message)
         }
         return true
     }
@@ -425,7 +430,9 @@ object EventsAppointmentWriter {
             else -> {
                 val result = backend.upsert(serverId, updated.toEventFields())
                 if (result.isFailure) {
-                    enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+                    enqueueUpdate(db, updated).also {
+                        db.outboxDao().recordAttempt(it, 0, result.exceptionOrNull()?.message)
+                    }
                 }
             }
         }
@@ -452,7 +459,9 @@ object EventsAppointmentWriter {
             else -> {
                 val result = backend.upsert(serverId, updated.toEventFields())
                 if (result.isFailure) {
-                    enqueueUpdate(db, updated, result.exceptionOrNull()?.message)
+                    enqueueUpdate(db, updated).also {
+                        db.outboxDao().recordAttempt(it, 0, result.exceptionOrNull()?.message)
+                    }
                 }
             }
         }
@@ -464,7 +473,7 @@ object EventsAppointmentWriter {
      * marks [Event.deleted] rather than a hard delete, so a resurrecting pull (this row's own
      * tombstone reaching the server late) never finds anything locally left to conflict with. On a
      * configured install with a real [Event.serverId], pushes via [EventsBackend.softDelete] and
-     * enqueues an [OutboxOperation.SOFT_DELETE] entry on failure.
+     * keeps an [OutboxOperation.SOFT_DELETE] entry queued from before the push until it succeeds.
      *
      * **A [Event.serverId] of null** means no pull has told this phone the server id yet, whether the
      * create is still queued or already reached the server (a create's push does not return one, and
@@ -494,14 +503,20 @@ object EventsAppointmentWriter {
         }
 
         db.eventDao().update(existing.copy(deleted = true, updatedAtMs = now))
+        // Queued before the push and drained once it lands: a push cut short (the voice tool's time
+        // limit cancels it) still leaves the delete queued, so the engine never keeps a row the phone
+        // deleted (review 2026-11-22).
+        val queued = enqueueDelete(db, existing.id, serverId)
         val result = backend.softDelete(serverId)
-        if (result.isFailure) {
-            enqueueDelete(db, existing.id, serverId, result.exceptionOrNull()?.message)
+        if (result.isSuccess) {
+            db.outboxDao().delete(queued)
+        } else {
+            db.outboxDao().recordAttempt(queued, 0, result.exceptionOrNull()?.message)
         }
         return true
     }
 
-    private suspend fun enqueueUpdate(db: CarDatabase, row: Event, error: String?) {
+    private suspend fun enqueueUpdate(db: CarDatabase, row: Event): Long =
         db.outboxDao().insert(
             OutboxEntry(
                 targetTable = OutboxTarget.EVENTS,
@@ -510,12 +525,11 @@ object EventsAppointmentWriter {
                 payload = Json.encodeToString(EventUpdateOutboxPayload.serializer(), EventUpdateOutboxPayload.from(row)),
                 createdAt = System.currentTimeMillis(),
                 attempts = 0,
-                lastError = error,
+                lastError = null,
             ),
         )
-    }
 
-    private suspend fun enqueueDelete(db: CarDatabase, localId: Long, serverId: String, error: String?) {
+    private suspend fun enqueueDelete(db: CarDatabase, localId: Long, serverId: String): Long =
         db.outboxDao().insert(
             OutboxEntry(
                 targetTable = OutboxTarget.EVENTS,
@@ -524,10 +538,9 @@ object EventsAppointmentWriter {
                 payload = Json.encodeToString(EventDeleteOutboxPayload.serializer(), EventDeleteOutboxPayload(serverId)),
                 createdAt = System.currentTimeMillis(),
                 attempts = 0,
-                lastError = error,
+                lastError = null,
             ),
         )
-    }
 
     /** Re-points an already-queued [OutboxOperation.UPSERT] create entry for [row] at its latest
      * field values, by delete-then-reinsert rather than an in-place payload update - no DAO method
