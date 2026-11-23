@@ -151,7 +151,15 @@ class CascadeWiringTest {
         assertTrue("the waiting request is dropped, not answered", end.contains("carry = \"\""))
         assertTrue(end.contains("endByVoice()"))
         assertFalse(end.contains("answerTurn("))
-        assertTrue("after a question only a hard stop", bodyOf(s, "endsConversation").contains("FollowUpWindow.isQuestion(lastClipText)"))
+        assertTrue("while an answer is awaited only a hard stop", bodyOf(s, "endsConversation").contains("afterQuestion = awaitingAnswer()"))
+        // Blind review of 56e9404e, finding 4: the branch turned on the last clip ending in "?" alone,
+        // so a pending confirmation whose read-back is a statement let "yes, that's it" close in code
+        // and endByStop discard the draft. A pending write counts as a question asked now.
+        val awaits = bodyOf(s, "awaitingAnswer")
+        assertTrue("the last clip asked", awaits.contains("FollowUpWindow.isQuestion(lastClipText)"))
+        assertTrue("or a draft is pending", awaits.contains("lastTurnAsked"))
+        assertTrue("the turn in hand asked too", awaits.contains("turn?.asked == true"))
+        assertTrue("the log line says which branch ran", bodyOf(s, "noteGoodbye").contains("afterQuestion = awaitingAnswer()"))
         // A zero-voice "Bye." is noise for the guard, which counts it toward the cap.
         assertTrue(SttGuard.verdict("Bye.", 0L) is SttGuard.Verdict.Drop)
     }

@@ -2152,15 +2152,34 @@ internal class CascadeSession(
     }
 
     /**
-     * His latest words are a stop ([WakePhrases.isSleepPhrase]); after a question only a hard stop,
-     * so "never mind" as an answer goes to the model while "that's it" closes (Kevin, 2026-11-23,
-     * Q8). While anything rings, "stop the alarm" and the like are a stop too
-     * ([RingControl.voiceStops]), and [endByStop] stops the ring.
+     * His latest words are a stop ([WakePhrases.isSleepPhrase]); while an answer is awaited
+     * ([awaitingAnswer]) only a hard stop, so "never mind" as an answer goes to the model while
+     * "that's it" closes (Kevin, 2026-11-23, Q8). While anything rings, "stop the alarm" and the like
+     * are a stop too ([RingControl.voiceStops]), and [endByStop] stops the ring.
      */
     private fun endsConversation(words: String): Boolean {
-        val afterQuestion = FollowUpWindow.isQuestion(lastClipText)
-        return WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = afterQuestion) ||
+        return WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = awaitingAnswer()) ||
             RingControl.voiceStops(words, CompanionProfile.name(ctx))
+    }
+
+    /**
+     * Alfred is waiting for an answer, so a soft dismissal may be it and goes to the model instead of
+     * closing in code.
+     *
+     * TWO signals, not one (blind review of 56e9404e, finding 4): his last spoken clip ended in a
+     * question mark ([FollowUpWindow.isQuestion]), or his last turn asked him something in the way
+     * that has a DRAFT behind it ([lastTurnAsked], out of [LoneWordWriteGuard.asks]: a
+     * needs_confirmation, a draft_id or the first step of a two-step write). The second is the better
+     * signal and was missing: a read-back need not end in "?", and while one is pending a turn like
+     * "yes, that's it" closed in code before the model and before the write guard, and [endByStop]
+     * discards the draft as not_answered - the exact harm the 2026-11-18 review raised F1 for.
+     *
+     * Kevin's Q8 and Q9 (2026-11-23) stand either way: they say which PHRASES close while an answer
+     * is awaited, and the hard stops close here too. What this signal adds is that an ANSWER word in
+     * the turn vetoes the close wherever a draft is pending, not only after a spoken question mark.
+     */
+    private fun awaitingAnswer(): Boolean {
+        return FollowUpWindow.isQuestion(lastClipText) || turn?.asked == true || lastTurnAsked
     }
 
     /**
@@ -2176,7 +2195,7 @@ internal class CascadeSession(
         audit.goodbye(
             Farewells.normalise(words),
             matched = matched,
-            afterQuestion = FollowUpWindow.isQuestion(lastClipText),
+            afterQuestion = awaitingAnswer(),
             voicedMs = voicedMs,
             honoured = honoured,
         )
