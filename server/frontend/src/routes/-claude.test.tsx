@@ -46,6 +46,10 @@ function task(partial: Partial<ClaudeTask> = {}): ClaudeTask {
     progress: null,
     progress_at: null,
     steps: [],
+    // The Claude hub's thread (claude-hub-1123 slice S1): blank and null on every task that is
+    // not a message to a Claude Code session, which is every task the web desk shows.
+    session_id: '',
+    session_text: null,
     ...partial,
   }
 }
