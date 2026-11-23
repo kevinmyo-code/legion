@@ -92,6 +92,38 @@ class WakePhrasesFarewellTest {
         for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
     }
 
+    /**
+     * While a WRITE DRAFT waits on his yes, the strictest rule applies (blind review of 56e9404e,
+     * finding 4): only a word for stop or goodbye closes, the four dismissals of Q8 are soft again,
+     * and a filler lead-in vetoes again, because "okay, that's it" may be the yes that commits the
+     * draft and a close discards it unanswered. Q8 and Q9 are unchanged for every turn with no draft
+     * waiting, which the test above pins. The costs decide it: a close too few costs one more turn,
+     * a close too many destroys what he just asked for.
+     */
+    @Test
+    fun `while a draft waits a dismissal is his answer, a goodbye still closes`() {
+        val answers = listOf(
+            // The three the second round was asked to save, and the blind review's own three.
+            "yes, that's it", "yeah that's all", "perfect, that's it",
+            "right, that's all", "well, that's it", "so that's it",
+            // A bare dismissal: F1 verbatim ("That's it." said as a yes committed nothing).
+            "That's it.", "that's all", "that'll be all", "That will be all.", "that's all for now",
+            // Q9's lead-ins veto again here: "okay" may be the yes.
+            "okay bye", "okay, that's it", "um, bye", "alright, goodbye", "ok thanks bye",
+            // A dismissal anywhere in the turn keeps it out: the whole turn must be plain closers.
+            "that's it, bye bye", "that'll be all, goodbye",
+        )
+        val closes = listOf(
+            "stop", "Stop.", "goodbye", "Goodbye, Jeeves.", "bye", "bye bye", "Thanks, bye.",
+            "Go away.", "stand down", "good night", "see you later", "bye bye, Jeeves, thanks",
+        )
+        for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, draftPending = true))
+        for (u in closes) assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, draftPending = true))
+        // The draft branch wins over the question mark: both true is still the strict rule.
+        assertFalse(WakePhrases.isSleepPhrase("that's it", NAME, afterQuestion = true, draftPending = true))
+        assertTrue(WakePhrases.isSleepPhrase("that's it", NAME, afterQuestion = true))
+    }
+
     /** After a question a lone ambiguous farewell is his answer; the same word in a phrase closes. */
     @Test
     fun `a lone night or later is his answer, the phrases it sits in still close`() {

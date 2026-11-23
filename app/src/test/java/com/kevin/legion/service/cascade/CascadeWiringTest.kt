@@ -151,15 +151,18 @@ class CascadeWiringTest {
         assertTrue("the waiting request is dropped, not answered", end.contains("carry = \"\""))
         assertTrue(end.contains("endByVoice()"))
         assertFalse(end.contains("answerTurn("))
-        assertTrue("while an answer is awaited only a hard stop", bodyOf(s, "endsConversation").contains("afterQuestion = awaitingAnswer()"))
-        // Blind review of 56e9404e, finding 4: the branch turned on the last clip ending in "?" alone,
-        // so a pending confirmation whose read-back is a statement let "yes, that's it" close in code
-        // and endByStop discard the draft. A pending write counts as a question asked now.
-        val awaits = bodyOf(s, "awaitingAnswer")
-        assertTrue("the last clip asked", awaits.contains("FollowUpWindow.isQuestion(lastClipText)"))
-        assertTrue("or a draft is pending", awaits.contains("lastTurnAsked"))
-        assertTrue("the turn in hand asked too", awaits.contains("turn?.asked == true"))
-        assertTrue("the log line says which branch ran", bodyOf(s, "noteGoodbye").contains("afterQuestion = awaitingAnswer()"))
+        // Blind review of 56e9404e, finding 4: the stop rule's branch turned on the last clip ending
+        // in "?" alone, so a pending confirmation whose read-back is a statement let "yes, that's it"
+        // close in code and endByStop discard the draft. A waiting draft is its own signal now, and
+        // the strictest closing set, so the two reach the rule separately.
+        val ends = bodyOf(s, "endsConversation")
+        assertTrue("the last clip asked", ends.contains("afterQuestion = FollowUpWindow.isQuestion(lastClipText)"))
+        assertTrue("a waiting draft is its own branch", ends.contains("draftPending = draftPending()"))
+        val draft = bodyOf(s, "draftPending")
+        assertTrue("his last turn asked", draft.contains("lastTurnAsked"))
+        assertTrue("the turn in hand asked too", draft.contains("turn?.asked == true"))
+        assertTrue("the log line says an answer was awaited", bodyOf(s, "noteGoodbye").contains("afterQuestion = awaitingAnswer()"))
+        assertTrue("either signal", bodyOf(s, "awaitingAnswer").contains("isQuestion(lastClipText) || draftPending()"))
         // A zero-voice "Bye." is noise for the guard, which counts it toward the cap.
         assertTrue(SttGuard.verdict("Bye.", 0L) is SttGuard.Verdict.Drop)
     }

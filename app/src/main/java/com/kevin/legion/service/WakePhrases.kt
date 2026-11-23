@@ -94,13 +94,27 @@ object WakePhrases {
      * to end the conversation in code (2026-11-18 review: "That's it." said as a yes ended the
      * conversation without acting). Narrowed twice on 2026-11-23, on Kevin's rulings Q8 and Q9: see
      * [HARD_STOPS] and [Farewells.ANSWER_WORDS].
+     *
+     * [draftPending]: a WRITE is waiting on his yes (a needs_confirmation, a draft_id or the first
+     * step of a two-step write), which the caller knows and a question mark does not show. It wins
+     * over [afterQuestion] and is the strictest branch: only [PLAIN_STOPS] and the farewells close,
+     * and a filler lead-in vetoes again, because there "okay, that's it" may be the yes that commits
+     * the draft and a close discards it unanswered. The costs are not symmetrical: a close too few
+     * costs one more turn, a close too many destroys what he just asked for.
      */
-    fun isSleepPhrase(transcript: String, companionName: String = "", afterQuestion: Boolean = false): Boolean {
+    fun isSleepPhrase(
+        transcript: String,
+        companionName: String = "",
+        afterQuestion: Boolean = false,
+        draftPending: Boolean = false,
+    ): Boolean {
         val t = normalise(transcript)
         val name = normalise(companionName)
         return when {
             t.isEmpty() -> false
             // While an answer is awaited, a turn with an answer word in it is his answer (F1).
+            draftPending -> !Farewells.answersQuestion(transcript, filler = true) &&
+                closesAlone(t, name, DRAFT_CLOSERS)
             afterQuestion -> !Farewells.answersQuestion(transcript) && closesAlone(t, name, HARD_CLOSERS)
             else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || closesAlone(t, name, CLOSERS)
         }
@@ -119,6 +133,20 @@ object WakePhrases {
     )
 
     /**
+     * A word for stop or goodbye: never an answer to anything, whatever is pending. These close even
+     * while a write draft waits, because nothing commits a draft by saying "goodbye".
+     */
+    val PLAIN_STOPS: Set<String> =
+        setOf("stop", "goodbye", "good bye", "bye", "bye bye", "go away", "stand down")
+
+    /**
+     * The four dismissals of Kevin's ruling Q8. Hard after a question, soft again while a WRITE DRAFT
+     * waits: there "that's it" may be the yes that commits it, and a close throws the draft away
+     * (review of 546cce67, F1; blind review of 56e9404e, finding 4).
+     */
+    val DISMISSALS: Set<String> = setOf("that will be all", "that ll be all", "that s all", "that s it")
+
+    /**
      * The stops that are never an answer to a question: these end the conversation even after one.
      *
      * The four dismissals joined it on 2026-11-23 (Kevin, ruling Q8: *"that'll be all" / "that will be
@@ -130,10 +158,7 @@ object WakePhrases {
      * [Farewells.ANSWER_WORDS] still sends every one of those to the model ("yes, that's all" does not
      * close). "never mind", "we're done" and "I'm done" were not ruled on and stay soft.
      */
-    val HARD_STOPS: Set<String> = setOf(
-        "stop", "goodbye", "good bye", "bye", "bye bye", "go away", "stand down",
-        "that will be all", "that ll be all", "that s all", "that s it",
-    )
+    val HARD_STOPS: Set<String> = PLAIN_STOPS + DISMISSALS
 
     /**
      * The whole turn is [closers], courtesy aside: one or more of them back to back
@@ -169,6 +194,14 @@ object WakePhrases {
      */
     private val HARD_CLOSERS: List<List<String>> =
         Farewells.phraseWords(HARD_STOPS + (Farewells.FAREWELLS - Farewells.AMBIGUOUS_ALONE))
+
+    /**
+     * The closers a turn may be made of while a write draft waits: [HARD_CLOSERS] without the four
+     * [DISMISSALS], so the only thing that closes is a word for stop or goodbye. One set per state,
+     * all three the same rule ([closesAlone]).
+     */
+    private val DRAFT_CLOSERS: List<List<String>> =
+        Farewells.phraseWords(PLAIN_STOPS + (Farewells.FAREWELLS - Farewells.AMBIGUOUS_ALONE))
 
     /**
      * Lowercase, every non-letter/digit run collapsed to a single space, trimmed: [Farewells.normalise],

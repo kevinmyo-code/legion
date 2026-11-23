@@ -72,11 +72,20 @@ object Farewells {
         "exactly", "tomorrow", "today", "tonight", "morning", "afternoon", "evening", "am", "pm", "o clock",
     )
 
-    /** [transcript] holds a word that answers a question ([ANSWER_WORDS]) or a number. */
-    fun answersQuestion(transcript: String): Boolean {
+    /**
+     * [transcript] holds a word that answers a question ([ANSWER_WORDS]) or a number.
+     *
+     * [filler]: count [FILLER_LEADS] as answers too. Only one caller does
+     * ([WakePhrases.isSleepPhrase] while a write draft waits): there "okay" may be the yes that
+     * commits it, and a close would throw the draft away, so the narrow reading of Q9 applies and
+     * the turn goes to the model.
+     */
+    fun answersQuestion(transcript: String, filler: Boolean = false): Boolean {
         val w = normalise(transcript).split(' ').filter { it.isNotEmpty() }
         if (w.any { t -> t.any { it.isDigit() } }) return true
-        return words(ANSWER_WORDS).any { phrase -> w.windowed(phrase.size).any { it == phrase } }
+        return (if (filler) answerOrFillerWords else answerWords).any { phrase ->
+            w.windowed(phrase.size).any { it == phrase }
+        }
     }
 
     fun normalise(text: String): String =
@@ -88,6 +97,8 @@ object Farewells {
 
     private val leadWords = words(LEADS + THANKS)
     private val tailWords = words(THANKS + TAILS)
+    private val answerWords = words(ANSWER_WORDS)
+    private val answerOrFillerWords = words(ANSWER_WORDS + FILLER_LEADS)
 
     /**
      * Farewells that can also answer a question ("Morning or night?" "Night."): alone, they close only
