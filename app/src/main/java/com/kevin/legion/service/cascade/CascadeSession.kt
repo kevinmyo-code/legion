@@ -1685,7 +1685,13 @@ internal class CascadeSession(
                     "stt_voiced ms=${stt.voicedMs ?: -1} audio_ms=${stt.audioMs ?: -1} decision=" +
                         if (stop) "stop" else (v as? SttGuard.Verdict.Drop)?.reason ?: "keep",
                 )
-                noteGoodbye(stt.text, stopWords, stop, stt.voicedMs, v is SttGuard.Verdict.Keep)
+                // The words the guard KEPT, never the ones it removed: a Keep still strips every word
+                // in a script none of his languages use ([SttGuard.verdict]), and the raw text would
+                // have put that stripped word in the log, which is the one thing this line must not do.
+                noteGoodbye(
+                    (v as? SttGuard.Verdict.Keep)?.text ?: stt.text,
+                    stopWords, stop, stt.voicedMs, v is SttGuard.Verdict.Keep,
+                )
                 if (stop) return endByStop(u, stt.text)
                 when (v) {
                     is SttGuard.Verdict.Keep -> v.text

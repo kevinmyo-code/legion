@@ -134,7 +134,12 @@ class CascadeWiringTest {
         assertTrue("decided before the transcript guard can drop it", stop < run.indexOf("if (stop) return endByStop(u, stt.text)"))
         assertTrue("every turn logs voiced time and the decision", run.contains("stt_voiced ms="))
         // 2026-11-23, goodbye hardening: every whole-turn farewell decision is in LIVE_AUDIT, matched or not.
-        assertTrue("the decision is audited", run.contains("noteGoodbye(stt.text, stopWords, stop, stt.voicedMs, v is SttGuard.Verdict.Keep)"))
+        // Blind review of 56e9404e, finding 1: the line logged the RAW transcript, so a word the guard
+        // had stripped (a script none of his languages use) rode into the log on the very line whose
+        // subject says it never does. It logs what the guard kept.
+        assertTrue("the decision is audited", run.contains("stopWords, stop, stt.voicedMs, v is SttGuard.Verdict.Keep,"))
+        assertTrue("with the words the guard kept", run.contains("(v as? SttGuard.Verdict.Keep)?.text ?: stt.text,"))
+        assertFalse("never the raw transcript", run.contains("noteGoodbye(stt.text,"))
         assertTrue("a recovered transcript too", run.contains("noteGoodbye(recovered, recoveredStop,"))
         assertTrue("never words the guard threw away", bodyOf(s, "noteGoodbye").contains("if (!kept && !matched) return"))
         assertTrue("with the words the user line already logs", bodyOf(s, "noteGoodbye").contains("audit.goodbye("))
