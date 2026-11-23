@@ -50,6 +50,14 @@ interface HomeCalendarSource {
 
     suspend fun openTodos(zone: ZoneId): List<TodoRowUi>
 
+    /**
+     * [day]'s own agenda rows, read for that day whatever month is being browsed. The front page's
+     * glance reads TODAY, and before 2026-11-23 it read the SELECTED day instead, so one tap in the
+     * drill-down (or a midnight rollover in a long-lived launcher process) made "Next" describe
+     * another day. [day] is the caller's, never the source's idea of today. Empty by default.
+     */
+    suspend fun todayEvents(day: LocalDate, zone: ZoneId): List<AgendaRowUi> = emptyList()
+
     /** What is due today and what is overdue ([com.kevin.legion.calendar.DueReader]); null: no reader. */
     suspend fun dueToday(zone: ZoneId): com.kevin.legion.calendar.DueSummary? = null
 
@@ -130,6 +138,13 @@ class ContextHomeCalendarSource(context: Context) : HomeCalendarSource {
                     ref = if (row.source == AgendaSource.LOCAL) TodoRef.Reminder(row.id) else TodoRef.Task(row.id),
                 )
             }
+    }
+
+    /** [day]'s rows through the SAME derivation the drill-down uses, so the two cannot disagree.
+     * Its own month read: the month on screen may not be [day]'s. */
+    override suspend fun todayEvents(day: LocalDate, zone: ZoneId): List<AgendaRowUi> {
+        val read = readMonth(YearMonth.from(day), zone)
+        return deriveDay(read, inboxOf(read, System.currentTimeMillis()), day, zone).rows
     }
 
     override suspend fun dueToday(zone: ZoneId): com.kevin.legion.calendar.DueSummary {

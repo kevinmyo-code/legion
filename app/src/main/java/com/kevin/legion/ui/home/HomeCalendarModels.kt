@@ -81,7 +81,14 @@ data class HomeCalendarUiState(
     val month: YearMonth,
     val selectedDay: LocalDate,
     val cells: List<CalendarCellUi> = emptyList(),
+    /** The SELECTED day's rows: the drill-down's agenda. Never the front page's glance. */
     val dayRows: List<AgendaRowUi> = emptyList(),
+    /**
+     * TODAY's rows, read for today whatever month or day is being browsed. The front page's "Next"
+     * reads these; [dayRows] followed the selection, so a tap in the drill-down, or a day rollover
+     * in a long-lived launcher process, made the glance describe another day (2026-11-23).
+     */
+    val todayRows: List<AgendaRowUi> = emptyList(),
     /** Set when the grid or the day could not be read in full; shown in words under the title. */
     val readNote: String? = null,
     val openTodoCount: Int = 0,

@@ -262,6 +262,9 @@ class HomeCalendarViewModel(
             )
         }
         val due = withContext(io) { guarded { source.dueToday(zone) } }
+        // TODAY's rows, read beside what is due today and for the same reason: the glance is about
+        // today, and the month and day on screen are not.
+        val todayRows = withContext(io) { guarded { source.todayEvents(t, zone) } }
         _state.update { s ->
             // A row ticked inside the open sheet stays listed (done) until the sheet closes.
             val keptDone = if (s.sheet == PanelSheet.TODOS) {
@@ -276,6 +279,8 @@ class HomeCalendarViewModel(
                 todosNote = if (todos == null) "Couldn't read your to-dos." else null,
                 dueToday = due,
                 dueNote = if (due == null) "Couldn't read what is due." else null,
+                // A failed read leaves the last rows standing rather than reading as an empty day.
+                todayRows = todayRows ?: s.todayRows,
                 lists = lists.orEmpty(),
                 listsNote = if (lists == null) "Couldn't read your lists." else null,
                 ideas = ideas.orEmpty(),
