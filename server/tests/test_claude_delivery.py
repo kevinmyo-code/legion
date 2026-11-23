@@ -51,6 +51,10 @@ def _deliver(task_id):
     "write up a study guide for my exam as a PDF",
     "make me a list of apps for budgeting as a PDF",
     "write me steps to change the oil, as a PDF",
+    # RED r3: "how" alone is not a how-to.
+    "write up how my week went as a PDF",
+    "make a summary of how the trip went as a PDF",
+    "make a plan for how we spend Saturday as a PDF",
 ])
 def test_a_result_asked_for_as_a_file_is_a_made_file(words):
     assert asks_for_made_file(words)
@@ -142,7 +146,8 @@ def test_a_pdf_asked_for_with_no_delivery_goes_to_the_phone_on_a_full_machine_on
     "Write a page about the best way to put receipts into a spreadsheet",
     "a researched write-up on garden walks",
     "a page about PDF tools",
-    "page on how the IRS wants returns sent in PDF format",
+    # Known and accepted (RED r3): "page on how the IRS wants returns sent in PDF format" flips;
+    # a flipped task sends only what it made in its own folder (made_only), never his files.
 ])
 def test_a_page_about_a_file_format_stays_a_page(token_a, words):
     """RED review 2026-11-22: the format word is the topic, not the deliverable."""
@@ -225,6 +230,31 @@ def test_a_no_delivery_flip_is_made_only_too_and_takes_a_windows_path(token_a):
          "name": "guide.pdf", "size": 900},
         {"path": r"C:\Users\k\Documents\scan.pdf", "name": "scan.pdf", "size": 900}])
     assert got == {"guide.pdf": True, "scan.pdf": False}
+
+
+def test_a_flip_at_assign_is_made_only(token_a):
+    _beat(token_a)
+    _beat(token_a, "work laptop", scope="listed")
+    waiting = _create(token_a, "make the garden walk as a PDF", deliver="phone")
+    assert waiting["status"] == "needs_machine"
+    row = ClaudeTask.objects.get(pk=waiting["id"])
+    assert (row.deliver, row.made_only) == ("phone", None)
+    r = token_a.post(f"{API}tasks/{waiting['id']}/assign/", {"machine": "Alienware"},
+                     format="json")
+    assert r.status_code == 200, r.data
+    row.refresh_from_db()
+    assert (row.deliver, row.made_only) == ("files", True)
+
+
+def test_a_flip_at_claim_is_made_only(token_a):
+    queued = _create(token_a, "make the garden walk as a PDF")
+    row = ClaudeTask.objects.get(pk=queued["id"])
+    assert (row.machine_id, row.deliver, row.made_only) == (None, None, None)
+    _beat(token_a)
+    claimed = token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    assert claimed.data[0]["deliver"] == "files"
+    row.refresh_from_db()
+    assert row.made_only is True
 
 
 def test_mail_on_a_laptop_without_mail_is_files_but_not_made_only(token_a):

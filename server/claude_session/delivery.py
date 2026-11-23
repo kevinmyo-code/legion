@@ -77,7 +77,10 @@ _MAKE_FORMAT = re.compile(
 # format the subject count, so "a comparison of three laptops as a PDF" or "a guide for the dog
 # sitter as a PDF" still ask for the PDF.
 _TOPIC = re.compile(
-    rf"\bhow\s+\w+\b[^.?!]{{0,60}}?\b{_FORMAT}s?\b"
+    # "how to / do / does / can / should ... PDF" or "how PDFs ...", never "how my week went ...
+    # as a PDF" (RED review r3).
+    rf"\bhow\s+(?:to|do|does|can|should)\b[^.?!]{{0,60}}?\b{_FORMAT}s?\b"
+    rf"|\bhow\s+(?:an?\s+|the\s+)?{_FORMAT}s?\b"
     r"|\b(?:tools?|apps?|software|programs?|ways?|steps?)\s+(?:that|to|for|which)\s+(?:\w+\s+){0,2}"
     r"(?:convert|turn|export|print|save|put|make)\w*\b"
     r"|\blater\b"
