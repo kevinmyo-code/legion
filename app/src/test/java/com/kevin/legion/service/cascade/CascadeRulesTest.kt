@@ -414,6 +414,22 @@ class CascadeRulesTest {
     }
 
     @Test
+    fun `a cut done line never ends on a dangling to`() {
+        fun add(item: String, list: String) = ScriptedLines.writeFact(
+            "manage_item", "add",
+            JSONObject().put("success", true).put("item", item).put("list", list), true,
+        )
+        // An item just long enough that the line's own cut lands inside the list's name: the
+        // clause has to lose the whole "to <list>" tail, not stop on the preposition.
+        for (length in 55..70) {
+            val item = "ab".repeat(length / 2).chunked(4).joinToString(" ").take(length).trim()
+            val line = ScriptedLines.doneLine(listOf(add(item, "Todo")))!!
+            assertTrue(line, line.length <= ScriptedLines.MAX_DONE_CHARS)
+            assertFalse(line, line.endsWith(" to."))
+        }
+    }
+
+    @Test
     fun `a hand-over says an owed write only while the voice works, never on a crash`() {
         assertTrue(CascadeRules.handOverSaysOwed("prompt", phoneFault = false))
         assertTrue(CascadeRules.handOverSaysOwed("stt", phoneFault = false))

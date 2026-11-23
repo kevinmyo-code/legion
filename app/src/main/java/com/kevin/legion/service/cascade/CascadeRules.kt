@@ -477,7 +477,7 @@ object ScriptedLines {
     fun doneLine(facts: List<WriteFact>): String? {
         val said = facts.filter { it.said }
         val done = said.filter { it.phrase != null }.map { f ->
-            val to = if (f.list.isNotEmpty() && f.phrase!!.startsWith("added")) " to ${f.list}" else ""
+            val to = if (f.list.isNotEmpty() && f.phrase!!.startsWith("added")) LIST_JOINER + f.list else ""
             (if (f.title.isEmpty()) NO_TITLE[f.phrase] ?: f.phrase!!.format("it") else f.phrase!!.format(f.title)) + to
         }
         val generic = said.any { it.phrase == null }
@@ -485,7 +485,7 @@ object ScriptedLines {
         // Clause by clause while it fits; the rest is counted, never dropped unsaid. Only a first
         // clause too long on its own is trimmed.
         val room = MAX_DONE_CHARS - (if (done.size > 1) "Done: ; and 99 more." else "Done: .").length
-        var kept = done.take(1).map { it.cutOnWord(room) }
+        var kept = done.take(1).map { it.cutOnWord(room).removeSuffix(LIST_JOINER.trimEnd()) }
         for (c in done.drop(1)) {
             val rest = done.size - kept.size - 1
             val tail = if (rest > 0) listOf("and $rest more") else emptyList()
@@ -570,6 +570,13 @@ object ScriptedLines {
 
     private val TITLE_KEYS = listOf("title", "text", "item", "name")
     const val MAX_DONE_CHARS = 80
+
+    /**
+     * What joins an add's item to the list it landed on ("added milk to Groceries"). Named because
+     * [doneLine] drops it when a cut lands inside the list name: without that, an item just long
+     * enough leaves the line hanging on "Done: added <item> to."
+     */
+    private const val LIST_JOINER = " to "
 
     /**
      * The longest title or list name a fact carries. It is [MAX_DONE_CHARS], not a tighter number
