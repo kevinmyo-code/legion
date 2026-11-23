@@ -121,6 +121,35 @@ class BoardActionsTest {
         assertTrue(fake.drafted.isEmpty())
     }
 
+    @Test
+    fun `needs speaks the engine's counts by code and approves nothing`() {
+        val queue = object : com.kevin.legion.board.ControlRoomBackend by NoControlRoom {
+            override suspend fun queue() = BoardOutcome.Ok(
+                com.kevin.legion.board.BoardQueue(1, 2, 0, "Needs you: 1 session, 2 approvals, 0 decisions.",
+                    listOf("Needs you: 1 session, 2 approvals, 0 decisions."), emptyList()),
+            )
+        }
+        val original = BoardActions.queueFactory
+        BoardActions.queueFactory = { queue }
+        try {
+            val result = call(userText = "what needs me", "action" to "needs")
+            assertEquals("Needs you: 1 session, 2 approvals, 0 decisions.", VerbatimSpeech.of(result))
+            assertEquals(2, result.getInt("approvals"))
+            assertTrue(result.getString("message").contains("never by voice"))
+        } finally {
+            BoardActions.queueFactory = original
+        }
+    }
+
+    private object NoControlRoom : com.kevin.legion.board.ControlRoomBackend {
+        override suspend fun board() = error("unused")
+        override suspend fun answer(cardId: String, askSha256: String, choice: String, text: String) = error("unused")
+        override suspend fun vote(cardId: String, vote: String) = error("unused")
+        override suspend fun actions() = error("unused")
+        override suspend fun decide(actionId: String, recordSha256: String, allow: Boolean) = error("unused")
+        override suspend fun queue(): BoardOutcome<com.kevin.legion.board.BoardQueue> = error("unused")
+    }
+
     private fun call(userText: String, vararg args: Pair<String, Any>): JSONObject = runBlocking {
         val json = JSONObject().apply { args.forEach { (k, v) -> put(k, v) } }
         ClaudeSessionToolbox.dispatch(context, "claude_session", json, userText = userText)!!

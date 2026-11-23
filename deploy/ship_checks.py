@@ -41,6 +41,7 @@ FROZEN = (
 # Fixed here; the workflow input can only ADD names (review S5).
 SWITCHES = (
     "LEGION_BOARD",
+    "LEGION_BOARD_ACTIONS",
     "LEGION_JEEP_ASSISTANT",
     "LEGION_LATE_ANSWERS",
     "LEGION_AGENTS_TURN",

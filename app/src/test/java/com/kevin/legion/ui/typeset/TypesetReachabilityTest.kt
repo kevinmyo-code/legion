@@ -34,6 +34,7 @@ class TypesetReachabilityTest {
         LegionRoute.APPS to Page("All apps"),
         LegionRoute.SETTINGS to Page("Settings"),
         LegionRoute.CLAUDE_SESSION to Screen("sheet:claude-watch", "See all"),
+        LegionRoute.CONTROL_ROOM to Screen("sheet:controls", "Claude sessions"),
         LegionRoute.SETTINGS_SPOTIFY_MEDIA to Page("Media"),
         LegionRoute.CHECKLISTS to Screen("sheet:lists", "a list"),
         LegionRoute.BOUGHT to Screen(LegionRoute.CHECKLISTS, "Bought"),

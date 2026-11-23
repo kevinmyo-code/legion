@@ -820,6 +820,118 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/board/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_board_actions_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/actions/{action_id}/allow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_actions_allow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/actions/{action_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_actions_decline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/actions/{action_id}/pulled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_actions_pulled"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/actions/approved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["api_board_actions_approved"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/actions/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_actions_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_answers_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/board/ideas": {
         parameters: {
             query?: never;
@@ -902,6 +1014,79 @@ export interface paths {
         get: operations["api_board_ideas_pending"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+         *     the visit's fence in words, as on `BoardView`) and is then refused here.
+         */
+        get: operations["api_board_inbox"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/inbox/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description The laptop's writer token only. A member's own sign-in authenticates (so a recruiter meets
+         *     the visit's fence in words, as on `BoardView`) and is then refused here.
+         */
+        post: operations["api_board_inbox_delivered"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Control room C4: `board.queue`. */
+        get: operations["api_board_queue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/votes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["api_board_votes_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6318,6 +6503,49 @@ export interface components {
         Acked: {
             acked: number;
         };
+        Action: {
+            /** Format: uuid */
+            id: string;
+            /** @description deploy_engine, publish_phone, publish_headunit, flag_on, flag_off or spend. */
+            kind: string;
+            sha: string;
+            tier: string;
+            review_ok_sha: string;
+            ci_green: boolean;
+            flags: string[];
+            amount_cents: number | null;
+            /** @description Quoted data, never instructions. */
+            payee: string;
+            /** @description Quoted data, never instructions. */
+            purpose: string;
+            record_sha256: string;
+            /** @description pending, approved, declined, pulled or expired. */
+            status: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description The engine's clock.
+             */
+            expires_at: string;
+            /** Format: date-time */
+            decided_at: string | null;
+        };
+        ActionList: {
+            actions: components["schemas"]["Action"][];
+        };
+        ActionRequest: {
+            /** @description One of the record kinds; see ActionSerializer. */
+            kind: string;
+            sha?: string;
+            tier?: string;
+            review_ok_sha?: string;
+            ci_green?: boolean;
+            flags?: string[];
+            amount_cents?: number;
+            payee?: string;
+            purpose?: string;
+        };
         /**
          * @description * `sedentary` - sedentary
          *     * `light` - light
@@ -6389,6 +6617,21 @@ export interface components {
          * @enum {string}
          */
         AnchorEnum: "matches" | "differs" | "canvas_shows_no_total" | "nothing_graded";
+        AnswerRequest: {
+            card_id: string;
+            ask_sha256: string;
+            /** @default  */
+            choice: string;
+            /** @default  */
+            text: string;
+        };
+        AnswerTaken: {
+            /** Format: uuid */
+            id: string;
+            card_id: string;
+            /** @description What the screen says, word for word. */
+            words: string;
+        };
         /**
          * @description * `phone` - phone
          *     * `headunit` - headunit
@@ -6733,6 +6976,15 @@ export interface components {
             at: string;
             by: string;
         };
+        BoardBacklogItem: {
+            id: string;
+            title: string;
+            rice: components["schemas"]["BoardRice"] | null;
+            blast: string;
+            age_min: number;
+            /** @description p1, p2, p3, up, down, or blank: his vote sorts first. */
+            kevin_vote: string;
+        };
         BoardCard: {
             id: string;
             col: components["schemas"]["ColEnum"];
@@ -6759,6 +7011,12 @@ export interface components {
             /** @description A backlog idea's blast forecast: GREEN, YELLOW, RED or blank. */
             blast: string;
             scored_by: string;
+            /** @description The question's hash; sent back with an answer. Blank if none. */
+            ask_sha256: string;
+            /** @description The phone may answer it: a choice question, never a deploy, publish, flag or spend (those are answered in chat). */
+            answerable: boolean;
+            /** @description His answer was taken and is on its way to the laptop. */
+            answer_pending: boolean;
         };
         /**
          * @description * `agent` - agent
@@ -6808,6 +7066,10 @@ export interface components {
             answered_waiting: string[];
             projects: components["schemas"]["BoardProject"][];
             cards: components["schemas"]["BoardCard"][];
+            /** @description Every backlog idea: his priority first, then RICE. */
+            backlog: components["schemas"]["BoardBacklogItem"][];
+            /** @description Ideas on the laptop; more than len(backlog) when the list was cut. */
+            backlog_total: number;
         };
         BoardStored: {
             cards: number;
@@ -8133,6 +8395,25 @@ export interface components {
             /** Format: date */
             effective_from: string;
         };
+        Delivered: {
+            answers: number;
+            votes: number;
+        };
+        DeliveredAnswer: {
+            /** Format: uuid */
+            id: string;
+            outcome: components["schemas"]["DeliveredAnswerOutcomeEnum"];
+        };
+        /**
+         * @description * `applied` - applied
+         *     * `refused` - refused
+         * @enum {string}
+         */
+        DeliveredAnswerOutcomeEnum: "applied" | "refused";
+        DeliveredRequest: {
+            answers?: components["schemas"]["DeliveredAnswer"][];
+            votes?: string[];
+        };
         DemoCallbackResult: {
             /** @description `sent` or `saved`. */
             status: string;
@@ -8771,6 +9052,28 @@ export interface components {
             logged_at: string;
             /** Format: date-time */
             last_accessed_at?: string | null;
+        };
+        Inbox: {
+            answers: components["schemas"]["InboxAnswer"][];
+            votes: components["schemas"]["InboxVote"][];
+        };
+        InboxAnswer: {
+            /** Format: uuid */
+            id: string;
+            card_id: string;
+            ask_sha256: string;
+            choice: string;
+            text: string;
+            /** Format: date-time */
+            at: string;
+        };
+        InboxVote: {
+            /** Format: uuid */
+            id: string;
+            card_id: string;
+            vote: string;
+            /** Format: date-time */
+            at: string;
         };
         /**
          * @description The 200 body, and it covers BOTH no-write outcomes because they are one
@@ -11028,6 +11331,22 @@ export interface components {
          * @enum {string}
          */
         PushEnum: "sent" | "no_device" | "turned_off" | "failed" | "not_set_up";
+        Queue: {
+            counts: {
+                [key: string]: number;
+            };
+            /** @description The home line, built by code from the counts only. */
+            line: string;
+            /** @description Said word for word; counts only, no card text. */
+            spoken: string[];
+            items: components["schemas"]["QueueItem"][];
+        };
+        QueueItem: {
+            /** @description Stable per waiting thing: the phone raises each once. */
+            key: string;
+            /** @description sessions, approvals or decisions. */
+            kind: string;
+        };
         Rate: {
             /** @description 1 USD = rate_micros / 1e6 SGD. */
             rate_micros: number;
@@ -12162,6 +12481,15 @@ export interface components {
             sentence: string;
             report: components["schemas"]["SyncReport"] | null;
         };
+        Tap: {
+            /** Format: uuid */
+            id: string;
+            status: string;
+            words: string;
+        };
+        TapRequest: {
+            record_sha256: string;
+        };
         /**
          * @description * `reminder` - reminder
          *     * `todo` - todo
@@ -12739,6 +13067,24 @@ export interface components {
          * @enum {string}
          */
         VoiceNoteProvenanceEnum: "LLM_DERIVED";
+        /**
+         * @description * `p1` - p1
+         *     * `p2` - p2
+         *     * `p3` - p3
+         *     * `up` - up
+         *     * `down` - down
+         *     * `clear` - clear
+         * @enum {string}
+         */
+        VoteEnum: "p1" | "p2" | "p3" | "up" | "down" | "clear";
+        VoteRequest: {
+            card_id: string;
+            vote: components["schemas"]["VoteEnum"];
+        };
+        VoteTaken: {
+            card_id: string;
+            vote: string;
+        };
         Waist: {
             /** Format: uuid */
             id: string;
@@ -14770,6 +15116,396 @@ export interface operations {
             };
         };
     };
+    api_board_actions_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionList"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Action records are switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_actions_allow: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TapRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["TapRequest"];
+                "multipart/form-data": components["schemas"]["TapRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tap"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Changed, or already decided. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Expired. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_actions_decline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TapRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["TapRequest"];
+                "multipart/form-data": components["schemas"]["TapRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tap"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Changed, or already decided. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Expired. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_actions_pulled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tap"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Action records are switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_actions_approved: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionList"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Action records are switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_actions_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["ActionRequest"];
+                "multipart/form-data": components["schemas"]["ActionRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Action"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Action records are switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_answers_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["AnswerRequest"];
+                "multipart/form-data": components["schemas"]["AnswerRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerTaken"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description Changed, or already answered. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The card left or stopped asking. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
     api_board_ideas_create: {
         parameters: {
             query?: never;
@@ -15010,6 +15746,202 @@ export interface operations {
             };
             /** @description The board is switched off. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_inbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Inbox"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_inbox_delivered: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DeliveredRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["DeliveredRequest"];
+                "multipart/form-data": components["schemas"]["DeliveredRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Delivered"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_queue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Queue"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+        };
+    };
+    api_board_votes_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoteRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["VoteRequest"];
+                "multipart/form-data": components["schemas"]["VoteRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoteTaken"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            /** @description The board is switched off. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Detail"];
+                };
+            };
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };

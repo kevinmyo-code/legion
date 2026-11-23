@@ -36,8 +36,8 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from board import asks, flags, reading
 from board import cards as board_cards
-from board import flags, reading
 from board import ideas as board_ideas
 from board.authentication import BoardWriterAuthentication
 from board.models import BoardSnapshot
@@ -140,6 +140,27 @@ class BoardCardSerializer(serializers.Serializer):
         allow_blank=True, help_text="A backlog idea's blast forecast: GREEN, YELLOW, RED or blank."
     )
     scored_by = serializers.CharField(allow_blank=True)
+    ask_sha256 = serializers.CharField(
+        allow_blank=True, help_text="The question's hash; sent back with an answer. Blank if none."
+    )
+    answerable = serializers.BooleanField(
+        help_text="The phone may answer it: a choice question, never a deploy, publish, flag or "
+        "spend (those are answered in chat)."
+    )
+    answer_pending = serializers.BooleanField(
+        help_text="His answer was taken and is on its way to the laptop."
+    )
+
+
+class BoardBacklogItemSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    title = serializers.CharField()
+    rice = BoardRiceSerializer(allow_null=True)
+    blast = serializers.CharField(allow_blank=True)
+    age_min = serializers.IntegerField()
+    kevin_vote = serializers.CharField(
+        allow_blank=True, help_text="p1, p2, p3, up, down, or blank: his vote sorts first."
+    )
 
 
 class BoardSnapshotSerializer(serializers.Serializer):
@@ -153,6 +174,12 @@ class BoardSnapshotSerializer(serializers.Serializer):
     answered_waiting = serializers.ListField(child=serializers.CharField())
     projects = BoardProjectSerializer(many=True)
     cards = BoardCardSerializer(many=True)
+    backlog = BoardBacklogItemSerializer(
+        many=True, help_text="Every backlog idea: his priority first, then RICE."
+    )
+    backlog_total = serializers.IntegerField(
+        help_text="Ideas on the laptop; more than len(backlog) when the list was cut."
+    )
 
 
 class BoardWriterInfoSerializer(serializers.Serializer):
@@ -199,7 +226,8 @@ def _payload(request, now=None) -> dict:
     row = r.row
     snapshot = None
     if row is not None and row.received_at is not None:
-        cards = reading.cards_now(r)
+        cards = asks.decorate(reading.cards_now(r), request.user)
+        backlog = asks.sorted_backlog(row.backlog or [], asks.latest_votes(request.user))
         snapshot = {
             "generated_at": row.generated_at,
             "received_at": row.received_at,
@@ -209,6 +237,8 @@ def _payload(request, now=None) -> dict:
             "answered_waiting": [c["id"] for c in board_cards.answered_waiting(cards)],
             "projects": board_cards.projects(cards),
             "cards": cards,
+            "backlog": backlog,
+            "backlog_total": max(row.backlog_total or 0, len(backlog)),
         }
     short = reading.brief(request, r)
     writer = None
@@ -285,6 +315,8 @@ class BoardView(_OffBeforeAnything):
             generated_at=clean.generated_at,
             received_at=now,
             size_bytes=len(raw),
+            backlog=clean.backlog,
+            backlog_total=clean.backlog_total,
         )
         logger.info(
             "board push stored: %d bytes, %d cards, %d fields blanked",

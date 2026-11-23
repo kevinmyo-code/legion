@@ -15,11 +15,14 @@ interface SessionWaitSeen {
     fun keepOnly(keys: Set<String>)
 }
 
-/** SharedPreferences, install-scoped, never synced: session ids and times only. */
-class SessionWaitSeenStore(context: Context) : SessionWaitSeen {
+/**
+ * SharedPreferences, install-scoped, never synced: session ids and times only. [key] names the set,
+ * so the control room's [QueuePoller] keeps its own keys beside the session waits.
+ */
+class SessionWaitSeenStore(context: Context, private val key: String = KEY) : SessionWaitSeen {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    override fun seen(): Set<String> = prefs.getStringSet(KEY, emptySet()).orEmpty().toSet()
+    override fun seen(): Set<String> = prefs.getStringSet(key, emptySet()).orEmpty().toSet()
 
     @Synchronized
     override fun mark(key: String) = put(seen() + key)
@@ -31,12 +34,13 @@ class SessionWaitSeenStore(context: Context) : SessionWaitSeen {
     }
 
     private fun put(keys: Set<String>) {
-        prefs.edit().putStringSet(KEY, keys).apply()
+        prefs.edit().putStringSet(key, keys).apply()
     }
 
-    private companion object {
-        const val PREFS = "claude_session"
-        const val KEY = "session_waits_seen"
+    companion object {
+        private const val PREFS = "claude_session"
+        private const val KEY = "session_waits_seen"
+        const val QUEUE_KEY = "control_room_queue_seen"
     }
 }
 

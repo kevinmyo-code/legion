@@ -247,6 +247,11 @@ TENANT_TABLES: tuple[str, ...] = (
     # (`OWNER_PATHS`; `board/models.py`). Backlog ideas said to Alfred, private the same way.
     "board_snapshots",
     "board_ideas",
+    # Control room (C2, C3): his answers, votes, the laptop's action records and his tap log.
+    "board_answers",
+    "board_votes",
+    "board_actions",
+    "board_action_taps",
     # fleet
     "vehicles",
     "vehicle_specs",
@@ -351,6 +356,10 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "headunit_credentials",
         "board_snapshots",
         "board_ideas",
+        "board_answers",
+        "board_votes",
+        "board_actions",
+        "board_action_taps",
     }
 )
 
@@ -572,6 +581,11 @@ OWNER_PATHS: dict[str, str] = {
     "board_snapshots": "owner_user",
     # Never null: a member's backlog ideas are theirs alone (`board/models.py`).
     "board_ideas": "owner_user",
+    # Never null: what he answered, voted, was asked to allow and tapped is his alone.
+    "board_answers": "owner_user",
+    "board_votes": "owner_user",
+    "board_actions": "owner_user",
+    "board_action_taps": "owner_user",
 }
 
 # For an inheriting table, the parent's `updated_at`. Turning a parent private

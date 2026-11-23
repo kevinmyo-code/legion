@@ -131,8 +131,14 @@ ROUTES = {
                  parent="home", reach=[("desc", "Apps")]),
     "dashboard": dict(name="Dashboard", what="The widget pager, an opt-in surface reached from Settings."),
     "claude-session": dict(name="Claude session", what="Tasks for Claude Code on Kevin's laptops.",
-                           parent="home", reach=[("text", "More"), ("text", "Claude session")],
+                           parent="control-room",
+                           reach=[("text", "More"), ("text", "Claude session"), ("text", "Tasks and workflows")],
                            voice=[]),
+    "control-room": dict(name="Control room", what="Claude sessions, one approvals queue (message cards, "
+                         "deploy/publish/flag/spend records behind a fingerprint or PIN), the factory board "
+                         "with the whole backlog and votes, and the board's questions.",
+                         parent="home", reach=[("text", "More"), ("text", "Claude session")],
+                         voice=["claude_session"]),
     "games/tetris": dict(name="Tetris", what="Built-in Tetris, solo.", parent="home", reach=[("text", "Games")]),
     "games/tetris/invite/{userId}": dict(name="Tetris invite", what="Tetris against a household member. "
                                          "Needs a member id, so there is no plain deep link.",

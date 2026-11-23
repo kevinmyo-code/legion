@@ -11,12 +11,14 @@ import com.kevin.legion.backend.engine.EngineHttp
 import com.kevin.legion.board.BoardBackend
 import com.kevin.legion.board.BoardBrief
 import com.kevin.legion.board.BoardOutcome
+import com.kevin.legion.board.ControlRoomBackend
+import com.kevin.legion.board.EngineControlRoomBackend
 import com.kevin.legion.board.EngineBoardBackend
 import com.kevin.legion.board.IdeaSaveGate
 import org.json.JSONObject
 
 /**
- * `claude_session`'s two factory board actions (backlog intake 1122), kept out of
+ * `claude_session`'s factory board actions (backlog intake 1122), kept out of
  * [ClaudeSessionToolbox] so it stays one job per file.
  *
  * - `where` ("where are we"): the engine's short brief, SPOKEN BY CODE word for word
@@ -38,15 +40,46 @@ object BoardActions {
 
     private const val CARD_ROWS = 30
 
-    /** `where` or `idea` from `claude_session`'s arguments. */
+    /** Test seam: the control room's queue (`GET /api/board/queue`). */
+    internal var queueFactory: (Context) -> ControlRoomBackend = { context ->
+        EngineControlRoomBackend(EngineHttp(EngineConfig(context.applicationContext)))
+    }
+
+    /** `where`, `needs` or `idea` from `claude_session`'s arguments. */
     suspend fun dispatch(context: Context, action: String, args: JSONObject, userText: String?): JSONObject =
-        if (action == "where") {
-            where(context)
-        } else {
-            // A new idea in words wins over a `yes` the model filled in by default.
-            val request = args.optString("request")
-            val yes = if (args.has("yes") && request.isBlank()) args.optBoolean("yes") else null
-            idea(context, request, yes, userText)
+        when (action) {
+            "where" -> where(context)
+            "needs" -> needs(context)
+            else -> {
+                // A new idea in words wins over a `yes` the model filled in by default.
+                val request = args.optString("request")
+                val yes = if (args.has("yes") && request.isBlank()) args.optBoolean("yes") else null
+                idea(context, request, yes, userText)
+            }
+        }
+
+    /**
+     * `needs` ("what needs me?", control room C4): the engine's counts in its own code-built words,
+     * SPOKEN BY CODE. A read only: voice never approves a deploy, a spend or a send from here; the
+     * control room is where he taps.
+     */
+    suspend fun needs(context: Context): JSONObject =
+        when (val out = queueFactory(context).queue()) {
+            is BoardOutcome.Failed -> result(false, out.sentence)
+            is BoardOutcome.Ok -> {
+                val said = out.value.spoken.joinToString(" ").ifBlank { out.value.line }
+                VerbatimSpeech.mark(
+                    result(
+                        true,
+                        "LEGION's own voice said what waits on him, word for word; that is the answer. Answers, " +
+                            "approvals and allows happen on the control room screen, never by voice.",
+                    ).put("sessions", out.value.sessions)
+                        .put("approvals", out.value.approvals)
+                        .put("decisions", out.value.decisions),
+                    said,
+                    ClaudeSessionToolbox.TOOL_NAME,
+                )
+            }
         }
 
     suspend fun where(context: Context): JSONObject =

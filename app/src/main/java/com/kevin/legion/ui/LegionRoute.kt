@@ -197,6 +197,13 @@ object LegionRoute {
     const val CLAUDE_SESSION = "claude-session"
 
     /**
+     * The control room (1122): Claude sessions, one approvals queue, the factory board with the
+     * whole backlog, and the board's questions. Opened from Controls and the home line; tasks and
+     * workflows stay on [CLAUDE_SESSION].
+     */
+    const val CONTROL_ROOM = "control-room"
+
+    /**
      * The `show_generated_view` hands path (ADR 0035), given its own route (one-home ticket 01/02,
      * 2026-09-10, `.scratch/one-home/issues/02-rehome-the-orphans.md`) - see
      * [com.kevin.legion.ui.ask.AskScreen]. Previously a `DeckPane` welded inside `ui/MetersScreen.kt`

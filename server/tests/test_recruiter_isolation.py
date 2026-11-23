@@ -1134,6 +1134,7 @@ def test_every_deny_list_route_refuses_a_visitor_from_enter(world, settings, mon
     settings.LEGION_MCP = True
     monkeypatch.setenv("LEGION_HEADUNIT_SIGNIN", "on")
     monkeypatch.setenv("LEGION_BOARD", "on")
+    monkeypatch.setenv("LEGION_BOARD_ACTIONS", "on")
     browser = world["browser"]
     open_ = []
     for path, _cls in DENIED_ROUTES:
