@@ -368,3 +368,70 @@ def test_concurrent_claims_never_share_a_household(settings):
     assert len(set(households)) == 2
     assert SpareVisitHousehold.objects.count() == 0
     connection.close()
+
+
+# =============================================================================
+# 7. The build key and the refill's own limits (review 1122 round 2)
+# =============================================================================
+
+
+def test_the_build_key_changes_when_a_file_outside_the_seed_changes(tmp_path, monkeypatch):
+    """A gate or serializer change retires spares too: the key is over the whole build, not
+    the seed's own file."""
+    for relative, text in {
+        "household/demo_seed.py": "SEED = 1\n",
+        "ingest/views.py": "GATE = 1\n",
+        "demo/procedures/morning_briefing.yaml": "name: x\n",
+        "tests/test_x.py": "T = 1\n",
+    }.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(spares, "_SERVER_ROOT", tmp_path)
+    before = spares._build_key()
+
+    (tmp_path / "ingest/views.py").write_text("GATE = 2\n", encoding="utf-8")
+    after_gate = spares._build_key()
+    assert after_gate != before
+
+    (tmp_path / "demo/procedures/morning_briefing.yaml").write_text("name: y\n", encoding="utf-8")
+    assert spares._build_key() != after_gate
+
+    # A test file is not part of the build.
+    unchanged = spares._build_key()
+    (tmp_path / "tests/test_x.py").write_text("T = 2\n", encoding="utf-8")
+    assert spares._build_key() == unchanged
+
+
+def _first(sqls: list[str], start: int, needle: str) -> int:
+    return next(i for i in range(start, len(sqls)) if needle in sqls[i])
+
+
+@pytest.mark.django_db
+def test_each_refill_transaction_sets_its_limits_before_it_writes(code):
+    """The discard of a stale spare and the seed of a new one each set `lock_timeout` and the
+    idle limit inside their own transaction, before their first lock or write."""
+    from django.test.utils import CaptureQueriesContext
+
+    spares.refill(size=1)
+    [spare] = SpareVisitHousehold.objects.all()
+    _yesterday(spare)
+
+    with CaptureQueriesContext(connection) as captured:
+        assert spares.refill(size=1) == {"discarded": 1, "seeded": 1, "busy": 0}
+    sqls = [q["sql"] for q in captured.captured_queries]
+    limits = {
+        name: [i for i, sql in enumerate(sqls) if sql.startswith(f"SET LOCAL {name}")]
+        for name in ("lock_timeout", "idle_in_transaction_session_timeout")
+    }
+
+    # The discard: limits after its transaction opens, before its row lock and its deletes.
+    opened = _first(sqls, 0, "SAVEPOINT")
+    locked = _first(sqls, opened, "FOR UPDATE")
+    first_delete = _first(sqls, opened, "DELETE FROM")
+    # The seed: limits after the discard's last delete, before the new household's insert.
+    inserted = _first(sqls, first_delete, 'INSERT INTO "household_household"')
+    last_delete = max(i for i in range(inserted) if sqls[i].startswith("DELETE FROM"))
+    for name, at in limits.items():
+        assert any(opened < i < min(locked, first_delete) for i in at), (name, "discard")
+        assert any(last_delete < i < inserted for i in at), (name, "seed")
