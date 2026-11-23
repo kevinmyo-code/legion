@@ -485,11 +485,7 @@ object ScriptedLines {
         // Clause by clause while it fits; the rest is counted, never dropped unsaid. Only a first
         // clause too long on its own is trimmed.
         val room = MAX_DONE_CHARS - (if (done.size > 1) "Done: ; and 99 more." else "Done: .").length
-        // Only a clause the cut actually shortened can be hanging on the joiner's "to"; a clause
-        // said in full ends on the item's own name, and dropping "to" there renames it (2026-11-23).
-        var kept = done.take(1).map { clause ->
-            clause.cutOnWord(room).let { if (it == clause) it else it.removeSuffix(LIST_JOINER.trimEnd()) }
-        }
+        var kept = done.take(1).map { cutFirstClause(it, room) }
         for (c in done.drop(1)) {
             val rest = done.size - kept.size - 1
             val tail = if (rest > 0) listOf("and $rest more") else emptyList()
@@ -501,6 +497,19 @@ object ScriptedLines {
         if (generic) parts += GENERIC_DONE
         unconfirmedLine(unsure)?.let { parts += it }
         return parts.joinToString(" ").replace("?", "").ifEmpty { null }
+    }
+
+    /**
+     * [clause] as the spoken line's first clause: cut to [room] on a word boundary, and, only when
+     * the cut actually shortened it, with the joiner's dangling "to" dropped (a cut that lands
+     * inside the list name would leave "Done: added <item> to.").
+     *
+     * A clause said in full ends on the item's own name, so it keeps a trailing "to": an item
+     * called "find someone to talk to" is not renamed by the line's own tail rule (2026-11-23).
+     */
+    private fun cutFirstClause(clause: String, room: Int): String {
+        val cut = clause.cutOnWord(room)
+        return if (cut == clause) cut else cut.removeSuffix(LIST_JOINER.trimEnd())
     }
 
     /** [doneLine]'s part for writes whose result never came back, or null when there are none. */
