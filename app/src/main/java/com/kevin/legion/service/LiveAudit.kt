@@ -111,7 +111,7 @@ internal class LiveAudit(
     fun usage(fields: String) = emit("usage $fields")
 
     /**
-     * Every whole-turn farewell decision (Kevin, 2026-11-23: "that'll be all" and "bye bye" sometimes
+     * Every whole-turn farewell decision (2026-11-23, goodbye hardening: "that'll be all" and "bye bye" sometimes
      * did not close the conversation, and nothing in a log said whether the words were heard, whether
      * the rule matched them, or whether the voice floor then refused the stop). [matched] is the rule's
      * verdict on the words, [honoured] what the turn did with it; they differ exactly when the stop was

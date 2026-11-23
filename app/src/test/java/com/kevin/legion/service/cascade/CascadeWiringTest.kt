@@ -133,9 +133,10 @@ class CascadeWiringTest {
         assertTrue("a stop over no voice is not a stop", stop >= 0)
         assertTrue("decided before the transcript guard can drop it", stop < run.indexOf("if (stop) return endByStop(u, stt.text)"))
         assertTrue("every turn logs voiced time and the decision", run.contains("stt_voiced ms="))
-        // Kevin, 2026-11-23: every whole-turn farewell decision is in LIVE_AUDIT, matched or not.
-        assertTrue("the decision is audited", run.contains("noteGoodbye(stt.text, stopWords, stop, stt.voicedMs)"))
+        // 2026-11-23, goodbye hardening: every whole-turn farewell decision is in LIVE_AUDIT, matched or not.
+        assertTrue("the decision is audited", run.contains("noteGoodbye(stt.text, stopWords, stop, stt.voicedMs, v is SttGuard.Verdict.Keep)"))
         assertTrue("a recovered transcript too", run.contains("noteGoodbye(recovered, recoveredStop,"))
+        assertTrue("never words the guard threw away", bodyOf(s, "noteGoodbye").contains("if (!kept && !matched) return"))
         assertTrue("with the words the user line already logs", bodyOf(s, "noteGoodbye").contains("audit.goodbye("))
         val dropped = run.indexOf("if (stopWords && !stop) {")
         assertTrue("a stop dropped as noise discards the waiting request", dropped >= 0 && run.indexOf("carry = \"\"", dropped) in dropped until run.indexOf("val v = verdictOf(stt)"))

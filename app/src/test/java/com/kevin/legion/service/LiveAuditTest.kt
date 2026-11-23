@@ -14,7 +14,7 @@ import org.junit.Test
 class LiveAuditTest {
 
     /**
-     * Kevin, 2026-11-23: a goodbye sometimes did not close the conversation and no log said why. One
+     * 2026-11-23, goodbye hardening: a goodbye sometimes did not close the conversation and no log said why. One
      * line per whole-turn decision, with the free text LAST as the format requires, so the next
      * failure is readable in LIVE_AUDIT without a device repro.
      */

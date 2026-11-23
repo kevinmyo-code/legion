@@ -1663,7 +1663,7 @@ internal class CascadeSession(
                 if (lost != null) return engineFailed(lost, stt.reason == EngineUtterance.MISSED)
                 val recovered = recoverWords(u, stt.reason) ?: return
                 val recoveredStop = endsConversation(recovered)
-                noteGoodbye(recovered, recoveredStop, recoveredStop, null)
+                noteGoodbye(recovered, recoveredStop, recoveredStop, null, kept = true)
                 if (recoveredStop) return endByStop(u, recovered)
                 recovered
             }
@@ -1674,7 +1674,6 @@ internal class CascadeSession(
                 // Either way a stop phrase never restarts the request it interrupted: that is dropped.
                 val stopWords = endsConversation(stt.text)
                 val stop = stopWords && SttGuard.stopVoiced(stt.text, stt.voicedMs)
-                noteGoodbye(stt.text, stopWords, stop, stt.voicedMs)
                 if (stopWords && !stop) {
                     discardDraftOf(u, "not_answered")
                     carry = ""
@@ -1686,6 +1685,7 @@ internal class CascadeSession(
                     "stt_voiced ms=${stt.voicedMs ?: -1} audio_ms=${stt.audioMs ?: -1} decision=" +
                         if (stop) "stop" else (v as? SttGuard.Verdict.Drop)?.reason ?: "keep",
                 )
+                noteGoodbye(stt.text, stopWords, stop, stt.voicedMs, v is SttGuard.Verdict.Keep)
                 if (stop) return endByStop(u, stt.text)
                 when (v) {
                     is SttGuard.Verdict.Keep -> v.text
@@ -2158,11 +2158,14 @@ internal class CascadeSession(
 
     /**
      * Every whole-turn stop decision goes to `LIVE_AUDIT` ([LiveAudit.goodbye]), matched or not, so the
-     * next conversation that does not close says in the log why (Kevin, 2026-11-23). Only whole turns:
+     * next conversation that does not close says in the log why (2026-11-23, goodbye hardening). Only whole turns:
      * a running partial is weighed by the backchannel rule many times a turn and its text is in no log.
      */
-    private fun noteGoodbye(words: String, matched: Boolean, honoured: Boolean, voicedMs: Long?) {
+    private fun noteGoodbye(words: String, matched: Boolean, honoured: Boolean, voicedMs: Long?, kept: Boolean) {
         if (words.isBlank()) return
+        // Nothing the guard threw away and nothing a stop rule recognised: a count, as before. A
+        // transcript it dropped is noise or another language, and its words stay out of every log.
+        if (!kept && !matched) return
         audit.goodbye(
             Farewells.normalise(words),
             matched = matched,

@@ -126,7 +126,7 @@ internal object SttGuard {
      * measured.
      *
      * **[text] decides which rule applies, because this one must not be stricter than [verdict]**
-     * (Kevin, 2026-11-23: "bye bye" sometimes did not close). The voice floor is the NOISE rule, and
+     * (2026-11-23, goodbye hardening: "bye bye" sometimes did not close). The voice floor is the NOISE rule, and
      * that rule only ever drops a single word. A two-word stop under the floor used to be refused as
      * a stop and then kept by [verdict] as ordinary speech, so "bye bye" went to the model and the
      * conversation stayed open on an answer. A stop is now refused only where the same words would
