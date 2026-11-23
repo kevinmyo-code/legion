@@ -1,5 +1,7 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.service.Farewells
+
 /**
  * What the cloud transcriber is told, and what of its answer is believed (2026-11-17 phone logs:
  * English speech came back as short Spanish phrases and a Chinese interjection, and the
@@ -116,9 +118,22 @@ internal object SttGuard {
     /** A single word over less than this much voice is noise (2026-11-18 r2: kept low, to be tuned on car audio). */
     const val MIN_VOICED_MS = 60L
 
-    /** One word, by the same count [verdict]'s noise rule uses. */
+    /**
+     * One word, by the same count [verdict]'s noise rule and [stopVoiced] both use.
+     *
+     * Counted on the text as the STOP RULES see it ([Farewells.normalise]:
+     * every run of non-letters becomes a space), not on raw whitespace tokens. Blind review of
+     * 56e9404e, finding 5: "Bye-bye." is one raw token and two normalised words, so the phrase this
+     * whole fix is named after was still refused as a stop when quiet, and then dropped as noise. A
+     * transcriber writes a hyphen where it likes; the word count must not turn on that.
+     *
+     * The cost, stated: a contraction is two words to this count ("don't" is "don t"), so one quiet
+     * token of that shape is now kept as speech instead of dropped as noise. That errs towards
+     * hearing him, and the two rules still agree with each other, which is the invariant
+     * [stopVoiced] rests on.
+     */
     private fun oneWord(text: String): Boolean =
-        text.split(Regex("\\s+")).count { w -> w.any { it.isLetterOrDigit() } } <= 1
+        Farewells.normalise(text).split(' ').count { it.isNotEmpty() } <= 1
 
     /**
      * A stop may end the conversation: its audio carried a voice by the same measure as any speech

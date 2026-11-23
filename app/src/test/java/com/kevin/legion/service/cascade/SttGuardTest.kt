@@ -3,6 +3,7 @@
 package com.kevin.legion.service.cascade
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -100,6 +101,18 @@ class SttGuardTest {
         for (words in listOf("bye bye", "good night", "that will be all", "okay bye")) {
             assertTrue(words, SttGuard.stopVoiced(words, 0))
             assertTrue(words, SttGuard.verdict(words, 0) is SttGuard.Verdict.Keep)
+        }
+        // Blind review of 56e9404e, finding 5: the word count ran on raw whitespace tokens while every
+        // stop rule normalises first, so "Bye-bye." was one word here and two there, and the phrase the
+        // fix is named after stayed refused when quiet. A transcriber's hyphen decides nothing now.
+        for (words in listOf("Bye-bye.", "bye-bye", "Good-night!", "that'll be all")) {
+            assertTrue(words, SttGuard.stopVoiced(words, 0))
+            assertTrue(words, SttGuard.verdict(words, 0) is SttGuard.Verdict.Keep)
+        }
+        // One word is still one word, hyphen or none: the noise floor keeps every case it had.
+        for (words in listOf("bye", "Bye.", "stop", "nevermind", "goodbye")) {
+            assertFalse(words, SttGuard.stopVoiced(words, 0))
+            assertTrue(words, SttGuard.verdict(words, 0) is SttGuard.Verdict.Drop)
         }
     }
 
