@@ -73,8 +73,8 @@ object ClaudeSessionToolbox {
                 .put("machine", prop("string", "Only if named."))
                 .put("offered", prop("boolean", "True if this is his yes to your offer."))
                 .put("email_me", prop("boolean", "True only if he asked to email it to himself."))
-                .put("page", prop("boolean", "True for a researched write-up he reads on his phone (Alienware)."))
-                .put("files", prop("boolean", "True if he asked for files on his phone."))
+                .put("page", prop("boolean", "True for a researched write-up he reads on his phone; not for a PDF."))
+                .put("files", prop("boolean", "True if he asked for files, or a PDF, on his phone."))
                 .put("task_id", prop("integer"))
                 .put("file_id", prop("integer"))
                 .put("yes", prop("boolean")),
