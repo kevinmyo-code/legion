@@ -13,7 +13,15 @@ the machine is fixed (create with a machine, assign, claim), never on a workflow
   or "into a spreadsheet", or "make me a PDF of ...", with no delivery of its own becomes `files`
   on a `full` machine, so the made file is requested at finish and opens on his phone. Finding an
   existing file ("find the AW4 wiring PDF", "the lease I saved as a PDF") is not this: it keeps
-  the found-file offer (send on his yes).
+  the found-file offer (send on his yes). A format word that is the TOPIC ("how to convert a
+  Word doc into a PDF", "comparing tools", "later") is not a request for a file either.
+- **A page asked for as a PDF is the PDF.** `deliver: phone` (the phone's page=true) becomes
+  `files` only on a deliverable phrase: "as a PDF", "make it a PDF", "send me a PDF", "PDF
+  version". When unsure it stays a page.
+- **Made means made.** When settle itself made a task `files` it marks `made_only`, and at
+  finish the engine requests only files directly in the task's own work folder
+  (`in_task_folder`), never one found elsewhere. A task the phone sent as `files` ("send me the
+  lease PDF") sends what it found, as before.
 """
 
 from __future__ import annotations
@@ -23,6 +31,7 @@ import re
 from claude_session.models import (
     DELIVER_EMAIL_SELF,
     DELIVER_FILES,
+    DELIVER_PHONE,
     KIND_ASK,
     SCOPE_LISTED,
     ClaudeMachine,
@@ -62,12 +71,60 @@ _MAKE_FORMAT = re.compile(
 )
 
 
+# The format word is the TOPIC, not the deliverable: "a page on how to convert a Word doc into a
+# PDF", "explaining how to export my notes to Excel", "comparing tools that turn scans into a
+# PDF", "I will print it as a PDF later" (RED reviews 2026-11-22). Only clauses that make the
+# format the subject count, so "a comparison of three laptops as a PDF" or "a guide for the dog
+# sitter as a PDF" still ask for the PDF.
+_TOPIC = re.compile(
+    # "how to / do / does / can / should ... PDF" or "how PDFs ...", never "how my week went ...
+    # as a PDF" (RED review r3).
+    rf"\bhow\s+(?:to|do|does|can|should)\b[^.?!]{{0,60}}?\b{_FORMAT}s?\b"
+    rf"|\bhow\s+(?:an?\s+|the\s+)?{_FORMAT}s?\b"
+    r"|\b(?:tools?|apps?|software|programs?|ways?|steps?)\s+(?:that|to|for|which)\s+(?:\w+\s+){0,2}"
+    r"(?:convert|turn|export|print|save|put|make)\w*\b"
+    r"|\blater\b"
+    rf"|\b(?:about|on|explaining)\s+(?:a\s+|the\s+)?{_FORMAT}s?\b",
+    re.I,
+)
+# What turns a requested PAGE into a PDF: the result itself named as a PDF, nothing looser.
+_PDF_DELIVERABLE = re.compile(
+    r"\b(?:as|in)\s+(?:an?\s+)?pdf(?:\s+(?:form|format|file))?\b"
+    r"|\bmake\s+it\s+(?:a|into\s+a)\s+pdf\b"
+    r"|\bsend\s+(?:it|me|them)\b[^.?!]{0,20}?\bpdf\b"
+    r"|\bpdf\s+version\b",
+    re.I,
+)
+
+
 def asks_for_made_file(request: str) -> bool:
     """True when the words ask for the result itself as a file (PDF, sheet, document)."""
     text = request or ""
-    if _FINDING.search(text):
+    if _FINDING.search(text) or _TOPIC.search(text):
         return False
     return bool(_AS_FORMAT.search(text) or _MAKE_FORMAT.search(text))
+
+
+def page_wants_pdf(request: str) -> bool:
+    """A page request (`deliver: phone`) whose result is named as a PDF ("... as a PDF", "make it
+    a PDF", "send me a PDF", "PDF version"); never a page whose subject is a file format."""
+    text = request or ""
+    if _FINDING.search(text) or _TOPIC.search(text):
+        return False
+    return bool(_PDF_DELIVERABLE.search(text)) or asks_for_made_file(text)
+
+
+def in_task_folder(task_id: int, path: str) -> bool:
+    """`path` sits directly in the worker's `work/task-<id>/` folder (the worker's layout)."""
+    return re.search(rf"[\\/]task-{int(task_id)}[\\/][^\\/]+$", path or "") is not None
+
+
+def flipped(before: str | None, after: str | None) -> bool:
+    """This settle made the task `files` (from a page or no delivery): its files are made, not
+    found, so only those in its own folder go up (`ClaudeTask.made_only`, RED review r2)."""
+    # Not from `email_self`: "email me my resume" on a laptop without mail sends the resume it
+    # finds, as a files task would.
+    return after == DELIVER_FILES and before in (None, DELIVER_PHONE)
 
 
 def settle(
@@ -81,5 +138,9 @@ def settle(
     if deliver == DELIVER_EMAIL_SELF and machine.can_mail is False:
         return None if listed else DELIVER_FILES
     if deliver is None and not listed and asks_for_made_file(request):
+        return DELIVER_FILES
+    # A page (`phone`) is HTML; a page asked for "as a PDF" is the PDF (task 32, 2026-11-22: the
+    # phone sent page=true, the helper was told to write one HTML page, and no PDF was made).
+    if deliver == DELIVER_PHONE and not listed and page_wants_pdf(request):
         return DELIVER_FILES
     return deliver
