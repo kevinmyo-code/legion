@@ -219,6 +219,51 @@ def test_finish_names_the_session_for_a_card_the_phone_never_addressed(token_a):
     assert rows[0]["session_text"] == "check the build"
 
 
+def test_a_finish_cannot_move_a_task_into_another_thread(token_a):
+    """`session_id` is filled at finish, never changed.
+
+    The phone names the session at create because it knows the target. A
+    finish that disagreed would move a message Kevin already read into
+    another session's thread after the fact, so the stored id stands. It is
+    the same stance create takes, where the parent's id beats the client's.
+    """
+    _beat(token_a)
+    card = _create(token_a, "message card", session_id=SESSION)
+    _claim(token_a)
+
+    assert _finish(token_a, card, status="needs_confirmation", question="Send it?",
+                   session_id=OTHER_SESSION).status_code == 200
+
+    assert [r["id"] for r in _thread(token_a)] == [card]
+    assert _thread(token_a, session=OTHER_SESSION) == []
+
+
+def test_the_whole_alfred_drafted_chain_lands_in_one_thread(token_a):
+    """End to end, the case both fields exist for.
+
+    Alfred drafts a message, so the phone creates a task knowing no session.
+    The worker's finish names the session and the exact approved words. Kevin
+    taps Yes, and the follow-up inherits the session from its parent. All of
+    it has to come back as one thread, oldest first, or the two fields are
+    not earning their place.
+    """
+    _beat(token_a)
+    card = _create(token_a, "alfred drafted this")
+    _claim(token_a)
+    _finish(token_a, card, status="needs_confirmation", question="Send it?",
+            session_id=SESSION, session_text="check the build")
+
+    yes = _create(token_a, "yes", parent=card, confirms=True)
+    _claim(token_a)
+    _finish(token_a, yes, status="done", summary="it is in its inbox")
+
+    rows = _thread(token_a)
+    assert [r["id"] for r in rows] == [card, yes]
+    assert rows[0]["session_text"] == "check the build"
+    assert rows[1]["session_id"] == SESSION
+    assert rows[1]["summary"] == "it is in its inbox"
+
+
 def test_a_finish_that_sends_neither_field_keeps_what_create_set(token_a):
     """An older worker finishing a task must not blank its thread.
 

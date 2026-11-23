@@ -1251,14 +1251,19 @@ class FinishView(APIView):
             task.finished_at = now
             task.progress = None
             task.progress_at = None
-            # The hub's thread (slice S1). Written only when the worker sends one, so an older
-            # worker's finish never blanks what the phone set at create; a worker that DOES send
-            # one wins, because a card Alfred drafted names its session for the first time here.
+            # The hub's thread (slice S1). `session_id` is FILLED here, never changed: the one
+            # case the worker is needed for is a card Alfred drafted, where the phone never knew
+            # the target and the field is blank. A task whose id the phone set at create already
+            # names the session it is about, so a finish that disagreed would move Kevin's
+            # message into another thread after the fact. This is the same stance create takes,
+            # where the parent's id beats the client's. A finish that sends nothing writes
+            # nothing, so a worker that predates this slice never blanks either field.
+            #
             # `session_text` follows `last_prompt_summary`'s posture (SessionReportView): a
             # summaries-only machine never puts a session's message in the engine, and the
             # worker arms no session send on one, so this is a mirror and not a second rule.
             sent_session = (data["session_id"] or "").strip()
-            if sent_session:
+            if sent_session and not task.session_id:
                 task.session_id = sent_session
             if data["session_text"] and not listed:
                 task.session_text = data["session_text"]
