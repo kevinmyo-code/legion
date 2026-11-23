@@ -846,14 +846,44 @@ class SyncOutcome:
     report: SyncReport | None = None
 
 
-def _balance_call_failed(reason: str) -> str:
+def _balances_moved(stored: list[dict], merged: list[dict]) -> int:
+    """How many accounts' balance facts the merge actually changed.
+
+    Read, never guessed: the degrade path's note says what happened to the
+    figures, and only the merge knows. A `/transactions/sync` page carries a
+    balance for each account that had a transaction in it, so the degrade can
+    refresh some accounts and not others, and whether it did depends on the
+    page's shape and on what was already stored (`_keeping_dated_balance`)."""
+    before = {r.get("account_id"): r for r in stored}
+    return sum(
+        1
+        for r in merged
+        if any(
+            r.get(field) != (before.get(r.get("account_id")) or {}).get(field)
+            for field in BALANCE_FIELDS
+        )
+    )
+
+
+def _balance_call_failed(reason: str, *, refreshed: int) -> str:
     """The sync report's sentence for a balance refresh that did not happen.
     Names the reason, because "the balances are old" with no cause is a line
-    nobody can act on."""
+    nobody can act on, and names what the fallback DID, because a note saying
+    nothing moved while a figure and its as-of both moved is the one thing a
+    money surface may never say (review of 2026-11-23).
+
+    The fallback is the `/transactions/sync` pages, which carry a balance for
+    each account that had a transaction in them. So some figures do move, and
+    `refreshed` is `_balances_moved`'s count, not an assumption."""
+    head = f"Plaid would not say what the balances are right now ({reason}), so "
+    kept = "kept the figure and the as-of time it already had. "
+    stored = "The transactions in this sync were stored."
+    if not refreshed:
+        return f"{head}each balance {kept}{stored}"
+    moved = "1 balance" if refreshed == 1 else f"{refreshed} balances"
     return (
-        f"Plaid would not say what the balances are right now ({reason}), so each balance "
-        "kept the figure and the as-of time it already had. The transactions in this sync "
-        "were stored."
+        f"{head}{moved} came from this sync's own transaction feed instead, with the as-of "
+        f"time Plaid stated there; every other balance {kept}{stored}"
     )
 
 
@@ -913,32 +943,43 @@ def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
     # 2026-11-23). Before this feature `/accounts/get` was not called at all, so
     # a balance problem could not hold up ingestion, and the failures are the
     # ordinary transient ones. So: a sign-in error still asks for a sign-in,
-    # and ANY other failure degrades to the page's own accounts (which carry no
-    # balances, so `_keeping_dated_balance` keeps each stored figure and its
-    # stored as-of), says so in the sync report, and lets the transactions
-    # commit. Every exception, not only `PlaidError`: `plaid_client._call`
-    # wraps `plaid.ApiException` alone, so a socket or deserialisation error
-    # from this one call arrives as itself.
+    # and ANY other failure degrades to the page's own accounts, says so in the
+    # sync report, and lets the transactions commit. Every exception, not only
+    # `PlaidError`: `plaid_client._call` wraps `plaid.ApiException` alone, so a
+    # socket or deserialisation error from this one call arrives as itself.
+    #
+    # The page's accounts DO carry balances, for every account that had a
+    # transaction in that response. So the degrade refreshes those accounts
+    # from the transaction feed, with the as-of time Plaid stated there, and
+    # only an account absent from the page keeps the figure and the as-of it
+    # already had. That is honest (the page's balance is Plaid's own cached
+    # balance, and its stamp is Plaid's own read time, so figure and stamp move
+    # together) and it is no worse than before this feature, when the page was
+    # the only balance source. It is NOT "nothing moved", so the note counts
+    # what the merge really changed (`_balances_moved`) and says which.
     fresh_accounts: list = []
-    balance_note: str | None = None
+    balance_failure: str | None = None
     try:
         fresh_accounts = gw.accounts_get(token).get("accounts") or []
     except plaid_client.PlaidError as exc:
         if exc.needs_sign_in:
             _mark_sign_in(item, exc.code)
             return SyncOutcome("needs_login", sign_in_sentence(item))
-        balance_note = _balance_call_failed(exc.code or "no error code")
+        balance_failure = exc.code or "no error code"
     except Exception as exc:
-        balance_note = _balance_call_failed(type(exc).__name__)
+        balance_failure = type(exc).__name__
 
     with transaction.atomic():
         synced_at = timezone.now()
-        merged = merge_accounts(item.accounts or [], accounts + fresh_accounts, read_at)
+        held = item.accounts or []
+        merged = merge_accounts(held, accounts + fresh_accounts, read_at)
         report = apply_changes(
             household, added=added, modified=modified, removed=removed, accounts=merged
         )
-        if balance_note is not None:
-            report.notes.append(balance_note)
+        if balance_failure is not None:
+            report.notes.append(
+                _balance_call_failed(balance_failure, refreshed=_balances_moved(held, merged))
+            )
         elif read_at is None:
             report.notes.append(
                 "Plaid did not say when it last read the bank, so each balance kept the as-of "

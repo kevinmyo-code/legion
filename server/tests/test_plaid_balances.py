@@ -218,15 +218,30 @@ def test_a_sign_in_error_from_the_balance_call_asks_for_a_sign_in(fake, item, ho
 
 def test_a_balance_error_never_stops_the_transactions(fake, item, household_a):
     """The balances are a label on a figure; the transactions are the money.
-    So a failed balance refresh degrades: the page's own accounts stand in,
-    every stored balance keeps its figure and its stamp, the report says so in
-    words, and the rows commit (review of 2026-11-23)."""
-    fake.page(None, "c1", added=[txn("t1")])
-    fake.accounts = [CHECKING_WITH_BALANCE, CARD_WITH_BALANCE]
-    assert sync(household_a).outcome == "ok"
-    before = balances(item)["acc-card"]
+    So a failed balance refresh degrades to the page's own accounts and the
+    rows still commit (review of 2026-11-23).
 
-    fake.page("c1", "c2", added=[txn("t2")])
+    The page shape here is the real one: a `/transactions/sync` response
+    carries a balance for each account that had a transaction in it. So BOTH
+    halves are pinned. An account in the page is refreshed from the feed, with
+    the as-of Plaid stated there; an account absent from the page keeps the
+    figure and the as-of it already had. The note says which, and must not
+    claim that nothing moved."""
+    undated_card = {
+        **CARD_WITH_BALANCE,
+        "balances": {**CARD_WITH_BALANCE["balances"], "last_updated_datetime": None},
+    }
+    fake.page(None, "c1", added=[txn("t1")], accounts=[CHECKING_WITH_BALANCE, undated_card])
+    fake.accounts = [CHECKING_WITH_BALANCE, undated_card]
+    assert sync(household_a).outcome == "ok"
+    before = balances(item)
+
+    moved = {
+        **CHECKING_WITH_BALANCE,
+        "balances": {**CHECKING_WITH_BALANCE["balances"], "current": 99.00},
+    }
+    fake.item["transactions_last_successful_update"] = LATER_BANK_READ
+    fake.page("c1", "c2", added=[txn("t2", account="acc-chk")], accounts=[moved])
     fake.accounts_get_errors.append(plaid_client.PlaidError("INTERNAL_SERVER_ERROR", "later"))
 
     run = sync(household_a)
@@ -236,10 +251,19 @@ def test_a_balance_error_never_stops_the_transactions(fake, item, household_a):
     item.refresh_from_db()
     assert item.cursor == "c2"
     assert bank_rows(household_a)[-1].bank_transaction_id == "t2"
-    after = balances(item)["acc-card"]
-    assert after["balance_current_cents"] == before["balance_current_cents"]
-    assert after["balance_as_of"] == before["balance_as_of"]
-    assert any("INTERNAL_SERVER_ERROR" in note for note in run.last_report.notes)
+    after = balances(item)
+    # In the page, so its figure AND its as-of both move. This is the half the
+    # old note denied.
+    assert after["acc-chk"]["balance_current_cents"] == 9_900
+    assert after["acc-chk"]["balance_as_of"] == LATER_BANK_READ.isoformat()
+    # Absent from the page, so untouched, still stamped with the older read.
+    assert after["acc-card"]["balance_current_cents"] == before["acc-card"]["balance_current_cents"]
+    assert after["acc-card"]["balance_as_of"] == before["acc-card"]["balance_as_of"]
+    assert after["acc-card"]["balance_as_of"] == LAST_BANK_READ_ISO
+    notes = run.last_report.notes
+    assert any("INTERNAL_SERVER_ERROR" in note for note in notes)
+    assert any("1 balance came from this sync's own transaction feed" in note for note in notes)
+    assert not any("each balance kept the figure" in note for note in notes)
 
 
 def test_a_balance_call_that_fails_outside_plaids_own_errors_also_degrades(
@@ -248,7 +272,7 @@ def test_a_balance_call_that_fails_outside_plaids_own_errors_also_degrades(
     """`plaid_client._call` wraps `plaid.ApiException` only, so a socket or
     deserialisation error from this one call arrives as itself. It must not be
     the one shape that still kills the sync."""
-    fake.page(None, "c1", added=[txn("t1")])
+    fake.page(None, "c1", added=[txn("t1")], accounts=[CHECKING, CARD])
     fake.accounts_get_errors.append(OSError("connection reset"))
 
     run = sync(household_a)
@@ -257,7 +281,11 @@ def test_a_balance_call_that_fails_outside_plaids_own_errors_also_degrades(
     assert run.rows_written == 1
     item.refresh_from_db()
     assert item.cursor == "c1"
-    assert any("OSError" in note for note in run.last_report.notes)
+    notes = run.last_report.notes
+    assert any("OSError" in note for note in notes)
+    # The other branch of the note: this page's accounts carry no balances, so
+    # here nothing really did move and the note may say so.
+    assert any("each balance kept the figure" in note for note in notes)
 
 
 def test_net_cash_as_of_moves_on_a_quiet_sync(fake, item, household_a, auth_client):
