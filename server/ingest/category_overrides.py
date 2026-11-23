@@ -27,6 +27,14 @@ A `rule` never replaces a live `person` row. The API refuses it in words
 (`api/ledger.LedgerTransactionCategorySerializer`), the backfill never
 attempts it, and a trigger refuses it in SQL for any writer that forgets.
 
+**What a rule of his MAY replace (Kevin, 2026-11-23).** A category the bank
+feed wrote, `ledger_transactions.category_origin = 'plaid'`. His rules win
+afterwards as well as at insert, so `apply_category_rules` takes such a row as
+a candidate and lays a `rule` override over it, which the precedence above
+makes win. A category one of his rules already wrote, or one a document
+stated, is left exactly as it is: the first is the same decision twice, the
+second is the source's own word about a gated row.
+
 **This module holds three things, deliberately together:** the DDL (run by
 `ingest/migrations/0007_ledger_transaction_categories.py` and, on the pytest
 database, by `tests/conftest.py` - the same function both times, the
@@ -45,6 +53,7 @@ from django.db.models import (
     Exists,
     F,
     OuterRef,
+    Q,
     Subquery,
     TextField,
     Value,
@@ -52,7 +61,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 
-from ingest.category_rules import first_match, household_rules
+from ingest.category_rules import ORIGIN_PLAID, first_match, household_rules
 from legacy.models.ledger import LedgerTransaction, LedgerTransactionCategory
 
 TABLE = "ledger_transaction_categories"
@@ -273,10 +282,16 @@ class BackfillReport:
     household_id: str
     # Stored `category IS NULL` and no live override: what the rules may fill.
     uncategorised: int
+    # Stored `category_origin = 'plaid'` and no live override: a category the
+    # bank feed wrote, which a rule of his may replace (Kevin, 2026-11-23).
+    plaid_categorised: int
     matched: int
     written: int
-    # Stored NULL, no live override, but a TOMBSTONED one: someone removed a
-    # category on purpose, and the backfill does not put a rule's back.
+    # A candidate whose rule names the category it already has. Counted, not
+    # written: an override saying what the row already says is noise.
+    agreed: int
+    # No live override, but a TOMBSTONED one: someone removed a category on
+    # purpose, and the backfill does not put a rule's back.
     left_alone_removed: int
     unmatched: int
 
@@ -284,7 +299,9 @@ class BackfillReport:
         verb = "would write" if dry_run else "wrote"
         return (
             f"household {self.household_id}: {self.uncategorised} uncategorised, "
+            f"{self.plaid_categorised} categorised by the bank feed, "
             f"{self.matched} matched a rule, {verb} {self.written if not dry_run else self.matched}, "
+            f"{self.agreed} already had the category their rule names, "
             f"{self.unmatched} matched no rule, {self.left_alone_removed} left alone "
             f"(an override there was deleted on purpose)."
         )
@@ -302,33 +319,52 @@ on conflict (transaction_id) do nothing
 
 def backfill_household(household, *, dry_run: bool) -> BackfillReport:
     """Writes a `source='rule'` override for every transaction of `household`
-    whose effective category is empty and which one of the household's rules
-    matches. Same rules, same order, same match as the insert path
-    (`ingest/category_rules.py`, which is the phone's semantics ported).
+    that one of the household's rules matches and whose category is either
+    empty or the bank feed's. Same rules, same order, same match as the insert
+    path (`ingest/category_rules.py`, which is the phone's semantics ported).
 
-    **Idempotent.** A transaction that already has an override row of any
-    kind is not a candidate, and the INSERT is `on conflict do nothing`, so a
-    second run, or a person's override written between the read and the
-    write, changes nothing. **A `person` row is never overwritten**: the only
-    write here is an INSERT, and it yields to any row already there.
+    **His rules always win, afterwards as well as at insert** (Kevin,
+    2026-11-23). A row Plaid categorised (`category_origin = 'plaid'`) is a
+    candidate here, so "write a rule to fix these" keeps working on rows the
+    feed had already labelled. The stored column is immutable
+    (`forbid_mutation_of_facts`), so the rule's category arrives as an
+    override, which outranks the stored one (`with_effective_category`).
+
+    **Three kinds of row are never touched.** A category a PERSON set (a live
+    `person` override) stays; a category one of HIS RULES already wrote
+    (`category_origin = 'rule'`, or a live `rule` override) stays, because a
+    rule beating a rule is just the same decision twice; and a category a
+    document stated (`category_origin IS NULL` with a category) stays, because
+    that is the source's own word about a gated row, not a guess.
+
+    **Idempotent.** A transaction that already has an override row of any kind
+    is not a candidate, the INSERT is `on conflict do nothing`, and a rule
+    naming the category the row already has writes nothing, so a second run
+    changes nothing.
     """
     rules = household_rules(household)
     any_override = LedgerTransactionCategory.objects.filter(transaction=OuterRef("pk"))
     live_override = any_override.filter(deleted_at__isnull=True)
     rows = list(
-        LedgerTransaction.objects.filter(household=household, category__isnull=True)
+        LedgerTransaction.objects.filter(household=household)
+        .filter(Q(category__isnull=True) | Q(category_origin=ORIGIN_PLAID))
         .annotate(has_live=Exists(live_override), has_any=Exists(any_override))
         .filter(has_live=False)
         .order_by("created_at", "id")
-        .values_list("id", "description", "has_any")
+        .values_list("id", "description", "category", "has_any")
     )
 
-    removed = sum(1 for _id, _desc, has_any in rows if has_any)
-    candidates = [(txn_id, desc) for txn_id, desc, has_any in rows if not has_any]
+    removed = sum(1 for _id, _desc, _stored, has_any in rows if has_any)
+    from_plaid = sum(1 for _id, _desc, stored, _has in rows if stored is not None)
+    candidates = [(txn_id, desc, stored) for txn_id, desc, stored, has_any in rows if not has_any]
     to_write = []
-    for txn_id, description in candidates:
+    matched = 0
+    for txn_id, description, stored in candidates:
         category = first_match(description, rules)
-        if category is not None:
+        if category is None:
+            continue
+        matched += 1
+        if category != stored:
             to_write.append((str(txn_id), category))
 
     written = 0
@@ -342,9 +378,11 @@ def backfill_household(household, *, dry_run: bool) -> BackfillReport:
 
     return BackfillReport(
         household_id=str(household.id),
-        uncategorised=len(rows),
+        uncategorised=len(rows) - from_plaid,
+        plaid_categorised=from_plaid,
         matched=len(to_write),
         written=written,
+        agreed=matched - len(to_write),
         left_alone_removed=removed,
-        unmatched=len(candidates) - len(to_write),
+        unmatched=len(candidates) - matched,
     )

@@ -17,8 +17,14 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ingest import plaid_categories
+from ingest.category_overrides import backfill_household
 from legacy.enums import Provenance
-from legacy.models.ledger import Category, CategoryRule, LedgerTransaction
+from legacy.models.ledger import (
+    Category,
+    CategoryRule,
+    LedgerTransaction,
+    LedgerTransactionCategory,
+)
 from tests import test_plaid_balances
 from tests.test_plaid import CHECKING, bank_rows, sync, txn
 
@@ -424,6 +430,122 @@ def test_a_plaid_category_renders_plain_like_any_bank_row(
     # The evidence stays on the engine: the wire's field list is unchanged, so
     # no client has to learn anything to render this row.
     assert "plaid_category" not in row and "category_origin" not in row
+
+
+# =============================================================================
+# A rule written LATER still wins (Kevin, 2026-11-23)
+# =============================================================================
+
+
+def _a_cafe_row(fake, household, item, **extra):
+    return one_row(
+        fake,
+        household,
+        item,
+        account="acc-chk",
+        name="SQ *SOME CAFE",
+        personal_finance_category=pfc("FOOD_AND_DRINK", "FOOD_AND_DRINK_COFFEE"),
+        **extra,
+    )
+
+
+def test_a_rule_written_later_overrides_the_category_plaid_wrote(
+    fake, item, household_a, categories, auth_client
+):
+    """His rules win afterwards, not only at insert. The stored column is
+    immutable, so the sweep lays a `rule` override over the feed's category and
+    the precedence makes it win."""
+    row, _ = _a_cafe_row(fake, household_a, item)
+    assert (row.category, row.category_origin) == ("Coffee & Snacks", "plaid")
+
+    a_rule(household_a, "SOME CAFE", "Dining Out")
+    report = backfill_household(household_a, dry_run=False)
+
+    assert (report.plaid_categorised, report.uncategorised, report.written) == (1, 0, 1)
+    override = LedgerTransactionCategory.objects.get(transaction=row)
+    assert (override.category, override.source) == ("Dining Out", "rule")
+    # And it is what every reader sees.
+    body = auth_client.get("/api/ledger/transactions/").data
+    shown = (body["results"] if "results" in body else body)[0]
+    assert (shown["category"], shown["category_source"]) == ("Dining Out", "rule")
+    # The row's own column is untouched: the feed's word is still on record.
+    row.refresh_from_db()
+    assert row.category == "Coffee & Snacks"
+    # Idempotent.
+    assert backfill_household(household_a, dry_run=False).written == 0
+
+
+def test_a_rule_that_names_the_category_plaid_already_wrote_writes_nothing(
+    fake, item, household_a, categories
+):
+    """An override saying what the row already says is noise."""
+    row, _ = _a_cafe_row(fake, household_a, item)
+    a_rule(household_a, "SOME CAFE", "Coffee & Snacks")
+
+    report = backfill_household(household_a, dry_run=False)
+
+    assert (report.written, report.matched, report.agreed) == (0, 0, 1)
+    assert not LedgerTransactionCategory.objects.filter(transaction=row).exists()
+
+
+def test_the_sweep_never_re_decides_a_category_one_of_his_rules_wrote(
+    fake, item, household_a, categories
+):
+    """A rule beating a rule is the same decision twice. The row keeps the
+    category its own rule gave it, whatever a later rule says."""
+    a_rule(household_a, "SOME CAFE", "Dining Out")
+    row, _ = _a_cafe_row(fake, household_a, item)
+    assert row.category_origin == "rule"
+
+    a_rule(household_a, "SQ *", "Shopping")
+    report = backfill_household(household_a, dry_run=False)
+
+    assert (report.written, report.plaid_categorised, report.uncategorised) == (0, 0, 0)
+    assert not LedgerTransactionCategory.objects.filter(transaction=row).exists()
+
+
+def test_the_sweep_never_touches_a_persons_choice_on_a_feed_categorised_row(
+    fake, item, household_a, categories
+):
+    row, _ = _a_cafe_row(fake, household_a, item)
+    LedgerTransactionCategory.objects.create(
+        id=uuid.uuid4(),
+        household=household_a,
+        transaction=row,
+        category="Travel",
+        source="person",
+        created_at=timezone.now(),
+        updated_at=timezone.now(),
+    )
+    a_rule(household_a, "SOME CAFE", "Dining Out")
+
+    report = backfill_household(household_a, dry_run=False)
+
+    assert report.written == 0
+    kept = LedgerTransactionCategory.objects.get(transaction=row)
+    assert (kept.category, kept.source) == ("Travel", "person")
+
+
+def test_an_override_deleted_on_purpose_stays_deleted_on_a_feed_categorised_row(
+    fake, item, household_a, categories
+):
+    """Someone cleared that category deliberately; a rule does not refill it."""
+    row, _ = _a_cafe_row(fake, household_a, item)
+    LedgerTransactionCategory.objects.create(
+        id=uuid.uuid4(),
+        household=household_a,
+        transaction=row,
+        category="Travel",
+        source="person",
+        created_at=timezone.now(),
+        updated_at=timezone.now(),
+        deleted_at=timezone.now(),
+    )
+    a_rule(household_a, "SOME CAFE", "Dining Out")
+
+    report = backfill_household(household_a, dry_run=False)
+
+    assert (report.written, report.left_alone_removed) == (0, 1)
 
 
 def test_the_map_only_ever_names_categories_legion_seeds():
