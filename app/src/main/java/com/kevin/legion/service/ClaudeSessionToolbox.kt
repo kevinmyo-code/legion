@@ -149,7 +149,10 @@ object ClaudeSessionToolbox {
                 question = args.optString("request"),
             )
             "answer" -> needsTask(taskId) ?: shown(
-                c.answer(taskId, args.optString("request"), args.optBoolean("yes", false), args.optBoolean("email_me")),
+                c.answer(
+                    taskId, args.optString("request"), args.optBoolean("yes", false), args.optBoolean("email_me"),
+                    byVoice = true,
+                ),
             )
             "assign" -> needsTask(taskId) ?: shown(c.assign(taskId, args.optString("machine")))
             "send_file" -> needsTask(taskId) ?: sendResult(c.sendFile(taskId, args.optInt("file_id", 0)))
@@ -246,11 +249,7 @@ object ClaudeSessionToolbox {
             lines += c.wording.result(t, summariesOnly = true) + files
             consumeAnnouncement(t, watch)
         }
-        o.status.sessions.filter { wanted(it.machine) }.forEach { s ->
-            val doing = s.lastPromptSummary?.let { ": $it" } ?: ""
-            lines += "Session on the ${s.machine}, ${s.project.ifBlank { "no project" }}, " +
-                (if (s.waitingOnYou) "waiting on you" else s.state) + doing
-        }
+        o.status.sessions.filter { wanted(it.machine) }.forEach { lines += it.spokenLine }
         return result(true, lines.joinToString("\n"))
     }
 

@@ -704,7 +704,63 @@ def _listed_scope(tool: str, inp: dict, cwd: str, cfg: dict, paths: Paths) -> di
 # Kevin's yes to the question they print, fetch_file.py its download hosts, to_xlsx.py and
 # to_pdf.py their task folder; to_pdf.py also prints with no network and loads nothing).
 CONTAINED_SCRIPTS = ("report.py", "send_mail.py", "ship.py", "undo.py", "fetch_file.py",
-                     "to_xlsx.py", "to_pdf.py")
+                     "to_xlsx.py", "to_pdf.py", "sessions.py")
+# Kevin's other Claude sessions (alfred-sessions 1122): only through sessions.py, which reads a
+# bounded excerpt (tainting the task) and sends only on a token bound to the card Kevin saw.
+SESSIONS_SCRIPT = "sessions.py"
+PEER_TOOLS = ("SendMessage", "ListAgents")
+
+
+def _peer_reason() -> str:
+    return ("CLAUDE SESSIONS: the worker never messages or lists Claude sessions itself. Use "
+            "sessions.py list or read, and for a message sessions.py ask, then report "
+            "needs_confirmation with the question it prints. Do not retry or work around it.")
+
+
+SESSIONS_SUBCOMMANDS = re.compile(r"(?<![\w-])(list|read|ask|send)(?![\w-])", re.I)
+_SESSION_WORDS = re.compile(r"\"([^\"]*)\"|'([^']*)'|([^\s\"';&|<>()]+)")
+
+
+def _runs_worker_sessions(command: str, tool: str) -> str | None:
+    """The subcommand when the command RUNS the worker's own sessions.py (its path, in any
+    spelling, followed by list, read, ask or send), else None (re-review round 2, finding 2: a
+    project's own sessions.py, or `git add app/sessions.py`, is none of the worker's business)."""
+    own = _plain(str(HERE / SESSIONS_SCRIPT))
+    words = [next(g for g in m.groups() if g is not None)
+             for m in _SESSION_WORDS.finditer(command or "")]
+    for i, w in enumerate(words):
+        if _plain(w, tool == "Bash") == own or _plain(w, True) == own:
+            for later in words[i + 1:]:
+                m = SESSIONS_SUBCOMMANDS.fullmatch(later)
+                if m:
+                    return m.group(1).lower()
+    return None
+
+
+def _reads_a_session(command: str, tool: str) -> bool:
+    """A run of the worker's sessions.py `read`, alone or not (review finding 1, the way any run
+    of fetch_file.py reads the web): a transcript is read-through."""
+    return _runs_worker_sessions(command, tool) == "read"
+
+
+def _sessions_reason() -> str:
+    return ("CLAUDE SESSIONS: sessions.py runs only alone, exactly as the rule shows: the worker's "
+            "python, its path, this task's own --task, nothing piped, redirected or added. Do not "
+            "retry or work around it.")
+
+
+def _reads_worker_transcripts(tool: str, inp: dict, cwd: str, paths: Paths) -> bool:
+    """A Read of one of the worker's own transcripts, or a Grep or Glob rooted at the transcripts
+    folder or above it (it would walk them), by `path`, an absolute `pattern`, or the cwd."""
+    targets = [inp.get("file_path") or inp.get("path") or ""]
+    pattern = str(inp.get("pattern") or "")
+    if tool == "Glob" and DRIVE_RE.match(pattern):
+        targets.append(re.split(r"[*?\[{]", pattern, maxsplit=1)[0])
+    if tool in ("Grep", "Glob") and not (inp.get("path") or ""):
+        targets.append(cwd)
+    if any(C.worker_transcript(paths, t) for t in targets if t):
+        return True
+    return tool in ("Grep", "Glob") and any(C.holds_transcripts(t) for t in targets if t)
 
 
 def _write_targets(inp: dict) -> list[str]:
@@ -741,7 +797,8 @@ def _in_checkout(target: str, own_work: Path) -> bool:
     return False
 
 
-def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict) -> str | None:
+def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict,
+            event_agent: str | None = None) -> str | None:
     """The read-through source this call is, or None."""
     if tool.startswith(C.GMAIL_PREFIX):
         return "gmail"
@@ -749,10 +806,14 @@ def _source(tool: str, inp: dict, cwd: str, paths: Paths, trec, cfg: dict) -> st
         return tool
     if tool in C.FILE_SOURCE_TOOLS:
         target = inp.get("file_path") or inp.get("path") or cwd
+        if C.transcript_file(paths, target):
+            return "session_transcript"  # re-review 6: the summary cap keys on this source
         if C.untrusted_file(paths, target, trec, cfg):
             return "untrusted_file"
     if tool in SHELL_TOOLS:
         command = inp.get("command", "") or ""
+        if _reads_a_session(command, tool) or C.names_transcripts(command, paths)[0]:
+            return "session_transcript"
         if re.search(r"fetch_file\.py", command, re.I):
             return "fetch_file"  # any run of it reads the web, ours or not
         if C.fetches(command):
@@ -822,7 +883,7 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
                 except OSError:
                     return _deny(C.MARK_FAILED_REASON), "net script", True
 
-    source = _source(tool, inp, cwd, paths, trec, cfg)
+    source = _source(tool, inp, cwd, paths, trec, cfg, agent)
     if source:
         if not agent:
             return _deny(C.MAIN_SOURCE_REASON), "main window", True
@@ -842,6 +903,20 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
     inp = event.get("tool_input") or {}
     cwd = event.get("cwd") or ""
     task = _agent_task(paths, event.get("agent_id"))
+
+    if tool in PEER_TOOLS:
+        return _deny(_peer_reason()), "peer sessions"
+    if tool in READ_TOOLS and _reads_worker_transcripts(tool, inp, cwd, paths):
+        return _deny(C.OWN_TRANSCRIPT_REASON), "worker transcripts"
+    if tool in SHELL_TOOLS:
+        command = inp.get("command", "") or ""
+        if C.names_transcripts(command, paths)[1] or C.searches_transcripts(command):
+            return _deny(C.OWN_TRANSCRIPT_REASON), "worker transcripts"
+        if _runs_worker_sessions(command, tool) and not _is_our_lone_script(
+                command, SESSIONS_SCRIPT, task, tool):
+            # Review findings 1 and 1b: a pipe, a redirect, another task's --task, any other
+            # spelling never runs (it would read untainted, or plant a plan on another card).
+            return _deny(_sessions_reason()), "sessions"
 
     if task is not None and _task_kind(paths, task) == "memory_review":
         out = _memory_review(tool, inp, task, paths)
@@ -893,6 +968,10 @@ def decide(event: dict, paths: Paths, cfg: dict, now: float | None = None) -> tu
             tampered = _code_tampered(paths)
             # ship.py / undo.py check Kevin's yes token themselves
             return tampered, "integrity" if tampered else "ship"
+        if _is_our_lone_script(command, SESSIONS_SCRIPT, task, tool):
+            tampered = _code_tampered(paths)
+            # sessions.py send checks its card-bound token itself
+            return tampered, "integrity" if tampered else "sessions"
         if re.search(r"integrity", command, re.I) and re.search(
                 r"--write|write_manifest", command, re.I):
             # Round 4d: blessing the folder is the deploy step's alone, never a helper's.

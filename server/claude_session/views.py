@@ -123,6 +123,10 @@ LIST_MAX = 100
 # How long a session row stays on the status screen without a new hook post.
 SESSION_SHOWN_HOURS = 24
 SESSION_ENDED = "ended"
+# The worker writes a message card's question itself from its stored plan
+# (tools/claude_session/sessions.py `question`), so this prefix is the worker's words, never a
+# model's.
+SESSION_SEND_PREFIX = "Send this message to your Claude session "
 LISTED_REFUSAL = (
     "Nothing was sent. The {name} returns summaries only, never files (ruling 5)."
 )
@@ -496,6 +500,13 @@ class TaskListCreateView(APIView):
                 "for Kevin's yes (needs_confirmation).",
                 http.HTTP_400_BAD_REQUEST,
             )
+        # One message card, one yes (alfred-sessions review, finding 2; orchestrator ruling: only
+        # session_send cards, every other kind keeps its retry on the same card).
+        one_yes = (
+            data["confirms"]
+            and parent is not None
+            and (parent.question or "").startswith(SESSION_SEND_PREFIX)
+        )
 
         machine = None
         status = QUEUED
@@ -560,20 +571,30 @@ class TaskListCreateView(APIView):
             if refused is not None:
                 return refused
 
-        task = ClaudeTask.objects.create(
-            household=household,
-            user=request.user,
-            machine=machine,
-            parent=parent,
-            origin=data["origin"],
-            kind=kind,
-            workflow=workflow,
-            params=params,
-            deliver=deliver,
-            confirms=data["confirms"],
-            request=data["request"],
-            status=status,
-        )
+        with transaction.atomic():
+            if one_yes:
+                # The parent row's lock orders two taps at once: the second sees the first's yes.
+                ClaudeTask.objects.select_for_update().filter(pk=parent.pk).first()
+                if scoped(ClaudeTask, request).filter(parent=parent, confirms=True).exists():
+                    return _detail(
+                        "Nothing was sent. Kevin already said yes to that message once; ask "
+                        "again for a new card to send it again.",
+                        http.HTTP_409_CONFLICT,
+                    )
+            task = ClaudeTask.objects.create(
+                household=household,
+                user=request.user,
+                machine=machine,
+                parent=parent,
+                origin=data["origin"],
+                kind=kind,
+                workflow=workflow,
+                params=params,
+                deliver=deliver,
+                confirms=data["confirms"],
+                request=data["request"],
+                status=status,
+            )
         return Response(_created(task, machine, now), status=http.HTTP_201_CREATED)
 
 
@@ -784,10 +805,13 @@ class StatusView(APIView):
                 "sessions": [
                     {
                         "machine": row.machine.name,
+                        "session_id": row.session_id,
+                        "name": row.name,
                         "project": row.project,
                         "state": row.state,
                         "last_prompt_summary": row.last_prompt_summary,
                         "last_seen_at": row.last_seen_at,
+                        "waiting_since": row.waiting_since,
                     }
                     for row in sessions
                 ],
@@ -1518,18 +1542,32 @@ class SessionReportView(APIView):
                 household=household, name=data["machine"].strip(), scope=SCOPE_LISTED
             )
         keep_summary = machine.scope != SCOPE_LISTED
-        ClaudeCodeSession.objects.update_or_create(
-            household=household,
-            machine=machine,
-            session_id=data["session_id"],
-            defaults={
-                "project": data["project"],
-                "state": data["state"],
-                "last_prompt_summary": data["last_prompt_summary"] if keep_summary else None,
-                "reported_at": data["at"],
-                "last_seen_at": now,
-            },
-        )
+        with transaction.atomic():
+            # get_or_create keeps the unique-key race safe (two hooks for a new session at
+            # once); the lock then orders the waiting_since step against a parallel report.
+            stored, _ = ClaudeCodeSession.objects.get_or_create(
+                household=household,
+                machine=machine,
+                session_id=data["session_id"],
+                defaults={"project": data["project"], "state": data["state"], "last_seen_at": now},
+            )
+            row = ClaudeCodeSession.objects.select_for_update().get(pk=stored.pk)
+            if data["state"] != SESSION_WAITING:
+                row.waiting_since = None
+            elif row.state != SESSION_WAITING or row.waiting_since is None:
+                # A new wait on Kevin; a repeated `waiting` (the Notification hook fires more
+                # than once) keeps the episode it is part of.
+                row.waiting_since = now
+            row.project = data["project"]
+            row.state = data["state"]
+            row.last_prompt_summary = data["last_prompt_summary"] if keep_summary else None
+            if keep_summary and data["name"].strip():
+                row.name = data["name"].strip()  # a report without a name keeps the stored one
+            elif not keep_summary:
+                row.name = ""
+            row.reported_at = data["at"]
+            row.last_seen_at = now
+            row.save()
         return Response(
             {
                 "machine": machine.name,

@@ -224,6 +224,8 @@ class ClaudeResultWatcher(
                 it.uploaded || (task.wantsPage && it.isPage) || (task.wantsFiles && it.requested)
             }
             return when {
+                // Approved on the screen only (Kevin's ruling 2026-11-22): no spoken yes, no mic.
+                task.isSessionSendCard -> ""
                 task.needsConfirmation ->
                     "On a yes: claude_session answer, task_id ${task.id}, yes true."
                 task.status == ClaudeTask.DONE && task.pages.isNotEmpty() ->

@@ -230,6 +230,30 @@ def test_confirms_is_refused_without_a_parent_waiting_for_a_yes(token_a):
     assert _create(token_a, parent=done).status_code == 201
 
 
+def test_a_message_card_takes_one_yes(token_a):
+    _beat(token_a)
+    asked = _create(token_a, machine="Alienware").data["id"]
+    _claim(token_a)
+    _finish(token_a, asked, status="needs_confirmation",
+            question='Send this message to your Claude session garden (garden) on the Alienware: '
+                     '"Water the beds." Send it?')
+    assert _create(token_a, parent=asked, confirms=True).status_code == 201
+    again = _create(token_a, parent=asked, confirms=True)
+    assert again.status_code == 409
+    assert "already said yes" in again.data["detail"]
+    assert ClaudeTask.objects.filter(confirms=True).count() == 1
+    assert _create(token_a, parent=asked).status_code == 201  # words, no yes: still fine
+
+
+def test_any_other_card_keeps_its_retry(token_a):
+    _beat(token_a)
+    asked = _create(token_a, machine="Alienware").data["id"]
+    _claim(token_a)
+    _finish(token_a, asked, status="needs_confirmation", question="Ship it?")
+    assert _create(token_a, parent=asked, confirms=True).status_code == 201
+    assert _create(token_a, parent=asked, confirms=True).status_code == 201
+
+
 # --- assign (Kevin 2026-11-01) -------------------------------------------------------
 
 
@@ -561,11 +585,48 @@ def test_sessions_from_a_full_machine_keep_the_prompt_summary(token_a):
     token_a.post(f"{API}sessions/", {**body, "state": "waiting"}, format="json")
     sessions = token_a.get(f"{API}status/").data["sessions"]
     assert sessions == [
-        {"machine": "Alienware", "project": "legion", "state": "waiting",
-         "last_prompt_summary": "fixing the heartbeat",
-         "last_seen_at": sessions[0]["last_seen_at"]}
+        {"machine": "Alienware", "session_id": "s-1", "name": "", "project": "legion",
+         "state": "waiting", "last_prompt_summary": "fixing the heartbeat",
+         "last_seen_at": sessions[0]["last_seen_at"],
+         "waiting_since": sessions[0]["waiting_since"]}
     ]
+    assert sessions[0]["waiting_since"] is not None
     assert ClaudeCodeSession.objects.count() == 1
+
+
+def test_a_session_name_is_kept_until_a_new_one_comes(token_a):
+    _beat(token_a)
+    body = {"machine": "Alienware", "session_id": "s-1", "project": "legion", "state": "working",
+            "name": "builder"}
+    token_a.post(f"{API}sessions/", body, format="json")
+    token_a.post(f"{API}sessions/", {**body, "name": ""}, format="json")
+    assert token_a.get(f"{API}status/").data["sessions"][0]["name"] == "builder"
+    token_a.post(f"{API}sessions/", {**body, "name": "reviewer"}, format="json")
+    assert token_a.get(f"{API}status/").data["sessions"][0]["name"] == "reviewer"
+
+
+def test_a_listed_machine_keeps_no_session_name(token_a):
+    _beat(token_a, "work laptop", scope="listed")
+    token_a.post(f"{API}sessions/", {"machine": "work laptop", "session_id": "w-1",
+                                     "project": "erp", "state": "working", "name": "secret"},
+                 format="json")
+    assert ClaudeCodeSession.objects.get().name == ""
+
+
+def test_waiting_since_marks_the_start_of_one_wait(token_a):
+    _beat(token_a)
+    body = {"machine": "Alienware", "session_id": "s-1", "project": "p", "state": "waiting"}
+    token_a.post(f"{API}sessions/", body, format="json")
+    first = ClaudeCodeSession.objects.get().waiting_since
+    assert first is not None
+    ClaudeCodeSession.objects.update(waiting_since=first - datetime.timedelta(minutes=5))
+    token_a.post(f"{API}sessions/", body, format="json")  # the hook repeats `waiting`
+    assert ClaudeCodeSession.objects.get().waiting_since == first - datetime.timedelta(minutes=5)
+    token_a.post(f"{API}sessions/", {**body, "state": "working"}, format="json")
+    assert ClaudeCodeSession.objects.get().waiting_since is None
+    token_a.post(f"{API}sessions/", body, format="json")
+    again = ClaudeCodeSession.objects.get().waiting_since
+    assert again is not None and again > first - datetime.timedelta(minutes=5)
 
 
 def test_sessions_from_a_listed_machine_drop_the_prompt_summary(token_a):
