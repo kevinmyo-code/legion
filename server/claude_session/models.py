@@ -132,6 +132,13 @@ FILES_KEEP_HOURS = 24
 OFFLINE_AFTER_SECONDS = 90
 TASK_CAP_MINUTES = 30
 SILENT_FAIL_MINUTES = 10
+# The Claude hub's thread (claude-hub-1123 slice S1). A session id as the hooks report it
+# (`ClaudeCodeSession.session_id`, a uuid today), and the exact message Kevin approved. The text
+# cap is the WORKER's own `sessions.TEXT_MAX` of 2000 characters measured in bytes, because 2000
+# non-ASCII characters are up to 8 KB of UTF-8: a smaller cap here would refuse the whole finish
+# and leave the task hanging to TASK_CAP_MINUTES.
+SESSION_ID_MAX_CHARS = 200
+SESSION_TEXT_MAX_BYTES = 8 * 1024
 # Worker workflows (ticket 03): Kevin's words after the matched alias.
 PARAMS_MAX_CHARS = 500
 
@@ -249,6 +256,21 @@ class ClaudeTask(models.Model):
     # the task rather than its own table, so it is tenanted, pruned and
     # deleted exactly with the row it belongs to.
     steps = models.JSONField(default=list, blank=True)
+    # The Claude hub's thread (claude-hub-1123 slice S1). `session_id` is the Claude Code session
+    # this task is ABOUT, so the phone can draw one session's messages as a thread without
+    # re-deriving the target by parsing the card's question prose. Set by the phone at create and
+    # inherited by a follow-up from its parent; the worker may also name it at finish, for a card
+    # Alfred drafted where the phone never knew the target. `session_text` is the exact message
+    # Kevin approved, written at finish from the worker's hash-pinned plan, so the thread draws
+    # HIS words rather than a re-reading of them. Blank and null respectively on every task that
+    # is not about a session, which is nearly all of them.
+    #
+    # Columns on the task, not a new table, for the reason `steps` already records above: tenancy
+    # (`household.tenancy.TENANT_TABLES`), the 30 day prune and the no-log `__str__` come free.
+    # `db_default` too, for the same reason `ClaudeCodeSession.name` has one: the engine revision
+    # still serving during a rollout inserts rows without naming the column.
+    session_id = models.TextField(blank=True, default="", db_default="")
+    session_text = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(db_default=Now())
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
@@ -260,6 +282,10 @@ class ClaudeTask(models.Model):
                 fields=["household", "-created_at"], name="claude_tasks_household_created"
             ),
             models.Index(fields=["household", "status"], name="claude_tasks_household_status"),
+            # One thread's read: `?session=<id>` newest first (views.TaskListCreateView.get).
+            models.Index(
+                fields=["household", "session_id", "-created_at"], name="claude_tasks_session"
+            ),
         ]
         constraints = [
             models.CheckConstraint(
