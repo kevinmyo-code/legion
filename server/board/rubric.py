@@ -48,7 +48,7 @@ FORECAST: dict[str, tuple[str, str]] = {
     "head_unit": ("YELLOW", "headunit/app/src/main/java/com/kevin/midnightai/MainActivity.kt"),
     "engine_logic": ("YELLOW", "server/board/views.py"),
     "web_pages": ("YELLOW", "server/frontend/src/routes/index.tsx"),
-    "laptop_scripts": ("GREEN", "tools/obsidian_sync.py"),
+    "laptop_scripts": ("YELLOW", "tools/docs_check.py"),
     "docs": ("GREEN", "docs/glossary.md"),
     "tests": ("GREEN", "server/tests/test_board.py"),
     "styling": ("GREEN", "server/frontend/src/styles.css"),
