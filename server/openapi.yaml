@@ -5935,6 +5935,13 @@ paths:
         description: 'named, offered or schedule: `schedule` finds the runs the engine
           started itself (a scheduled workflow waiting on Kevin''s yes, for the phone).'
       - in: query
+        name: session
+        schema:
+          type: string
+        description: 'One Claude Code session''s id: the hub''s thread. Answers OLDEST
+          FIRST, and `limit` still takes the NEWEST that many, so a long thread keeps
+          its recent end. A blank value is no filter.'
+      - in: query
         name: status
         schema:
           type: string
@@ -18301,6 +18308,18 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ClaudeFoundFile'
+        session_id:
+          type: string
+          nullable: true
+          default: ''
+          description: 'The Claude Code session this task is about. Omitted: the stored
+            one stands.'
+          maxLength: 200
+        session_text:
+          type: string
+          nullable: true
+          description: 'The exact message Kevin approved, for the hub''s thread. Omitted:
+            the stored one stands.'
       required:
       - status
     ClaudeFinishResult:
@@ -18791,6 +18810,14 @@ components:
           description: 'Run a named workflow: Kevin''s phrase or the exact name. Omitted
             for a plain task.'
           maxLength: 500
+        session_id:
+          type: string
+          nullable: true
+          default: ''
+          description: The Claude Code session this task is about, for the hub's thread.
+            Blank for an ordinary task. A follow-up inherits its parent's and may
+            omit it.
+          maxLength: 200
       required:
       - origin
       - request
@@ -18960,6 +18987,14 @@ components:
             $ref: '#/components/schemas/ClaudeTaskStep'
           description: The last 20 distinct steps, newest first; kept after the task
             finishes. Always empty for a summaries-only (listed) machine.
+        session_id:
+          type: string
+          description: The Claude Code session this task is about (the hub's thread),
+            or blank.
+        session_text:
+          type: string
+          nullable: true
+          description: The exact message Kevin approved for that session, or null.
       required:
       - artifacts
       - confirms
@@ -18977,6 +19012,8 @@ components:
       - progress_at
       - question
       - request
+      - session_id
+      - session_text
       - status
       - steps
       - summary

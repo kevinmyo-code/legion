@@ -21,6 +21,8 @@ from claude_session.models import (
     REPORTED_MACHINE_STATES,
     REQUEST_MAX_BYTES,
     SCOPES,
+    SESSION_ID_MAX_CHARS,
+    SESSION_TEXT_MAX_BYTES,
     SHOWN_MACHINE_STATES,
     SUMMARY_MAX_BYTES,
     TASK_KINDS,
@@ -77,6 +79,15 @@ class ClaudeTaskCreateSerializer(serializers.Serializer):
         help_text=(
             "Run a named workflow: Kevin's phrase or the exact name. Omitted for a plain task."
         ),
+    )
+    # The Claude hub's thread (slice S1). The message TEXT is not here on purpose: the worker
+    # writes it at finish from its own hash-pinned plan, so the exact approved words have one
+    # author. A follow-up ignores this field when its parent already names a session.
+    session_id = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, default="",
+        max_length=SESSION_ID_MAX_CHARS,
+        help_text="The Claude Code session this task is about, for the hub's thread. Blank for "
+        "an ordinary task. A follow-up inherits its parent's and may omit it.",
     )
 
 
@@ -174,6 +185,22 @@ class ClaudeFinishSerializer(serializers.Serializer):
         required=False, allow_null=True, default=None, min_value=0
     )
     found = ClaudeFoundFileSerializer(many=True, required=False, default=list)
+    # The Claude hub's thread (slice S1). Both are OPTIONAL and both are only ever written when
+    # sent: a worker that knows nothing of threads finishes a task without blanking what the
+    # phone set at create. `session_text` is the exact message Kevin approved, from the worker's
+    # pinned plan, so a card Alfred drafted (where the phone never knew the target) still joins
+    # its thread. Never kept from a summaries-only (listed) machine.
+    session_id = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, default="",
+        max_length=SESSION_ID_MAX_CHARS,
+        help_text="The Claude Code session this task is about. Omitted: the stored one stands.",
+    )
+    session_text = _Text(
+        max_bytes=SESSION_TEXT_MAX_BYTES, what="The session message",
+        required=False, allow_null=True, allow_blank=True, default=None,
+        help_text="The exact message Kevin approved, for the hub's thread. Omitted: the stored "
+        "one stands.",
+    )
 
 
 class ClaudeFileUploadSerializer(serializers.Serializer):
@@ -290,6 +317,14 @@ class ClaudeTaskRowSerializer(serializers.Serializer):
         many=True,
         help_text="The last 20 distinct steps, newest first; kept after the task finishes. "
         "Always empty for a summaries-only (listed) machine.",
+    )
+    session_id = serializers.CharField(
+        allow_blank=True,
+        help_text="The Claude Code session this task is about (the hub's thread), or blank.",
+    )
+    session_text = serializers.CharField(
+        allow_null=True,
+        help_text="The exact message Kevin approved for that session, or null.",
     )
 
 

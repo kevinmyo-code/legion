@@ -300,6 +300,8 @@ def task_row(task: ClaudeTask, now) -> dict:
         "progress": task.progress,
         "progress_at": task.progress_at,
         "steps": _steps(task),
+        "session_id": task.session_id,
+        "session_text": task.session_text,
     }
 
 
@@ -422,6 +424,12 @@ class TaskListCreateView(APIView):
                 "started itself (a scheduled workflow waiting on Kevin's yes, for the phone).",
             ),
             OpenApiParameter("kind", str, description="ask, memory_review or workflow."),
+            OpenApiParameter(
+                "session", str,
+                description="One Claude Code session's id: the hub's thread. Answers OLDEST "
+                "FIRST, and `limit` still takes the NEWEST that many, so a long thread keeps "
+                "its recent end. A blank value is no filter.",
+            ),
         ],
         responses={200: s.ClaudeTaskRowSerializer(many=True)},
     )
@@ -442,6 +450,13 @@ class TaskListCreateView(APIView):
         machine_name = request.query_params.get("machine")
         if machine_name:
             rows = rows.filter(machine__name__iexact=machine_name.strip())
+        # The hub's thread (slice S1). The query stays NEWEST first so `limit` keeps the recent
+        # end of a long thread; the answer is reversed below, because a thread is drawn oldest
+        # first. A blank value filters nothing: every ordinary task has a blank session_id, and
+        # answering `?session=` with all of them would be a thread of unrelated work.
+        session = (request.query_params.get("session") or "").strip()
+        if session:
+            rows = rows.filter(session_id=session)
         for field in ("origin", "kind"):
             wanted = request.query_params.get(field)
             if wanted:
@@ -456,6 +471,8 @@ class TaskListCreateView(APIView):
             out.append(row)
             if len(out) >= limit:
                 break
+        if session:
+            out.reverse()
         return Response(out)
 
     @extend_schema(
@@ -548,6 +565,15 @@ class TaskListCreateView(APIView):
             machine, entry, params, status = resolved
             kind, workflow = KIND_WORKFLOW, entry["name"]
 
+        # The hub's thread (slice S1). A follow-up joins its parent's thread, so Kevin's yes lands
+        # under the message it answers even when the client never knew the session id. The
+        # PARENT's id wins over one the client sent: ruling 10 already says a follow-up reaches
+        # the session that did the task, and letting a client re-address a follow-up would be a
+        # way to file a yes against the wrong thread.
+        session_id = (data["session_id"] or "").strip()
+        if parent is not None and parent.session_id:
+            session_id = parent.session_id
+
         deliver = data["deliver"]
         if entry is not None and deliver is None:
             deliver = _workflow_deliver(entry, machine)
@@ -597,6 +623,7 @@ class TaskListCreateView(APIView):
                 confirms=data["confirms"],
                 request=data["request"],
                 status=status,
+                session_id=session_id,
             )
         return Response(_created(task, machine, now), status=http.HTTP_201_CREATED)
 
@@ -1224,6 +1251,17 @@ class FinishView(APIView):
             task.finished_at = now
             task.progress = None
             task.progress_at = None
+            # The hub's thread (slice S1). Written only when the worker sends one, so an older
+            # worker's finish never blanks what the phone set at create; a worker that DOES send
+            # one wins, because a card Alfred drafted names its session for the first time here.
+            # `session_text` follows `last_prompt_summary`'s posture (SessionReportView): a
+            # summaries-only machine never puts a session's message in the engine, and the
+            # worker arms no session send on one, so this is a mirror and not a second rule.
+            sent_session = (data["session_id"] or "").strip()
+            if sent_session:
+                task.session_id = sent_session
+            if data["session_text"] and not listed:
+                task.session_text = data["session_text"]
             task.save()
             notes = []
             if listed and data["found"]:

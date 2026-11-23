@@ -7809,6 +7809,13 @@ export interface components {
             turns?: number | null;
             duration_ms?: number | null;
             found?: components["schemas"]["ClaudeFoundFile"][];
+            /**
+             * @description The Claude Code session this task is about. Omitted: the stored one stands.
+             * @default
+             */
+            session_id: string | null;
+            /** @description The exact message Kevin approved, for the hub's thread. Omitted: the stored one stands. */
+            session_text?: string | null;
         };
         ClaudeFinishResult: {
             id: number;
@@ -8029,6 +8036,11 @@ export interface components {
             confirms: boolean;
             /** @description Run a named workflow: Kevin's phrase or the exact name. Omitted for a plain task. */
             workflow?: string | null;
+            /**
+             * @description The Claude Code session this task is about, for the hub's thread. Blank for an ordinary task. A follow-up inherits its parent's and may omit it.
+             * @default
+             */
+            session_id: string | null;
         };
         /**
          * @description * `named` - named
@@ -8108,6 +8120,10 @@ export interface components {
             progress_at: string | null;
             /** @description The last 20 distinct steps, newest first; kept after the task finishes. Always empty for a summaries-only (listed) machine. */
             steps: components["schemas"]["ClaudeTaskStep"][];
+            /** @description The Claude Code session this task is about (the hub's thread), or blank. */
+            session_id: string;
+            /** @description The exact message Kevin approved for that session, or null. */
+            session_text: string | null;
         };
         /**
          * @description * `ask` - ask
@@ -19122,6 +19138,8 @@ export interface operations {
                 machine?: string;
                 /** @description named, offered or schedule: `schedule` finds the runs the engine started itself (a scheduled workflow waiting on Kevin's yes, for the phone). */
                 origin?: string;
+                /** @description One Claude Code session's id: the hub's thread. Answers OLDEST FIRST, and `limit` still takes the NEWEST that many, so a long thread keeps its recent end. A blank value is no filter. */
+                session?: string;
                 /** @description One status, as computed at read time. */
                 status?: string;
             };
