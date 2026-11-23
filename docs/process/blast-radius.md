@@ -95,7 +95,7 @@ lines a change adds, so existing debt never fails a build.
 | (e) Offhand quotes | not checked: whether a quote was a deliberate ruling is not in its text | |
 | (f) Detekt baseline | a finding (rule + text) the base never listed; a finding listed more often, unless the extra entries sit in files this change adds and the base listed it under a file this change modifies or deletes (code split out of it) | |
 
-For (f), the file, the object, the visibility modifier and names of the objects this change moves are not part of a finding, so moving `private fun f` from one object into a new file as `internal fun f` is a re-key, not new debt. The baseline holds one entry per text per file, not a hit count, so the same text in a new file split out of a changed one cannot be told from new code there; the reviewer reads the moved code.
+For (f), the file, the object, the visibility modifier and names of the objects this change moves are not part of a finding, so moving `private fun f` from one object into a new file as `internal fun f` is a re-key, not new debt. A class-level finding (LargeClass, TooManyFunctions), whose text is the object name, only re-keys one for one and never splits. Accepted limits the reviewer reads in the moved code: the baseline holds one entry per text per file, not a hit count, so the same text in a new file split out of a changed one passes (generic texts such as a `MagicNumber` value most of all), and a text that differs only by a touched object's name reads as the same finding.
 
 Escape hatches, each visible in the diff:
 - (a): the allowlist `clock_times_allow.txt`, or the marker `clock-ok` on a line. Dates are always fine.

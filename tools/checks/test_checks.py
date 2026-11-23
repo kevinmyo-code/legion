@@ -414,3 +414,28 @@ def test_detekt_renamed_reference_to_an_untouched_object_is_still_new():
     new = baseline("MaxLineLength:SomeTest.kt:SomeTest$Beta.X")
     ch = change({BASELINE: ("M", new)}, base={BASELINE: old})
     assert levels(detekt_baseline.check(ch)) == [FAIL]
+
+
+def test_detekt_new_large_class_in_a_new_file_fails_while_another_file_is_modified():
+    old = baseline("LargeClass:LiveToolbox.kt:LiveToolbox")
+    new = baseline("LargeClass:LiveToolbox.kt:LiveToolbox", "LargeClass:Brand.kt:Brand")
+    ch = change({BASELINE: ("M", new), KT + "LiveToolbox.kt": ("M", "x\n"), KT + "Brand.kt": ("A", "x\n")},
+                base={BASELINE: old})
+    assert levels(detekt_baseline.check(ch)) == [FAIL]
+
+
+def test_detekt_rename_gaining_large_class_fails():
+    old = baseline("TooManyFunctions:Old.kt:Old", "LongMethod:Old.kt$Old$fun a()")
+    new = baseline("TooManyFunctions:Renamed.kt:Renamed", "LargeClass:Renamed.kt:Renamed",
+                   "LongMethod:Renamed.kt$Renamed$fun a()")
+    ch = change({BASELINE: ("M", new), KT + "Old.kt": ("D", ""), KT + "Renamed.kt": ("A", "x\n")},
+                base={BASELINE: old})
+    assert levels(detekt_baseline.check(ch)) == [FAIL]
+
+
+def test_detekt_class_level_finding_still_rekeys_one_for_one():
+    old = baseline("TooManyFunctions:Old.kt:Old")
+    new = baseline("TooManyFunctions:Renamed.kt:Renamed")
+    ch = change({BASELINE: ("M", new), KT + "Old.kt": ("D", ""), KT + "Renamed.kt": ("A", "x\n")},
+                base={BASELINE: old})
+    assert detekt_baseline.check(ch) == []

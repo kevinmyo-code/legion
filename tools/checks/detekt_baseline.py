@@ -16,8 +16,12 @@ Per finding, compare how many baseline entries carry it before and after:
     or deletes (the file the code moved out of);
   - anything else fails: a finding the base never listed, or a finding listed more often with no new file
     to account for it.
-The baseline keeps one entry per text per file, not a hit count, so a split cannot be told from new code
-with the same text in a new file. That is the accepted limit; a reviewer reads the moved code.
+A class-level finding (LargeClass, TooManyFunctions), whose text is the owner's name, becomes "<moved>"
+for every touched file; it gets no split allowance, only a one-for-one re-key.
+Accepted limits, which the reviewer reads in the moved code: the baseline keeps one entry per text per
+file, not a hit count, so the same text in a new file split from a changed one passes (a generic text such
+as `MagicNumber 10` most of all); and a text differing only by a touched object's name (`fun f(): Foo`
+now `fun f(): Bar`) reads as the same finding.
 --all: nothing to compare; reports the entry count.
 """
 
@@ -101,7 +105,9 @@ def check(change: Change) -> list[Finding]:
             continue
         in_new_files = sum(n for e, n in added_entries.items() if key_of(e) == key and parse(e)[1] in added_files)
         moved_from = sources.get(key, set()) & source_files
-        allowed = min(growth, in_new_files) if moved_from else 0
+        # A class-level finding (LargeClass, TooManyFunctions: the text IS the owner name) collapses to
+        # "<moved>" for every touched file, so it may only re-key one for one, never split.
+        allowed = min(growth, in_new_files) if moved_from and key[1] != "<moved>" else 0
         for _ in range(growth - allowed):
             out.append(Finding(FAIL, NAME, PATH, 0,
                                f"baseline lists a finding ({rule}) more often with no new file split from a"
