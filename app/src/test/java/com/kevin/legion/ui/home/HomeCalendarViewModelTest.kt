@@ -12,6 +12,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -66,6 +68,15 @@ class HomeCalendarViewModelTest {
 
         /** When set, readMonth suspends here until the test completes it. */
         var gate: CompletableDeferred<Unit>? = null
+
+        /** Room's change signal, stood in for: [fire] is one write to a table HOME reads. */
+        private val signal = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+
+        fun fire() {
+            signal.tryEmit(Unit)
+        }
+
+        override fun changes(): Flow<Unit> = signal
 
         override suspend fun readMonth(month: YearMonth, zone: ZoneId): MonthRead {
             monthsRead += month
@@ -378,6 +389,18 @@ class HomeCalendarViewModelTest {
             io.close()
             work.close()
         }
+    }
+
+    @Test
+    fun `a write to the phone's own tables re-reads with no resume`() {
+        val src = FakeSource()
+        val model = vm(src).also { it.refresh() }
+        assertEquals(1, src.monthsRead.size)
+        // Alfred writes while HOME is already on screen: no ON_RESUME ever comes.
+        src.rows = listOf(ev(7, EventKind.EVENT, today))
+        src.fire()
+        assertEquals("a change must re-read", 2, src.monthsRead.size)
+        assertEquals(listOf("event-7"), model.state.value.dayRows.map { it.key })
     }
 
     // ------------------------------------------------------------------------ pure functions

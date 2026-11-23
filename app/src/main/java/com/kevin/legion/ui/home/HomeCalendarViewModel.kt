@@ -74,6 +74,12 @@ class HomeCalendarViewModel(
     private val wake = Channel<Unit>(Channel.CONFLATED)
 
     init {
+        // A write to the phone's own day tables re-reads, without waiting for the next `ON_RESUME`:
+        // HOME is the launcher, so it is usually already resumed when Alfred writes something
+        // (2026-11-23). `request` conflates, so a burst of writes is still one read.
+        this.scope.launch {
+            source.changes().collect { request(month = true, panels = true) }
+        }
         this.scope.launch {
             for (ignored in wake) {
                 val month = pendingMonth

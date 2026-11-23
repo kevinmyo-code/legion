@@ -20,6 +20,9 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.map
 
 /**
  * Every read and write HOME's calendar makes, behind one seam so [HomeCalendarViewModel] can be
@@ -31,6 +34,15 @@ import kotlinx.coroutines.CancellationException
  * returns an empty list for a failed read.
  */
 interface HomeCalendarSource {
+    /**
+     * Fires whenever the phone's own day tables change under HOME: a reminder added by voice, an
+     * appointment written while the front page is already on screen. Without it HOME only ever
+     * re-read on `ON_RESUME`, so a write made while it was already resumed left the glance showing
+     * the read from before it (2026-11-23: an appointment added by voice, "Nothing else today"
+     * beside it). The default never fires, so a source with no change signal is unchanged.
+     */
+    fun changes(): Flow<Unit> = emptyFlow()
+
     /** ONE read of [month]: events, tasks and suggestions in a single query, plus the reminders.
      * The month grid AND every day's agenda inside it are derived from this, off the main thread
      * (`HomeCalendarDerive.kt`). A kind that could not be read is named in `unreadable`. */
@@ -54,6 +66,9 @@ interface HomeCalendarSource {
     suspend fun dropIdea(id: Long): String
 }
 
+/** The tables HOME's calendar reads: a write to any one of them changes what the page shows. */
+private val DAY_TABLES = arrayOf("events", "list_items", "checklists", "checklist_items", "checklist_ticks")
+
 private const val DAY_MS = 24 * 60 * 60 * 1000L
 private const val TODO_LOOKBACK_DAYS = 30L
 private const val TODO_LOOKAHEAD_DAYS = 365L
@@ -66,6 +81,12 @@ class ContextHomeCalendarSource(context: Context) : HomeCalendarSource {
     private fun db() = CarDatabase.getDatabase(appContext)
 
     private fun startMs(day: LocalDate, zone: ZoneId) = day.atStartOfDay(zone).toInstant().toEpochMilli()
+
+    // Room's own change signal, the same one the conversation's live cards follow
+    // (`service/LiveCardReads.kt`). Made here rather than imported from there: `ui/` never imports
+    // `service/`, and the seam above is what a fake drives.
+    override fun changes(): Flow<Unit> =
+        db().invalidationTracker.createFlow(*DAY_TABLES, emitInitialState = false).map { }
 
     // ----------------------------------------------------------------------------- month
 
