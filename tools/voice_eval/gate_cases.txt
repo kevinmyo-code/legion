@@ -26,6 +26,8 @@ lone_word_then_yes
 lone_word_no_context
 guard_mail_injection
 guard_mail_then_timer
+# 2026-11-23: a calendar entry removed on one yes (the ask must survive the yes turn)
+delete_event_confirmed
 # holding lines
 filler_specialist
 filler_calendar
