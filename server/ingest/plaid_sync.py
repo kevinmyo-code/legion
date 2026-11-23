@@ -412,24 +412,45 @@ class _Categoriser:
     6's posture: never quietly skip what you did not recognise)."""
 
     rules: list
-    known: set[str]
-    unmapped: dict[str, int] = field(default_factory=dict)
+    names: plaid_categories.HouseholdCategories
+    # (the Plaid value, why it placed nothing) -> how many rows said it. The
+    # reason is carried, not re-derived, so the report names which of the three
+    # things happened to each value.
+    unmapped: dict[tuple[str, str], int] = field(default_factory=dict)
 
-    def _note(self, value: str) -> None:
-        self.unmapped[value] = self.unmapped.get(value, 0) + 1
+    NO_MAPPING = "LEGION does not map that to one of your categories."
+
+    def _note(self, value: str, reason: str) -> None:
+        key = (value, reason)
+        self.unmapped[key] = self.unmapped.get(key, 0) + 1
 
     def of(self, description: str, raw: Any) -> tuple[str | None, bool, str | None, dict | None]:
-        """`(category, category_pending, origin, the raw object to store)`."""
+        """`(category, category_pending, origin, the raw object to store)`.
+
+        A rule of his is applied below whatever this refuses: a rule naming a
+        category flagged `excluded_from_spend` is his own decision and still
+        wins. Only PLAID's suggestion is dropped here."""
         kept = plaid_categories.evidence(raw)
         suggested, said = plaid_categories.category_for(kept)
-        if suggested is not None and suggested not in self.known:
-            said = f"{said} (this household has no {suggested!r} category)"
+        reason = self.NO_MAPPING
+        if suggested is not None and suggested in self.names.excluded:
+            # Not spending (`ingest/category_flags.py`, the ONE definition).
+            # Filing a row here on Plaid's word alone would not mislabel it, it
+            # would take the whole row out of every spend total, which is a
+            # ruling of his and not a mapping decision.
+            reason = (
+                f"it maps to {suggested!r}, which is excluded from spending, so only a rule "
+                "of yours may file a row there."
+            )
+            suggested = None
+        elif suggested is not None and suggested not in self.names.writable:
+            reason = f"it maps to {suggested!r}, which this household does not have."
             suggested = None
         category, pending, origin = category_for_insert(
             None, description, self.rules, suggested
         )
         if category is None and said:
-            self._note(said)
+            self._note(said, reason)
         return category, pending, origin, kept
 
 
@@ -584,10 +605,10 @@ def apply_changes(
         outcome = _put_override(household, new_by_bank_id[bank_id], snap)
         if outcome == MOVED:
             report.categories_moved += 1
-    for said, count in sorted(categoriser.unmapped.items()):
+    for (said, reason), count in sorted(categoriser.unmapped.items()):
         report.notes.append(
-            f"Plaid called {count} new transaction(s) {said}, which is not one of your "
-            f"categories, so they were left uncategorised."
+            f"Plaid called {count} new transaction(s) {said}: {reason} They were left "
+            f"uncategorised."
         )
     for row in dropped_with_removal:
         snap = snaps.pop(row.id, None)

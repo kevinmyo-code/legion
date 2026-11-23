@@ -196,7 +196,100 @@ def test_a_category_the_household_does_not_have_is_never_written(fake, item, hou
     )
 
     assert row.category is None and row.category_origin is None
-    assert any("no 'Travel' category" in note for note in run.last_report.notes)
+    assert any(
+        "'Travel', which this household does not have" in note
+        for note in run.last_report.notes
+    )
+
+
+def _exclude_from_spend(household, name):
+    """Flag one of the household's categories as not spending
+    (`ingest/category_flags.py`), the way the phone's sync does."""
+    updated = Category.objects.filter(household=household, name=name).update(
+        excluded_from_spend=True
+    )
+    assert updated == 1
+    return name
+
+
+def _overdraft_fee(fake, household, item, *, with_plaids_category: bool):
+    """One $35 bank fee in September, with or without Plaid's own category."""
+    extra = {}
+    if with_plaids_category:
+        extra["personal_finance_category"] = pfc("BANK_FEES", "BANK_FEES_OVERDRAFT_FEES")
+    return one_row(
+        fake,
+        household,
+        item,
+        account="acc-chk",
+        amount=35.0,
+        date="2026-09-10",
+        name="SOME OVERDRAFT CHARGE",
+        **extra,
+    )
+
+
+def _spend_total(auth_client):
+    body = auth_client.get("/api/ledger/spend", {"month": "2026-09", "currency": "USD"}).data
+    return sum(a["spend_cents"] for a in body["accounts"]) + body["uncategorised_cents"]
+
+
+def test_a_category_excluded_from_spending_is_never_written_from_plaids_word(
+    fake, item, household_a, categories
+):
+    """The flag, not the name (`ingest/category_flags.py`). Plaid's taxonomy
+    does not know which of his categories are money moving between his own
+    places, and filing a row in one does not mislabel it, it takes the whole
+    row out of every spend total. So his word is required, and the report
+    names the category it refused."""
+    _exclude_from_spend(household_a, "Fees")
+
+    row, run = _overdraft_fee(fake, household_a, item, with_plaids_category=True)
+
+    assert (row.category, row.category_pending, row.category_origin) == (None, True, None)
+    # The evidence is still kept, used or not (section 4 rule 8).
+    assert row.plaid_category["detailed"] == "BANK_FEES_OVERDRAFT_FEES"
+    assert any(
+        "BANK_FEES_OVERDRAFT_FEES" in note and "'Fees', which is excluded from spending" in note
+        for note in run.last_report.notes
+    ), run.last_report.notes
+
+
+def test_an_excluded_category_cannot_quietly_remove_a_row_from_the_spend_total(
+    fake, item, household_a, categories, auth_client
+):
+    """What the review proved was wrong: the row left the total entirely,
+    because a dropped row is in neither the category buckets nor
+    `uncategorised_cents` (`finance/spending.py:46`). It now reads exactly as
+    the same row with no category from Plaid at all."""
+    _exclude_from_spend(household_a, "Fees")
+
+    _overdraft_fee(fake, household_a, item, with_plaids_category=True)
+
+    assert _spend_total(auth_client) == 3500
+
+
+def test_the_control_the_excluded_case_has_to_match(
+    fake, item, household_a, categories, auth_client
+):
+    """The same row with no `personal_finance_category`: uncategorised, and
+    its money still counted."""
+    _overdraft_fee(fake, household_a, item, with_plaids_category=False)
+
+    assert _spend_total(auth_client) == 3500
+
+
+def test_a_rule_of_his_still_files_a_row_in_an_excluded_category(
+    fake, item, household_a, categories
+):
+    """Only PLAID's suggestion is refused. A rule he wrote is his own ruling
+    about his own money and wins over everything, excluded or not."""
+    _exclude_from_spend(household_a, "Fees")
+    a_rule(household_a, "OVERDRAFT", "Fees")
+
+    row, _ = _overdraft_fee(fake, household_a, item, with_plaids_category=True)
+
+    assert (row.category, row.category_origin) == ("Fees", "rule")
 
 
 def test_a_deliberate_none_in_the_map_is_not_guessed_from_its_primary(

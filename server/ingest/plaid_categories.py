@@ -35,9 +35,18 @@ becomes which of his categories is his ruling to make, not an engineering
 choice.
 
 **A name this table gives is used only when the household actually has that
-category.** The names below are LEGION's starter set
-(`app/.../data/local/CategorySeed.kt`); a household that renamed or deleted one
-would otherwise get a category that no screen offers.
+category, and only when that category counts as spending.** The names below
+are LEGION's starter set (`app/.../data/local/CategorySeed.kt`); a household
+that renamed or deleted one would otherwise get a category that no screen
+offers. And a category the household flagged `excluded_from_spend`
+(`ingest/category_flags.py`, the ONE definition of what is not spending) is
+never written from this map: filing a row there does not mislabel it, it takes
+the money out of every spend total, and Plaid's taxonomy does not know which of
+the household's categories are money moving between its own places. Which
+Plaid values belong in an excluded category is his ruling to make, not this
+map's, so such a row is left uncategorised and named in the sync report.
+The guard reads the FLAG, never a name: a name compared in two places drifts
+the day someone renames the category.
 
 ## Versions
 
@@ -49,7 +58,7 @@ version the account is on.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
 from legacy.models.ledger import Category
 
@@ -82,13 +91,14 @@ BY_DETAILED: dict[str, str | None] = {
     "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS": "Health",
 }
 
-# Deliberately NOT mapped to "Transfers", though they look like it: Plaid's own
+# Deliberately NOT mapped at all, though they look like "Transfers": Plaid's own
 # descriptions for `TRANSFER_IN/OUT_ACCOUNT_TRANSFER` say only "transfers from
 # another account" / "to another account", which covers money sent to another
 # PERSON as readily as money moved between his own accounts, and the SAVINGS
-# rows do not say whose savings. "Transfers" is excluded from every spend
-# total (`ingest/category_flags.py`), so a wrong guess there does not mislabel
-# a row, it removes money from his spending. That is his ruling to make.
+# rows do not say whose savings. That is his ruling to make, so the table stays
+# silent. (The separate guard below refuses ANY mapped name the household has
+# flagged `excluded_from_spend`, whatever it is called, so a map entry added
+# later cannot quietly remove money from his spending either.)
 
 
 def _plain(value: Any) -> str | None:
@@ -128,11 +138,29 @@ def category_for(stored: dict | None) -> tuple[str | None, str | None]:
     return BY_PRIMARY.get(primary or ""), key
 
 
-def household_categories(household) -> set[str]:
-    """The household's live category names. A mapped name the household does
-    not have is not written: no screen offers it and no budget counts it."""
-    return set(
-        Category.objects.filter(household=household, deleted_at__isnull=True).values_list(
-            "name", flat=True
-        )
+class HouseholdCategories(NamedTuple):
+    """Which of the household's live category names this map may write, and
+    which it must refuse.
+
+    `writable` is what a mapped name is checked against: a name the household
+    does not have is not written, because no screen offers it and no budget
+    counts it. `excluded` is the subset flagged `excluded_from_spend`
+    (`ingest/category_flags.py`): Plaid's word alone never files a row there,
+    and it is kept apart from the names that simply do not exist so the sync
+    report can say which of the two happened."""
+
+    writable: frozenset[str]
+    excluded: frozenset[str]
+
+
+def household_categories(household) -> HouseholdCategories:
+    """The household's live category names, split by the spend flag. Reads the
+    FLAG, never a name (`ingest/category_flags.py`)."""
+    rows = Category.objects.filter(household=household, deleted_at__isnull=True).values_list(
+        "name", "excluded_from_spend"
     )
+    excluded = frozenset(name for name, flagged in rows if flagged)
+    # A duplicate name with the flag set on one row only fails closed: it is in
+    # `excluded`, and `writable` leaves it out.
+    writable = frozenset(name for name, _flagged in rows) - excluded
+    return HouseholdCategories(writable, excluded)
