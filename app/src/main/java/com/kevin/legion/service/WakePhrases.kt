@@ -80,7 +80,7 @@ object WakePhrases {
      * mid-utterance - a per-delta check would match the moment the buffer happened to end on
      * "...that will be all" and then never un-match, since arming is sticky by design.
      *
-     * A trailing "please", "thanks" or "for now" IS set aside (Kevin, 2026-11-23: "that'll be all"
+     * A trailing "please", "thanks" or "for now" IS set aside (2026-11-23, goodbye hardening: "that'll be all"
      * and "bye bye" sometimes did not close the conversation). It used to be left to the model, on
      * the reasoning that a missed backstop costs one more turn while a false one hangs up on someone
      * mid-sentence. The field answered that: the model is the unreliable half, and the courtesy is
@@ -100,8 +100,7 @@ object WakePhrases {
             // While an answer is awaited, a turn with an answer word in it is his answer (F1).
             afterQuestion -> !Farewells.answersQuestion(transcript) &&
                 (isStopPhrase(t, name, HARD_STOPS) || Farewells.isFarewell(transcript, companionName, true))
-            else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || isStopPhrase(t, name, STOP_PHRASES) ||
-                Farewells.isFarewell(transcript, companionName)
+            else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || closesAlone(t, name)
         }
     }
 
@@ -128,11 +127,29 @@ object WakePhrases {
      *
      * **A trailing courtesy used to miss**, and said so in words in [isSleepPhrase]'s comment and its
      * test: only leading words were set aside, so "that'll be all, thanks" matched no phrase and the
-     * close rested on the model calling `end_conversation`. Kevin, 2026-11-23: a goodbye with filler
+     * close rested on the model calling `end_conversation`. 2026-11-23, goodbye hardening: a goodbye with filler
      * around it must close. What makes it safe is unchanged: courtesy is only ever set aside at the
      * ends, and what is left must BE a phrase, so "that's all the milk we need" and "text mom bye bye"
      * still match nothing.
      */
+    /**
+     * The whole turn is closers, courtesy aside: one or more dismissals or farewells back to back
+     * ([Farewells.madeOf] over [CLOSERS]), so "that's it, bye bye", "that'll be all, goodbye" and
+     * "okay that's all, thanks, bye" close as "bye bye" and "that's all" each already did. Two ways
+     * of saying one thing in one turn is still one dismissal.
+     *
+     * Only the no-question branch uses it. After a question the narrower [HARD_STOPS] rule stands
+     * unchanged (review of 546cce67, F1): a soft dismissal there may be his answer.
+     */
+    private fun closesAlone(t: String, name: String): Boolean {
+        if (t in STOP_PHRASES) return true
+        val w = Farewells.withoutCourtesy(t.split(' ').filter { it.isNotEmpty() }, name)
+        return w.isNotEmpty() && Farewells.madeOf(w, CLOSERS)
+    }
+
+    /** Every phrase that can stand alone as a close, as word lists for [Farewells.madeOf]. */
+    private val CLOSERS: List<List<String>> = Farewells.phraseWords(Farewells.FAREWELLS + STOP_PHRASES)
+
     private fun isStopPhrase(t: String, name: String, phrases: Set<String>): Boolean {
         if (t in phrases) return true
         val words = Farewells.withoutCourtesy(t.split(' ').filter { it.isNotEmpty() }, name)

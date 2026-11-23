@@ -62,7 +62,7 @@ object Farewells {
             .joinToString("").trim().replace(Regex("\\s+"), " ")
 
     /** Longest first, so "thanks a lot" is taken whole before "thanks". */
-    private fun words(phrases: List<String>) = phrases.map { it.split(' ') }.sortedByDescending { it.size }
+    private fun words(phrases: List<String>) = phraseWords(phrases)
 
     private val farewellWords = words(FAREWELLS)
     private val leadWords = words(LEADS + THANKS)
@@ -87,8 +87,8 @@ object Farewells {
     /**
      * [words] without the name at either end, the lead-ins and thanks before, and thanks and tails after.
      * The one courtesy rule: [WakePhrases.isSleepPhrase] strips a dismissal ("that'll be all") with it too,
-     * so "okay, that'll be all, thanks Alfred" and "bye bye for now" are the same shape of turn (Kevin,
-     * 2026-11-23: a goodbye with filler around it sometimes did not close the conversation). Never the whole
+     * so "okay, that'll be all, thanks Alfred" and "bye bye for now" are the same shape of turn
+     * (2026-11-23, goodbye hardening: a goodbye with filler around it sometimes did not close). Never the whole
      * turn: a courtesy word alone ("thanks") stays a turn of its own.
      */
     fun withoutCourtesy(words: List<String>, companionName: String): List<String> {
@@ -105,15 +105,27 @@ object Farewells {
     }
 
     /** [w] is one or more [FAREWELLS] back to back. */
-    private fun madeOfFarewells(w: List<String>): Boolean {
+    private fun madeOfFarewells(w: List<String>): Boolean = madeOf(w, farewellWords)
+
+    /**
+     * [w] is one or more of [phrases] back to back and nothing else, so "bye bye bye" and
+     * "that's it, bye bye" are each a whole turn of closers while "bye bye birdie" is not. The one
+     * composition rule: [isFarewell] runs it over the farewells, [WakePhrases.isSleepPhrase] over the
+     * farewells and the dismissals together. [phrases] comes from [words].
+     */
+    fun madeOf(w: List<String>, phrases: List<List<String>>): Boolean {
         val ok = BooleanArray(w.size + 1)
         ok[0] = true
         for (i in 0 until w.size) {
             if (!ok[i]) continue
-            for (f in farewellWords) {
+            for (f in phrases) {
                 if (i + f.size <= w.size && w.subList(i, i + f.size) == f) ok[i + f.size] = true
             }
         }
         return ok[w.size]
     }
+
+    /** [phrases] as word lists, longest first, for [madeOf]. */
+    fun phraseWords(phrases: Collection<String>): List<List<String>> =
+        phrases.map { it.split(' ') }.sortedByDescending { it.size }
 }

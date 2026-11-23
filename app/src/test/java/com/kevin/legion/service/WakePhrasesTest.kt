@@ -69,21 +69,21 @@ class WakePhrasesTest {
     }
 
     /**
-     * REVERSED 2026-11-23 (Kevin: "that'll be all" and "bye bye" sometimes did not close the
-     * conversation). These two were documented, deliberate misses, left to the model's own
+     * REVERSED 2026-11-23, on Kevin's order to harden the close. These two were documented,
+     * deliberate misses since 7745d3f3 (2026-09-10), left to the model's own
      * `end_conversation` tool on the reasoning that a missed backstop costs one turn while a false
      * one hangs up mid-sentence. The model turned out to be the unreliable half, so the backstop
      * takes them now. The old test said a change here is a decision, not a bug fix: this is it,
      * written down where that one was.
      */
     @Test
-    fun `a trailing politeness matches, reversing the 2026-11-20 deliberate miss`() {
+    fun `a trailing politeness matches, reversing the 2026-09-10 deliberate miss`() {
         assertTrue(WakePhrases.isSleepPhrase("that will be all, thanks"))
         assertTrue(WakePhrases.isSleepPhrase("that will be all for now"))
     }
 
     /**
-     * Kevin, 2026-11-23: a goodbye with filler around it must close the conversation. Courtesy at
+     * 2026-11-23, goodbye hardening: a goodbye with filler around it must close the conversation. Courtesy at
      * either END is set aside ([Farewells.withoutCourtesy]); a request that merely contains a
      * farewell, or a request wrapped in the same courtesy, is still a request. Both tables are data:
      * a new courtesy word is a row here, never a new branch. Invented utterances only.
@@ -101,6 +101,8 @@ class WakePhrasesTest {
             "that will be all for now", "alright, bye bye", "okay that's all, thanks", "bye bye, please",
             "Thanks Alfred, that'll be all then", "that's it for now", "alright, that'll be all",
             "goodbye for now, please", "Okay. Bye bye, Alfred. Thanks.", "that's all, thanks Alfred",
+            // Two ways of saying it in one turn is still one dismissal.
+            "that's it, bye bye", "that'll be all, goodbye", "bye bye, that's all", "okay that's all, thanks, bye",
         )
 
         /** Never closes: a real request, including one wearing the same courtesy. */
