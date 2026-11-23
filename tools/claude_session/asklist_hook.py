@@ -130,7 +130,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
 sys.path.append(str(HERE))  # this folder's own modules, after the standard library
-from common import Paths, is_under, load_config, norm, read_json  # noqa: E402
+from common import Paths, is_under, load_config, norm, read_json, stdin_text  # noqa: E402
 import containment as C  # noqa: E402
 import outside_writes as OW  # noqa: E402
 
@@ -1036,7 +1036,7 @@ def main() -> int:
     paths = Paths()
     tool, agent = "?", None
     try:
-        event = json.load(sys.stdin)
+        event = json.loads(stdin_text())
         tool, agent = event.get("tool_name", "?"), event.get("agent_id")
         out, rule = decide(event, paths, load_config(paths))
     except Exception:  # fail closed

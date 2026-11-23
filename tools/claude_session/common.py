@@ -12,6 +12,7 @@ import hmac
 import json
 import argparse
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -74,6 +75,19 @@ class Paths:
 
     def task_work(self, task_id: int) -> Path:
         return self.work / f"task-{int(task_id)}"
+
+
+def stdin_text() -> str:
+    """A hook event from stdin, decoded as UTF-8, whatever the console codepage is.
+
+    Claude Code writes hook JSON as UTF-8. Every hook here runs as `python -I -S`, and `-I`
+    ignores PYTHONIOENCODING, so on Windows `sys.stdin` decodes those bytes with the ANSI
+    codepage instead: U+2026 arrives as three characters (probe, 2026-11-23, cp1252). The courier
+    gate compares the tool's text to the plan character for character, so one mojibake character
+    refused every message whose 50-character preview was truncated with an ellipsis, which is
+    every message Kevin would send. Read the bytes and decode them here, in one place.
+    """
+    return sys.stdin.buffer.read().decode("utf-8", errors="replace")
 
 
 def read_json(path: Path, default=None):
