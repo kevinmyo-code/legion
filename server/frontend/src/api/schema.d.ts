@@ -7596,6 +7596,8 @@ export interface components {
             last_prompt_summary?: string | null;
             /** Format: date-time */
             at?: string | null;
+            /** @default  */
+            name: string;
         };
         ClaudeSessionStored: {
             machine: string;
@@ -7622,11 +7624,19 @@ export interface components {
         };
         ClaudeStatusSession: {
             machine: string;
+            session_id: string;
+            /** @description The session's own name; blank when unknown. */
+            name: string;
             project: string;
             state: string;
             last_prompt_summary: string | null;
             /** Format: date-time */
             last_seen_at: string;
+            /**
+             * Format: date-time
+             * @description Start of the current wait on Kevin; null unless waiting.
+             */
+            waiting_since: string | null;
         };
         ClaudeTaskCreate: {
             request: string;

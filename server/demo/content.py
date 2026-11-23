@@ -151,10 +151,15 @@ RESERVED_SECTION_IDS = (
 
 # The page's section palettes (Kevin, 2026-11-22: a different feel per section): the
 # page blends to a section's palette as it scrolls in. Named in `index.css` (`[data-theme]`).
-SECTION_THEMES = ("legion", "ledger", "midcon", "aw4")
+SECTION_THEMES = ("legion", "ledger", "midcon", "aw4", "shop")
 # A mark the orb takes on beside a section (Kevin, 2026-11-22: the orb becomes the finance voice
 # demo's Q at its section). Only a letter drawn from a system font: no logo file is shipped.
-ORB_MARKS = ("q",)
+# "larkspur": the made-up shop's own mark (a pine and a larkspur spike, drawn by the page).
+ORB_MARKS = ("q", "larkspur")
+# A live demo the page itself draws inside a section (Kevin, 2026-11-22: the store rep as a section
+# of its own): its controls and its after-call card. The page knows each by name; content only
+# says where it goes.
+SECTION_WIDGETS = ("store_rep",)
 
 # A project section below LEGION's (Kevin, 2026-11-05: the second project). The same shape as
 # `legion`, plus the `id` the strip's anchor points at, an optional media slot, an optional link
@@ -175,8 +180,9 @@ _PROJECT_SECTION = _obj(
         "link": _obj({"href": {"type": "string", "pattern": r"^https://\S+\Z"}, "label": _STR}),
         "theme": {"enum": list(SECTION_THEMES)},
         "orb_mark": {"enum": list(ORB_MARKS)},
+        "widget": {"enum": list(SECTION_WIDGETS)},
     },
-    optional=("diagram_svg", "diagram_caption", "media", "link", "theme", "orb_mark"),
+    optional=("diagram_svg", "diagram_caption", "media", "link", "theme", "orb_mark", "widget"),
 )
 
 # A part of the LEGION section: its words, and (optionally) the headings of the diagram boxes it is

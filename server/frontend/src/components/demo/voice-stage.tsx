@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { DemoContent } from '@/api/demo'
@@ -9,6 +10,8 @@ import { VoiceOrb } from '@/components/assistant/voice-orb'
 import { ChipRow } from '@/components/demo/chip-row'
 import { useOrbFlight } from '@/components/demo/orb-flight'
 import { useOrbPlace, useStoryGlide, useStoryMotion } from '@/components/demo/scroll-story'
+import { useShopVoice } from '@/components/demo/store-rep/use-shop-voice'
+import { fetchShopState, SHOP_STATE_KEY } from '@/lib/store-rep'
 
 /**
  * The demo's voice-first stage (Kevin, 2026-11-17: "the voice the center of attention"). A long
@@ -26,10 +29,17 @@ export const STAGE_LINE = 'Tap and ask me about Kevin'
 export const RECORDING_NOTICE = 'Conversations here may be recorded to improve the assistant.'
 /** After the follow-up window lapsed quietly under an open card (item 4). */
 export const ASK_MORE = 'Tap to ask more'
+/** The orb beside the store-rep section, between conversations (Kevin, 2026-11-22). */
+export const TALK_TO_REP = 'Talk to the store rep'
 
 function lastOf(lines: readonly Line[], kind: Line['kind']): Line | undefined {
   for (let i = lines.length - 1; i >= 0; i--) if (lines[i].kind === kind) return lines[i]
   return undefined
+}
+
+/** The first letter up, at the start of a sentence: "the store rep" becomes "The store rep". */
+function sentence(words: string): string {
+  return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
 function money(usd: number | null): string {
@@ -113,7 +123,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
       document.body.style.paddingBottom = ''
     }
   }, [shown, glide])
-  const who = name === UNNAMED ? 'the assistant' : name
+  const guide = name === UNNAMED ? 'the assistant' : name
   const cascade = client instanceof CascadeClient ? client : null
   const sideShown = glide && shown
   const sideChips = Boolean(sideShown && !chipsSeen && !place.pinned && cascade && cascade.chips.length > 0)
@@ -123,6 +133,22 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const interruptible = speaking || state.activity === 'thinking'
   const voiceOn = state.mic === 'on'
 
+  // Beside the store-rep section (the orb wears the shop's mark there) the orb's next start is the
+  // rep; elsewhere, the guide (Kevin's ruling, 2026-11-22). A start tap whose persona differs from
+  // the visit's opens a fresh conversation as the right one, as the section's button does; one
+  // that matches resumes. A tap while listening, thinking or speaking still stops or interrupts,
+  // so scrolling never switches a conversation in progress.
+  const { startAs } = useShopVoice()
+  const inShop = place.mark === 'larkspur'
+  // Only a demo visit has a shop; the section asks for the same state (one cache entry).
+  const shop = useQuery({ queryKey: SHOP_STATE_KEY, queryFn: fetchShopState, staleTime: 5_000, enabled: Boolean(cascade) })
+  // Labels follow the cached state; a start tap sends the section's scenario regardless (below).
+  const switchTo = cascade && shop.data && shop.data.active !== inShop ? inShop : null
+  const repNext = switchTo === true
+  // Who is talking: the rep while the visit's scenario is the shop, else the guide.
+  const repOn = Boolean(cascade && shop.data?.active)
+  const who = repOn ? 'the store rep' : guide
+
   const freshIfEnded = () => {
     if (state.phase === 'ended') client.reset()
   }
@@ -130,6 +156,9 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
     freshIfEnded()
     if (interruptible) client.interrupt()
     else if (voiceOn) client.stopVoice()
+    // A start tap always sends the section's scenario (idempotent), since the cache may be stale
+    // (another tab on the same visit); only a persona change opens a fresh conversation.
+    else if (cascade && shop.data) startAs(inShop, switchTo !== null)
     else void client.startVoice()
   }
   const tapChip = (chip: SuggestChip) => {
@@ -146,16 +175,18 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
   const heard = lastOf(state.lines, 'me')
   const sys = lastOf(state.lines, 'sys')
   const status = speaking
-    ? `${who} is speaking. Tap to interrupt.`
+    ? `${sentence(who)} is speaking. Tap to interrupt.`
     : state.activity === 'thinking'
-      ? `${who} is thinking…`
+      ? `${sentence(who)} is thinking…`
       : voiceOn
         ? 'Listening. Tap to stop.'
         : cascade?.lapsedQuietly
           ? ASK_MORE
-          : STAGE_LINE
+          : repNext
+            ? TALK_TO_REP
+            : STAGE_LINE
 
-  const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : `Talk to ${who}`
+  const orbLabel = speaking ? `Interrupt ${who}` : voiceOn ? 'Stop listening' : repNext ? TALK_TO_REP : `Talk to ${switchTo === false ? guide : who}`
 
   // The captions box: newest words at its foot once they no longer fit (`.rc-captions`), measured
   // again whenever the box or its words change size (a resize, a rotation, a late font), so the
@@ -321,7 +352,7 @@ export function VoiceStage({ content, error }: { content?: DemoContent | null; e
           {heard && heard.kind === 'me' && <p className="text-muted-foreground">You: {heard.text}</p>}
           {said && said.kind === 'ai' && (
             <p>
-              {who === 'the assistant' ? 'Assistant' : who}: {said.text}
+              {repOn ? 'Store rep' : who === 'the assistant' ? 'Assistant' : who}: {said.text}
             </p>
           )}
           {sys && sys.kind === 'sys' && <p className="text-muted-foreground italic">{sys.text}</p>}

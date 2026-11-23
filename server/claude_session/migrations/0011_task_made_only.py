@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("claude_session", "0009_machine_can_mail"),
+        ("claude_session", "0010_session_name_waiting"),
     ]
 
     operations = [

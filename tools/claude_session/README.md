@@ -22,6 +22,7 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
       helpers send mail with: python send_mail.py --task N --token T ...   (only with a token)
       helpers ship with: python ship.py ask ... / ship.py run --task N --token T   (only after Kevin's yes)
       helpers build with: python build_lock.py --task N --cwd <dir> -- <gradle or suite>
+      helpers reach Kevin's sessions with: python sessions.py list|read|ask ... / send --token T
     asklist_hook.py   PreToolUse hook, only in worker-settings.json, never in ~/.claude/settings.json
 ```
 
@@ -42,6 +43,8 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `integrity.py` | Review round 4c: sha256 manifest of this folder's `.py` files, kept outside it (`<root>/code-manifest.json`). `--write` after each deploy of this folder; the worker checks it at start and every heartbeat (`code_intact` in health), the hook before every contained script (none runs on a mismatch, an extra file or no manifest). |
 | `main_session_prompt.md` | The main session's appended system prompt. |
 | `install.ps1` / `uninstall.ps1` / `status.ps1` | Kevin runs these by hand. |
+| `sessions.py` | Kevin's other Claude Code sessions (alfred-sessions, 2026-11-22): `list`, `read` (a bounded text-only excerpt; taints the task; never the worker's own sessions), `ask` (stores the send plan in `sends/`, the worker writes the card from it), `send --token` (Kevin's yes to that card only; runs the courier). |
+| `courier_hook.py` | The courier's PreToolUse gate: SendMessage passes once, only with exactly the planned target and text. Fails closed. |
 | `fake_claude.py`, `fake_engine.py`, `test_*.py` | Tests. Never the real CLI, never real mail. |
 
 ## Install (Kevin, by hand)

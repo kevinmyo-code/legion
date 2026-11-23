@@ -30,6 +30,8 @@ class HookTest(unittest.TestCase):
         self.engine = FakeEngine()
         self.tmp = tempfile.TemporaryDirectory()
         self.paths = Paths(Path(self.tmp.name))
+        self.sessions_dir = Path(self.tmp.name) / "claude-sessions"  # never Kevin's real folder
+        self.sessions_dir.mkdir()
         self.config(scope="full")
 
     def tearDown(self):
@@ -42,13 +44,45 @@ class HookTest(unittest.TestCase):
         write_json_atomic(self.paths.config, cfg)
 
     def run_hook(self, text, env=None):
-        return sh.report(text, env={} if env is None else env, paths=self.paths)
+        return sh.report(text, env={} if env is None else env, paths=self.paths,
+                         sessions_dir=self.sessions_dir)
+
+    def test_name_comes_from_the_session_file(self):
+        write_json_atomic(self.sessions_dir / "4242.json", {"sessionId": "other", "name": "nope"})
+        write_json_atomic(self.sessions_dir / "4343.json", {"sessionId": "abc-123", "name": " builder\n one "})
+        self.run_hook(event("Stop"))
+        self.assertEqual(self.engine.sessions[-1]["name"], "builder one")
+
+    def test_only_a_prompt_or_a_question_is_waiting(self):
+        """Orchestrator ruling 2026-11-22: the idle prompt after a turn is not waiting on Kevin."""
+        cases = [({"notification_type": "permission_prompt"}, "waiting"),
+                 ({"notification_type": "elicitation_dialog"}, "waiting"),
+                 ({"notification_type": "idle_prompt"}, "idle"),
+                 ({"message": "Claude needs your permission to use Bash"}, "waiting"),
+                 ({"message": "Claude is waiting for your input"}, "idle")]
+        for extra, want in cases:
+            with self.subTest(extra=extra):
+                self.run_hook(event("Notification", **extra))
+                self.assertEqual(self.engine.sessions[-1]["state"], want)
+        before = len(self.engine.sessions)
+        self.run_hook(event("Notification", notification_type="auth_success"))
+        self.assertEqual(len(self.engine.sessions), before)
+
+    def test_no_session_file_sends_a_blank_name(self):
+        self.run_hook(event("Stop"))
+        self.assertEqual(self.engine.sessions[-1]["name"], "")
+
+    def test_listed_sends_no_name(self):
+        self.config(scope="listed", name="work laptop")
+        write_json_atomic(self.sessions_dir / "4343.json", {"sessionId": "abc-123", "name": "client x"})
+        self.run_hook(event("Stop"))
+        self.assertEqual(self.engine.sessions[-1]["name"], "")
 
     def test_each_event_maps_to_state(self):
         want = {"SessionStart": "working", "UserPromptSubmit": "working",
                 "Notification": "waiting", "Stop": "idle", "SessionEnd": "ended"}
         for name in want:
-            self.run_hook(event(name, prompt="hi"))
+            self.run_hook(event(name, prompt="hi", notification_type="permission_prompt"))
         self.assertEqual([s["state"] for s in self.engine.sessions], list(want.values()))
         s = self.engine.sessions[0]
         self.assertEqual((s["machine"], s["session_id"], s["project"]),

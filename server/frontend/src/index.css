@@ -379,6 +379,18 @@
     --rc-glow-2: #64748b;
     --rc-glow-3: #fb923c;
 }
+/* "shop": the made-up outdoor shop (Larkspur & Pine): birch paper, pine green, larkspur blue and
+   a sunlit glow. Contrast (2026-11-22, glow at 22%): ink 15:1, meta 6.1:1, accent 5.8:1. */
+.recruiter[data-page-theme="shop"] {
+    --rc-paper: #f2f4ec;
+    --rc-ink: #172019;
+    --rc-meta: #45503f;
+    --rc-rule: #d6dccb;
+    --rc-accent: #2b5a35;
+    --rc-glow-1: #6f86d8;
+    --rc-glow-2: #d6a43a;
+    --rc-glow-3: #7aa65a;
+}
 /* A garage: canvas paper, olive drab, amber work light and a rust glow. No marks of any maker. */
 .recruiter[data-page-theme="aw4"] {
     --rc-paper: #f3f3ec;
@@ -400,8 +412,8 @@
  * Square corners everywhere inside, components included. The radius tokens
  * cannot do this: they are declared `@theme inline`, so `rounded-card` compiles
  * to a literal length, and `rounded-full` is no token at all. This rule is
- * unlayered, so it wins over every Tailwind utility. The one exception is the
- * phone frame below, which depicts a phone.
+ * unlayered, so it wins over every Tailwind utility. The exceptions follow, the
+ * first being the phone section's video player.
  */
 .recruiter,
 .recruiter *,
@@ -410,11 +422,8 @@
     border-radius: 0;
 }
 
-.recruiter .rc-phone {
-    border-radius: 34px;
-}
-.recruiter .rc-phone .rc-pscreen {
-    border-radius: 25px;
+.recruiter .rc-player {
+    border-radius: 12px;
 }
 
 /* The flying orb is round to the pointer too: a tap on the orb you see is the orb's, and a tap
@@ -428,12 +437,6 @@
    suggestion cards can be better too"). Unlayered, as the rule it overrides is. */
 .recruiter .rc-chip {
     border-radius: 9999px;
-}
-.recruiter .rc-inline {
-    border-radius: 22px;
-}
-.recruiter .rc-inline .rc-pscreen {
-    border-radius: 16px;
 }
 
 /* Focus stays visible: an ink ring on paper, whatever a component's own
@@ -744,8 +747,7 @@
             transform: none !important;
             transition: none !important;
         }
-        .recruiter .rc-scene-stage,
-        .recruiter .rc-stage {
+        .recruiter .rc-scene-stage {
             position: static !important;
             height: auto !important;
         }
@@ -1026,6 +1028,80 @@
     }
     .recruiter .rc-demo-link a::after {
         content: "\00a0\2197";
+    }
+
+    /* The store-rep section (`components/demo/store-rep/store-rep-section.tsx`): the shop's mark,
+       one clear way to talk to the rep, the catalogue, the orders, the callback and the after-call
+       card, in the section's own colours. The mark's flower is larkspur blue (5.6:1 on its paper). */
+    .recruiter .rc-store {
+        display: flex;
+        flex-direction: column;
+        gap: calc(0.9 * var(--u));
+        max-width: var(--rc-measure);
+        margin-top: calc(1 * var(--u));
+    }
+    .recruiter .rc-shop-mark {
+        width: calc(4.5 * var(--u));
+        height: calc(4.5 * var(--u));
+    }
+    .recruiter .rc-shop-mark-pine {
+        fill: var(--rc-accent);
+    }
+    .recruiter .rc-shop-mark-larkspur {
+        fill: #4659b8;
+    }
+    .recruiter .rc-store-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: calc(0.6 * var(--u));
+    }
+    .recruiter .rc-store-controls .rc-store-hint {
+        flex-basis: 100%;
+    }
+    .recruiter .rc-prose .rc-store-hint,
+    .recruiter .rc-store-hint {
+        margin: 0;
+        font-size: calc(0.86 * var(--u));
+        color: var(--rc-meta);
+    }
+    .recruiter .rc-store-catalogue summary {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .recruiter .rc-store-catalogue ul,
+    .recruiter .rc-store-orders ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .recruiter .rc-store-catalogue li,
+    .recruiter .rc-store-orders li {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: calc(0.8 * var(--u));
+        padding: calc(0.35 * var(--u)) 0;
+        border-bottom: 1px solid var(--rc-rule);
+    }
+    .recruiter .rc-store-name {
+        display: block;
+    }
+    .recruiter .rc-store-price {
+        flex: none;
+        font-variant-numeric: tabular-nums;
+    }
+    .recruiter .rc-store-form {
+        display: flex;
+        flex-direction: column;
+        gap: calc(0.5 * var(--u));
+    }
+    .recruiter .rc-store-card {
+        padding-top: calc(0.6 * var(--u));
+        border-top: 3px solid var(--rc-accent);
     }
 
     /* Quality for voice agents: tiles of figures, the accent on each figure. */
@@ -1365,8 +1441,7 @@
         }
     }
 
-    /* The phone scene (900 px and up, motion allowed; `try-phone.tsx`): each row's Play
-       puts its clip in the one pinned player. */
+    /* The phone section (`try-phone.tsx`): each row's Play puts its clip in the one player. */
     .recruiter .rc-step-play {
         align-self: flex-start;
         min-height: 44px;
@@ -1600,49 +1675,27 @@
         }
     }
 
-    /* LEGION on the phone: the frame sticks while the capability texts scroll past. */
+    /* LEGION on the phone: one full-width 16:9 player, the capability texts under it. */
     .rc-scrolly {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 280px;
-        column-gap: calc(3.2 * var(--u));
-        align-items: start;
         margin-top: calc(1.2 * var(--u));
+    }
+    .rc-player-wrap {
+        margin: 0 0 calc(1.4 * var(--u));
+    }
+    .rc-player {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        background: #15130f;
     }
     .rc-step {
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        min-height: 60vh;
-        padding: var(--u) 0;
-    }
-    .rc-step:first-child {
-        min-height: 44vh;
-        justify-content: flex-start;
+        padding: 0 0 calc(1.4 * var(--u));
     }
     .rc-prose .rc-step p {
         margin: 0;
-        color: var(--rc-meta);
-        transition: color 0.35s;
-    }
-    .rc-prose .rc-step[data-active] p {
-        color: var(--rc-ink);
-    }
-    .rc-stage {
-        position: sticky;
-        top: calc(2.5 * var(--u));
-    }
-    .rc-phone {
-        width: 280px;
-        height: 580px;
-        padding: 10px;
-        border: 1px solid var(--rc-ink);
-        background: #ffffff;
-    }
-    .rc-pscreen {
-        position: relative;
-        height: 100%;
-        overflow: hidden;
-        background: #15130f;
     }
     .rc-clip {
         position: absolute;
@@ -1655,11 +1708,6 @@
         padding: calc(1.4 * var(--u));
         color: var(--rc-paper);
         text-align: center;
-        opacity: 0;
-        transition: opacity 0.45s;
-    }
-    .rc-clip[data-on] {
-        opacity: 1;
     }
     .rc-clip video {
         position: absolute;
@@ -1681,36 +1729,9 @@
         font-size: calc(0.82 * var(--u));
     }
     .rc-prose .rc-stage-caption {
-        max-width: 280px;
-        margin: calc(0.8 * var(--u)) 0 0;
+        margin: calc(0.6 * var(--u)) 0 0;
         font-size: calc(0.86 * var(--u));
         color: var(--rc-meta);
-        text-align: center;
-    }
-    .rc-inline {
-        width: 220px;
-        aspect-ratio: 9 / 16;
-        margin: calc(0.9 * var(--u)) 0 0;
-        padding: 7px;
-        border: 1px solid var(--rc-ink);
-        background: #ffffff;
-    }
-    .rc-inline .rc-clip {
-        position: static;
-        height: 100%;
-        opacity: 1;
-    }
-    /* Under 900px, or with reduced motion: no stage, each clip under its text. */
-    .rc-scrolly[data-mode="inline"] {
-        display: block;
-    }
-    .rc-scrolly[data-mode="inline"] .rc-step {
-        min-height: 0;
-        justify-content: flex-start;
-        padding: 0 0 calc(1.8 * var(--u));
-    }
-    .rc-prose .rc-scrolly[data-mode="inline"] .rc-step p {
-        color: var(--rc-ink);
     }
 
     /* Swipe hints: only where the row or frame actually scrolls, on a phone (below). */
@@ -1720,9 +1741,7 @@
 
     /*
      * Phone width (Kevin, 2026-11-04: "make the page look good for mobile").
-     * The header on two lines at most, a smaller headline, the facts stacked,
-     * and the phone clips as one swipeable row instead of eight frames stacked
-     * down a 10,000 px page.
+     * The header on two lines at most, a smaller headline, the facts stacked.
      */
     @media (max-width: 640px) {
         .rc-top {
@@ -1769,30 +1788,6 @@
             content: none;
         }
 
-        .rc-scrolly[data-mode="inline"] > div:first-child {
-            display: flex;
-            gap: var(--u);
-            margin: 0 calc(-1.25 * var(--u));
-            padding: 0 calc(1.25 * var(--u)) calc(0.4 * var(--u));
-            overflow-x: auto;
-            overscroll-behavior-x: contain;
-            scroll-snap-type: x mandatory;
-            scroll-padding: 0 calc(1.25 * var(--u));
-            scrollbar-width: none;
-        }
-        .rc-scrolly[data-mode="inline"] .rc-step {
-            flex: 0 0 82%;
-            padding: 0;
-            scroll-snap-align: start;
-        }
-        .rc-scrolly[data-mode="inline"] .rc-inline {
-            width: 170px;
-            margin-top: auto;
-            padding-top: 7px;
-        }
-        .rc-scrolly[data-mode="inline"] .rc-step > p {
-            margin-bottom: calc(0.9 * var(--u));
-        }
         .rc-prose .rc-swipe {
             display: block;
             margin: calc(0.5 * var(--u)) 0 0;
@@ -1878,6 +1873,20 @@
 .recruiter [data-slot="button"][data-variant="secondary"]:hover {
     background: var(--rc-accent);
     color: #ffffff;
+}
+/* The store rep's way in: the section's own accent (pine on the shop's paper, white text 8:1),
+   ink on hover. More specific than the ink button rule above, which it follows. */
+.recruiter .rc-store [data-slot="button"][data-variant="default"].rc-store-talk {
+    min-height: 48px;
+    padding: 0 calc(1.2 * var(--u));
+    font-size: calc(1.02 * var(--u));
+    font-weight: 600;
+    background: var(--rc-accent);
+    color: #ffffff;
+}
+.recruiter .rc-store [data-slot="button"][data-variant="default"].rc-store-talk:hover {
+    background: var(--rc-ink);
+    color: var(--rc-paper);
 }
 .recruiter [data-slot="button"][data-size="lg"] {
     padding: 0 calc(1.1 * var(--u));

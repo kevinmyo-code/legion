@@ -8,6 +8,10 @@ Run by SessionStart, UserPromptSubmit, Notification, Stop and SessionEnd hooks i
 - No config (`%APPDATA%\\legion-claude\\config.json`) means do nothing.
 - The prompt summary (first 120 chars) is sent only from a `full` scope machine (ruling 5).
 - The worker's own main session is skipped (it sets LEGION_CLAUDE_WORKER, see session.py).
+- The session's own name (`/rename`, `--name`) rides along from a `full` machine, read from
+  Claude Code's `~/.claude/sessions/<pid>.json` (an undocumented file: read for the name only,
+  never its pipe or key). Interactive sessions only have one; none found sends a blank name and
+  the engine keeps the name it has.
 
 Also `--install-settings PATH` / `--uninstall-settings PATH`, used by install.ps1 / uninstall.ps1
 to merge these hooks into a settings file without touching anyone else's hooks.
@@ -48,6 +52,7 @@ from engine_client import EngineClient  # noqa: E402
 WORKER_MARKER = "LEGION_CLAUDE_WORKER"
 TIMEOUT_S = 2.0
 SUMMARY_CHARS = 120
+NAME_CHARS = 80
 STATES = {
     "SessionStart": "working",
     "UserPromptSubmit": "working",
@@ -58,8 +63,45 @@ STATES = {
 OURS = "session_hook.py"
 
 
-def build_payload(event: dict, cfg: dict) -> dict | None:
+def session_name(session_id: str, sessions_dir: Path | None = None) -> str:
+    """The name Claude Code shows for `session_id`, or "" (no file, unreadable, unnamed)."""
+    folder = sessions_dir or Path.home() / ".claude" / "sessions"
+    try:
+        for f in folder.glob("*.json"):
+            data = read_json(f, None)
+            if isinstance(data, dict) and data.get("sessionId") == session_id:
+                name = data.get("name")
+                return " ".join(str(name).split())[:NAME_CHARS] if name else ""
+    except OSError:
+        pass
+    return ""
+
+
+# Orchestrator ruling 2026-11-22 (review finding 8): "waiting" means a permission prompt or a
+# question to Kevin, never the idle prompt Claude Code also raises a minute after each turn.
+WAITING_TYPES = {"permission_prompt", "elicitation_dialog"}
+NOT_WAITING_TYPES = {"idle_prompt": "idle", "auth_success": None}
+
+
+def notification_state(event: dict) -> str | None:
+    """`waiting`, `idle`, or None (report nothing) for a Notification hook event. By its
+    `notification_type`; an event without one is judged by its message ("needs your permission"
+    or a question is waiting; "waiting for your input" is idle)."""
+    kind = str(event.get("notification_type") or "")
+    if kind in WAITING_TYPES:
+        return "waiting"
+    if kind in NOT_WAITING_TYPES:
+        return NOT_WAITING_TYPES[kind]
+    message = str(event.get("message") or "").lower()
+    if "permission" in message or "approval" in message or "question" in message:
+        return "waiting"
+    return "idle"
+
+
+def build_payload(event: dict, cfg: dict, sessions_dir: Path | None = None) -> dict | None:
     state = STATES.get(event.get("hook_event_name") or "")
+    if event.get("hook_event_name") == "Notification":
+        state = notification_state(event)
     sid = event.get("session_id")
     if not state or not sid or not cfg.get("name"):
         return None
@@ -68,17 +110,20 @@ def build_payload(event: dict, cfg: dict) -> dict | None:
     if cfg.get("scope") == "full" and isinstance(prompt, str) and prompt.strip():
         summary = " ".join(prompt.split())[:SUMMARY_CHARS]
     cwd = event.get("cwd") or ""
+    name = session_name(str(sid), sessions_dir) if cfg.get("scope") == "full" else ""
     return {
         "machine": cfg["name"],
         "session_id": str(sid),
         "project": os.path.basename(os.path.normpath(cwd)) if cwd else "",
         "state": state,
         "last_prompt_summary": summary,
+        "name": name,
         "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 
-def report(stdin_text: str, env=None, paths: Paths | None = None) -> dict | None:
+def report(stdin_text: str, env=None, paths: Paths | None = None,
+           sessions_dir: Path | None = None) -> dict | None:
     """Returns the payload it sent (or tried to), None when it did nothing. Never raises."""
     try:
         env = os.environ if env is None else env
@@ -90,7 +135,7 @@ def report(stdin_text: str, env=None, paths: Paths | None = None) -> dict | None
         cfg = load_config(paths)
         if not cfg.get("engine_url") or not cfg.get("token"):
             return None
-        payload = build_payload(json.loads(stdin_text or "{}"), cfg)
+        payload = build_payload(json.loads(stdin_text or "{}"), cfg, sessions_dir)
         if payload is None:
             return None
         try:

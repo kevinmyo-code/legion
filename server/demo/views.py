@@ -11,7 +11,10 @@ What a successful entry leaves behind:
   named "Demo visit <id>", flagged `is_demo_visit`, seeded with the demo data
   by `household.demo_seed.seed_household` through the same gate and
   serializers the shared demo household uses. Nobody else is a member of it,
-  so what the visitor adds, changes or deletes reaches no one else;
+  so what the visitor adds, changes or deletes reaches no one else. Since
+  demo-enter-slow (2026-11-22) it is usually a spare seeded ahead of time for
+  today and claimed here (`demo.spares`), the same household a seed now would
+  make; with none ready it is seeded inline, as before;
 - a throwaway `User` (unusable password, `visitor-<hex>@demo.invalid`), a
   `recruiter` member of that household and of nothing else;
 - a `read`-scoped `DeviceToken` that expires in two hours, returned once;
@@ -21,8 +24,9 @@ What a successful entry leaves behind:
   and only inside the visit's own household (`write_refusal`);
 - a `DemoVisit` row carrying the `ref` and the household.
 
-All of it in one transaction: a seed that fails leaves nothing behind, so
-"Nothing was created" stays true. The shared "Demo" household
+All of it in one transaction: a seed that fails leaves nothing behind, and a
+claim that fails puts the spare back, so "Nothing was created" stays true. The
+request never refills the pool; the hourly `prune_demo_visitors` does. The shared "Demo" household
 (`household.demo`) is no longer joined by anyone; `seed_demo_household`
 keeps building it for previews and tests.
 """
@@ -44,9 +48,8 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from demo.briefing import seed_visit_procedures
+from demo import spares
 from demo.models import DemoCode, DemoFunnelDay, DemoVisit
-from household.demo_seed import DEMO_TIMEZONE, seed_household
 from household.models import DeviceToken, Household, HouseholdMember, User
 from household.permissions import DEMO_TOKEN_SESSION_KEY
 from legion.client_ip import ClientIpThrottleMixin
@@ -152,7 +155,7 @@ class DemoEnterView(APIView):
         expires_at = timezone.now() + VISIT_LENGTH
         try:
             with transaction.atomic():
-                household = _make_visit_household()
+                household = spares.claim() or spares.make_visit_household()
                 user, token, raw_key = _make_visitor(household, ref, expires_at)
                 DemoVisit.objects.create(
                     user=user,
@@ -178,19 +181,6 @@ class DemoEnterView(APIView):
 
 def _refuse(message: str, code: int) -> Response:
     return Response({"detail": message}, status=code)
-
-
-def _make_visit_household() -> Household:
-    """The visit's own household, flagged and seeded. The flag is set here and
-    nowhere else in the engine (ADR 0069)."""
-    tag = uuid.uuid4().hex[:8]
-    household = Household.objects.create(
-        name=f"Demo visit {tag}", timezone=DEMO_TIMEZONE, is_demo_visit=True
-    )
-    seed_household(household, created=True)
-    # The visit's own morning briefing, built only from the visit's tools (`demo/briefing.py`).
-    seed_visit_procedures(household)
-    return household
 
 
 def _make_visitor(household: Household, ref: str, expires_at):

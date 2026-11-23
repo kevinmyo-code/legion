@@ -28,7 +28,8 @@ import { usePresenter } from '@/components/assistant/cards/presenter-context'
 import { RESUME_ALT } from '@/components/assistant/cards/resume'
 import { AssistantDock } from '@/components/assistant/workbench-assistant'
 import { AccessCodeForm } from '@/components/demo/access-code-form'
-import { StoreRepPanel } from '@/components/demo/store-rep/store-rep-panel'
+import { EnterWait } from '@/components/demo/enter-wait'
+import { StoreRepSection } from '@/components/demo/store-rep/store-rep-section'
 import { useSurface } from '@/lib/surface'
 import { postFunnel } from '@/assistant/deps'
 import { VoiceStage } from '@/components/demo/voice-stage'
@@ -246,7 +247,14 @@ export function TryScreen({ code, refTag }: { code?: string; refTag?: string }) 
     // code (entered on load), a reload of a visit, or a code typed in the box. One branch, so
     // entering never remounts the stage.
     return (
-      <VoiceFirstVisit refTag={refTag} entered={recruiter} ended={visitEnded} expiresAt={expiresAt} enter={enterLink} />
+      <VoiceFirstVisit
+        refTag={refTag}
+        entered={recruiter}
+        entering={entering}
+        ended={visitEnded}
+        expiresAt={expiresAt}
+        enter={enterLink}
+      />
     )
   }
 
@@ -380,12 +388,15 @@ function expiryWords(iso: string | undefined): string | null {
 function VoiceFirstVisit({
   refTag,
   entered,
+  entering,
   ended,
   expiresAt,
   enter,
 }: {
   refTag?: string
   entered: boolean
+  /** The entry request is in flight (the wait's clock starts with it, not with the page). */
+  entering: boolean
   /** A link's visit ran out: the next tap enters again. */
   ended: boolean
   expiresAt?: string
@@ -416,8 +427,7 @@ function VoiceFirstVisit({
       sessionLimit={VISITOR_SESSION_ENDED}
       copy={VISITOR_COPY}
     >
-      <VisitorBody entered={entered} ended={ended} expiresAt={expiresAt} />
-      {entered && <StoreRepPanel />}
+      <VisitorBody entered={entered} entering={entering} ended={ended} expiresAt={expiresAt} />
     </AssistantProvider>
   )
 }
@@ -427,7 +437,17 @@ function VoiceFirstVisit({
  * stage, with the page under it. One tree for both, so entering never mounts the stage again (the
  * browser run, 2026-11-19: a remount restarted the orb and the page modal's provider with it).
  */
-function VisitorBody({ entered, ended, expiresAt }: { entered: boolean; ended: boolean; expiresAt?: string }) {
+function VisitorBody({
+  entered,
+  entering,
+  ended,
+  expiresAt,
+}: {
+  entered: boolean
+  entering: boolean
+  ended: boolean
+  expiresAt?: string
+}) {
   const content = useDemoContent(entered)
   // The visit this conversation entered is over: the next tap enters again (`forgetEntry`).
   const { client } = useAssistant()
@@ -445,9 +465,17 @@ function VisitorBody({ entered, ended, expiresAt }: { entered: boolean; ended: b
         ) : (
           access
         )
+      ) : ended ? (
+        <p role="status" className="rc-status">
+          Your demo visit has ended. Tap the orb to start a new one.
+        </p>
+      ) : entering ? (
+        // Mounted with the request, so its clock is the request's: a link opened in a background
+        // tab enters only once looked at, and must not show a nearly full bar before it has begun.
+        <EnterWait className="rc-status" />
       ) : (
         <p role="status" className="rc-status">
-          {ended ? 'Your demo visit has ended. Tap the orb to start a new one.' : 'Opening the demo…'}
+          Opening the demo…
         </p>
       )}
     </Shell>
@@ -718,7 +746,7 @@ function Section({
   /** Its palette (`index.css` `[data-page-theme]`); none is LEGION's. */
   theme?: SectionTheme
   /** The mark the orb takes on beside it. */
-  mark?: 'q'
+  mark?: 'q' | 'larkspur'
   children: ReactNode
 }) {
   return (
@@ -832,6 +860,9 @@ function ProjectSection({ section, side }: { section: DemoProjectSection; side?:
           </a>
         </p>
       )}
+      {/* A live demo this page draws itself (Kevin, 2026-11-22: the store rep as its own section),
+          right under the pitch so its control is the first thing to tap. */}
+      {section.widget === 'store_rep' && <StoreRepSection />}
       {section.diagram_svg && <Diagram svg={section.diagram_svg} caption={section.diagram_caption ?? ''} />}
       {section.parts.length > 0 && (
         <div className="rc-runin">

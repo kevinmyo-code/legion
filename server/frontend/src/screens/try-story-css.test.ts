@@ -129,7 +129,7 @@ describe('the side orb', () => {
 describe('the moods', () => {
   test('every section mood names the same tokens, so each is tuned in one place', () => {
     const tokens = ['--rc-paper', '--rc-ink', '--rc-meta', '--rc-rule', '--rc-accent', '--rc-glow-1', '--rc-glow-2', '--rc-glow-3']
-    for (const mood of ['ledger', 'midcon', 'aw4']) {
+    for (const mood of ['ledger', 'midcon', 'aw4', 'shop']) {
       const rule = all.find((r) => r.selector.trim() === `.recruiter[data-page-theme="${mood}"]`)
       expect(rule, mood).toBeDefined()
       for (const token of tokens) expect(rule!.body, `${mood} ${token}`).toContain(`${token}:`)
@@ -140,6 +140,15 @@ describe('the moods', () => {
     const still = all.filter((r) => r.within.includes('prefers-reduced-motion: reduce'))
     expect(still.some((r) => r.selector.includes('.rc-ambient') && /animation\s*:\s*none/.test(r.body))).toBe(true)
     expect(still.some((r) => r.selector.includes('[data-page-theme]') && /transition-duration\s*:\s*200ms/.test(r.body))).toBe(true)
+  })
+})
+
+describe('the store rep', () => {
+  test("its talk button wears the section's accent: unlayered, after and above the ink button rule", () => {
+    const talk = all.filter((r) => r.selector.includes('.rc-store-talk') && !r.within.includes('@layer'))
+    expect(talk.some((r) => !r.selector.includes(':hover') && /background\s*:\s*var\(--rc-accent\)/.test(r.body))).toBe(true)
+    const ink = indexCss.indexOf('.recruiter [data-slot="button"][data-variant="default"],')
+    expect(indexCss.indexOf('.rc-store-talk {')).toBeGreaterThan(ink)
   })
 })
 

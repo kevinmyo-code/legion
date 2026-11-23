@@ -191,6 +191,7 @@ class ClaudeSessionReportSerializer(serializers.Serializer):
         required=False, allow_null=True, allow_blank=True, default=None,
     )
     at = serializers.DateTimeField(required=False, allow_null=True, default=None)
+    name = serializers.CharField(required=False, allow_blank=True, default="", max_length=200)
 
 
 # --- responses ----------------------------------------------------------------
@@ -376,10 +377,15 @@ class ClaudeStatusMachineSerializer(serializers.Serializer):
 
 class ClaudeStatusSessionSerializer(serializers.Serializer):
     machine = serializers.CharField()
+    session_id = serializers.CharField()
+    name = serializers.CharField(help_text="The session's own name; blank when unknown.")
     project = serializers.CharField()
     state = serializers.CharField()
     last_prompt_summary = serializers.CharField(allow_null=True)
     last_seen_at = serializers.DateTimeField()
+    waiting_since = serializers.DateTimeField(
+        allow_null=True, help_text="Start of the current wait on Kevin; null unless waiting."
+    )
 
 
 class ClaudeStatusSerializer(serializers.Serializer):
