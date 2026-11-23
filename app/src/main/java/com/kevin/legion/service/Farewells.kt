@@ -24,6 +24,7 @@ object Farewells {
     val LEADS: List<String> = listOf(
         "ok", "okay", "alright", "all right", "well", "oh", "so", "hey", "um", "uh", "yeah", "yes", "right",
         "great", "cool", "perfect", "awesome", "lovely", "sounds good", "got it", "okay then", "ok then",
+        "please",
     )
 
     val THANKS: List<String> = listOf(
@@ -37,7 +38,7 @@ object Farewells {
      */
     val SPOKEN: List<String> = listOf("Goodbye.", "Bye for now.", "Talk soon.")
 
-    val TAILS: List<String> = listOf("for now", "then", "now", "again", "mate", "buddy")
+    val TAILS: List<String> = listOf("for now", "then", "now", "again", "mate", "buddy", "please")
 
     /**
      * Words that answer a question (review of 546cce67, F1): the yes/no family, the lead-ins, and times.
@@ -45,7 +46,7 @@ object Farewells {
      * farewell: "yes, bye" goes down the answer path so the confirmed action runs.
      */
     val ANSWER_WORDS: List<String> = LEADS + listOf(
-        "yep", "yup", "no", "nope", "nah", "sure", "go ahead", "do it", "please", "fine", "correct",
+        "yep", "yup", "no", "nope", "nah", "sure", "go ahead", "do it", "fine", "correct",
         "exactly", "tomorrow", "today", "tonight", "morning", "afternoon", "evening", "am", "pm", "o clock",
     )
 
@@ -79,12 +80,18 @@ object Farewells {
      */
     fun isFarewell(transcript: String, companionName: String = "", afterQuestion: Boolean = false): Boolean {
         if (afterQuestion && normalise(transcript) in AMBIGUOUS_ALONE) return false
-        val w = core(normalise(transcript).split(' ').filter { it.isNotEmpty() }, companionName)
+        val w = withoutCourtesy(normalise(transcript).split(' ').filter { it.isNotEmpty() }, companionName)
         return w.isNotEmpty() && madeOfFarewells(w)
     }
 
-    /** [words] without the name at either end, the lead-ins and thanks before, and thanks and tails after. */
-    private fun core(words: List<String>, companionName: String): List<String> {
+    /**
+     * [words] without the name at either end, the lead-ins and thanks before, and thanks and tails after.
+     * The one courtesy rule: [WakePhrases.isSleepPhrase] strips a dismissal ("that'll be all") with it too,
+     * so "okay, that'll be all, thanks Alfred" and "bye bye for now" are the same shape of turn (Kevin,
+     * 2026-11-23: a goodbye with filler around it sometimes did not close the conversation). Never the whole
+     * turn: a courtesy word alone ("thanks") stays a turn of its own.
+     */
+    fun withoutCourtesy(words: List<String>, companionName: String): List<String> {
         val name = normalise(companionName).split(' ').filter { it.isNotEmpty() }
         var w = words
         while (true) {

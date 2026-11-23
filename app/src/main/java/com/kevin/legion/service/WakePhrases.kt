@@ -80,10 +80,12 @@ object WakePhrases {
      * mid-utterance - a per-delta check would match the moment the buffer happened to end on
      * "...that will be all" and then never un-match, since arming is sticky by design.
      *
-     * A trailing "please", "thanks" or "for now" therefore does NOT match. That is the wrong side
-     * to err on for a hard-stop backstop, but the right one for a backstop that sits behind a
-     * model already told to recognise all of those (`end_conversation`'s description): a missed
-     * backstop costs one more turn, a false one hangs up on someone mid-sentence.
+     * A trailing "please", "thanks" or "for now" IS set aside (Kevin, 2026-11-23: "that'll be all"
+     * and "bye bye" sometimes did not close the conversation). It used to be left to the model, on
+     * the reasoning that a missed backstop costs one more turn while a false one hangs up on someone
+     * mid-sentence. The field answered that: the model is the unreliable half, and the courtesy is
+     * only ever set aside at the ENDS of the turn, so the anchoring above is untouched and a request
+     * wrapped in courtesy ("that's all the milk we need") still matches nothing.
      *
      * [afterQuestion]: the last line he heard asked him something, so "that's it" or "never mind"
      * may be his answer; only a [HARD_STOPS] phrase ends the conversation in code, the rest go to the
@@ -119,43 +121,29 @@ object WakePhrases {
     val HARD_STOPS: Set<String> = setOf("stop", "goodbye", "good bye", "bye", "bye bye", "go away", "stand down")
 
     /**
-     * What may come before a stop and is set aside. Thanks too (2026-11-22, closing by voice was
-     * unreliable): "Thanks, Alfred, that's all" kept its thanks, so it matched no phrase and the
-     * close rested on the model calling end_conversation.
-     */
-    private val LEAD_INS: List<List<String>> =
-        listOf("thank you", "thanks", "cheers", "hey", "ok", "okay").map { it.split(' ') }
-
-    /**
-     * [t] (normalised) is a stop phrase once the companion's [name] (normalised, at either end) and
-     * leading hey/ok/okay/thanks are set aside: "Goodbye, Alfred", "Alfred, stop", "ok bye",
-     * "Thanks, Alfred, that's all". A lead-in is never the whole turn: "thanks" alone stays a turn.
+     * [t] (normalised) is a stop phrase once the courtesy around it is set aside
+     * ([Farewells.withoutCourtesy]: the companion's [name] at either end, lead-ins and thanks before,
+     * thanks and tails after): "Goodbye, Alfred", "Alfred, stop", "ok bye", "Thanks, Alfred, that's all",
+     * "okay, that'll be all, thanks Alfred", "that's all for now".
+     *
+     * **A trailing courtesy used to miss**, and said so in words in [isSleepPhrase]'s comment and its
+     * test: only leading words were set aside, so "that'll be all, thanks" matched no phrase and the
+     * close rested on the model calling `end_conversation`. Kevin, 2026-11-23: a goodbye with filler
+     * around it must close. What makes it safe is unchanged: courtesy is only ever set aside at the
+     * ends, and what is left must BE a phrase, so "that's all the milk we need" and "text mom bye bye"
+     * still match nothing.
      */
     private fun isStopPhrase(t: String, name: String, phrases: Set<String>): Boolean {
         if (t in phrases) return true
-        var words = t.split(' ')
-        val nameWords = name.split(' ').filter { it.isNotEmpty() }
-        fun dropName() {
-            if (nameWords.isEmpty()) return
-            if (words.take(nameWords.size) == nameWords) words = words.drop(nameWords.size)
-            if (words.takeLast(nameWords.size) == nameWords) words = words.dropLast(nameWords.size)
-        }
-        dropName()
-        while (words.joinToString(" ") !in phrases) {
-            val lead = LEAD_INS.firstOrNull { it.size < words.size && words.take(it.size) == it } ?: break
-            words = words.drop(lead.size)
-            dropName()
-        }
+        val words = Farewells.withoutCourtesy(t.split(' ').filter { it.isNotEmpty() }, name)
         return words.joinToString(" ") in phrases
     }
 
     /**
-     * Lowercase, every non-letter/digit run collapsed to a single space, trimmed. Punctuation is
-     * flattened rather than deleted so "that will be all." and "that'll be all" both reduce to
-     * something [isSleepPhrase]'s two literals can match, and so a transcript's stray commas
-     * cannot break an otherwise exact phrase.
+     * Lowercase, every non-letter/digit run collapsed to a single space, trimmed: [Farewells.normalise],
+     * the one copy. Punctuation is flattened rather than deleted so "that will be all." and
+     * "that'll be all" both reduce to something [isSleepPhrase]'s two literals can match, and so a
+     * transcript's stray commas cannot break an otherwise exact phrase.
      */
-    private fun normalise(text: String): String =
-        text.lowercase().map { if (it.isLetterOrDigit()) it else ' ' }
-            .joinToString("").trim().replace(Regex("\\s+"), " ")
+    private fun normalise(text: String): String = Farewells.normalise(text)
 }

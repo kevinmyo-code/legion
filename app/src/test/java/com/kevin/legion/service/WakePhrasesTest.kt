@@ -69,15 +69,47 @@ class WakePhrasesTest {
     }
 
     /**
-     * Documented, deliberate misses. A trailing politeness does NOT match the deterministic
-     * backstop - the model's own `end_conversation` tool is told to treat these as dismissals, and
-     * erring toward one extra turn beats erring toward hanging up mid-sentence. If this behaviour
-     * is ever changed, it is a decision, not a bug fix, and this test should change with it.
+     * REVERSED 2026-11-23 (Kevin: "that'll be all" and "bye bye" sometimes did not close the
+     * conversation). These two were documented, deliberate misses, left to the model's own
+     * `end_conversation` tool on the reasoning that a missed backstop costs one turn while a false
+     * one hangs up mid-sentence. The model turned out to be the unreliable half, so the backstop
+     * takes them now. The old test said a change here is a decision, not a bug fix: this is it,
+     * written down where that one was.
      */
     @Test
-    fun `a trailing politeness is left to the model`() {
-        assertFalse(WakePhrases.isSleepPhrase("that will be all, thanks"))
-        assertFalse(WakePhrases.isSleepPhrase("that will be all for now"))
+    fun `a trailing politeness matches, reversing the 2026-11-20 deliberate miss`() {
+        assertTrue(WakePhrases.isSleepPhrase("that will be all, thanks"))
+        assertTrue(WakePhrases.isSleepPhrase("that will be all for now"))
+    }
+
+    /**
+     * Kevin, 2026-11-23: a goodbye with filler around it must close the conversation. Courtesy at
+     * either END is set aside ([Farewells.withoutCourtesy]); a request that merely contains a
+     * farewell, or a request wrapped in the same courtesy, is still a request. Both tables are data:
+     * a new courtesy word is a row here, never a new branch. Invented utterances only.
+     */
+    @Test
+    fun `courtesy around a stop is set aside, courtesy around a request changes nothing`() {
+        for (s in COURTESY_CLOSES) assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        for (s in COURTESY_REQUESTS) assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+    }
+
+    companion object {
+        /** Closes: a farewell or a dismissal with lead-ins, thanks, the name or a tail around it. */
+        val COURTESY_CLOSES = listOf(
+            "okay, that'll be all, thanks Alfred", "that's all for now", "that will be all, thanks",
+            "that will be all for now", "alright, bye bye", "okay that's all, thanks", "bye bye, please",
+            "Thanks Alfred, that'll be all then", "that's it for now", "alright, that'll be all",
+            "goodbye for now, please", "Okay. Bye bye, Alfred. Thanks.", "that's all, thanks Alfred",
+        )
+
+        /** Never closes: a real request, including one wearing the same courtesy. */
+        val COURTESY_REQUESTS = listOf(
+            "text mom bye bye", "say good night to the kids", "thanks, that's all the milk we need",
+            "okay, add eggs for now", "please stop the music", "thanks, remind me to say goodbye then",
+            "alright, what's the plan for now", "okay, play bye bye birdie please", "that's all I need, thanks",
+            "stop the timer please", "goodbye for now is the title of the song", "thanks", "please", "for now",
+        )
     }
 
     @Test
