@@ -277,13 +277,17 @@ def test_an_over_long_message_is_refused_and_never_echoed(token_a):
 def test_a_two_thousand_character_non_ascii_message_fits(token_a):
     """The cap is the worker's own 2 000 CHARACTERS measured in bytes.
 
-    2 000 non-ASCII characters are up to 8 KB of UTF-8. A smaller cap here
-    would refuse the whole finish and hang the task to the 30 minute cap.
+    The character is deliberately one that costs FOUR bytes in UTF-8, which
+    is the worst case and so the only one that pins the cap: 2 000 of them
+    are 8 000 bytes. An earlier draft used a two-byte character, which fits
+    in 4 KB and so would have passed with the cap set too low, refusing the
+    whole finish on a real message and hanging the task to the 30 minute cap.
     """
     _beat(token_a)
     card = _create(token_a, "message card", session_id=SESSION)
     _claim(token_a)
-    long_message = "é" * 2000
+    long_message = "\U00024b62" * 2000
+    assert len(long_message.encode("utf-8")) == 8000
 
     response = _finish(token_a, card, status="needs_confirmation", question="Send it?",
                        session_text=long_message)
