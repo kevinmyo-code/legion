@@ -1219,15 +1219,13 @@ object LiveToolbox {
             // rememberBlockedByReadThroughTool's doc for why this checks a pre-reduced boolean
             // rather than re-testing tool names here.
             // Retired by memory-and-vault ticket 09 (the `memory` tool, MemoryToolbox) - named here,
-            // never left to the generic "Unknown tool" branch, so a model that still calls either by
-            // name is told in words what replaced it and that nothing happened.
+            // never left to the generic "Unknown tool" branch, so a model that still calls it by
+            // name is told in words what replaced it and that nothing happened. Its read twin,
+            // recall_memory, kept the same shim until Kevin ruled it deleted (shrink pass,
+            // 2026-11-22): declared nowhere, it gets the plain unknown-tool answer.
             "remember" -> result(
                 success = false,
                 message = "Nothing was saved: remember is now the memory tool with action=remember.",
-            )
-            "recall_memory" -> result(
-                success = false,
-                message = "Nothing was read: recall_memory is now the memory tool with action=recall.",
             )
             // Absorbed the retired add_car_task/complete_car_task/remove_car_task/list_car_tasks
             // (ticket 10) - car items are now just items on the list named "Car".

@@ -257,6 +257,24 @@ class LiveToolboxDeclarationSetTest {
         )
     }
 
+    /**
+     * `recall_memory` was retired into the `memory` tool (memory-and-vault ticket 09) and kept a
+     * named shim until Kevin ruled it deleted (shrink pass, 2026-11-22).
+     * It is declared nowhere, no branch routes it, and a stale call gets exactly what any unknown
+     * name gets.
+     */
+    @Test
+    fun `recall_memory is neither declared nor routed`() = kotlinx.coroutines.runBlocking {
+        assertFalse("recall_memory must not be declared", "recall_memory" in names(LiveToolbox.sourceDeclarations()))
+        val stale = LiveToolbox.dispatch(context, "recall_memory", org.json.JSONObject())!!
+        val unknown = LiveToolbox.dispatch(context, "no_such_tool_xyz", org.json.JSONObject())!!
+        assertFalse(stale.getBoolean("success"))
+        assertEquals(
+            unknown.getString("message").replace("no_such_tool_xyz", "recall_memory"),
+            stale.getString("message"),
+        )
+    }
+
     /** ask_mail's whole point is that mail never reaches the live socket by its real name again. */
     @Test
     fun `EPISODIC_EXCLUDED_TOOLS carries ask_mail alongside the original two names`() {
