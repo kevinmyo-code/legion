@@ -35,6 +35,18 @@ makes win. A category one of his rules already wrote, or one a document
 stated, is left exactly as it is: the first is the same decision twice, the
 second is the source's own word about a gated row.
 
+**Where the phone does not follow this, stated because it is money-visible.**
+`mirroredCategoryFill` (`app/.../backend/LedgerTransactionsMirror.kt`) takes a
+server `rule` category only to FILL a phone row that holds none; only a
+`person` category replaces a category the phone already shows. So on a row
+the feed categorised, the phone keeps Plaid's bucket while the engine and the
+web show the rule's, and the two surfaces' per-category figures disagree for
+the same month. Their TOTALS disagree too when the rule names a category
+flagged `excluded_from_spend`: the engine drops that row from spend and the
+phone's own budget still counts it. Read from the two readers, not run on a
+device. Closing it is the phone's own slice; the engine command is the whole
+behaviour until then.
+
 **This module holds three things, deliberately together:** the DDL (run by
 `ingest/migrations/0007_ledger_transaction_categories.py` and, on the pytest
 database, by `tests/conftest.py` - the same function both times, the

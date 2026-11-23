@@ -160,7 +160,5 @@ def household_categories(household) -> HouseholdCategories:
         "name", "excluded_from_spend"
     )
     excluded = frozenset(name for name, flagged in rows if flagged)
-    # A duplicate name with the flag set on one row only fails closed: it is in
-    # `excluded`, and `writable` leaves it out.
     writable = frozenset(name for name, _flagged in rows) - excluded
     return HouseholdCategories(writable, excluded)
