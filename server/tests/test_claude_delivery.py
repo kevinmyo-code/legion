@@ -127,18 +127,73 @@ def test_a_pdf_asked_for_with_no_delivery_goes_to_the_phone_on_a_full_machine_on
     assert _deliver(plain["id"]) is None
 
 
-def test_a_page_asked_for_as_a_pdf_becomes_the_pdf_file(token_a):
-    """Task 32 (2026-11-22): the phone sent page=true for a plan "as a PDF"; a page is HTML, so
-    the helper made HTML and no PDF reached the phone. A made-file request wins over a page."""
+@pytest.mark.parametrize("words", [
+    "Write a page on how to convert a Word doc into a PDF",
+    "Make a page explaining how to export my notes to Excel",
+    "Make me a page comparing tools that turn scans into a PDF",
+    "create a page, I will print it as a PDF later",
+    "Build a guide page on how to print a spreadsheet as a PDF",
+    "Write a page about the best way to put receipts into a spreadsheet",
+    "a researched write-up on garden walks",
+])
+def test_a_page_about_a_file_format_stays_a_page(token_a, words):
+    """RED review 2026-11-22: the format word is the topic, not the deliverable."""
     _beat(token_a)
-    made = _create(token_a, "Make a one-page weekend plan for Springfield as a PDF",
-                   deliver="phone")
-    assert _deliver(made["id"]) == "files"
-    page = _create(token_a, "a researched write-up on garden walks", deliver="phone")
-    assert _deliver(page["id"]) == "phone"
+    assert _deliver(_create(token_a, words, deliver="phone")["id"]) == "phone"
+
+
+@pytest.mark.parametrize("words", [
+    "make a one-page weekend plan for Austin as a PDF",
+    "write up the itinerary and make it a PDF",
+    "send me a PDF of the reading list",
+    "a PDF version of the packing list",
+])
+def test_a_page_asked_for_as_a_pdf_becomes_the_pdf_file(token_a, words):
+    """Task 32 (2026-11-22): the phone sent page=true for a plan "as a PDF"; a page is HTML, so
+    the helper made HTML and no PDF reached the phone."""
+    _beat(token_a)
+    assert _deliver(_create(token_a, words, deliver="phone")["id"]) == "files"
+
+
+def test_a_pdf_page_on_the_work_laptop_is_refused_not_flipped(token_a):
     _beat(token_a, "work laptop", scope="listed")
-    listed = _create(token_a, "make the build notes as a PDF", machine="work laptop")
-    assert _deliver(listed["id"]) is None
+    body = {"request": "make the notes as a PDF", "machine": "work laptop", "parent": None,
+            "origin": "named", "deliver": "phone"}
+    r = token_a.post(f"{API}tasks/", body, format="json")
+    assert r.status_code == 400
+
+
+def test_a_made_file_task_sends_only_what_it_made_in_its_own_folder(token_a):
+    """Made means made: a file the helper found elsewhere (his own scan) is never sent."""
+    _beat(token_a)
+    made = _create(token_a, "make a one-page weekend plan for Austin as a PDF", deliver="phone")
+    token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    finished = token_a.post(
+        f"{API}tasks/{made['id']}/finish/",
+        {"status": "done", "summary": "Your plan is ready.",
+         "found": [{"path": f"C:/w/work/task-{made['id']}/austin.pdf", "name": "austin.pdf",
+                    "size": 9000},
+                   {"path": "C:/Users/k/Documents/scan.pdf", "name": "scan.pdf", "size": 900},
+                   {"path": f"C:/w/work/task-{made['id']}0/other.pdf", "name": "other.pdf",
+                    "size": 900}]},
+        format="json",
+    )
+    assert finished.status_code == 200
+    assert {f["name"]: f["requested"] for f in finished.data["files"]} == {
+        "austin.pdf": True, "scan.pdf": False, "other.pdf": False}
+
+
+def test_a_plain_files_task_still_sends_what_it_found(token_a):
+    _beat(token_a)
+    t = _create(token_a, "send me the form scan from my Documents", deliver="files")
+    token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    finished = token_a.post(
+        f"{API}tasks/{t['id']}/finish/",
+        {"status": "done", "summary": "Found it.",
+         "found": [{"path": "C:/Users/k/Documents/scan.pdf", "name": "scan.pdf", "size": 900}]},
+        format="json",
+    )
+    assert [f["requested"] for f in finished.data["files"]] == [True]
 
 
 def test_settled_when_the_machine_is_picked_later(token_a):

@@ -1207,13 +1207,17 @@ class FinishView(APIView):
                         f"Files were not requested: over {FILES_MAX_COUNT} files or "
                         f"{FILES_MAX_TOTAL_BYTES // (1024 * 1024)} MB needs Kevin's yes first."
                     )
+                # A result asked for as a file sends only what the task made in its own folder
+                # (RED review 2026-11-22), never a file it "found by name" elsewhere.
+                made = wants_files and delivery.made_only(task.id, task.request)
                 ClaudeTaskFile.objects.bulk_create(
                     ClaudeTaskFile(
                         household=household, task=task, path=f["path"], name=f["name"],
                         size=f["size"],
                         requested_at=(
                             now
-                            if wants_files
+                            if (wants_files and (not made or delivery.in_task_folder(
+                                task.id, f["path"])))
                             or (wants_page and f["name"].lower().endswith(PAGE_SUFFIXES))
                             else None
                         ),

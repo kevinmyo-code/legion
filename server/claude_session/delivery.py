@@ -10,11 +10,16 @@ the machine is fixed (create with a machine, assign, claim), never on a workflow
   `listed` one (it returns summaries only, ruling 5). Unknown (`can_mail` null, a worker from
   before the field) keeps the mail as asked.
 - **Asking for something MADE as a file is asking for the file.** A making verb with "as a PDF"
-  or "into a spreadsheet", or "make me a PDF of ...", with no delivery of its own or a page
-  (`phone`, which is HTML) becomes `files`
+  or "into a spreadsheet", or "make me a PDF of ...", with no delivery of its own becomes `files`
   on a `full` machine, so the made file is requested at finish and opens on his phone. Finding an
   existing file ("find the AW4 wiring PDF", "the lease I saved as a PDF") is not this: it keeps
-  the found-file offer (send on his yes).
+  the found-file offer (send on his yes). A format word that is the TOPIC ("how to convert a
+  Word doc into a PDF", "comparing tools", "later") is not a request for a file either.
+- **A page asked for as a PDF is the PDF.** `deliver: phone` (the phone's page=true) becomes
+  `files` only on a deliverable phrase: "as a PDF", "make it a PDF", "send me a PDF", "PDF
+  version". When unsure it stays a page.
+- **Made means made.** For such a files task the engine requests at finish only files directly in
+  the task's own work folder (`made_only`, `in_task_folder`), never one found elsewhere.
 """
 
 from __future__ import annotations
@@ -64,12 +69,50 @@ _MAKE_FORMAT = re.compile(
 )
 
 
+# The format word is the TOPIC, not the deliverable: "a page on how to convert a Word doc into a
+# PDF", "explaining how to export my notes to Excel", "comparing tools that turn scans into a
+# PDF", "I will print it as a PDF later" (RED review 2026-11-22). When unsure, no file.
+_TOPIC = re.compile(
+    r"\b(?:how\s+(?:to|do|can)|explain\w*|about|compar\w*|later|guides?|tutorials?|tools?"
+    r"|ways?\s+to|steps?\s+to|apps?|software|programs?)\b",
+    re.I,
+)
+# What turns a requested PAGE into a PDF: the result itself named as a PDF, nothing looser.
+_PDF_DELIVERABLE = re.compile(
+    r"\b(?:as|in)\s+(?:an?\s+)?pdf(?:\s+(?:form|format|file))?\b"
+    r"|\bmake\s+it\s+(?:a|into\s+a)\s+pdf\b"
+    r"|\bsend\s+(?:it|me|them)\b[^.?!]{0,20}?\bpdf\b"
+    r"|\bpdf\s+version\b",
+    re.I,
+)
+
+
 def asks_for_made_file(request: str) -> bool:
     """True when the words ask for the result itself as a file (PDF, sheet, document)."""
     text = request or ""
-    if _FINDING.search(text):
+    if _FINDING.search(text) or _TOPIC.search(text):
         return False
     return bool(_AS_FORMAT.search(text) or _MAKE_FORMAT.search(text))
+
+
+def page_wants_pdf(request: str) -> bool:
+    """A page request (`deliver: phone`) whose result is named as a PDF ("... as a PDF", "make it
+    a PDF", "send me a PDF", "PDF version"); never a page whose subject is a file format."""
+    text = request or ""
+    if _FINDING.search(text) or _TOPIC.search(text):
+        return False
+    return bool(_PDF_DELIVERABLE.search(text))
+
+
+def made_only(task_id: int, request: str) -> bool:
+    """A files task that exists because a result was asked for as a file: only what the task made,
+    in its own work folder, may go to the phone, never a file "found by name" elsewhere."""
+    return asks_for_made_file(request) or page_wants_pdf(request)
+
+
+def in_task_folder(task_id: int, path: str) -> bool:
+    """`path` sits directly in the worker's `work/task-<id>/` folder (the worker's layout)."""
+    return re.search(rf"[\\/]task-{int(task_id)}[\\/][^\\/]+$", path or "") is not None
 
 
 def settle(
@@ -82,8 +125,10 @@ def settle(
     listed = machine.scope == SCOPE_LISTED
     if deliver == DELIVER_EMAIL_SELF and machine.can_mail is False:
         return None if listed else DELIVER_FILES
-    # A page (`phone`) is HTML; "as a PDF" asks for the file itself (task 32, 2026-11-22: the phone
-    # sent page=true, the helper was told to write one HTML page, and no PDF was made).
-    if deliver in (None, DELIVER_PHONE) and not listed and asks_for_made_file(request):
+    if deliver is None and not listed and asks_for_made_file(request):
+        return DELIVER_FILES
+    # A page (`phone`) is HTML; a page asked for "as a PDF" is the PDF (task 32, 2026-11-22: the
+    # phone sent page=true, the helper was told to write one HTML page, and no PDF was made).
+    if deliver == DELIVER_PHONE and not listed and page_wants_pdf(request):
         return DELIVER_FILES
     return deliver
