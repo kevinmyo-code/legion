@@ -1,0 +1,11 @@
+# Files the 600-line check skips (fnmatch globs; `*` crosses `/`). Generated or append-only, never split by hand.
+
+# Generated.
+*.gen.ts
+*.d.ts
+server/frontend/src/api/schema.d.ts
+# Schema history: append-only by rule, one migration per version.
+server/*/migrations/*
+*/data/local/Migrations.kt
+# Vendored code.
+third_party/*

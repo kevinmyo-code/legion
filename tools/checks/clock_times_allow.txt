@@ -1,0 +1,26 @@
+# Paths where a clock time is legitimate (fnmatch globs; `*` crosses `/`). One line, one reason.
+# For a single legitimate line elsewhere, put the marker clock-ok on that line instead.
+
+# Tests use made-up times as data.
+*/tests/*
+*/src/test/*
+*/src/androidTest/*
+*/test_*.py
+test_*.py
+*.test.ts
+*.test.tsx
+*.spec.ts
+server/frontend/src/test/*
+# The checks themselves hold example times.
+tools/checks/*
+# Generated pages: fix the generator or its source, not the page.
+docs/index.html
+docs/devlog.html
+docs/voice.html
+docs/adr/adr-index.md
+vault/Board.md
+# Design mock-ups: made-up screen data.
+docs/design/*
+
+# Generated migration headers carry the generation time.
+server/*/migrations/*
