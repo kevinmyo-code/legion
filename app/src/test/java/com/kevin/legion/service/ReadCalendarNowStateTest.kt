@@ -62,7 +62,13 @@ class ReadCalendarNowStateTest {
         insertRow(title, start, start + java.time.Duration.ofDays(1).toMillis(), allDay = true)
     }
 
-    private suspend fun insertRow(title: String, start: Long, end: Long, allDay: Boolean, kind: String = EventKind.EVENT) {
+    private suspend fun insertRow(
+        title: String,
+        start: Long,
+        end: Long,
+        allDay: Boolean,
+        kind: String = EventKind.EVENT,
+    ) {
         val db = CarDatabase.getDatabase(context)
         db.eventDao().insert(
             Event(
