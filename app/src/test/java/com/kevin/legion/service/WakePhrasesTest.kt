@@ -161,13 +161,20 @@ class WakePhrasesTest {
         }
     }
 
-    /** After a question the thanks is set aside too, and only a hard stop still ends it. */
+    /**
+     * After a question the thanks is set aside too, and only a hard stop still ends it. The four
+     * dismissals BECAME hard stops on 2026-11-23 (Kevin, Q8), so two rows moved up; "never mind" was
+     * not ruled on and stays soft.
+     */
     @Test
     fun `after a question a thanks before a hard stop ends it, before a soft one it does not`() {
-        for (s in listOf("Thanks, goodbye.", "Thank you, Alfred, stop.", "Cheers, bye.")) {
+        for (s in listOf(
+            "Thanks, goodbye.", "Thank you, Alfred, stop.", "Cheers, bye.",
+            "Thanks, that's all.", "Thank you, Alfred, that's it.",
+        )) {
             assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred", afterQuestion = true))
         }
-        for (s in listOf("Thanks, that's all.", "Thank you, Alfred, that's it.", "Thanks, never mind.")) {
+        for (s in listOf("Thanks, never mind.", "Thanks, Alfred, we're done.")) {
             assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred", afterQuestion = true))
         }
     }
@@ -193,10 +200,14 @@ class WakePhrasesTest {
     @Test
     fun `after a question only a hard stop ends it, the soft ones may be his answer`() {
         // Kevin, 2026-11-20: a goodbye ends the conversation reliably, after a question too ([Farewells]).
-        for (p in listOf("Stop.", "Goodbye.", "Good bye, Alfred.", "Bye.", "Bye bye.", "Go away.", "Stand down.", "Thanks, bye.")) {
+        // Kevin, 2026-11-23 (Q8): so do the four dismissals, which moved into HARD_STOPS from the list
+        // below. The remaining three were not ruled on: "never mind" and "we're done" can be his answer
+        // ("shall I cancel it?"), and a close there would drop what he asked for.
+        for (p in listOf("Stop.", "Goodbye.", "Good bye, Alfred.", "Bye.", "Bye bye.", "Go away.", "Stand down.", "Thanks, bye.",
+            "That's it.", "That's all.", "That will be all.", "That'll be all.")) {
             assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred", afterQuestion = true))
         }
-        for (p in listOf("That's it.", "That's all.", "Never mind.", "We're done.", "I'm done.", "That will be all.")) {
+        for (p in listOf("Never mind.", "We're done.", "I'm done.")) {
             assertFalse(p, WakePhrases.isSleepPhrase(p, "Alfred", afterQuestion = true))
             assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred"))
         }

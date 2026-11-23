@@ -2147,8 +2147,9 @@ internal class CascadeSession(
 
     /**
      * His latest words are a stop ([WakePhrases.isSleepPhrase]); after a question only a hard stop,
-     * so "that's it" as an answer goes to the model. While anything rings, "stop the alarm" and the
-     * like are a stop too ([RingControl.voiceStops]), and [endByStop] stops the ring.
+     * so "never mind" as an answer goes to the model while "that's it" closes (Kevin, 2026-11-23,
+     * Q8). While anything rings, "stop the alarm" and the like are a stop too
+     * ([RingControl.voiceStops]), and [endByStop] stops the ring.
      */
     private fun endsConversation(words: String): Boolean {
         val afterQuestion = FollowUpWindow.isQuestion(lastClipText)

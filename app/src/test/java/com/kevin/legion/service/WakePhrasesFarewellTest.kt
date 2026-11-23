@@ -32,26 +32,88 @@ class WakePhrasesFarewellTest {
     }
 
     // Review of 546cce67 (F1, blocking): after a question, "yes, bye" closed and dropped his yes. While
-    // an answer is awaited, any answer-type word sends the turn down the answer path; a bare farewell
+    // an answer is awaited, an ASSENTING word sends the turn down the answer path; a bare farewell
     // still closes (and does not do the write).
     @Test
     fun `after a question an answer with a farewell is an answer, a bare farewell still closes`() {
         val closes = listOf("bye", "Goodbye.", "bye bye", "good night", "Thanks, bye.", "Goodbye, Jeeves.")
         val answers = listOf(
-            "yes bye", "Yes, bye.", "ok thanks bye", "no, good night", "yeah go ahead, bye", "sure, see you",
-            "yep, bye now", "okay bye", "alright, goodbye", "at 7, bye", "tomorrow morning, good night",
+            "yes bye", "Yes, bye.", "no, good night", "yeah go ahead, bye", "sure, see you",
+            "yep, bye now", "at 7, bye", "tomorrow morning, good night",
             "later", "night", "got it, bye", "sounds good, see you later", "nope, bye",
         )
         for (u in closes) assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
         for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
     }
 
+    /**
+     * Kevin's rulings of 2026-11-23, in his words, each row an utterance said right after Alfred asked
+     * something:
+     *
+     * - **Q8, yes:** *"that'll be all" / "that will be all" / "that's all" / "that's it" close even
+     *   after a question; they are never an answer.* This reverses F1 for those four phrases.
+     * - **Q9, yes:** *"okay bye" closes after a question: a lead-in word alone must not veto a bare
+     *   farewell.*
+     * - **Q10:** keep the trailing-politeness rule (`WakePhrasesTest`), so it holds here too.
+     *
+     * What still goes to the model is the other half of the ruling and the reason the close is safe:
+     * a word that could AUTHORISE the thing Alfred asked about is an answer, and closing on it would
+     * lose work. A filler lead-in authorises nothing. Invented utterances only.
+     */
+    @Test
+    fun `after a question the four dismissals and a filler lead-in close, a real answer does not`() {
+        val closes = listOf(
+            // Q8: the four dismissals, bare, with courtesy (Q10), and with the name.
+            "that'll be all", "That will be all.", "that's all", "That's it.", "that'll be all, thanks",
+            "that's all for now", "Thanks, that's all.", "okay, that'll be all, thanks Jeeves",
+            "Jeeves, that's it.", "that will be all then",
+            // Q9: a filler lead-in before a bare farewell or dismissal.
+            "okay bye", "Okay, bye bye.", "alright, goodbye", "All right, goodnight.", "um, bye",
+            "okay then, bye", "right, bye", "well, goodbye", "ok thanks bye", "okay, that's all",
+            // Both halves at once, and two ways of saying it in one turn.
+            "that's it, bye bye", "that'll be all, goodbye", "okay that's all, thanks",
+        )
+        val answers = listOf(
+            // A bare answer is no close at all: these are not closers in the first place.
+            "yes", "okay", "sure", "okay do it", "yes please", "no thanks",
+            // An assenting word authorises the thing he was asked about: F1 stands.
+            "yes, that's all", "yeah, that's it", "sure, that'll be all", "got it, that's all",
+            // A dismissal inside a sentence is a request, question or not.
+            "that's all the groceries", "that's it for the groceries, add eggs", "is that all",
+            // A farewell that can answer on its own, with and without the freed lead-in.
+            "night", "later", "okay, night", "um, later",
+            // DECIDED 2026-11-23, and owed to Kevin as a question: a negation is still an answer, so
+            // "no, that'll be all" after "anything else?" goes to the model. Kevin ruled on the four
+            // phrases and on filler lead-ins, not on "no"; unlike an assent, a negation authorises
+            // nothing, so this one is a candidate to free next.
+            "no, that'll be all", "nope, that's it",
+        )
+        for (u in closes) assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
+        for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
+    }
+
+    /** After a question a lone ambiguous farewell is his answer; the same word in a phrase closes. */
+    @Test
+    fun `a lone night or later is his answer, the phrases it sits in still close`() {
+        for (u in listOf("night", "Later.", "nite")) {
+            assertTrue(u, WakePhrases.isSleepPhrase(u, NAME))
+            assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
+        }
+        for (u in listOf("good night", "night night", "nite nite", "see you later", "catch you later")) {
+            assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
+        }
+    }
+
     companion object {
         const val NAME = "Jeeves"
 
-        /** The table's answer words, for the after-question expectation ("see you tomorrow" answers a when). */
-        private val ANSWER_LEADS =
-            setOf("ok", "okay", "alright", "all", "um", "great", "yeah", "yes", "sure", "tomorrow")
+        /**
+         * The table's answer words, for the after-question expectation ("see you tomorrow" answers a
+         * when). The filler lead-ins left it on 2026-11-23 (Kevin, Q9), so "OK bye", "alright, bye",
+         * "um, bye" and "All right, goodnight." now close after a question; an assenting word
+         * ("great") still sends the turn to the model.
+         */
+        private val ANSWER_LEADS = setOf("great", "yeah", "yes", "sure", "tomorrow")
 
         val FAREWELLS = listOf(
             "bye", "Bye.", "bye bye", "Bye-bye!", "byebye", "Bye bye bye.", "buh-bye", "bye now", "Goodbye.",

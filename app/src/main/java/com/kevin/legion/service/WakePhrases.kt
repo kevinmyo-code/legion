@@ -85,22 +85,24 @@ object WakePhrases {
      * the reasoning that a missed backstop costs one more turn while a false one hangs up on someone
      * mid-sentence. The field answered that: the model is the unreliable half, and the courtesy is
      * only ever set aside at the ENDS of the turn, so the anchoring above is untouched and a request
-     * wrapped in courtesy ("that's all the milk we need") still matches nothing.
+     * wrapped in courtesy ("that's all the milk we need") still matches nothing. KEPT on review the
+     * same day (Kevin, ruling Q10), and it now applies after a question too, because one rule
+     * ([closesAlone]) decides both branches.
      *
-     * [afterQuestion]: the last line he heard asked him something, so "that's it" or "never mind"
-     * may be his answer; only a [HARD_STOPS] phrase ends the conversation in code, the rest go to the
-     * model (2026-11-18 review: "That's it." said as a yes ended the conversation without acting).
+     * [afterQuestion]: the last line he heard asked him something, so a soft dismissal ("never mind",
+     * "we're done") may be his answer and goes to the model; the turn must be made of [HARD_CLOSERS]
+     * to end the conversation in code (2026-11-18 review: "That's it." said as a yes ended the
+     * conversation without acting). Narrowed twice on 2026-11-23, on Kevin's rulings Q8 and Q9: see
+     * [HARD_STOPS] and [Farewells.ANSWER_WORDS].
      */
     fun isSleepPhrase(transcript: String, companionName: String = "", afterQuestion: Boolean = false): Boolean {
         val t = normalise(transcript)
         val name = normalise(companionName)
         return when {
             t.isEmpty() -> false
-            // A farewell said as the whole turn ([Farewells], 2026-11-20: "bye bye" got "night" back).
             // While an answer is awaited, a turn with an answer word in it is his answer (F1).
-            afterQuestion -> !Farewells.answersQuestion(transcript) &&
-                (isStopPhrase(t, name, HARD_STOPS) || Farewells.isFarewell(transcript, companionName, true))
-            else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || closesAlone(t, name)
+            afterQuestion -> !Farewells.answersQuestion(transcript) && closesAlone(t, name, HARD_CLOSERS)
+            else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || closesAlone(t, name, CLOSERS)
         }
     }
 
@@ -116,45 +118,57 @@ object WakePhrases {
         "we re done", "i m done",
     )
 
-    /** The stops that are never an answer to a question: these end the conversation even after one. */
-    val HARD_STOPS: Set<String> = setOf("stop", "goodbye", "good bye", "bye", "bye bye", "go away", "stand down")
+    /**
+     * The stops that are never an answer to a question: these end the conversation even after one.
+     *
+     * The four dismissals joined it on 2026-11-23 (Kevin, ruling Q8: *"that'll be all" / "that will be
+     * all" / "that's all" / "that's it" close even after a question; they are never an answer*). That
+     * REVERSES the 2026-11-18 review's F1 for those four ("That's it." said as a yes ended the
+     * conversation without acting): the cost he accepted is that "anything else on the list?" answered
+     * with a bare "that's all" closes rather than being spoken to. Nothing is owed when it does, since
+     * the phrase says there is no further item; what F1 protects is an answer that AUTHORISES work, and
+     * [Farewells.ANSWER_WORDS] still sends every one of those to the model ("yes, that's all" does not
+     * close). "never mind", "we're done" and "I'm done" were not ruled on and stay soft.
+     */
+    val HARD_STOPS: Set<String> = setOf(
+        "stop", "goodbye", "good bye", "bye", "bye bye", "go away", "stand down",
+        "that will be all", "that ll be all", "that s all", "that s it",
+    )
 
     /**
-     * [t] (normalised) is a stop phrase once the courtesy around it is set aside
-     * ([Farewells.withoutCourtesy]: the companion's [name] at either end, lead-ins and thanks before,
-     * thanks and tails after): "Goodbye, Alfred", "Alfred, stop", "ok bye", "Thanks, Alfred, that's all",
-     * "okay, that'll be all, thanks Alfred", "that's all for now".
+     * The whole turn is [closers], courtesy aside: one or more of them back to back
+     * ([Farewells.madeOf]), so "that's it, bye bye", "that'll be all, goodbye" and "okay that's all,
+     * thanks, bye" close as "bye bye" and "that's all" each already did. Two ways of saying one thing
+     * in one turn is still one dismissal.
      *
-     * **A trailing courtesy used to miss**, and said so in words in [isSleepPhrase]'s comment and its
-     * test: only leading words were set aside, so "that'll be all, thanks" matched no phrase and the
-     * close rested on the model calling `end_conversation`. 2026-11-23, goodbye hardening: a goodbye with filler
-     * around it must close. What makes it safe is unchanged: courtesy is only ever set aside at the
-     * ends, and what is left must BE a phrase, so "that's all the milk we need" and "text mom bye bye"
-     * still match nothing.
-     */
-    /**
-     * The whole turn is closers, courtesy aside: one or more dismissals or farewells back to back
-     * ([Farewells.madeOf] over [CLOSERS]), so "that's it, bye bye", "that'll be all, goodbye" and
-     * "okay that's all, thanks, bye" close as "bye bye" and "that's all" each already did. Two ways
-     * of saying one thing in one turn is still one dismissal.
+     * Courtesy comes off first ([Farewells.withoutCourtesy]: the companion's [name] at either end,
+     * lead-ins and thanks before, thanks and tails after): "Goodbye, Alfred", "Alfred, stop", "ok bye",
+     * "okay, that'll be all, thanks Alfred", "that's all for now". A trailing courtesy used to miss
+     * (2026-11-23, goodbye hardening; the reversal is written out at [isSleepPhrase]). What makes it
+     * safe is unchanged: courtesy is only ever set aside at the ENDS, and what is left must decompose
+     * entirely into closers, so "that's all the milk we need" and "text mom bye bye" match nothing.
      *
-     * Only the no-question branch uses it. After a question the narrower [HARD_STOPS] rule stands
-     * unchanged (review of 546cce67, F1): a soft dismissal there may be his answer.
+     * **The one rule, run over two sets.** That is the whole difference a question makes
+     * (2026-11-23): before one, every closer counts ([CLOSERS]); after one, only the hard ones
+     * ([HARD_CLOSERS]).
      */
-    private fun closesAlone(t: String, name: String): Boolean {
-        if (t in STOP_PHRASES) return true
+    private fun closesAlone(t: String, name: String, closers: List<List<String>>): Boolean {
         val w = Farewells.withoutCourtesy(t.split(' ').filter { it.isNotEmpty() }, name)
-        return w.isNotEmpty() && Farewells.madeOf(w, CLOSERS)
+        return w.isNotEmpty() && Farewells.madeOf(w, closers)
     }
 
     /** Every phrase that can stand alone as a close, as word lists for [Farewells.madeOf]. */
     private val CLOSERS: List<List<String>> = Farewells.phraseWords(Farewells.FAREWELLS + STOP_PHRASES)
 
-    private fun isStopPhrase(t: String, name: String, phrases: Set<String>): Boolean {
-        if (t in phrases) return true
-        val words = Farewells.withoutCourtesy(t.split(' ').filter { it.isNotEmpty() }, name)
-        return words.joinToString(" ") in phrases
-    }
+    /**
+     * The closers a turn after a question may be made of: the [HARD_STOPS] and the farewells, minus
+     * the farewells that can answer a question on their own ([Farewells.AMBIGUOUS_ALONE]). Keeping
+     * those three out as DATA is what still sends "night" and "okay, later" down the answer path now
+     * that a filler lead-in no longer vetoes (Q9); "good night" and "night night" are phrases in
+     * their own right and close either way.
+     */
+    private val HARD_CLOSERS: List<List<String>> =
+        Farewells.phraseWords(HARD_STOPS + (Farewells.FAREWELLS - Farewells.AMBIGUOUS_ALONE))
 
     /**
      * Lowercase, every non-letter/digit run collapsed to a single space, trimmed: [Farewells.normalise],
