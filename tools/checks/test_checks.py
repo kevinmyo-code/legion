@@ -326,13 +326,58 @@ def test_detekt_baseline_shrinking_passes_growing_fails():
     assert levels(detekt_baseline.check(grow)) == [FAIL]
 
 
-def test_detekt_baseline_rekey_one_for_one_passes_but_not_two_for_one():
-    old = baseline("LongMethod:Old.kt$Foo$fun bar()")
-    moved = change({BASELINE: ("M", baseline("LongMethod:New.kt$Foo$fun bar()"))}, base={BASELINE: old})
-    doubled = change({BASELINE: ("M", baseline("LongMethod:New.kt$Foo$fun bar()", "LongMethod:Two.kt$Foo$fun bar()"))},
-                     base={BASELINE: old})
-    assert detekt_baseline.check(moved) == []
-    assert levels(detekt_baseline.check(doubled)) == [FAIL]
+KT = "app/src/main/java/com/x/"
+
+
+def test_detekt_plain_rekey_to_a_new_file_and_object_passes():
+    old = baseline("CyclomaticComplexMethod:LiveToolbox.kt:LiveToolbox$private fun getMpg(): JSONObject")
+    new = baseline("CyclomaticComplexMethod:VehicleHealthToolbox.kt:VehicleHealthToolbox$private fun getMpg(): JSONObject")
+    ch = change({BASELINE: ("M", new), KT + "LiveToolbox.kt": ("M", "x\n"), KT + "VehicleHealthToolbox.kt": ("A", "x\n")},
+                base={BASELINE: old})
+    assert detekt_baseline.check(ch) == []
+
+
+def test_detekt_split_key_passes_when_a_changed_file_split_into_new_ones():
+    # LiveToolbox still has a 5; two new files split out of it now each list a 5 too.
+    old = baseline("MagicNumber:LiveToolbox.kt$LiveToolbox$5")
+    new = baseline("MagicNumber:LiveToolbox.kt$LiveToolbox$5", "MagicNumber:Places.kt$Places$5",
+                   "MagicNumber:Music.kt$Music$5")
+    ch = change({BASELINE: ("M", new), KT + "LiveToolbox.kt": ("M", "x\n"), KT + "Places.kt": ("A", "x\n"),
+                 KT + "Music.kt": ("A", "x\n")}, base={BASELINE: old})
+    assert detekt_baseline.check(ch) == []
+
+
+def test_detekt_truly_new_finding_fails():
+    old = baseline("MagicNumber:A.kt$A$5")
+    new = baseline("MagicNumber:A.kt$A$5", "LongMethod:New.kt$New$fun brandNew()")
+    ch = change({BASELINE: ("M", new), KT + "New.kt": ("A", "x\n")}, base={BASELINE: old})
+    found = detekt_baseline.check(ch)
+    assert levels(found) == [FAIL] and "new finding" in found[0].message
+
+
+def test_detekt_count_growing_without_a_split_fails():
+    old = baseline("MagicNumber:A.kt$A$5")
+    # Same text under another EXISTING file (not added by this change): new debt, not a split.
+    in_old_file = change({BASELINE: ("M", baseline("MagicNumber:A.kt$A$5", "MagicNumber:B.kt$B$5")),
+                          KT + "A.kt": ("M", "x\n"), KT + "B.kt": ("M", "x\n")}, base={BASELINE: old})
+    # A new file, but the file the base listed it under was not touched: nothing moved out of it.
+    untouched_source = change({BASELINE: ("M", baseline("MagicNumber:A.kt$A$5", "MagicNumber:C.kt$C$5")),
+                               KT + "C.kt": ("A", "x\n")}, base={BASELINE: old})
+    assert levels(detekt_baseline.check(in_old_file)) == [FAIL]
+    assert levels(detekt_baseline.check(untouched_source)) == [FAIL]
+
+
+@pytest.mark.parametrize(
+    "entry,expected",
+    [
+        ("LongMethod:A.kt$A$fun a()", ("LongMethod", "A.kt", "fun a()")),
+        ("MaxLineLength:A.kt:A$val x = 1", ("MaxLineLength", "A.kt", "val x = 1")),
+        ("ComplexCondition:FleetScreen.kt:a == b || c", ("ComplexCondition", "FleetScreen.kt", "a == b || c")),
+        ("MagicNumber:B.kt$B.Companion$3", ("MagicNumber", "B.kt", "3")),
+    ],
+)
+def test_detekt_parse(entry, expected):
+    assert detekt_baseline.parse(entry) == expected
 
 
 def test_gate_end_to_end_non_ascii_path_is_read(repo, capsys):
@@ -352,3 +397,20 @@ def test_gate_end_to_end_pure_move_of_big_file_passes(repo, capsys):
     _git(repo, "mv", "server/big.py", "server/garage_big.py")
     _git(repo, "commit", "-q", "-m", "move")
     assert run_all.main(["--base", "dev"]) == 0
+
+
+def test_detekt_rekey_survives_visibility_change_and_renamed_object_reference():
+    old = baseline("ReturnCount:LiveToolbox.kt:LiveToolbox$private suspend fun queue(q: String): JSONObject",
+                   "MaxLineLength:SomeTest.kt:SomeTest$LiveToolbox.LocationReadout.NoPermission")
+    new = baseline("ReturnCount:MusicToolbox.kt:MusicToolbox$internal suspend fun queue(q: String): JSONObject",
+                   "MaxLineLength:SomeTest.kt:SomeTest$PlacesToolbox.LocationReadout.NoPermission")
+    ch = change({BASELINE: ("M", new), KT + "LiveToolbox.kt": ("M", "x\n"), KT + "MusicToolbox.kt": ("A", "x\n"),
+                 KT + "PlacesToolbox.kt": ("A", "x\n")}, base={BASELINE: old})
+    assert detekt_baseline.check(ch) == []
+
+
+def test_detekt_renamed_reference_to_an_untouched_object_is_still_new():
+    old = baseline("MaxLineLength:SomeTest.kt:SomeTest$Alpha.X")
+    new = baseline("MaxLineLength:SomeTest.kt:SomeTest$Beta.X")
+    ch = change({BASELINE: ("M", new)}, base={BASELINE: old})
+    assert levels(detekt_baseline.check(ch)) == [FAIL]

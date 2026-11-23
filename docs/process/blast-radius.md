@@ -93,7 +93,9 @@ lines a change adds, so existing debt never fails a build.
 | (c) Schema files | an edited or deleted migration; a Django migration number already used in its app; a Room schema version with no `MIGRATION_<n-1>_<n>` inside `.addMigrations(...)`; an edited shipped schema JSON | a new Django migration with a destructive operation; a failure accepted by a `migration-edit-ok:` marker |
 | (d) Em dashes in user-facing copy | `strings.xml` (phone and head unit); the copy modules | web app source, phone and head unit Kotlin, the demo's engine code |
 | (e) Offhand quotes | not checked: whether a quote was a deliberate ruling is not in its text | |
-| (f) Detekt baseline | an entry added that is not a one-for-one re-key of a removed one (same rule and code, new file name) | |
+| (f) Detekt baseline | a finding (rule + text) the base never listed; a finding listed more often, unless the extra entries sit in files this change adds and the base listed it under a file this change modifies or deletes (code split out of it) | |
+
+For (f), the file, the object, the visibility modifier and names of the objects this change moves are not part of a finding, so moving `private fun f` from one object into a new file as `internal fun f` is a re-key, not new debt. The baseline holds one entry per text per file, not a hit count, so the same text in a new file split out of a changed one cannot be told from new code there; the reviewer reads the moved code.
 
 Escape hatches, each visible in the diff:
 - (a): the allowlist `clock_times_allow.txt`, or the marker `clock-ok` on a line. Dates are always fine.
