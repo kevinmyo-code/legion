@@ -62,3 +62,23 @@ approved the exemption the same day: *"ok"*.
   Postgres with fsync off; Cloud Run will be slower).
 - A recruiter made before this (a member of the shared household) is treated as an ended visit
   everywhere.
+
+## Amendment, 2026-11-22: a visit's household may be seeded ahead of time
+
+The engine ruling made for the slow door (demo-enter-slow): seeding inline took about 16 s on Cloud
+Run, so visit households are now usually seeded before anyone asks and claimed at the door
+(`demo/spares.py`). The invariants above are unchanged; four sentences above now read as follows.
+
+- **"`POST /api/demo/enter` creates `Demo visit <id>` ... all in one transaction."** The door
+  usually claims a spare, seeded ahead of time for today by the running build, inside the visit's
+  transaction; the visitor's membership, token and `DemoVisit` are still made in that one
+  transaction, and a failure puts the spare back. With no spare ready it seeds inline, as before.
+- **"The flag is set by that door and nothing else."** It is set by one function,
+  `demo.spares.make_visit_household`, called by the door's inline fallback and by the hourly
+  refill. Still never by a serializer, admin form or view, and never on a household with a member
+  who is not a recruiter visitor.
+- **"Prune deletes the visit whole, and nothing else."** `prune_demo_visitors` also deletes, whole
+  and through the same refusing cleanup, every spare that may no longer be handed out (another day,
+  another build, too old, or the door closed), and tops the pool up to `LEGION_DEMO_SPARE_POOL`.
+- **"Seeding a visit runs the whole demo seed inside the request."** Only when no spare is ready.
+  The refill runs only in the hourly job, never in the request process.

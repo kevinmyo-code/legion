@@ -358,6 +358,12 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
 # unscoped table: Django's own bookkeeping, the household tables themselves and the demo's code
 # tables predate it.
 #
+# Neither list fits the demo's own bookkeeping, `demo_demovisit` and `demo_sparevisithousehold`
+# (demo-enter-slow, 2026-11-22): each names a household (so not engine-wide), but lives in the
+# `django` schema and is served by no API (so not a public tenant table). They are the engine's
+# record of which household a visit, or a waiting spare, is; `demo.visit_cleanup` deletes the
+# households they name.
+#
 # `releases_apprelease` (alfred-ota ticket 04, `releases/models.py`): a published build of the
 # app is engine-wide. Every member of every household on this engine reads the same newest
 # release, and the APK it names holds no household data. Owners publish; members read.

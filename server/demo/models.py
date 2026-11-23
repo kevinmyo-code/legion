@@ -141,6 +141,30 @@ class DemoVisit(models.Model):
         return f"Demo visit {self.created_at:%Y-%m-%d %H:%M} (ref {self.ref or 'none'})"
 
 
+class SpareVisitHousehold(models.Model):
+    """A visit household seeded ahead of time, waiting for a visitor (demo-enter-slow,
+    2026-11-22: the inline seed took about 16 s on Cloud Run). `/enter` claims one and deletes
+    this row in the visit's own transaction, so a claimed household carries no trace of having
+    waited. Handed out only on the day and seed version it was made for (`demo.spares`);
+    anything else is deleted whole by the refill and by `prune_demo_visitors`."""
+
+    household = models.OneToOneField(
+        "household.Household", on_delete=models.CASCADE, related_name="+"
+    )
+    # The `today` the seed was given, a date in the demo's own zone: every seeded row is
+    # relative to it.
+    seeded_for = models.DateField()
+    # `demo.spares.seed_version()` when it was seeded: a deploy that changes the seed retires it.
+    seed_version = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["seeded_for", "seed_version"])]
+
+    def __str__(self) -> str:
+        return f"Spare demo visit household for {self.seeded_for}"
+
+
 class ShopOrder(models.Model):
     """One order in the store-rep demo (`demo/shop/`), inside one visit and nowhere else.
 

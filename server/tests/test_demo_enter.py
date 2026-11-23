@@ -185,7 +185,7 @@ def test_a_seed_that_fails_creates_nothing(db, monkeypatch):
     def _boom(household, **kwargs):
         raise RuntimeError("seed broke")
 
-    monkeypatch.setattr("demo.views.seed_household", _boom)
+    monkeypatch.setattr("demo.spares.seed_household", _boom)
     households = Household.objects.count()
     response = _enter(_browser(), code=raw)
     assert response.status_code == 503

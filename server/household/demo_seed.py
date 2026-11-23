@@ -937,23 +937,31 @@ def seed_household(
 
     # -- authored rows, through the API serializers ----------------------------
     context = {"household": household, "revive_tombstone": False}
+
+    def existing(model, **keys):
+        """The row to update, or None. A household made a moment ago (`created`) holds no
+        authored rows yet, so its lookups are skipped: about forty fewer round trips per
+        recruiter visit (demo-enter-slow, 2026-11-22), the same rows either way."""
+        if created:
+            return None
+        return model.objects.filter(household=household, **keys).first()
+
     with transaction.atomic():
-        vehicle = Vehicle.objects.filter(household=household, origin_guid=VEHICLE_GUID).first()
+        vehicle = existing(Vehicle, origin_guid=VEHICLE_GUID)
         vehicle = _save(VehicleSerializer, context, vehicle_fields(today, zone), vehicle)
         report.upserts["vehicles"] = 1
 
         for row in service_rows(today):
-            existing = ServiceHistory.objects.filter(
-                household=household, origin_guid=row["origin_guid"]
-            ).first()
             data = {**row, "vehicle_id": str(vehicle.id)}
-            _save(ServiceHistorySerializer, context, data, existing)
+            _save(
+                ServiceHistorySerializer,
+                context,
+                data,
+                existing(ServiceHistory, origin_guid=row["origin_guid"]),
+            )
         report.upserts["service_history"] = len(service_rows(today))
 
         for row in SCHEDULES:
-            existing = MaintenanceSchedule.objects.filter(
-                household=household, vehicle=vehicle, service_name=row["service_name"]
-            ).first()
             data = {
                 "vehicle_id": str(vehicle.id),
                 "interval_source": "SEEDED",
@@ -962,42 +970,38 @@ def seed_household(
                 "interval_miles": row["interval_miles"],
                 "interval_months": row["interval_months"],
             }
-            _save(MaintenanceScheduleSerializer, context, data, existing)
+            schedule = existing(
+                MaintenanceSchedule, vehicle=vehicle, service_name=row["service_name"]
+            )
+            _save(MaintenanceScheduleSerializer, context, data, schedule)
         report.upserts["maintenance_schedules"] = len(SCHEDULES)
 
         for row in category_rows():
-            existing = Category.objects.filter(
-                household=household, origin_guid=row["origin_guid"]
-            ).first()
-            _save(CategorySerializer, context, row, existing)
+            _save(
+                CategorySerializer, context, row, existing(Category, origin_guid=row["origin_guid"])
+            )
         report.upserts["categories"] = len(CATEGORIES)
 
         for row in budget_target_rows():
-            existing = BudgetTarget.objects.filter(
-                household=household, origin_guid=row["origin_guid"]
-            ).first()
-            _save(BudgetTargetSerializer, context, row, existing)
+            target = existing(BudgetTarget, origin_guid=row["origin_guid"])
+            _save(BudgetTargetSerializer, context, row, target)
         report.upserts["budget_targets"] = len(BUDGET_TARGETS)
 
         place_context = {**context, "revive_tombstone": True}
         for row in PLACES:
-            existing = Place.objects.filter(household=household, label=row["label"]).first()
-            _save(PlaceSerializer, place_context, row, existing)
+            _save(PlaceSerializer, place_context, row, existing(Place, label=row["label"]))
         report.upserts["places"] = len(PLACES)
 
         notes = voice_notes(now)
         for row in notes:
-            existing = VoiceNote.objects.filter(household=household, title=row["title"]).first()
-            _save(VoiceNoteSerializer, context, row, existing)
+            _save(VoiceNoteSerializer, context, row, existing(VoiceNote, title=row["title"]))
         report.upserts["voice_notes"] = len(notes)
 
         event_context = {"household": household, "user": NO_MEMBER}
         planned = events(today, zone)
         for row in planned:
-            existing = Event.objects.filter(
-                household=household, origin_guid=row["origin_guid"]
-            ).first()
-            _save(EventSerializer, event_context, row, existing)
+            event = existing(Event, origin_guid=row["origin_guid"])
+            _save(EventSerializer, event_context, row, event)
         report.upserts["events"] = len(planned)
 
         seed_checklists_and_purchases(household, today, report)

@@ -238,14 +238,23 @@ def _enter_as(code: str, ref: str):
 
 
 @pytest.fixture
-def world(token_a, household_a):
+def world(token_a, household_a, settings):
     """The Kevin-like household, and a recruiter browser that came in through
-    `/api/demo/enter` with its own seeded visit household."""
+    `/api/demo/enter` with its own seeded visit household: a spare seeded ahead of time and
+    claimed at the door (`demo.spares`), so every fence below is checked on a claimed spare.
+    The pool is then empty, so `two_visits`' second visitor is seeded inline."""
+    from demo import spares
+    from demo.models import SpareVisitHousehold
+
     _kevin_rows(token_a)
 
+    settings.LEGION_DEMO_SPARE_POOL = 1
     _row, code = DemoCode.rotate()
+    spares.refill()
+    [spare] = SpareVisitHousehold.objects.values_list("household_id", flat=True)
     browser, visit = _enter_as(code, "iso")
     visitor, demo = visit.user, visit.household
+    assert demo.id == spare and not SpareVisitHousehold.objects.exists()
     assert demo.is_demo_visit
     assert HouseholdMember.objects.get(user=visitor).household_id == demo.id
 

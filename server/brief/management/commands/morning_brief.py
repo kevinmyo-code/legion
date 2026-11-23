@@ -24,7 +24,7 @@ from __future__ import annotations
 from django.db import connection, transaction
 from django.utils import timezone
 
-from brief.build import build_for_household, describe, is_due
+from brief.build import build_for_household, describe, is_due, members_of
 from brief.models import Trigger
 from brief.news import failed
 from ingest.jobs import JobCommand, run_job
@@ -75,6 +75,12 @@ class Command(JobCommand):
             return
         now = timezone.now()
         for household in households:
+            # No member, no brief to build: and without this the News call (a paid model call)
+            # and a job row would run every hour for it, since no brief ever marks it done. A
+            # spare demo visit household (`demo.spares`) waits like this for its visitor.
+            if not members_of(household):
+                self.stdout.write(f"brief for household {household.pk}: no member, nothing built")
+                continue
             if not options.get("force") and not is_due(household, now):
                 self.stdout.write(f"brief for household {household.pk}: not due")
                 continue
