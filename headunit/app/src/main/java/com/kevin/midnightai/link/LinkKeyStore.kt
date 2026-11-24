@@ -36,6 +36,36 @@ interface GeminiAccess {
     fun clear(): Boolean
 }
 
+/**
+ * The Spotify client ID as the car link fills it (Android: [CompanionProfile]); a fake in tests.
+ * Narrower than [GeminiAccess] on purpose: there is nothing to snapshot, restore or clear, because
+ * the link only ever FILLS an empty slot (see [SpotifyLinkFill]).
+ */
+interface SpotifyAccess {
+    /** The ID this unit can read today, or null when nothing is stored or the Keystore will not open it. */
+    fun readable(): String?
+
+    /** Writes it where the unit's own Spotify setup reads it. */
+    fun save(clientId: String)
+}
+
+/**
+ * Whether the hand-over's Spotify client ID is written to this unit (Kevin, 2026-11-23: the car link
+ * should carry it, so the unit's Spotify setup does not have to be typed in again).
+ *
+ * It fills an empty or unreadable slot and never replaces an ID that is already readable here, even
+ * a different one. [CompanionProfile.saveSpotifyClientId] logs head-unit Spotify out whenever the ID
+ * changes, because OAuth tokens belong to the client that minted them, so overwriting would turn
+ * "stop retyping the ID" into "re-authorize Spotify after every pairing". The ask was the first.
+ */
+object SpotifyLinkFill {
+    /** The ID to write, or null to leave the unit's own alone. */
+    fun fill(handed: String?, storedReadable: String?): String? {
+        val id = handed?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return if (storedReadable.isNullOrBlank()) id else null
+    }
+}
+
 /** Review H4: the only engine address a handed-over token may ever go to. */
 object EnginePolicy {
     /** [constant] if it is a non-blank https URL with a host, else null (no token is accepted). */
@@ -61,6 +91,7 @@ class LinkKeyStore(
     context: Context,
     private val engine: EngineAccess,
     private val gemini: GeminiAccess,
+    private val spotify: SpotifyAccess,
     private val engineConstant: String,
     private val encrypt: (String) -> String? = KeyVault::encrypt,
     private val decrypt: (String) -> String? = KeyVault::decrypt,
@@ -127,6 +158,7 @@ class LinkKeyStore(
             .put("engine_vehicle_id", handover.engineVehicleId)
             .put("gemini_key", handover.geminiKey)
             .put("mapbox_token", handover.mapboxToken)
+            .put("spotify_client_id", handover.spotifyClientId)
             .put("phone_name", handover.phoneName)
         val enc = encrypt(bundle.toString()) ?: return KEYSTORE
         // Every value the commit will encrypt must be encryptable now, or nothing is kept.
@@ -183,6 +215,11 @@ class LinkKeyStore(
         token?.let(LogRedactor::addLiteral)
         key?.let(LogRedactor::addLiteral)
         p.optString("mapbox_token").takeIf { it.isNotBlank() }?.let(LogRedactor::addLiteral)
+        // Last, and outside the all-or-nothing part: the pairing is already stored, and the Spotify
+        // client ID is public, so it must never be able to fail a pairing that otherwise held.
+        runCatching {
+            SpotifyLinkFill.fill(p.optString("spotify_client_id"), spotify.readable())?.let(spotify::save)
+        }
         return null
     }
 
@@ -243,6 +280,22 @@ class LinkKeyStore(
             "Your member sign-in on this unit stays in use. The car's own sign-in from the phone is kept in reserve " +
                 "and is used only if you sign out under Settings, Engine."
 
+        /**
+         * The unit's own Spotify client-ID slot. Forget does NOT take it back, unlike the engine
+         * token and the Gemini key: it is public, it is indistinguishable from one typed in by
+         * hand, and removing it would log head-unit Spotify out for no gain.
+         */
+        fun spotifyLinkAccess(context: Context): SpotifyAccess {
+            val app = context.applicationContext
+            return object : SpotifyAccess {
+                override fun readable() = when (val r = CompanionProfile.spotifyClientIdRead(app)) {
+                    is CompanionProfile.SecretRead.Value -> r.value
+                    CompanionProfile.SecretRead.Absent, CompanionProfile.SecretRead.Unreadable -> null
+                }
+                override fun save(clientId: String) = CompanionProfile.saveSpotifyClientId(app, clientId)
+            }
+        }
+
         /** The Gemini slot the car link writes and Forget clears. */
         fun geminiLinkAccess(context: Context): GeminiAccess {
             val app = context.applicationContext
@@ -281,6 +334,7 @@ class LinkKeyStore(
                 app,
                 engine = engineLinkAccess(engineConfig),
                 gemini = geminiLinkAccess(app),
+                spotify = spotifyLinkAccess(app),
                 engineConstant = BuildConfig.ENGINE_BASE_URL,
             )
         }

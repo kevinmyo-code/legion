@@ -19,16 +19,29 @@ class Handover(
     val phoneName: String?,
     /** The ONE engine vehicle the car's own sign-in may upload OBD samples for (spec 3.5 change, 2026-11-20). */
     val engineVehicleId: String? = null,
+    /**
+     * The driver's own Spotify client ID (Kevin, 2026-11-23: the car link should carry it, so the
+     * unit's Spotify setup does not have to be typed in again). PUBLIC by Spotify's own
+     * design, unlike every other field here: it identifies an app, it is the only Spotify credential
+     * this app has (playback is PKCE, there is no client secret anywhere in the repo), and it buys
+     * nothing without the driver's own consent in a browser. It still travels inside the same sealed
+     * hand-over as the rest, because that is the only channel there is.
+     */
+    val spotifyClientId: String? = null,
 ) {
     fun present(): List<String> = buildList {
         if (engineToken != null) add("engine sign-in")
         if (geminiKey != null) add("Gemini key")
         if (mapboxToken != null) add("map token")
+        if (spotifyClientId != null) add("Spotify setup")
     }
 
     override fun toString(): String = "Handover(${present().joinToString()})"
 
     companion object {
+        /** A Spotify client ID is a 32-character hex string; the cap is slack, not a format check. */
+        const val MAX_SPOTIFY_CLIENT_ID = 64
+
         /**
          * Parses the opened hand-over JSON; null if it is not version 1. Unknown fields (a `wifi`
          * object before T8 exists, any `engine` URL) are ignored, never stored.
@@ -43,6 +56,7 @@ class Handover(
                 mapboxToken = s("mapbox_token"),
                 phoneName = s("phone_name")?.take(40),
                 engineVehicleId = s("engine_vehicle_id")?.take(64),
+                spotifyClientId = s("spotify_client_id")?.take(MAX_SPOTIFY_CLIENT_ID),
             )
         }
     }

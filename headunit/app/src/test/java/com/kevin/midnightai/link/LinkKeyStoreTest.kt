@@ -59,11 +59,22 @@ class LinkKeyStoreTest {
         override fun clear(): Boolean { enc = null; return true }
     }
 
+    /** The unit's Spotify setup: null when nothing is stored or the Keystore will not open it. */
+    private class FakeSpotify(var id: String? = null) : SpotifyAccess {
+        val saves = mutableListOf<String>()
+        override fun readable() = id
+        override fun save(clientId: String) {
+            saves += clientId
+            id = clientId
+        }
+    }
+
     private val engine = FakeEngine()
     private val gemini = FakeGemini()
+    private val spotify = FakeSpotify()
 
     private fun store(constant: String = "https://engine.example") = LinkKeyStore(
-        context, engine, gemini, constant,
+        context, engine, gemini, spotify, constant,
         encrypt = { if (keystoreWorks) "e:" + it.reversed() else null },
         decrypt = { if (it.startsWith("e:")) it.removePrefix("e:").reversed() else null },
     )
@@ -200,7 +211,7 @@ class LinkKeyStoreTest {
         store().stage(handover(), keyB)
         var failOnce = true
         val flaky = LinkKeyStore(
-            context, engine, gemini, "https://engine.example",
+            context, engine, gemini, spotify, "https://engine.example",
             encrypt = { "e:" + it.reversed() },
             decrypt = { if (failOnce && it.contains("e:")) { failOnce = false; null } else if (it.startsWith("e:")) it.removePrefix("e:").reversed() else null },
         )
@@ -226,6 +237,75 @@ class LinkKeyStoreTest {
             }
         }
         assertTrue(InputProbe.wheel.value.isEmpty())
+    }
+
+    /*
+     * The Spotify client ID over the car link (2026-11-23). It fills an empty slot and never
+     * replaces one the unit can already read, because a changed ID logs head-unit Spotify out.
+     */
+
+    private fun withSpotify(id: String?) = Handover(
+        engineToken = null, engineUserId = null, geminiKey = null, mapboxToken = null,
+        phoneName = "Test phone", spotifyClientId = id,
+    )
+
+    @Test fun anEmptySpotifySlotIsFilledFromTheHandOver() {
+        pair(keyA, withSpotify("made-up-client-id"))
+        assertEquals(listOf("made-up-client-id"), spotify.saves)
+        assertEquals("made-up-client-id", spotify.readable())
+    }
+
+    @Test fun anUnreadableSpotifySlotIsFilledToo() {
+        // SecretRead.Unreadable maps to null: a blob the Keystore will not open is worth nothing.
+        spotify.id = null
+        pair(keyA, withSpotify("made-up-client-id"))
+        assertEquals(listOf("made-up-client-id"), spotify.saves)
+    }
+
+    @Test fun anIdTypedOnTheUnitIsNeverOverwritten() {
+        spotify.id = "typed-on-the-unit"
+        pair(keyA, withSpotify("made-up-client-id"))
+        assertTrue(spotify.saves.isEmpty())
+        assertEquals("typed-on-the-unit", spotify.readable())
+    }
+
+    @Test fun repairingWithTheSameIdWritesNothingSoSpotifyStaysSignedIn() {
+        pair(keyA, withSpotify("made-up-client-id"))
+        spotify.saves.clear()
+        pair(keyB, withSpotify("made-up-client-id"))
+        assertTrue(spotify.saves.isEmpty())
+    }
+
+    @Test fun anOlderPhoneThatSendsNoIdErasesNothing() {
+        spotify.id = "typed-on-the-unit"
+        pair(keyA, handover())
+        assertTrue(spotify.saves.isEmpty())
+        assertEquals("typed-on-the-unit", spotify.readable())
+    }
+
+    @Test fun forgetLeavesTheClientIdBecauseItIsPublicAndNotASignIn() {
+        pair(keyA, withSpotify("made-up-client-id"))
+        store().forget()
+        assertEquals("made-up-client-id", spotify.readable())
+    }
+
+    @Test fun theHandOverParsesTheIdAndTheScreenNamesIt() {
+        val parsed = Handover.parse(
+            org.json.JSONObject().put("v", 1).put("spotify_client_id", "made-up-client-id"),
+        )!!
+        assertEquals("made-up-client-id", parsed.spotifyClientId)
+        assertTrue(parsed.present().toString(), "Spotify setup" in parsed.present())
+        // toString never prints a value, hand-over wide.
+        assertFalse(parsed.toString(), "made-up-client-id" in parsed.toString())
+        assertNull(Handover.parse(org.json.JSONObject().put("v", 1))!!.spotifyClientId)
+    }
+
+    @Test fun theFillRuleIsTheWholeDecision() {
+        assertEquals("a", SpotifyLinkFill.fill(" a ", null))
+        assertEquals("a", SpotifyLinkFill.fill("a", ""))
+        assertNull(SpotifyLinkFill.fill(null, null))
+        assertNull(SpotifyLinkFill.fill("  ", null))
+        assertNull(SpotifyLinkFill.fill("a", "b"))
     }
 
     @Test fun enginePolicyIsHttpsOnly() {
