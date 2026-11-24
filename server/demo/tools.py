@@ -168,7 +168,7 @@ def _about_kevin_spoken(request, arguments: dict) -> ToolResult:
     links = (row.content or {}).get("links") or {}
     closing = spoken.more or profile_text.offer_line(
         arguments.get("offer"),
-        has_resume=row.resume is not None,
+        has_resume=row.has_asset("resume"),
         has_contact=any(links.values()),
     )
     lines = [*spoken.lines, *([closing] if closing else [])]
@@ -270,12 +270,12 @@ SHOW_RESUME_DESCRIPTION = (
 
 def resume_card(row) -> dict | None:
     """The `resume` card for a content row, or None when it holds no resume at all."""
-    if row is None or row.resume is None:
+    if row is None or not row.has_asset("resume"):
         return None
     return {
         "card": "resume",
         "title": RESUME_TITLE,
-        "image": "/api/demo/asset/resume_image" if row.resume_image is not None else None,
+        "image": "/api/demo/asset/resume_image" if row.has_asset("resume_image") else None,
         "pdf": "/api/demo/asset/resume",
         "alt": RESUME_ALT,
     }

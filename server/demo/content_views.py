@@ -248,7 +248,7 @@ class DemoContentView(APIView):
             return Response({"detail": NO_CONTENT}, status=404)
         body = public_content(row.content)
         body["assets"] = {
-            kind: (f"/api/demo/asset/{kind}" if getattr(row, kind) is not None else None)
+            kind: (f"/api/demo/asset/{kind}" if row.has_asset(kind) else None)
             for kind in ASSET_KINDS
         }
         return Response(body, headers={"Cache-Control": "private, no-store"})
@@ -416,11 +416,13 @@ class DemoMediaView(APIView):
         },
     )
     def get(self, request, name: str):
-        row = RecruiterContent.for_user(request.user)
-        if row is None or not _MEDIA_NAME.fullmatch(name):
+        # The id alone: this route wants no column of the content row, and a 304 should cost
+        # nothing more than the file's hash.
+        content_id = RecruiterContent.id_for_user(request.user)
+        if content_id is None or not _MEDIA_NAME.fullmatch(name):
             return Response({"detail": _no_such_asset("such file")}, status=404)
         meta = (
-            RecruiterMediaFile.objects.filter(content=row, name=name)
+            RecruiterMediaFile.objects.filter(content_id=content_id, name=name)
             .annotate(size=Func(F("data"), function="octet_length", output_field=IntegerField()))
             .values("pk", "sha256", "content_type", "size")
             .first()

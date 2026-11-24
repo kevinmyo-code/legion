@@ -272,7 +272,7 @@ CONTENT_SCHEMA: dict = _obj(
 
 _VALIDATOR = Draft202012Validator(CONTENT_SCHEMA)
 
-ASSET_KINDS = ("report", "resume", "resume_image")
+ASSET_KINDS = RecruiterContent.ASSET_KINDS
 # (file in the folder, content type it is served with)
 ASSET_FILES = {
     "report": ("report.html", "text/html; charset=utf-8"),
