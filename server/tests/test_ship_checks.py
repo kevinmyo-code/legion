@@ -1,5 +1,6 @@
 """deploy/ship_checks.py: the engine ship's credential-free rules (cloud-builds step 2).
-Invented paths and blobs, except one real migration read from the tree as the state-only precedent."""
+Invented paths and blobs, except one real migration read from the tree as the state-only
+precedent."""
 
 from __future__ import annotations
 
@@ -212,11 +213,11 @@ def test_sql_that_destroys_nothing_ships():
 
 
 def test_a_destructive_operation_outside_the_state_block_is_refused():
-    mixed = STATE_ONLY.replace(
-        "    ]\n", '        migrations.AlterField(model_name="widget", name="name", field=None),\n    ]\n', 1
-    )
+    extra = '        migrations.AlterField(model_name="widget", name="name", field=None),\n'
+    mixed = STATE_ONLY.replace("    ]\n", f"{extra}    ]\n", 1)
     assert _one_migration(mixed) == [
-        "server/widgets/migrations/0003_state_only.py holds a destructive database operation (AlterField)"
+        "server/widgets/migrations/0003_state_only.py holds a destructive database"
+        " operation (AlterField)"
     ]
 
 
@@ -228,7 +229,8 @@ def test_a_migration_that_does_not_parse_is_refused():
 
 def test_the_checklists_household_migration_is_judged_state_only():
     """The precedent in the repo: `SeparateDatabaseAndState` with an empty `database_operations`,
-    holding AddField, AlterField and AddConstraint. It changed no schema, so it is not destructive."""
+    holding AddField, AlterField and AddConstraint. It changed no schema, so it is not
+    destructive."""
     path = Path(__file__).resolve().parents[1] / "checklists" / "migrations" / "0002_household.py"
     source = path.read_text(encoding="utf-8")
     assert "SeparateDatabaseAndState" in source and "AlterField" in source
@@ -355,7 +357,8 @@ def test_schema_status_collects_django_migrations_only(tmp_path, monkeypatch):
     fix = run("rev-parse", "HEAD").strip()
 
     monkeypatch.chdir(tmp_path)
-    # The nested one is collected too: narrowing to one folder deep would fail open inside the image.
+    # The nested one is collected too: narrowing to one folder deep would fail open
+    # inside the deployed image.
     assert sorted(sc.schema_status(live, fix)) == [
         ("A", "server/pkg/inner/migrations/0002_deep.py"),
         ("A", "server/widgets/migrations/0002_more.py"),
