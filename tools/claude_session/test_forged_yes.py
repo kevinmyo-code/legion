@@ -327,7 +327,13 @@ class TestUploadStillRefusesTheRoot(ForgeCase):
 class TestStillOpen(ForgeCase):
     """What these two guards do NOT catch, measured rather than guessed, so the fix is never read
     as a closure. The trace's conclusion stands: the only real boundary is an OS one, with the
-    helpers under an account that cannot reach the worker's root."""
+    helpers under an account that cannot reach the worker's root.
+
+    Where the helper stands matters for every row here. The main session's cwd is `<root>/work`
+    (`worker.MainSession` starts it there, `worker.py:508`), which is why a single `..` is the
+    worker's own root and why B1 was reachable at all; a helper usually works one level further
+    down, in `<root>/work/task-<id>`, and a `cd` persists into its next tool call.
+    """
 
     def test_a_root_built_from_separate_string_pieces_is_not_seen(self):
         """The root's own folder name closes the `%APPDATA% + '/legion-claude'` spellings, but not
@@ -339,6 +345,47 @@ class TestStillOpen(ForgeCase):
         self.assertFalse(self.names_root(body))
         write, run = self.write_then_run("asm.py", body)
         self.assertEqual((write[0], run[0]), ("pass", "pass"))
+
+    def test_cheap_spellings_that_still_run_a_recorded_script(self):
+        """RED review B4, 2026-11-24, measured on the branch. Each of these runs `forge.py` from
+        the task folder while naming nothing the hook can resolve to it: a module name the `-m`
+        regex does not read, a glob or a quote the shell expands and the hook does not, a `$PWD`
+        it cannot resolve, or a folder whose `__main__.py` is the script. The first three are one
+        character from cases `runs_blocked_module` handles by name; none is closable by regex in
+        general, which is the point of this class."""
+        body = FORGE.format(tokens=self.paths.tokens.as_posix())
+        self.passed("Write", {"file_path": str(self.own / "forge.py"), "content": body},
+                    agent="agentZ")
+        for cmd in ("python -mforge",
+                    'python -c "from forge import x"',
+                    'python -c "import importlib; importlib.import_module(\'forge\')"',
+                    "python fo*.py",
+                    "python forg?.py",
+                    'python fo""rge.py',
+                    "python $PWD/forge.py",
+                    "python ."):
+            with self.subTest(cmd=cmd):
+                self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)
+
+    def test_a_test_runner_finds_the_script_with_no_path_in_the_command(self):
+        """`pytest` and `python -m pytest` discover `test_*.py` and `conftest.py` themselves, so
+        the command names no path at all and there is nothing for `names_blocked` to match."""
+        body = FORGE.format(tokens=self.paths.tokens.as_posix())
+        for name in ("test_forge.py", "conftest.py"):
+            with self.subTest(name=name):
+                self.passed("Write", {"file_path": str(self.own / name), "content": body},
+                            agent="agentZ")
+                self.passed("Bash", {"command": "pytest"}, agent="agentZ", cwd=self.own)
+                self.passed("Bash", {"command": "python -m pytest"}, agent="agentZ", cwd=self.own)
+
+    def test_a_cd_the_hook_cannot_resolve_still_reaches_the_root(self):
+        """B1's remainder. `_cwd_candidates` drops a base it cannot resolve (`~`, `$`, `%`), so a
+        `cd` written through a variable leaves the raw cwd standing and `config.json` is a bare
+        word, not a path. Closing it needs the shell's own answer, not a regex."""
+        for cmd in ("cd $PWD/..; cat config.json",
+                    "cd ~/AppData/Roaming; cat config.json"):
+            with self.subTest(cmd=cmd):
+                self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.paths.work)
 
     def test_a_script_that_writes_a_second_script_is_not_seen(self):
         body = ("open('step2.py','w').write(\"open('x','w')\")\n"
