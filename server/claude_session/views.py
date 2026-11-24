@@ -1358,6 +1358,11 @@ class FinishView(APIView):
                 task.session_text = data["session_text"]
             task.save()
             notes = []
+            if listed and data["session_text"]:
+                # Say it, like the `found` drop below: a worker that wrongly sent a session's
+                # message from the work laptop would otherwise get a 200 and no signal at all.
+                notes.append("The session message was not kept: this machine returns summaries "
+                             "only.")
             if listed and data["found"]:
                 notes.append("Found files were not kept: this machine returns summaries only.")
             elif data["found"]:

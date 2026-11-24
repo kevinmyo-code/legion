@@ -181,6 +181,19 @@ def list_lines(rows: list[dict], now_ms: float) -> list[str]:
 # ---------------------------------------------------------------------------------- read
 
 
+def default_projects() -> Path:
+    return Path.home() / ".claude" / "projects"
+
+
+def transcript_bytes(session_id: str, projects: Path) -> int:
+    """Where one session's transcript ends right now, in bytes, or 0 when there is none."""
+    p = transcript_path(session_id, projects)
+    try:
+        return p.stat().st_size if p else 0
+    except OSError:
+        return 0
+
+
 def transcript_path(session_id: str, projects: Path) -> Path | None:
     if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", session_id or ""):
         return None
@@ -203,7 +216,8 @@ def _text_of(entry: dict) -> tuple[str, str] | None:
     kind = entry.get("type")
     if kind not in ("user", "assistant") or entry.get("isMeta") or entry.get("isSidechain"):
         return None
-    content = (entry.get("message") or {}).get("content")
+    message = entry.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
     if isinstance(content, str):
         text = content
     elif isinstance(content, list):
@@ -420,7 +434,8 @@ def preflight(python: str, env: dict) -> None:
 
 
 def send(paths: Paths, cfg: dict, task: int, token: str, rows: list[dict], now: float,
-         python: str, runner=None, base_env: dict | None = None) -> str:
+         python: str, runner=None, base_env: dict | None = None,
+         projects: Path | None = None) -> str:
     try:
         tok_path, tok = find_token(paths, task, token, now, "send_used")
     except TokenRefused as e:
@@ -443,6 +458,12 @@ def send(paths: Paths, cfg: dict, task: int, token: str, rows: list[dict], now: 
                       "yes; nothing was sent")
     env = courier_env(os.environ if base_env is None else base_env, paths)
     preflight(python, env)
+    # The hub's thread (claude-hub slice S2): where that session's transcript ends BEFORE the
+    # message goes, so the reply watch reads only what the message itself caused and never the
+    # megabytes in front of it. Taken here, not when the watch is armed: the session can answer
+    # before the helper's report is even drained.
+    plan = {**plan, "transcript_bytes": transcript_bytes(plan["session_id"],
+                                                         projects or default_projects())}
     tok["send_used"] = True  # spent before anything leaves: a crash never re-sends
     write_json_atomic(tok_path, tok)
     write_json_atomic(plan_path(paths, plan["task"]), {**plan, "spent_at": now})
@@ -522,21 +543,22 @@ def main(argv: list[str] | None = None, paths: Paths | None = None, agents=None,
         print("Not on this machine: Claude sessions are read and messaged only on the Alienware.")
         return 3
     rows_of = agents or (lambda: run_agents(cfg))
+    projects = projects or default_projects()
     now = time.time()
     try:
         if a.cmd == "list":
             print("\n".join(list_lines(visible(rows_of(), paths, cfg),
                                        datetime.datetime.now().timestamp() * 1000)))
         elif a.cmd == "read":
-            print(read(paths, cfg, a.session, a.turns, rows_of(),
-                       projects or Path.home() / ".claude" / "projects"))
+            print(read(paths, cfg, a.session, a.turns, rows_of(), projects))
         elif a.cmd == "ask":
             q = ask(paths, cfg, a.task, a.to, a.text_file, rows_of(), now)
             print("Question for Kevin (report it with --status needs_confirmation --question; the "
                   "worker puts the exact message on his card):")
             print(q)
         else:
-            print(send(paths, cfg, a.task, a.token, rows_of(), now, _python()))
+            print(send(paths, cfg, a.task, a.token, rows_of(), now, _python(),
+                       projects=projects))
     except Refused as e:
         print(f"Refused: {e}.")
         return 2

@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent))  # own modules after the stdlib
-from common import Paths, read_json, write_json_atomic  # noqa: E402
+from common import Paths, read_json, stdin_text, write_json_atomic  # noqa: E402
 
 RECIPIENT_FIELDS = ("to", "recipient")
 # `message` is what the model wrote and what is delivered. `content` is the harness's own preview
@@ -118,7 +118,7 @@ def main() -> int:
         print(ISOLATION_REASON, file=sys.stderr)
         return 2
     try:
-        out = decide(json.load(sys.stdin), Paths())
+        out = decide(json.loads(stdin_text()), Paths())
     except Exception:  # fail closed
         out = _deny("The message gate failed. Nothing was sent.")
     if out:
