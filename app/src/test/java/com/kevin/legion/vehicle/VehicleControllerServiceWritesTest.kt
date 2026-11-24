@@ -133,7 +133,9 @@ class VehicleControllerServiceWritesTest {
 
     @Test
     fun `logServiceDirect with an out-of-range mileage refuses and writes nothing`() = runBlocking {
-        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 7)
+        val outcome = VehicleController.logServiceDirect(
+            context, "oil change", vehicleId = "V1", statedMileage = 7,
+        )
 
         assertFalse("a reading out of range is questioned, never filed. Was: ${outcome.message}", outcome.success)
         assertTrue("no record", FleetEngineStore.getRecentForVehicle(context, "V1", 10).isEmpty())
@@ -142,7 +144,7 @@ class VehicleControllerServiceWritesTest {
     }
 
     @Test
-    fun `an out-of-range reading says the SERVICE was not logged, not just that the figure looks wrong`() = runBlocking {
+    fun `an out-of-range reading says the SERVICE was not logged, not just the figure`() = runBlocking {
         // The whole call is refused, so a reply about the reading alone leaves the driver believing
         // work he really had done is on file.
         val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 7)
@@ -276,7 +278,7 @@ class VehicleControllerServiceWritesTest {
 
         val history = CarToolbelt.serviceHistory(context, vehicleId = "V1")
 
-        assertFalse("'oil change at 0 mi' is a reading the row does not hold. Was: $history", history.contains("at 0 mi"))
+        assertFalse("a reading the row does not hold. Was: $history", history.contains("at 0 mi"))
         assertTrue("Was: $history", history.contains("no mileage logged"))
     }
 

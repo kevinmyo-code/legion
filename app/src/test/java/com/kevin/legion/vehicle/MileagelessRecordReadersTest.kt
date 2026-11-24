@@ -89,7 +89,8 @@ class MileagelessRecordReadersTest {
         )
         val subtitle = CarAspectSummaries.serviceSubtitle("100,000 mi", next)
 
-        assertFalse("nothing can be timed, so 'nothing due yet' is a claim about a schedule: $subtitle", subtitle.contains("nothing due yet"))
+        // Nothing can be timed, so "nothing due yet" would be a claim about a schedule.
+        assertFalse(subtitle, subtitle.contains("nothing due yet"))
         assertTrue(subtitle, subtitle.contains("Oil Change"))
         assertTrue(subtitle, subtitle.contains("mileage reading"))
     }
@@ -118,7 +119,7 @@ class MileagelessRecordReadersTest {
         )
         val note = MatrixFleetText.carOf("Civic", "100,000 mi", next).unknown
 
-        assertTrue("both shapes of 'not known to be fine' belong here: $note", note!!.contains("Coolant Flush"))
+        assertTrue("both shapes of not-known-to-be-fine belong here: $note", note!!.contains("Coolant Flush"))
         assertTrue(note, note.contains("Oil Change"))
     }
 
