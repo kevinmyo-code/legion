@@ -15,7 +15,8 @@ import java.time.ZoneId
  * Listening check-ins (alfred-greets ticket 03, ADR 0091; Kevin 2026-11-15: *"it should open up the
  * mic for a short while for me to reply. If no reply close it"*). Alfred asks one short question
  * unprompted at one of four moments, the mic stays open about 8 s for the answer, and silence gets
- * a short scripted closing line.
+ * a short scripted closing line. **It is a single turn** (Kevin, 2026-11-23): his answer gets one
+ * reply and the conversation closes, with no second listening window after it.
  *
  * Everything here is pure (no Android, no clock of its own) so the rules are JVM tests. The Android
  * half is [CheckIns]; the listen window and the closer live in the cascade session.
@@ -34,7 +35,10 @@ data class CheckInMark(val topic: String, val moment: CheckInMoment)
 
 /** How a check-in that was SPOKEN ended. Only these count an attempt (a refused line never played). */
 enum class CheckInOutcome {
-    /** He started talking in the window (or over the line). The normal conversation follows. */
+    /**
+     * He started talking in the window (or over the line). One reply follows and the conversation
+     * closes: a check-in stays a single turn (Kevin, 2026-11-23).
+     */
     ANSWERED,
 
     /** The window closed in silence; the closing line was said. */

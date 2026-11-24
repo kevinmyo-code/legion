@@ -325,6 +325,50 @@ class CascadeWiringTest {
         assertTrue(answer.contains("text ?: LeadingFiller.strip(modelText(record))"))
     }
 
+    /**
+     * Kevin, 2026-11-23: an unprompted check-in that opens a voice turn stays a single turn. Read
+     * from source, as the whole file's wiring tests are: the session needs a Context, a mic and a
+     * socket to construct.
+     */
+    @Test
+    fun `an answered check-in closes after its one reply and opens no second window`() {
+        val s = session()
+        // He speaks: the check-in is answered, not finished, because its reply is still owed. Read by
+        // offset, not bodyOf: the mic sink has an onUserTurnStart of its own that calls this one.
+        val spokeAt = s.indexOf("private fun onUserTurnStart()")
+        val answeredAt = s.indexOf("checkInStep = CheckInStep.ANSWERED")
+        val reportedAt = s.indexOf("reportCheckIn(CheckInOutcome.ANSWERED)")
+        val nextFunAt = s.indexOf("private fun ", spokeAt + 1)
+        assertTrue("his speech is the one place the check-in becomes ANSWERED", spokeAt >= 0 && nextFunAt > spokeAt)
+        assertTrue("$spokeAt $answeredAt $reportedAt $nextFunAt", answeredAt in spokeAt until nextFunAt)
+        assertTrue("$spokeAt $reportedAt $nextFunAt", reportedAt in spokeAt until nextFunAt)
+        assertEquals("ANSWERED is set once, where he speaks", 1, s.split("checkInStep = CheckInStep.ANSWERED").size - 1)
+        // That answer's reply played: the one exchange is over.
+        val answer = bodyOf(s, "answerTurn")
+        assertTrue(
+            answer.contains("if (record.fromUser && checkInStep == CheckInStep.ANSWERED) checkInStep = CheckInStep.REPLIED"),
+        )
+        // So the close decision sees it, and closes instead of listening again.
+        val after = bodyOf(s, "afterReply")
+        assertTrue(after.contains("checkInReplied = checkInStep == CheckInStep.REPLIED"))
+        val branch = after.substringAfter("CascadeRules.AfterReply.CHECK_IN_ANSWERED ->", "")
+        assertTrue("the answered check-in has its own close branch", branch.isNotBlank())
+        val close = branch.substringBefore("CascadeRules.AfterReply.LISTEN")
+        assertTrue(close.contains("shutdown(\"check_in_answered\")"))
+        assertTrue(close.contains("host.closed(\"check_in_answered\")"))
+        assertFalse("a closed check-in never goes back to listening", close.contains("backToListening()"))
+        assertEquals(
+            CascadeRules.AfterReply.CHECK_IN_ANSWERED,
+            CascadeRules.afterReply(listens = true, dismissed = false, oneShotDone = false, checkInReplied = true),
+        )
+        // The line he never answered keeps its own window and its own scripted closer.
+        val line = bodyOf(s, "afterCheckInLine")
+        assertFalse(line.contains("CheckInStep.REPLIED"))
+        assertTrue(line.contains("checkInStep = CheckInStep.LISTENING"))
+        assertTrue(bodyOf(s, "onFollowUpExpired").contains("if (checkInStep == CheckInStep.LISTENING)"))
+        assertTrue(bodyOf(s, "closeCheckInUnanswered").contains("reportCheckIn(CheckInOutcome.NO_REPLY)"))
+    }
+
     @Test
     fun `a check-in conversation carries no agenda block on any turn`() {
         val s = session()
