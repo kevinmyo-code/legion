@@ -829,6 +829,18 @@ class Worker:
             except OSError:
                 log.warning("task %s reply watch could not read the transcript", t["id"])
 
+    def drop_reply_state(self, tid) -> None:
+        """A task is ending: its turn's text and any summariser child of its own end with it.
+
+        Called from `finish`, the one point every ending passes through, so the 30 minute cap, a
+        cancel, a hang and a restart all drop it (S2 review, finding 2: the cap is tested before
+        `poll_replies` can close the watch, and left both in worker memory until a restart).
+        """
+        self.replies.pop(tid, None)
+        pending = self.summarisers.pop(tid, None)
+        if pending is not None:
+            pending.cancel()
+
     def close_watches_switched_off(self) -> None:
         """A watch armed while the key was on, read by a worker whose key is off now.
 
@@ -941,6 +953,7 @@ class Worker:
 
     def finish(self, t: dict, status: str, summary: str, question: str = "", found=()) -> None:
         now = self.clock()
+        self.drop_reply_state(t["id"])
         found = [] if self.scope != "full" else [
             {"path": f["path"], "name": f["name"], "size": int(f["size"])} for f in found]
         if t.get("kind") == KIND_MEMORY_REVIEW:

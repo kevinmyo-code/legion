@@ -432,6 +432,9 @@ class FakeSummariser:
     def summary(self):
         return self.out
 
+    def cancel(self):
+        pass
+
 
 class NoSummary(FakeSummariser):
     def __init__(self, *a, **k):
@@ -440,12 +443,16 @@ class NoSummary(FakeSummariser):
 
 class Pending:
     """A summariser still running when the worker died: nothing of it survives a restart."""
+    cancelled = 0
 
     def done(self, now):
         return False
 
     def summary(self):
         return ""
+
+    def cancel(self):
+        Pending.cancelled += 1
 
 
 class WorkerBase(T.Base):
@@ -841,6 +848,68 @@ class TestTheReplyComesBack(WorkerBase):
         self.transcript(peer_entry(MSG), said("the android job is red"))
         self.w.poll_replies(self.now)
         self.assertEqual(self.yes["status"], "running")
+
+
+class TestATaskThatEndsAnotherWayTakesItsReplyStateWithIt(WorkerBase):
+    """S2 review, finding 2: a task failed by the 30 minute cap while its watch was open left its
+    turn's text and its summariser child in worker memory until the worker restarted. Dropped at
+    `finish`, the one point every ending passes through, so the cap, a cancel, a hang and a
+    restart are all covered by the same two lines."""
+
+    def arm(self):
+        self.pin()
+        self.transcript()
+        self.report()
+        self.w.drain_reports(self.now)
+        self.w.next_reply_poll = 0.0
+
+    def test_the_cap_drops_a_turns_text_from_memory(self):
+        self.arm()
+        self.transcript(peer_entry(MSG), said("still looking", stop="tool_use"))
+        self.w.poll_replies(self.now)
+        self.assertIn(42, self.w.replies)  # kept while the turn runs, in memory only
+        self.now += 31 * 60
+        self.w.check_timers(self.now)
+        self.assertEqual(self.yes["status"], "failed")
+        self.assertEqual(self.w.replies, {})
+
+    def test_the_cap_kills_a_summariser_that_is_still_running(self):
+        Pending.cancelled = 0
+        self.w.make_summariser = lambda *a, **k: Pending()
+        self.arm()
+        self.transcript(peer_entry(MSG), said("the android job is red"))
+        self.w.poll_replies(self.now)
+        self.assertIn(42, self.w.summarisers)
+        self.now += 31 * 60
+        self.w.check_timers(self.now)
+        self.assertEqual(self.yes["status"], "failed")
+        self.assertEqual(self.w.summarisers, {})
+        self.assertEqual(Pending.cancelled, 1)
+
+    def test_a_cancelled_task_drops_it_too(self):
+        self.arm()
+        self.transcript(peer_entry(MSG), said("still looking", stop="tool_use"))
+        self.w.poll_replies(self.now)
+        self.w.finish(self.yes, "cancelled", "Cancelled before it finished, as asked.")
+        self.assertEqual(self.w.replies, {})
+
+    def test_a_real_summariser_can_be_cancelled(self):
+        class Slow:
+            stdout = None
+            killed = False
+
+            def poll(self):
+                return None
+
+            def kill(self):
+                Slow.killed = True
+
+        s = sr.Summariser("a reply", {"claude_cmd": ["claude"]}, self.paths, {"PATH": ""}, 0.0,
+                          popen=lambda *a: Slow())
+        s.cancel()
+        self.assertTrue(Slow.killed)
+        self.assertTrue(s.done(1.0))
+        self.assertEqual(s.summary(), "")
 
 
 class TestASecondReportCannotSpeakForTheSession(WorkerBase):

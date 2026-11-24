@@ -328,6 +328,17 @@ class Summariser:
             self.out = ""
         return True
 
+    def cancel(self) -> None:
+        """Stop a summary nobody will read: its task ended another way (the cap, a cancel, a
+        hang). Review finding 2: without this the child outlived the task it was summarising."""
+        proc, self.proc = self.proc, None
+        if proc is None:
+            return
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
     def summary(self) -> str:
         """The summary, or "" when there is none. Never the reply itself: a failure here falls
         back to a sentence of the worker's own, because the only other thing to send would be the
