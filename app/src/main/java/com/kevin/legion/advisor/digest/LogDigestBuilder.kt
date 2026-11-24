@@ -15,9 +15,9 @@ import com.kevin.legion.util.compactDate
 
 /**
  * LOG's deterministic digest (ticket 17, same shape/window/tier rules as ticket 16's
- * non-negotiables). Read-only over [com.kevin.legion.data.local.ItemListDao]/
- * [com.kevin.legion.data.local.ListItemDao]/[com.kevin.legion.data.local.PlaceReminderDao] and the
- * local `events` table's `kind = 'appointment'` rows - never writes, never blocks on network.
+ * non-negotiables). Read-only over [com.kevin.legion.notes.NotesController],
+ * [com.kevin.legion.data.local.PlaceReminderDao] and the local `events` table's
+ * `kind = 'appointment'` rows - never writes, never blocks on network.
  * `TrustTier` is deliberately NOT stamped on any line here: every figure in this digest is a plain
  * count or a stored fact about LEGION's own record (a task exists, a reminder fired late, an event
  * is on the calendar), never a claim reconciled against - or standing in for - an outside document,
@@ -147,9 +147,10 @@ object LogDigestBuilder : DigestBuilder {
         )
     }
 
-    /** Stored fact, not a heuristic - [com.kevin.legion.data.local.ListItemDao.missedItems] is a
-     * one-off timed item found still open past its own [ListItem.startsAt] (ticket 12: "a missed
-     * reminder is a STORED fact, not something recomputed"). Names up to [MAX_NAMED_EXEMPLARS]. */
+    /** Stored fact, not a heuristic - a missed item is a one-off timed item found still open past
+     * its own [ListItem.startsAt], stamped once by `notes/AlarmScheduler.rescheduleAll` (ticket 12:
+     * "a missed reminder is a STORED fact, not something recomputed"). Names up to
+     * [MAX_NAMED_EXEMPLARS]. */
     private fun overdueReminderLines(missed: List<ListItem>): List<String> {
         if (missed.isEmpty()) return listOf(DigestText.line("OVERDUE REMINDERS", "none"))
         val names = missed.take(MAX_NAMED_EXEMPLARS).joinToString(", ") { it.text }
