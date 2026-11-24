@@ -219,6 +219,14 @@ class Migration(migrations.Migration):
     )
     operations = [s.state_operations[0]]
 """,
+        "the name imported from elsewhere": STATE_ONLY.replace(
+            "from django.db import migrations",
+            "from django.db import migrations\nfrom widgets.helpers import SeparateDatabaseAndState",
+        ).replace("migrations.SeparateDatabaseAndState(", "SeparateDatabaseAndState("),
+        "a star import that could bind it": STATE_ONLY.replace(
+            "from django.db import migrations",
+            "from django.db import migrations\nfrom widgets.helpers import *",
+        ),
         "a callee that is not Django's": '''from django.db import migrations
 
 

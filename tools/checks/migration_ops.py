@@ -176,9 +176,13 @@ def _state_only_operations(node: ast.AST) -> ast.AST | None:
 
 
 def _plain_shape(tree: ast.AST) -> bool:
-    """Whether this file is the plain migration shape the exemption is written for: it takes
-    `migrations` or `SeparateDatabaseAndState` from `django.db`, rebinds neither, and never reads a
-    `.state_operations` attribute (which would carry an operation out of the exempt list)."""
+    """Whether this file is the plain migration shape the exemptions are written for: it imports
+    from `django.db`, no other import and no `import *` binds one of `DJANGO_NAMES`, nothing rebinds
+    one by assignment, def or class, and nothing reads a `.state_operations` attribute (which would
+    carry an operation out of the exempt list).
+
+    Out of scope, as an imported helper is: a name bound by a function parameter, a `with ... as`, an
+    `except ... as`, or a comprehension target. The old text match saw none of those either."""
     from_django = False
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and node.attr == "state_operations":
@@ -189,10 +193,14 @@ def _plain_shape(tree: ast.AST) -> bool:
         if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
             if node.id in DJANGO_NAMES:
                 return False
-        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("django.db"):
-            from_django = True
-        if isinstance(node, ast.Import) and any(a.name.startswith("django.db") for a in node.names):
-            from_django = True
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            django = isinstance(node, ast.ImportFrom) and (node.module or "").startswith("django.db")
+            django = django or any(a.name.startswith("django.db") for a in node.names)
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                if alias.name == "*" or (bound in DJANGO_NAMES and not django):
+                    return False  # one of the three names could come from somewhere else
+            from_django = from_django or django
     return from_django
 
 
