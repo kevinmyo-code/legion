@@ -177,20 +177,25 @@ def carries(entry: dict, text: str) -> bool:
     return wrapped_text(body) == text.strip()
 
 
-def is_typed_prompt(entry: dict) -> bool:
-    """Kevin typing in that session himself, as opposed to a tool result or a peer message.
-
-    A turn he starts is not an answer to his phone, so the watch gives up rather than reporting
-    somebody else's turn as the reply.
-    """
-    if entry.get("type") != "user" or entry.get("isMeta") or is_peer_message(entry):
-        return False
+def is_tool_result(entry: dict) -> bool:
+    """A tool's answer, which belongs INSIDE a turn rather than starting a new one."""
     body = _content(entry)
-    if isinstance(body, str):
-        return bool(body.strip())
-    if isinstance(body, list):
-        return not any(isinstance(c, dict) and c.get("type") == "tool_result" for c in body)
-    return False
+    return isinstance(body, list) and any(
+        isinstance(c, dict) and c.get("type") == "tool_result" for c in body)
+
+
+def interrupts(entry: dict) -> bool:
+    """Does this entry end the turn his message started, without answering it?
+
+    ANY new input to that session does: a prompt he types, a slash command, a hook's injected
+    note, a second message delivered from another session. Only a tool result belongs inside the
+    turn. Said the other way round, the reply is the turn the ANCHOR started and no later one,
+    which is what keeps someone else's answer off his card: naming the interrupting shapes
+    one at a time left a turn he starts with a slash command (`isMeta`, so not a typed prompt)
+    and a second LEGION send inside the same ten minutes both reading as his reply
+    (S2 review, findings 2, 4 and 6).
+    """
+    return entry.get("type") == "user" and not is_tool_result(entry)
 
 
 def anchor_index(entries: list[dict], text: str) -> int | None:
@@ -209,8 +214,11 @@ def scan(entries: list[dict], text: str, anchored: bool) -> tuple[bool, str | No
     never read.
 
     The turn is over at the first assistant entry whose `stop_reason` is `end_turn` (probe,
-    2026-11-23). A prompt Kevin types in that session himself ends the scan with no text: that
-    turn is his, not an answer to his phone, and reporting it as the reply would be a lie.
+    2026-11-23). Anything that `interrupts` ends the scan with no text, and the caller then
+    reports nothing rather than a turn that answered something else.
+
+    A subagent's entries (`isSidechain`) are skipped whole: they sit inside his turn, carry an
+    `end_turn` of their own, and are a tool's workings rather than what the session said back.
 
     `sessions._text_of` does the reading, so the shell blocks, URL credentials, secrets and long
     token-like strings it strips are stripped here too.
@@ -223,7 +231,9 @@ def scan(entries: list[dict], text: str, anchored: bool) -> tuple[bool, str | No
         anchored, first = True, found + 1
     last: str | None = None
     for entry in entries[first:]:
-        if is_typed_prompt(entry):
+        if entry.get("isSidechain"):
+            continue
+        if interrupts(entry):
             return True, None, True
         if entry.get("type") != "assistant":
             continue

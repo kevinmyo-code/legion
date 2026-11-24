@@ -191,6 +191,45 @@ class TestTheAnchorAndTheTurnEnd(unittest.TestCase):
         self.assertTrue(anchored and ended)
         self.assertIsNone(text)
 
+    def test_a_turn_answering_SOMEONE_ELSES_message_is_never_reported_as_the_reply(self):
+        """A second message delivered after his ends the scan, exactly as his own typing does.
+
+        Two LEGION sends can sit in one ten minute window, and the second one's watch reads the
+        same transcript. Without this the first watch takes the first `end_turn` it sees after
+        its own anchor, which is the SECOND message's answer (S2 review, findings 2 and 6).
+        """
+        anchored, text, ended = sr.scan(
+            [peer_entry(MSG), said("looking", stop="tool_use"),
+             peer_entry("and also bump the version"), said("version bumped")], MSG, False)
+        self.assertTrue(anchored and ended)
+        self.assertIsNone(text)
+
+    def test_a_turn_he_starts_with_a_slash_command_is_not_his_reply_either(self):
+        """`isMeta` is not "not his input": a slash command he runs is one, and the turn it
+        starts answers it, not his phone."""
+        slash = {"type": "user", "isMeta": True, "promptSource": "slash",
+                 "message": {"role": "user", "content": "<command-name>/compact</command-name>"}}
+        anchored, text, ended = sr.scan([peer_entry(MSG), slash, said("compacted")], MSG, False)
+        self.assertTrue(anchored and ended)
+        self.assertIsNone(text)
+
+    def test_a_subagents_own_turn_is_not_the_reply_and_does_not_end_his(self):
+        """A session that runs a subagent writes that subagent's turn into the same file, with
+        its own `end_turn`. It is a tool's workings, and his turn is still running."""
+        sub_prompt = {"type": "user", "isSidechain": True,
+                      "message": {"role": "user", "content": "go and read the CI logs"}}
+        sub_said = {"type": "assistant", "isSidechain": True,
+                    "message": {"role": "assistant", "stop_reason": "end_turn",
+                                "content": [{"type": "text", "text": "the logs say timeout"}]}}
+        anchored, text, ended = sr.scan(
+            [peer_entry(MSG), said("looking", stop="tool_use"), sub_prompt, sub_said], MSG, False)
+        self.assertTrue(anchored)
+        self.assertFalse(ended)
+        self.assertEqual(text, "looking")
+        anchored, text, ended = sr.scan([said("it was a timeout on android")], MSG, True)
+        self.assertTrue(ended)
+        self.assertEqual(text, "it was a timeout on android")
+
     def test_an_already_anchored_poll_reads_from_the_first_entry(self):
         anchored, text, ended = sr.scan([said("the android job is red")], MSG, True)
         self.assertTrue(anchored and ended)
@@ -277,6 +316,16 @@ class NoSummary(FakeSummariser):
         super().__init__(*a, out="")
 
 
+class Pending:
+    """A summariser still running when the worker died: nothing of it survives a restart."""
+
+    def done(self, now):
+        return False
+
+    def summary(self):
+        return ""
+
+
 class WorkerBase(T.Base):
     def setUp(self):
         super().setUp()
@@ -290,16 +339,25 @@ class WorkerBase(T.Base):
                "task_log": str(self.root / "task-log.jsonl"),
                "agent_rules": str(self.root / "AGENT-RULES.md")}
         write_json_atomic(self.paths.config, cfg)
-        self.w = T.W.Worker(self.paths, cfg, power=None, clock=lambda: self.now,
-                            today=lambda: "2026-11-23", drives=lambda: ["C:\\"], base_env={},
-                            engine=EngineClient(cfg["engine_url"], cfg["token"], timeout=3),
-                            projects=self.projects, summariser=FakeSummariser)
+        self.wcfg = cfg
+        self.w = self.build()
         self.card = {"id": 41, "parent": None, "status": "needs_confirmation", "kind": "ask",
                      "request": "tell garden to check CI", "started_at": 0, "turns": 0,
                      "send_plan_sha": None, "question": "", "summary": "", "found": []}
         self.yes = {"id": 42, "parent": 41, "status": "running", "kind": "ask", "confirms": True,
                     "request": "yes", "started_at": self.now, "turns": 0, "found": []}
         self.w.state["tasks"] = {"41": self.card, "42": self.yes}
+
+    def build(self):
+        cfg = self.wcfg
+        return T.W.Worker(self.paths, cfg, power=None, clock=lambda: self.now,
+                          today=lambda: "2026-11-23", drives=lambda: ["C:\\"], base_env={},
+                          engine=EngineClient(cfg["engine_url"], cfg["token"], timeout=3),
+                          projects=self.projects, summariser=FakeSummariser)
+
+    def restarted(self):
+        """The worker the scheduled task starts again: the state file, nothing in memory."""
+        return self.build()
 
     def pin(self, delivered=True, **over) -> dict:
         plan = {"task": 41, "session_id": SID, "name": "garden", "folder": "garden", "text": MSG,
@@ -500,6 +558,62 @@ class TestTheReplyComesBack(WorkerBase):
         self.assertTrue(self.w.session_read(42))
         self.assertIn("session_transcript",
                       (read_json(self.paths.taint / "task-42.json", {}) or {})["sources"])
+
+    def test_a_preamble_is_not_the_reply_when_the_turn_was_someone_elses_after_all(self):
+        """The partial text an earlier poll kept is dropped, not sent.
+
+        Poll one reads "looking" and keeps it. Poll two finds a second message delivered and that
+        message's answer, so the turn being read is no longer his. Reporting "looking" would put
+        a half-sentence of preamble on his card as the session's reply.
+        """
+        self.arm()
+        self.transcript(peer_entry(MSG), said("looking", stop="tool_use"))
+        self.poll()
+        self.transcript(peer_entry("and also bump the version"), said("version bumped"))
+        self.poll()
+        self.assertEqual(self.yes["status"], "done")
+        self.assertEqual(FakeSummariser.made, [])
+        self.assertIn("said nothing back", self.outbox()[0]["payload"]["summary"])
+
+    def test_a_restart_after_the_turn_ended_never_reports_the_NEXT_turn(self):
+        """The turn ended and its text was lost with the worker, so nothing came back.
+
+        `reply_watch` is in the state file and survives a restart; the turn's text is in memory
+        and does not (R1: it is a session's own words). A resumed watch that had already seen its
+        turn end would otherwise take the NEXT `end_turn` in that transcript as the reply, and
+        that turn answers something else entirely (S2 review, finding 4).
+        """
+        self.arm()
+        self.transcript(peer_entry(MSG), said("the android job is red"))
+        self.w.make_summariser = lambda *a, **k: Pending()  # still summarising when it died
+        self.poll()
+        self.assertEqual(self.yes["status"], "running")
+        self.w.save()
+
+        after = self.restarted()
+        self.transcript(peer_entry("something else entirely"), said("an answer to that instead"))
+        after.next_reply_poll = 0.0
+        after.poll_replies(self.now)
+        task = after.state["tasks"]["42"]
+        self.assertEqual(task["status"], "done")
+        summary = after.state["outbox"][0]["payload"]["summary"]
+        self.assertNotIn("an answer to that", summary)
+        self.assertIn("said nothing back", summary)
+        self.assertEqual(FakeSummariser.made, [])
+
+    def test_a_restart_part_way_through_a_turn_still_reads_the_rest_of_it(self):
+        """The other half of the rule: a turn that had NOT ended is still his to report."""
+        self.arm()
+        self.transcript(peer_entry(MSG), said("looking", stop="tool_use"))
+        self.poll()
+        self.w.save()
+
+        after = self.restarted()
+        self.transcript(used_a_tool(), tool_result(), said("it is the android job"))
+        after.next_reply_poll = 0.0
+        after.poll_replies(self.now)
+        self.assertEqual(after.state["tasks"]["42"]["status"], "done")
+        self.assertEqual(FakeSummariser.made, ["it is the android job"])
 
     def test_the_poll_keeps_to_the_heartbeats_beat(self):
         self.arm()

@@ -838,6 +838,11 @@ class Worker:
             # In memory only: the session's own words never go in the worker's state file. A
             # worker restart mid-turn loses what it had read and the deadline closes the watch.
             self.replies[t["id"]] = text
+        elif ended:
+            # The turn ended on something that was not an answer to his message (he typed, or a
+            # second message arrived). Whatever preamble an earlier poll kept belongs to a turn
+            # that answered something else, so it is dropped rather than sent as the reply.
+            self.replies.pop(t["id"], None)
         if not ended:
             self.close_if_late(t, watch, name, now)
             return
