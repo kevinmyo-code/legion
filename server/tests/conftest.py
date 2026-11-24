@@ -535,7 +535,7 @@ def worker_client(client, name="claude-session-Alienware"):
     The real world has two tokens here, so a test that both heartbeats as a machine and writes as
     Kevin needs two as well. **Since 2026-11-24 every worker verb goes through this client**
     (`claude_session.fences`): claim, finish, upload and the session hooks are refused for
-    anything but the token the machine's heartbeat bound, so the modules here route them through
+    anything but the token bound to that machine, so the modules here route them through
     their own `_wk` wrapper over this function rather than sending them as Kevin's app token.
 
     Cached on the client per machine name, so a module that does route a claim here keeps one

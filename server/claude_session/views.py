@@ -1096,8 +1096,10 @@ class ClaimView(APIView):
                 "Nothing was claimed. This machine has not sent a heartbeat yet.",
                 http.HTTP_404_NOT_FOUND,
             )
-        # A queue is claimed by the worker whose heartbeat named the machine, and by nobody else:
-        # a member's app token must not take Kevin's laptop's work and answer for it.
+        # A queue is claimed by the worker bound to that machine, and by nobody else: a member's
+        # app token must not take Kevin's laptop's work and answer for it. The real worker always
+        # heartbeats first (`tools/claude_session/worker.py` claims inside the same loop pass,
+        # after the heartbeat returned), so a claim arrives with `last_seen_at` already set.
         refusal = fences.bound_refusal(request, machine)
         if refusal is not None:
             return _detail(refusal, http.HTTP_403_FORBIDDEN)

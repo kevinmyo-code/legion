@@ -15,7 +15,8 @@ Three rules, one test class each:
   that the database did not move, so a pass is the fence and never a missing row.
 - `TestKevinStillWorks`: the whole round trip he uses - create, claim, finish, status, files,
   workflows, sessions - on his own tokens.
-- `TestOnlyTheBoundWorker`: the worker's verbs belong to the worker the machine's heartbeat bound.
+- `TestOnlyTheBoundWorker`: the worker's verbs belong to the worker bound to that machine, by its
+  heartbeat or by its session hook, whichever reached the engine first.
   A member's app token and a SECOND worker token of the owner's own are both refused.
 
 Invented examples only; no personal data.
