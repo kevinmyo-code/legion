@@ -562,9 +562,9 @@ class LiveSessionController(context: Context) {
                 // path, e.g. the cold speak-only session in startProactive).
                 if (conversationMode && event.dismissed) {
                     // The driver said goodbye and the session is parking: no fold-in, and no
-                    // "Listening..." flash. The Idle that follows sets the phase and speaks a
-                    // held line on the warm socket, which is where one belongs (LiveEvent
-                    // .TurnComplete's doc).
+                    // "Listening..." flash. The Idle that follows sets the phase and DROPS
+                    // whatever was held, rather than speaking it after the sign-off
+                    // (HeldLines.onPark).
                     MidnightEvents.voiceTurnDecision("turn ended on a dismissal, no fold-in")
                 } else if (conversationMode) {
                     set(Phase.LISTENING, "Listening...")
@@ -585,8 +585,10 @@ class LiveSessionController(context: Context) {
                 conversationMode = false
                 set(Phase.IDLE, IDLE_STATUS)
                 // A fold-in still waiting when the conversation went quiet is spoken now, on the
-                // warm socket, rather than lost with the conversation.
-                foldIns.takeFresh(SystemClock.elapsedRealtime(), ::dropped)?.let { requestSpeak(it.prompt) }
+                // warm socket, rather than lost with the conversation. A conversation the driver
+                // ENDED drops it instead: HeldLines.onPark is that rule.
+                foldIns.onPark(event.afterDismissal, SystemClock.elapsedRealtime(), ::dropped)
+                    ?.let { requestSpeak(it.prompt) }
             }
             is LiveEvent.Subtitle -> {
                 _subtitle.tryEmit(event.text)
