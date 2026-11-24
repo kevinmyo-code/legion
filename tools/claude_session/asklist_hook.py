@@ -624,7 +624,13 @@ _UNWALKABLE_RE = re.compile(r"[;\n`(\"']|\$\(|\|\||(?<![&>])&(?![&>])")
 # The only `cd` the walk trusts: a whole segment, one plain resolvable folder, nothing else on it.
 _PLAIN_CD_RE = re.compile(r"^\s*(?:cd|Set-Location|sl|pushd|Push-Location)\s+(?:-Path\s+)?"
                           r"([^\s|;&\"']+)\s*$", re.I)
-_CD_VERB_RE = re.compile(r"(?:^|\s)(?:cd|Set-Location|sl|pushd|Push-Location)(?=\s)", re.I)
+# Anything that can move the shell, un-alias a `cd`, or run something that does. A segment holding
+# one of these and not being a plain `cd` makes the whole command unwalkable: `cd -` goes back,
+# `popd` undoes a `pushd`, `\cd` skips an alias, and `export CDPATH=..` moves what `cd` means
+# (measured, 2026-11-24).
+_MOVES_RE = re.compile(
+    r"(?:^|[\s\\])(?:cd|chdir|Set-Location|sl|pushd|Push-Location|popd|Pop-Location|eval|source"
+    r"|builtin|command|export|set|setx)(?=\s|$)", re.I)
 
 
 def _cd_scoped(command: str, cwd: str) -> list:
@@ -636,15 +642,16 @@ def _cd_scoped(command: str, cwd: str) -> list:
     folder: `cd nope; cat ../config.json` reads the root on a real shell. There the whole command
     is checked against every candidate base, the raw cwd included, and no part is ever dropped
     (RED review B1, 2026-11-24, and its re-measure)."""
-    walkable = not _UNWALKABLE_RE.search(command or "")
     segs = re.split(r"&&", command or "")
-    if walkable:
-        for seg in segs:
-            if _CD_VERB_RE.search(seg) and not _PLAIN_CD_RE.match(seg.strip()):
-                walkable = False
-                break
-    if not walkable:
-        return [(b, command) for b in _cwd_candidates(command, cwd) if b]
+    fallback = [(b, command) for b in _cwd_candidates(command, cwd) if b]
+    if _UNWALKABLE_RE.search(command or ""):
+        return fallback
+    for seg in segs:
+        m = _PLAIN_CD_RE.match(seg.strip())
+        if _MOVES_RE.search(seg) and not m:
+            return fallback
+        if m and m.group(1).startswith(("-", "+", "\\")):
+            return fallback
     out, base = [], cwd
     for seg in segs:
         out.append((base, seg))
@@ -652,12 +659,23 @@ def _cd_scoped(command: str, cwd: str) -> list:
         if m:
             d = _to_os_path(m.group(1))
             if d.startswith(("~", "$", "%")) or not base:
-                return [(b, command) for b in _cwd_candidates(command, cwd) if b]
+                return fallback
             base = d if DRIVE_RE.match(d) else os.path.normpath(os.path.join(base, d))
     return out
 
 
 def _root_read_denied(command: str, cwd: str, paths: Paths) -> bool:
+    """`_root_read_once`, also on the command with every backslash dropped.
+
+    A backslash is a separator on Windows and an escape in a shell, so one command text lands in
+    two different folders depending on which shell reads it (`cd task-50/\\.\\.` is `task-50` to
+    `os.path.normpath` and the work folder to Git Bash). Both readings are checked and either one
+    denies (measured, 2026-11-24)."""
+    stripped = (command or "").replace("\\", "")
+    return any(_root_read_once(t, cwd, paths) for t in dict.fromkeys([command, stripped]))
+
+
+def _root_read_once(command: str, cwd: str, paths: Paths) -> bool:
     """Does this command READ the worker's own root outside the work folder?
 
     Three rules. The whole command is checked with no folder at all, which catches every absolute

@@ -212,7 +212,9 @@ class TestARecordedFileIsDeniedOnlyToCommandsThatRunIt(ForgeCase):
         for cmd in (f"cat {notes.name}", f"git add {notes.name}", f"grep yes {notes.name}",
                     f"type {notes.name}", f"git diff -- {notes.name}", f"ls -l {notes.name}",
                     f"head -5 {notes.name}", f"wc -l {notes.name}",
-                    f"git add {notes.name} 2>&1"):
+                    f"git add {notes.name} 2>&1", f"git status -- {notes.name}",
+                    f"git commit -m x -- {notes.name}", f"cd . && cat {notes.name}",
+                    f"echo {notes.name}"):
             with self.subTest(cmd=cmd):
                 self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)
 
@@ -227,7 +229,11 @@ class TestARecordedFileIsDeniedOnlyToCommandsThatRunIt(ForgeCase):
                     f". ./{notes.name}", f"X=1 ./{notes.name}", f"time ./{notes.name}",
                     f"if ./{notes.name}; then :; fi", f"echo $(./{notes.name})",
                     f"Import-Module ./{notes.name}", f"xcopy {notes.name} b.py",
-                    f"`./{notes.name}`", f"awk -f {notes.name}", f"sed -f {notes.name} x.txt"):
+                    f"`./{notes.name}`", f"awk -f {notes.name}", f"sed -f {notes.name} x.txt",
+                    # The run is in the segment that does not name the file.
+                    f"cat {notes.name} | awk -f -", f"cat {notes.name} | dd of=b.py",
+                    f"git bisect run ./{notes.name}", f"rg --pre ./{notes.name} x .",
+                    f"less {notes.name}", f"more {notes.name}"):
             with self.subTest(cmd=cmd):
                 self.assertEqual(
                     self.decide("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)[1],
@@ -284,6 +290,15 @@ class TestACdCannotReachTheRoot(ForgeCase):
         ("Bash", "cd task-50 && cd .. && cat ../config.json"),
         ("Bash", 'bash -c "cd ..; cat config.json"'),
         ("PowerShell", 'powershell -c "cd ..; type config.json"'),
+        # Other ways the shell moves: back to where it was, out of a `pushd`, through an
+        # un-aliased `cd`, and through a backslash that `normpath` and Git Bash read differently.
+        ("Bash", "cd task-50 && cd - && cat ../config.json"),
+        ("Bash", "pushd task-50 && popd && cat ../config.json"),
+        ("Bash", "cd task-50 && \\cd .. && cat ../config.json"),
+        ("Bash", "cd task-50/\\.\\. && cat ../config.json"),
+        # Globs the shell expands and the hook does not.
+        ("Bash", "cat ../{config,state}.json"),
+        ("Bash", "cat ../[c]onfig.json"),
     )
 
     def test_the_root_is_never_read_from_the_sessions_own_cwd(self):
@@ -428,7 +443,12 @@ class TestStillOpen(ForgeCase):
         `cd` written through a variable leaves the raw cwd standing and `config.json` is a bare
         word, not a path. Closing it needs the shell's own answer, not a regex."""
         for cmd in ("cd $PWD/..; cat config.json",
-                    "cd ~/AppData/Roaming; cat config.json"):
+                    "cd ~/AppData/Roaming; cat config.json",
+                    # `CDPATH` changes what a bare `cd tokens` means, and nothing in the command
+                    # names the root.
+                    "export CDPATH=.. && cd tokens && cat 50-yes.json",
+                    # An empty quote the shell removes and the tokenizer does not.
+                    "cat ../conf''ig.json"):
             with self.subTest(cmd=cmd):
                 self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.paths.work)
 

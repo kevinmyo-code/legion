@@ -554,8 +554,9 @@ def _worker_own(cand: str, cwd: str, paths: Paths) -> bool:
 
     The root ITSELF counts (`cd ..`, `ls ../`, a `cd` that lands there): listing or searching the
     root reads what is in it, and `_names_root_by_tail` has always counted the bare root for an
-    absolute spelling. A glob counts for the same reason it does there: `cat ../*.json` is
-    `config.json` and `state.json` (RED review B1, 2026-11-24)."""
+    absolute spelling. A glob counts for the same reason it does there: `cat ../*.json`,
+    `cat ../{config,state}.json` and `cat ../[c]onfig.json` all read `config.json` (RED review B1,
+    2026-11-24)."""
     try:
         target = cand if os.path.isabs(cand) else (os.path.join(cwd, cand) if cwd else "")
         if not target or not is_under(target, paths.root) or is_under(target, paths.work):
@@ -564,7 +565,7 @@ def _worker_own(cand: str, cwd: str, paths: Paths) -> bool:
         if not rest:
             return True
         first = re.split(r"[\\/]", rest)[0].lower()
-        return first in root_entries(paths) or "*" in first or "?" in first
+        return first in root_entries(paths) or any(c in first for c in "*?{[")
     except (OSError, ValueError):
         return False
 
@@ -692,14 +693,18 @@ LAUNDER_RE = re.compile(
     r"(?:^|[\s;&|(])(?:cp|copy|xcopy|robocopy|Copy-Item|mv|move|Move-Item|ren|rename|Rename-Item"
     r"|install|tee|ln|New-Item|Set-Content|Add-Content|Out-File)(?:\.exe)?(?=\s)"
     r"|(?<!&)[<>](?!&)", re.I)
-# The only verbs a segment naming a recorded file may start with: a short read, a listing or a
-# version-control command. Everything else denies, because a command line is not a sandbox and
-# `. ./forge.sh`, `X=1 ./forge.py`, `time ./forge.py` and `xcopy forge.py b.py` all end in a run
-# (measured, 2026-11-24). `awk`, `sed` and `jq` are NOT here: each takes a program file.
+# The only verbs a segment of a command naming a recorded file may start with: a short read, a
+# listing, a `cd`, an `echo`, or one of git's reporting subcommands. EVERY segment has to be one
+# of these, not just the segment that names the file, because the next pipe stage is where the
+# file ends up (`cat forge.awk | awk -f -`, `cat forge.py | dd of=b.py`). Everything else denies,
+# because a command line is not a sandbox and `. ./forge.sh`, `X=1 ./forge.py`, `time ./forge.py`,
+# `git bisect run ./forge.py` and `xcopy forge.py b.py` all end in a run (measured, 2026-11-24).
+# `awk`, `sed`, `jq`, `dd`, `rg --pre`, `less` and `more` are NOT here: each runs something.
 SAFE_READ_RE = re.compile(
     r"^\s*(?:[\"']?[^\s\"';&|]*[\\/])?"
-    r"(?:cat|type|Get-Content|gc|head|tail|more|less|grep|egrep|fgrep|rg|findstr|Select-String"
-    r"|wc|ls|dir|Get-ChildItem|gci|stat|file|diff|cmp|nl|git|hg|svn)(?:\.exe)?(?=\s|$)", re.I)
+    r"(?:cat|type|Get-Content|gc|head|tail|grep|egrep|fgrep|findstr|Select-String|wc|ls|dir"
+    r"|Get-ChildItem|gci|stat|file|diff|cmp|nl|cd|pushd|echo"
+    r"|git(?:\.exe)?\s+(?:add|diff|status|log|blame|commit|show))(?:\.exe)?(?=\s|$)", re.I)
 
 
 def runs_blocked_path(command: str, cwd: str, blocked: set[str]) -> bool:
@@ -712,24 +717,25 @@ def runs_blocked_path(command: str, cwd: str, blocked: set[str]) -> bool:
 
     So: named AND run, and "run" fails closed. A command holding an interpreter, a shell or an
     eval word anywhere runs it (`cat forge.py | python`); copying, moving or redirecting it runs
-    it one command later; a substitution runs it outright; and otherwise the segment that names it
-    has to START with a short read, a listing or a version-control verb (`SAFE_READ_RE`), because
-    `. ./forge.sh` and `X=1 ./forge.py` are runs that name no interpreter at all. Reading it,
-    searching it, committing it and listing it are what this gives back."""
+    it one command later; a substitution runs it outright; and otherwise EVERY segment of the
+    command has to lead with a safe verb (`SAFE_READ_RE`), because `. ./forge.sh` and
+    `X=1 ./forge.py` are runs that name no interpreter at all, and `cat forge.awk | awk -f -` is a
+    run in the segment that does not name the file. Reading it, searching it, committing it and
+    listing it are what this gives back."""
     # A backtick is a substitution in a shell and an escape in PowerShell, and either way it
-    # sticks to the path (`` `./forge.py` ``), so it is cleared before the path is looked for.
+    # sticks to the path (`` `./forge.py` ``), so it is cleared before the path is looked for. An
+    # `fd` dup (`2>&1`) is not a redirect of a file, and it is cleared so it neither counts as one
+    # nor breaks the command into segments.
     flat = (command or "").replace("`", " ")
+    flat = re.sub(r"\d?[<>]&\d?", " ", flat)
     if not blocked or not names_blocked(flat, cwd, blocked):
         return False
     if RUN_WORD_RE.search(flat) or LAUNDER_RE.search(flat):
         return True
     if "$(" in flat or "`" in (command or ""):
         return True
-    command = flat
-    for seg in re.split(r"[;&|\n]+", command or ""):
-        if names_blocked(seg, cwd, blocked) and not SAFE_READ_RE.match(seg):
-            return True
-    return False
+    return not all(SAFE_READ_RE.match(seg) or not seg.strip()
+                   for seg in re.split(r"[;&|\n]+", flat))
 
 
 def names_blocked(command: str, cwd: str, blocked: set[str]) -> bool:
