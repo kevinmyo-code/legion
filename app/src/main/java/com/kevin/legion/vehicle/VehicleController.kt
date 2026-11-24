@@ -547,37 +547,6 @@ object VehicleController {
         }
     }
 
-    /**
-     * " at 42300 miles", or nothing at all when no reading was stated. The empty half is the point:
-     * a spoken sentence may not name a mileage the row does not hold (CLAUDE.md §7's outcome rule),
-     * and it may not say "at 0 miles" either.
-     */
-    private fun atMiles(miles: Int?): String = miles?.let { " at $it miles" } ?: ""
-
-    /**
-     * [logServiceDirect]'s spoken confirmation for a service that matched a scheduled item.
-     *
-     * Two sets, not one with a blank: with no mileage on the row the schedule can only time this
-     * item by date, so "I'll let you know when it's due again" would promise something about the
-     * mileage axis the row cannot keep. Neither set ASKS for the number - a reading he offers next
-     * is a reading (`set_odometer`), and a reply that invites one here invites a second log of the
-     * same work.
-     */
-    private fun loggedServiceMessage(serviceName: String, statedMileage: Int?): String =
-        if (statedMileage != null) {
-            listOf(
-                "Nice, logged the $serviceName at $statedMileage miles. I'll let you know when it's due again.",
-                "Got it - $serviceName done at $statedMileage. One less thing to worry about.",
-                "Logged: $serviceName at $statedMileage miles.",
-            ).random()
-        } else {
-            listOf(
-                "Nice, logged the $serviceName. No mileage on it, so I'm timing that one by date.",
-                "Got it - $serviceName done today. No reading given, so it's timed by date.",
-                "Logged: $serviceName, today, no mileage.",
-            ).random()
-        }
-
     /** [NEAR_MISS_STOPWORDS]-filtered lowercase word set for [nearMissServiceName]'s comparison. */
     private fun significantTokens(raw: String): Set<String> =
         raw.lowercase()
@@ -649,10 +618,8 @@ object VehicleController {
         // range, it questions the figure and nothing else has been written yet. The ambiguity
         // branch is first so an ambiguous name never moves the odometer either.
         val refusal = when {
-            match is ServiceMatch.Ambiguous -> WriteOutcome(
-                false,
-                "That could be ${match.candidates.joinToString(" or ")} - which one, or is this a new item?",
-            )
+            match is ServiceMatch.Ambiguous ->
+                WriteOutcome(false, ambiguousServiceQuestion(match.candidates))
             statedMileage != null -> setOdometer(context, statedMileage, vehicleId).takeIf { !it.success }
             else -> null
         }
@@ -698,11 +665,7 @@ object VehicleController {
                 // delete/rename between that read and this write can zero it, and
                 // ticket 05's no-op law says that must be reported, not assumed.
                 if (written == 0) {
-                    WriteOutcome(
-                        false,
-                        "Logged the $matchedName${atMiles(statedMileage)}, but the schedule item disappeared " +
-                            "before I could reset it - it may have just been deleted.",
-                    )
+                    WriteOutcome(false, serviceItemVanishedMessage(matchedName, statedMileage))
                 } else {
                     WriteOutcome(true, loggedServiceMessage(matchedName, statedMileage))
                 }
@@ -722,12 +685,7 @@ object VehicleController {
                     context,
                     MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical, neverDone = false),
                 )
-                WriteOutcome(
-                    true,
-                    "Logged the $canonical${atMiles(statedMileage)}. Nothing on your schedule matched, so " +
-                        "I've added $canonical as an item - it has no interval yet, tell me one when you " +
-                        "want it tracked.",
-                )
+                WriteOutcome(true, newServiceItemMessage(canonical, statedMileage))
             }
         }
     }
