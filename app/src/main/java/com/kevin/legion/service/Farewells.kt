@@ -22,9 +22,11 @@ object Farewells {
     )
 
     /**
-     * Lead-ins that open a turn without answering anything: pure discourse filler. After a question
-     * one of these ALONE no longer makes a goodbye into an answer (Kevin, 2026-11-23, Q9: *"okay bye"
-     * closes after a question; a lead-in word alone must not veto a bare farewell*). "right" sits here
+     * Lead-ins that open a turn without answering anything: pure discourse filler. One of these ALONE
+     * no longer makes a goodbye into an answer, in any state (Kevin, 2026-11-23, Q9: *"okay bye"
+     * closes after a question; a lead-in word alone must not veto a bare farewell*). They are
+     * courtesy, so they come off at the ENDS with the rest ([withoutCourtesy]) and veto nothing;
+     * [answersQuestion] never counts one. "right" sits here
      * and not in [ASSENT_LEADS] because "all right" reduces to words containing "right", and
      * [answersQuestion] looks for a word anywhere in the turn, so a bare "right" in the answer set
      * would read "all right, goodnight" as an answer.
@@ -73,19 +75,14 @@ object Farewells {
     )
 
     /**
-     * [transcript] holds a word that answers a question ([ANSWER_WORDS]) or a number.
-     *
-     * [filler]: count [FILLER_LEADS] as answers too. Only one caller does
-     * ([WakePhrases.isSleepPhrase] while a write draft waits): there "okay" may be the yes that
-     * commits it, and a close would throw the draft away, so the narrow reading of Q9 applies and
-     * the turn goes to the model.
+     * [transcript] holds a word that answers a question ([ANSWER_WORDS]) or a number. One reading for
+     * every state: a pending write took a stricter one for a day and Kevin reversed it (2026-11-23),
+     * since a filler lead-in authorises nothing wherever it is said.
      */
-    fun answersQuestion(transcript: String, filler: Boolean = false): Boolean {
+    fun answersQuestion(transcript: String): Boolean {
         val w = normalise(transcript).split(' ').filter { it.isNotEmpty() }
         if (w.any { t -> t.any { it.isDigit() } }) return true
-        return (if (filler) answerOrFillerWords else answerWords).any { phrase ->
-            w.windowed(phrase.size).any { it == phrase }
-        }
+        return answerWords.any { phrase -> w.windowed(phrase.size).any { it == phrase } }
     }
 
     fun normalise(text: String): String =
@@ -98,7 +95,6 @@ object Farewells {
     private val leadWords = words(LEADS + THANKS)
     private val tailWords = words(THANKS + TAILS)
     private val answerWords = words(ANSWER_WORDS)
-    private val answerOrFillerWords = words(ANSWER_WORDS + FILLER_LEADS)
 
     /**
      * Farewells that can also answer a question ("Morning or night?" "Night."): alone, they close only

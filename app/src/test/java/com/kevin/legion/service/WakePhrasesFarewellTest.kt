@@ -6,8 +6,7 @@ import org.junit.Test
 
 /**
  * A goodbye said as the whole turn closes the conversation in code, before any model call (Kevin,
- * 2026-11-20: "bye bye" sometimes got "night" back and stayed open). Invented utterances only; the
- * table is shared with [FarewellsTest].
+ * 2026-11-20: "bye bye" sometimes got "night" back and stayed open). Invented utterances only.
  */
 class WakePhrasesFarewellTest {
 
@@ -21,14 +20,17 @@ class WakePhrasesFarewellTest {
             val alone = u.lowercase().trim('.', '!', ' ') in setOf("night", "nite", "later")
             val words = u.lowercase().split(Regex("[^a-z0-9]+")).toSet()
             val answer = words.any { it in ANSWER_LEADS }
-            assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true) == !(alone || answer))
+            for ((state, closed) in awaited(u)) assertTrue("$u, $state", closed == !(alone || answer))
         }
     }
 
     @Test
-    fun `a request that only contains a farewell does not close`() {
+    fun `a request that only contains a farewell does not close, whatever is awaited`() {
         assertTrue(REQUESTS.size >= 20)
-        for (u in REQUESTS) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME))
+        for (u in REQUESTS) {
+            assertFalse(u, WakePhrases.isSleepPhrase(u, NAME))
+            for ((state, closed) in awaited(u)) assertFalse("$u, $state", closed)
+        }
     }
 
     // Review of 546cce67 (F1, blocking): after a question, "yes, bye" closed and dropped his yes. While
@@ -61,7 +63,7 @@ class WakePhrasesFarewellTest {
      * lose work. A filler lead-in authorises nothing. Invented utterances only.
      */
     @Test
-    fun `after a question the four dismissals and a filler lead-in close, a real answer does not`() {
+    fun `the four dismissals and a filler lead-in close, a real answer does not, in every awaited state`() {
         val closes = listOf(
             // Q8: the four dismissals, bare, with courtesy (Q10), and with the name.
             "that'll be all", "That will be all.", "that's all", "That's it.", "that'll be all, thanks",
@@ -88,40 +90,72 @@ class WakePhrasesFarewellTest {
             // nothing, so this one is a candidate to free next.
             "no, that'll be all", "nope, that's it",
         )
-        for (u in closes) assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
-        for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
+        for (u in closes) for ((state, closed) in awaited(u)) assertTrue("$u, $state", closed)
+        for (u in answers) for ((state, closed) in awaited(u)) assertFalse("$u, $state", closed)
     }
 
     /**
-     * While a WRITE DRAFT waits on his yes, the strictest rule applies (blind review of 56e9404e,
-     * finding 4): only a word for stop or goodbye closes, the four dismissals of Q8 are soft again,
-     * and a filler lead-in vetoes again, because "okay, that's it" may be the yes that commits the
-     * draft and a close discards it unanswered. Q8 and Q9 are unchanged for every turn with no draft
-     * waiting, which the test above pins. The costs decide it: a close too few costs one more turn,
-     * a close too many destroys what he just asked for.
+     * A WRITE DRAFT waiting on his yes is no exception (Kevin, 2026-11-23, asked in those words:
+     * while a write draft is pending, should "that'll be all" and "okay bye" close, or go to the
+     * model so it can ask again? *they close and the draft is dropped; nothing is sent*). It had a
+     * carve-out for a day, on the reasoning that "okay, that's it" might be the yes; he reversed it.
+     *
+     * What still protects a yes is the other half of his ruling and is unchanged: an ASSENTING word
+     * authorises the thing Alfred asked about ([Farewells.ANSWER_WORDS]), so "yes, that's all" goes
+     * to the model and the write can still run. A negation is not ruled on and stays an answer too.
      */
     @Test
-    fun `while a draft waits a dismissal is his answer, a goodbye still closes`() {
-        val answers = listOf(
-            // The three the second round was asked to save, and the blind review's own three.
-            "yes, that's it", "yeah that's all", "perfect, that's it",
-            "right, that's all", "well, that's it", "so that's it",
-            // A bare dismissal: F1 verbatim ("That's it." said as a yes committed nothing).
-            "That's it.", "that's all", "that'll be all", "That will be all.", "that's all for now",
-            // Q9's lead-ins veto again here: "okay" may be the yes.
-            "okay bye", "okay, that's it", "um, bye", "alright, goodbye", "ok thanks bye",
-            // A dismissal anywhere in the turn keeps it out: the whole turn must be plain closers.
-            "that's it, bye bye", "that'll be all, goodbye",
-        )
+    fun `while a draft waits the dismissals and a filler goodbye close, an assent is still his answer`() {
         val closes = listOf(
+            // The four phrases, bare, with courtesy and with the name.
+            "that'll be all", "That will be all.", "that's all", "That's it.", "that's all for now",
+            "Jeeves, that's it.", "that'll be all, thanks", "okay, that'll be all, thanks Jeeves",
+            // A filler lead-in before a farewell or a dismissal: "okay bye" in his words.
+            "okay bye", "Okay, bye bye.", "um, bye", "alright, goodbye", "ok thanks bye",
+            "okay, that's it", "right, that's all", "well, that's it", "so that's it",
+            // Two ways of saying it in one turn is still one dismissal.
+            "that's it, bye bye", "that'll be all, goodbye",
+            // A word for stop or goodbye, which closed while the carve-out stood and still does.
             "stop", "Stop.", "goodbye", "Goodbye, Jeeves.", "bye", "bye bye", "Thanks, bye.",
             "Go away.", "stand down", "good night", "see you later", "bye bye, Jeeves, thanks",
         )
-        for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, draftPending = true))
+        val answers = listOf(
+            // An assent authorises the write: F1 stands in this state above all.
+            "yes, that's it", "yeah that's all", "perfect, that's it", "sure, that'll be all",
+            "got it, that's all", "yes", "okay do it", "yes please", "no thanks", "yes, bye",
+            // Not ruled on: a negation authorises nothing but is not freed either.
+            "no, that'll be all", "nope, that's it",
+            // A farewell that can answer on its own, and a bare answer.
+            "night", "later", "sure", "tomorrow", "at 7, bye",
+        )
         for (u in closes) assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, draftPending = true))
-        // The draft branch wins over the question mark: both true is still the strict rule.
-        assertFalse(WakePhrases.isSleepPhrase("that's it", NAME, afterQuestion = true, draftPending = true))
-        assertTrue(WakePhrases.isSleepPhrase("that's it", NAME, afterQuestion = true))
+        for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, draftPending = true))
+        // One rule over both signals: a question mark as well changes nothing either way.
+        for (u in closes) assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true, draftPending = true))
+        for (u in answers) assertFalse(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true, draftPending = true))
+    }
+
+    /**
+     * Courtesy comes off at the ENDS of the turn and nothing vetoes from the middle (blind review of
+     * d15a6953, finding 3: a filler word counted as an answer wherever it sat, so "bye, thanks so
+     * much" was held on the "so" inside "thanks so much", and "please", which the tails strip, held
+     * "stop please"). Every state, since there is one courtesy rule for all of them.
+     */
+    @Test
+    fun `a goodbye wrapped in courtesy closes in every state, wherever the filler sits`() {
+        val closes = listOf(
+            "bye, thanks so much", "stop please", "goodbye please", "um, stop", "hey, stop",
+            "oh, bye", "well, goodbye then", "please stop", "bye bye, thanks a lot, Jeeves",
+        )
+        for (u in closes) {
+            assertTrue(u, WakePhrases.isSleepPhrase(u, NAME))
+            for ((state, closed) in awaited(u)) assertTrue("$u, $state", closed)
+        }
+        // Not courtesy on its own: a bare courtesy word is a turn of its own and closes nothing.
+        for (u in listOf("thanks", "please", "for now", "okay then", "so", "um")) {
+            assertFalse(u, WakePhrases.isSleepPhrase(u, NAME))
+            for ((state, closed) in awaited(u)) assertFalse("$u, $state", closed)
+        }
     }
 
     /** After a question a lone ambiguous farewell is his answer; the same word in a phrase closes. */
@@ -135,6 +169,17 @@ class WakePhrasesFarewellTest {
             assertTrue(u, WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true))
         }
     }
+
+    /**
+     * [u] weighed in each state where Alfred awaits an answer: his last clip asked, something he can
+     * answer is pending, or both. One rule decides all three (Kevin, 2026-11-23), so every row of
+     * every table below is asserted in each of them and a state that disagrees names itself.
+     */
+    private fun awaited(u: String): List<Pair<String, Boolean>> = listOf(
+        "after a question" to WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true),
+        "while a draft waits" to WakePhrases.isSleepPhrase(u, NAME, draftPending = true),
+        "both" to WakePhrases.isSleepPhrase(u, NAME, afterQuestion = true, draftPending = true),
+    )
 
     companion object {
         const val NAME = "Jeeves"

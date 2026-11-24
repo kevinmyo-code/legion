@@ -95,12 +95,14 @@ object WakePhrases {
      * conversation without acting). Narrowed twice on 2026-11-23, on Kevin's rulings Q8 and Q9: see
      * [HARD_STOPS] and [Farewells.ANSWER_WORDS].
      *
-     * [draftPending]: a WRITE is waiting on his yes (a needs_confirmation, a draft_id or the first
-     * step of a two-step write), which the caller knows and a question mark does not show. It wins
-     * over [afterQuestion] and is the strictest branch: only [PLAIN_STOPS] and the farewells close,
-     * and a filler lead-in vetoes again, because there "okay, that's it" may be the yes that commits
-     * the draft and a close discards it unanswered. The costs are not symmetrical: a close too few
-     * costs one more turn, a close too many destroys what he just asked for.
+     * [draftPending]: his last turn asked him something his next word can answer, which the caller
+     * knows and a question mark does not show. It is the SAME rule as [afterQuestion], on the same
+     * closer set, by Kevin's ruling of 2026-11-23: a pending write is the commonest kind of "right
+     * after a question", and Q8 and Q9 say those phrases close there too and the draft is dropped.
+     * It stays a parameter of its own because it must never fall to the lenient branch, where
+     * "yes, that's all" and "yes, bye" close and his yes is lost (review of 546cce67, F1).
+     * [Farewells.ANSWER_WORDS] is what protects the yes in both states, and a filler lead-in is
+     * courtesy in both: it vetoes nothing, it comes off at the ends like every other courtesy word.
      */
     fun isSleepPhrase(
         transcript: String,
@@ -113,9 +115,8 @@ object WakePhrases {
         return when {
             t.isEmpty() -> false
             // While an answer is awaited, a turn with an answer word in it is his answer (F1).
-            draftPending -> !Farewells.answersQuestion(transcript, filler = true) &&
-                closesAlone(t, name, DRAFT_CLOSERS)
-            afterQuestion -> !Farewells.answersQuestion(transcript) && closesAlone(t, name, HARD_CLOSERS)
+            afterQuestion || draftPending ->
+                !Farewells.answersQuestion(transcript) && closesAlone(t, name, HARD_CLOSERS)
             else -> t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED) || closesAlone(t, name, CLOSERS)
         }
     }
@@ -132,17 +133,15 @@ object WakePhrases {
         "we re done", "i m done",
     )
 
-    /**
-     * A word for stop or goodbye: never an answer to anything, whatever is pending. These close even
-     * while a write draft waits, because nothing commits a draft by saying "goodbye".
-     */
+    /** A word for stop or goodbye: never an answer to anything, whatever is pending. */
     val PLAIN_STOPS: Set<String> =
         setOf("stop", "goodbye", "good bye", "bye", "bye bye", "go away", "stand down")
 
     /**
-     * The four dismissals of Kevin's ruling Q8. Hard after a question, soft again while a WRITE DRAFT
-     * waits: there "that's it" may be the yes that commits it, and a close throws the draft away
-     * (review of 546cce67, F1; blind review of 56e9404e, finding 4).
+     * The four dismissals of Kevin's ruling Q8: hard whenever an answer is awaited, a pending write
+     * included (Kevin, 2026-11-23, asked in those words). What protects a yes that AUTHORISES work
+     * is [Farewells.ANSWER_WORDS], not a softer closer set: "yes, that's all" goes to the model in
+     * every state (review of 546cce67, F1).
      */
     val DISMISSALS: Set<String> = setOf("that will be all", "that ll be all", "that s all", "that s it")
 
@@ -173,8 +172,8 @@ object WakePhrases {
      * safe is unchanged: courtesy is only ever set aside at the ENDS, and what is left must decompose
      * entirely into closers, so "that's all the milk we need" and "text mom bye bye" match nothing.
      *
-     * **The one rule, run over two sets.** That is the whole difference a question makes
-     * (2026-11-23): before one, every closer counts ([CLOSERS]); after one, only the hard ones
+     * **The one rule, run over two sets.** That is the whole difference an awaited answer makes
+     * (2026-11-23): with none, every closer counts ([CLOSERS]); with one, only the hard ones
      * ([HARD_CLOSERS]).
      */
     private fun closesAlone(t: String, name: String, closers: List<List<String>>): Boolean {
@@ -186,22 +185,14 @@ object WakePhrases {
     private val CLOSERS: List<List<String>> = Farewells.phraseWords(Farewells.FAREWELLS + STOP_PHRASES)
 
     /**
-     * The closers a turn after a question may be made of: the [HARD_STOPS] and the farewells, minus
-     * the farewells that can answer a question on their own ([Farewells.AMBIGUOUS_ALONE]). Keeping
-     * those three out as DATA is what still sends "night" and "okay, later" down the answer path now
-     * that a filler lead-in no longer vetoes (Q9); "good night" and "night night" are phrases in
-     * their own right and close either way.
+     * The closers a turn with an answer awaited may be made of: the [HARD_STOPS] and the farewells,
+     * minus the farewells that can answer a question on their own ([Farewells.AMBIGUOUS_ALONE]).
+     * Keeping those three out as DATA is what still sends "night" and "okay, later" down the answer
+     * path now that a filler lead-in no longer vetoes (Q9); "good night" and "night night" are
+     * phrases in their own right and close either way.
      */
     private val HARD_CLOSERS: List<List<String>> =
         Farewells.phraseWords(HARD_STOPS + (Farewells.FAREWELLS - Farewells.AMBIGUOUS_ALONE))
-
-    /**
-     * The closers a turn may be made of while a write draft waits: [HARD_CLOSERS] without the four
-     * [DISMISSALS], so the only thing that closes is a word for stop or goodbye. One set per state,
-     * all three the same rule ([closesAlone]).
-     */
-    private val DRAFT_CLOSERS: List<List<String>> =
-        Farewells.phraseWords(PLAIN_STOPS + (Farewells.FAREWELLS - Farewells.AMBIGUOUS_ALONE))
 
     /**
      * Lowercase, every non-letter/digit run collapsed to a single space, trimmed: [Farewells.normalise],
