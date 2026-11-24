@@ -617,11 +617,6 @@ class MidnightApplication : Application() {
             runCatching { MirrorLifecycleBinder.bind(this@MidnightApplication, appScope) }
                 .onFailure { MidnightEvents.appStartWorkFailed("bind_mirror_lifecycle", it) }
 
-            // Engine-brain ticket 15: the same afterWrite signal, debounced, writes the user-aspect
-            // records through to the engine homes. Registers a listener only; no I/O until a write.
-            runCatching { com.kevin.legion.backend.HomesWriteThrough.bindRecords(this@MidnightApplication, appScope) }
-                .onFailure { MidnightEvents.appStartWorkFailed("bind_records_write_through", it) }
-
             // Events Realtime (events sync final slice) - same ProcessLifecycleOwner-driven
             // foreground/background shape as MirrorLifecycleBinder just above, and the same
             // "synchronous and idempotent, no appScope.launch needed here" reasoning: bind() only
