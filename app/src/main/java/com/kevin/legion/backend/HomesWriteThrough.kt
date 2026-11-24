@@ -5,13 +5,9 @@ import android.util.Log
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.LedgerTransaction
 import com.kevin.legion.data.local.ProactiveRaiseRow
-import com.kevin.legion.engine.RecordStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /**
@@ -67,38 +63,6 @@ object HomesWriteThrough {
         }
         later(context) { backend -> retryClears(context, backend) }
     }
-
-    /** Ticket 15: after a record or tracker changed, every user-aspect row changed since the last
-     * clean push goes up (a trash can cascade, so one PUT per named row would miss rows). */
-    fun recordsChanged(context: Context) = later(context) { backend ->
-        val reports = HomesRecordsSync.pushChanged(context, backend)
-        val sent = reports.sumOf { it.sent }
-        if (sent > 0 || reports.any { !it.clean }) {
-            Log.i(
-                HomesSync.TAG,
-                "homes_write_through table=user_records sent=$sent failed=${reports.sumOf { it.failed }} " +
-                    "complete=${reports.all { it.complete }}",
-            )
-        }
-    }
-
-    @Volatile
-    private var recordsBound = false
-
-    /** `MidnightApplication`'s hook: [RecordStore.afterWrite] (records, and the schema writers'
-     * [RecordStore.schemaChanged]) debounced into [recordsChanged]. Idempotent. */
-    @OptIn(kotlinx.coroutines.FlowPreview::class)
-    fun bindRecords(context: Context, appScope: CoroutineScope) {
-        if (recordsBound) return
-        recordsBound = true
-        val app = context.applicationContext
-        RecordStore.afterWrite
-            .debounce(RECORDS_DEBOUNCE_MS)
-            .onEach { recordsChanged(app) }
-            .launchIn(appScope)
-    }
-
-    private const val RECORDS_DEBOUNCE_MS = 3_000L
 
     fun raiseRecorded(context: Context, row: ProactiveRaiseRow) = later(context) { backend ->
         backend.put(HomeTable.RAISES, HomesRows.raiseGuid(row.ruleId, row.spokenAt), HomesRows.raise(row))
