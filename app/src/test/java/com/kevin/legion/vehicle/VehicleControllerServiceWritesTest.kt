@@ -142,6 +142,78 @@ class VehicleControllerServiceWritesTest {
     }
 
     @Test
+    fun `an out-of-range reading says the SERVICE was not logged, not just that the figure looks wrong`() = runBlocking {
+        // The whole call is refused, so a reply about the reading alone leaves the driver believing
+        // work he really had done is on file.
+        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 7)
+
+        assertFalse(outcome.success)
+        assertTrue(
+            "the refusal must say the service did not land, and how to land it. Was: ${outcome.message}",
+            outcome.message.contains("logged"),
+        )
+    }
+
+    @Test
+    fun `a stated reading below the estimate is questioned in the log reply, never silently taken`() = runBlocking {
+        // 227,000 on file, "at 42,300" rewinds the odometer by 184,700 miles. setOdometer's own
+        // low-reading note exists for exactly this and was being computed and thrown away.
+        val outcome = VehicleController.logServiceDirect(
+            context, "oil change", vehicleId = "V1", statedMileage = 42_300,
+        )
+
+        assertTrue("Was: ${outcome.message}", outcome.success)
+        assertTrue(
+            "the driver must be told the odometer moved down. Was: ${outcome.message}",
+            outcome.message.contains("lower than my last estimate"),
+        )
+        assertEquals(42_300, VehicleController.vehicleFor(context, "V1").odometerBaseline)
+    }
+
+    @Test
+    fun `a mileage-less log on a miles-only item never claims it is timed by date`() = runBlocking {
+        FleetEngineStore.upsertNewItem(
+            context,
+            // intervalMonths null is legal everywhere, and nothing then times this item by date.
+            MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000, intervalMonths = null),
+        )
+
+        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+
+        assertTrue("Was: ${outcome.message}", outcome.success)
+        assertFalse(
+            "there is no months interval to time this by. Was: ${outcome.message}",
+            outcome.message.contains("by date"),
+        )
+    }
+
+    @Test
+    fun `a mileage-less log on an item with a months interval is still timed by date, and says so`() = runBlocking {
+        FleetEngineStore.upsertNewItem(
+            context,
+            MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000, intervalMonths = 6),
+        )
+
+        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+
+        assertTrue("Was: ${outcome.message}", outcome.success)
+        assertTrue("Was: ${outcome.message}", outcome.message.contains("date"))
+    }
+
+    @Test
+    fun `a milesAgo backfill with a date files NO mileage on the OBSERVED row`() = runBlocking {
+        // "I did the oil about 8,000 miles ago, it was last spring": 227,000 minus 8,000 is the
+        // live ESTIMATE minus a remembered gap, and an OBSERVED row may not carry a derived guess.
+        val outcome = VehicleController.logPastServiceDirect(
+            context, "oil change", milesAgo = 8_000, date = 1_723_000_000_000L, vehicleId = "V1",
+        )
+
+        assertTrue("Was: ${outcome.message}", outcome.success)
+        val record = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single()
+        assertNull("219,000 is an estimate-derived figure, not an observation", record.mileage)
+    }
+
+    @Test
     fun `logServiceDirect with an ambiguous name writes no odometer reading either`() = runBlocking {
         val name1 = "Check The Wheel Alignment"
         val name2 = "Front Wheel Alignment"
@@ -192,6 +264,20 @@ class VehicleControllerServiceWritesTest {
         val after = FleetEngineStore.getServiceRecordById(context, id)!!
         assertEquals(227_500, after.mileage)
         assertEquals(4599L, after.costCents)
+    }
+
+    // The nullable-mileage edit (the write half of blocker 2) needs the widened signature, so it
+    // lives in ServiceRecordNullMileageEditTest beside the fix rather than here.
+
+    @Test
+    fun `serviceHistory reads a mileage-less record back in words, never as 0 mi`() = runBlocking {
+        // The spoken surface: ask_fleet reads this string out.
+        VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+
+        val history = CarToolbelt.serviceHistory(context, vehicleId = "V1")
+
+        assertFalse("'oil change at 0 mi' is a reading the row does not hold. Was: $history", history.contains("at 0 mi"))
+        assertTrue("Was: $history", history.contains("no mileage logged"))
     }
 
     @Test
