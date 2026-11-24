@@ -49,16 +49,6 @@ class Facts:
     PENDING = "Coffee at the campus cafe"
     RAISE_REASON = "a severe thunderstorm warning covers Testville until 9 pm"
     ADVICE_GIST = "Keep long runs easy, one a week"
-    # engine-brain ticket 15: trackers he set up himself. "Guitar practice" sits in no domain that
-    # has built-in tools; "Lifting" sits next to the body aspect's workouts on purpose (reachable
-    # when he says "tracker").
-    TRACKER = "Guitar practice"
-    TRACKER_TYPE = "Session"
-    SESSION_A = "Blackbird"
-    SESSION_B = "Major scales warmup"
-    NEAR_TRACKER = "Lifting"
-    NEAR_TYPE = "Lift"
-    NEAR_ENTRY = "Deadlift"
 
 
 class NotLocal(RuntimeError):
@@ -161,7 +151,6 @@ def seed(household, owner, today: date, zone: ZoneInfo | None = None) -> dict:
             updated_at=now,
         )
     _seed_homes(household, owner, today, now)
-    _seed_records(household, today, zone, now)
     return {"todo": str(rid("Todo"))}
 
 
@@ -248,86 +237,4 @@ def _seed_homes(household, owner, today: date, now: datetime) -> None:
         reason=Facts.RAISE_REASON,
         spoken_at=now - timedelta(minutes=5),
         delivery="spoken",
-    )
-
-
-def _seed_records(household, today: date, zone: ZoneInfo, now: datetime) -> None:
-    """Ticket 15's rows: the "Guitar practice" tracker (one record type, four fields) with two
-    sessions, and a "Lifting" tracker with one entry, stored in the phone's shapes (epoch-ms day,
-    guid-keyed payload). All invented."""
-    from homes.models import UserAspect, UserFieldDef, UserRecord, UserRecordType
-
-    def day_ms(day: date) -> int:
-        return int(datetime.combine(day, time(0, 0), zone).timestamp() * 1000)
-
-    def tracker(name: str, type_name: str, fields: tuple) -> UserRecordType:
-        aspect = UserAspect.objects.create(
-            id=rid(name),
-            household=household,
-            origin_guid=str(rid(name)),
-            name=name,
-            created_at_client=now - timedelta(days=20),
-            updated_at_client=now - timedelta(days=20),
-        )
-        record_type = UserRecordType.objects.create(
-            id=rid(f"{name}:{type_name}"),
-            household=household,
-            origin_guid=str(rid(f"{name}:{type_name}")),
-            aspect=aspect,
-            name=type_name,
-            created_at_client=now - timedelta(days=20),
-            updated_at_client=now - timedelta(days=20),
-        )
-        for position, (field, kind, required, config) in enumerate(fields):
-            UserFieldDef.objects.create(
-                id=rid(f"{name}:field:{field}"),
-                household=household,
-                origin_guid=str(rid(f"{name}:field:{field}")),
-                record_type=record_type,
-                name=field,
-                type=kind,
-                required=required,
-                position=position,
-                config=config,
-                created_at_client=now - timedelta(days=20),
-                updated_at_client=now - timedelta(days=20),
-            )
-        return record_type
-
-    def entry(record_type, name: str, values: dict, text: str, ago: int, n: int) -> None:
-        payload = {str(rid(f"{record_type.aspect.name}:field:{k}")): v for k, v in values.items()}
-        UserRecord.objects.create(
-            id=rid(f"entry:{name}"),
-            household=household,
-            origin_guid=str(rid(f"entry:{name}")),
-            record_type=record_type,
-            search_text=text,
-            provenance="USER",
-            payload=payload,
-            created_at_client=now - timedelta(days=ago, minutes=n),
-            updated_at_client=now - timedelta(days=ago, minutes=n),
-        )
-
-    guitar = tracker(
-        Facts.TRACKER,
-        Facts.TRACKER_TYPE,
-        (
-            ("piece", "TEXT", True, None),
-            ("minutes", "NUMBER", False, None),
-            ("date", "DATE", False, None),
-            ("focus", "CHOICE", False, '{"options": ["chords", "scales"]}'),
-        ),
-    )
-    for n, (piece, minutes, focus, ago) in enumerate(
-        ((Facts.SESSION_A, 30.0, "chords", 2), (Facts.SESSION_B, 15.0, "scales", 1))
-    ):
-        values = {"piece": piece, "minutes": minutes, "date": day_ms(today - timedelta(days=ago))}
-        entry(guitar, piece, {**values, "focus": focus}, f"{piece} {focus}", ago, n)
-    lifting = tracker(
-        Facts.NEAR_TRACKER,
-        Facts.NEAR_TYPE,
-        (("exercise", "TEXT", True, None), ("weight", "NUMBER", False, None)),
-    )
-    entry(
-        lifting, Facts.NEAR_ENTRY, {"exercise": Facts.NEAR_ENTRY, "weight": 225.0}, "Deadlift", 3, 0
     )
