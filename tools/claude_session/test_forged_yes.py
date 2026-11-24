@@ -188,6 +188,51 @@ class TestAWrittenScriptCannotForgeAYes(ForgeCase):
         self.assertTrue(self.names_root(f"{self.paths.tokens.as_posix()}/41-yes.json"))
 
 
+class TestARecordedFileIsDeniedOnlyToCommandsThatRunIt(ForgeCase):
+    """RED review B3, 2026-11-24. The recording takes any extension on purpose (`python notes.md`
+    runs a forging script just as well), so it records prose too, and `CRED_REASON` asks a helper
+    to say in its report what it could not read. Denying every command that NAMED a recorded file
+    therefore made the refusal poison the helper's own notes: a `cat` and a `git add` of its own
+    report were refused. Named is not run."""
+
+    NOTE = "I could not read %APPDATA%\\{name}\\config.json, so the task stops here."
+
+    def note(self):
+        notes = self.own / "notes.md"
+        self.assertEqual(
+            self.decide("Write", {"file_path": str(notes),
+                                  "content": self.NOTE.format(name=self.paths.root.name)},
+                        agent="agentZ")[0], "pass")
+        self.assertIn(str(notes).lower().replace("/", "\\").lower(),
+                      {p for p in C.root_script_paths(self.paths)})
+        return notes
+
+    def test_reading_searching_and_committing_it_are_fine(self):
+        notes = self.note()
+        for cmd in (f"cat {notes.name}", f"git add {notes.name}", f"grep yes {notes.name}",
+                    f"type {notes.name}", f"git diff -- {notes.name}", f"ls -l {notes.name}"):
+            with self.subTest(cmd=cmd):
+                self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)
+
+    def test_running_it_or_laundering_it_into_a_run_is_not(self):
+        notes = self.note()
+        for cmd in (f"python {notes.name}", f"cat {notes.name} | python",
+                    f"python < {notes.name}", f"cat {notes.name} > b.py",
+                    f"cp {notes.name} b.py", f"./{notes.name}", f"bash {notes.name}",
+                    f"pytest {notes.name}"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(
+                    self.decide("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)[1],
+                    "root script", cmd)
+
+    def test_the_forging_script_itself_is_still_never_run(self):
+        """The guard this narrowing must not weaken."""
+        write, run = self.write_then_run("forge.py",
+                                         FORGE.format(tokens=self.paths.tokens.as_posix()))
+        self.assertEqual((write[0], run), ("pass", ("deny", "root script")))
+        self.passed("Bash", {"command": "cat forge.py"}, agent="agentZ", cwd=self.own)
+
+
 class TestACdCannotReachTheRoot(ForgeCase):
     """RED review B1 and B2, 2026-11-24, which are one defect. The real session's cwd is the whole
     work folder (`worker.MainSession` starts it there), so from there a single `..` IS the worker's

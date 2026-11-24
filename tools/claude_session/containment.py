@@ -141,9 +141,10 @@ CRED_REASON = (
     "through or not. Kevin's yes does not open it either. Do not retry or work around it: say in "
     "the report what you could not read.")
 ROOT_SCRIPT_REASON = (
-    "WORKER FILES: this names a file a task wrote whose own text names the worker's folder "
-    "(tokens, sends, taint, config.json). Such a file is never run or handled by a shell, because "
-    "nothing can see what a program does once it starts. Do not retry or work around it.")
+    "WORKER FILES: this RUNS a file a task wrote whose own text names the worker's folder "
+    "(tokens, sends, taint, config.json). Such a file is never run, copied or piped into an "
+    "interpreter, because nothing can see what a program does once it starts. Reading it, "
+    "searching it and committing it are fine. Do not retry or work around it.")
 
 
 # --------------------------------------------------------------------------- the marks
@@ -660,6 +661,47 @@ def runs_blocked_module(command: str, cwd: str, blocked: set[str]) -> bool:
                     return True
             except (OSError, ValueError):
                 pass
+    return False
+
+
+# A command word that RUNS code rather than naming a file: an interpreter, a shell, an eval, a
+# test runner, a build tool. Matched anywhere in the command, because `cat x.py | python` runs it
+# as surely as `python x.py` does.
+RUN_WORD_RE = re.compile(
+    r"(?:^|[\s;&|(={\n`\"'])(?:&\s*)?(?:[\"']?[^\s\"';&|]*[\\/])?"
+    r"(?:python[0-9.]*|py|pythonw|node|deno|bun|ruby|perl|php|bash|sh|zsh|ksh|dash|fish"
+    r"|powershell|pwsh|cmd|wsl|env|xargs|exec|eval|source|iex|Invoke-Expression|Invoke-Command"
+    r"|Start-Process|Start-Job|pytest|tox|nox|unittest|npm|npx|uv|uvx|yarn|pnpm|java|javac"
+    r"|dotnet|go|cargo|Rscript|osascript|make|gradle|gradlew|ant|mvn|sudo|nohup|start|timeout)"
+    r"(?:\.exe|\.bat|\.cmd|\.ps1)?(?=\s|$|[\"';&|)])", re.I)
+# Laundering it into a second name, or into an interpreter's stdin, is running it one command
+# later: `cp forge.py b.py; python b.py` and `cat forge.py > b.py` both end in a run.
+LAUNDER_RE = re.compile(
+    r"(?:^|[\s;&|(])(?:cp|copy|Copy-Item|mv|move|Move-Item|ren|rename|Rename-Item|install|tee|ln"
+    r"|New-Item|Set-Content|Add-Content|Out-File)(?:\.exe)?(?=\s)|[<>]", re.I)
+
+
+def runs_blocked_path(command: str, cwd: str, blocked: set[str]) -> bool:
+    """Does the command RUN a recorded file, rather than merely name it?
+
+    The root-script list takes any extension and records prose as well as code, because
+    `python notes.md` runs a forging script just as well. Denying every command that NAMED one
+    then poisoned a helper's own notes: `CRED_REASON` asks it to say in its report what it could
+    not read, and a `cat` or a `git add` of that report was refused (RED review B3, 2026-11-24).
+
+    So: named AND run. "Run" is read widely and fails closed. In command position, in a command
+    holding an interpreter, a shell or an eval word anywhere, or copied, moved or redirected.
+    Reading it, searching it, committing it and listing it are what this gives back."""
+    if not blocked or not names_blocked(command, cwd, blocked):
+        return False
+    if RUN_WORD_RE.search(command) or LAUNDER_RE.search(command):
+        return True
+    for seg in re.split(r"[;&|\n]+", command or ""):
+        words = [next(g for g in m.groups() if g is not None).strip()
+                 for m in _TOKEN_RE.finditer(seg)]
+        words = [w for w in words if w and not w.startswith("-")]
+        if words and names_blocked(words[0], cwd, blocked):
+            return True
     return False
 
 

@@ -943,7 +943,7 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
         # recorded net script from the session's own cwd (RED review debt, 2026-11-24).
         bases = _cwd_candidates(command, cwd)
         roots = C.root_script_paths(paths)
-        if roots and any(C.names_blocked(command, base, roots)
+        if roots and any(C.runs_blocked_path(command, base, roots)
                          or C.runs_blocked_module(command, base, roots)
                          for base in bases):
             return _deny(C.ROOT_SCRIPT_REASON), "root script", True
