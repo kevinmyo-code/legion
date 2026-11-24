@@ -111,7 +111,11 @@ internal fun VolumeCheckPanel(context: Context) {
 
 /**
  * One real notch, each way a press can travel ([VolumePath]), and the pick that makes the one that
- * worked the one every press uses from then on. This is the half of the Volume check panel that can
+ * worked the one every UP or DOWN press uses from then on. Only the nudges read the pick
+ * ([VolumeController.raise] / [VolumeController.lower], which is the volume keys and louder or
+ * quieter by voice); set-to-a-number, mute and the reassert keep the old call whatever is picked
+ * (author's debt F5), so the wording on screen says up and down and nothing wider. This is the half
+ * of the Volume check panel that can
  * end the volume bug in one sitting: the app cannot hear the car, so only Kevin's ears can say which
  * call reaches the amp, and before today there was no way to keep that answer.
  */
@@ -126,7 +130,8 @@ private fun VolumePathSection(context: Context, say: (String) -> Unit) {
     Text(
         "Move the volume one real notch, each way a press can travel. Play music, leave the volume " +
             "mid-way, then tap each TRY and listen. The one you HEAR is the call the amp follows: tap " +
-            "USE under it and every press, on screen, on the wheel and by voice, goes that way.",
+            "USE under it and the volume keys, on screen and on the wheel, and louder or quieter by " +
+            "voice, go that way. Setting a number and muting keep the old call.",
         style = RowSubtitle,
         color = AriaColors.TextDim,
     )
@@ -151,14 +156,14 @@ private fun VolumePathSection(context: Context, say: (String) -> Unit) {
     lastTried?.let { tried ->
         Spacer(Modifier.height(AriaDimens.s2))
         SettingsRowCard(SettingsRowSpec(
-            "Use ${tried.label} for every press",
-            "The last one you tried. Tap USE and the screen keys, the wheel keys and the voice tool all " +
-                "go this way, until you pick another.",
+            "Use ${tried.label} for up and down",
+            "The last one you tried. Tap USE and the screen keys, the wheel keys and louder or quieter " +
+                "by voice all go this way, until you pick another. Setting a number and muting do not.",
             RowAction.Button("USE", ButtonWeight.HOT) {
                 VolumePathStore.choose(context, tried)
                 inUse = tried
                 chosen = true
-                say("Every volume press now goes via ${tried.label}.")
+                say("Up and down now go via ${tried.label}.")
             },
         ))
     }
@@ -166,12 +171,12 @@ private fun VolumePathSection(context: Context, say: (String) -> Unit) {
         Spacer(Modifier.height(AriaDimens.s2))
         SettingsRowCard(SettingsRowSpec(
             "Back to the default way",
-            "Drops your pick, so presses go via ${VolumePathLogic.DEFAULT.label} again.",
+            "Drops your pick, so up and down go via ${VolumePathLogic.DEFAULT.label} again.",
             RowAction.Button("RESET", ButtonWeight.QUIET) {
                 VolumePathStore.clear(context)
                 inUse = VolumePathLogic.DEFAULT
                 chosen = false
-                say("Presses go via ${VolumePathLogic.DEFAULT.label} again.")
+                say("Up and down go via ${VolumePathLogic.DEFAULT.label} again.")
             },
         ))
     }
