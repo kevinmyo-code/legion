@@ -144,16 +144,37 @@ def is_peer_message(entry: dict) -> bool:
     return False
 
 
+def wrapped_text(body: str) -> str | None:
+    """What the delivery wrapper holds, or None when `body` is not one wrapped message.
+
+    The open tag runs to its first `>`, and the close is the LAST `</cross-session-message>`, so
+    a message of his that itself contains the wrapper's own words comes back whole rather than
+    cut at the first one it holds.
+    """
+    open_at = body.find(WRAP_OPEN)
+    if open_at < 0:
+        return None
+    tag_end = body.find(">", open_at + len(WRAP_OPEN))
+    close_at = body.rfind(WRAP_CLOSE)
+    if tag_end < 0 or close_at < tag_end:
+        return None
+    return body[tag_end + 1:close_at].strip()
+
+
 def carries(entry: dict, text: str) -> bool:
     """Is this the entry carrying exactly the message the worker had pinned?
 
-    The wrapper's own words are matched too, so an ordinary turn that merely quotes the message
-    is not mistaken for the delivery.
+    The wrapped text must EQUAL the pinned message. A substring test (what this was until
+    2026-11-24) anchored on any peer message that merely held his words, and the first `end_turn`
+    after it is then that other message's answer: "check CI" anchored on a peer "please check CI
+    now", and a message like "Claude session" anchored on the wrapper's own boilerplate, which
+    says "Another Claude session sent a message" (S2 review, finding 2). The whole wrapper is
+    still demanded as well, so a turn that merely quotes the message is not the delivery.
     """
     body = _content(entry)
     if not isinstance(body, str) or not text:
         return False
-    return WRAP_OPEN in body and WRAP_CLOSE in body and text in body
+    return wrapped_text(body) == text.strip()
 
 
 def is_typed_prompt(entry: dict) -> bool:

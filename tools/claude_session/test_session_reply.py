@@ -138,6 +138,38 @@ class TestTheAnchorAndTheTurnEnd(unittest.TestCase):
         anchored, _t, _e = sr.scan([peer_entry("a different message entirely")], MSG, False)
         self.assertFalse(anchored)
 
+    def test_a_longer_peer_message_that_contains_his_words_is_not_the_anchor(self):
+        """The anchor is the delivered message, not any message holding its words.
+
+        A substring test anchors on the first peer message whose body merely CONTAINS the
+        pinned text, and the first `end_turn` after it is then that other message's answer.
+        Kevin would be shown someone else's reply as the reply to his (S2 review, finding 2).
+        """
+        anchored, text, ended = sr.scan(
+            [peer_entry("please " + MSG + " now"), said("that other message is answered here")],
+            MSG, False)
+        self.assertFalse(anchored)
+        self.assertIsNone(text)
+        self.assertFalse(ended)
+
+    def test_a_message_whose_words_appear_in_the_wrappers_own_boilerplate_is_not_the_anchor(self):
+        """The wrapper says "Another Claude session sent a message", so a substring test makes
+        ANY peer message the anchor for a message like this one (S2 review, finding 2)."""
+        anchored, text, _e = sr.scan(
+            [peer_entry("a different message entirely"), said("not his answer")],
+            "Claude session", False)
+        self.assertFalse(anchored)
+        self.assertIsNone(text)
+
+    def test_the_message_is_still_the_anchor_when_it_holds_wrapper_shaped_text(self):
+        """Equality must not go the other way and refuse a real delivery. His own words may
+        hold angle brackets and even the wrapper's own name."""
+        odd = "fix <cross-session-message> handling in the courier & say what changed"
+        anchored, text, ended = sr.scan([peer_entry(odd), said("done, one line in sessions.py")],
+                                        odd, False)
+        self.assertTrue(anchored and ended)
+        self.assertEqual(text, "done, one line in sessions.py")
+
     def test_the_reply_is_the_last_text_of_the_turn_not_the_first(self):
         anchored, text, ended = sr.scan(
             [peer_entry(MSG), said("let me look", stop="tool_use"), used_a_tool(), tool_result(),
