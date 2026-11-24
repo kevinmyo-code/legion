@@ -92,10 +92,12 @@ class DriverDismissalPhoneParityTest {
             "okay, that's it", "right, that's all", "well, that's it", "so that's it",
             "stop", "Stop.", "goodbye", "Goodbye, Jeeves.", "Go away.", "stand down",
             "see you later", "bye bye, Jeeves, thanks",
+            // `WakePhrasesTest`'s own after-a-question rows, in the same state.
+            "Bye bye.", "Good bye, Jeeves.", "Stand down.", "That'll be all.", "That's all.",
         )
         val answers = listOf(
             "yes", "okay", "sure", "okay do it", "yes please", "no thanks",
-            "yes, that's all", "yeah, that's it", "sure, that'll be all", "got it, that's all",
+            "yes, that's all", "yes, that's it", "yeah, that's it", "sure, that'll be all", "got it, that's all",
             "perfect, that's it", "yeah that's all", "yes, bye",
             "that's all the groceries", "that's it for the groceries, add eggs", "is that all",
             "night", "later", "okay, night", "um, later", "tomorrow", "at 7, bye",
@@ -177,6 +179,7 @@ class DriverDismissalPhoneParityTest {
             "Goodbye, Alfred.", "Alfred, stop.", "ok bye", "Okay, goodbye.", "Hey Alfred, that's all.",
             "Bye Alfred!", "OK, never mind.", "Thanks, Alfred, that's all.", "Thank you Alfred, that's it.",
             "Cheers, Alfred, we're done.", "Okay, thanks, never mind.", "Thank you, that's all.",
+            "Thanks Alfred. That's all.",
         )) {
             assertTrue(u, closes(u, name = ALFRED))
         }
@@ -228,9 +231,11 @@ class DriverDismissalPhoneParityTest {
     // --- the data itself is the phone's ---------------------------------------------------
 
     /**
-     * The phrase lists are a copy, so they are pinned as one. A phrase added on the phone and not
-     * here is the drift this whole file exists to catch, and a list is cheaper to compare than the
-     * behaviour it produces.
+     * The phrase lists are a copy, so they are pinned as one: the literals below are a SNAPSHOT of
+     * the phone's lists as they stand on `dev` on 2026-11-24, and nothing here reads the phone's
+     * own source (separate Gradle projects). So this catches an edit on THIS side, not one on the
+     * phone's; keeping the two in step is a job for whoever changes the phone's list, and the
+     * snapshot is what tells them what this unit was built against.
      */
     @Test
     fun `the phrase lists are the phone's, phrase for phrase`() {
