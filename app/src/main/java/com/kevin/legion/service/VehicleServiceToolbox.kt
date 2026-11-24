@@ -72,7 +72,16 @@ object VehicleServiceToolbox {
             } else {
                 null
             }
-            val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents)
+            // Same present-and-positive guard as `cost` above, for the same reason: `optInt`
+            // returns 0 for a missing key, and a misheard or zero reading is "he did not say one",
+            // not a reading of zero. Below-range values are not silently dropped here - they reach
+            // VehicleController.setOdometer's own range check, which questions them in words.
+            val mileage = if (args.has("mileage") && !args.isNull("mileage")) {
+                args.optInt("mileage", 0).takeIf { miles -> miles > 0 }
+            } else {
+                null
+            }
+            val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents, mileage)
             result(success = outcome.success, message = outcome.message)
         }
 

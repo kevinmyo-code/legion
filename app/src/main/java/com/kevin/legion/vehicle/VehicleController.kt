@@ -547,6 +547,13 @@ object VehicleController {
         }
     }
 
+    /**
+     * " at 42300 miles", or nothing at all when no reading was stated. The empty half is the point:
+     * a spoken sentence may not name a mileage the row does not hold (CLAUDE.md §7's outcome rule),
+     * and it may not say "at 0 miles" either.
+     */
+    private fun atMiles(miles: Int?): String = miles?.let { " at $it miles" } ?: ""
+
     /** [NEAR_MISS_STOPWORDS]-filtered lowercase word set for [nearMissServiceName]'s comparison. */
     private fun significantTokens(raw: String): Set<String> =
         raw.lowercase()
@@ -562,11 +569,33 @@ object VehicleController {
      * 3); the caller (the log-a-service UI form or `log_service`'s voice tool,
      * both dollar-denominated at their own edge) converts to cents BEFORE
      * calling this, so this function never sees a fractional dollar amount.
+     *
+     * **[statedMileage] is the reading the DRIVER stated with the work** ("I got my oil changed
+     * today at 42,300"), the car plan's slice 0
+     * (`C:\Users\kevin\.legion\reports\car-maintenance-plan-1124.md`). Two rules keep it honest:
+     *
+     *  1. **Stated: it is the record's mileage, and it is the odometer too.** [setOdometer] runs
+     *     first, so its range check, its "that looks low" note and its drift log apply exactly as
+     *     they do to the `set_odometer` tool - one writer for the odometer, not a second. Without
+     *     that, the anchor would sit above the figure the due math reads back and the next service
+     *     would come due late by the whole gap.
+     *  2. **Not stated: the record carries NO mileage.** It used to carry [currentMileage], the
+     *     odometer baseline plus integrated trip miles - an ESTIMATE, one ticket 03 measured
+     *     running 5-15% low - and filed it on an `OBSERVED` row, so the app's own guess was stored
+     *     as an observation of the driver's. CLAUDE.md §7 requires an estimate to be labelled one,
+     *     `service_records` has no column that could label it, so the honest value is none:
+     *     [isDue] already reads a mileage-less anchor as unknown on that axis and keeps timing it
+     *     by date. The driver can still say the number, and then rule 1 applies.
      */
-    suspend fun logServiceDirect(context: Context, serviceName: String, vehicleId: String? = null, costCents: Long? = null): WriteOutcome {
+    suspend fun logServiceDirect(
+        context: Context,
+        serviceName: String,
+        vehicleId: String? = null,
+        costCents: Long? = null,
+        statedMileage: Int? = null,
+    ): WriteOutcome {
         val canonical = canonicalizeServiceName(serviceName)
         val vehicle = vehicleFor(context, vehicleId)
-        val mileage = currentMileage(vehicle)
         val now = System.currentTimeMillis()
 
         // Ticket 08's matching rule: canonicalise the spoken name and every
@@ -594,6 +623,16 @@ object VehicleController {
         }
         val matchedName = (match as? ServiceMatch.Matched)?.name
 
+        // A stated reading is recorded as a reading, through the one odometer writer, BEFORE
+        // anything else is written - a figure out of range is questioned there rather than filed
+        // here, and a refusal leaves nothing behind (same zero-write posture as the ambiguity
+        // refusal above). It runs after the match check so an ambiguous service name still writes
+        // nothing at all.
+        if (statedMileage != null) {
+            val odometer = setOdometer(context, statedMileage, vehicleId)
+            if (!odometer.success) return odometer
+        }
+
         // The ServiceRecord is ALWAYS written - work done is a true fact
         // regardless of what the schedule knows (ticket 08 decision). Filed
         // under the matched item's own stored name when one exists, so a
@@ -605,7 +644,7 @@ object VehicleController {
         // engine write itself can now genuinely fail (a reference/validation error), unlike the old
         // Room insert this replaced, so the result is checked rather than assumed.
         val targetName = matchedName ?: canonical
-        val insertResult = FleetEngineStore.insertObserved(context, vehicle.obdMac, targetName, mileage, now, costCents)
+        val insertResult = FleetEngineStore.insertObserved(context, vehicle.obdMac, targetName, statedMileage, now, costCents)
         if (insertResult is FleetEngineStore.InsertObservedResult.Failure) {
             return WriteOutcome(false, "Couldn't log $targetName - ${insertResult.reason}.")
         }
@@ -633,17 +672,30 @@ object VehicleController {
             if (written == 0) {
                 return WriteOutcome(
                     false,
-                    "Logged the $matchedName at $mileage miles, but the schedule item disappeared before I could " +
-                        "reset it - it may have just been deleted.",
+                    "Logged the $matchedName${atMiles(statedMileage)}, but the schedule item disappeared before I " +
+                        "could reset it - it may have just been deleted.",
                 )
             }
+            // Two message sets, not one with a blank: with no mileage on the row the schedule can
+            // only time this item by date, and "I'll let you know when it's due again" would be a
+            // promise about the mileage axis the row cannot keep. Neither set ASKS for the number -
+            // a reading he offers next is a reading (set_odometer), and a reply that invites one
+            // here invites a second log of the same work.
             return WriteOutcome(
                 true,
-                listOf(
-                    "Nice, logged the $matchedName at $mileage miles. I'll let you know when it's due again.",
-                    "Got it — $matchedName done at $mileage. One less thing to worry about.",
-                    "Logged: $matchedName at $mileage miles.",
-                ).random(),
+                if (statedMileage != null) {
+                    listOf(
+                        "Nice, logged the $matchedName at $statedMileage miles. I'll let you know when it's due again.",
+                        "Got it - $matchedName done at $statedMileage. One less thing to worry about.",
+                        "Logged: $matchedName at $statedMileage miles.",
+                    ).random()
+                } else {
+                    listOf(
+                        "Nice, logged the $matchedName. No mileage on it, so I'm timing that one by date.",
+                        "Got it - $matchedName done today. No reading given, so it's timed by date.",
+                        "Logged: $matchedName, today, no mileage.",
+                    ).random()
+                },
             )
         }
 
@@ -662,7 +714,7 @@ object VehicleController {
         )
         return WriteOutcome(
             true,
-            "Logged the $canonical at $mileage miles. Nothing on your schedule matched, so I've added $canonical " +
+            "Logged the $canonical${atMiles(statedMileage)}. Nothing on your schedule matched, so I've added $canonical " +
                 "as an item - it has no interval yet, tell me one when you want it tracked.",
         )
     }
@@ -682,9 +734,11 @@ object VehicleController {
      * hands-and-senses "the model resolved the date and no service_records row exists").
      * `log_past_service` with a genuine date now writes through the SAME
      * [com.kevin.legion.data.local.ServiceRecordDao.insert] shape [logServiceDirect] uses, never a
-     * second writer - the mileage on that record falls back to the vehicle's current live reading
-     * only when no mileage was given, mirroring [logServiceDirect]'s own capture for a record with
-     * no explicit mileage. If the spoken request genuinely carries no date, none is invented -
+     * second writer - and, as of the car plan's slice 0, the record's mileage is the anchor's own
+     * or none at all, never the vehicle's current live estimate (see [logServiceDirect]'s doc for
+     * the rule and why the estimate was wrong here in particular: this branch knows WHEN the work
+     * happened and not AT WHAT, and today's estimated odometer is no answer to a past day). If the
+     * spoken request genuinely carries no date, none is invented -
      * anchor-only stays legal, and the returned message says plainly that only the maintenance
      * clock moved, not the service history.
      *
@@ -797,7 +851,12 @@ object VehicleController {
         // mileage falls back to the vehicle's current live reading then - mirrors
         // [logServiceDirect]'s own mileage capture for a record with no explicit one.
         if (date != null && !neverDone) {
-            val recordMileage = merged.lastDoneMileage ?: currentMileage(vehicle)
+            // The anchor's own mileage, or none - never the vehicle's live ESTIMATE. This is the
+            // backfill half of the same rule [logServiceDirect] now holds: a date-only backfill
+            // ("it was done the same day as the oil change") knows WHEN and not AT WHAT, and
+            // today's estimated odometer is not the answer to a question about a past day. Null is
+            // the honest value, and [isDue] times such an item by date.
+            val recordMileage = merged.lastDoneMileage
             // insertObserved's own ASSERTED-supersession (instruction 3) then trashes the anchor
             // row setAnchor just wrote above, in the SAME "one real event explains its own anchor"
             // shape logServiceDirect uses - a precise, dated backfill both sets the clock and logs

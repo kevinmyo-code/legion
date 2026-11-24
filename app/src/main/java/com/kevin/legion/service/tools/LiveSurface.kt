@@ -74,7 +74,8 @@ internal object LiveSurface {
             actions = listOf(
                 Action(
                     "log_service", "log_service",
-                    "a scheduled maintenance item just done: oil change, rotation, brakes (service, cost)",
+                    "a scheduled maintenance item just done: oil change, rotation, brakes " +
+                        "(service, cost, mileage if he stated a reading)",
                 ),
                 Action(
                     "log_past_service", "log_past_service",

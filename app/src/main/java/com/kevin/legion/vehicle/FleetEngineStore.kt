@@ -865,7 +865,12 @@ object FleetEngineStore {
      * DONE_AT-with-cost save via `ui/fleet/MaintenanceWrites.kt` - calls this ONE function, so the
      * supersession fires identically no matter which surface logged the service.
      */
-    suspend fun insertObserved(context: Context, mac: String, serviceName: String, mileage: Int, date: Long, costCents: Long?): InsertObservedResult {
+    // [mileage] is nullable as of the car plan's slice 0: a logged service whose mileage the driver
+    // did not state carries none, rather than the odometer ESTIMATE this used to be handed (see
+    // VehicleController.logServiceDirect's own doc). `explainedBy` below already reads a null
+    // candidate axis correctly - it can never explain an anchor that states a mileage - so a
+    // mileage-less log never supersedes an ASSERTED anchor that knows one.
+    suspend fun insertObserved(context: Context, mac: String, serviceName: String, mileage: Int?, date: Long, costCents: Long?): InsertObservedResult {
         ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
         if (db.vehicleDao().getByMac(mac) == null) return InsertObservedResult.Failure("no vehicle on file for $mac")

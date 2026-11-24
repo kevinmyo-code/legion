@@ -62,16 +62,17 @@ suspend fun writeSetInterval(context: Context, vehicleId: String, serviceName: S
  * (ticket 07): [AnchorMode.NEVER_DONE]/[AnchorMode.DONT_KNOW] never did the work described by a
  * cost, and a `null` cost on DONE_AT is the same "no figure logged" state every other cost field in
  * this app already renders honestly rather than as `$0.00`. The record's `mileage`/`date` are the
- * SAME values just written to the anchor - [mileage] falls back to the vehicle's own current live
- * reading only when the driver left it blank (mirrors
- * [VehicleController.logServiceDirect]'s own mileage capture for a record with no explicit one);
- * [date] falls back to "now" for the same reason. This is a direct
+ * SAME values just written to the anchor - a blank [mileage] stays blank on the record too, as of
+ * the car plan's slice 0 (it used to become the vehicle's live estimate, which filed the app's own
+ * guess as an observation of the driver's; see [VehicleController.logServiceDirect]'s own doc for
+ * the rule and the reasoning); [date] still falls back to "now", which is a fact about when this
+ * save happened rather than a figure nobody stated. This is a direct
  * [com.kevin.legion.data.local.ServiceRecordDao.insert] - the exact write `log_service`'s own
  * [VehicleController.logServiceDirect] performs for the record half of its own two-part write - not
  * a call to [VehicleController.logServiceDirect] itself, because that function ALSO unconditionally
- * resets the anchor to the vehicle's current mileage/now, which would silently discard a driver-typed
- * historical mileage or date this picker explicitly supports and [writeSetAnchor] already wrote
- * moments above. There is no `notes` field on [ServiceRecord] to carry a notes step into - see that
+ * resets the anchor to "now" (and, with a stated reading, moves the odometer), which would silently
+ * discard a driver-typed historical mileage or date this picker explicitly supports and
+ * [writeSetAnchor] already wrote moments above. There is no `notes` field on [ServiceRecord] to carry a notes step into - see that
  * entity's own file for its full column list - so this addendum is cost-only; widening the entity
  * for notes is a schema change this ticket does not ask for and is not made here.
  */
@@ -128,7 +129,13 @@ suspend fun writeSetAnchor(
         return AnchorWriteOutcome(false, "I found $serviceName a moment ago but couldn't write to it just now - it may have just been removed.")
     }
     if (mode == AnchorMode.DONE_AT && costCents != null) {
-        val recordMileage = mileage ?: VehicleController.currentMileage(VehicleController.vehicleFor(context, vehicleId))
+        // The typed mileage, or none - never the vehicle's live ESTIMATE, which this used to
+        // substitute for a blank field. That was the hands half of the same defect the car plan's
+        // slice 0 names on the voice side: an estimate filed on an OBSERVED row reads back as an
+        // observation of the driver's own (see VehicleController.logServiceDirect's doc). The form
+        // already offers the field, so a driver who knows the reading types it; one who left it
+        // blank is telling us he does not know it.
+        val recordMileage = mileage
         // Cutover 4: goes through the SAME insertObserved every voice log_service call uses, so the
         // ASSERTED-supersession rule (instruction 3) fires identically whether a service was logged
         // by voice or by hand through this exact screen - one unification, two entry points, per
