@@ -30,8 +30,8 @@ BINDING rests on rather than what the routes rest on.
 **The `claude_worker` scope (architecture upgrade 2, 2026-11-10)** closes the other direction: a
 token issued with it reaches only `WORKER_ROUTES`, whatever its name
 (`household.authentication.DeviceTokenAuthentication` refuses the rest), and is always a worker's
-token here (unbound until it binds a machine). Additive: a worker token issued before it keeps `write`
-and every route until Kevin re-issues it.
+token here (unbound until it binds a machine). Additive: a worker token issued before it keeps
+`write` and every route until Kevin re-issues it.
 
 `WORKER_ROUTES` is wider than `/api/claude/` on purpose, because the worker family sends the same
 token to three more places: the memory review (`tools/claude_session/review_memories.py`,
