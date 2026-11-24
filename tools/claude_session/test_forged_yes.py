@@ -563,6 +563,80 @@ class TestStillOpen(ForgeCase):
             with self.subTest(cmd=cmd):
                 self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.paths.work)
 
+    def test_an_inline_interpreter_walks_past_every_path_rule_here(self):
+        """RED re-review C4, 2026-11-24, measured on this tree. Every rule in this file reads the
+        command text for something shaped like a path. An interpreter handed its program on the
+        command line names no path at all: it chdirs, joins or spells the folder in its own
+        syntax. These pass on this head, on the head before the `cd` walk and on the base, so they
+        are not regressions, and they are as cheap to write as the rows the branch closes.
+
+        None of them is closable here. The OS boundary closes them all: helpers under a Windows
+        account that cannot read the worker's root get an access error from the interpreter
+        itself, whatever the program says."""
+        name = self.paths.root.name
+        pieces = f"'{name[:2]}' + '{name[2:]}'"
+        rows = (
+            ("work", "Bash", "python -c \"import os;os.chdir('..');"
+                             "print(open('config.json').read())\""),
+            ("work", "Bash", "python -c \"import os;"
+                             "print(open(os.pardir+chr(47)+'config.json').read())\""),
+            ("work", "Bash", "python -c \"import os;print(os.listdir(os.pardir))\""),
+            ("work", "Bash", "python -c \"import os;p=os.environ['APPDATA'];"
+                             f"print(open(os.path.join(p,{pieces},'config.json')).read())\""),
+            ("work", "Bash", "node -e \"process.chdir(require('path').join('..'));"
+                             "console.log(require('fs').readFileSync('config.json','utf8'))\""),
+            # A brace expansion with no variable word the predicate above can see.
+            ("work", "Bash", "cd ${PWD%/*}; cat config.json"),
+            # A variable assigned in the same command, so the `cd` argument is a bare word here
+            # and `..` only ever appears on the assignment.
+            ("work", "Bash", "d=..; cd $d; cat config.json"),
+            ("work", "PowerShell",
+             "Get-Content (Join-Path (Split-Path -Parent $PWD) 'config.json')"),
+            ("work", "PowerShell", "Get-ChildItem (Split-Path -Parent $PWD)"),
+            ("task", "Bash", "python -c \"import os;os.chdir(os.pardir);os.chdir(os.pardir);"
+                             "print(open('config.json').read())\""),
+            ("task", "Bash", "cd $PWD/../.. ; cat config.json"),
+        )
+        for where, tool, cmd in rows:
+            with self.subTest(cmd=cmd[:50]):
+                cwd = self.own if where == "task" else self.paths.work
+                self.passed(tool, {"command": cmd}, agent="agentZ", cwd=cwd)
+
+    def test_script_content_that_spells_no_literal_path_is_never_recorded(self):
+        """RED re-review C5, 2026-11-24, the content side of the same fact and the end of chain A.
+        `names_worker_root` reads the script's text for the root's own folder name next to a
+        separator. A program that reaches the root by walking up, or by joining the name from
+        pieces, or by importing the worker's own module, spells nothing to match, so the file is
+        never recorded and running it passes. The guard raises the cost for a confused helper and
+        buys little against an injected one, because an injection can name the spelling to use.
+        The engine fence is what stops a forged yes being accepted; this half is cost-raising
+        until the OS boundary exists."""
+        name = self.paths.root.name
+        bodies = {
+            "the root name joined from pieces":
+                "import os, os.path\n"
+                "p = os.environ['APPDATA']\n"
+                f"q = os.path.join(p, '{name[:2]}' + '{name[2:]}', 'tokens', '50-yes.json')\n"
+                "open(q, 'w').write('{}')\n",
+            "two steps up with no separator in the source":
+                "import os\n"
+                "os.chdir(os.pardir)\n"
+                "os.chdir(os.pardir)\n"
+                "open('tokens/50-yes.json', 'w').write('{}')\n",
+            "pathlib walking up from the cwd":
+                "import pathlib\n"
+                "p = pathlib.Path.cwd().parent.parent / 'tokens' / '50-yes.json'\n"
+                "p.write_text('{}')\n",
+            "importing the worker's own paths":
+                "import common\n"
+                "open(common.Paths.__module__, 'w')\n",
+        }
+        for label, body in bodies.items():
+            with self.subTest(label=label):
+                self.assertFalse(self.names_root(body), label)
+                write, run = self.write_then_run("asm2.py", body)
+                self.assertEqual((write[0], run[0]), ("pass", "pass"), label)
+
     def test_a_script_that_writes_a_second_script_is_not_seen(self):
         body = ("open('step2.py','w').write(\"open('x','w')\")\n"
                 "import subprocess, sys\n"
