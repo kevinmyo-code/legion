@@ -64,8 +64,16 @@ internal class HeldLines(
      * saying it after the sign-off would reopen a conversation he just ended).
      *
      * [afterDismissal] is the only difference between the two, and it is the caller's one read of
-     * `LiveEvent.Idle.afterDismissal`. An urgent alert does not come through here at all: it is
-     * raised on [ProactiveBus] when it happens, and held lines are the routine ones that waited.
+     * `LiveEvent.Idle.afterDismissal`.
+     *
+     * **An urgent line held mid-conversation is dropped with the rest, and that is not a
+     * distinction this area can make.** Everything reaches it through one channel
+     * ([ProactiveBus.requestSpeak] carries a prompt and nothing else), so a fresh trouble code or
+     * an overheat raised while Moose was speaking is held exactly like idle chatter and goes with
+     * them. The ruling's word was "routine"; telling the two apart needs an urgency on the request,
+     * which is a change at the bus and at every caller. Until then every drop is reported through
+     * [onDropped], so one is a breadcrumb rather than a silence, and a condition that persists is
+     * raised again by the loop that noticed it.
      */
     fun onPark(afterDismissal: Boolean, nowMs: Long, onDropped: (String, String) -> Unit): Held? {
         if (afterDismissal) {
