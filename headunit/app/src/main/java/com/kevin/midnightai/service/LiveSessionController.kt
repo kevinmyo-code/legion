@@ -560,7 +560,13 @@ class LiveSessionController(context: Context) {
                 // the proactive line just finished, nothing more to do - pause the
                 // segment here (the socket may not fire a separate Idle for this
                 // path, e.g. the cold speak-only session in startProactive).
-                if (conversationMode) {
+                if (conversationMode && event.dismissed) {
+                    // The driver said goodbye and the session is parking: no fold-in, and no
+                    // "Listening..." flash. The Idle that follows sets the phase and speaks a
+                    // held line on the warm socket, which is where one belongs (LiveEvent
+                    // .TurnComplete's doc).
+                    MidnightEvents.voiceTurnDecision("turn ended on a dismissal, no fold-in")
+                } else if (conversationMode) {
                     set(Phase.LISTENING, "Listening...")
                     // The turn boundary B11/B12 lines were waiting for.
                     drainFoldIn()
