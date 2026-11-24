@@ -302,7 +302,11 @@ jobs:
           [ "$concl" = success ] || { echo "::error::run $DRY_RUN_ID concluded $concl"; exit 1; }
           job=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID/jobs" --jq '[.jobs[] | select(.name == "build")] | .[0].id')
           [ -n "$job" ] && [ "$job" != null ] || { echo "::error::run $DRY_RUN_ID has no build job"; exit 1; }
-          logged=$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$job/logs" | grep -oE 'PHONE_APK_SHA256=[0-9a-f]{64}' | grep -v '\$' | tail -1 | cut -d= -f2)
+          # --allow-escape-sequences: gh refuses a response holding escape sequences, and every job
+          # log has the colour codes Actions writes around each step (release-headunit.yml's publish
+          # failed here, run 45501728514). Read the log, not the .apk.sha256 beside the APK: that
+          # file is in the same artifact.
+          logged=$(gh api --allow-escape-sequences "repos/$GITHUB_REPOSITORY/actions/jobs/$job/logs" | grep -oE 'PHONE_APK_SHA256=[0-9a-f]{64}' | grep -v '\$' | tail -1 | cut -d= -f2)
           [[ "$logged" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::no PHONE_APK_SHA256 line in the dry run's build log"; exit 1; }
           echo "LOGGED_SHA256=$logged" >> "$GITHUB_ENV"
           echo "dry run $DRY_RUN_ID: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID; logged APK sha256 $logged"
