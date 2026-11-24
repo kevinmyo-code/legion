@@ -421,7 +421,8 @@ class TestAnUnresolvableCdNeverMovesTheBase(ForgeCase):
     def test_the_one_cost_of_the_wider_predicate(self):
         """Named rather than hidden: a checkout folder reached through a variable now denies, the
         same way it did before the walk existed. One row of B2 traded back for seven of B1, in the
-        direction this round chose. An absolute path is the way out, and `CRED_REASON` says so."""
+        direction this round chose. An absolute path is the way out, and `CRED_REASON` does NOT
+        say so today: telling a helper that is the one line of review C2 still owed."""
         self.assertEqual(
             self.decide("Bash", {"command": "cd wt/$d && pytest --junitxml=../../reports/x.xml"},
                         agent="agentZ", cwd=self.own)[1], "worker files read")
@@ -585,7 +586,8 @@ class TestStillOpen(ForgeCase):
                              f"print(open(os.path.join(p,{pieces},'config.json')).read())\""),
             ("work", "Bash", "node -e \"process.chdir(require('path').join('..'));"
                              "console.log(require('fs').readFileSync('config.json','utf8'))\""),
-            # A brace expansion with no variable word the predicate above can see.
+            # A brace expansion. The predicate above does see its `$`, so the walk falls back and
+            # keeps the raw cwd; what gets past is `config.json`, a bare word and not a path.
             ("work", "Bash", "cd ${PWD%/*}; cat config.json"),
             # A variable assigned in the same command, so the `cd` argument is a bare word here
             # and `..` only ever appears on the assignment.
@@ -627,9 +629,10 @@ class TestStillOpen(ForgeCase):
                 "import pathlib\n"
                 "p = pathlib.Path.cwd().parent.parent / 'tokens' / '50-yes.json'\n"
                 "p.write_text('{}')\n",
-            "importing the worker's own paths":
+            "asking the worker's own module where its root is":
                 "import common\n"
-                "open(common.Paths.__module__, 'w')\n",
+                "p = common.Paths()\n"
+                "(p.tokens / '50-yes.json').write_text('{}')\n",
         }
         for label, body in bodies.items():
             with self.subTest(label=label):
