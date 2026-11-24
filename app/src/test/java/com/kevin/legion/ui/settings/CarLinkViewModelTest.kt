@@ -3,6 +3,7 @@ package com.kevin.legion.ui.settings
 import com.kevin.legion.carlink.CarLinkController
 import com.kevin.legion.carlink.CarLinkStore
 import com.kevin.legion.carlink.FakeKeystoreStandIn
+import com.kevin.legion.carlink.HandoverGap
 import com.kevin.legion.carlink.HandoverPlan
 import com.kevin.legion.carlink.HandoverSources
 import com.kevin.legion.carlink.MemoryRecordFile
@@ -170,6 +171,17 @@ class CarLinkViewModelTest {
             "This phone has no Gemini key and no map token, so the car will get neither.",
             state().handsOver,
         )
+    }
+
+    /** 2026-11-23: the Spotify setup is one extra sentence, not a branch per combination. */
+    @Test fun `the Spotify setup is named only when this phone has one`() {
+        val none = setOf(HandoverGap.NO_GEMINI_KEY, HandoverGap.NO_MAP_TOKEN, HandoverGap.NO_SPOTIFY_CLIENT_ID)
+        assertFalse(CarLinkWords.handsOver(none).contains("Spotify"))
+        val withSpotify = CarLinkWords.handsOver(setOf(HandoverGap.NO_GEMINI_KEY, HandoverGap.NO_MAP_TOKEN))
+        assertTrue(withSpotify, withSpotify.contains("Spotify setup goes too"))
+        assertTrue(withSpotify, withSpotify.startsWith("This phone has no Gemini key and no map token"))
+        val everything = CarLinkWords.handsOver(emptySet())
+        assertTrue(everything, everything.contains("Gemini key and map token") && everything.contains("Spotify"))
     }
 
     @Test fun `a key this phone cannot read shows Pairing broken and offers Forget`() {

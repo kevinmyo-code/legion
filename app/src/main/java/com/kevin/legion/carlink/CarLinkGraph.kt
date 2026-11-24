@@ -54,6 +54,7 @@ class CarLinkGraph(private val app: Application) {
                     geminiKey = { com.kevin.legion.ai.CompanionProfile.geminiKey(app) },
                     mapboxToken = { (app as com.kevin.legion.MidnightApplication).mapboxTokens.token() },
                     phoneName = { Build.MODEL },
+                    spotifyClientId = { com.kevin.legion.ai.CompanionProfile.spotifyClientId(app) },
                 ),
                 tokens = UnitTokenNotYetAvailable(),
                 redact = LogcatRedactor::addLiteral,

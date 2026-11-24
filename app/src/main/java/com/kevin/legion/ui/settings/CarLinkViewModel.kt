@@ -270,12 +270,15 @@ object CarLinkWords {
     fun handsOver(gaps: Set<HandoverGap>): String {
         val noKey = HandoverGap.NO_GEMINI_KEY in gaps
         val noMap = HandoverGap.NO_MAP_TOKEN in gaps
-        return when {
+        val main = when {
             noKey && noMap -> "This phone has no Gemini key and no map token, so the car will get neither."
             noKey -> "This phone has no Gemini key, so the car will get none. It gets this phone's map token."
             noMap -> "This phone has no map token, so the car will get none. It gets this phone's Gemini key."
             else -> "Pairing hands the car this phone's Gemini key and map token."
         }
+        // One extra sentence rather than a fourth branch per combination (2026-11-23): the Spotify
+        // client ID is an addition to the hand-over, not another thing the car depends on.
+        return if (HandoverGap.NO_SPOTIFY_CLIENT_ID in gaps) main else "$main The Spotify setup goes too."
     }
 
     @Suppress("CyclomaticComplexMethod") // one sentence per failure code; a table, not logic
