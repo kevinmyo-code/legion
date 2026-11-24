@@ -1139,6 +1139,10 @@ def _next_service(request, args) -> ToolResult:
             "next_by_miles": None,
             "overdue": [],
             "never_logged": [i.service_name for i in items if i.never_logged],
+            # Items timed by mileage only whose newest service carries no reading: timed by
+            # nothing, so named rather than left out of the answer. Same verdict the phone gives
+            # for the same history (`VehicleController.needsMileageReading`).
+            "needs_mileage": [i.service_name for i in items if i.needs_mileage],
             "odometer": (
                 {
                     "miles": odometer.miles,
@@ -1220,6 +1224,12 @@ def _next_service(request, args) -> ToolResult:
                         f"reading on file is past that)"
                     )
             said.append("Already past due by the records on file: " + "; ".join(parts) + ".")
+        if entry["needs_mileage"]:
+            said.append(
+                "Timed by mileage only, with no mileage on the last service, so not timed at all: "
+                + ", ".join(entry["needs_mileage"])
+                + ". A reading is what times these."
+            )
         if entry["never_logged"]:
             said.append(
                 "Never logged as done, so not timed: " + ", ".join(entry["never_logged"]) + "."
