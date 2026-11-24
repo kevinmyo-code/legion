@@ -595,6 +595,122 @@ def _redirect_targets(command: str, cwd: str) -> list:
     return out
 
 
+# A `cd` argument this hook cannot resolve: a variable or a home mark ANYWHERE in it, not only at
+# the front. `cd ./$x` is `cd ./` to a shell with `x` unset, so a walk that read it as a move one
+# level down dropped the raw cwd and handed `..` back as the work folder (RED re-review C1,
+# 2026-11-24). It belongs to `_cd_scoped`, whose question is "can I walk this whole chain": there
+# the safe answer to an argument it cannot resolve is to give up and fall back to every candidate
+# base. `_cwd_candidates` below asks a DIFFERENT question, "which folders could a relative word
+# here mean", and keeps its own narrow test: see the comment there (RED re-review 3 C1-R).
+_UNRESOLVABLE_CD = re.compile(r"[$%~]")
+
+
+def _cwd_candidates(command: str, cwd: str) -> list[str]:
+    """Every folder a relative word in this command could resolve against: the session's own, and
+    each `cd` / `Set-Location` / `pushd` in it. The reasoning is `_names_worker_code`'s round-4c
+    fix, and it is needed here because the REAL session's cwd is the whole work folder
+    (`worker.MainSession` starts it there), so a helper that cds into its own task folder and runs
+    `python forge.py` names no path the session's cwd resolves."""
+    bases = [cwd] if cwd else []
+    base = cwd or None
+    for c in CD_RE.finditer(command):
+        d = _to_os_path(next(g for g in c.groups() if g is not None))
+        # Deliberately NARROW, and not `_UNRESOLVABLE_CD` (RED re-review 3 C1-R, 2026-11-24).
+        # Dropping the base here skips every LATER `cd`, so the root never enters the list and
+        # `cd task-50$x && cd ../../ && cat config.json` reads the device token. A shell reads
+        # that first `cd` as `cd task-50` and DOES move down one, so guessing the variable is a
+        # literal segment and walking on is both closer to the shell and the safer guess: a
+        # wrong guess adds a candidate folder, and a dropped base removes the real one.
+        if d.startswith(("~", "$", "%")):
+            base = None
+        elif DRIVE_RE.match(d):
+            base = d
+        elif base is not None:
+            base = os.path.normpath(os.path.join(base, d))
+        if base:
+            bases.append(base)
+    return bases
+
+
+# A command whose `cd`s cannot be walked: anything that lets a later command run though the `cd`
+# failed or was never what it looked like. A `;`, a `||`, a newline, a subshell, a substitution, a
+# quote (which can hide an `&&`), and a LONE `&` (which backgrounds the `cd`). A single pipe is
+# fine: `pytest 2>&1 | tail -20` is how a helper really writes it, and it cannot outlive its `&&`.
+_UNWALKABLE_RE = re.compile(r"[;\n`(\"']|\$\(|\|\||(?<![&>])&(?![&>])")
+# The only `cd` the walk trusts: a whole segment, one plain resolvable folder, nothing else on it.
+_PLAIN_CD_RE = re.compile(r"^\s*(?:cd|Set-Location|sl|pushd|Push-Location)\s+(?:-Path\s+)?"
+                          r"([^\s|;&\"']+)\s*$", re.I)
+# Anything that can move the shell, un-alias a `cd`, or run something that does. A segment holding
+# one of these and not being a plain `cd` makes the whole command unwalkable: `cd -` goes back,
+# `popd` undoes a `pushd`, `\cd` skips an alias, and `export CDPATH=..` moves what `cd` means
+# (measured, 2026-11-24).
+_MOVES_RE = re.compile(
+    r"(?:^|[\s\\])(?:cd|chdir|Set-Location|sl|pushd|Push-Location|popd|Pop-Location|eval|source"
+    r"|builtin|command|export|set|setx)(?=\s|$)", re.I)
+
+
+def _cd_scoped(command: str, cwd: str) -> list:
+    """(base, text) pairs saying which folder each part of the command really resolves against.
+
+    A `cd` may move the base only for work that CANNOT run unless that `cd` succeeded, which is a
+    plain `&&` chain of plain `cd`s and nothing else. Everywhere else the `cd` may fail, or be
+    backgrounded, or sit inside a quoted string, and the next command still runs in the old
+    folder: `cd nope; cat ../config.json` reads the root on a real shell. There the whole command
+    is checked against every candidate base, the raw cwd included, and no part is ever dropped
+    (RED review B1, 2026-11-24, and its re-measure)."""
+    segs = re.split(r"&&", command or "")
+    fallback = [(b, command) for b in _cwd_candidates(command, cwd) if b]
+    if _UNWALKABLE_RE.search(command or ""):
+        return fallback
+    for seg in segs:
+        m = _PLAIN_CD_RE.match(seg.strip())
+        if _MOVES_RE.search(seg) and not m:
+            return fallback
+        if m and (m.group(1).startswith(("-", "+", "\\"))
+                  or _UNRESOLVABLE_CD.search(m.group(1))):
+            return fallback
+    out, base = [], cwd
+    for seg in segs:
+        out.append((base, seg))
+        m = _PLAIN_CD_RE.match(seg.strip())
+        if m:
+            d = _to_os_path(m.group(1))
+            if _UNRESOLVABLE_CD.search(d) or not base:
+                return fallback
+            base = d if DRIVE_RE.match(d) else os.path.normpath(os.path.join(base, d))
+    return out
+
+
+def _root_read_denied(command: str, cwd: str, paths: Paths) -> bool:
+    """`_root_read_once`, also on the command with every backslash dropped.
+
+    A backslash is a separator on Windows and an escape in a shell, so one command text lands in
+    two different folders depending on which shell reads it (`cd task-50/\\.\\.` is `task-50` to
+    `os.path.normpath` and the work folder to Git Bash). Both readings are checked and either one
+    denies (measured, 2026-11-24)."""
+    stripped = (command or "").replace("\\", "")
+    return any(_root_read_once(t, cwd, paths) for t in dict.fromkeys([command, stripped]))
+
+
+def _root_read_once(command: str, cwd: str, paths: Paths) -> bool:
+    """Does this command READ the worker's own root outside the work folder?
+
+    Three rules. The whole command is checked with no folder at all, which catches every absolute
+    and root-name spelling wherever it sits. A folder the command moves INTO that lies in the root
+    outside the work folder is itself a read of the root (`cd ..` from the session's own cwd lands
+    on the root, and no path in `cat config.json` is root-shaped at all). And each part of the
+    command is checked against the folder that part really runs in, which is what keeps the guard
+    off a checkout's own `../../reports` (RED review B1 and B2, 2026-11-24: one defect, measured
+    in both directions)."""
+    if C.names_worker_root(command, "", paths):
+        return True
+    if any(b and is_under(b, paths.root) and not is_under(b, paths.work)
+           for b in _cwd_candidates(command, cwd)):
+        return True
+    return any(C.command_names_root(text, base, paths)
+               for base, text in _cd_scoped(command, cwd))
+
+
 def _redirect_only(command: str) -> bool:
     """The overwrite rule matched through a redirect and through nothing else."""
     return (re.search(REDIRECT_OUT, command, re.I) is not None
@@ -859,16 +975,42 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
                     C.record_written(paths, target, now)
                 except OSError:
                     return _deny(C.MARK_FAILED_REASON), "read_through", True
-        if tool in READ_TOOLS:
-            target = inp.get("file_path") or inp.get("path") or cwd
-            if target and ((is_under(target, paths.root) and not is_under(target, paths.work))
-                           or C.CREDENTIAL_NAMES.search(str(target))):
-                return _deny(C.CRED_REASON), "read_through", True
+
+    # The worker's own folder and credential files: never readable by a helper, read-through or
+    # not (the forged-yes trace, 2026-11-24). It used to sit inside the taint branch above, which
+    # left `config.json` and so the engine's device token open to a clean helper. The shell half
+    # matters as much as the tool half: `cat` reaches the same file, and `shell_verdict` below
+    # only ever looked at commands that write.
+    if tool in READ_TOOLS:
+        # A relative tool path resolves against the folder the SESSION is in. It used to be handed
+        # to `credential_path` raw, which calls `abspath`, so it resolved against the HOOK
+        # PROCESS's cwd and the guard held only by accident of where the hook was started (RED
+        # re-review C3, 2026-11-24). `Glob`'s own argument is its `pattern`, which it resolves
+        # against `path` or the session's folder, so the pattern is joined too; `Grep`'s `pattern`
+        # is a regex and is never read as a path.
+        target = inp.get("file_path") or inp.get("path") or cwd
+        if tool == "Glob" and inp.get("pattern"):
+            target = os.path.join(target, inp["pattern"]) if target else inp["pattern"]
+        if target and cwd and not os.path.isabs(target):
+            target = os.path.join(cwd, target)
+        if target and C.credential_path(paths, target, paths.work):
+            return _deny(C.CRED_REASON), "worker files read", True
+    if command and not ours and _root_read_denied(command, cwd, paths):
+        return _deny(C.CRED_REASON), "worker files read", True
 
     if command and not ours:
-        if C.names_blocked(command, cwd, C.written_paths(paths)):
+        # Every one of these resolves a relative word, so every one of them takes the folders a
+        # `cd` in the command moves to, not the raw cwd: `cd task-50 && python post.py` ran a
+        # recorded net script from the session's own cwd (RED review debt, 2026-11-24).
+        bases = _cwd_candidates(command, cwd)
+        roots = C.root_script_paths(paths)
+        if roots and any(C.runs_blocked_path(command, base, roots)
+                         or C.runs_blocked_module(command, base, roots)
+                         for base in bases):
+            return _deny(C.ROOT_SCRIPT_REASON), "root script", True
+        if any(C.names_blocked(command, base, C.written_paths(paths)) for base in bases):
             return _deny(C.WRITTEN_REASON), "read_through written", True
-        if C.names_blocked(command, cwd, C.blocked_paths(paths)):
+        if any(C.names_blocked(command, base, C.blocked_paths(paths)) for base in bases):
             return _deny(C.NET_REASON), "net script", True
         why = C.network_denial(command, cfg)
         if why:
@@ -877,11 +1019,20 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
     if tool in WRITE_TOOLS and not is_tainted:
         content = _write_content(tool, inp)
         for target in _write_targets(inp):
-            if C.content_net_script(target, content, cfg):
-                try:
+            # Record it, so `names_blocked` above refuses to run it. The hook cannot watch what a
+            # subprocess does, so a file whose text reaches the network or names the worker's own
+            # folder is never run at all. The root check takes any extension, not only
+            # `SCRIPT_EXT`: `python forge.txt` runs a forging script just as well.
+            try:
+                if C.content_net_script(target, content):
                     C.record_net_script(paths, target, now)
-                except OSError:
-                    return _deny(C.MARK_FAILED_REASON), "net script", True
+                # A relative path in a file's text is resolved against THAT FILE's folder, never
+                # the task's: a checkout under the work folder writing `../../lib/y` is naming its
+                # own sibling, not the worker's root (measured, 2026-11-24).
+                if C.names_worker_root(content, str(Path(target).parent), paths):
+                    C.record_root_script(paths, target, now)
+            except OSError:
+                return _deny(C.MARK_FAILED_REASON), "net script", True
 
     source = _source(tool, inp, cwd, paths, trec, cfg, agent)
     if source:

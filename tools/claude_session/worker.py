@@ -1093,6 +1093,9 @@ class Worker:
         """Review 2026-11-22 F3: a helper can list any path with --found, including ones it may not
         read. Never the worker's own folder (config and its token, tokens, taint, state, other
         tasks' folders) except this task's own work folder, and never a credential-like name.
+        The ROOT test is the one that matters and it is made first: it refuses `<root>/config.json`
+        and `<root>/tokens/*` by where they are, not by what they are called, so narrowing
+        `CREDENTIAL_NAMES` (2026-11-24) does not open the upload path to either.
         Paths resolve first (`is_under` uses realpath), so a link into either fails too. Any doubt
         is a refusal."""
         try:
