@@ -151,6 +151,41 @@ def test_django_new_additive_passes_destructive_warns():
     assert levels(migrations.check(bad)) == [WARN]
 
 
+# A migration that only tells Django what the database already holds: the shape of
+# checklists/0002_household.py and of the 2026-11-24 tracker cut. Its docstring names the operation
+# too, because a text match refused the file for that alone.
+STATE_ONLY = '''"""State only: Django forgets a model whose table stays. DeleteModel, no DDL."""
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [("ledger", "0005_a")]
+
+    operations = [
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[migrations.DeleteModel(name="Gadget")],
+        ),
+    ]
+'''
+
+
+def test_django_state_only_migration_is_not_destructive():
+    ch = change({"server/ledger/migrations/0006_a.py": ("A", STATE_ONLY)})
+    assert migrations.check(ch) == []
+
+
+def test_django_state_only_shape_with_real_ddl_still_warns():
+    with_ddl = STATE_ONLY.replace(
+        "database_operations=[],", 'database_operations=[migrations.RunSQL("DROP TABLE gadgets")],'
+    )
+    ch = change({"server/ledger/migrations/0006_a.py": ("A", with_ddl)})
+    found = migrations.check(ch)
+    assert levels(found) == [WARN] and "destructive database operation" in found[0].message
+
+
 DB = "app/src/main/java/com/kevin/legion/data/local/CarDatabase.kt"
 SCHEMA = "app/schemas/com.kevin.legion.data.local.CarDatabase/"
 

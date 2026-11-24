@@ -1,5 +1,5 @@
 """deploy/ship_checks.py: the engine ship's credential-free rules (cloud-builds step 2).
-Invented paths and blobs only."""
+Invented paths and blobs, except one real migration read from the tree as the state-only precedent."""
 
 from __future__ import annotations
 
@@ -16,6 +16,36 @@ _spec.loader.exec_module(sc)
 A = "a" * 40
 B = "b" * 40
 FIX = "f" * 40
+
+# A real state-only migration, the shape ADR 0045's tenancy work and the 2026-11-24 tracker cut both
+# need: no `database_operations`, so no SQL, so nothing for the ship to refuse. Its docstring names
+# the operation on purpose, because a text match used to refuse the file for that alone.
+STATE_ONLY = '''"""State only: Django forgets four models whose tables stay. DeleteModel, no DDL."""
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [("widgets", "0002_gadgets")]
+
+    operations = [
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.DeleteModel(name="Gadget"),
+                migrations.RemoveField(model_name="Widget", name="gadget"),
+            ],
+        ),
+    ]
+'''
+# The same file with real DDL beside the state operations: a drop is a drop.
+WITH_DDL = STATE_ONLY.replace(
+    "database_operations=[],",
+    'database_operations=[migrations.RunSQL("DROP TABLE gadgets")],',
+)
+# `database_operations` by name but not a literal: what it holds cannot be read here.
+VARIABLE_DB_OPS = STATE_ONLY.replace("database_operations=[],", "database_operations=OPS,")
 
 
 def test_pins_parse_and_refuse_bad_lines():
@@ -62,7 +92,7 @@ def test_schema_files_added_pinned_and_never_destructive():
         f"schema file added but not pinned: {m}"
     ]
     assert sc.migration_problems([("A", m)], {m: A}, set(), {m: "migrations.RemoveField('x')"}) == [
-        f"{m} holds a destructive operation"
+        f"{m} holds a destructive database operation (RemoveField)"
     ]
     init = "server/newapp/migrations/__init__.py"
     assert sc.migration_problems([("A", init)], {}, {"newapp"}, {}) == []
@@ -72,6 +102,48 @@ def test_schema_files_added_pinned_and_never_destructive():
     assert sc.migration_problems([], {m: A}, set(), {}) == [
         f"pinned schema file not added by this ship: {m}"
     ]
+
+
+def _one_migration(source: str) -> list[str]:
+    m = "server/widgets/migrations/0003_state_only.py"
+    return sc.migration_problems([("A", m)], {m: A}, set(), {m: source})
+
+
+def test_a_state_only_migration_ships():
+    """No `database_operations` means no SQL, so there is nothing destructive to refuse - however
+    many DeleteModels the state operations and the docstring name."""
+    assert _one_migration(STATE_ONLY) == []
+
+
+def test_a_drop_beside_the_state_operations_is_still_refused():
+    for source, what in ((WITH_DDL, "real DDL"), (VARIABLE_DB_OPS, "unreadable database_operations")):
+        problems = _one_migration(source)
+        assert len(problems) == 1, (what, problems)
+        assert "holds a destructive database operation" in problems[0], what
+
+
+def test_a_destructive_operation_outside_the_state_block_is_refused():
+    mixed = STATE_ONLY.replace(
+        "    ]\n", '        migrations.AlterField(model_name="widget", name="name", field=None),\n    ]\n', 1
+    )
+    assert _one_migration(mixed) == [
+        "server/widgets/migrations/0003_state_only.py holds a destructive database operation (AlterField)"
+    ]
+
+
+def test_a_migration_that_does_not_parse_is_refused():
+    problems = _one_migration("operations = [  # truncated\n")
+    assert len(problems) == 1
+    assert "does not parse" in problems[0]
+
+
+def test_the_checklists_household_migration_is_judged_state_only():
+    """The precedent in the repo: `SeparateDatabaseAndState` with an empty `database_operations`,
+    holding AddField, AlterField and AddConstraint. It changed no schema, so it is not destructive."""
+    path = Path(__file__).resolve().parents[1] / "checklists" / "migrations" / "0002_household.py"
+    source = path.read_text(encoding="utf-8")
+    assert "SeparateDatabaseAndState" in source and "AlterField" in source
+    assert _one_migration(source) == []
 
 
 def test_switches_can_only_grow():
