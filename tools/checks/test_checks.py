@@ -172,18 +172,78 @@ class Migration(migrations.Migration):
 '''
 
 
+def _judge(source: str) -> list[str]:
+    """The levels check (c) gives one added migration holding `source`."""
+    return levels(migrations.check(change({"server/ledger/migrations/0006_a.py": ("A", source)})))
+
+
 def test_django_state_only_migration_is_not_destructive():
-    ch = change({"server/ledger/migrations/0006_a.py": ("A", STATE_ONLY)})
-    assert migrations.check(ch) == []
+    assert _judge(STATE_ONLY) == []
 
 
-def test_django_state_only_shape_with_real_ddl_still_warns():
-    with_ddl = STATE_ONLY.replace(
-        "database_operations=[],", 'database_operations=[migrations.RunSQL("DROP TABLE gadgets")],'
+def test_django_real_ddl_warns_however_it_is_dressed():
+    """Every one of these runs a real drop, so every one keeps the old rule. The four after the
+    first two try to carry an operation out of the exempt list or to look like Django and not be."""
+    cases = {
+        "a plain DeleteModel": STATE_ONLY.replace(
+            "        migrations.SeparateDatabaseAndState(\n"
+            "            database_operations=[],\n"
+            "            state_operations=[migrations.DeleteModel(name=\"Gadget\")],\n"
+            "        ),\n",
+            '        migrations.DeleteModel(name="Gadget"),\n',
+        ),
+        "a plain RemoveField": STATE_ONLY.replace(
+            'state_operations=[migrations.DeleteModel(name="Gadget")],',
+            'state_operations=[],\n        ),\n        migrations.RemoveField(\n'
+            '            model_name="widget", name="gadget",',
+        ),
+        "SQL beside the state operations": STATE_ONLY.replace(
+            "database_operations=[],",
+            'database_operations=[migrations.RunSQL("DROP TABLE gadgets")],',
+        ),
+        "database_operations it cannot read": STATE_ONLY.replace(
+            "database_operations=[],", "database_operations=OPS,"
+        ),
+        "an operation bound out with :=": STATE_ONLY.replace(
+            'state_operations=[migrations.DeleteModel(name="Gadget")],',
+            'state_operations=[(d := migrations.DeleteModel(name="Gadget"))][:0],',
+        ).replace("        ),\n    ]\n", "        ),\n        d,\n    ]\n"),
+        "the list read back off the call": """from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    s = migrations.SeparateDatabaseAndState(
+        database_operations=[],
+        state_operations=[migrations.DeleteModel(name="Gadget")],
     )
-    ch = change({"server/ledger/migrations/0006_a.py": ("A", with_ddl)})
-    found = migrations.check(ch)
-    assert levels(found) == [WARN] and "destructive database operation" in found[0].message
+    operations = [s.state_operations[0]]
+""",
+        "a callee that is not Django's": '''from django.db import migrations
+
+
+def SeparateDatabaseAndState(database_operations, state_operations):
+    """Not Django's: it hands the state operation straight to the database."""
+    return state_operations[0]
+
+
+class Migration(migrations.Migration):
+
+    operations = [
+        SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[migrations.DeleteModel(name="Gadget")],
+        ),
+    ]
+''',
+    }
+    for what, source in cases.items():
+        assert source != STATE_ONLY, f"{what}: the fixture did not change, so it proves nothing"
+        assert _judge(source) == [WARN], what
+
+
+def test_django_migration_that_does_not_parse_warns():
+    assert _judge("operations = [  # truncated\n") == [WARN]
 
 
 DB = "app/src/main/java/com/kevin/legion/data/local/CarDatabase.kt"
