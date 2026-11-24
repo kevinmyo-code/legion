@@ -361,15 +361,20 @@ DARK_REFUSAL = (
 )
 
 
-def member_refusals(user, names, args: dict | None = None) -> dict[str, str]:
+def member_refusals(
+    user, names, args: dict | None = None, *, recruiter: bool | None = None
+) -> dict[str, str]:
     """`member_refusal` for many names at once, reading the recruiter row and the dark list ONCE.
+
+    `recruiter` is the caller's own already-read verdict, for a caller that had to branch on it
+    before getting here (`refusal_for`); None reads it.
 
     `/mcp` asks about the whole registry on every `tools/list`, and `is_recruiter` is "one query,
     never cached" by its own docstring, so a per-name call there would be a query per tool - a
     deployed query count nobody meant (the same caution `member_only_tools` states). Single-name
     callers go through `member_refusal`, which is this function, so there is one rule and not
     two."""
-    if is_recruiter(user):
+    if is_recruiter(user) if recruiter is None else recruiter:
         refusals = ((name, _recruiter_refusal(name, args)) for name in names)
         return {name: why for name, why in refusals if why is not None}
     dark = dark_tools()
@@ -395,9 +400,14 @@ def member_refusal(name: str, user, args: dict | None = None) -> str | None:
 
 def refusal_for(name: str, user=None, args: dict | None = None) -> str | None:
     """None when `user`'s web assistant may call `name` with `args`;
-    otherwise why not, in words. The per-member fence first (`member_refusal`: a recruiter is
-    checked against `RECRUITER_TOOLS`, default deny), then the web surface itself."""
-    refusal = member_refusal(name, user, args)
+    otherwise why not, in words. A recruiter is decided ENTIRELY by its own fence
+    (`RECRUITER_TOOLS`, default deny) and the web surface below is not consulted for it:
+    `about_kevin` and `show_resume` are not registry tools, so falling through would refuse the
+    two tools a visit exists for. Everyone else gets the per-member fence, then the web surface
+    itself."""
+    if is_recruiter(user):
+        return _recruiter_refusal(name, args)
+    refusal = member_refusals(user, (name,), args, recruiter=False).get(name)
     if refusal is not None:
         return refusal
     if name in WEB_TOOL_NAMES or name in member_only_tools(user):
