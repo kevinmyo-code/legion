@@ -158,6 +158,29 @@ internal object CascadeRules {
         else -> NewSpeech.NONE
     }
 
+    /** What a conversation does once a reply has played to its end ([afterReply]). */
+    enum class AfterReply {
+        /** Nothing to go back to: this session had no mic. Closed as `spoken`. */
+        SPOKEN,
+
+        /** He asked to be left alone, or a one-shot conversation got its one answer. */
+        DISMISSED,
+
+        /** Listen again: the follow-up window opens. */
+        LISTEN,
+    }
+
+    /**
+     * Which way a conversation ends a reply, in the order the session checks it. A session with no
+     * mic has nothing to go back to; a dismissal and a one-shot's single answer both close with the
+     * owed lines said first; anything else listens again.
+     */
+    fun afterReply(listens: Boolean, dismissed: Boolean, oneShotDone: Boolean): AfterReply = when {
+        !listens -> AfterReply.SPOKEN
+        dismissed || oneShotDone -> AfterReply.DISMISSED
+        else -> AfterReply.LISTEN
+    }
+
     @Suppress("LongParameterList")
     fun turnPlan(
         serviceEndsTurns: Boolean,

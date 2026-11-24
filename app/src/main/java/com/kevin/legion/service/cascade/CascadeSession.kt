@@ -2727,19 +2727,23 @@ internal class CascadeSession(
         playbackActive = false
         turnTaker?.onReplyEnd()
         audit.turnComplete()
-        if (!listens) {
-            shutdown("spoken")
-            host.closed("spoken")
-            return
+        val next = CascadeRules.afterReply(
+            listens = listens,
+            dismissed = dismissAfterReply,
+            oneShotDone = (oneShot || oneShotRequested) && answeredOnce,
+        )
+        when (next) {
+            CascadeRules.AfterReply.SPOKEN -> {
+                shutdown("spoken")
+                host.closed("spoken")
+            }
+            CascadeRules.AfterReply.DISMISSED -> {
+                sayOwed()
+                shutdown("dismissed")
+                host.closed("dismissed")
+            }
+            CascadeRules.AfterReply.LISTEN -> backToListening()
         }
-        val oneShotDone = (oneShot || oneShotRequested) && answeredOnce
-        if (dismissAfterReply || oneShotDone) {
-            sayOwed()
-            shutdown("dismissed")
-            host.closed("dismissed")
-            return
-        }
-        backToListening()
     }
 
     private fun backToListening() {

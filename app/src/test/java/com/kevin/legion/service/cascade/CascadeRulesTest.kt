@@ -415,6 +415,33 @@ class CascadeRulesTest {
         assertEquals(EndOfTurnPolicy.CAP_MS, plan(serviceEnds = true, smart = true).endFinishedMs)
     }
 
+    // --- after a reply ------------------------------------------------------------------------
+
+    @Test
+    fun `a reply listens again unless the session had no mic or was dismissed`() {
+        assertEquals(
+            CascadeRules.AfterReply.LISTEN,
+            CascadeRules.afterReply(listens = true, dismissed = false, oneShotDone = false),
+        )
+        assertEquals(
+            CascadeRules.AfterReply.SPOKEN,
+            CascadeRules.afterReply(listens = false, dismissed = false, oneShotDone = false),
+        )
+        assertEquals(
+            CascadeRules.AfterReply.DISMISSED,
+            CascadeRules.afterReply(listens = true, dismissed = true, oneShotDone = false),
+        )
+        assertEquals(
+            CascadeRules.AfterReply.DISMISSED,
+            CascadeRules.afterReply(listens = true, dismissed = false, oneShotDone = true),
+        )
+        // No mic beats everything else: there is nothing to go back to.
+        assertEquals(
+            CascadeRules.AfterReply.SPOKEN,
+            CascadeRules.afterReply(listens = false, dismissed = true, oneShotDone = true),
+        )
+    }
+
     @Test
     fun `code's write lines with no title are kept like the fillers`() {
         val fixed = ScriptedLines.FIXED_DONE_LINES
