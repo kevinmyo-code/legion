@@ -55,6 +55,14 @@ class Command(BaseCommand):
             f"{loaded.media_bytes} bytes stored in all; {loaded.media_written} written this time "
             f"({loaded.media_bytes_written} bytes), the rest unchanged."
         )
+        if loaded.media_files:
+            self.stdout.write(
+                f"{loaded.media_to_bucket} of them put in the media bucket, which is where the "
+                "page reads them from."
+                if loaded.media_to_bucket
+                else "No media bucket is set (LEGION_DEMO_MEDIA_BUCKET), or every file was "
+                "already in it: nothing was uploaded."
+            )
         if loaded.file_named_videos:
             self.stdout.write(
                 "WARNING: clip videos named by file ("
