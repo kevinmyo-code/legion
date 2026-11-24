@@ -18,9 +18,10 @@ route has never allowed: the files are private like the resume, to a visit or an
 is egress out of POSTGRES; Cloud Run to the visitor is Google egress, and Cloud Storage to Cloud
 Run in the same region is free.
 
-**Its own bucket, not one of the two that exist.** The APK and Claude-file buckets delete their
-objects on a lifecycle rule (a day, for the Claude files), and these files are the live page. The
-clips bucket the Pages site uses is world-readable, which would publish them.
+**Its own bucket, not one of the three that exist.** The Claude-file bucket deletes every object a
+day old (`deploy/claude_files/setup_bucket.sh`) and these files are the live page; the APK bucket
+holds signed release downloads and shares nothing with them but a storage class; and the clips
+bucket the Pages site uses has `allUsers` on it, which would publish them.
 
 With no bucket set (`LEGION_DEMO_MEDIA_BUCKET`), `get_store()` returns None and everything works
 exactly as it did: the loader writes only the column and the view reads only the column.
