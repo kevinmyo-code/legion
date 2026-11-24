@@ -15,9 +15,19 @@ Prints what it checked; exits 1 with every problem listed. Stdlib only.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+# One copy of "is this migration destructive to the database?", shared with the review-finding gate
+# (check (c)). Loaded by path under its own module name: this file is also imported by the server's
+# pytest, where `tools/checks` on sys.path would shadow modules named `migrations` and `common`.
+_OPS = Path(__file__).resolve().parents[1] / "tools" / "checks" / "migration_ops.py"
+_ops_spec = importlib.util.spec_from_file_location("legion_migration_ops", _OPS)
+migration_ops = importlib.util.module_from_spec(_ops_spec)
+_ops_spec.loader.exec_module(migration_ops)
 
 # What the image is built from (deploy.py: gcloud builds submit on server/) and the deploy code.
 IMAGE_PATHS = ("server", "deploy")
@@ -79,7 +89,6 @@ FROZEN_LIVE = (
 PROBE_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 PROBE_PATH = re.compile(r"^/api/[A-Za-z0-9_./-]+$")
 REPO_PATH = re.compile(r"^(server|deploy)/[A-Za-z0-9_./-]+$")
-DESTRUCTIVE = re.compile(r"RemoveField|DeleteModel|AlterField|RenameField|RenameModel")
 MIGRATION_PATH = re.compile(r"^server/([^/]+)/migrations/(\d{4}_[A-Za-z0-9_]+)\.py$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 BLOB = re.compile(r"^[0-9a-f]{40}$")
@@ -129,7 +138,9 @@ def migration_problems(
 ) -> list[str]:
     """`status`: (letter, path) for every */migrations/* change LIVE_CODE..FIX. Allowed: exactly the pinned
     files, each ADDED, at its pinned blob (checked by the caller through `pinned` vs the blobs), plus an
-    empty __init__.py for an app new since LIVE_CODE; nothing destructive inside (`sources` path -> text)."""
+    empty __init__.py for an app new since LIVE_CODE; nothing that changes the database destructively
+    (`sources` path -> text, judged by tools/checks/migration_ops.py: a state-only
+    `SeparateDatabaseAndState` runs no SQL and ships, a real DROP does not)."""
     problems = []
     for letter, path in status:
         if letter != "A":
@@ -139,8 +150,8 @@ def migration_problems(
         if m:
             if path not in pinned:
                 problems.append(f"schema file added but not pinned: {path}")
-            elif DESTRUCTIVE.search(sources.get(path, "")):
-                problems.append(f"{path} holds a destructive operation")
+            elif reason := migration_ops.database_destructive(sources.get(path, "")):
+                problems.append(f"{path} holds a destructive database operation ({reason})")
             continue
         app_init = re.match(r"^server/([^/]+)/migrations/__init__\.py$", path)
         if not (app_init and app_init.group(1) in new_apps):
