@@ -239,7 +239,9 @@ class VehicleControllerServiceWritesTest {
         // is a fact regardless of what the schedule knew about it.
         val records = FleetEngineStore.getRecentForVehicle(context, "V1", 10)
         assertEquals(1, records.size)
-        assertEquals(227_000, records.single().mileage)
+        // The record exists; its mileage is unknown because none was stated (car plan slice 0).
+        assertNull(records.single().mileage)
+        assertNotNull(records.single().date)
     }
 
     @Test
@@ -253,7 +255,8 @@ class VehicleControllerServiceWritesTest {
         )
         val created = FleetEngineStore.get(context, "V1", "Wheel Bearing Service")
         assertEquals("Wheel Bearing Service", created?.serviceName)
-        assertEquals(227_000, created?.lastDoneMileage)
+        assertNull("no mileage was stated, so the new item has no mileage anchor", created?.lastDoneMileage)
+        assertNotNull("the date anchor is what a fresh log moves", created?.lastDoneDate)
     }
 
     @Test
@@ -272,7 +275,9 @@ class VehicleControllerServiceWritesTest {
     fun `logPastServiceDirect refuses to overwrite an anchor a later ServiceRecord supports`() = runBlocking {
         // Real damage on Kevin's device, reproduced: log_service writes a
         // precise record and its anchor...
-        val logged = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+        val logged = VehicleController.logServiceDirect(
+            context, "oil change", vehicleId = "V1", statedMileage = 227_000,
+        )
         assertTrue(logged.success)
         val afterLog = FleetEngineStore.get(context, "V1", "Oil Change")!!
         assertEquals(227_000, afterLog.lastDoneMileage)
