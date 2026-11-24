@@ -68,7 +68,10 @@ object OnboardingState {
             )
         }
         if (com.kevin.midnightai.ai.CompanionProfile.voice(context).isBlank()) {
-            com.kevin.midnightai.ai.CompanionProfile.saveVoice(context, "Sulafat")
+            // Moose's own voice, from the one place that states it. This line held its own
+            // "Sulafat" literal (the retired Zero mascot's) until 2026-11-23, which is how every
+            // fresh install got the wrong voice saved as if the driver had picked it.
+            com.kevin.midnightai.ai.CompanionProfile.saveVoice(context, com.kevin.midnightai.ai.DEFAULT_VOICE)
         }
     }
 }

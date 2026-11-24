@@ -107,6 +107,10 @@ object CompanionProfile {
     // the migration sweeps every per-car key in a single pass.
     private const val KEY_ZERO_RENAMED = "retired_zero_name_migrated"
 
+    /** The retired Zero mascot's voice, which the old `seedDefaults` saved on every fresh install. */
+    internal const val RETIRED_VOICE = "Sulafat"
+    private const val KEY_VOICE_MIGRATED = "retired_default_voice_migrated"
+
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -134,6 +138,52 @@ object CompanionProfile {
             writes[key] = DEFAULT_NAME
         }
         return writes
+    }
+
+    /**
+     * Pure planner for [migrateRetiredDefaultVoice], the voice twin of [planRetiredNameMigration].
+     * For every voice slot (the legacy flat [KEY_VOICE] and every per-car `voice:<vehicleId>`)
+     * holding exactly the retired mascot's "Sulafat" (trimmed, case-insensitive), the write is
+     * Moose's own voice. Any other value, blank included, is left alone: a driver who picks a voice
+     * owns it.
+     *
+     * The two delivery-style keys are NOT voice slots. They start with the same word but hold free
+     * text, and `voice_style` does not match `voice:` either, so the prefix test keeps them out.
+     *
+     * Deliberately does NOT touch `companion_updated_at`, for the reason given on
+     * [planRetiredNameMigration]: that clock covers the whole identity.
+     */
+    internal fun planRetiredVoiceMigration(all: Map<String, *>): Map<String, Any> {
+        val writes = LinkedHashMap<String, Any>()
+        for ((key, value) in all) {
+            val isVoiceSlot = key == KEY_VOICE || key.startsWith("$KEY_VOICE:")
+            if (!isVoiceSlot || value !is String) continue
+            if (!value.trim().equals(RETIRED_VOICE, ignoreCase = true)) continue
+            writes[key] = CompanionIdentity.VOICE
+        }
+        return writes
+    }
+
+    /**
+     * One-time rewrite of the retired mascot's voice to Moose's own on installs that already saved
+     * it, the exact shape of [migrateRetiredDefaultName] and for the same reason: the old
+     * `seedDefaults` wrote "Sulafat" into the prefs on every fresh install, so the wrong voice was
+     * stored as if the driver had chosen it, and Moose spoke in it (Kevin, 2026-11-23: "moose voice
+     * is like a woman's voice which is wrong. it was algenib before").
+     *
+     * Sweeps the flat key and every per-car key, not only the active car, because at app start the
+     * dongle often has not resolved the active vehicle yet (see [identityString]) - and because a
+     * re-pair that changes the active vehicle id is how a car ends up reading a different slot.
+     * Runs once per install; a voice the driver picks after that, Sulafat included, is theirs.
+     */
+    fun migrateRetiredDefaultVoice(context: Context) {
+        val p = prefs(context)
+        if (p.getBoolean(KEY_VOICE_MIGRATED, false)) return
+        val writes = planRetiredVoiceMigration(p.all)
+        p.edit().apply {
+            for ((key, value) in writes) putString(key, value as String)
+            putBoolean(KEY_VOICE_MIGRATED, true)
+        }.apply()
     }
 
     /**

@@ -55,6 +55,13 @@ class MidnightApplication : Application() {
         } catch (e: Exception) {
             android.util.Log.w("MidnightApp", "name migration failed: ${e.message}")
         }
+        // Same shape, same cause, the voice half: an install seeded with the retired mascot's
+        // Sulafat gets Moose's own voice back (one-shot; 2026-11-23).
+        try {
+            CompanionProfile.migrateRetiredDefaultVoice(this)
+        } catch (e: Exception) {
+            android.util.Log.w("MidnightApp", "voice migration failed: ${e.message}")
+        }
 
         val tFirebaseStart = android.os.SystemClock.elapsedRealtime()
         try {
