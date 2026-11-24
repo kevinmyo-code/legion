@@ -598,7 +598,10 @@ def _redirect_targets(command: str, cwd: str) -> list:
 # A `cd` argument this hook cannot resolve: a variable or a home mark ANYWHERE in it, not only at
 # the front. `cd ./$x` is `cd ./` to a shell with `x` unset, so a walk that read it as a move one
 # level down dropped the raw cwd and handed `..` back as the work folder (RED re-review C1,
-# 2026-11-24). One predicate, used by every place that asks the question.
+# 2026-11-24). It belongs to `_cd_scoped`, whose question is "can I walk this whole chain": there
+# the safe answer to an argument it cannot resolve is to give up and fall back to every candidate
+# base. `_cwd_candidates` below asks a DIFFERENT question, "which folders could a relative word
+# here mean", and keeps its own narrow test: see the comment there (RED re-review 3 C1-R).
 _UNRESOLVABLE_CD = re.compile(r"[$%~]")
 
 
@@ -612,7 +615,13 @@ def _cwd_candidates(command: str, cwd: str) -> list[str]:
     base = cwd or None
     for c in CD_RE.finditer(command):
         d = _to_os_path(next(g for g in c.groups() if g is not None))
-        if _UNRESOLVABLE_CD.search(d):
+        # Deliberately NARROW, and not `_UNRESOLVABLE_CD` (RED re-review 3 C1-R, 2026-11-24).
+        # Dropping the base here skips every LATER `cd`, so the root never enters the list and
+        # `cd task-50$x && cd ../../ && cat config.json` reads the device token. A shell reads
+        # that first `cd` as `cd task-50` and DOES move down one, so guessing the variable is a
+        # literal segment and walking on is both closer to the shell and the safer guess: a
+        # wrong guess adds a candidate folder, and a dropped base removes the real one.
+        if d.startswith(("~", "$", "%")):
             base = None
         elif DRIVE_RE.match(d):
             base = d
