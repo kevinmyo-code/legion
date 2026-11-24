@@ -535,8 +535,10 @@ class TestAReadToolsRelativePathResolvesAgainstTheSession(ForgeCase):
                 self.passed("Grep", inp, agent="agentZ", cwd=self.own)
 
     def test_the_real_cost_of_joining_a_glob_pattern_and_why_it_buys_nothing(self):
-        """RED re-review 3, D1, 2026-11-24, correcting this round's own cost line, which named
-        two patterns and undercounted by five. Joining the pattern means `credential_path` reads
+        """RED re-review 3, D1, 2026-11-24. The round's own summary named two patterns as the
+        cost of this change and undercounted by five, and nothing in the tree said what the cost
+        really is, which is why it is written here as rows rather than prose. Joining the pattern
+        means `credential_path` reads
         it, and that function tests a NAME as well as a location, so every credential-shaped
         pattern below now denies inside the helper's own checkout. Three of them
         (`local.properties`, `*.keystore`, `*.jks`) are ordinary things to look for in an Android
@@ -559,18 +561,28 @@ class TestAReadToolsRelativePathResolvesAgainstTheSession(ForgeCase):
                 self.passed("Glob", {"pattern": pattern}, agent="agentZ", cwd=self.own)
 
     def test_a_glob_pattern_can_still_reach_the_root_through_a_double_star(self):
-        """RED re-review 3, D2, 2026-11-24. `norm` collapses `work/task-50/**/../tokens` to
-        `work/task-50/tokens`, which is inside the work folder, so the location test passes it.
-        A real glob lets `**` match zero directories, so the pattern expands to `../tokens/*.json`
-        as well and the token names come back. Pre-existing on every tree here, names only and no
-        contents.
+        """RED re-review 3, D2, 2026-11-24. `norm` collapses one `..` against the `**` segment, so
+        `work/**/../tokens` reads as `work/tokens` and the location test passes it. A real glob
+        lets `**` match ZERO directories, so the same pattern also expands to `../tokens/*.json`,
+        which is the worker's root, and the token names come back. Pre-existing on every tree
+        here; names only, never contents.
+
+        How many `..` it takes depends on where the session stands, so each row names its cwd and
+        is paired with the same pattern written without the `**`, which denies. That pairing is
+        the whole finding: the guard sees the collapsed path, the glob sees both.
 
         Pinned rather than fixed: the rule that closes it is "any `..` in a `Glob` pattern
         denies", the same rule the `cd` walk uses, and that is a behaviour change rather than the
         regression revert this round carries."""
-        for pattern in ("**/../tokens/*.json", "**/../../tokens/*.json"):
-            with self.subTest(pattern=pattern):
-                self.passed("Glob", {"pattern": pattern}, agent="agentZ", cwd=self.own)
+        for where, cwd, sidestep, blocked in (
+            ("the work folder", self.paths.work, "**/../tokens/*.json", "../tokens/*.json"),
+            ("a task folder", self.own, "**/../../tokens/*.json", "../../tokens/*.json"),
+        ):
+            with self.subTest(where=where):
+                self.passed("Glob", {"pattern": sidestep}, agent="agentZ", cwd=cwd)
+                self.assertEqual(
+                    self.decide("Glob", {"pattern": blocked}, agent="agentZ", cwd=cwd)[1],
+                    "worker files read", blocked)
 
 
 class TestUploadStillRefusesTheRoot(ForgeCase):
@@ -666,10 +678,11 @@ class TestStillOpen(ForgeCase):
                     # RED re-review 3, 2026-11-24. A default-value expansion is a resolvable `cd`
                     # to the shell (`cd task-50`) and an unresolvable one here, so the climbing
                     # `cd` that follows it lands on the root and nothing in the command text says
-                    # which folder that is. Measured on this tree and on the head before the `cd`
-                    # walk existed: neither closes it. Closing it needs a rule about the SHAPE of
-                    # the chain ("an unresolvable `cd` then a climbing one"), which is a wider
-                    # change than the regression fix this round carries.
+                    # which folder that is. It passes on `origin/dev`, on the head before this
+                    # round and on this tree (the first two measured by review 3), so no tree
+                    # here closes it. Closing it needs a rule about the SHAPE of the chain ("an
+                    # unresolvable `cd` then a climbing one"), which is a wider change than the
+                    # regression fix this round carries.
                     "cd ${x:-task-50} && cd ../../ && cat config.json"):
             with self.subTest(cmd=cmd):
                 self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.paths.work)
