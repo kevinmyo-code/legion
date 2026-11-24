@@ -15,10 +15,15 @@ data class ServiceRecord(
     // Nullable as of v46->v47 (engine retirement step 3/ticket 16) - see [kind]'s own doc comment
     // for why: an ASSERTED row (a driver-stated anchor with no backing event) can legitimately
     // state only one axis ("did the oil change around 50,000 miles, not sure when" has a mileage
-    // and no date). Every OBSERVED row - a real logged service - still carries both, non-null, by
-    // construction (every write path that creates one, FleetEngineStore.insertObserved, always
-    // supplies them); the type only widened to let the OTHER kind this table now holds be honest
-    // about what it does not know, not because a logged service became less certain.
+    // and no date).
+    //
+    // An OBSERVED row - a real logged service - always carries a DATE, and as of the car plan's
+    // slice 0 it carries a mileage only when the driver stated one. Until then every write path
+    // substituted the vehicle's live estimate (odometer baseline plus integrated trip miles) for a
+    // mileage nobody had given, which filed a guess as an observation; there is no column here that
+    // could label a figure an estimate, so the honest value for an unknown reading is null. The
+    // readers that need one already handle it: FleetRecordBridge.projectAnchorLegacy reports a
+    // null anchor axis as genuinely unknown, and VehicleController.isDue times such an item by date.
     val mileage: Int?,
     val date: Long?, // Timestamp in milliseconds. Same nullability reasoning as [mileage].
     // Cents, never dollars - CLAUDE.md §4 rule 3. Migrated from `cost: Double?` at

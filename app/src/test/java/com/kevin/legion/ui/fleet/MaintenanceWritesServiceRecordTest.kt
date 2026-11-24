@@ -110,23 +110,25 @@ class MaintenanceWritesServiceRecordTest {
 
     // Cutover 4 (docs/architecture/cutover4-2026-08-24.md): the anchor's mileage is no longer a
     // second, independently-writable column - it is DERIVED from ServiceHistory
-    // (FleetRecordBridge.projectAnchor), so an OBSERVED row this branch writes (with the fallback
-    // live mileage) now legitimately becomes the visible anchor too. Before cutover, writeSetAnchor
-    // wrote NULL to the anchor's mileage (mileage was never typed) while separately inserting a
-    // ServiceRecord carrying the fallback figure - exactly the two-different-views-of-one-fact split
-    // ticket 29 exists to delete. The anchor now correctly agrees with the event that was just
-    // logged, which is the whole point of the unification, not a regression in this test.
+    // (FleetRecordBridge.projectAnchor), so the OBSERVED row this branch writes IS the visible
+    // anchor. That unification is unchanged; what changed (car plan slice 0) is the figure. This
+    // branch used to substitute the vehicle's live ESTIMATE for a mileage the driver never typed,
+    // which filed the app's own guess as an observation of his - the same defect slice 0 names on
+    // the voice side, in the hands path. A blank field now stays blank on both views, which is
+    // still ONE source, saying "unknown" instead of saying a number nobody gave.
     @Test
-    fun `DONE_AT with a cost but no typed mileage falls back to the vehicle's current live mileage`() = runBlocking {
-        // odometerBaseline = 227_000, no trip miles accrued - currentMileage reads exactly that.
+    fun `DONE_AT with a cost but no typed mileage files no mileage, never the live estimate`() = runBlocking {
+        // odometerBaseline = 227_000, no trip miles accrued - currentMileage reads exactly that, and
+        // that figure must not appear anywhere below.
         val outcome = writeSetAnchor(context, "V1", "Oil Change", AnchorMode.DONE_AT, mileage = null, date = null, costCents = 5_000L)
 
         assertTrue(outcome.success)
         val record = FleetEngineStore.getRecentForVehicle(context, "V1", 10).single()
-        assertEquals(227_000, record.mileage)
-        assertEquals(
-            "the anchor now derives from the SAME OBSERVED row just written - one source, not two",
-            227_000, FleetEngineStore.get(context, "V1", "Oil Change")!!.lastDoneMileage,
+        assertNull("a blank mileage field is not a reading of 227,000", record.mileage)
+        assertEquals("the cost is still captured - that is what this branch is for", 5_000L, record.costCents)
+        assertNull(
+            "and the anchor derives from that same row, so it says unknown too - one source, not two",
+            FleetEngineStore.get(context, "V1", "Oil Change")!!.lastDoneMileage,
         )
     }
 }
