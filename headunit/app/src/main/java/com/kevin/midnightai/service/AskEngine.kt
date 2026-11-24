@@ -395,7 +395,11 @@ class AskEngine(
             "events, voice notes, weight, meals, sleep, workout plan, personal memory, plus " +
             "ledger, pantry and places. Call it for any add, tick, read-back or question about " +
             "these; never say you can't see or add to a list without calling it. If the engine is " +
-            "unreachable it says nothing was read or written. Answer comes back as text to speak."
+            "unreachable it says nothing was read or written. Answer comes back as text to speak. " +
+            // The longest leash on the unit (ENGINE_TOOL_TIMEOUT_MS, 150 s), so the worst dead-air
+            // case. The line says only that the work has started: it claims no outcome, so it does
+            // not reach for the verbs SpeechHonesty.CANNOT_CLAUSE reserves for a successful result.
+            SlowToolPrompt.INSTRUCTION
 
         /** Compact on purpose: this is re-billed every Live turn. */
         const val INTENT_DESCRIPTION = "Required. \"record\" for ANY add, tick, log, create, save, " +
