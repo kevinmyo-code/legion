@@ -427,6 +427,49 @@ class TestAnUnresolvableCdNeverMovesTheBase(ForgeCase):
                         agent="agentZ", cwd=self.own)[1], "worker files read")
 
 
+class TestAReadToolsRelativePathResolvesAgainstTheSession(ForgeCase):
+    """RED re-review C3, 2026-11-24. The read-tool branch handed `file_path` / `path` straight to
+    `credential_path`, which calls `norm`, which calls `abspath`: a relative string resolved
+    against the HOOK PROCESS's cwd, not the folder the helper's session is in. So the guard held
+    or did not hold by accident of where the hook was started, and `Glob` reached above the root
+    in either configuration. The name rule `config\\.json` covered it up until the root rule
+    replaced it.
+
+    `Glob`'s own argument is its `pattern`, resolved against `path` or the session's folder, so
+    the pattern is joined too. `Grep`'s `pattern` is a regex and is never read as a path.
+    """
+
+    def test_a_relative_read_above_the_work_folder_is_denied(self):
+        for cwd, tool, inp in (
+            (self.own, "Glob", {"pattern": "../../tokens/*.json"}),
+            (None, "Glob", {"pattern": "../tokens/*.json"}),
+            (self.own, "Glob", {"path": ".", "pattern": "../../config.json"}),
+            (None, "Read", {"file_path": "../config.json"}),
+            (None, "Grep", {"pattern": "token", "path": ".."}),
+            (None, "Grep", {"pattern": "token", "path": "../"}),
+        ):
+            with self.subTest(tool=tool, inp=inp):
+                d, rule, out = self.decide(tool, inp, agent="agentZ",
+                                           cwd=cwd or self.paths.work)
+                self.assertEqual((d, rule), ("deny", "worker files read"), str(inp))
+                self.assertIn("WORKER FILES", self.reason(out))
+
+    def test_the_helpers_own_relative_reads_still_pass(self):
+        (self.own / "notes.md").write_text("x")
+        for inp in ({"file_path": "notes.md"},):
+            with self.subTest(inp=inp):
+                self.passed("Read", inp, agent="agentZ", cwd=self.own)
+        for inp in ({"pattern": "**/*.json"}, {"pattern": "*.md"},
+                    {"path": str(self.own), "pattern": "*.json"}):
+            with self.subTest(inp=inp):
+                self.passed("Glob", inp, agent="agentZ", cwd=self.own)
+        # A `Grep` regex is not a path: one that LOOKS like a credential name must not deny.
+        for inp in ({"pattern": r"\.env"}, {"pattern": "secret.pem"},
+                    {"pattern": "token", "path": "."}):
+            with self.subTest(inp=inp):
+                self.passed("Grep", inp, agent="agentZ", cwd=self.own)
+
+
 class TestUploadStillRefusesTheRoot(ForgeCase):
     """B5's other half (RED review, 2026-11-24). `CREDENTIAL_NAMES` lost `config.json` and
     `*token*`; `worker.uploadable` makes its OWN root test before it looks at a name, so the

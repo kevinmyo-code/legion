@@ -973,7 +973,17 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
     # matters as much as the tool half: `cat` reaches the same file, and `shell_verdict` below
     # only ever looked at commands that write.
     if tool in READ_TOOLS:
+        # A relative tool path resolves against the folder the SESSION is in. It used to be handed
+        # to `credential_path` raw, which calls `abspath`, so it resolved against the HOOK
+        # PROCESS's cwd and the guard held only by accident of where the hook was started (RED
+        # re-review C3, 2026-11-24). `Glob`'s own argument is its `pattern`, which it resolves
+        # against `path` or the session's folder, so the pattern is joined too; `Grep`'s `pattern`
+        # is a regex and is never read as a path.
         target = inp.get("file_path") or inp.get("path") or cwd
+        if tool == "Glob" and inp.get("pattern"):
+            target = os.path.join(target, inp["pattern"]) if target else inp["pattern"]
+        if target and cwd and not os.path.isabs(target):
+            target = os.path.join(cwd, target)
         if target and C.credential_path(paths, target, paths.work):
             return _deny(C.CRED_REASON), "worker files read", True
     if command and not ours and _root_read_denied(command, cwd, paths):
