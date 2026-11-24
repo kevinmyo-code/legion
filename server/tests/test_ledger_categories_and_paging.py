@@ -125,9 +125,25 @@ def test_uppercasing_agrees_with_kotlin_on_sharp_s():
 
 def test_a_stated_category_is_never_overridden():
     rules = [Rule("HEB", "Groceries")]
-    assert category_for_insert("Gifts", "HEB GROCERY", rules) == ("Gifts", False)
-    assert category_for_insert(None, "HEB GROCERY", rules) == ("Groceries", False)
-    assert category_for_insert(None, "NOTHING MATCHES", rules) == (None, True)
+    assert category_for_insert("Gifts", "HEB GROCERY", rules) == ("Gifts", False, None)
+    assert category_for_insert(None, "HEB GROCERY", rules) == ("Groceries", False, "rule")
+    assert category_for_insert(None, "NOTHING MATCHES", rules) == (None, True, None)
+
+
+def test_a_rule_wins_over_the_sources_own_category_and_the_origin_says_which():
+    """Kevin, 2026-11-23: Plaid's category is accepted, his rules first."""
+    rules = [Rule("HEB", "Groceries")]
+    assert category_for_insert(None, "HEB GROCERY", rules, "Shopping") == (
+        "Groceries",
+        False,
+        "rule",
+    )
+    assert category_for_insert(None, "NOTHING MATCHES", rules, "Shopping") == (
+        "Shopping",
+        False,
+        "plaid",
+    )
+    assert category_for_insert(None, "NOTHING MATCHES", rules, None) == (None, True, None)
 
 
 def test_rules_come_oldest_first_by_the_phone_clock_and_skip_deleted(household_a):

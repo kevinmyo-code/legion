@@ -338,6 +338,13 @@ def django_db_setup(django_db_setup, django_db_blocker):
             assert skipped is None, skipped
             skipped = apply_ledger_bank_rows(cursor)
             assert skipped is None, skipped
+            # `ingest/migrations/0028` (the category evidence Plaid sent with a
+            # bank row), the same way. AFTER 0021: its constraint names
+            # `provenance = BANK_API`.
+            from ingest.bank_api_sql import apply_plaid_category
+
+            skipped = apply_plaid_category(cursor)
+            assert skipped is None, skipped
             # `household/migrations/0008` (ADR 0069, the demo-visit delete
             # exemption), the same way. AFTER 0021's call above: that one
             # re-creates the ledger guard without the exemption.

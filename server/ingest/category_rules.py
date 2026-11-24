@@ -1,6 +1,10 @@
 """The household's categorisation rules, applied to a ledger line at the one
 moment the server is allowed to set its category: the INSERT.
 
+A category the SOURCE itself supplies may fill a line no rule of his matched
+(`category_for_insert`'s `fallback`; the bank feed's own, in
+`ingest/plaid_categories.py`). **A rule he wrote always wins over it.**
+
 **Why only at insert.** `ledger_transactions` is the section 4 gate's output
 and `private.forbid_mutation_of_facts` refuses every UPDATE on it, category
 included (`supabase/migrations/20260825000200_conventions.sql`, and the same
@@ -74,18 +78,34 @@ def first_match(description: str, rules: Sequence[Rule]) -> str | None:
     return None
 
 
+ORIGIN_RULE = "rule"
+ORIGIN_PLAID = "plaid"
+
+
 def category_for_insert(
-    stated: str | None, description: str, rules: Sequence[Rule]
-) -> tuple[str | None, bool]:
-    """`(category, category_pending)` for a line about to be inserted.
+    stated: str | None, description: str, rules: Sequence[Rule], fallback: str | None = None
+) -> tuple[str | None, bool, str | None]:
+    """`(category, category_pending, origin)` for a line about to be inserted.
 
     A category the caller stated is kept as stated and never overridden by a
     rule - that is someone's decision, and the phone's categoriser likewise
     touches only `category IS NULL` rows. With none stated, the rules decide.
     `category_pending` is true exactly when the row is left uncategorised,
     matching what the phone writes (`categoryPending = false` on a rule hit).
+
+    `fallback` is a category from the source itself, used ONLY when no rule of
+    the household's matched: Plaid's own `personal_finance_category` comes in
+    this way (`ingest/plaid_categories.py`, Kevin 2026-11-23), and **a rule he
+    wrote always wins over it**. `origin` says which of the two decided, so
+    the row records where its category came from and not only what it is; it
+    is None when nothing set one, and None for a stated category, which is the
+    document's own and not this household's rules.
     """
     if stated is not None:
-        return stated, False
+        return stated, False, None
     matched = first_match(description, rules)
-    return matched, matched is None
+    if matched is not None:
+        return matched, False, ORIGIN_RULE
+    if fallback is not None:
+        return fallback, False, ORIGIN_PLAID
+    return None, True, None

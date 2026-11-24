@@ -12,15 +12,23 @@ one exception and it is narrow on purpose.
 ## One sync
 
 1. `/item/get`: the consent expiry and any error on the Item are stored on
-   `plaid_items`. An error the person fixes by signing in again
-   (`plaid_client.SIGN_IN_ERROR_CODES`) stops the run as `needs_login`, said
-   in words on `/api/freshness`.
+   `plaid_items`, and `status.transactions.last_successful_update` is read as
+   the time PLAID last reached the bank. An error the person fixes by signing
+   in again (`plaid_client.SIGN_IN_ERROR_CODES`) stops the run as
+   `needs_login`, said in words on `/api/freshness`.
 2. `/transactions/sync` from the stored cursor, every page, restarting the
    whole loop from the starting cursor if Plaid says the data moved mid-way.
-3. One transaction applies it all and only then saves the new cursor, so a
+3. `/accounts/get`: every account on the Item with its balance, stamped with
+   the time from step 1. Free. `/transactions/sync` returns only the accounts
+   that had transactions in that response, so without this step a quiet run
+   refreshed no balance and `net_cash`'s `min(as_of)` (ADR 0094) stayed frozen
+   at the last busy run.
+4. One transaction applies it all and only then saves the new cursor, so a
    failure re-reads the same changes next time instead of skipping them:
-   - **added**: inserted (category from the household's rules at insert, the
-     only write the immutability trigger allows);
+   - **added**: inserted (category at insert, the only write the immutability
+     trigger allows: the household's own rules first, then the category Plaid
+     sent with the transaction, whose raw object is stored beside it;
+     `ingest/plaid_categories.py`);
    - **modified**: the old row is deleted and a new one inserted (the trigger
      refuses UPDATE on every row, and `/api/changes` keys this table on
      `created_at`, so a changed row must be a new row for a client to see it).
@@ -28,7 +36,7 @@ one exception and it is narrow on purpose.
    - **pending to posted**: a posted row whose `pending_transaction_id` names
      a stored pending row replaces it, carrying its category;
    - **removed**: deleted.
-4. **The feed replaces the file-derived rows it covers** (`replace_older_rows`).
+5. **The feed replaces the file-derived rows it covers** (`replace_older_rows`).
 
 ## Money
 
@@ -54,7 +62,7 @@ from django.db.models import Max, Min
 from django.db.models.functions import Now
 from django.utils import timezone
 
-from ingest import plaid_client, vault
+from ingest import plaid_categories, plaid_client, vault
 from ingest.bank_api_sql import SUPERSEDE_SETTING
 from ingest.category_rules import category_for_insert, household_rules
 from ingest.models import IngestRun, PlaidItem
@@ -158,17 +166,26 @@ def _balance_cents(value: Any) -> int | None:
         return None
 
 
-def account_record(raw: dict, synced_at: datetime.datetime | None = None) -> dict:
+def account_record(raw: dict, read_at: datetime.datetime | None = None) -> dict:
     """What `plaid_items.accounts` keeps for one account, its balance included.
 
     **Kevin, 2026-11-03: "store them".** This kept no balance until then. The
     bank's own balance is fact like its transactions (ADR 0057, amended), and
     is stored as the figure it was AT ITS AS-OF TIME, never as "now":
-    `balance_as_of` is Plaid's own `last_updated_datetime` when it sends one,
-    else the moment this sync read it. Plaid's raw shape is kept: `current` is
-    the balance (for a credit account, the amount owed, a positive number),
-    `available` is what may be spent (for credit, the credit left); either may
-    be absent. Cents through `Decimal(str(x))` (`to_cents`), never a float."""
+    `balance_as_of` is Plaid's own `last_updated_datetime` when it sends one
+    (Capital One and Apple Card only), else `read_at`, which is the last time
+    PLAID read the bank (`/item/get`'s
+    `status.transactions.last_successful_update`), never the moment this sync
+    ran. Plaid's balances are cached and documented as the balance at the last
+    successful Item update, so stamping them with LEGION's own read time
+    asserted a freshness the figure does not have. With no honest time at all
+    the as-of is None and `merge_accounts` keeps the dated balance already
+    stored rather than replacing it with an undatable one.
+
+    Plaid's raw shape is kept: `current` is the balance (for a credit account,
+    the amount owed, a positive number), `available` is what may be spent (for
+    credit, the credit left); either may be absent. Cents through
+    `Decimal(str(x))` (`to_cents`), never a float."""
     balances = raw.get("balances") or {}
     stated = balances.get("last_updated_datetime")
     if isinstance(stated, datetime.datetime):
@@ -187,9 +204,33 @@ def account_record(raw: dict, synced_at: datetime.datetime | None = None) -> dic
         "balance_available_cents": available,
         "balance_currency": balances.get("iso_currency_code") if has_balance else None,
         "balance_as_of": (
-            (stated or (synced_at.isoformat() if synced_at else None)) if has_balance else None
+            (stated or (read_at.isoformat() if read_at else None)) if has_balance else None
         ),
     }
+
+
+# The four fields of one account's balance. They move together: a figure and
+# the time it was true at are one fact, and splitting them is how a stale
+# figure comes to wear a fresh time.
+BALANCE_FIELDS = (
+    "balance_current_cents",
+    "balance_available_cents",
+    "balance_currency",
+    "balance_as_of",
+)
+
+
+def _keeping_dated_balance(record: dict, stored: dict | None) -> dict:
+    """`record`, but carrying the stored balance when Plaid dated the stored
+    one and not this one.
+
+    The rest of the record (name, mask, type) is the fresh one's, so a renamed
+    account still updates. Without this an undated balance would either lose
+    the net cash figure outright (`finance/net_cash.py` has no figure for an
+    account with no as-of) or, worse, wear the previous read's time."""
+    if record.get("balance_as_of") or stored is None or not stored.get("balance_as_of"):
+        return record
+    return {**record, **{name: stored.get(name) for name in BALANCE_FIELDS}}
 
 
 def account_map(records: list[dict]) -> dict[str, Account]:
@@ -211,13 +252,21 @@ def account_map(records: list[dict]) -> dict[str, Account]:
 
 
 def merge_accounts(
-    stored: list[dict], fresh: list[dict], synced_at: datetime.datetime | None = None
+    stored: list[dict], fresh: list[dict], read_at: datetime.datetime | None = None
 ) -> list[dict]:
+    """The stored account records with `fresh` laid over them by `account_id`.
+
+    An account absent from `fresh` keeps its stored record untouched: Plaid
+    returns active accounts only, and a closed one is not news. `read_at` is
+    the last time Plaid read the bank; see `account_record`. Later entries of
+    `fresh` win, so the caller puts its best balance source last."""
     by_id = {r.get("account_id"): r for r in stored if r.get("account_id")}
     for raw in fresh:
-        record = account_record(raw, synced_at)
+        record = account_record(raw, read_at)
         if record["account_id"]:
-            by_id[record["account_id"]] = record
+            by_id[record["account_id"]] = _keeping_dated_balance(
+                record, by_id.get(record["account_id"])
+            )
     return sorted(by_id.values(), key=lambda r: (r.get("name") or "", r["account_id"]))
 
 
@@ -351,7 +400,63 @@ def _put_override(household, target: LedgerTransaction, snap: _Override) -> str:
 # =============================================================================
 
 
-def _build_row(household, txn: dict, accounts: dict[str, Account], rules) -> LedgerTransaction:
+@dataclass
+class _Categoriser:
+    """What decides one sync's categories: the household's own rules, the
+    category names it actually has, and a tally of what Plaid asked for that
+    neither could place.
+
+    Kevin, 2026-11-23: *"accept plaid's category"*, his rules first. The tally
+    is reported in words at the end of the sync, because a Plaid taxonomy
+    value nobody mapped is a decision owed, not a silent drop (section 4 rule
+    6's posture: never quietly skip what you did not recognise)."""
+
+    rules: list
+    names: plaid_categories.HouseholdCategories
+    # (the Plaid value, why it placed nothing) -> how many rows said it. The
+    # reason is carried, not re-derived, so the report names which of the three
+    # things happened to each value.
+    unmapped: dict[tuple[str, str], int] = field(default_factory=dict)
+
+    NO_MAPPING = "LEGION does not map that to one of your categories."
+
+    def _note(self, value: str, reason: str) -> None:
+        key = (value, reason)
+        self.unmapped[key] = self.unmapped.get(key, 0) + 1
+
+    def of(self, description: str, raw: Any) -> tuple[str | None, bool, str | None, dict | None]:
+        """`(category, category_pending, origin, the raw object to store)`.
+
+        A rule of his is applied below whatever this refuses: a rule naming a
+        category flagged `excluded_from_spend` is his own decision and still
+        wins. Only PLAID's suggestion is dropped here."""
+        kept = plaid_categories.evidence(raw)
+        suggested, said = plaid_categories.category_for(kept)
+        reason = self.NO_MAPPING
+        if suggested is not None and suggested in self.names.excluded:
+            # Not spending (`ingest/category_flags.py`, the ONE definition).
+            # Filing a row here on Plaid's word alone would not mislabel it, it
+            # would take the whole row out of every spend total, which is a
+            # ruling of his and not a mapping decision.
+            reason = (
+                f"it maps to {suggested!r}, which is excluded from spending, so only a rule "
+                "of yours may file a row there."
+            )
+            suggested = None
+        elif suggested is not None and suggested not in self.names.writable:
+            reason = f"it maps to {suggested!r}, which this household does not have."
+            suggested = None
+        category, pending, origin = category_for_insert(
+            None, description, self.rules, suggested
+        )
+        if category is None and said:
+            self._note(said, reason)
+        return category, pending, origin, kept
+
+
+def _build_row(
+    household, txn: dict, accounts: dict[str, Account], categoriser: _Categoriser
+) -> LedgerTransaction:
     account = accounts.get(str(txn.get("account_id") or ""))
     if account is None:
         raise PlaidDataError("it names an account Plaid did not list")
@@ -367,7 +472,9 @@ def _build_row(household, txn: dict, accounts: dict[str, Account], rules) -> Led
     description = (txn.get("original_description") or txn.get("name") or "").strip()
     if not description:
         description = (txn.get("merchant_name") or "").strip() or "(no description from the bank)"
-    category, pending_category = category_for_insert(None, description, rules)
+    category, pending_category, origin, plaid_category = categoriser.of(
+        description, txn.get("personal_finance_category")
+    )
     transaction_id = str(txn["transaction_id"])
     return LedgerTransaction(
         id=uuid.uuid4(),
@@ -387,6 +494,8 @@ def _build_row(household, txn: dict, accounts: dict[str, Account], rules) -> Led
         created_at=Now(),
         bank_transaction_id=transaction_id,
         bank_pending=bool(txn.get("pending")),
+        plaid_category=plaid_category,
+        category_origin=origin,
     )
 
 
@@ -410,7 +519,9 @@ def apply_changes(
 ) -> SyncReport:
     """Apply one `/transactions/sync` result. The caller holds the transaction."""
     report = SyncReport()
-    rules = household_rules(household)
+    categoriser = _Categoriser(
+        household_rules(household), plaid_categories.household_categories(household)
+    )
     by_account = account_map(accounts)
 
     upserts: dict[str, tuple[dict, bool]] = {}
@@ -438,7 +549,7 @@ def apply_changes(
     posted_links: list[tuple[str, LedgerTransaction]] = []  # (pending bank id, posted row)
     for transaction_id, (txn, is_added) in upserts.items():
         try:
-            row = _build_row(household, txn, by_account, rules)
+            row = _build_row(household, txn, by_account, categoriser)
         except (PlaidDataError, KeyError) as exc:
             report.notes.append(
                 f"A bank transaction dated {txn.get('date')} was not stored: {exc}."
@@ -494,6 +605,11 @@ def apply_changes(
         outcome = _put_override(household, new_by_bank_id[bank_id], snap)
         if outcome == MOVED:
             report.categories_moved += 1
+    for (said, reason), count in sorted(categoriser.unmapped.items()):
+        report.notes.append(
+            f"Plaid called {count} new transaction(s) {said}: {reason} They were left "
+            f"uncategorised."
+        )
     for row in dropped_with_removal:
         snap = snaps.pop(row.id, None)
         if snap is not None:
@@ -730,10 +846,53 @@ class SyncOutcome:
     report: SyncReport | None = None
 
 
+def _balances_moved(stored: list[dict], merged: list[dict]) -> int:
+    """How many accounts' balance facts the merge actually changed.
+
+    Read, never guessed: the degrade path's note says what happened to the
+    figures, and only the merge knows. A `/transactions/sync` page carries a
+    balance for each account that had a transaction in it, so the degrade can
+    refresh some accounts and not others, and whether it did depends on the
+    page's shape and on what was already stored (`_keeping_dated_balance`)."""
+    before = {r.get("account_id"): r for r in stored}
+    return sum(
+        1
+        for r in merged
+        if any(
+            r.get(field) != (before.get(r.get("account_id")) or {}).get(field)
+            for field in BALANCE_FIELDS
+        )
+    )
+
+
+def _balance_call_failed(reason: str, *, refreshed: int) -> str:
+    """The sync report's sentence for a balance refresh that did not happen.
+    Names the reason, because "the balances are old" with no cause is a line
+    nobody can act on, and names what the fallback DID, because a note saying
+    nothing moved while a figure and its as-of both moved is the one thing a
+    money surface may never say (review of 2026-11-23).
+
+    The fallback is the `/transactions/sync` pages, which carry a balance for
+    each account that had a transaction in them. So some figures do move, and
+    `refreshed` is `_balances_moved`'s count, not an assumption."""
+    head = f"Plaid would not say what the balances are right now ({reason}), so "
+    kept = "kept the figure and the as-of time it already had. "
+    stored = "The transactions in this sync were stored."
+    if not refreshed:
+        return f"{head}each balance {kept}{stored}"
+    moved = "1 balance" if refreshed == 1 else f"{refreshed} balances"
+    return (
+        f"{head}{moved} came from this sync's own transaction feed instead, with the as-of "
+        f"time Plaid stated there; every other balance {kept}{stored}"
+    )
+
+
 def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
     """One Item, end to end. Never raises for a sign-in problem: it is stored
     on the Item and returned as `needs_login`, so a caller's rollback cannot
-    lose it. Other Plaid errors raise `PlaidError` (recorded `failed`)."""
+    lose it. A balance refresh that fails is reported and the transactions
+    still commit. Other Plaid errors from `/item/get` or `/transactions/sync`
+    raise `PlaidError` (recorded `failed`)."""
     household = item.household
     token = access_token_of(item)
     try:
@@ -747,6 +906,9 @@ def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
     if item.error_code in plaid_client.SIGN_IN_ERROR_CODES:
         _mark_sign_in(item, item.error_code)
         return SyncOutcome("needs_login", sign_in_sentence(item))
+    # The last time PLAID read the bank, which is what the balances below are
+    # as of. Nullable: Plaid sends no status for an Item it has never updated.
+    read_at = _datetime(info.get("transactions_last_successful_update"))
 
     start = item.cursor
     for attempt in range(1, MAX_SYNC_ATTEMPTS + 1):
@@ -771,12 +933,58 @@ def sync_item(item: PlaidItem, gw: plaid_client.PlaidGateway) -> SyncOutcome:
                 continue
             raise
 
+    # Every account on the Item, with Plaid's balances, every sync. The page
+    # loop's `accounts` holds only the accounts with transactions in that
+    # response, so on a quiet run it refreshes nothing and the stored as-of
+    # froze. This call is free and covers them all; it goes last into the merge
+    # so its balances win.
+    #
+    # **A failure here never stops the transaction half** (review of
+    # 2026-11-23). Before this feature `/accounts/get` was not called at all, so
+    # a balance problem could not hold up ingestion, and the failures are the
+    # ordinary transient ones. So: a sign-in error still asks for a sign-in,
+    # and ANY other failure degrades to the page's own accounts, says so in the
+    # sync report, and lets the transactions commit. Every exception, not only
+    # `PlaidError`: `plaid_client._call` wraps `plaid.ApiException` alone, so a
+    # socket or deserialisation error from this one call arrives as itself.
+    #
+    # The page's accounts DO carry balances, for every account that had a
+    # transaction in that response. So the degrade refreshes those accounts
+    # from the transaction feed, with the as-of time Plaid stated there, and
+    # only an account absent from the page keeps the figure and the as-of it
+    # already had. That is honest (the page's balance is Plaid's own cached
+    # balance, and its stamp is Plaid's own read time, so figure and stamp move
+    # together) and it is no worse than before this feature, when the page was
+    # the only balance source. It is NOT "nothing moved", so the note counts
+    # what the merge really changed (`_balances_moved`) and says which.
+    fresh_accounts: list = []
+    balance_failure: str | None = None
+    try:
+        fresh_accounts = gw.accounts_get(token).get("accounts") or []
+    except plaid_client.PlaidError as exc:
+        if exc.needs_sign_in:
+            _mark_sign_in(item, exc.code)
+            return SyncOutcome("needs_login", sign_in_sentence(item))
+        balance_failure = exc.code or "no error code"
+    except Exception as exc:
+        balance_failure = type(exc).__name__
+
     with transaction.atomic():
         synced_at = timezone.now()
-        merged = merge_accounts(item.accounts or [], accounts, synced_at)
+        held = item.accounts or []
+        merged = merge_accounts(held, accounts + fresh_accounts, read_at)
         report = apply_changes(
             household, added=added, modified=modified, removed=removed, accounts=merged
         )
+        if balance_failure is not None:
+            report.notes.append(
+                _balance_call_failed(balance_failure, refreshed=_balances_moved(held, merged))
+            )
+        elif read_at is None:
+            report.notes.append(
+                "Plaid did not say when it last read the bank, so each balance kept the as-of "
+                "time it already had."
+            )
         replace_older_rows(household, report)
         item.accounts = merged
         item.cursor = cursor

@@ -40,6 +40,11 @@ from tests.test_ingest_api import a_statement
 pytestmark = pytest.mark.django_db
 
 ACCESS = "access-sandbox-0000-never-served"
+# `/item/get`'s `status.transactions.last_successful_update`: the last time
+# PLAID read the bank. plaid-python hands it over as a datetime, so the fake
+# does too. It is what every stored balance is as of.
+LAST_BANK_READ = datetime.datetime(2026, 11, 20, 15, 30, tzinfo=datetime.UTC)
+LAST_BANK_READ_ISO = LAST_BANK_READ.isoformat()
 FIXTURES = Path(__file__).parent / "bofa_fixtures"
 
 CHECKING = {
@@ -88,7 +93,13 @@ class FakePlaid:
             "institution_name": "Bank of America",
             "consent_expiration_time": None,
             "error_code": None,
+            "transactions_last_successful_update": LAST_BANK_READ,
         }
+        # What `/accounts/get` returns: every account on the Item, whether or
+        # not it had a transaction. None means "the same two accounts".
+        self.accounts: list | None = None
+        self.accounts_get_calls: list = []
+        self.accounts_get_errors: list = []
         self.link_tokens: list = []
         self.sync_cursors: list = []
         self.sync_errors: list = []
@@ -104,6 +115,14 @@ class FakePlaid:
     def get_item(self, access_token):
         assert access_token == ACCESS
         return dict(self.item)
+
+    def accounts_get(self, access_token):
+        assert access_token == ACCESS
+        self.accounts_get_calls.append(access_token)
+        if self.accounts_get_errors:
+            raise self.accounts_get_errors.pop(0)
+        accounts = self.accounts if self.accounts is not None else [CHECKING, CARD]
+        return {"accounts": list(accounts)}
 
     def sync_transactions(self, access_token, cursor):
         assert access_token == ACCESS
@@ -785,8 +804,10 @@ def test_a_sync_stores_each_accounts_balance_as_cents_with_its_as_of(fake, item,
         120_010,
     )
     assert checking["balance_currency"] == "USD"
-    # No time from the bank: the moment this sync read it.
-    assert checking["balance_as_of"] == item.last_synced_at.isoformat()
+    # No per-account time from the bank: the last time PLAID read it, never
+    # the moment this sync ran.
+    assert checking["balance_as_of"] == LAST_BANK_READ_ISO
+    assert checking["balance_as_of"] != item.last_synced_at.isoformat()
     assert card["balance_current_cents"] == 41_007
     assert card["balance_as_of"] == "2026-11-03T14:14:00+00:00"
 
