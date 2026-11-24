@@ -4,15 +4,15 @@ import com.kevin.legion.data.local.ChecklistItem
 
 /**
  * The pure half of `manage_checklist`'s item addressing (`service/LiveToolbox.kt`) - no `Context`,
- * no Room, same split [com.kevin.legion.grocery.GroceryLogic]/`notes/NotesLogic.kt` keep beside
- * their own controllers so this is a plain JUnit test.
+ * no Room, same split `notes/NotesLogic.kt` keeps beside its own controller so this is a plain
+ * JUnit test.
  *
- * Same three-tier shape as [com.kevin.legion.notes.matchItem]/[com.kevin.legion.grocery.matchGroceryItem]
- * (exact, then substring either direction, then best word-overlap), refusing rather than guessing
- * on a tie - a checklist item is addressed the same way a persistent-list item or a grocery item
- * is, so a fourth near-identical matcher would only be a fourth place to drift from the other
- * three. No singular/plural fold here ([com.kevin.legion.grocery.normalizeGroceryName]'s own
- * reasoning is grocery-specific): "3 sets goblet squats" has no plural form worth collapsing.
+ * Same three-tier shape as [com.kevin.legion.notes.matchItem] (exact, then substring either
+ * direction, then best word-overlap), refusing rather than guessing on a tie - a checklist item is
+ * addressed the same way a persistent-list item is, so a third near-identical matcher would only be
+ * a third place to drift from the other two. (`grocery/GroceryLogic.kt`'s `matchGroceryItem` was
+ * the third; it had no caller left and was deleted in the lists redesign slice 1a.) No
+ * singular/plural fold here: "3 sets goblet squats" has no plural form worth collapsing.
  */
 sealed class ChecklistItemMatch {
     data class Resolved(val item: ChecklistItem) : ChecklistItemMatch()

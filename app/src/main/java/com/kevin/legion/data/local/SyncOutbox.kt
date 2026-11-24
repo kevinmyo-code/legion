@@ -95,14 +95,19 @@ object OutboxTarget {
      * [OutboxEntry.localId] is the local transaction's id. */
     const val LEDGER_TRANSACTION_CATEGORIES = "ledger_transaction_categories"
 
-    /** live-sync's last aspect slice - one constant per synced table across the three remaining
-     * device-only domains (Lists, Goals, Pantry config - `.scratch/live-sync/map.md`'s own table).
-     * See [com.kevin.legion.backend.LastAspectsBackend]'s own class doc for why all four share one
-     * interface despite spanning three domains. */
-    const val LISTS_ITEM_LISTS = "item_lists"
-    const val LISTS_LIST_ITEMS = "list_items"
+    /** live-sync's last aspect slice. It carried four constants (`item_lists`, `list_items`,
+     * `grocery_staples`, `goals`); the lists redesign slice 1a (2026-11-24) retired the first three
+     * along with their sync - see [com.kevin.legion.backend.LastAspectsBackend]'s own class doc for
+     * which reader or writer each one lost.
+     *
+     * **A queued entry naming one of the three retired tables is now never drained.**
+     * [OutboxDao.pendingForTable] only ever reads the targets a drain names, so such a row sits in
+     * `sync_outbox` untouched rather than crashing or blocking the `goals` drain. The targets are
+     * plain strings, not enum ordinals, so nothing shifts under the stored rows either. How many
+     * such rows a given install holds is not known from here: an entry is only ever enqueued when a
+     * push FAILED, and nothing reports the queue's contents. Clearing them would be a destructive
+     * migration over rows the engine has no twin for, so they are left where they are. */
     const val GOALS = "goals"
-    const val GROCERY_STAPLES = "grocery_staples"
 
     /** django-engine ticket 09 - the first sync path checklists have ever had, and the first
      * outbox targets whose queued entries carry NO field snapshot in [OutboxEntry.payload]. See

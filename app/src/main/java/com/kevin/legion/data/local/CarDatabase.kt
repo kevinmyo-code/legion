@@ -351,7 +351,7 @@ import androidx.room.RoomDatabase
         WorkoutPlan::class, WorkoutPlanItem::class, WorkoutSetLog::class, BodyweightLog::class,
         MealTarget::class, MealLog::class,
         SleepTarget::class, SleepLog::class,
-        ItemList::class, ListItem::class, ListItemSkip::class,
+        ItemList::class, LegacyListItem::class, ListItemSkip::class,
         GroceryItem::class, GroceryStaple::class,
         VehicleCapability::class,
         Goal::class, AdvisorAdvice::class,
@@ -420,7 +420,7 @@ abstract class CarDatabase : RoomDatabase() {
     abstract fun sleepTargetDao(): SleepTargetDao
     abstract fun sleepLogDao(): SleepLogDao
     abstract fun itemListDao(): ItemListDao
-    abstract fun listItemDao(): ListItemDao
+    abstract fun legacyListItemDao(): LegacyListItemDao
     abstract fun listItemSkipDao(): ListItemSkipDao
     abstract fun goalDao(): GoalDao
     abstract fun advisorAdviceDao(): AdvisorAdviceDao

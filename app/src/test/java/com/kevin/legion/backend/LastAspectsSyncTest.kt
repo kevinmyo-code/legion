@@ -2,8 +2,6 @@ package com.kevin.legion.backend
 
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
-import com.kevin.legion.data.local.ItemList
-import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.testutil.RoomTestReset
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -18,12 +16,11 @@ import org.robolectric.RuntimeEnvironment
 
 /**
  * [LastAspectsSync.pull] - exercised against an in-memory [FakeLastAspectsBackend] and the real
- * (Robolectric) local tables, never a network. `goals` is the representative table for
+ * (Robolectric) local tables, never a network. `goals` is the one table this slice still carries
+ * after the lists redesign slice 1a, and it is the representative table for
  * [LastAspectsMerge.merge]'s five rules (the ONE shared implementation every sub-pull calls - see
- * that object's own class doc for why testing it four times by hand would be four independent
- * chances to get rule 6 wrong in exactly one of them); `list_items` gets its own tests for the
- * `listSyncId` foreign-key resolution [LastAspectsBackend]'s own class doc describes, since no
- * other table in this slice has that shape.
+ * that object's own class doc). The two `list_items` tests that covered the `listSyncId`
+ * foreign-key resolution went with that table's sync; no table left in this slice has that shape.
  */
 @RunWith(RobolectricTestRunner::class)
 class LastAspectsSyncTest {
@@ -31,8 +28,6 @@ class LastAspectsSyncTest {
 
     private class FakeLastAspectsBackend : LastAspectsBackend {
         val goals = mutableMapOf<String, RemoteGoal>()
-        val itemLists = mutableMapOf<String, RemoteItemList>()
-        val listItems = mutableMapOf<String, RemoteListItem>()
 
         override suspend fun fetchChangedGoalsSince(sinceMs: Long) = Result.success(goals.values.toList())
         override suspend fun upsertGoal(originGuid: String, fields: GoalFields): Result<RemoteGoal> {
@@ -45,26 +40,6 @@ class LastAspectsSyncTest {
             goals[originGuid] = existing.copy(deleted = true)
             return Result.success(true)
         }
-
-        override suspend fun fetchChangedGroceryStaplesSince(sinceMs: Long) = Result.success(emptyList<RemoteGroceryStaple>())
-        override suspend fun upsertGroceryStaple(originGuid: String, fields: GroceryStapleFields) = Result.failure<RemoteGroceryStaple>(LastAspectsBackendException("not used"))
-        override suspend fun softDeleteGroceryStaple(originGuid: String) = Result.failure<Boolean>(LastAspectsBackendException("not used"))
-
-        override suspend fun fetchChangedItemListsSince(sinceMs: Long) = Result.success(itemLists.values.toList())
-        override suspend fun upsertItemList(originGuid: String, fields: ItemListFields): Result<RemoteItemList> {
-            val row = RemoteItemList("srv-$originGuid", fields.name, fields.tickable, fields.sortOrder, fields.lastUsedAt, fields.archived, fields.createdAt, fields.createdAt, false, originGuid)
-            itemLists[originGuid] = row
-            return Result.success(row)
-        }
-        override suspend fun softDeleteItemList(originGuid: String) = Result.failure<Boolean>(LastAspectsBackendException("not used"))
-
-        override suspend fun fetchChangedListItemsSince(sinceMs: Long) = Result.success(listItems.values.toList())
-        override suspend fun upsertListItem(originGuid: String, fields: ListItemFields): Result<RemoteListItem> {
-            val row = RemoteListItem("srv-$originGuid", fields.listSyncId, fields.text, fields.done, fields.doneAt, fields.sortOrder, fields.createdAt, fields.createdAt, false, fields.startsAt, fields.endsAt, fields.allDay, fields.triggerPlaceLabel, fields.repeatKind, fields.repeatEvery, fields.repeatDaysOfWeek, fields.repeatDay, fields.repeatMonth, fields.repeatEndKind, fields.repeatEndDate, fields.repeatEndCount, fields.exact, fields.exactDowngraded, fields.missedAt, fields.missedDismissedAt, fields.loggedAt, originGuid)
-            listItems[originGuid] = row
-            return Result.success(row)
-        }
-        override suspend fun softDeleteListItem(originGuid: String) = Result.failure<Boolean>(LastAspectsBackendException("not used"))
     }
 
     @Before
@@ -177,39 +152,5 @@ class LastAspectsSyncTest {
         assertEquals(0, second.inserted)
         assertEquals(0, second.updated)
         assertEquals(beforeSecond, CarDatabase.getDatabase(context).goalDao().getAllIncludingDeleted())
-    }
-
-    // --- list_items: the listSyncId foreign-key resolution ------------------------------------
-
-    private suspend fun insertLocalList(syncId: String, name: String = "Car"): ItemList {
-        val db = CarDatabase.getDatabase(context)
-        val id = db.itemListDao().insert(ItemList(name = name, lastUsedAt = 1_000L, createdAt = 1_000L, syncId = syncId))
-        return ItemList(id = id, name = name, lastUsedAt = 1_000L, createdAt = 1_000L, syncId = syncId)
-    }
-
-    @Test
-    fun `a server-only list item resolves its parent list by syncId`() = runBlocking {
-        val list = insertLocalList("list-sync-1")
-        val backend = FakeLastAspectsBackend()
-        backend.listItems["item-sync-1"] = RemoteListItem("srv-item-1", list.syncId, "oil change", false, null, 0, 1_000L, 1_000L, false, null, null, true, null, null, null, null, null, null, null, null, null, false, false, null, null, null, "item-sync-1")
-
-        val report = LastAspectsSync.pull(context, backend)
-
-        assertEquals(1, report.inserted)
-        val stored = CarDatabase.getDatabase(context).listItemDao().getAllIncludingDeleted().single()
-        assertEquals(list.id, stored.listId)
-        assertEquals("oil change", stored.text)
-    }
-
-    @Test
-    fun `a list item whose parent list cannot be found locally is skipped, not guessed at`() = runBlocking {
-        val backend = FakeLastAspectsBackend()
-        backend.listItems["item-orphan"] = RemoteListItem("srv-item-orphan", "no-such-list-syncid", "mystery item", false, null, 0, 1_000L, 1_000L, false, null, null, true, null, null, null, null, null, null, null, null, null, false, false, null, null, null, "item-orphan")
-
-        val report = LastAspectsSync.pull(context, backend)
-
-        assertEquals(0, report.inserted)
-        assertEquals(1, report.skippedOrphanedListItem)
-        assertTrue(CarDatabase.getDatabase(context).listItemDao().getAllIncludingDeleted().isEmpty())
     }
 }

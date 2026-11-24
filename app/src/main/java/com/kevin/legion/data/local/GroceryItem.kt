@@ -8,10 +8,16 @@ import androidx.room.PrimaryKey
  * One line on the CURRENT grocery trip (Kevin, 2026-08-11: "a grocery list, made once and torn
  * down once grocery is complete").
  *
- * **There is no trip entity. The rows ARE the trip.** A trip is "in progress" exactly when this
- * table is non-empty, and completing one deletes every row - see
- * [com.kevin.legion.grocery.GroceryController.completeTrip]. That is the whole lifecycle, and
- * modelling it with a `GroceryTrip` row carrying an `active` flag would add a state that can
+ * **READ-DEAD and WRITE-DEAD as of the lists redesign slice 1a (2026-11-24).** The only reader and
+ * writer left was `grocery/GroceryController.kt`, which had no caller of its own outside doc
+ * comments and is deleted. The one remaining reader of this table is
+ * [com.kevin.legion.grocery.GroceryChecklistMigration], the one-time carry onto the "Groceries"
+ * checklist, which is still wired at app start. The table stays registered until that migrator
+ * retires; see that object's own class doc.
+ *
+ * **There is no trip entity. The rows ARE the trip.** A trip was "in progress" exactly when this
+ * table was non-empty, and completing one deleted every row. That was the whole lifecycle, and
+ * modelling it with a `GroceryTrip` row carrying an `active` flag would have added a state that can
  * disagree with its own items (an active trip with no items, an item on a completed trip) for no
  * capability in return.
  *
@@ -32,9 +38,9 @@ import androidx.room.PrimaryKey
 data class GroceryItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val text: String,
-    /** Ticked means IN THE BASKET. What [com.kevin.legion.grocery.GroceryController.completeTrip]
-     * counts toward [GroceryStaple.timesBought] - an item left unticked at DONE was not bought, and
-     * counting it would teach the suggestions the opposite of the truth. */
+    /** Ticked means IN THE BASKET. What the deleted `GroceryController.completeTrip` counted
+     * toward [GroceryStaple.timesBought] - an item left unticked at DONE was not bought, and
+     * counting it would have taught the suggestions the opposite of the truth. */
     val done: Boolean = false,
     val doneAt: Long? = null,
     val sortOrder: Int = 0,

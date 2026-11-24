@@ -1,80 +1,63 @@
 package com.kevin.legion.data.local
 
-import androidx.room.ColumnInfo
-import androidx.room.Entity
-import androidx.room.Index
-import androidx.room.PrimaryKey
-
 /**
- * One line in an [ItemList]: a checklist entry, a note line (its list's `tickable == false`), or
- * - when [startsAt] is set - a **reminder** (fire a local alert at T). Charting decision 6
- * ("a calendar event is the same entity as a list item") held only until
+ * One line of the notes model as the rest of the app holds it in memory: a to-do, a note line, or
+ * - when [startsAt] is set - a **reminder** (fire a local alert at T).
+ *
+ * **A plain data class, not a Room entity** (lists redesign slice 1a, 2026-11-24). It used to be
+ * both: the `@Entity` for the legacy `list_items` table AND the shape
+ * `notes/NotesController.kt` returns while reading `events` (its `Event.toListItem` mapper). One
+ * name over two unrelated stores meant a signature could not say which one a value had come from,
+ * and the two meanings had already drifted - [syncId] is the server row's own uuid on the
+ * configured path and a client-minted placeholder on the unconfigured one, and [listId] is a
+ * display convenience here where it was a real foreign key in the table. The table's row is
+ * [LegacyListItem] now; this is the domain type, with one meaning.
+ *
+ * **Where its values come from.** [NotesController][com.kevin.legion.notes.NotesController] builds
+ * every one of these from an [Event] row (see its `Event.toListItem` mapper for the field-by-field
+ * account and for what [syncId] means on each transport). Nothing reads `list_items` to make one.
+ * [id] is the `Event`'s id, preserved and never reminted.
+ *
+ * Charting decision 6 ("a calendar event is the same entity as a list item") held only until
  * `.scratch/google-account-integration/issues/04-what-happens-to-local-timed-items.md` reversed
  * it, and the 2026-08-25 ruling ("one calendar, and it is ours") then retired Google entirely:
  * **appointments live in LEGION's own `events` table.** [startsAt] means "remind me at T", never
- * "this is a calendar event" - an appointment is an [Event] row and nowhere in this table, there
- * is no mirror row here, and nothing in the app reads or writes `CalendarContract`.
+ * "this is a calendar event", and nothing in the app reads or writes `CalendarContract`.
  *
  * **At most one trigger per item** ([startsAt] or [triggerPlaceLabel], never both - charting
- * decision 4). Enforced in `notes/NotesController.kt`, not a CHECK constraint, matching this
- * schema's existing no-CHECK-constraints posture (see ticket 01's answer).
- *
- * The `repeat*` columns are ticket 04's small hand-rolled rule set - explicitly NOT RFC 5545 -
- * stored as discrete columns rather than an encoded blob so a repeat is inspectable in the schema
- * and in a query. **A stored rule; occurrences are computed on read, never materialised** - see
- * [com.kevin.legion.notes.Recurrence]'s doc comment for the generator and
- * [com.kevin.legion.notes.RepeatKind]/[com.kevin.legion.notes.RepeatEndKind] for what each column
- * means. **A recurring item ([repeatKind] != null) can never be ticked** (ticket 04: "a recurring
- * item cannot be ticked" removes per-occurrence completion state entirely, and with it the "edit
- * this one or all of them" prompt) - enforced in [com.kevin.legion.notes.NotesController], not
- * here.
- *
- * v10->v11 (`.scratch/notes-lists-calendar/issues/03-*`/`12-*`) adds four columns behind local
- * alarms and fired-reminder state, none of them per-occurrence (recurrence still computes
- * occurrences on read - see [com.kevin.legion.notes.Recurrence]):
- * - [exact]/[exactDowngraded]: ticket 03's "only when the user marks an item exact, and say so in
- *   words when refused" - `exactDowngraded` is the stored words, not just a chat reply, so any
- *   later read of the item (voice or a future screen) can still see the refusal.
- * - [missedAt]/[missedDismissedAt]: ticket 12's explicit requirement that a missed ONE-OFF
- *   reminder is a STORED fact, not something recomputed after the fact - recomputing it would mean
- *   re-deriving "was this due while the phone was off" from a boot timestamp nobody kept, which is
- *   exactly the kind of silent-vanish bug this ticket was written to rule out. A recurring item is
- *   never marked missed (ticket 04: it just re-arms forward), and a place trigger never has a due
- *   time to miss (ticket 12).
- *
- * **FROZEN from the live app's own point of view, same as [ItemList]** - see that entity's own
- * class doc for the cutover this table sits behind. live-sync ticket (v62 -> v63,
- * [MIGRATION_62_63]): [serverId] added, [syncId] REUSED as the sync identity (same posture as
- * [ItemList]'s own v63 doc comment).
+ * decision 4), enforced in `notes/NotesController.kt`. **A recurring item ([repeatKind] != null)
+ * can never be ticked** (ticket 04: that removes per-occurrence completion state entirely, and
+ * with it the "edit this one or all of them" prompt), enforced in the same place. The `repeat*`
+ * fields are ticket 04's small hand-rolled rule set - explicitly NOT RFC 5545 - held as discrete
+ * fields rather than an encoded blob so a repeat is inspectable in a query; see
+ * [com.kevin.legion.notes.Recurrence]'s doc comment for the generator, which computes occurrences
+ * on read and never materialises them, and
+ * [com.kevin.legion.notes.RepeatKind]/[com.kevin.legion.notes.RepeatEndKind] for what each one
+ * means. The one piece of per-occurrence state that does exist is [ListItemSkip].
  */
-@Entity(
-    tableName = "list_items",
-    indices = [Index("listId"), Index("startsAt"), Index(value = ["syncId"], unique = true)],
-)
 data class ListItem(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val id: Long = 0,
     val listId: Long,
     val text: String,
     val done: Boolean = false,
     val doneAt: Long? = null,
     val sortOrder: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(defaultValue = "0") val updatedAt: Long = System.currentTimeMillis(),
-    @ColumnInfo(defaultValue = "''") val syncId: String = java.util.UUID.randomUUID().toString(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val syncId: String = java.util.UUID.randomUUID().toString(),
     /** live-sync ticket - null until a real round trip earns one. Not client-minted (CLAUDE.md
      * live-sync ruling 5: "do not trust a client-minted id"). */
     val serverId: String? = null,
-    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
+    val deleted: Boolean = false,
 
     // ---- optional time trigger: an item with startsAt is a reminder, not a calendar event ----
-    // Indexed - ticket 08's calendar query must never scan the untimed camping-gear rows
-    // sharing this table.
     val startsAt: Long? = null,
     val endsAt: Long? = null,
     /** Only meaningful when [startsAt] is set. */
     val allDay: Boolean = true,
 
-    // ---- optional place trigger, absorbed from PlaceReminder ----
+    // ---- optional place trigger (absorbed from the legacy `place_reminders` table by
+    // MIGRATION_9_10, long before this type stopped being that table's row) ----
     val triggerPlaceLabel: String? = null,
 
     // ---- repeat rule (ticket 04) - null repeatKind means "does not repeat" ----
@@ -95,11 +78,11 @@ data class ListItem(
 
     // ---- ticket 03: exact vs inexact local alarms ----
     /** True only when the DRIVER explicitly asked for a precise alarm - never set implicitly. */
-    @ColumnInfo(defaultValue = "0") val exact: Boolean = false,
+    val exact: Boolean = false,
     /** True when [exact] was requested but `SCHEDULE_EXACT_ALARM` was refused, so the alarm was
      * silently-to-the-OS-but-NOT-to-the-driver downgraded to inexact - `notes/AlarmScheduler.kt`
      * flips this back false the moment the permission is granted and a reschedule runs. */
-    @ColumnInfo(defaultValue = "0") val exactDowngraded: Boolean = false,
+    val exactDowngraded: Boolean = false,
 
     // ---- ticket 12: a missed one-off reminder is reported, never silent ----
     /** Set once, by `notes/AlarmScheduler.rescheduleAll`, the first time a non-recurring item's
@@ -109,7 +92,7 @@ data class ListItem(
      * never the item itself (firing/missing changes nothing about the underlying task, ticket 12). */
     val missedDismissedAt: Long? = null,
 
-    // ---- v32, goal-plans ticket 08: the lazy end-of-day auto-log's idempotence anchor ----
+    // ---- goal-plans ticket 08: the lazy end-of-day auto-log's idempotence anchor ----
     /** Set once, by [com.kevin.legion.advisor.GoalChecklistSync]'s end-of-day sweep, the moment a
      * TICKED past-day plan `WORKOUT` line is written through
      * [com.kevin.legion.workouts.WorkoutController.logSet]. Null means "not swept yet" - the
@@ -121,5 +104,5 @@ data class ListItem(
      * conflate with a tick timestamp the user might in principle produce well after ticking (a
      * missed-then-caught-up scenario). A meal/sleep checklist line is never given one - see
      * [com.kevin.legion.advisor.GoalChecklistSync]'s sweep doc for why only `WORKOUT` lines qualify. */
-    @ColumnInfo(defaultValue = "NULL") val loggedAt: Long? = null,
+    val loggedAt: Long? = null,
 )
