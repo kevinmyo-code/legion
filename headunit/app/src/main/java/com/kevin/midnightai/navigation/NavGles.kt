@@ -149,3 +149,33 @@ internal class GlProbeGuard(private val prefs: SharedPreferences) {
         const val KEY = "gl_probing"
     }
 }
+
+/**
+ * The one way the native EGL probe may be reached (review A1, 2026-11-24): at most once, only when
+ * the answer is needed, and only inside [guard].
+ *
+ * Three rules, each closing a hole the first cut of the F2 guard left open:
+ *
+ * - **Only when needed.** [NavGles.decide] answers `DECLARED` off [declared] alone and never looks
+ *   at the probe, so on a unit declaring ES 3 the probe was pure waste - and a native fault there
+ *   would have set a crash flag that nothing ever reads, leaving that unit no loop protection at
+ *   all. Returns null without probing.
+ * - **Only inside the guard.** A null [guard] (before `NavRuntime.init`) means no probe at all. It
+ *   used to mean an unguarded one, which is the exact call F2 exists to wrap, on a unit with no ADB.
+ * - **Never twice.** The old `glProbe?.guarded { probe() } ?: probe()` re-ran the probe unguarded
+ *   whenever the guarded one returned NULL, which is what the probe answers on all three of its EGL
+ *   early returns. A unit whose EGL is sick enough to answer null is the likeliest to fault on the
+ *   retry.
+ *
+ * Null therefore covers both "could not be asked" and "was not asked", and [NavGles.decide] maps it
+ * to `UNKNOWN`, which keeps the map off and says so. That is the conservative direction [NavGles]
+ * already documents.
+ */
+internal fun probeEs3Guarded(
+    declared: Int,
+    guard: GlProbeGuard?,
+    probe: () -> Boolean? = { NavGles.probeEs3Context() },
+): Boolean? {
+    if (declared >= NavGles.GLES_3) return null
+    return guard?.guarded(probe)
+}

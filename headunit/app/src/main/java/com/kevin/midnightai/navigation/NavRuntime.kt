@@ -117,7 +117,7 @@ object NavRuntime {
         }
         // Otherwise asked once per process: neither the ROM's claim nor the driver can change
         // while it runs, and the NAV face calls this on every open and every token refresh.
-        val decision = es3 ?: NavGles.decide(declared, probeEs3Guarded()).also {
+        val decision = es3 ?: NavGles.decide(declared, probeEs3Guarded(declared, glProbe)).also {
             es3 = it
             com.kevin.midnightai.diag.DriveLog.breadcrumb(
                 "NAVGLES declared=${NavGles.version(declared)} decision=$it",
@@ -129,11 +129,8 @@ object NavRuntime {
     /** Cached [NavGles.Es3] for this process; see [unavailableReason]. */
     @Volatile private var es3: NavGles.Es3? = null
 
-    /** The EGL probe's own crash guard, null only before [init] (then the probe runs unguarded). */
+    /** The EGL probe's own crash guard, null only before [init] (then the probe never runs). */
     private val glProbe: GlProbeGuard? get() = if (::guard.isInitialized) GlProbeGuard(guard) else null
-
-    private fun probeEs3Guarded(): Boolean? =
-        glProbe?.guarded { NavGles.probeEs3Context() } ?: NavGles.probeEs3Context()
 
     /**
      * Before any Mapbox object is built (review NAV-3): Mapbox's own logging down to errors
