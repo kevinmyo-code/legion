@@ -11698,7 +11698,8 @@ paths:
     patch:
       operationId: api_member_memories_partial_update
       description: Changes text, kind, importance, decay class or sharing. Only the
-        member a memory is about may share it or make it private again.
+        member a memory is about may change any of it; a household fact another member
+        shared is read here and refused with a 403.
       parameters:
       - in: path
         name: memory_id

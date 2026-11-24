@@ -88,7 +88,7 @@ def test_only_the_member_it_is_about_may_change_its_sharing(auth_client, mia_cli
     shared = _save(auth_client, "The Jeep lives in the left bay", shared=True)
     refused = mia_client.patch(f"{URL}{shared['id']}", {"shared": False}, format="json")
     assert refused.status_code == 403
-    assert "Only the person a memory is about" in refused.data["detail"]
+    assert "only the member who shared it" in refused.data["detail"]
     made_private = auth_client.patch(f"{URL}{shared['id']}", {"shared": False}, format="json")
     assert made_private.status_code == 200 and made_private.data["shared"] is False
     assert _texts(mia_client) == []
@@ -164,6 +164,92 @@ def test_forgetting_another_members_shared_fact_is_refused_on_mcp(
     is_error, text, _ = call(client_with(household_user), "forget_memory", {"id": hers["id"]})
     assert is_error and "only the member who shared it" in text
     assert MemberMemory.objects.filter(pk=hers["id"]).exists()
+
+
+# =============================================================================
+# Editing a shared fact belongs to the member who shared it (Kevin, 2026-11-24)
+# =============================================================================
+
+
+EDITS = [
+    ("text", "The Jeep lives outside"),
+    ("kind", "preference"),
+    ("importance", 9),
+    ("decay_class", DECAY_EPISODIC),
+]
+
+
+@pytest.mark.parametrize(("field", "value"), EDITS)
+def test_only_the_member_who_shared_a_fact_can_edit_it(auth_client, mia_client, field, value):
+    """The same ruling as the hard delete: a member who may not delete a household fact may
+    not rewrite it either."""
+    shared = _save(auth_client, "The Jeep lives in the left bay", shared=True, importance=5)
+    refused = mia_client.patch(f"{URL}{shared['id']}", {field: value}, format="json")
+    assert refused.status_code == 403
+    assert "only the member who shared it" in refused.data["detail"]
+    row = MemberMemory.objects.get(pk=shared["id"])
+    assert getattr(row, field) == shared[field]
+    # Mia can still read it, so the refusal is about changing it, not about seeing it.
+    assert "The Jeep lives in the left bay" in _texts(mia_client)
+    # The member who shared it still can.
+    mine = auth_client.patch(f"{URL}{shared['id']}", {field: value}, format="json")
+    assert mine.status_code == 200, mine.data
+    assert mine.data[field] == value
+
+
+def test_the_household_owner_cannot_edit_a_fact_another_member_shared(auth_client, mia_client):
+    """Being the household's owner is not being the member who shared it."""
+    shared = _save(mia_client, "Mia's shift starts at six", shared=True)
+    refused = auth_client.patch(f"{URL}{shared['id']}", {"text": "Mia works nights"}, format="json")
+    assert refused.status_code == 403
+    assert MemberMemory.objects.get(pk=shared["id"]).text == "Mia's shift starts at six"
+
+
+def test_a_patch_of_several_fields_by_another_member_changes_none_of_them(
+    auth_client, mia_client
+):
+    """Refused before the first field is read, so a mixed PATCH is not applied in part."""
+    shared = _save(auth_client, "The Jeep lives in the left bay", shared=True, importance=5)
+    refused = mia_client.patch(
+        f"{URL}{shared['id']}",
+        {"text": "The Jeep is sold", "importance": 10, "shared": False},
+        format="json",
+    )
+    assert refused.status_code == 403
+    row = MemberMemory.objects.get(pk=shared["id"])
+    assert (row.text, row.importance, row.shared) == (
+        "The Jeep lives in the left bay", 5, True,
+    )
+
+
+def test_rewriting_another_members_shared_fact_is_refused_on_mcp(
+    household_user, mia_client, mcp_on
+):
+    """The tool door has no edit tool at all; its one way to rewrite a fact is
+    `remember(supersedes=...)`, and that is refused in words too, so no door lets a member
+    rewrite a household fact someone else shared."""
+    hers = _save(mia_client, "Mia's shift starts at six", shared=True)
+    is_error, text, _ = call(
+        client_with(household_user),
+        "remember",
+        {"text": "Mia's shift starts at nine", "supersedes": hers["id"]},
+    )
+    assert is_error and "Only the person a memory is about can replace it" in text
+    row = MemberMemory.objects.get(pk=hers["id"])
+    assert row.superseded_at is None and row.text == "Mia's shift starts at six"
+
+
+def test_text_another_member_may_not_write_is_refused_for_the_right_reason(
+    auth_client, mia_client
+):
+    """A vault identifier in the text is a 400 for the sharer; for anyone else the 403 comes
+    first, so the refusal names who may change it rather than what was in the text."""
+    shared = _save(auth_client, "The Jeep lives in the left bay", shared=True)
+    refused = mia_client.patch(
+        f"{URL}{shared['id']}", {"text": "Kevin's SSN is 123-45-6789"}, format="json"
+    )
+    assert refused.status_code == 403
+    assert "only the member who shared it" in refused.data["detail"]
 
 
 def test_a_member_cannot_supersede_a_shared_fact_about_someone_else(auth_client, mia_client):

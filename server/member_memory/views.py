@@ -7,8 +7,8 @@ work laptop), then reads through `visible()`: another member's private memory is
 
 **DELETE is a hard delete** (Kevin, 2026-11-05: "forget that" deletes it for real). There is no
 tombstone and no `?since=` feed, so a client cache refreshes from the whole list. A shared
-household memory is deleted only by the member who shared it; every other member gets a 403
-(Kevin, 2026-11-24).
+household memory is changed or deleted only by the member who shared it; every other member gets a
+403 from PATCH and from DELETE alike (Kevin, 2026-11-24).
 
 Nothing here logs a memory's text.
 """
@@ -299,7 +299,8 @@ class MemoryDetailView(APIView):
         },
         description=(
             "Changes text, kind, importance, decay class or sharing. Only the member a memory is "
-            "about may share it or make it private again."
+            "about may change any of it; a household fact another member shared is read here and "
+            "refused with a 403."
         ),
     )
     def patch(self, request, memory_id):

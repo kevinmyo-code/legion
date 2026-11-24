@@ -12,10 +12,11 @@ lookup by id answers "no memory with that id" exactly as for another household's
 and so is the work laptop's token (map decision G, `claude_session.tokens`).
 
 Writing is narrower than reading, and on one rule: **only the member a memory is about may change
-or delete it.** Sharing, making private, superseding and forgetting all key on `member`. A shared
-household fact was shared by the member it is about (`create(shared=True)` and `update`'s `shared`
-switch are the only two ways a row becomes shared, and both demand the caller be its `member`),
-so every other member reads it and none can take it away (Kevin, 2026-11-24).
+or delete it.** Editing, sharing, making private, superseding and forgetting all key on `member`.
+A shared household fact was shared by the member it is about (`create(shared=True)` and `update`'s
+`shared` switch are the only two ways a row becomes shared, and both demand the caller be its
+`member`), so every other member reads it and none can rewrite it or take it away (Kevin,
+2026-11-24).
 """
 
 from __future__ import annotations
@@ -61,10 +62,10 @@ UNBOUND_WORKER_REFUSAL = (
     "Start the worker so its heartbeat names the machine, then try again."
 )
 NOT_FOUND = "Nothing was changed. There is no memory with that id that you can see."
-MAKE_PRIVATE_REFUSAL = (
-    "Nothing was changed. Only the person a memory is about can make it private."
+EDIT_REFUSAL = (
+    "Nothing was changed. Another member shared this memory with the household, and only the "
+    "member who shared it can change it."
 )
-SHARE_REFUSAL = "Nothing was changed. Only the person a memory is about can share it."
 FORGET_REFUSAL = (
     "Nothing was deleted. Another member shared this memory with the household, and only the "
     "member who shared it can delete it for good."
@@ -200,9 +201,18 @@ def create(
 
 
 def update(request, memory_id, changes: dict) -> MemberMemory:
+    """Changes a memory's text, kind, importance, decay class or sharing.
+
+    Only the member a memory is about may change any of it (Kevin, 2026-11-24, the same ruling as
+    the hard delete). A row this caller is not the `member` of was shared with the household by
+    someone else, because `readable()` shows no other member's private row, so every field change
+    is refused before a single one is read: a member who may not delete a household fact may not
+    rewrite it either."""
     row = find(request, memory_id)
     if row is None:
         raise MemoryRefused(NOT_FOUND, status=404)
+    if row.member_id != request.user.pk:
+        raise MemoryRefused(EDIT_REFUSAL, status=403)
     fields = []
     if "text" in changes:
         row.text = _clean_text(changes["text"])
@@ -223,10 +233,6 @@ def update(request, memory_id, changes: dict) -> MemberMemory:
         if not isinstance(wanted, bool):
             raise MemoryRefused("Nothing was changed. shared must be true or false.")
         if wanted != row.shared:
-            if row.member_id != request.user.pk:
-                raise MemoryRefused(
-                    SHARE_REFUSAL if wanted else MAKE_PRIVATE_REFUSAL, status=403
-                )
             row.owner_user_id = None if wanted else row.member_id
             fields.append("owner_user")
     if fields:

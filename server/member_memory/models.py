@@ -15,9 +15,9 @@ member of the row's household. Every read and write goes through `household.tena
 
 **Forgetting is a hard delete** (ruling 4): the row is removed, with every older version it
 superseded (`member_memory.service.forget`). Nothing is hidden, nothing tombstoned. **Only the
-member a memory is about may forget it** (Kevin, 2026-11-24): since a row becomes shared only
-through its own member, a shared household fact can be deleted only by the member who shared it,
-and `member` is the record of who that was. That is why
+member a memory is about may change or forget it** (Kevin, 2026-11-24): since a row becomes shared
+only through its own member, a shared household fact can be edited or deleted only by the member
+who shared it, and `member` is the record of who that was. That is why
 there is no `deleted_at`, and why a phone cache refreshes from the whole list rather than a
 `?since=` feed (map decision F).
 
