@@ -46,7 +46,6 @@ class HandoverBody(
         field("engine_vehicle_id", engineVehicleId)
         field("gemini_key", geminiKey)
         field("mapbox_token", mapboxToken)
-        field("spotify_client_id", spotifyClientId)
         field("phone_name", phoneName)
         append('}')
     }
