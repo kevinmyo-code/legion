@@ -23,8 +23,7 @@ import uuid
 # Every `public` table that carries `household_id`, in aspect order - the same
 # grouping `api/registry.py` uses, so the two read down in the same order.
 #
-# A hundred and eighteen names (count it with len(); this line was stale six times before,
-# and was stale again at 115 on the base of this change, against an actual 120).
+# A hundred and fifteen names (count it with len(); this line was stale six times before).
 # One more `public` table, `household_members`, is
 # DELIBERATELY ABSENT and its absence is the one thing in this file that is a
 # judgement rather than an inventory:
@@ -60,6 +59,8 @@ TENANT_TABLES: tuple[str, ...] = (
     "places",
     # notes
     "voice_notes",
+    "item_lists",
+    "list_items",
     # body
     "bodyweight_logs",
     "sleep_logs",
