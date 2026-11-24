@@ -56,6 +56,25 @@ internal class HeldLines(
         return null
     }
 
+    /**
+     * What a park takes from the holding area. A conversation that went quiet on the idle timer
+     * gets its oldest fresh line spoken on the warm socket ([takeFresh]); one the driver ENDED gets
+     * nothing, and everything held is dropped (ruled 2026-11-24: a goodbye closes the
+     * conversation, so a routine line kept back for a turn boundary has missed its moment and
+     * saying it after the sign-off would reopen a conversation he just ended).
+     *
+     * [afterDismissal] is the only difference between the two, and it is the caller's one read of
+     * `LiveEvent.Idle.afterDismissal`. An urgent alert does not come through here at all: it is
+     * raised on [ProactiveBus] when it happens, and held lines are the routine ones that waited.
+     */
+    fun onPark(afterDismissal: Boolean, nowMs: Long, onDropped: (String, String) -> Unit): Held? {
+        if (afterDismissal) {
+            clear("the driver said goodbye", onDropped)
+            return null
+        }
+        return takeFresh(nowMs, onDropped)
+    }
+
     /** Drops everything (session ended); each line is reported with [why]. */
     fun clear(why: String, onDropped: (String, String) -> Unit) {
         while (items.isNotEmpty()) onDropped(items.removeFirst().prompt, why)

@@ -51,6 +51,31 @@ class HeldLinesTest {
         assertEquals(1, h.size)
     }
 
+    /**
+     * Ruled 2026-11-24: a goodbye ends the conversation, so a routine line held for a turn
+     * boundary is dropped rather than spoken on the warm socket after the sign-off. A conversation
+     * that merely went quiet keeps today's behaviour and still gets its line.
+     */
+    @Test fun `a park after a goodbye drops every held line, a quiet park speaks one`() {
+        val afterGoodbye = lines(capacity = 3)
+        afterGoodbye.hold("the oil change is due", 0, onDropped = onDropped)
+        afterGoodbye.hold("Spotify is playing now", 0, onDropped = onDropped)
+        assertNull(afterGoodbye.onPark(afterDismissal = true, nowMs = 100, onDropped = onDropped))
+        assertEquals(
+            listOf("the oil change is due|the driver said goodbye", "Spotify is playing now|the driver said goodbye"),
+            drops,
+        )
+        assertEquals(0, afterGoodbye.size)
+
+        val wentQuiet = lines(capacity = 3)
+        wentQuiet.hold("the oil change is due", 0, onDropped = onDropped)
+        assertEquals(
+            "the oil change is due",
+            wentQuiet.onPark(afterDismissal = false, nowMs = 100, onDropped = onDropped)?.prompt,
+        )
+        assertEquals(0, wentQuiet.size)
+    }
+
     @Test fun `clear reports every held line`() {
         val h = lines(capacity = 3)
         h.hold("a", 0, onDropped = onDropped)
