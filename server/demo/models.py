@@ -332,7 +332,11 @@ class RecruiterMediaFile(models.Model):
         RecruiterContent, on_delete=models.CASCADE, related_name="media_files"
     )
     name = models.CharField(max_length=80)
+    # Where the bytes are read from, and it is the bucket when `object_name` is set
+    # (`demo.media_store`, Supabase egress cut 4): `data` is written beside it for one release so
+    # a rollback or an unreachable bucket still serves the page. Blank means Postgres only.
     data = models.BinaryField()
+    object_name = models.CharField(max_length=200, default="", blank=True)
     content_type = models.CharField(max_length=100)
     # The ETag: a revisit asks "still this?" and gets a 304 without the bytes leaving Postgres.
     sha256 = models.CharField(max_length=64)

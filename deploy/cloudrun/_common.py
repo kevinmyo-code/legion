@@ -120,6 +120,9 @@ PLAIN_ENV_VARS = ("ALLOWED_HOSTS", "CSRF_TRUSTED_ORIGINS", "MEDIA_ROOT", "DJANGO
 #   Switching it on also switches on the intake's scoring model call (one per idea, 20 a day).
 # Control room C3: LEGION_BOARD_ACTIONS=on (with LEGION_BOARD=on) opens the action records
 #   (`server/board/actions.py`); unset or anything else is off.
+# Supabase egress cut 4 (2026-11-23): LEGION_DEMO_MEDIA_BUCKET names the private bucket the
+#   recruiter page's media files live in (`demo.media_store`). Unset, their bytes come out of
+#   Postgres as before. Not listed here, a line in `.env` never reached Cloud Run.
 OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_MCP", "LEGION_MCP_RATE", "VAPID_PUBLIC_KEY", "VAPID_SUBJECT", "LEGION_APK_BUCKET",
     "LEGION_MEMORY_REVIEW", "LEGION_MEMORY_REVIEW_CAP", "LEGION_CLAUDE_FILES_BUCKET",
@@ -136,7 +139,7 @@ OPTIONAL_PLAIN_ENV_VARS = (
     "LEGION_DEMO_COST_PER_TEXT_CALL_USD", "LEGION_ASSISTANT_TURN_RATE",
     "LEGION_ASSISTANT_TURN_IP_RATE", "LEGION_WEB_EARLY_TRANSCRIPTS", "LEGION_DEMO_REFS",
     "LEGION_DEMO_COST_PER_SPEECH_REQUEST_USD",
-    "LEGION_BOARD", "LEGION_BOARD_ACTIONS",
+    "LEGION_BOARD", "LEGION_BOARD_ACTIONS", "LEGION_DEMO_MEDIA_BUCKET",
 )
 
 # Optional secrets: mounted only when the switch named beside them is set in `.env`, because
