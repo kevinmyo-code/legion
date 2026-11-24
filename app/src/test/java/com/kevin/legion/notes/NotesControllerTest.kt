@@ -23,7 +23,7 @@ import org.robolectric.RuntimeEnvironment
  * covers the one-time reconcile that keeps an item created directly through the engine (before this
  * repoint, or on an install still mid-soak) from being silently dropped the moment the read flips.
  * [NotesControllerBackendTest] covers the CONFIGURED path and is untouched by this ticket. Every
- * assertion reads back through [NotesController] itself, never `ListItemDao` - `list_items` gains
+ * assertion reads back through [NotesController] itself, never `LegacyListItemDao` - `list_items` gains
  * no reader or writer from either path, both before and after this repoint.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -60,7 +60,7 @@ class NotesControllerTest {
         assertEquals("buy milk", reread?.text)
 
         // list_items gains no reader here - the legacy table must still be empty.
-        assertTrue(CarDatabase.getDatabase(context).listItemDao().allActive().isEmpty())
+        assertTrue(CarDatabase.getDatabase(context).legacyListItemDao().allActive().isEmpty())
     }
 
     @Test
@@ -191,7 +191,7 @@ class NotesControllerTest {
         assertEquals(1, NotesController.openWithPlaceTrigger(context, "work").size)
         assertEquals(0, NotesController.openWithPlaceTrigger(context, "home").size)
         assertEquals(1, NotesController.openWithAnyPlaceTrigger(context).size)
-        assertTrue(CarDatabase.getDatabase(context).listItemDao().allActive().isEmpty())
+        assertTrue(CarDatabase.getDatabase(context).legacyListItemDao().allActive().isEmpty())
     }
 
     // ------------------------------------------------------------------------- recurrence skip rekey
@@ -220,7 +220,8 @@ class NotesControllerTest {
         val db = CarDatabase.getDatabase(context)
         assertEquals(1, db.eventDao().getAllActive().size)
         assertEquals("buy milk", db.eventDao().getAllActive().single().title)
-        assertTrue("list_items must gain no writer from this repoint either", db.listItemDao().allActive().isEmpty())
+        val legacyRows = db.legacyListItemDao().allActive()
+        assertTrue("list_items must gain no writer from this repoint either", legacyRows.isEmpty())
     }
 
     @Test

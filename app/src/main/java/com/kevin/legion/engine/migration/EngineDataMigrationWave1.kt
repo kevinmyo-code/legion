@@ -12,14 +12,14 @@ import java.util.UUID
 /**
  * The one-time, idempotent copier that carries Wave 1's live data
  * (`.scratch/aspect-engine/issues/21-migration-waves.md` point 2) - every
- * [com.kevin.legion.data.local.ListItem] and every [com.kevin.legion.data.local.TaggedPlace] -
+ * [com.kevin.legion.data.local.LegacyListItem] and every [com.kevin.legion.data.local.TaggedPlace] -
  * onto the engine through [RecordStore], the engine's single write door. **Additive only**: reads
  * the legacy tables, writes new [com.kevin.legion.data.local.EngineRecord] rows; never touches,
  * drops, or mutates a legacy table. The old tables and every old screen/tool keep working
  * unchanged - cutover is a later, per-aspect wave (ticket 14 point 2), not this one.
  *
  * The exact field mapping and what is deliberately NOT carried (`ItemList`'s grouping,
- * `ListItem.loggedAt`, tombstoned rows of either source) is `docs/architecture/wave1-carve-2026-08-23.md`.
+ * `LegacyListItem.loggedAt`, tombstoned rows of either source) is `docs/architecture/wave1-carve-2026-08-23.md`.
  *
  * **Two independent layers of idempotency, matching [com.kevin.legion.data.MidnightImport]'s own
  * "GUARDED TO RUN AT MOST ONCE" shape** (that object's doc comment is the worked precedent this
@@ -34,7 +34,7 @@ import java.util.UUID
  *    itself accepts as a known limitation: a crash partway through the loop leaves the flag unset,
  *    so the NEXT app start retries the whole domain from scratch. Without a stable, deterministic
  *    `guid` per source row, that retry would re-create every row the first, interrupted pass had
- *    already written. [copyNotesIfNeeded] reuses [com.kevin.legion.data.local.ListItem.syncId]
+ *    already written. [copyNotesIfNeeded] reuses [com.kevin.legion.data.local.LegacyListItem.syncId]
  *    directly (already a stable per-row UUID minted for exactly this cross-device-identity
  *    purpose); [copyPlacesIfNeeded] derives a deterministic UUID from [com.kevin.legion.data.local.TaggedPlace.label]
  *    (`UUID.nameUUIDFromBytes`) since that table carries no such column of its own. Either way, a
@@ -54,8 +54,8 @@ object EngineDataMigrationWave1 {
     private fun store(db: CarDatabase) = RecordStore(db.engineRecordDao(), db.fieldDefDao(), db.recordTypeDao())
 
     /**
-     * Copies every non-tombstoned [com.kevin.legion.data.local.ListItem] (across every legacy
-     * [com.kevin.legion.data.local.ItemList] - `ListItemDao.allActive()` already reads across all
+     * Copies every non-tombstoned [com.kevin.legion.data.local.LegacyListItem] (across every legacy
+     * [com.kevin.legion.data.local.ItemList] - `LegacyListItemDao.allActive()` already reads across all
      * of them, matching the live app's own "one list" reality per the carve doc) into the Notes
      * aspect's `Item` record type. Provenance is always [RecordProvenance.USER] - every source row
      * here was voice- or hand-entered, never document-extracted, so CLAUDE.md §4's reconciliation
@@ -69,7 +69,7 @@ object EngineDataMigrationWave1 {
         val db = CarDatabase.getDatabase(context)
         val schema = NotesAspectSeeder.ensureSeeded(context)
         val recordStore = store(db)
-        val items = db.listItemDao().allActive()
+        val items = db.legacyListItemDao().allActive()
 
         var copied = 0
         for (item in items) {
@@ -214,7 +214,7 @@ object EngineDataMigrationWave1 {
 
     /**
      * [com.kevin.legion.data.local.ListItemSkip.itemId] used to store a legacy
-     * [com.kevin.legion.data.local.ListItem.id] - a per-database integer that means nothing once
+     * [com.kevin.legion.data.local.LegacyListItem.id] - a per-database integer that means nothing once
      * `NotesController` stops reading/writing that table (a fresh engine record for the same item
      * gets its OWN, unrelated, freshly-`AUTOINCREMENT`ed id). Left un-rekeyed, every pre-cutover skip
      * row would silently stop matching anything, and a previously-skipped recurring occurrence would
@@ -226,7 +226,7 @@ object EngineDataMigrationWave1 {
      * [com.kevin.legion.data.local.EngineRecordDao.getByGuid] (wave 1's own copy reused `syncId` as
      * `guid` - see this object's class doc), and re-points [ListItemSkip.itemId] at that record's id.
      * A skip whose legacy item or matching engine record cannot be found (deleted, or never
-     * migrated - e.g. it belonged to a tombstoned `ListItem` wave 1 deliberately never copied) is
+     * migrated - e.g. it belonged to a tombstoned `LegacyListItem` wave 1 deliberately never copied) is
      * left alone rather than guessed at; its occurrence-skip is lost, the same accepted cost wave
      * 1's own "does not copy tombstoned rows" scope cut already accepted for the item itself -
      * logged via [com.kevin.legion.MidnightEvents.skipRekeyOrphaned] rather than silently dropped,
@@ -251,7 +251,7 @@ object EngineDataMigrationWave1 {
         val db = CarDatabase.getDatabase(context)
         val now = System.currentTimeMillis()
         val skipDao = db.listItemSkipDao()
-        val itemDao = db.listItemDao()
+        val itemDao = db.legacyListItemDao()
         val engineDao = db.engineRecordDao()
         val notesRecordTypeId = NotesAspectSeeder.ensureSeeded(context).recordTypeId
 

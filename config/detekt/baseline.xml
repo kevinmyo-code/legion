@@ -2220,13 +2220,10 @@
     <ID>MaxLineLength:DtcClearController.kt:DtcClearController$val sent = outcome == ClearOutcome.CLEARED || outcome == ClearOutcome.RETURNED || outcome == ClearOutcome.UNVERIFIED</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1.kt:EngineDataMigrationWave1$MidnightEvents.skipRekeyOrphaned(skip.id, skip.itemId, "legacy item's syncId has no matching engine record")</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1.kt:EngineDataMigrationWave1$continue</ID>
-    <ID>MaxLineLength:EngineDataMigrationWave1CutoverTest.kt:EngineDataMigrationWave1CutoverTest$ListItem(listId = listId, text = "weekly trash day", repeatKind = "WEEKLY", repeatEvery = 1, createdAt = now, updatedAt = now)</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1CutoverTest.kt:EngineDataMigrationWave1CutoverTest$assertEquals("the fixture only proves anything if the two id spaces genuinely collide", engineIdA, legacyItemBId)</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1CutoverTest.kt:EngineDataMigrationWave1CutoverTest$assertNotEquals("the item's engine id is a fresh AUTOINCREMENT value, not the legacy one", legacyItemId, engineRecord.id)</ID>
-    <ID>MaxLineLength:EngineDataMigrationWave1CutoverTest.kt:EngineDataMigrationWave1CutoverTest$db.listItemDao().insert(ListItem(listId = listId, text = "late-arriving item", createdAt = now + 1, updatedAt = now + 1))</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1CutoverTest.kt:EngineDataMigrationWave1CutoverTest$fun</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1CutoverTest.kt:EngineDataMigrationWave1CutoverTest$return db.itemListDao().insert(ItemList(name = "List", tickable = true, lastUsedAt = now, createdAt = now, updatedAt = now))</ID>
-    <ID>MaxLineLength:EngineDataMigrationWave1CutoverTest.kt:EngineDataMigrationWave1CutoverTest$val throwawayLegacyId = db.listItemDao().insert(ListItem(listId = listId, text = "throwaway", createdAt = now, updatedAt = now))</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$PayloadCodec.readString(JSONObject(it.payload), schema.fieldIds.getValue(PlacesAspectSeeder.FIELD_LABEL)) == "home"</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$assertEquals("WEEKLY", PayloadCodec.readString(payload, schema.fieldIds.getValue(NotesAspectSeeder.FIELD_REPEAT_KIND)))</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$assertEquals("call the vet", PayloadCodec.readString(payload, schema.fieldIds.getValue(NotesAspectSeeder.FIELD_TEXT)))</ID>
@@ -2234,9 +2231,6 @@
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$assertEquals(29.7, payload.getDouble(PayloadCodec.key(schema.fieldIds.getValue(PlacesAspectSeeder.FIELD_LATITUDE))), 0.0001)</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$assertEquals(item.updatedAt, record.updatedAt)</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$assertEquals(startsAt, PayloadCodec.readLong(payload, schema.fieldIds.getValue(NotesAspectSeeder.FIELD_STARTS_AT)))</ID>
-    <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$db.listItemDao().insert(ListItem(listId = listId, text = "gone", createdAt = now, updatedAt = now, deleted = true))</ID>
-    <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$db.listItemDao().insert(ListItem(listId = listId, text = "one shot", createdAt = createdAt, updatedAt = updatedAt))</ID>
-    <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$db.listItemDao().insert(ListItem(listId = listId, text = "renamed later", createdAt = createdAt, updatedAt = updatedAt))</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$db.placeDao().upsert(TaggedPlace(label = "gone", latitude = 0.0, longitude = 0.0, timestamp = now, deleted = true))</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$fun</ID>
     <ID>MaxLineLength:EngineDataMigrationWave1Test.kt:EngineDataMigrationWave1Test$return db.itemListDao().insert(ItemList(name = "List", tickable = true, lastUsedAt = now, createdAt = now, updatedAt = now))</ID>

@@ -2,7 +2,7 @@ package com.kevin.legion.engine.migration
 
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ItemList
-import com.kevin.legion.data.local.ListItem
+import com.kevin.legion.data.local.LegacyListItem
 import com.kevin.legion.data.local.RecordProvenance
 import com.kevin.legion.data.local.TaggedPlace
 import com.kevin.legion.engine.PayloadCodec
@@ -69,9 +69,11 @@ class EngineDataMigrationWave1Test {
     fun `count-exact - every active ListItem produces exactly one engine record`() = runBlocking {
         val listId = seedList()
         val now = System.currentTimeMillis()
-        db.listItemDao().insert(ListItem(listId = listId, text = "milk", createdAt = now, updatedAt = now))
-        db.listItemDao().insert(ListItem(listId = listId, text = "eggs", createdAt = now, updatedAt = now))
-        db.listItemDao().insert(ListItem(listId = listId, text = "gone", createdAt = now, updatedAt = now, deleted = true))
+        db.legacyListItemDao().insert(LegacyListItem(listId = listId, text = "milk", createdAt = now, updatedAt = now))
+        db.legacyListItemDao().insert(LegacyListItem(listId = listId, text = "eggs", createdAt = now, updatedAt = now))
+        db.legacyListItemDao().insert(
+            LegacyListItem(listId = listId, text = "gone", createdAt = now, updatedAt = now, deleted = true),
+        )
 
         val result = EngineDataMigrationWave1.copyNotesIfNeeded(context)
 
@@ -85,12 +87,12 @@ class EngineDataMigrationWave1Test {
         val listId = seedList()
         val now = System.currentTimeMillis()
         val startsAt = now + 3_600_000L
-        val item = ListItem(
+        val item = LegacyListItem(
             listId = listId, text = "call the vet", done = true, doneAt = now,
             startsAt = startsAt, allDay = false, repeatKind = "WEEKLY", repeatEvery = 2,
             createdAt = now - 10_000L, updatedAt = now,
         )
-        db.listItemDao().insert(item)
+        db.legacyListItemDao().insert(item)
 
         EngineDataMigrationWave1.copyNotesIfNeeded(context)
 
@@ -121,7 +123,9 @@ class EngineDataMigrationWave1Test {
         val createdAt = System.currentTimeMillis() - 60_000L
         val updatedAt = System.currentTimeMillis()
         assertTrue("the fixture must exercise two genuinely different clocks", createdAt != updatedAt)
-        db.listItemDao().insert(ListItem(listId = listId, text = "renamed later", createdAt = createdAt, updatedAt = updatedAt))
+        db.legacyListItemDao().insert(
+            LegacyListItem(listId = listId, text = "renamed later", createdAt = createdAt, updatedAt = updatedAt),
+        )
 
         val result = EngineDataMigrationWave1.copyNotesIfNeeded(context)
 
@@ -153,7 +157,9 @@ class EngineDataMigrationWave1Test {
         val listId = seedList()
         val createdAt = System.currentTimeMillis() - 60_000L
         val updatedAt = System.currentTimeMillis()
-        db.listItemDao().insert(ListItem(listId = listId, text = "one shot", createdAt = createdAt, updatedAt = updatedAt))
+        db.legacyListItemDao().insert(
+            LegacyListItem(listId = listId, text = "one shot", createdAt = createdAt, updatedAt = updatedAt),
+        )
 
         EngineDataMigrationWave1.copyNotesIfNeeded(context)
 
@@ -168,7 +174,7 @@ class EngineDataMigrationWave1Test {
     fun `idempotent - a second run copies nothing and leaves the record count unchanged`() = runBlocking {
         val listId = seedList()
         val now = System.currentTimeMillis()
-        db.listItemDao().insert(ListItem(listId = listId, text = "milk", createdAt = now, updatedAt = now))
+        db.legacyListItemDao().insert(LegacyListItem(listId = listId, text = "milk", createdAt = now, updatedAt = now))
 
         val first = EngineDataMigrationWave1.copyNotesIfNeeded(context)
         val second = EngineDataMigrationWave1.copyNotesIfNeeded(context)
@@ -189,7 +195,7 @@ class EngineDataMigrationWave1Test {
         // doc). A second call with the SAME data must still land on one record, not two.
         val listId = seedList()
         val now = System.currentTimeMillis()
-        db.listItemDao().insert(ListItem(listId = listId, text = "milk", createdAt = now, updatedAt = now))
+        db.legacyListItemDao().insert(LegacyListItem(listId = listId, text = "milk", createdAt = now, updatedAt = now))
 
         EngineDataMigrationWave1.copyNotesIfNeeded(context)
         // Manually clear only the flag, as if the process had died just before it was written.
