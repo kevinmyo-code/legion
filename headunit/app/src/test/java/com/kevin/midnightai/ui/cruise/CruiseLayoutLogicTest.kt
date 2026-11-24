@@ -26,6 +26,18 @@ class CruiseLayoutLogicTest {
         assertEquals(364f, c.middle, 0.01f)
     }
 
+    /**
+     * Kevin, 2026-11-23: "i want the music controls to be center and the map/car data to be on
+     * right. and their width should be equal." The console rail keeps the left ("left keep as is",
+     * 2026-11-19), so the two cards Kevin named split what is left of the frame between them.
+     */
+    @Test fun theMusicCardAndTheCarPanelAreTheSameWidthAtEveryFrame() {
+        frames.forEach { (w, h) ->
+            val c = CruiseLayoutLogic.columns(w, h)
+            assertEquals("${w}x$h music ${c.music} vs car ${c.middle}", c.middle, c.music, 0.01f)
+        }
+    }
+
     @Test fun columnsFillTheWidthAndEveryRailTileIsDriveSize() {
         frames.forEach { (w, h) ->
             val c = CruiseLayoutLogic.columns(w, h)
