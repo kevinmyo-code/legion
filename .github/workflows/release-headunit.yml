@@ -262,11 +262,9 @@ jobs:
           [ "$concl" = success ] || { echo "::error::run $DRY_RUN_ID concluded $concl"; exit 1; }
           job=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DRY_RUN_ID/jobs" --jq '[.jobs[] | select(.name == "build")] | .[0].id')
           [ -n "$job" ] && [ "$job" != null ] || { echo "::error::run $DRY_RUN_ID has no build job"; exit 1; }
-          # A job log carries the colour codes Actions writes around each step, and gh refuses to
-          # output a response holding them unless asked; without the flag this step exited 1 and the
-          # first real publish (run 45501728514) never read the line. The log stays the anchor: it is
-          # the one channel the artifact's uploader cannot rewrite. grep takes 64 hex characters only,
-          # so no escape byte reaches anything that renders it.
+          # --allow-escape-sequences: gh refuses a response holding escape sequences, and every job
+          # log has the colour codes Actions writes around each step (run 45501728514 failed here).
+          # Read the log, not the .apk.sha256 beside the APK: that file is in the same artifact.
           logged=$(gh api --allow-escape-sequences "repos/$GITHUB_REPOSITORY/actions/jobs/$job/logs" | grep -oE 'HEADUNIT_APK_SHA256=[0-9a-f]{64}' | tail -1 | cut -d= -f2)
           [[ "$logged" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::no HEADUNIT_APK_SHA256 line in the dry run's build log"; exit 1; }
           echo "LOGGED_SHA256=$logged" >> "$GITHUB_ENV"
