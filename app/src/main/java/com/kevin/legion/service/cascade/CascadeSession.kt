@@ -2177,9 +2177,9 @@ internal class CascadeSession(
      * Either way the turn is weighed as one after a question ([WakePhrases.isSleepPhrase]), because a
      * read-back need not end in "?". What a close actually drops is named at [release] and
      * [releaseNow]: the asks that belong to this conversation and nothing else
-     * ([DtcClearController.forgetClearQuestion], [EventRemoval.reset], `EventMove.reset`), plus the
-     * authorisation to send a mail draft, which the account keeps as a draft. Nothing is deleted
-     * from his account; some asks have to be made again from scratch.
+     * ([DtcClearController.forgetClearQuestion], [EventRemoval.reset], `EventMove.reset`). Those have
+     * to be made again from scratch. A close is not what throws a mail draft away: it is saved in his
+     * Gmail the moment it is drafted (`EmailToolbox.drafted`).
      */
     private fun draftPending(): Boolean {
         return turn?.asked == true || lastTurnAsked

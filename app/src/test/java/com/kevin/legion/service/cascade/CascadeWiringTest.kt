@@ -151,13 +151,13 @@ class CascadeWiringTest {
         assertTrue("the waiting request is dropped, not answered", end.contains("carry = \"\""))
         assertTrue(end.contains("endByVoice()"))
         assertFalse(end.contains("answerTurn("))
-        // Blind review of 56e9404e, finding 4: the stop rule's branch turned on the last clip ending
-        // in "?" alone, so a pending confirmation whose read-back is a statement let "yes, that's it"
-        // close in code and endByStop discard the draft. A waiting draft is its own signal now, and
-        // the strictest closing set, so the two reach the rule separately.
+        // Blind review of 56e9404e, finding 4: the stop rule turned on the last clip ending in "?"
+        // alone, so a pending confirmation whose read-back is a statement let "yes, that's it" close
+        // in code, before the model and before the write guard. A pending ask is its own signal now,
+        // and reaches the rule as a parameter of its own; the rule answers both the same way.
         val ends = bodyOf(s, "endsConversation")
         assertTrue("the last clip asked", ends.contains("afterQuestion = FollowUpWindow.isQuestion(lastClipText)"))
-        assertTrue("a waiting draft is its own branch", ends.contains("draftPending = draftPending()"))
+        assertTrue("a pending ask reaches the rule too", ends.contains("draftPending = draftPending()"))
         val draft = bodyOf(s, "draftPending")
         assertTrue("his last turn asked", draft.contains("lastTurnAsked"))
         assertTrue("the turn in hand asked too", draft.contains("turn?.asked == true"))

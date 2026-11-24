@@ -76,8 +76,8 @@ object Farewells {
 
     /**
      * [transcript] holds a word that answers a question ([ANSWER_WORDS]) or a number. One reading for
-     * every state: a pending write took a stricter one for a day and Kevin reversed it (2026-11-23),
-     * since a filler lead-in authorises nothing wherever it is said.
+     * every state. A pending write took a stricter reading on one branch and Kevin reversed it before
+     * it ever shipped (2026-11-23): a filler lead-in authorises nothing wherever it is said.
      */
     fun answersQuestion(transcript: String): Boolean {
         val w = normalise(transcript).split(' ').filter { it.isNotEmpty() }

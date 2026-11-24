@@ -95,10 +95,11 @@ class WakePhrasesFarewellTest {
     }
 
     /**
-     * A WRITE DRAFT waiting on his yes is no exception (Kevin, 2026-11-23, asked in those words:
-     * while a write draft is pending, should "that'll be all" and "okay bye" close, or go to the
-     * model so it can ask again? *they close and the draft is dropped; nothing is sent*). It had a
-     * carve-out for a day, on the reasoning that "okay, that's it" might be the yes; he reversed it.
+     * A WRITE DRAFT waiting on his yes is no exception (Kevin, 2026-11-23). He was asked whether,
+     * while a write draft is pending, "that'll be all" and "okay bye" should close or go to the model
+     * so it could ask again, and ruled that they close, the draft is dropped and nothing is sent. The
+     * carve-out that held them back was never in a release; the reasoning it rested on was that
+     * "okay, that's it" might be the yes.
      *
      * What still protects a yes is the other half of his ruling and is unchanged: an ASSENTING word
      * authorises the thing Alfred asked about ([Farewells.ANSWER_WORDS]), so "yes, that's all" goes
