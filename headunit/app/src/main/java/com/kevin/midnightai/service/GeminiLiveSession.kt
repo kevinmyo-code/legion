@@ -18,6 +18,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.kevin.midnightai.BuildConfig
+import com.kevin.midnightai.ai.CompanionProfile
 import com.kevin.midnightai.ai.CrisisDetector
 import com.kevin.midnightai.ai.GeminiKeyProvider
 import com.kevin.midnightai.diag.ConvoAudit
@@ -331,6 +332,12 @@ class GeminiLiveSession(
     // match on one delta matches on every delta after it. Reset on turnComplete.
     @Volatile private var crisisFiredThisTurn = false
 
+    // The driver said goodbye (DriverDismissal), so this conversation ends when the turn does.
+    // NOT reset at turnComplete like crisisFiredThisTurn: a dismissal said on a turn that called a
+    // tool has to survive to the answer's own turnComplete, which is the turn that parks. Cleared
+    // by parkWarm (the dismissal happened) and by start() (a fresh socket).
+    @Volatile private var dismissAfterTurn = false
+
     // Zero's own speech this turn, from outputAudioTranscription - only requested
     // when the debug subtitle toggle is on, and emitted as LiveEvent.Subtitle.
     @Volatile private var subtitles = false
@@ -393,6 +400,7 @@ class GeminiLiveSession(
         warm.set(false)
         suppressMicNextTurn = false
         discardModelAudioUntilTurnComplete = false
+        dismissAfterTurn = false
         // Every session speaks or listens right away (the idle pre-connect that did not mark busy
         // is gone, 2026-11-09), so it marks busy and routine proactive stays quiet for it.
         ConversationState.setBusy(true)
@@ -965,6 +973,22 @@ class GeminiLiveSession(
                 MidnightEvents.silentMicTurn(heard, bytesThisTurn)
             }
             captureEpisodicTurn(heard, companionTurnText.toString().trim())
+            // The driver's goodbye, read once off the COMPLETE turn (never a partial delta - see
+            // DriverDismissal's doc). Sticky: once armed it survives a tool round trip to the turn
+            // that parks. By now Moose's sign-off has been spoken and is draining from the
+            // playback queue, which is what the park below leaves alone.
+            if (DriverDismissal.armsDismissal(
+                    heard = heard,
+                    companionName = CompanionProfile.name(appContext),
+                    vadMode = vadMode,
+                    keepWarm = keepWarm,
+                    conversationActive = conversationActive,
+                    inTriviaGame = TriviaController.isActive,
+                )
+            ) {
+                dismissAfterTurn = true
+                MidnightEvents.voiceTurnDecision("dismissal armed from transcript")
+            }
             userTurnText.setLength(0)
             companionTurnText.setLength(0)
             emit(LiveEvent.TurnComplete)
@@ -975,13 +999,16 @@ class GeminiLiveSession(
             // reply" report instead of us guessing after the fact.
             val toolsPending = pendingToolCalls.isNotEmpty()
             val decision = "suppressMicNextTurn=$suppressMicNextTurn vadMode=$vadMode " +
-                "conversationActive=$conversationActive warm=${warm.get()} toolsPending=$toolsPending"
+                "conversationActive=$conversationActive warm=${warm.get()} toolsPending=$toolsPending " +
+                "dismissAfterTurn=$dismissAfterTurn"
             Log.d(TAG, "turnComplete decision: $decision")
             MidnightEvents.voiceTurnDecision(decision)
 
-            when (TurnEndDecision.decide(suppressMicNextTurn, toolsPending, vadMode)) {
+            when (TurnEndDecision.decide(suppressMicNextTurn, toolsPending, vadMode, dismissAfterTurn)) {
                 // A proactive line spoken on a warm socket: Zero is done, park
                 // the socket warm again (no mic, music back up) rather than listen.
+                // Also where the driver's goodbye lands: the conversation ends on his words and
+                // the socket gets the same warm hold going quiet would have given it.
                 TurnEndDecision.Action.PARK_WARM -> {
                     suppressMicNextTurn = false
                     parkWarm()
@@ -1539,6 +1566,7 @@ class GeminiLiveSession(
         if (capturing) audit.micClosed("park")
         capturing = false
         suppressMicNextTurn = false
+        dismissAfterTurn = false
         restoreAudio()
         ConversationState.setBusy(false)
         warm.set(true)
