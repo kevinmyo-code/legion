@@ -14,14 +14,22 @@ import com.kevin.legion.service.turn.AudioRoute
  *   voice is how he knows he was heard.
  * - [Opening.OPENER]: a line the model is asked for first (a proactive check-in, Brief me): that
  *   line is the opening.
+ * - [Opening.PICKUP]: he pressed Call (Kevin, 2026-11-24). Alfred answers like a person, with a
+ *   short scripted line ([CallPickup]) and only then listens: a call that opens in silence does not
+ *   feel like a call, and a model-written hello is two seconds late.
  *
  * Pure: no Android.
  */
 internal object OpeningRule {
-    enum class Opening { CHIME, GREETING, OPENER }
+    enum class Opening { CHIME, GREETING, OPENER, PICKUP }
 
-    fun of(fromWakeWord: Boolean, hasOpener: Boolean): Opening = when {
+    /**
+     * A line it was asked for first still wins (that line IS the opening, and it is the one opening
+     * the earpiece refuses); then a call, then the wake word, then the tap's chime.
+     */
+    fun of(fromWakeWord: Boolean, hasOpener: Boolean, call: Boolean = false): Opening = when {
         hasOpener -> Opening.OPENER
+        call -> Opening.PICKUP
         fromWakeWord -> Opening.GREETING
         else -> Opening.CHIME
     }

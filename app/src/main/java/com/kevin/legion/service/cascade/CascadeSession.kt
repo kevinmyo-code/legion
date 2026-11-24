@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.util.Log
 import com.kevin.legion.BuildConfig
+import com.kevin.legion.ai.ALFRED
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.clock.RingControl
@@ -204,7 +205,7 @@ internal class CascadeSession(
     @Volatile private var openStartedAtMs = 0L
 
     /** How this conversation opens ([OpeningRule]): a tap gets the chime and the mic at once. */
-    private val opening = OpeningRule.of(fromWakeWord, opener != null)
+    private val opening = OpeningRule.of(fromWakeWord, opener != null, call)
 
     /** A tap's audio from the mic's start until [turnTaker] exists ([MicBacklog]). Under [turnLock]. */
     private var backlog: MicBacklog? = null
@@ -542,7 +543,10 @@ internal class CascadeSession(
             }
         }
         LiveLatency.log(LiveLatency.TAG, "open_mic_ms=${System.currentTimeMillis() - started}")
-        if (listens && opening == OpeningRule.Opening.CHIME) openMicNow()
+        // A call opens the route and the microphone as a tap does, so the earpiece is live before the
+        // first sound; its own pickup line plays instead of the chime.
+        val tapLike = opening == OpeningRule.Opening.CHIME || opening == OpeningRule.Opening.PICKUP
+        if (listens && tapLike) openMicNow(chime = opening == OpeningRule.Opening.CHIME)
         // Either voice needs the phone's turn detection to listen: without it, nothing can.
         val models = if (listens) {
             withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
@@ -646,6 +650,10 @@ internal class CascadeSession(
         }
         if (opening == OpeningRule.Opening.CHIME) {
             listenAfterChime()
+            return
+        }
+        if (opening == OpeningRule.Opening.PICKUP) {
+            speakPickup()
             return
         }
         val plan = greetingPlan?.await()
@@ -2905,6 +2913,43 @@ internal class CascadeSession(
     }
 
     /**
+     * He pressed Call, so Alfred answers like a person ([CallPickup]): one short scripted line, said
+     * before the floor is his, and then the mic is open as after any reply. Never a model turn and
+     * never the opening earcon, so what he hears first is a voice saying hello.
+     *
+     * The line is said from audio in hand when there is any, and asked for otherwise (the first call
+     * after an install pays one voice fetch; the rest of the pool is warmed once this line has
+     * played, so later calls answer from memory). The clips are not in the APK yet: rendering them
+     * needs Kevin's own key (`tools/render_fixed_clips.py`), which no agent may spend.
+     */
+    private fun speakPickup() {
+        val voice = backend ?: return
+        val name = CompanionProfile.name(ctx)
+        val line = CallPickup.pick(
+            ctx,
+            name,
+            ALFRED.defaultName,
+            inHand = { voice.tts.inHand(SpokenText.forSpeech(it)) },
+        )
+        val spoken = SpokenText.forSpeech(line)
+        LiveLatency.log(LiveLatency.TAG, "pickup in_hand=${voice.tts.inHand(spoken)}")
+        val reply = newSpeaker(null)
+        reply.say(line)
+        turnJob = scope.launch(loop) {
+            when (val o = reply.await()) {
+                ReplySpeaker.Outcome.Played -> {
+                    // Next time: from memory. After the pickup has played, so no fetch queues ahead of it.
+                    voice.tts.warm(CallPickup.warmable(name).map { SpokenText.forSpeech(it) })
+                    afterReply()
+                }
+                is ReplySpeaker.Outcome.Failed -> onScriptedFailed(voice, line, o.reason)
+                ReplySpeaker.Outcome.Interrupted -> Unit
+            }
+        }
+        openingJob = turnJob
+    }
+
+    /**
      * The cloud voice's opening line: the same bundled clip in the companion's voice Live played
      * ([ListenCue]; an earcon when no clip matches the voice). No model and no TTS call: nothing is
      * paid for and nothing can fail before he speaks.
@@ -3884,14 +3929,14 @@ internal class CascadeSession(
      * before the turn models, the voice service and the prompt (Kevin, 2026-11-19). Capture follows the
      * audio mode it starts in, so the route goes first; its barge-in decision needs only the route.
      */
-    private fun openMicNow() {
+    private fun openMicNow(chime: Boolean = true) {
         val route = CallAudioMode.route(audioManager)
         val barge = OpeningRule.bargeIn(VoiceTurnSettings.bargeIn(ctx), route, TelephonyController.isInCall)
         tapRoute = route
         tapBarge = barge
         enterRoute(barge, "tap")
         synchronized(turnLock) { backlog = MicBacklog() }
-        startMic(chime = true)
+        startMic(chime = chime)
     }
 
     /**
