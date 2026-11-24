@@ -84,7 +84,9 @@ SCRIPT_EXT = frozenset({
 # holds a credential. `config.json` and anything named `*token*` are on the list because the
 # engine token's own file was not: a clean helper could read it and speak to the engine as the
 # laptop. `*token*` is deliberately wide and catches ordinary source files too (a `tokens.py`, a
-# `TokenStore.kt`): a task that needs one says so and Kevin reads it out.
+# `TokenStore.kt`): a task that needs one says so and Kevin reads it out. It also binds the
+# UPLOAD refusal (`worker.py:1103`), so a found file whose name holds `token`, and any
+# `config.json`, no longer reaches his phone either. Both costs are deliberate.
 CREDENTIAL_NAMES = re.compile(
     r"(^|[\\/])(\.ssh|\.gnupg|\.aws|\.azure|\.kube|\.docker|gcloud|\.config[\\/]gcloud"
     r"|\.git-credentials|\.netrc|_netrc|\.npmrc|\.pypirc|\.?credentials\.json|config\.json"
