@@ -19,13 +19,17 @@ import kotlinx.coroutines.launch
 
 /**
  * Live-sync's last-aspect-slice: an instant pull triggered by Supabase Realtime's
- * `postgres_changes` feed on all four tables (`goals`/`grocery_staples`/`item_lists`/`list_items`),
- * mirroring [LedgerConfigRealtime]'s own shape and every rule its class doc states - the realtime
- * event is a TRIGGER, not a data source; every actual merge still runs through
- * [LastAspectsSync.pull]. `MidnightApplication.onCreate` calls [bind] once for the process.
+ * `postgres_changes` feed on `goals`, mirroring [LedgerConfigRealtime]'s own shape and every rule
+ * its class doc states - the realtime event is a TRIGGER, not a data source; every actual merge
+ * still runs through [LastAspectsSync.pull]. `MidnightApplication.onCreate` calls [bind] once for
+ * the process.
  *
- * One [PullCoalescer] shared across all four tables' change feeds, same reasoning
- * [LedgerConfigRealtime]'s own class doc gives for its three.
+ * **NARROWED by the lists redesign slice 1a (2026-11-24)** from four channels to one: the
+ * `grocery_staples`/`item_lists`/`list_items` feeds cost Supabase Realtime egress to drive a pull
+ * of tables nothing on the phone read any more. See [LastAspectsBackend]'s own class doc.
+ *
+ * [TABLES] stays a list rather than collapsing into a single channel: the shape is what the next
+ * table added here needs, and [PullCoalescer] already folds every feed into one pull.
  */
 object LastAspectsRealtime {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -33,7 +37,7 @@ object LastAspectsRealtime {
     @Volatile private var channels: List<RealtimeChannel> = emptyList()
     @Volatile private var bound = false
 
-    private val TABLES = listOf("goals", "grocery_staples", "item_lists", "list_items")
+    private val TABLES = listOf("goals")
 
     /** Idempotent - safe to call more than once, matching [LedgerConfigRealtime.bind]'s own
      * contract. */
