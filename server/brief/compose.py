@@ -322,6 +322,7 @@ def _maintenance_lines(viewer: Viewer, vehicle, today: dt.date) -> list[str]:
     odometer = latest_odometer(viewer, vehicle)
     due: list[str] = []
     never: list[str] = []
+    needs_reading: list[str] = []
     unchecked_miles = False
     horizon = today + dt.timedelta(days=MAINTENANCE_DAYS)
     for item in items:
@@ -334,6 +335,13 @@ def _maintenance_lines(viewer: Viewer, vehicle, today: dt.date) -> list[str]:
                 f"{item.service_name} {verb} {short_date(item.due_on)} (every "
                 f"{item.interval_months} months, last done {short_date(item.last_done_on)})."
             )
+            continue
+        # Said, not skipped: a miles-only item whose newest service carries no reading can be
+        # timed on no axis at all, and a `continue` here dropped it out of the brief entirely -
+        # which reads as "nothing to report about it". Same verdict the phone gives for the same
+        # history (`VehicleController.needsMileageReading`).
+        if item.needs_mileage:
+            needs_reading.append(item.service_name)
             continue
         if item.due_at_miles is None:
             continue
@@ -353,6 +361,12 @@ def _maintenance_lines(viewer: Viewer, vehicle, today: dt.date) -> list[str]:
     ]
     if unchecked_miles:
         lines.append("Mileage-based items cannot be checked: no odometer reading on file.")
+    if needs_reading:
+        lines.append(
+            "Timed by mileage only, with no mileage on the last service, so not timed at all: "
+            + ", ".join(needs_reading)
+            + "."
+        )
     if never:
         lines.append("Never logged as done: " + ", ".join(never) + ".")
     return lines
