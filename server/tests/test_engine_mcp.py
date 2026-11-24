@@ -636,3 +636,78 @@ def test_a_screen_only_tool_is_neither_listed_nor_run_over_mcp(mcp_read):
     is_error, text, _ = call(mcp_read, "show_diagram", {"project": "legion", "view": "context"})
     assert is_error and text.startswith("Nothing was read. Nothing was shown either")
     assert "no screen" in text
+
+
+# =============================================================================
+# The per-member fence is the same on both doors (2026-11-24)
+# =============================================================================
+
+
+def test_mcp_reads_the_same_per_member_fence_as_the_web_assistant(mcp_read, household_user):
+    """`/mcp` listed `TOOLS` minus `NOT_ON_MCP` and called `run_tool` directly, consulting
+    neither `assistant.surface`'s fence nor `member_only_tools`, so a per-member narrowing added
+    for the web assistant would have left this door wide open. Both doors read
+    `surface.member_refusal` now, and this asserts the declaration and the door agree on it.
+
+    It does not claim the fence narrows anything for a member TODAY: `EXCLUDED_FROM_WEB` is
+    empty, so the member surface is the registry. What it pins is that the two cannot drift.
+    """
+    from assistant.surface import member_refusal
+
+    listed = {
+        tool["name"] for tool in json.loads(rpc(mcp_read, "tools/list").content)["result"]["tools"]
+    }
+    assert listed == {
+        name for name in set(TOOLS_BY_NAME) - NOT_ON_MCP
+        if member_refusal(name, household_user) is None
+    }
+    for name in listed:
+        assert member_refusal(name, household_user) is None, name
+
+
+def test_a_tool_the_member_fence_refuses_is_neither_listed_nor_run(mcp_read, monkeypatch):
+    """The property a future narrowing rests on, proved by narrowing it here: a name the fence
+    refuses leaves the declaration AND is refused at the door, in words, having run nothing."""
+    import assistant.surface as surface
+
+    monkeypatch.setattr(
+        surface,
+        "member_refusal",
+        lambda name, user, args=None: (
+            "Nothing was read or written. not_for_you is not yours to run."
+            if name == "list_events" else None
+        ),
+    )
+    listed = {
+        tool["name"] for tool in json.loads(rpc(mcp_read, "tools/list").content)["result"]["tools"]
+    }
+    assert "list_events" not in listed
+    assert "read_records" in listed
+    is_error, text, structured = call(mcp_read, "list_events", {})
+    assert is_error and "not yours to run" in text
+    assert structured is None
+
+
+def test_a_dark_tool_is_refused_on_both_doors(mcp_read, household_user, settings, monkeypatch):
+    """`dark_tools()` kept a switched-off tool out of the web's declarations; the doors refuse to
+    RUN one now, and `/mcp` reads the same list. The two board tools are also `NOT_ON_MCP`, so
+    the switch is pointed at an ordinary read here to exercise the fence end to end through
+    `/mcp` itself rather than through a stub."""
+    import assistant.surface as surface
+    from assistant.surface import DARK_REFUSAL, member_refusal, refusal_for
+    from engine_mcp.tools import BOARD_TOOLS, dark_tools
+
+    settings.LEGION_BOARD = None
+    assert dark_tools() == BOARD_TOOLS
+    for name in BOARD_TOOLS:
+        assert member_refusal(name, household_user) == DARK_REFUSAL.format(name=name)
+        assert refusal_for(name, household_user) == DARK_REFUSAL.format(name=name)
+
+    monkeypatch.setattr(surface, "dark_tools", lambda: frozenset({"list_events"}))
+    listed = {
+        tool["name"] for tool in json.loads(rpc(mcp_read, "tools/list").content)["result"]["tools"]
+    }
+    assert "list_events" not in listed and "read_records" in listed
+    is_error, text, structured = call(mcp_read, "list_events", {})
+    assert is_error and text == DARK_REFUSAL.format(name="list_events")
+    assert structured is None
