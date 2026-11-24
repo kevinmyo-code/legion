@@ -13,6 +13,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 import java.io.File
 
 /**
@@ -44,7 +46,7 @@ internal fun hasCamera(context: Context): Boolean =
 internal fun rememberCameraCaptureLauncher(
     context: Context,
     onCaptured: (Bitmap) -> Unit,
-): () -> Unit {
+): () -> String? {
     var pendingFile by remember { mutableStateOf<File?>(null) }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.TakePicture(),
@@ -56,11 +58,18 @@ internal fun rememberCameraCaptureLauncher(
         }
         file?.delete()
     }
+    // Returns null when a camera app took the request, else the words for what did not happen.
+    // This unit has no camera of its own (CLAUDE.md section 8) and a gutted ROM may have no camera
+    // app at all, so the launch threw out of the tap and took the launcher with it. The whole body
+    // goes through the door because a misconfigured FileProvider throws IllegalArgumentException
+    // here too, which killed it just the same.
     return {
-        val dir = File(context.cacheDir, "camera").apply { mkdirs() }
-        val file = File(dir, "${System.currentTimeMillis()}.jpg")
-        pendingFile = file
-        val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
-        launcher.launch(uri)
+        ExternalDoor.attempt(ExternalScreen.CAMERA) {
+            val dir = File(context.cacheDir, "camera").apply { mkdirs() }
+            val file = File(dir, "${System.currentTimeMillis()}.jpg")
+            pendingFile = file
+            val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+            launcher.launch(uri)
+        }
     }
 }

@@ -49,12 +49,19 @@ object LogbookExporter {
      * Renders the share card on the calling thread (must be IO-dispatched by the
      * caller), writes it to [Context.getCacheDir], and fires [Intent.ACTION_SEND].
      *
+     * Returns null when a share target took it, else the words for what did not happen. The whole
+     * body runs on a detached coroutine with no catch of its own, and a ROM with nothing to share
+     * to threw the chooser straight out of it, which on this app is the launcher process. The
+     * render and the file write are NOT guarded here: they throw `IOException`, which
+     * [ExternalDoor] deliberately does not catch, and a full cache is a different bug from a
+     * missing share sheet (see the report's debt).
+     *
      * @param context   An Activity or application context.
      * @param carLabel  Display label from [com.kevin.midnightai.vehicle.VehicleController],
      *                  e.g. "1998 Jeep Cherokee".
      * @param entries   Up to 5 entries to show; caller supplies the most-recent ones.
      */
-    fun share(context: Context, carLabel: String, entries: List<ShareEntry>) {
+    fun share(context: Context, carLabel: String, entries: List<ShareEntry>): String? {
         val bmp = render(carLabel, entries)
         val file = File(context.cacheDir, "midnight_logbook_export.png")
         file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 95, it) }
@@ -71,10 +78,12 @@ object LogbookExporter {
             putExtra(Intent.EXTRA_TEXT, "Logged with MIDNIGHT AI")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(
-            Intent.createChooser(intent, "Share logbook")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+        return ExternalDoor.attempt(ExternalScreen.SHARE_SHEET) {
+            context.startActivity(
+                Intent.createChooser(intent, "Share logbook")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     // -------------------------------------------------------------------------
