@@ -19,7 +19,8 @@ import com.kevin.legion.data.local.TaggedPlace
  * autoincrement `id` and no `syncId` column - so the per-table `Long` cursor
  * [ChecklistsBackfillCursor] and [LastAspectsBackfillCursor] both use has nothing to count.
  * [LastAspectsBackfill] hit the identical wall on `grocery_staples` (also natural-keyed) and
- * answered it by rescanning the whole table every run; this answers it by remembering the labels
+ * answered it by rescanning the whole table every run, until that table's sync retired in the lists
+ * redesign slice 1a; this answers it by remembering the labels
  * instead, which costs a handful of short strings and buys the thing that rescan does not: a
  * second run that makes **no network call at all** (see [PlacesBackfill.run]'s early return).
  *

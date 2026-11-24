@@ -359,9 +359,9 @@ class MainActivity : ComponentActivity() {
             // and the next pass picks them up.
             com.kevin.legion.backend.LedgerTransactionsSync.maybeAutoPull(applicationContext)
         }
-        // live-sync's last aspect slice ("give LEGION's lists, goals and grocery staples a
-        // Supabase home, end to end"): goals/grocery_staples/item_lists/list_items. Same
-        // drain-then-backfill-then-pull ordering as the blocks above, for the identical reason.
+        // live-sync's last aspect slice, now `goals` alone (the lists redesign slice 1a retired
+        // grocery_staples/item_lists/list_items). Same drain-then-backfill-then-pull ordering as
+        // the blocks above, for the identical reason.
         // Engine-brain ticket 03: the engine homes for goals, advice, voice-logged pending
         // transactions and raises. The one-time backfill of what this phone holds (counts logged as
         // `homes_backfill`), then a throttled reconcile and the pull of what the engine wrote.
