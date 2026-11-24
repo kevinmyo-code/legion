@@ -10,7 +10,9 @@ import java.util.Locale
  * [com.kevin.legion.service.ListenCue.closeChimePcm]; the session plays it once in its release, through
  * Alfred's own track, after the mic has closed and before the audio route is let go. Pure.
  *
- * It plays on every close of a conversation he was in ([PLAYS], and a failed voice's close). Not:
+ * It plays on every close of a conversation he was in ([PLAYS], and a failed voice's close), an
+ * answered check-in's single turn included (`check_in_answered`, Kevin 2026-11-23: it closes where
+ * the follow-up window used to close it, so the same sound ends it). Not:
  * - a close that is not the end of his conversation: the controller tearing down ("destroyed"), Live
  *   or another session taking over ("preempted"), the crisis teardown, another app holding the mic,
  *   a ring window ending, a speak-only line or check-in statement he never answered, a check-in
@@ -22,7 +24,7 @@ import java.util.Locale
 internal object CloseCue {
     private val PLAYS = setOf(
         "stopped", "sleep_phrase", "follow_up", "dismissed", "noise", "missed_twice", "check_in_no_reply",
-        "new conversation",
+        "check_in_answered", "new conversation",
     )
     private const val VOICE_FAILED = "voice_failed_"
 

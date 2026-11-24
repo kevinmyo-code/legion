@@ -302,12 +302,18 @@ internal class CascadeSession(
 
     /**
      * A listening check-in's progress (alfred-greets ticket 03): [CheckInStep.LINE] while its line
-     * plays, [CheckInStep.LISTENING] in the reply window, [CheckInStep.DONE] once he spoke or it
-     * closed. [CheckInStep.NONE] for every other conversation.
+     * plays, [CheckInStep.LISTENING] in the reply window, [CheckInStep.ANSWERED] from the moment he
+     * speaks, [CheckInStep.REPLIED] once that answer's reply has played, [CheckInStep.DONE] when it
+     * closed with nothing answered. [CheckInStep.NONE] for every other conversation.
+     *
+     * [CheckInStep.ANSWERED] and [CheckInStep.REPLIED] are what keep the check-in to one exchange
+     * (Kevin, 2026-11-23): [afterReply] closes on REPLIED instead of opening a second window. They
+     * are two steps, not one, because his words can still be lost between them, and a conversation
+     * that never got his answer replied to is not over.
      */
     private var checkInStep = if (opener?.checkIn != null) CheckInStep.LINE else CheckInStep.NONE
 
-    private enum class CheckInStep { NONE, LINE, LISTENING, DONE }
+    private enum class CheckInStep { NONE, LINE, LISTENING, ANSWERED, REPLIED, DONE }
 
     private var followUp = FollowUpWindow.State()
     private var followUpJob: Job? = null
@@ -1167,7 +1173,7 @@ internal class CascadeSession(
         uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)
         cutAck()
         if (checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING) {
-            checkInStep = CheckInStep.DONE
+            checkInStep = CheckInStep.ANSWERED
             reportCheckIn(CheckInOutcome.ANSWERED)
         }
         draft?.takeIf { it.utt !== currentUtt }?.let { discardDraft("new_utterance") }
@@ -1920,9 +1926,11 @@ internal class CascadeSession(
         if (outcome != ReplySpeaker.Outcome.Played) return
         if (checkInStep == CheckInStep.LINE && !record.fromUser) {
             afterCheckInLine(TtsTags.strip(record.reply.toString()))
-        } else {
-            afterReply()
+            return
         }
+        // His answer to the check-in has been replied to: that is the whole exchange ([afterReply]).
+        if (record.fromUser && checkInStep == CheckInStep.ANSWERED) checkInStep = CheckInStep.REPLIED
+        afterReply()
     }
 
     // --- listening check-in (alfred-greets ticket 03; Kevin 2026-11-15) ----------------------------
@@ -2717,7 +2725,11 @@ internal class CascadeSession(
         host.phase(Phase.SPEAKING, "Speaking...")
     }
 
-    /** The reply played to the end: drain, settle, listen again (or hang up if he asked). */
+    /**
+     * The reply played to the end: drain, settle, then what [CascadeRules.afterReply] says. Listen
+     * again, or hang up because he asked, because the conversation was a one-shot, or because an
+     * unprompted check-in has had its one exchange (Kevin, 2026-11-23).
+     */
     private suspend fun afterReply() {
         player?.awaitDrained()
         engineBrain?.runDeviceActions()
@@ -2731,6 +2743,7 @@ internal class CascadeSession(
             listens = listens,
             dismissed = dismissAfterReply,
             oneShotDone = (oneShot || oneShotRequested) && answeredOnce,
+            checkInReplied = checkInStep == CheckInStep.REPLIED,
         )
         when (next) {
             CascadeRules.AfterReply.SPOKEN -> {
@@ -2741,6 +2754,13 @@ internal class CascadeSession(
                 sayOwed()
                 shutdown("dismissed")
                 host.closed("dismissed")
+            }
+            CascadeRules.AfterReply.CHECK_IN_ANSWERED -> {
+                checkInStep = CheckInStep.DONE
+                LiveLatency.log("LIVE_FOLLOWUP", "check_in single_turn")
+                sayOwed()
+                shutdown("check_in_answered")
+                host.closed("check_in_answered")
             }
             CascadeRules.AfterReply.LISTEN -> backToListening()
         }

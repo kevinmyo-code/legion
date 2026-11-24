@@ -166,20 +166,30 @@ internal object CascadeRules {
         /** He asked to be left alone, or a one-shot conversation got its one answer. */
         DISMISSED,
 
+        /** An unprompted check-in's one exchange is over. Closed as `check_in_answered`. */
+        CHECK_IN_ANSWERED,
+
         /** Listen again: the follow-up window opens. */
         LISTEN,
     }
 
     /**
      * Which way a conversation ends a reply, in the order the session checks it. A session with no
-     * mic has nothing to go back to; a dismissal and a one-shot's single answer both close with the
-     * owed lines said first; anything else listens again.
+     * mic has nothing to go back to; a dismissal, a one-shot's single answer and an answered
+     * check-in all close with the owed lines said first; anything else listens again.
+     *
+     * [checkInReplied]: an unprompted check-in asked its question, he answered, and that answer's
+     * reply has now played. **Kevin, 2026-11-23: a check-in that opens a voice turn stays a single
+     * turn.** So no second listening window opens after it; a check-in nobody answered closes the
+     * way it always has ([com.kevin.legion.service.checkin.ClosingLines]).
      */
-    fun afterReply(listens: Boolean, dismissed: Boolean, oneShotDone: Boolean): AfterReply = when {
-        !listens -> AfterReply.SPOKEN
-        dismissed || oneShotDone -> AfterReply.DISMISSED
-        else -> AfterReply.LISTEN
-    }
+    fun afterReply(listens: Boolean, dismissed: Boolean, oneShotDone: Boolean, checkInReplied: Boolean): AfterReply =
+        when {
+            !listens -> AfterReply.SPOKEN
+            checkInReplied -> AfterReply.CHECK_IN_ANSWERED
+            dismissed || oneShotDone -> AfterReply.DISMISSED
+            else -> AfterReply.LISTEN
+        }
 
     @Suppress("LongParameterList")
     fun turnPlan(

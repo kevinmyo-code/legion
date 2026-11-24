@@ -419,28 +419,30 @@ class CascadeRulesTest {
 
     @Test
     fun `a reply listens again unless the session had no mic or was dismissed`() {
-        assertEquals(
-            CascadeRules.AfterReply.LISTEN,
-            CascadeRules.afterReply(listens = true, dismissed = false, oneShotDone = false),
-        )
-        assertEquals(
-            CascadeRules.AfterReply.SPOKEN,
-            CascadeRules.afterReply(listens = false, dismissed = false, oneShotDone = false),
-        )
-        assertEquals(
-            CascadeRules.AfterReply.DISMISSED,
-            CascadeRules.afterReply(listens = true, dismissed = true, oneShotDone = false),
-        )
-        assertEquals(
-            CascadeRules.AfterReply.DISMISSED,
-            CascadeRules.afterReply(listens = true, dismissed = false, oneShotDone = true),
-        )
+        assertEquals(CascadeRules.AfterReply.LISTEN, after())
+        assertEquals(CascadeRules.AfterReply.SPOKEN, after(listens = false))
+        assertEquals(CascadeRules.AfterReply.DISMISSED, after(dismissed = true))
+        assertEquals(CascadeRules.AfterReply.DISMISSED, after(oneShotDone = true))
         // No mic beats everything else: there is nothing to go back to.
-        assertEquals(
-            CascadeRules.AfterReply.SPOKEN,
-            CascadeRules.afterReply(listens = false, dismissed = true, oneShotDone = true),
-        )
+        assertEquals(CascadeRules.AfterReply.SPOKEN, after(listens = false, dismissed = true, oneShotDone = true))
     }
+
+    @Test
+    fun `an answered check-in closes after its one reply instead of listening again`() {
+        assertEquals(CascadeRules.AfterReply.CHECK_IN_ANSWERED, after(checkInReplied = true))
+        // The reasons that close anyway do not take its close reason.
+        assertEquals(CascadeRules.AfterReply.CHECK_IN_ANSWERED, after(checkInReplied = true, dismissed = true))
+        assertEquals(CascadeRules.AfterReply.CHECK_IN_ANSWERED, after(checkInReplied = true, oneShotDone = true))
+        // A check-in he has not answered yet is an ordinary reply: its window opens.
+        assertEquals(CascadeRules.AfterReply.LISTEN, after(checkInReplied = false))
+    }
+
+    private fun after(
+        listens: Boolean = true,
+        dismissed: Boolean = false,
+        oneShotDone: Boolean = false,
+        checkInReplied: Boolean = false,
+    ) = CascadeRules.afterReply(listens, dismissed, oneShotDone, checkInReplied)
 
     @Test
     fun `code's write lines with no title are kept like the fillers`() {
