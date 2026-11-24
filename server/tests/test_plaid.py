@@ -625,6 +625,25 @@ def test_sync_now_is_owner_only(fake, item, household_a, member_client, auth_cli
     assert fake.sync_cursors == [None]
 
 
+def test_a_read_scoped_owner_token_cannot_sync(fake, item, household_user):
+    """`permission_classes` REPLACES the DRF default, so the owner check must not have cost the
+    read-scope write fence `IsHouseholdMember` runs. The owner's own token, minted read-scoped,
+    is still refused here."""
+    from household.models import DeviceToken
+
+    fake.page(None, "c1")
+    _token, raw = DeviceToken.issue(household_user, "reader", scope=DeviceToken.SCOPE_READ)
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Token {raw}")
+    refused = client.post("/api/ingest/plaid/sync")
+    assert refused.status_code == 403
+    assert "Only an owner" not in str(refused.data)
+    assert fake.sync_cursors == []
+    assert not IngestRun.objects.filter(source=Source.PLAID).exists()
+    # The same token still reads the status.
+    assert client.get("/api/ingest/plaid").status_code == 200
+
+
 def test_the_first_link_stores_a_sealed_token_and_never_returns_it(
     fake, household_a, auth_client
 ):
