@@ -103,10 +103,10 @@ object OutboxTarget {
      * **A queued entry naming one of the three retired tables is now never drained.**
      * [OutboxDao.pendingForTable] only ever reads the targets a drain names, so such a row sits in
      * `sync_outbox` untouched rather than crashing or blocking the `goals` drain. The targets are
-     * plain strings, not enum ordinals, so nothing shifts under the stored rows either. On a
-     * configured install the rows are at most 76 upserts for data the engine has no twin for, and
-     * on Kevin's own install every one of them was pushed long before `grocery_staples` lost its
-     * writer. Deleting them would be a destructive migration for no gain. */
+     * plain strings, not enum ordinals, so nothing shifts under the stored rows either. How many
+     * such rows a given install holds is not known from here: an entry is only ever enqueued when a
+     * push FAILED, and nothing reports the queue's contents. Clearing them would be a destructive
+     * migration over rows the engine has no twin for, so they are left where they are. */
     const val GOALS = "goals"
 
     /** django-engine ticket 09 - the first sync path checklists have ever had, and the first
