@@ -1,5 +1,7 @@
 package com.kevin.legion.service
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
@@ -103,6 +105,24 @@ class ListenCueTest {
             last = p.line.id
             state = p.state
         }
+    }
+
+    @Test
+    fun `each bundle keeps its own last-used line, so one pool never silences the other`() {
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        val pool = listOf(ListenCue.Line("one", "One."), ListenCue.Line("two", "Two."))
+        val second = ListenCue.Bundle(dir = "second_pool", prefs = "second_pool")
+        val opening = mutableListOf<String>()
+        val other = mutableListOf<String>()
+        repeat(6) {
+            opening += ListenCue.pickAndRemember(ctx, ListenCue.OPENING, pool, morning).id
+            other += ListenCue.pickAndRemember(ctx, second, pool, morning).id
+        }
+        // Two lines plus never-the-same-twice forces each pool's OWN sequence to alternate. On one
+        // shared last-used line the interleaved pools would hand each other the answer and one of
+        // them would repeat the same line every time.
+        assertTrue("the opening pool repeated: $opening", opening.zipWithNext().none { it.first == it.second })
+        assertTrue("the second pool repeated: $other", other.zipWithNext().none { it.first == it.second })
     }
 
     @Test
