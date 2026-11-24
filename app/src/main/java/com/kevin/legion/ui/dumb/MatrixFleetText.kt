@@ -35,7 +35,8 @@ internal object MatrixFleetText {
             if (next.unknownCount > 0) {
                 add(
                     "${next.unknownCount} maintenance item(s) have no recorded last-done date " +
-                        "(${next.unknownNames.joinToString(", ")}). They are not counted as due, and not known to be fine.",
+                        "(${next.unknownNames.joinToString(", ")}). They are not counted as due, " +
+                        "and not known to be fine.",
                 )
             }
             if (next.needsMileage.isNotEmpty()) {

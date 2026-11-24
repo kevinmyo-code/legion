@@ -322,8 +322,10 @@ object FleetDigestBuilder : DigestBuilder {
                     "LAST SERVICE ${record.serviceName}",
                     // A row with no reading says so - "at 0 mi" would state a mileage the row does
                     // not hold, into a model's own context, on a REPORTED line.
-                    compactDate(record.date ?: 0L) +
-                        (record.mileage?.let { " at ${groupThousands(it)} mi" } ?: " (mileage ${DigestText.notLogged()})"),
+                    compactDate(record.date ?: 0L) + (
+                        record.mileage?.let { " at ${groupThousands(it)} mi" }
+                            ?: " (mileage ${DigestText.notLogged()})"
+                        ),
                 ),
                 TrustTier.REPORTED,
             )

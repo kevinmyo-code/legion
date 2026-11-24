@@ -105,7 +105,8 @@ class MileagelessServiceRegressionTest {
             now = now,
         )
 
-        assertTrue("this function's own doc: there is no zero on an odometer that has moved: $text", text.contains("current not logged"))
+        // This function's own doc: there is no zero on an odometer that has moved.
+        assertTrue(text, text.contains("current not logged"))
     }
 
     @Test

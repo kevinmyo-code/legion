@@ -401,7 +401,8 @@ class TodayGapResolversTest {
         // Ticket 09 reserved OK for "nothing overdue AND nothing unknown". An item logged with no
         // mileage on a miles-only interval is the same class of not-known-to-be-fine, and the car
         // plan's slice 0 made it reachable by plain speech.
-        val rows = listOf(DueRowView("Oil Change", "-", "every 5,000 mi - no mileage on the last service", overdue = false, untimed = true))
+        val sub = "every 5,000 mi - no mileage on the last service"
+        val rows = listOf(DueRowView("Oil Change", "-", sub, overdue = false, untimed = true))
         val tile = buildFleetTile(rows, unknownCount = 0)
         assertEquals("0 DUE", tile.hero)
         assertEquals("0 due - 1 not timed", tile.caption)
