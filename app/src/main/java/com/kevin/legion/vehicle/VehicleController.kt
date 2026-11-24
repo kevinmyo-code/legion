@@ -554,6 +554,30 @@ object VehicleController {
      */
     private fun atMiles(miles: Int?): String = miles?.let { " at $it miles" } ?: ""
 
+    /**
+     * [logServiceDirect]'s spoken confirmation for a service that matched a scheduled item.
+     *
+     * Two sets, not one with a blank: with no mileage on the row the schedule can only time this
+     * item by date, so "I'll let you know when it's due again" would promise something about the
+     * mileage axis the row cannot keep. Neither set ASKS for the number - a reading he offers next
+     * is a reading (`set_odometer`), and a reply that invites one here invites a second log of the
+     * same work.
+     */
+    private fun loggedServiceMessage(serviceName: String, statedMileage: Int?): String =
+        if (statedMileage != null) {
+            listOf(
+                "Nice, logged the $serviceName at $statedMileage miles. I'll let you know when it's due again.",
+                "Got it - $serviceName done at $statedMileage. One less thing to worry about.",
+                "Logged: $serviceName at $statedMileage miles.",
+            ).random()
+        } else {
+            listOf(
+                "Nice, logged the $serviceName. No mileage on it, so I'm timing that one by date.",
+                "Got it - $serviceName done today. No reading given, so it's timed by date.",
+                "Logged: $serviceName, today, no mileage.",
+            ).random()
+        }
+
     /** [NEAR_MISS_STOPWORDS]-filtered lowercase word set for [nearMissServiceName]'s comparison. */
     private fun significantTokens(raw: String): Set<String> =
         raw.lowercase()
@@ -644,7 +668,9 @@ object VehicleController {
         // engine write itself can now genuinely fail (a reference/validation error), unlike the old
         // Room insert this replaced, so the result is checked rather than assumed.
         val targetName = matchedName ?: canonical
-        val insertResult = FleetEngineStore.insertObserved(context, vehicle.obdMac, targetName, statedMileage, now, costCents)
+        val insertResult = FleetEngineStore.insertObserved(
+            context, vehicle.obdMac, targetName, statedMileage, now, costCents,
+        )
         if (insertResult is FleetEngineStore.InsertObservedResult.Failure) {
             return WriteOutcome(false, "Couldn't log $targetName - ${insertResult.reason}.")
         }
@@ -676,27 +702,7 @@ object VehicleController {
                         "could reset it - it may have just been deleted.",
                 )
             }
-            // Two message sets, not one with a blank: with no mileage on the row the schedule can
-            // only time this item by date, and "I'll let you know when it's due again" would be a
-            // promise about the mileage axis the row cannot keep. Neither set ASKS for the number -
-            // a reading he offers next is a reading (set_odometer), and a reply that invites one
-            // here invites a second log of the same work.
-            return WriteOutcome(
-                true,
-                if (statedMileage != null) {
-                    listOf(
-                        "Nice, logged the $matchedName at $statedMileage miles. I'll let you know when it's due again.",
-                        "Got it - $matchedName done at $statedMileage. One less thing to worry about.",
-                        "Logged: $matchedName at $statedMileage miles.",
-                    ).random()
-                } else {
-                    listOf(
-                        "Nice, logged the $matchedName. No mileage on it, so I'm timing that one by date.",
-                        "Got it - $matchedName done today. No reading given, so it's timed by date.",
-                        "Logged: $matchedName, today, no mileage.",
-                    ).random()
-                },
-            )
+            return WriteOutcome(true, loggedServiceMessage(matchedName, statedMileage))
         }
 
         // No existing item matched (ticket 08): create it and SAY SO, under the
@@ -714,7 +720,8 @@ object VehicleController {
         )
         return WriteOutcome(
             true,
-            "Logged the $canonical${atMiles(statedMileage)}. Nothing on your schedule matched, so I've added $canonical " +
+            "Logged the $canonical${atMiles(statedMileage)}. Nothing on your schedule matched, so " +
+                "I've added $canonical " +
                 "as an item - it has no interval yet, tell me one when you want it tracked.",
         )
     }

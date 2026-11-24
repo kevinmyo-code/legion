@@ -76,7 +76,10 @@ class LiveToolboxLogServiceMileageTest {
         val result = LiveToolbox.dispatch(context, "log_service", args)
 
         val message = result?.optString("message").orEmpty()
-        assertTrue("the reply must state what landed. Was: $message", message.contains("42300") || message.contains("42,300"))
+        assertTrue(
+            "the reply must state what landed. Was: $message",
+            message.contains("42300") || message.contains("42,300"),
+        )
     }
 
     @Test
@@ -111,7 +114,10 @@ class LiveToolboxLogServiceMileageTest {
 
         val result = LiveToolbox.dispatch(context, "log_service", args)
 
-        assertTrue("a reading out of range must be questioned, not filed. Was: $result", result?.optBoolean("success") == false)
+        assertTrue(
+            "a reading out of range must be questioned, not filed. Was: $result",
+            result?.optBoolean("success") == false,
+        )
         assertTrue(FleetEngineStore.getRecentForVehicle(context, "V1", 10).isEmpty())
     }
 }
