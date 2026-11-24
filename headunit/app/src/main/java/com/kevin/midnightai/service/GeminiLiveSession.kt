@@ -68,8 +68,16 @@ sealed interface LiveEvent {
     data object SpeakingStarted : LiveEvent
     /** The driver barged in; queued model audio was flushed. */
     data object Interrupted : LiveEvent
-    /** Zero finished a turn and is waiting for the driver. */
-    data object TurnComplete : LiveEvent
+    /**
+     * Zero finished a turn and is waiting for the driver.
+     *
+     * [dismissed] means the driver said goodbye this turn ([DriverDismissal]) and the session is
+     * parking, so the owner must not push anything else into it: a held proactive line sent here
+     * would land in a parked socket with no suppress flag, and its own turnComplete would reopen
+     * the mic after a goodbye. The line is not lost - the [Idle] that follows is where a parked
+     * socket speaks one, which is the correct route for it.
+     */
+    data class TurnComplete(val dismissed: Boolean = false) : LiveEvent
     /** Gemini wants a local tool run; reply via [GeminiLiveSession.sendToolResponse]. */
     data class ToolCall(val id: String, val name: String, val args: JSONObject) : LiveEvent
     /** Live transcript of what Zero is saying this turn (debug subtitle), accumulated. */
@@ -991,7 +999,7 @@ class GeminiLiveSession(
             }
             userTurnText.setLength(0)
             companionTurnText.setLength(0)
-            emit(LiveEvent.TurnComplete)
+            emit(LiveEvent.TurnComplete(dismissed = dismissAfterTurn))
 
             // DIAGNOSTIC (B9/B10/B12, remove once root-caused): the exact flags this
             // branch decision is made from, so a field-test log pull shows which path
@@ -1010,8 +1018,23 @@ class GeminiLiveSession(
                 // Also where the driver's goodbye lands: the conversation ends on his words and
                 // the socket gets the same warm hold going quiet would have given it.
                 TurnEndDecision.Action.PARK_WARM -> {
+                    val onDismissal = dismissAfterTurn
                     suppressMicNextTurn = false
-                    parkWarm()
+                    if (onDismissal) {
+                        // Let the sign-off finish first. parkWarm calls restoreAudio, which can
+                        // nudge the music app back into play, and the last seconds of "night, kid"
+                        // are still in the jitter buffer at turnComplete. The idle path gets away
+                        // with parking undrained only because armIdleTimeout already waited on
+                        // this same helper; a dismissal has no such wait in front of it. Bounded
+                        // by PLAYBACK_DRAIN_CAP_MS, and the mic stays shut throughout (half-duplex
+                        // closed it when Zero began speaking).
+                        io.launch {
+                            awaitPlaybackDrained(forMic = false)
+                            parkWarm()
+                        }
+                    } else {
+                        parkWarm()
+                    }
                 }
                 // B7 (2026-10-15): a proactive that Zero answered with a tool call. This
                 // turnComplete is the call turn, not the spoken answer: keep the suppress flag so

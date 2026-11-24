@@ -15,9 +15,9 @@ package com.kevin.midnightai.service
  * rather than a state the code inferred; everything below it is about what the session was doing.
  * It takes the same pending-tool detour for the same reason: the call turn is not the answer turn,
  * so a dismissal said while a tool runs waits for the answer to be spoken rather than parking on
- * top of it. Parking rather than closing is what lets the sign-off finish - `parkWarm` shuts the
- * mic and brings the music back but never flushes the playback queue, exactly as a proactive
- * line's own PARK_WARM already does at its turnComplete.
+ * top of it. It parks rather than closes, so nothing flushes the playback queue; the caller waits
+ * for that queue to drain before it parks on a dismissal, because `parkWarm` can nudge the music
+ * back up and the sign-off is still playing at turnComplete.
  */
 internal object TurnEndDecision {
     enum class Action { PARK_WARM, HOLD_FOR_TOOL, OPEN_MIC, RESTORE_AND_CLOSE }

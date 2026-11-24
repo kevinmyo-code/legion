@@ -25,10 +25,23 @@ package com.kevin.midnightai.service
  * (they answer "morning or night?"), and neither do the soft dismissals the phone left soft
  * ("never mind", "we're done", "I'm done").
  *
- * **Nothing gets sent on the way out** (the phone's F1, and ruling A's other half). A turn holding
- * a word that answers a question ([ANSWER_WORDS]) or a number is an answer, in every state: "that'll
- * be all" closes, "yes, that'll be all" goes to the model so the work it authorises still runs.
- * A filler lead-in is courtesy and vetoes nothing, which is why "okay bye" closes (Kevin, Q9).
+ * **What the answer-word veto does, stated precisely, because it is easy to overclaim.** A turn
+ * holding a word that answers a question ([ANSWER_WORDS]) or a number is an answer, in every state:
+ * "that'll be all" closes, "yes, that'll be all" does not, so the work that yes authorises is not
+ * swallowed by a goodbye (the phone's F1). A filler lead-in is courtesy and vetoes nothing, which
+ * is why "okay bye" closes (Kevin, Q9).
+ *
+ * **It does NOT mean nothing was sent on the dismissal turn.** The phone decides before any model
+ * call; this reads the transcript at the END of the model's turn, and `handleToolCall` dispatched
+ * whatever the model asked for the moment the server asked, long before that. So a turn that both
+ * wrote something and said goodbye has already written. What closing guarantees is that there is
+ * no FURTHER turn in which the model can act. Nothing here is a write guard, and the engine guards
+ * its own doors anyway.
+ *
+ * **The cost of running the veto always.** On the phone it applies only when an answer is awaited.
+ * Here there is no such signal, so an assenting lead before a goodbye never closes: "great, that'll
+ * be all", "cool, bye" and "perfect, good night" all go to the model. That is the deliberate
+ * trade for not losing an authorisation, and it costs one extra turn, never a lost one.
  *
  * **It arms, it does not fire.** [armsDismissal] is read at the END of the model's turn, so Moose's
  * sign-off is already spoken and still draining from the jitter buffer when the conversation parks.
@@ -41,11 +54,15 @@ object DriverDismissal {
      * Goodbyes. "night", "nite" and "later" are absent on purpose: alone they answer a question at
      * least as often as they end one, and this file has no way to tell the two apart (see the class
      * doc). "good night" and "night night" are phrases in their own right and close either way.
+     *
+     * The phone's "see you tomorrow" is absent too, and that is not an oversight: "tomorrow" is an
+     * [ANSWER_WORDS] entry, so the veto above fires on it first and the phrase could never match.
+     * Dead data in a phrase list is worse than a missing phrase, because it reads as covered.
      */
     val FAREWELLS: List<String> = listOf(
         "bye", "bye bye", "byebye", "buh bye", "bye now", "goodbye", "good bye", "bye for now",
         "good night", "goodnight", "night night", "nighty night", "nite nite", "g night",
-        "see you", "see ya", "see you later", "see ya later", "see you tomorrow", "see you soon",
+        "see you", "see ya", "see you later", "see ya later", "see you soon",
         "talk to you later", "talk later", "talk soon", "catch you later", "ciao", "cheerio",
         "farewell", "peace out", "take care", "have a good night", "have a good one",
     )
@@ -185,15 +202,21 @@ object DriverDismissal {
      * Courtesy is only ever set aside at the ENDS. That is what keeps the decomposition honest:
      * "that's all the coolant it needs" and "text mom bye bye" have a non-closer in the middle and
      * match nothing.
+     *
+     * **The name's last word counts as the name.** `CompanionProfile.DEFAULT_NAME` is "Uncle
+     * Moose", and nobody says "bye Uncle Moose": they say "bye Moose". The phone never needed this
+     * because "Alfred" is one word. Only the LAST word, because that is the one a two-part name is
+     * shortened to; the first ("Uncle", "Mr") is the title.
      */
     fun withoutCourtesy(words: List<String>, name: String): List<String> {
-        val nameWords = name.split(' ').filter { it.isNotEmpty() }
+        val full = name.split(' ').filter { it.isNotEmpty() }
+        val forms = if (full.size > 1) listOf(full, listOf(full.last())) else listOf(full)
         var w = words
         while (true) {
             val before = w
-            if (nameWords.isNotEmpty() && w.take(nameWords.size) == nameWords) w = w.drop(nameWords.size)
-            if (nameWords.isNotEmpty() && w.size >= nameWords.size && w.takeLast(nameWords.size) == nameWords) {
-                w = w.dropLast(nameWords.size)
+            forms.filter { it.isNotEmpty() }.forEach { n ->
+                if (w.take(n.size) == n) w = w.drop(n.size)
+                if (w.size >= n.size && w.takeLast(n.size) == n) w = w.dropLast(n.size)
             }
             leadWords.firstOrNull { it.size < w.size && w.take(it.size) == it }?.let { w = w.drop(it.size) }
             tailWords.firstOrNull { it.size < w.size && w.takeLast(it.size) == it }?.let { w = w.dropLast(it.size) }

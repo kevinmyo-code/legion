@@ -71,6 +71,19 @@ class DriverDismissalTest {
         assertFalse(closes("bye Dave", name = "Moose"))
     }
 
+    @Test fun `the default two-word name is stripped by its last word too`() {
+        // CompanionProfile.DEFAULT_NAME is "Uncle Moose" and nobody says the whole thing.
+        val default = "Uncle Moose"
+        assertTrue(closes("bye Moose", name = default))
+        assertTrue(closes("Moose, stop", name = default))
+        assertTrue(closes("good night Moose", name = default))
+        assertTrue(closes("that'll be all Moose", name = default))
+        // The title alone is not him.
+        assertFalse(closes("bye Uncle", name = default))
+        // And the name alone is still not a goodbye.
+        assertFalse(closes("Moose", name = default))
+    }
+
     @Test fun `courtesy alone is a turn of its own and closes nothing`() {
         assertFalse(closes("thanks"))
         assertFalse(closes("cheers"))
@@ -88,7 +101,10 @@ class DriverDismissalTest {
         assertFalse(closes("bye bye birdie"))
     }
 
-    // --- nothing gets sent on the way out (the phone's F1, ruling A's other half) ---------
+    // --- the answer-word veto: an authorisation is never read as a goodbye (the phone's F1) ---
+    // NOT a write guard. The dismissal is read at the end of the MODEL's turn, by which point
+    // handleToolCall already dispatched anything it asked for. Closing stops the NEXT turn, not
+    // this one. See DriverDismissal's class doc.
 
     @Test fun `a yes that authorises work is never swallowed by a goodbye`() {
         // Ruling A: the bare dismissal closes even while Moose is waiting on a yes.
@@ -131,6 +147,19 @@ class DriverDismissalTest {
         assertTrue(closes("good night"))
         assertTrue(closes("night night"))
         assertTrue(closes("see you later"))
+    }
+
+    @Test fun `an assenting lead before a goodbye costs one turn, by design`() {
+        // The veto runs in every state here because the unit has no "answer awaited" signal, so
+        // these go to the model rather than closing. Asserted so the trade is visible: one extra
+        // turn is the price of never losing an authorisation.
+        assertFalse(closes("great, that'll be all"))
+        assertFalse(closes("cool, bye"))
+        assertFalse(closes("perfect, good night"))
+        // "see you tomorrow" can never match: "tomorrow" is an answer word, which is why the
+        // phrase is deliberately absent from FAREWELLS rather than sitting there as dead data.
+        assertFalse(closes("see you tomorrow"))
+        assertFalse("dead phrase data", DriverDismissal.FAREWELLS.contains("see you tomorrow"))
     }
 
     // --- trivia ---------------------------------------------------------------------------
