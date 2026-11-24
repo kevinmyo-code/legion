@@ -55,6 +55,7 @@ import com.kevin.midnightai.bluetooth.PhoneLinkCapability
 import com.kevin.midnightai.bluetooth.PhoneLinkManager
 import com.kevin.midnightai.bluetooth.PhoneLinkState
 import com.kevin.midnightai.media.PlaylistsState
+import com.kevin.midnightai.media.openNotificationAccessSettings
 import com.kevin.midnightai.media.SpotifyController
 import com.kevin.midnightai.media.SpotifyPlaylists
 import com.kevin.midnightai.media.SpotifyWebApi
@@ -1187,6 +1188,8 @@ private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissio
     }
     val mediaGranted = remember(refresh) { NowPlayingController.hasAccess(context) }
 
+    var trouble by remember { mutableStateOf<String?>(null) }
+
     SectionScaffold("Permissions", onBack) {
         GrantRow(
             label = "Microphone & location",
@@ -1198,8 +1201,13 @@ private fun SystemPermissionsSection(context: Context, onRequestRuntimePermissio
             label = "Media access (now-playing & music control)",
             granted = mediaGranted,
             actionLabel = "Enable",
-            onAction = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+            // The second copy of this intent used to live here, unguarded. One door, one caller.
+            onAction = { trouble = openNotificationAccessSettings(context) },
         )
+        trouble?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
+        }
         Spacer(Modifier.height(16.dp))
         Text(
             text = "Music plays from your phone over Bluetooth - play it there and your co-pilot " +
@@ -1234,12 +1242,13 @@ private fun SystemPreferencesSection(context: Context, onBack: () -> Unit) {
         // tap-through that opens that screen, and the label reflects live state
         // after the user returns. The app ships NOT set as home by default.
         var isDefaultLauncher by remember(refresh) { mutableStateOf(LauncherSettings.isDefaultLauncher(context)) }
+        var homeTrouble by remember { mutableStateOf<String?>(null) }
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(8.dp))
-                .clickable { LauncherSettings.openLauncherSettings(context) }
+                .clickable { homeTrouble = LauncherSettings.openLauncherSettings(context) }
                 .padding(vertical = 6.dp),
         ) {
             Column(Modifier.weight(1f)) {
@@ -1258,6 +1267,11 @@ private fun SystemPreferencesSection(context: Context, onBack: () -> Unit) {
                 style = Label,
                 color = AriaColors.Amber,
             )
+        }
+
+        homeTrouble?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
         }
 
         // GPS beacon link (2026-07-25). This head unit browns out its own WiFi/BT

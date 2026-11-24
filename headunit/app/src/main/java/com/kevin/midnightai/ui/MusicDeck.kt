@@ -617,27 +617,36 @@ private fun IdleCaption(m: DeckMetrics, emptyState: MediaEmptyState, source: Sou
     val body = AriaType.readout.copy(fontSize = m.subtitle, letterSpacing = 0.sp)
     when (emptyState) {
         MediaEmptyState.NEEDS_NOTIFICATION_ACCESS -> Row(verticalAlignment = Alignment.CenterVertically) {
+            // The grant screen is an optional Settings activity this ROM may not have, and this
+            // chip sits on Cruise, the car's home screen. Its words replace the caption and the
+            // chip goes with them: offering a second tap at a screen that does not exist is the
+            // dead tap again.
+            var trouble by remember { mutableStateOf<String?>(null) }
             Text(
-                "Notification access is off.",
+                trouble ?: "Notification access is off.",
                 style = body,
                 color = AriaColors.TextDim,
-                maxLines = 1,
+                maxLines = if (trouble == null) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            Box(
-                Modifier
-                    .driveTarget()
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable(onClickLabel = "Grant notification access") { openNotificationAccessSettings(context) }
-                    .padding(horizontal = 6.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "GRANT ACCESS",
-                    style = AriaType.neonLabel.copy(fontSize = m.label, letterSpacing = 1.sp),
-                    color = AriaColors.accentText(AriaColors.NeonMagenta),
-                )
+            if (trouble == null) {
+                Box(
+                    Modifier
+                        .driveTarget()
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable(onClickLabel = "Grant notification access") {
+                            trouble = openNotificationAccessSettings(context)
+                        }
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "GRANT ACCESS",
+                        style = AriaType.neonLabel.copy(fontSize = m.label, letterSpacing = 1.sp),
+                        color = AriaColors.accentText(AriaColors.NeonMagenta),
+                    )
+                }
             }
         }
         MediaEmptyState.METADATA_MISSING -> Text(
