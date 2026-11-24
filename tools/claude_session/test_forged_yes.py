@@ -210,7 +210,9 @@ class TestARecordedFileIsDeniedOnlyToCommandsThatRunIt(ForgeCase):
     def test_reading_searching_and_committing_it_are_fine(self):
         notes = self.note()
         for cmd in (f"cat {notes.name}", f"git add {notes.name}", f"grep yes {notes.name}",
-                    f"type {notes.name}", f"git diff -- {notes.name}", f"ls -l {notes.name}"):
+                    f"type {notes.name}", f"git diff -- {notes.name}", f"ls -l {notes.name}",
+                    f"head -5 {notes.name}", f"wc -l {notes.name}",
+                    f"git add {notes.name} 2>&1"):
             with self.subTest(cmd=cmd):
                 self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)
 
@@ -219,7 +221,13 @@ class TestARecordedFileIsDeniedOnlyToCommandsThatRunIt(ForgeCase):
         for cmd in (f"python {notes.name}", f"cat {notes.name} | python",
                     f"python < {notes.name}", f"cat {notes.name} > b.py",
                     f"cp {notes.name} b.py", f"./{notes.name}", f"bash {notes.name}",
-                    f"pytest {notes.name}"):
+                    f"pytest {notes.name}",
+                    # Runs that name no interpreter at all: the segment holding a recorded file
+                    # has to START with a short read or a version-control verb, or it denies.
+                    f". ./{notes.name}", f"X=1 ./{notes.name}", f"time ./{notes.name}",
+                    f"if ./{notes.name}; then :; fi", f"echo $(./{notes.name})",
+                    f"Import-Module ./{notes.name}", f"xcopy {notes.name} b.py",
+                    f"`./{notes.name}`", f"awk -f {notes.name}", f"sed -f {notes.name} x.txt"):
             with self.subTest(cmd=cmd):
                 self.assertEqual(
                     self.decide("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)[1],
@@ -268,6 +276,14 @@ class TestACdCannotReachTheRoot(ForgeCase):
         ("Bash", 'cat ../"config.json"'),
         ("Bash", "grep -r token .."),
         ("Bash", "ls .."),
+        # A `cd` the walk must not trust: one it cannot resolve, one that is backgrounded, one
+        # hiding in a quoted string, and a whole chain inside an interpreter's own `-c` string.
+        ("Bash", "cd $PWD && cat ../config.json"),
+        ("Bash", "cd nope & true && cat ../config.json"),
+        ("Bash", 'echo "a && cd task-50 && " && cat ../config.json'),
+        ("Bash", "cd task-50 && cd .. && cat ../config.json"),
+        ("Bash", 'bash -c "cd ..; cat config.json"'),
+        ("PowerShell", 'powershell -c "cd ..; type config.json"'),
     )
 
     def test_the_root_is_never_read_from_the_sessions_own_cwd(self):
@@ -277,6 +293,17 @@ class TestACdCannotReachTheRoot(ForgeCase):
                                            cwd=self.paths.work)
                 self.assertEqual((d, rule), ("deny", "worker files read"), cmd)
                 self.assertIn("WORKER FILES", self.reason(out))
+
+    def test_an_unresolvable_cd_does_not_hide_an_absolute_read(self):
+        """A `cd` the check cannot resolve used to drop every segment after it, so the read that
+        followed was never looked at. The whole command is now checked with no folder at all,
+        which is enough for any absolute or root-name spelling."""
+        for cmd in (f"cd ~ && cat {self.paths.root.as_posix()}/config.json",
+                    f"cd ~ && cat {self.paths.tokens.as_posix()}/50-yes.json"):
+            with self.subTest(cmd=cmd[:40]):
+                self.assertEqual(
+                    self.decide("Bash", {"command": cmd}, agent="agentZ",
+                                cwd=self.paths.work)[1], "worker files read")
 
     def test_ordinary_build_work_in_a_task_folder_still_runs(self):
         """The other direction, and the cost of getting it wrong is a whole task: `reports`,
@@ -289,9 +316,27 @@ class TestACdCannotReachTheRoot(ForgeCase):
                     "cd wt && ls ../../tokens",
                     "cd wt && cat ../../config.json",
                     "cd wt/server && pytest -q",
-                    "cd wt/server && pytest --junitxml=../reports/x.xml"):
+                    "cd wt/server && pytest --junitxml=../reports/x.xml",
+                    # A single pipe and a `2>&1` are how a helper really writes it, and neither
+                    # can outlive the `&&`, so the walk still holds.
+                    "cd wt/server && pytest --junitxml=../../reports/junit.xml 2>&1 | tail -20",
+                    "cd wt && cat ../../reports/last.txt | head -5"):
             with self.subTest(cmd=cmd):
                 self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)
+
+    def test_a_cd_does_not_hide_a_net_script_or_a_written_file_either(self):
+        """The written and net-script checks resolve relative paths too, so they take the same
+        `cd`-adjusted folders. From the session's own cwd `cd task-50 && python post.py` ran a
+        recorded net script before this (RED review debt, 2026-11-24)."""
+        self.passed("Write", {"file_path": str(self.own / "post.py"),
+                              "content": "import urllib.request\n"}, agent="agentZ")
+        C.record_written(self.paths, str(self.own / "rows.csv"))
+        for cmd, rule in (("cd task-50 && python post.py", "net script"),
+                          ("cd task-50 && cat rows.csv", "read_through written")):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(
+                    self.decide("Bash", {"command": cmd}, agent="agentZ",
+                                cwd=self.paths.work)[1], rule)
 
     def test_the_task_folder_itself_is_still_the_helpers_own(self):
         for cmd in ("cd task-50 && ls", "cat task-50/notes.md", "ls .", "cd task-50; cat ../x.csv"):

@@ -616,43 +616,59 @@ def _cwd_candidates(command: str, cwd: str) -> list[str]:
     return bases
 
 
-_NOT_AND_ONLY_RE = re.compile(r"[;|\n`(]|\$\(")
+# A command whose `cd`s cannot be walked: anything that lets a later command run though the `cd`
+# failed or was never what it looked like. A `;`, a `||`, a newline, a subshell, a substitution, a
+# quote (which can hide an `&&`), and a LONE `&` (which backgrounds the `cd`). A single pipe is
+# fine: `pytest 2>&1 | tail -20` is how a helper really writes it, and it cannot outlive its `&&`.
+_UNWALKABLE_RE = re.compile(r"[;\n`(\"']|\$\(|\|\||(?<![&>])&(?![&>])")
+# The only `cd` the walk trusts: a whole segment, one plain resolvable folder, nothing else on it.
+_PLAIN_CD_RE = re.compile(r"^\s*(?:cd|Set-Location|sl|pushd|Push-Location)\s+(?:-Path\s+)?"
+                          r"([^\s|;&\"']+)\s*$", re.I)
+_CD_VERB_RE = re.compile(r"(?:^|\s)(?:cd|Set-Location|sl|pushd|Push-Location)(?=\s)", re.I)
 
 
 def _cd_scoped(command: str, cwd: str) -> list:
     """(base, text) pairs saying which folder each part of the command really resolves against.
 
-    A `cd` may move the base only for work that CANNOT run unless that `cd` succeeded, which on a
-    plain `&&` chain is everything after it. Anywhere else (a `;`, a pipe, a `||`, a subshell, a
-    newline) the `cd` may fail and the next command still runs in the old folder, so
-    `cd nope; cat ../config.json` reads the root on a real shell: there every candidate base is
-    checked, the raw cwd included, and the check stays fail-closed (RED review B1, 2026-11-24)."""
-    if _NOT_AND_ONLY_RE.search(command or ""):
-        return [(b, command) for b in _cwd_candidates(command, cwd)]
+    A `cd` may move the base only for work that CANNOT run unless that `cd` succeeded, which is a
+    plain `&&` chain of plain `cd`s and nothing else. Everywhere else the `cd` may fail, or be
+    backgrounded, or sit inside a quoted string, and the next command still runs in the old
+    folder: `cd nope; cat ../config.json` reads the root on a real shell. There the whole command
+    is checked against every candidate base, the raw cwd included, and no part is ever dropped
+    (RED review B1, 2026-11-24, and its re-measure)."""
+    walkable = not _UNWALKABLE_RE.search(command or "")
+    segs = re.split(r"&&", command or "")
+    if walkable:
+        for seg in segs:
+            if _CD_VERB_RE.search(seg) and not _PLAIN_CD_RE.match(seg.strip()):
+                walkable = False
+                break
+    if not walkable:
+        return [(b, command) for b in _cwd_candidates(command, cwd) if b]
     out, base = [], cwd
-    for seg in re.split(r"&&", command or ""):
-        if base:
-            out.append((base, seg))
-        m = CD_RE.search(seg)
+    for seg in segs:
+        out.append((base, seg))
+        m = _PLAIN_CD_RE.match(seg.strip())
         if m:
-            d = _to_os_path(next(g for g in m.groups() if g is not None))
-            if d.startswith(("~", "$", "%")):
-                base = None
-            elif DRIVE_RE.match(d):
-                base = d
-            elif base is not None:
-                base = os.path.normpath(os.path.join(base, d))
+            d = _to_os_path(m.group(1))
+            if d.startswith(("~", "$", "%")) or not base:
+                return [(b, command) for b in _cwd_candidates(command, cwd) if b]
+            base = d if DRIVE_RE.match(d) else os.path.normpath(os.path.join(base, d))
     return out
 
 
 def _root_read_denied(command: str, cwd: str, paths: Paths) -> bool:
     """Does this command READ the worker's own root outside the work folder?
 
-    Two rules. A folder the command moves INTO that lies in the root outside the work folder is
-    itself a read of the root (`cd ..` from the session's own cwd lands on the root, and no path
-    in `cat config.json` is root-shaped at all). And each part of the command is checked against
-    the folder that part really runs in, which is what keeps the guard off a checkout's own
-    `../../reports` (RED review B1 and B2, 2026-11-24: one defect, measured in both directions)."""
+    Three rules. The whole command is checked with no folder at all, which catches every absolute
+    and root-name spelling wherever it sits. A folder the command moves INTO that lies in the root
+    outside the work folder is itself a read of the root (`cd ..` from the session's own cwd lands
+    on the root, and no path in `cat config.json` is root-shaped at all). And each part of the
+    command is checked against the folder that part really runs in, which is what keeps the guard
+    off a checkout's own `../../reports` (RED review B1 and B2, 2026-11-24: one defect, measured
+    in both directions)."""
+    if C.names_worker_root(command, "", paths):
+        return True
     if any(b and is_under(b, paths.root) and not is_under(b, paths.work)
            for b in _cwd_candidates(command, cwd)):
         return True

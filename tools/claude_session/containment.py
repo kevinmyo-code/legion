@@ -628,16 +628,28 @@ def command_names_root(command: str, cwd: str, paths: Paths) -> bool:
         return True
     if not cwd:
         return False
-    for m in _TOKEN_RE.finditer(command or ""):
-        tok = next(g for g in m.groups() if g is not None).strip().rstrip(",;:")
-        if not tok or tok.startswith("-"):
-            continue
-        g = re.match(r"^/([a-zA-Z])/(.*)$", tok)
-        if g and os.name == "nt":
-            tok = f"{g.group(1)}:/{g.group(2)}"
+    for tok in _command_words(command):
         if _worker_own(tok, cwd, paths):
             return True
     return False
+
+
+def _command_words(command: str) -> list[str]:
+    """Every word of a command that could be a path: shell tokens, and the words INSIDE a quoted
+    one. `bash -c "cd ..; cat config.json"` is a single token, and the `..` in it is the worker's
+    root as surely as a bare one is."""
+    out = []
+    for m in _TOKEN_RE.finditer(command or ""):
+        tok = next(g for g in m.groups() if g is not None)
+        for w in [tok] + (re.split(r"\s+", tok) if re.search(r"\s", tok) else []):
+            w = w.strip().strip("\"'").rstrip(",;:")
+            if not w or w.startswith("-"):
+                continue
+            g = re.match(r"^/([a-zA-Z])/(.*)$", w)
+            if g and os.name == "nt":
+                w = f"{g.group(1)}:/{g.group(2)}"
+            out.append(w)
+    return out
 
 
 # --------------------------------------------------------------------------- paths in a command
@@ -677,8 +689,17 @@ RUN_WORD_RE = re.compile(
 # Laundering it into a second name, or into an interpreter's stdin, is running it one command
 # later: `cp forge.py b.py; python b.py` and `cat forge.py > b.py` both end in a run.
 LAUNDER_RE = re.compile(
-    r"(?:^|[\s;&|(])(?:cp|copy|Copy-Item|mv|move|Move-Item|ren|rename|Rename-Item|install|tee|ln"
-    r"|New-Item|Set-Content|Add-Content|Out-File)(?:\.exe)?(?=\s)|[<>]", re.I)
+    r"(?:^|[\s;&|(])(?:cp|copy|xcopy|robocopy|Copy-Item|mv|move|Move-Item|ren|rename|Rename-Item"
+    r"|install|tee|ln|New-Item|Set-Content|Add-Content|Out-File)(?:\.exe)?(?=\s)"
+    r"|(?<!&)[<>](?!&)", re.I)
+# The only verbs a segment naming a recorded file may start with: a short read, a listing or a
+# version-control command. Everything else denies, because a command line is not a sandbox and
+# `. ./forge.sh`, `X=1 ./forge.py`, `time ./forge.py` and `xcopy forge.py b.py` all end in a run
+# (measured, 2026-11-24). `awk`, `sed` and `jq` are NOT here: each takes a program file.
+SAFE_READ_RE = re.compile(
+    r"^\s*(?:[\"']?[^\s\"';&|]*[\\/])?"
+    r"(?:cat|type|Get-Content|gc|head|tail|more|less|grep|egrep|fgrep|rg|findstr|Select-String"
+    r"|wc|ls|dir|Get-ChildItem|gci|stat|file|diff|cmp|nl|git|hg|svn)(?:\.exe)?(?=\s|$)", re.I)
 
 
 def runs_blocked_path(command: str, cwd: str, blocked: set[str]) -> bool:
@@ -689,18 +710,24 @@ def runs_blocked_path(command: str, cwd: str, blocked: set[str]) -> bool:
     then poisoned a helper's own notes: `CRED_REASON` asks it to say in its report what it could
     not read, and a `cat` or a `git add` of that report was refused (RED review B3, 2026-11-24).
 
-    So: named AND run. "Run" is read widely and fails closed. In command position, in a command
-    holding an interpreter, a shell or an eval word anywhere, or copied, moved or redirected.
-    Reading it, searching it, committing it and listing it are what this gives back."""
-    if not blocked or not names_blocked(command, cwd, blocked):
+    So: named AND run, and "run" fails closed. A command holding an interpreter, a shell or an
+    eval word anywhere runs it (`cat forge.py | python`); copying, moving or redirecting it runs
+    it one command later; a substitution runs it outright; and otherwise the segment that names it
+    has to START with a short read, a listing or a version-control verb (`SAFE_READ_RE`), because
+    `. ./forge.sh` and `X=1 ./forge.py` are runs that name no interpreter at all. Reading it,
+    searching it, committing it and listing it are what this gives back."""
+    # A backtick is a substitution in a shell and an escape in PowerShell, and either way it
+    # sticks to the path (`` `./forge.py` ``), so it is cleared before the path is looked for.
+    flat = (command or "").replace("`", " ")
+    if not blocked or not names_blocked(flat, cwd, blocked):
         return False
-    if RUN_WORD_RE.search(command) or LAUNDER_RE.search(command):
+    if RUN_WORD_RE.search(flat) or LAUNDER_RE.search(flat):
         return True
+    if "$(" in flat or "`" in (command or ""):
+        return True
+    command = flat
     for seg in re.split(r"[;&|\n]+", command or ""):
-        words = [next(g for g in m.groups() if g is not None).strip()
-                 for m in _TOKEN_RE.finditer(seg)]
-        words = [w for w in words if w and not w.startswith("-")]
-        if words and names_blocked(words[0], cwd, blocked):
+        if names_blocked(seg, cwd, blocked) and not SAFE_READ_RE.match(seg):
             return True
     return False
 
