@@ -86,6 +86,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 import com.kevin.midnightai.util.LogbookExporter
 import com.kevin.midnightai.util.ShareEntry
 import com.kevin.midnightai.util.shortDate
@@ -177,6 +179,10 @@ private fun LogTab(context: Context) {
         carImage = AvatarStudio.carImage(context)
     }
 
+    // The share path runs detached on an IO scope with no catch of its own; a ROM with nothing to
+    // share to threw the chooser out of it. The words land back on the main thread.
+    var shareTrouble by remember { mutableStateOf<String?>(null) }
+
     Box(Modifier.fillMaxSize()) {
         when (val loaded = items) {
             null -> CenterNote("Opening the logbook…", AriaColors.TextDim)
@@ -201,15 +207,27 @@ private fun LogTab(context: Context) {
                         .padding(12.dp)
                         .clip(RoundedCornerShape(4.dp))
                         .clickable {
-                            scope.launch(Dispatchers.IO) {
+                            scope.launch {
                                 val shareEntries = loaded.take(5).map { item ->
                                     ShareEntry(item.title, shortDate(item.date), item.category)
                                 }
-                                LogbookExporter.share(context, capturedLabel, shareEntries)
+                                shareTrouble = withContext(Dispatchers.IO) {
+                                    LogbookExporter.share(context, capturedLabel, shareEntries)
+                                }
                             }
                         }
                         .padding(vertical = 6.dp, horizontal = 8.dp),
                 )
+                shareTrouble?.let {
+                    Text(
+                        it,
+                        style = AriaType.logbookBody.copy(fontSize = 13.sp),
+                        color = AriaColors.StampRed,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 24.dp, vertical = 10.dp),
+                    )
+                }
             }
         }
     }
@@ -321,6 +339,10 @@ private fun ModsTab(context: Context) {
     // One photo picker, retargeted per entry: tapping 📷 records which entry, then
     // the picked image is downscaled, saved, and attached to that entry.
     var pendingPhotoFor by remember { mutableStateOf<Long?>(null) }
+    // A photo picker is DocumentsUI or a gallery, and this gutted AOSP unit may have neither:
+    // PickVisualMedia then falls back to ACTION_OPEN_DOCUMENT or GET_CONTENT and throws out of the
+    // tap, which on a launcher is the whole process. Same for a camera app.
+    var pickTrouble by remember { mutableStateOf<String?>(null) }
     suspend fun attachPhoto(id: Long, bmp: Bitmap) {
         val saved = withContext(Dispatchers.IO) { AvatarStudio.saveLogbookPhoto(context, id, bmp) }
         if (saved != null) {
@@ -355,6 +377,10 @@ private fun ModsTab(context: Context) {
                 newText = ""; reload++
             }
         }
+        pickTrouble?.let {
+            Text(it, style = AriaType.logbookBody.copy(fontSize = 13.sp), color = AriaColors.StampRed)
+            Spacer(Modifier.height(4.dp))
+        }
         Spacer(Modifier.height(8.dp))
         if (mods.isEmpty()) {
             Text("No mods logged yet.", style = AriaType.logbookBody, color = AriaColors.InkFaded)
@@ -376,7 +402,11 @@ private fun ModsTab(context: Context) {
                             .clip(RoundedCornerShape(4.dp))
                             .clickable {
                                 pendingPhotoFor = m.id
-                                photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                pickTrouble = ExternalDoor.attempt(ExternalScreen.PHOTO_PICKER) {
+                                    photoPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                    )
+                                }
                             }
                             .padding(horizontal = 6.dp, vertical = 4.dp),
                     )
@@ -390,7 +420,7 @@ private fun ModsTab(context: Context) {
                                 .clip(RoundedCornerShape(4.dp))
                                 .clickable {
                                     pendingPhotoFor = m.id
-                                    cameraCapture()
+                                    pickTrouble = cameraCapture()
                                 }
                                 .padding(horizontal = 6.dp, vertical = 4.dp),
                         )
@@ -828,6 +858,9 @@ private fun MixTab(context: Context) {
     var pendingDeleteMixtape by remember { mutableStateOf<Mixtape?>(null) }
     var pendingDeleteTrack by remember { mutableStateOf<LibraryTrack?>(null) }
     var showAddPicker by remember { mutableStateOf(false) }
+    // OpenMultipleDocuments has no fallback at all: with no DocumentsUI on this ROM the launch
+    // throws, and IMPORT is a tap like any other.
+    var importTrouble by remember { mutableStateOf<String?>(null) }
     val activeMixtape by MixtapePlayer.activeMixtape.collectAsState()
 
     LaunchedEffect(reload) {
@@ -863,10 +896,18 @@ private fun MixTab(context: Context) {
                 libraryCount = libraryTracks.size,
                 onOpen = { openMixtapeId = it.id },
                 onNewTape = { showNewTapeDialog = true },
-                onImport = { importer.launch(arrayOf("audio/*")) },
+                onImport = {
+                    importTrouble = ExternalDoor.attempt(ExternalScreen.FILE_PICKER) {
+                        importer.launch(arrayOf("audio/*"))
+                    }
+                },
                 onDelete = { pendingDeleteMixtape = it },
                 onPlay = { m -> scope.launch { MixtapePlayer.play(context, m.id) } },
             )
+            importTrouble?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(it, style = AriaType.logbookBody.copy(fontSize = 13.sp), color = AriaColors.StampRed)
+            }
         } else {
             MixDetail(
                 mixtape = tape,
@@ -1729,13 +1770,20 @@ private fun AlbumDetail(context: Context, albumId: String, onBack: () -> Unit) {
                 modifier = Modifier.clickable { onBack() }.padding(vertical = 4.dp),
             )
             Spacer(Modifier.height(10.dp))
+            var pickTrouble by remember { mutableStateOf<String?>(null) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    pickTrouble = ExternalDoor.attempt(ExternalScreen.PHOTO_PICKER) {
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
                 }) { Text("+ ADD PHOTO") }
                 if (hasCamera(context)) {
-                    Button(onClick = camera) { Text("TAKE PHOTO") }
+                    Button(onClick = { pickTrouble = camera() }) { Text("TAKE PHOTO") }
                 }
+            }
+            pickTrouble?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, style = AriaType.logbookBody.copy(fontSize = 13.sp), color = AriaColors.StampRed)
             }
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1854,13 +1902,20 @@ private fun AllPhotosSpread(context: Context, onBack: () -> Unit) {
                 color = AriaColors.InkFaded,
             )
             Spacer(Modifier.height(10.dp))
+            var pickTrouble by remember { mutableStateOf<String?>(null) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    pickTrouble = ExternalDoor.attempt(ExternalScreen.PHOTO_PICKER) {
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
                 }) { Text("+ ADD PHOTO") }
                 if (hasCamera(context)) {
-                    Button(onClick = camera) { Text("TAKE PHOTO") }
+                    Button(onClick = { pickTrouble = camera() }) { Text("TAKE PHOTO") }
                 }
+            }
+            pickTrouble?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, style = AriaType.logbookBody.copy(fontSize = 13.sp), color = AriaColors.StampRed)
             }
             Spacer(Modifier.height(14.dp))
             if (photos.isEmpty()) {

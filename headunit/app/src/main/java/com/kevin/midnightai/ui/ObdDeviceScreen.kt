@@ -27,6 +27,8 @@ import androidx.core.content.ContextCompat
 import com.kevin.midnightai.BuildConfig
 import com.kevin.midnightai.service.DebugSettings
 import com.kevin.midnightai.ui.theme.AriaColors
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 import com.kevin.midnightai.ui.theme.AriaType
 import com.kevin.midnightai.vehicle.DiscoveredDevice
 import com.kevin.midnightai.vehicle.ObdBluetoothManager
@@ -102,6 +104,10 @@ fun ObdDeviceScreen(onBack: () -> Unit) {
     }
 
     var permissionGranted by remember { mutableStateOf(hasPermissions) }
+    // The permission dialog is an activity too, and on a ROM that cannot show one the launch
+    // throws. These two fire from a LaunchedEffect, so that killed the launcher on screen ENTRY,
+    // not even on a tap.
+    var permissionTrouble by remember { mutableStateOf<String?>(null) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -111,7 +117,9 @@ fun ObdDeviceScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) {
         if (!permissionGranted) {
-            launcher.launch(requiredPermissions.toTypedArray())
+            permissionTrouble = ExternalDoor.attempt(ExternalScreen.PERMISSION_PROMPT) {
+                launcher.launch(requiredPermissions.toTypedArray())
+            }
         }
     }
 
@@ -233,10 +241,17 @@ fun ObdDeviceScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium
             )
             Button(
-                onClick = { launcher.launch(requiredPermissions.toTypedArray()) },
+                onClick = {
+                    permissionTrouble = ExternalDoor.attempt(ExternalScreen.PERMISSION_PROMPT) {
+                        launcher.launch(requiredPermissions.toTypedArray())
+                    }
+                },
                 modifier = Modifier.padding(top = 8.dp)
             ) {
                 Text("GRANT PERMISSIONS")
+            }
+            permissionTrouble?.let {
+                Text(it, color = AriaColors.ScanRed, style = MaterialTheme.typography.bodySmall)
             }
         } else {
             LazyColumn(
@@ -493,12 +508,20 @@ fun ObdPairOnboardingStep(onContinue: () -> Unit, onSkip: () -> Unit, onBack: ()
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
     var permissionGranted by remember { mutableStateOf(hasPermissions) }
+    // The permission dialog is an activity too, and on a ROM that cannot show one the launch
+    // throws. These two fire from a LaunchedEffect, so that killed the launcher on screen ENTRY,
+    // not even on a tap.
+    var permissionTrouble by remember { mutableStateOf<String?>(null) }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results -> permissionGranted = results.values.all { it } }
 
     LaunchedEffect(Unit) {
-        if (!permissionGranted) launcher.launch(requiredPermissions.toTypedArray())
+        if (!permissionGranted) {
+            permissionTrouble = ExternalDoor.attempt(ExternalScreen.PERMISSION_PROMPT) {
+                launcher.launch(requiredPermissions.toTypedArray())
+            }
+        }
     }
 
     // Same stale-list fix as ObdDeviceScreen: the composition-time read may
@@ -565,10 +588,17 @@ fun ObdPairOnboardingStep(onContinue: () -> Unit, onSkip: () -> Unit, onBack: ()
                 style = MaterialTheme.typography.bodyMedium,
             )
             Button(
-                onClick = { launcher.launch(requiredPermissions.toTypedArray()) },
+                onClick = {
+                    permissionTrouble = ExternalDoor.attempt(ExternalScreen.PERMISSION_PROMPT) {
+                        launcher.launch(requiredPermissions.toTypedArray())
+                    }
+                },
                 modifier = Modifier.padding(top = 8.dp),
             ) {
                 Text("GRANT PERMISSIONS")
+            }
+            permissionTrouble?.let {
+                Text(it, color = AriaColors.ScanRed, style = MaterialTheme.typography.bodySmall)
             }
         } else {
             LazyColumn(
