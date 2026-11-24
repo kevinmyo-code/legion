@@ -163,13 +163,16 @@ class ClaudeMachine(models.Model):
     # unknown, so `email_self` is kept as asked. False: `claude_session.delivery` sends the result
     # to the phone instead (2026-11-22: mail was chosen on a laptop that cannot send).
     can_mail = models.BooleanField(null=True, blank=True)
-    # Null for a machine only a session hook has ever named.
+    # Null for a machine only a session hook has ever reported: a hook binds the machine (`token`
+    # below) but is no proof of life, so such a machine reads as offline until a heartbeat.
     last_seen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(db_default=Now())
-    # memory-and-vault map decision G: the device token whose heartbeat last named this machine.
+    # memory-and-vault map decision G: the device token whose worker speaks for this machine.
     # Memory and the ID vault read it to tell a worker's token from a phone's
-    # (`claude_session.tokens`). Set by every heartbeat; null for a machine only a session hook
-    # has named. SET_NULL: revoking or deleting the token leaves the machine row.
+    # (`claude_session.tokens`), and `claude_session.fences` rule 2 reads it as the machine's
+    # owner. Set by every heartbeat, and by the first session hook of a machine nothing has bound
+    # yet; neither ever moves an existing binding. SET_NULL: revoking or deleting the token leaves
+    # the machine row, bound to nobody.
     token = models.ForeignKey(
         "household.DeviceToken", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="claude_machines",

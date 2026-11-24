@@ -4,11 +4,16 @@ ADR 0067: every laptop worker holds an ordinary household device token, named
 `claude-session-<Name>` by `tools/claude_session/install.ps1`, and reports its machine's scope
 (`full` for the Alienware, `listed` for the work laptop) on every heartbeat.
 `claude_session.views._touch_machine` binds the token to the machine it heartbeats as
-(`ClaudeMachine.token`). Memory and the ID vault read the binding here:
+(`ClaudeMachine.token`), and `SessionReportView` binds it to a machine its session hook reports
+that nothing has bound yet (`claude_session.fences` rule 2). Memory and the ID vault read the
+binding here:
 
 - **Memory** (Kevin, 2026-11-05: *"claude can write too"*): a token bound to a `full` machine may
   read and write memories; one bound to a `listed` machine may not (the work laptop never touches
-  memory); a `claude-session-*` token bound to no machine yet is refused too, fail closed.
+  memory); a `claude-session-*` token bound to no machine yet is refused too, fail closed. A
+  machine a hook bound before any heartbeat is `listed`, the safe default, so a `full` laptop
+  whose worker service has not beaten yet is refused as a `listed` one would be. Refused either
+  way; the wording is the only difference, and the first heartbeat reports the real scope.
 - **The ID vault** (ruling 5, "never readable by Claude"): refuses every `claude-session-*` token
   and every token bound to any machine.
 
@@ -63,7 +68,7 @@ def worker_route_allowed(path: str, method: str) -> bool:
 FENCE_NONE = "none"  # not a Claude worker's token, as far as the engine can tell
 FENCE_FULL = "full"
 FENCE_LISTED = "listed"
-FENCE_UNBOUND = "unbound"  # named like a worker's token, never heartbeated as a machine
+FENCE_UNBOUND = "unbound"  # named like a worker's token, has never bound a machine
 
 
 def worker_fence(request) -> str:

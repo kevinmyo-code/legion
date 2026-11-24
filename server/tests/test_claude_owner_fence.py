@@ -254,10 +254,10 @@ class TestAnotherMemberIsRefused:
     def test_her_own_session_on_a_machine_she_named_is_not_on_his_status(
         self, other_member, token_a
     ):
-        """The other direction. `sessions/` makes a machine row for a name it has not seen and
-        binds nothing, so a member with a worker-shaped token of her own could put a machine and
-        a session of hers on HIS status screen."""
-        _token, raw = DeviceToken.issue(
+        """The other direction. `sessions/` makes a machine row for a name it has not seen, so a
+        member with a worker-shaped token of her own may report a laptop of her own; the row is
+        bound to HER token, and a machine and a session of hers are never on his status screen."""
+        token, raw = DeviceToken.issue(
             other_member, "claude-session-Her laptop", scope=DeviceToken.SCOPE_CLAUDE_WORKER
         )
         reported = _client_for(raw).post(
@@ -268,7 +268,7 @@ class TestAnotherMemberIsRefused:
             format="json",
         )
         assert reported.status_code == 200, reported.data
-        assert ClaudeMachine.objects.get(name="Her laptop").token_id is None
+        assert ClaudeMachine.objects.get(name="Her laptop").token_id == token.pk
 
         status = token_a.get(f"{API}status/")
         assert status.status_code == 200
@@ -425,6 +425,33 @@ class TestKevinStillWorks:
         row.refresh_from_db()
         assert row.requested_at is not None
 
+    def test_his_hooks_put_a_machine_on_his_status_before_any_heartbeat(
+        self, token_a, worker, other
+    ):
+        """His laptop's session hooks report while the worker service is down. The machine and the
+        session are his to read from the first report, because `sessions/` binds the machine to
+        the worker that reported it, and they are hers to read in neither direction."""
+        reported = worker.post(
+            f"{API}sessions/",
+            {"machine": "Spare laptop", "session_id": "s-12", "project": "legion",
+             "state": "waiting", "name": "", "last_prompt_summary": None,
+             "at": "2026-11-24T10:00:00Z"},
+            format="json",
+        )
+        assert reported.status_code == 200, reported.data
+
+        his = token_a.get(f"{API}status/")
+        assert his.status_code == 200
+        assert [m["name"] for m in his.data["machines"]] == ["Spare laptop"]
+        # No heartbeat has said otherwise, so it is offline and `listed`.
+        assert his.data["machines"][0]["state"] == "offline"
+        assert his.data["machines"][0]["last_seen_at"] is None
+        assert [row["session_id"] for row in his.data["sessions"]] == ["s-12"]
+
+        hers = other.get(f"{API}status/")
+        assert hers.data["machines"] == []
+        assert hers.data["sessions"] == []
+
     def test_his_worker_lists_and_runs_his_workflows(self, token_a, worker):
         assert _beat(worker, workflows=[WORKFLOW], workflows_hash="h1").status_code == 200
         listed = token_a.get(f"{API}workflows/")
@@ -503,11 +530,13 @@ class TestOnlyTheBoundWorker:
     def test_she_cannot_queue_work_onto_a_machine_no_worker_has_bound(
         self, other, other_member, token_a, worker
     ):
-        """The lock-out, in the sequence that reaches it. A session hook can name a machine
-        before any heartbeat binds it, and a task of hers on that machine used to make
-        `machine_refusal` read his own worker's next heartbeat as another member's. So she may
-        not put work there at all, and his first heartbeat after the hook still binds. A workflow
-        phrase and an assign read the same queryset, so neither reaches it either (traced)."""
+        """The lock-out, in the sequence that reaches it. A task of hers on an unbound machine
+        used to make `machine_refusal` read his own worker's next heartbeat as another member's.
+        So she may not put work there at all, and his first heartbeat still binds. A workflow
+        phrase and an assign read the same queryset, so neither reaches it either (traced).
+
+        A hook binds the machine it reports now, so the unbound row here is the one state the API
+        still produces: a machine whose token row was deleted (`SET_NULL`)."""
         hooked = worker.post(
             f"{API}sessions/",
             {"machine": "Spare laptop", "session_id": "s-9", "project": "legion",
@@ -516,6 +545,7 @@ class TestOnlyTheBoundWorker:
             format="json",
         )
         assert hooked.status_code == 200, hooked.data
+        ClaudeMachine.objects.filter(name="Spare laptop").update(token=None)
         unbound = ClaudeMachine.objects.get(name="Spare laptop")
         assert unbound.token_id is None
 
@@ -550,6 +580,72 @@ class TestOnlyTheBoundWorker:
         assert refused.status_code == 403, refused.data
         assert "another member's laptop" in refused.data["detail"]
         assert _machine().token_id is None
+
+    def test_her_worker_cannot_beat_first_on_a_machine_his_hook_made(
+        self, other, other_member, token_a, worker
+    ):
+        """The last door in rule 2, in the sequence that opens it. A hooks-only machine held no
+        binding and no tasks, so `machine_refusal` had nothing to refuse: her own worker token
+        could heartbeat it FIRST, bind it to her, and every heartbeat and hook of his then read as
+        another member's machine while his sessions became hers to read. `sessions/` binds the
+        machine to the worker that reported it, so she is refused at the only door she had."""
+        hooked = worker.post(
+            f"{API}sessions/",
+            {"machine": "Spare laptop", "session_id": "s-10", "project": "legion",
+             "state": "waiting", "name": "", "last_prompt_summary": None,
+             "at": "2026-11-24T10:00:00Z"},
+            format="json",
+        )
+        assert hooked.status_code == 200, hooked.data
+
+        _token, raw = DeviceToken.issue(
+            other_member, "claude-session-Spare laptop", scope=DeviceToken.SCOPE_CLAUDE_WORKER
+        )
+        refused = _beat(_client_for(raw), name="Spare laptop")
+        assert refused.status_code == 403, refused.data
+        assert "another member's laptop" in refused.data["detail"]
+
+        # Nothing of his moved to her, on the surface either member reads.
+        hers = other.get(f"{API}status/")
+        assert hers.status_code == 200
+        assert hers.data["machines"] == []
+        assert hers.data["sessions"] == []
+        assert _beat(worker, name="Spare laptop").status_code == 200
+        his = token_a.get(f"{API}status/")
+        assert [m["name"] for m in his.data["machines"]] == ["Spare laptop"]
+        assert _claim(worker, name="Spare laptop").status_code in (200, 204)
+
+    def test_her_worker_cannot_beat_first_after_his_token_row_went(
+        self, other_member, household_user, worker
+    ):
+        """Rule 2's re-bind case, from the other side. The machine was his, his worker's token row
+        was deleted (`SET_NULL`), and it holds no task of his to refuse her by. His re-installed
+        worker's first hook binds it again, so her heartbeat is refused rather than racing him."""
+        assert _beat(worker, name="Spare laptop").status_code == 200
+        DeviceToken.objects.filter(claude_machines__name="Spare laptop").delete()
+        assert ClaudeMachine.objects.get(name="Spare laptop").token_id is None
+
+        _again, raw_his = DeviceToken.issue(
+            household_user, "claude-session-Spare laptop",
+            scope=DeviceToken.SCOPE_CLAUDE_WORKER,
+        )
+        his_worker = _client_for(raw_his)
+        hooked = his_worker.post(
+            f"{API}sessions/",
+            {"machine": "Spare laptop", "session_id": "s-11", "project": "legion",
+             "state": "idle", "name": "", "last_prompt_summary": None,
+             "at": "2026-11-24T10:00:00Z"},
+            format="json",
+        )
+        assert hooked.status_code == 200, hooked.data
+
+        _hers, raw_hers = DeviceToken.issue(
+            other_member, "claude-session-Spare laptop", scope=DeviceToken.SCOPE_CLAUDE_WORKER
+        )
+        refused = _beat(_client_for(raw_hers), name="Spare laptop")
+        assert refused.status_code == 403, refused.data
+        assert "another member's laptop" in refused.data["detail"]
+        assert _beat(his_worker, name="Spare laptop").status_code == 200
 
     def test_his_own_worker_rebinds_that_machine_after_a_new_token(
         self, household_user, his_task

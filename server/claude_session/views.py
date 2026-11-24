@@ -10,8 +10,9 @@ column of the table was the intended caller rather than an enforced one
 (Kevin 2026-11-01: accepted for v1; later, worker endpoints restricted to
 machine tokens). **That follow-up landed 2026-11-24, and it is
 `claude_session.fences`:** a task is its creating member's, a machine is the
-member whose worker heartbeats it, and heartbeat, claim, finish, upload and
-the session hooks are the bound worker's. The "Who" column is enforced now,
+member whose worker speaks for it (its heartbeat or its session hook, whichever
+reaches here first), and heartbeat, claim, finish, upload and the session hooks
+are the bound worker's. The "Who" column is enforced now,
 and it is enforced on the way IN: a route reads `fences.own_*`, and says in
 words when it refuses. Three `scoped` reads are left on purpose, and none of
 them is the fence: `_machine_any` looks a machine up household-wide for the two
@@ -1686,7 +1687,9 @@ class SessionReportView(APIView):
         now = timezone.now()
         # The session hooks run on the laptop and post with its worker token
         # (`tools/claude_session`). A member's app token has no session of its own to report, and
-        # must not write under another member's machine name.
+        # must not write under another member's machine name. Past this check `request.auth` is a
+        # `DeviceToken`: `tokens.worker_fence` calls anything else no worker's token at all, which
+        # is what lets the binding below take it.
         refusal = fences.worker_refusal(request)
         if refusal is not None:
             return _detail(refusal, http.HTTP_403_FORBIDDEN)
@@ -1695,11 +1698,22 @@ class SessionReportView(APIView):
             refusal = fences.machine_refusal(request, machine)
             if refusal is not None:
                 return _detail(refusal, http.HTTP_403_FORBIDDEN)
+            # A hook BINDS an unbound machine, like a heartbeat (`fences` rule 2): otherwise a
+            # machine only his hooks have reported is unbound and holds no task, so another
+            # member's own worker token could heartbeat it first, bind it, and lock his worker and
+            # his hooks out of his own laptop. Never moves a binding: the refusal above already
+            # returned for a machine that is another member's.
+            bound = ClaudeMachine.objects.filter(pk=machine.pk, token__isnull=True).update(
+                token=request.auth
+            )
+            if bound:
+                machine.token = request.auth
         if machine is None:
             # A hook can fire before the worker's first heartbeat. Until one
             # says otherwise the machine is `listed`, the safe default.
             machine = ClaudeMachine.objects.create(
-                household=household, name=data["machine"].strip(), scope=SCOPE_LISTED
+                household=household, name=data["machine"].strip(), scope=SCOPE_LISTED,
+                token=request.auth,
             )
         keep_summary = machine.scope != SCOPE_LISTED
         with transaction.atomic():
