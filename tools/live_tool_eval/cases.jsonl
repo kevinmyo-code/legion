@@ -41,6 +41,7 @@
 {"say": "no, undo that last log", "covers": "undo_last_log"}
 {"say": "the odometer says 84,200", "covers": "set_odometer"}
 {"say": "I just changed the oil, cost thirty five", "covers": "log_service"}
+{"say": "I got my oil changed today at 42,300", "covers": "log_service"}
 {"say": "the brakes were done about 10,000 miles ago", "covers": "log_past_service"}
 {"say": "set the oil interval to every 7,500 miles", "covers": "set_maintenance_interval"}
 {"say": "this car is a 2012 Example Motors Roadster", "covers": "register_vehicle"}

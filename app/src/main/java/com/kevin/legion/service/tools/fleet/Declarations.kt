@@ -307,10 +307,16 @@ internal object Declarations {
         add(fn(
             name = "log_service",
             description = "Record that a maintenance service was just completed, clearing its 'due' " +
-                "status. Use when the user says they did some work, e.g. 'I just changed the oil'.",
+                "status. Use when the user says they did some work, e.g. 'I just changed the oil' or " +
+                "'I got my oil changed today at 42,300' - a reading stated with the work is the " +
+                "mileage argument here, never a second set_odometer call and never log_past_service.",
             params = obj(
                 "service" to schema("string", "The service performed, e.g. oil change, tire rotation, brake pads."),
                 "cost" to schema("number", "Dollar amount paid, only if the user stated one. Omit otherwise."),
+                // Omitted is NOT zero and NOT "whatever the app thinks the odometer reads": the
+                // record then carries no mileage at all. See VehicleController.logServiceDirect's
+                // own doc for why an estimate may never ride an OBSERVED row.
+                "mileage" to schema("integer", "Odometer reading the user stated for this work, e.g. 42300. Omit if they did not say one."),
                 "vehicle" to VEHICLE_PARAM,
             ),
             required = listOf("service"),

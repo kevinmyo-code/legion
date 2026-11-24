@@ -82,12 +82,68 @@ class VehicleControllerServiceWritesTest {
 
         assertTrue("A landed write must report success. Was: $outcome", outcome.success)
         val after = FleetEngineStore.get(context, "V1", "Oil Change")!!
-        assertEquals(227_000, after.lastDoneMileage)
+        // No mileage was stated, so the anchor's mileage axis is now UNKNOWN rather than the
+        // vehicle's 227,000 estimate (car plan slice 0 - an estimate may not ride an OBSERVED row).
+        // The date axis is what moved, and that is what clears the "due" status here.
+        assertNull("an unstated mileage is unknown, never the live estimate", after.lastDoneMileage)
+        assertNotNull("the date anchor is what a fresh log always moves", after.lastDoneDate)
         // Interval must ride along untouched - this is the read-modify-write
         // race ticket 05 removed by switching to a targeted setAnchor write.
         assertEquals(5_000, after.intervalMiles)
         // Exactly one item - matching must not have created a duplicate.
         assertEquals(1, FleetEngineStore.getForVehicle(context, "V1").size)
+    }
+
+    // --- logServiceDirect: the stated mileage (car plan slice 0) ----------------------------
+
+    @Test
+    fun `logServiceDirect files the stated mileage, not the estimate`() = runBlocking {
+        FleetEngineStore.upsertNewItem(
+            context,
+            MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000)
+        )
+
+        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 231_500)
+
+        assertTrue("Was: ${outcome.message}", outcome.success)
+        val record = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single()
+        assertEquals("the figure he stated, not the 227,000 estimate", 231_500, record.mileage)
+        assertEquals("and it is the anchor", 231_500, FleetEngineStore.get(context, "V1", "Oil Change")!!.lastDoneMileage)
+        assertTrue("the reply must state what landed. Was: ${outcome.message}", outcome.message.contains("231500"))
+    }
+
+    @Test
+    fun `logServiceDirect with a stated mileage moves the odometer through the one odometer writer`() = runBlocking {
+        VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 231_500)
+
+        // Otherwise the anchor would sit 4,500 miles above the figure isDue subtracts from, and the
+        // next oil change would come due that much late.
+        val vehicle = VehicleController.vehicleFor(context, "V1")
+        assertEquals(231_500, vehicle.odometerBaseline)
+        assertEquals("a confirmed reading resets the trip accumulator, as set_odometer does", 0.0, vehicle.tripMilesSinceBaseline, 0.001)
+    }
+
+    @Test
+    fun `logServiceDirect with an out-of-range mileage refuses and writes nothing`() = runBlocking {
+        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 7)
+
+        assertFalse("a reading out of range is questioned, never filed. Was: ${outcome.message}", outcome.success)
+        assertTrue("no record", FleetEngineStore.getRecentForVehicle(context, "V1", 10).isEmpty())
+        assertEquals("and the odometer is untouched", 227_000, VehicleController.vehicleFor(context, "V1").odometerBaseline)
+    }
+
+    @Test
+    fun `logServiceDirect with an ambiguous name writes no odometer reading either`() = runBlocking {
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment"))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Front Wheel Alignment"))
+
+        val outcome = VehicleController.logServiceDirect(
+            context, "Wheel Alignment Check", vehicleId = "V1", statedMileage = 231_500,
+        )
+
+        assertFalse("Was: ${outcome.message}", outcome.success)
+        // The zero-write refusal must stay zero-write now that a reading rides along with the log.
+        assertEquals(227_000, VehicleController.vehicleFor(context, "V1").odometerBaseline)
     }
 
     // --- logServiceDirect: cost capture (ticket 11 §2) --------------------------------------
@@ -245,9 +301,10 @@ class VehicleControllerServiceWritesTest {
         val record = records.single()
         assertEquals("Brake Fluid", record.serviceName)
         assertEquals(1_723_000_000_000L, record.date)
-        // No mileage given - falls back to the vehicle's current live reading, same as
-        // logServiceDirect's own capture for a record with no explicit mileage.
-        assertEquals(227_000, record.mileage)
+        // No mileage given, and a date-only backfill knows WHEN and not AT WHAT: the record's
+        // mileage stays null rather than borrowing today's estimated odometer for a past day
+        // (car plan slice 0, the backfill half of logServiceDirect's own rule).
+        assertNull("a date-only backfill may not invent a mileage", record.mileage)
         // The anchor moves too - a dated backfill is not weaker than a mileage-only one.
         val item = FleetEngineStore.get(context, "V1", "Brake Fluid")!!
         assertEquals(1_723_000_000_000L, item.lastDoneDate)
@@ -274,7 +331,9 @@ class VehicleControllerServiceWritesTest {
 
         assertTrue("Was: ${outcome.message}", outcome.success)
         assertEquals("must fold onto the existing near-miss item, never create a second row", 1, FleetEngineStore.getForVehicle(context, "V1").size)
-        assertEquals(227_000, FleetEngineStore.get(context, "V1", "Check The Wheel Alignment")!!.lastDoneMileage)
+        // The fold is proved by the date anchor now: with no stated mileage there is no mileage
+        // anchor to read (car plan slice 0).
+        assertNotNull(FleetEngineStore.get(context, "V1", "Check The Wheel Alignment")!!.lastDoneDate)
     }
 
     @Test
