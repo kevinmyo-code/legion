@@ -455,6 +455,31 @@ def scoped(model, request):
     return model.objects.filter(household=household_of(request))
 
 
+def real_households():
+    """Every household that is a family's. The demo's are not candidates for
+    anything `resolve_default_household` answers.
+
+    The demo has TWO shapes and both have to go. Each recruiter visit gets its
+    own throwaway copy, flagged `is_demo_visit` (ADR 0069; `demo/spares.py`
+    seeds more ahead of time), and the one shared household the seed builds
+    carries no flag and is found by its name (`household/demo.py`). Leaving
+    either in makes an engine that merely RUNS a demo look like an engine
+    holding several families, which is how the nightly backup stopped on
+    2026-11-22: three households existed, none was named by
+    `LEGION_BOOTSTRAP_HOUSEHOLD_ID`, and the one real one could not be picked.
+
+    The shared household is excluded by name rather than through
+    `household.demo.find_demo_household`, which raises when the name is
+    ambiguous: a second household wearing the demo's name must not turn every
+    caller below into an exception, and excluding both of them is the same
+    answer that lookup would give anyway.
+    """
+    from household.demo import demo_household_name
+    from household.models import Household
+
+    return Household.objects.exclude(is_demo_visit=True).exclude(name=demo_household_name())
+
+
 def resolve_default_household():
     """The household a NEW member joins when nobody said which, or None.
 
@@ -467,7 +492,8 @@ def resolve_default_household():
 
     1. the household `LEGION_BOOTSTRAP_HOUSEHOLD_ID` names, if it exists. It
        is the one the operator chose and wrote into `deploy/.env`;
-    2. otherwise the ONLY household, if there is exactly one. A fresh clone's
+    2. otherwise the ONLY REAL household, if there is exactly one
+       (`real_households`: the demo's own are never counted). A fresh clone's
        compose stack is this case, and it is the whole of clone-and-run;
     3. otherwise None, and the caller refuses in words. On an engine holding
        several families there is no honest guess: picking the oldest, or the
@@ -489,8 +515,9 @@ def resolve_default_household():
         household = Household.objects.filter(id=wanted).first()
         if household is not None:
             return household
-    if Household.objects.count() == 1:
-        return Household.objects.first()
+    candidates = real_households()
+    if candidates.count() == 1:
+        return candidates.first()
     return None
 
 
