@@ -16,8 +16,10 @@ and it is enforced on the way IN: a route reads `fences.own_*`, and says in
 words when it refuses. Three `scoped` reads are left on purpose, and none of
 them is the fence: `_machine_any` looks a machine up household-wide for the two
 worker routes that must find another member's row to refuse it
-(`fences.machine_refusal`), and the other two narrow a file inside a task the
-caller has already passed `_task` or `_owned_delivery` for. A new read here
+(`fences.machine_refusal`); `_owned_delivery` reads a delivered file
+household-wide and compares the task's own member itself, which is ADR 0080's
+stricter rule rather than a looser one; and `TaskSendFileView` narrows a file
+inside a task the caller has already passed `_task` for. A new read here
 belongs in `fences`, not beside them.
 
 **Nothing here logs.** No logger is imported. A request, a summary, a

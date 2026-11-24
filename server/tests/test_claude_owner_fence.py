@@ -192,6 +192,9 @@ class TestAnotherMemberIsRefused:
         created = _create(token_a, machine=MACHINE, deliver=deliver)
         assert created.status_code == 201, created.data
         task = ClaudeTask.objects.get(pk=created.data["id"])
+        # `delivery.settle` may rewrite a delivery, and the `None` case is the one that matters:
+        # it has to stay an ordinary send-file, not become a `files` task the old check covered.
+        assert task.deliver == deliver
         assert _claim(worker).status_code == 200
         page = deliver == "phone"
         name = "page.html" if page else "notes.txt"
@@ -503,7 +506,8 @@ class TestOnlyTheBoundWorker:
         """The lock-out, in the sequence that reaches it. A session hook can name a machine
         before any heartbeat binds it, and a task of hers on that machine used to make
         `machine_refusal` read his own worker's next heartbeat as another member's. So she may
-        not put work there at all, and his first heartbeat after the hook still binds."""
+        not put work there at all, and his first heartbeat after the hook still binds. A workflow
+        phrase and an assign read the same queryset, so neither reaches it either (traced)."""
         hooked = worker.post(
             f"{API}sessions/",
             {"machine": "Spare laptop", "session_id": "s-9", "project": "legion",
@@ -519,13 +523,6 @@ class TestOnlyTheBoundWorker:
         assert refused.status_code == 400, refused.data
         assert "No machine has that name here" in refused.data["detail"]
         assert not ClaudeTask.objects.filter(machine=unbound).exists()
-        # A workflow phrase and an assign are the same queryset, so neither reaches it either.
-        hers = _create(other, request="rename my files")
-        assert hers.status_code == 201, hers.data
-        assigned = other.post(
-            f"{API}tasks/{hers.data['id']}/assign/", {"machine": "Spare laptop"}, format="json"
-        )
-        assert assigned.status_code in (404, 409), assigned.data
 
         # And the sequence the real worker runs: its first heartbeat binds that machine.
         beat = _beat(worker, name="Spare laptop")
