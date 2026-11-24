@@ -274,6 +274,12 @@ LEGION_WORKFLOW_SCHEDULES_LISTED = (
 # unset, the bytes wait in the task file row's own column instead, deleted on the same triggers.
 LEGION_CLAUDE_FILES_BUCKET = os.environ.get("LEGION_CLAUDE_FILES_BUCKET", "").strip()
 
+# Supabase egress cut 4 (2026-11-23): the private bucket the recruiter page's media files live in
+# (`demo.media_store`). Optional: unset, their bytes are read out of Postgres as before, which
+# cost about 2 GB of database egress a month. A bucket name, not a secret; the engine reads the
+# object with its own credentials and streams it to the visit, so no link exists without a session.
+LEGION_DEMO_MEDIA_BUCKET = os.environ.get("LEGION_DEMO_MEDIA_BUCKET", "").strip()
+
 # recruiter-demo tickets 02 and 03: the name of the FAKE household recruiter
 # visitors join. `manage.py seed_demo_household` creates it, and
 # `household.demo.find_demo_household()` is the one lookup both the seed and

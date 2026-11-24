@@ -20,6 +20,7 @@ visit is over.
 
 from __future__ import annotations
 
+import logging
 import re
 
 from django.db.models import BinaryField, F, Func, IntegerField, Value
@@ -32,6 +33,7 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
+from demo import media_store
 from demo.content import (
     ASSET_KINDS,
     CAPTIONS_NAME,
@@ -44,6 +46,8 @@ from demo.models import DemoVisit, RecruiterContent, RecruiterMediaFile
 from household.models import HouseholdMember, is_recruiter
 from household.permissions import RECRUITER_VISIT_OVER_CODE, IsHouseholdMember
 from legion.client_ip import ClientIpThrottleMixin
+
+logger = logging.getLogger(__name__)
 
 DEMO_TAGS = ["demo"]
 
@@ -352,6 +356,21 @@ def _byte_range(header: str | None, size: int) -> tuple[int, int] | str | None:
     return start, min(int(last), size - 1) if last else size - 1
 
 
+def _part(meta: dict, start: int, length: int) -> bytes:
+    """`length` bytes of the file `meta` describes, from the media bucket when the row names an
+    object there and from Postgres when it does not (Supabase egress cut 4, `demo.media_store`).
+    A bucket that refuses falls back to the column, which is still written this release, so a
+    missing grant costs a slow page rather than a broken one; it is logged, never shown."""
+    key = meta.get("object_name") or ""
+    store = media_store.get_store() if key else None
+    if store is not None:
+        try:
+            return store.get_range(key, start, length)
+        except media_store.MediaStoreError as exc:
+            logger.warning("demo media: the bucket refused %s, reading Postgres (%s)", key, exc)
+    return _read_part(meta["pk"], start, length)
+
+
 def _read_part(pk: int, start: int, length: int) -> bytes:
     """`length` bytes of a stored file from `start`, read in Postgres: never the whole row."""
     part = (
@@ -424,7 +443,7 @@ class DemoMediaView(APIView):
         meta = (
             RecruiterMediaFile.objects.filter(content_id=content_id, name=name)
             .annotate(size=Func(F("data"), function="octet_length", output_field=IntegerField()))
-            .values("pk", "sha256", "content_type", "size")
+            .values("pk", "sha256", "content_type", "size", "object_name")
             .first()
         )
         if meta is None:
@@ -447,11 +466,11 @@ class DemoMediaView(APIView):
             start, end = wanted
             end = min(end, start + RANGE_CHUNK - 1)
             response = HttpResponse(
-                _read_part(meta["pk"], start, end - start + 1), status=206, content_type=kind
+                _part(meta, start, end - start + 1), status=206, content_type=kind
             )
             response["Content-Range"] = f"bytes {start}-{end}/{size}"
         else:
-            response = HttpResponse(_read_part(meta["pk"], 0, size), content_type=kind)
+            response = HttpResponse(_part(meta, 0, size), content_type=kind)
         response["X-Content-Type-Options"] = "nosniff"
         response["Accept-Ranges"] = "bytes"
         response["ETag"] = etag

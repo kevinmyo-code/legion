@@ -24,6 +24,7 @@ from pathlib import Path
 from django.db import transaction
 from jsonschema import Draft202012Validator
 
+from demo import media_store
 from demo.models import RecruiterContent, RecruiterMediaFile
 from demo.profile import PROFILE_ORDER
 
@@ -465,21 +466,46 @@ def _read_media(folder: Path, content: dict) -> dict[str, tuple[bytes, str]]:
     return media
 
 
-def _store_media(row: RecruiterContent, media: dict[str, tuple[bytes, str]]) -> tuple[int, int]:
+def _store_media(
+    row: RecruiterContent, media: dict[str, tuple[bytes, str]]
+) -> tuple[int, int, int]:
     """Make the row's files exactly `media`: drop the ones no longer named or changed, insert the
     new and changed ones ONE ROW PER INSERT, and leave a file whose sha256 is unchanged alone (a
-    text-only reload moves no megabytes). Returns (files written, bytes written)."""
+    text-only reload moves no megabytes). With a media bucket set (`demo.media_store`) the bytes
+    go there as well, and the row names the object; a file already stored whose bytes never
+    reached the bucket is uploaded too, so the first load after the bucket is set moves everything
+    out of the read path. Returns (files written, bytes written, files put in the bucket).
+
+    An upload that a later failure rolls back leaves an object nothing names, which costs a few
+    megabytes of bucket and is overwritten by the next load of the same bytes: the object's name
+    is its own hash."""
     wanted = {name: hashlib.sha256(data).hexdigest() for name, (data, _type) in media.items()}
-    have = dict(RecruiterMediaFile.objects.filter(content=row).values_list("name", "sha256"))
-    stale = [name for name, sha in have.items() if wanted.get(name) != sha]
+    store = media_store.get_store()
+    have = {
+        name: (sha, key)
+        for name, sha, key in RecruiterMediaFile.objects.filter(content=row).values_list(
+            "name", "sha256", "object_name"
+        )
+    }
+    stale = [name for name, (sha, _key) in have.items() if wanted.get(name) != sha]
     RecruiterMediaFile.objects.filter(content=row, name__in=stale).delete()
-    fresh = [name for name in media if have.get(name) != wanted[name]]
+    fresh = [name for name in media if have.get(name, ("", ""))[0] != wanted[name]]
+    moving = [
+        name
+        for name in media
+        if name not in fresh and store is not None and not have[name][1]
+    ]
+    keys = {name: media_store.object_key(wanted[name], name) for name in (*fresh, *moving)}
+    if store is not None:
+        for name in (*fresh, *moving):
+            store.put(keys[name], media[name][0], media[name][1])
     RecruiterMediaFile.objects.bulk_create(
         (
             RecruiterMediaFile(
                 content=row,
                 name=name,
                 data=media[name][0],
+                object_name=keys[name] if store is not None else "",
                 content_type=media[name][1],
                 sha256=wanted[name],
             )
@@ -487,7 +513,10 @@ def _store_media(row: RecruiterContent, media: dict[str, tuple[bytes, str]]) -> 
         ),
         batch_size=1,
     )
-    return len(fresh), sum(len(media[name][0]) for name in fresh)
+    for name in moving:
+        RecruiterMediaFile.objects.filter(content=row, name=name).update(object_name=keys[name])
+    to_bucket = len(keys) if store is not None else 0
+    return len(fresh), sum(len(media[name][0]) for name in fresh), to_bucket
 
 
 def file_named_videos(content: dict) -> list[str]:
@@ -530,6 +559,7 @@ class Loaded:
     media_bytes: int = 0  # all the version's media files, stored
     media_written: int = 0  # files this load inserted (new or changed)
     media_bytes_written: int = 0
+    media_to_bucket: int = 0  # files whose bytes this load put in the media bucket
     file_named_videos: tuple[str, ...] = ()
 
 
@@ -589,7 +619,7 @@ def load(folder: Path, key: str = RecruiterContent.CURRENT_KEY) -> Loaded:
         row, created = RecruiterContent.objects.update_or_create(key=key, defaults=defaults)
         # The row's files are exactly the ones this content names: a file a reload no longer
         # names is no longer served.
-        written, bytes_written = _store_media(row, media)
+        written, bytes_written, to_bucket = _store_media(row, media)
     return Loaded(
         row=row,
         created=created,
@@ -599,5 +629,6 @@ def load(folder: Path, key: str = RecruiterContent.CURRENT_KEY) -> Loaded:
         media_bytes=sum(len(data) for data, _type in media.values()),
         media_written=written,
         media_bytes_written=bytes_written,
+        media_to_bucket=to_bucket,
         file_named_videos=tuple(file_named_videos(content)),
     )
