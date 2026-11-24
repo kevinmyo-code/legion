@@ -17,13 +17,26 @@ class CruiseLayoutLogicTest {
     // 800x456 = 800x480 under a 24 dp status bar (the layout starts below it).
     private val frames = listOf(800f to 480f, 800f to 456f, 1024f to 600f)
 
-    @Test fun at800x480TheColumnsMatchThePrototype() {
+    @Test fun at800x480TheColumnsAreTheRailPlusTwoEqualCards() {
         val c = CruiseLayoutLogic.columns(800f, 480f)
         assertEquals(8f, c.pad, 0.01f)
         assertEquals(8f, c.gap, 0.01f)
         assertEquals(124f, c.rail, 0.01f)
-        assertEquals(280f, c.music, 0.01f)
-        assertEquals(364f, c.middle, 0.01f)
+        // 800 - 2x8 pad - 2x8 gap - 124 rail = 644, halved.
+        assertEquals(322f, c.music, 0.01f)
+        assertEquals(322f, c.middle, 0.01f)
+    }
+
+    /** The order is stated once, and it is the order Kevin asked for. */
+    @Test fun theMusicCardSitsBetweenTheRailAndTheCarPanel() {
+        assertEquals(
+            listOf(CruiseLayoutLogic.Pane.RAIL, CruiseLayoutLogic.Pane.MUSIC, CruiseLayoutLogic.Pane.CAR),
+            CruiseLayoutLogic.ORDER,
+        )
+        val c = CruiseLayoutLogic.columns(800f, 480f)
+        assertEquals(c.rail, c.width(CruiseLayoutLogic.Pane.RAIL), 0.01f)
+        assertEquals(c.music, c.width(CruiseLayoutLogic.Pane.MUSIC), 0.01f)
+        assertEquals(c.middle, c.width(CruiseLayoutLogic.Pane.CAR), 0.01f)
     }
 
     /**

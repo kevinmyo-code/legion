@@ -5,9 +5,16 @@ import com.kevin.midnightai.ui.GaugeReading
 
 /**
  * The HU-1 Cruise layout in numbers (dp as Floats, so it is JVM-tested at 800x480 and 1024x600):
- * console rail on the left, the CAR / NAV panel in the middle, the music card on the right, all
- * sized from u = 1% of the frame width (capped by height), the unit the approved prototype was
- * drawn in at 800x480: 8 dp padding and gaps, a 124 dp rail, a 280 dp music card.
+ * console rail, then the two cards Kevin named, all sized from u = 1% of the frame width (capped by
+ * height), the unit the approved prototype was drawn in at 800x480: 8 dp padding and gaps and a
+ * 124 dp rail.
+ *
+ * **Order and widths, Kevin 2026-11-23:** "i want the music controls to be center and the map/car
+ * data to be on right. and their width should be equal." So [ORDER] is rail, music, car, and the
+ * two cards split what the rail leaves equally. This supersedes the 2026-11-19 prototype's "car in
+ * the middle song on the right" with its fixed 280 dp music card; "left keep as is with the avatar
+ * and the buttons" still stands, which is why the rail is not a third equal column - two drive-size
+ * tiles are all it has to hold, and a 322 dp rail would waste a 480 dp frame.
  */
 object CruiseLayoutLogic {
     /** Height cap on u: a 1024x600 frame (58.6 u tall), same as the split deck before it. */
@@ -15,9 +22,21 @@ object CruiseLayoutLogic {
 
     fun unit(widthDp: Float, heightDp: Float): Float = minOf(widthDp / 100f, heightDp / HEIGHT_UNITS)
 
+    /** A Cruise column. [CAR] is the CAR / NAV panel: the map and the car data. */
+    enum class Pane { RAIL, MUSIC, CAR }
+
+    /** Left to right on screen. The one place the order is stated; the screen renders this list. */
+    val ORDER = listOf(Pane.RAIL, Pane.MUSIC, Pane.CAR)
+
     data class Columns(val pad: Float, val gap: Float, val rail: Float, val middle: Float, val music: Float) {
         /** One rail tile: two per row. Kept for [Columns]; height is [railTileHeight]. */
         val tileWidth: Float get() = (rail - gap) / 2f
+
+        fun width(pane: Pane): Float = when (pane) {
+            Pane.RAIL -> rail
+            Pane.MUSIC -> music
+            Pane.CAR -> middle
+        }
     }
 
     fun columns(widthDp: Float, heightDp: Float): Columns {
@@ -26,9 +45,9 @@ object CruiseLayoutLogic {
         val gap = u
         // Two drive-size tiles side by side, never narrower.
         val rail = maxOf(u * 15.5f, 2 * MusicDeckLogic.TOUCH_MIN + gap)
-        val music = u * 35f
-        val middle = widthDp - 2 * pad - 2 * gap - rail - music
-        return Columns(pad, gap, rail, middle, music)
+        // The music card and the CAR / NAV panel share what is left, equally (2026-11-23).
+        val card = (widthDp - 2 * pad - 2 * gap - rail) / 2f
+        return Columns(pad, gap, rail, middle = card, music = card)
     }
 
     // --- The console rail's height budget (review L2, 2026-11-20) ---------------------------

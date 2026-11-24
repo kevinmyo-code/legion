@@ -567,45 +567,53 @@ fun CruiseScreen(
                         .padding(cols.pad.dp),
                     horizontalArrangement = Arrangement.spacedBy(cols.gap.dp),
                 ) {
-                    CruiseConsole(
-                        u = u,
-                        avatar = face,
-                        phase = phase,
-                        notice = shownNotice,
-                        caption = shownCaption,
-                        onLightsOut = { lightsOut = true },
-                        onOpenSettings = onOpenSettings,
-                        onOpenPhoneLink = onOpenPhoneLink,
-                        onOpenAppTray = { showAppTray = true },
-                        onRearCamera = openRearCamera,
-                        onRearCameraPicker = { showReverseCameraPicker = true },
-                        modifier = Modifier.width(cols.rail.dp).fillMaxHeight(),
-                    )
-                    CruiseMiddlePanel(
-                        u = u,
-                        m = m,
-                        location = location,
-                        gauges = MiddlePanelText.carGauges(obdGauges, cruiseKeys),
-                        storedCodes = MiddlePanelText.storedCodes(dtcCodes, dtcNames),
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    ) {
-                        // The setup and update chips used to sit in the console rail; in the HU-1
-                        // rail they would push the portrait (the talk target) off a 480 dp frame.
-                        if (showSetupPrompt) SetupPromptChip(onStartVoiceSetup, dismissSetupPrompt, Modifier.fillMaxWidth())
-                        updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth()) }
+                    // Left to right in CruiseLayoutLogic.ORDER, the one place the order is stated
+                    // (Kevin, 2026-11-23: music in the centre, the map/car panel on the right).
+                    CruiseLayoutLogic.ORDER.forEach { pane ->
+                        val paneModifier = Modifier.width(cols.width(pane).dp).fillMaxHeight()
+                        when (pane) {
+                            CruiseLayoutLogic.Pane.RAIL -> CruiseConsole(
+                                u = u,
+                                avatar = face,
+                                phase = phase,
+                                notice = shownNotice,
+                                caption = shownCaption,
+                                onLightsOut = { lightsOut = true },
+                                onOpenSettings = onOpenSettings,
+                                onOpenPhoneLink = onOpenPhoneLink,
+                                onOpenAppTray = { showAppTray = true },
+                                onRearCamera = openRearCamera,
+                                onRearCameraPicker = { showReverseCameraPicker = true },
+                                modifier = paneModifier,
+                            )
+                            CruiseLayoutLogic.Pane.MUSIC -> MusicHeroCard(
+                                u = u,
+                                m = m,
+                                info = nowPlaying,
+                                art = deckArt,
+                                contextName = deckContextName,
+                                emptyState = mediaEmptyState,
+                                playing = playing,
+                                onOpenPicker = onOpenSpotifySettings,
+                                modifier = paneModifier,
+                                debugLine = debugLine,
+                            )
+                            CruiseLayoutLogic.Pane.CAR -> CruiseMiddlePanel(
+                                u = u,
+                                m = m,
+                                location = location,
+                                gauges = MiddlePanelText.carGauges(obdGauges, cruiseKeys),
+                                storedCodes = MiddlePanelText.storedCodes(dtcCodes, dtcNames),
+                                modifier = paneModifier,
+                            ) {
+                                // The setup and update chips used to sit in the console rail; in the
+                                // HU-1 rail they would push the portrait (the talk target) off a
+                                // 480 dp frame.
+                                if (showSetupPrompt) SetupPromptChip(onStartVoiceSetup, dismissSetupPrompt, Modifier.fillMaxWidth())
+                                updatePrompt?.let { UpdateChip(it, Modifier.fillMaxWidth()) }
+                            }
+                        }
                     }
-                    MusicHeroCard(
-                        u = u,
-                        m = m,
-                        info = nowPlaying,
-                        art = deckArt,
-                        contextName = deckContextName,
-                        emptyState = mediaEmptyState,
-                        playing = playing,
-                        onOpenPicker = onOpenSpotifySettings,
-                        modifier = Modifier.width(cols.music.dp).fillMaxHeight(),
-                        debugLine = debugLine,
-                    )
                 }
             }
         }
