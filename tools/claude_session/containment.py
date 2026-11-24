@@ -24,8 +24,8 @@ helper is one long turn:
   its workflow's own report file; run THIS folder's `report.py`, `send_mail.py`, `fetch_file.py`,
   `to_xlsx.py` and `to_pdf.py`, alone. Every path it writes goes on the written list.
 - **What it may not**: Bash or PowerShell otherwise (ship.py and undo.py included), NotebookEdit,
-  a Write anywhere else, starting another helper (Agent), and reading the worker's own folder or
-  a credential file (`CREDENTIAL_NAMES`).
+  a Write anywhere else, starting another helper (Agent), and reading the worker's own folder (by
+  where the file is, not by its name) or a credential file (`CREDENTIAL_NAMES`).
 - **The written list** (`taint/written.json`) is laptop-wide: any shell command, from any task,
   that names a file a tainted task wrote is denied. That is "write a script, then run it" closed
   across tasks, whatever the file's extension (`python notes.md` runs too).
@@ -81,16 +81,22 @@ SCRIPT_EXT = frozenset({
 
 # Never read by a helper, tainted or not (the forged-yes trace, 2026-11-24): the worker's own
 # folder (config holds the engine token, tokens/ holds Kevin's confirmations), and any file that
-# holds a credential. `config.json` and anything named `*token*` are on the list because the
-# engine token's own file was not: a clean helper could read it and speak to the engine as the
-# laptop. `*token*` is deliberately wide and catches ordinary source files too (a `tokens.py`, a
-# `TokenStore.kt`): a task that needs one says so and Kevin reads it out. It also binds the
-# UPLOAD refusal (`worker.py:1103`), so a found file whose name holds `token`, and any
-# `config.json`, no longer reaches his phone either. Both costs are deliberate.
+# holds a credential.
+#
+# This list is NAMES ONLY, and it is deliberately not the rule that closes the forged-yes hole:
+# `credential_path` tests the worker's root FIRST, so `<root>/config.json`, `<root>/tokens/*` and
+# every other file in the root are denied whatever they are called, and `worker.uploadable` makes
+# the same root test before it looks at a name. The first cut of this list also held
+# `config\.json` and `[^\\/]*token[^\\/]*`. Measured over the tracked tree (RED review, 2026-11-24)
+# those two bought nothing for the root and cost 28 repo files: a `Read` of `tokens.py`,
+# `tokens.txt`, `MapboxTokenProvider.kt` or any project's `config.json` was denied while a `cat` of
+# the same file passed, `Edit` needs a prior `Read` so the next fix in this very area could not
+# touch `server/claude_session/tokens.py`, and the UPLOAD refusal (`worker.uploadable`) kept a file
+# Kevin asked for off his phone for holding the word "token". Both are dropped; the root rule is
+# what the trace actually needed.
 CREDENTIAL_NAMES = re.compile(
     r"(^|[\\/])(\.ssh|\.gnupg|\.aws|\.azure|\.kube|\.docker|gcloud|\.config[\\/]gcloud"
-    r"|\.git-credentials|\.netrc|_netrc|\.npmrc|\.pypirc|\.?credentials\.json|config\.json"
-    r"|[^\\/]*token[^\\/]*"
+    r"|\.git-credentials|\.netrc|_netrc|\.npmrc|\.pypirc|\.?credentials\.json"
     r"|application_default_credentials\.json|local\.properties|[^\\/]*\.env|\.env\.[^\\/]*"
     r"|[^\\/]*\.(pem|key|p12|pfx|keystore|jks))([\\/]|$)", re.I)
 
@@ -343,6 +349,9 @@ def untrusted_file(paths: Paths, target: str, task_rec: dict | None, cfg: dict) 
 
 
 def credential_path(paths: Paths, target: str, own_work: Path | None) -> bool:
+    """The root test comes FIRST and is the one that closes the forged-yes hole: every file in the
+    worker's root outside the work folder, whatever it is called. `CREDENTIAL_NAMES` is the
+    narrower name rule for files elsewhere on the laptop."""
     if not target:
         return False
     if is_under(target, paths.root) and not (own_work and is_under(target, own_work)):

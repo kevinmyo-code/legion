@@ -458,13 +458,27 @@ class TestTheWorkerFolderIsNeverRead(Base):
                 self.denied(tool, {"command": cmd}, "WORKER FILES", agent="agentA",
                             cwd=self.work)
 
-    def test_config_json_and_token_names_are_credential_names_anywhere(self):
-        for name in (r"C:\x\config.json", r"C:\x\tokens\41-yes.json",
-                     r"C:\x\engine-token.txt", "C:/x/.ssh/id_ed25519"):
+    def test_the_root_is_denied_by_where_it_is_not_by_what_it_is_called(self):
+        """RED review B5, 2026-11-24. `CREDENTIAL_NAMES` no longer holds `config.json` or
+        `*token*`: they bought nothing here (the root test above runs first) and cost 28 tracked
+        repo files, inconsistently (a `Read` of a repo `tokens.py` was denied while a `cat` of it
+        passed, and `Edit` needs a prior `Read`)."""
+        for p in (self.paths.config, self.paths.tokens / "41-yes.json",
+                  self.paths.root / "anything-at-all.md"):
+            with self.subTest(name=p.name):
+                self.denied("Read", {"file_path": str(p)}, "WORKER FILES", agent="agentA")
+        for name in ("C:/x/.ssh/id_ed25519", r"C:\x\deploy\.env",
+                     r"C:\x\app\local.properties", "C:/x/.credentials.json",
+                     r"C:\x\gcloud\credentials.db"):
             with self.subTest(name=name):
                 self.assertTrue(C.CREDENTIAL_NAMES.search(name), name)
-        # Still not a credential: the word inside a longer filename.
-        self.assertFalse(C.CREDENTIAL_NAMES.search(r"C:\x\notes\credentials-howto.md"))
+        # A repo file is a repo file, wherever the word "token" or "config" appears in its name.
+        for name in (r"C:\repo\server\claude_session\tokens.py", "C:/repo/wake-kws/tokens.txt",
+                     "C:/repo/app/config.json", "C:/repo/app/MapboxTokenProvider.kt",
+                     r"C:\x\notes\credentials-howto.md"):
+            with self.subTest(name=name):
+                self.assertFalse(C.CREDENTIAL_NAMES.search(name), name)
+                self.passed("Read", {"file_path": name}, agent="agentA")
 
     def test_the_tasks_own_work_folder_is_still_readable(self):
         for p in (self.work / "notes.md", self.paths.work / "shared.csv"):

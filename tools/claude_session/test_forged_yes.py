@@ -35,6 +35,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import containment as C  # noqa: E402
+import worker as W  # noqa: E402
 from test_containment import Base  # noqa: E402
 
 # A script that forges a confirmation token, in the spellings a model actually writes.
@@ -185,6 +186,31 @@ class TestAWrittenScriptCannotForgeAYes(ForgeCase):
         does not, because `python forge.txt` runs a forging script just as well."""
         self.assertFalse(C.content_net_script("rows.csv", "url\nhttps://evil.example/x\n"))
         self.assertTrue(self.names_root(f"{self.paths.tokens.as_posix()}/41-yes.json"))
+
+
+class TestUploadStillRefusesTheRoot(ForgeCase):
+    """B5's other half (RED review, 2026-11-24). `CREDENTIAL_NAMES` lost `config.json` and
+    `*token*`; `worker.uploadable` makes its OWN root test before it looks at a name, so the
+    worker's folder is still never delivered to Kevin's phone. The repo rows are the cost the
+    review asked for: a file he asked for whose name holds "token" now reaches him."""
+
+    def worker(self):
+        return W.Worker(self.paths, {"name": "Alienware", "scope": "full",
+                                     "engine_url": "https://engine.example.dev", "token": "x"},
+                        power=False, health=False, drives=lambda: ["C:\\"])
+
+    def test_the_root_is_never_uploaded_and_a_repo_file_now_is(self):
+        w = self.worker()
+        for p in (self.paths.config, self.paths.tokens / "50-yes.json", self.paths.state,
+                  self.paths.sends / "50.json", self.paths.task_work(41) / "out.csv"):
+            with self.subTest(refused=p.name):
+                self.assertFalse(w.uploadable(50, str(p)), str(p))
+        self.assertFalse(w.uploadable(50, "C:/x/.ssh/id_ed25519"))
+        for p in (str(self.own / "report.md"), str(self.own / "tokens.py"),
+                  str(self.own / "config.json"), "C:/repo/server/claude_session/tokens.py",
+                  "C:/repo/app/config.json"):
+            with self.subTest(uploadable=p):
+                self.assertTrue(w.uploadable(50, p), p)
 
 
 class TestStillOpen(ForgeCase):
