@@ -336,7 +336,10 @@ class RecruiterMediaFile(models.Model):
     # (`demo.media_store`, Supabase egress cut 4): `data` is written beside it for one release so
     # a rollback or an unreachable bucket still serves the page. Blank means Postgres only.
     data = models.BinaryField()
-    object_name = models.CharField(max_length=200, default="", blank=True)
+    # `db_default`, not only `default`: the revision before this column existed inserts a row
+    # without naming it, and Postgres has to fill it in (the ship's old-code-on-new-schema
+    # rehearsal, and a rollback that reloads the content).
+    object_name = models.CharField(max_length=200, default="", db_default="", blank=True)
     content_type = models.CharField(max_length=100)
     # The ETag: a revisit asks "still this?" and gets a 304 without the bytes leaving Postgres.
     sha256 = models.CharField(max_length=64)

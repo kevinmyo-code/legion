@@ -14,10 +14,12 @@ imports Cloud Storage unless a real bucket is set. Every name and byte below is 
 
 from __future__ import annotations
 
+import sys
+import types
 from io import StringIO
 
 import pytest
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 from rest_framework.test import APIClient
 
 from demo import media_store
@@ -114,7 +116,7 @@ def test_with_no_bucket_the_row_names_no_object_and_the_loader_says_so(tmp_path,
     monkeypatch.setattr(media_store, "get_store", lambda: None)
     said = _loaded(tmp_path)
     assert list(RecruiterMediaFile.objects.values_list("object_name", flat=True)) == ["", ""]
-    assert "No media bucket is set" in said
+    assert "NO MEDIA BUCKET IS SET" in said
 
 
 def test_a_reload_moves_files_that_were_stored_before_the_bucket_existed(tmp_path, monkeypatch):
@@ -223,6 +225,77 @@ def test_no_bucket_name_means_no_store_and_no_cloud_storage_import(settings):
     assert isinstance(media_store.get_store(), media_store.GcsMediaStore)
 
 
+def _fake_cloud_storage(monkeypatch) -> dict:
+    """A stand-in for `google.cloud.storage`, recording what is asked of it. Same shape as
+    `tests/test_releases.py`'s, so the real class is exercised without a network."""
+    seen: dict = {}
+
+    class Blob:
+        def __init__(self, name):
+            seen["object_name"] = name
+
+        def upload_from_string(self, blob, content_type):
+            seen["uploaded"] = (blob, content_type)
+
+        def download_as_bytes(self, **kwargs):
+            seen["download"] = kwargs
+            return b"fake window"
+
+    class Bucket:
+        def __init__(self, name):
+            seen["bucket"] = name
+
+        def blob(self, name):
+            return Blob(name)
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            seen["clients"] = seen.get("clients", 0) + 1
+
+        def bucket(self, name):
+            return Bucket(name)
+
+    google = types.ModuleType("google")
+    cloud = types.ModuleType("google.cloud")
+    storage = types.ModuleType("google.cloud.storage")
+    storage.Client = Client
+    google.cloud, cloud.storage = cloud, storage
+    for name, module in {
+        "google": google,
+        "google.cloud": cloud,
+        "google.cloud.storage": storage,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    return seen
+
+
+def test_the_gcs_store_asks_for_the_window_as_an_inclusive_byte_range(monkeypatch):
+    """`end` is the LAST byte wanted: google-cloud-storage 3.17.1 sends `start` and `end` as
+    `bytes=<start>-<end>` verbatim (`_media/_download.py` `add_bytes_range`), so a 2 MiB window
+    from 0 is `end=2097151`, never 2097152."""
+    seen = _fake_cloud_storage(monkeypatch)
+    store = media_store.GcsMediaStore("legion-demo-media-test")
+    assert store.get_range("demo-media/abc/clip.mp4", 0, 2 * 1024 * 1024) == b"fake window"
+    assert seen["bucket"] == "legion-demo-media-test"
+    assert seen["object_name"] == "demo-media/abc/clip.mp4"
+    assert seen["download"] == {"start": 0, "end": 2 * 1024 * 1024 - 1}
+
+
+def test_the_gcs_store_uploads_with_the_content_type_and_reuses_one_client(monkeypatch):
+    seen = _fake_cloud_storage(monkeypatch)
+    store = media_store.GcsMediaStore("legion-demo-media-test")
+    store.put("demo-media/abc/clip.mp4", b"fake clip", "video/mp4")
+    assert seen["uploaded"] == (b"fake clip", "video/mp4")
+    store.get_range("demo-media/abc/clip.mp4", 1, 2)
+    assert seen["clients"] == 1  # one Cloud Storage client per store, not per request
+
+
+def test_the_store_is_the_same_object_on_every_call(settings):
+    """One client for the service, not one per media request."""
+    settings.LEGION_DEMO_MEDIA_BUCKET = "legion-demo-media-test"
+    assert media_store.get_store() is media_store.get_store()
+
+
 def test_an_object_is_named_by_its_own_hash():
     key = media_store.object_key("a" * 64, "gadget.glb")
     assert key == f"{media_store.KEY_PREFIX}/{'a' * 64}/gadget.glb"
@@ -243,9 +316,10 @@ def test_the_loader_refuses_to_pretend_a_failed_upload_worked(tmp_path, monkeypa
     """A bucket that cannot be written is a loud failure, never a row naming an object that is
     not there."""
     monkeypatch.setattr(media_store, "get_store", lambda: FakeStore(refuses=True))
-    with pytest.raises(media_store.MediaStoreError):
+    with pytest.raises(CommandError, match=r"The media bucket refused a file"):
         _loaded(tmp_path)
     assert RecruiterMediaFile.objects.count() == 0
+    assert RecruiterContent.objects.count() == 0
 
 
 def test_the_command_prints_what_it_loaded(store, tmp_path):

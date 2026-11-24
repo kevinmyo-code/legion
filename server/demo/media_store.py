@@ -9,6 +9,19 @@ sit in a private bucket now and Postgres carries only the name of the object.
 their buckets: the loader and the view ask `get_store()` and never import Cloud Storage
 themselves, so tests hand them a fake and an engine with no bucket never loads the library.
 
+**The engine reads the object and streams the bytes, and no signed URL or redirect is minted.**
+Two reasons, and either alone decides it. The page's own Content-Security-Policy is
+`media-src 'self'` and `img-src 'self' data: blob:` (`legion/csp.py`), so a `<video>` or `<img>`
+pointed at `storage.googleapis.com` is refused by the browser, report-only today and enforced on
+the switch. And a signed URL is a link that works without a session, which is the one thing this
+route has never allowed: the files are private like the resume, to a visit or an owner. The cut
+is egress out of POSTGRES; Cloud Run to the visitor is Google egress, and Cloud Storage to Cloud
+Run in the same region is free.
+
+**Its own bucket, not one of the two that exist.** The APK and Claude-file buckets delete their
+objects on a lifecycle rule (a day, for the Claude files), and these files are the live page. The
+clips bucket the Pages site uses is world-readable, which would publish them.
+
 With no bucket set (`LEGION_DEMO_MEDIA_BUCKET`), `get_store()` returns None and everything works
 exactly as it did: the loader writes only the column and the view reads only the column.
 
@@ -24,6 +37,7 @@ object and nothing is ever overwritten with different content. Nothing here logs
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Protocol
 
 from django.conf import settings
@@ -85,7 +99,14 @@ class GcsMediaStore:
             raise MediaStoreError(f"the bucket refused the read ({type(exc).__name__}).") from exc
 
 
+@lru_cache(maxsize=4)
+def _store_for(bucket: str) -> GcsMediaStore:
+    """One store, and so one Cloud Storage client, per bucket name: a media request is 2 MiB of
+    one file and building a client each time would cost a credentials lookup per window."""
+    return GcsMediaStore(bucket)
+
+
 def get_store() -> MediaStore | None:
     """The bucket's store, or None when this engine has none (`LEGION_DEMO_MEDIA_BUCKET`)."""
     bucket = getattr(settings, "LEGION_DEMO_MEDIA_BUCKET", "")
-    return GcsMediaStore(bucket) if bucket else None
+    return _store_for(bucket) if bucket else None
