@@ -85,6 +85,7 @@ Task Scheduler "LEGION Claude session" (at logon, runs through a lock, pythonw.e
 | `mail` | `{address, app_password, kevin, smtp_host, smtp_port}`; on `listed` only text to `kevin`. Whether it is set rides every heartbeat as `can_mail`; without it the engine sends "email it to me" results to the phone |
 | optional | `claude_cmd`, `heartbeat_s`, `task_cap_s`, `hang_s`, `add_dirs`, `keep_awake` |
 | workflows, optional | `skills_dir` (default `work\.claude\skills`), `workflow_reports` (default `%USERPROFILE%\.legion\reports`, one folder per workflow, dated reports kept 180 days), `task_log` (default `%USERPROFILE%\.legion\task-log.jsonl`, one line per finished task with its request text, kept 180 days, read only by the workflow miner), `agent_rules`, `catalog_s` (300) |
+| sessions, optional | `sessions_deny` (names of Kevin's own Claude sessions this laptop never reads or messages), `session_reply_watch` (`true` to hold a delivered message's task open while that session answers, then send a summary of its reply; **off unless the key is exactly `true`**, because the phone speaks a task result without a read-through mark) |
 | containment, optional | `untrusted_paths` (folders whose files taint a task that reads them, e.g. Downloads), `egress_allow` (extra hosts shell commands may reach, beside github, the engine, pypi and npm), `download_hosts` (where `fetch_file.py` may download from; default free-book sources and GitHub) |
 
 ## Sessions reporter hooks (ticket 06)

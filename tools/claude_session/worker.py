@@ -106,6 +106,12 @@ DEFAULTS = {
     # on for a `full` machine (the Alienware), off for a `listed` one.
     "health": None,
     "health_every_s": 60.0,
+    # The reply to a message Kevin sent from his phone (claude-hub S2). OFF until the phone marks a
+    # spoken task result read-through: the phone speaks the summary and feeds it into a model turn
+    # with no mark, so ADR 0090's "no write after third-party text" never engages for that turn
+    # (S2 RED review, 2026-11-24). Off, a delivered message's task finishes on the helper's own
+    # report, as it did before S2.
+    "session_reply_watch": False,
 }
 
 KIND_WORKFLOW = "workflow"
@@ -771,6 +777,15 @@ class Worker:
             return None
         return plan if plan.get("delivered") is True else None
 
+    def watching_replies(self) -> bool:
+        """Is the reply watch switched on in this laptop's config (`session_reply_watch`)?
+
+        `is True`, like `delivered` in `sent_plan`: a quoted "false" or a 1 left in config.json is
+        not a yes. Off is the default, and off means no transcript is read, no summariser runs and
+        nothing of a session's reply leaves the laptop. Why: DEFAULTS.
+        """
+        return self.cfg.get("session_reply_watch") is True
+
     def arm_reply_watch(self, t: dict, r: dict, now: float) -> bool:
         """Hold a delivered message's task open while its session answers. True when it is held.
 
@@ -778,6 +793,8 @@ class Worker:
         engine takes one finish per task (FinishView answers 409 to a second). So the one place
         this can wait is here.
         """
+        if not self.watching_replies():
+            return False  # the helper's own report finishes it, as before S2
         if r.get("status") != "done" or t.get("reply_watch"):
             return False
         plan = self.sent_plan(t)
@@ -800,6 +817,9 @@ class Worker:
 
     def poll_replies(self, now: float) -> None:
         """Read each watched transcript from its own offset, on the heartbeat's beat."""
+        if not self.watching_replies():
+            self.close_watches_switched_off()
+            return
         if now < self.next_reply_poll:
             return
         self.next_reply_poll = now + sr.POLL_S
@@ -808,6 +828,20 @@ class Worker:
                 self.poll_one_reply(t, now)
             except OSError:
                 log.warning("task %s reply watch could not read the transcript", t["id"])
+
+    def close_watches_switched_off(self) -> None:
+        """A watch armed while the key was on, read by a worker whose key is off now.
+
+        Closed without reading the transcript. Leaving it would hold the task until the 30 minute
+        cap failed a task whose message did go, so the card says the message went and says why
+        nothing came back.
+        """
+        for t in [x for x in self.running() if x.get("reply_watch")]:
+            plan = sessions.pinned_plan(self.paths, t["reply_watch"]["plan_task"]) or {}
+            t.pop("reply_watch", None)
+            self.finish(t, "done", sr.SAY_GONE.format(name=plan.get("name") or "that session",
+                                                      why=sr.WHY_SWITCHED_OFF))
+            log.info("task %s reply watch closed: watching replies is switched off", t["id"])
 
     def poll_one_reply(self, t: dict, now: float) -> None:
         watch = t["reply_watch"]

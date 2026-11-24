@@ -420,6 +420,9 @@ class WorkerBase(T.Base):
         self.engine = FakeEngine()
         self.addCleanup(self.engine.close)
         cfg = {**self.cfg, "engine_url": self.engine.url, "token": TOKEN, "keep_awake": False,
+               # Every class below this one is the switch ON, which is the behaviour S2 built. The
+               # switch itself, and OFF being the default, are TestTheWatchIsOffUnlessItIsSwitchedOn.
+               "session_reply_watch": True,
                "claude_cmd": [sys.executable, str(HERE / "fake_claude.py")],
                "workflow_reports": str(self.root / "reports"),
                "task_log": str(self.root / "task-log.jsonl"),
@@ -471,6 +474,101 @@ class WorkerBase(T.Base):
 
     def outbox(self) -> list[dict]:
         return list(self.w.state["outbox"])
+
+
+class TestTheWatchIsOffUnlessItIsSwitchedOn(WorkerBase):
+    """`session_reply_watch` in the worker's config, and it is OFF unless it says otherwise.
+
+    The phone speaks a task's summary and feeds it into a model turn with no read-through mark, so
+    until the phone slice lands a session's reply must not become automatic on every message Kevin
+    approves (S2 RED review's recommendation, 2026-11-24). Off, the worker behaves exactly as it
+    did before S2: the helper's own report finishes the task, nothing is read, nothing is
+    summarised, nothing of the session leaves this laptop.
+    """
+
+    def switch(self, value=...):
+        """The worker the scheduled task would start with that value in config.json (or none)."""
+        cfg = {k: v for k, v in self.wcfg.items() if k != "session_reply_watch"}
+        if value is not ...:
+            cfg["session_reply_watch"] = value
+        write_json_atomic(self.paths.config, cfg)
+        self.wcfg = cfg
+        self.w = self.build()
+        self.w.state["tasks"] = {"41": self.card, "42": self.yes}
+        return self.w
+
+    def ready(self):
+        """A delivered message, its session's full reply already in the transcript, the report in."""
+        self.pin()
+        self.transcript(peer_entry(MSG), said("the android job is red"))
+        self.report()
+
+    def polls(self):
+        for _ in range(3):
+            self.w.next_reply_poll = 0.0
+            self.w.poll_replies(self.now)
+
+    def test_the_default_is_off(self):
+        self.assertIs(T.W.DEFAULTS["session_reply_watch"], False)
+        self.assertFalse(self.switch().watching_replies())
+
+    def test_a_machine_with_no_key_finishes_on_the_helpers_own_report(self):
+        self.switch()
+        self.ready()
+        self.w.drain_reports(self.now)
+        self.polls()
+        self.assertEqual(self.yes["status"], "done")
+        self.assertNotIn("reply_watch", self.yes)
+        self.assertEqual(self.outbox()[0]["payload"]["summary"], "Delivered to garden's inbox.")
+        self.assertEqual(FakeSummariser.made, [])
+        self.assertFalse(self.w.session_read(42))
+        self.assertNotIn(42, self.w.progress)
+
+    def test_a_quoted_false_is_off(self):
+        self.switch("false")
+        self.ready()
+        self.w.drain_reports(self.now)
+        self.polls()
+        self.assertEqual(self.outbox()[0]["payload"]["summary"], "Delivered to garden's inbox.")
+        self.assertEqual(FakeSummariser.made, [])
+
+    def test_a_one_left_in_the_config_is_off(self):
+        """`is True`, like `delivered` in `sent_plan`: a truthy value is not a yes."""
+        self.switch(1)
+        self.ready()
+        self.w.drain_reports(self.now)
+        self.polls()
+        self.assertEqual(self.outbox()[0]["payload"]["summary"], "Delivered to garden's inbox.")
+        self.assertEqual(FakeSummariser.made, [])
+
+    def test_the_key_on_is_the_behaviour_S2_built(self):
+        self.switch(True)
+        self.ready()
+        self.w.drain_reports(self.now)
+        self.assertEqual(self.yes["status"], "running")
+        self.polls()
+        self.assertEqual(self.yes["status"], "done")
+        self.assertEqual(self.outbox()[0]["payload"]["summary"],
+                         "CI is red on the android job only.")
+        self.assertEqual(FakeSummariser.made, ["the android job is red"])
+
+    def test_a_watch_armed_before_the_switch_went_off_is_closed_without_reading(self):
+        """Switched off while a watch was open: it closes on the next poll, rather than sitting
+        there until the 30 minute cap fails a task whose message did go."""
+        self.pin()
+        self.transcript()
+        self.report()
+        self.w.drain_reports(self.now)
+        self.assertIn("reply_watch", self.yes)
+        self.w.cfg["session_reply_watch"] = False
+        self.transcript(peer_entry(MSG), said("the android job is red"))
+        self.polls()
+        self.assertEqual(self.yes["status"], "done")
+        self.assertNotIn("reply_watch", self.yes)
+        summary = self.outbox()[0]["payload"]["summary"]
+        self.assertIn("switched off", summary)
+        self.assertEqual(FakeSummariser.made, [])
+        self.assertFalse(self.w.session_read(42))
 
 
 class TestHoldingTheTaskOpen(WorkerBase):

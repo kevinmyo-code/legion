@@ -84,6 +84,7 @@ SAY_NO_REPLY = ("Delivered to {name}, but it said nothing back within ten minute
 SAY_NO_SUMMARY = ("{name} replied, but the reply could not be summarised on this laptop, so "
                   "nothing was sent off it.")
 SAY_GONE = "Delivered to {name}, but {why}, so nothing came back."
+WHY_SWITCHED_OFF = "watching for a reply is switched off on this laptop"
 STEP_IN_INBOX = "In its inbox"
 
 
