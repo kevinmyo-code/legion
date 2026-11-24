@@ -159,6 +159,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "a25bf75b026cc9d3",
+      "type": "file",
+      "file": ".scratch/engine-brain/issues/16-alfred-and-moose-on-one-engine.md",
+      "x": 3640,
+      "y": 0,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": [
@@ -286,6 +296,20 @@
       "fromNode": "755e7c8cde9185f9",
       "fromSide": "right",
       "toNode": "9d980f19fc0a9dab",
+      "toSide": "left"
+    },
+    {
+      "id": "5cc6250fecd5fbb4",
+      "fromNode": "a716d75941246b75",
+      "fromSide": "right",
+      "toNode": "a25bf75b026cc9d3",
+      "toSide": "left"
+    },
+    {
+      "id": "3d0784c21f3a73a4",
+      "fromNode": "9d980f19fc0a9dab",
+      "fromSide": "right",
+      "toNode": "a25bf75b026cc9d3",
       "toSide": "left"
     }
   ]
