@@ -42,9 +42,24 @@ import org.json.JSONObject
  * any Live session exists; see `LiveSessionController.openListening`.
  */
 object ListenCue {
-    const val ASSET_DIR = "listen_cues"
-    const val LINES_ASSET = "$ASSET_DIR/lines.json"
     const val SAMPLE_RATE = 24_000
+
+    /**
+     * One pool of scripted clips: the assets folder holding its `lines.json` and WAVs, and the
+     * prefs file its picker's never-the-same-twice-in-a-row state lives in. [OPENING] is the
+     * opening line's pool; a second pool gets the same picker and its own last-used line, so one
+     * pool can never silence the other.
+     *
+     * The prefs name is carried, not derived: the opening pool's file has been `listen_cue` since
+     * the lines shipped, and deriving it from [dir] would orphan every phone's saved state.
+     */
+    data class Bundle(val dir: String, val prefs: String) {
+        val linesAsset: String get() = "$dir/lines.json"
+        fun clipAsset(id: String): String = "$dir/$id.wav"
+    }
+
+    /** The opening line's pool (voice cost audit row F2). */
+    val OPENING = Bundle(dir = "listen_cues", prefs = "listen_cue")
 
     /** One opening line. [window] is null for an any-time line. */
     data class Line(val id: String, val text: String, val window: Window? = null)
@@ -226,40 +241,61 @@ object ListenCue {
         (pcm.indices step size).map { pcm.copyOfRange(it, minOf(it + size, pcm.size)) }
 
     private const val EARCON_GAIN = 0.25
-    private const val PREFS = "listen_cue"
     private const val KEY_LAST = "last_id"
     private const val KEY_WINDOWS = "used_windows"
 
-    private class Bundle(val voice: String, val lines: List<Line>)
+    private class Pack(val voice: String, val lines: List<Line>)
 
-    @Volatile private var cached: Bundle? = null
+    @Volatile private var packs: Map<String, Pack> = emptyMap()
 
-    private fun bundle(context: Context): Bundle = cached ?: runCatching {
-        val json = context.assets.open(LINES_ASSET).use { it.readBytes().decodeToString() }
-        Bundle(parseVoice(json), parseLines(json))
-    }.getOrDefault(Bundle("Puck", emptyList())).also { cached = it }
+    private fun pack(context: Context, bundle: Bundle): Pack = packs[bundle.dir] ?: runCatching {
+        val json = context.assets.open(bundle.linesAsset).use { it.readBytes().decodeToString() }
+        Pack(parseVoice(json), parseLines(json))
+    }.getOrDefault(Pack("Puck", emptyList())).also { packs = packs + (bundle.dir to it) }
+
+    /**
+     * [pick] over one bundle's persisted state: the picked line, with the bundle's own last-used
+     * line and used windows written back. Each bundle keeps its state in its own prefs file, so a
+     * second pool's picks never count as the opening line's.
+     */
+    fun pickAndRemember(
+        context: Context,
+        bundle: Bundle,
+        lines: List<Line>,
+        now: LocalDateTime = LocalDateTime.now(),
+        random: Random = Random.Default,
+    ): Line {
+        val prefs = context.getSharedPreferences(bundle.prefs, Context.MODE_PRIVATE)
+        val state = State(prefs.getString(KEY_LAST, null), prefs.getStringSet(KEY_WINDOWS, emptySet()).orEmpty())
+        val pick = pick(lines, now, state, random)
+        prefs.edit().putString(KEY_LAST, pick.state.lastId).putStringSet(KEY_WINDOWS, pick.state.usedWindows).apply()
+        return pick.line
+    }
 
     /**
      * The next cue for an open: a picked line's clip, else the earcon. [voice] is the runtime voice;
      * clips in any other voice ([parseVoice]) give the earcon rather than a second speaker.
+     * [bundle] is which pool to draw from.
      */
     @Suppress("ReturnCount") // one exit per fallback: no lines, wrong voice, clip or earcon
-    fun next(context: Context, voice: String?, now: LocalDateTime = LocalDateTime.now()): Cue {
-        val bundle = bundle(context)
-        val all = bundle.lines
+    fun next(
+        context: Context,
+        voice: String?,
+        now: LocalDateTime = LocalDateTime.now(),
+        bundle: Bundle = OPENING,
+    ): Cue {
+        val pack = pack(context, bundle)
+        val all = pack.lines
         if (all.isEmpty()) return Cue(earconPcm(), "earcon")
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val state = State(prefs.getString(KEY_LAST, null), prefs.getStringSet(KEY_WINDOWS, emptySet()).orEmpty())
-        val pick = pick(all, now, state)
-        prefs.edit().putString(KEY_LAST, pick.state.lastId).putStringSet(KEY_WINDOWS, pick.state.usedWindows).apply()
-        if (!voice.equals(bundle.voice, ignoreCase = true)) return Cue(earconPcm(), "earcon:voice")
+        val line = pickAndRemember(context, bundle, all, now)
+        if (!voice.equals(pack.voice, ignoreCase = true)) return Cue(earconPcm(), "earcon:voice")
         val pcm = runCatching {
-            context.assets.open("$ASSET_DIR/${pick.line.id}.wav").use { wavPcm(it.readBytes()) }
+            context.assets.open(bundle.clipAsset(line.id)).use { wavPcm(it.readBytes()) }
         }.getOrNull()
         return if (pcm != null && pcm.isNotEmpty() && durationMs(pcm) <= MAX_CLIP_MS) {
-            Cue(pcm, pick.line.id)
+            Cue(pcm, line.id)
         } else {
-            Cue(earconPcm(), "earcon:${pick.line.id}")
+            Cue(earconPcm(), "earcon:${line.id}")
         }
     }
 }
