@@ -7,7 +7,10 @@ branches each adding `0005` to the same Django app.
 Django (`server/<app>/migrations/NNNN_*.py`):
   - FAIL: an existing migration modified or deleted (CLAUDE.md section 5: additive only);
   - FAIL: an added migration whose number another file in the same app already has;
-  - WARN: an added migration holding a destructive operation (the engine ship refuses it later).
+  - WARN: an added migration whose OPERATIONS are destructive to the database (the engine ship
+    refuses it later). `migration_ops.py` owns that judgement: the operations are read with `ast`,
+    a docstring naming `DeleteModel` is not an operation, and the `state_operations` of a
+    `SeparateDatabaseAndState(database_operations=[], ...)` run no SQL, so they are not destructive.
   Declaration itself is Django's own graph, checked by `makemigrations --check` in server.yml.
 Room (`app/schemas/<db>/N.json`, `headunit/app/schemas/<db>/N.json`):
   - FAIL: an added version N > 1 whose `MIGRATION_<N-1>_<N>` is not inside an `.addMigrations(...)` call
@@ -28,6 +31,7 @@ from __future__ import annotations
 
 import re
 
+import migration_ops
 from common import FAIL, WARN, Finding
 from gitdiff import Change
 
@@ -35,7 +39,6 @@ NAME = "migrations"
 DJANGO = re.compile(r"^server/([^/]+)/migrations/(\d{4})_[A-Za-z0-9_]+\.py$")
 ROOM = re.compile(r"^((?:headunit/)?app)/schemas/([^/]+)/(\d+)\.json$")
 MARKER = re.compile(r"migration-edit-ok:\s*(\S+)\s+(\S.{9,})")
-DESTRUCTIVE = re.compile(r"RemoveField|DeleteModel|AlterField|RenameField|RenameModel")
 
 
 def registered(db_source: str) -> str:
@@ -100,8 +103,10 @@ def _check(change: Change) -> list[Finding]:
             if twins:
                 out.append(Finding(FAIL, NAME, path, 0,
                                    f"migration number {m.group(2)} already used in {m.group(1)}: {', '.join(twins)}"))
-            if DESTRUCTIVE.search(change.read(path) or ""):
-                out.append(Finding(WARN, NAME, path, 0, "destructive operation: the engine ship refuses it"))
+            reason = migration_ops.database_destructive(change.read(path) or "")
+            if reason:
+                out.append(Finding(WARN, NAME, path, 0,
+                                   f"destructive database operation ({reason}): the engine ship refuses it"))
             continue
 
         r = ROOM.match(path)
