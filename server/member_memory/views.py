@@ -6,7 +6,9 @@ and `/mcp` reach the same operations through the engine tools. Authentication is
 work laptop), then reads through `visible()`: another member's private memory is a 404.
 
 **DELETE is a hard delete** (Kevin, 2026-11-05: "forget that" deletes it for real). There is no
-tombstone and no `?since=` feed, so a client cache refreshes from the whole list.
+tombstone and no `?since=` feed, so a client cache refreshes from the whole list. A shared
+household memory is deleted only by the member who shared it; every other member gets a 403
+(Kevin, 2026-11-24).
 
 Nothing here logs a memory's text.
 """
@@ -328,7 +330,11 @@ class MemoryDetailView(APIView):
         refused = _refused(request)
         if refused:
             return refused
-        if service.forget(request, memory_id) is None:
+        try:
+            gone = service.forget(request, memory_id)
+        except service.MemoryRefused as exc:
+            return _from_exc(exc)
+        if gone is None:
             return Response({"detail": service.NOT_FOUND}, status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

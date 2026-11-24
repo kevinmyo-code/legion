@@ -130,16 +130,40 @@ def test_a_superseding_fact_retires_the_old_one_and_forgetting_takes_both(auth_c
     assert MemberMemory.objects.count() == 0
 
 
-def test_forgetting_a_shared_fact_never_deletes_an_older_private_version(
-    auth_client, mia_client
-):
+def test_only_the_member_who_shared_a_fact_can_forget_it(auth_client, mia_client):
+    """Kevin, 2026-11-24: a shared memory's hard delete belongs to the member who shared it."""
     private = _save(auth_client, "Kevin's gym is on Main Street")
     shared = _save(
         auth_client, "Kevin's gym is on Elm Street", shared=True, supersedes=private["id"]
     )
-    assert mia_client.delete(f"{URL}{shared['id']}").status_code == 204
-    assert not MemberMemory.objects.filter(pk=shared["id"]).exists()
+    refused = mia_client.delete(f"{URL}{shared['id']}")
+    assert refused.status_code == 403
+    assert "only the member who shared it" in refused.data["detail"]
+    assert MemberMemory.objects.filter(pk=shared["id"]).exists()
     assert MemberMemory.objects.filter(pk=private["id"]).exists()
+    # Mia can still read it, so the refusal is about deleting, not about seeing.
+    assert "Kevin's gym is on Elm Street" in _texts(mia_client)
+    # The member who shared it still can, and the older version it replaced goes with it.
+    assert auth_client.delete(f"{URL}{shared['id']}").status_code == 204
+    assert MemberMemory.objects.count() == 0
+
+
+def test_the_household_owner_cannot_forget_a_fact_another_member_shared(auth_client, mia_client):
+    """Being the household's owner is not being the member who shared it."""
+    shared = _save(mia_client, "Mia's shift starts at six", shared=True)
+    refused = auth_client.delete(f"{URL}{shared['id']}")
+    assert refused.status_code == 403
+    assert MemberMemory.objects.filter(pk=shared["id"]).exists()
+
+
+def test_forgetting_another_members_shared_fact_is_refused_on_mcp(
+    household_user, mia_client, mcp_on
+):
+    """The tool door says no in words rather than failing."""
+    hers = _save(mia_client, "Mia's shift starts at six", shared=True)
+    is_error, text, _ = call(client_with(household_user), "forget_memory", {"id": hers["id"]})
+    assert is_error and "only the member who shared it" in text
+    assert MemberMemory.objects.filter(pk=hers["id"]).exists()
 
 
 def test_a_member_cannot_supersede_a_shared_fact_about_someone_else(auth_client, mia_client):

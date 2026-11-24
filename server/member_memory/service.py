@@ -10,6 +10,12 @@ lookup by id answers "no memory with that id" exactly as for another household's
 
 `refusal(request)` is the door check every caller runs first: a recruiter is refused (ADR 0068),
 and so is the work laptop's token (map decision G, `claude_session.tokens`).
+
+Writing is narrower than reading, and on one rule: **only the member a memory is about may change
+or delete it.** Sharing, making private, superseding and forgetting all key on `member`. A shared
+household fact was shared by the member it is about (`create(shared=True)` and `update`'s `shared`
+switch are the only two ways a row becomes shared, and both demand the caller be its `member`),
+so every other member reads it and none can take it away (Kevin, 2026-11-24).
 """
 
 from __future__ import annotations
@@ -59,6 +65,10 @@ MAKE_PRIVATE_REFUSAL = (
     "Nothing was changed. Only the person a memory is about can make it private."
 )
 SHARE_REFUSAL = "Nothing was changed. Only the person a memory is about can share it."
+FORGET_REFUSAL = (
+    "Nothing was deleted. Another member shared this memory with the household, and only the "
+    "member who shared it can delete it for good."
+)
 
 
 class MemoryRefused(Exception):
@@ -252,14 +262,21 @@ def _chain(row: MemberMemory) -> list:
 
 def forget(request, memory_id) -> Forgotten | None:
     """Hard-deletes the memory and the versions it superseded (map decision C). None when there
-    is no such memory for this caller; nothing is deleted then. Only versions this caller can
-    see go with it: an older version private to someone else is never touched from here."""
+    is no such memory for this caller; nothing is deleted then.
+
+    Only the member a memory is about may forget it (Kevin, 2026-11-24): a row another member
+    shared with the household is readable here and refused, so one member can never take a
+    household fact away from everyone else. Only rows this caller may delete in their own right
+    go with it, so neither an older version private to someone else nor a shared one someone else
+    shared is ever touched from here."""
     row = find(request, memory_id)
     if row is None:
         return None
+    if row.member_id != request.user.pk:
+        raise MemoryRefused(FORGET_REFUSAL, status=403)
     ids = _chain(row)
     with transaction.atomic():
-        deleted, _ = readable(request).filter(pk__in=ids).delete()
+        deleted, _ = readable(request).filter(pk__in=ids, member=request.user).delete()
     return Forgotten(text=row.text, deleted=deleted)
 
 
