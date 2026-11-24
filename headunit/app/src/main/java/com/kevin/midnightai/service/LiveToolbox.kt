@@ -101,7 +101,7 @@ object LiveToolbox {
                 "whenever the driver asks what's wrong with the car, about the check engine light, " +
                 "what a code means, or how to fix one. The specialist reads the live codes from the " +
                 "port itself - only pass 'codes' when the driver names specific ones (e.g. 'what's P0420'). " +
-                "Tell the driver you're digging into it before calling this - it takes a little while.",
+                SlowToolPrompt.INSTRUCTION,
             params = obj(
                 "question" to schema("string", "The driver's question in their own words, e.g. " +
                     "'what's wrong with my car' or 'how do I fix P0301'."),
@@ -128,8 +128,7 @@ object LiveToolbox {
                 "how a warning light is acting - 'what's that rattle', 'why does it shudder at idle', " +
                 "'it smells like burning'. The specialist reasons from the symptom plus live readings " +
                 "and stored codes, grounded to this exact car. Use diagnose_codes instead when the " +
-                "driver names a specific code. Tell the driver you're digging into it before calling " +
-                "this - it takes a little while.",
+                "driver names a specific code. " + SlowToolPrompt.INSTRUCTION,
             params = obj("symptom" to schema("string", "The driver's description of the problem in " +
                 "their own words, e.g. 'grinding when I brake' or 'rough idle when cold'.")),
             required = listOf("symptom"),
@@ -196,7 +195,7 @@ object LiveToolbox {
             description = "Analyze the most recent recorded cold start (the first minute of warm-up: " +
                 "idle, fuel trims, warm-up rate) against earlier ones. Use when the driver asks how " +
                 "the car has been starting, mentions rough cold idle, or asks about warm-up health. " +
-                "Tell the driver you're digging into it before calling this - it takes a little while.",
+                SlowToolPrompt.INSTRUCTION,
             params = obj(),
             required = listOf(),
         ))
@@ -228,8 +227,7 @@ object LiveToolbox {
                 "overall next-up item and can't answer about one named item or an overdue one. It " +
                 "uses the car's logged intervals, mileage, and service history. Use get_next_service " +
                 "instead for a plain, no-service-named 'what's due/coming up next' - it's instant and " +
-                "free; don't call this for that. Tell the driver you're digging into it before calling " +
-                "this - it takes a little while.",
+                "free; don't call this for that. " + SlowToolPrompt.INSTRUCTION,
             params = obj(
                 "question" to schema("string", "The driver's maintenance question in their own " +
                     "words, e.g. 'how do I change the brake fluid' or 'should I be worried about " +
@@ -244,9 +242,10 @@ object LiveToolbox {
                 "artists or tracks to check out, or resurfacing something already saved on the head " +
                 "unit that fits the moment. Grounds picks in the driver's actual listening taste and " +
                 "never suggests something they already have saved. Use when the driver asks what to " +
-                "listen to, wants a recommendation, or asks for something new. Tell the driver you're " +
-                "digging into it before calling this - it takes a little while. If it offers a saved " +
-                "mixtape by name and the driver says yes, call play_mixtape with that name.",
+                "listen to, wants a recommendation, or asks for something new. " +
+                SlowToolPrompt.INSTRUCTION +
+                " If it offers a saved mixtape by name and the driver says yes, call play_mixtape " +
+                "with that name.",
             params = obj(
                 "question" to schema("string", "The driver's request in their own words, e.g. 'find " +
                     "me something for a night drive' or 'what new music would I like'."),
@@ -512,7 +511,8 @@ object LiveToolbox {
                 "make, model, and trim. Use when the driver wants you to identify the car from the " +
                 "port, fill in its details automatically, or asks 'what car is this' / 'pull my VIN'. " +
                 "This only reads the facts - it does NOT save them. Read them back and ask the driver " +
-                "to confirm, then call register_vehicle to save. Needs the OBD adapter connected.",
+                "to confirm, then call register_vehicle to save. Needs the OBD adapter connected. " +
+                SlowToolPrompt.INSTRUCTION,
             params = obj(),
             required = listOf(),
         ))
@@ -535,7 +535,7 @@ object LiveToolbox {
                 "make/model). Use when the driver asks if the car has any recalls or open safety " +
                 "campaigns. The driver must have told you their car's year, make, and model first; " +
                 "if they haven't, this returns an error asking you to get those - never guess or " +
-                "assume the car.",
+                "assume the car. " + SlowToolPrompt.INSTRUCTION,
             params = obj(),
             required = listOf(),
         ))
@@ -545,7 +545,8 @@ object LiveToolbox {
             description = "Register the connected car's year, make, and model. Starts an online " +
                 "lookup of its maintenance schedule in the background (the result says it has only " +
                 "started; do not announce the schedule as found). Use when the driver identifies the car, e.g. " +
-                "'this car is a 2003 BMW 330i', or to save the details after lookup_vin found them.",
+                "'this car is a 2003 BMW 330i', or to save the details after lookup_vin found them. " +
+                SlowToolPrompt.INSTRUCTION,
             params = obj(
                 "year" to schema("integer", "Model year, e.g. 2003."),
                 "make" to schema("string", "Manufacturer, e.g. BMW."),
