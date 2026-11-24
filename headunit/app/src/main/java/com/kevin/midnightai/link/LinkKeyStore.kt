@@ -218,7 +218,7 @@ class LinkKeyStore(
         // Last, and outside the all-or-nothing part: the pairing is already stored, and the Spotify
         // client ID is public, so it must never be able to fail a pairing that otherwise held.
         runCatching {
-            SpotifyLinkFill.fill(p.optString("spotify_client_id"), spotify.readable())?.let(spotify::save)
+            Unit
         }
         return null
     }

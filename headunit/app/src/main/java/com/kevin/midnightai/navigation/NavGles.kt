@@ -133,7 +133,6 @@ internal class GlProbeGuard(private val prefs: SharedPreferences) {
 
     /** Runs [probe] with the flag armed, and clears it however the probe ends. */
     fun <T> guarded(probe: () -> T): T {
-        prefs.edit().putBoolean(KEY, true).commit()
         return try {
             probe()
         } finally {

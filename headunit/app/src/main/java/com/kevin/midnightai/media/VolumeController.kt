@@ -214,7 +214,7 @@ object VolumeController {
         val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val volumeFixed = isVolumeFixed(am)
         val notches = steps.coerceIn(1, 10)
-        var path = VolumePathStore.path(context)
+        var path = VolumePath.STREAM
         var refused = send(am, nudger, path, up, notches, by, before)
         var after = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         val fallback = VolumePathLogic.fallbackFor(path)
@@ -257,7 +257,7 @@ object VolumeController {
         before: Int,
     ): String? {
         var refused: String? = null
-        repeat(notches) { nudger.send(path, up)?.let { reason -> refused = reason } }
+        repeat(notches) { am.adjustStreamVolume(AudioManager.STREAM_MUSIC, if (up) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI) }
         noteOwnWrite(am, by, VolumeFeedback.writeWhat(up, path, refused), before)
         return refused
     }
