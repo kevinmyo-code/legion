@@ -46,7 +46,7 @@ from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))  # this folder's own modules, after the standard library
 
-from common import Paths, load_config, read_json, write_json_atomic  # noqa: E402
+from common import Paths, load_config, read_json, stdin_text, write_json_atomic  # noqa: E402
 from engine_client import EngineClient  # noqa: E402
 
 WORKER_MARKER = "LEGION_CLAUDE_WORKER"
@@ -122,7 +122,7 @@ def build_payload(event: dict, cfg: dict, sessions_dir: Path | None = None) -> d
     }
 
 
-def report(stdin_text: str, env=None, paths: Paths | None = None,
+def report(text: str, env=None, paths: Paths | None = None,
            sessions_dir: Path | None = None) -> dict | None:
     """Returns the payload it sent (or tried to), None when it did nothing. Never raises."""
     try:
@@ -135,7 +135,7 @@ def report(stdin_text: str, env=None, paths: Paths | None = None,
         cfg = load_config(paths)
         if not cfg.get("engine_url") or not cfg.get("token"):
             return None
-        payload = build_payload(json.loads(stdin_text or "{}"), cfg, sessions_dir)
+        payload = build_payload(json.loads(text or "{}"), cfg, sessions_dir)
         if payload is None:
             return None
         try:
@@ -227,7 +227,7 @@ def main(argv: list[str]) -> int:
         print("removed" if uninstall_settings(Path(argv[1])) else "none found")
         return 0
     try:
-        report(sys.stdin.read())
+        report(stdin_text())
     except BaseException:
         pass
     return 0
