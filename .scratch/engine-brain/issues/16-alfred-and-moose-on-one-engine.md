@@ -36,11 +36,17 @@ engine) and by 14 for the head unit half (the head unit is a limb on the contrac
   fallback: with no engine there is no assistant.
 - **A conversation does not carry from the phone into Moose.** Walking from the phone to the car
   starts a fresh turn on the head unit.
+- **The same voice behavior everywhere, standing.** Moose and Alfred behave exactly the same in
+  every voice behavior: goodbyes, hang-ups, interruptions, reminders, timing, all of it. Only the
+  personality differs. The phone is the default to match, so a surface copies the phone's shipped
+  behavior rather than inventing its own. Where the hardware makes a behavior impossible, the head
+  unit's missing wake word being the example, the gap is stated and never asked about.
 
 ## Build
-- Persona by surface for the head unit's turns, from the limb's `client` field on the wire
-  (`docs/contracts/voice-wire-v1.md`; `docs/contracts/voice-client-v1.md` section on persona), with
-  the phone unchanged on the profile's companion.
+- Persona by surface is [[14-headunit-thin-limb]]'s work, not this ticket's: 14 adopts the shared
+  `voice/` module with Moose picked by surface on the engine, from the limb's `client` field on the
+  wire (`docs/contracts/voice-wire-v1.md`; `docs/contracts/voice-client-v1.md` section on persona).
+  This ticket relies on it and leaves the phone unchanged on the profile's companion.
 - One card shape served to both limbs, rendered natively by each. The model picks the view and
   tools supply the values, the safety property the shipped generated view already holds
   (`.scratch/generated-ui/map.md`, `show_generated_view`, `service/GeneratedViewQueryRunner.kt`).
@@ -55,10 +61,11 @@ engine) and by 14 for the head unit half (the head unit is a limb on the contrac
   not a ruling.
 
 ## Open
-- **The phone's card style owes a ruling.** The phone's live design language is Typeset (ADR 0081)
-  and root `CLAUDE.md` section 2 records city-pop as dead for `app/`. Cards in the head unit's
-  style on the phone are an exception to both, and how it is written down (an amendment to ADR 0081,
-  or a new ADR) is not ruled. Flagged here, not settled, and no ADR is touched by this ticket.
+- **The phone's card style is ruled, its record is not.** Generated cards on the phone draw in the
+  head unit's style (Decided, above). That is a deliberate exception to ADR 0081 (Typeset) and to
+  root `CLAUDE.md` section 2 for generated cards only; the rest of `app/` stays Typeset. Whether
+  the exception lands as an amendment to ADR 0081 or as a new ADR is not ruled. No ADR is touched
+  by this ticket.
 - **This ticket owes the record.** The rulings above have no ADR and no `decisions.md` entry yet.
   One is owed before the build lands.
 
@@ -72,3 +79,6 @@ engine) and by 14 for the head unit half (the head unit is a limb on the contrac
 - [ ] Engine unreachable on the head unit: it says so and answers nothing else.
 - [ ] A phone turn followed by a head unit turn: the head unit starts fresh, with no history from
       the phone.
+- [ ] Voice-behavior parity against the phone's voice cases (`tools/voice_eval/cases.json`): the
+      head unit matches the phone's shipped behavior on a goodbye, an interruption and a reminder,
+      with only the personality differing, and any hardware gap named in the result.
