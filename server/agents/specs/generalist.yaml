@@ -1,8 +1,8 @@
 name: generalist
-version: 10
+version: 11
 # Every registry tool the web assistant has today (assistant.surface.WEB_TOOL_NAMES), plus the
-# engine twins of the phone's day reads, (ticket 03) of its goal, pending-transaction, advice
-# and why-did-you-say-that tools, and (ticket 15) of its aspect-engine records tools.
+# engine twins of the phone's day reads and (ticket 03) of its goal, pending-transaction, advice
+# and why-did-you-say-that tools. The aspect-engine records twins retired 2026-11-24.
 # tests/test_agents_legion.py (test_the_generalist_carries_todays_engine_surface_and_the_twins)
 # fails when the registry gains a tool this list does not classify.
 aspects: []
@@ -95,14 +95,6 @@ tools:
     - clear_pending_transaction
     - recent_advice
     - why_did_you_say_that
-    - list_aspects
-    - describe_aspect
-    - query_aspect_records
-    - create_aspect_record
-    - update_aspect_record
-    - delete_aspect_record
-    - create_aspect
-    - update_aspect
   relay: []
 writes: allowed
 # Destructive tools (EngineTool.destructive) always need a yes; nothing extra here.

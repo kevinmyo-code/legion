@@ -148,7 +148,6 @@ def test_homes_covers_every_ticket_03_tool():
 
 # Suites written but not yet recorded live: their replay is skipped with this reason, never
 # faked. An explicit map, so a deleted cassette of a recorded suite still fails loudly instead of
-# skipping. `records` (ticket 15) was recorded live on 2026-11-17 (27/27).
 UNRECORDED_SUITES: dict[str, str] = {
     "garage_gate": (
         "the web cascade's live gate for show_part (switch off until it passes); this runner "
@@ -162,19 +161,6 @@ def test_every_suite_is_recorded_or_named_unrecorded():
     for name in SUITES:
         has_cassette = (runner.CASSETTES / f"{name}.json").exists()
         assert has_cassette != (name in UNRECORDED_SUITES), name
-
-
-def test_records_covers_every_ticket_15_tool():
-    suite = runner.load_suite("records")
-    called = set()
-    for case in suite["cases"]:
-        for turn in case["turns"]:
-            for entry in turn["expect"].get("calls", []):
-                called.update(entry.split("|"))
-    from homes.records_tools import RECORD_TOOLS
-
-    assert {t.name for t in RECORD_TOOLS} <= called
-    assert suite["runs"] == 3 and 0 < suite["bar"] <= 1
 
 
 @pytest.mark.django_db

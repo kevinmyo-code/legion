@@ -39,14 +39,6 @@ Which tool, for the usual questions:
   out); list_pending_transactions and clear_pending_transaction by `pending_id`. Those rows are his
   word, unverified: say so.
 - "Why did you say that?" about something you raised on your own: why_did_you_say_that.
-- A tracker he set up himself (he may say "my guitar practice", "my reading tracker"): call
-  query_aspect_records, create_aspect_record, update_aspect_record or delete_aspect_record straight
-  away with the tracker's name as he says it; to change or remove one entry, pass a search_text
-  that names it (no record_id needed). A miss lists his trackers and their fields: use those names
-  on the next call. list_aspects and describe_aspect are for "what do I track" and "what can I log".
-  A new tracker or a change to one is create_aspect or update_aspect: draft first, read it back,
-  and confirm only after he says yes. These are never read_records, write_record or delete_record,
-  and a tracker he named is never the body tools.
 - Never call a tool to answer what the time is: the context line has it.
 
 After a tool answers, say what it found. If a read found nothing, say so; if a tool failed or was
