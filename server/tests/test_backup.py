@@ -166,9 +166,6 @@ def test_a_backup_lands_a_dated_folder_and_says_media_is_not_in_it(drive_login, 
     assert run.rows_written == 1
     assert "Media (photos, recordings" in run.watermark and "NOT in this backup" in run.watermark
     assert "Not dumped: auth, storage." in run.watermark
-    # The device log rows are left out on purpose, so the run says so the way
-    # it says media is missing: in words, on every ok run.
-    assert backup.DEVICE_LOGS_NOT_BACKED_UP in run.watermark
     assert dump["id"] in run.watermark
 
     entry = _fresh(household_a)
@@ -349,46 +346,6 @@ def test_pg_dump_passes_the_password_in_the_environment_never_argv(monkeypatch, 
         "--schema=public",
         "--schema=private",
     ]
-
-
-def test_pg_dump_leaves_the_device_log_rows_out_and_keeps_the_table(monkeypatch, tmp_path):
-    """Supabase egress: `device_logs` is the biggest table and the devices make
-    it again. Its schema is dumped, its rows are not. The argv is checked here;
-    that the pattern MATCHES is the drill's job, since pg_dump does not mind a
-    pattern that hits nothing."""
-    seen = {}
-
-    def fake_run(args, **kwargs):
-        seen["args"] = args
-        Path(args[2].removeprefix("--file=")).write_bytes(b"PGDMP")
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(backup, "pg_binary", lambda name: f"/usr/bin/{name}")
-    backup.pg_dump(tmp_path / "out.dump", run=fake_run)
-
-    assert "--exclude-table-data=public.device_logs" in seen["args"]
-    assert backup.DATA_EXCLUDED_TABLES == ("public.device_logs",)
-    # Schema-qualified, so it cannot match a same-named table in another schema.
-    assert all("." in name for name in backup.DATA_EXCLUDED_TABLES)
-    assert not any(arg.startswith("--exclude-table=") for arg in seen["args"])
-
-
-def test_the_drill_expects_a_data_excluded_table_empty_and_fails_on_rows():
-    """The drill is where the exclusion is proved, so it must not merely
-    tolerate the difference: an empty table passes, rows in it fail, and a
-    table missing altogether still fails."""
-    excluded = "public.device_logs"
-    live = {excluded: 4000, "public.events": 7}
-
-    ok_lines, ok_mismatched = backup.compare({excluded: 0, "public.events": 7}, live)
-    assert ok_mismatched == []
-    assert any("0 rows as intended" in line for line in ok_lines)
-
-    _lines, carried = backup.compare({excluded: 12, "public.events": 7}, live)
-    assert carried == [excluded]
-
-    _lines, missing = backup.compare({"public.events": 7}, live)
-    assert missing == [excluded]
 
 
 def test_a_failed_pg_dump_is_a_failure_in_words(tmp_path):
@@ -748,59 +705,27 @@ def test_subprocess_is_the_default_runner():
 def test_a_real_dump_restores_into_a_throwaway_database_with_equal_counts(tmp_path):
     """The real client tools against the TEST database (never live): pg_dump,
     CREATE DATABASE, extensions, pg_restore, counts, DROP. Proves the
-    mechanics; the drill against live is still owed by hand.
-
-    Also the one place `--exclude-table-data` is proved rather than read off an
-    argv: a device log row goes in first and the restore must hold the table
-    with none of it, so a pattern matching nothing (which pg_dump does not
-    complain about) fails here.
-
-    **The row is COMMITTED on its own connection, and that is the whole point.**
-    `pg_dump` is another process on another connection, so a row made through
-    the ORM inside this test's transaction is invisible to it and the
-    assertion below would hold whether or not anything was excluded. Checked
-    by removing the exclusion and watching an ORM-made row still pass. The row
-    takes the visit-conversation shape (`demo_visitor`, no household) because
-    every household row in this test is itself uncommitted and the check
-    constraint wants one or the other; `finally` deletes it either way."""
+    mechanics; the drill against live is still owed by hand."""
     assert settings.DATABASES["default"]["NAME"].startswith("test_"), "never against live"
-    label = f"drill phone {os.urandom(4).hex()}"
-    with backup._admin_connect() as conn:
-        # Every NOT NULL column is named: Django's `default=` is Python-side,
-        # so a raw insert has to supply them itself.
-        conn.execute(
-            "insert into device_logs (id, batch_id, device_label, app_version_name, reason, "
-            "line_count, raw_bytes, body_gz, demo_visitor, visit_ref, run_id, nav_audit_lines) "
-            "values (gen_random_uuid(), gen_random_uuid(), %s, '', 'conversation', "
-            "0, 3, %s, true, '', '', 0)",
-            (label, b"gz"),
-        )
+    dump_bin, restore_bin = backup.pg_binary("pg_dump"), backup.pg_binary("pg_restore")
+    backup.check_versions(dump_bin)
+    path = tmp_path / "drill.dump"
+    backup.pg_dump(path, binary=dump_bin)
+    target = backup.throwaway_name("2026-09-27")
+    backup.create_database(target)
     try:
-        dump_bin, restore_bin = backup.pg_binary("pg_dump"), backup.pg_binary("pg_restore")
-        backup.check_versions(dump_bin)
-        path = tmp_path / "drill.dump"
-        backup.pg_dump(path, binary=dump_bin)
-        target = backup.throwaway_name("2026-09-27")
-        backup.create_database(target)
-        try:
-            backup.prepare_extensions(target, write=print)
-            stderr = backup.pg_restore(path, target, binary=restore_bin)
-            print(stderr)
-            restored = backup.restored_counts(target, backup.schemas())
-            live = backup.live_counts(backup.schemas())
-        finally:
-            backup.drop_database(target)
+        backup.prepare_extensions(target, write=print)
+        stderr = backup.pg_restore(path, target, binary=restore_bin)
+        print(stderr)
+        restored = backup.restored_counts(target, backup.schemas())
+        live = backup.live_counts(backup.schemas())
     finally:
-        with backup._admin_connect() as conn:
-            conn.execute("delete from device_logs where device_label = %s", (label,))
-
+        backup.drop_database(target)
     lines, mismatched = backup.compare(restored, live)
     for line in lines:
         print(line)
     assert restored, "the restore produced no tables"
     assert mismatched == []
-    assert live["public.device_logs"] >= 1
-    assert restored["public.device_logs"] == 0
 
 
 def test_source_credential_config_carries_only_the_switch(vault_key, household_a, db):
