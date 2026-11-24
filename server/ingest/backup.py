@@ -33,19 +33,6 @@ that.
 
 **Media is not backed up** (ADR 0041 gap: there is no durable media store
 yet). Every `ok` run's `watermark` says so in words.
-
-**`device_logs` ROWS are not backed up either, and its table is**
-(`DATA_EXCLUDED_TABLES`). The whole dump went from 30 MB to 45 MB over four
-nights in November and every byte of it leaves Supabase as egress against a
-5 GB monthly allowance, which the November cycle blew through. `device_logs`
-is the largest table in the database and the only large one whose contents
-nobody owns: it holds a device's own uploaded log batches, and the phone and
-the head unit make them again. So a restore holding the table and none of
-last month's batches has lost nothing a person owns. (How much of the
-growth is this table's is not measured here; that it is the biggest is.)
-The schema stays in the dump, so a restore is still a database the engine
-can run against. Every `ok` run's `watermark` says this too, and the restore
-drill checks it rather than tripping over it (`compare`).
 """
 from __future__ import annotations
 
@@ -88,20 +75,6 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 DEFAULT_SCHEMAS = ("django", "public", "private")
 SCHEMAS_ENV = "LEGION_BACKUP_SCHEMAS"
 PG_BIN_ENV = "LEGION_PG_BIN_DIR"
-
-# Tables whose SCHEMA is dumped and whose ROWS are not, schema-qualified
-# because that is what `pg_dump --exclude-table-data` matches on. One tuple,
-# read by `pg_dump` (what to leave out) and by `compare` (what the restore
-# drill expects to find empty), so the dump and the drill cannot disagree
-# about it. Adding a name here is a decision: the rows stop being recoverable
-# from any backup taken afterwards, so it earns a line in the docstring above
-# saying who regenerates them.
-DATA_EXCLUDED_TABLES: tuple[str, ...] = ("public.device_logs",)
-
-DEVICE_LOGS_NOT_BACKED_UP = (
-    "Device log rows (public.device_logs) are NOT in this backup, only the empty table: "
-    "the devices upload them again, and they are the largest thing in the database."
-)
 
 MEDIA_NOT_BACKED_UP = (
     "Media (photos, recordings, uploads under MEDIA_ROOT) is NOT in this backup: "
@@ -251,15 +224,10 @@ def _tail(text: str, lines: int = 20) -> str:
 
 
 def pg_dump(path: Path, *, run=subprocess.run, binary: str | None = None) -> None:
-    """`pg_dump -Fc` of the LEGION schemas into `path`, without the rows of
-    `DATA_EXCLUDED_TABLES`."""
+    """`pg_dump -Fc` of the LEGION schemas into `path`."""
     binary = binary or pg_binary("pg_dump")
     args = [binary, "--format=custom", f"--file={path}"]
     args += [f"--schema={name}" for name in schemas()]
-    # `--exclude-table-data` keeps the CREATE TABLE and drops the COPY. A
-    # pattern matching nothing is NOT an error to pg_dump, so the proof that
-    # these names are right is the restore drill's count, not this argv.
-    args += [f"--exclude-table-data={name}" for name in DATA_EXCLUDED_TABLES]
     completed = run(args, env=libpq_env(), capture_output=True, text=True, check=False)
     if completed.returncode != 0:
         raise BackupError(
@@ -419,7 +387,6 @@ def run_backup(
             f"Retention trashed {len(trashed)} day folder(s): {', '.join(trashed)}."
             if trashed
             else "",
-            DEVICE_LOGS_NOT_BACKED_UP,
             MEDIA_NOT_BACKED_UP,
         )
         if part
@@ -609,39 +576,16 @@ def restored_counts(target: str, schema_names: Iterable[str]) -> dict[str, int]:
         return _counts(cursor, schema_names)
 
 
-def compare(
-    restored: dict[str, int],
-    live: dict[str, int],
-    *,
-    data_excluded: Iterable[str] = DATA_EXCLUDED_TABLES,
-) -> tuple[list[str], list[str]]:
+def compare(restored: dict[str, int], live: dict[str, int]) -> tuple[list[str], list[str]]:
     """(report lines, mismatched tables). A table that differs is reported
     with which side has more, never hidden: rows written after the dump are a
-    legitimate difference, and still a difference.
-
-    A table in `data_excluded` is the one place a difference is expected, and
-    it is CHECKED rather than skipped: the table must be in the restore (a
-    missing one still fails, above) and it must be empty there. A row in it
-    means the dump carried data it was told to leave out - a mistyped or
-    unqualified pattern, which pg_dump itself would not have complained
-    about - so that fails too.
-    """
-    excluded = set(data_excluded)
+    legitimate difference, and still a difference."""
     lines, mismatched = [], []
     for table in sorted(set(restored) | set(live)):
         r, lv = restored.get(table), live.get(table)
         if r is None:
             lines.append(f"{table}: MISSING from the restore (live has {lv})")
             mismatched.append(table)
-        elif table in excluded:
-            if r == 0:
-                lines.append(f"{table}: table restored, 0 rows as intended (live has {lv})")
-            else:
-                lines.append(
-                    f"{table}: restored {r} rows, but its rows are left out of the dump "
-                    f"on purpose, so the dump carried data it should not have"
-                )
-                mismatched.append(table)
         elif lv is None:
             lines.append(f"{table}: restored {r}, not in live any more")
             mismatched.append(table)
