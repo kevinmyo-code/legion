@@ -4,8 +4,8 @@
 `RecruiterContent.current()` / `for_user()` used to select every column, so the report HTML, the
 resume PDF and the resume's page image left Postgres on every `/api/demo/*` call - a 304 for a
 media file included - and no answer but `GET /api/demo/asset/<kind>` ever showed them. On the
-loaded row those three were about 0.9 MB, and bytea leaves Postgres hex-encoded, so roughly twice
-that on the wire: measured at 2.3 GB of the 12 GB November bill.
+loaded row those three were 0.9 MB (measured), and bytea leaves Postgres hex-encoded, so roughly
+twice that on the wire (reasoned): an estimated 2.3 GB of the 12 GB November bill.
 
 So these tests watch the SQL a request runs, which is the only place the saving shows. They pass
 trivially if the page breaks, so each one also checks the answer it came for.
@@ -85,16 +85,24 @@ def test_a_file_the_folder_does_not_hold_is_still_offered_to_nobody(recruiter, t
     assert _files_read(queries) == []
 
 
-def test_a_media_request_and_its_304_read_no_stored_file(recruiter, tmp_path):
+def test_a_media_request_reads_no_stored_file(recruiter, tmp_path):
     _loaded(tmp_path)
-    with CaptureQueriesContext(connection) as first:
+    with CaptureQueriesContext(connection) as queries:
         got = recruiter.get("/api/demo/media/gadget.glb")
     assert got.status_code == 200 and got.content == FAKE_GLB
-    assert _files_read(first) == []
-    with CaptureQueriesContext(connection) as again:
-        not_modified = recruiter.get("/api/demo/media/gadget.glb", HTTP_IF_NONE_MATCH=got["ETag"])
+    assert _files_read(queries) == []
+
+
+def test_a_media_304_reads_no_stored_file(recruiter, tmp_path):
+    """Its own test: the route used to read the content row before looking at the ETag, so the
+    answer with no body at all cost the most of any call. The first fetch is outside the capture
+    so this fails for that reason alone."""
+    _loaded(tmp_path)
+    etag = recruiter.get("/api/demo/media/gadget.glb")["ETag"]
+    with CaptureQueriesContext(connection) as queries:
+        not_modified = recruiter.get("/api/demo/media/gadget.glb", HTTP_IF_NONE_MATCH=etag)
     assert not_modified.status_code == 304 and not_modified.content == b""
-    assert _files_read(again) == []
+    assert _files_read(queries) == []
 
 
 def test_an_asset_request_reads_only_the_file_it_serves(recruiter, tmp_path):
