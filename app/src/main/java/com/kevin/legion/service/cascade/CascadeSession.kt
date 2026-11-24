@@ -2152,9 +2152,9 @@ internal class CascadeSession(
     }
 
     /**
-     * His latest words are a stop ([WakePhrases.isSleepPhrase]); while an answer is awaited
-     * ([awaitingAnswer]) only a hard stop, so "never mind" as an answer goes to the model while
-     * "that's it" closes (Kevin, 2026-11-23, Q8). While anything rings, "stop the alarm" and the like
+     * His latest words are a stop ([WakePhrases.isSleepPhrase]); while an answer is awaited (either
+     * signal, as in [awaitingAnswer]) only a hard stop, so "never mind" as an answer goes to the
+     * model while "that's it" closes (Kevin, 2026-11-23, Q8). While anything rings, "stop the alarm" and the like
      * are a stop too ([RingControl.voiceStops]), and [endByStop] stops the ring.
      */
     private fun endsConversation(words: String): Boolean {
@@ -2167,11 +2167,19 @@ internal class CascadeSession(
     }
 
     /**
-     * A write is waiting on his yes: his last turn asked him something in the way that has a DRAFT
-     * behind it ([lastTurnAsked], out of [LoneWordWriteGuard.asks]: a needs_confirmation, a draft_id
-     * or the first step of a two-step write), or the turn in hand did. The strictest stop rule
-     * applies while it holds ([WakePhrases.isSleepPhrase]'s `draftPending`), because a close here
-     * discards the draft as not_answered ([endByStop]).
+     * His last turn asked him something his next word can answer ([lastTurnAsked], out of
+     * [LoneWordWriteGuard.asks]), or the turn in hand did. A WRITE may be waiting on his yes
+     * (a needs_confirmation, a draft_id, the first step of a two-step write), and often none is:
+     * `needs_answer` covers a question asked BECAUSE nothing was written (a list add with a blank
+     * item, a car write that named no item, a remove that matched nothing, the adapter's "which car
+     * is this?"), so the name says more than the signal does.
+     *
+     * Either way the turn is weighed as one after a question ([WakePhrases.isSleepPhrase]), because a
+     * read-back need not end in "?". What a close actually drops is named at [release] and
+     * [releaseNow]: the asks that belong to this conversation and nothing else
+     * ([DtcClearController.forgetClearQuestion], [EventRemoval.reset], `EventMove.reset`), plus the
+     * authorisation to send a mail draft, which the account keeps as a draft. Nothing is deleted
+     * from his account; some asks have to be made again from scratch.
      */
     private fun draftPending(): Boolean {
         return turn?.asked == true || lastTurnAsked
@@ -2182,15 +2190,14 @@ internal class CascadeSession(
      * closing in code.
      *
      * TWO signals, not one (blind review of 56e9404e, finding 4): his last spoken clip ended in a
-     * question mark ([FollowUpWindow.isQuestion]), or a write draft waits ([draftPending]). The
-     * second was missing and is the better one: a read-back need not end in "?", and while one is
-     * pending a turn like "yes, that's it" closed in code before the model and before the write
-     * guard, and [endByStop] discards the draft as not_answered - the exact harm the 2026-11-18
-     * review raised F1 for.
+     * question mark ([FollowUpWindow.isQuestion]), or something he can answer is pending
+     * ([draftPending]). The second was missing and is the better one: a read-back need not end in
+     * "?", and without it a turn like "yes, that's it" closed in code before the model and before the
+     * write guard - the exact harm the 2026-11-18 review raised F1 for.
      *
-     * Only the `LIVE_AUDIT` line uses this, to say in one field that a close was weighed against
-     * either signal. The decision itself keeps them apart, because the two have different closing
-     * sets ([WakePhrases.isSleepPhrase]).
+     * This is the `LIVE_AUDIT` line's one field for it. The decision reads the same two signals and
+     * answers them the same way ([WakePhrases.isSleepPhrase] takes one parameter each, one rule over
+     * both), so the field and the decision cannot disagree.
      */
     private fun awaitingAnswer(): Boolean {
         return FollowUpWindow.isQuestion(lastClipText) || draftPending()
