@@ -13,8 +13,8 @@ In order:
 5. **Confirm before write**: a destructive tool, or one the spec lists, returns a read-back the
    first time; `pending_confirm` holds the sha256 of its arguments, and only a yes in a LATER turn
    (`confirm_reply`) releases a call whose arguments hash the same. A tool with its own draft
-   step (`CONFIRM_FLAG_TOOLS`, ticket 15) drafts freely; its `confirm: true` call is the one held
-   for that later yes, so a model cannot draft and commit in one turn.
+   step (`CONFIRM_FLAG_TOOLS`) drafts freely; its `confirm: true` call is the one held for that
+   later yes, so a model cannot draft and commit in one turn.
 
 Tenancy is not a guard here because it is not optional: every engine tool runs through
 `run_engine_tool` as the member (`agents/legion/gateway.py`), under their `visible()`.
@@ -38,11 +38,12 @@ from engine_mcp.tools import TOOLS_BY_NAME
 from household.models import is_recruiter
 
 THIRD_PARTY_TOOLS = read_through.THIRD_PARTY_TOOLS
-# Tools whose first call only drafts or counts and whose `confirm: true` call commits (the
-# user-aspect records' bulk delete and tracker authoring, `homes/records_tools.py`). Not
-# `add_backlog_idea`: its read-back ends the turn by itself (`speech_rules.VERBATIM_TOOLS`), so his
-# yes is already a later turn; holding it here too would ask him for a second yes.
-CONFIRM_FLAG_TOOLS = frozenset({"delete_aspect_record", "create_aspect", "update_aspect"})
+# Tools whose first call only drafts or counts and whose `confirm: true` call commits. Empty since
+# the user-aspect records tools retired (2026-11-24); the mechanism stays for the next tool with its
+# own draft step. Not `add_backlog_idea`: its read-back ends the turn by itself
+# (`speech_rules.VERBATIM_TOOLS`), so his yes is already a later turn; holding it here too would ask
+# him for a second yes.
+CONFIRM_FLAG_TOOLS: frozenset[str] = frozenset()
 CONFIRM_TURNS = 2
 
 NOT_ALLOWED = (
