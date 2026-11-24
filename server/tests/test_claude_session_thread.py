@@ -25,6 +25,7 @@ import pytest
 from django.utils import timezone
 
 from claude_session.models import SESSION_TEXT_MAX_BYTES, ClaudeTask
+from tests.conftest import worker_client
 
 pytestmark = pytest.mark.django_db
 
@@ -34,6 +35,7 @@ OTHER_SESSION = "22222222-aaaa-4bbb-8ccc-000000000002"
 
 
 def _beat(client, name="Alienware", scope="full", state="idle"):
+    client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": f"{name}-host", "scope": scope, "state": state,
             "running": [], "claude_version": "2.1.316"}
     response = client.post(f"{API}machines/heartbeat/", body, format="json")

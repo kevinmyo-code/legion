@@ -25,6 +25,7 @@ from claude_session.models import (
     ClaudeTask,
     ClaudeTaskFile,
 )
+from tests.conftest import worker_client
 
 pytestmark = pytest.mark.django_db
 
@@ -32,6 +33,7 @@ API = "/api/claude/"
 
 
 def _beat(client, name="Alienware", scope="full", state="idle", **extra):
+    client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": f"{name}-host", "scope": scope, "state": state,
             "running": [], "claude_version": "2.1.316", **extra}
     response = client.post(f"{API}machines/heartbeat/", body, format="json")

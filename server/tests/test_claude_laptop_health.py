@@ -16,6 +16,7 @@ from django.utils import timezone
 from claude_session import health as hl
 from claude_session.models import ClaudeMachine
 from push.models import PushSent, PushSubscription
+from tests.conftest import worker_client
 
 pytestmark = pytest.mark.django_db
 API = "/api/claude/"
@@ -58,6 +59,7 @@ def subscribed(household_user, household_a):
 
 
 def _beat(client, name="Alienware", scope="full", **extra):
+    client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": "h", "scope": scope, "state": "idle", "running": [],
             "claude_version": "2.1", **extra}
     r = client.post(f"{API}machines/heartbeat/", body, format="json")

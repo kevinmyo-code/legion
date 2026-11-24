@@ -20,7 +20,7 @@ from claude_session import storage, views
 from claude_session.management.commands import claude_files_prune
 from claude_session.models import ClaudeTask, ClaudeTaskFile
 from claude_session.storage import StorageError
-from tests.conftest import _client_for, _member
+from tests.conftest import _client_for, _member, worker_client
 
 pytestmark = pytest.mark.django_db
 
@@ -58,6 +58,7 @@ def bucket(monkeypatch):
 
 
 def _beat(client, name="Alienware", scope="full"):
+    client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": "h", "scope": scope, "state": "idle", "running": [],
             "claude_version": "2"}
     response = client.post(f"{API}machines/heartbeat/", body, format="json")

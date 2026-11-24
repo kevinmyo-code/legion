@@ -19,6 +19,7 @@ from rest_framework.test import APIClient
 
 from claude_session import views
 from claude_session.models import ClaudeMachine, ClaudeTaskFile
+from tests.conftest import worker_client
 
 pytestmark = pytest.mark.django_db
 
@@ -30,6 +31,7 @@ PAGE = (
 
 
 def _beat(client, name="Alienware", scope="full"):
+    client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": "h", "scope": scope, "state": "idle", "running": [],
             "claude_version": "2"}
     response = client.post(f"{API}machines/heartbeat/", body, format="json")
