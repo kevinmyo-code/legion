@@ -33,9 +33,9 @@ is ten minutes (R4). Stdlib only.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent))  # own modules after the stdlib
@@ -52,6 +52,9 @@ WRAP_OPEN = "<cross-session-message"
 WRAP_CLOSE = "</cross-session-message>"
 # The summariser: one bounded `claude -p` on this laptop. Only its output leaves.
 SUMMARY_TIMEOUT_S = 150.0
+# What the summariser is fed. `_text_of` caps nothing, so one enormous turn would otherwise be
+# written down a pipe from inside the worker's tick.
+REPLY_MAX = 8000
 SUMMARY_MODEL = "haiku"
 SUMMARY_BUDGET = "0.05"
 
@@ -60,8 +63,6 @@ SAY_NO_REPLY = ("Delivered to {name}, but it said nothing back within ten minute
 SAY_NO_SUMMARY = ("{name} replied, but the reply could not be summarised on this laptop, so "
                   "nothing was sent off it.")
 SAY_GONE = "Delivered to {name}, but {why}, so nothing came back."
-SAY_DELIVERED = ("Delivered to {name}'s inbox. It acts on it within its own permissions; nothing "
-                 "is known yet about what it does.")
 STEP_IN_INBOX = "In its inbox"
 
 
@@ -225,13 +226,14 @@ SUMMARY_PROMPT = (
 
 
 def summary_command(cfg: dict) -> list[str]:
-    """One tool-less, budgeted, unpersisted `claude -p`. ToolSearch is the only tool it has, and
-    with nothing enabled to call there is nothing it can do with one."""
+    """One tool-less, budgeted, unpersisted `claude -p`. `--tools ""` is no built-in tools at
+    all (`claude --help`: \"\" for none), which matters because the text it is fed is a session's
+    own words and may hold anything that session read off a web page."""
     return list(cfg.get("claude_cmd") or ["claude"]) + [
         "-p", "--output-format", "text", "--model", SUMMARY_MODEL,
         "--permission-mode", "dontAsk", "--permission-prompts", "none",
         "--setting-sources", "project,local", "--strict-mcp-config",
-        "--tools", "ToolSearch", "--max-turns", "2", "--max-budget-usd", SUMMARY_BUDGET,
+        "--tools", "", "--max-turns", "2", "--max-budget-usd", SUMMARY_BUDGET,
         "--no-session-persistence"]
 
 
@@ -250,7 +252,7 @@ class Summariser:
         folder = paths.sends / "summary"
         try:
             folder.mkdir(parents=True, exist_ok=True)
-            prompt = SUMMARY_PROMPT.format(cap=sessions.SUMMARY_MAX, text=text)
+            prompt = SUMMARY_PROMPT.format(cap=sessions.SUMMARY_MAX, text=text[:REPLY_MAX])
             self.proc = (popen or _popen)(summary_command(cfg), prompt, folder,
                                           sessions.courier_env(base_env, paths))
         except (OSError, ValueError):
@@ -286,13 +288,16 @@ def _popen(cmd: list[str], prompt: str, cwd: Path, env: dict):
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, cwd=cwd, env=env, text=True,
                             encoding="utf-8", errors="replace", creationflags=flags)
-    try:
-        proc.stdin.write(prompt)
-        proc.stdin.close()
-    except OSError:
-        pass
+
+    def feed():
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
+
+    # Off the worker's own thread: a full pipe would otherwise stall the heartbeat, and a machine
+    # that goes quiet for ten minutes has its running tasks failed by the engine.
+    threading.Thread(target=feed, daemon=True).start()
     return proc
 
-
-def projects_dir() -> Path:
-    return Path(os.environ.get("CLAUDE_PROJECTS") or Path.home() / ".claude" / "projects")

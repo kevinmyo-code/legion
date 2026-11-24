@@ -373,7 +373,7 @@ class Worker:
         # session has not answered yet. The watch itself lives in the task's own state (so a
         # worker restart resumes it, or lets its deadline close it); the summariser is a child
         # process and only in memory.
-        self.projects = Path(projects) if projects else sr.projects_dir()
+        self.projects = Path(projects) if projects else sessions.default_projects()
         self.summarisers: dict[int, sr.Summariser] = {}
         self.replies: dict[int, str] = {}  # a turn's text, in memory only, never in state.json
         self.make_summariser = summariser or sr.Summariser
@@ -740,6 +740,12 @@ class Worker:
                 status, summary = self.review_result(t)
                 self.finish(t, status, summary)
                 continue
+            if t.get("reply_watch"):
+                # A second report while the task waits for a session's reply. Finishing on it
+                # would put the HELPER's words where the reply belongs, and the engine takes one
+                # finish per task, so the reply would then have nowhere to go.
+                log.info("report for task %s ignored (waiting for a session reply)", t["id"])
+                continue
             if self.arm_reply_watch(t, r, now):
                 continue  # held open until that session answers, or ten minutes pass (S2)
             self.finish(t, r.get("status", "failed"), r.get("summary", ""), r.get("question", ""),
@@ -841,7 +847,6 @@ class Worker:
             self.finish(t, "done", sr.SAY_NO_REPLY.format(name=name))
             return
         # Still held open: only the summary may leave this laptop (R1), and it is not back yet.
-        watch["summarising"] = True
         self.summarisers[t["id"]] = self.make_summariser(reply, self.cfg, self.paths,
                                                          self.base_env, now)
         log.info("task %s turn ended; summarising its reply on this laptop", t["id"])

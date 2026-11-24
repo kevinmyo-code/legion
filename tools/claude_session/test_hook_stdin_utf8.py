@@ -98,5 +98,28 @@ class TestCourierGateTakesTheRealPreview(T.Base):
                          "armed")
 
 
+class TestTheOtherTwoHooksReadTheSameWay(T.Base):
+    """The ask-list hook and the session reporter had the same read, for the same reason."""
+
+    def test_the_ask_list_hook_sees_a_non_ascii_path_as_itself(self):
+        event = {"tool_name": "Write", "tool_input": {"file_path": str(self.work / "café.md")},
+                 "cwd": str(self.work)}
+        out = subprocess.run([sys.executable, "-I", "-S", str(HERE / "asklist_hook.py")],
+                             input=json.dumps(event, ensure_ascii=False).encode("utf-8"),
+                             capture_output=True, timeout=120,
+                             env={"LEGION_CLAUDE_HOME": str(self.paths.root), "SYSTEMROOT": ""})
+        # Its own work folder, so it passes. Reverted, the mojibake path is outside that folder
+        # and the hook asks about creating a file somewhere else instead.
+        self.assertEqual(out.returncode, 0, out.stdout[-300:])
+
+    def test_the_session_reporter_sends_a_non_ascii_prompt_as_itself(self):
+        import session_hook as SH
+        payload = SH.build_payload(json.loads(
+            '{"hook_event_name": "UserPromptSubmit", "session_id": "s1", '
+            '"prompt": "check the café branch…", "cwd": "/x/garden"}'),
+            {"name": "Alienware", "scope": "full"}, sessions_dir=self.root / "none")
+        self.assertEqual(payload["last_prompt_summary"], "check the café branch…")
+
+
 if __name__ == "__main__":
     unittest.main()

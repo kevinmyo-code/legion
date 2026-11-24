@@ -477,6 +477,105 @@ class TestTheReplyComesBack(WorkerBase):
         self.assertEqual(self.yes["status"], "running")
 
 
+class TestASecondReportCannotSpeakForTheSession(WorkerBase):
+    def test_a_second_report_while_waiting_is_ignored(self):
+        """Finishing on it would put the HELPER's words where the reply belongs, and the engine
+        takes one finish per task, so the reply would then have nowhere to go."""
+        self.pin()
+        self.transcript()
+        self.report()
+        self.w.drain_reports(self.now)
+        self.assertEqual(self.yes["status"], "running")
+        self.report(summary="the helper decided to say something else entirely")
+        self.w.drain_reports(self.now)
+        self.assertEqual(self.yes["status"], "running")
+        self.assertEqual(self.outbox(), [])
+        self.assertIn("reply_watch", self.yes)
+
+
+class TestTheGuardsAreRecheckedOnEveryPoll(WorkerBase):
+    def test_a_session_denied_after_the_watch_was_armed_stops_being_read(self):
+        self.pin()
+        self.transcript()
+        self.report()
+        self.w.drain_reports(self.now)
+        self.w.cfg["sessions_deny"] = ["garden"]  # Kevin adds it while the watch is open
+        self.transcript(peer_entry(MSG), said("the android job is red"))
+        self.w.next_reply_poll = 0.0
+        self.w.poll_replies(self.now)
+        self.assertEqual(self.yes["status"], "done")
+        self.assertIn("no-read list", self.outbox()[0]["payload"]["summary"])
+        self.assertEqual(FakeSummariser.made, [])
+
+
+class TestTheProgressStep(WorkerBase):
+    def test_the_phone_is_told_the_message_is_in_its_inbox(self):
+        self.pin()
+        self.transcript()
+        self.report()
+        self.w.drain_reports(self.now)
+        self.assertEqual(self.w.progress[42], sr.STEP_IN_INBOX)
+
+
+class TestTheSummariserItself(T.Base):
+    def test_it_is_given_no_tools_and_a_bounded_budget(self):
+        cmd = sr.summary_command({"claude_cmd": ["claude"]})
+        self.assertEqual(cmd[cmd.index("--tools") + 1], "")
+        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "dontAsk")
+        self.assertEqual(cmd[cmd.index("--max-budget-usd") + 1], sr.SUMMARY_BUDGET)
+        self.assertIn("--no-session-persistence", cmd)
+
+    def test_an_enormous_reply_is_capped_before_it_reaches_the_pipe(self):
+        seen = {}
+
+        def popen(cmd, prompt, cwd, env):
+            seen["prompt"] = prompt
+            raise OSError("not actually starting one")
+
+        sr.Summariser("x" * 50_000, {"claude_cmd": ["claude"]}, self.paths, {"PATH": ""}, 0.0,
+                      popen=popen)
+        self.assertLess(len(seen["prompt"]), sr.REPLY_MAX + 2000)
+
+    def test_a_summariser_that_could_not_start_is_done_with_nothing(self):
+        def popen(cmd, prompt, cwd, env):
+            raise OSError("no claude here")
+
+        s = sr.Summariser("a reply", {"claude_cmd": ["claude"]}, self.paths, {"PATH": ""}, 0.0,
+                          popen=popen)
+        self.assertTrue(s.done(0.0))
+        self.assertEqual(s.summary(), "")
+
+    def test_one_that_runs_too_long_is_killed_and_gives_nothing(self):
+        class Slow:
+            stdout = None
+            killed = False
+
+            def poll(self):
+                return None
+
+            def kill(self):
+                Slow.killed = True
+
+        s = sr.Summariser("a reply", {"claude_cmd": ["claude"]}, self.paths, {"PATH": ""}, 0.0,
+                          popen=lambda *a: Slow())
+        self.assertFalse(s.done(1.0))
+        self.assertTrue(s.done(sr.SUMMARY_TIMEOUT_S + 1))
+        self.assertTrue(Slow.killed)
+        self.assertEqual(s.summary(), "")
+
+    def test_a_summary_is_trimmed_to_the_cap_that_may_leave_the_laptop(self):
+        class Fat:
+            stdout = T.io.StringIO("word " * 500)
+
+            def poll(self):
+                return 0
+
+        s = sr.Summariser("a reply", {"claude_cmd": ["claude"]}, self.paths, {"PATH": ""}, 0.0,
+                          popen=lambda *a: Fat())
+        self.assertTrue(s.done(1.0))
+        self.assertLessEqual(len(s.summary()), S.SUMMARY_MAX)
+
+
 class TestTheThreadColumns(WorkerBase):
     def test_the_card_carries_the_session_and_the_exact_message(self):
         self.pin(delivered=False)
