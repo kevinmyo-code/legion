@@ -8,6 +8,8 @@ import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.provider.Settings
 import com.kevin.midnightai.service.MediaNotificationListener
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 
 /**
  * Opens the system's notification-access settings, where the driver grants
@@ -17,12 +19,17 @@ import com.kevin.midnightai.service.MediaNotificationListener
  * moved here (rather than lost with it) so both the Cruise cassette's
  * NEEDS_NOTIFICATION_ACCESS empty state and MediaDiagnosticsScreen's own
  * "OPEN NOTIFICATION ACCESS SETTINGS" button can call the same one line.
+ *
+ * Returns null when Android accepted it, else the sentence to put on screen: this is an OPTIONAL
+ * Settings activity and a gutted AOSP unit may not have it, which threw out of the tap and took the
+ * launcher with it. [ExternalDoor] holds that guard for every door in the app.
  */
-fun openNotificationAccessSettings(context: Context) {
-    context.startActivity(
-        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-    )
-}
+fun openNotificationAccessSettings(context: Context): String? =
+    ExternalDoor.attempt(ExternalScreen.NOTIFICATION_ACCESS) {
+        context.startActivity(
+            Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
 
 /** One active MediaSession's diagnostic read, for the media diagnostics screen. */
 data class SessionDiagnostic(
