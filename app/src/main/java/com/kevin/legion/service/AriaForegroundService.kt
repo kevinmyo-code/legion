@@ -412,7 +412,8 @@ class AriaForegroundService : Service() {
         if (intent?.action == ACTION_TALK) {
             val wake = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false)
             val inHand = intent.getBooleanExtra(EXTRA_IN_HAND, false)
-            sessionController.onTap(fromWakeWord = wake, inHand = inHand)
+            val call = intent.getBooleanExtra(EXTRA_CALL, false)
+            sessionController.onTap(fromWakeWord = wake, inHand = inHand, call = call)
         }
 
         // The alarm ring screen's Brief me (alfred-clock ticket 07): a tap, never an alarm firing.
@@ -1181,6 +1182,12 @@ class AriaForegroundService : Service() {
 
         /** Set by a tap in the app itself (phone in hand): only such a conversation may use the earpiece. */
         const val EXTRA_IN_HAND = "com.kevin.legion.IN_HAND"
+
+        /**
+         * [ACTION_TALK]: this conversation is a CALL (the Call button, 2026-11-24). Alfred's voice
+         * goes to the earpiece from the first word and the conversation is drawn as a call.
+         */
+        const val EXTRA_CALL = "com.kevin.legion.CALL"
 
         // Start-intent actions: show / hide the floating companion badge. Show
         // is fired right after LiveToolbox opens nav/music fullscreen; hide is

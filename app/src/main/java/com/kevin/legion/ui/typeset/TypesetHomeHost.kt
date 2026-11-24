@@ -29,7 +29,6 @@ import com.kevin.legion.finance.NetCashFloor
 import com.kevin.legion.finance.NetCashText
 import com.kevin.legion.quiet.QuietMode
 import com.kevin.legion.service.Phase
-import com.kevin.legion.service.turn.VoiceOutput
 import com.kevin.legion.ui.assistant.CardDestination
 import com.kevin.legion.ui.assistant.ChatPanelSheet
 import com.kevin.legion.ui.assistant.rememberAssistantVoice
@@ -96,7 +95,6 @@ fun TypesetHomeHost(
     )
     val status = if (voice.enabled) voice.state.label else "Assistant off, tap to set it up"
     val onTalk = if (voice.enabled) voice.talk else nav.onOpenSettings
-    val output = rememberOutputToggle(voice.phase)
     val slotOf: (TypesetDockTile) -> DockSlotUi? = { tile -> dockSlots.firstOrNull { slotTile(it) == tile } }
     val actions = TypesetHomeActions(
         onHome = voice.typedChat.onNewConversation,
@@ -109,7 +107,6 @@ fun TypesetHomeHost(
         onOpenField = nav.onOpenField,
         onBreathe = { BreathActivity.start(context) },
         onTalk = onTalk,
-        onFlipOutput = { output?.let { VoiceOutput.flip(context, it.choice) } },
         onType = voice.panel::show,
         onDismissCard = ConversationCards::dismiss,
         onCloseCard = ConversationCards::close,
@@ -153,7 +150,6 @@ fun TypesetHomeHost(
             dock = dockSlots.map(::slotTile),
             groups = groups,
             caption = voice.state.subtitle.takeIf { voice.enabled },
-            output = output,
         )
         if (controlsOpen) ControlsOverlay(controls, onClose = { controlsOpen = false })
         if (voice.panel.open) ChatPanelSheet(voice.typedChat, onTalk = onTalk, onClose = voice.panel::hide)

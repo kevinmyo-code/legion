@@ -8,7 +8,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.LiveOutput
 import com.kevin.legion.service.turn.Opening
-import com.kevin.legion.service.turn.OutputChoice
 import com.kevin.legion.service.turn.VoiceOutput
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -25,10 +24,11 @@ import org.robolectric.shadows.AudioDeviceInfoBuilder
 import org.robolectric.shadows.ShadowPowerManager
 
 /**
- * The conversation's side of the toggle: the earpiece only for a conversation opened by a tap in the
- * app (until he taps the toggle in another), a flip re-applied inside call audio without leaving it,
- * hands off in a phone call, the readback published for the toggle, and the proximity lock held only
- * while the platform routes to the earpiece and never again after stop.
+ * The conversation's side of the earpiece: a call opened by a tap in the app wants it and a plain
+ * conversation never does (nothing is read from storage, so an earlier call cannot reach this one),
+ * an in-call route change re-applied inside call audio without leaving it, hands off in a phone call,
+ * the readback published for the UI, and the proximity lock held only while the platform routes to
+ * the earpiece and never again after stop.
  */
 @RunWith(RobolectricTestRunner::class)
 class EarpieceRouteTest {
@@ -37,7 +37,10 @@ class EarpieceRouteTest {
     private val audio = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var inCall = false
     private var screenOn = true
-    private val route = EarpieceRoute(ctx, audio, { inCall }, { screenOn })
+
+    /** A call (the Call button opened it); [plain] is an ordinary orb tap. */
+    private val route = EarpieceRoute(ctx, audio, call = true, inCall = { inCall }, screenOn = { screenOn })
+    private val plain = EarpieceRoute(ctx, audio, call = false, inCall = { inCall }, screenOn = { screenOn })
     private var enterAsked = 0
     private val enter: suspend () -> Unit = { enterAsked++ }
 
@@ -56,23 +59,22 @@ class EarpieceRouteTest {
         ShadowPowerManager.clearWakeLocks()
         audio.mode = AudioManager.MODE_NORMAL
         route.begin(Opening.APP_TAP)
+        plain.begin(Opening.APP_TAP)
     }
 
     @After
     fun speakerAgain() {
         route.stop()
-        VoiceOutput.set(ctx, OutputChoice.SPEAKER)
+        plain.stop()
     }
 
     @Test
-    fun `CALL in a conversation opened by an app tap wants the earpiece`() {
-        VoiceOutput.set(ctx, OutputChoice.CALL)
+    fun `a call opened by an app tap wants the earpiece`() {
         assertTrue(route.wantsEarpiece())
     }
 
     @Test
-    fun `CALL in any other opening, or with the screen off, stays on the normal route`() {
-        VoiceOutput.set(ctx, OutputChoice.CALL)
+    fun `a call in any other opening, or with the screen off, stays on the normal route`() {
         for (opening in Opening.entries - Opening.APP_TAP) {
             route.begin(opening)
             assertFalse("$opening", route.wantsEarpiece())
@@ -83,14 +85,15 @@ class EarpieceRouteTest {
     }
 
     @Test
-    fun `SPEAKER never wants the earpiece`() {
-        assertFalse(route.wantsEarpiece())
+    fun `a plain tap never wants the earpiece, whatever an earlier call asked for`() {
+        assertTrue("the call itself wants it", route.wantsEarpiece())
+        VoiceOutput.askRoute(earpiece = true)
+        assertFalse("the next conversation is not a call", plain.wantsEarpiece())
     }
 
     @Test
-    fun `a flip to call inside call audio moves to the earpiece and holds the proximity lock`() = runBlocking {
+    fun `a call inside call audio moves to the earpiece and holds the proximity lock`() = runBlocking {
         val mode = CallAudioMode(audio).also { it.enter() }
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         route.reapply({ mode }, enter)
         assertTrue(mode.onEarpiece)
         assertEquals(0, enterAsked)
@@ -101,7 +104,6 @@ class EarpieceRouteTest {
 
     @Test
     fun `a refused earpiece holds no lock and is published as refused`() = runBlocking {
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         val mode = CallAudioMode(audio) { AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }.also { it.enter(earpiece = true) }
         route.reapply({ mode }, enter)
         assertFalse(mode.onEarpiece)
@@ -111,25 +113,25 @@ class EarpieceRouteTest {
     }
 
     @Test
-    fun `a flip back to speaker stays in call audio on the loudspeaker and lets the screen back`() = runBlocking {
-        VoiceOutput.set(ctx, OutputChoice.CALL)
-        val mode = CallAudioMode(audio).also { it.enter(earpiece = true) }
-        route.sync(mode)
-        assertTrue(lockHeld())
-        VoiceOutput.set(ctx, OutputChoice.SPEAKER)
-        route.reapply({ mode }, enter)
-        assertFalse(mode.onEarpiece)
-        assertTrue(mode.isActive)
-        assertEquals(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, audio.communicationDevice?.type)
-        assertFalse(lockHeld())
-        mode.exit("test")
-    }
+    fun `the in-call Speaker control stays in call audio on the loudspeaker and lets the screen back`() =
+        runBlocking {
+            val mode = CallAudioMode(audio).also { it.enter(earpiece = true) }
+            route.sync(mode)
+            assertTrue(lockHeld())
+            route.askRoute(earpiece = false)
+            route.reapply({ mode }, enter)
+            assertFalse(mode.onEarpiece)
+            assertTrue(mode.isActive)
+            assertEquals(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, audio.communicationDevice?.type)
+            assertFalse(lockHeld())
+            mode.exit("test")
+        }
 
     @Test
-    fun `SPEAKER with the toggle untouched leaves call audio exactly as entered`() = runBlocking {
+    fun `a plain conversation leaves call audio exactly as entered`() = runBlocking {
         val mode = CallAudioMode(audio).also { it.enter() }
         shadowOf(audio).setAvailableCommunicationDevices(listOf(device(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE)))
-        route.reapply({ mode }, enter)
+        plain.reapply({ mode }, enter)
         // Had the route re-selected, the speaker (no longer offered) could not be the device now.
         assertEquals(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER, audio.communicationDevice?.type)
         assertEquals(0, enterAsked)
@@ -138,10 +140,8 @@ class EarpieceRouteTest {
 
     @Test
     fun `outside call audio only the earpiece asks to enter it`() = runBlocking {
-        VoiceOutput.set(ctx, OutputChoice.SPEAKER)
-        route.reapply({ null }, enter)
+        plain.reapply({ null }, enter)
         assertEquals(0, enterAsked)
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         route.reapply({ null }, enter)
         assertEquals(1, enterAsked)
     }
@@ -149,7 +149,6 @@ class EarpieceRouteTest {
     @Test
     fun `a midway entry into call audio takes the proximity lock on the new call audio`() = runBlocking {
         var session: CallAudioMode? = null
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         route.reapply({ session }) { session = CallAudioMode(audio).also { it.enter(earpiece = true) } }
         assertTrue(session!!.onEarpiece)
         assertTrue(lockHeld())
@@ -159,7 +158,6 @@ class EarpieceRouteTest {
     @Test
     fun `a phone call on the line means hands off`() = runBlocking {
         inCall = true
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         route.reapply({ null }, enter)
         assertEquals(0, enterAsked)
         assertEquals(AudioManager.MODE_NORMAL, audio.mode)
@@ -168,13 +166,12 @@ class EarpieceRouteTest {
 
     @Test
     fun `stop releases the proximity lock on every exit and nothing takes it again`() = runBlocking {
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         val mode = CallAudioMode(audio).also { it.enter(earpiece = true) }
         route.sync(mode)
         assertTrue(lockHeld())
         route.stop()
         assertFalse(lockHeld())
-        assertNull("the toggle stops reading a closed conversation", VoiceOutput.live.value)
+        assertNull("the UI stops reading a closed conversation", VoiceOutput.live.value)
         // A device-change job or a crash-path release landing after stop: no lock, no entry.
         route.sync(mode)
         route.reapply({ mode }, enter)

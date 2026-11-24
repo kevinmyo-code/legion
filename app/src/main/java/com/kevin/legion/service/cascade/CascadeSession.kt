@@ -145,6 +145,11 @@ internal class CascadeSession(
     private val test: TestSession? = null,
     /** Opened by a tap in the app (phone in hand): only then may the earpiece apply ([EarpieceRoute]). */
     private val inHand: Boolean = false,
+    /**
+     * A CALL (the Call button, 2026-11-24): the earpiece from the first word, as a phone call. Per
+     * conversation, never saved, so a plain orb tap is always the loudspeaker.
+     */
+    private val call: Boolean = false,
 ) {
     private val ctx = context.applicationContext
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -250,7 +255,7 @@ internal class CascadeSession(
 
     /** Focus, the car's hands-free mic, and the Bluetooth watch ([CascadeAudio]). */
     private val audioRoute = CascadeAudio(ctx, audioManager)
-    private val earpiece = EarpieceRoute(ctx, audioManager)
+    private val earpiece = EarpieceRoute(ctx, audioManager, call = call)
 
     /** A call or a silenced capture mid-conversation ([CallPause]); [callPaused] once it has fired. */
     private val callWatch = CallWatch(ctx, audioManager) { reason -> scope.launch(loop) { pauseForCall(reason) } }
