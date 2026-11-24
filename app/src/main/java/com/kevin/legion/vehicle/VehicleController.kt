@@ -617,10 +617,28 @@ object VehicleController {
         // low-reading note and its drift log apply exactly as they do to `set_odometer`; out of
         // range, it questions the figure and nothing else has been written yet. The ambiguity
         // branch is first so an ambiguous name never moves the odometer either.
+        //
+        // An out-of-range reading refuses the WHOLE call, so the refusal must say the service was
+        // not logged: `setOdometer`'s own message is about a reading, and on its own it left the
+        // driver believing work he really had done was on file when nothing had been written.
+        //
+        // The low-reading note is the other half of rule 1 and is computed HERE, off the vehicle
+        // read above, because `setOdometer` zeroes the trip miles it is derived from. It is carried
+        // into the reply below: taking a reading that rewinds the odometer by thousands of miles
+        // and saying nothing about it is the one thing that function promises not to do.
+        val questionNote = statedMileage?.let {
+            odometerQuestionNote(it, currentMileage(vehicle), vehicle.odometerBaseline > 0)
+        }
         val refusal = when {
             match is ServiceMatch.Ambiguous ->
                 WriteOutcome(false, ambiguousServiceQuestion(match.candidates))
-            statedMileage != null -> setOdometer(context, statedMileage, vehicleId).takeIf { !it.success }
+            statedMileage != null -> setOdometer(context, statedMileage, vehicleId).takeIf { !it.success }?.let {
+                WriteOutcome(
+                    false,
+                    "${it.message} I haven't logged the $canonical either - say it again with the reading " +
+                        "you meant, or just say it was done and I'll log it with no mileage.",
+                )
+            }
             else -> null
         }
         if (refusal != null) return refusal
@@ -667,7 +685,23 @@ object VehicleController {
                 if (written == 0) {
                     WriteOutcome(false, serviceItemVanishedMessage(matchedName, statedMileage))
                 } else {
-                    WriteOutcome(true, loggedServiceMessage(matchedName, statedMileage))
+                    // Which axes this item HAS decides what the reply may promise: with no reading
+                    // and no months interval nothing times it, and "I'm timing that one by date"
+                    // would be a sentence about a schedule it does not have. Both anchors are the
+                    // row just inserted, so the intervals are the whole question.
+                    val matchedItem = existingItems.firstOrNull { it.serviceName == matchedName }
+                    WriteOutcome(
+                        true,
+                        noteThen(
+                            questionNote,
+                            loggedServiceMessage(
+                                matchedName,
+                                statedMileage,
+                                timedByDate = matchedItem?.intervalMonths != null,
+                                timedByMiles = matchedItem?.intervalMiles != null,
+                            ),
+                        ),
+                    )
                 }
             }
 
@@ -685,7 +719,7 @@ object VehicleController {
                     context,
                     MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical, neverDone = false),
                 )
-                WriteOutcome(true, newServiceItemMessage(canonical, statedMileage))
+                WriteOutcome(true, noteThen(questionNote, newServiceItemMessage(canonical, statedMileage)))
             }
         }
     }
@@ -817,23 +851,37 @@ object VehicleController {
         // function otherwise handles, and belongs in the same service ledger [logServiceDirect]
         // writes to - through the SAME insert shape that function uses, not a second writer. Never
         // fires for `neverDone` (nothing was "done" to log) or a mileage/milesAgo-only backfill
-        // (no date means nothing precise enough to file). [merged.lastDoneMileage] is null exactly
-        // when only a date was given ([mergeBackfillAnchors]'s anti-pairing rule), so the record's
-        // mileage falls back to the vehicle's current live reading then - mirrors
-        // [logServiceDirect]'s own mileage capture for a record with no explicit one.
+        // (no date means nothing precise enough to file). The record's own mileage is whatever the
+        // driver STATED and nothing else - see the comment on `recordMileage` below; the sentence
+        // that used to stand here, about falling back to the vehicle's current live reading,
+        // described the behaviour the car plan's slice 0 removed.
         if (date != null && !neverDone) {
-            // The anchor's own mileage, or none - never the vehicle's live ESTIMATE. This is the
-            // backfill half of the same rule [logServiceDirect] now holds: a date-only backfill
-            // ("it was done the same day as the oil change") knows WHEN and not AT WHAT, and
-            // today's estimated odometer is not the answer to a question about a past day. Null is
-            // the honest value, and [isDue] times such an item by date.
-            val recordMileage = merged.lastDoneMileage
+            // The reading the DRIVER stated, or none - never the vehicle's live ESTIMATE, and
+            // never [merged]'s own mileage, which for the `milesAgo` phrasing is
+            // `currentMileage - milesAgo`: that figure is the live estimate minus a remembered gap,
+            // so filing it here would put a derived guess on an OBSERVED row, the exact thing the
+            // car plan's slice 0 exists to stop. This is the backfill half of the same rule
+            // [logServiceDirect] holds: a date-only backfill ("it was done the same day as the oil
+            // change") knows WHEN and not AT WHAT, and today's estimated odometer is not the answer
+            // to a question about a past day. Null is the honest value. The maintenance ANCHOR may
+            // still carry the milesAgo figure ([merged] above writes it as an ASSERTED row, which
+            // is a driver statement by definition); only the OBSERVED event may not.
+            val recordMileage = mileage
             // insertObserved's own ASSERTED-supersession (instruction 3) then trashes the anchor
-            // row setAnchor just wrote above, in the SAME "one real event explains its own anchor"
-            // shape logServiceDirect uses - a precise, dated backfill both sets the clock and logs
-            // history, and once the real OBSERVED event exists there is nothing left for a
-            // duplicate ASSERTED row to assert. A failure here is reported rather than silently
-            // dropped, same posture as logServiceDirect's own insertObserved call.
+            // row setAnchor just wrote above WHENEVER this record explains it - a precise, dated
+            // backfill both sets the clock and logs history, and once the real OBSERVED event
+            // exists there is nothing left for a duplicate ASSERTED row to assert.
+            //
+            // It does NOT explain it on the `milesAgo` phrasing, by design: the anchor states a
+            // mileage this record deliberately does not carry, so `explainedBy` is false and the
+            // ASSERTED row survives beside it. That is the intended outcome - the remembered
+            // "8,000 miles ago" stays a driver statement on an ASSERTED row and keeps timing the
+            // item, while the OBSERVED event stays free of a derived figure. The two rows then
+            // disagree about which is the anchor between the phone and the engine in one narrow
+            // case; see `server/brief/maintenance.py`'s `_newest_first`.
+            //
+            // A failure here is reported rather than silently dropped, same posture as
+            // logServiceDirect's own insertObserved call.
             val insertResult = FleetEngineStore.insertObserved(context, vehicle.obdMac, targetName, recordMileage, date, null)
             if (insertResult is FleetEngineStore.InsertObservedResult.Failure) {
                 return WriteOutcome(false, "Updated the schedule, but couldn't file $targetName into the history - ${insertResult.reason}.")
@@ -968,8 +1016,14 @@ object VehicleController {
      * are indistinguishable at this layer by design - same shape [MaintenanceItemDao.setIntervals]'s
      * form-driven callers already use). `Long` cents throughout (CLAUDE.md §4 rule 3) - the caller
      * converts a driver-typed dollar string to cents before this is ever invoked.
+     *
+     * **[mileageMiles] is nullable, and null means the row keeps no reading** - the same value a
+     * voice log with no stated mileage writes (see [logServiceDirect]'s rule 2). The form's reason
+     * for existing is adding a cost to an existing record retroactively, and with a non-null `Int`
+     * here the only way to do that on a mileage-less record was to write a reading nobody gave.
+     * A `0` is not a reading either: the caller refuses it rather than passing it on.
      */
-    suspend fun editServiceRecordDirect(context: Context, id: Long, mileageMiles: Int, costCents: Long?): WriteOutcome {
+    suspend fun editServiceRecordDirect(context: Context, id: Long, mileageMiles: Int?, costCents: Long?): WriteOutcome {
         val written = FleetEngineStore.editMileageAndCost(context, id, mileageMiles, costCents)
         if (written == 0) {
             return WriteOutcome(false, "Couldn't save that - the record may have just been deleted.")
@@ -977,7 +1031,10 @@ object VehicleController {
         val after = FleetEngineStore.getServiceRecordById(context, id)
             ?: return WriteOutcome(false, "Saved, but couldn't read it back to confirm - check the history when you get a chance.")
         val costPhrase = after.costCents?.let { " at $${formatCents(it)}" }.orEmpty()
-        return WriteOutcome(true, "Updated ${after.serviceName}: ${after.mileage} miles$costPhrase.")
+        // The read-back says what the row holds, so a row with no reading says that rather than
+        // naming a figure ("0 miles", or a bare "null miles").
+        val milesPhrase = after.mileage?.let { "$it miles" } ?: "no mileage logged"
+        return WriteOutcome(true, "Updated ${after.serviceName}: $milesPhrase$costPhrase.")
     }
 
     /**
@@ -1756,6 +1813,11 @@ object VehicleController {
      *   know about N others" rather than silently omitting them.
      * @param odometerUnset true when the vehicle has never had an odometer
      *   reading, so [byMiles] was skipped entirely (see [computeNextService]).
+     * @param needsMileage items whose only interval is a mileage one and whose mileage anchor is
+     *   unknown, so nothing can bring them due until the driver states a reading - see
+     *   [needsMileageReading]. Disjoint from [unknownNames] by construction. Callers say so and ask
+     *   for the reading; they must never fold these into "everything is already due", which is why
+     *   [allDue] is false whenever this list is not empty.
      * @param allDue true when the schedule has items, but EVERY one of them is
      *   already due (or unknown-free-and-due) - there is nothing left to rank as
      *   "next" because nothing is left in the not-yet-due candidate pool. This is
@@ -1770,6 +1832,7 @@ object VehicleController {
         val unknownNames: List<String>,
         val odometerUnset: Boolean,
         val allDue: Boolean,
+        val needsMileage: List<String> = emptyList(),
     )
 
     /** The soonest-due anchored, not-yet-due item on each axis for [vehicle]. Null if there is nothing to report at all. */
@@ -1994,6 +2057,35 @@ object VehicleController {
         !item.neverDone && item.lastDoneMileage == null && item.lastDoneDate == null
 
     /**
+     * True when the only interval this item has is a MILEAGE one and its mileage anchor is
+     * unknown, so nothing can ever bring it due - the car plan's slice 0 shape, made visible
+     * instead of silent.
+     *
+     * The case: an item with `intervalMiles` and no `intervalMonths` (legal everywhere -
+     * [setMaintenanceInterval] requires only one of the two, and the factory-schedule prompt emits
+     * `intervalMonths` as null) whose newest service row carries no mileage, which is what a plain
+     * "I got my oil changed today" now writes. [isDue]'s mileage axis needs
+     * [MaintenanceItem.lastDoneMileage] and its time axis needs [MaintenanceItem.intervalMonths],
+     * so the item is never due; [isUnknown] is false because the DATE anchor is set. It would
+     * simply drop off the schedule, and - worse - [computeNextService] would count it on neither
+     * axis nor as unknown, which is exactly the condition [NextService.allDue] reads as "everything
+     * is already due".
+     *
+     * So it is reported, on the axis that is actually missing: the item is known to have been done,
+     * the reading is not known, and the honest move is to ask for the reading rather than to time
+     * it by a date nobody can time it by. An item that CAN be timed by date (both an
+     * `intervalMonths` and a `lastDoneDate`) is not this case - the date axis genuinely times it,
+     * and only its mileage axis is dark. [isUnknown]'s own case (no anchor at all) is not this one
+     * either; the two never overlap, so [NextService.unknownNames] and [NextService.needsMileage]
+     * never name the same item twice.
+     */
+    internal fun needsMileageReading(item: MaintenanceItem): Boolean {
+        if (item.neverDone || isUnknown(item)) return false
+        val timeable = item.intervalMonths != null && item.lastDoneDate != null
+        return item.intervalMiles != null && item.lastDoneMileage == null && !timeable
+    }
+
+    /**
      * Resolves the mileage anchor for [logPastServiceDirect]'s "milesAgo" phrasing
      * ("I did it about 3,000 miles ago") into an absolute mileage: [mileage] wins
      * if given directly, else [currentMileage] minus [milesAgo], floored at 0 so a
@@ -2144,6 +2236,7 @@ object VehicleController {
     ): NextService? {
         val odometerUnset = odometerBaseline == 0
         val unknown = items.filter { isUnknown(it) }
+        val needsMileage = items.filter { needsMileageReading(it) }
         val candidates = items.filter { !isUnknown(it) && !isDue(it, currentMileage, odometerUnset, now) }
 
         var byMiles: ServiceCandidate? = null
@@ -2181,7 +2274,12 @@ object VehicleController {
             unknownCount = unknown.size,
             unknownNames = unknown.map { it.serviceName },
             odometerUnset = odometerUnset,
-            allDue = byMiles == null && byTime == null && unknown.isEmpty(),
+            // An item waiting on a reading is NOT evidence that everything is due - it is the one
+            // thing we know we cannot time. Leaving it out of this condition is what turned a
+            // single mileage-less oil change into "everything I've got a record for is already
+            // due" across five surfaces.
+            allDue = byMiles == null && byTime == null && unknown.isEmpty() && needsMileage.isEmpty(),
+            needsMileage = needsMileage.map { it.serviceName },
         )
     }
 

@@ -120,6 +120,11 @@ object CarCards {
         if (time != null && due?.dueMiles != null && time.serviceName != due.label) {
             add("By time, ${time.serviceName} is soonest, about ${today.plusDays(time.remaining)}.")
         }
+        // Named, not dropped: a miles-only item with no reading on its newest service is the one
+        // thing on the schedule that cannot be timed at all (VehicleController.needsMileageReading).
+        if (next != null && next.needsMileage.isNotEmpty()) {
+            add("No mileage reading against ${next.needsMileage.joinToString(", ")}, so it can't be timed by miles yet.")
+        }
         if (next != null && next.unknownCount > 0) add("${next.unknownCount} more have no last-done on file.")
     }
 

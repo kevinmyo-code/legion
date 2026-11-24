@@ -281,6 +281,26 @@ class FleetRowsTest {
     }
 
     @Test
+    fun `a miles-only item logged with no reading says so, and is not counted as fine`() {
+        // The car plan's slice 0: "I got my oil changed today" moves the date anchor and leaves the
+        // mileage anchor unknown. The row is still listed - it is a real item - but there is no
+        // axis to compute on, so a bare "every 5,000 mi" beside a "-" would read as a rendering
+        // gap rather than a fact the driver can supply.
+        val item = MaintenanceItem(
+            vehicleId = vehicleId, serviceName = "Oil Change",
+            intervalMiles = 5000, intervalMonths = null,
+            lastDoneMileage = null, lastDoneDate = now - 86_400_000L,
+        )
+
+        val rows = buildDueRows(listOf(item), currentMileage = 42_300, odometerUnset = false, now = now)
+
+        assertEquals("never dropped - that is the silent loss", 1, rows.size)
+        assertEquals("-", rows[0].value)
+        assertEquals("every 5,000 mi - no mileage on the last service", rows[0].sub)
+        assertEquals("and nothing about this row says the car is fine", true, rows[0].untimed)
+    }
+
+    @Test
     fun `the miles axis stays refused even once accumulated trip miles make currentMileage positive, as long as the odometer itself is unset`() {
         // Senior-dev review fix (mission-control ticket 09 follow-up): currentMileage is
         // odometerBaseline + tripMilesSinceBaseline.roundToInt(), and TelemetryRecorder's trip-mile

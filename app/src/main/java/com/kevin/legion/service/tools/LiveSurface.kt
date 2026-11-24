@@ -124,7 +124,14 @@ internal object LiveSurface {
                     "pulse the garage door or gate; say triggering, never opening or closing; $YES",
                 ),
             ),
-            paramNotes = mapOf("vehicle" to "Which car; omit for the one being driven."),
+            paramNotes = mapOf(
+                "vehicle" to "Which car; omit for the one being driven.",
+                // Without a note here the folded tool - the surface that actually ships - carries
+                // `mileage` with no description at all, and the whole point of the parameter is the
+                // one rule a model has to follow: only a reading he said. Shared with
+                // log_past_service's own `mileage`, where the same rule holds.
+                "mileage" to "An odometer reading he stated himself. Omit it if he did not say one; never an estimate.",
+            ),
         ),
         ActionTool(
             name = "body_log",

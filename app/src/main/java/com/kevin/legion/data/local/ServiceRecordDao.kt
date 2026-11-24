@@ -160,9 +160,14 @@ interface ServiceRecordDao {
      * filled with the current row, so both are written unconditionally rather than merged against a
      * stale read). Returns the affected row count - ticket 05's law, restated here: the caller must
      * surface a `0` as a real failure ("it may have just been deleted"), never assume success.
+     *
+     * [mileage] is nullable for the same reason [ServiceRecord.mileage] is: since the car plan's
+     * slice 0 a logged service carries a reading only when the driver stated one, so "this row has
+     * no reading" is a state the form must be able to show AND keep. A non-null `Int` here would
+     * have made the only way to save a cost onto such a row the writing of a mileage nobody gave.
      */
     @Query("UPDATE service_records SET mileage = :mileage, costCents = :costCents WHERE id = :id AND deleted = 0")
-    suspend fun editMileageAndCost(id: Long, mileage: Int, costCents: Long?): Int
+    suspend fun editMileageAndCost(id: Long, mileage: Int?, costCents: Long?): Int
 
     /**
      * The soft-delete tombstone (ticket 11 §2). Present, not absent, after this runs - same
