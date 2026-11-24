@@ -467,8 +467,23 @@ def resolve_default_household():
 
     1. the household `LEGION_BOOTSTRAP_HOUSEHOLD_ID` names, if it exists. It
        is the one the operator chose and wrote into `deploy/.env`;
-    2. otherwise the ONLY household, if there is exactly one. A fresh clone's
-       compose stack is this case, and it is the whole of clone-and-run;
+    2. otherwise the only household that is not a throwaway demo visit, if
+       there is exactly one. A fresh clone's compose stack is this case, and
+       it is the whole of clone-and-run.
+
+       **The demo-visit exclusion is not tidiness** (2026-11-24). This read
+       `Household.objects.count() == 1` when it was written, which was before
+       ADR 0069 gave every recruiter visit its own household and before the
+       spare pool kept a few of them waiting. On a real engine that count is
+       Kevin's household plus however many visits and spares exist at this
+       instant, so case 2 answered None whenever anyone was looking at the
+       demo page - and answered it silently, to callers that read "no honest
+       guess" as "refuse the engine's own owner". A visit household is never
+       the answer to "which household runs this engine" and never the answer
+       to "which household does a new member join" either, so it is excluded
+       rather than counted;
+
+
     3. otherwise None, and the caller refuses in words. On an engine holding
        several families there is no honest guess: picking the oldest, or the
        first alphabetically, would put a person in someone else's house and
@@ -489,8 +504,9 @@ def resolve_default_household():
         household = Household.objects.filter(id=wanted).first()
         if household is not None:
             return household
-    if Household.objects.count() == 1:
-        return Household.objects.first()
+    real = Household.objects.exclude(is_demo_visit=True)
+    if real.count() == 1:
+        return real.first()
     return None
 
 
