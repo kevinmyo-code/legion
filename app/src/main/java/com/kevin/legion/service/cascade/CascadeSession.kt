@@ -543,10 +543,9 @@ internal class CascadeSession(
             }
         }
         LiveLatency.log(LiveLatency.TAG, "open_mic_ms=${System.currentTimeMillis() - started}")
-        // A call opens the route and the microphone as a tap does, so the earpiece is live before the
-        // first sound; its own pickup line plays instead of the chime.
-        val tapLike = opening == OpeningRule.Opening.CHIME || opening == OpeningRule.Opening.PICKUP
-        if (listens && tapLike) openMicNow(chime = opening == OpeningRule.Opening.CHIME)
+        // A call does NOT open the mic here (plan 2.1): it answers first, like the wake word's
+        // greeting, and the route it speaks on is entered with the rest of them below.
+        if (listens && opening == OpeningRule.Opening.CHIME) openMicNow()
         // Either voice needs the phone's turn detection to listen: without it, nothing can.
         val models = if (listens) {
             withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
@@ -2917,10 +2916,12 @@ internal class CascadeSession(
      * before the floor is his, and then the mic is open as after any reply. Never a model turn and
      * never the opening earcon, so what he hears first is a voice saying hello.
      *
-     * The line is said from audio in hand when there is any, and asked for otherwise (the first call
-     * after an install pays one voice fetch; the rest of the pool is warmed once this line has
-     * played, so later calls answer from memory). The clips are not in the APK yet: rendering them
-     * needs Kevin's own key (`tools/render_fixed_clips.py`), which no agent may spend.
+     * Each line is kept after it is first said ([ScriptedLines.KEEP] holds the pool under the
+     * register's own name, and the cloud voice files a kept line's audio when it renders it), so a
+     * line costs one voice fetch the first time it comes up and plays from memory after that.
+     * Nothing is warmed ahead: nine fetches at the moment he starts talking is what the 11-17 review
+     * cut. The clips are not in the APK either: rendering them needs Kevin's own key
+     * (`tools/render_fixed_clips.py`), which no agent may spend.
      */
     private fun speakPickup() {
         val voice = backend ?: return
@@ -2937,11 +2938,7 @@ internal class CascadeSession(
         reply.say(line)
         turnJob = scope.launch(loop) {
             when (val o = reply.await()) {
-                ReplySpeaker.Outcome.Played -> {
-                    // Next time: from memory. After the pickup has played, so no fetch queues ahead of it.
-                    voice.tts.warm(CallPickup.warmable(name).map { SpokenText.forSpeech(it) })
-                    afterReply()
-                }
+                ReplySpeaker.Outcome.Played -> afterReply()
                 is ReplySpeaker.Outcome.Failed -> onScriptedFailed(voice, line, o.reason)
                 ReplySpeaker.Outcome.Interrupted -> Unit
             }
@@ -3929,14 +3926,14 @@ internal class CascadeSession(
      * before the turn models, the voice service and the prompt (Kevin, 2026-11-19). Capture follows the
      * audio mode it starts in, so the route goes first; its barge-in decision needs only the route.
      */
-    private fun openMicNow(chime: Boolean = true) {
+    private fun openMicNow() {
         val route = CallAudioMode.route(audioManager)
         val barge = OpeningRule.bargeIn(VoiceTurnSettings.bargeIn(ctx), route, TelephonyController.isInCall)
         tapRoute = route
         tapBarge = barge
         enterRoute(barge, "tap")
         synchronized(turnLock) { backlog = MicBacklog() }
-        startMic(chime = chime)
+        startMic(chime = true)
     }
 
     /**

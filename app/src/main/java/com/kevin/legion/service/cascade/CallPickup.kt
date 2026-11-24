@@ -56,7 +56,11 @@ internal object CallPickup {
         Entry("late_name", "$NAME here. Up late?", named = true, window = NIGHT),
     )
 
-    /** Every line this phone may say, under [name]: what the voice is asked to keep in hand. */
+    /**
+     * Every line of the pool under [name]. [ScriptedLines.KEEP] holds these for the register's own
+     * name, and membership of that set is what lets the cloud voice keep a line's audio at all, so a
+     * pickup costs one voice fetch the first time it comes up and plays from memory after that.
+     */
     fun warmable(name: String): List<String> = POOL.map { fill(it.text, name) }
 
     /**

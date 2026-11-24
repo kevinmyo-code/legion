@@ -23,6 +23,26 @@ class TapOpeningTest {
     }
 
     @Test
+    fun `a call opens on its pickup line, and a line it was asked for still wins`() {
+        assertEquals(OpeningRule.Opening.PICKUP, OpeningRule.of(fromWakeWord = false, hasOpener = false, call = true))
+        assertEquals(
+            "the wake word loses to the button he just pressed",
+            OpeningRule.Opening.PICKUP,
+            OpeningRule.of(fromWakeWord = true, hasOpener = false, call = true),
+        )
+        assertEquals(
+            "a line asked for first IS the opening, and it is the one the earpiece refuses",
+            OpeningRule.Opening.OPENER,
+            OpeningRule.of(fromWakeWord = false, hasOpener = true, call = true),
+        )
+        assertEquals(
+            "without the button nothing changes",
+            OpeningRule.Opening.CHIME,
+            OpeningRule.of(fromWakeWord = false, hasOpener = false, call = false),
+        )
+    }
+
+    @Test
     fun `the early barge-in decision is the turn plan's, for every route`() {
         for (route in AudioRoute.entries) for (setting in listOf(true, false)) for (inCall in listOf(true, false)) {
             val plan = CascadeRules.turnPlan(
