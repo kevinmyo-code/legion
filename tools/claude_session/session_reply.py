@@ -9,23 +9,44 @@ no subcommand and no entry point: a helper can never ask for a reply, so the onl
 watched is one the phone itself sent to (`worker.py` arms the watch from the pinned plan, after
 the courier reported the message delivered).
 
-**What a delivered message looks like**, probed on Claude Code 2.1.330 (2026-11-23, against a
-throwaway session made for the probe, never one of Kevin's). One transcript entry:
+**What a delivered message looks like**, probed on Claude Code 2.1.330 (2026-11-23 and again
+2026-11-24, both against throwaway sessions made for the probe, never one of Kevin's). It
+depends on what the receiver was doing, and the first probe only saw the idle half.
+
+An IDLE receiver writes one `user` entry:
 
     {"type": "user", "isMeta": true, "turnOrigin": "peer",
-     "origin": {"kind": "peer", "from": "uds:\\\\.\\pipe\\LOCAL\\cc-msg-<hash>"},
+     "origin": {"kind": "peer", "from": "uds:...", "body": "<the exact text>",
+                "msg_id": "...", "name": "courier-60", "verifiedLocal": true},
      "message": {"role": "user", "content":
         "Another Claude session sent a message:\\n<cross-session-message from=... >\\n
          <the exact text>\\n</cross-session-message>\\n\\nThis came from another Claude session..."}}
 
-Two things follow, and the plan assumed neither:
+A receiver that is MID-TURN writes NO user entry. The message is queued (a `queue-operation`
+`enqueue` record at delivery time) and then absorbed into the running turn, which records it as
 
-- It is `isMeta`, so `sessions._text_of` drops it. The anchor is matched on RAW entries; only the
-  reply is read through `_text_of`, for its scrubbing.
-- The turn's end is in the file: the last assistant entry of a turn carries
-  `message.stop_reason == "end_turn"`, the ones before it `"tool_use"`. So the worker needs no
-  hook and no quiet timer. The plan's `Stop` to `idle` anchor could not have worked: that hook
-  reports to the ENGINE, and the worker never sees it.
+    {"type": "attachment", "attachment": {"type": "queued_command", "isMeta": true,
+     "prompt": "<the wrapper>", "origin": {"kind": "peer", "body": "<the exact text>", ...}}}
+
+written at absorb time, followed by a `queue-operation` `remove` with
+`reason: "absorbed_mid_turn"`. The answer is then blended into that turn's own closing text.
+A busy receiver is the common case, so an anchor that demanded a `user` entry found nothing and
+every such message came back as "it said nothing back".
+
+Three things follow, and the plan assumed none of them:
+
+- The anchor is `origin.body`, the message's own unwrapped text, which both shapes carry. The
+  wrapped prose is not matched at all: it differs between the two shapes ("sent a message" and
+  "sent a message while you were working") and could be escaped.
+- The turn's end is in the file, as `message.stop_reason == "end_turn"`, but ONE response is
+  written as two such entries: a thinking-only one and then the text one. The reply is the last
+  assistant TEXT entry that says `end_turn`, not the first entry that says it.
+- The plan's `Stop` to `idle` anchor could not have worked: that hook reports to the ENGINE, and
+  the worker never sees it.
+
+Open, and both named in `reports/hub-midturn-probe-1124.md`: whether a TUI session writes the
+same records (the probe's receivers were headless), and a mid-turn delivery that is NOT absorbed
+into the running turn, which is the one shape that could still fall into a later turn.
 
 Kevin's rulings: a summary may leave the laptop, a raw transcript never does (R1), and the window
 is ten minutes (R4). Stdlib only.
@@ -48,8 +69,8 @@ WINDOW_S = 10 * 60.0
 # How often the watch reads the transcript: the heartbeat, not the 0.5 s tick.
 POLL_S = 20.0
 PEER = "peer"
-WRAP_OPEN = "<cross-session-message"
-WRAP_CLOSE = "</cross-session-message>"
+# The wrapper's own prose is deliberately NOT matched: `origin.body` carries the message's own
+# text in both delivery shapes, and the prose differs between them.
 # The summariser: one bounded `claude -p` on this laptop. Only its output leaves.
 SUMMARY_TIMEOUT_S = 150.0
 # What the summariser is fed. `_text_of` caps nothing, so one enormous turn would otherwise be
@@ -135,46 +156,35 @@ def _content(entry: dict):
     return (entry.get("message") or {}).get("content")
 
 
-def is_peer_message(entry: dict) -> bool:
-    """One message delivered from another Claude session (probe, 2026-11-23)."""
-    if entry.get("type") != "user":
-        return False
-    if entry.get("turnOrigin") == PEER or (entry.get("origin") or {}).get("kind") == PEER:
-        return True
-    return False
+def peer_origin(entry: dict) -> dict | None:
+    """The delivery's own record of where it came from, in either shape it is written in.
 
-
-def wrapped_text(body: str) -> str | None:
-    """What the delivery wrapper holds, or None when `body` is not one wrapped message.
-
-    The open tag runs to its first `>`, and the close is the LAST `</cross-session-message>`, so
-    a message of his that itself contains the wrapper's own words comes back whole rather than
-    cut at the first one it holds.
+    An IDLE receiver gets a `user` entry with `origin` at the top level. A receiver that is
+    MID-TURN gets no user entry at all: the message is queued and then absorbed into the running
+    turn as an `attachment` whose `attachment.type` is `queued_command`, with `origin` under it
+    (probe, 2026-11-24). Both carry the same `origin`, and `origin.body` is the message's own
+    text, unwrapped.
     """
-    open_at = body.find(WRAP_OPEN)
-    if open_at < 0:
-        return None
-    tag_end = body.find(">", open_at + len(WRAP_OPEN))
-    close_at = body.rfind(WRAP_CLOSE)
-    if tag_end < 0 or close_at < tag_end:
-        return None
-    return body[tag_end + 1:close_at].strip()
+    for candidate in (entry.get("origin"), (entry.get("attachment") or {}).get("origin")):
+        if isinstance(candidate, dict) and candidate.get("kind") == PEER:
+            return candidate
+    return None
 
 
 def carries(entry: dict, text: str) -> bool:
-    """Is this the entry carrying exactly the message the worker had pinned?
+    """Is this the record of the message the worker had pinned, and no other?
 
-    The wrapped text must EQUAL the pinned message. A substring test (what this was until
-    2026-11-24) anchored on any peer message that merely held his words, and the first `end_turn`
-    after it is then that other message's answer: "check CI" anchored on a peer "please check CI
-    now", and a message like "Claude session" anchored on the wrapper's own boilerplate, which
-    says "Another Claude session sent a message" (S2 review, finding 2). The whole wrapper is
-    still demanded as well, so a turn that merely quotes the message is not the delivery.
+    `origin.body` must EQUAL it. Until 2026-11-24 this was `text in body` over the WRAPPED
+    prose, which anchored on any peer message that merely held his words: "check CI" anchored on
+    a peer "please check CI now", and a message like "Claude session" anchored on the wrapper's
+    own boilerplate, which says "Another Claude session sent a message" (S2 review, finding 2).
+    Reading `origin.body` instead of the prose also means one rule covers the idle and the
+    mid-turn shapes, and an escaped or re-wrapped rendering cannot hide the match.
     """
-    body = _content(entry)
-    if not isinstance(body, str) or not text:
+    if not text:
         return False
-    return wrapped_text(body) == text.strip()
+    body = (peer_origin(entry) or {}).get("body")
+    return isinstance(body, str) and body.strip() == text.strip()
 
 
 def is_tool_result(entry: dict) -> bool:
@@ -200,7 +210,7 @@ def interrupts(entry: dict) -> bool:
 
 def anchor_index(entries: list[dict], text: str) -> int | None:
     for i, entry in enumerate(entries):
-        if is_peer_message(entry) and carries(entry, text):
+        if carries(entry, text):
             return i
     return None
 
@@ -213,9 +223,15 @@ def scan(entries: list[dict], text: str, anchored: bool) -> tuple[bool, str | No
     has already been seen; entries before it belong to turns Kevin's phone never caused and are
     never read.
 
-    The turn is over at the first assistant entry whose `stop_reason` is `end_turn` (probe,
-    2026-11-23). Anything that `interrupts` ends the scan with no text, and the caller then
-    reports nothing rather than a turn that answered something else.
+    The turn is over at the first assistant entry that both carries TEXT and says `end_turn`.
+    One response is written as more than one such entry - a thinking-only one and then the text
+    one, both `end_turn` (probe, 2026-11-24) - so stopping at the first `end_turn` read the
+    thinking entry, found no text in it and reported that the session had said nothing. With
+    narration earlier in the turn it would have reported the narration instead. A turn that ends
+    with no text at all is left to the deadline, which says nothing came back.
+
+    Anything that `interrupts` ends the scan with no text, and the caller then reports nothing
+    rather than a turn that answered something else.
 
     A subagent's entries (`isSidechain`) are skipped whole: they sit inside his turn, carry an
     `end_turn` of their own, and are a tool's workings rather than what the session said back.
@@ -240,8 +256,8 @@ def scan(entries: list[dict], text: str, anchored: bool) -> tuple[bool, str | No
         got = sessions._text_of(entry)
         if got:
             last = got[1]
-        if (entry.get("message") or {}).get("stop_reason") == "end_turn":
-            return True, last, True
+            if (entry.get("message") or {}).get("stop_reason") == "end_turn":
+                return True, last, True
     return True, last, False
 
 

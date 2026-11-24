@@ -33,17 +33,51 @@ CANARY = "canary pear quince: this must not leave the laptop"
 
 # ------------------------------------------------------------------ transcript fixtures
 
-def peer_entry(text: str) -> dict:
-    """The shape the probe saw: a `user` entry, `isMeta`, `turnOrigin: peer`, the exact text
-    inside a `cross-session-message` wrapper."""
-    body = ("Another Claude session sent a message:\n"
+def wrapper(text: str) -> str:
+    return ("Another Claude session sent a message:\n"
             '<cross-session-message from="uds:\\\\.\\pipe\\LOCAL\\cc-msg-0123" '
             'from-name="courier-7" from-mode="prompting">\n'
             f"{text}\n</cross-session-message>\n\nThis came from another Claude session, not "
             "typed by your user.")
+
+
+def peer_origin(text: str) -> dict:
+    return {"kind": "peer", "from": "uds:\\\\.\\pipe\\LOCAL\\cc-msg-0123", "body": text,
+            "msg_id": "6f1b1a0e-0000-4000-8000-000000000001", "name": "courier-7",
+            "fromMode": "prompting", "verifiedLocal": True}
+
+
+def peer_entry(text: str) -> dict:
+    """What an IDLE receiver writes (probe, 2026-11-23): a `user` entry, `isMeta`,
+    `turnOrigin: peer`, `origin.body` the exact text, the wrapped prose in the message."""
     return {"type": "user", "isMeta": True, "isSidechain": False, "turnOrigin": "peer",
-            "origin": {"kind": "peer", "from": "uds:\\\\.\\pipe\\LOCAL\\cc-msg-0123"},
-            "message": {"role": "user", "content": body}}
+            "origin": peer_origin(text),
+            "message": {"role": "user", "content": wrapper(text)}}
+
+
+def absorbed_entry(text: str) -> dict:
+    """What a MID-TURN receiver writes instead (probe, 2026-11-24): no user entry at all, an
+    `attachment` whose `queued_command` holds the same `origin`, written at absorb time."""
+    return {"type": "attachment", "isSidechain": False, "renderedRole": "system",
+            "attachment": {"type": "queued_command", "isMeta": True, "commandMode": "prompt",
+                           "prompt": wrapper(text), "origin": peer_origin(text),
+                           "delivery_id": "6f1b1a0e-0000-4000-8000-000000000002",
+                           "sendMessageToolAbsent": True},
+            "rendered": [{"content": wrapper(text)}]}
+
+
+def queue_op(text: str, operation: str = "enqueue") -> dict:
+    """The command-queue log line written at delivery time, before the turn absorbs it."""
+    return {"type": "queue-operation", "operation": operation, "sessionId": SID,
+            "content": wrapper(text), "timestamp": "2026-11-24T21:34:59.905Z"}
+
+
+def thought(stop: str = "end_turn") -> dict:
+    """A thinking-only assistant entry. One response is written as this and THEN the text, both
+    `end_turn` (probe, 2026-11-24)."""
+    return {"type": "assistant", "isSidechain": False,
+            "message": {"role": "assistant", "stop_reason": stop,
+                        "content": [{"type": "thinking", "thinking": "weighing it up"}]}}
 
 
 def said(text: str, stop: str = "end_turn") -> dict:
@@ -169,6 +203,58 @@ class TestTheAnchorAndTheTurnEnd(unittest.TestCase):
                                         odd, False)
         self.assertTrue(anchored and ended)
         self.assertEqual(text, "done, one line in sessions.py")
+
+    def test_a_message_absorbed_by_a_RUNNING_turn_is_the_anchor_too(self):
+        """A busy receiver writes no `user` entry at all (probe, 2026-11-24).
+
+        The message is queued and absorbed into the turn already running, as an `attachment`
+        whose `queued_command` carries the same `origin`. An anchor that demanded a `user` entry
+        found nothing, so every message to a busy session came back as "it said nothing back" -
+        and his sessions are usually busy.
+        """
+        anchored, text, ended = sr.scan(
+            [queue_op(MSG), tool_result(), absorbed_entry(MSG), thought(),
+             said("the android job is red, and that was a peer message so I did not act on it")],
+            MSG, False)
+        self.assertTrue(anchored and ended)
+        self.assertIn("the android job is red", text)
+
+    def test_a_queue_record_alone_is_not_the_anchor(self):
+        """The `enqueue` line is written at delivery time, before the turn absorbs the message,
+        and it is not a turn boundary. Anchoring on it would read the running turn's own text."""
+        anchored, text, _e = sr.scan([queue_op(MSG), said("an answer to something else")],
+                                     MSG, False)
+        self.assertFalse(anchored)
+        self.assertIsNone(text)
+
+    def test_the_reply_is_the_text_entry_and_not_the_thinking_one_before_it(self):
+        """One response is TWO `end_turn` entries: thinking, then text (probe, 2026-11-24).
+
+        Stopping at the first `end_turn` read the thinking entry, found no text in it and told
+        him the session said nothing back. This is the ordinary idle case, so the reply watch
+        reported nothing for a session that had answered.
+        """
+        anchored, text, ended = sr.scan(
+            [peer_entry(MSG), thought(), said("it is the android job")], MSG, False)
+        self.assertTrue(anchored and ended)
+        self.assertEqual(text, "it is the android job")
+
+    def test_narration_earlier_in_the_turn_is_not_the_reply(self):
+        """The last text of the turn, not the first: with a thinking entry in between, the
+        earlier narration was what a first-`end_turn` rule would have sent."""
+        anchored, text, ended = sr.scan(
+            [peer_entry(MSG), said("I will look at CI now", stop="tool_use"), used_a_tool(),
+             tool_result(), thought(), said("android timed out; the rest are green")], MSG, False)
+        self.assertTrue(anchored and ended)
+        self.assertEqual(text, "android timed out; the rest are green")
+
+    def test_a_turn_that_ends_with_no_text_is_not_a_reply(self):
+        """A thinking-only end leaves the watch open rather than inventing a reply; the deadline
+        then says nothing came back."""
+        anchored, text, ended = sr.scan([peer_entry(MSG), thought()], MSG, False)
+        self.assertTrue(anchored)
+        self.assertFalse(ended)
+        self.assertIsNone(text)
 
     def test_the_reply_is_the_last_text_of_the_turn_not_the_first(self):
         anchored, text, ended = sr.scan(
