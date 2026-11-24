@@ -129,10 +129,20 @@ class CascadeWiringTest {
     fun `a stop is checked before every noise guard and never restarts the waiting request`() {
         val s = session()
         val run = bodyOf(s, "runTurn")
-        val stop = run.indexOf("val stop = stopWords && SttGuard.stopVoiced(stt.voicedMs)")
+        val stop = run.indexOf("val stop = stopWords && SttGuard.stopVoiced(stt.text, stt.voicedMs)")
         assertTrue("a stop over no voice is not a stop", stop >= 0)
         assertTrue("decided before the transcript guard can drop it", stop < run.indexOf("if (stop) return endByStop(u, stt.text)"))
         assertTrue("every turn logs voiced time and the decision", run.contains("stt_voiced ms="))
+        // 2026-11-23, goodbye hardening: every whole-turn farewell decision is in LIVE_AUDIT, matched or not.
+        // Blind review of 56e9404e, finding 1: the line logged the RAW transcript, so a word the guard
+        // had stripped (a script none of his languages use) rode into the log on the very line whose
+        // subject says it never does. It logs what the guard kept.
+        assertTrue("the decision is audited", run.contains("stopWords, stop, stt.voicedMs, v is SttGuard.Verdict.Keep,"))
+        assertTrue("with the words the guard kept", run.contains("(v as? SttGuard.Verdict.Keep)?.text ?: stt.text,"))
+        assertFalse("never the raw transcript", run.contains("noteGoodbye(stt.text,"))
+        assertTrue("a recovered transcript too", run.contains("noteGoodbye(recovered, recoveredStop,"))
+        assertTrue("never words the guard threw away", bodyOf(s, "noteGoodbye").contains("if (!kept && !matched) return"))
+        assertTrue("with the words the user line already logs", bodyOf(s, "noteGoodbye").contains("audit.goodbye("))
         val dropped = run.indexOf("if (stopWords && !stop) {")
         assertTrue("a stop dropped as noise discards the waiting request", dropped >= 0 && run.indexOf("carry = \"\"", dropped) in dropped until run.indexOf("val v = verdictOf(stt)"))
         assertTrue("the clear-codes gate gets the clip's voice", s.contains("ClearCodesVoiceGate.HeardVoice(record.voicedMs)"))
@@ -141,7 +151,18 @@ class CascadeWiringTest {
         assertTrue("the waiting request is dropped, not answered", end.contains("carry = \"\""))
         assertTrue(end.contains("endByVoice()"))
         assertFalse(end.contains("answerTurn("))
-        assertTrue("after a question only a hard stop", bodyOf(s, "endsConversation").contains("FollowUpWindow.isQuestion(lastClipText)"))
+        // Blind review of 56e9404e, finding 4: the stop rule turned on the last clip ending in "?"
+        // alone, so a pending confirmation whose read-back is a statement let "yes, that's it" close
+        // in code, before the model and before the write guard. A pending ask is its own signal now,
+        // and reaches the rule as a parameter of its own; the rule answers both the same way.
+        val ends = bodyOf(s, "endsConversation")
+        assertTrue("the last clip asked", ends.contains("afterQuestion = FollowUpWindow.isQuestion(lastClipText)"))
+        assertTrue("a pending ask reaches the rule too", ends.contains("draftPending = draftPending()"))
+        val draft = bodyOf(s, "draftPending")
+        assertTrue("his last turn asked", draft.contains("lastTurnAsked"))
+        assertTrue("the turn in hand asked too", draft.contains("turn?.asked == true"))
+        assertTrue("the log line says an answer was awaited", bodyOf(s, "noteGoodbye").contains("afterQuestion = awaitingAnswer()"))
+        assertTrue("either signal", bodyOf(s, "awaitingAnswer").contains("isQuestion(lastClipText) || draftPending()"))
         // A zero-voice "Bye." is noise for the guard, which counts it toward the cap.
         assertTrue(SttGuard.verdict("Bye.", 0L) is SttGuard.Verdict.Drop)
     }

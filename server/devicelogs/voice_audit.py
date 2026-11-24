@@ -505,6 +505,13 @@ def _items(events, verbose):
         elif event == "nudge":
             after = f" after {fields['after_ms']}ms" if "after_ms" in fields else ""
             items.append((time, "nudge", f"{fields.get('reason', '?')} {fields.get('tool', 'none')}{after}", None))
+        elif event == "goodbye":
+            refused = "" if fields.get("matched") == fields.get("honoured") else " REFUSED (no voice)"
+            if fields.get("matched") != "true" and not refused:
+                continue  # an ordinary turn the rule looked at and passed over: the USER line has it
+            items.append((time, "event", f"goodbye matched={fields.get('matched')}"
+                          f" after_question={fields.get('after_question')}"
+                          f" voiced_ms={fields.get('voiced_ms')}{refused}: {_clean(fields.get('text', ''))}", None))
         elif event == "read_through":
             tool = f" {fields['tool']}" if "tool" in fields else ""
             items.append((time, "event", f"read-through ({fields.get('source', '?')}{tool})", None))

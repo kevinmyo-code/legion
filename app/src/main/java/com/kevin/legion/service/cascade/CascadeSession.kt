@@ -1668,7 +1668,9 @@ internal class CascadeSession(
                 val lost = u.engine?.takeIf { stt.reason != EngineUtterance.SWITCHED_OFF }
                 if (lost != null) return engineFailed(lost, stt.reason == EngineUtterance.MISSED)
                 val recovered = recoverWords(u, stt.reason) ?: return
-                if (endsConversation(recovered)) return endByStop(u, recovered)
+                val recoveredStop = endsConversation(recovered)
+                noteGoodbye(recovered, recoveredStop, recoveredStop, null, kept = true)
+                if (recoveredStop) return endByStop(u, recovered)
                 recovered
             }
             is SttResult.Text -> {
@@ -1677,7 +1679,7 @@ internal class CascadeSession(
                 // A stop over no voice (a burst read as "Bye.") is not a stop; the guard below decides it.
                 // Either way a stop phrase never restarts the request it interrupted: that is dropped.
                 val stopWords = endsConversation(stt.text)
-                val stop = stopWords && SttGuard.stopVoiced(stt.voicedMs)
+                val stop = stopWords && SttGuard.stopVoiced(stt.text, stt.voicedMs)
                 if (stopWords && !stop) {
                     discardDraftOf(u, "not_answered")
                     carry = ""
@@ -1688,6 +1690,13 @@ internal class CascadeSession(
                     LiveLatency.TAG,
                     "stt_voiced ms=${stt.voicedMs ?: -1} audio_ms=${stt.audioMs ?: -1} decision=" +
                         if (stop) "stop" else (v as? SttGuard.Verdict.Drop)?.reason ?: "keep",
+                )
+                // The words the guard KEPT, never the ones it removed: a Keep still strips every word
+                // in a script none of his languages use ([SttGuard.verdict]), and the raw text would
+                // have put that stripped word in the log, which is the one thing this line must not do.
+                noteGoodbye(
+                    (v as? SttGuard.Verdict.Keep)?.text ?: stt.text,
+                    stopWords, stop, stt.voicedMs, v is SttGuard.Verdict.Keep,
                 )
                 if (stop) return endByStop(u, stt.text)
                 when (v) {
@@ -2151,14 +2160,74 @@ internal class CascadeSession(
     }
 
     /**
-     * His latest words are a stop ([WakePhrases.isSleepPhrase]); after a question only a hard stop,
-     * so "that's it" as an answer goes to the model. While anything rings, "stop the alarm" and the
-     * like are a stop too ([RingControl.voiceStops]), and [endByStop] stops the ring.
+     * His latest words are a stop ([WakePhrases.isSleepPhrase]); while an answer is awaited (either
+     * signal, as in [awaitingAnswer]) only a hard stop, so "never mind" as an answer goes to the
+     * model while "that's it" closes (Kevin, 2026-11-23, Q8). While anything rings, "stop the alarm" and the like
+     * are a stop too ([RingControl.voiceStops]), and [endByStop] stops the ring.
      */
     private fun endsConversation(words: String): Boolean {
-        val afterQuestion = FollowUpWindow.isQuestion(lastClipText)
-        return WakePhrases.isSleepPhrase(words, CompanionProfile.name(ctx), afterQuestion = afterQuestion) ||
-            RingControl.voiceStops(words, CompanionProfile.name(ctx))
+        return WakePhrases.isSleepPhrase(
+            words,
+            CompanionProfile.name(ctx),
+            afterQuestion = FollowUpWindow.isQuestion(lastClipText),
+            draftPending = draftPending(),
+        ) || RingControl.voiceStops(words, CompanionProfile.name(ctx))
+    }
+
+    /**
+     * His last turn asked him something his next word can answer ([lastTurnAsked], out of
+     * [LoneWordWriteGuard.asks]), or the turn in hand did. A WRITE may be waiting on his yes
+     * (a needs_confirmation, a draft_id, the first step of a two-step write), and often none is:
+     * `needs_answer` covers a question asked BECAUSE nothing was written (a list add with a blank
+     * item, a car write that named no item, a remove that matched nothing, the adapter's "which car
+     * is this?"), so the name says more than the signal does.
+     *
+     * Either way the turn is weighed as one after a question ([WakePhrases.isSleepPhrase]), because a
+     * read-back need not end in "?". What a close actually drops is named at [release] and
+     * [releaseNow]: the asks that belong to this conversation and nothing else
+     * ([DtcClearController.forgetClearQuestion], [EventRemoval.reset], `EventMove.reset`). Those have
+     * to be made again from scratch. A close is not what throws a mail draft away: it is saved in his
+     * Gmail the moment it is drafted (`EmailToolbox.drafted`).
+     */
+    private fun draftPending(): Boolean {
+        return turn?.asked == true || lastTurnAsked
+    }
+
+    /**
+     * Alfred is waiting for an answer, so a soft dismissal may be it and goes to the model instead of
+     * closing in code.
+     *
+     * TWO signals, not one (blind review of 56e9404e, finding 4): his last spoken clip ended in a
+     * question mark ([FollowUpWindow.isQuestion]), or something he can answer is pending
+     * ([draftPending]). The second was missing and is the better one: a read-back need not end in
+     * "?", and without it a turn like "yes, that's it" closed in code before the model and before the
+     * write guard - the exact harm the 2026-11-18 review raised F1 for.
+     *
+     * This is the `LIVE_AUDIT` line's one field for it. The decision reads the same two signals and
+     * answers them the same way ([WakePhrases.isSleepPhrase] takes one parameter each, one rule over
+     * both), so the field and the decision cannot disagree.
+     */
+    private fun awaitingAnswer(): Boolean {
+        return FollowUpWindow.isQuestion(lastClipText) || draftPending()
+    }
+
+    /**
+     * Every whole-turn stop decision goes to `LIVE_AUDIT` ([LiveAudit.goodbye]), matched or not, so the
+     * next conversation that does not close says in the log why (2026-11-23, goodbye hardening). Only whole turns:
+     * a running partial is weighed by the backchannel rule many times a turn and its text is in no log.
+     */
+    private fun noteGoodbye(words: String, matched: Boolean, honoured: Boolean, voicedMs: Long?, kept: Boolean) {
+        if (words.isBlank()) return
+        // Nothing the guard threw away and nothing a stop rule recognised: a count, as before. A
+        // transcript it dropped is noise or another language, and its words stay out of every log.
+        if (!kept && !matched) return
+        audit.goodbye(
+            Farewells.normalise(words),
+            matched = matched,
+            afterQuestion = awaitingAnswer(),
+            voicedMs = voicedMs,
+            honoured = honoured,
+        )
     }
 
     /**

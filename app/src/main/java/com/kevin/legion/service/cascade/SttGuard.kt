@@ -1,5 +1,7 @@
 package com.kevin.legion.service.cascade
 
+import com.kevin.legion.service.Farewells
+
 /**
  * What the cloud transcriber is told, and what of its answer is believed (2026-11-17 phone logs:
  * English speech came back as short Spanish phrases and a Chinese interjection, and the
@@ -65,8 +67,7 @@ internal object SttGuard {
     ): Verdict {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return Verdict.Keep("")
-        val oneWord = trimmed.split(Regex("\\s+")).count { w -> w.any { it.isLetterOrDigit() } } <= 1
-        if (oneWord && voicedMs != null && voicedMs < MIN_VOICED_MS) return Verdict.Drop(NOISE)
+        if (oneWord(trimmed) && voicedMs != null && voicedMs < MIN_VOICED_MS) return Verdict.Drop(NOISE)
         // Scripts none of his languages use (CJK, Cyrillic, Arabic...) are removed word by word; words in
         // his languages' scripts stay.
         val scripts = accepted.map { it.script }.toSet() + Character.UnicodeScript.LATIN
@@ -118,11 +119,36 @@ internal object SttGuard {
     const val MIN_VOICED_MS = 60L
 
     /**
+     * One word, by the same count [verdict]'s noise rule and [stopVoiced] both use.
+     *
+     * Counted on the text as the STOP RULES see it ([Farewells.normalise]:
+     * every run of non-letters becomes a space), not on raw whitespace tokens. Blind review of
+     * 56e9404e, finding 5: "Bye-bye." is one raw token and two normalised words, so the phrase this
+     * whole fix is named after was still refused as a stop when quiet, and then dropped as noise. A
+     * transcriber writes a hyphen where it likes; the word count must not turn on that.
+     *
+     * The cost, stated: a contraction is two words to this count ("don't" is "don t"), so one quiet
+     * token of that shape is now kept as speech instead of dropped as noise. That errs towards
+     * hearing him, and the two rules still agree with each other, which is the invariant
+     * [stopVoiced] rests on.
+     */
+    private fun oneWord(text: String): Boolean =
+        Farewells.normalise(text).split(' ').count { it.isNotEmpty() } <= 1
+
+    /**
      * A stop may end the conversation: its audio carried a voice by the same measure as any speech
      * ([MIN_VOICED_MS]; 2026-11-18 r3: a quiet "Stop." in road noise must still stop), or nothing was
      * measured.
+     *
+     * **[text] decides which rule applies, because this one must not be stricter than [verdict]**
+     * (2026-11-23, goodbye hardening: "bye bye" sometimes did not close). The voice floor is the NOISE rule, and
+     * that rule only ever drops a single word. A two-word stop under the floor used to be refused as
+     * a stop and then kept by [verdict] as ordinary speech, so "bye bye" went to the model and the
+     * conversation stayed open on an answer. A stop is now refused only where the same words would
+     * have been dropped as noise anyway.
      */
-    fun stopVoiced(voicedMs: Long?): Boolean = voicedMs == null || voicedMs >= MIN_VOICED_MS
+    fun stopVoiced(text: String, voicedMs: Long?): Boolean =
+        voicedMs == null || voicedMs >= MIN_VOICED_MS || !oneWord(text)
     const val VOICE_OVER_FLOOR_DB = 12.0
     private const val WINDOW_MS = 30L
     private const val SAMPLE_RATE = 16_000

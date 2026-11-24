@@ -69,15 +69,49 @@ class WakePhrasesTest {
     }
 
     /**
-     * Documented, deliberate misses. A trailing politeness does NOT match the deterministic
-     * backstop - the model's own `end_conversation` tool is told to treat these as dismissals, and
-     * erring toward one extra turn beats erring toward hanging up mid-sentence. If this behaviour
-     * is ever changed, it is a decision, not a bug fix, and this test should change with it.
+     * REVERSED 2026-11-23, on Kevin's order to harden the close. These two were documented,
+     * deliberate misses since 7745d3f3 (2026-09-10), left to the model's own
+     * `end_conversation` tool on the reasoning that a missed backstop costs one turn while a false
+     * one hangs up mid-sentence. The model turned out to be the unreliable half, so the backstop
+     * takes them now. The old test said a change here is a decision, not a bug fix: this is it,
+     * written down where that one was.
      */
     @Test
-    fun `a trailing politeness is left to the model`() {
-        assertFalse(WakePhrases.isSleepPhrase("that will be all, thanks"))
-        assertFalse(WakePhrases.isSleepPhrase("that will be all for now"))
+    fun `a trailing politeness matches, reversing the 2026-09-10 deliberate miss`() {
+        assertTrue(WakePhrases.isSleepPhrase("that will be all, thanks"))
+        assertTrue(WakePhrases.isSleepPhrase("that will be all for now"))
+    }
+
+    /**
+     * 2026-11-23, goodbye hardening: a goodbye with filler around it must close the conversation. Courtesy at
+     * either END is set aside ([Farewells.withoutCourtesy]); a request that merely contains a
+     * farewell, or a request wrapped in the same courtesy, is still a request. Both tables are data:
+     * a new courtesy word is a row here, never a new branch. Invented utterances only.
+     */
+    @Test
+    fun `courtesy around a stop is set aside, courtesy around a request changes nothing`() {
+        for (s in COURTESY_CLOSES) assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+        for (s in COURTESY_REQUESTS) assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred"))
+    }
+
+    companion object {
+        /** Closes: a farewell or a dismissal with lead-ins, thanks, the name or a tail around it. */
+        val COURTESY_CLOSES = listOf(
+            "okay, that'll be all, thanks Alfred", "that's all for now", "that will be all, thanks",
+            "that will be all for now", "alright, bye bye", "okay that's all, thanks", "bye bye, please",
+            "Thanks Alfred, that'll be all then", "that's it for now", "alright, that'll be all",
+            "goodbye for now, please", "Okay. Bye bye, Alfred. Thanks.", "that's all, thanks Alfred",
+            // Two ways of saying it in one turn is still one dismissal.
+            "that's it, bye bye", "that'll be all, goodbye", "bye bye, that's all", "okay that's all, thanks, bye",
+        )
+
+        /** Never closes: a real request, including one wearing the same courtesy. */
+        val COURTESY_REQUESTS = listOf(
+            "text mom bye bye", "say good night to the kids", "thanks, that's all the milk we need",
+            "okay, add eggs for now", "please stop the music", "thanks, remind me to say goodbye then",
+            "alright, what's the plan for now", "okay, play bye bye birdie please", "that's all I need, thanks",
+            "stop the timer please", "goodbye for now is the title of the song", "thanks", "please", "for now",
+        )
     }
 
     @Test
@@ -127,13 +161,20 @@ class WakePhrasesTest {
         }
     }
 
-    /** After a question the thanks is set aside too, and only a hard stop still ends it. */
+    /**
+     * After a question the thanks is set aside too, and only a hard stop still ends it. The four
+     * dismissals BECAME hard stops on 2026-11-23 (Kevin, Q8), so two rows moved up; "never mind" was
+     * not ruled on and stays soft.
+     */
     @Test
     fun `after a question a thanks before a hard stop ends it, before a soft one it does not`() {
-        for (s in listOf("Thanks, goodbye.", "Thank you, Alfred, stop.", "Cheers, bye.")) {
+        for (s in listOf(
+            "Thanks, goodbye.", "Thank you, Alfred, stop.", "Cheers, bye.",
+            "Thanks, that's all.", "Thank you, Alfred, that's it.",
+        )) {
             assertTrue(s, WakePhrases.isSleepPhrase(s, "Alfred", afterQuestion = true))
         }
-        for (s in listOf("Thanks, that's all.", "Thank you, Alfred, that's it.", "Thanks, never mind.")) {
+        for (s in listOf("Thanks, never mind.", "Thanks, Alfred, we're done.")) {
             assertFalse(s, WakePhrases.isSleepPhrase(s, "Alfred", afterQuestion = true))
         }
     }
@@ -159,10 +200,14 @@ class WakePhrasesTest {
     @Test
     fun `after a question only a hard stop ends it, the soft ones may be his answer`() {
         // Kevin, 2026-11-20: a goodbye ends the conversation reliably, after a question too ([Farewells]).
-        for (p in listOf("Stop.", "Goodbye.", "Good bye, Alfred.", "Bye.", "Bye bye.", "Go away.", "Stand down.", "Thanks, bye.")) {
+        // Kevin, 2026-11-23 (Q8): so do the four dismissals, which moved into HARD_STOPS from the list
+        // below. The remaining three were not ruled on: "never mind" and "we're done" can be his answer
+        // ("shall I cancel it?"), and a close there would drop what he asked for.
+        for (p in listOf("Stop.", "Goodbye.", "Good bye, Alfred.", "Bye.", "Bye bye.", "Go away.", "Stand down.", "Thanks, bye.",
+            "That's it.", "That's all.", "That will be all.", "That'll be all.")) {
             assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred", afterQuestion = true))
         }
-        for (p in listOf("That's it.", "That's all.", "Never mind.", "We're done.", "I'm done.", "That will be all.")) {
+        for (p in listOf("Never mind.", "We're done.", "I'm done.")) {
             assertFalse(p, WakePhrases.isSleepPhrase(p, "Alfred", afterQuestion = true))
             assertTrue(p, WakePhrases.isSleepPhrase(p, "Alfred"))
         }
