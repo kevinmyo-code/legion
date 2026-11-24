@@ -333,11 +333,16 @@ class CascadeWiringTest {
     @Test
     fun `an answered check-in closes after its one reply and opens no second window`() {
         val s = session()
-        // He speaks: the check-in is answered, not finished, because its reply is still owed.
-        val spoke = bodyOf(s, "onUserTurnStart")
-        assertTrue(spoke.contains("checkInStep = CheckInStep.ANSWERED"))
-        assertTrue(spoke.contains("reportCheckIn(CheckInOutcome.ANSWERED)"))
-        assertFalse("his speech alone must not finish the check-in", spoke.contains("checkInStep = CheckInStep.DONE"))
+        // He speaks: the check-in is answered, not finished, because its reply is still owed. Read by
+        // offset, not bodyOf: the mic sink has an onUserTurnStart of its own that calls this one.
+        val spokeAt = s.indexOf("private fun onUserTurnStart()")
+        val answeredAt = s.indexOf("checkInStep = CheckInStep.ANSWERED")
+        val reportedAt = s.indexOf("reportCheckIn(CheckInOutcome.ANSWERED)")
+        val nextFunAt = s.indexOf("private fun ", spokeAt + 1)
+        assertTrue("his speech is the one place the check-in becomes ANSWERED", spokeAt >= 0 && nextFunAt > spokeAt)
+        assertTrue("$spokeAt $answeredAt $reportedAt $nextFunAt", answeredAt in spokeAt until nextFunAt)
+        assertTrue("$spokeAt $reportedAt $nextFunAt", reportedAt in spokeAt until nextFunAt)
+        assertEquals("ANSWERED is set once, where he speaks", 1, s.split("checkInStep = CheckInStep.ANSWERED").size - 1)
         // That answer's reply played: the one exchange is over.
         val answer = bodyOf(s, "answerTurn")
         assertTrue(
