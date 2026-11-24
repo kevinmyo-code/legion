@@ -4,8 +4,8 @@ title: "Engine brain: Alfred's agent graph on the engine; the phone and every de
 charted: 2026-11-17
 charted-by: "Opus (plan 2026-11-16, ruled by Kevin 2026-11-17)"
 effort: "`.scratch/engine-brain/`"
-tickets: 16
-open: 15
+tickets: 17
+open: 16
 status: open
 tags: [map]
 ---
