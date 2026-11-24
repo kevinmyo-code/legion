@@ -35,9 +35,12 @@ object VolumeFeedback {
      */
     fun pressWords(before: Int, after: Int, max: Int, up: Boolean, volumeFixed: Boolean): String? = when {
         after != before -> null
+        // Fixed BEFORE the end-of-range tests, not after: AudioService pins a fixed-volume
+        // output's stream at max, so "already at the top" is exactly how this case looks and the
+        // end-of-range branch would swallow the one thing this function exists to say.
+        volumeFixed -> FIXED_OUTPUT
         up && max > 0 && before >= max -> null
         !up && before <= 0 -> null
-        volumeFixed -> FIXED_OUTPUT
         else -> NO_MOVEMENT
     }
 

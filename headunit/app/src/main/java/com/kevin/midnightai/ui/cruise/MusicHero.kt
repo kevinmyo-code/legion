@@ -51,7 +51,8 @@ import com.kevin.midnightai.ui.theme.AriaType
 internal enum class MusicFace { NOW, LISTS }
 
 /**
- * The HU-1 music card (Kevin's approved prototype, 2026-11-19: "song on the right"): ONE card
+ * The HU-1 music card (Kevin, 2026-11-23: "i want the music controls to be center"; it sat on the
+ * right under the 2026-11-19 prototype, and the order now lives in [CruiseLayoutLogic.ORDER]): ONE card
  * whose face flips between NOW PLAYING and the pinned PLAYLISTS with the NOW / LISTS keys (a cut,
  * no animation), while the transport row and the volume row stay on both faces. Keys are about
  * three times the split deck's ([MusicDeckLogic.heroKeys]).

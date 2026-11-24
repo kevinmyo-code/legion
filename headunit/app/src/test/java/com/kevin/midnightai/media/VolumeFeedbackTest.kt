@@ -36,11 +36,22 @@ class VolumeFeedbackTest {
         assertTrue(words!!, "Volume check" in words)
     }
 
-    @Test fun aStreamWithNoRangeAtAllStillReportsADeadPress() {
-        // max 0: the end-of-range branches must not swallow it.
+    /**
+     * The case the end-of-range branches would have swallowed: AudioService pins a fixed-volume
+     * output's stream at max, so the press Kevin makes looks exactly like "already at the top".
+     */
+    @Test fun aFixedOutputPinnedAtMaxStillSaysSo() {
+        assertEquals(
+            VolumeFeedback.FIXED_OUTPUT,
+            VolumeFeedback.pressWords(before = 15, after = 15, max = 15, up = true, volumeFixed = true),
+        )
         assertEquals(
             VolumeFeedback.FIXED_OUTPUT,
             VolumeFeedback.pressWords(before = 0, after = 0, max = 0, up = true, volumeFixed = true),
+        )
+        assertEquals(
+            VolumeFeedback.FIXED_OUTPUT,
+            VolumeFeedback.pressWords(before = 0, after = 0, max = 15, up = false, volumeFixed = true),
         )
     }
 

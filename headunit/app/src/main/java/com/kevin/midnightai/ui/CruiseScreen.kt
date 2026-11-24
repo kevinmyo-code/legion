@@ -546,9 +546,12 @@ fun CruiseScreen(
                 }
             }
         } else {
-            // --- Head unit (EXPANDED, and MEDIUM phone landscape): HU-1 layout, Kevin's approved
-            // prototype (2026-11-19): "car in the middle song on the right, left keep as is with
-            // the avatar and the buttons". Console rail | CAR / NAV panel | one music card.
+            // --- Head unit (EXPANDED, and MEDIUM phone landscape): HU-1 layout. Console rail |
+            // one music card | CAR / NAV panel, the two cards at one width (Kevin, 2026-11-23: "i
+            // want the music controls to be center and the map/car data to be on right. and their
+            // width should be equal"). This supersedes the 2026-11-19 prototype's "car in the
+            // middle song on the right"; its "left keep as is with the avatar and the buttons"
+            // still stands, which is why the rail keeps its own width.
             //
             // Every size comes from u = 1% of the frame width, the unit the prototype is drawn
             // in, capped by height (58.6u = a 1024x600 frame); CruiseLayoutLogic holds the numbers.

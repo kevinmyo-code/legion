@@ -104,10 +104,13 @@ object NavRuntime {
         if (::guard.isInitialized && guard.getBoolean(KEY_MAP_STARTING, false)) {
             return "the map stopped this app the last time it opened. Tap TRY MAPS AGAIN to retry"
         }
-        val declared = declaredGlEs()
-        // Asked once per process: the answer cannot change while it runs, and the NAV face calls
-        // this on every open and every token refresh.
-        val decision = es3 ?: NavGles.decide(declared, NavGles.probeEs3Configs()).also {
+        // An ActivityManager that cannot be read says nothing either way, so the map is left alone
+        // and NOTHING is cached: the next open asks again rather than freezing a fallback in for
+        // the life of the process.
+        val declared = declaredGlEs() ?: return null
+        // Otherwise asked once per process: neither the ROM's claim nor the driver can change
+        // while it runs, and the NAV face calls this on every open and every token refresh.
+        val decision = es3 ?: NavGles.decide(declared, NavGles.probeEs3Context()).also {
             es3 = it
             com.kevin.midnightai.diag.DriveLog.breadcrumb(
                 "NAVGLES declared=${NavGles.version(declared)} decision=$it",
@@ -151,14 +154,13 @@ object NavRuntime {
     }
 
     /**
-     * What the unit says its OpenGL ES version is - the ROM's own claim, not the driver's. Unreadable
-     * reads as ES 3 so an unanswerable ActivityManager never alone takes the map away (the EGL probe
-     * in [NavGles] is what settles a unit that claims less).
+     * What the unit says its OpenGL ES version is - the ROM's own claim, not the driver's. Null when
+     * ActivityManager could not be read, which is not an answer and so never takes the map away.
      */
-    private fun declaredGlEs(): Int = runCatching {
+    private fun declaredGlEs(): Int? = runCatching {
         val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         am.deviceConfigurationInfo.reqGlEsVersion
-    }.getOrDefault(NavGles.GLES_3)
+    }.getOrNull()
 
     private const val GUARD_PREFS = "nav_guard"
     private const val KEY_MAP_STARTING = "map_starting"

@@ -172,8 +172,18 @@ object CompanionProfile {
      * is like a woman's voice which is wrong. it was algenib before").
      *
      * Sweeps the flat key and every per-car key, not only the active car, because at app start the
-     * dongle often has not resolved the active vehicle yet (see [identityString]) - and because a
-     * re-pair that changes the active vehicle id is how a car ends up reading a different slot.
+     * dongle often has not resolved the active vehicle yet (see [identityString]).
+     *
+     * **The deeper cause, traced 2026-11-23 and NOT fixed here.** `ActiveVehicle.current` is
+     * `selected ?: connectedDeviceAddress ?: "default"`, so with nothing picked by hand the id
+     * FLIPS with the dongle's connection state - `voice:<dongle MAC>` while it is connected,
+     * `voice:default` once it drops. [saveVoice] only ever writes the per-car key, so the flat key
+     * the fallback reads is never written by any path in this app, and the other slot resolves
+     * blank. A voice chosen with the dongle plugged in therefore went missing the moment it
+     * dropped. Making the blank case Moose's own voice is what stops that being audible; keying
+     * identity on something that moves is the real bug, and ADR 0104 already rules it ends in HU-2
+     * (persona comes from the engine as data, never per car), so it is left to that.
+     *
      * Runs once per install; a voice the driver picks after that, Sulafat included, is theirs.
      */
     fun migrateRetiredDefaultVoice(context: Context) {

@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The map's OpenGL ES 3 gate. Pure: [NavGles.probeEs3Configs] needs a real EGL stack and is the one
+ * The map's OpenGL ES 3 gate. Pure: [NavGles.probeEs3Context] needs a real EGL stack and is the one
  * thing here only the car can run, so every other case is decided from its two inputs.
  */
 class NavGlesTest {
@@ -16,22 +16,22 @@ class NavGlesTest {
     private val es3 = 0x30000
 
     @Test fun aUnitThatDeclaresEs3NeedsNoProbe() {
-        assertEquals(NavGles.Es3.DECLARED, NavGles.decide(es3, es3Configs = null))
-        assertEquals(NavGles.Es3.DECLARED, NavGles.decide(0x30002, es3Configs = 0))
+        assertEquals(NavGles.Es3.DECLARED, NavGles.decide(es3, es3Context = null))
+        assertEquals(NavGles.Es3.DECLARED, NavGles.decide(0x30002, es3Context = false))
         assertTrue(NavGles.decide(es3, null).mapAllowed)
         assertNull(NavGles.words(es3, NavGles.decide(es3, null)))
     }
 
     /** The bug Kevin hit: a ROM that under-declares took the map away from a GPU that can draw it. */
-    @Test fun aUnitThatDeclaresEs2ButHasEs3ConfigsMayRunTheMap() {
-        val decision = NavGles.decide(es2, es3Configs = 12)
+    @Test fun aUnitThatDeclaresEs2ButReallyMakesAnEs3ContextMayRunTheMap() {
+        val decision = NavGles.decide(es2, es3Context = true)
         assertEquals(NavGles.Es3.PROBED, decision)
         assertTrue(decision.mapAllowed)
         assertNull(NavGles.words(es2, decision))
     }
 
-    @Test fun noEs3ConfigsIsARealRefusal_andTheWordsNameWhatTheUnitReported() {
-        val decision = NavGles.decide(es2, es3Configs = 0)
+    @Test fun aDriverThatCannotMakeTheContextIsARealRefusal_andTheWordsNameWhatItReported() {
+        val decision = NavGles.decide(es2, es3Context = false)
         assertEquals(NavGles.Es3.NO, decision)
         assertFalse(decision.mapAllowed)
         val words = NavGles.words(es2, decision)!!
@@ -40,7 +40,7 @@ class NavGlesTest {
     }
 
     @Test fun aProbeThatCouldNotRunKeepsTheMapOff_andSaysThatIsWhy() {
-        val decision = NavGles.decide(es2, es3Configs = null)
+        val decision = NavGles.decide(es2, es3Context = null)
         assertEquals(NavGles.Es3.UNKNOWN, decision)
         assertFalse(decision.mapAllowed)
         val words = NavGles.words(es2, decision)!!

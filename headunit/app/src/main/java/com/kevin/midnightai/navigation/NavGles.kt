@@ -22,6 +22,11 @@ import android.opengl.EGLExt
  *
  * It stays conservative in the other direction: a probe that cannot run leaves the map off, same as
  * before, because a GL stack that cannot be asked is not one to hand a native renderer.
+ *
+ * The probe MAKES an ES 3 context rather than counting configs that advertise the ES 3 bit: a
+ * driver can advertise the bit and still fail `eglCreateContext`, and a wrong yes here costs a
+ * native crash in the launcher - caught by [NavRuntime]'s guard, but only after it has happened
+ * once. Creating and destroying one context is the call the renderer itself would make.
  */
 internal object NavGles {
 
@@ -32,10 +37,10 @@ internal object NavGles {
         /** The unit declares ES 3 or better. */
         DECLARED,
 
-        /** It declares less, but EGL offers an ES 3 config: the declaration was wrong. */
+        /** It declares less, but EGL really made an ES 3 context: the declaration was wrong. */
         PROBED,
 
-        /** EGL offers no ES 3 config. The map genuinely cannot run. */
+        /** EGL cannot make an ES 3 context. The map genuinely cannot run. */
         NO,
 
         /** The probe could not run at all. Treated as no. */
@@ -46,13 +51,13 @@ internal object NavGles {
     }
 
     /**
-     * [declared] is `reqGlEsVersion` (0x30000 = ES 3.0). [es3Configs] is how many EGL configs can be
-     * rendered with ES 3, or null when the probe could not run. Pure: this is the whole decision.
+     * [declared] is `reqGlEsVersion` (0x30000 = ES 3.0). [es3Context] is whether EGL really made an
+     * ES 3 context, or null when the probe could not run at all. Pure: this is the whole decision.
      */
-    fun decide(declared: Int, es3Configs: Int?): Es3 = when {
+    fun decide(declared: Int, es3Context: Boolean?): Es3 = when {
         declared >= GLES_3 -> Es3.DECLARED
-        es3Configs == null -> Es3.UNKNOWN
-        es3Configs > 0 -> Es3.PROBED
+        es3Context == null -> Es3.UNKNOWN
+        es3Context -> Es3.PROBED
         else -> Es3.NO
     }
 
@@ -66,7 +71,7 @@ internal object NavGles {
     fun words(declared: Int, decision: Es3): String? = when (decision) {
         Es3.DECLARED, Es3.PROBED -> null
         Es3.NO ->
-            "its graphics chip offers no OpenGL ES 3 drawing surface, which the map needs " +
+            "its graphics driver cannot make an OpenGL ES 3 context, which the map needs " +
                 "(it reports OpenGL ES ${version(declared)})"
         Es3.UNKNOWN ->
             "this unit reports OpenGL ES ${version(declared)} and its graphics check could not " +
@@ -74,24 +79,35 @@ internal object NavGles {
     }
 
     /**
-     * EGL configs this unit can render with ES 3, or null if EGL could not be asked. Counts only,
-     * no config is chosen and no context is made.
+     * True when this unit really makes an ES 3 context, false when it cannot, null when EGL could
+     * not be asked at all. The context is destroyed immediately; no surface is ever made current,
+     * so nothing this unit is drawing is disturbed. A pbuffer config, because a context needs no
+     * window.
      *
      * Deliberately does NOT call `eglTerminate`: the default display is the one HWUI draws the
      * launcher with, and terminating it under the render thread is not ours to do. `eglInitialize`
      * on an already-initialised display is a no-op that returns true.
      */
-    fun probeEs3Configs(): Int? = runCatching {
+    fun probeEs3Context(): Boolean? = runCatching {
         val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         if (display == null || display == EGL14.EGL_NO_DISPLAY) return@runCatching null
         val version = IntArray(2)
         if (!EGL14.eglInitialize(display, version, 0, version, 1)) return@runCatching null
         val attrs = intArrayOf(
             EGL14.EGL_RENDERABLE_TYPE, EGLExt.EGL_OPENGL_ES3_BIT_KHR,
-            EGL14.EGL_SURFACE_TYPE, EGL14.EGL_WINDOW_BIT,
+            EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT,
             EGL14.EGL_NONE,
         )
-        val count = IntArray(1)
-        if (!EGL14.eglChooseConfig(display, attrs, 0, null, 0, 0, count, 0)) null else count[0]
+        val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
+        val found = IntArray(1)
+        if (!EGL14.eglChooseConfig(display, attrs, 0, configs, 0, 1, found, 0)) return@runCatching null
+        if (found[0] == 0 || configs[0] == null) return@runCatching false
+        val context = EGL14.eglCreateContext(
+            display, configs[0], EGL14.EGL_NO_CONTEXT,
+            intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 3, EGL14.EGL_NONE), 0,
+        )
+        if (context == null || context == EGL14.EGL_NO_CONTEXT) return@runCatching false
+        EGL14.eglDestroyContext(display, context)
+        true
     }.getOrNull()
 }
