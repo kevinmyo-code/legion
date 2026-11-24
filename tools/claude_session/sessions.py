@@ -216,7 +216,8 @@ def _text_of(entry: dict) -> tuple[str, str] | None:
     kind = entry.get("type")
     if kind not in ("user", "assistant") or entry.get("isMeta") or entry.get("isSidechain"):
         return None
-    content = (entry.get("message") or {}).get("content")
+    message = entry.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
     if isinstance(content, str):
         text = content
     elif isinstance(content, list):

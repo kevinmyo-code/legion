@@ -331,6 +331,42 @@ class TestTheAnchorAndTheTurnEnd(unittest.TestCase):
         self.assertNotIn("abc123", text)
 
 
+class TestALineThatIsNotTheShapeItShouldBe(unittest.TestCase):
+    """A transcript line whose `message` or `attachment` is not a dict (S2 review, finding 1).
+
+    `(entry.get("message") or {}).get(...)` kept a truthy non-dict, so one such line raised
+    `AttributeError` out of the poll: the worker survived, but the batch of entries was lost with
+    the offset already advanced and the rest of that tick was skipped. Zero such lines in the
+    reviewer's 139,947 real ones, so this is the shape a future CLI version could write.
+
+    An assistant line is skipped like any other entry with no text. A `user` line still
+    `interrupts`, which is the fail-closed answer and not a skip: a line that might be new input
+    to that session must end the turn, or a later turn's answer could land on Kevin's card.
+    """
+
+    def test_an_assistant_line_with_a_string_message_is_passed_over(self):
+        entries = [peer_entry(MSG), {"type": "assistant", "message": "not a dict at all"},
+                   said("the android job is red")]
+        self.assertEqual(sr.scan(entries, MSG, False),
+                         (True, "the android job is red", True))
+
+    def test_a_user_line_with_a_string_message_ends_the_turn_with_nothing(self):
+        entries = [peer_entry(MSG), {"type": "user", "message": "not a dict at all"},
+                   said("an answer to something else")]
+        self.assertEqual(sr.scan(entries, MSG, False), (True, None, True))
+
+    def test_a_line_with_a_string_attachment_is_not_an_anchor(self):
+        entries = [{"type": "attachment", "attachment": "not a dict at all"}, peer_entry(MSG),
+                   said("the android job is red")]
+        self.assertEqual(sr.scan(entries, MSG, False),
+                         (True, "the android job is red", True))
+        self.assertIsNone(sr.peer_origin({"type": "attachment", "attachment": "nope"}))
+
+    def test_such_a_line_before_the_anchor_is_not_the_anchor_either(self):
+        entries = [{"type": "user", "message": "not a dict at all"}]
+        self.assertEqual(sr.scan(entries, MSG, False), (False, None, False))
+
+
 class TestTheGuards(T.Base):
     def plan(self, **over) -> dict:
         p = {"task": 41, "session_id": SID, "name": "garden", "folder": "garden", "text": MSG,

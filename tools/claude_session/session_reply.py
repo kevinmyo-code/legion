@@ -154,7 +154,9 @@ def read_entries(path: Path, offset: int) -> tuple[list[dict], int]:
 
 
 def _content(entry: dict):
-    return (entry.get("message") or {}).get("content")
+    """A line's content, or None when its `message` is not the shape it should be (review 1)."""
+    message = entry.get("message")
+    return message.get("content") if isinstance(message, dict) else None
 
 
 def peer_origin(entry: dict) -> dict | None:
@@ -166,7 +168,9 @@ def peer_origin(entry: dict) -> dict | None:
     (probe, 2026-11-24). Both carry the same `origin`, and `origin.body` is the message's own
     text, unwrapped.
     """
-    for candidate in (entry.get("origin"), (entry.get("attachment") or {}).get("origin")):
+    attachment = entry.get("attachment")
+    for candidate in (entry.get("origin"),
+                      attachment.get("origin") if isinstance(attachment, dict) else None):
         if isinstance(candidate, dict) and candidate.get("kind") == PEER:
             return candidate
     return None
