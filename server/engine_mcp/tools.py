@@ -2776,7 +2776,10 @@ def _forget_memory(request, args) -> ToolResult:
     door = _memory_door(request)
     if door:
         return door
-    gone = service.forget(request, args["id"])
+    try:
+        gone = service.forget(request, args["id"])
+    except service.MemoryRefused as exc:
+        return refused(exc.message)
     if gone is None:
         return refused(service.NOT_FOUND + " Recall or list memories for its id.")
     older = gone.deleted - 1

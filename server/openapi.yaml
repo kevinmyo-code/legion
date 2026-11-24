@@ -10291,6 +10291,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/SyncResult'
           description: ''
+        '403':
+          description: Not an owner. Nothing was synced.
   /api/ingest/plaid/update-link-token:
     post:
       operationId: api_ingest_plaid_update_link_token_create
@@ -11696,7 +11698,8 @@ paths:
     patch:
       operationId: api_member_memories_partial_update
       description: Changes text, kind, importance, decay class or sharing. Only the
-        member a memory is about may share it or make it private again.
+        member a memory is about may change any of it; a household fact another member
+        shared is read here and refused with a 403.
       parameters:
       - in: path
         name: memory_id

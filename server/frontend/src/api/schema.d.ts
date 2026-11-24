@@ -4998,7 +4998,7 @@ export interface paths {
         delete: operations["api_member_memories_destroy"];
         options?: never;
         head?: never;
-        /** @description Changes text, kind, importance, decay class or sharing. Only the member a memory is about may share it or make it private again. */
+        /** @description Changes text, kind, importance, decay class or sharing. Only the member a memory is about may change any of it; a household fact another member shared is read here and refused with a 403. */
         patch: operations["api_member_memories_partial_update"];
         trace?: never;
     };
@@ -22996,6 +22996,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SyncResult"];
                 };
+            };
+            /** @description Not an owner. Nothing was synced. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
