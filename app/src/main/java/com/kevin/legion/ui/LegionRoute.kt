@@ -161,7 +161,7 @@ object LegionRoute {
      * LISTS pane (2026-09-04), same "the row it is named on actually opens it" fix that ticket
      * gave [MONEY_PANTRY]/`onOpenGroceriesList` on 2026-09-01 - at the time this was a THIRD,
      * genuinely different list from either of those two ("Persistent list" is [NotesController]'s
-     * items, "Groceries trip" was [com.kevin.legion.grocery.GroceryController]'s), so it got its
+     * items, "Groceries trip" was the since-deleted `grocery/GroceryController.kt`'s), so it got its
      * own row and its own route rather than being folded into one of the existing two.
      *
      * **CORRECTED 2026-09-05 (one-today ticket 10 slice B): the "Groceries trip" row and

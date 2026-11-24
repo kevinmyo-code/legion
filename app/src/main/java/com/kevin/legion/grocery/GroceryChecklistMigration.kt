@@ -19,11 +19,16 @@ import com.kevin.legion.data.local.GroceryItem
  * a screen or a voice call would use. §4's reconciliation gate does not apply: this is the user's
  * own already-typed data changing which table it lives in, not a document being extracted.
  *
- * **Deliberately does NOT fold into `grocery_staples`.** [GroceryController.completeTrip] is the
- * only place that fold happens, and it exists to feed [GroceryController.suggestions] - a read
- * path this migration is not trying to preserve (the ticket's own "what is knowingly lost" section
- * accepts that a `Groceries` checklist has no history-derived suggestions). Folding here would grow
- * a table nothing reads suggestions from anymore, for a benefit nobody gets.
+ * **Deliberately does NOT fold into `grocery_staples`.** The deleted `GroceryController.completeTrip`
+ * was the only place that fold happened, and it existed to feed that controller's `suggestions` -
+ * a read path this migration is not trying to preserve (the ticket's own "what is knowingly lost"
+ * section accepts that a `Groceries` checklist has no history-derived suggestions). Folding here
+ * would grow a table nothing reads suggestions from anymore, for a benefit nobody gets.
+ *
+ * **This migrator is why `grocery_items` is still a registered Room entity** (lists redesign slice
+ * 1a, 2026-11-24): it is the table's one remaining reader, it is wired at app start
+ * (`MidnightApplication`), and on an install that has never run it there is real data to carry.
+ * De-registering [com.kevin.legion.data.local.GroceryItem] waits for this object to retire.
  *
  * **Idempotence**, same two-layer shape [com.kevin.legion.engine.migration.EngineDataMigrationWave1]
  * already uses: a SharedPreferences completion flag is the fast path once the whole sweep finishes
