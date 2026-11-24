@@ -15,7 +15,7 @@ from django.core.cache import cache
 from django.core.management import CommandError, call_command
 from rest_framework.test import APIClient
 
-from demo.content import CONTENT_SCHEMA, problems, public_content
+from demo.content import CONTENT_SCHEMA, MODEL_NAME, problems, public_content
 from demo.content_views import NO_CONTENT, NOT_A_READER, NOT_A_VISIT, NOT_SIGNED_IN
 from demo.models import DemoCode, RecruiterContent
 from household.models import Household, HouseholdMember, User
@@ -332,7 +332,16 @@ def test_an_owner_of_a_SECOND_household_may_not_preview(token_b, tmp_path):
     appear in the body.
     """
     load_fake(tmp_path)
-    for path in ("/api/demo/content", "/api/demo/asset/report", "/api/demo/asset/resume"):
+    paths = (
+        "/api/demo/content",
+        "/api/demo/asset/report",
+        "/api/demo/asset/resume",
+        # The third route the class guards. Its file is not loaded here, so on
+        # the old check this answered 404 rather than 403 - still proof the
+        # fence let them past it.
+        f"/api/demo/media/{MODEL_NAME}",
+    )
+    for path in paths:
         refused = token_b.get(path)
         assert refused.status_code == 403 and refused.data == {"detail": NOT_A_READER}, path
         assert FAKE_PDF not in refused.content and FAKE_REPORT not in refused.content, path

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import pytest
 from django.db import IntegrityError, transaction
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
 from household.households import InviteListCreateView
 from household.models import Household, HouseholdMember, User
@@ -102,6 +102,43 @@ def test_the_same_owner_passes_on_their_own_household(household_a, household_b, 
     and the only difference is the household the request acts on."""
     request = _owner_request(user_b, household_b)
     assert IsHouseholdOwner().has_permission(request, InviteListCreateView()) is True
+
+
+def test_an_owner_of_another_household_is_refused_on_every_owner_route(
+    household_a, household_b, user_b, household_user
+):
+    """The same mismatch through the real URLs, so each SUBCLASS is covered
+    and not only the base class: `IsOwnerForHouseholdPatch` overrides
+    `has_permission`, `IsHouseholdOwnerForBank` and
+    `IsHouseholdOwnerForSessions` carry their own refusal wording, and a
+    regression in any of them would be invisible to the test above.
+
+    `force_authenticate` puts THIS user instance on the request, so the
+    primed household is the one `household_of` reads - the same seam, driven
+    end to end.
+    """
+    client = APIClient()
+    user_b.__dict__["household"] = household_a
+    client.force_authenticate(user=user_b)
+    routes = (
+        ("patch", "/api/households/me", {"name": "Taken Over"}),
+        ("get", "/api/households/me/invites", None),
+        ("post", "/api/households/me/invites", {"creates_household": False}),
+        ("delete", "/api/households/me/invites/whatever1234", None),
+        ("delete", f"/api/households/me/members/{household_user.id}", None),
+        ("post", "/api/ingest/plaid/link-token", None),
+        ("post", "/api/ingest/plaid/update-link-token", None),
+        ("post", "/api/ingest/plaid/exchange", {"public_token": "public-sandbox-fake"}),
+        ("put", "/api/ingest/sessions/canvas", {"username": "fake", "password": "fake"}),
+    )
+    for verb, path, body in routes:
+        call = getattr(client, verb)
+        response = call(path, body, format="json") if body is not None else call(path)
+        assert response.status_code == 403, (verb, path, response.status_code, response.data)
+
+    household_a.refresh_from_db()
+    assert household_a.name != "Taken Over"
+    assert HouseholdMember.objects.filter(user=household_user).exists()
 
 
 def test_a_member_of_the_acting_household_still_fails(household_a, household_user):
