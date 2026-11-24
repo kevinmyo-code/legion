@@ -9,6 +9,16 @@
       "width": 320,
       "height": 110,
       "color": "1"
+    },
+    {
+      "id": "23d01d0d2915b60e",
+      "type": "file",
+      "file": ".scratch/headunit-car-link/issues/02-every-other-tap-that-hands-work-to-android.md",
+      "x": 0,
+      "y": 150,
+      "width": 320,
+      "height": 110,
+      "color": "1"
     }
   ],
   "edges": []
