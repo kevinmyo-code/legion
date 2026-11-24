@@ -192,6 +192,9 @@ def test_real_ddl_is_still_refused():
         "a drop beside the state operations": WITH_DDL,
         "database_operations it cannot read": VARIABLE_DB_OPS,
         "RunSQL dropping the tables": RUN_SQL_DROP,
+        "a column drop with the word COLUMN left out": TRIGGER_RECREATE.replace(
+            "drop trigger if exists guard on public.widgets;", "alter table public.widgets drop g;"
+        ),
         "TRUNCATE": TRIGGER_RECREATE.replace("drop trigger if exists guard", "truncate"),
         "DELETE FROM": TRIGGER_RECREATE.replace("drop trigger if exists guard", "delete from"),
     }
@@ -336,17 +339,24 @@ def test_schema_status_collects_django_migrations_only(tmp_path, monkeypatch):
     run("init", "-q", "-b", "main")
     run("config", "user.email", "t@example.invalid")
     run("config", "user.name", "t")
-    (tmp_path / "server" / "widgets" / "migrations").mkdir(parents=True)
-    (tmp_path / "supabase" / "migrations").mkdir(parents=True)
+    nested = tmp_path / "server" / "pkg" / "inner" / "migrations"
+    for folder in (tmp_path / "server" / "widgets" / "migrations", nested,
+                   tmp_path / "supabase" / "migrations"):
+        folder.mkdir(parents=True)
     (tmp_path / "server" / "widgets" / "migrations" / "0001_initial.py").write_text("ops = []\n")
     run("add", "-A")
     run("commit", "-qm", "base")
     live = run("rev-parse", "HEAD").strip()
     (tmp_path / "server" / "widgets" / "migrations" / "0002_more.py").write_text("ops = []\n")
+    (nested / "0002_deep.py").write_text("ops = []\n")
     (tmp_path / "supabase" / "migrations" / "20261124_drop.sql").write_text("drop table x;\n")
     run("add", "-A")
     run("commit", "-qm", "fix")
     fix = run("rev-parse", "HEAD").strip()
 
     monkeypatch.chdir(tmp_path)
-    assert sc.schema_status(live, fix) == [("A", "server/widgets/migrations/0002_more.py")]
+    # The nested one is collected too: narrowing to one folder deep would fail open inside the image.
+    assert sorted(sc.schema_status(live, fix)) == [
+        ("A", "server/pkg/inner/migrations/0002_deep.py"),
+        ("A", "server/widgets/migrations/0002_more.py"),
+    ]
