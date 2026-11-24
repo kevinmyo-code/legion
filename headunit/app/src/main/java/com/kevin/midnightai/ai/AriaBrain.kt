@@ -76,9 +76,7 @@ class AriaBrain private constructor(context: Context) {
         "and base your answer on what it finds. " +
         "Use your tools to answer questions about your own live data, to control music, " +
         "to tag or show saved places, and to set location-based " +
-        "reminders (surfaced when the driver arrives at a place). Always call the matching tool " +
-        "before claiming you've done something - never say you're pulling up music " +
-        "unless you actually called the tool for it. " +
+        "reminders (surfaced when the driver arrives at a place). " +
         "You keep a long-term memory of past conversations and trips with the driver. Save new " +
         "things they ask you to remember with the remember tool, and when they reference the past " +
         "or ask what you remember, call recall_memory to look it up - don't claim to remember " +
@@ -239,6 +237,10 @@ class AriaBrain private constructor(context: Context) {
             sb.append(" ").append(it)
         }
         sb.append(" ").append(sharedInstructions)
+            // CANNOT_CLAUSE is the general form of "never claim an outcome you did not observe"
+            // (SpeechHonesty.kt). It goes after the shared instructions, which name the tools, and
+            // before safetyInstructions, which stays last because it overrides the persona's tone.
+            .append(" ").append(CANNOT_CLAUSE)
             .append(" ").append(safetyInstructions)
         sb.append("\n\n").append(today)
             .append(" Use only this for the date, weekday and time; a conversation can run long, so " +
