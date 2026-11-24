@@ -141,6 +141,45 @@ class TestAWrittenScriptCannotForgeAYes(ForgeCase):
                 self.assertEqual(write[0], "pass")
                 self.assertEqual(run[0], "pass", f"{name} run: {run[1]}")
 
+    def test_a_cd_into_the_task_folder_does_not_hide_the_run(self):
+        """The real session's cwd is the WHOLE work folder (`worker.MainSession` starts it there),
+        so `cd task-50 && python forge.py` names no path that cwd resolves. Every folder a `cd` in
+        the command could move to is tried."""
+        script = self.own / "forge.py"
+        self.passed("Write", {"file_path": str(script),
+                              "content": FORGE.format(tokens=self.paths.tokens.as_posix())},
+                    agent="agentZ")
+        for cmd in (f"cd {self.own.name} && python forge.py",
+                    f"cd {self.own.name}; python -m forge",
+                    f"pushd {self.own.name}; python forge.py"):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(
+                    self.decide("Bash", {"command": cmd}, agent="agentZ",
+                                cwd=self.paths.work)[1], "root script")
+
+    def test_a_path_under_the_root_the_worker_does_not_own_is_not_the_root(self):
+        """`root_entries` is what keeps this guard off ordinary build work: a checkout under the
+        work folder writing `../../lib/y`, or `pytest ../tools/x` from a repo, resolves to
+        `<root>/lib` and `<root>/tools`, which the worker has never heard of. Both were denied
+        before this (measured, 2026-11-24)."""
+        self.assertFalse(self.names_root("import { y } from '../../lib/y'\n"))
+        self.assertFalse(self.names_root("open('../../data/rows.csv')\n"))
+        self.assertTrue(self.names_root("open('../../tokens/50-yes.json','w')\n"))
+        self.passed("Bash", {"command": f"cd {self.docs.as_posix()} && pytest ../tools/x"},
+                    agent="agentZ", cwd=self.paths.work)
+
+    def test_naming_the_root_itself_or_globbing_it_is_enough(self):
+        name = self.paths.root.name
+        for cmd in (f"cd $env:APPDATA\\{name}; type config.json",
+                    f"cat {self.paths.root.as_posix()}/*.json",
+                    f"Get-ChildItem {self.paths.root.as_posix()}"):
+            with self.subTest(cmd=cmd[:40]):
+                self.denied("PowerShell", {"command": cmd}, "WORKER FILES", agent="agentZ",
+                            cwd=self.paths.work)
+        # The work folder under it is still the helper's own.
+        self.passed("Bash", {"command": f"ls {self.paths.work.as_posix()}/task-50"},
+                    agent="agentZ", cwd=self.paths.work)
+
     def test_the_net_script_rule_still_only_looks_at_scripts(self):
         """The network half keeps its `SCRIPT_EXT` gate (a CSV of URLs is data). The root half
         does not, because `python forge.txt` runs a forging script just as well."""

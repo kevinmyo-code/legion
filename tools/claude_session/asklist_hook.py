@@ -595,6 +595,27 @@ def _redirect_targets(command: str, cwd: str) -> list:
     return out
 
 
+def _cwd_candidates(command: str, cwd: str) -> list[str]:
+    """Every folder a relative word in this command could resolve against: the session's own, and
+    each `cd` / `Set-Location` / `pushd` in it. The reasoning is `_names_worker_code`'s round-4c
+    fix, and it is needed here because the REAL session's cwd is the whole work folder
+    (`worker.MainSession` starts it there), so a helper that cds into its own task folder and runs
+    `python forge.py` names no path the session's cwd resolves."""
+    bases = [cwd] if cwd else []
+    base = cwd or None
+    for c in CD_RE.finditer(command):
+        d = _to_os_path(next(g for g in c.groups() if g is not None))
+        if d.startswith(("~", "$", "%")):
+            base = None
+        elif DRIVE_RE.match(d):
+            base = d
+        elif base is not None:
+            base = os.path.normpath(os.path.join(base, d))
+        if base:
+            bases.append(base)
+    return bases
+
+
 def _redirect_only(command: str) -> bool:
     """The overwrite rule matched through a redirect and through nothing else."""
     return (re.search(REDIRECT_OUT, command, re.I) is not None
@@ -874,7 +895,9 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
 
     if command and not ours:
         roots = C.root_script_paths(paths)
-        if C.names_blocked(command, cwd, roots) or C.runs_blocked_module(command, cwd, roots):
+        if roots and any(C.names_blocked(command, base, roots)
+                         or C.runs_blocked_module(command, base, roots)
+                         for base in _cwd_candidates(command, cwd)):
             return _deny(C.ROOT_SCRIPT_REASON), "root script", True
         if C.names_blocked(command, cwd, C.written_paths(paths)):
             return _deny(C.WRITTEN_REASON), "read_through written", True
@@ -894,7 +917,10 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
             try:
                 if C.content_net_script(target, content):
                     C.record_net_script(paths, target, now)
-                if C.names_worker_root(content, str(own_work or paths.work), paths):
+                # A relative path in a file's text is resolved against THAT FILE's folder, never
+                # the task's: a checkout under the work folder writing `../../lib/y` is naming its
+                # own sibling, not the worker's root (measured, 2026-11-24).
+                if C.names_worker_root(content, str(Path(target).parent), paths):
                     C.record_root_script(paths, target, now)
             except OSError:
                 return _deny(C.MARK_FAILED_REASON), "net script", True

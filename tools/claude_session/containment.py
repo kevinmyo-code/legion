@@ -523,32 +523,57 @@ def _path_texts(text: str) -> list[str]:
     return out
 
 
-def _under_root_outside_work(cand: str, cwd: str, paths: Paths) -> bool:
+def root_entries(paths: Paths) -> set[str]:
+    """What the worker itself keeps in its root, beside the work folder: read off `Paths`, so a
+    new one is covered the day it is added there.
+
+    A path under the root naming anything ELSE is not the worker's: a checkout under the work
+    folder writing `../../lib/y`, or `pytest ../tools/x` from a repo, resolves to `<root>/lib` and
+    `<root>/tools`, which the worker has never heard of. Without this the guard denied ordinary
+    build work (measured, 2026-11-24)."""
+    own = (paths.config, paths.state, paths.tokens, paths.sends, paths.taint, paths.logs,
+           paths.reports, paths.agents, paths.subagents, paths.settings, paths.pid, paths.lock)
+    return {p.name.lower() for p in own}
+
+
+def _worker_own(cand: str, cwd: str, paths: Paths) -> bool:
+    """A path the WORKER owns: under the root, outside the work folder, and its first segment is
+    one of the root's own entries."""
     try:
         target = cand if os.path.isabs(cand) else (os.path.join(cwd, cand) if cwd else "")
-        if not target:
+        if not target or not is_under(target, paths.root) or is_under(target, paths.work):
             return False
-        return is_under(target, paths.root) and not is_under(target, paths.work)
+        rest = norm(target)[len(norm(paths.root)):].strip("\\/")
+        first = re.split(r"[\\/]", rest)[0].lower() if rest else ""
+        return first in root_entries(paths)
     except (OSError, ValueError):
         return False
 
 
 def _names_root_by_tail(text: str, paths: Paths) -> bool:
-    """The root's own folder name followed by anything but `work`.
+    """The root's own folder name, alone or followed by one of the root's own entries.
 
     `%APPDATA%`, `$env:APPDATA`, `~`, `$HOME` and `os.environ['APPDATA'] + '/legion-claude'` all
     write the root without ever writing its absolute path, so an absolute-path check alone misses
     every one of them. The folder name is read off `Paths` at run time, so a root moved by
     `LEGION_CLAUDE_HOME` is still its own name.
     """
-    # The lookbehind keeps the name a name: `$HOME\.claude` must not match a root called `home`,
-    # and `my-legion-claude/x` is not `legion-claude/x` (seen in test_sessions_review2).
-    name = r"(?<![\w$%.\-])" + re.escape(paths.root.name)
-    work = paths.work.name.lower()
-    for m in re.finditer(name + r"[\\/]+([\w.-]+)", text.replace("\\\\", "\\"), re.I):
-        if m.group(1).lower() != work:
+    # The lookbehind and lookahead keep the name a name: `$HOME\.claude` must not match a root
+    # called `home` (test_sessions_review2), and the worktree `legion-claude-on` is not the root.
+    # A separator has to sit on one side of it, so the bare word in a sentence is not a path.
+    bare = re.escape(paths.root.name)
+    name = r"(?<![\w$%.\-])" + bare + r"(?![\w.\-])"
+    seg = r"[^\s\"'`<>|;,)\]}\\/]+"
+    flat = text.replace("\\\\", "\\")
+    # A separator after it: what follows has to be something the worker itself keeps there.
+    entries = root_entries(paths)
+    for m in re.finditer(name + r"[\\/]+(" + seg + ")", flat, re.I):
+        after = m.group(1).lower()
+        if after in entries or "*" in after or "?" in after:
             return True
-    return False
+    # A separator before it and no path segment after: the root itself, which a helper has no
+    # business naming. `<root>/work/...` is excluded by the lookahead and judged above.
+    return bool(re.search(r"[\\/]" + bare + r"(?![\w.\-])(?![\\/]+" + seg + ")", flat, re.I))
 
 
 def names_worker_root(text: str, cwd: str, paths: Paths) -> bool:
@@ -568,7 +593,7 @@ def names_worker_root(text: str, cwd: str, paths: Paths) -> bool:
     if not text:
         return False
     return (_names_root_by_tail(text, paths)
-            or any(_under_root_outside_work(c, cwd, paths) for c in _path_texts(text)))
+            or any(_worker_own(c, cwd, paths) for c in _path_texts(text)))
 
 
 # --------------------------------------------------------------------------- paths in a command
