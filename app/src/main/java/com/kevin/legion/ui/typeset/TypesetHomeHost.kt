@@ -95,6 +95,7 @@ fun TypesetHomeHost(
     )
     val status = if (voice.enabled) voice.state.label else "Assistant off, tap to set it up"
     val onTalk = if (voice.enabled) voice.talk else nav.onOpenSettings
+    val call = rememberCallButton(voice.phase)
     val slotOf: (TypesetDockTile) -> DockSlotUi? = { tile -> dockSlots.firstOrNull { slotTile(it) == tile } }
     val actions = TypesetHomeActions(
         onHome = voice.typedChat.onNewConversation,
@@ -108,6 +109,7 @@ fun TypesetHomeHost(
         onBreathe = { BreathActivity.start(context) },
         onTalk = onTalk,
         onType = voice.panel::show,
+        onCall = if (voice.enabled) voice.call else nav.onOpenSettings,
         onDismissCard = ConversationCards::dismiss,
         onCloseCard = ConversationCards::close,
         // Opening the screen behind a card puts the cards away first, so the glance is what is
@@ -150,6 +152,7 @@ fun TypesetHomeHost(
             dock = dockSlots.map(::slotTile),
             groups = groups,
             caption = voice.state.subtitle.takeIf { voice.enabled },
+            call = call,
         )
         if (controlsOpen) ControlsOverlay(controls, onClose = { controlsOpen = false })
         if (voice.panel.open) ChatPanelSheet(voice.typedChat, onTalk = onTalk, onClose = voice.panel::hide)
