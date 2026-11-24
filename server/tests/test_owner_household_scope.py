@@ -30,6 +30,7 @@ from rest_framework.test import APIClient, APIRequestFactory
 from household.households import InviteListCreateView
 from household.models import Household, HouseholdMember, User
 from household.permissions import IsHouseholdOwner, is_engine_owner, is_owner_of
+from household.tenancy import BOOTSTRAP_ID_ENV, resolve_default_household
 from tests.conftest import _client_for
 
 pytestmark = pytest.mark.django_db
@@ -162,6 +163,36 @@ def test_only_the_engine_households_owner_is_an_engine_owner(
     page's preview share."""
     assert is_engine_owner(household_user) is True
     assert is_engine_owner(user_b) is False
+
+
+def test_a_demo_visit_household_does_not_make_the_engine_unresolvable(
+    household_a, household_user, monkeypatch
+):
+    """With `LEGION_BOOTSTRAP_HOUSEHOLD_ID` unset, the engine household is
+    still the one household that is not a throwaway visit.
+
+    This is the deployed shape: `deploy/cloudrun/.env` carries no bootstrap
+    id, and ADR 0069 keeps a demo-visit household per visit plus a spare
+    pool, so counting every household answered None the moment anyone opened
+    the demo page - and None refuses Kevin his own release publishing, his
+    garage tool and his page preview.
+    """
+    monkeypatch.delenv(BOOTSTRAP_ID_ENV, raising=False)
+    Household.objects.create(name="Demo visit zz", is_demo_visit=True)
+    Household.objects.create(name="Demo visit yy", is_demo_visit=True)
+
+    assert resolve_default_household() == household_a
+    assert is_engine_owner(household_user) is True
+
+
+def test_two_real_households_and_no_bootstrap_id_resolve_to_nothing(
+    household_a, household_b, household_user, monkeypatch
+):
+    """The honest refusal the exclusion above must not swallow: two families
+    and nothing naming which runs the engine is no answer, not a guess."""
+    monkeypatch.delenv(BOOTSTRAP_ID_ENV, raising=False)
+    assert resolve_default_household() is None
+    assert is_engine_owner(household_user) is False
 
 
 # =============================================================================
