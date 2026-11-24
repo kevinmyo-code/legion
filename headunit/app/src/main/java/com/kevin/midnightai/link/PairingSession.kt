@@ -56,7 +56,9 @@ class Handover(
                 mapboxToken = s("mapbox_token"),
                 phoneName = s("phone_name")?.take(40),
                 engineVehicleId = s("engine_vehicle_id")?.take(64),
-                spotifyClientId = s("spotify_client_id")?.take(MAX_SPOTIFY_CLIENT_ID),
+                // Dropped, never cut: half a client ID is a Spotify setup that silently never
+                // connects, and it would fill the empty slot this exists to fill.
+                spotifyClientId = s("spotify_client_id")?.takeIf { it.length <= MAX_SPOTIFY_CLIENT_ID },
             )
         }
     }

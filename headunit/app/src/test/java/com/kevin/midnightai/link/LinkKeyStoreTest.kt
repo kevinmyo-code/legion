@@ -300,6 +300,15 @@ class LinkKeyStoreTest {
         assertNull(Handover.parse(org.json.JSONObject().put("v", 1))!!.spotifyClientId)
     }
 
+    /** Half a client ID is a setup that silently never connects, so an over-long one is dropped. */
+    @Test fun anOverLongClientIdIsDroppedRatherThanCut() {
+        val long = "x".repeat(Handover.MAX_SPOTIFY_CLIENT_ID + 1)
+        val parsed = Handover.parse(org.json.JSONObject().put("v", 1).put("spotify_client_id", long))!!
+        assertNull(parsed.spotifyClientId)
+        pair(keyA, parsed)
+        assertTrue(spotify.saves.isEmpty())
+    }
+
     @Test fun theFillRuleIsTheWholeDecision() {
         assertEquals("a", SpotifyLinkFill.fill(" a ", null))
         assertEquals("a", SpotifyLinkFill.fill("a", ""))
