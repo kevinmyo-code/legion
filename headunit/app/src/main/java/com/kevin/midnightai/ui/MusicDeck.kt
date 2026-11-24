@@ -471,8 +471,17 @@ internal fun rememberTransportKeys(info: NowPlayingInfo?): TransportKeys {
         onPrevious = { MusicRouter.previous(context) },
         onPlayPause = { if (playing) MusicRouter.pause(context) else MusicRouter.play(context) },
         onNext = { MusicRouter.next(context) },
-        onVolumeDown = { volumePct = VolumeController.lower(context, by = "screen") },
-        onVolumeUp = { volumePct = VolumeController.raise(context, by = "screen") },
+        // A press that moved nothing says so rather than looking like it worked (2026-11-23).
+        onVolumeDown = {
+            val n = VolumeController.lower(context, by = "screen")
+            volumePct = n.percent
+            n.words?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+        },
+        onVolumeUp = {
+            val n = VolumeController.raise(context, by = "screen")
+            volumePct = n.percent
+            n.words?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+        },
     )
 }
 

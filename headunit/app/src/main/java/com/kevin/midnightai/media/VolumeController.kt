@@ -67,10 +67,13 @@ object VolumeController {
         }
     }
 
-    fun raise(context: Context, steps: Int = 1, by: String = "app"): Int =
+    /** Where the stream landed, and what to tell the driver if it did not move ([VolumeFeedback]). */
+    data class Nudge(val percent: Int, val words: String?)
+
+    fun raise(context: Context, steps: Int = 1, by: String = "app"): Nudge =
         nudge(context, AudioManager.ADJUST_RAISE, steps, by)
 
-    fun lower(context: Context, steps: Int = 1, by: String = "app"): Int =
+    fun lower(context: Context, steps: Int = 1, by: String = "app"): Nudge =
         nudge(context, AudioManager.ADJUST_LOWER, steps, by)
 
     /** Jumps to [percent] (0-100) of max media volume. */
@@ -138,13 +141,26 @@ object VolumeController {
         return percent(am)
     }
 
-    /** Raw index, max and mute, for the Volume check panel. */
+    /**
+     * Raw index, max, mute AND whether this output's volume is fixed, for the Volume check panel.
+     * The fixed-output line is the one the panel was missing: on such an output every stream write
+     * is a no-op, so all five [Reapply] strategies would read as "nothing happened" with no reason
+     * given (see [VolumeFeedback]).
+     */
     fun readout(context: Context): String {
         val am = am(context)
         val muted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && am.isStreamMute(AudioManager.STREAM_MUSIC)
-        return "STREAM_MUSIC index ${am.getStreamVolume(AudioManager.STREAM_MUSIC)} of " +
-            "${am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}" + (if (muted) ", muted" else "")
+        return VolumeFeedback.readout(
+            index = am.getStreamVolume(AudioManager.STREAM_MUSIC),
+            max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+            muted = muted,
+            volumeFixed = isVolumeFixed(am),
+        )
     }
+
+    /** True when this unit's output cannot have its volume changed through AudioManager at all. */
+    private fun isVolumeFixed(am: AudioManager): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && runCatching { am.isVolumeFixed }.getOrDefault(false)
 
     /** Mutes or unmutes media playback; returns the resulting percentage. */
     fun mute(context: Context, muted: Boolean, by: String = "app"): Int {
@@ -163,7 +179,7 @@ object VolumeController {
         return percent(am)
     }
 
-    private fun nudge(context: Context, direction: Int, steps: Int, by: String): Int {
+    private fun nudge(context: Context, direction: Int, steps: Int, by: String): Nudge {
         val am = am(context)
         val before = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         // FLAG_SHOW_UI is required on many head units / OEM ROMs for a programmatic
@@ -173,8 +189,18 @@ object VolumeController {
         repeat(steps.coerceIn(1, 10)) {
             am.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
         }
-        noteOwnWrite(am, by, if (direction == AudioManager.ADJUST_RAISE) "raise" else "lower", before)
-        return percent(am)
+        val up = direction == AudioManager.ADJUST_RAISE
+        noteOwnWrite(am, by, if (up) "raise" else "lower", before)
+        // A press that moved nothing is reported in words instead of looking like it worked
+        // (2026-11-23). Said once per press, by whoever asked: the screen toasts it, voice speaks it.
+        val words = VolumeFeedback.pressWords(
+            before = before,
+            after = am.getStreamVolume(AudioManager.STREAM_MUSIC),
+            max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+            up = up,
+            volumeFixed = isVolumeFixed(am),
+        )
+        return Nudge(percent(am), words)
     }
 
     private fun percent(am: AudioManager): Int {

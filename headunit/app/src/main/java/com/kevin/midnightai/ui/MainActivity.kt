@@ -322,8 +322,12 @@ class MainActivity : ComponentActivity() {
             onVolumeKey = { up, repeat ->
                 // A held key's repeats still move the volume; only the first press is logged as a write.
                 val by = if (repeat == 0) "key" else com.kevin.midnightai.diag.ProbeFormat.QUIET_WRITER
-                if (up) com.kevin.midnightai.media.VolumeController.raise(this, by = by)
-                else com.kevin.midnightai.media.VolumeController.lower(this, by = by)
+                val vc = com.kevin.midnightai.media.VolumeController
+                val nudge = if (up) vc.raise(this, by = by) else vc.lower(this, by = by)
+                // Only the first press of a held key speaks up, so a hold does not stack toasts.
+                if (repeat == 0) {
+                    nudge.words?.let { android.widget.Toast.makeText(this, it, android.widget.Toast.LENGTH_LONG).show() }
+                }
             },
             onVolumeKeyUp = {
                 runCatching {

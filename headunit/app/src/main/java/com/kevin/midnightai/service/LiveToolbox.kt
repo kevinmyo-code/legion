@@ -1747,9 +1747,17 @@ object LiveToolbox {
                     return result(success = false, message = VolumeRules.UP_REFUSED)
                         .put("volumePercent", VolumeController.current(context))
                 }
-                VolumeController.raise(context, by = "voice")
+                // A press that moved nothing is said in words, never reported as a level that was
+                // set: section 7's outcome-verb rule needs a real result (2026-11-23).
+                val n = VolumeController.raise(context, by = "voice")
+                n.words?.let { return result(success = false, message = it).put("volumePercent", n.percent) }
+                n.percent
             }
-            "down" -> VolumeController.lower(context, by = "voice")
+            "down" -> {
+                val n = VolumeController.lower(context, by = "voice")
+                n.words?.let { return result(success = false, message = it).put("volumePercent", n.percent) }
+                n.percent
+            }
             "set" -> {
                 val level = args.optInt("level", -1)
                 if (level < 0) return result(success = false, message = "What level should I set it to?")
