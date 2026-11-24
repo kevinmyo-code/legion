@@ -330,6 +330,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/engine-brain/map\|engine-brain]] | [[12-evening-due-sweep\|12]] | build | First scheduled agent: the evening due sweep  waiting on [[09-derived-knowledge\|09]] |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[13-web-on-the-engine\|13]] | build | Web assistant onto the engine's turn endpoint  waiting on [[07-retire-the-phone-brain\|07]] |
 | [[.scratch/engine-brain/map\|engine-brain]] | [[14-headunit-thin-limb\|14]] | build | Head unit as a thin limb  waiting on [[13-web-on-the-engine\|13]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | [[16-alfred-and-moose-on-one-engine\|16]] | build | Alfred and Moose on one engine  waiting on [[07-retire-the-phone-brain\|07]], [[14-headunit-thin-limb\|14]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[11-the-phone-bridges-engine-tools\|11]] | build | The phone bridges engine tools into its Live session  waiting on [[10-the-engine-mcp-endpoint\|10]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | [[12-oauth-for-third-party-clients\|12]] | build | OAuth for third-party clients  waiting on [[10-the-engine-mcp-endpoint\|10]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | [[04-energy-calculator\|04]] | build | Engine: the energy estimate  waiting on [[03-body-profile\|03]] |
@@ -511,7 +512,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/drive-test-2026-08-18/map\|drive-test-2026-08-18]] | 5 | 0 | [[.scratch/drive-test-2026-08-18/drive-test-2026-08-18.canvas\|open]] |
 | [[.scratch/drive-ui/map\|drive-ui]] | 10 | 3 | [[.scratch/drive-ui/drive-ui.canvas\|open]] |
 | [[.scratch/dumb-phone/map\|dumb-phone]] | 6 | 6 | [[.scratch/dumb-phone/dumb-phone.canvas\|open]] |
-| [[.scratch/engine-brain/map\|engine-brain]] | 16 | 15 | [[.scratch/engine-brain/engine-brain.canvas\|open]] |
+| [[.scratch/engine-brain/map\|engine-brain]] | 17 | 16 | [[.scratch/engine-brain/engine-brain.canvas\|open]] |
 | [[.scratch/engine-mcp/map\|engine-mcp]] | 12 | 4 | [[.scratch/engine-mcp/engine-mcp.canvas\|open]] |
 | [[.scratch/fat-loss/map\|fat-loss]] | 26 | 21 | [[.scratch/fat-loss/fat-loss.canvas\|open]] |
 | [[.scratch/fleet-maintenance/map\|fleet-maintenance]] | 18 | 0 | [[.scratch/fleet-maintenance/fleet-maintenance.canvas\|open]] |
