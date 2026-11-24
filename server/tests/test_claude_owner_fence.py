@@ -569,10 +569,10 @@ class TestOnlyTheBoundWorker:
         assert not ClaudeMachine.objects.filter(name="A new laptop").exists()
 
     def test_a_member_cannot_bind_a_machine_that_holds_his_work(self, other_member, his_task):
-        """A machine's token is `SET_NULL`, and a session hook names a machine before any
-        heartbeat binds one, so `unbound` is not the same as `new`. A member heartbeating as an
-        unbound machine that already holds his tasks would take it over and lock his own worker
-        out of it, every later heartbeat of his reading as another member's machine."""
+        """A machine's token is `SET_NULL`, so deleting the device leaves a row that is unbound
+        and not new, holding the work of the member whose laptop it is. A member heartbeating as
+        it would take it over and lock his own worker out of it, every later heartbeat of his
+        reading as another member's machine."""
         ClaudeMachine.objects.filter(name=MACHINE).update(token=None)
         _token, raw = DeviceToken.issue(
             other_member, f"claude-session-{MACHINE}", scope=DeviceToken.SCOPE_CLAUDE_WORKER
