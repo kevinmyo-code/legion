@@ -359,6 +359,74 @@ class TestACdCannotReachTheRoot(ForgeCase):
                 self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.paths.work)
 
 
+class TestAnUnresolvableCdNeverMovesTheBase(ForgeCase):
+    """RED re-review C1, 2026-11-24. The `cd` walk added for B1 asked only whether a `cd`
+    argument STARTED with a variable or a home mark, so `cd ./$x` read as a resolvable `cd` into
+    `<cwd>/$x`: the walk moved the base one level down and dropped the raw cwd, and `..` was the
+    work folder again instead of the worker's root. To a real shell with `x` unset, `cd ./$x` is
+    `cd ./` and the shell never moves, so `../config.json` IS the root. Four characters reopened
+    B1 for the engine's device token and for Kevin's stored confirmations.
+
+    One predicate now decides it: a variable or a home mark ANYWHERE in the argument makes the
+    `cd` unresolvable, and an unresolvable `cd` always falls back to every candidate base with the
+    raw cwd kept.
+    """
+
+    # (cwd, command). Each row denied before the walk existed, passed on this round's first head,
+    # and denies now.
+    ROWS = (
+        ("work", "cd ./$x && cat ../config.json"),
+        ("work", "cd .$x && cat ../config.json"),
+        ("work", "cd ./${x} && cat ../tokens/50-yes.json"),
+        ("work", "cd ./$x && ls ../tokens"),
+        ("work", "cd ./.$x && cat ../config.json"),
+        ("work", "cd ./$x && cat ../config.json 2>&1 | head -3"),
+        ("task", "cd ./$x && cat ../../config.json"),
+    )
+
+    def test_a_variable_anywhere_in_a_cd_argument_keeps_the_raw_cwd(self):
+        for where, cmd in self.ROWS:
+            with self.subTest(cmd=cmd):
+                cwd = self.own if where == "task" else self.paths.work
+                d, rule, out = self.decide("Bash", {"command": cmd}, agent="agentZ", cwd=cwd)
+                self.assertEqual((d, rule), ("deny", "worker files read"), cmd)
+                self.assertIn("WORKER FILES", self.reason(out))
+
+    def test_a_percent_or_a_home_mark_anywhere_does_the_same(self):
+        """The same predicate, the other two marks, and PowerShell. The `%` row already denied
+        through the unwalkable `;`, so it is a control that the wider test did not loosen it."""
+        for where, tool, cmd in (
+            ("work", "PowerShell", "cd .%X%; gc ../config.json"),
+            ("work", "PowerShell", "Set-Location ./%X% ; gc ../config.json"),
+            ("work", "Bash", "cd ./x~y && cat ../config.json"),
+            ("task", "Bash", "cd sub/$d/deeper && cat ../../config.json"),
+        ):
+            with self.subTest(cmd=cmd):
+                cwd = self.own if where == "task" else self.paths.work
+                self.assertEqual(
+                    self.decide(tool, {"command": cmd}, agent="agentZ", cwd=cwd)[1],
+                    "worker files read")
+
+    def test_the_build_work_the_walk_exists_for_still_runs(self):
+        """B2 is what the walk bought, and the wider predicate must not take it back: a resolvable
+        `cd` still moves the base, so a checkout's own `../..` is its own."""
+        (self.own / "wt" / "server").mkdir(parents=True, exist_ok=True)
+        for cmd in ("cd wt/server && pytest --junitxml=../../reports/x.xml",
+                    "cd wt && cat ../../logs/build.log",
+                    "cd wt && ls ../../tokens",
+                    "cd wt/server && pytest --junitxml=../../reports/x.xml 2>&1 | tail -20"):
+            with self.subTest(cmd=cmd):
+                self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)
+
+    def test_the_one_cost_of_the_wider_predicate(self):
+        """Named rather than hidden: a checkout folder reached through a variable now denies, the
+        same way it did before the walk existed. One row of B2 traded back for seven of B1, in the
+        direction this round chose. An absolute path is the way out, and `CRED_REASON` says so."""
+        self.assertEqual(
+            self.decide("Bash", {"command": "cd wt/$d && pytest --junitxml=../../reports/x.xml"},
+                        agent="agentZ", cwd=self.own)[1], "worker files read")
+
+
 class TestUploadStillRefusesTheRoot(ForgeCase):
     """B5's other half (RED review, 2026-11-24). `CREDENTIAL_NAMES` lost `config.json` and
     `*token*`; `worker.uploadable` makes its OWN root test before it looks at a name, so the

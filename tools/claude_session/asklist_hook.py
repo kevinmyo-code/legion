@@ -595,6 +595,13 @@ def _redirect_targets(command: str, cwd: str) -> list:
     return out
 
 
+# A `cd` argument this hook cannot resolve: a variable or a home mark ANYWHERE in it, not only at
+# the front. `cd ./$x` is `cd ./` to a shell with `x` unset, so a walk that read it as a move one
+# level down dropped the raw cwd and handed `..` back as the work folder (RED re-review C1,
+# 2026-11-24). One predicate, used by every place that asks the question.
+_UNRESOLVABLE_CD = re.compile(r"[$%~]")
+
+
 def _cwd_candidates(command: str, cwd: str) -> list[str]:
     """Every folder a relative word in this command could resolve against: the session's own, and
     each `cd` / `Set-Location` / `pushd` in it. The reasoning is `_names_worker_code`'s round-4c
@@ -605,7 +612,7 @@ def _cwd_candidates(command: str, cwd: str) -> list[str]:
     base = cwd or None
     for c in CD_RE.finditer(command):
         d = _to_os_path(next(g for g in c.groups() if g is not None))
-        if d.startswith(("~", "$", "%")):
+        if _UNRESOLVABLE_CD.search(d):
             base = None
         elif DRIVE_RE.match(d):
             base = d
@@ -650,7 +657,8 @@ def _cd_scoped(command: str, cwd: str) -> list:
         m = _PLAIN_CD_RE.match(seg.strip())
         if _MOVES_RE.search(seg) and not m:
             return fallback
-        if m and m.group(1).startswith(("-", "+", "\\")):
+        if m and (m.group(1).startswith(("-", "+", "\\"))
+                  or _UNRESOLVABLE_CD.search(m.group(1))):
             return fallback
     out, base = [], cwd
     for seg in segs:
@@ -658,7 +666,7 @@ def _cd_scoped(command: str, cwd: str) -> list:
         m = _PLAIN_CD_RE.match(seg.strip())
         if m:
             d = _to_os_path(m.group(1))
-            if d.startswith(("~", "$", "%")) or not base:
+            if _UNRESOLVABLE_CD.search(d) or not base:
                 return fallback
             base = d if DRIVE_RE.match(d) else os.path.normpath(os.path.join(base, d))
     return out
