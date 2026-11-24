@@ -1,5 +1,6 @@
 ﻿package com.kevin.midnightai.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -40,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaType
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -52,11 +55,17 @@ import kotlinx.coroutines.withContext
 internal data class AppEntry(val label: String, val pkg: String, val icon: Bitmap)
 
 @Composable
-internal fun AppTrayOverlay(onDismiss: () -> Unit, onEscapeToOS: () -> Unit) {
+internal fun AppTrayOverlay(onDismiss: () -> Unit, onEscapeToOS: () -> String?) {
     val context = LocalContext.current
 
     var apps by remember { mutableStateOf(emptyList<AppEntry>()) }
     LaunchedEffect(Unit) { apps = queryLauncherApps(context) }
+
+    // The grid is loaded once, so this list is stale by construction: an app uninstalled or
+    // un-exported since then throws out of a tap on the car's HOME screen and takes the launcher
+    // with it. The tray stays open on a failure and says which app did not open, because a tray
+    // that closes on a tap that did nothing is the dead tap this guard exists to end.
+    var trouble by remember { mutableStateOf<String?>(null) }
 
     Box(
         modifier = Modifier
@@ -94,7 +103,7 @@ internal fun AppTrayOverlay(onDismiss: () -> Unit, onEscapeToOS: () -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
                     .border(1.dp, AriaColors.PanelBorder, RoundedCornerShape(4.dp))
-                    .clickable { onEscapeToOS() }
+                    .clickable { trouble = onEscapeToOS() }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             )
         }
@@ -112,7 +121,12 @@ internal fun AppTrayOverlay(onDismiss: () -> Unit, onEscapeToOS: () -> Unit) {
                 columns = GridCells.Fixed(5),
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 60.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    .padding(
+                        top = 60.dp,
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = if (trouble == null) 16.dp else 56.dp,
+                    ),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -121,13 +135,35 @@ internal fun AppTrayOverlay(onDismiss: () -> Unit, onEscapeToOS: () -> Unit) {
                         if (app.pkg in com.kevin.midnightai.media.SpotifyAppProbe.CANDIDATE_PACKAGES) {
                             com.kevin.midnightai.MidnightEvents.spotifyAppLaunched("app_tray", "driver tapped it")
                         }
-                        context.packageManager.getLaunchIntentForPackage(app.pkg)
-                            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            ?.let { context.startActivity(it) }
-                        onDismiss()
+                        trouble = ExternalDoor.attempt(
+                            ExternalScreen.INSTALLED_APP,
+                            named = "app called ${app.label}",
+                        ) {
+                            // No launcher activity any more is the uninstalled-since-we-looked
+                            // case, which is what the words are for, so it joins the same door
+                            // instead of skipping and closing the tray on nothing.
+                            val intent = context.packageManager.getLaunchIntentForPackage(app.pkg)
+                                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                ?: throw ActivityNotFoundException("no launch intent for ${app.pkg}")
+                            context.startActivity(intent)
+                        }
+                        if (trouble == null) onDismiss()
                     }
                 }
             }
+        }
+
+        trouble?.let {
+            Text(
+                text = it,
+                style = AriaType.readout.copy(fontSize = 13.sp),
+                color = AriaColors.NeonCyan,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
