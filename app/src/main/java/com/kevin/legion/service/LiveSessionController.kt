@@ -431,13 +431,10 @@ class LiveSessionController(context: Context) {
     }
 
     @Suppress("ReturnCount") // one early exit per tap state; folding them is riskier than the rule is worth
-    fun onTap(
-        fromWakeWord: Boolean = false,
-        oneShot: Boolean = false,
-        inHand: Boolean = false,
-        /** The Call button: this conversation is a call, so it opens on the earpiece ([EarpieceRoute]). */
-        call: Boolean = false,
-    ) {
+    // [call] is the Call button: this conversation opens on the earpiece, like a phone call. The
+    // signature stays on one line: the source-reading wiring tests take an `=` before the brace on a
+    // line of its own for an expression body, and read the wrong text when it is wrapped.
+    fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false, inHand: Boolean = false, call: Boolean = false) {
         // Ticket 11: never let a dismissal armed by a previous turn survive into this one. If the
         // driver tapped stop, or the socket died, between the tool call and TurnComplete, the flag
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the

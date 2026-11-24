@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -68,7 +69,8 @@ class TypesetCallButtonTest {
         var calls = 0
         show(earpiece, TypesetHomeActions(onCall = { calls++ }))
         rule.onNodeWithText("Call").assertExists()
-        rule.onNodeWithText("Type").assertExists()
+        // "Type" is in the measuring passes too, which stay in the semantics tree; the button is not.
+        rule.onAllNodesWithText("Type").onFirst().assertExists()
         rule.onNodeWithContentDescription(earpiece.detail)
             .assertHasClickAction()
             .assertHeightIsAtLeast(TapTarget)
