@@ -4,6 +4,7 @@ Invented paths and blobs, except one real migration read from the tree as the st
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -57,6 +58,59 @@ class Migration(migrations.Migration):
     dependencies = [("widgets", "0002_gadgets")]
 
     operations = [migrations.DeleteModel(name="Gadget")]
+'''
+# The shape of the tracker cut's second half: no Django operation names an object, the drop is SQL.
+# This one DOES reach the database, and the redesign-s1 RED review found it passing clean while the
+# state-only migration above was refused.
+RUN_SQL_DROP = '''"""Drops the four retired tables. THIS DELETES DATA."""
+
+from django.db import migrations
+
+_DROPS = ("user_records", "user_field_defs", "user_record_types", "user_aspects")
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [("homes", "0003_retire_user_records_state")]
+
+    operations = [
+        migrations.RunSQL(
+            sql=f"DROP TABLE IF EXISTS public.{table};",
+            reverse_sql=migrations.RunSQL.noop,
+        )
+        for table in _DROPS
+    ]
+'''
+# A correctly written additive migration: the drop is the UNDO, which no ship runs.
+REVERSE_ONLY = '''"""Creates the schema Django's own tables live in."""
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    operations = [
+        migrations.RunSQL(
+            sql="CREATE SCHEMA IF NOT EXISTS django;",
+            reverse_sql="DROP SCHEMA IF EXISTS django CASCADE;",
+        ),
+    ]
+'''
+# How 26 of the engine's migrations stay idempotent. It destroys no row and no column.
+TRIGGER_RECREATE = '''"""Re-installs the visibility guard trigger."""
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    operations = [
+        migrations.RunSQL(
+            sql="drop trigger if exists guard on public.widgets; create trigger guard "
+                "before insert on public.widgets execute function public.guard();",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+    ]
 '''
 REMOVE_FIELD = DELETE_MODEL.replace(
     'migrations.DeleteModel(name="Gadget")',
@@ -137,11 +191,21 @@ def test_real_ddl_is_still_refused():
         "RemoveField with SQL": REMOVE_FIELD,
         "a drop beside the state operations": WITH_DDL,
         "database_operations it cannot read": VARIABLE_DB_OPS,
+        "RunSQL dropping the tables": RUN_SQL_DROP,
+        "TRUNCATE": TRIGGER_RECREATE.replace("drop trigger if exists guard", "truncate"),
+        "DELETE FROM": TRIGGER_RECREATE.replace("drop trigger if exists guard", "delete from"),
     }
     for what, source in cases.items():
         problems = _one_migration(source)
         assert len(problems) == 1, (what, problems)
         assert "holds a destructive database operation" in problems[0], what
+
+
+def test_sql_that_destroys_nothing_ships():
+    """Measured against the tree, not guessed: 26 engine migrations drop and recreate a trigger or a
+    function to stay idempotent, and a `CREATE TABLE` whose `reverse_sql` drops it is correct."""
+    for what, source in (("the undo only", REVERSE_ONLY), ("a trigger recreate", TRIGGER_RECREATE)):
+        assert _one_migration(source) == [], what
 
 
 def test_a_destructive_operation_outside_the_state_block_is_refused():
@@ -258,3 +322,31 @@ def test_gate_extras_must_be_exactly_the_ones_the_ship_names():
     assert sc.gate_problems(card, title, 1, FIX, []) == [
         "extra check realrun_web_carry_checks ran but this ship did not name it"
     ]
+
+
+def test_schema_status_collects_django_migrations_only(tmp_path, monkeypatch):
+    """`*/migrations/*` crossed `/` in a git pathspec, so `supabase/migrations/*.sql` - the legacy
+    schema, applied by hand and not in the deployed image - was collected and then refused as an
+    unexpected file under migrations/ (redesign-s1 RED review, finding F3b)."""
+    def run(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], cwd=tmp_path, check=True, capture_output=True, text=True
+        ).stdout
+
+    run("init", "-q", "-b", "main")
+    run("config", "user.email", "t@example.invalid")
+    run("config", "user.name", "t")
+    (tmp_path / "server" / "widgets" / "migrations").mkdir(parents=True)
+    (tmp_path / "supabase" / "migrations").mkdir(parents=True)
+    (tmp_path / "server" / "widgets" / "migrations" / "0001_initial.py").write_text("ops = []\n")
+    run("add", "-A")
+    run("commit", "-qm", "base")
+    live = run("rev-parse", "HEAD").strip()
+    (tmp_path / "server" / "widgets" / "migrations" / "0002_more.py").write_text("ops = []\n")
+    (tmp_path / "supabase" / "migrations" / "20261124_drop.sql").write_text("drop table x;\n")
+    run("add", "-A")
+    run("commit", "-qm", "fix")
+    fix = run("rev-parse", "HEAD").strip()
+
+    monkeypatch.chdir(tmp_path)
+    assert sc.schema_status(live, fix) == [("A", "server/widgets/migrations/0002_more.py")]

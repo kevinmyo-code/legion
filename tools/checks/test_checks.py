@@ -246,6 +246,43 @@ def test_django_migration_that_does_not_parse_warns():
     assert _judge("operations = [  # truncated\n") == [WARN]
 
 
+RUN_SQL = '''"""Runs SQL the Django operations never name."""
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    operations = [
+        migrations.RunSQL(sql="SQL_HERE", reverse_sql=migrations.RunSQL.noop),
+    ]
+'''
+
+
+def test_django_sql_is_judged_by_what_it_destroys():
+    """The engine's own migrations drop and recreate triggers and functions to stay idempotent, so
+    only SQL that destroys rows or a column counts (redesign-s1 RED review, the inversion in F3)."""
+    destroys = ("DROP TABLE gadgets", "ALTER TABLE w DROP COLUMN g", "TRUNCATE w", "DELETE FROM w")
+    keeps = (
+        "drop trigger if exists guard on w; create trigger guard before insert on w;",
+        "drop function if exists public.upsert(uuid);",
+        "CREATE INDEX w_idx ON w (name)",
+    )
+    for sql in destroys:
+        assert _judge(RUN_SQL.replace("SQL_HERE", sql)) == [WARN], sql
+    for sql in keeps:
+        assert _judge(RUN_SQL.replace("SQL_HERE", sql)) == [], sql
+
+
+def test_django_a_drop_in_reverse_sql_only_is_not_destructive():
+    undo = RUN_SQL.replace('sql="SQL_HERE", reverse_sql=migrations.RunSQL.noop', (
+        'sql="CREATE SCHEMA IF NOT EXISTS django;",\n'
+        '            reverse_sql="DROP SCHEMA IF EXISTS django CASCADE;"'
+    ))
+    assert undo != RUN_SQL
+    assert _judge(undo) == []
+
+
 DB = "app/src/main/java/com/kevin/legion/data/local/CarDatabase.kt"
 SCHEMA = "app/schemas/com.kevin.legion.data.local.CarDatabase/"
 

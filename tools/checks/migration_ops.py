@@ -27,8 +27,22 @@ Anything else - a file that does not parse, a positional, absent, variable or no
 operations exactly as the old text match judged them, so a real `DeleteModel` or a
 `RunSQL('DROP ...')` beside state operations is still refused.
 
-Not covered, as the text match never covered it either: a top-level `RunSQL` or `RunPython` that
-drops something in SQL the module never names.
+**The SQL counts too** (the inversion the redesign-s1 RED review found, 2026-11-24): a
+`RunSQL("DROP TABLE ...")` passed clean while a state-only migration was refused, which is the rule
+backwards. So every string the migration holds, outside a docstring and outside the exempt subtree,
+is read for SQL that destroys data or a column: `DROP TABLE`, `DROP COLUMN`, `DROP CONSTRAINT`,
+`DROP SCHEMA`, `DROP DATABASE`, `TRUNCATE`, `DELETE FROM`.
+
+Two deliberate narrowings, each measured against the tree rather than guessed:
+
+- **`DROP TRIGGER`, `DROP FUNCTION`, `DROP INDEX` and `DROP VIEW` are not destructive here.** 26 of
+  the engine's migrations carry `drop trigger if exists ... ; create trigger ...` or the same for a
+  function: that is how they stay idempotent. They destroy no row and no column, and counting them
+  would refuse almost every engine ship.
+- **`reverse_sql` is not read.** It runs only on a deliberate backward migrate, which no ship does,
+  and a `CREATE TABLE` whose reverse is `DROP TABLE` is a correctly written migration.
+
+Not covered: SQL the module never spells out (a name built at runtime, a file read in `RunPython`).
 
 Stdlib only, pure, and tested in tools/checks/test_checks.py and server/tests/test_ship_checks.py.
 """
@@ -40,6 +54,14 @@ import re
 
 # The operations that drop or rewrite a column, a table or a constraint when they reach the database.
 DESTRUCTIVE = re.compile(r"RemoveField|DeleteModel|AlterField|RenameField|RenameModel")
+# The same in SQL: what destroys rows or a column. A trigger, function, index or view is not here,
+# because dropping and recreating one is how 26 of the engine's migrations stay idempotent.
+DESTRUCTIVE_SQL = re.compile(
+    r"\bDROP\s+(TABLE|COLUMN|CONSTRAINT|SCHEMA|DATABASE)\b|\bTRUNCATE\b|\bDELETE\s+FROM\b",
+    re.IGNORECASE,
+)
+# The backward direction: it runs only on a deliberate `migrate <app> <earlier>`, never on a ship.
+REVERSE = "reverse_sql"
 STATE_AND_DB = "SeparateDatabaseAndState"
 # The names the exemption reads: taking either from anywhere but django.db withdraws it.
 DJANGO_NAMES = ("migrations", STATE_AND_DB)
@@ -61,6 +83,9 @@ def database_destructive(source: str) -> str | None:
             m = DESTRUCTIVE.search(token)
             if m:
                 return m.group(0)
+        sql = _destructive_sql(node)
+        if sql:
+            return f"SQL running {sql}"
         stack.extend(_operation_children(node, exemptible))
     return None
 
@@ -82,20 +107,27 @@ def _tokens(node: ast.AST) -> tuple[str, ...]:
     return ()
 
 
+def _destructive_sql(node: ast.AST) -> str | None:
+    """The SQL this string runs that destroys rows or a column, normalised for the message."""
+    if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+        return None
+    m = DESTRUCTIVE_SQL.search(node.value)
+    return " ".join(m.group(0).split()).upper() if m else None
+
+
 def _operation_children(node: ast.AST, exemptible: bool) -> list[ast.AST]:
-    """This node's children that are code the database runs: a string statement (a docstring, or a
-    string used as a comment) and the state-only subtree are dropped."""
+    """This node's children that are code a forward migrate runs. Dropped: a string statement (a
+    docstring, or a string used as a comment), a `reverse_sql` argument, and the state-only
+    subtree."""
     if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
         if isinstance(node.value.value, str):
             return []
     state = _state_only_operations(node) if exemptible else None
-    if state is not None:
-        return [
-            child
-            for child in ast.iter_child_nodes(node)
-            if not (isinstance(child, ast.keyword) and child.value is state)
-        ]
-    return list(ast.iter_child_nodes(node))
+    return [
+        child
+        for child in ast.iter_child_nodes(node)
+        if not (isinstance(child, ast.keyword) and (child.arg == REVERSE or child.value is state))
+    ]
 
 
 def _state_only_operations(node: ast.AST) -> ast.AST | None:
