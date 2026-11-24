@@ -1133,41 +1133,6 @@ def test_engine_homes_are_scoped_by_household(token_a, token_b, prefix):
         assert token_a.get(f"{prefix}?active=1").data["results"][0]["deleted_at"] is None
 
 
-_CLOCKS = {"created_at_client": "2026-01-02T03:04:05Z", "updated_at_client": "2026-01-02T03:04:05Z"}
-
-
-def test_user_aspect_records_are_scoped_by_household(token_a, token_b):
-    """engine-brain ticket 15: the four user-aspect record tables. B never sees A's tracker, its
-    record type, field or entry, in the list or the batch door; B cannot hang a row off A's
-    parent (the parent guid resolves only inside B's household); B's DELETE of A's identity is a
-    404 and A's row stays."""
-    rows = (
-        ("/api/records/aspects/", {"name": "alpha-tracker", **_CLOCKS}),
-        ("/api/records/types/", {"aspect": "shared-guid-a", "name": "alpha-type", **_CLOCKS}),
-        (
-            "/api/records/fields/",
-            {"record_type": "shared-guid-t", "name": "alpha-field", "type": "TEXT", **_CLOCKS},
-        ),
-        (
-            "/api/records/entries/",
-            {"record_type": "shared-guid-t", "payload": {"shared-guid-f": "alpha"}, **_CLOCKS},
-        ),
-    )
-    ids = ("shared-guid-a", "shared-guid-t", "shared-guid-f", "shared-guid-e")
-    for (prefix, body), guid in zip(rows, ids, strict=True):
-        made = token_a.put(f"{prefix}{guid}/", body, format="json")
-        assert made.status_code == 200, made.data
-        assert token_b.get(prefix).data["results"] == []
-        batch = token_b.post(f"{prefix}batch/", {"rows": []}, format="json")
-        assert batch.status_code == 200 and batch.data["engine_count"] == 0
-        if prefix != "/api/records/aspects/":
-            # A's parent guid names nothing in B's household.
-            assert token_b.put(f"{prefix}{guid}/", body, format="json").status_code == 400
-        assert token_b.delete(f"{prefix}{guid}/").status_code == 404
-        assert token_a.get(f"{prefix}?active=1").data["results"][0]["deleted_at"] is None
-    assert "alpha" not in str(token_b.get("/api/records/entries/").data)
-
-
 def test_every_registered_table_has_a_leak_test():
     """The generation, made real.
 

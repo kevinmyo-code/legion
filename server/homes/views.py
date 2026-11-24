@@ -465,12 +465,9 @@ BATCH_VIEWS: tuple[type[_BatchView], ...] = (
 
 
 def home_paths() -> list:
-    """The batch route comes first: `<str:identity>/` would otherwise take `batch/` as an id.
-    Ticket 15's user-aspect records (`homes/records.py`) are routed the same way."""
-    from homes.records import RECORD_BATCH_VIEWS
-
+    """The batch route comes first: `<str:identity>/` would otherwise take `batch/` as an id."""
     out = []
-    for batch in (*BATCH_VIEWS, *RECORD_BATCH_VIEWS):
+    for batch in BATCH_VIEWS:
         viewset = batch.viewset_cls
         out.append(
             path(
