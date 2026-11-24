@@ -4,18 +4,21 @@
 Postgres. This is the other half, and it is a separate migration on purpose: dropping a table
 deletes rows, which needs Kevin's word, so everything before this commit ships without it.
 
-**What is in them on live, read read-only this session through the `legion-worker` job (execution
-`legion-worker-pnllk`, a READ ONLY transaction in `manage.py shell`):** `user_aspects` 0,
-`user_record_types` 0, `user_field_defs` 0, `user_records` 0. All four are empty, so nothing of
-his is lost. A household that did hold trackers would lose the engine's copy only: the phone's own
-Room rows are the live ones and are not touched by any of this.
+**All four tables were empty when this was written**, confirmed by a read-only row count before the
+change (kept out of this public repo; the counts are in the slice's report under `.legion/reports/`).
+So nothing is lost. A household that did hold trackers would lose the engine's copy only: the
+phone's own Room rows are the live ones and are not touched by any of this.
 
 Children before parents (the FK chain is aspect -> record type -> field / record) and no CASCADE,
 so a foreign key nobody expected fails the migration instead of silently pulling another table's
 rows down with it. `public.`-qualified because `0002_user_records.py` created them there through
 its search_path swap.
 
-Irreversible by design: `reverse_sql` would recreate empty tables and call that an undo.
+`reverse_sql` is a no-op rather than a `CREATE TABLE`, because recreating empty tables is not an
+undo. Django will therefore let a backward migrate SUCCEED without restoring anything, so this is
+not irreversible in the sense Django enforces: it is unrecoverable in fact. Reversing it leaves
+Django's state expecting no models and the database holding no tables, which agree; restoring rows
+needs a database backup, not a migration.
 """
 
 from django.db import migrations
