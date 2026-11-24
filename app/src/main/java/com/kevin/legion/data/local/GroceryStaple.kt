@@ -9,15 +9,19 @@ import androidx.room.PrimaryKey
  * What survives a torn-down grocery trip: **how often a thing gets bought, and nothing else**
  * (Kevin's call, 2026-08-11 - the list vanishes, a staples memory persists).
  *
- * **WRITE-DEAD as of one-today ticket 10 slice B (2026-09-05).** The only writer was
- * [com.kevin.legion.grocery.GroceryController.completeTrip], and the trip surface that called it
- * (`ui/notes/GroceryScreen.kt`, `manage_grocery`) is retired - "everything is a checklist now", and
- * a checklist has no completed-trip event to fold in. This table stays as HISTORY, not deleted: §5
- * forbids a destructive change here, existing rows are still real purchase-frequency data, and
- * [com.kevin.legion.grocery.GroceryController.suggestions]/[forgetStaple] still read/prune it - they
- * simply never grow again from a fresh trip. The ticket's own "what is knowingly lost" section
- * accepts this: a "Groceries" checklist has no history-derived suggestions until a later analysis
- * slice reads this table (or a successor) some other way.
+ * **WRITE-DEAD as of one-today ticket 10 slice B (2026-09-05), and READ-DEAD on the phone as of the
+ * lists redesign slice 1a (2026-11-24).** The only writer was `GroceryController.completeTrip`, and
+ * the trip surface that called it (`ui/notes/GroceryScreen.kt`, `manage_grocery`) was retired -
+ * "everything is a checklist now", and a checklist has no completed-trip event to fold in. That
+ * controller had no caller of its own left and is now deleted, so nothing on the phone reads or
+ * writes this table. This table stays as HISTORY, not deleted: §5 forbids a destructive change
+ * here and existing rows are still real purchase-frequency data. The ticket's own "what is
+ * knowingly lost" section accepts this: a "Groceries" checklist has no history-derived suggestions
+ * until a later analysis slice reads this table (or a successor) some other way.
+ *
+ * **The engine's `grocery_staples` is a DIFFERENT, live store** (`server/api/pantry.py`, read by
+ * the web's pantry route). Nothing here feeds it; the phone's own legacy Supabase sync of this
+ * table retired in the same slice.
  *
  * This is the one piece of trip history the app keeps, and it is kept deliberately thin. There is
  * no trip archive, no per-trip line items, no dates beyond [lastBoughtAt]: what was actually bought
@@ -38,11 +42,9 @@ import androidx.room.PrimaryKey
  * live-sync ticket (v62 -> v63, [MIGRATION_62_63]): [serverId]/[updatedAtMs]/[deleted] added.
  * **[syncId] is REUSED as the sync identity**, same posture as [Goal]'s own v63 doc comment - this
  * table already carried a portable identity column, so no fresh `guid` is minted.
- * [com.kevin.legion.grocery.GroceryController.completeTrip] already reuses the prior row's
- * [syncId] across an upsert (see that function's own comment) so a staple keeps one identity
- * across trips even though the PK ([name]) participates in an `OnConflictStrategy.REPLACE`, which
- * is exactly the same reason [serverId] must be reused there too - see
- * `backend/LastAspectsOutbox.kt`'s own `upsertStaple` doc comment.
+ * The deleted `GroceryController.completeTrip` reused the prior row's [syncId] across an upsert so
+ * a staple kept one identity across trips even though the PK ([name]) participates in an
+ * `OnConflictStrategy.REPLACE`. Any future writer of this table owes the same reuse.
  */
 @Entity(tableName = "grocery_staples", indices = [Index(value = ["syncId"], unique = true)])
 data class GroceryStaple(
