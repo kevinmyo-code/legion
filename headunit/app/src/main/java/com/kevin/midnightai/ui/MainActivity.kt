@@ -39,6 +39,8 @@ import com.kevin.midnightai.service.AriaForegroundService
 import com.kevin.midnightai.ui.theme.AriaColors
 import com.kevin.midnightai.ui.theme.AriaTheme
 import kotlinx.coroutines.launch
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 
 /**
  * The app's one activity: hosts the Cruise HUD as the head unit's home surface
@@ -407,7 +409,13 @@ class MainActivity : ComponentActivity() {
         if (missingPermissions.isEmpty()) {
             startAriaServiceAfterPermissions()
         } else {
-            requestPermissionLauncher.launch(missingPermissions.toTypedArray())
+            // A ROM that cannot show a permission dialog throws from launch, and this runs at
+            // startup with no screen to put a sentence on, so the non-fatal is the whole record
+            // and the service starts anyway rather than leaving the launcher dead on boot.
+            val trouble = ExternalDoor.attempt(ExternalScreen.PERMISSION_PROMPT) {
+                requestPermissionLauncher.launch(missingPermissions.toTypedArray())
+            }
+            if (trouble != null) startAriaServiceAfterPermissions()
         }
     }
 

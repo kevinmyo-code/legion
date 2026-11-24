@@ -56,6 +56,8 @@ import com.kevin.midnightai.bluetooth.PhoneLinkManager
 import com.kevin.midnightai.bluetooth.PhoneLinkState
 import com.kevin.midnightai.media.PlaylistsState
 import com.kevin.midnightai.media.openNotificationAccessSettings
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 import com.kevin.midnightai.media.SpotifyController
 import com.kevin.midnightai.media.SpotifyPlaylists
 import com.kevin.midnightai.media.SpotifyWebApi
@@ -1027,13 +1029,23 @@ private fun CarDetailsSection(context: Context, onBack: () -> Unit) {
                 AppBackground.notifyChanged()
             }
         }
+        // A photo picker is DocumentsUI or a gallery, and AOSP 8 to 10 on this unit may have
+        // neither: PickVisualMedia then falls back to ACTION_OPEN_DOCUMENT or GET_CONTENT and
+        // throws out of the tap. Same for a camera app.
+        var pickTrouble by remember { mutableStateOf<String?>(null) }
         Row(horizontalArrangement = Arrangement.spacedBy(AriaDimens.s3)) {
             Button(onClick = {
-                carPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                pickTrouble = ExternalDoor.attempt(ExternalScreen.PHOTO_PICKER) {
+                    carPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
             }) { Text(if (carPhoto == null) "ADD A CAR PHOTO" else "CHANGE PHOTO") }
             if (hasCamera(context)) {
-                Button(onClick = carPhotoCamera) { Text("TAKE PHOTO") }
+                Button(onClick = { pickTrouble = carPhotoCamera() }) { Text("TAKE PHOTO") }
             }
+        }
+        pickTrouble?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, style = RowSubtitle, color = AriaColors.NeonCyan)
         }
         Spacer(Modifier.height(16.dp))
 
