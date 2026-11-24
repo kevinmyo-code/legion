@@ -33,6 +33,11 @@ radios (`headunit/CLAUDE.md` section 14), a vendor app owns the Bluetooth phones
 activities simply are not installed. There is no ADB on it, so a crash is only ever seen as a drive
 log the unit uploads itself, or as a report from the car.
 
+**One door, not a catch per incident.** Ticket 01 guarded the three taps on the Phones screen;
+ticket 02's review found eleven more doors of the same class elsewhere in the app. Every tap that
+hands work to Android now goes through `util/ExternalDoor`, which catches what this ROM throws and
+returns the words, and each screen decides where its own sentence goes.
+
 **A launcher may not crash and may not go quiet.** The head unit app is the car's home screen, so a
 tap that throws leaves the driver with nothing. Root `CLAUDE.md`: a home app "owes the user every
 other app and never a dead tap". Every tap that hands work to Android therefore needs an answer in
@@ -43,3 +48,4 @@ words for the case where this ROM cannot do it.
 | # | Title | Type | Status |
 |---|---|---|---|
 | 01 | [PAIR NEW PHONE crashes the launcher](issues/01-pair-new-phone-crashes-the-launcher.md) | bug | built |
+| 02 | [Every other tap that hands work to Android can kill the launcher too](issues/02-every-other-tap-that-hands-work-to-android.md) | bug | built |
