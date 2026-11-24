@@ -118,8 +118,10 @@ data class CascadeOpener(
     val userInitiated: Boolean = true,
     /**
      * A listening check-in: after the line, a question gets the cue, the listening mark and the
-     * reply window, and silence gets a scripted closer; a statement just closes. Only on an opener
-     * that listens; a line folded into an open conversation ([CascadeSession.say]) ignores it.
+     * reply window, and silence gets a scripted closer; a statement just closes. An answer gets one
+     * reply and then the conversation closes (Kevin, 2026-11-23: a check-in is a single turn). Only
+     * on an opener that listens; a line folded into an open conversation ([CascadeSession.say])
+     * ignores it.
      */
     val checkIn: com.kevin.legion.service.checkin.CheckInMark? = null,
 )
