@@ -4,24 +4,34 @@ ADR 0067: every laptop worker holds an ordinary household device token, named
 `claude-session-<Name>` by `tools/claude_session/install.ps1`, and reports its machine's scope
 (`full` for the Alienware, `listed` for the work laptop) on every heartbeat.
 `claude_session.views._touch_machine` binds the token to the machine it heartbeats as
-(`ClaudeMachine.token`). Memory and the ID vault read the binding here:
+(`ClaudeMachine.token`), and `SessionReportView` binds it to a machine its session hook reports
+that nothing has bound yet (`claude_session.fences` rule 2). Memory and the ID vault read the
+binding here:
 
 - **Memory** (Kevin, 2026-11-05: *"claude can write too"*): a token bound to a `full` machine may
   read and write memories; one bound to a `listed` machine may not (the work laptop never touches
-  memory); a `claude-session-*` token bound to no machine yet is refused too, fail closed.
+  memory); a `claude-session-*` token bound to no machine yet is refused too, fail closed. A
+  machine a hook bound before any heartbeat is `listed`, the safe default, so a `full` laptop
+  whose worker service has not beaten yet is refused as a `listed` one would be. Refused either
+  way; the wording is the only difference, and the first heartbeat reports the real scope.
 - **The ID vault** (ruling 5, "never readable by Claude"): refuses every `claude-session-*` token
   and every token bound to any machine.
 
 **The honest limit, said where the rule lives.** The scope is what the worker reports, and the
 token name is a convention of the installer. A member's token is a member's token: a worker
-installed by hand under another name, or a phone token copied onto a laptop, is not recognised.
-ADR 0067's own follow-up, "worker endpoints restricted to machine tokens", is what closes this.
+installed by hand under another name, or a phone token copied onto a laptop, is not recognised
+here. ADR 0067's own follow-up, "worker endpoints restricted to machine tokens", landed
+2026-11-24 as `claude_session.fences`: the `/api/claude/` worker routes now take only the token a
+machine's own worker bound (by its heartbeat or by its session hook), and both of those doors
+take only a token this module calls a worker's.
+So a hand-named token can no longer bind itself a machine, and the limit above is what the
+BINDING rests on rather than what the routes rest on.
 
 **The `claude_worker` scope (architecture upgrade 2, 2026-11-10)** closes the other direction: a
 token issued with it reaches only `WORKER_ROUTES`, whatever its name
 (`household.authentication.DeviceTokenAuthentication` refuses the rest), and is always a worker's
-token here (unbound until it heartbeats). Additive: a worker token issued before it keeps `write`
-and every route until Kevin re-issues it.
+token here (unbound until it binds a machine). Additive: a worker token issued before it keeps
+`write` and every route until Kevin re-issues it.
 
 `WORKER_ROUTES` is wider than `/api/claude/` on purpose, because the worker family sends the same
 token to three more places: the memory review (`tools/claude_session/review_memories.py`,
@@ -59,7 +69,7 @@ def worker_route_allowed(path: str, method: str) -> bool:
 FENCE_NONE = "none"  # not a Claude worker's token, as far as the engine can tell
 FENCE_FULL = "full"
 FENCE_LISTED = "listed"
-FENCE_UNBOUND = "unbound"  # named like a worker's token, never heartbeated as a machine
+FENCE_UNBOUND = "unbound"  # named like a worker's token, has never bound a machine
 
 
 def worker_fence(request) -> str:

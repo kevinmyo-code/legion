@@ -5,10 +5,23 @@ route is token-authenticated like every other device call
 (`DeviceTokenAuthentication` plus `IsHouseholdMember`, the project
 defaults) and every read and write goes through the caller's household
 (`household_of` / `scoped`, ADR 0045). The phone, the web, the laptop worker
-and the session hooks all hold ordinary household device tokens; nothing
-here tells them apart, and the "Who" column of the table is the intended
-caller, not an enforced role (Kevin 2026-11-01: accepted for v1; later,
-worker endpoints restricted to machine tokens).
+and the session hooks all hold ordinary household device tokens, and the "Who"
+column of the table was the intended caller rather than an enforced one
+(Kevin 2026-11-01: accepted for v1; later, worker endpoints restricted to
+machine tokens). **That follow-up landed 2026-11-24, and it is
+`claude_session.fences`:** a task is its creating member's, a machine is the
+member whose worker speaks for it (its heartbeat or its session hook, whichever
+reaches here first), and heartbeat, claim, finish, upload and the session hooks
+are the bound worker's. The "Who" column is enforced now,
+and it is enforced on the way IN: a route reads `fences.own_*`, and says in
+words when it refuses. Three `scoped` reads are left on purpose, and none of
+them is the fence: `_machine_any` looks a machine up household-wide for the two
+worker routes that must find another member's row to refuse it
+(`fences.machine_refusal`); `_owned_delivery` reads a delivered file
+household-wide and compares the task's own member itself, which is ADR 0080's
+stricter rule rather than a looser one; and `TaskSendFileView` narrows a file
+inside a task the caller has already passed `_task` for. A new read here
+belongs in `fences`, not beside them.
 
 **Nothing here logs.** No logger is imported. A request, a summary, a
 question and a file name are household data; they are stored and returned
@@ -76,7 +89,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from claude_session import delivery
+from claude_session import delivery, fences
 from claude_session import health as hl
 from claude_session import serializers as s
 from claude_session import workflows as wf
@@ -187,20 +200,33 @@ def _not_the_worker(request) -> Response | None:
 
 
 def _machine_named(request, name: str) -> ClaudeMachine | None:
+    """A machine this member may speak for, by name (`claude_session.fences` rule 2)."""
+    return fences.own_machines(request).filter(name__iexact=name.strip()).first()
+
+
+def _machine_any(request, name: str) -> ClaudeMachine | None:
+    """The household's machine of that name, whoever owns it. Only the two routes a laptop's own
+    worker calls use this, and each refuses another member's machine in words
+    (`fences.machine_refusal`): the name is unique per household, so narrowing the lookup here
+    would make a second row with the same name and trip the unique constraint."""
     return scoped(ClaudeMachine, request).filter(name__iexact=name.strip()).first()
 
 
 def _online_machines(request, now) -> list[ClaudeMachine]:
     cutoff = now - datetime.timedelta(seconds=OFFLINE_AFTER_SECONDS)
-    return list(scoped(ClaudeMachine, request).filter(last_seen_at__gte=cutoff).order_by("name"))
+    return list(
+        fences.own_machines(request).filter(last_seen_at__gte=cutoff).order_by("name")
+    )
 
 
 def _task(request, task_id: int) -> ClaudeTask | None:
-    return scoped(ClaudeTask, request).select_related("machine").filter(pk=task_id).first()
+    return fences.own_tasks(request).select_related("machine").filter(pk=task_id).first()
 
 
 def _no_task(task_id: int) -> Response:
-    return _detail(f"There is no task {task_id} in this household.", http.HTTP_404_NOT_FOUND)
+    # Another member's task answers exactly like one that never existed: the words say whose it
+    # is not, and never whether it is there.
+    return _detail(f"There is no task {task_id} of yours.", http.HTTP_404_NOT_FOUND)
 
 
 def _file_row(row: ClaudeTaskFile) -> dict:
@@ -409,7 +435,7 @@ def _resolve_workflow(request, phrase: str, named: ClaudeMachine | None, now):
     has it, every machine (it then waits for that one to come on, like any task). One machine has
     it: queued there. Several: `needs_machine`, Alfred asks which. None: 400 naming the
     workflows there are. Returns (machine, entry, params, status) or a Response."""
-    every = list(scoped(ClaudeMachine, request).order_by("name"))
+    every = list(fences.own_machines(request).order_by("name"))
     spoken_names = [m.name for m in every]
     passes = [[named]] if named is not None else [_online_machines(request, now), every]
     for candidates in passes:
@@ -467,7 +493,7 @@ class TaskListCreateView(APIView):
         limit = max(1, min(limit, LIST_MAX))
         wanted_status = request.query_params.get("status")
         rows = (
-            scoped(ClaudeTask, request)
+            fences.own_tasks(request)
             .select_related("machine")
             .prefetch_related("files")
             .order_by("-created_at", "-id")
@@ -558,7 +584,7 @@ class TaskListCreateView(APIView):
         if data["machine"]:
             machine = _machine_named(request, data["machine"])
             if machine is None:
-                known = sorted(scoped(ClaudeMachine, request).values_list("name", flat=True))
+                known = sorted(fences.own_machines(request).values_list("name", flat=True))
                 listing = ", ".join(known) if known else "none yet"
                 return _detail(
                     f"Nothing was sent. No machine has that name here. Known machines: {listing}.",
@@ -631,7 +657,7 @@ class TaskListCreateView(APIView):
             if one_yes:
                 # The parent row's lock orders two taps at once: the second sees the first's yes.
                 ClaudeTask.objects.select_for_update().filter(pk=parent.pk).first()
-                if scoped(ClaudeTask, request).filter(parent=parent, confirms=True).exists():
+                if fences.own_tasks(request).filter(parent=parent, confirms=True).exists():
                     return _detail(
                         "Nothing was sent. Kevin already said yes to that message once; ask "
                         "again for a new card to send it again.",
@@ -687,7 +713,7 @@ class TaskCancelView(APIView):
         now = timezone.now()
         with transaction.atomic():
             task = (
-                scoped(ClaudeTask, request).select_for_update().filter(pk=task_id).first()
+                fences.own_tasks(request).select_for_update().filter(pk=task_id).first()
             )
             if task is None:
                 return _no_task(task_id)
@@ -737,7 +763,7 @@ class TaskAssignView(APIView):
             return _refused(serializer)
         now = timezone.now()
         with transaction.atomic():
-            task = scoped(ClaudeTask, request).select_for_update().filter(pk=task_id).first()
+            task = fences.own_tasks(request).select_for_update().filter(pk=task_id).first()
             if task is None:
                 return _no_task(task_id)
             if task.status != NEEDS_MACHINE:
@@ -830,9 +856,9 @@ class StatusView(APIView):
     )
     def get(self, request):
         now = timezone.now()
-        machines = list(scoped(ClaudeMachine, request).order_by("name"))
+        machines = list(fences.own_machines(request).order_by("name"))
         in_flight = (
-            scoped(ClaudeTask, request)
+            fences.own_tasks(request)
             .filter(status__in=IN_FLIGHT, machine__isnull=False)
             .select_related("machine")
             .order_by("id")
@@ -843,7 +869,7 @@ class StatusView(APIView):
                 running.setdefault(task.machine_id, []).append(task)
         shown_since = now - datetime.timedelta(hours=SESSION_SHOWN_HOURS)
         sessions = (
-            scoped(ClaudeCodeSession, request)
+            fences.own_sessions(request)
             .filter(last_seen_at__gte=shown_since)
             .exclude(state=SESSION_ENDED)
             .select_related("machine")
@@ -909,7 +935,7 @@ TOUCH_FIELDS = [
 
 def _touch_machine(request, data: dict, now) -> ClaudeMachine:
     household = household_of(request)
-    machine = _machine_named(request, data["name"])
+    machine = _machine_any(request, data["name"])
     if machine is None:
         machine = ClaudeMachine(household=household, name=data["name"].strip())
     machine.hostname = data.get("hostname", "")
@@ -1003,11 +1029,22 @@ class HeartbeatView(APIView):
         serializer = s.ClaudeHeartbeatSerializer(data=request.data)
         if not serializer.is_valid():
             return _refused(serializer)
+        # A heartbeat BINDS `ClaudeMachine.token` to the caller (`_touch_machine`, map decision
+        # G), so the two fences are checked before anything is written: only a worker's token may
+        # beat at all, and never for a machine another member's worker has bound.
+        refusal = fences.worker_refusal(request)
+        if refusal is not None:
+            return _detail(refusal, http.HTTP_403_FORBIDDEN)
         now = timezone.now()
+        existing = _machine_any(request, serializer.validated_data["name"])
+        if existing is not None:
+            refusal = fences.machine_refusal(request, existing)
+            if refusal is not None:
+                return _detail(refusal, http.HTTP_403_FORBIDDEN)
         machine = _touch_machine(request, serializer.validated_data, now)
         dropped = _store_catalog(machine, serializer.validated_data, now)
         hl.on_heartbeat(machine, serializer.validated_data.get("health"), now)
-        tasks = scoped(ClaudeTask, request).filter(machine=machine)
+        tasks = fences.own_tasks(request).filter(machine=machine)
         _store_progress(
             tasks, serializer.validated_data["progress"], now,
             keep_steps=machine.scope != SCOPE_LISTED,
@@ -1019,7 +1056,7 @@ class HeartbeatView(APIView):
         if machine.scope != SCOPE_LISTED:
             files = [
                 {"task": row.task_id, "file_id": row.id, "path": row.path}
-                for row in scoped(ClaudeTaskFile, request)
+                for row in fences.own_files(request)
                 .filter(task__machine=machine, requested_at__isnull=False, uploaded_at__isnull=True)
                 .order_by("id")
             ]
@@ -1059,6 +1096,13 @@ class ClaimView(APIView):
                 "Nothing was claimed. This machine has not sent a heartbeat yet.",
                 http.HTTP_404_NOT_FOUND,
             )
+        # A queue is claimed by the worker bound to that machine, and by nobody else: a member's
+        # app token must not take Kevin's laptop's work and answer for it. The real worker always
+        # heartbeats first (`tools/claude_session/worker.py` claims inside the same loop pass,
+        # after the heartbeat returned), so a claim arrives with `last_seen_at` already set.
+        refusal = fences.bound_refusal(request, machine)
+        if refusal is not None:
+            return _detail(refusal, http.HTTP_403_FORBIDDEN)
         # A claim is proof of life, like a heartbeat.
         machine.last_seen_at = now
         machine.save(update_fields=["last_seen_at"])
@@ -1073,7 +1117,7 @@ class ClaimView(APIView):
             # Worker workflows ticket 04: at most one minted task per claim, the review first.
             if maybe_mint(request, machine, now) is None:
                 wf.maybe_mint_workflow(request, machine, now)
-            queued = scoped(ClaudeTask, request).filter(status=QUEUED)
+            queued = fences.own_tasks(request).filter(status=QUEUED)
             mine = queued.filter(machine=machine)
             if only_one_online:
                 # A workflow is only ever queued on a machine whose catalog has it.
@@ -1111,7 +1155,7 @@ class WorkflowListView(APIView):
     )
     def get(self, request):
         now = timezone.now()
-        machines = scoped(ClaudeMachine, request).order_by("name")
+        machines = fences.own_machines(request).order_by("name")
         wanted = request.query_params.get("machine")
         if wanted:
             machines = machines.filter(name__iexact=wanted.strip())
@@ -1178,7 +1222,7 @@ class WorkflowRunView(APIView):
         data = serializer.validated_data
         now = timezone.now()
         name = data["name"].strip()
-        every = list(scoped(ClaudeMachine, request).order_by("name"))
+        every = list(fences.own_machines(request).order_by("name"))
         if data["machine"]:
             machine = _machine_named(request, data["machine"])
             if machine is None:
@@ -1262,7 +1306,7 @@ class FinishView(APIView):
         now = timezone.now()
         with transaction.atomic():
             task = (
-                scoped(ClaudeTask, request)
+                fences.own_tasks(request)
                 .select_for_update(of=("self",))
                 .select_related("machine")
                 .filter(pk=task_id)
@@ -1270,6 +1314,11 @@ class FinishView(APIView):
             )
             if task is None:
                 return _no_task(task_id)
+            # A result is posted by the worker that claimed it. Anything else - a member's phone,
+            # a second laptop - would be a fabricated answer under Kevin's own task id.
+            refusal = fences.bound_refusal(request, task.machine)
+            if refusal is not None:
+                return _detail(refusal, http.HTTP_403_FORBIDDEN)
             current = effective_status(task, now)
             if current not in IN_FLIGHT:
                 return _detail(
@@ -1387,9 +1436,12 @@ class FileUploadView(APIView):
         task = _task(request, task_id)
         if task is None:
             return _no_task(task_id)
+        refusal = fences.bound_refusal(request, task.machine)
+        if refusal is not None:
+            return _detail(refusal, http.HTTP_403_FORBIDDEN)
         if task.machine is not None and task.machine.scope == SCOPE_LISTED:
             return _detail(LISTED_REFUSAL.format(name=task.machine.name), http.HTTP_403_FORBIDDEN)
-        row = scoped(ClaudeTaskFile, request).filter(task=task, pk=data["file_id"]).first()
+        row = fences.own_files(request).filter(task=task, pk=data["file_id"]).first()
         if row is None:
             return _detail(
                 f"Nothing was stored. Task {task.id} has no file {data['file_id']}.",
@@ -1468,8 +1520,12 @@ class FileDownloadView(APIView):
         missing = _detail(
             f"Task {task_id} has no uploaded file {file_id}.", http.HTTP_404_NOT_FOUND
         )
+        # The task's owner decides who may have its bytes, whatever its `deliver` is: a page, a
+        # mailed summary's file, a workflow's result and an ordinary send-file are all one
+        # member's work. `own_files` is the row's existence and the permission in one read, and
+        # another member's file answers exactly like a file that is not there.
         row = (
-            scoped(ClaudeTaskFile, request)
+            fences.own_files(request)
             .select_related("task")
             .filter(task_id=task_id, pk=file_id, uploaded_at__isnull=False)
             .first()
@@ -1631,12 +1687,35 @@ class SessionReportView(APIView):
             return _refused(serializer)
         data = serializer.validated_data
         now = timezone.now()
-        machine = _machine_named(request, data["machine"])
+        # The session hooks run on the laptop and post with its worker token
+        # (`tools/claude_session`). A member's app token has no session of its own to report, and
+        # must not write under another member's machine name. Past this check `request.auth` is a
+        # `DeviceToken`: `tokens.worker_fence` calls anything else no worker's token at all, which
+        # is what lets the binding below take it.
+        refusal = fences.worker_refusal(request)
+        if refusal is not None:
+            return _detail(refusal, http.HTTP_403_FORBIDDEN)
+        machine = _machine_any(request, data["machine"])
+        if machine is not None:
+            refusal = fences.machine_refusal(request, machine)
+            if refusal is not None:
+                return _detail(refusal, http.HTTP_403_FORBIDDEN)
+            # A hook BINDS an unbound machine, like a heartbeat (`fences` rule 2): otherwise a
+            # machine only his hooks have reported is unbound and holds no task, so another
+            # member's own worker token could heartbeat it first, bind it, and lock his worker and
+            # his hooks out of his own laptop. Never moves a binding: the refusal above already
+            # returned for a machine that is another member's.
+            bound = ClaudeMachine.objects.filter(pk=machine.pk, token__isnull=True).update(
+                token=request.auth
+            )
+            if bound:
+                machine.token = request.auth
         if machine is None:
             # A hook can fire before the worker's first heartbeat. Until one
             # says otherwise the machine is `listed`, the safe default.
             machine = ClaudeMachine.objects.create(
-                household=household, name=data["machine"].strip(), scope=SCOPE_LISTED
+                household=household, name=data["machine"].strip(), scope=SCOPE_LISTED,
+                token=request.auth,
             )
         keep_summary = machine.scope != SCOPE_LISTED
         with transaction.atomic():

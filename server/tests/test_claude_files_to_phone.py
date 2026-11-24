@@ -25,6 +25,13 @@ from tests.conftest import _client_for, _member, worker_client
 pytestmark = pytest.mark.django_db
 
 API = "/api/claude/"
+
+
+def _wk(client, name="Alienware"):
+    """The worker's own verbs - heartbeat, claim, finish, upload and the session hooks - are the
+    laptop's token's, never Kevin's app token's (`claude_session.fences`). One token per machine
+    name, cached, so claim and finish speak with the token its heartbeat bound."""
+    return worker_client(client, f"claude-session-{name}")
 SCAN = b"%PDF-1.7 not a real document"
 PHOTO = b"\xff\xd8\xff\xe0 not a real photo"
 
@@ -74,7 +81,7 @@ def _create(client, machine="Alienware", deliver="files", **extra):
 
 def _finish(client, task_id, found, status="done", question=""):
     body = {"status": status, "summary": "Found them.", "question": question, "found": found}
-    response = client.post(f"{API}tasks/{task_id}/finish/", body, format="json")
+    response = _wk(client).post(f"{API}tasks/{task_id}/finish/", body, format="json")
     assert response.status_code == 200, response.data
     return response.data
 
@@ -88,13 +95,15 @@ def _found(n=2, size=1000):
 def _claimed(client, deliver="files", **extra):
     _beat(client)
     task_id = _create(client, deliver=deliver, **extra).data["id"]
-    claimed = client.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    claimed = _wk(client, "Alienware").post(
+        f"{API}tasks/claim/", {"name": "Alienware"}, format="json"
+    )
     assert claimed.status_code == 200
     return task_id
 
 
 def _upload(client, task_id, file_id, blob=SCAN, name="form-scan.pdf", ctype="application/pdf"):
-    return client.post(
+    return _wk(client).post(
         f"{API}tasks/{task_id}/files/",
         {"file_id": file_id, "file": SimpleUploadedFile(name, blob, content_type=ctype)},
         format="multipart",
@@ -152,7 +161,7 @@ def test_the_yes_to_the_question_inherits_files_and_lifts_the_caps(token_a):
     assert follow.status_code == 201, follow.data
     child = ClaudeTask.objects.get(pk=follow.data["id"])
     assert child.deliver == "files"
-    token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    _wk(token_a, "Alienware").post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
     files = _finish(token_a, child.id, _found(21, 10))["files"]
     assert all(f["requested"] for f in files)
 
@@ -180,7 +189,9 @@ def test_an_unaddressed_files_task_is_not_claimed_by_the_work_laptop(token_a):
     # Sent while no machine was online, so it waits unaddressed; then only the work laptop wakes.
     task_id = _create(token_a, machine=None).data["id"]
     _beat(token_a, name="work laptop", scope="listed")
-    claimed = token_a.post(f"{API}tasks/claim/", {"name": "work laptop"}, format="json")
+    claimed = _wk(token_a, "work laptop").post(
+        f"{API}tasks/claim/", {"name": "work laptop"}, format="json"
+    )
     assert claimed.status_code == 204
     assert ClaudeTask.objects.get(pk=task_id).status == "queued"
 

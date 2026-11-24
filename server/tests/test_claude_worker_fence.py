@@ -12,6 +12,12 @@ What the fence is: `claude_session.views._not_the_worker`, over `is_claude_token
 `workflows/run/`, assign, cancel and send-file. What it is not: the worker's own routes (claim,
 finish, upload, heartbeat, sessions) keep working, and so does Kevin's ordinary device token.
 
+**The other direction landed 2026-11-24** (`claude_session.fences`,
+`tests/test_claude_owner_fence.py`): those worker routes are now the bound worker's alone, and
+every route here is also narrowed to the member who owns the task or the machine. This module
+still asserts only the token-kind half, which is why it sends a worker's token at a member's
+verbs; the ownership half is that module's.
+
 Every case here sets up state a member would succeed on (a real `needs_confirmation` parent, a
 real `needs_machine` task, a real queued task, a real uploaded file row), so a 403 is the fence
 and never a missing row, and each asserts the database did not move.

@@ -340,11 +340,10 @@ def test_cancel_is_unchanged_for_a_workflow_task(worker, token_a):
 
 def test_an_unclaimed_workflow_task_never_goes_to_another_machine(household_user, token_a):
     alien = _worker(household_user, catalog=(LOG_AUDIT,))
-    _worker(household_user, "work laptop", "listed", catalog=(LOG_AUDIT,), wf_hash="w")
+    laptop = _worker(household_user, "work laptop", "listed", catalog=(LOG_AUDIT,), wf_hash="w")
     _create(token_a, "audit my logs")  # needs_machine
-    laptop_client = _client_for(household_user)
     _age_machine("Alienware", 600)
-    assert _claim(laptop_client, "work laptop").status_code == 204
+    assert _claim(laptop, "work laptop").status_code == 204
     assert _claim(alien).status_code == 204
 
 
@@ -596,7 +595,9 @@ def test_the_listed_switch_is_kevins_one_line_yes(settings, household_user):
 def test_another_tokens_claim_never_mints(household_user):
     _worker(household_user)
     stranger = _client_for(household_user)  # a phone's token, not the one bound to the machine
-    assert _claim(stranger).status_code == 204
+    # Since 2026-11-24 a claim is refused outright for anything but that machine's own worker
+    # (`claude_session.fences`), which is a stronger statement of the same property.
+    assert _claim(stranger).status_code == 403
     assert _minted() == []
 
 

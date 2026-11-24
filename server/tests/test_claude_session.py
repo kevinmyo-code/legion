@@ -32,6 +32,13 @@ pytestmark = pytest.mark.django_db
 API = "/api/claude/"
 
 
+def _wk(client, name="Alienware"):
+    """The worker's own verbs - heartbeat, claim, finish, upload and the session hooks - are the
+    laptop's token's, never Kevin's app token's (`claude_session.fences`). One token per machine
+    name, cached, so claim and finish speak with the token its heartbeat bound."""
+    return worker_client(client, f"claude-session-{name}")
+
+
 def _beat(client, name="Alienware", scope="full", state="idle", **extra):
     client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": f"{name}-host", "scope": scope, "state": state,
@@ -47,12 +54,12 @@ def _create(client, request="find the AW4 wiring PDF in Downloads", **extra):
 
 
 def _claim(client, name="Alienware"):
-    return client.post(f"{API}tasks/claim/", {"name": name}, format="json")
+    return _wk(client, name).post(f"{API}tasks/claim/", {"name": name}, format="json")
 
 
-def _finish(client, task_id, **body):
+def _finish(client, task_id, machine="Alienware", **body):
     body.setdefault("status", "done")
-    return client.post(f"{API}tasks/{task_id}/finish/", body, format="json")
+    return _wk(client, machine).post(f"{API}tasks/{task_id}/finish/", body, format="json")
 
 
 def _age_machine(name, seconds):
@@ -176,7 +183,7 @@ def test_a_listed_machine_may_email_a_summary_but_never_a_file(token_a):
     assert created.status_code == 201, created.data
     task_id = created.data["id"]
     assert _claim(token_a, "work laptop").data[0]["deliver"] == "email_self"
-    finished = _finish(token_a, task_id, summary="emailed the summary",
+    finished = _finish(token_a, task_id, "work laptop", summary="emailed the summary",
                        found=[{"path": "C:/repos/x.py", "name": "x.py", "size": 3}])
     assert finished.status_code == 200
     assert finished.data["files"] == []
@@ -188,7 +195,7 @@ def test_a_listed_machine_may_email_a_summary_but_never_a_file(token_a):
     assert token_a.post(
         f"{API}tasks/{task_id}/send-file/", {"file_id": row.id}, format="json"
     ).status_code == 403
-    assert token_a.post(
+    assert _wk(token_a, "work laptop").post(
         f"{API}tasks/{task_id}/files/",
         {"file_id": row.id, "file": SimpleUploadedFile("x.py", b"print()")},
         format="multipart",
@@ -481,7 +488,7 @@ def _done_with_a_found_file(client, machine="Alienware"):
     task_id = _create(client, machine=machine).data["id"]
     _claim(client, machine)
     finished = _finish(
-        client, task_id, summary="found it",
+        client, task_id, machine, summary="found it",
         found=[{"path": "D:/manuals/aw4.pdf", "name": "aw4.pdf", "size": 11}],
     )
     files = finished.data["files"]
@@ -502,7 +509,7 @@ def test_send_file_round_trip_through_the_heartbeat(token_a):
     # Not uploaded yet: nothing to download.
     assert token_a.get(f"{API}tasks/{task_id}/files/{file_id}/").status_code == 404
 
-    upload = token_a.post(
+    upload = _wk(token_a).post(
         f"{API}tasks/{task_id}/files/",
         {"file_id": file_id,
          "file": SimpleUploadedFile("aw4.pdf", b"%PDF-1.7 hi", content_type="application/pdf")},
@@ -523,7 +530,7 @@ def test_send_file_round_trip_through_the_heartbeat(token_a):
 def test_an_unrequested_upload_is_refused(token_a):
     _beat(token_a)
     task_id, file_id = _done_with_a_found_file(token_a)
-    response = token_a.post(
+    response = _wk(token_a).post(
         f"{API}tasks/{task_id}/files/",
         {"file_id": file_id, "file": SimpleUploadedFile("aw4.pdf", b"x")},
         format="multipart",
@@ -538,7 +545,7 @@ def test_an_upload_over_25mb_is_refused_413(token_a, monkeypatch):
     _beat(token_a)
     task_id, file_id = _done_with_a_found_file(token_a)
     token_a.post(f"{API}tasks/{task_id}/send-file/", {"file_id": file_id}, format="json")
-    response = token_a.post(
+    response = _wk(token_a).post(
         f"{API}tasks/{task_id}/files/",
         {"file_id": file_id, "file": SimpleUploadedFile("aw4.pdf", b"z" * 2048)},
         format="multipart",
@@ -565,7 +572,7 @@ def test_a_listed_machine_keeps_no_found_files_and_refuses_send_file(token_a):
     assert "summaries only" in refused.data["detail"]
     row.refresh_from_db()
     assert row.requested_at is None
-    upload = token_a.post(
+    upload = _wk(token_a, "work laptop").post(
         f"{API}tasks/{task_id}/files/",
         {"file_id": row.id, "file": SimpleUploadedFile("x.py", b"print()")},
         format="multipart",
@@ -581,10 +588,10 @@ def test_sessions_from_a_full_machine_keep_the_prompt_summary(token_a):
     body = {"machine": "Alienware", "session_id": "s-1", "project": "legion",
             "state": "working", "last_prompt_summary": "fixing the heartbeat",
             "at": "2026-11-01T15:00:00Z"}
-    response = token_a.post(f"{API}sessions/", body, format="json")
+    response = _wk(token_a).post(f"{API}sessions/", body, format="json")
     assert response.status_code == 200, response.data
     assert response.data["summary_kept"] is True
-    token_a.post(f"{API}sessions/", {**body, "state": "waiting"}, format="json")
+    _wk(token_a).post(f"{API}sessions/", {**body, "state": "waiting"}, format="json")
     sessions = token_a.get(f"{API}status/").data["sessions"]
     assert sessions == [
         {"machine": "Alienware", "session_id": "s-1", "name": "", "project": "legion",
@@ -600,16 +607,16 @@ def test_a_session_name_is_kept_until_a_new_one_comes(token_a):
     _beat(token_a)
     body = {"machine": "Alienware", "session_id": "s-1", "project": "legion", "state": "working",
             "name": "builder"}
-    token_a.post(f"{API}sessions/", body, format="json")
-    token_a.post(f"{API}sessions/", {**body, "name": ""}, format="json")
+    _wk(token_a).post(f"{API}sessions/", body, format="json")
+    _wk(token_a).post(f"{API}sessions/", {**body, "name": ""}, format="json")
     assert token_a.get(f"{API}status/").data["sessions"][0]["name"] == "builder"
-    token_a.post(f"{API}sessions/", {**body, "name": "reviewer"}, format="json")
+    _wk(token_a).post(f"{API}sessions/", {**body, "name": "reviewer"}, format="json")
     assert token_a.get(f"{API}status/").data["sessions"][0]["name"] == "reviewer"
 
 
 def test_a_listed_machine_keeps_no_session_name(token_a):
     _beat(token_a, "work laptop", scope="listed")
-    token_a.post(f"{API}sessions/", {"machine": "work laptop", "session_id": "w-1",
+    _wk(token_a).post(f"{API}sessions/", {"machine": "work laptop", "session_id": "w-1",
                                      "project": "erp", "state": "working", "name": "secret"},
                  format="json")
     assert ClaudeCodeSession.objects.get().name == ""
@@ -618,15 +625,15 @@ def test_a_listed_machine_keeps_no_session_name(token_a):
 def test_waiting_since_marks_the_start_of_one_wait(token_a):
     _beat(token_a)
     body = {"machine": "Alienware", "session_id": "s-1", "project": "p", "state": "waiting"}
-    token_a.post(f"{API}sessions/", body, format="json")
+    _wk(token_a).post(f"{API}sessions/", body, format="json")
     first = ClaudeCodeSession.objects.get().waiting_since
     assert first is not None
     ClaudeCodeSession.objects.update(waiting_since=first - datetime.timedelta(minutes=5))
-    token_a.post(f"{API}sessions/", body, format="json")  # the hook repeats `waiting`
+    _wk(token_a).post(f"{API}sessions/", body, format="json")  # the hook repeats `waiting`
     assert ClaudeCodeSession.objects.get().waiting_since == first - datetime.timedelta(minutes=5)
-    token_a.post(f"{API}sessions/", {**body, "state": "working"}, format="json")
+    _wk(token_a).post(f"{API}sessions/", {**body, "state": "working"}, format="json")
     assert ClaudeCodeSession.objects.get().waiting_since is None
-    token_a.post(f"{API}sessions/", body, format="json")
+    _wk(token_a).post(f"{API}sessions/", body, format="json")
     again = ClaudeCodeSession.objects.get().waiting_since
     assert again is not None and again > first - datetime.timedelta(minutes=5)
 
@@ -635,7 +642,7 @@ def test_sessions_from_a_listed_machine_drop_the_prompt_summary(token_a):
     _beat(token_a, "work laptop", scope="listed")
     body = {"machine": "work laptop", "session_id": "w-1", "project": "erp",
             "state": "working", "last_prompt_summary": "something from work"}
-    response = token_a.post(f"{API}sessions/", body, format="json")
+    response = _wk(token_a).post(f"{API}sessions/", body, format="json")
     assert response.data["summary_kept"] is False
     assert ClaudeCodeSession.objects.get().last_prompt_summary is None
     assert token_a.get(f"{API}status/").data["sessions"][0]["last_prompt_summary"] is None
@@ -644,20 +651,22 @@ def test_sessions_from_a_listed_machine_drop_the_prompt_summary(token_a):
 def test_a_session_before_any_heartbeat_makes_a_listed_machine(token_a):
     body = {"machine": "Alienware", "session_id": "s-1", "project": "legion",
             "state": "working", "last_prompt_summary": "early"}
-    assert token_a.post(f"{API}sessions/", body, format="json").data["summary_kept"] is False
+    assert _wk(token_a).post(f"{API}sessions/", body, format="json").data["summary_kept"] is False
     machine = ClaudeMachine.objects.get()
     assert machine.scope == "listed" and machine.last_seen_at is None
     _beat(token_a, "Alienware", scope="full")
     assert ClaudeMachine.objects.count() == 1
-    assert token_a.post(f"{API}sessions/", body, format="json").data["summary_kept"] is True
+    assert _wk(token_a).post(f"{API}sessions/", body, format="json").data["summary_kept"] is True
 
 
 def test_ended_and_stale_sessions_leave_the_status_screen(token_a):
     _beat(token_a)
     base = {"machine": "Alienware", "project": "p", "state": "working"}
-    token_a.post(f"{API}sessions/", {**base, "session_id": "a"}, format="json")
-    token_a.post(f"{API}sessions/", {**base, "session_id": "b", "state": "ended"}, format="json")
-    token_a.post(f"{API}sessions/", {**base, "session_id": "c"}, format="json")
+    _wk(token_a).post(f"{API}sessions/", {**base, "session_id": "a"}, format="json")
+    _wk(token_a).post(
+        f"{API}sessions/", {**base, "session_id": "b", "state": "ended"}, format="json"
+    )
+    _wk(token_a).post(f"{API}sessions/", {**base, "session_id": "c"}, format="json")
     ClaudeCodeSession.objects.filter(session_id="c").update(
         last_seen_at=timezone.now() - datetime.timedelta(hours=25)
     )
@@ -674,7 +683,7 @@ def test_another_household_sees_none_of_it(token_a, token_b, household_a, househ
     file_id = _finish(
         token_a, task_id, found=[{"path": "D:/a.pdf", "name": "a.pdf", "size": 1}]
     ).data["files"][0]["id"]
-    token_a.post(f"{API}sessions/", {"machine": "Alienware", "session_id": "s",
+    _wk(token_a).post(f"{API}sessions/", {"machine": "Alienware", "session_id": "s",
                                      "state": "working"}, format="json")
 
     # B's own machine of the same name is its own row.
@@ -710,9 +719,9 @@ def test_prune_deletes_rows_and_files_older_than_30_days(token_a, capsys):
     _beat(token_a)
     old_id, old_file = _done_with_a_found_file(token_a)
     new_id, _ = _done_with_a_found_file(token_a)
-    token_a.post(f"{API}sessions/", {"machine": "Alienware", "session_id": "old",
+    _wk(token_a).post(f"{API}sessions/", {"machine": "Alienware", "session_id": "old",
                                      "state": "idle"}, format="json")
-    token_a.post(f"{API}sessions/", {"machine": "Alienware", "session_id": "new",
+    _wk(token_a).post(f"{API}sessions/", {"machine": "Alienware", "session_id": "new",
                                      "state": "idle"}, format="json")
     long_ago = timezone.now() - datetime.timedelta(days=31)
     ClaudeTask.objects.filter(pk=old_id).update(created_at=long_ago)
@@ -785,7 +794,7 @@ def test_waiting_sessions_sort_first(token_a):
     _beat(token_a, "work laptop", scope="listed")
     for machine, sid, state in (("Alienware", "a", "working"), ("work laptop", "w", "waiting"),
                                 ("Alienware", "b", "waiting")):
-        response = token_a.post(f"{API}sessions/", {"machine": machine, "session_id": sid,
+        response = _wk(token_a).post(f"{API}sessions/", {"machine": machine, "session_id": sid,
                                                     "project": sid, "state": state}, format="json")
         assert response.status_code == 200
     sessions = token_a.get(f"{API}status/").data["sessions"]

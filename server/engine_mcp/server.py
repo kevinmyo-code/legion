@@ -108,18 +108,27 @@ SCREEN_ONLY_REFUSAL = (
 
 
 def _tools_for_request(request):
-    """The registry, with `run_procedure`'s `name` enum narrowed to the procedures this caller
-    may run (procedures ticket 12). Reads the ORM, so it runs on the request's thread."""
+    """The registry, less what this caller may not run at all (`assistant.surface.member_refusal`,
+    the per-member fence the web assistant reads), with `run_procedure`'s `name` enum narrowed to
+    the procedures this caller may run (procedures ticket 12). Reads the ORM, so it runs on the
+    request's thread.
+
+    The declaration and the door read the SAME fence (`_call_tool` below), which is the property
+    `surface.py`'s own docstring warns about: a client told about a tool the door refuses will
+    call it and be told no."""
+    from assistant.surface import member_refusals
     from household.tenancy import household_of
     from procedures.listing import tool_for
 
     household = household_of(request) if request is not None else None
+    user = getattr(request, "user", None)
+    offered = [tool for tool in TOOLS if tool.name not in NOT_ON_MCP]
+    # One pass for the whole registry: the per-name call costs a query (`member_refusals`).
+    fenced = member_refusals(user, [tool.name for tool in offered])
     return [
-        tool_for(tool, getattr(request, "user", None), household)
-        if tool.name == "run_procedure"
-        else tool
-        for tool in TOOLS
-        if tool.name not in NOT_ON_MCP
+        tool_for(tool, user, household) if tool.name == "run_procedure" else tool
+        for tool in offered
+        if tool.name not in fenced
     ]
 
 
@@ -129,8 +138,18 @@ async def _list_tools(ctx, params) -> types.ListToolsResult:
     return types.ListToolsResult(tools=[_as_mcp_tool(tool) for tool in tools])
 
 
+def _member_refusal(request, name: str, args: dict | None) -> str | None:
+    """The per-member fence, read on this request's thread because it reads the ORM."""
+    from assistant.surface import member_refusal
+
+    return member_refusal(name, getattr(request, "user", None), args)
+
+
 async def _call_tool(ctx, params) -> types.CallToolResult:
     request = CURRENT_REQUEST.get()
+    # The door's own refusals first: a tool this door never offers is refused for that reason,
+    # whoever is asking. Then the per-member fence, which is the same one the web assistant
+    # reads, so neither door can be narrowed without the other.
     if params.name in SCREEN_ONLY_TOOLS:
         result = refused(SCREEN_ONLY_REFUSAL.format(name=params.name))
     elif params.name in CODE_SPOKEN_ONLY_TOOLS:
@@ -138,9 +157,15 @@ async def _call_tool(ctx, params) -> types.CallToolResult:
     elif params.name in LATER_YES_ONLY_TOOLS:
         result = refused(LATER_YES_REFUSAL.format(name=params.name))
     else:
-        result = await sync_to_async(run_tool, thread_sensitive=True)(
+        fenced = await sync_to_async(_member_refusal, thread_sensitive=True)(
             request, params.name, params.arguments or {}
         )
+        if fenced is not None:
+            result = refused(fenced)
+        else:
+            result = await sync_to_async(run_tool, thread_sensitive=True)(
+                request, params.name, params.arguments or {}
+            )
     state = CALL_STATE.get(None)
     if state is not None:
         state["outcome"] = result.outcome

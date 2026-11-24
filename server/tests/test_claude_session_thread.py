@@ -30,6 +30,13 @@ from tests.conftest import worker_client
 pytestmark = pytest.mark.django_db
 
 API = "/api/claude/"
+
+
+def _wk(client, name="Alienware"):
+    """The worker's own verbs - heartbeat, claim, finish, upload and the session hooks - are the
+    laptop's token's, never Kevin's app token's (`claude_session.fences`). One token per machine
+    name, cached, so claim and finish speak with the token its heartbeat bound."""
+    return worker_client(client, f"claude-session-{name}")
 SESSION = "11111111-aaaa-4bbb-8ccc-000000000001"
 OTHER_SESSION = "22222222-aaaa-4bbb-8ccc-000000000002"
 
@@ -51,12 +58,12 @@ def _create(client, request="say hello to the build session", **extra):
 
 
 def _claim(client, name="Alienware"):
-    return client.post(f"{API}tasks/claim/", {"name": name}, format="json")
+    return _wk(client, name).post(f"{API}tasks/claim/", {"name": name}, format="json")
 
 
-def _finish(client, task_id, **body):
+def _finish(client, task_id, machine="Alienware", **body):
     body.setdefault("status", "done")
-    return client.post(f"{API}tasks/{task_id}/finish/", body, format="json")
+    return _wk(client, machine).post(f"{API}tasks/{task_id}/finish/", body, format="json")
 
 
 def _thread(client, session=SESSION, **params):
@@ -299,8 +306,8 @@ def test_a_summaries_only_machine_never_stores_the_message(token_a):
     card = _create(token_a, "message card", machine="work laptop", session_id=SESSION)
     _claim(token_a, name="work laptop")
 
-    assert _finish(token_a, card, status="needs_confirmation", question="Send it?",
-                   session_text="check the build").status_code == 200
+    assert _finish(token_a, card, "work laptop", status="needs_confirmation",
+                   question="Send it?", session_text="check the build").status_code == 200
 
     rows = _thread(token_a)
     assert [r["id"] for r in rows] == [card]

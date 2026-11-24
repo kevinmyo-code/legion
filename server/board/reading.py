@@ -223,7 +223,14 @@ def _plural(n: int, one: str, many: str) -> str:
 
 def waiting_sessions(request) -> int:
     """Claude sessions in the household waiting on someone (`claude_session`'s status screen's own
-    rule: seen within its window, state `waiting`). The rows are household-shared already."""
+    rule: seen within its window, state `waiting`).
+
+    This counts EVERY member's, which the fence of 2026-11-24 made wrong: a Claude session is the
+    member whose worker's machine it is on (`claude_session.fences.own_sessions`), so another
+    member's waiting session is none of this board's business. It is latent, not live: every
+    `board.urls` route 404s unless `LEGION_BOARD` is on, and `deploy/cloudrun/flags.yaml` pins it
+    unset. It must read `fences.own_sessions` before that flag goes on, together with
+    `board.queue._sessions`, which keys cards from the same household-wide read."""
     from claude_session.models import SESSION_WAITING, ClaudeCodeSession
     from claude_session.views import SESSION_SHOWN_HOURS
     from household.tenancy import scoped

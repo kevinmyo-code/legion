@@ -25,6 +25,13 @@ pytestmark = pytest.mark.django_db
 API = "/api/claude/"
 
 
+def _wk(client, name="Alienware"):
+    """The worker's own verbs - heartbeat, claim, finish, upload and the session hooks - are the
+    laptop's token's, never Kevin's app token's (`claude_session.fences`). One token per machine
+    name, cached, so claim and finish speak with the token its heartbeat bound."""
+    return worker_client(client, f"claude-session-{name}")
+
+
 def _beat(client, name="Alienware", scope="full", progress=None):
     client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": f"{name}-host", "scope": scope, "state": "busy",
@@ -39,7 +46,7 @@ def _running(client, name="Alienware", scope="full") -> int:
     body = {"request": "find the AW4 wiring PDF", "machine": name, "parent": None,
             "origin": "named"}
     task_id = client.post(f"{API}tasks/", body, format="json").data["id"]
-    claimed = client.post(f"{API}tasks/claim/", {"name": name}, format="json")
+    claimed = _wk(client, name).post(f"{API}tasks/claim/", {"name": name}, format="json")
     assert claimed.status_code == 200, claimed.data
     return task_id
 
@@ -95,7 +102,7 @@ def test_history_survives_the_finish_and_the_current_line_does_not(token_a):
     a = _running(token_a)
     _beat(token_a, progress={str(a): "reading Downloads"})
     _beat(token_a, progress={str(a): "found it"})
-    token_a.post(f"{API}tasks/{a}/finish/", {"status": "done", "summary": "AW4 rev C"},
+    _wk(token_a).post(f"{API}tasks/{a}/finish/", {"status": "done", "summary": "AW4 rev C"},
                  format="json")
     row = token_a.get(f"{API}tasks/{a}/").data
     assert row["status"] == "done"

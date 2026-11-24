@@ -356,12 +356,60 @@ def _recruiter_refusal(name: str, args: dict | None) -> str | None:
     return None
 
 
+DARK_REFUSAL = (
+    "Nothing was read or written. {name} is switched off on this engine, so nothing ran."
+)
+
+
+def member_refusals(
+    user, names, args: dict | None = None, *, recruiter: bool | None = None
+) -> dict[str, str]:
+    """`member_refusal` for many names at once, reading the recruiter row and the dark list ONCE.
+
+    `recruiter` is the caller's own already-read verdict, for a caller that had to branch on it
+    before getting here (`refusal_for`); None reads it.
+
+    `/mcp` asks about the whole registry on every `tools/list`, and `is_recruiter` is "one query,
+    never cached" by its own docstring, so a per-name call there would be a query per tool - a
+    deployed query count nobody meant (the same caution `member_only_tools` states). Single-name
+    callers go through `member_refusal`, which is this function, so there is one rule and not
+    two."""
+    if is_recruiter(user) if recruiter is None else recruiter:
+        refusals = ((name, _recruiter_refusal(name, args)) for name in names)
+        return {name: why for name, why in refusals if why is not None}
+    dark = dark_tools()
+    return {name: DARK_REFUSAL.format(name=name) for name in names if name in dark}
+
+
+def member_refusal(name: str, user, args: dict | None = None) -> str | None:
+    """Why `user` may not call `name` at all, in words, or None: the PER-MEMBER half of the
+    fence, worded for no particular door.
+
+    Both doors read it - `refusal_for` below for the web assistant, `engine_mcp.server` for
+    `/mcp` - so a narrowing added for one cannot be missing from the other. That was a real gap
+    until 2026-11-24: `/mcp` listed `TOOLS` minus `NOT_ON_MCP` and called `run_tool` directly,
+    consulting neither this nor `member_only_tools`, so a member's device token saw the whole
+    registry through a door the web's fence never covered.
+
+    Today it refuses a recruiter (default deny, ADR 0069) and a tool whose switch is off
+    (`dark_tools`). It refuses a member of the household no registry tool, because
+    `EXCLUDED_FROM_WEB` is empty and the member surface IS the registry - so this is the place a
+    per-member narrowing goes, not a fence that narrows anything yet."""
+    return member_refusals(user, (name,), args).get(name)
+
+
 def refusal_for(name: str, user=None, args: dict | None = None) -> str | None:
     """None when `user`'s web assistant may call `name` with `args`;
-    otherwise why not, in words. A recruiter is checked against
-    `RECRUITER_TOOLS` (default deny); everyone else against the web surface."""
+    otherwise why not, in words. A recruiter is decided ENTIRELY by its own fence
+    (`RECRUITER_TOOLS`, default deny) and the web surface below is not consulted for it:
+    `about_kevin` and `show_resume` are not registry tools, so falling through would refuse the
+    two tools a visit exists for. Everyone else gets the per-member fence, then the web surface
+    itself."""
     if is_recruiter(user):
         return _recruiter_refusal(name, args)
+    refusal = member_refusals(user, (name,), args, recruiter=False).get(name)
+    if refusal is not None:
+        return refusal
     if name in WEB_TOOL_NAMES or name in member_only_tools(user):
         return None
     if name in TOOLS_BY_NAME:
