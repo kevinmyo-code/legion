@@ -62,7 +62,12 @@ class FleetAnchorParityTest {
         observed(id = 4, name = "spark plugs", mileage = null, date = today),
     )
 
-    private fun itemFrom(name: String, rows: List<ServiceRecord>, intervalMiles: Int?, intervalMonths: Int?): MaintenanceItem {
+    private fun itemFrom(
+        name: String,
+        rows: List<ServiceRecord>,
+        intervalMiles: Int?,
+        intervalMonths: Int?,
+    ): MaintenanceItem {
         val (mileage, date) = FleetRecordBridge.projectAnchorLegacy(rows)
         return MaintenanceItem(
             vehicleId = vehicleId, serviceName = name,

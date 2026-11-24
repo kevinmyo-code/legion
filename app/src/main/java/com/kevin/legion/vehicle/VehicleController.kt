@@ -1020,10 +1020,15 @@ object VehicleController {
      * **[mileageMiles] is nullable, and null means the row keeps no reading** - the same value a
      * voice log with no stated mileage writes (see [logServiceDirect]'s rule 2). The form's reason
      * for existing is adding a cost to an existing record retroactively, and with a non-null `Int`
-     * here the only way to do that on a mileage-less record was to write a reading nobody gave.
+     * here, the only way to do that on a record with none was to write a reading nobody gave.
      * A `0` is not a reading either: the caller refuses it rather than passing it on.
      */
-    suspend fun editServiceRecordDirect(context: Context, id: Long, mileageMiles: Int?, costCents: Long?): WriteOutcome {
+    suspend fun editServiceRecordDirect(
+        context: Context,
+        id: Long,
+        mileageMiles: Int?,
+        costCents: Long?,
+    ): WriteOutcome {
         val written = FleetEngineStore.editMileageAndCost(context, id, mileageMiles, costCents)
         if (written == 0) {
             return WriteOutcome(false, "Couldn't save that - the record may have just been deleted.")
