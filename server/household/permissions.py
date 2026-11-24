@@ -20,6 +20,15 @@ and 02) is fenced, and a browser session it holds dies with the visitor
 token it was issued beside. Owners and members are untouched by every line
 of that.
 
+**2026-11-24: the owner check names the household it acts on.** It asked
+`user=..., role=owner` and nothing else, which answers "is this caller an
+owner somewhere" rather than "may this caller administer the household this
+request acts on". The two have the same answer while `HouseholdMember.user`
+is a `OneToOneField`, so nothing was reachable through it; `is_owner_of`
+states the household instead of inheriting it from a constraint in another
+file. `is_engine_owner` joined it for the handful of engine-wide things that
+have no household to be scoped to at all.
+
 **ADR 0069 (ticket 13, Kevin 2026-11-02) moved the fence, and it still only
 narrows.** Each visit now has its own throwaway household
 (`Household.is_demo_visit`) with the visitor as its only member, so the
