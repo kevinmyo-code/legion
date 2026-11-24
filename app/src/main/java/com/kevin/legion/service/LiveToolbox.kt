@@ -1941,6 +1941,18 @@ object LiveToolbox {
                         else "${com.kevin.legion.util.shortDate(eventEnd)} ${com.kevin.legion.util.clockTime(eventEnd)}",
                     )
                     .put("all_day", event.allDay)
+                    // Where the row stands to `now`, below. A row carried a start and an end and
+                    // nothing to compare them against, and the agenda block that normally carries
+                    // the clock is withdrawn after the first write of a conversation, so an entry
+                    // starting later in the day was called "wrapping up soon" in the morning
+                    // (2026-11-23 voice log).
+                    //
+                    // EVENTS ONLY. An event passes; a task is DUE and gets done, and its `done`
+                    // flag and the `due` block already say where it stands. Calling an open
+                    // overdue task "over" would read as finished, which is the opposite of true.
+                    // The agenda block draws the same line: only its event lines say "already
+                    // over when read".
+                    .also { o -> if (event.kind == EventKind.EVENT) o.put("state", eventState(event, nowMs, zone)) }
                     // An event PASSES; a task gets DONE (one-today ticket 08). Without this the
                     // model cannot tell "your 09:30 class" from "a quiz due tonight", and would
                     // have to guess from the title - so it is told, and told whether the task is
@@ -1968,10 +1980,56 @@ object LiveToolbox {
         // How that window stands to today, in words: a bare date beside today's is easy for the model
         // to misread, so a read of another day is never answered as today.
         o.put("window_is", RelativeDay.windowIs(fromDay, toDay, RelativeDay.today()))
+        // What time it is, in the phone's own zone and never as a zone id (CLAUDE.md sec 1). The
+        // model is handed starts and ends; without this it has no present to measure them against.
+        o.put("now", java.time.Instant.ofEpochMilli(nowMs).atZone(zone).format(CALENDAR_NOW_FORMAT))
         // Suggestions (2026-10-09) ride in their OWN list, never in `events`: they are things the
         // user could do, not plans, and `count` and the empty-window sentence stay about plans.
         com.kevin.legion.calendar.EventSuggestions.attachInWindow(context, o, startMs, endMs, zone, city)
         return o
+    }
+
+    /** `read_calendar`'s `now`: "Monday 2026-01-05 10:25", a wall clock, never a zone id. */
+    private val CALENDAR_NOW_FORMAT =
+        java.time.format.DateTimeFormatter.ofPattern("EEEE yyyy-MM-dd HH:mm", java.util.Locale.US)
+
+    /** Before its start. */
+    private const val EVENT_NOT_STARTED = "not started"
+
+    /** Started and not finished; an all-day row on today's date. */
+    private const val EVENT_RUNNING = "running"
+
+    /** Past its end. */
+    private const val EVENT_OVER = "over"
+
+    /**
+     * Where [event] stands to [nowMs], as one of three words, so the model never has to work it out
+     * from two timestamps and a clock it may not have been given.
+     *
+     * An ALL-DAY row is stored at UTC midnight of its date (Android's own convention, kept by
+     * [addAppointment]), so its instant is not a device-zone instant: its DAY is read back in UTC
+     * and compared with today's LOCAL day, never its raw start with [nowMs].
+     */
+    private fun eventState(
+        event: com.kevin.legion.data.local.Event,
+        nowMs: Long,
+        zone: java.time.ZoneId,
+    ): String {
+        val start = event.startsAt ?: return EVENT_NOT_STARTED
+        // An all-day row is compared as DAYS (its own UTC-stored date against today's local date),
+        // a timed row as instants. Both come out as one from/to/at triple.
+        val (from, to, at) = if (event.allDay) {
+            val day = java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneOffset.UTC)
+                .toLocalDate().toEpochDay()
+            Triple(day, day, java.time.Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate().toEpochDay())
+        } else {
+            Triple(start, (event.endsAt ?: start).coerceAtLeast(start), nowMs)
+        }
+        return when {
+            at < from -> EVENT_NOT_STARTED
+            at > to -> EVENT_OVER
+            else -> EVENT_RUNNING
+        }
     }
 
     /**
@@ -2807,8 +2865,8 @@ object LiveToolbox {
      * driver said, so it is formatted directly rather than composed into millis and reinterpreted. */
     private val NOTE_DISPLAY_DATE_FORMAT = java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy")
 
-    /** How long a voice-created Google Calendar appointment with a specific time (not all-day)
-     * lasts when the driver never states a duration - ticket 14's `manage_item` doesn't expose an
+    /** How long a voice-created appointment with a specific time (not all-day), on LEGION's own
+     * calendar, lasts when the driver never states a duration - ticket 14's `manage_item` doesn't expose an
      * end-time argument, matching CLAUDE.md's tool-budget posture (this ticket's own instruction:
      * "prefer extending the existing notes tools... every tool is prompt tokens"). An hour is the
      * same default the AOSP Calendar app's own "new event" flow uses. */
@@ -2954,9 +3012,10 @@ object LiveToolbox {
             }
 
             if (kind is ScheduleIntentResolver.Kind.Appointment) {
-                // A calendar event needs SOMETHING to put on the calendar - CalendarContract's
-                // DTSTART is a hard requirement (research doc §1.3), and asking "when" here is
-                // cheaper and more honest than inventing a date.
+                // A calendar event needs SOMETHING to put on the calendar: a row with no
+                // `startsAt` is skipped by every calendar read, so a dateless appointment would
+                // be saved and then invisible. Asking "when" is cheaper and more honest than
+                // inventing a date.
                 if (date == null) {
                     return result(false, "What date is that for? I need one to put it on your calendar.")
                 }
@@ -3102,10 +3161,17 @@ object LiveToolbox {
             )
             // `date` ahead of the words: the day it landed on, kept inside the audit line's cut so the
             // voice eval can check a carried day (DateCarry.carried) on the outcome, not the request.
-            JSONObject().put("success", true).put("date", date.toString()).put(
-                "message",
-                ScheduleIntentResolver.confirmationPhrase(ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase),
-            )
+            JSONObject().put("success", true).put("date", date.toString())
+                // What the phone's done line names (2026-11-19), the same key the reminder branch
+                // puts there. Without it CascadeRules finds no title and says "Done: added it."
+                // After `date`, so the day stays inside the audit line's cut.
+                .put("item", itemArg)
+                .put(
+                    "message",
+                    ScheduleIntentResolver.confirmationPhrase(
+                        ScheduleIntentResolver.Kind.Appointment, itemArg, whenPhrase,
+                    ),
+                )
         } catch (e: Exception) {
             // A genuine Room failure (disk full, etc) - worded, never a silent "added" - same "no
             // false success" contract every write in this file holds (CLAUDE.md §7). A push

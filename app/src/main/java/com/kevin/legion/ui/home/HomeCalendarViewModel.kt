@@ -74,6 +74,12 @@ class HomeCalendarViewModel(
     private val wake = Channel<Unit>(Channel.CONFLATED)
 
     init {
+        // A write to the phone's own day tables re-reads, without waiting for the next `ON_RESUME`:
+        // HOME is the launcher, so it is usually already resumed when Alfred writes something
+        // (2026-11-23). `request` conflates, so a burst of writes is still one read.
+        this.scope.launch {
+            source.changes().collect { request(month = true, panels = true) }
+        }
         this.scope.launch {
             for (ignored in wake) {
                 val month = pendingMonth
@@ -256,6 +262,9 @@ class HomeCalendarViewModel(
             )
         }
         val due = withContext(io) { guarded { source.dueToday(zone) } }
+        // TODAY's rows, read beside what is due today and for the same reason: the glance is about
+        // today, and the month and day on screen are not.
+        val todayRows = withContext(io) { guarded { source.todayEvents(t, zone) } }
         _state.update { s ->
             // A row ticked inside the open sheet stays listed (done) until the sheet closes.
             val keptDone = if (s.sheet == PanelSheet.TODOS) {
@@ -270,6 +279,8 @@ class HomeCalendarViewModel(
                 todosNote = if (todos == null) "Couldn't read your to-dos." else null,
                 dueToday = due,
                 dueNote = if (due == null) "Couldn't read what is due." else null,
+                // A failed read leaves the last rows standing rather than reading as an empty day.
+                todayRows = todayRows ?: s.todayRows,
                 lists = lists.orEmpty(),
                 listsNote = if (lists == null) "Couldn't read your lists." else null,
                 ideas = ideas.orEmpty(),

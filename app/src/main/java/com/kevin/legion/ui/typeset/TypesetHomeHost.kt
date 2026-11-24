@@ -87,7 +87,8 @@ fun TypesetHomeHost(
     val glance = TypesetGlance(
         dateline = calendar.today.format(DATELINE),
         time = clock,
-        next = TypesetHomeDerive.next(calendar.dayRows, now),
+        // Today's rows, never the day being browsed: `dayRows` follows the drill-down's selection.
+        next = TypesetHomeDerive.next(calendar.todayRows, now),
         due = TypesetHomeDerive.due(calendar.dueToday, calendar.dueNote),
         left = TypesetHomeDerive.left(money.budgets, money.today.month.getDisplayName(TextStyle.FULL, Locale.US)),
         // Re-said each minute with the shell's clock, so "today" and "over a day old" stay true.

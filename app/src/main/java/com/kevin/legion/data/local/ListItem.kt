@@ -10,9 +10,10 @@ import androidx.room.PrimaryKey
  * - when [startsAt] is set - a **reminder** (fire a local alert at T). Charting decision 6
  * ("a calendar event is the same entity as a list item") held only until
  * `.scratch/google-account-integration/issues/04-what-happens-to-local-timed-items.md` reversed
- * it: **Google owns appointments now.** [startsAt] means "remind me at T", never "this is a
- * calendar event" - an actual appointment lives in `CalendarContract` and nowhere in this table,
- * there is no mirror row, and nothing here is ever synced against Google Calendar.
+ * it, and the 2026-08-25 ruling ("one calendar, and it is ours") then retired Google entirely:
+ * **appointments live in LEGION's own `events` table.** [startsAt] means "remind me at T", never
+ * "this is a calendar event" - an appointment is an [Event] row and nowhere in this table, there
+ * is no mirror row here, and nothing in the app reads or writes `CalendarContract`.
  *
  * **At most one trigger per item** ([startsAt] or [triggerPlaceLabel], never both - charting
  * decision 4). Enforced in `notes/NotesController.kt`, not a CHECK constraint, matching this

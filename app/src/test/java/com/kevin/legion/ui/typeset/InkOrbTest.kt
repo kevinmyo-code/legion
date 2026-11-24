@@ -26,4 +26,35 @@ class InkOrbTest {
 
     @Test
     fun `nine hundred points, as the prototype`() = assertEquals(900, OrbSim.N)
+
+    @Test
+    fun `at rest a second of frame callbacks draws about thirty times, and turns just as far`() {
+        val dt = 1f / 120f
+        val paced = OrbSim()
+        val frames = OrbFrames()
+        var drawn = 0
+        repeat(120) {
+            frames.frame(dt, OrbPhase.IDLE)?.let { step ->
+                drawn++
+                paced.step(step, OrbPhase.IDLE)
+            }
+        }
+        assertEquals("120 callbacks at rest", 30, drawn)
+
+        // The look is unchanged: the skipped time is carried, so a second turns just as far.
+        val every = OrbSim()
+        repeat(120) { every.step(dt, OrbPhase.IDLE) }
+        assertEquals(every.turn, paced.turn, every.turn * 0.02f)
+    }
+
+    @Test
+    fun `a phase other than rest draws on every callback`() {
+        val frames = OrbFrames()
+        val dt = 1f / 120f
+        assertEquals(120, (1..120).count { frames.frame(dt, OrbPhase.SPEAKING) != null })
+        // Leaving rest is never held back by the frames already skipped.
+        val leaving = OrbFrames()
+        leaving.frame(dt, OrbPhase.IDLE)
+        assertTrue(leaving.frame(dt, OrbPhase.LISTENING) != null)
+    }
 }

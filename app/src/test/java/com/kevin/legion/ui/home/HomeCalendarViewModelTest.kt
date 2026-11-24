@@ -2,8 +2,10 @@ package com.kevin.legion.ui.home
 
 import com.kevin.legion.backend.EventKind
 import com.kevin.legion.data.local.Event
+import com.kevin.legion.ui.typeset.TypesetHomeDerive
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -12,6 +14,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -66,6 +70,24 @@ class HomeCalendarViewModelTest {
 
         /** When set, readMonth suspends here until the test completes it. */
         var gate: CompletableDeferred<Unit>? = null
+
+        /** Room's change signal, stood in for: [fire] is one write to a table HOME reads. */
+        private val signal = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+
+        /** Every day the glance asked for, in order. */
+        val todayAsked = mutableListOf<LocalDate>()
+
+        fun fire() {
+            signal.tryEmit(Unit)
+        }
+
+        override fun changes(): Flow<Unit> = signal
+
+        override suspend fun todayEvents(day: LocalDate, zone: ZoneId): List<AgendaRowUi> {
+            todayAsked += day
+            val read = MonthRead(YearMonth.from(day), rows, emptyList(), gaps)
+            return deriveDay(read, inboxOf(read, 0L), day, zone).rows
+        }
 
         override suspend fun readMonth(month: YearMonth, zone: ZoneId): MonthRead {
             monthsRead += month
@@ -378,6 +400,52 @@ class HomeCalendarViewModelTest {
             io.close()
             work.close()
         }
+    }
+
+    // -------------------------------------------------------- the glance (2026-11-23 voice log)
+
+    @Test
+    fun `a write to the phone's own tables re-reads with no resume`() {
+        val src = FakeSource()
+        val model = vm(src).also { it.refresh() }
+        assertEquals(1, src.monthsRead.size)
+        // Alfred writes while HOME is already on screen: no ON_RESUME ever comes.
+        src.rows = listOf(ev(7, EventKind.EVENT, today))
+        src.fire()
+        assertEquals("a change must re-read", 2, src.monthsRead.size)
+        assertEquals(listOf("event-7"), model.state.value.dayRows.map { it.key })
+    }
+
+    @Test
+    fun `the glance reads today, not the day or month being browsed`() {
+        val src = FakeSource()
+        val tenth = LocalDate.of(2026, 10, 10)
+        src.rows = listOf(ev(1, EventKind.EVENT, today), ev(2, EventKind.EVENT, tenth))
+        val model = vm(src).also { it.refresh() }
+        model.selectDay(tenth)
+        // The drill-down moved; the front page's Next did not.
+        assertEquals(listOf("event-2"), model.state.value.dayRows.map { it.key })
+        assertEquals("t1", TypesetHomeDerive.next(model.state.value.todayRows, LocalTime.MIDNIGHT).label)
+        model.nextMonth()
+        assertEquals("t1", TypesetHomeDerive.next(model.state.value.todayRows, LocalTime.MIDNIGHT).label)
+    }
+
+    @Test
+    fun `after the day rolls over the glance reads the new day`() {
+        val src = FakeSource()
+        val tomorrow = today.plusDays(1)
+        src.rows = listOf(ev(1, EventKind.EVENT, today), ev(2, EventKind.EVENT, tomorrow))
+        var day = today
+        val model = HomeCalendarViewModel(
+            src, today = { day }, zone = zone, scope = CoroutineScope(Dispatchers.Unconfined),
+            io = Dispatchers.Unconfined, default = Dispatchers.Unconfined, now = { ms(today) },
+        )
+        model.refresh()
+        assertEquals("t1", TypesetHomeDerive.next(model.state.value.todayRows, LocalTime.MIDNIGHT).label)
+        day = tomorrow
+        model.refresh()
+        assertEquals(tomorrow, src.todayAsked.last())
+        assertEquals("t2", TypesetHomeDerive.next(model.state.value.todayRows, LocalTime.MIDNIGHT).label)
     }
 
     // ------------------------------------------------------------------------ pure functions

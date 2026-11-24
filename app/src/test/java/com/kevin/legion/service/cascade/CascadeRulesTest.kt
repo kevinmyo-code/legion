@@ -396,6 +396,76 @@ class CascadeRulesTest {
     }
 
     @Test
+    fun `a long item is said by its whole name, and a title too long for the line ends on a word`() {
+        fun add(item: String) =
+            ScriptedLines.writeFact("manage_item", "add", JSONObject().put("success", true).put("item", item), true)
+        // Over 40 characters, and the whole clause still fits the spoken line, so nothing may be
+        // cut here. A title cap
+        // used to fire inside a sentence that had room for all of it, and the item was spoken
+        // mid-word (2026-11-23 voice log).
+        val whole = "Order a new chain for the invented bicycle"
+        assertEquals("Done: added $whole.", ScriptedLines.doneLine(listOf(add(whole))))
+        // A title no line could carry is still cut, but never mid-word.
+        val words = (1..40).map { "word$it" }
+        val line = ScriptedLines.doneLine(listOf(add(words.joinToString(" "))))!!
+        assertTrue(line, line.length <= ScriptedLines.MAX_DONE_CHARS)
+        val said = line.removePrefix("Done: added ").removeSuffix(".").split(" ")
+        assertTrue(line, said.isNotEmpty() && said.all { it in words })
+    }
+
+    @Test
+    fun `a cut done line never ends on a dangling to`() {
+        fun add(item: String, list: String) = ScriptedLines.writeFact(
+            "manage_item", "add",
+            JSONObject().put("success", true).put("item", item).put("list", list), true,
+        )
+        // An item just long enough that the line's own cut lands inside the list's name: the
+        // clause has to lose the whole "to <list>" tail, not stop on the preposition.
+        for (length in 55..70) {
+            val item = "ab".repeat(length / 2).chunked(4).joinToString(" ").take(length).trim()
+            val line = ScriptedLines.doneLine(listOf(add(item, "Todo")))!!
+            assertTrue(line, line.length <= ScriptedLines.MAX_DONE_CHARS)
+            assertFalse(line, line.endsWith(" to."))
+        }
+    }
+
+    @Test
+    fun `an item whose own name ends on the word to keeps it in the done line`() {
+        fun said(name: String, action: String, result: JSONObject) =
+            ScriptedLines.doneLine(listOf(ScriptedLines.writeFact(name, action, result.put("success", true), true)))
+        // The dangling "to" above belongs to the joiner of an add that names a list, so it may only
+        // be dropped from a clause the line's cut actually shortened. A whole clause that simply
+        // ends on the word "to" is the item's own name and is said in full (2026-11-23 review).
+        val timed = JSONObject().put("item", "Decide which shop to drive to")
+            .put("message", "Added. Anything else?")
+        // A remove's own result carries no title key today, so the live line is "removed it.";
+        // pinned here because every non-add phrase reads the same title keys and one of them will.
+        val removed = JSONObject().put("item", "Find someone to talk to")
+            .put("message", """Took "Find someone to talk to" off the invented list.""")
+        // A tick's result names its list, and "ticked off %s" never takes the joiner, so the tail
+        // here is the item's.
+        val ticked = JSONObject().put("item", "Pick a day to move the invented sofa to")
+            .put("list", "Invented chores")
+        val appointment = JSONObject().put("date", "2027-04-02")
+            .put("item", "Visit the invented clinic I was referred to")
+            .put("message", "Saved it for Friday 2 April at 15:00.")
+        assertEquals(
+            listOf(
+                "Done: added Decide which shop to drive to.",
+                "Done: removed Find someone to talk to.",
+                "Done: ticked off Pick a day to move the invented sofa to.",
+                "Done: added Visit the invented clinic I was referred to.",
+            ),
+            listOf(
+                said("manage_item", "add", timed),
+                said("manage_item", "remove", removed),
+                said("manage_checklist", "tick", ticked),
+                said("manage_item", "add", appointment),
+            ),
+        )
+    }
+
+    @Test
     fun `a hand-over says an owed write only while the voice works, never on a crash`() {
         assertTrue(CascadeRules.handOverSaysOwed("prompt", phoneFault = false))
         assertTrue(CascadeRules.handOverSaysOwed("stt", phoneFault = false))

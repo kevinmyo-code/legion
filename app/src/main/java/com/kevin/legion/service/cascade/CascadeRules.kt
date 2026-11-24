@@ -436,7 +436,7 @@ object ScriptedLines {
     ): WriteFact {
         val key = listOf("$name/$action", action, name).firstOrNull { it.isNotEmpty() && it in PHRASES }
         val titleKeys = TITLE_KEYS_FOR[key] ?: TITLE_KEYS
-        val title = field(response, titleKeys).take(MAX_TITLE)
+        val title = field(response, titleKeys).cutOnWord(MAX_TITLE)
         // A phrase whose own field is missing (an older result shape) falls to the generic line.
         // A switch that moved this drive's live readings to the car says so (`rebound`, the adapter's field).
         // The adapter branch's live rebind: this drive's readings moved to the car (`readings_moved`).
@@ -452,7 +452,7 @@ object ScriptedLines {
         return WriteFact(
             phrase = phrase,
             title = title,
-            list = field(response, listOf("list")).take(MAX_TITLE),
+            list = field(response, listOf("list")).cutOnWord(MAX_TITLE),
             ok = ok,
             changed = response.optBoolean("changed", !router),
             silent = name in SILENT || "$name/$action" in SILENT,
@@ -477,7 +477,7 @@ object ScriptedLines {
     fun doneLine(facts: List<WriteFact>): String? {
         val said = facts.filter { it.said }
         val done = said.filter { it.phrase != null }.map { f ->
-            val to = if (f.list.isNotEmpty() && f.phrase!!.startsWith("added")) " to ${f.list}" else ""
+            val to = if (f.list.isNotEmpty() && f.phrase!!.startsWith("added")) LIST_JOINER + f.list else ""
             (if (f.title.isEmpty()) NO_TITLE[f.phrase] ?: f.phrase!!.format("it") else f.phrase!!.format(f.title)) + to
         }
         val generic = said.any { it.phrase == null }
@@ -485,7 +485,7 @@ object ScriptedLines {
         // Clause by clause while it fits; the rest is counted, never dropped unsaid. Only a first
         // clause too long on its own is trimmed.
         val room = MAX_DONE_CHARS - (if (done.size > 1) "Done: ; and 99 more." else "Done: .").length
-        var kept = done.take(1).map { it.take(room) }
+        var kept = done.take(1).map { cutFirstClause(it, room) }
         for (c in done.drop(1)) {
             val rest = done.size - kept.size - 1
             val tail = if (rest > 0) listOf("and $rest more") else emptyList()
@@ -497,6 +497,19 @@ object ScriptedLines {
         if (generic) parts += GENERIC_DONE
         unconfirmedLine(unsure)?.let { parts += it }
         return parts.joinToString(" ").replace("?", "").ifEmpty { null }
+    }
+
+    /**
+     * [clause] as the spoken line's first clause: cut to [room] on a word boundary, and, only when
+     * the cut actually shortened it, with the joiner's dangling "to" dropped (a cut that lands
+     * inside the list name would leave "Done: added <item> to.").
+     *
+     * A clause said in full ends on the item's own name, so it keeps a trailing "to": an item
+     * called "find someone to talk to" is not renamed by the line's own tail rule (2026-11-23).
+     */
+    private fun cutFirstClause(clause: String, room: Int): String {
+        val cut = clause.cutOnWord(room)
+        return if (cut == clause) cut else cut.removeSuffix(LIST_JOINER.trimEnd())
     }
 
     /** [doneLine]'s part for writes whose result never came back, or null when there are none. */
@@ -569,8 +582,34 @@ object ScriptedLines {
     }
 
     private val TITLE_KEYS = listOf("title", "text", "item", "name")
-    private const val MAX_TITLE = 40
     const val MAX_DONE_CHARS = 80
+
+    /**
+     * What joins an add's item to the list it landed on ("added milk to Groceries"). Named because
+     * [doneLine] drops it when a cut lands inside the list name: without that, an item just long
+     * enough leaves the line hanging on "Done: added <item> to."
+     */
+    private const val LIST_JOINER = " to "
+
+    /**
+     * The longest title or list name a fact carries. It is [MAX_DONE_CHARS], not a tighter number
+     * of its own: a tighter cap is a second limit on the same sentence, and it fired FIRST, so a
+     * 46-character item was cut to 40 and spoken mid-word although the whole clause fitted the
+     * spoken line (2026-11-23 voice log). [doneLine] bounds the line; this only stops
+     * [unconfirmedLine] reading a whole paragraph back.
+     */
+    private const val MAX_TITLE = MAX_DONE_CHARS
+
+    /**
+     * At most [n] characters, cut at the last space inside [n] rather than mid-word, so a line that
+     * has to be shortened still ends on a whole word. Shorter than [n] already: unchanged.
+     */
+    private fun String.cutOnWord(n: Int): String {
+        if (length <= n) return this
+        val cut = take(n)
+        val space = cut.lastIndexOf(' ')
+        return (if (space > 0) cut.take(space) else cut).trimEnd()
+    }
 
     /** The routers (`ask_engine`, `ask_fleet`...): a write through one counts only on `changed: true`. */
     private const val ROUTER_PREFIX = "ask_"
