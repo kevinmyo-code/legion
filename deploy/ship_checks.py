@@ -90,10 +90,12 @@ PROBE_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 PROBE_PATH = re.compile(r"^/api/[A-Za-z0-9_./-]+$")
 REPO_PATH = re.compile(r"^(server|deploy)/[A-Za-z0-9_./-]+$")
 MIGRATION_PATH = re.compile(r"^server/([^/]+)/migrations/(\d{4}_[A-Za-z0-9_]+)\.py$")
-# The Django migrations this ship applies, and nothing else. `(glob)` stops `*` crossing `/`: the
-# plain `*/migrations/*` this used to pass collected `supabase/migrations/*.sql` (the legacy schema,
-# applied by hand and not in the image) and then refused it as an unexpected file under migrations/.
-MIGRATION_PATHSPEC = ":(glob)server/*/migrations/*"
+# The Django migrations this ship applies, and nothing else. `(glob)` stops a single `*` crossing
+# `/`, so the plain `*/migrations/*` this used to pass collected `supabase/migrations/*.sql` (the
+# legacy schema, applied by hand and not in the image) and then refused it as an unexpected file
+# under migrations/. `**` still crosses `/`, so a migrations folder at any depth under server/ is
+# collected and judged: narrowing to one level would have failed open inside the image.
+MIGRATION_PATHSPEC = ":(glob)server/**/migrations/**"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 BLOB = re.compile(r"^[0-9a-f]{40}$")
 NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")

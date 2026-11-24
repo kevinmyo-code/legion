@@ -57,14 +57,20 @@ DESTRUCTIVE = re.compile(r"RemoveField|DeleteModel|AlterField|RenameField|Rename
 # The same in SQL: what destroys rows or a column. A trigger, function, index or view is not here,
 # because dropping and recreating one is how 26 of the engine's migrations stay idempotent.
 DESTRUCTIVE_SQL = re.compile(
-    r"\bDROP\s+(TABLE|COLUMN|CONSTRAINT|SCHEMA|DATABASE)\b|\bTRUNCATE\b|\bDELETE\s+FROM\b",
+    r"\bDROP\s+(TABLE|COLUMN|CONSTRAINT|SCHEMA|DATABASE)\b|\bTRUNCATE\b|\bDELETE\s+FROM\b"
+    # Postgres lets `ALTER TABLE w DROP g` drop a column with the word COLUMN left out, so a DROP
+    # anywhere in an ALTER TABLE statement counts unless it is one of the four harmless ones
+    # (`DROP NOT NULL`, `DROP DEFAULT`, `DROP IDENTITY`, `DROP EXPRESSION`). `[^;]*?` keeps it
+    # inside the one statement, so a later `drop trigger` in the same string is not dragged in.
+    r"|\bALTER\s+TABLE\b[^;]*?\bDROP\s+(?!NOT\s+NULL\b|DEFAULT\b|IDENTITY\b|EXPRESSION\b)",
     re.IGNORECASE,
 )
 # The backward direction: it runs only on a deliberate `migrate <app> <earlier>`, never on a ship.
 REVERSE = "reverse_sql"
+RUN_SQL = "RunSQL"
 STATE_AND_DB = "SeparateDatabaseAndState"
-# The names the exemption reads: taking either from anywhere but django.db withdraws it.
-DJANGO_NAMES = ("migrations", STATE_AND_DB)
+# The names the exemptions read: taking any of them from anywhere but django.db withdraws them.
+DJANGO_NAMES = ("migrations", STATE_AND_DB, "RunSQL")
 
 
 def database_destructive(source: str) -> str | None:
@@ -112,7 +118,11 @@ def _destructive_sql(node: ast.AST) -> str | None:
     if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
         return None
     m = DESTRUCTIVE_SQL.search(node.value)
-    return " ".join(m.group(0).split()).upper() if m else None
+    if not m:
+        return None
+    found = " ".join(m.group(0).split()).upper()
+    # The ALTER branch spans the statement, so report the shape rather than the table's name.
+    return "ALTER TABLE ... DROP" if found.startswith("ALTER TABLE") else found
 
 
 def _operation_children(node: ast.AST, exemptible: bool) -> list[ast.AST]:
@@ -123,10 +133,16 @@ def _operation_children(node: ast.AST, exemptible: bool) -> list[ast.AST]:
         if isinstance(node.value.value, str):
             return []
     state = _state_only_operations(node) if exemptible else None
+    # `reverse_sql` is the undo only on Django's own RunSQL. A function of one's own taking a
+    # `reverse_sql` argument and running it forward keeps the rule.
+    reverse = exemptible and isinstance(node, ast.Call) and _called(node.func) == RUN_SQL
     return [
         child
         for child in ast.iter_child_nodes(node)
-        if not (isinstance(child, ast.keyword) and (child.arg == REVERSE or child.value is state))
+        if not (
+            isinstance(child, ast.keyword)
+            and ((reverse and child.arg == REVERSE) or child.value is state)
+        )
     ]
 
 

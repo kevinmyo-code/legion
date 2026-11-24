@@ -262,11 +262,21 @@ class Migration(migrations.Migration):
 def test_django_sql_is_judged_by_what_it_destroys():
     """The engine's own migrations drop and recreate triggers and functions to stay idempotent, so
     only SQL that destroys rows or a column counts (redesign-s1 RED review, the inversion in F3)."""
-    destroys = ("DROP TABLE gadgets", "ALTER TABLE w DROP COLUMN g", "TRUNCATE w", "DELETE FROM w")
+    destroys = (
+        "DROP TABLE gadgets",
+        "ALTER TABLE w DROP COLUMN g",
+        "ALTER TABLE w DROP g",  # Postgres lets the word COLUMN be left out
+        "TRUNCATE w",
+        "DELETE FROM w",
+    )
     keeps = (
         "drop trigger if exists guard on w; create trigger guard before insert on w;",
         "drop function if exists public.upsert(uuid);",
         "CREATE INDEX w_idx ON w (name)",
+        "ALTER TABLE w ALTER COLUMN g DROP NOT NULL",
+        "ALTER TABLE w ALTER COLUMN g DROP DEFAULT",
+        # One statement's ALTER must not reach into the next statement's trigger drop.
+        "alter table w add column g text; drop trigger if exists t on w; create trigger t;",
     )
     for sql in destroys:
         assert _judge(RUN_SQL.replace("SQL_HERE", sql)) == [WARN], sql
@@ -281,6 +291,24 @@ def test_django_a_drop_in_reverse_sql_only_is_not_destructive():
     ))
     assert undo != RUN_SQL
     assert _judge(undo) == []
+
+
+def test_django_reverse_sql_run_forward_by_a_function_of_its_own_warns():
+    """`reverse_sql` is the undo on Django's RunSQL. A helper taking an argument of that name and
+    running it forward gets no exemption."""
+    forward = '''from django.db import migrations
+
+
+def later(reverse_sql):
+    """Not Django's: it runs what it is given."""
+    return migrations.RunSQL(sql=reverse_sql)
+
+
+class Migration(migrations.Migration):
+
+    operations = [later(reverse_sql="DROP TABLE gadgets")]
+'''
+    assert _judge(forward) == [WARN]
 
 
 DB = "app/src/main/java/com/kevin/legion/data/local/CarDatabase.kt"
