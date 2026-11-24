@@ -533,11 +533,13 @@ def worker_client(client, name="claude-session-Alienware"):
     ask for a file (`claude_session.views._not_the_worker`, 2026-11-24: a helper session that
     read the token off the laptop must not be able to author Kevin's requests or forge his yes).
     The real world has two tokens here, so a test that both heartbeats as a machine and writes as
-    Kevin needs two as well. The worker's calls (heartbeat, claim, finish, upload, sessions) go
-    through this one.
+    Kevin needs two as well. Only the HEARTBEAT is routed through this one, because `_touch_machine`
+    is the only place a token is bound; claim, finish and upload are not fenced and the modules
+    here still send them on whatever client the test hands them.
 
-    Cached on the client per machine name, so the laptop keeps one identity across a heartbeat, a
-    claim and a finish, which `maybe_mint_workflow` and the memory review both require.
+    Cached on the client per machine name, so a module that does route a claim here keeps one
+    identity across the heartbeat and the claim, which `maybe_mint_workflow` and the memory review
+    both require of the claiming token.
     """
     from household.models import DeviceToken, hash_device_key
 
