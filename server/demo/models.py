@@ -269,6 +269,11 @@ class RecruiterContent(models.Model):
     """
 
     CURRENT_KEY = "current"
+    # The three stored files, which are the whole weight of the row: together they were 0.9 MB
+    # on the loaded `current` row in November, and bytea leaves Postgres hex-encoded, so about
+    # twice that on the wire. Nothing but `asset()` ever wants their bytes, so no read loads
+    # them (`_page_rows`) and the page asks only whether each is there (`has_asset`).
+    ASSET_KINDS = ("report", "resume", "resume_image")
 
     key = models.CharField(max_length=32, unique=True, default=CURRENT_KEY)
     # The validated content.json (`demo.content.CONTENT_SCHEMA`), `profile`
@@ -292,13 +297,23 @@ class RecruiterContent(models.Model):
         return f"Recruiter content ({self.key}, loaded {self.loaded_at:%Y-%m-%d %H:%M})"
 
     @classmethod
-    def current(cls) -> RecruiterContent | None:
-        return cls.objects.filter(key=cls.CURRENT_KEY).first()
+    def _page_rows(cls):
+        """The reads every caller gets: the stored files stay in Postgres (`ASSET_KINDS`) and
+        each one's `has_<kind>` says whether it is there, which is all any page read wants.
+        `asset()` then loads the one file it was asked for, by itself."""
+        return cls.objects.defer(*cls.ASSET_KINDS).annotate(
+            **{
+                f"has_{kind}": models.ExpressionWrapper(
+                    models.Q(**{f"{kind}__isnull": False}), output_field=models.BooleanField()
+                )
+                for kind in cls.ASSET_KINDS
+            }
+        )
 
     @classmethod
-    def for_user(cls, user) -> RecruiterContent | None:
-        """The version this caller reads: their visit code's own, if it has
-        one, else the current (full) one. An owner previewing reads current."""
+    def key_for_user(cls, user) -> str:
+        """The key of the version this caller reads: their visit code's own label when a version
+        is loaded under it, else `CURRENT_KEY`. An owner previewing reads current."""
         if user is not None and getattr(user, "pk", None):
             label = (
                 DemoVisit.objects.filter(user=user)
@@ -306,15 +321,39 @@ class RecruiterContent(models.Model):
                 .values_list("code__label", flat=True)
                 .first()
             )
-            if label:
-                row = cls.objects.filter(key=label).first()
-                if row is not None:
-                    return row
-        return cls.current()
+            if label and cls.objects.filter(key=label).exists():
+                return label
+        return cls.CURRENT_KEY
+
+    @classmethod
+    def current(cls) -> RecruiterContent | None:
+        return cls._page_rows().filter(key=cls.CURRENT_KEY).first()
+
+    @classmethod
+    def for_user(cls, user) -> RecruiterContent | None:
+        """The version this caller reads: their visit code's own, if it has
+        one, else the current (full) one. An owner previewing reads current."""
+        return cls._page_rows().filter(key=cls.key_for_user(user)).first()
+
+    @classmethod
+    def id_for_user(cls, user) -> int | None:
+        """The id of that version alone, for a caller that wants no column of the row itself:
+        the media route holds it only to find the files that hang off it."""
+        return cls.objects.filter(key=cls.key_for_user(user)).values_list("pk", flat=True).first()
+
+    def has_asset(self, kind: str) -> bool:
+        """Whether `kind`'s file is loaded, without its bytes leaving Postgres: a row read
+        through `current()` / `for_user()` carries the answer from SQL. A row built in memory
+        (a load, a test) holds the field itself, so it is read there."""
+        answered = f"has_{kind}"
+        if answered in self.__dict__:
+            return bool(self.__dict__[answered])
+        return getattr(self, kind) is not None
 
     def asset(self, kind: str) -> tuple[bytes, str, str] | None:
         """(bytes, content type, filename) for `report`, `resume` or `resume_image`, or None
-        when that file was not loaded."""
+        when that file was not loaded. The one read that wants a file's bytes: on a row from
+        `_page_rows` it costs one more query, for that column alone."""
         data = getattr(self, kind)
         if data is None:
             return None
