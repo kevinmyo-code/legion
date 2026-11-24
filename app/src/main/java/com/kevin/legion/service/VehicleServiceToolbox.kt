@@ -81,7 +81,9 @@ object VehicleServiceToolbox {
             } else {
                 null
             }
-            val outcome = VehicleController.logServiceDirect(context, args.optString("service"), it.obdMac, costCents, mileage)
+            val outcome = VehicleController.logServiceDirect(
+                context, args.optString("service"), it.obdMac, costCents, mileage,
+            )
             result(success = outcome.success, message = outcome.message)
         }
 

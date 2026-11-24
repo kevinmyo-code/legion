@@ -72,7 +72,8 @@ suspend fun writeSetInterval(context: Context, vehicleId: String, serviceName: S
  * a call to [VehicleController.logServiceDirect] itself, because that function ALSO unconditionally
  * resets the anchor to "now" (and, with a stated reading, moves the odometer), which would silently
  * discard a driver-typed historical mileage or date this picker explicitly supports and
- * [writeSetAnchor] already wrote moments above. There is no `notes` field on [ServiceRecord] to carry a notes step into - see that
+ * [writeSetAnchor] already wrote moments above. There is no `notes` field on [ServiceRecord] to
+ * carry a notes step into - see that
  * entity's own file for its full column list - so this addendum is cost-only; widening the entity
  * for notes is a schema change this ticket does not ask for and is not made here.
  */

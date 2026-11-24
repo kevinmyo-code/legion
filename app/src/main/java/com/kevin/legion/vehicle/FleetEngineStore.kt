@@ -870,7 +870,14 @@ object FleetEngineStore {
     // VehicleController.logServiceDirect's own doc). `explainedBy` below already reads a null
     // candidate axis correctly - it can never explain an anchor that states a mileage - so a
     // mileage-less log never supersedes an ASSERTED anchor that knows one.
-    suspend fun insertObserved(context: Context, mac: String, serviceName: String, mileage: Int?, date: Long, costCents: Long?): InsertObservedResult {
+    suspend fun insertObserved(
+        context: Context,
+        mac: String,
+        serviceName: String,
+        mileage: Int?,
+        date: Long,
+        costCents: Long?,
+    ): InsertObservedResult {
         ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
         if (db.vehicleDao().getByMac(mac) == null) return InsertObservedResult.Failure("no vehicle on file for $mac")

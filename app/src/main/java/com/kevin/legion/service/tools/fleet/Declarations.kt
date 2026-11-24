@@ -316,7 +316,8 @@ internal object Declarations {
                 // Omitted is NOT zero and NOT "whatever the app thinks the odometer reads": the
                 // record then carries no mileage at all. See VehicleController.logServiceDirect's
                 // own doc for why an estimate may never ride an OBSERVED row.
-                "mileage" to schema("integer", "Odometer reading the user stated for this work, e.g. 42300. Omit if they did not say one."),
+                "mileage" to schema("integer", "Odometer reading the user stated for this work, " +
+                    "e.g. 42300. Omit if they did not say one."),
                 "vehicle" to VEHICLE_PARAM,
             ),
             required = listOf("service"),
