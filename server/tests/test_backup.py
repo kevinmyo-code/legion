@@ -13,7 +13,6 @@ import json
 import os
 import re
 import subprocess
-import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,7 +22,6 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from devicelogs.models import DeviceLog
 from household import tenancy
 from household.models import Household
 from ingest import backup, drive, vault
@@ -747,38 +745,55 @@ def test_subprocess_is_the_default_runner():
     os.environ.get("LEGION_BACKUP_DRILL") != "1",
     reason="Opt-in: creates and drops a database on the test server. LEGION_BACKUP_DRILL=1.",
 )
-def test_a_real_dump_restores_into_a_throwaway_database_with_equal_counts(tmp_path, household_a):
+def test_a_real_dump_restores_into_a_throwaway_database_with_equal_counts(tmp_path):
     """The real client tools against the TEST database (never live): pg_dump,
     CREATE DATABASE, extensions, pg_restore, counts, DROP. Proves the
     mechanics; the drill against live is still owed by hand.
 
     Also the one place `--exclude-table-data` is proved rather than read off an
-    argv: a real device log row goes in first, and the restore must hold the
-    table with none of it. A pattern that matched nothing would leave the row
-    in the dump and fail here."""
+    argv: a device log row goes in first and the restore must hold the table
+    with none of it, so a pattern matching nothing (which pg_dump does not
+    complain about) fails here.
+
+    **The row is COMMITTED on its own connection, and that is the whole point.**
+    `pg_dump` is another process on another connection, so a row made through
+    the ORM inside this test's transaction is invisible to it and the
+    assertion below would hold whether or not anything was excluded. Checked
+    by removing the exclusion and watching an ORM-made row still pass. The row
+    takes the visit-conversation shape (`demo_visitor`, no household) because
+    every household row in this test is itself uncommitted and the check
+    constraint wants one or the other; `finally` deletes it either way."""
     assert settings.DATABASES["default"]["NAME"].startswith("test_"), "never against live"
-    DeviceLog.objects.create(
-        household=household_a,
-        batch_id=uuid.uuid4(),
-        device_label="drill phone",
-        reason="conversation",
-        raw_bytes=3,
-        body_gz=b"gz",
-    )
-    dump_bin, restore_bin = backup.pg_binary("pg_dump"), backup.pg_binary("pg_restore")
-    backup.check_versions(dump_bin)
-    path = tmp_path / "drill.dump"
-    backup.pg_dump(path, binary=dump_bin)
-    target = backup.throwaway_name("2026-09-27")
-    backup.create_database(target)
+    label = f"drill phone {os.urandom(4).hex()}"
+    with backup._admin_connect() as conn:
+        # Every NOT NULL column is named: Django's `default=` is Python-side,
+        # so a raw insert has to supply them itself.
+        conn.execute(
+            "insert into device_logs (id, batch_id, device_label, app_version_name, reason, "
+            "line_count, raw_bytes, body_gz, demo_visitor, visit_ref, run_id, nav_audit_lines) "
+            "values (gen_random_uuid(), gen_random_uuid(), %s, '', 'conversation', "
+            "0, 3, %s, true, '', '', 0)",
+            (label, b"gz"),
+        )
     try:
-        backup.prepare_extensions(target, write=print)
-        stderr = backup.pg_restore(path, target, binary=restore_bin)
-        print(stderr)
-        restored = backup.restored_counts(target, backup.schemas())
-        live = backup.live_counts(backup.schemas())
+        dump_bin, restore_bin = backup.pg_binary("pg_dump"), backup.pg_binary("pg_restore")
+        backup.check_versions(dump_bin)
+        path = tmp_path / "drill.dump"
+        backup.pg_dump(path, binary=dump_bin)
+        target = backup.throwaway_name("2026-09-27")
+        backup.create_database(target)
+        try:
+            backup.prepare_extensions(target, write=print)
+            stderr = backup.pg_restore(path, target, binary=restore_bin)
+            print(stderr)
+            restored = backup.restored_counts(target, backup.schemas())
+            live = backup.live_counts(backup.schemas())
+        finally:
+            backup.drop_database(target)
     finally:
-        backup.drop_database(target)
+        with backup._admin_connect() as conn:
+            conn.execute("delete from device_logs where device_label = %s", (label,))
+
     lines, mismatched = backup.compare(restored, live)
     for line in lines:
         print(line)

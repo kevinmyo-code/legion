@@ -35,15 +35,17 @@ that.
 yet). Every `ok` run's `watermark` says so in words.
 
 **`device_logs` ROWS are not backed up either, and its table is**
-(`DATA_EXCLUDED_TABLES`). It is the largest table in the database and the
-dump grew about 5 MB a day on its own through November, every byte of which
-leaves Supabase as egress against a 5 GB monthly free allowance. What it
-holds is a device's own uploaded log batches: the phone and the head unit
-make them again, so a restore that has the table and none of last month's
-batches has lost nothing a person owns. The schema stays in the dump, so a
-restore is still a database the engine can run against. Every `ok` run's
-`watermark` says this too, and the restore drill checks it rather than
-tripping over it (`compare`).
+(`DATA_EXCLUDED_TABLES`). The whole dump went from 30 MB to 45 MB over four
+nights in November and every byte of it leaves Supabase as egress against a
+5 GB monthly allowance, which the November cycle blew through. `device_logs`
+is the largest table in the database and the only large one whose contents
+nobody owns: it holds a device's own uploaded log batches, and the phone and
+the head unit make them again. So a restore holding the table and none of
+last month's batches has lost nothing a person owns. (How much of the
+growth is this table's is not measured here; that it is the biggest is.)
+The schema stays in the dump, so a restore is still a database the engine
+can run against. Every `ok` run's `watermark` says this too, and the restore
+drill checks it rather than tripping over it (`compare`).
 """
 from __future__ import annotations
 
