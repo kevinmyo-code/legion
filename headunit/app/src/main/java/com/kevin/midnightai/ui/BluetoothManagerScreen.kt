@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kevin.midnightai.bluetooth.ExternalScreen
 import com.kevin.midnightai.bluetooth.LinkState
 import com.kevin.midnightai.bluetooth.PhoneLinkCapability
 import com.kevin.midnightai.bluetooth.PhoneLinkInfo
@@ -148,7 +149,11 @@ internal fun BluetoothManagerScreen(onBack: () -> Unit) {
         FooterActions(
             vendorAvailable = state.vendorPackage != null,
             busy = busy,
-            onPairNew = { discoverableLauncher.launch(PhoneLinkManager.pairNewPhoneIntent()) },
+            onPairNew = {
+                PhoneLinkManager.openSystemScreen(ExternalScreen.PAIR_NEW_PHONE) {
+                    discoverableLauncher.launch(PhoneLinkManager.pairNewPhoneIntent())
+                }
+            },
             onReset = {
                 busy = true
                 scope.launch {
@@ -156,7 +161,11 @@ internal fun BluetoothManagerScreen(onBack: () -> Unit) {
                     busy = false
                 }
             },
-            onSystemSettings = { context.startActivity(PhoneLinkManager.systemBluetoothSettingsIntent()) },
+            onSystemSettings = {
+                PhoneLinkManager.openSystemScreen(ExternalScreen.BLUETOOTH_SETTINGS) {
+                    context.startActivity(PhoneLinkManager.systemBluetoothSettingsIntent())
+                }
+            },
             onVendorApp = { launchVendorApp(context) },
         )
     }
@@ -178,7 +187,8 @@ internal fun BluetoothManagerScreen(onBack: () -> Unit) {
 }
 
 private fun launchVendorApp(context: Context) {
-    PhoneLinkManager.vendorAppLaunchIntent(context)?.let { context.startActivity(it) }
+    val intent = PhoneLinkManager.vendorAppLaunchIntent(context) ?: return
+    PhoneLinkManager.openSystemScreen(ExternalScreen.VENDOR_APP) { context.startActivity(intent) }
 }
 
 @Composable
