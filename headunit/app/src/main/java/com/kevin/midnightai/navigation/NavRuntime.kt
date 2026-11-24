@@ -21,7 +21,9 @@ import kotlinx.coroutines.launch
  * guard here catches a NATIVE crash (which no catch can): a flag is set before the map view is
  * built and cleared once its style loads (or it reports an error, or it is closed). If the process
  * dies in between, the next start finds the flag, keeps the map off and says so; TRY MAPS AGAIN
- * clears it. So a map that kills the process cannot loop the HOME launcher.
+ * clears it. So a map that kills the process cannot loop the HOME launcher. The EGL capability
+ * probe has a guard of its own ([GlProbeGuard]), because it is native driver work that runs BEFORE
+ * any map view exists.
  */
 object NavRuntime {
     val feed = NavMapFeed()
@@ -108,9 +110,14 @@ object NavRuntime {
         // and NOTHING is cached: the next open asks again rather than freezing a fallback in for
         // the life of the process.
         val declared = declaredGlEs() ?: return null
+        // Review F2: the EGL probe is native work in a vendor driver and no catch covers that, so it
+        // has its own guard. A probe that did not come back last time is not run again.
+        if (declared < NavGles.GLES_3 && glProbe?.crashedBefore() == true) {
+            return "the graphics check stopped this app the last time it opened. Tap TRY MAPS AGAIN to retry"
+        }
         // Otherwise asked once per process: neither the ROM's claim nor the driver can change
         // while it runs, and the NAV face calls this on every open and every token refresh.
-        val decision = es3 ?: NavGles.decide(declared, NavGles.probeEs3Context()).also {
+        val decision = es3 ?: NavGles.decide(declared, probeEs3Guarded()).also {
             es3 = it
             com.kevin.midnightai.diag.DriveLog.breadcrumb(
                 "NAVGLES declared=${NavGles.version(declared)} decision=$it",
@@ -121,6 +128,12 @@ object NavRuntime {
 
     /** Cached [NavGles.Es3] for this process; see [unavailableReason]. */
     @Volatile private var es3: NavGles.Es3? = null
+
+    /** The EGL probe's own crash guard, null only before [init] (then the probe runs unguarded). */
+    private val glProbe: GlProbeGuard? get() = if (::guard.isInitialized) GlProbeGuard(guard) else null
+
+    private fun probeEs3Guarded(): Boolean? =
+        glProbe?.guarded { NavGles.probeEs3Context() } ?: NavGles.probeEs3Context()
 
     /**
      * Before any Mapbox object is built (review NAV-3): Mapbox's own logging down to errors
@@ -147,9 +160,11 @@ object NavRuntime {
         guard.edit().remove(KEY_MAP_STARTING).commit()
     }
 
-    /** TRY MAPS AGAIN after a guarded crash. */
+    /** TRY MAPS AGAIN after a guarded crash, of the map or of the graphics check (review F2). */
     fun tryAgain() {
         mapStarted()
+        glProbe?.clear()
+        es3 = null
         controller.refresh()
     }
 

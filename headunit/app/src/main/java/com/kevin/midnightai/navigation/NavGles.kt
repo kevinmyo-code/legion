@@ -1,5 +1,6 @@
 package com.kevin.midnightai.navigation
 
+import android.content.SharedPreferences
 import android.opengl.EGL14
 import android.opengl.EGLExt
 
@@ -110,4 +111,41 @@ internal object NavGles {
         EGL14.eglDestroyContext(display, context)
         true
     }.getOrNull()
+}
+
+/**
+ * The crash guard around [NavGles.probeEs3Context] (review F2, 2026-11-23).
+ *
+ * `runCatching` stops JVM throws only, and `eglCreateContext` is native code inside a vendor
+ * driver. The probe runs at the first NAV open, which on a unit that declares less than ES 3 is
+ * effectively app start, and the map's own guard is armed around the MapView, not around this. A
+ * native fault here would therefore take the launcher down every time, on a unit with no ADB and no
+ * way back.
+ *
+ * So: a flag is committed before the probe and removed after. A flag found set means the last probe
+ * did not come back, and the map stays off without asking again. The same TRY MAPS AGAIN that
+ * clears the map guard clears this one, so the driver is never permanently stuck on one bad start.
+ */
+internal class GlProbeGuard(private val prefs: SharedPreferences) {
+
+    /** True when a previous probe was still running when the process died. */
+    fun crashedBefore(): Boolean = prefs.getBoolean(KEY, false)
+
+    /** Runs [probe] with the flag armed, and clears it however the probe ends. */
+    fun <T> guarded(probe: () -> T): T {
+        prefs.edit().putBoolean(KEY, true).commit()
+        return try {
+            probe()
+        } finally {
+            clear()
+        }
+    }
+
+    fun clear() {
+        prefs.edit().remove(KEY).commit()
+    }
+
+    private companion object {
+        const val KEY = "gl_probing"
+    }
 }
