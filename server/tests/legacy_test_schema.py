@@ -92,12 +92,13 @@ merely looked like its output. Running the real thing means the suite proves
 the migration; `tests/test_tenancy.py` holds the hand-written expectation
 (`REKEYED`, `UNTOUCHED`) so the planner is not checked only against itself.
 
-**Three tenant tables are still absent from this mirror entirely** -
-`conversation_audit`, `item_lists` and `list_items`. Nothing has ever written
-to them through this server, so nothing here has ever needed them. `goals`
-joined the mirror with the fat-loss map: the engine's energy estimate and
-weight trend read the active `bodyweight_lbs` goal (`body_coach/`).
-`tests/test_tenancy.TABLES_ABSENT_FROM_THE_TEST_MIRROR` names them and
+**One tenant table is still absent from this mirror entirely** -
+`conversation_audit`. Nothing has ever written to it through this server, so
+nothing here has ever needed it. `goals` joined the mirror with the fat-loss
+map: the engine's energy estimate and weight trend read the active
+`bodyweight_lbs` goal (`body_coach/`). `item_lists` and `list_items` were the
+other two until the lists redesign slice 1a dropped both tables.
+`tests/test_tenancy.TABLES_ABSENT_FROM_THE_TEST_MIRROR` names what is left and
 asserts the absence, so adding one without its column fails rather than
 passing quietly.
 """
