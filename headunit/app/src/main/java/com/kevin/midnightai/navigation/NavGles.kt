@@ -176,6 +176,7 @@ internal fun probeEs3Guarded(
     guard: GlProbeGuard?,
     probe: () -> Boolean? = { NavGles.probeEs3Context() },
 ): Boolean? {
-    if (declared >= NavGles.GLES_3) return null
-    return guard?.guarded(probe)
+    // RED PROOF ONLY (never merged): the pre-fix body, so the new tests fail for the reason A1
+    // named. The elvis re-runs the probe unguarded on a null answer, and there is no declared gate.
+    return guard?.guarded(probe) ?: probe()
 }
