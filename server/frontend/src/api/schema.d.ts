@@ -22997,6 +22997,13 @@ export interface operations {
                     "application/json": components["schemas"]["SyncResult"];
                 };
             };
+            /** @description Not an owner. Nothing was synced. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     api_ingest_plaid_update_link_token_create: {

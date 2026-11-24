@@ -4,7 +4,7 @@
     POST /api/ingest/plaid/link-token         a Link token for the FIRST link (owner)
     POST /api/ingest/plaid/exchange           store the Item the first link made (owner)
     POST /api/ingest/plaid/update-link-token  a Link token for "Sign in again" (owner)
-    POST /api/ingest/plaid/sync               sync now, for every member
+    POST /api/ingest/plaid/sync               sync now (owner)
 
 **No response ever carries the access token**, and none carries the item id:
 every body here is built by hand from named fields.
@@ -15,11 +15,16 @@ the slot. So the first-link routes refuse, in words, once an Item is stored,
 there is deliberately no remove route, and a broken connection is repaired
 only through update mode (same access token, no new slot).
 
-**Owner only for the three Link routes**, for the reason the session vault's
-PUT is (`ingest/sessions.py`): they decide which outside account the
-household's ledger runs on, which is who speaks for the household. "Sync now"
-writes nothing a member could not already cause by waiting six hours, so any
-member may press it.
+**Owner only for every POST here**, for the reason the session vault's PUT is
+(`ingest/sessions.py`): they decide which outside account the household's
+ledger runs on, and reach out to the bank in the household's name, which is
+who speaks for the household. "Sync now" joined them on Kevin's ruling of
+2026-11-24: it spends the household's connection and writes the household's
+ledger, so it is not a member's button to press, even though waiting for the
+schedule brings the same rows.
+
+**The status GET stays open to every member**, deliberately: a member may see
+whether the bank connection is healthy without being able to touch it.
 """
 from __future__ import annotations
 
@@ -53,8 +58,8 @@ ALREADY_LINKED = (
 
 class IsHouseholdOwnerForBank(IsHouseholdOwner):
     message = (
-        "Nothing was changed. Only an owner of this household may connect its bank. Every "
-        "member can see the connection's status."
+        "Nothing was changed. Only an owner of this household may connect its bank or sync "
+        "it now. Every member can see the connection's status."
     )
 
 
@@ -352,11 +357,16 @@ class BankExchangeView(APIView):
 
 
 class BankSyncView(APIView):
+    permission_classes = [IsHouseholdOwnerForBank]
+
     @extend_schema(
         operation_id="api_ingest_plaid_sync_create",
         tags=TAGS,
         request=None,
-        responses={200: SyncResultSerializer},
+        responses={
+            200: SyncResultSerializer,
+            403: OpenApiResponse(description="Not an owner. Nothing was synced."),
+        },
         description=(
             "Runs the bank sync now, recorded like a scheduled run. `sentence` says what "
             "happened; a run that could not sync says so with outcome failed or needs_login."

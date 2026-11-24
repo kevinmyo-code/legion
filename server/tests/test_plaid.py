@@ -607,6 +607,24 @@ def test_link_routes_are_owner_only(fake, member_client, path):
     assert not PlaidItem.objects.exists()
 
 
+def test_sync_now_is_owner_only(fake, item, household_a, member_client, auth_client):
+    """Kevin, 2026-11-24: pressing Sync now spends the household's bank connection, so it
+    belongs to whoever speaks for the household. Reading the status does not."""
+    fake.page(None, "c1")
+    refused = member_client.post("/api/ingest/plaid/sync")
+    assert refused.status_code == 403
+    assert "Only an owner" in str(refused.data)
+    assert fake.sync_cursors == []
+    assert not IngestRun.objects.filter(source=Source.PLAID).exists()
+    # The status read stays open to every member, deliberately.
+    assert member_client.get("/api/ingest/plaid").status_code == 200
+    # The owner still can.
+    ran = auth_client.post("/api/ingest/plaid/sync")
+    assert ran.status_code == 200, ran.data
+    assert ran.data["outcome"] == "ok"
+    assert fake.sync_cursors == [None]
+
+
 def test_the_first_link_stores_a_sealed_token_and_never_returns_it(
     fake, household_a, auth_client
 ):
@@ -673,9 +691,9 @@ def test_without_keys_nothing_links_and_it_says_why(settings, household_a, auth_
     assert status_body["configured"] is False and status_body["connected"] is False
 
 
-def test_sync_now_runs_and_reports_in_words(fake, item, member_client):
+def test_sync_now_runs_and_reports_in_words(fake, item, auth_client):
     fake.page(None, "c1", added=[txn("t-a")])
-    response = member_client.post("/api/ingest/plaid/sync")
+    response = auth_client.post("/api/ingest/plaid/sync")
     assert response.status_code == 200
     assert response.data["outcome"] == "ok"
     assert response.data["sentence"].startswith("Bank sync: 1 new")

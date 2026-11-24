@@ -10291,6 +10291,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/SyncResult'
           description: ''
+        '403':
+          description: Not an owner. Nothing was synced.
   /api/ingest/plaid/update-link-token:
     post:
       operationId: api_ingest_plaid_update_link_token_create

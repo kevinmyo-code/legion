@@ -100,9 +100,11 @@ describe('bank connection', () => {
     expect(screen.getByRole('button', { name: 'Sign in again' })).toBeInTheDocument()
   })
 
-  test('a member cannot connect or sign in, and is told why', async () => {
+  test('a member cannot connect, sign in or sync now, and is told why', async () => {
     renderApp('/settings/bank', engineFor('member', CONNECTED))
-    expect(await screen.findByRole('button', { name: 'Sync now' })).toBeInTheDocument()
+    expect(await screen.findByText('Bank of America')).toBeInTheDocument()
+    // Kevin, 2026-11-24: the sync trigger is the owner's; the status read is everyone's.
+    expect(screen.queryByRole('button', { name: 'Sync now' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sign in again' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect bank' })).not.toBeInTheDocument()
     expect(screen.getByText(/Only a household owner can connect/)).toBeInTheDocument()
@@ -153,7 +155,7 @@ describe('bank connection', () => {
   })
 
   test('Sync now shows the result sentence and the notes', async () => {
-    renderApp('/settings/bank', engineFor('member', CONNECTED))
+    renderApp('/settings/bank', engineFor('owner', CONNECTED))
     fireEvent.click(await screen.findByRole('button', { name: 'Sync now' }))
     expect(await screen.findByText('Synced: 2 new transactions.')).toBeInTheDocument()
     expect(screen.getByText('One older file row was kept.')).toBeInTheDocument()

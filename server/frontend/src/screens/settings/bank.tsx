@@ -201,7 +201,7 @@ function BankBody({ status }: { status: Status }) {
               Sign in again
             </Button>
           )}
-          {status.connected && (
+          {status.connected && canManage && (
             <Button variant="outline" disabled={busy} onClick={runSync}>
               {sync.isPending ? 'Syncing' : 'Sync now'}
             </Button>
@@ -209,7 +209,8 @@ function BankBody({ status }: { status: Status }) {
         </div>
         {!canManage && (
           <p className="mt-3 text-[0.9375rem] text-muted-foreground">
-            Only a household owner can connect the bank or sign in to it again.
+            Only a household owner can connect the bank, sign in to it again, or sync it now.
+            The status above is the whole connection, and it is current for everyone.
           </p>
         )}
         {problem && (
