@@ -297,12 +297,18 @@ def test_a_summaries_only_machine_never_stores_the_message(token_a):
     card = _create(token_a, "message card", machine="work laptop", session_id=SESSION)
     _claim(token_a, name="work laptop")
 
-    assert _finish(token_a, card, status="needs_confirmation", question="Send it?",
-                   session_text="check the build").status_code == 200
+    answer = _finish(token_a, card, status="needs_confirmation", question="Send it?",
+                     session_text="check the build")
+    assert answer.status_code == 200
 
     rows = _thread(token_a)
     assert [r["id"] for r in rows] == [card]
     assert rows[0]["session_text"] is None
+    # And the drop is SAID, like the neighbouring `found` drop: a 200 with no signal would let a
+    # worker go on sending a session's words from the work laptop and never learn they were
+    # thrown away (S1 review, note 3).
+    assert "session message was not kept" in answer.json()["detail"]
+    assert "check the build" not in answer.json()["detail"]
 
 
 def test_an_over_long_message_is_refused_and_never_echoed(token_a):

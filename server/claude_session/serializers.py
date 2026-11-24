@@ -193,7 +193,8 @@ class ClaudeFinishSerializer(serializers.Serializer):
     session_id = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, default="",
         max_length=SESSION_ID_MAX_CHARS,
-        help_text="The Claude Code session this task is about. Omitted: the stored one stands.",
+        help_text="The Claude Code session this task is about. Filled only when none is stored; "
+        "a sent id never replaces one.",
     )
     session_text = _Text(
         max_bytes=SESSION_TEXT_MAX_BYTES, what="The session message",

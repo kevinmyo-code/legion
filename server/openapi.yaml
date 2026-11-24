@@ -18312,8 +18312,8 @@ components:
           type: string
           nullable: true
           default: ''
-          description: 'The Claude Code session this task is about. Omitted: the stored
-            one stands.'
+          description: The Claude Code session this task is about. Filled only when
+            none is stored; a sent id never replaces one.
           maxLength: 200
         session_text:
           type: string

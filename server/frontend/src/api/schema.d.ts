@@ -7810,7 +7810,7 @@ export interface components {
             duration_ms?: number | null;
             found?: components["schemas"]["ClaudeFoundFile"][];
             /**
-             * @description The Claude Code session this task is about. Omitted: the stored one stands.
+             * @description The Claude Code session this task is about. Filled only when none is stored; a sent id never replaces one.
              * @default
              */
             session_id: string | null;
