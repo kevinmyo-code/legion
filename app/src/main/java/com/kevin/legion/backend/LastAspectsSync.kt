@@ -4,9 +4,6 @@ import android.content.Context
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
-import com.kevin.legion.data.local.GroceryStaple
-import com.kevin.legion.data.local.ItemList
-import com.kevin.legion.data.local.ListItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -112,15 +109,13 @@ internal object LastAspectsMerge {
 }
 
 /**
- * live-sync's last aspect slice's live pull - four independent sub-pulls, one per table, each
- * following [LastAspectsMerge.merge]'s rules exactly. Mirrors [LedgerConfigSync]'s own shape.
+ * live-sync's last aspect slice's live pull - one sub-pull for the one table this slice still
+ * carries, following [LastAspectsMerge.merge]'s rules exactly. Mirrors [LedgerConfigSync]'s own
+ * shape.
  *
- * **`item_lists` is pulled and fully merged BEFORE `list_items`** - a `list_items` row's parent is
- * addressed by the parent's own `syncId` (see [LastAspectsBackend]'s own class doc), and this
- * ordering guarantees that parent already exists locally (freshly inserted by this same call, if
- * it didn't already) by the time a child item is resolved. A child item whose parent genuinely
- * cannot be found locally even after that (a defensive case that should not occur against a
- * well-formed server) is skipped rather than guessed at - see [pullListItems]'s own comment.
+ * **NARROWED by the lists redesign slice 1a (2026-11-24)** from four tables to `goals`. The
+ * `item_lists`-before-`list_items` ordering this pull used to need, and the orphaned-child count it
+ * reported, went with those two tables; see [LastAspectsBackend]'s own class doc.
  */
 object LastAspectsSync {
     data class PullReport(
@@ -129,9 +124,6 @@ object LastAspectsSync {
         val skippedLocalNewer: Int,
         val tombstoned: Int,
         val skippedTombstoneNoLocalMatch: Int,
-        /** `list_items` rows whose `listSyncId` matched no local [ItemList] - see [pullListItems]'s
-         * own comment. Always 0 for every other table. */
-        val skippedOrphanedListItem: Int = 0,
     )
 
     private fun LastAspectsMerge.MergeReport.toPullReport() = PullReport(inserted, updated, skippedLocalNewer, tombstoned, skippedTombstoneNoLocalMatch)
@@ -142,22 +134,15 @@ object LastAspectsSync {
         skippedLocalNewer + other.skippedLocalNewer,
         tombstoned + other.tombstoned,
         skippedTombstoneNoLocalMatch + other.skippedTombstoneNoLocalMatch,
-        skippedOrphanedListItem + other.skippedOrphanedListItem,
     )
 
     suspend fun pull(context: Context, backend: LastAspectsBackend): PullReport {
         var total = PullReport(0, 0, 0, 0, 0)
         total += pullGoals(context, backend)
-        total += pullGroceryStaples(context, backend)
-        total += pullItemLists(context, backend)
-        total += pullListItems(context, backend)
         return total
     }
 
     private const val T_GOALS = "goals"
-    private const val T_GROCERY_STAPLES = "grocery_staples"
-    private const val T_ITEM_LISTS = "item_lists"
-    private const val T_LIST_ITEMS = "list_items"
 
     private suspend fun pullGoals(context: Context, backend: LastAspectsBackend): PullReport {
         val db = CarDatabase.getDatabase(context)
@@ -215,196 +200,6 @@ object LastAspectsSync {
         )
         remote.maxOfOrNull { it.updatedAtMs }?.let { LastAspectsPullCursor.advance(context, T_GOALS, it) }
         return report.toPullReport()
-    }
-
-    private suspend fun pullGroceryStaples(context: Context, backend: LastAspectsBackend): PullReport {
-        val db = CarDatabase.getDatabase(context)
-        val sinceMs = LastAspectsPullCursor.lastPulledAtMs(context, T_GROCERY_STAPLES)
-        val remote = backend.fetchChangedGroceryStaplesSince(sinceMs).getOrThrow()
-        val local = db.groceryStapleDao().getAllIncludingDeleted()
-        val report = LastAspectsMerge.merge(
-            remoteRows = remote,
-            localRows = local,
-            remoteGuid = { it.originGuid },
-            localGuid = { it.syncId },
-            remoteDeleted = { it.deleted },
-            remoteUpdatedAtMs = { it.updatedAtMs },
-            localUpdatedAtMs = { it.updatedAtMs },
-            localDeleted = { it.deleted },
-            toInserted = { r ->
-                GroceryStaple(
-                    name = r.name,
-                    displayName = r.displayName,
-                    timesBought = r.timesBought,
-                    lastBoughtAt = r.lastBoughtAt,
-                    syncId = r.originGuid,
-                    serverId = r.serverId,
-                    updatedAtMs = r.updatedAtMs,
-                    deleted = r.deleted,
-                )
-            },
-            toMerged = { r, existing ->
-                existing.copy(
-                    displayName = r.displayName,
-                    timesBought = r.timesBought,
-                    lastBoughtAt = r.lastBoughtAt,
-                    serverId = r.serverId,
-                    updatedAtMs = r.updatedAtMs,
-                    deleted = r.deleted,
-                )
-            },
-            withDeletedFlag = { existing, atMs -> existing.copy(deleted = true, updatedAtMs = atMs) },
-            // GroceryStapleDao has no bare insert, only `upsert` (REPLACE on the `name` PK) - safe
-            // here for the identical reason [LedgerConfigSync.pullBudgetTargets]'s own comment
-            // gives: a genuinely new remote row cannot conflict with anything local by definition.
-            insert = { db.groceryStapleDao().upsert(it) },
-            update = { db.groceryStapleDao().upsert(it) },
-        )
-        remote.maxOfOrNull { it.updatedAtMs }?.let { LastAspectsPullCursor.advance(context, T_GROCERY_STAPLES, it) }
-        return report.toPullReport()
-    }
-
-    private suspend fun pullItemLists(context: Context, backend: LastAspectsBackend): PullReport {
-        val db = CarDatabase.getDatabase(context)
-        val sinceMs = LastAspectsPullCursor.lastPulledAtMs(context, T_ITEM_LISTS)
-        val remote = backend.fetchChangedItemListsSince(sinceMs).getOrThrow()
-        val local = db.itemListDao().getAllIncludingDeleted()
-        val report = LastAspectsMerge.merge(
-            remoteRows = remote,
-            localRows = local,
-            remoteGuid = { it.originGuid },
-            localGuid = { it.syncId },
-            remoteDeleted = { it.deleted },
-            remoteUpdatedAtMs = { it.updatedAtMs },
-            localUpdatedAtMs = { it.updatedAt },
-            localDeleted = { it.deleted },
-            toInserted = { r ->
-                ItemList(
-                    name = r.name,
-                    tickable = r.tickable,
-                    sortOrder = r.sortOrder,
-                    lastUsedAt = r.lastUsedAt,
-                    archived = r.archived,
-                    createdAt = r.createdAt,
-                    updatedAt = r.updatedAtMs,
-                    syncId = r.originGuid,
-                    serverId = r.serverId,
-                    deleted = r.deleted,
-                )
-            },
-            toMerged = { r, existing ->
-                existing.copy(
-                    name = r.name,
-                    tickable = r.tickable,
-                    sortOrder = r.sortOrder,
-                    lastUsedAt = r.lastUsedAt,
-                    archived = r.archived,
-                    updatedAt = r.updatedAtMs,
-                    serverId = r.serverId,
-                    deleted = r.deleted,
-                )
-            },
-            withDeletedFlag = { existing, atMs -> existing.copy(deleted = true, updatedAt = atMs) },
-            insert = { db.itemListDao().insert(it) },
-            update = { db.itemListDao().update(it) },
-        )
-        remote.maxOfOrNull { it.updatedAtMs }?.let { LastAspectsPullCursor.advance(context, T_ITEM_LISTS, it) }
-        return report.toPullReport()
-    }
-
-    /**
-     * `list_items` resolves each remote row's [RemoteListItem.listSyncId] back to a local `listId`
-     * by looking the parent list up by ITS OWN `syncId` in the SAME snapshot [pullItemLists] just
-     * merged - see [LastAspectsBackend]'s own class doc for why the wire format never carries a
-     * raw local id. A remote item whose parent cannot be found locally (a malformed or
-     * out-of-order server state that should not occur in practice, since `item_lists` is always
-     * merged first in the same [pull] call) is SKIPPED, not guessed at - counted in
-     * [PullReport.skippedOrphanedListItem] rather than silently dropped with no trace, the same
-     * "an absence must be visible somewhere" posture the map's own §"what was actually wrong"
-     * section describes for the events wipe this whole effort exists to avoid repeating.
-     */
-    private suspend fun pullListItems(context: Context, backend: LastAspectsBackend): PullReport {
-        val db = CarDatabase.getDatabase(context)
-        val sinceMs = LastAspectsPullCursor.lastPulledAtMs(context, T_LIST_ITEMS)
-        val remote = backend.fetchChangedListItemsSince(sinceMs).getOrThrow()
-        val listsBySyncId = db.itemListDao().getAllIncludingDeleted().associateBy { it.syncId }
-        val (resolvable, orphaned) = remote.partition { listsBySyncId.containsKey(it.listSyncId) }
-        val local = db.listItemDao().getAllIncludingDeleted()
-        val report = LastAspectsMerge.merge(
-            remoteRows = resolvable,
-            localRows = local,
-            remoteGuid = { it.originGuid },
-            localGuid = { it.syncId },
-            remoteDeleted = { it.deleted },
-            remoteUpdatedAtMs = { it.updatedAtMs },
-            localUpdatedAtMs = { it.updatedAt },
-            localDeleted = { it.deleted },
-            toInserted = { r ->
-                ListItem(
-                    listId = listsBySyncId.getValue(r.listSyncId).id,
-                    text = r.text,
-                    done = r.done,
-                    doneAt = r.doneAt,
-                    sortOrder = r.sortOrder,
-                    createdAt = r.createdAt,
-                    updatedAt = r.updatedAtMs,
-                    syncId = r.originGuid,
-                    serverId = r.serverId,
-                    deleted = r.deleted,
-                    startsAt = r.startsAt,
-                    endsAt = r.endsAt,
-                    allDay = r.allDay,
-                    triggerPlaceLabel = r.triggerPlaceLabel,
-                    repeatKind = r.repeatKind,
-                    repeatEvery = r.repeatEvery,
-                    repeatDaysOfWeek = r.repeatDaysOfWeek,
-                    repeatDay = r.repeatDay,
-                    repeatMonth = r.repeatMonth,
-                    repeatEndKind = r.repeatEndKind,
-                    repeatEndDate = r.repeatEndDate,
-                    repeatEndCount = r.repeatEndCount,
-                    exact = r.exact,
-                    exactDowngraded = r.exactDowngraded,
-                    missedAt = r.missedAt,
-                    missedDismissedAt = r.missedDismissedAt,
-                    loggedAt = r.loggedAt,
-                )
-            },
-            toMerged = { r, existing ->
-                existing.copy(
-                    listId = listsBySyncId.getValue(r.listSyncId).id,
-                    text = r.text,
-                    done = r.done,
-                    doneAt = r.doneAt,
-                    sortOrder = r.sortOrder,
-                    updatedAt = r.updatedAtMs,
-                    serverId = r.serverId,
-                    deleted = r.deleted,
-                    startsAt = r.startsAt,
-                    endsAt = r.endsAt,
-                    allDay = r.allDay,
-                    triggerPlaceLabel = r.triggerPlaceLabel,
-                    repeatKind = r.repeatKind,
-                    repeatEvery = r.repeatEvery,
-                    repeatDaysOfWeek = r.repeatDaysOfWeek,
-                    repeatDay = r.repeatDay,
-                    repeatMonth = r.repeatMonth,
-                    repeatEndKind = r.repeatEndKind,
-                    repeatEndDate = r.repeatEndDate,
-                    repeatEndCount = r.repeatEndCount,
-                    exact = r.exact,
-                    exactDowngraded = r.exactDowngraded,
-                    missedAt = r.missedAt,
-                    missedDismissedAt = r.missedDismissedAt,
-                    loggedAt = r.loggedAt,
-                )
-            },
-            withDeletedFlag = { existing, atMs -> existing.copy(deleted = true, updatedAt = atMs) },
-            insert = { db.listItemDao().insert(it) },
-            update = { db.listItemDao().update(it) },
-        )
-        remote.maxOfOrNull { it.updatedAtMs }?.let { LastAspectsPullCursor.advance(context, T_LIST_ITEMS, it) }
-        return report.toPullReport().copy(skippedOrphanedListItem = orphaned.size)
     }
 
     // --- Foreground auto-trigger, mirroring LedgerConfigSync's own shape -----------------------
