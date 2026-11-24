@@ -33,7 +33,6 @@ import org.robolectric.annotation.GraphicsMode
  * now, not `WidgetPagerActivity`** - that Activity is deleted, [WidgetPagerRoot] is an ordinary
  * `composable(LegionRoute.DASHBOARD)` destination inside `MainActivity`'s own `NavHost` now, same
  * shape [com.kevin.legion.screenshot.DeckGridEditModeScreenshotTest]/
- * [com.kevin.legion.screenshot.GeneratedScreensScreenshotTest]/
  * [com.kevin.legion.screenshot.EngineWidgetStatesScreenshotTest] already use for a composable that
  * does not need a real, permission-requesting, foreground-service-touching host Activity (see
  * `MainActivity.onResume`'s own doc comment for everything a REAL launch through it would touch -

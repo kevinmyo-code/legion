@@ -290,7 +290,9 @@ private fun WidgetContent(dataSource: WidgetDataSource, widget: WidgetInstance, 
         WidgetKind.QUICK_ADD -> QuickAddWidget(
             title = "ADD",
             targetRecordTypeId = config.targetRecordTypeId,
-            onAdd = { /* opens the generated add form for the target record type - ui/generated/GeneratedFormScreen.kt, wired at nav-integration time (ticket 18 build item 5's "not the app's home yet" scope) */ },
+            // The generated add form retired with the tracker engine (2026-11-24); a quick-add
+            // widget has no screen to open yet, so the tap does nothing.
+            onAdd = { },
         )
         WidgetKind.SINGLE_RECORD_CARD -> SingleRecordCardWidget(dataSource, config.recordId, kind.maxRowsFor(preset))
         WidgetKind.AGENDA -> AgendaWidget(dataSource, widget.recordTypeId, config.limit, kind.maxRowsFor(preset))
