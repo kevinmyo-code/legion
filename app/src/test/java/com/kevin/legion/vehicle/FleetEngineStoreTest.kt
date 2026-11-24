@@ -213,13 +213,36 @@ class FleetEngineStoreTest {
         val assertedGuid = com.kevin.legion.engine.fleet.FleetRecordBridge.assertedAnchorGuid("V1", "Oil Change")
         assertFalse(db.serviceRecordDao().getBySyncId(assertedGuid)!!.deleted)
 
-        // currentMileage(vehicle) == odometerBaseline (227_000, no trip miles) - matches the anchor exactly.
-        VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+        // The stated reading matches the anchor exactly, which is what lets the new OBSERVED row
+        // explain it (FleetRecordBridge.explainedBy). It is STATED now rather than taken from
+        // currentMileage: as of the car plan's slice 0 an unstated mileage is null on the row, and
+        // a null axis can never explain an anchor that names one - see the test below.
+        VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 227_000)
 
         assertTrue(
             "voice logService must supersede the ASSERTED anchor the same way a direct insertObserved does",
             db.serviceRecordDao().getBySyncId(assertedGuid)!!.deleted,
         )
+    }
+
+    @Test
+    fun `a log with no stated mileage leaves an ASSERTED anchor that names one alone`() = runBlocking {
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change"))
+        FleetEngineStore.setAnchor(context, "V1", "Oil Change", mileage = 227_000, date = null, now = System.currentTimeMillis())
+        val assertedGuid = com.kevin.legion.engine.fleet.FleetRecordBridge.assertedAnchorGuid("V1", "Oil Change")
+
+        VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1")
+
+        // Nothing was superseded: a row with no mileage cannot explain an anchor that states one,
+        // and claiming otherwise would be the invented joint fact explainedBy exists to prevent.
+        assertFalse(
+            "an unstated mileage may not explain a stated one",
+            db.serviceRecordDao().getBySyncId(assertedGuid)!!.deleted,
+        )
+        // The live anchor is the newest row either way, so it reads today with no mileage.
+        val derived = FleetEngineStore.get(context, "V1", "Oil Change")!!
+        assertNull(derived.lastDoneMileage)
+        assertNotNull(derived.lastDoneDate)
     }
 
     // ============================================================================================
