@@ -8,40 +8,35 @@ package com.kevin.midnightai.service
  * frozen-removed 2026-10-11), so every way of ending a conversation before this cost a hand on the
  * screen or ten seconds of silence. "That'll be all" is the hands-free close.
  *
- * **Shaped on [com.kevin.midnightai.ai.CrisisDetector], ruled by the phone.** The form is the
- * crisis backstop's: a pure object, phrase data, one normaliser, no Android. The RULE is the
- * phone's (`app/.../service/WakePhrases.isSleepPhrase` and `Farewells`), ported as data plus the
- * two rules it decides with, because this is the same capability and a second reading of "did he
- * say goodbye" would drift from it. What it is NOT is a substring scan: "text mom bye bye" and
- * "say good night to the kids" are requests, and a `contains` check closes on both. The turn is
- * stripped of courtesy at its ENDS and what is left must decompose entirely into closers.
+ * **It is the phone's rule, not a second reading of it (ruled 2026-11-24).** The two voices behave
+ * the same and only the character differs, so this file is a port of the phone's goodbye pair
+ * (`app/.../service/Farewells.kt` and `WakePhrases.isSleepPhrase`): the same phrase data, the same
+ * normaliser, the same two rules, and the same two branches. A phrase this unit closes on or holds
+ * open is the phrase the phone closes on or holds open, and the parity is pinned case by case in
+ * `DriverDismissalPhoneParityTest` from the phone's own tables. What it is NOT is a substring scan:
+ * "text mom bye bye" and "say good night to the kids" are requests, and a `contains` check closes
+ * on both. The turn is stripped of courtesy at its ENDS and what is left must decompose entirely
+ * into closers.
  *
- * **Only the phone's strict branch is ported, deliberately.** There the closer set narrows when
- * Alfred has just asked something, which the phone knows from its own pending-draft and
- * question state. The unit has neither: the confirm state for `activate_garage` and
- * `log_past_service` lives in the model, not in code, so a lenient branch here would be a
- * condition nothing can evaluate. Running the strict set always is the safe side of that gap. The
- * cost, named so nobody reads it as a bug: a bare "night", "nite" or "later" does not close
- * (they answer "morning or night?"), and neither do the soft dismissals the phone left soft
- * ("never mind", "we're done", "I'm done").
+ * **The one branch, and the one signal behind it.** With nothing awaited every closer counts
+ * ([CLOSERS]); while an answer is awaited only the hard ones do ([HARD_CLOSERS]) and a turn holding
+ * a word that could answer the question is an answer, not a goodbye. The phone reads two signals
+ * for that state: its last spoken line ended in a question mark, and a write draft is pending. This
+ * unit has the first ([LiveTranscript] gives Moose's own words, and `subtitles` is always on) and
+ * NOT the second: the confirm state for `activate_garage` and `log_past_service` lives in the
+ * model, not in code, so there is nothing to read. Named as the one gap, and benign here for a
+ * reason the phone does not share: the phone decides before any model call, while this reads the
+ * transcript at the END of the model's turn, by which point `handleToolCall` has already dispatched
+ * whatever the model asked for. A yes that authorises work has therefore already authorised it.
  *
- * **What the answer-word veto does, stated precisely, because it is easy to overclaim.** A turn
- * holding a word that answers a question ([ANSWER_WORDS]) or a number is an answer, in every state:
- * "that'll be all" closes, "yes, that'll be all" does not, so the work that yes authorises is not
- * swallowed by a goodbye (the phone's F1). A filler lead-in is courtesy and vetoes nothing, which
- * is why "okay bye" closes (Kevin, Q9).
+ * **Two things here the phone has no use for.** A two-word companion name is also matched by its
+ * last word, because `CompanionProfile.DEFAULT_NAME` is "Uncle Moose" and nobody says the title
+ * ([withoutCourtesy]); and a running trivia game narrows the closer set ([TRIVIA_CLOSERS]), because
+ * "that's it!" is how a passenger shouts a right answer and the phone has no game to end.
  *
- * **It does NOT mean nothing was sent on the dismissal turn.** The phone decides before any model
- * call; this reads the transcript at the END of the model's turn, and `handleToolCall` dispatched
- * whatever the model asked for the moment the server asked, long before that. So a turn that both
- * wrote something and said goodbye has already written. What closing guarantees is that there is
- * no FURTHER turn in which the model can act. Nothing here is a write guard, and the engine guards
- * its own doors anyway.
- *
- * **The cost of running the veto always.** On the phone it applies only when an answer is awaited.
- * Here there is no such signal, so an assenting lead before a goodbye never closes: "great, that'll
- * be all", "cool, bye" and "perfect, good night" all go to the model. That is the deliberate
- * trade for not losing an authorisation, and it costs one extra turn, never a lost one.
+ * **It does NOT mean nothing was sent on the dismissal turn.** What closing guarantees is that
+ * there is no FURTHER turn in which the model can act. Nothing here is a write guard, and the
+ * engine guards its own doors anyway.
  *
  * **It arms, it does not fire.** [armsDismissal] is read at the END of the model's turn, so Moose's
  * sign-off is already spoken and still draining from the jitter buffer when the conversation parks.
@@ -50,21 +45,32 @@ package com.kevin.midnightai.service
  */
 object DriverDismissal {
 
-    /**
-     * Goodbyes. "night", "nite" and "later" are absent on purpose: alone they answer a question at
-     * least as often as they end one, and this file has no way to tell the two apart (see the class
-     * doc). "good night" and "night night" are phrases in their own right and close either way.
-     *
-     * The phone's "see you tomorrow" is absent too, and that is not an oversight: "tomorrow" is an
-     * [ANSWER_WORDS] entry, so the veto above fires on it first and the phrase could never match.
-     * Dead data in a phrase list is worse than a missing phrase, because it reads as covered.
-     */
+    /** The sleep phrase in [normalise]d form, and the one contraction a transcript produces. */
+    private const val SLEEP = "that will be all"
+    private const val SLEEP_CONTRACTED = "that ll be all"
+
+    /** The phone's `Farewells.FAREWELLS`, unchanged. */
     val FAREWELLS: List<String> = listOf(
         "bye", "bye bye", "byebye", "buh bye", "bye now", "goodbye", "good bye", "bye for now",
-        "good night", "goodnight", "night night", "nighty night", "nite nite", "g night",
-        "see you", "see ya", "see you later", "see ya later", "see you soon",
-        "talk to you later", "talk later", "talk soon", "catch you later", "ciao", "cheerio",
+        "good night", "goodnight", "night", "night night", "nighty night", "nite", "nite nite", "g night",
+        "see you", "see ya", "see you later", "see ya later", "see you tomorrow", "see you soon",
+        "talk to you later", "talk later", "talk soon", "catch you later", "later", "ciao", "cheerio",
         "farewell", "peace out", "take care", "have a good night", "have a good one",
+    )
+
+    /**
+     * Farewells that can also answer a question ("Morning or night?" "Night."): alone they close
+     * only when Moose's last line did not ask something. The phone's `AMBIGUOUS_ALONE`. Only ever
+     * alone: "good night" and "night night" are phrases of their own and close either way.
+     */
+    val AMBIGUOUS_ALONE: Set<String> = setOf("night", "nite", "later")
+
+    /** The phone's `WakePhrases.STOP_PHRASES`: whole-turn stops, in [normalise]d form. */
+    val STOP_PHRASES: List<String> = listOf(
+        "stop", "stop stop", "never mind", "nevermind", "that s all", "that s it", "that s all thanks",
+        "that s it thanks", "that will be all", "that ll be all", "go away", "stand down", "bye", "bye bye",
+        "goodbye", "good bye", "thanks bye", "thank you bye", "thanks goodbye", "ok bye", "okay bye",
+        "we re done", "i m done",
     )
 
     /** A word for stop or goodbye: never an answer to anything, whatever the model just asked. */
@@ -73,19 +79,22 @@ object DriverDismissal {
     )
 
     /**
-     * The four dismissals of Kevin's ruling A: these close even while an answer is awaited. In
-     * [normalise]d form, where an apostrophe is a space, so "that'll" is "that ll".
+     * The four dismissals of Kevin's ruling Q8 (2026-11-23): these close even while an answer is
+     * awaited. In [normalise]d form, where an apostrophe is a space, so "that'll" is "that ll".
      */
     val DISMISSALS: List<String> = listOf(
         "that will be all", "that ll be all", "that s all", "that s it",
     )
 
+    /** The stops that are never an answer to a question. The phone's `HARD_STOPS`. */
+    val HARD_STOPS: List<String> = PLAIN_STOPS + DISMISSALS
+
     /**
      * Lead-ins that open a turn without answering anything: pure discourse filler. One alone never
-     * makes a goodbye into an answer (Kevin, Q9: "okay bye" closes). They come off at the ends with
-     * the rest of the courtesy and veto nothing. "right" sits here rather than in [ASSENT_LEADS]
-     * because "all right" reduces to words containing "right", and [answersQuestion] looks for a
-     * word anywhere in the turn.
+     * makes a goodbye into an answer (Kevin, 2026-11-23, Q9: "okay bye" closes after a question).
+     * They come off at the ends with the rest of the courtesy and veto nothing. "right" sits here
+     * rather than in [ASSENT_LEADS] because "all right" reduces to words containing "right", and
+     * [answersQuestion] looks for a word anywhere in the turn.
      */
     val FILLER_LEADS: List<String> = listOf(
         "ok", "okay", "alright", "all right", "well", "oh", "so", "hey", "um", "uh", "right",
@@ -95,7 +104,7 @@ object DriverDismissal {
     /**
      * Lead-ins that assent. These stay in [ANSWER_WORDS]: they can authorise the thing Moose just
      * asked about (the garage relay's second call, a backfilled service mileage), and dropping one
-     * loses the work.
+     * while he waits on the answer loses the work.
      */
     val ASSENT_LEADS: List<String> = listOf(
         "yeah", "yes", "great", "cool", "perfect", "awesome", "lovely", "sounds good", "got it",
@@ -109,9 +118,8 @@ object DriverDismissal {
     val TAILS: List<String> = listOf("for now", "then", "now", "again", "mate", "buddy", "please")
 
     /**
-     * Words that answer a question, plus any number. A turn holding one is an answer, not a
-     * goodbye, in every state. This is what keeps a dismissal from swallowing an authorisation.
-     * [FILLER_LEADS] are deliberately NOT in it (Kevin, Q9).
+     * Words that answer a question, plus any number. While an answer is awaited a turn holding one
+     * is an answer, not a goodbye. [FILLER_LEADS] are deliberately NOT in it (Q9).
      */
     val ANSWER_WORDS: List<String> = ASSENT_LEADS + listOf(
         "yep", "yup", "no", "nope", "nah", "sure", "go ahead", "do it", "fine", "correct",
@@ -123,32 +131,49 @@ object DriverDismissal {
     private val tailWords = phraseWords(THANKS + TAILS)
     private val answerWords = phraseWords(ANSWER_WORDS)
 
-    /** Every phrase that can stand alone as a close. */
-    private val CLOSERS: List<List<String>> =
-        phraseWords(PLAIN_STOPS + DISMISSALS + FAREWELLS)
+    /** Every phrase that can stand alone as a close, with nothing awaited. */
+    private val CLOSERS: List<List<String>> = phraseWords(FAREWELLS + STOP_PHRASES)
+
+    /** The closers a turn with an answer awaited may be made of. The phone's `HARD_CLOSERS`. */
+    private val HARD_CLOSERS: List<List<String>> =
+        phraseWords(HARD_STOPS + (FAREWELLS - AMBIGUOUS_ALONE))
 
     /**
-     * The closers that may close a running trivia game: the plain stops and the goodbyes, never the
-     * four [DISMISSALS]. "That's it!" is how a driver or passenger shouts a right answer, and a
-     * quiz ended by an exclamation is the one false close this file could plausibly hit in a car.
-     * A goodbye still ends it, and so does the tap.
+     * The stop phrases a running trivia game keeps out of its closer set: the four [DISMISSALS] and
+     * the two that are a dismissal wearing a thanks. "That's it!" is how a driver or passenger
+     * shouts a right answer, and a quiz ended by an exclamation is the one false close this file
+     * could plausibly hit in a car. The sleep phrase's own `endsWith` path is held back for the
+     * same reason while a game runs. A goodbye still ends it, and so does the tap.
      */
-    private val TRIVIA_CLOSERS: List<List<String>> = phraseWords(PLAIN_STOPS + FAREWELLS)
+    private val GAME_UNSAFE: Set<String> = DISMISSALS.toSet() + setOf("that s all thanks", "that s it thanks")
+
+    private val TRIVIA_CLOSERS: List<List<String>> = phraseWords(FAREWELLS + (STOP_PHRASES - GAME_UNSAFE))
+
+    /** [HARD_CLOSERS] without the phrases a shouted right answer produces ([GAME_UNSAFE]). */
+    private val TRIVIA_HARD_CLOSERS: List<List<String>> =
+        phraseWords((HARD_STOPS - GAME_UNSAFE) + (FAREWELLS - AMBIGUOUS_ALONE))
 
     /**
      * [transcript] is a goodbye and nothing else. [companionName] comes off either end, so "bye
-     * Moose" and "Moose, stop" count whatever the driver renamed him to.
+     * Moose" and "Moose, stop" count whatever the driver renamed him to. [answerAwaited]: Moose's
+     * last line asked the driver something, so only a hard closer ends the conversation and a turn
+     * that could be the answer goes to the model.
      */
     fun isDismissal(
         transcript: String,
         companionName: String = "",
+        answerAwaited: Boolean = false,
         inTriviaGame: Boolean = false,
     ): Boolean {
         val t = normalise(transcript)
         if (t.isEmpty()) return false
-        if (answersQuestion(t)) return false
-        val left = withoutCourtesy(t.split(' ').filter { it.isNotEmpty() }, normalise(companionName))
-        return left.isNotEmpty() && madeOf(left, if (inTriviaGame) TRIVIA_CLOSERS else CLOSERS)
+        val name = normalise(companionName)
+        return if (answerAwaited) {
+            !answersQuestion(t) && closesAlone(t, name, if (inTriviaGame) TRIVIA_HARD_CLOSERS else HARD_CLOSERS)
+        } else {
+            (!inTriviaGame && (t.endsWith(SLEEP) || t.endsWith(SLEEP_CONTRACTED))) ||
+                closesAlone(t, name, if (inTriviaGame) TRIVIA_CLOSERS else CLOSERS)
+        }
     }
 
     /**
@@ -160,6 +185,10 @@ object DriverDismissal {
      * cheerful "bye" mid-questionnaire would park the socket and surface to
      * `ui/OnboardingManager` as a failed first run. A speak-only proactive line has no [vadMode]
      * and nobody to hear it.
+     *
+     * [lastCompanionLine] is the last thing Moose SAID before this turn, which is the line the
+     * driver is answering; a blank one (no output transcript yet, or a silent tool-call turn) reads
+     * as no question, which is the phone's own default state.
      */
     fun armsDismissal(
         heard: String,
@@ -168,9 +197,19 @@ object DriverDismissal {
         keepWarm: Boolean,
         conversationActive: Boolean,
         inTriviaGame: Boolean,
+        lastCompanionLine: String = "",
     ): Boolean =
         vadMode && keepWarm && conversationActive &&
-            isDismissal(heard, companionName, inTriviaGame)
+            isDismissal(heard, companionName, asksSomething(lastCompanionLine), inTriviaGame)
+
+    /**
+     * [line] asks the driver something: it ends in a question mark, a closing quote or bracket
+     * after it aside. The phone's `FollowUpWindow.isQuestion`, which is the signal it reads for the
+     * same branch.
+     */
+    fun asksSomething(line: String?): Boolean =
+        line?.trimEnd { it.isWhitespace() || it in "\"')]”’»" }?.lastOrNull()
+            ?.let { it == '?' || it == '？' } == true
 
     /**
      * Lowercase, every non-letter/digit run collapsed to one space, trimmed. Punctuation is
@@ -192,6 +231,12 @@ object DriverDismissal {
         val w = normalise(transcript).split(' ').filter { it.isNotEmpty() }
         if (w.any { word -> word.any { it.isDigit() } }) return true
         return answerWords.any { phrase -> w.windowed(phrase.size).any { it == phrase } }
+    }
+
+    /** The whole turn is [closers], courtesy aside. The phone's `WakePhrases.closesAlone`. */
+    private fun closesAlone(t: String, name: String, closers: List<List<String>>): Boolean {
+        val w = withoutCourtesy(t.split(' ').filter { it.isNotEmpty() }, name)
+        return w.isNotEmpty() && madeOf(w, closers)
     }
 
     /**

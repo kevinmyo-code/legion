@@ -74,8 +74,8 @@ sealed interface LiveEvent {
      * [dismissed] means the driver said goodbye this turn ([DriverDismissal]) and the session is
      * parking, so the owner must not push anything else into it: a held proactive line sent here
      * would land in a parked socket with no suppress flag, and its own turnComplete would reopen
-     * the mic after a goodbye. The line is not lost - the [Idle] that follows is where a parked
-     * socket speaks one, which is the correct route for it.
+     * the mic after a goodbye. Nor is it spoken later: the [Idle] that follows carries the same
+     * fact and drops what was held (ruled 2026-11-24, `HeldLines.onPark`).
      */
     data class TurnComplete(val dismissed: Boolean = false) : LiveEvent
     /** Gemini wants a local tool run; reply via [GeminiLiveSession.sendToolResponse]. */
@@ -93,8 +93,14 @@ sealed interface LiveEvent {
      * The conversation ended but the socket is being kept warm (connected, mic
      * closed). A tap resumes instantly via [GeminiLiveSession.beginConversation]
      * with no reconnect. The socket fully closes (â†’ [Closed]) after the warm hold.
+     *
+     * [afterDismissal]: the driver said goodbye, so this park is the end of a conversation he
+     * ended rather than one that went quiet. A held routine line is DROPPED on this path instead
+     * of being spoken on the warm socket (ruled 2026-11-24): an answer to "anything else?" is not
+     * what a goodbye asks for. It rides the event rather than a flag in the controller so it
+     * cannot outlive the park it describes.
      */
-    data object Idle : LiveEvent
+    data class Idle(val afterDismissal: Boolean = false) : LiveEvent
     /** The session ended (closed, timed out, or errored). */
     data class Closed(val reason: String) : LiveEvent
 }
@@ -351,6 +357,12 @@ class GeminiLiveSession(
     @Volatile private var subtitles = false
     private val companionTurnText = StringBuilder()
 
+    // The last thing Moose actually SAID, kept across turns: the line the driver's next words are
+    // answering. DriverDismissal reads it to tell a goodbye after a question from one after a
+    // statement, which is the phone's own signal for that branch. Blank until he has spoken, and a
+    // silent tool-call turn leaves it alone. Cleared by start() (a fresh socket).
+    @Volatile private var lastCompanionLine = ""
+
     // Companion-memory ticket 01 (2026-07-22): groups this connection's
     // EpisodicTurn rows. Minted fresh in start(); blank before the first
     // start() call, which captureTurn() below treats as "don't capture yet."
@@ -403,6 +415,7 @@ class GeminiLiveSession(
         // it's always on; the token cost of the speech transcript is small. DebugSettings keeps
         // the toggle for diagnostics but no longer gates whether captions appear.
         subtitles = true
+        lastCompanionLine = ""
         vadMicOpenedOnce = false
         conversationActive = false
         warm.set(false)
@@ -980,11 +993,16 @@ class GeminiLiveSession(
             if (vadMode && bytesThisTurn < SILENT_TURN_BYTES_THRESHOLD) {
                 MidnightEvents.silentMicTurn(heard, bytesThisTurn)
             }
-            captureEpisodicTurn(heard, companionTurnText.toString().trim())
+            val spoken = companionTurnText.toString().trim()
+            captureEpisodicTurn(heard, spoken)
             // The driver's goodbye, read once off the COMPLETE turn (never a partial delta - see
             // DriverDismissal's doc). Sticky: once armed it survives a tool round trip to the turn
             // that parks. By now Moose's sign-off has been spoken and is draining from the
             // playback queue, which is what the park below leaves alone.
+            //
+            // lastCompanionLine, NOT this turn's: it is the line the driver was answering when he
+            // said what he said, and it is what decides whether an answer was awaited (the phone
+            // reads the same signal). This turn's own words are Moose's reply to the goodbye.
             if (DriverDismissal.armsDismissal(
                     heard = heard,
                     companionName = CompanionProfile.name(appContext),
@@ -992,11 +1010,15 @@ class GeminiLiveSession(
                     keepWarm = keepWarm,
                     conversationActive = conversationActive,
                     inTriviaGame = TriviaController.isActive,
+                    lastCompanionLine = lastCompanionLine,
                 )
             ) {
                 dismissAfterTurn = true
                 MidnightEvents.voiceTurnDecision("dismissal armed from transcript")
             }
+            // A tool-call turn speaks nothing, so it must not blank the question the driver is
+            // still answering: only a turn Moose actually spoke replaces the line.
+            if (spoken.isNotEmpty()) lastCompanionLine = spoken
             userTurnText.setLength(0)
             companionTurnText.setLength(0)
             emit(LiveEvent.TurnComplete(dismissed = dismissAfterTurn))
@@ -1030,6 +1052,11 @@ class GeminiLiveSession(
                         // closed it when Zero began speaking).
                         io.launch {
                             awaitPlaybackDrained(forMic = false)
+                            // closeSession does not cancel io, so a session closed inside the
+                            // drain window would otherwise park a dead session on top of whatever
+                            // the driver started next (blind review of c8ad9ee9, F1). The
+                            // pre-existing deferred path, armIdleTimeout, guards exactly this.
+                            if (!running.get()) return@launch
                             parkWarm()
                         }
                     } else {
@@ -1589,11 +1616,13 @@ class GeminiLiveSession(
         if (capturing) audit.micClosed("park")
         capturing = false
         suppressMicNextTurn = false
+        // Read before the reset: the Idle this park emits carries why it happened.
+        val onDismissal = dismissAfterTurn
         dismissAfterTurn = false
         restoreAudio()
         ConversationState.setBusy(false)
         warm.set(true)
-        emit(LiveEvent.Idle)
+        emit(LiveEvent.Idle(afterDismissal = onDismissal))
         warmHoldJob?.cancel()
         warmHoldJob = io.launch {
             delay(WARM_HOLD_MS)
