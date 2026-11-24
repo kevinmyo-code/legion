@@ -43,10 +43,18 @@ class HandoverSources(
     /** The phone's public Mapbox token as the app uses it at runtime (pasted in the app, else built in). */
     val mapboxToken: () -> String?,
     val phoneName: () -> String?,
+    /**
+     * The driver's own Spotify client ID (Kevin, 2026-11-23: the car link should carry it, so the
+     * head unit's Spotify setup does not have to be typed in again). Public by Spotify's own
+     * design, and the only Spotify credential either app holds: both use PKCE, so there is no
+     * client secret, and the phone's own Spotify TOKENS are never sent (the two apps sign in as
+     * different accounts on purpose).
+     */
+    val spotifyClientId: () -> String? = { null },
 )
 
 /** What the hand-over will NOT carry because this phone does not have it; said in words. */
-enum class HandoverGap { NO_GEMINI_KEY, NO_MAP_TOKEN }
+enum class HandoverGap { NO_GEMINI_KEY, NO_MAP_TOKEN, NO_SPOTIFY_CLIENT_ID }
 
 /**
  * What the phone hands over (3.5) for one pairing. The unit token is minted only once the unit has
@@ -77,6 +85,9 @@ class HandoverPlan(
             mapboxToken = present(sources.mapboxToken())?.also(redact),
             engineVehicleId = vehicle,
             phoneName = sources.phoneName(),
+            // Not redacted: a client ID is public, and a log redactor that hides it would make the
+            // one field anyone may paste into a bug report unreadable.
+            spotifyClientId = present(sources.spotifyClientId()),
         )
     }
 
@@ -84,6 +95,7 @@ class HandoverPlan(
     fun gaps(): Set<HandoverGap> = buildSet {
         if (present(sources.geminiKey()) == null) add(HandoverGap.NO_GEMINI_KEY)
         if (present(sources.mapboxToken()) == null) add(HandoverGap.NO_MAP_TOKEN)
+        if (present(sources.spotifyClientId()) == null) add(HandoverGap.NO_SPOTIFY_CLIENT_ID)
     }
 
     private fun present(value: String?): String? = value?.trim()?.takeIf { it.isNotEmpty() }

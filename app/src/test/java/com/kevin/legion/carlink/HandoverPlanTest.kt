@@ -29,10 +29,15 @@ class HandoverPlanTest {
     private val tokens = FakeUnitTokens()
     private var phoneKey: String? = null
     private var mapToken: String? = null
+    private var spotifyId: String? = null
     private val redacted = mutableListOf<String>()
-    private val plan =
-        HandoverPlan(HandoverSources({ phoneKey }, { mapToken }, { "Test phone" }), tokens) { redacted += it }
-    private val allowed = setOf("v", "engine_token", "engine_user_id", "gemini_key", "mapbox_token", "phone_name")
+    private val plan = HandoverPlan(
+        HandoverSources({ phoneKey }, { mapToken }, { "Test phone" }, { spotifyId }),
+        tokens,
+    ) { redacted += it }
+    private val allowed = setOf(
+        "v", "engine_token", "engine_user_id", "gemini_key", "mapbox_token", "spotify_client_id", "phone_name",
+    )
 
     private fun fields(json: String) = Json.parseToJsonElement(json).jsonObject
 
@@ -58,6 +63,40 @@ class HandoverPlanTest {
     @Test fun `no map token on the phone sends none and is said`() {
         assertNull(fields(plan.body().toJson())["mapbox_token"])
         assertTrue(HandoverGap.NO_MAP_TOKEN in plan.gaps())
+    }
+
+    /*
+     * The Spotify client ID (2026-11-23), so the head unit's Spotify setup is not typed in again.
+     * Public by design: it is sent as itself, never redacted, and the phone's own Spotify tokens
+     * never go at all.
+     */
+
+    @Test fun `the phone's Spotify client ID goes over the link`() {
+        spotifyId = "made-up-client-id"
+        assertEquals("\"made-up-client-id\"", fields(plan.body().toJson())["spotify_client_id"].toString())
+        assertFalse(HandoverGap.NO_SPOTIFY_CLIENT_ID in plan.gaps())
+        // A client ID identifies an app, so hiding it from this phone's own logs buys nothing.
+        assertFalse(redacted.contains("made-up-client-id"))
+    }
+
+    @Test fun `no Spotify setup on the phone sends none and is said`() {
+        assertNull(fields(plan.body().toJson())["spotify_client_id"])
+        assertTrue(HandoverGap.NO_SPOTIFY_CLIENT_ID in plan.gaps())
+        spotifyId = "   "
+        assertNull(fields(plan.body().toJson())["spotify_client_id"])
+        assertTrue(HandoverGap.NO_SPOTIFY_CLIENT_ID in plan.gaps())
+    }
+
+    /** Half a client ID is a setup that silently never connects, so an over-long one is dropped. */
+    @Test fun `an over-long Spotify client ID is dropped, never cut`() {
+        spotifyId = "x".repeat(com.kevin.legion.carlink.protocol.HandoverBody.MAX_SPOTIFY_CLIENT_ID + 1)
+        assertNull(fields(plan.body().toJson())["spotify_client_id"])
+    }
+
+    @Test fun `the phone's own Spotify tokens are never a field`() {
+        spotifyId = "made-up-client-id"
+        val json = plan.body().toJson()
+        assertFalse(json, "access_token" in json || "refresh_token" in json || "client_secret" in json)
     }
 
     @Test fun `the unit token is minted for the chosen car, after the unit proved itself`() = runBlocking {
