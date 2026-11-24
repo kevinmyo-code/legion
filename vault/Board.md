@@ -207,6 +207,7 @@ Code exists and the suite is green. Nothing here has been used on the phone.
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[30-balance-arithmetic-in-three-places\|30]] | bug | The balance formula is written out in three places again |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[31-silent-success\|31]] | bug | It did the thing and did not say so |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | [[32-sitrep-on-demand-only\|32]] | build | Sitreps happen when asked, never on a schedule |
+| [[.scratch/headunit-car-link/map\|headunit-car-link]] | [[01-pair-new-phone-crashes-the-launcher\|01]] | bug | PAIR NEW PHONE crashes the launcher |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[02-soft-theme-and-chrome\|02]] | build | Soft theme, bundled font and icons, and the shell chrome restyled |
 | [[.scratch/home-launcher/map\|home-launcher]] | [[07-settings-menu-letter-folders-category-buttons\|07]] | build | Settings menu, letter folders in Apps, and category buttons under the dock |
 | [[.scratch/household-finance/map\|household-finance]] | [[01-accounts-and-snapshots\|01]] | build | Household accounts and balance snapshots |
@@ -522,6 +523,7 @@ Parked on purpose. Open, but off the queue until Kevin says otherwise.
 | [[.scratch/google-account-integration/map\|google-account-integration]] | 23 | 0 | [[.scratch/google-account-integration/google-account-integration.canvas\|open]] |
 | [[.scratch/hands-and-senses/map\|hands-and-senses]] | 33 | 11 | [[.scratch/hands-and-senses/hands-and-senses.canvas\|open]] |
 | [[.scratch/hardening/map\|hardening]] | 9 | 5 | [[.scratch/hardening/hardening.canvas\|open]] |
+| [[.scratch/headunit-car-link/map\|headunit-car-link]] | 1 | 1 | [[.scratch/headunit-car-link/headunit-car-link.canvas\|open]] |
 | [[.scratch/home-launcher/map\|home-launcher]] | 7 | 6 | [[.scratch/home-launcher/home-launcher.canvas\|open]] |
 | [[.scratch/household-finance/map\|household-finance]] | 14 | 14 | [[.scratch/household-finance/household-finance.canvas\|open]] |
 | [[.scratch/import-sync-duplication/map\|import-sync-duplication]] | 1 | 0 | [[.scratch/import-sync-duplication/import-sync-duplication.canvas\|open]] |
