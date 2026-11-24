@@ -58,8 +58,9 @@ transitively - the vehicle, the event, the file is - and prepending
 either**, and that is one more real gap: `list_items.list_origin_guid`
 references `item_lists.origin_guid` rather than that table's primary key, so
 `item_lists.origin_guid` has to stay unique per SERVER. Dropping it is
-refused by Postgres and by Django's `fields.E311` alike. `legacy/models/
-notes.py` carries the same note beside the column.
+refused by Postgres and by Django's `fields.E311` alike. (The `legacy` models
+over those two tables carried the same note beside the column until the lists
+redesign slice 1a removed them; the tables and the constraint are unchanged.)
 
 **Primary keys are never touched, and one of them is a real gap.**
 `chassis_quirks` is keyed on a human-assigned `quirk_id` text primary key,
@@ -174,10 +175,13 @@ def _fk_target_columns(cursor, table: str):
 
     A unique key over such a set cannot be dropped: Postgres refuses ("cannot
     drop constraint ... because other objects depend on it") and Django's own
-    `fields.E311` refuses the model before that. `legacy.ListItem` is the one
-    case in this schema - it is a foreign key to `item_lists.origin_guid`
-    rather than to that table's primary key - and it is discovered here rather
-    than hardcoded, because the next one will not announce itself either.
+    `fields.E311` refuses the model before that. `list_items.list_origin_guid`
+    is the one case in this schema - it is a foreign key to
+    `item_lists.origin_guid` rather than to that table's primary key - and it is
+    discovered FROM THE CATALOG here rather than hardcoded, because the next one
+    will not announce itself either. That is also why removing the `legacy`
+    models over those two tables (lists redesign slice 1a, 2026-11-24) changed
+    nothing here: this function never read a model.
     """
     cursor.execute(
         """

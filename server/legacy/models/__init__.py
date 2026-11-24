@@ -49,7 +49,7 @@ from legacy.models.memory import (
     Memory,
     MemoryAudit,
 )
-from legacy.models.notes import ItemList, ListItem, VoiceNote
+from legacy.models.notes import VoiceNote
 from legacy.models.pantry import GroceryStaple, MealLog, MealTarget, Receipt, ReceiptLineItem
 from legacy.models.places import Place
 
@@ -71,10 +71,8 @@ __all__ = [
     "Goal",
     "GroceryStaple",
     "IngestedFile",
-    "ItemList",
     "LedgerTransaction",
     "LegacyHouseholdMember",
-    "ListItem",
     "MaintenanceSchedule",
     "MealLog",
     "MealTarget",
