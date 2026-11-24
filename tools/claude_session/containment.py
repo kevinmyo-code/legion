@@ -541,7 +541,9 @@ def _names_root_by_tail(text: str, paths: Paths) -> bool:
     every one of them. The folder name is read off `Paths` at run time, so a root moved by
     `LEGION_CLAUDE_HOME` is still its own name.
     """
-    name = re.escape(paths.root.name)
+    # The lookbehind keeps the name a name: `$HOME\.claude` must not match a root called `home`,
+    # and `my-legion-claude/x` is not `legion-claude/x` (seen in test_sessions_review2).
+    name = r"(?<![\w$%.\-])" + re.escape(paths.root.name)
     work = paths.work.name.lower()
     for m in re.finditer(name + r"[\\/]+([\w.-]+)", text.replace("\\\\", "\\"), re.I):
         if m.group(1).lower() != work:
