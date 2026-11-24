@@ -1173,7 +1173,7 @@ internal class CascadeSession(
         uttOverReply = Backchannel.overReply(speaking, turnJob?.isActive == true, openingCue = opening)
         cutAck()
         if (checkInStep == CheckInStep.LINE || checkInStep == CheckInStep.LISTENING) {
-            checkInStep = CheckInStep.ANSWERED
+            checkInStep = CheckInStep.DONE
             reportCheckIn(CheckInOutcome.ANSWERED)
         }
         draft?.takeIf { it.utt !== currentUtt }?.let { discardDraft("new_utterance") }
@@ -1928,8 +1928,6 @@ internal class CascadeSession(
             afterCheckInLine(TtsTags.strip(record.reply.toString()))
             return
         }
-        // His answer to the check-in has been replied to: that is the whole exchange ([afterReply]).
-        if (record.fromUser && checkInStep == CheckInStep.ANSWERED) checkInStep = CheckInStep.REPLIED
         afterReply()
     }
 
@@ -2743,7 +2741,7 @@ internal class CascadeSession(
             listens = listens,
             dismissed = dismissAfterReply,
             oneShotDone = (oneShot || oneShotRequested) && answeredOnce,
-            checkInReplied = checkInStep == CheckInStep.REPLIED,
+            checkInReplied = false,
         )
         when (next) {
             CascadeRules.AfterReply.SPOKEN -> {
