@@ -8,8 +8,8 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import com.kevin.midnightai.bluetooth.ExternalScreen
 import com.kevin.midnightai.bluetooth.PhoneLinkManager
+import com.kevin.midnightai.util.ExternalScreen
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -35,10 +35,10 @@ class PhoneLinkSystemScreenTest {
     @org.junit.After fun closeActivities() = TestActivities.closeAll()
 
     @Test fun `pair new phone with no pairing screen on this unit says so and does not crash`() =
-        assertTapSays("PAIR NEW PHONE", ExternalScreen.PAIR_NEW_PHONE.missingWords)
+        assertTapSays("PAIR NEW PHONE", ExternalScreen.PAIR_NEW_PHONE.missingWords())
 
     @Test fun `system settings with no settings screen on this unit says so and does not crash`() =
-        assertTapSays("SYSTEM SETTINGS", ExternalScreen.BLUETOOTH_SETTINGS.missingWords)
+        assertTapSays("SYSTEM SETTINGS", ExternalScreen.BLUETOOTH_SETTINGS.missingWords())
 
     private fun assertTapSays(label: String, expected: String) {
         shadowOf(RuntimeEnvironment.getApplication()).checkActivities(true)
