@@ -1,12 +1,12 @@
 """A second household member reaches none of Kevin's Claude work (`claude_session.fences`).
 
-The hole this closes, traced 2026-11-24 before Kevin adds his wife to his household:
+The hole this closes, traced 2026-11-24 before a second person joins the engine household:
 `IsHouseholdMember` carries no role check and `/api/claude/` fenced by household alone, so ANY
 member of the household could read every task Kevin ever sent, post `confirms: true` against a
 card that was waiting for his yes, queue work on his Alienware, and heartbeat as his machine
 (`_touch_machine` binds `ClaudeMachine.token` to whatever token beats, so the laptop identity
-moved with it). Tenancy was never the fence here: the wife joins Kevin's OWN household, so
-`scoped()` returns his rows to her.
+moved with it). Tenancy was never the fence here: a second member joins the SAME household, so
+`scoped()` returns one member's rows to the other.
 
 Three rules, one test class each:
 
@@ -16,7 +16,7 @@ Three rules, one test class each:
 - `TestKevinStillWorks`: the whole round trip he uses - create, claim, finish, status, files,
   workflows, sessions - on his own tokens.
 - `TestOnlyTheBoundWorker`: the worker's verbs belong to the worker the machine's heartbeat bound.
-  A member's app token and a SECOND worker token of Kevin's own are both refused.
+  A member's app token and a SECOND worker token of the owner's own are both refused.
 
 Invented examples only; no personal data.
 """
@@ -58,7 +58,7 @@ def _client_for(token_raw: str) -> APIClient:
 
 @pytest.fixture
 def other_member(household_a):
-    """An ordinary member of Kevin's own household: the shape his wife's account will have."""
+    """An ordinary member of the same household as the owner of the Claude work."""
     user = User.objects.create_user(email="member@example.com", password="correct horse battery")
     HouseholdMember.objects.create(
         user=user, household=household_a, role=HouseholdMember.MEMBER
@@ -69,7 +69,7 @@ def other_member(household_a):
 @pytest.fixture
 def other(other_member):
     """That member's ordinary app token."""
-    _token, raw = DeviceToken.issue(other_member, "Her phone")
+    _token, raw = DeviceToken.issue(other_member, "Their phone")
     return _client_for(raw)
 
 
@@ -119,22 +119,24 @@ class TestAnotherMemberIsRefused:
         assert one.status_code == 404
         assert str(his_task.id) in one.data["detail"]
 
-    def test_his_machine_is_not_hers_to_queue_work_on(self, other, his_task):
+    def test_his_machine_is_not_theirs_to_queue_work_on(self, other, his_task):
         refused = _create(other, machine=MACHINE)
         assert refused.status_code == 400, refused.data
         assert "No machine has that name here" in refused.data["detail"]
         assert ClaudeTask.objects.filter(machine=his_task.machine).count() == 1
 
-    def test_her_unaddressed_task_is_never_claimed_by_his_worker(self, other, worker, his_task):
-        hers = _create(other, request="rename my files")
-        assert hers.status_code == 201, hers.data
-        assert hers.data["machine"] is None
+    def test_a_members_unaddressed_task_is_never_claimed_by_his_worker(
+        self, other, worker, his_task
+    ):
+        theirs = _create(other, request="rename my files")
+        assert theirs.status_code == 201, theirs.data
+        assert theirs.data["machine"] is None
         claimed = _claim(worker)
         assert claimed.status_code == 200
         assert [row["id"] for row in claimed.data] == [his_task.id]
-        assert ClaudeTask.objects.get(pk=hers.data["id"]).status == QUEUED
+        assert ClaudeTask.objects.get(pk=theirs.data["id"]).status == QUEUED
 
-    def test_she_cannot_forge_his_yes(self, other, worker, his_task):
+    def test_another_member_cannot_forge_his_yes(self, other, worker, his_task):
         claimed = _claim(worker)
         assert claimed.status_code == 200
         finished = worker.post(
@@ -151,12 +153,12 @@ class TestAnotherMemberIsRefused:
         assert not ClaudeTask.objects.filter(parent=his_task, confirms=True).exists()
         assert ClaudeTask.objects.get(pk=his_task.id).status == NEEDS_CONFIRMATION
 
-    def test_she_cannot_cancel_his_task(self, other, his_task):
+    def test_another_member_cannot_cancel_his_task(self, other, his_task):
         refused = other.post(f"{API}tasks/{his_task.id}/cancel/", format="json")
         assert refused.status_code == 404
         assert ClaudeTask.objects.get(pk=his_task.id).status == QUEUED
 
-    def test_she_cannot_assign_his_unaddressed_task(self, other, token_a, worker):
+    def test_another_member_cannot_assign_his_unaddressed_task(self, other, token_a, worker):
         assert _beat(worker).status_code == 200
         assert _beat(worker, name="work laptop", scope="listed").status_code == 200
         his = _create(token_a)
@@ -167,7 +169,7 @@ class TestAnotherMemberIsRefused:
         assert refused.status_code == 404
         assert ClaudeTask.objects.get(pk=his.data["id"]).status == NEEDS_MACHINE
 
-    def test_she_cannot_ask_for_a_file_of_his(self, other, his_task):
+    def test_another_member_cannot_ask_for_a_file_of_his(self, other, his_task):
         row = ClaudeTaskFile.objects.create(
             household=his_task.household, task=his_task, path="C:/x/notes.txt",
             name="notes.txt", size=12,
@@ -179,7 +181,7 @@ class TestAnotherMemberIsRefused:
         row.refresh_from_db()
         assert row.requested_at is None
 
-    def test_the_status_screen_shows_her_none_of_his_laptop(self, other, worker, his_task):
+    def test_the_status_screen_shows_a_member_none_of_his_laptop(self, other, worker, his_task):
         assert worker.post(
             f"{API}sessions/",
             {"machine": MACHINE, "session_id": "s-1", "project": "legion", "state": "waiting",
@@ -191,16 +193,16 @@ class TestAnotherMemberIsRefused:
         assert status.data["machines"] == []
         assert status.data["sessions"] == []
 
-    def test_she_cannot_heartbeat_as_his_machine(self, other, his_task):
+    def test_another_member_cannot_heartbeat_as_his_machine(self, other, his_task):
         before = _machine().token_id
         refused = _beat(other)
         assert refused.status_code == 403, refused.data
-        # Her app token is refused as a worker verb before the machine is even looked up; the
+        # The app token is refused as a worker verb before the machine is even looked up; the
         # test below is the one that proves the ownership half.
         assert "Only a Claude worker's own token" in refused.data["detail"]
         assert _machine().token_id == before
 
-    def test_her_own_worker_token_still_cannot_rebind_his_machine(self, other_member, his_task):
+    def test_a_members_own_worker_token_cannot_rebind_his_machine(self, other_member, his_task):
         """The name is the installer's convention, so a member could pick it. The binding is not."""
         _token, raw = DeviceToken.issue(
             other_member, f"claude-session-{MACHINE}", scope=DeviceToken.SCOPE_CLAUDE_WORKER
@@ -211,12 +213,12 @@ class TestAnotherMemberIsRefused:
         assert "another member's laptop" in refused.data["detail"]
         assert _machine().token_id == before
 
-    def test_she_cannot_claim_his_queue(self, other, his_task):
+    def test_another_member_cannot_claim_his_queue(self, other, his_task):
         refused = _claim(other)
         assert refused.status_code in (403, 404), refused.data
         assert ClaudeTask.objects.get(pk=his_task.id).status == QUEUED
 
-    def test_she_cannot_finish_his_running_task(self, other, worker, his_task):
+    def test_another_member_cannot_finish_his_running_task(self, other, worker, his_task):
         assert _claim(worker).status_code == 200
         refused = other.post(
             f"{API}tasks/{his_task.id}/finish/",
@@ -227,7 +229,7 @@ class TestAnotherMemberIsRefused:
         after = ClaudeTask.objects.get(pk=his_task.id)
         assert after.status == RUNNING and after.summary is None
 
-    def test_she_cannot_upload_a_file_against_his_task(self, other, worker, his_task):
+    def test_another_member_cannot_upload_a_file_against_his_task(self, other, worker, his_task):
         assert _claim(worker).status_code == 200
         row = ClaudeTaskFile.objects.create(
             household=his_task.household, task=his_task, path="C:/x/notes.txt",
@@ -242,7 +244,25 @@ class TestAnotherMemberIsRefused:
         row.refresh_from_db()
         assert row.uploaded_at is None and row.content is None
 
-    def test_she_cannot_report_a_session_on_his_machine(self, other, his_task):
+    def test_a_members_worker_token_cannot_report_a_session_on_his_machine(
+        self, other_member, his_task
+    ):
+        """The ownership half of the `sessions/` fence, past the worker-token half: a token this
+        engine would call a worker's still may not write a session row under his machine."""
+        _token, raw = DeviceToken.issue(
+            other_member, f"claude-session-{MACHINE}", scope=DeviceToken.SCOPE_CLAUDE_WORKER
+        )
+        refused = _client_for(raw).post(
+            f"{API}sessions/",
+            {"machine": MACHINE, "session_id": "s-3", "project": "legion", "state": "waiting",
+             "name": "theirs", "last_prompt_summary": "x", "at": "2026-11-24T10:00:00Z"},
+            format="json",
+        )
+        assert refused.status_code == 403, refused.data
+        assert "another member's laptop" in refused.data["detail"]
+        assert not ClaudeCodeSession.objects.filter(session_id="s-3").exists()
+
+    def test_another_member_cannot_report_a_session_on_his_machine(self, other, his_task):
         refused = other.post(
             f"{API}sessions/",
             {"machine": MACHINE, "session_id": "s-2", "project": "legion", "state": "waiting",
@@ -252,7 +272,9 @@ class TestAnotherMemberIsRefused:
         assert refused.status_code == 403, refused.data
         assert not ClaudeCodeSession.objects.filter(session_id="s-2").exists()
 
-    def test_his_workflows_are_neither_listed_nor_runnable_by_her(self, other, worker, his_task):
+    def test_his_workflows_are_neither_listed_nor_runnable_by_a_member(
+        self, other, worker, his_task
+    ):
         assert _beat(worker, workflows=[WORKFLOW], workflows_hash="h1").status_code == 200
         listed = other.get(f"{API}workflows/")
         assert listed.status_code == 200
@@ -261,6 +283,16 @@ class TestAnotherMemberIsRefused:
             f"{API}workflows/run/", {"machine": MACHINE, "name": "log-audit"}, format="json"
         )
         assert refused.status_code == 400, refused.data
+        assert not ClaudeTask.objects.filter(workflow="log-audit").exists()
+
+
+    def test_a_workflow_phrase_finds_none_of_his_machines(self, other, worker, his_task):
+        """`_resolve_workflow` reads the caller's own machines, so Alfred answering a member's
+        phrase ("audit my logs") never routes it onto his laptop."""
+        assert _beat(worker, workflows=[WORKFLOW], workflows_hash="h1").status_code == 200
+        refused = _create(other, request="audit my logs", workflow="audit my logs")
+        assert refused.status_code == 400, refused.data
+        assert refused.data["workflows"] == []
         assert not ClaudeTask.objects.filter(workflow="log-audit").exists()
 
 
@@ -355,6 +387,24 @@ class TestOnlyTheBoundWorker:
         assert finished.status_code == 403, finished.data
         assert ClaudeTask.objects.get(pk=his_task.id).summary is None
 
+    def test_his_own_phone_token_may_not_upload_a_file(self, token_a, worker, his_task):
+        """The upload is the worker's verb too: a result's bytes come from the laptop that
+        claimed the task, not from a token that merely belongs to Kevin."""
+        assert _claim(worker).status_code == 200
+        row = ClaudeTaskFile.objects.create(
+            household=his_task.household, task=his_task, path="C:/x/a.txt", name="a.txt", size=3,
+            requested_at=his_task.created_at,
+        )
+        refused = token_a.post(
+            f"{API}tasks/{his_task.id}/files/",
+            {"file_id": row.id, "file": SimpleUploadedFile("a.txt", b"abc")},
+            format="multipart",
+        )
+        assert refused.status_code == 403, refused.data
+        assert "not the worker bound" in refused.data["detail"]
+        row.refresh_from_db()
+        assert row.uploaded_at is None and row.content is None
+
     def test_a_second_worker_token_of_his_cannot_claim_that_machine(
         self, household_user, worker, his_task
     ):
@@ -373,3 +423,31 @@ class TestOnlyTheBoundWorker:
         assert refused.status_code == 403, refused.data
         assert "Only a Claude worker's own token" in refused.data["detail"]
         assert not ClaudeMachine.objects.filter(name="A new laptop").exists()
+
+    def test_a_member_cannot_bind_a_machine_that_holds_his_work(self, other_member, his_task):
+        """A machine's token is `SET_NULL`, and a session hook names a machine before any
+        heartbeat binds one, so `unbound` is not the same as `new`. A member heartbeating as an
+        unbound machine that already holds his tasks would take it over and lock his own worker
+        out of it, every later heartbeat of his reading as another member's machine."""
+        ClaudeMachine.objects.filter(name=MACHINE).update(token=None)
+        _token, raw = DeviceToken.issue(
+            other_member, f"claude-session-{MACHINE}", scope=DeviceToken.SCOPE_CLAUDE_WORKER
+        )
+        refused = _beat(_client_for(raw))
+        assert refused.status_code == 403, refused.data
+        assert "another member's laptop" in refused.data["detail"]
+        assert _machine().token_id is None
+
+    def test_his_own_worker_rebinds_that_machine_after_a_new_token(
+        self, household_user, his_task
+    ):
+        """The other half of the rule above, and the one that would break him: re-installing the
+        worker issues a new token, and his own next heartbeat must bind the machine again."""
+        ClaudeMachine.objects.filter(name=MACHINE).update(token=None)
+        token, raw = DeviceToken.issue(
+            household_user, f"claude-session-{MACHINE}", scope=DeviceToken.SCOPE_CLAUDE_WORKER
+        )
+        again = _client_for(raw)
+        assert _beat(again).status_code == 200
+        assert _machine().token_id == token.pk
+        assert _claim(again).status_code == 200

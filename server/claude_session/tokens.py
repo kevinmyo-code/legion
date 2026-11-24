@@ -14,8 +14,12 @@ ADR 0067: every laptop worker holds an ordinary household device token, named
 
 **The honest limit, said where the rule lives.** The scope is what the worker reports, and the
 token name is a convention of the installer. A member's token is a member's token: a worker
-installed by hand under another name, or a phone token copied onto a laptop, is not recognised.
-ADR 0067's own follow-up, "worker endpoints restricted to machine tokens", is what closes this.
+installed by hand under another name, or a phone token copied onto a laptop, is not recognised
+here. ADR 0067's own follow-up, "worker endpoints restricted to machine tokens", landed
+2026-11-24 as `claude_session.fences`: the `/api/claude/` worker routes now take only the token a
+machine's own heartbeat bound, and a heartbeat takes only a token this module calls a worker's.
+So a hand-named token can no longer bind itself a machine, and the limit above is what the
+BINDING rests on rather than what the routes rest on.
 
 **The `claude_worker` scope (architecture upgrade 2, 2026-11-10)** closes the other direction: a
 token issued with it reaches only `WORKER_ROUTES`, whatever its name

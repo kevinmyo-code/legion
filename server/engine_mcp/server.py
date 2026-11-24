@@ -116,16 +116,19 @@ def _tools_for_request(request):
     The declaration and the door read the SAME fence (`_call_tool` below), which is the property
     `surface.py`'s own docstring warns about: a client told about a tool the door refuses will
     call it and be told no."""
-    from assistant.surface import member_refusal
+    from assistant.surface import member_refusals
     from household.tenancy import household_of
     from procedures.listing import tool_for
 
     household = household_of(request) if request is not None else None
     user = getattr(request, "user", None)
+    offered = [tool for tool in TOOLS if tool.name not in NOT_ON_MCP]
+    # One pass for the whole registry: the per-name call costs a query (`member_refusals`).
+    fenced = member_refusals(user, [tool.name for tool in offered])
     return [
         tool_for(tool, user, household) if tool.name == "run_procedure" else tool
-        for tool in TOOLS
-        if tool.name not in NOT_ON_MCP and member_refusal(tool.name, user) is None
+        for tool in offered
+        if tool.name not in fenced
     ]
 
 

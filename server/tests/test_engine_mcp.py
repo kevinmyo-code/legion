@@ -670,13 +670,11 @@ def test_a_tool_the_member_fence_refuses_is_neither_listed_nor_run(mcp_read, mon
     refuses leaves the declaration AND is refused at the door, in words, having run nothing."""
     import assistant.surface as surface
 
+    why = "Nothing was read or written. list_events is not yours to run."
     monkeypatch.setattr(
         surface,
-        "member_refusal",
-        lambda name, user, args=None: (
-            "Nothing was read or written. not_for_you is not yours to run."
-            if name == "list_events" else None
-        ),
+        "member_refusals",
+        lambda user, names, args=None: {n: why for n in names if n == "list_events"},
     )
     listed = {
         tool["name"] for tool in json.loads(rpc(mcp_read, "tools/list").content)["result"]["tools"]
@@ -684,7 +682,7 @@ def test_a_tool_the_member_fence_refuses_is_neither_listed_nor_run(mcp_read, mon
     assert "list_events" not in listed
     assert "read_records" in listed
     is_error, text, structured = call(mcp_read, "list_events", {})
-    assert is_error and "not yours to run" in text
+    assert is_error and text == why
     assert structured is None
 
 

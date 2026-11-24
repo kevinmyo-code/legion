@@ -361,6 +361,21 @@ DARK_REFUSAL = (
 )
 
 
+def member_refusals(user, names, args: dict | None = None) -> dict[str, str]:
+    """`member_refusal` for many names at once, reading the recruiter row and the dark list ONCE.
+
+    `/mcp` asks about the whole registry on every `tools/list`, and `is_recruiter` is "one query,
+    never cached" by its own docstring, so a per-name call there would be a query per tool - a
+    deployed query count nobody meant (the same caution `member_only_tools` states). Single-name
+    callers go through `member_refusal`, which is this function, so there is one rule and not
+    two."""
+    if is_recruiter(user):
+        refusals = ((name, _recruiter_refusal(name, args)) for name in names)
+        return {name: why for name, why in refusals if why is not None}
+    dark = dark_tools()
+    return {name: DARK_REFUSAL.format(name=name) for name in names if name in dark}
+
+
 def member_refusal(name: str, user, args: dict | None = None) -> str | None:
     """Why `user` may not call `name` at all, in words, or None: the PER-MEMBER half of the
     fence, worded for no particular door.
@@ -375,11 +390,7 @@ def member_refusal(name: str, user, args: dict | None = None) -> str | None:
     (`dark_tools`). It refuses a member of the household no registry tool, because
     `EXCLUDED_FROM_WEB` is empty and the member surface IS the registry - so this is the place a
     per-member narrowing goes, not a fence that narrows anything yet."""
-    if is_recruiter(user):
-        return _recruiter_refusal(name, args)
-    if name in dark_tools():
-        return DARK_REFUSAL.format(name=name)
-    return None
+    return member_refusals(user, (name,), args).get(name)
 
 
 def refusal_for(name: str, user=None, args: dict | None = None) -> str | None:

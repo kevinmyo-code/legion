@@ -83,11 +83,18 @@ def machine_refusal(request, machine: ClaudeMachine) -> str | None:
     name is unique per household, so a narrowed lookup would miss another member's row and try to
     create a second one with the same name, which the unique constraint answers with a 500 rather
     than a refusal."""
-    if machine.token_id is None:
-        return None
-    if DeviceToken.objects.filter(pk=machine.token_id, user=request.user).exists():
-        return None
-    return ANOTHER_MEMBERS_MACHINE
+    if machine.token_id is not None:
+        if DeviceToken.objects.filter(pk=machine.token_id, user=request.user).exists():
+            return None
+        return ANOTHER_MEMBERS_MACHINE
+    # Unbound, so rule 2 says nobody's - unless its own history says otherwise. A machine's
+    # token is `SET_NULL`, and a machine a session hook named has none yet, so "unbound" is not
+    # only "brand new": without this, a member could heartbeat as a machine that already holds
+    # another member's work, bind it to their own token and lock that member's worker out of it
+    # (every later heartbeat of theirs would read as another member's machine).
+    if ClaudeTask.objects.filter(machine=machine).exclude(user=request.user).exists():
+        return ANOTHER_MEMBERS_MACHINE
+    return None
 
 
 def worker_refusal(request) -> str | None:

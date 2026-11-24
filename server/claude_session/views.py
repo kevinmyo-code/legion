@@ -5,10 +5,15 @@ route is token-authenticated like every other device call
 (`DeviceTokenAuthentication` plus `IsHouseholdMember`, the project
 defaults) and every read and write goes through the caller's household
 (`household_of` / `scoped`, ADR 0045). The phone, the web, the laptop worker
-and the session hooks all hold ordinary household device tokens; nothing
-here tells them apart, and the "Who" column of the table is the intended
-caller, not an enforced role (Kevin 2026-11-01: accepted for v1; later,
-worker endpoints restricted to machine tokens).
+and the session hooks all hold ordinary household device tokens, and the "Who"
+column of the table was the intended caller rather than an enforced one
+(Kevin 2026-11-01: accepted for v1; later, worker endpoints restricted to
+machine tokens). **That follow-up landed 2026-11-24, and it is
+`claude_session.fences`:** a task is its creating member's, a machine is the
+member whose worker heartbeats it, and heartbeat, claim, finish, upload and
+the session hooks are the bound worker's. The "Who" column is enforced now,
+so a route here reads `fences.own_*` rather than `scoped` and says in words
+when it refuses.
 
 **Nothing here logs.** No logger is imported. A request, a summary, a
 question and a file name are household data; they are stored and returned
