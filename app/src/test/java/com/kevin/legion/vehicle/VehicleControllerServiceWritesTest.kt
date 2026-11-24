@@ -103,24 +103,32 @@ class VehicleControllerServiceWritesTest {
             MaintenanceItem(vehicleId = "V1", serviceName = "Oil Change", intervalMiles = 5_000)
         )
 
-        val outcome = VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 231_500)
+        val outcome = VehicleController.logServiceDirect(
+            context, "oil change", vehicleId = "V1", statedMileage = 231_500,
+        )
 
         assertTrue("Was: ${outcome.message}", outcome.success)
         val record = FleetEngineStore.getRecentForVehicle(context, "V1", 1).single()
         assertEquals("the figure he stated, not the 227,000 estimate", 231_500, record.mileage)
-        assertEquals("and it is the anchor", 231_500, FleetEngineStore.get(context, "V1", "Oil Change")!!.lastDoneMileage)
+        val item = FleetEngineStore.get(context, "V1", "Oil Change")!!
+        assertEquals("and it is the anchor", 231_500, item.lastDoneMileage)
         assertTrue("the reply must state what landed. Was: ${outcome.message}", outcome.message.contains("231500"))
     }
 
     @Test
     fun `logServiceDirect with a stated mileage moves the odometer through the one odometer writer`() = runBlocking {
-        VehicleController.logServiceDirect(context, "oil change", vehicleId = "V1", statedMileage = 231_500)
+        VehicleController.logServiceDirect(
+            context, "oil change", vehicleId = "V1", statedMileage = 231_500,
+        )
 
         // Otherwise the anchor would sit 4,500 miles above the figure isDue subtracts from, and the
         // next oil change would come due that much late.
         val vehicle = VehicleController.vehicleFor(context, "V1")
         assertEquals(231_500, vehicle.odometerBaseline)
-        assertEquals("a confirmed reading resets the trip accumulator, as set_odometer does", 0.0, vehicle.tripMilesSinceBaseline, 0.001)
+        assertEquals(
+            "a confirmed reading resets the trip accumulator, as set_odometer does",
+            0.0, vehicle.tripMilesSinceBaseline, 0.001,
+        )
     }
 
     @Test
@@ -129,13 +137,16 @@ class VehicleControllerServiceWritesTest {
 
         assertFalse("a reading out of range is questioned, never filed. Was: ${outcome.message}", outcome.success)
         assertTrue("no record", FleetEngineStore.getRecentForVehicle(context, "V1", 10).isEmpty())
-        assertEquals("and the odometer is untouched", 227_000, VehicleController.vehicleFor(context, "V1").odometerBaseline)
+        val vehicle = VehicleController.vehicleFor(context, "V1")
+        assertEquals("and the odometer is untouched", 227_000, vehicle.odometerBaseline)
     }
 
     @Test
     fun `logServiceDirect with an ambiguous name writes no odometer reading either`() = runBlocking {
-        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Check The Wheel Alignment"))
-        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = "Front Wheel Alignment"))
+        val name1 = "Check The Wheel Alignment"
+        val name2 = "Front Wheel Alignment"
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = name1))
+        FleetEngineStore.upsertNewItem(context, MaintenanceItem(vehicleId = "V1", serviceName = name2))
 
         val outcome = VehicleController.logServiceDirect(
             context, "Wheel Alignment Check", vehicleId = "V1", statedMileage = 231_500,
