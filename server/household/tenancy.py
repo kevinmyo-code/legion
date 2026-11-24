@@ -234,12 +234,6 @@ TENANT_TABLES: tuple[str, ...] = (
     "advisor_advice",
     "pending_transactions",
     "proactive_raises",
-    # engine-brain ticket 15: user-aspect records (the phone's aspect engine), shared in the
-    # household like every hand-made row; parents before children (`homes/models.py`).
-    "user_aspects",
-    "user_record_types",
-    "user_field_defs",
-    "user_records",
     # T3b: a head unit's own engine sign-in, private to the member who paired it (`OWNER_PATHS`;
     # `headunit_signin/models.py`). Only a hash of each token is stored.
     "headunit_credentials",
@@ -349,10 +343,6 @@ DJANGO_MANAGED_TENANT_TABLES: frozenset[str] = frozenset(
         "advisor_advice",
         "pending_transactions",
         "proactive_raises",
-        "user_aspects",
-        "user_record_types",
-        "user_field_defs",
-        "user_records",
         "headunit_credentials",
         "board_snapshots",
         "board_ideas",
