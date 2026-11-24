@@ -225,6 +225,53 @@ class TestAnotherMemberIsRefused:
         assert status.data["machines"] == []
         assert status.data["sessions"] == []
 
+    def test_his_sessions_on_an_unbound_machine_are_not_hers_to_read(
+        self, other, token_a, worker
+    ):
+        """The unbound variant of the case above. His machine is `full` so the prose is kept,
+        and then its token goes (a device deleted at the database): the row keeps his session's
+        name and summary, and an unbound machine is nobody's, so she reads neither."""
+        assert _beat(worker).status_code == 200
+        assert worker.post(
+            f"{API}sessions/",
+            {"machine": MACHINE, "session_id": "s-4", "project": "legion", "state": "waiting",
+             "name": "his session name", "last_prompt_summary": "his private summary",
+             "at": "2026-11-24T10:00:00Z"},
+            format="json",
+        ).status_code == 200
+        ClaudeMachine.objects.filter(name=MACHINE).update(token=None)
+
+        status = other.get(f"{API}status/")
+        assert status.status_code == 200
+        assert status.data["machines"] == []
+        assert status.data["sessions"] == []
+        # The row is still there; what changed is who may read it.
+        assert ClaudeCodeSession.objects.get(session_id="s-4").name == "his session name"
+
+    def test_her_own_session_on_a_machine_she_named_is_not_on_his_status(
+        self, other_member, token_a
+    ):
+        """The other direction. `sessions/` makes a machine row for a name it has not seen and
+        binds nothing, so a member with a worker-shaped token of her own could put a machine and
+        a session of hers on HIS status screen."""
+        _token, raw = DeviceToken.issue(
+            other_member, "claude-session-Her laptop", scope=DeviceToken.SCOPE_CLAUDE_WORKER
+        )
+        reported = _client_for(raw).post(
+            f"{API}sessions/",
+            {"machine": "Her laptop", "session_id": "s-5", "project": "hers", "state": "waiting",
+             "name": "hers", "last_prompt_summary": "her summary",
+             "at": "2026-11-24T10:00:00Z"},
+            format="json",
+        )
+        assert reported.status_code == 200, reported.data
+        assert ClaudeMachine.objects.get(name="Her laptop").token_id is None
+
+        status = token_a.get(f"{API}status/")
+        assert status.status_code == 200
+        assert [m["name"] for m in status.data["machines"]] == []
+        assert status.data["sessions"] == []
+
     def test_another_member_cannot_heartbeat_as_his_machine(self, other, his_task):
         before = _machine().token_id
         refused = _beat(other)
@@ -449,6 +496,43 @@ class TestOnlyTheBoundWorker:
         refused = _claim(other_worker)
         assert refused.status_code == 403, refused.data
         assert ClaudeTask.objects.get(pk=his_task.id).status == QUEUED
+
+    def test_she_cannot_queue_work_onto_a_machine_no_worker_has_bound(
+        self, other, other_member, token_a, worker
+    ):
+        """The lock-out, in the sequence that reaches it. A session hook can name a machine
+        before any heartbeat binds it, and a task of hers on that machine used to make
+        `machine_refusal` read his own worker's next heartbeat as another member's. So she may
+        not put work there at all, and his first heartbeat after the hook still binds."""
+        hooked = worker.post(
+            f"{API}sessions/",
+            {"machine": "Spare laptop", "session_id": "s-9", "project": "legion",
+             "state": "idle", "name": "", "last_prompt_summary": None,
+             "at": "2026-11-24T10:00:00Z"},
+            format="json",
+        )
+        assert hooked.status_code == 200, hooked.data
+        unbound = ClaudeMachine.objects.get(name="Spare laptop")
+        assert unbound.token_id is None
+
+        refused = _create(other, machine="Spare laptop")
+        assert refused.status_code == 400, refused.data
+        assert "No machine has that name here" in refused.data["detail"]
+        assert not ClaudeTask.objects.filter(machine=unbound).exists()
+        # A workflow phrase and an assign are the same queryset, so neither reaches it either.
+        hers = _create(other, request="rename my files")
+        assert hers.status_code == 201, hers.data
+        assigned = other.post(
+            f"{API}tasks/{hers.data['id']}/assign/", {"machine": "Spare laptop"}, format="json"
+        )
+        assert assigned.status_code in (404, 409), assigned.data
+
+        # And the sequence the real worker runs: its first heartbeat binds that machine.
+        beat = _beat(worker, name="Spare laptop")
+        assert beat.status_code == 200, beat.data
+        unbound.refresh_from_db()
+        assert unbound.token_id is not None
+        assert _claim(worker, name="Spare laptop").status_code in (200, 204)
 
     def test_an_app_token_may_not_heartbeat_at_all(self, token_a):
         refused = _beat(token_a, name="A new laptop")

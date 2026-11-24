@@ -15,10 +15,18 @@ membership only, and `IsHouseholdOwner` "must never appear on a data route"):
 1. **A task is its creating member's** (`ClaudeTask.user`, set at create and at every mint).
    Another member's task answers exactly like a task that does not exist.
 2. **A machine is the member whose worker heartbeats it** (`ClaudeMachine.token.user`). A machine
-   no worker has ever beaten is bound to no token; it is nobody's laptop, it runs nothing, and it
-   stays household-wide rather than becoming unreachable - except that nobody may BIND one that
-   already holds another member's tasks, which would take that member's machine over
-   (`machine_refusal`).
+   no worker has ever beaten is bound to no token, and it is nobody's: it runs nothing, no member
+   may queue work onto it or name it in a workflow, it is on nobody's status screen and its
+   sessions are nobody's to read. Nobody may BIND one that already holds another member's tasks
+   either, which would take that member's machine over (`machine_refusal`). "Nobody's" is the
+   whole of it, in the querysets and in the refusals both: reading the same NULL as
+   "everybody's" in a queryset and "nobody may take it" in a refusal is what let one member's
+   task on an unbound machine refuse its real worker's own next heartbeat.
+   The cost, named rather than hidden: a machine whose session hooks have reported while its
+   worker service was never running is on nobody's status screen until that worker's first
+   heartbeat binds it. The first heartbeat after a hook still works - the heartbeat and the hooks
+   look a machine up household-wide (`_machine_any`) and refuse through `machine_refusal`, never
+   through `own_machines`.
 3. **The worker's own verbs belong to the worker bound to that machine.** Heartbeat, claim, finish
    and upload are the laptop's, not the phone's: a member's app token may not take over a machine
    identity, and nothing but the token the machine's own heartbeat bound may claim its queue or
@@ -31,8 +39,6 @@ private rows in it, so the fence is strict ownership. `views._owned_delivery` al
 posture for a delivered file (ADR 0080, "the requesting member's own devices").
 """
 from __future__ import annotations
-
-from django.db.models import Q
 
 from claude_session.models import ClaudeCodeSession, ClaudeMachine, ClaudeTask, ClaudeTaskFile
 from household.models import DeviceToken
@@ -55,13 +61,15 @@ NOT_THIS_MACHINES_WORKER = (
 )
 
 
-def _mine(user) -> Q:
-    """Rule 2, as a filter: my worker's machines, plus every machine no worker has bound."""
-    return Q(token__user=user) | Q(token__isnull=True)
-
-
 def own_machines(request):
-    return scoped(ClaudeMachine, request).filter(_mine(request.user))
+    """Rule 2, as a filter: the machines this member's own worker has bound, and no others.
+
+    An unbound machine is nobody's on both sides of the fence. It used to be admitted here as
+    "everybody's", which let a member queue work onto a machine that her worker will never claim
+    while `machine_refusal` read that work as a reason to refuse the real worker's next
+    heartbeat: one POST and the laptop went dark (`tools/claude_session/engine_client.py` treats
+    a 403 as the engine being down and retries in silence)."""
+    return scoped(ClaudeMachine, request).filter(token__user=request.user)
 
 
 def own_tasks(request):
@@ -73,9 +81,12 @@ def own_files(request):
 
 
 def own_sessions(request):
-    return scoped(ClaudeCodeSession, request).filter(
-        Q(machine__token__user=request.user) | Q(machine__token__isnull=True)
-    )
+    """Rule 2 again, through the session's machine: the sessions on the machines this member's
+    own worker has bound. An unbound machine's sessions are nobody's to read, in both
+    directions - a session of his on a machine whose worker has not beaten yet is not hers, and
+    a session she reports on a machine name of her own is not his. What leaks here is prose, a
+    session's `name` and its `last_prompt_summary`, not merely the fact that a session exists."""
+    return scoped(ClaudeCodeSession, request).filter(machine__token__user=request.user)
 
 
 def machine_refusal(request, machine: ClaudeMachine) -> str | None:
@@ -89,11 +100,12 @@ def machine_refusal(request, machine: ClaudeMachine) -> str | None:
         if DeviceToken.objects.filter(pk=machine.token_id, user=request.user).exists():
             return None
         return ANOTHER_MEMBERS_MACHINE
-    # Unbound, so rule 2 says nobody's - unless its own history says otherwise. A machine's
-    # token is `SET_NULL`, and a machine a session hook named has none yet, so "unbound" is not
-    # only "brand new": without this, a member could heartbeat as a machine that already holds
-    # another member's work, bind it to their own token and lock that member's worker out of it
-    # (every later heartbeat of theirs would read as another member's machine).
+    # Unbound, so rule 2 says nobody's - unless its own history says otherwise. No member can
+    # queue work onto an unbound machine any more (`_mine`), so the tasks below are a machine
+    # that WAS bound and whose `DeviceToken` row went (`SET_NULL`, on a user delete): without
+    # this, another member could then heartbeat as it, bind it to their own token and lock that
+    # member's worker out of it (every later heartbeat of theirs reading as another member's
+    # machine).
     if ClaudeTask.objects.filter(machine=machine).exclude(user=request.user).exists():
         return ANOTHER_MEMBERS_MACHINE
     return None
