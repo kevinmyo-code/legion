@@ -2,7 +2,7 @@ package com.kevin.legion.engine.migration
 
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.ItemList
-import com.kevin.legion.data.local.ListItem
+import com.kevin.legion.data.local.LegacyListItem
 import com.kevin.legion.data.local.ListItemSkip
 import com.kevin.legion.engine.notes.NotesAspectSeeder
 import com.kevin.legion.testutil.RoomTestReset
@@ -57,7 +57,8 @@ class EngineDataMigrationWave1CutoverTest {
     fun `catchUpOnce picks up a legacy row written after wave 1's own first pass`() = runBlocking {
         val listId = seedList()
         val now = System.currentTimeMillis()
-        db.listItemDao().insert(ListItem(listId = listId, text = "first pass item", createdAt = now, updatedAt = now))
+        db.legacyListItemDao()
+            .insert(LegacyListItem(listId = listId, text = "first pass item", createdAt = now, updatedAt = now))
 
         // Wave 1's ordinary first pass (as if this install ran it before cutover shipped).
         EngineDataMigrationWave1.copyNotesIfNeeded(context)
@@ -68,7 +69,9 @@ class EngineDataMigrationWave1CutoverTest {
         // simulated here since no code path writes list_items anymore post-cutover, but the DAO
         // itself still physically can (this is exactly the historical-data scenario catchUpOnce
         // exists for, not a live write path).
-        db.listItemDao().insert(ListItem(listId = listId, text = "late-arriving item", createdAt = now + 1, updatedAt = now + 1))
+        db.legacyListItemDao().insert(
+            LegacyListItem(listId = listId, text = "late-arriving item", createdAt = now + 1, updatedAt = now + 1),
+        )
 
         val ran = EngineDataMigrationWave1.catchUpOnce(context)
         assertTrue("the first catch-up call must actually run, not report already-done", ran)
@@ -80,7 +83,8 @@ class EngineDataMigrationWave1CutoverTest {
     fun `catchUpOnce only ever forces a rescan once`() = runBlocking {
         val listId = seedList()
         val now = System.currentTimeMillis()
-        db.listItemDao().insert(ListItem(listId = listId, text = "one item", createdAt = now, updatedAt = now))
+        db.legacyListItemDao()
+            .insert(LegacyListItem(listId = listId, text = "one item", createdAt = now, updatedAt = now))
 
         val first = EngineDataMigrationWave1.catchUpOnce(context)
         val second = EngineDataMigrationWave1.catchUpOnce(context)
@@ -102,12 +106,19 @@ class EngineDataMigrationWave1CutoverTest {
         // record directly instead, which - after the should-fix 1 guard landed - made the fixture
         // indistinguishable from a genuine collision and the guard correctly refused to touch it,
         // failing this test for the right reason applied to the wrong fixture.)
-        val throwawayLegacyId = db.listItemDao().insert(ListItem(listId = listId, text = "throwaway", createdAt = now, updatedAt = now))
-        db.listItemDao().deleteById(throwawayLegacyId, now)
-        val legacyItemId = db.listItemDao().insert(
-            ListItem(listId = listId, text = "weekly trash day", repeatKind = "WEEKLY", repeatEvery = 1, createdAt = now, updatedAt = now),
+        // Seeded tombstoned rather than inserted-then-soft-deleted: `LegacyListItemDao` has no
+        // delete now that nothing in the app writes this table, and the fixture only needs the row
+        // to EXIST and be tombstoned so it burns id 1.
+        db.legacyListItemDao().insert(
+            LegacyListItem(listId = listId, text = "throwaway", createdAt = now, updatedAt = now, deleted = true),
         )
-        val legacyItem = db.listItemDao().getById(legacyItemId)!!
+        val legacyItemId = db.legacyListItemDao().insert(
+            LegacyListItem(
+                listId = listId, text = "weekly trash day", repeatKind = "WEEKLY", repeatEvery = 1,
+                createdAt = now, updatedAt = now,
+            ),
+        )
+        val legacyItem = db.legacyListItemDao().getById(legacyItemId)!!
         val skipDate = now
         db.listItemSkipDao().insert(ListItemSkip(itemId = legacyItemId, skippedDate = skipDate))
 
@@ -156,8 +167,8 @@ class EngineDataMigrationWave1CutoverTest {
         // `records`', so its very first row ALSO gets id 1, forcing the collision this test exists
         // to exercise.
         val listId = seedList()
-        val legacyItemBId = db.listItemDao().insert(
-            ListItem(listId = listId, text = "item B", createdAt = now, updatedAt = now),
+        val legacyItemBId = db.legacyListItemDao().insert(
+            LegacyListItem(listId = listId, text = "item B", createdAt = now, updatedAt = now),
         )
         assertEquals("the fixture only proves anything if the two id spaces genuinely collide", engineIdA, legacyItemBId)
 
