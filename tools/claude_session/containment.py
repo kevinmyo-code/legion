@@ -79,11 +79,16 @@ SCRIPT_EXT = frozenset({
     ".ts", ".vbs", ".vbe", ".wsf", ".wsh", ".hta", ".exe", ".dll", ".scr", ".msi", ".lnk", ".reg",
     ".jar", ".rb", ".pl", ".php", ".ipynb", ".com", ".cpl", ".kts", ".gradle"})
 
-# Read under taint: never the worker's own folder (config holds the engine token), and never a
-# file that holds a credential.
+# Never read by a helper, tainted or not (the forged-yes trace, 2026-11-24): the worker's own
+# folder (config holds the engine token, tokens/ holds Kevin's confirmations), and any file that
+# holds a credential. `config.json` and anything named `*token*` are on the list because the
+# engine token's own file was not: a clean helper could read it and speak to the engine as the
+# laptop. `*token*` is deliberately wide and catches ordinary source files too (a `tokens.py`, a
+# `TokenStore.kt`): a task that needs one says so and Kevin reads it out.
 CREDENTIAL_NAMES = re.compile(
     r"(^|[\\/])(\.ssh|\.gnupg|\.aws|\.azure|\.kube|\.docker|gcloud|\.config[\\/]gcloud"
-    r"|\.git-credentials|\.netrc|_netrc|\.npmrc|\.pypirc|\.?credentials\.json"
+    r"|\.git-credentials|\.netrc|_netrc|\.npmrc|\.pypirc|\.?credentials\.json|config\.json"
+    r"|[^\\/]*token[^\\/]*"
     r"|application_default_credentials\.json|local\.properties|[^\\/]*\.env|\.env\.[^\\/]*"
     r"|[^\\/]*\.(pem|key|p12|pfx|keystore|jks))([\\/]|$)", re.I)
 
@@ -123,8 +128,14 @@ OWN_TRANSCRIPT_REASON = (
     "WORKER TRANSCRIPTS: the worker's own sessions are never read by a helper (their messages "
     "carry confirmation tokens). Do not retry or work around it.")
 CRED_REASON = (
-    "READ-THROUGH: after reading mail, the web or an untrusted file, a task may not read the "
-    "worker's own files or a credential file. Do not retry or work around it.")
+    "WORKER FILES: a task never reads the worker's own folder outside its work folder (config "
+    "holds the engine token, tokens/ holds Kevin's confirmations) or a credential file, read-"
+    "through or not. Kevin's yes does not open it either. Do not retry or work around it: say in "
+    "the report what you could not read.")
+ROOT_SCRIPT_REASON = (
+    "WORKER FILES: this names a file a task wrote whose own text names the worker's folder "
+    "(tokens, sends, taint, config.json). Such a file is never run or handled by a shell, because "
+    "nothing can see what a program does once it starts. Do not retry or work around it.")
 
 
 # --------------------------------------------------------------------------- the marks
@@ -192,9 +203,20 @@ def record_net_script(paths: Paths, target: str, now: float | None = None) -> No
     _add_path(paths.taint / "net_scripts.json", target, time.time() if now is None else now)
 
 
+def record_root_script(paths: Paths, target: str, now: float | None = None) -> None:
+    """A file a task wrote whose text names the worker's own folder (the forged-yes trace). Its
+    own list, so running it is refused in its own words rather than the network's."""
+    _add_path(paths.taint / "root_scripts.json", target, time.time() if now is None else now)
+
+
 def blocked_paths(paths: Paths) -> set[str]:
     return {i["path"] for f in ("written.json", "net_scripts.json")
             for i in _load_list(paths.taint / f) if isinstance(i, dict) and i.get("path")}
+
+
+def root_script_paths(paths: Paths) -> set[str]:
+    return {i["path"] for i in _load_list(paths.taint / "root_scripts.json")
+            if isinstance(i, dict) and i.get("path")}
 
 
 def written_paths(paths: Paths) -> set[str]:
@@ -212,7 +234,7 @@ def prune(paths: Paths, cutoff: float) -> None:
                 f.unlink(missing_ok=True)
         except OSError:
             pass
-    for name in ("written.json", "net_scripts.json"):
+    for name in ("written.json", "net_scripts.json", "root_scripts.json"):
         p = paths.taint / name
         items = _load_list(p)
         kept = [i for i in items if isinstance(i, dict) and i.get("at", 0) >= cutoff]
@@ -462,21 +484,113 @@ def fetches(command: str) -> bool:
                              r"|repo\s+view)\b", command, re.I))
 
 
-def content_net_script(target: str, content: str, cfg: dict) -> bool:
-    """A script file whose text reaches a host off the allowlist (or one it cannot name)."""
+def content_net_script(target: str, content: str) -> bool:
+    """A script file whose text reaches the network at all, whatever host it names.
+
+    The host allowlist used to excuse one aimed at an allowed host, and the LEGION engine is on
+    that allowlist, so the one script shape this rule exists to stop (a POST that forges Kevin's
+    yes at `/api/claude/tasks/`) was the one it let through: the forged-yes trace, 2026-11-24. A
+    helper still reaches GitHub, pypi and npm by shell, where `network_denial` checks the host as
+    before; a hand-written script doing HTTP is rare and is exactly this attack's shape.
+    """
     if Path(target).suffix.lower() not in SCRIPT_EXT or not content:
         return False
-    if not (CODE_NET_RE.search(content) or PS_NET_RE.search(content)
-            or NET_VERB_RE.search(content)):
+    return bool(CODE_NET_RE.search(content) or PS_NET_RE.search(content)
+                or NET_VERB_RE.search(content))
+
+
+# --------------------------------------------------------------------------- the worker's root
+
+# Path-shaped text, in a script's source or in a command: a drive path, a POSIX absolute path, a
+# Git Bash `/c/...` drive, or one relative to the folder the command runs in.
+_PATH_TEXT_RE = re.compile(
+    r"[A-Za-z]:[\\/][^\s\"'`<>|;,)\]}]*"
+    r"|(?<![\w.$])[\\/](?:[\w.~$%-]+[\\/])+[\w.~$%-]*"
+    r"|(?<![\w.$])\.{1,2}[\\/][^\s\"'`<>|;,)\]}]*")
+
+
+def _path_texts(text: str) -> list[str]:
+    """Every path-shaped run in `text`, with a source file's doubled backslashes collapsed (a
+    python or PowerShell literal writes `C:\\\\Users`, and `norm` would keep the pair)."""
+    flat = text.replace("\\\\", "\\")
+    out = []
+    for m in _PATH_TEXT_RE.finditer(flat):
+        tok = m.group(0).rstrip(".,;:'\")]}")
+        g = re.match(r"^/([a-zA-Z])/(.*)$", tok)
+        if g and os.name == "nt":
+            tok = f"{g.group(1)}:/{g.group(2)}"
+        out.append(tok)
+    return out
+
+
+def _under_root_outside_work(cand: str, cwd: str, paths: Paths) -> bool:
+    try:
+        target = cand if os.path.isabs(cand) else (os.path.join(cwd, cand) if cwd else "")
+        if not target:
+            return False
+        return is_under(target, paths.root) and not is_under(target, paths.work)
+    except (OSError, ValueError):
         return False
-    allow = default_allow(cfg)
-    hosts = _hosts(content, False)
-    return not hosts or any(not host_allowed(h, allow) for h in hosts)
+
+
+def _names_root_by_tail(text: str, paths: Paths) -> bool:
+    """The root's own folder name followed by anything but `work`.
+
+    `%APPDATA%`, `$env:APPDATA`, `~`, `$HOME` and `os.environ['APPDATA'] + '/legion-claude'` all
+    write the root without ever writing its absolute path, so an absolute-path check alone misses
+    every one of them. The folder name is read off `Paths` at run time, so a root moved by
+    `LEGION_CLAUDE_HOME` is still its own name.
+    """
+    name = re.escape(paths.root.name)
+    work = paths.work.name.lower()
+    for m in re.finditer(name + r"[\\/]+([\w.-]+)", text.replace("\\\\", "\\"), re.I):
+        if m.group(1).lower() != work:
+            return True
+    return False
+
+
+def names_worker_root(text: str, cwd: str, paths: Paths) -> bool:
+    """Does this text name the worker's own root outside the work folder: `tokens/`, `sends/`,
+    `taint/`, `config.json`, `state.json`, the logs?
+
+    For a COMMAND, a read is enough: a `cat`, `type` or `Get-Content` of `config.json` hands a
+    helper the engine's device token, and `shell_verdict` only ever looked at commands that WRITE.
+    For a script a helper WROTE, this is what gets it recorded, because the hook reads tool calls
+    and has no view into a subprocess's own file I/O: that is how a forged `yes` token got written
+    in the trace (write a script into the work folder, run it, let it write the token), and
+    recording it is what makes `names_blocked` refuse to run it.
+
+    `cwd` is the folder a relative path is resolved against: the folder the command runs in, or
+    for a script the folder it would run from, so `../../tokens/x.json` is seen for what it is.
+    """
+    if not text:
+        return False
+    return (_names_root_by_tail(text, paths)
+            or any(_under_root_outside_work(c, cwd, paths) for c in _path_texts(text)))
 
 
 # --------------------------------------------------------------------------- paths in a command
 
 _TOKEN_RE = re.compile(r"\"([^\"]+)\"|'([^']+)'|([^\s\"'|;&<>()]+)")
+
+
+def runs_blocked_module(command: str, cwd: str, blocked: set[str]) -> bool:
+    """`python -m forge` and `python -c "import forge"` run a blocked file while naming a MODULE,
+    so `names_blocked` sees no path at all. Match the module against the stem of a blocked file in
+    the folder the command runs in (python puts the script's own folder on `sys.path`)."""
+    if not blocked or not cwd:
+        return False
+    found = re.findall(r"(?:^|[\s\"'])-m[\s=]+([\w.]+)|\bimport\s+([\w.]+)"
+                       r"|__import__\(\s*[\"']([\w.]+)", command, re.I)
+    names = {n.split(".")[0] for group in found for n in group if n}
+    for name in names:
+        for ext in (".py", ".pyw"):
+            try:
+                if norm(os.path.join(cwd, name + ext)) in blocked:
+                    return True
+            except (OSError, ValueError):
+                pass
+    return False
 
 
 def names_blocked(command: str, cwd: str, blocked: set[str]) -> bool:

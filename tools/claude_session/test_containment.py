@@ -422,8 +422,10 @@ class TestWhatATaintedTaskMayDo(Base):
         report.write_text("written")  # an existing report: the ask list still guards it
         self.denied("Write", {"file_path": str(report), "content": "again"}, "ASK LIST")
 
-    def test_no_reading_the_workers_files_or_credentials_after_taint(self):
-        self.passed("Read", {"file_path": str(self.paths.config)})  # untainted: unchanged
+    def test_no_reading_the_workers_files_or_credentials_tainted_or_not(self):
+        # The forged-yes trace, 2026-11-24: this denial used to be conditional on taint, which
+        # left `config.json` and so the engine's device token readable by a clean helper.
+        self.denied("Read", {"file_path": str(self.paths.config)}, "credential")
         self.taint()
         for p in (self.paths.config, self.paths.tokens / "41-yes.json",
                   self.root / ".ssh" / "id_ed25519", self.root / "deploy" / ".env",
@@ -431,6 +433,50 @@ class TestWhatATaintedTaskMayDo(Base):
             with self.subTest(p=p.name):
                 self.denied("Read", {"file_path": str(p)}, "credential")
         self.passed("Read", {"file_path": str(self.work / "notes.md")})
+
+
+class TestTheWorkerFolderIsNeverRead(Base):
+    """Part 3. Every one of these passed at `origin/dev` for a CLEAN helper."""
+
+    def test_the_read_tool_is_denied_untainted(self):
+        for p in (self.paths.config, self.paths.tokens / "41-yes.json",
+                  self.paths.sends / "41.json", self.paths.taint / "task-41.json",
+                  self.paths.state, self.paths.agents):
+            with self.subTest(name=p.name):
+                self.denied("Read", {"file_path": str(p)}, "WORKER FILES", agent="agentA")
+
+    def test_a_shell_read_of_the_same_files_is_denied_untainted(self):
+        cfg = self.paths.config.as_posix()
+        for tool, cmd in (("Bash", f"cat {cfg}"), ("Bash", f"cat '{cfg}'"),
+                          ("PowerShell", f"type {cfg}"),
+                          ("PowerShell", f"Get-Content {cfg} -Raw"),
+                          ("Bash", f"python -c \"print(open('{cfg}').read())\""),
+                          ("Bash", f"grep -i token {cfg}"),
+                          ("Bash", f"cat {self.paths.tokens.as_posix()}/41-yes.json"),
+                          ("Bash", "cat ../../config.json")):
+            with self.subTest(cmd=cmd[:48]):
+                self.denied(tool, {"command": cmd}, "WORKER FILES", agent="agentA",
+                            cwd=self.work)
+
+    def test_config_json_and_token_names_are_credential_names_anywhere(self):
+        for name in (r"C:\x\config.json", r"C:\x\tokens\41-yes.json",
+                     r"C:\x\engine-token.txt", "C:/x/.ssh/id_ed25519"):
+            with self.subTest(name=name):
+                self.assertTrue(C.CREDENTIAL_NAMES.search(name), name)
+        # Still not a credential: the word inside a longer filename.
+        self.assertFalse(C.CREDENTIAL_NAMES.search(r"C:\x\notes\credentials-howto.md"))
+
+    def test_the_tasks_own_work_folder_is_still_readable(self):
+        for p in (self.work / "notes.md", self.paths.work / "shared.csv"):
+            with self.subTest(name=p.name):
+                self.passed("Read", {"file_path": str(p)}, agent="agentA")
+        self.passed("Bash", {"command": f"cat {(self.work / 'notes.md').as_posix()}"},
+                    agent="agentA")
+        self.passed("Bash", {"command": "dir"}, agent="agentA", cwd=self.work)
+
+    def test_a_repo_file_is_still_readable(self):
+        self.passed("Read", {"file_path": str(self.docs / "aw4.md")}, agent="agentA")
+        self.passed("Bash", {"command": f"cat {self.docs.as_posix()}/aw4.md"}, agent="agentA")
 
 
 class TestWrittenList(Base):
@@ -513,11 +559,14 @@ class TestEgress(Base):
                     agent="agentZ")
         self.denied("Bash", {"command": f"python {s.as_posix()}"}, "NETWORK", agent="agentZ")
         self.denied("Bash", {"command": "python get.py"}, "NETWORK", agent="agentZ", cwd=own)
+        # The host no longer excuses it (the forged-yes trace, 2026-11-24): the LEGION engine is
+        # itself on the allowlist, so the one script shape the rule exists to stop was the one it
+        # let through. A helper still reaches GitHub by shell, where the host is checked.
         ok = own / "gh.py"
         self.passed("Write", {"file_path": str(ok), "content":
                               "import urllib.request\nurllib.request.urlopen("
                               "'https://api.github.com/repos/o/r')\n"}, agent="agentZ")
-        self.passed("Bash", {"command": f"python {ok.as_posix()}"}, agent="agentZ")
+        self.denied("Bash", {"command": f"python {ok.as_posix()}"}, "NETWORK", agent="agentZ")
         e = own / "e.ps1"
         self.passed("Write", {"file_path": str(e), "content": "x"}, agent="agentZ")
         self.passed("Edit", {"file_path": str(e), "old_string": "x",

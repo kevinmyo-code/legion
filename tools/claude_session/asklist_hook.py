@@ -859,13 +859,23 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
                     C.record_written(paths, target, now)
                 except OSError:
                     return _deny(C.MARK_FAILED_REASON), "read_through", True
-        if tool in READ_TOOLS:
-            target = inp.get("file_path") or inp.get("path") or cwd
-            if target and ((is_under(target, paths.root) and not is_under(target, paths.work))
-                           or C.CREDENTIAL_NAMES.search(str(target))):
-                return _deny(C.CRED_REASON), "read_through", True
+
+    # The worker's own folder and credential files: never readable by a helper, read-through or
+    # not (the forged-yes trace, 2026-11-24). It used to sit inside the taint branch above, which
+    # left `config.json` and so the engine's device token open to a clean helper. The shell half
+    # matters as much as the tool half: `cat` reaches the same file, and `shell_verdict` below
+    # only ever looked at commands that write.
+    if tool in READ_TOOLS:
+        target = inp.get("file_path") or inp.get("path") or cwd
+        if target and C.credential_path(paths, target, paths.work):
+            return _deny(C.CRED_REASON), "worker files read", True
+    if command and not ours and C.names_worker_root(command, cwd, paths):
+        return _deny(C.CRED_REASON), "worker files read", True
 
     if command and not ours:
+        roots = C.root_script_paths(paths)
+        if C.names_blocked(command, cwd, roots) or C.runs_blocked_module(command, cwd, roots):
+            return _deny(C.ROOT_SCRIPT_REASON), "root script", True
         if C.names_blocked(command, cwd, C.written_paths(paths)):
             return _deny(C.WRITTEN_REASON), "read_through written", True
         if C.names_blocked(command, cwd, C.blocked_paths(paths)):
@@ -877,11 +887,17 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
     if tool in WRITE_TOOLS and not is_tainted:
         content = _write_content(tool, inp)
         for target in _write_targets(inp):
-            if C.content_net_script(target, content, cfg):
-                try:
+            # Record it, so `names_blocked` above refuses to run it. The hook cannot watch what a
+            # subprocess does, so a file whose text reaches the network or names the worker's own
+            # folder is never run at all. The root check takes any extension, not only
+            # `SCRIPT_EXT`: `python forge.txt` runs a forging script just as well.
+            try:
+                if C.content_net_script(target, content):
                     C.record_net_script(paths, target, now)
-                except OSError:
-                    return _deny(C.MARK_FAILED_REASON), "net script", True
+                if C.names_worker_root(content, str(own_work or paths.work), paths):
+                    C.record_root_script(paths, target, now)
+            except OSError:
+                return _deny(C.MARK_FAILED_REASON), "net script", True
 
     source = _source(tool, inp, cwd, paths, trec, cfg, agent)
     if source:
