@@ -70,10 +70,12 @@ internal class HeldLines(
      * distinction this area can make.** Everything reaches it through one channel
      * ([ProactiveBus.requestSpeak] carries a prompt and nothing else), so a fresh trouble code or
      * an overheat raised while Moose was speaking is held exactly like idle chatter and goes with
-     * them. The ruling's word was "routine"; telling the two apart needs an urgency on the request,
-     * which is a change at the bus and at every caller. Until then every drop is reported through
-     * [onDropped], so one is a breadcrumb rather than a silence, and a condition that persists is
-     * raised again by the loop that noticed it.
+     * them, and it is LOST rather than deferred: the health monitor advances its own baseline the
+     * moment it speaks (`AriaForegroundService.startHealthMonitor`), so a code it already announced
+     * is never announced again. The ruling's word was "routine"; telling the two apart needs an
+     * urgency on the request, which is a change at the bus and at every caller. Until then every
+     * drop is reported through [onDropped], so it is a breadcrumb rather than a silence, and the
+     * code itself is still there for `get_codes` to read.
      */
     fun onPark(afterDismissal: Boolean, nowMs: Long, onDropped: (String, String) -> Unit): Held? {
         if (afterDismissal) {
