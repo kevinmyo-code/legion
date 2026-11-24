@@ -16,7 +16,9 @@ membership only, and `IsHouseholdOwner` "must never appear on a data route"):
    Another member's task answers exactly like a task that does not exist.
 2. **A machine is the member whose worker heartbeats it** (`ClaudeMachine.token.user`). A machine
    no worker has ever beaten is bound to no token; it is nobody's laptop, it runs nothing, and it
-   stays household-wide rather than becoming unreachable.
+   stays household-wide rather than becoming unreachable - except that nobody may BIND one that
+   already holds another member's tasks, which would take that member's machine over
+   (`machine_refusal`).
 3. **The worker's own verbs belong to the worker bound to that machine.** Heartbeat, claim, finish
    and upload are the laptop's, not the phone's: a member's app token may not take over a machine
    identity, and nothing but the token the machine's own heartbeat bound may claim its queue or
