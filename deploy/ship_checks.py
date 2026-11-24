@@ -90,6 +90,10 @@ PROBE_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 PROBE_PATH = re.compile(r"^/api/[A-Za-z0-9_./-]+$")
 REPO_PATH = re.compile(r"^(server|deploy)/[A-Za-z0-9_./-]+$")
 MIGRATION_PATH = re.compile(r"^server/([^/]+)/migrations/(\d{4}_[A-Za-z0-9_]+)\.py$")
+# The Django migrations this ship applies, and nothing else. `(glob)` stops `*` crossing `/`: the
+# plain `*/migrations/*` this used to pass collected `supabase/migrations/*.sql` (the legacy schema,
+# applied by hand and not in the image) and then refused it as an unexpected file under migrations/.
+MIGRATION_PATHSPEC = ":(glob)server/*/migrations/*"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 BLOB = re.compile(r"^[0-9a-f]{40}$")
 NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -288,6 +292,19 @@ def blob_at(sha: str, path: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
+def schema_status(live_code: str, fix: str) -> list[tuple[str, str]]:
+    """(letter, path) for every Django migration file this ship changes, LIVE_CODE..FIX.
+
+    `MIGRATION_PATHSPEC` says why it is not every path with `migrations/` in it."""
+    return [
+        tuple(line.split("\t", 1))
+        for line in git(
+            "diff", "--no-renames", "--name-status", live_code, fix, "--", MIGRATION_PATHSPEC
+        ).splitlines()
+        if line
+    ]
+
+
 def cmd_scope(a) -> list[str]:
     for v in (a.fix, a.live_code):
         if not SHA.match(v):
@@ -311,13 +328,7 @@ def cmd_scope(a) -> list[str]:
     for p, why in sorted(unfreeze.items()):
         print(f"UNFROZEN by this ship: {p}: {why}")
     mig_pins = parse_pins(open(a.migrations, encoding="utf-8").read()) if a.migrations else {}
-    status = [
-        tuple(line.split("\t", 1))
-        for line in git(
-            "diff", "--no-renames", "--name-status", a.live_code, a.fix, "--", "*/migrations/*"
-        ).splitlines()
-        if line
-    ]
+    status = schema_status(a.live_code, a.fix)
     new_apps = {
         m.group(1)
         for _, p in status
