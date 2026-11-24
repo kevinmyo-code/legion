@@ -7,7 +7,6 @@ import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
-import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -19,6 +18,8 @@ import android.os.HandlerThread
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import com.kevin.midnightai.util.ExternalDoor
+import com.kevin.midnightai.util.ExternalScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -404,32 +405,17 @@ object PhoneLinkManager {
     fun systemBluetoothSettingsIntent(): Intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
 
     /**
-     * Opens one of the system screens above through [open], which on this hardware may not exist.
-     * `ACTION_REQUEST_DISCOVERABLE` and `ACTION_BLUETOOTH_SETTINGS` are optional parts of Android,
-     * and a gutted AOSP head unit (phones owned by a vendor Bluetooth app) handles neither: the
-     * intent then threw [ActivityNotFoundException] straight out of the tap and took the launcher
-     * down with it, which is why this exists rather than a try/catch at one call site.
+     * Opens one of the system screens above through [ExternalDoor], which catches whatever this
+     * ROM throws, and puts its words in [state]'s `lastResult`, where the screen already renders
+     * them above the footer. `ACTION_REQUEST_DISCOVERABLE` and `ACTION_BLUETOOTH_SETTINGS` are
+     * optional parts of Android and this unit handles neither, so the tap threw out of the click
+     * handler and took the launcher down with it.
      *
-     * Whatever it throws becomes one line in [state]'s `lastResult` and a non-fatal naming the
-     * screen and the exception class. Nothing here may take the launcher down, and the unit has no
-     * ADB (`CLAUDE.md` section 14), so the non-fatal is the only way the real reason is ever read:
-     * which exception this ROM throws is diagnosed from the next drive log, not guessed here.
+     * A success clears `lastResult`, so a failure line cannot sit under a later tap that worked.
      */
     fun openSystemScreen(screen: ExternalScreen, open: () -> Unit) {
-        val failure = try {
-            open()
-            return
-        } catch (e: ActivityNotFoundException) {
-            _state.update { it.copy(lastResult = screen.missingWords) }
-            e
-        } catch (e: SecurityException) {
-            _state.update { it.copy(lastResult = screen.refusedWords) }
-            e
-        } catch (e: RuntimeException) {
-            _state.update { it.copy(lastResult = screen.failedWords) }
-            e
-        }
-        com.kevin.midnightai.MidnightEvents.recordError("system_screen_${screen.name.lowercase()}", failure)
+        val words = ExternalDoor.attempt(screen, open = open)
+        _state.update { it.copy(lastResult = words) }
     }
 
     fun vendorAppLaunchIntent(context: Context): Intent? {
