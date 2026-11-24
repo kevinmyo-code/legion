@@ -24,6 +24,13 @@ from tests.conftest import worker_client
 pytestmark = pytest.mark.django_db
 
 API = "/api/claude/"
+
+
+def _wk(client, name="Alienware"):
+    """The worker's own verbs - heartbeat, claim, finish, upload and the session hooks - are the
+    laptop's token's, never Kevin's app token's (`claude_session.fences`). One token per machine
+    name, cached, so claim and finish speak with the token its heartbeat bound."""
+    return worker_client(client, f"claude-session-{name}")
 PAGE = (
     b"<!doctype html><html><head><title>Atlanta &amp; back: a day trip</title></head>"
     b"<body><script>document.title='x'</script><h1>Itinerary</h1></body></html>"
@@ -46,7 +53,7 @@ def _create(client, machine="Alienware", deliver="phone"):
 
 
 def _upload(client, task_id, file_id, blob=PAGE, name="atlanta.html", ctype="text/html"):
-    return client.post(
+    return _wk(client).post(
         f"{API}tasks/{task_id}/files/",
         {"file_id": file_id, "file": SimpleUploadedFile(name, blob, content_type=ctype)},
         format="multipart",
@@ -56,13 +63,15 @@ def _upload(client, task_id, file_id, blob=PAGE, name="atlanta.html", ctype="tex
 def _finished_with_page(client, deliver="phone"):
     _beat(client)
     task_id = _create(client, deliver=deliver).data["id"]
-    claimed = client.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    claimed = _wk(client, "Alienware").post(
+        f"{API}tasks/claim/", {"name": "Alienware"}, format="json"
+    )
     assert claimed.status_code == 200
     found = [
         {"path": "C:/w/41/atlanta.html", "name": "atlanta.html", "size": len(PAGE)},
         {"path": "C:/w/41/notes.txt", "name": "notes.txt", "size": 3},
     ]
-    finished = client.post(
+    finished = _wk(client).post(
         f"{API}tasks/{task_id}/finish/",
         {"status": "done", "summary": "Your Atlanta day trip is ready.", "found": found},
         format="json",
@@ -168,13 +177,17 @@ def test_an_unaddressed_page_task_waits_for_a_machine_that_can_send_it(token_a):
     created = _create(token_a, machine=None)  # nothing online yet
     assert created.status_code == 201 and created.data["machine"] is None
     _beat(token_a, "work laptop", scope="listed")
-    laptop = token_a.post(f"{API}tasks/claim/", {"name": "work laptop"}, format="json")
+    laptop = _wk(token_a, "work laptop").post(
+        f"{API}tasks/claim/", {"name": "work laptop"}, format="json"
+    )
     assert laptop.status_code == 204
     ClaudeMachine.objects.filter(name="work laptop").update(
         last_seen_at=timezone.now() - datetime.timedelta(seconds=300)
     )
     _beat(token_a, "Alienware")
-    claimed = token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    claimed = _wk(token_a, "Alienware").post(
+        f"{API}tasks/claim/", {"name": "Alienware"}, format="json"
+    )
     assert claimed.status_code == 200
     assert claimed.data[0]["id"] == created.data["id"]
 

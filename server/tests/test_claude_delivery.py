@@ -18,6 +18,13 @@ pytestmark = pytest.mark.django_db
 API = "/api/claude/"
 
 
+def _wk(client, name="Alienware"):
+    """The worker's own verbs - heartbeat, claim, finish, upload and the session hooks - are the
+    laptop's token's, never Kevin's app token's (`claude_session.fences`). One token per machine
+    name, cached, so claim and finish speak with the token its heartbeat bound."""
+    return worker_client(client, f"claude-session-{name}")
+
+
 def _beat(client, name="Alienware", scope="full", **extra):
     client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": f"{name}-host", "scope": scope, "state": "idle",
@@ -102,9 +109,11 @@ def test_mail_where_none_can_be_sent_goes_to_the_phone_and_the_pdf_is_requested(
     created = _create(token_a, "Make a one-day garden walk for Springfield as a PDF",
                       deliver="email_self")
     assert _deliver(created["id"]) == "files"
-    claimed = token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    claimed = _wk(token_a, "Alienware").post(
+        f"{API}tasks/claim/", {"name": "Alienware"}, format="json"
+    )
     assert claimed.data[0]["deliver"] == "files"
-    finished = token_a.post(
+    finished = _wk(token_a).post(
         f"{API}tasks/{created['id']}/finish/",
         {"status": "done", "summary": "Your garden walk is ready as a PDF.",
          "found": [{"path": "C:/w/task-1/garden-walk.pdf", "name": "garden-walk.pdf",
@@ -182,8 +191,8 @@ def test_a_pdf_page_on_the_work_laptop_is_refused_not_flipped(token_a):
 
 
 def _finish_found(client, task_id, found):
-    client.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
-    r = client.post(f"{API}tasks/{task_id}/finish/",
+    _wk(client, "Alienware").post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    r = _wk(client).post(f"{API}tasks/{task_id}/finish/",
                     {"status": "done", "summary": "Done.", "found": found}, format="json")
     assert r.status_code == 200, r.data
     return {f["name"]: f["requested"] for f in r.data["files"]}
@@ -194,8 +203,8 @@ def test_a_made_file_task_sends_only_what_it_made_in_its_own_folder(token_a):
     _beat(token_a)
     made = _create(token_a, "make a one-page weekend plan for Austin as a PDF", deliver="phone")
     assert ClaudeTask.objects.get(pk=made["id"]).made_only is True
-    token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
-    finished = token_a.post(
+    _wk(token_a, "Alienware").post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    finished = _wk(token_a).post(
         f"{API}tasks/{made['id']}/finish/",
         {"status": "done", "summary": "Your plan is ready.",
          "found": [{"path": f"C:/w/work/task-{made['id']}/austin.pdf", "name": "austin.pdf",
@@ -253,7 +262,9 @@ def test_a_flip_at_claim_is_made_only(token_a):
     row = ClaudeTask.objects.get(pk=queued["id"])
     assert (row.machine_id, row.deliver, row.made_only) == (None, None, None)
     _beat(token_a)
-    claimed = token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    claimed = _wk(token_a, "Alienware").post(
+        f"{API}tasks/claim/", {"name": "Alienware"}, format="json"
+    )
     assert claimed.data[0]["deliver"] == "files"
     row.refresh_from_db()
     assert row.made_only is True
@@ -269,8 +280,8 @@ def test_mail_on_a_laptop_without_mail_is_files_but_not_made_only(token_a):
 def test_a_plain_files_task_still_sends_what_it_found(token_a):
     _beat(token_a)
     t = _create(token_a, "send me the form scan from my Documents", deliver="files")
-    token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
-    finished = token_a.post(
+    _wk(token_a, "Alienware").post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    finished = _wk(token_a).post(
         f"{API}tasks/{t['id']}/finish/",
         {"status": "done", "summary": "Found it.",
          "found": [{"path": "C:/Users/k/Documents/scan.pdf", "name": "scan.pdf", "size": 900}]},
@@ -295,7 +306,9 @@ def test_settled_at_claim_for_a_task_queued_with_no_machine(token_a):
     queued = _create(token_a, "Make the trip itinerary", deliver="email_self")
     assert queued["machine"] is None and _deliver(queued["id"]) == "email_self"
     _beat(token_a, can_mail=False)
-    claimed = token_a.post(f"{API}tasks/claim/", {"name": "Alienware"}, format="json")
+    claimed = _wk(token_a, "Alienware").post(
+        f"{API}tasks/claim/", {"name": "Alienware"}, format="json"
+    )
     assert claimed.data[0]["deliver"] == "files"
     assert _deliver(queued["id"]) == "files"
 

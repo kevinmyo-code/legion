@@ -20,6 +20,13 @@ from tests.conftest import worker_client
 
 pytestmark = pytest.mark.django_db
 API = "/api/claude/"
+
+
+def _wk(client, name="Alienware"):
+    """The worker's own verbs - heartbeat, claim, finish, upload and the session hooks - are the
+    laptop's token's, never Kevin's app token's (`claude_session.fences`). One token per machine
+    name, cached, so claim and finish speak with the token its heartbeat bound."""
+    return worker_client(client, f"claude-session-{name}")
 T0 = dt.datetime(2026, 11, 12, 3, 0, tzinfo=dt.UTC)
 
 SNAP = {

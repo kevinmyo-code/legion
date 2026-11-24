@@ -148,13 +148,19 @@ def test_a_token_bound_to_a_claude_machine_is_refused_whatever_its_name(
     household_user, auth_client
 ):
     item = _add(auth_client)
-    _token, raw = DeviceToken.issue(household_user, "renamed by hand")
+    token, raw = DeviceToken.issue(household_user, "renamed by hand")
     worker = APIClient()
     worker.credentials(HTTP_AUTHORIZATION=f"Token {raw}")
-    worker.post(
-        "/api/claude/machines/heartbeat/",
-        {"name": "Alienware", "scope": SCOPE_FULL, "state": "idle"},
-        format="json",
+    # The binding is written here rather than through `machines/heartbeat/`: since 2026-11-24
+    # that route admits only a token the engine already recognises as a worker's
+    # (`claude_session.fences.worker_refusal`), so a hand-named one can no longer bind itself.
+    # The vault's rule is about the binding, however it got there, which is what this asserts.
+    from claude_session.models import ClaudeMachine
+
+    ClaudeMachine.objects.create(
+        household=HouseholdMember.objects.get(user=household_user).household,
+        name="Alienware", scope=SCOPE_FULL,
+        token=token,
     )
     assert worker.post(f"{URL}/{item['id']}/reveal", **UNLOCKED).status_code == 403
 
