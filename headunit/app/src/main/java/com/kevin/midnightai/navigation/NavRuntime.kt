@@ -100,12 +100,24 @@ object NavRuntime {
     }
 
     /** Null when the map may run here, else why not, in words. */
-    fun unavailableReason(): String? = when {
-        ::guard.isInitialized && guard.getBoolean(KEY_MAP_STARTING, false) ->
-            "the map stopped this app the last time it opened. Tap TRY MAPS AGAIN to retry"
-        !hasGles3() -> "its graphics chip is older than OpenGL ES 3, which the map needs"
-        else -> null
+    fun unavailableReason(): String? {
+        if (::guard.isInitialized && guard.getBoolean(KEY_MAP_STARTING, false)) {
+            return "the map stopped this app the last time it opened. Tap TRY MAPS AGAIN to retry"
+        }
+        val declared = declaredGlEs()
+        // Asked once per process: the answer cannot change while it runs, and the NAV face calls
+        // this on every open and every token refresh.
+        val decision = es3 ?: NavGles.decide(declared, NavGles.probeEs3Configs()).also {
+            es3 = it
+            com.kevin.midnightai.diag.DriveLog.breadcrumb(
+                "NAVGLES declared=${NavGles.version(declared)} decision=$it",
+            )
+        }
+        return NavGles.words(declared, decision)
     }
+
+    /** Cached [NavGles.Es3] for this process; see [unavailableReason]. */
+    @Volatile private var es3: NavGles.Es3? = null
 
     /**
      * Before any Mapbox object is built (review NAV-3): Mapbox's own logging down to errors
@@ -138,12 +150,16 @@ object NavRuntime {
         controller.refresh()
     }
 
-    private fun hasGles3(): Boolean = runCatching {
+    /**
+     * What the unit says its OpenGL ES version is - the ROM's own claim, not the driver's. Unreadable
+     * reads as ES 3 so an unanswerable ActivityManager never alone takes the map away (the EGL probe
+     * in [NavGles] is what settles a unit that claims less).
+     */
+    private fun declaredGlEs(): Int = runCatching {
         val am = app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        am.deviceConfigurationInfo.reqGlEsVersion >= GLES_3
-    }.getOrDefault(true)
+        am.deviceConfigurationInfo.reqGlEsVersion
+    }.getOrDefault(NavGles.GLES_3)
 
     private const val GUARD_PREFS = "nav_guard"
     private const val KEY_MAP_STARTING = "map_starting"
-    private const val GLES_3 = 0x30000
 }
