@@ -12,8 +12,13 @@ machine tokens). **That follow-up landed 2026-11-24, and it is
 `claude_session.fences`:** a task is its creating member's, a machine is the
 member whose worker heartbeats it, and heartbeat, claim, finish, upload and
 the session hooks are the bound worker's. The "Who" column is enforced now,
-so a route here reads `fences.own_*` rather than `scoped` and says in words
-when it refuses.
+and it is enforced on the way IN: a route reads `fences.own_*`, and says in
+words when it refuses. Three `scoped` reads are left on purpose, and none of
+them is the fence: `_machine_any` looks a machine up household-wide for the two
+worker routes that must find another member's row to refuse it
+(`fences.machine_refusal`), and the other two narrow a file inside a task the
+caller has already passed `_task` or `_owned_delivery` for. A new read here
+belongs in `fences`, not beside them.
 
 **Nothing here logs.** No logger is imported. A request, a summary, a
 question and a file name are household data; they are stored and returned
@@ -1510,8 +1515,12 @@ class FileDownloadView(APIView):
         missing = _detail(
             f"Task {task_id} has no uploaded file {file_id}.", http.HTTP_404_NOT_FOUND
         )
+        # The task's owner decides who may have its bytes, whatever its `deliver` is: a page, a
+        # mailed summary's file, a workflow's result and an ordinary send-file are all one
+        # member's work. `own_files` is the row's existence and the permission in one read, and
+        # another member's file answers exactly like a file that is not there.
         row = (
-            scoped(ClaudeTaskFile, request)
+            fences.own_files(request)
             .select_related("task")
             .filter(task_id=task_id, pk=file_id, uploaded_at__isnull=False)
             .first()

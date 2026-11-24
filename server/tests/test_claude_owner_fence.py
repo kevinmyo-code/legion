@@ -181,6 +181,38 @@ class TestAnotherMemberIsRefused:
         row.refresh_from_db()
         assert row.requested_at is None
 
+    @pytest.mark.parametrize("deliver", [None, "phone"])
+    def test_she_cannot_download_the_bytes_of_a_file_of_his(
+        self, other, token_a, worker, deliver
+    ):
+        """The widest door there was: `tasks/{id}/files/{file}/` served the bytes to any member
+        of the household, for every `deliver` but `files`. His own GET is asserted in the same
+        case, so a 404 for her is the fence and never a row that was never uploaded."""
+        assert _beat(worker).status_code == 200
+        created = _create(token_a, machine=MACHINE, deliver=deliver)
+        assert created.status_code == 201, created.data
+        task = ClaudeTask.objects.get(pk=created.data["id"])
+        assert _claim(worker).status_code == 200
+        page = deliver == "phone"
+        name = "page.html" if page else "notes.txt"
+        row = ClaudeTaskFile.objects.create(
+            household=task.household, task=task, path=f"C:/x/{name}", name=name,
+            size=13, requested_at=task.created_at,
+        )
+        sent = SimpleUploadedFile(
+            name, b"HIS OWN WORDS", content_type="text/html" if page else "text/plain"
+        )
+        stored = worker.post(
+            f"{API}tasks/{task.id}/files/", {"file_id": row.id, "file": sent}, format="multipart"
+        )
+        assert stored.status_code == 201, stored.data
+
+        refused = other.get(f"{API}tasks/{task.id}/files/{row.id}/")
+        assert refused.status_code == 404, refused.status_code
+        his = token_a.get(f"{API}tasks/{task.id}/files/{row.id}/")
+        assert his.status_code == 200, his.status_code
+        assert his.content == b"HIS OWN WORDS"
+
     def test_the_status_screen_shows_a_member_none_of_his_laptop(self, other, worker, his_task):
         assert worker.post(
             f"{API}sessions/",
