@@ -23,12 +23,24 @@ object LogcatSnapshot {
     // "10-15 08:00:00.123  1234  1250 I Tag: message"
     private val header = Regex("""^\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}\s+(\d+)\s+\d+\s+[VDIWEFA]\s""")
 
-    /** Lines of [raw] that carry a threadtime header from one of [ownPids], in order. */
+    // The tag: everything between the level letter and the first ": ".
+    private val tag = Regex("""^\S+ \S+\s+\d+\s+\d+\s+[VDIWEFA]\s+([^:]*?)\s*:""")
+
+    // Review NAV-3: Mapbox's own loggers (maps, navigation, native) and any line that names a
+    // Mapbox server. They can carry route URLs and positions, and the drive log goes to the engine.
+    private val mapboxTag = Regex("""(?i)^(mapbox|mbx|mbgl|nav-native|navigator|com\.mapbox)""")
+
+    /** Lines of [raw] that carry a threadtime header from one of [ownPids], in order, without Mapbox's. */
     fun ours(raw: List<String>, ownPids: Set<String>): List<String> =
         raw.filter { line ->
             val pid = header.find(line)?.groupValues?.get(1)
-            pid != null && pid in ownPids
+            pid != null && pid in ownPids && !isMapbox(line)
         }
+
+    internal fun isMapbox(line: String): Boolean {
+        val t = tag.find(line)?.groupValues?.get(1)?.trim().orEmpty()
+        return mapboxTag.containsMatchIn(t) || line.contains("api.mapbox.com", ignoreCase = true)
+    }
 
     /** The lines of [ours] after [anchor]'s last occurrence, or all of them when it is absent. */
     fun newSince(ours: List<String>, anchor: String?): List<String> {

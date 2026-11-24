@@ -17,8 +17,11 @@ data class GeminiVoice(val name: String, val descriptor: String) {
     val sampleRawName: String get() = "voice_sample_${name.lowercase()}"
 }
 
-/** Falls back to this when a car has no voice chosen (matches GeminiLiveSession's VOICE). Warm + female — the mascot is Zero. */
-const val DEFAULT_VOICE = "Sulafat"
+/**
+ * The voice a car with no choice of its own gets: Moose's own, from [CompanionIdentity.VOICE].
+ * One source, so the picker, the first-run seed and the Live session cannot disagree (2026-11-23).
+ */
+const val DEFAULT_VOICE = CompanionIdentity.VOICE
 
 val CURATED_VOICES = listOf(
     GeminiVoice("Zephyr", "Bright"),

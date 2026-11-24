@@ -122,8 +122,9 @@ object DeviceRole {
         com.kevin.midnightai.location.BeaconClient.stop()
         BeaconService.stop(appContext)
         when (role) {
-            Role.OFF -> Unit
-            Role.HEAD_UNIT -> com.kevin.midnightai.location.BeaconClient.start(appContext)
+            // The receiver decides for itself whether to listen and how
+            // (link.CarLinkRules.feedMode: pairing first, then the role).
+            Role.OFF, Role.HEAD_UNIT -> com.kevin.midnightai.location.BeaconClient.start(appContext)
             Role.GPS_BEACON ->
                 // Skipped without the grant rather than started-and-crashed: the
                 // service declares foregroundServiceType="location", which Android 14

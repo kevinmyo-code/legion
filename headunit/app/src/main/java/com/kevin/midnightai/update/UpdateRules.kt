@@ -14,6 +14,9 @@ object UpdateRules {
 
     const val APP = "Midnight AI"
 
+    /** How a failed CHECK (engine unreachable, offline) begins; every other Failed is a refusal. */
+    const val CHECK_FAILED = "Could not check for an update"
+
     /** What a release means for the app installed now. */
     sealed interface Offer {
         data object DebugBuild : Offer
@@ -33,6 +36,35 @@ object UpdateRules {
      * internet is normally the phone's hotspot, which Android reports as metered, so a Wi-Fi-only
      * default would never download at all. The `fast` APK was 16.7 MB on 2026-11-06. Null when it may start.
      */
+    /** Over this, a download on the phone's hotspot waits for a tap. */
+    const val LARGE_METERED_BYTES = 20L * 1024 * 1024
+
+    private fun mb(bytes: Long) = (bytes + 512 * 1024) / (1024 * 1024)
+
+    /**
+     * Free space an update needs, as a multiple of the APK (review C-3): the downloaded file (1x),
+     * Android's installer copy (1x), and the native libraries it extracts at install with legacy
+     * JNI packaging. Those were 59.0 MB uncompressed in a 42.8 MB arm64 APK (1.4x) on 2026-11-20,
+     * rounded up to 1.5x. Total 3.5x. An estimate from the measured build, not read from the APK.
+     */
+    const val SPACE_FACTOR_TENTHS = 35L
+
+    /** Null when there is room for the download, the install copy and the extracted libraries. */
+    fun spaceRefusal(freeBytes: Long, sizeBytes: Long): String? {
+        val needed = sizeBytes * SPACE_FACTOR_TENTHS / 10
+        return if (sizeBytes > 0 && freeBytes < needed) {
+            "Not downloaded: the update needs about ${mb(needed)} MB free and this unit has ${mb(freeBytes)} MB free. " +
+                "Free some space, then check again."
+        } else {
+            null
+        }
+    }
+
+    fun needsHotspotTap(unmetered: Boolean, sizeBytes: Long): Boolean = !unmetered && sizeBytes > LARGE_METERED_BYTES
+
+    fun hotspotTapWords(sizeBytes: Long): String =
+        "The update is ${mb(sizeBytes)} MB and would come over the phone's hotspot (its mobile data). Tap DOWNLOAD to fetch it."
+
     fun downloadRefusal(online: Boolean, unmetered: Boolean, allowMetered: Boolean): String? = when {
         !online -> "Not downloaded: this unit is offline."
         !unmetered && !allowMetered ->

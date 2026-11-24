@@ -32,19 +32,24 @@ object LocationController {
     private val _state = MutableStateFlow<Location?>(null)
     val state: StateFlow<Location?> = _state.asStateFlow()
 
+    private val _navFixes = MutableStateFlow<Location?>(null)
+
+    /**
+     * Fixes for navigation (HU-1 T5, review NAV-2): ONLY a live fix from the phone's authenticated
+     * feed (MNAI2) or this unit's own GPS, as published and accepted below. Never the
+     * getLastKnownLocation seed (it can be hours old) and never a network fix (often 100 m off).
+     */
+    val navFixes: StateFlow<Location?> = _navFixes.asStateFlow()
+
+    internal fun resetNavFixesForTest() {
+        _navFixes.value = null
+    }
+
     /** Provider name stamped on beacon fixes, so a log or a bug report can tell them apart. */
     const val BEACON_PROVIDER = "midnight-beacon"
 
     private const val NAV_INTERVAL_MS = 1_000L
     private const val NORMAL_INTERVAL_MS = 30_000L
-
-    /**
-     * How long a real on-device fix suppresses beacon fixes. Long enough that a
-     * device with working GPS ignores the beacon entirely between its own updates
-     * at the 1s nav cadence, short enough that losing the internal signal (tunnel,
-     * disconnected antenna) hands over within one normal reporting cycle.
-     */
-    private const val INTERNAL_FRESH_MS = 10_000L
 
     private var initialized = false
 
@@ -63,19 +68,6 @@ object LocationController {
     private var locationManager: LocationManager? = null
     private val navListener = LocationListener { location -> onInternalFix(location) }
     private val normalListener = LocationListener { location -> onInternalFix(location) }
-
-    /**
-     * Elapsed-realtime of the last LIVE fix from this device's own GPS, or null if
-     * it has never produced one.
-     *
-     * Null rather than a 0 sentinel on purpose: `elapsedRealtime()` counts from
-     * boot, not from process start, so "0" is a real timestamp - the instant the
-     * device booted. An app process that starts within [INTERNAL_FRESH_MS] of boot
-     * (plausible on a head unit that powers up with the ignition) would read
-     * `now - 0 < 10s` as "the internal GPS just reported" and silently drop every
-     * beacon fix for that window, on a device whose GPS has never reported anything.
-     */
-    @Volatile private var lastInternalAtMs: Long? = null
 
     /**
      * The reporting rate a [BeaconClient] should ask its phone for right now.
@@ -104,7 +96,7 @@ object LocationController {
             if (!lm.isProviderEnabled(provider)) continue
             // Seeded into state but deliberately NOT counted as a live internal fix.
             // getLastKnownLocation can hand back something hours old, and stamping
-            // lastInternalAtMs with "now" for it would claim the GPS is reporting
+            // a source's last-seen time with "now" for it would claim the GPS is reporting
             // right now - suppressing genuinely current beacon fixes in favour of a
             // cached position from yesterday's drive.
             if (_state.value == null) lm.getLastKnownLocation(provider)?.let { _state.value = it }
@@ -144,9 +136,52 @@ object LocationController {
         locationManager?.removeUpdates(navListener)
     }
 
+    /**
+     * When each source last reported LIVE (elapsedRealtime ms), for [LocationSources.accepts]; a
+     * source that never reported has no entry (never a 0 sentinel: elapsedRealtime counts from boot,
+     * so 0 would read as "just reported" on a unit that powers up with the ignition). HU-1 T4:
+     * the unit's GPS beats the phone, the phone beats a network fix; before, ANY internal fix
+     * (network included) suppressed the beacon, so a 100 m-off Wi-Fi fix could win over the phone.
+     */
+    private val lastSeenMs = java.util.concurrent.ConcurrentHashMap<FixSource, Long>()
+
     private fun onInternalFix(location: Location) {
-        lastInternalAtMs = SystemClock.elapsedRealtime()
-        _state.value = location
+        publish(LocationSources.of(location.provider, BEACON_PROVIDER), location)
+    }
+
+    /** Publishes [location] from [source] unless a better source is live. */
+    @Synchronized
+    internal fun publish(source: FixSource, location: Location) {
+        val now = SystemClock.elapsedRealtime()
+        lastSeenMs[source] = now
+        if (LocationSources.accepts(source, lastSeenMs, now)) {
+            _state.value = location
+            if (source == FixSource.PHONE || source == FixSource.UNIT_GPS) _navFixes.value = location
+        }
+    }
+
+    /**
+     * Publishes a fix from the authenticated phone feed (HU-1 T4, [PhoneFeed]). [fixNanos] is the
+     * fix's time on THIS unit's elapsedRealtimeNanos clock (receive time minus the phone-reported
+     * age, never in the future), so every freshness check downstream sees its real age.
+     */
+    fun acceptPhone(fix: PhoneFix, fixNanos: Long) {
+        val nowNanos = SystemClock.elapsedRealtimeNanos()
+        val stamped = minOf(fixNanos, nowNanos)
+        publish(FixSource.PHONE, Location(BEACON_PROVIDER).apply {
+            latitude = fix.lat
+            longitude = fix.lng
+            fix.accuracyM?.let { accuracy = it }
+            fix.bearingDeg?.let { bearing = it }
+            fix.speedMps?.let { speed = it }
+            fix.altitudeM?.let { altitude = it }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                fix.bearingAccuracyDeg?.let { bearingAccuracyDegrees = it }
+                fix.speedAccuracyMps?.let { speedAccuracyMetersPerSecond = it }
+            }
+            time = System.currentTimeMillis() - (nowNanos - stamped) / 1_000_000L
+            elapsedRealtimeNanos = stamped
+        })
     }
 
     /**
@@ -168,9 +203,7 @@ object LocationController {
      * transport only ever carries a live fix - see [BeaconProtocol].
      */
     fun acceptExternal(fix: BeaconFix) {
-        val lastInternal = lastInternalAtMs
-        if (lastInternal != null && SystemClock.elapsedRealtime() - lastInternal < INTERNAL_FRESH_MS) return
-        _state.value = Location(BEACON_PROVIDER).apply {
+        publish(FixSource.PHONE_UNVERIFIED, Location(LocationSources.UNVERIFIED_PROVIDER).apply {
             latitude = fix.lat
             longitude = fix.lng
             fix.accuracyM?.let { accuracy = it }
@@ -179,6 +212,6 @@ object LocationController {
             fix.altitudeM?.let { altitude = it }
             time = System.currentTimeMillis()
             elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-        }
+        })
     }
 }

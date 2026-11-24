@@ -117,6 +117,7 @@ object FleetUpload {
             cursors = PrefsFleetCursorStore(app),
             http = EngineHttp(EngineConfig(app)),
             status = FleetUploadStatus(app),
+            activeVehicleId = { com.kevin.midnightai.vehicle.ActiveVehicle.current(app) },
         )
     }
 

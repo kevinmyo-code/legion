@@ -1,0 +1,206 @@
+package com.kevin.midnightai.ui.cruise
+
+import com.kevin.midnightai.media.MusicDeckLogic
+import com.kevin.midnightai.ui.GaugeReading
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * HU-1 T1 geometry at both head-unit frames. This stands in for the screenshot tests the plan
+ * asked for: the head unit build has no Roborazzi, and T1 may add no dependency.
+ */
+class CruiseLayoutLogicTest {
+
+    // 800x456 = 800x480 under a 24 dp status bar (the layout starts below it).
+    private val frames = listOf(800f to 480f, 800f to 456f, 1024f to 600f)
+
+    @Test fun at800x480TheColumnsAreTheRailPlusTwoEqualCards() {
+        val c = CruiseLayoutLogic.columns(800f, 480f)
+        assertEquals(8f, c.pad, 0.01f)
+        assertEquals(8f, c.gap, 0.01f)
+        assertEquals(124f, c.rail, 0.01f)
+        // 800 - 2x8 pad - 2x8 gap - 124 rail = 644, halved.
+        assertEquals(322f, c.music, 0.01f)
+        assertEquals(322f, c.middle, 0.01f)
+    }
+
+    /** The order is stated once, and it is the order Kevin asked for. */
+    @Test fun theMusicCardSitsBetweenTheRailAndTheCarPanel() {
+        assertEquals(
+            listOf(CruiseLayoutLogic.Pane.RAIL, CruiseLayoutLogic.Pane.MUSIC, CruiseLayoutLogic.Pane.CAR),
+            CruiseLayoutLogic.ORDER,
+        )
+        val c = CruiseLayoutLogic.columns(800f, 480f)
+        assertEquals(c.rail, c.width(CruiseLayoutLogic.Pane.RAIL), 0.01f)
+        assertEquals(c.music, c.width(CruiseLayoutLogic.Pane.MUSIC), 0.01f)
+        assertEquals(c.middle, c.width(CruiseLayoutLogic.Pane.CAR), 0.01f)
+    }
+
+    /**
+     * Kevin, 2026-11-23: "i want the music controls to be center and the map/car data to be on
+     * right. and their width should be equal." The console rail keeps the left ("left keep as is",
+     * 2026-11-19), so the two cards Kevin named split what is left of the frame between them.
+     */
+    @Test fun theMusicCardAndTheCarPanelAreTheSameWidthAtEveryFrame() {
+        frames.forEach { (w, h) ->
+            val c = CruiseLayoutLogic.columns(w, h)
+            assertEquals("${w}x$h music ${c.music} vs car ${c.middle}", c.middle, c.music, 0.01f)
+        }
+    }
+
+    @Test fun columnsFillTheWidthAndEveryRailTileIsDriveSize() {
+        frames.forEach { (w, h) ->
+            val c = CruiseLayoutLogic.columns(w, h)
+            assertEquals(w, 2 * c.pad + 2 * c.gap + c.rail + c.middle + c.music, 0.01f)
+            assertTrue("$w tile ${c.tileWidth}", c.tileWidth >= MusicDeckLogic.TOUCH_MIN)
+            // Room for the CAR / NAV pair (2 x 84) and the GPS readout beside it.
+            assertTrue("$w middle ${c.middle}", c.middle >= 300f)
+        }
+    }
+
+    @Test fun theRailFitsAPortraitAt800x480AndUnderTheStatusBar() {
+        listOf(480f, 456f).forEach { h ->
+            val u = CruiseLayoutLogic.unit(800f, h)
+            val c = CruiseLayoutLogic.columns(800f, h)
+            val rail = h - 2 * c.pad
+            listOf(1.0f, 1.3f).forEach { scale ->
+                assertTrue("800x$h at font $scale", CruiseLayoutLogic.railShowsPortrait(rail, c.rail, u, scale))
+            }
+            val box = rail - CruiseLayoutLogic.clockHeight(u, 1f) - CruiseLayoutLogic.railBottomHeight(u) - 2 * u
+            assertTrue("800x$h edge", CruiseLayoutLogic.portraitEdge(box, c.rail, u) >= 72f)
+        }
+    }
+
+    @Test fun theInBoxTalkTileIsNeverUnderDriveSize() {
+        assertEquals(56f, CruiseLayoutLogic.inBoxTalkTileHeight(boxHeight = 0f, u = 8f), 0.01f)
+        assertEquals(56f, CruiseLayoutLogic.inBoxTalkTileHeight(boxHeight = 30f, u = 8f), 0.01f)
+        assertEquals(58f, CruiseLayoutLogic.inBoxTalkTileHeight(boxHeight = 200f, u = 8f), 0.01f)
+    }
+
+    @Test fun aShortRailFallsBackToATalkTileInsteadOfLosingTheTalkControl() {
+        // Phone landscape (MEDIUM rides the head-unit layout): about 800x360.
+        val u = CruiseLayoutLogic.unit(800f, 360f)
+        val c = CruiseLayoutLogic.columns(800f, 360f)
+        assertFalse(CruiseLayoutLogic.railShowsPortrait(360f - 2 * c.pad, c.rail, u, 1f))
+        // In fallback the TALK tile replaces the phone chip: the bottom group is the same height.
+        assertTrue(CruiseLayoutLogic.railBottomHeight(u) + 2 * c.pad <= 360f)
+    }
+
+    @Test fun heroKeysMatchThePrototypeAt800() {
+        val k = MusicDeckLogic.heroKeys(contentWidth = 264f, u = 8f)
+        assertEquals(92f, k.height, 0.01f)
+        assertEquals(76f, k.volumeWidth, 0.01f)
+        assertEquals(64f, k.volumeHeight, 0.01f)
+        assertEquals(75.2f, k.mid, 0.2f)
+        assertEquals(97.6f, k.big, 0.2f)
+        assertTrue(k.meterFits)
+    }
+
+    @Test fun heroKeysFitTheCardAndAreAboutThreeTimesTodayAtBothFrames() {
+        frames.forEach { (w, h) ->
+            val u = CruiseLayoutLogic.unit(w, h)
+            val content = CruiseLayoutLogic.columns(w, h).music - 2 * u
+            val k = MusicDeckLogic.heroKeys(content, u)
+            assertTrue("$w row ${2 * k.mid + k.big + 2 * u} > $content", 2 * k.mid + k.big + 2 * u <= content + 0.01f)
+            listOf(k.mid, k.big, k.height, k.volumeWidth, k.volumeHeight).forEach {
+                assertTrue("$w key $it", it >= MusicDeckLogic.TOUCH_MIN)
+            }
+            assertTrue(k.meterFits)
+            // The old previous/next key is a max(6u, 48) circle; the new one has about 3x its area.
+            val old = maxOf(6f * u, 48f)
+            assertTrue("$w area ratio", (k.mid * k.height) / (old * old) >= 2.5f)
+        }
+    }
+
+    @Test fun scrollingPlaylistRowsFillTheFaceAndNeverGoUnderDriveSize() {
+        // The function PinnedPlaylistGrid's scroll mode calls with its measured height.
+        val gap = 7.2f
+        listOf(140f, 168f, 190f, 260f).forEach { h ->
+            val row = MusicDeckLogic.scrollRowHeight(h, gap)
+            assertTrue("$h -> $row", row >= MusicDeckLogic.TOUCH_MIN)
+            if (h >= 3 * MusicDeckLogic.TOUCH_MIN + 2 * gap) {
+                assertEquals(h, 3 * row + 2 * gap, 0.01f)
+            }
+        }
+        assertEquals(MusicDeckLogic.TOUCH_MIN, MusicDeckLogic.scrollRowHeight(100f, gap), 0.01f)
+    }
+
+    // --- Middle panel words --------------------------------------------------------------
+
+    private val beacon = "midnight-beacon"
+
+    @Test fun gpsFromThePhoneWithAFreshFix() {
+        assertEquals(
+            MiddlePanelText.Gps("Phone", "fix 1 s ago", stale = false),
+            MiddlePanelText.gps(beacon, 1_400L, beacon),
+        )
+    }
+
+    @Test fun gpsOnTheUnitItself() {
+        assertEquals("GPS on this unit", MiddlePanelText.gps("gps", 500L, beacon).source)
+    }
+
+    @Test fun aNetworkFixIsNeverCalledGps() {
+        assertEquals("Network location", MiddlePanelText.gps("network", 500L, beacon).source)
+        assertEquals("Network location", MiddlePanelText.gps("fused", 500L, beacon).source)
+    }
+
+    @Test fun aNegativeAgeIsNoFixAndShowsNoSpeed() {
+        // A cached fix stamped before this boot, or a clock jump.
+        assertEquals(MiddlePanelText.Gps("No GPS", "no fix yet", stale = true), MiddlePanelText.gps(beacon, -2_000L, beacon))
+        assertEquals(null, MiddlePanelText.speedMph(28.6f, -2_000L))
+    }
+
+    @Test fun anOldFixReadsAsLost() {
+        assertEquals(
+            MiddlePanelText.Gps("Phone", "lost 12 s", stale = true),
+            MiddlePanelText.gps(beacon, 12_000L, beacon),
+        )
+        assertEquals("lost 5 min", MiddlePanelText.gps(beacon, 300_000L, beacon).age)
+        assertEquals("lost over an hour", MiddlePanelText.gps(beacon, 7_200_000L, beacon).age)
+    }
+
+    @Test fun fixAgeComesFromTheMonotonicClock() {
+        assertEquals(null, MiddlePanelText.fixAgeMs(nowNanos = 5_000_000_000L, fixNanos = null))
+        assertEquals(1_500L, MiddlePanelText.fixAgeMs(nowNanos = 5_000_000_000L, fixNanos = 3_500_000_000L))
+        // A fix stamped after now (another boot, a clock jump) is negative: gps() and speedMph() reject it.
+        assertEquals(-1_000L, MiddlePanelText.fixAgeMs(nowNanos = 1_000_000_000L, fixNanos = 2_000_000_000L))
+    }
+
+    @Test fun speedBlanksAtTheSameMomentTheHeaderSaysLost() {
+        assertEquals(64, MiddlePanelText.speedMph(28.6f, 900L))
+        assertEquals(64, MiddlePanelText.speedMph(28.6f, 3_000L))
+        assertEquals(false, MiddlePanelText.gps(beacon, 3_000L, beacon).stale)
+        assertEquals(null, MiddlePanelText.speedMph(28.6f, 3_001L))
+        assertEquals(true, MiddlePanelText.gps(beacon, 3_001L, beacon).stale)
+        assertEquals(null, MiddlePanelText.speedMph(null, 900L))
+        assertEquals(null, MiddlePanelText.speedMph(28.6f, null))
+    }
+
+    @Test fun theNavPlaceholderInvitesNoVoiceCommandThatDoesNotExist() {
+        val text = (MiddlePanelText.NAV_PLACEHOLDER_TITLE + " " + MiddlePanelText.NAV_PLACEHOLDER_LINE).lowercase()
+        assertTrue(text, "say" !in text && "navigate to" !in text)
+    }
+
+    @Test fun noFixSaysSo() {
+        assertEquals(MiddlePanelText.Gps("No GPS", "no fix yet", stale = true), MiddlePanelText.gps(null, null, beacon))
+    }
+
+    @Test fun carGaugesAreTheCruisePicksAtMostFour() {
+        val all = listOf("coolant", "volts", "iat", "load", "fuel", "baro").map { GaugeReading(it, it.uppercase(), "1") }
+        val picked = MiddlePanelText.carGauges(all, setOf("volts", "load", "coolant", "fuel", "baro"))
+        assertEquals(listOf("coolant", "volts", "load", "fuel"), picked.map { it.key })
+    }
+
+    @Test fun storedCodeLine() {
+        assertNull(MiddlePanelText.storedCodes(emptyList(), emptyMap()))
+        assertEquals(
+            "1 stored code · P0128 Coolant thermostat",
+            MiddlePanelText.storedCodes(listOf("P0128"), mapOf("P0128" to "Coolant thermostat")),
+        )
+        assertEquals("2 stored codes · P1234", MiddlePanelText.storedCodes(listOf("P1234", "P0420"), emptyMap()))
+    }
+}

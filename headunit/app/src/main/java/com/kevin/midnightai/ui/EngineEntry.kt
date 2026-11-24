@@ -56,6 +56,27 @@ fun EngineEntry(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val config = remember { EngineConfig(context) }
     val auth = remember { EngineAuth(config) }
+    // Owner PIN (2026-11-20): once set, the engine sign-in is shown or changed only after it.
+    val ownerPin = remember { com.kevin.midnightai.link.OwnerPin(context) }
+    var unlocked by remember { mutableStateOf(!ownerPin.isSet()) }
+    // Re-checked every second (review L-e), like the pairing pane: a prompt opened while parked
+    // goes away when the car starts moving.
+    var driving by remember { mutableStateOf(com.kevin.midnightai.update.DrivingState.isDriving()) }
+    LaunchedEffect(unlocked) {
+        while (!unlocked) {
+            kotlinx.coroutines.delay(1_000)
+            driving = com.kevin.midnightai.update.DrivingState.isDriving()
+        }
+    }
+    if (!unlocked) {
+        val gate = com.kevin.midnightai.link.OwnerPinGate.gate(pinSet = true, driving = driving)
+        if (gate == com.kevin.midnightai.link.OwnerPinGate.Gate.PARK_FIRST) {
+            Text(com.kevin.midnightai.link.OwnerPinGate.PARK_FIRST, style = MaterialTheme.typography.bodyMedium, color = AriaColors.TextPrimary)
+        } else {
+            OwnerPinPrompt(ownerPin, prompt = "Owner PIN to see or change the engine sign-in.", onOk = { unlocked = true }, onCancel = null)
+        }
+        return
+    }
 
     var urlText by remember { mutableStateOf(config.baseUrl()) }
     var urlStatus by remember { mutableStateOf<String?>(null) }
@@ -100,9 +121,9 @@ fun EngineEntry(modifier: Modifier = Modifier) {
         val saved = saveUrlDroppingStaleSession()
         urlStatus = if (saved) {
             urlText = config.baseUrl()
-            "Saved."
+            if (EngineConfig.isUnencrypted(urlText)) "Saved. Not encrypted: this local address uses plain http." else "Saved."
         } else {
-            "That didn't look like an address - start with https://."
+            "Use an https:// address. Plain http is accepted only for a local network address (192.168.x.x, 10.x.x.x, 172.16-31.x.x)."
         }
         configured = config.isConfigured()
     }
@@ -157,10 +178,15 @@ fun EngineEntry(modifier: Modifier = Modifier) {
         working = true
         testResult = null
         scope.launch {
+            val wasCarLink = config.isCarLinkSignIn()
             auth.logout()
             signedIn = config.isSignedIn()
             me = null
-            status = "Signed out of this device."
+            status = if (wasCarLink) {
+                "Removed the car's sign-in from this unit. Revoke it on your phone too."
+            } else {
+                "Signed out of this device."
+            }
             statusIsError = false
             working = false
         }
@@ -186,6 +212,27 @@ fun EngineEntry(modifier: Modifier = Modifier) {
         urlStatus?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = AriaColors.TextDim)
         }
+        if (config.baseUrl().isNotBlank() && !EngineConfig.isValidBaseUrl(config.baseUrl())) {
+            Text(
+                "The saved address is not used: plain http is only allowed to a local network address. Enter an https address.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AriaColors.accentText(AriaColors.Amber),
+            )
+        }
+        if (signedIn && config.hasCarLinkReserve()) {
+            Text(
+                "The car's own sign-in from your phone is kept in reserve. It is used only if you sign out here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AriaColors.TextDim,
+            )
+        }
+        if (configured && EngineConfig.isUnencrypted(config.baseUrl())) {
+            Text(
+                "Not encrypted: this engine address uses plain http on the local network.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AriaColors.accentText(AriaColors.Amber),
+            )
+        }
         Spacer(Modifier.height(16.dp))
 
         Text(
@@ -198,10 +245,12 @@ fun EngineEntry(modifier: Modifier = Modifier) {
                 is MeResult.Ok -> "Signed in as ${state.email} on this device."
                 is MeResult.Refused -> state.message
                 is MeResult.Unreachable -> state.message
+                is MeResult.CarLink -> state.message
             },
             style = MaterialTheme.typography.bodySmall,
             color = when (me) {
                 is MeResult.Ok, null -> AriaColors.TextDim
+                is MeResult.CarLink -> if ((me as MeResult.CarLink).refused) AriaColors.ScanRed else AriaColors.TextDim
                 else -> AriaColors.ScanRed
             },
         )

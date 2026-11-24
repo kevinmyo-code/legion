@@ -1,0 +1,162 @@
+package com.kevin.midnightai.ui.cruise
+
+import com.kevin.midnightai.media.MusicDeckLogic
+import com.kevin.midnightai.ui.GaugeReading
+
+/**
+ * The HU-1 Cruise layout in numbers (dp as Floats, so it is JVM-tested at 800x480 and 1024x600):
+ * console rail, then the two cards Kevin named, all sized from u = 1% of the frame width (capped by
+ * height), the unit the approved prototype was drawn in at 800x480: 8 dp padding and gaps and a
+ * 124 dp rail.
+ *
+ * **Order and widths, Kevin 2026-11-23:** "i want the music controls to be center and the map/car
+ * data to be on right. and their width should be equal." So [ORDER] is rail, music, car, and the
+ * two cards split what the rail leaves equally. This supersedes the 2026-11-19 prototype's "car in
+ * the middle song on the right" with its fixed 280 dp music card; "left keep as is with the avatar
+ * and the buttons" still stands, which is why the rail is not a third equal column - two drive-size
+ * tiles are all it has to hold, and a 322 dp rail would waste a 480 dp frame.
+ */
+object CruiseLayoutLogic {
+    /** Height cap on u: a 1024x600 frame (58.6 u tall), same as the split deck before it. */
+    const val HEIGHT_UNITS = 58.6f
+
+    fun unit(widthDp: Float, heightDp: Float): Float = minOf(widthDp / 100f, heightDp / HEIGHT_UNITS)
+
+    /** A Cruise column. [CAR] is the CAR / NAV panel: the map and the car data. */
+    enum class Pane { RAIL, MUSIC, CAR }
+
+    /** Left to right on screen. The one place the order is stated; the screen renders this list. */
+    val ORDER = listOf(Pane.RAIL, Pane.MUSIC, Pane.CAR)
+
+    data class Columns(val pad: Float, val gap: Float, val rail: Float, val middle: Float, val music: Float) {
+        /** One rail tile: two per row. Kept for [Columns]; height is [railTileHeight]. */
+        val tileWidth: Float get() = (rail - gap) / 2f
+
+        fun width(pane: Pane): Float = when (pane) {
+            Pane.RAIL -> rail
+            Pane.MUSIC -> music
+            Pane.CAR -> middle
+        }
+    }
+
+    fun columns(widthDp: Float, heightDp: Float): Columns {
+        val u = unit(widthDp, heightDp)
+        val pad = u
+        val gap = u
+        // Two drive-size tiles side by side, never narrower.
+        val rail = maxOf(u * 15.5f, 2 * MusicDeckLogic.TOUCH_MIN + gap)
+        // The music card and the CAR / NAV panel share what is left, equally (2026-11-23).
+        val card = (widthDp - 2 * pad - 2 * gap - rail) / 2f
+        return Columns(pad, gap, rail, middle = card, music = card)
+    }
+
+    // --- The console rail's height budget (review L2, 2026-11-20) ---------------------------
+
+    /** The prototype's 58 dp tile at 800 wide, never under drive size. */
+    fun railTileHeight(u: Float): Float = maxOf(MusicDeckLogic.TOUCH_MIN, u * 7.25f)
+
+    /** Phone chip (or TALK tile) + three tile rows, gaps of u between them. */
+    fun railBottomHeight(u: Float): Float = MusicDeckLogic.TOUCH_MIN + 3 * railTileHeight(u) + 3 * u
+
+    /**
+     * The clock block (time at 3.3u, then date and weather lines that follow the system font
+     * scale). An ESTIMATE of the composed height: it decides only whether the portrait is tried.
+     */
+    fun clockHeight(u: Float, fontScale: Float): Float = u * 3.3f * 1.25f + 2 * 16f * fontScale
+
+    /** The status line under the portrait (TAP TO TALK / LISTENING...). */
+    const val PORTRAIT_STATUS_LINE = 28f
+
+    /** The portrait's edge in a box [boxHeight] x [boxWidth] (same rule the composable uses). */
+    fun portraitEdge(boxHeight: Float, boxWidth: Float, u: Float): Float =
+        minOf(u * 13.5f, boxHeight - PORTRAIT_STATUS_LINE, boxWidth)
+
+    /**
+     * The TALK tile drawn in the portrait's box when the box measures shorter than the model said:
+     * up to a rail tile, never under drive size, even if it then overlaps (recheck 2026-11-20).
+     */
+    fun inBoxTalkTileHeight(boxHeight: Float, u: Float): Float =
+        minOf(boxHeight, railTileHeight(u)).coerceAtLeast(MusicDeckLogic.TOUCH_MIN)
+
+    /**
+     * Whether a rail [railHeight] x [railWidth] has room for a drive-size portrait; when it does
+     * not, a TALK tile takes the phone chip's place so the talk control never disappears.
+     */
+    fun railShowsPortrait(railHeight: Float, railWidth: Float, u: Float, fontScale: Float): Boolean {
+        val box = railHeight - clockHeight(u, fontScale) - railBottomHeight(u) - 2 * u
+        return portraitEdge(box, railWidth, u) >= MusicDeckLogic.TOUCH_MIN
+    }
+
+}
+
+/** What the middle panel's words say. Plain values in, strings out. */
+internal object MiddlePanelText {
+
+    /** The GPS readout under the CAR / NAV switch, and whether it should read as a warning. */
+    data class Gps(val source: String, val age: String, val stale: Boolean)
+
+    /** Older than this and the readout says the fix is lost (plan: "lost Ns" after 3 s). */
+    const val STALE_MS = 3_000L
+
+    /**
+     * The NAV face until navigation lands (review M4, 2026-11-20): no voice prompt, because no
+     * navigate tool exists yet and Moose would refuse or improvise. T5 replaces the host.
+     */
+    const val NAV_PLACEHOLDER_TITLE = "No navigation yet."
+    const val NAV_PLACEHOLDER_LINE = "Navigation arrives in a later update."
+
+    /**
+     * [provider] is the fix's provider ([com.kevin.midnightai.location.LocationController.BEACON_PROVIDER]
+     * for the phone beacon), [ageMs] how old it is on the monotonic clock; null = no fix at all.
+     *
+     * Honest by construction (review M2, 2026-11-20): only the `gps` provider is "GPS on this unit";
+     * a network fix (Wi-Fi or cell, often 100 m off) says so. A negative age (a cached fix stamped
+     * before this boot, a clock jump) is not a fix at all, never "0 s ago".
+     */
+    fun gps(provider: String?, ageMs: Long?, beaconProvider: String): Gps {
+        if (provider == null || ageMs == null || ageMs < 0) return Gps("No GPS", "no fix yet", stale = true)
+        val source = com.kevin.midnightai.location.LocationSources.label(
+            com.kevin.midnightai.location.LocationSources.of(provider, beaconProvider),
+        )
+        val age = ageMs
+        val words = when {
+            age <= STALE_MS -> "fix ${age / 1000} s ago"
+            age < 60_000L -> "lost ${age / 1000} s"
+            age < 3_600_000L -> "lost ${age / 60_000} min"
+            else -> "lost over an hour"
+        }
+        return Gps(source, words, stale = !isFresh(ageMs))
+    }
+
+    /**
+     * The one freshness rule (review M3, 2026-11-20): the header's "fix N s ago" and the big speed
+     * numeral go stale at the same moment, so the screen never says "lost" beside a live-looking speed.
+     */
+    fun isFresh(ageMs: Long?): Boolean = ageMs != null && ageMs in 0..STALE_MS
+
+    /** How old a fix stamped [fixNanos] (elapsedRealtimeNanos) is at [nowNanos], in ms; null = no fix. */
+    fun fixAgeMs(nowNanos: Long, fixNanos: Long?): Long? = fixNanos?.let { (nowNanos - it) / 1_000_000L }
+
+    /** GPS speed in mph, or null without a speed or once the fix is not [isFresh]. */
+    fun speedMph(speedMps: Float?, ageMs: Long?): Int? {
+        if (speedMps == null || !isFresh(ageMs)) return null
+        return Math.round(speedMps * 2.23694f)
+    }
+
+    /**
+     * The CAR face's gauge cards: the driver's Cruise picks (Settings gauge picker), in the order the
+     * poll produced them, at most [max]. No new PIDs: RPM and other fast ones stay out because
+     * polling them stutters Bluetooth music (headunit/CLAUDE.md §12).
+     */
+    fun carGauges(all: List<GaugeReading>, cruiseKeys: Set<String>, max: Int = 4): List<GaugeReading> =
+        all.filter { it.key in cruiseKeys }.take(max)
+
+    /** "1 stored code · P1282 Fuel pump relay", or null with none. [names] maps a code to its short name. */
+    fun storedCodes(codes: List<String>, names: Map<String, String>): String? {
+        if (codes.isEmpty()) return null
+        val first = codes.first()
+        val count = if (codes.size == 1) "1 stored code" else "${codes.size} stored codes"
+        val name = names[first]?.takeIf { it.isNotBlank() }
+        return "$count · $first" + (name?.let { " $it" } ?: "")
+    }
+}

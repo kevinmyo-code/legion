@@ -59,6 +59,8 @@ class UpdateControllerTest {
         var busy = false
         var driving = false
         var mayInstall = true
+        var free = Long.MAX_VALUE
+        override fun freeBytes() = free
         override val ownPackage = "com.kevin.midnightai"
         override val deviceAbis = listOf("arm64-v8a", "armeabi-v7a")
         override fun installed() = installedApp
@@ -73,6 +75,7 @@ class UpdateControllerTest {
     private class MemoryPrefs : UpdatePrefs {
         override var allowMetered = true
         override var pendingInstallAtMs = 0L
+        override var approvedLargeDownloadCode = 0L
     }
 
     private var clock = 1_000_000L
@@ -120,6 +123,51 @@ class UpdateControllerTest {
         controller.allowMetered = false
         val state = controller.check()
         assertTrue(state.toString(), state is UpdateState.Available && state.why.contains("Wi-Fi only"))
+        assertEquals(1, downloader.calls)
+    }
+
+    /** Review round edd3a320, item 8: no download without room for it (twice its size). */
+    @Test
+    fun `too little free space downloads nothing and says how much is needed`() = runBlocking {
+        platform.free = apkBytes.size.toLong() // less than twice the size
+        val state = controller.check()
+        assertTrue(state.toString(), state is UpdateState.Available && state.why.contains("free"))
+        assertEquals(0, downloader.calls)
+    }
+
+    /**
+     * Review C-3: the install also extracts the native libraries (legacy JNI packaging), so twice
+     * the APK is not enough: 3x free (room for the file, Android's copy and part of the extraction)
+     * still refuses.
+     */
+    @Test
+    fun `room for the extracted native libraries is counted too`() = runBlocking {
+        platform.free = 3 * apkBytes.size.toLong()
+        val state = controller.check()
+        assertTrue(state.toString(), state is UpdateState.Available && state.why.contains("free"))
+        assertEquals(0, downloader.calls)
+        platform.free = 4 * apkBytes.size.toLong()
+        assertTrue(controller.check() is UpdateState.Ready)
+    }
+
+    /** Item 8: a large update over the hotspot names its size and waits for DOWNLOAD. */
+    @Test
+    fun `a large update on the hotspot waits for a tap that names its size`() = runBlocking {
+        val big = release.copy(sizeBytes = 80L * 1024 * 1024)
+        backend.release = big
+        platform.unmetered = false
+        val state = controller.check()
+        assertTrue(state.toString(), state is UpdateState.Available && state.needsTap && state.why.contains("80 MB"))
+        assertEquals("downloaded without the tap", 0, downloader.calls)
+        controller.approveDownload()
+        assertEquals(1, downloader.calls)
+    }
+
+    @Test
+    fun `a large update on Wi-Fi downloads without asking`() = runBlocking {
+        backend.release = release.copy(sizeBytes = 80L * 1024 * 1024)
+        platform.unmetered = true
+        controller.check()
         assertEquals(1, downloader.calls)
     }
 

@@ -49,7 +49,8 @@ object OnboardingState {
     }
 
     /**
-     * Writes safe Uncle Moose/Sulafat defaults so the wizard (typed or conversational)
+     * Writes safe Uncle Moose defaults, his own voice included (`CompanionIdentity.VOICE`,
+     * 2026-11-23; it wrote the retired mascot's Sulafat until then), so the wizard
      * starts from sensible values instead of blank fields. Only fills in blank
      * fields, so a reset flow that has already written partial data is never
      * clobbered. Does NOT mark onboarding complete - that only happens once the
@@ -68,7 +69,10 @@ object OnboardingState {
             )
         }
         if (com.kevin.midnightai.ai.CompanionProfile.voice(context).isBlank()) {
-            com.kevin.midnightai.ai.CompanionProfile.saveVoice(context, "Sulafat")
+            // Moose's own voice, from the one place that states it. This line held its own
+            // "Sulafat" literal (the retired Zero mascot's) until 2026-11-23, which is how every
+            // fresh install got the wrong voice saved as if the driver had picked it.
+            com.kevin.midnightai.ai.CompanionProfile.saveVoice(context, com.kevin.midnightai.ai.DEFAULT_VOICE)
         }
     }
 }

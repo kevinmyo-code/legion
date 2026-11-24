@@ -167,6 +167,8 @@ class AndroidUpdatePlatform(private val app: Application) : UpdatePlatform {
 
     override fun driving(): Boolean = DrivingState.isDriving()
 
+    override fun freeBytes(): Long = runCatching { app.filesDir.usableSpace }.getOrDefault(Long.MAX_VALUE)
+
     private fun caps(): NetworkCapabilities? {
         val cm = app.getSystemService(ConnectivityManager::class.java) ?: return null
         return cm.getNetworkCapabilities(cm.activeNetwork ?: return null)
@@ -254,10 +256,14 @@ class SharedUpdatePrefs(private val prefs: SharedPreferences) : UpdatePrefs {
     override var pendingInstallAtMs: Long
         get() = prefs.getLong(KEY_PENDING, 0L)
         set(value) { prefs.edit().putLong(KEY_PENDING, value).apply() }
+    override var approvedLargeDownloadCode: Long
+        get() = prefs.getLong(KEY_APPROVED, 0L)
+        set(value) { prefs.edit().putLong(KEY_APPROVED, value).apply() }
 
     private companion object {
         const val FILE = "midnight_updates"
         const val KEY_METERED = "allow_metered"
         const val KEY_PENDING = "pending_install_at_ms"
+        const val KEY_APPROVED = "approved_large_download_code"
     }
 }

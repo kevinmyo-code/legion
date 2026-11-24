@@ -57,6 +57,9 @@ sealed interface MeResult {
 
     /** The request never reached the engine at all. */
     data class Unreachable(val message: String) : MeResult
+
+    /** The car's own sign-in (handed over the car link): not asked, described in words. */
+    data class CarLink(val message: String, val refused: Boolean) : MeResult
 }
 
 /**
@@ -200,6 +203,11 @@ class EngineAuth(
 
     /** This app's own membership check - see [MeResult]. */
     suspend fun me(): MeResult {
+        // The car's own sign-in: /api/auth/me refuses it, so it is described, never asked.
+        if (config.isCarLinkSignIn() && config.isSignedIn()) {
+            val refused = config.carLinkRefused()
+            return MeResult.CarLink(if (refused) CarLinkScope.REFUSED else CarLinkScope.SETTINGS_LINE, refused)
+        }
         val baseUrl = config.baseUrl()
         val token = config.token()
         if (!EngineConfig.isValidBaseUrl(baseUrl) || token.isNullOrBlank()) {
@@ -231,7 +239,9 @@ class EngineAuth(
     suspend fun logout() {
         val baseUrl = config.baseUrl()
         val token = config.token()
-        if (EngineConfig.isValidBaseUrl(baseUrl) && !token.isNullOrBlank()) {
+        // The car's own sign-in cannot call /api/auth/logout (refused); the phone revokes it from
+        // its device list. Only this unit's copy is removed here.
+        if (EngineConfig.isValidBaseUrl(baseUrl) && !token.isNullOrBlank() && !config.isCarLinkSignIn()) {
             try {
                 val request = Request.Builder()
                     .url(baseUrl + "/api/auth/logout")

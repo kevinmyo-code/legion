@@ -1867,9 +1867,10 @@ class GeminiLiveSession(
         // drop-in swap: read LiveSetup's doc before changing it.
         private const val MODEL = LiveSetup.MODEL
 
-        // Prebuilt Gemini voice. Deeper/informative reads suit the Zero persona;
-        // other options include Puck, Kore, Fenrir, Aoede. Swap freely.
-        private const val VOICE = "Sulafat"
+        // Prebuilt Gemini voice for a car that chose none: Moose's own, stated once in
+        // CompanionIdentity (2026-11-23). This used to hold its own "Sulafat" literal, the retired
+        // Zero mascot's voice, so a blank stored voice made Moose speak as someone else.
+        private const val VOICE = com.kevin.midnightai.ai.CompanionIdentity.VOICE
 
         private const val INPUT_RATE = 16000   // Live API requires 16 kHz input
         private const val OUTPUT_RATE = 24000  // Live API emits 24 kHz output

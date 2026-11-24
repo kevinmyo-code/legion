@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
         }
         StartupTrace.span("main_permissions") { checkAndRequestPermissions() }
 
-        // On a clean install (or after a reset), pre-fill safe Zero/Sulafat
+        // On a clean install (or after a reset), pre-fill safe Uncle Moose
         // defaults so the onboarding wizard below starts from sensible values
         // instead of blank fields. Idempotent (only writes if fields are blank)
         // and does NOT mark onboarding complete - the wizard still runs.
@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity() {
                     // was always a live mic session racing the just-fired
                     // permission request, which was implicated in startup
                     // crashes. Decoupled: the app is usable immediately with
-                    // seeded Zero/Sulafat defaults, and voice setup becomes an
+                    // seeded Uncle Moose defaults, and voice setup becomes an
                     // explicit, optional action from a Cruise prompt (or
                     // Settings) - never something that has to race anything.
                     var onboarded by remember { mutableStateOf(OnboardingState.isComplete(this@MainActivity)) }
@@ -310,15 +310,35 @@ class MainActivity : ComponentActivity() {
      * the one known to reach the head unit's speakers (2026-10-13 field report: the
      * hardware keys moved the meter but not the sound). Keys handled below us (MCU,
      * system) are caught after the fact by [com.kevin.midnightai.media.VolumeSync].
+     *
+     * HU-1 T2/T9 probes: see [KeyDispatch] (what is logged, and the M1 rule: no text keys, nothing
+     * while an editor has the keyboard).
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val up = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP
-        if (!up && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) return super.dispatchKeyEvent(event)
-        if (event.action == KeyEvent.ACTION_DOWN) {
-            if (up) com.kevin.midnightai.media.VolumeController.raise(this)
-            else com.kevin.midnightai.media.VolumeController.lower(this)
-        }
-        return true
+        val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+        return KeyDispatch.dispatch(
+            event = event,
+            editorActive = KeyDispatch.editorActive(currentFocus, imm),
+            onVolumeKey = { up, repeat ->
+                // A held key's repeats still move the volume; only the first press is logged as a write.
+                val by = if (repeat == 0) "key" else com.kevin.midnightai.diag.ProbeFormat.QUIET_WRITER
+                val vc = com.kevin.midnightai.media.VolumeController
+                val nudge = if (up) vc.raise(this, by = by) else vc.lower(this, by = by)
+                // Only the first press of a held key speaks up, so a hold does not stack toasts.
+                if (repeat == 0) {
+                    nudge.words?.let { android.widget.Toast.makeText(this, it, android.widget.Toast.LENGTH_LONG).show() }
+                }
+            },
+            onVolumeKeyUp = {
+                runCatching {
+                    val vc = com.kevin.midnightai.media.VolumeController
+                    com.kevin.midnightai.diag.InputProbe.volume(
+                        com.kevin.midnightai.diag.ProbeFormat.levelLine(vc.index(this), vc.maxIndex(this)),
+                    )
+                }
+            },
+            superDispatch = { super.dispatchKeyEvent(it) },
+        )
     }
 
     override fun onPause() {

@@ -1,4 +1,4 @@
-﻿package com.kevin.midnightai.service
+package com.kevin.midnightai.service
 
 import android.content.Context
 import android.content.Intent
@@ -39,6 +39,7 @@ import com.kevin.midnightai.media.SpotifyController
 import com.kevin.midnightai.media.SpotifyVoiceLogic
 import com.kevin.midnightai.media.SpotifyWebApi
 import com.kevin.midnightai.media.VolumeController
+import com.kevin.midnightai.media.VolumeRules
 import com.kevin.midnightai.data.local.CarDatabase
 import com.kevin.midnightai.vehicle.BuildSheetController
 import com.kevin.midnightai.vehicle.CarToolbelt
@@ -702,6 +703,30 @@ object LiveToolbox {
             required = listOf(),
         ))
 
+        // HU-1 T5 navigation (2026-11-20): the same controller as the NAV face's keys.
+        fns.put(fn(
+            name = "navigate_to",
+            description = "Plan a route to one of the driver's SAVED places (home, work, ... as tagged with " +
+                "tag_place) and show it on the NAV face. It does not start guidance: read back the time and " +
+                "distance it returns and ask; when the driver says yes or go, call start_navigation. Saved places " +
+                "only for now: there is no address or business search on this unit, so never promise one.",
+            params = obj("place" to schema("string", "The saved place's label, or the driver's words naming it.")),
+            required = listOf("place"),
+        ))
+        fns.put(fn(
+            name = "start_navigation",
+            description = "Start guidance on the route navigate_to just planned (the GO key), after the driver said yes. " +
+                "It is refused unless navigate_to planned that route within the last minute and it is still showing.",
+            params = obj(),
+            required = listOf(),
+        ))
+        fns.put(fn(
+            name = "end_navigation",
+            description = "End the trip that is guiding now (the END key).",
+            params = obj(),
+            required = listOf(),
+        ))
+
         // Root CLAUDE.md section 7 clause (d): every unsolicited raise must be silenceable forever
         // in one instruction. The hands path is the MUTE tile on Cruise (same ProactivePreferences).
         fns.put(fn(
@@ -770,6 +795,9 @@ object LiveToolbox {
             "set_music_source" -> setMusicSource(context, args.optString("source"))
             "control_volume" -> controlVolume(context, args)
             "get_current_location" -> getCurrentLocation()
+            "navigate_to" -> navigateTo(context, args.optString("place"))
+            "start_navigation" -> navResult { com.kevin.midnightai.navigation.NavVoice.start(it) }
+            "end_navigation" -> navResult { com.kevin.midnightai.navigation.NavVoice.end(it) }
             "get_time" -> result(success = true, message = com.kevin.midnightai.time.TrustedClock.promptLine())
             "get_now_playing" -> getNowPlaying()
             "play_music" -> playMusic(
@@ -1713,15 +1741,39 @@ object LiveToolbox {
      */
     private fun controlVolume(context: Context, args: JSONObject): JSONObject {
         val pct = when (val action = args.optString("action")) {
-            "up" -> VolumeController.raise(context)
-            "down" -> VolumeController.lower(context)
+            "up" -> {
+                // Recheck 2026-11-20: "louder" by voice stops at the same 80% ceiling as "set".
+                if (!VolumeRules.voiceUpAllowed(VolumeController.index(context), VolumeController.maxIndex(context))) {
+                    return result(success = false, message = VolumeRules.UP_REFUSED)
+                        .put("volumePercent", VolumeController.current(context))
+                }
+                // A press that moved nothing is said in words, never reported as a level that was
+                // set: section 7's outcome-verb rule needs a real result (2026-11-23).
+                val n = VolumeController.raise(context, by = "voice")
+                n.words?.let { return result(success = false, message = it).put("volumePercent", n.percent) }
+                n.percent
+            }
+            "down" -> {
+                val n = VolumeController.lower(context, by = "voice")
+                n.words?.let { return result(success = false, message = it).put("volumePercent", n.percent) }
+                n.percent
+            }
             "set" -> {
                 val level = args.optInt("level", -1)
                 if (level < 0) return result(success = false, message = "What level should I set it to?")
-                VolumeController.setPercent(context, level)
+                // Review L4: by voice, never above 80% and never more than 30 points up in one call.
+                val current = VolumeController.current(context)
+                val plan = VolumeRules.voiceSet(
+                    current, level, mutedAtPercent = if (VolumeController.isMuted(context)) current else null,
+                )
+                val pct = VolumeController.setPercent(context, plan.target, by = "voice")
+                if (plan.capped) {
+                    return result(success = true, message = VolumeRules.cappedMessage(pct, level)).put("volumePercent", pct)
+                }
+                pct
             }
-            "mute" -> VolumeController.mute(context, true)
-            "unmute" -> VolumeController.mute(context, false)
+            "mute" -> VolumeController.mute(context, true, by = "voice")
+            "unmute" -> VolumeController.mute(context, false, by = "voice")
             else -> return result(success = false, message = "Unknown volume action: $action")
         }
         return result(success = true, message = null).put("volumePercent", pct)
@@ -1745,6 +1797,25 @@ object LiveToolbox {
      *   (the unit has no navigation), so this now reports coordinates only. The street
      *   name, when the platform can produce one, rides in [AriaBrain]'s live context.
      */
+    /** navigate_to: a saved place by its label, routed by the NAV face's controller (HU-1 T5). */
+    private suspend fun navigateTo(context: Context, spoken: String): JSONObject {
+        val places = runCatching { com.kevin.midnightai.location.PlaceController.all(context) }.getOrDefault(emptyList())
+            .map { com.kevin.midnightai.navigation.NavVoice.Place(it.label, com.kevin.midnightai.navigation.GeoPoint(it.latitude, it.longitude)) }
+        val place = com.kevin.midnightai.navigation.NavVoice.resolve(spoken, places)
+            ?: return result(success = false, message = com.kevin.midnightai.navigation.NavVoice.notFound(spoken, places))
+        return navResult { com.kevin.midnightai.navigation.NavVoice.navigateTo(it, place) }
+    }
+
+    private suspend fun navResult(
+        call: suspend (com.kevin.midnightai.navigation.NavController) -> com.kevin.midnightai.navigation.NavResult,
+    ): JSONObject {
+        if (!com.kevin.midnightai.navigation.NavRuntime.isInitialised) {
+            return result(success = false, message = "Navigation is not set up on this unit.")
+        }
+        val r = call(com.kevin.midnightai.navigation.NavRuntime.controller)
+        return result(success = r.ok, message = r.message)
+    }
+
     private fun getCurrentLocation(): JSONObject {
         val loc = LocationController.state.value
             ?: return result(success = false, message = "I don't have a GPS fix yet.")

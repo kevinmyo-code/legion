@@ -1,4 +1,4 @@
-﻿package com.kevin.midnightai.ai
+package com.kevin.midnightai.ai
 
 import android.content.Context
 import com.kevin.midnightai.vehicle.ActiveVehicle
@@ -49,6 +49,8 @@ object CompanionProfile {
     // fallback); KEY_GEMINI_KEY_ENC holds the KeyVault-encrypted blob.
     private const val KEY_GEMINI_KEY = "gemini_api_key"
     private const val KEY_GEMINI_KEY_ENC = "gemini_api_key_enc"
+    /** The key handed over the car link, kept apart from the typed one (2026-11-20). */
+    private const val KEY_GEMINI_LINK_ENC = "gemini_link_key_enc"
     // User-supplied Shelly Cloud "Authorization cloud key" (BYO, required for the
     // garage/gate feature - Shelly app: User Settings -> Authorization cloud key ->
     // Get key). KEY_SHELLY_AUTH_KEY_ENC holds the KeyVault-encrypted blob;
@@ -105,6 +107,10 @@ object CompanionProfile {
     // the migration sweeps every per-car key in a single pass.
     private const val KEY_ZERO_RENAMED = "retired_zero_name_migrated"
 
+    /** The retired Zero mascot's voice, which the old `seedDefaults` saved on every fresh install. */
+    internal const val RETIRED_VOICE = "Sulafat"
+    private const val KEY_VOICE_MIGRATED = "retired_default_voice_migrated"
+
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -132,6 +138,62 @@ object CompanionProfile {
             writes[key] = DEFAULT_NAME
         }
         return writes
+    }
+
+    /**
+     * Pure planner for [migrateRetiredDefaultVoice], the voice twin of [planRetiredNameMigration].
+     * For every voice slot (the legacy flat [KEY_VOICE] and every per-car `voice:<vehicleId>`)
+     * holding exactly the retired mascot's "Sulafat" (trimmed, case-insensitive), the write is
+     * Moose's own voice. Any other value, blank included, is left alone: a driver who picks a voice
+     * owns it.
+     *
+     * The two delivery-style keys are NOT voice slots. They start with the same word but hold free
+     * text, and `voice_style` does not match `voice:` either, so the prefix test keeps them out.
+     *
+     * Deliberately does NOT touch `companion_updated_at`, for the reason given on
+     * [planRetiredNameMigration]: that clock covers the whole identity.
+     */
+    internal fun planRetiredVoiceMigration(all: Map<String, *>): Map<String, Any> {
+        val writes = LinkedHashMap<String, Any>()
+        for ((key, value) in all) {
+            val isVoiceSlot = key == KEY_VOICE || key.startsWith("$KEY_VOICE:")
+            if (!isVoiceSlot || value !is String) continue
+            if (!value.trim().equals(RETIRED_VOICE, ignoreCase = true)) continue
+            writes[key] = CompanionIdentity.VOICE
+        }
+        return writes
+    }
+
+    /**
+     * One-time rewrite of the retired mascot's voice to Moose's own on installs that already saved
+     * it, the exact shape of [migrateRetiredDefaultName] and for the same reason: the old
+     * `seedDefaults` wrote "Sulafat" into the prefs on every fresh install, so the wrong voice was
+     * stored as if the driver had chosen it, and Moose spoke in it (Kevin, 2026-11-23: the stored
+     * voice was wrong and it should be Algenib, as it was before).
+     *
+     * Sweeps the flat key and every per-car key, not only the active car, because at app start the
+     * dongle often has not resolved the active vehicle yet (see [identityString]).
+     *
+     * **The deeper cause, traced 2026-11-23 and NOT fixed here.** `ActiveVehicle.current` is
+     * `selected ?: connectedDeviceAddress ?: "default"`, so with nothing picked by hand the id
+     * FLIPS with the dongle's connection state - `voice:<dongle MAC>` while it is connected,
+     * `voice:default` once it drops. [saveVoice] only ever writes the per-car key, so the flat key
+     * the fallback reads is never written by any path in this app, and the other slot resolves
+     * blank. A voice chosen with the dongle plugged in therefore went missing the moment it
+     * dropped. Making the blank case Moose's own voice is what stops that being audible; keying
+     * identity on something that moves is the real bug, and ADR 0104 already rules it ends in HU-2
+     * (persona comes from the engine as data, never per car), so it is left to that.
+     *
+     * Runs once per install; a voice the driver picks after that, Sulafat included, is theirs.
+     */
+    fun migrateRetiredDefaultVoice(context: Context) {
+        val p = prefs(context)
+        if (p.getBoolean(KEY_VOICE_MIGRATED, false)) return
+        val writes = planRetiredVoiceMigration(p.all)
+        p.edit().apply {
+            for ((key, value) in writes) putString(key, value as String)
+            putBoolean(KEY_VOICE_MIGRATED, true)
+        }.apply()
     }
 
     /**
@@ -355,7 +417,21 @@ object CompanionProfile {
      * plaintext migrated to the encrypted slot on first read). Blank if not set
      * (falls back to BuildConfig in [GeminiKeyProvider]).
      */
-    fun geminiKey(context: Context): String {
+    fun geminiKey(context: Context): String = geminiChoice(context).key
+
+    /**
+     * The key in use and where it came from (Kevin, 2026-11-20): the phone's key handed over the
+     * car link wins over one typed on this unit; the typed one is kept as the fallback.
+     */
+    fun geminiChoice(context: Context): GeminiKeyChoice =
+        GeminiKeyChoice.resolve(linkGeminiKey(context), typedGeminiKey(context))
+
+    /** The key the car link handed over (its own slot), or null. Never shown, never logged. */
+    fun linkGeminiKey(context: Context): String? =
+        prefs(context).getString(KEY_GEMINI_LINK_ENC, null)?.let { KeyVault.decrypt(it) }?.takeIf { it.isNotBlank() }
+
+    /** The key typed on this unit (Settings), blank if none. The only key the Settings field shows. */
+    fun typedGeminiKey(context: Context): String {
         val p = prefs(context)
         p.getString(KEY_GEMINI_KEY_ENC, null)?.let { enc ->
             KeyVault.decrypt(enc)?.let { return it }
@@ -385,6 +461,34 @@ object CompanionProfile {
     }
 
     fun hasGeminiKey(context: Context): Boolean = geminiKey(context).isNotBlank()
+
+    /** The car link's own Gemini slot (separate from the typed key, so Forget removes only it). */
+    fun geminiLinkSnapshot(context: Context): Map<String, String?> =
+        mapOf(KEY_GEMINI_LINK_ENC to prefs(context).getString(KEY_GEMINI_LINK_ENC, null))
+
+    /** Encrypted or not at all, into the link slot only. */
+    fun saveGeminiLinkKeyStrict(context: Context, key: String): Boolean {
+        val enc = KeyVault.encrypt(key.trim()) ?: return false
+        return prefs(context).edit().putString(KEY_GEMINI_LINK_ENC, enc).commit()
+    }
+
+    // --- Car link (HU-1 T3, review M7): no plaintext fallback, all-or-nothing writes -------------
+
+    /** The raw stored Gemini slots (ciphertext and the legacy plaintext slot). */
+    fun geminiSnapshot(context: Context): Map<String, String?> =
+        listOf(KEY_GEMINI_KEY_ENC, KEY_GEMINI_KEY).associateWith { prefs(context).getString(it, null) }
+
+    fun restoreGemini(context: Context, snapshot: Map<String, String?>): Boolean {
+        val editor = prefs(context).edit()
+        snapshot.forEach { (k, v) -> if (v == null) editor.remove(k) else editor.putString(k, v) }
+        return editor.commit()
+    }
+
+    /** Encrypted or not at all (unlike [saveGeminiKey], which falls back to plaintext). */
+    fun saveGeminiKeyStrict(context: Context, key: String): Boolean {
+        val enc = KeyVault.encrypt(key.trim()) ?: return false
+        return prefs(context).edit().putString(KEY_GEMINI_KEY_ENC, enc).remove(KEY_GEMINI_KEY).commit()
+    }
 
     /**
      * User-supplied Shelly Cloud auth_key (stored encrypted via [KeyVault]).

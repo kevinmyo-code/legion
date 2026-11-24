@@ -43,4 +43,20 @@ object CompanionIdentity {
     private const val MOOSE_SHORT =
         "You are Uncle Moose, a gruff, loveable old moose riding shotgun. You are NOT the car; " +
             "speak about it in the third person ('she's running warm')."
+
+    /**
+     * The prebuilt Gemini voice Moose speaks in: "Algenib", Google's gravelly one.
+     *
+     * **This is persona data, not a fallback default** (Kevin, 2026-11-23: the stored voice was
+     * wrong and it should be Algenib, as it was before). It lives here, beside WHO is speaking,
+     * for the same reason the identity clause does: three files each held their own default and all
+     * three still named Sulafat, the warm female voice chosen for the retired Zero mascot, so a
+     * stored voice that went blank or was never set made Moose sound like someone else.
+     * [com.kevin.midnightai.ai.DEFAULT_VOICE] and the Live session both read this and state nothing
+     * of their own.
+     *
+     * The driver may still choose another voice per car until HU-2 (headunit/CLAUDE.md §1); this is
+     * what a car with no choice of its own gets.
+     */
+    const val VOICE = "Algenib"
 }

@@ -32,6 +32,12 @@ val localProps: Properties = Properties().apply {
 val geminiApiKey: String =
     if (project.hasProperty("nokey")) "" else localProps.getProperty("GEMINI_API_KEY", "")
 
+// The engine address a car-link hand-over may sign this unit in to (HU-1 T3, review H4): the
+// build's own constant, never a value sent over the link. Not a secret, but personal: it comes
+// from local.properties (gitignored, key engine.base.url), blank by default, so a clone builds
+// with no engine and the unit refuses a handed-over token until it is set. Must be https.
+val engineBaseUrl: String = localProps.getProperty("engine.base.url", "").trim()
+
 // Release signing. The keystore (app/release.jks, gitignored) is a personal
 // self-signed key generated for sideloading onto the head unit - it is NOT a
 // Play Store upload key. All four values must come from local.properties
@@ -67,6 +73,7 @@ android {
         }
 
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+        buildConfigField("String", "ENGINE_BASE_URL", "\"$engineBaseUrl\"")
 
         // No abiFilters restriction: the app is pure Kotlin/Java now that the
         // offline wake-word engine (sherpa-onnx, arm64-only native libs) was
@@ -139,6 +146,12 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        // HU-1 T5 (orchestrator's call, 2026-11-20; Kevin told, his to reverse): Mapbox's native
+        // libraries are stored COMPRESSED in the APK and extracted at install, roughly halving
+        // the download over the phone's hotspot. Costs install time and the extracted copy on disk.
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
     sourceSets {
@@ -248,6 +261,10 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
+
+    // Mapbox Navigation SDK v3 core + ui-maps (HU-1 T5): the map in the NAV face, routing and the
+    // maneuver/progress data. The public token comes over the car link at run time; nothing baked.
+    implementation(libs.mapbox.navigation)
 
     // Room
     implementation(libs.room.runtime)

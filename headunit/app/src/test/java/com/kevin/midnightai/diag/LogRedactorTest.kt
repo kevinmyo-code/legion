@@ -7,6 +7,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LogRedactorTest {
+    /** Review NAV-3: positions and route URLs never reach the drive log, in the shapes logs really use. */
+    @Test fun coordinatesAndRouteUrlsAreScrubbed() {
+        val lines = listOf(
+            "I LocationController: fix Location[midnight-beacon 29.760427,-95.369803 hAcc=4.0 et=+2h1m]",
+            "D Nav: Point{type=Point, bbox=null, coordinates=[-95.3698, 29.7604]}",
+            "I Trip: lat=29.76042 lng=-95.36980 speed=12.1",
+            "I Json: {\"latitude\":29.760427,\"longitude\":-95.369803}",
+            "W Router: GET https://api.mapbox.com/directions/v5/mapbox/driving-traffic/-95.3698,29.7604;-95.4012,29.7011?alternatives=false",
+        )
+        for (line in lines) {
+            val out = LogRedactor.redact(line)
+            assertFalse(out, Regex("""\d{2}\.\d{3,}""").containsMatchIn(out))
+        }
+    }
+
+    @Test fun ordinaryNumbersSurvive() {
+        val line = "I Telemetry: rpm=2400 coolant=88.5 voltage=13.92 version 1.12.3 took 812 ms"
+        assertEquals(line, LogRedactor.redact(line))
+    }
+
 
     @After
     fun reset() = LogRedactor.clearLiterals()

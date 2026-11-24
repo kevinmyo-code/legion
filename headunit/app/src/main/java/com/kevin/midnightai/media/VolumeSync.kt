@@ -11,6 +11,8 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import com.kevin.midnightai.diag.InputProbe
+import com.kevin.midnightai.diag.ProbeFormat
 
 /**
  * Watches STREAM_MUSIC for changes the app did not make (hardware / steering-wheel
@@ -37,12 +39,12 @@ object VolumeSync {
         started = true
         val app = context.applicationContext
         // Seed the tracker so the first real key press is recognised as a change.
-        check(app)
+        check(app, "start")
 
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
                 val stream = intent.getIntExtra(EXTRA_VOLUME_STREAM_TYPE, AudioManager.STREAM_MUSIC)
-                if (stream == AudioManager.STREAM_MUSIC) check(app)
+                if (stream == AudioManager.STREAM_MUSIC) check(app, "broadcast")
             }
         }
         ContextCompat.registerReceiver(
@@ -51,7 +53,7 @@ object VolumeSync {
         app.contentResolver.registerContentObserver(
             Settings.System.CONTENT_URI, true,
             object : ContentObserver(main) {
-                override fun onChange(selfChange: Boolean) = check(app)
+                override fun onChange(selfChange: Boolean) = check(app, "observer")
             },
         )
     }
@@ -66,14 +68,22 @@ object VolumeSync {
         com.kevin.midnightai.MidnightEvents.volumeSyncHold(held)
     }
 
-    private fun check(app: Context) {
+    /** [via] = which signal fired (start, broadcast, observer, recheck), for the probe line. */
+    private fun check(app: Context, via: String) {
         val now = SystemClock.uptimeMillis()
         val tracker = VolumeController.tracker
         val tripsBefore = tracker.breakerTrips
-        val decision = try {
-            tracker.onObserved(VolumeController.index(app), now)
+        val index = try {
+            VolumeController.index(app)
         } catch (e: Exception) {
             return
+        }
+        val verdict = tracker.classify(index, now)
+        val decision = verdict.decision
+        // HU-1 T2 probe: every index change and the branch it took, into the drive log.
+        if (ProbeFormat.shouldLogObservation(verdict.reason.name)) {
+            val max = runCatching { VolumeController.maxIndex(app) }.getOrDefault(-1)
+            InputProbe.volume(ProbeFormat.observedLine(via, index, max, decision.name, verdict.reason.name))
         }
         if (tracker.breakerTrips != tripsBefore) com.kevin.midnightai.MidnightEvents.volumeSyncBreakerTripped()
         when (decision) {
@@ -87,7 +97,7 @@ object VolumeSync {
                 // missed: look again once the window closes.
                 main.removeCallbacksAndMessages(RECHECK_TOKEN)
                 main.postAtTime(
-                    { check(app) }, RECHECK_TOKEN,
+                    { check(app, "recheck") }, RECHECK_TOKEN,
                     now + VolumeController.tracker.quietRemaining(now) + 1,
                 )
             }

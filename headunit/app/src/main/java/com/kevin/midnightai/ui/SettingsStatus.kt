@@ -2,6 +2,8 @@ package com.kevin.midnightai.ui
 
 import com.kevin.midnightai.media.AppRemoteLink
 import com.kevin.midnightai.media.SpotifyScopes
+import com.kevin.midnightai.update.UpdateRules
+import com.kevin.midnightai.update.UpdateState
 
 /**
  * Status dot on a Settings rail item. [NONE] means "nothing honest to say", which is what a
@@ -64,6 +66,58 @@ internal fun permissionsCategoryStatus(missing: Int): CategoryStatus = when {
     else -> CategoryStatus("$missing permissions missing", SettingsDot.WARN)
 }
 
+/** The rows of Settings > System, top to bottom (HU-1 T7: Updates leads, the rest keep their order). */
+internal enum class SystemRow { UPDATES, CLOCK, PERMISSIONS, PREFERENCES, LOGS, DEVELOPER_TOOLS, RESET }
+
+internal fun systemRows(): List<SystemRow> = SystemRow.entries.toList()
+
+/**
+ * Where the updater is, as the Updates row's subtitle and the System rail line. [installedCode] is
+ * this install's version code. A dot only for a state a check actually produced: Idle and Checking
+ * have read nothing yet.
+ */
+internal fun updateStatusLine(state: UpdateState, installedCode: Long): CategoryStatus = when (state) {
+    UpdateState.Idle -> CategoryStatus("Version $installedCode")
+    UpdateState.Checking -> CategoryStatus("Checking for updates")
+    UpdateState.DebugBuild -> CategoryStatus("Debug build · no updates")
+    is UpdateState.UpToDate -> CategoryStatus("Up to date · $installedCode", SettingsDot.OK)
+    // Review confirm 0cac90f7: an update waiting for its DOWNLOAD tap gets a warning dot.
+    is UpdateState.Available -> if (state.needsTap) {
+        CategoryStatus("Update waits for DOWNLOAD", SettingsDot.WARN)
+    } else {
+        CategoryStatus("Update found · ${state.release.versionCode}")
+    }
+    is UpdateState.Downloading -> CategoryStatus("Downloading update")
+    is UpdateState.Ready -> CategoryStatus("Update ready · tap to install", SettingsDot.WARN)
+    is UpdateState.Waiting -> CategoryStatus("Update installs after this chat")
+    is UpdateState.Installing -> CategoryStatus("Installing update")
+    // A check that could not reach the engine (often just offline at start) is a plain line with
+    // no dot, so a start without the hotspot never nags; it still shows on the rail
+    // ([systemCategoryStatus]). A refused download, checksum, signer, ABI or install is a real
+    // problem with the next APK (recheck L6, 2026-11-20): ACTION NEEDED. The leaf says which.
+    is UpdateState.Failed -> if (state.sentence.startsWith(UpdateRules.CHECK_FAILED)) {
+        CategoryStatus("Last update check failed")
+    } else {
+        CategoryStatus("Update refused · open Updates", SettingsDot.WARN)
+    }
+}
+
+/**
+ * The System rail line: a missing permission outranks everything (the app half-works without it);
+ * otherwise the update line once the updater has read something, else the permissions line.
+ */
+internal fun systemCategoryStatus(
+    permissions: CategoryStatus,
+    update: CategoryStatus,
+    updateFailed: Boolean = false,
+): CategoryStatus = when {
+    permissions.dot == SettingsDot.WARN || permissions.dot == SettingsDot.ERROR -> permissions
+    update.dot != SettingsDot.NONE -> update
+    // A failed check has no dot but must still be seen: the rail says it instead of "All granted".
+    updateFailed -> update
+    else -> permissions
+}
+
 /**
  * Engine rail status. [verifiedEmail] is non-null only once the engine itself confirmed the
  * token (a network read); [refusal] is the engine saying the token is dead. A stored token alone
@@ -74,9 +128,12 @@ internal fun engineCategoryStatus(
     signedIn: Boolean,
     verifiedEmail: String?,
     refusal: Boolean,
+    carLink: Boolean = false,
 ): CategoryStatus = when {
     !configured -> CategoryStatus("No engine address")
     !signedIn -> CategoryStatus("Not signed in", SettingsDot.WARN)
+    carLink && refusal -> CategoryStatus("Car's sign-in refused: pair again", SettingsDot.ERROR)
+    carLink -> CategoryStatus("Car's own sign-in (uploads only)")
     refusal -> CategoryStatus("Sign-in no longer valid", SettingsDot.ERROR)
     verifiedEmail != null -> CategoryStatus("Signed in as $verifiedEmail", SettingsDot.OK)
     else -> CategoryStatus("Signed in")

@@ -72,15 +72,26 @@ class ExternalVolumeTracker(
         if (!held) heldUntil = nowMs + holdGraceMs
     }
 
+    /** Which branch [classify] took, for the volume probe's drive-log line (HU-1 T2). */
+    enum class Reason {
+        FIRST_SIGHTING, UNCHANGED, OWN_WRITE_WINDOW, VOICE_HOLD, BREAKER_OPEN, BREAKER_TRIPPED, EXTERNAL_CHANGE,
+    }
+
+    data class Verdict(val decision: Decision, val reason: Reason)
+
     /** Classifies an observed STREAM_MUSIC [index] (from a broadcast, observer or recheck). */
+    fun onObserved(index: Int, nowMs: Long): Decision = classify(index, nowMs).decision
+
+    /** [onObserved] plus the reason, so the probe can log which branch an index took. */
     @Synchronized
-    fun onObserved(index: Int, nowMs: Long): Decision {
-        if (nowMs < quietUntil) return Decision.DEFER
+    fun classify(index: Int, nowMs: Long): Verdict {
+        if (nowMs < quietUntil) return Verdict(Decision.DEFER, Reason.OWN_WRITE_WINDOW)
         val prev = known
         known = index
-        if (prev == null || prev == index) return Decision.IGNORE
-        if (held || nowMs < heldUntil) return Decision.IGNORE
-        if (nowMs < breakerOpenUntil) return Decision.IGNORE
+        if (prev == null) return Verdict(Decision.IGNORE, Reason.FIRST_SIGHTING)
+        if (prev == index) return Verdict(Decision.IGNORE, Reason.UNCHANGED)
+        if (held || nowMs < heldUntil) return Verdict(Decision.IGNORE, Reason.VOICE_HOLD)
+        if (nowMs < breakerOpenUntil) return Verdict(Decision.IGNORE, Reason.BREAKER_OPEN)
         while (recentReasserts.isNotEmpty() && nowMs - recentReasserts.first() >= breakerWindowMs) {
             recentReasserts.removeFirst()
         }
@@ -88,10 +99,10 @@ class ExternalVolumeTracker(
             recentReasserts.clear()
             breakerOpenUntil = nowMs + breakerOpenMs
             breakerTrips++
-            return Decision.IGNORE
+            return Verdict(Decision.IGNORE, Reason.BREAKER_TRIPPED)
         }
         recentReasserts.addLast(nowMs)
-        return Decision.REASSERT
+        return Verdict(Decision.REASSERT, Reason.EXTERNAL_CHANGE)
     }
 
     /** Milliseconds until the quiet window closes (0 if already closed). */

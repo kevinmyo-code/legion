@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -89,6 +91,10 @@ import java.io.File
  *
  * [rowHeight] null = the five rows split the card's height (head unit); a value = fixed rows
  * (phone portrait, where the card sits in a scrolling column with no height to split).
+ *
+ * HU-1 music card ([framed] false, [scroll] true): no card of its own (it is the PLAYLISTS face of
+ * the one music card), fixed drive-size rows, and the ten cells scroll by hand; the face shows at
+ * least three rows at 800x480 (CruiseLayoutLogic).
  */
 @Composable
 internal fun PinnedPlaylistGrid(
@@ -97,6 +103,8 @@ internal fun PinnedPlaylistGrid(
     onOpenPicker: () -> Unit,
     modifier: Modifier = Modifier,
     rowHeight: Dp? = null,
+    framed: Boolean = true,
+    scroll: Boolean = false,
 ) {
     val context = LocalContext.current
     val state by SpotifyPlaylists.state.collectAsState()
@@ -136,7 +144,7 @@ internal fun PinnedPlaylistGrid(
         return
     }
 
-    Column(modifier.deckCard(m).padding(m.listPad)) {
+    Column(if (framed) modifier.deckCard(m).padding(m.listPad) else modifier) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 label,
@@ -169,15 +177,15 @@ internal fun PinnedPlaylistGrid(
         // Before the first authorization check lands, nothing but the label: neither empty
         // slots nor a "Connect" prompt that may be wrong a moment later.
         if (state.authorized == null) return@Column
-        Column(
-            modifier = if (rowHeight == null) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth(),
+        val tiles: @Composable (Modifier, Dp?) -> Unit = { tilesModifier, rowH -> Column(
+            modifier = tilesModifier,
             verticalArrangement = Arrangement.spacedBy(m.tileGap),
         ) {
             slots.chunked(2).forEach { pair ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(if (rowHeight == null) Modifier.weight(1f) else Modifier.height(rowHeight)),
+                        .then(if (rowH == null) Modifier.weight(1f) else Modifier.height(rowH)),
                     horizontalArrangement = Arrangement.spacedBy(m.tileGap),
                 ) {
                     pair.forEach { slot ->
@@ -215,6 +223,16 @@ internal fun PinnedPlaylistGrid(
                     }
                 }
             }
+        } }
+        when {
+            rowHeight == null -> tiles(Modifier.weight(1f).fillMaxWidth(), null)
+            // The HU-1 music card: rows sized from the space the face really has, so exactly
+            // MusicDeckLogic.SCROLL_ROWS_VISIBLE rows show (never under drive size) and the rest scroll.
+            scroll -> BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val rowH = MusicDeckLogic.scrollRowHeight(maxHeight.value, m.tileGap.value).dp
+                tiles(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), rowH)
+            }
+            else -> tiles(Modifier.fillMaxWidth(), rowHeight)
         }
     }
 }

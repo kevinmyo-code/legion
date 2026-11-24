@@ -151,6 +151,8 @@ class FleetUploader(
     private val log: (String) -> Unit = DriveLog::breadcrumb,
     private val now: () -> Long = System::currentTimeMillis,
     private val maxBatches: Int = MAX_BATCHES_PER_RUN,
+    /** This unit's active car (ActiveVehicle): the one car the car's own sign-in uploads for. */
+    private val activeVehicleId: () -> String? = { null },
 ) {
     suspend fun pending(): FleetPending {
         var samples = 0
@@ -193,6 +195,7 @@ class FleetUploader(
             log("car data upload (${reason.name.lowercase()}): not signed in to the engine; data stays on this unit")
             return FleetUploadOutcome.NoEngine
         }
+        if (http.isCarLinkSignIn()) return runCarLink(reason, waiting)
         var samplesSent = 0
         var codesSent = 0
         var drivesSent = 0
@@ -229,6 +232,35 @@ class FleetUploader(
         }
         log("car data upload (${reason.name.lowercase()}): sent $samplesSent samples, $codesSent code events, $drivesSent drives")
         return FleetUploadOutcome.Sent(samplesSent, codesSent, moreWaiting, notes, drivesSent)
+    }
+
+    /**
+     * The car's own sign-in (2026-11-20, `CarLinkScope`): the engine accepts it on the OBD batch for
+     * ONE vehicle, named in the hand-over, and nothing else here. So: this unit's active car only,
+     * samples only, no vehicle lookup; code events, drives and other cars stay and the words say why.
+     */
+    private suspend fun runCarLink(reason: FleetUploadReason, waiting: List<Vehicle>): FleetUploadOutcome {
+        val engineId = http.carLinkVehicleId()
+            ?: return FleetUploadOutcome.Skipped(listOf(CAR_LINK_NO_VEHICLE)).also { log("car data upload: ${it.sentence}") }
+        // Review S2: the active car's id when it names a car here; else, when this unit knows exactly
+        // one car, that car (at drive end the dongle has dropped and current() reads "default").
+        val all = source.vehicles()
+        val bound = activeVehicleId()?.let { id -> waiting.firstOrNull { it.obdMac == id } }
+            ?: all.singleOrNull()?.let { only -> waiting.firstOrNull { it.obdMac == only.obdMac } }
+            ?: return FleetUploadOutcome.Skipped(listOf(CAR_LINK_OTHER_CARS)).also { log("car data upload: ${it.sentence}") }
+        val sent = sendCar(bound, engineId, samplesOnly = true)
+        sent.failure?.let { return failed(it, sent.samples, 0) }
+        val notes = mutableListOf<String>()
+        val key = bound.obdMac
+        if (source.codeEventCountAfter(key, cursors.codeEventCursor(key)) > 0 ||
+            source.driveCountAfter(key, cursors.driveCursor(key)) > 0
+        ) {
+            notes += CAR_LINK_CODES_AND_DRIVES
+        }
+        if (waiting.any { it.obdMac != key }) notes += CAR_LINK_OTHER_CARS
+        if (sent.samples == 0) return if (notes.isEmpty()) FleetUploadOutcome.NothingToSend else FleetUploadOutcome.Skipped(notes)
+        log("car data upload (${reason.name.lowercase()}, car's own sign-in): sent ${sent.samples} samples")
+        return FleetUploadOutcome.Sent(sent.samples, 0, sent.moreWaiting, notes, 0)
     }
 
     private fun failed(reason: String, samples: Int, codes: Int): FleetUploadOutcome {
@@ -351,7 +383,7 @@ class FleetUploader(
         val failure: String?,
     )
 
-    private suspend fun sendCar(vehicle: Vehicle, engineId: String): CarResult {
+    private suspend fun sendCar(vehicle: Vehicle, engineId: String, samplesOnly: Boolean = false): CarResult {
         val key = vehicle.obdMac
         var samples = 0
         var more = false
@@ -382,6 +414,7 @@ class FleetUploader(
             batches++
             if (rows.size < OBD_BATCH_MAX) break
         }
+        if (samplesOnly) return CarResult(samples, 0, 0, more, null)
         var codes = 0
         val events = source.codeEventsAfter(key, cursors.codeEventCursor(key), CODE_EVENT_LIMIT)
         if (events.size >= CODE_EVENT_LIMIT) more = true
@@ -430,6 +463,13 @@ class FleetUploader(
          * in step with it; a bigger number here would 400 every upload, not truncate. */
         const val OBD_BATCH_MAX = 1000
         const val OBD_BATCH_PATH = "/api/fleet/obd_samples/batch/"
+
+        const val CAR_LINK_NO_VEHICLE =
+            "The car's own sign-in names no engine vehicle, so car data stays on this unit. Pair your phone again to fix it."
+        const val CAR_LINK_OTHER_CARS =
+            "The car's own sign-in uploads only the car this unit is set to; other cars' data stays here."
+        const val CAR_LINK_CODES_AND_DRIVES =
+            "Code events and drives need a member sign-in on this unit; they are kept here."
 
         /** One run's cap per car, so a first sync of a year of history does not hold the lock for
          * minutes; the rest goes on later runs (`Sent.moreWaiting`). */
