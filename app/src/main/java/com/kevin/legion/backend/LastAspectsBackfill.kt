@@ -4,9 +4,6 @@ import android.content.Context
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
-import com.kevin.legion.data.local.GroceryStaple
-import com.kevin.legion.data.local.ItemList
-import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.data.local.OutboxTarget
 
 /**
@@ -33,13 +30,13 @@ internal object LastAspectsBackfillCursor {
  * describes, same five numbered rules apply (idempotent via the reused `syncId`, resumable via
  * [LastAspectsBackfillCursor], `serverId` trusted only in the "already present" direction, a
  * locally-deleted-and-never-synced row is skipped rather than resurrected, per-table failures do
- * not abort the whole run). This is the map's own 76 (`item_lists`/`list_items`) + 34
- * (`grocery_staples`) + 4 (`goals`) rows, every one of which predates this migration entirely.
+ * not abort the whole run). This is the map's own 4 (`goals`) rows, every one of which predates
+ * this migration entirely.
  *
- * **`item_lists` is pushed before `list_items`**, matching [LastAspectsSync.pull]'s own ordering
- * for the identical reason: [LastAspectsWriteThrough]'s list-item payload needs the parent list's
- * `syncId`, so the parent must already have a chance to exist server-side (or at minimum, already
- * be resolvable locally, which it always is here) before its children push.
+ * **NARROWED by the lists redesign slice 1a (2026-11-24)** to `goals` alone, with
+ * `item_lists`/`list_items`/`grocery_staples` - see [LastAspectsBackend]'s own class doc for which
+ * reader or writer each one lost. The parent-before-child ordering `item_lists` needed went with
+ * them; one table has no ordering to get wrong.
  */
 object LastAspectsBackfill {
     private data class TableResult(val pushed: Int, val alreadyPresent: Int, val skippedLocalOnlyDeleted: Int, val failure: String?)
@@ -100,65 +97,7 @@ object LastAspectsBackfill {
                 backend.upsertGoal(row.syncId, GoalFields(row.lineageId, row.aspect, row.statement, row.targetValue, row.unit, row.metricKey, row.deadlineEpoch, row.status, supersedesGuid, row.closedAt, row.createdAt))
             },
         )
-        // grocery_staples has no autoincrement id (its PK is the natural-key `name`), so it cannot
-        // share [backfillTable]'s Long-cursor shape - `lastBoughtAt` looked like a substitute but
-        // two staples ticked in the very same import/trip can share one millisecond value, which
-        // would let the cursor's `>` filter skip a genuinely-unsynced row forever once a
-        // same-timestamp sibling advanced past it. 34 rows is cheap enough to rescan in full every
-        // run instead - correctness over cursor efficiency, same posture as everywhere else in this
-        // codebase [backfillTable]'s `localServerId(row) != null` check already makes an
-        // already-synced row a near-free skip.
-        val staples = run {
-            val rows = db.groceryStapleDao().getAllIncludingDeleted()
-            var pushed = 0
-            var alreadyPresent = 0
-            var skippedLocalOnlyDeleted = 0
-            var failure: String? = null
-            for (row in rows) {
-                when {
-                    row.serverId != null -> alreadyPresent++
-                    row.deleted -> skippedLocalOnlyDeleted++
-                    else -> {
-                        val result = backend.upsertGroceryStaple(row.syncId, GroceryStapleFields(row.name, row.displayName, row.timesBought, row.lastBoughtAt))
-                        if (result.isSuccess) {
-                            pushed++
-                            // See GroceryStapleDao.setServerId's own doc comment for why this
-                            // table (no autoincrement-id cursor) must write this back NOW.
-                            db.groceryStapleDao().setServerId(row.name, result.getOrThrow().serverId)
-                        } else {
-                            failure = "${OutboxTarget.GROCERY_STAPLES}: ${result.exceptionOrNull()?.message ?: "unknown error"} (name ${row.name}, guid ${row.syncId})"
-                            break
-                        }
-                    }
-                }
-            }
-            TableResult(pushed, alreadyPresent, skippedLocalOnlyDeleted, failure)
-        }
-        val itemLists = backfillTable(
-            context, OutboxTarget.LISTS_ITEM_LISTS, db.itemListDao().getAllIncludingDeleted(),
-            localId = { it.id }, localGuid = { it.syncId }, localServerId = { it.serverId }, localDeleted = { it.deleted },
-            push = { row: ItemList -> backend.upsertItemList(row.syncId, ItemListFields(row.name, row.tickable, row.sortOrder, row.lastUsedAt, row.archived, row.createdAt)) },
-        )
-        val allLists = db.itemListDao().getAllIncludingDeleted().associateBy { it.id }
-        val listItems = backfillTable(
-            context, OutboxTarget.LISTS_LIST_ITEMS, db.listItemDao().getAllIncludingDeleted(),
-            localId = { it.id }, localGuid = { it.syncId }, localServerId = { it.serverId }, localDeleted = { it.deleted },
-            push = { row: ListItem ->
-                val list = allLists[row.listId]
-                if (list == null) {
-                    Result.failure<RemoteListItem>(LastAspectsBackendException("no local item_lists row for listId ${row.listId}"))
-                } else {
-                    backend.upsertListItem(
-                        row.syncId,
-                        ListItemFields(list.syncId, row.text, row.done, row.doneAt, row.sortOrder, row.createdAt, row.startsAt, row.endsAt, row.allDay, row.triggerPlaceLabel, row.repeatKind, row.repeatEvery, row.repeatDaysOfWeek, row.repeatDay, row.repeatMonth, row.repeatEndKind, row.repeatEndDate, row.repeatEndCount, row.exact, row.exactDowngraded, row.missedAt, row.missedDismissedAt, row.loggedAt),
-                    )
-                }
-            },
-        )
-
-        // item_lists pushed (and its cursor advanced) before list_items are even read above -
-        // see this object's own class doc for why the ordering is load-bearing.
-        val results = listOf(goals, staples, itemLists, listItems)
+        val results = listOf(goals)
         return Report(
             pushed = results.sumOf { it.pushed },
             alreadyPresent = results.sumOf { it.alreadyPresent },

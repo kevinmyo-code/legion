@@ -635,9 +635,9 @@ object MidnightEvents {
         Log.w(TAG, "ledger_config_backfill_failed ${e.javaClass.simpleName}: ${e.message}", e)
     }
 
-    /** A foreground [com.kevin.legion.backend.LastAspectsSync.maybeAutoPull] pass completed across
-     * all four last-aspect-slice tables (`goals`/`grocery_staples`/`item_lists`/`list_items`) -
-     * same role as [ledgerConfigAutoPullSucceeded] plays for ledger config. */
+    /** A foreground [com.kevin.legion.backend.LastAspectsSync.maybeAutoPull] pass completed over
+     * the last-aspect-slice's one remaining table, `goals` (it carried four until the lists
+     * redesign slice 1a) - same role as [ledgerConfigAutoPullSucceeded] plays for ledger config. */
     fun lastAspectsAutoPullSucceeded(inserted: Int, updated: Int, skippedLocalNewer: Int, tombstoned: Int, skippedTombstoneNoLocalMatch: Int) = safe {
         Log.d(
             TAG,

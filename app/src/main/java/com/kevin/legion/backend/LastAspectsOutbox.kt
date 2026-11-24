@@ -4,9 +4,6 @@ import android.content.Context
 import com.kevin.legion.MidnightEvents
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.Goal
-import com.kevin.legion.data.local.GroceryStaple
-import com.kevin.legion.data.local.ItemList
-import com.kevin.legion.data.local.ListItem
 import com.kevin.legion.data.local.OutboxEntry
 import com.kevin.legion.data.local.OutboxOperation
 import com.kevin.legion.data.local.OutboxTarget
@@ -19,21 +16,16 @@ import kotlinx.serialization.json.Json
  * [LedgerConfigWriteThrough]/[LedgerConfigOutboxDrain]'s own shape exactly.
  *
  * **Honest accounting of which write sites this file actually routes, per CLAUDE.md's own
- * instruction to state this plainly:**
- * - [addGoal]/[closeGoal] ARE wired - [com.kevin.legion.goals.GoalController.setGoal]/
- *   `.closeByLineage` call through here now (see that controller's own updated doc comment).
- * - [upsertStaple]/[forgetStaple] ARE wired - [com.kevin.legion.grocery.GroceryController]'s
- *   `completeTrip`/`forgetStaple` call through here now.
- * - [addItemList]/[addListItem] exist for interface completeness (every synced table gets an
- *   insert path someone could call) but have **no live caller today**. `notes/NotesController.kt`'s
- *   own class doc records that this table's read/write path was repointed onto `events` entirely
- *   (backend-erp ticket 15 step 4) BEFORE this ticket existed - there is no live code path left
- *   that creates a NEW `item_lists`/`list_items` row for these functions to intercept. Every
- *   individual DAO mutator ([com.kevin.legion.data.local.ListItemDao.markDone]/`.setTime`/etc.) is
- *   in the same position and is deliberately NOT wrapped here - fifteen wrapper functions with zero
- *   callers would be speculative plumbing, not a route this ticket found. [LastAspectsBackfill]
- *   still gives every EXISTING row (71 + 5) a server home; [LastAspectsSync]'s pull still keeps
- *   them live if a future write path is repointed onto this table again.
+ * instruction to state this plainly:** [addGoal]/[closeGoal] ARE wired -
+ * [com.kevin.legion.goals.GoalController.setGoal]/`.closeByLineage` call through here now (see
+ * that controller's own updated doc comment). They are the only two left.
+ *
+ * **NARROWED by the lists redesign slice 1a (2026-11-24).** `addItemList`/`addListItem` never had a
+ * live caller (`notes/NotesController.kt` repointed every `item_lists`/`list_items` read and write
+ * onto `events` in backend-erp ticket 15 step 4, before this slice was written), and
+ * `upsertStaple`/`forgetStaple` lost theirs when `grocery/GroceryController.kt` was deleted. All
+ * four are gone, with the three tables' halves of [LastAspectsBackend], [LastAspectsBackfill],
+ * [LastAspectsSync] and [LastAspectsRealtime].
  *
  * **Local write always happens first, unconditionally** - same posture as
  * [LedgerConfigWriteThrough]'s own class doc.
@@ -85,8 +77,8 @@ object LastAspectsWriteThrough {
 
     private suspend fun goalPayload(db: CarDatabase, row: Goal): GoalPayload {
         // supersedesId is a local autoincrement surrogate with no portable meaning across devices
-        // (same reasoning as [RemoteListItem.listSyncId]'s own doc comment) - resolved to the prior
-        // revision's own syncId here, at push time, rather than stored on the entity itself.
+        // (see RemoteGoal's own doc comment) - resolved to the prior revision's own syncId here, at
+        // push time, rather than stored on the entity itself.
         val supersedesGuid = row.supersedesId?.let { priorId ->
             db.goalDao().history(row.lineageId).firstOrNull { it.id == priorId }?.syncId
         }
@@ -124,137 +116,17 @@ object LastAspectsWriteThrough {
             enqueue(db, OutboxTarget.GOALS, OutboxOperation.UPSERT, current.id, Json.encodeToString(GoalPayload.serializer(), payload), result.exceptionOrNull()?.message)
         }
     }
-
-    // --- Grocery staples -----------------------------------------------------------------------
-
-    @Serializable
-    internal data class GroceryStaplePayload(val syncId: String, val name: String, val displayName: String, val timesBought: Int, val lastBoughtAt: Long) {
-        fun toFields() = GroceryStapleFields(name, displayName, timesBought, lastBoughtAt)
-        companion object {
-            fun from(row: GroceryStaple) = GroceryStaplePayload(row.syncId, row.name, row.displayName, row.timesBought, row.lastBoughtAt)
-        }
-    }
-
-    /** [com.kevin.legion.grocery.GroceryController.completeTrip]'s write - `upsert` REPLACEs by
-     * [GroceryStaple.name] locally first (that function already reuses the prior row's `syncId`
-     * across trips, and now its `serverId` too - see that function's own comment), then pushes. */
-    suspend fun upsertStaple(context: Context, row: GroceryStaple): GroceryStaple {
-        val db = CarDatabase.getDatabase(context)
-        db.groceryStapleDao().upsert(row)
-        val backend = backend(context) ?: return row
-        val payload = GroceryStaplePayload.from(row)
-        val result = backend.upsertGroceryStaple(row.syncId, payload.toFields())
-        if (result.isFailure) {
-            enqueue(db, OutboxTarget.GROCERY_STAPLES, OutboxOperation.UPSERT, 0, Json.encodeToString(GroceryStaplePayload.serializer(), payload), result.exceptionOrNull()?.message)
-        }
-        return row
-    }
-
-    /**
-     * [com.kevin.legion.grocery.GroceryController.forgetStaple]'s write - tombstones on a
-     * configured install (so the forget can propagate to the other device via
-     * [LastAspectsSync.pull]), falls back to the bare hard [com.kevin.legion.data.local.GroceryStapleDao.deleteByName]
-     * on an unconfigured one (no server copy exists to reconcile a tombstone against - same
-     * fallback shape [LedgerConfigWriteThrough.deleteCategoryRulesBySubstring] uses).
-     */
-    suspend fun forgetStaple(context: Context, name: String) {
-        val db = CarDatabase.getDatabase(context)
-        val backend = backend(context)
-        if (backend == null) {
-            db.groceryStapleDao().deleteByName(name)
-            return
-        }
-        val existing = db.groceryStapleDao().getByName(name) ?: return
-        val now = System.currentTimeMillis()
-        db.groceryStapleDao().softDeleteByName(name, now)
-        val result = backend.softDeleteGroceryStaple(existing.syncId)
-        if (result.isFailure) {
-            enqueue(db, OutboxTarget.GROCERY_STAPLES, OutboxOperation.SOFT_DELETE, 0, Json.encodeToString(LastAspectsDeletePayload.serializer(), LastAspectsDeletePayload(existing.syncId)), result.exceptionOrNull()?.message)
-        }
-    }
-
-    // --- Item lists / list items ---------------------------------------------------------------
-    // No live caller today - see this object's own class doc for the honest accounting of why.
-
-    @Serializable
-    internal data class ItemListPayload(val syncId: String, val name: String, val tickable: Boolean, val sortOrder: Int, val lastUsedAt: Long, val archived: Boolean, val createdAt: Long) {
-        fun toFields() = ItemListFields(name, tickable, sortOrder, lastUsedAt, archived, createdAt)
-        companion object {
-            fun from(row: ItemList) = ItemListPayload(row.syncId, row.name, row.tickable, row.sortOrder, row.lastUsedAt, row.archived, row.createdAt)
-        }
-    }
-
-    suspend fun addItemList(context: Context, row: ItemList): ItemList {
-        val db = CarDatabase.getDatabase(context)
-        val id = db.itemListDao().insert(row)
-        val stored = row.copy(id = id)
-        val backend = backend(context) ?: return stored
-        val payload = ItemListPayload.from(stored)
-        val result = backend.upsertItemList(stored.syncId, payload.toFields())
-        if (result.isFailure) {
-            enqueue(db, OutboxTarget.LISTS_ITEM_LISTS, OutboxOperation.UPSERT, stored.id, Json.encodeToString(ItemListPayload.serializer(), payload), result.exceptionOrNull()?.message)
-        }
-        return stored
-    }
-
-    @Serializable
-    internal data class ListItemPayload(
-        val syncId: String,
-        val listSyncId: String,
-        val text: String,
-        val done: Boolean,
-        val doneAt: Long?,
-        val sortOrder: Int,
-        val createdAt: Long,
-        val startsAt: Long?,
-        val endsAt: Long?,
-        val allDay: Boolean,
-        val triggerPlaceLabel: String?,
-        val repeatKind: String?,
-        val repeatEvery: Int?,
-        val repeatDaysOfWeek: String?,
-        val repeatDay: Int?,
-        val repeatMonth: Int?,
-        val repeatEndKind: String?,
-        val repeatEndDate: Long?,
-        val repeatEndCount: Int?,
-        val exact: Boolean,
-        val exactDowngraded: Boolean,
-        val missedAt: Long?,
-        val missedDismissedAt: Long?,
-        val loggedAt: Long?,
-    ) {
-        fun toFields() = ListItemFields(listSyncId, text, done, doneAt, sortOrder, createdAt, startsAt, endsAt, allDay, triggerPlaceLabel, repeatKind, repeatEvery, repeatDaysOfWeek, repeatDay, repeatMonth, repeatEndKind, repeatEndDate, repeatEndCount, exact, exactDowngraded, missedAt, missedDismissedAt, loggedAt)
-    }
-
-    private suspend fun listItemPayload(db: CarDatabase, row: ListItem): ListItemPayload? {
-        val list = db.itemListDao().getAllIncludingDeleted().firstOrNull { it.id == row.listId } ?: return null
-        return ListItemPayload(row.syncId, list.syncId, row.text, row.done, row.doneAt, row.sortOrder, row.createdAt, row.startsAt, row.endsAt, row.allDay, row.triggerPlaceLabel, row.repeatKind, row.repeatEvery, row.repeatDaysOfWeek, row.repeatDay, row.repeatMonth, row.repeatEndKind, row.repeatEndDate, row.repeatEndCount, row.exact, row.exactDowngraded, row.missedAt, row.missedDismissedAt, row.loggedAt)
-    }
-
-    suspend fun addListItem(context: Context, row: ListItem): ListItem {
-        val db = CarDatabase.getDatabase(context)
-        val id = db.listItemDao().insert(row)
-        val stored = row.copy(id = id)
-        val backend = backend(context) ?: return stored
-        val payload = listItemPayload(db, stored) ?: return stored
-        val result = backend.upsertListItem(stored.syncId, payload.toFields())
-        if (result.isFailure) {
-            enqueue(db, OutboxTarget.LISTS_LIST_ITEMS, OutboxOperation.UPSERT, stored.id, Json.encodeToString(ListItemPayload.serializer(), payload), result.exceptionOrNull()?.message)
-        }
-        return stored
-    }
 }
 
-/** The wire shape queued for every [OutboxOperation.SOFT_DELETE] entry across this slice's
- * write-through tables - just the [LastAspectsBackend]'s own upsert key, matching
+/** The wire shape queued for every [OutboxOperation.SOFT_DELETE] entry on this slice's
+ * write-through table - just the [LastAspectsBackend]'s own upsert key, matching
  * [LedgerConfigDeletePayload]'s shape. */
 @Serializable
 internal data class LastAspectsDeletePayload(val guid: String)
 
 /**
- * Retries every still-pending last-aspects-slice [OutboxEntry], across all four
- * [OutboxTarget] constants this slice owns - mirrors [LedgerConfigOutboxDrain]'s own shape and
+ * Retries every still-pending last-aspects-slice [OutboxEntry] for the one
+ * [OutboxTarget] constant this slice still owns - mirrors [LedgerConfigOutboxDrain]'s own shape and
  * bounded-attempts reasoning exactly. `ui/MainActivity.kt`'s `onResume` hook calls this BEFORE
  * [LastAspectsBackfill.maybeAutoRun] and [LastAspectsSync.maybeAutoPull], same load-bearing
  * ordering [LedgerConfigOutboxDrain]'s own class doc explains.
@@ -279,45 +151,6 @@ object LastAspectsOutboxDrain {
                 OutboxOperation.SOFT_DELETE -> {
                     val p = Json.decodeFromString(LastAspectsDeletePayload.serializer(), entry.payload)
                     backend.softDeleteGoal(p.guid)
-                }
-                else -> Result.success(Unit)
-            }
-        }
-        total += drainOne(db, OutboxTarget.GROCERY_STAPLES) { entry ->
-            when (entry.operation) {
-                OutboxOperation.UPSERT -> {
-                    val p = Json.decodeFromString(LastAspectsWriteThrough.GroceryStaplePayload.serializer(), entry.payload)
-                    backend.upsertGroceryStaple(p.syncId, p.toFields())
-                }
-                OutboxOperation.SOFT_DELETE -> {
-                    val p = Json.decodeFromString(LastAspectsDeletePayload.serializer(), entry.payload)
-                    backend.softDeleteGroceryStaple(p.guid)
-                }
-                else -> Result.success(Unit)
-            }
-        }
-        total += drainOne(db, OutboxTarget.LISTS_ITEM_LISTS) { entry ->
-            when (entry.operation) {
-                OutboxOperation.UPSERT -> {
-                    val p = Json.decodeFromString(LastAspectsWriteThrough.ItemListPayload.serializer(), entry.payload)
-                    backend.upsertItemList(p.syncId, p.toFields())
-                }
-                OutboxOperation.SOFT_DELETE -> {
-                    val p = Json.decodeFromString(LastAspectsDeletePayload.serializer(), entry.payload)
-                    backend.softDeleteItemList(p.guid)
-                }
-                else -> Result.success(Unit)
-            }
-        }
-        total += drainOne(db, OutboxTarget.LISTS_LIST_ITEMS) { entry ->
-            when (entry.operation) {
-                OutboxOperation.UPSERT -> {
-                    val p = Json.decodeFromString(LastAspectsWriteThrough.ListItemPayload.serializer(), entry.payload)
-                    backend.upsertListItem(p.syncId, p.toFields())
-                }
-                OutboxOperation.SOFT_DELETE -> {
-                    val p = Json.decodeFromString(LastAspectsDeletePayload.serializer(), entry.payload)
-                    backend.softDeleteListItem(p.guid)
                 }
                 else -> Result.success(Unit)
             }
