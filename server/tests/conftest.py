@@ -525,6 +525,38 @@ def auth_client(household_user):
     return _client_for(household_user)
 
 
+def worker_client(client, name="claude-session-Alienware"):
+    """A SECOND device token for the member `client` speaks for: the Claude laptop's own.
+
+    `claude_session.views._touch_machine` binds the heartbeating token to its `ClaudeMachine`,
+    and a token the engine can tie to a Claude machine may not create a task, assign, cancel or
+    ask for a file (`claude_session.views._not_the_worker`, 2026-11-24: a helper session that
+    read the token off the laptop must not be able to author Kevin's requests or forge his yes).
+    The real world has two tokens here, so a test that both heartbeats as a machine and writes as
+    Kevin needs two as well. Only the HEARTBEAT is routed through this one, because `_touch_machine`
+    is the only place a token is bound; claim, finish and upload are not fenced and the modules
+    here still send them on whatever client the test hands them.
+
+    Cached on the client per machine name, so a module that does route a claim here keeps one
+    identity across the heartbeat and the claim, which `maybe_mint_workflow` and the memory review
+    both require of the claiming token.
+    """
+    from household.models import DeviceToken, hash_device_key
+
+    cache = getattr(client, "_legion_worker_clients", None)
+    if cache is None:
+        cache = {}
+        client._legion_worker_clients = cache
+    if name not in cache:
+        raw = client._credentials["HTTP_AUTHORIZATION"].split()[1]
+        user = DeviceToken.objects.get(key_hash=hash_device_key(raw)).user
+        _token, worker_raw = DeviceToken.issue(user, name)
+        worker = APIClient()
+        worker.credentials(HTTP_AUTHORIZATION=f"Token {worker_raw}")
+        cache[name] = worker
+    return cache[name]
+
+
 @pytest.fixture(autouse=True)
 def _web_voice_on_live(monkeypatch):
     """ADR 0102: the web assistant's default engine is the cascade for every role. The suite

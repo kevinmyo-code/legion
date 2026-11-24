@@ -11,6 +11,7 @@ import pytest
 
 from claude_session.delivery import asks_for_made_file, in_task_folder
 from claude_session.models import ClaudeMachine, ClaudeTask
+from tests.conftest import worker_client
 
 pytestmark = pytest.mark.django_db
 
@@ -18,6 +19,7 @@ API = "/api/claude/"
 
 
 def _beat(client, name="Alienware", scope="full", **extra):
+    client = worker_client(client, f"claude-session-{name}")
     body = {"name": name, "hostname": f"{name}-host", "scope": scope, "state": "idle",
             "running": [], "claude_version": "2.1.316", **extra}
     response = client.post(f"{API}machines/heartbeat/", body, format="json")

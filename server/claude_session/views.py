@@ -161,6 +161,31 @@ def _refused(serializer) -> Response:
     return _detail(f"Nothing was changed. {serializer.errors}", http.HTTP_400_BAD_REQUEST)
 
 
+WORKER_FENCE_REFUSAL = (
+    "Nothing was sent. A Claude worker's token cannot create a task or answer a question: only "
+    "Kevin's own devices can."
+)
+
+
+def _not_the_worker(request) -> Response | None:
+    """Phone-only writes, ADR 0067's own follow-up ("worker endpoints restricted to machine
+    tokens"). The worker's token speaks for the laptop, never for Kevin, so it may not create a
+    task or answer a question with one: a helper session that read the token off the laptop would
+    otherwise be able to author Kevin's requests and forge his yes. Nothing in the worker family
+    creates, assigns, cancels or asks for a file (`tools/claude_session/engine_client.py` has
+    heartbeat, claim, finish and upload and nothing else), so this refuses no real caller. Same
+    shape as `board.action_views._phone_token`.
+
+    None when the caller may proceed, else the 403 to return. The scope does not come into it: a
+    worker token issued before `claude_worker` existed keeps `write` and every route
+    (`claude_session.tokens`), and the machine binding catches it anyway."""
+    from claude_session.tokens import is_claude_token
+
+    if is_claude_token(request):
+        return _detail(WORKER_FENCE_REFUSAL, http.HTTP_403_FORBIDDEN)
+    return None
+
+
 def _machine_named(request, name: str) -> ClaudeMachine | None:
     return scoped(ClaudeMachine, request).filter(name__iexact=name.strip()).first()
 
@@ -495,6 +520,9 @@ class TaskListCreateView(APIView):
         },
     )
     def post(self, request):
+        fenced = _not_the_worker(request)
+        if fenced is not None:
+            return fenced
         household = household_of(request)
         serializer = s.ClaudeTaskCreateSerializer(data=request.data)
         if not serializer.is_valid():
@@ -653,6 +681,9 @@ class TaskCancelView(APIView):
         },
     )
     def post(self, request, task_id: int):
+        fenced = _not_the_worker(request)
+        if fenced is not None:
+            return fenced
         now = timezone.now()
         with transaction.atomic():
             task = (
@@ -698,6 +729,9 @@ class TaskAssignView(APIView):
         },
     )
     def post(self, request, task_id: int):
+        fenced = _not_the_worker(request)
+        if fenced is not None:
+            return fenced
         serializer = s.ClaudeAssignSerializer(data=request.data)
         if not serializer.is_valid():
             return _refused(serializer)
@@ -755,6 +789,9 @@ class TaskSendFileView(APIView):
         },
     )
     def post(self, request, task_id: int):
+        fenced = _not_the_worker(request)
+        if fenced is not None:
+            return fenced
         serializer = s.ClaudeSendFileSerializer(data=request.data)
         if not serializer.is_valid():
             return _refused(serializer)
@@ -1132,6 +1169,9 @@ class WorkflowRunView(APIView):
         },
     )
     def post(self, request):
+        fenced = _not_the_worker(request)
+        if fenced is not None:
+            return fenced
         serializer = s.ClaudeWorkflowRunSerializer(data=request.data)
         if not serializer.is_valid():
             return _refused(serializer)
