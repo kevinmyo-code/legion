@@ -56,10 +56,18 @@ from __future__ import annotations
 import json
 
 import pytest
+from django.conf import settings
 from django.db import connection
 
 from api.registry import SYNCED_VIEWSETS
-from household.tenancy import DJANGO_MANAGED_TENANT_TABLES, ENGINE_WIDE_TABLES, TENANT_TABLES
+from household.models import Household
+from household.tenancy import (
+    BOOTSTRAP_ID_ENV,
+    DJANGO_MANAGED_TENANT_TABLES,
+    ENGINE_WIDE_TABLES,
+    TENANT_TABLES,
+    resolve_default_household,
+)
 from household.tenancy_sql import household_unique_name
 from tests.test_fleet_api import TABLES as FLEET_TABLES
 from tests.test_fleet_api import a_vehicle
@@ -2007,3 +2015,50 @@ def test_bank_connections_are_scoped_by_household(
         assert token_b.get("/api/finance/net-cash").data["net_cents"] == 50_000
     finally:
         plaid_client.set_gateway_factory(None)
+
+
+# =============================================================================
+# Which household is the DEFAULT one (`resolve_default_household`)
+# =============================================================================
+#
+# The engine runs a public demo, so "the only household" stopped being true
+# without anyone deciding it: `POST /api/demo/enter` makes a throwaway copy per
+# visit and `demo.spares` seeds more ahead of time. The nightly backup, the
+# release-publishing fence and the superuser signal all ask this one function
+# which household runs the engine, and all of them refuse when it cannot say.
+# These cases pin that a demo household is never one of the candidates.
+
+
+def _real_household(name: str):
+    return Household.objects.create(name=name)
+
+
+def test_the_default_household_ignores_demo_visit_copies(monkeypatch, household_a):
+    monkeypatch.delenv(BOOTSTRAP_ID_ENV, raising=False)
+    Household.objects.create(name="Demo visit one", is_demo_visit=True)
+    Household.objects.create(name="Demo visit two", is_demo_visit=True)
+
+    assert resolve_default_household() == household_a
+
+
+def test_the_default_household_ignores_the_shared_demo_household(monkeypatch, household_a):
+    monkeypatch.delenv(BOOTSTRAP_ID_ENV, raising=False)
+    _real_household(settings.LEGION_DEMO_HOUSEHOLD_NAME)
+
+    assert resolve_default_household() == household_a
+
+
+def test_two_real_households_are_still_refused(monkeypatch, household_a, household_b):
+    """The whole point of refusing: with two families on one engine there is no
+    honest guess, and demo households being ignored must not turn into picking
+    one of the two. A regression guard - the code before this change refused
+    here too."""
+    monkeypatch.delenv(BOOTSTRAP_ID_ENV, raising=False)
+    Household.objects.create(name="Demo visit three", is_demo_visit=True)
+
+    assert resolve_default_household() is None
+
+
+def test_the_bootstrap_id_still_wins_when_it_names_a_household(household_a, household_b):
+    """Branch 1 is untouched: with the id set, two real households are fine."""
+    assert resolve_default_household() == household_a

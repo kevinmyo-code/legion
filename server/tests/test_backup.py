@@ -22,6 +22,8 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from household import tenancy
+from household.models import Household
 from ingest import backup, drive, vault
 from ingest.drive import FOLDER_MIME, DriveClient, DriveError, DriveRefused, Response
 from ingest.freshness import freshness_for
@@ -391,6 +393,41 @@ def test_another_households_drive_never_receives_the_whole_database(
     runs = backup.run_nightly(_job(fake), write=lambda line: None)
     assert {r.outcome for r in runs} == {Outcome.SKIPPED}
     assert fake.files == {}
+
+
+@pytest.mark.django_db
+def test_a_demo_household_never_makes_the_backup_look_unowned(
+    monkeypatch, drive_login, household_a
+):
+    """The 2026-11-22 breakage: the engine runs a public demo, so a visit copy
+    and the shared demo household made `resolve_default_household` see several
+    households and refuse. Only real households count now, so with one of them
+    the backup runs with no environment variable set."""
+    monkeypatch.delenv(tenancy.BOOTSTRAP_ID_ENV, raising=False)
+    Household.objects.create(name="Demo visit backup", is_demo_visit=True)
+    Household.objects.create(name=settings.LEGION_DEMO_HOUSEHOLD_NAME)
+    fake = FakeDrive()
+
+    runs = backup.run_nightly(_job(fake), write=lambda line: None)
+
+    assert runs[0].household_id == household_a.pk
+    assert runs[0].outcome == Outcome.OK
+    assert len(fake.live(**{backup.PROP_KIND: "dump"})) == 1
+
+
+@pytest.mark.django_db
+def test_two_real_households_refuse_loudly_and_say_the_demo_is_not_counted(
+    monkeypatch, drive_login, household_a, household_b
+):
+    monkeypatch.delenv(tenancy.BOOTSTRAP_ID_ENV, raising=False)
+    Household.objects.create(name="Demo visit refusal", is_demo_visit=True)
+    lines = []
+
+    runs = backup.run_nightly(_job(FakeDrive()), write=lines.append)
+
+    assert {r.outcome for r in runs} == {Outcome.SKIPPED}
+    assert "more than one real household" in lines[0]
+    assert "the demo's own are not counted" in lines[0]
 
 
 @pytest.mark.django_db
