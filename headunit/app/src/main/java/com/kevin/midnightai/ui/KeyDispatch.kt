@@ -18,6 +18,16 @@ import com.kevin.midnightai.diag.ProbeFormat
  */
 internal object KeyDispatch {
 
+    /**
+     * Session-only probe (2026-11-23): hand the volume keys back to the system instead of consuming
+     * them, so the key reaches whatever the ROM itself does with it. The app has swallowed them
+     * since 2026-10-13, so the unit's own handling of a volume key has never been observed, and the
+     * new field evidence says the vendor's volume path is reached by something the app is not doing.
+     * Set from the Volume check panel and never persisted: nothing should ship in this state.
+     */
+    @Volatile
+    var letVolumeKeysThrough: Boolean = false
+
     fun dispatch(
         event: KeyEvent,
         editorActive: Boolean,
@@ -29,6 +39,12 @@ internal object KeyDispatch {
         if (!up && event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
             val handled = superDispatch(event)
             if (mayLog(event, editorActive)) logKey(event, handled, InputProbe::wheel)
+            return handled
+        }
+        if (letVolumeKeysThrough) {
+            val handled = superDispatch(event)
+            logKey(event, handled, InputProbe::wheel)
+            logKey(event, handled, InputProbe::volume)
             return handled
         }
         logKey(event, handled = true, sink = InputProbe::wheel)

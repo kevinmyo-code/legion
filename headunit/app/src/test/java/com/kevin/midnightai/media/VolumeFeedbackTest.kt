@@ -55,6 +55,54 @@ class VolumeFeedbackTest {
         )
     }
 
+    @Test fun aCallThisUnitRefusedIsSaidAsARefusalAndNotAsADeadButton() {
+        val words = VolumeFeedback.pressWords(
+            before = 7, after = 7, max = 15, up = true, volumeFixed = false,
+            readsBack = true, refused = "NoSuchMethodError",
+        )
+        assertEquals(VolumeFeedback.REFUSED, words)
+        assertTrue(words!!, "Volume check" in words)
+    }
+
+    /**
+     * A press handed to another process (the player's own session, a key event) cannot be judged
+     * from the index at all, so it claims nothing either way (2026-11-23).
+     */
+    @Test fun aPressHandedOnSaysNothingAboutMovement() {
+        assertNull(
+            VolumeFeedback.pressWords(
+                before = 7, after = 7, max = 15, up = true, volumeFixed = false, readsBack = false,
+            ),
+        )
+        assertEquals(
+            VolumeFeedback.REFUSED,
+            VolumeFeedback.pressWords(
+                before = 7, after = 7, max = 15, up = true, volumeFixed = false,
+                readsBack = false, refused = "no player",
+            ),
+        )
+    }
+
+    @Test fun theDriveLogLineNamesTheCallThatCarriedThePress() {
+        assertEquals(
+            "raise via SUGGESTED_STREAM",
+            VolumeFeedback.writeWhat(up = true, path = VolumePath.SUGGESTED_STREAM, refused = null),
+        )
+        assertEquals(
+            "lower via MEDIA_KEY refused=no player",
+            VolumeFeedback.writeWhat(up = false, path = VolumePath.MEDIA_KEY, refused = "no player"),
+        )
+    }
+
+    @Test fun eachProbeSaysWhatItSentAndNeverClaimsTheAmpHeardIt() {
+        val sent = VolumeFeedback.probeWords(VolumePath.SUGGESTED_STREAM, refused = null)
+        assertTrue(sent, VolumePath.SUGGESTED_STREAM.label in sent && "sound" in sent)
+        val handedOn = VolumeFeedback.probeWords(VolumePath.MEDIA_SESSION, refused = null)
+        assertTrue(handedOn, "ears" in handedOn)
+        val refused = VolumeFeedback.probeWords(VolumePath.MASTER, refused = "SecurityException")
+        assertTrue(refused, "refused" in refused && "SecurityException" in refused)
+    }
+
     @Test fun theReadoutNamesAFixedOutputSoTheProbesAreNotAmbiguous() {
         assertEquals(
             "STREAM_MUSIC index 7 of 15",

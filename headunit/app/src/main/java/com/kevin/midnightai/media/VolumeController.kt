@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.os.Build
 import android.os.SystemClock
+import androidx.annotation.VisibleForTesting
 import com.kevin.midnightai.diag.InputProbe
 import com.kevin.midnightai.diag.ProbeFormat
 import kotlin.math.roundToInt
@@ -71,10 +72,27 @@ object VolumeController {
     data class Nudge(val percent: Int, val words: String?)
 
     fun raise(context: Context, steps: Int = 1, by: String = "app"): Nudge =
-        nudge(context, AudioManager.ADJUST_RAISE, steps, by)
+        nudge(context, up = true, steps = steps, by = by, nudger = AndroidVolumeNudger(context))
 
     fun lower(context: Context, steps: Int = 1, by: String = "app"): Nudge =
-        nudge(context, AudioManager.ADJUST_LOWER, steps, by)
+        nudge(context, up = false, steps = steps, by = by, nudger = AndroidVolumeNudger(context))
+
+    /** The same press with the Android calls faked, so a test can assert WHICH call it made. */
+    @VisibleForTesting
+    internal fun nudgeWith(context: Context, up: Boolean, nudger: VolumeNudger, by: String = "test"): Nudge =
+        nudge(context, up = up, steps = 1, by = by, nudger = nudger)
+
+    /**
+     * One press of one [VolumePath] from the Volume check panel: a real notch, logged like any
+     * other press, so Kevin can hear each way in turn and then pick the one that works.
+     */
+    fun probe(context: Context, path: VolumePath, up: Boolean): String {
+        val am = am(context)
+        val before = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val refused = AndroidVolumeNudger(context).send(path, up)
+        noteOwnWrite(am, "panel", VolumeFeedback.writeWhat(up, path, refused), before)
+        return VolumeFeedback.probeWords(path, refused)
+    }
 
     /** Jumps to [percent] (0-100) of max media volume. */
     fun setPercent(context: Context, percent: Int, by: String = "app"): Int {
@@ -179,28 +197,69 @@ object VolumeController {
         return percent(am)
     }
 
-    private fun nudge(context: Context, direction: Int, steps: Int, by: String): Nudge {
+    /**
+     * One press, down the [VolumePath] in use. Until 2026-11-23 this always called
+     * `adjustStreamVolume(STREAM_MUSIC, ..., FLAG_SHOW_UI)`, which is the call Kevin watched move
+     * the system's slider without moving the sound ([VolumePath]); the default is now the call the
+     * framework itself makes for a hardware volume key, and his pick in the Volume check panel wins
+     * over that.
+     *
+     * The fallback can only see an index, never the amp ([VolumePathLogic.shouldFallBack]): it
+     * exists so a ROM that refuses the newer call still changes the volume, and it proves nothing
+     * about loudness.
+     */
+    private fun nudge(context: Context, up: Boolean, steps: Int, by: String, nudger: VolumeNudger): Nudge {
         val am = am(context)
         val before = am.getStreamVolume(AudioManager.STREAM_MUSIC)
-        // FLAG_SHOW_UI is required on many head units / OEM ROMs for a programmatic
-        // STREAM_MUSIC change to actually take effect (without it the call is a
-        // silent no-op — the on-screen meter never moved). It also surfaces the
-        // system volume panel as confirmation.
-        repeat(steps.coerceIn(1, 10)) {
-            am.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val volumeFixed = isVolumeFixed(am)
+        val notches = steps.coerceIn(1, 10)
+        var path = VolumePathStore.path(context)
+        var refused = send(am, nudger, path, up, notches, by, before)
+        var after = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val fallback = VolumePathLogic.fallbackFor(path)
+        if (fallback != null && VolumePathLogic.shouldFallBack(
+                path = path,
+                chosenByDriver = VolumePathStore.chosenByDriver(context),
+                threw = refused != null,
+                moved = after != before,
+                atEnd = if (up) max > 0 && before >= max else before <= 0,
+                volumeFixed = volumeFixed,
+            )
+        ) {
+            path = fallback
+            refused = send(am, nudger, path, up, notches, by, after)
+            after = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         }
-        val up = direction == AudioManager.ADJUST_RAISE
-        noteOwnWrite(am, by, if (up) "raise" else "lower", before)
         // A press that moved nothing is reported in words instead of looking like it worked
         // (2026-11-23). Said once per press, by whoever asked: the screen toasts it, voice speaks it.
         val words = VolumeFeedback.pressWords(
             before = before,
-            after = am.getStreamVolume(AudioManager.STREAM_MUSIC),
-            max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+            after = after,
+            max = max,
             up = up,
-            volumeFixed = isVolumeFixed(am),
+            volumeFixed = volumeFixed,
+            readsBack = path.readsBackAtOnce,
+            refused = refused,
         )
         return Nudge(percent(am), words)
+    }
+
+    /** [notches] presses of one path, as one drive-log line naming the path and any refusal. */
+    @Suppress("LongParameterList")
+    private fun send(
+        am: AudioManager,
+        nudger: VolumeNudger,
+        path: VolumePath,
+        up: Boolean,
+        notches: Int,
+        by: String,
+        before: Int,
+    ): String? {
+        var refused: String? = null
+        repeat(notches) { nudger.send(path, up)?.let { reason -> refused = reason } }
+        noteOwnWrite(am, by, VolumeFeedback.writeWhat(up, path, refused), before)
+        return refused
     }
 
     private fun percent(am: AudioManager): Int {

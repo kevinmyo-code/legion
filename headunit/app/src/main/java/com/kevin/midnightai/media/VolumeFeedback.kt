@@ -27,13 +27,29 @@ object VolumeFeedback {
     const val NO_MOVEMENT =
         "The volume did not move. Settings, System, Developer tools, Volume check has the probes."
 
+    const val REFUSED =
+        "This unit refused that volume call. Settings, System, Developer tools, Volume check has the other ways."
+
     /**
      * [before] and [after] are the STREAM_MUSIC index either side of the press, [max] its top.
-     * [up] is the direction asked for. [volumeFixed] is `AudioManager.isVolumeFixed`. Null = say
-     * nothing: either it moved, or it is already at the end the driver pushed towards, which is
-     * ordinary and needs no sentence.
+     * [up] is the direction asked for. [volumeFixed] is `AudioManager.isVolumeFixed`. [refused] is
+     * what Android threw, or null when the call was made. [readsBack] is
+     * [VolumePath.readsBackAtOnce]: a press handed to another process cannot be judged from the
+     * index at all, so it claims nothing either way. Null = say nothing: it moved, it was handed
+     * on, or it is already at the end the driver pushed towards, which is ordinary.
      */
-    fun pressWords(before: Int, after: Int, max: Int, up: Boolean, volumeFixed: Boolean): String? = when {
+    @Suppress("LongParameterList")
+    fun pressWords(
+        before: Int,
+        after: Int,
+        max: Int,
+        up: Boolean,
+        volumeFixed: Boolean,
+        readsBack: Boolean = true,
+        refused: String? = null,
+    ): String? = when {
+        refused != null -> REFUSED
+        !readsBack -> null
         after != before -> null
         // Fixed BEFORE the end-of-range tests, not after: AudioService pins a fixed-volume
         // output's stream at max, so "already at the top" is exactly how this case looks and the
@@ -42,6 +58,21 @@ object VolumeFeedback {
         up && max > 0 && before >= max -> null
         !up && before <= 0 -> null
         else -> NO_MOVEMENT
+    }
+
+    /**
+     * One press's drive-log subject: which call carried it and whether Android took it. The path is
+     * named because from 2026-11-23 a press no longer has only one way to travel ([VolumePath]).
+     */
+    fun writeWhat(up: Boolean, path: VolumePath, refused: String?): String =
+        (if (up) "raise" else "lower") + " via ${path.name}" + (refused?.let { " refused=$it" } ?: "")
+
+    /** What the Volume check panel says after one TRY of [path]. Pure, so the words are tested. */
+    fun probeWords(path: VolumePath, refused: String?): String = when {
+        refused != null -> "${path.label}: this unit refused the call ($refused)."
+        !path.readsBackAtOnce ->
+            "${path.label}: sent. Nothing can be read back, so only your ears say whether it landed."
+        else -> "${path.label}: sent. Did the sound change?"
     }
 
     /** The Volume check panel's readout and its drive-log line. [max] 0 means the stream has no range. */

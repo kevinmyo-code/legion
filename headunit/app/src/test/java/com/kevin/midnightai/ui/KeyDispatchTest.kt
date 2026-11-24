@@ -26,6 +26,7 @@ class KeyDispatchTest {
     private val superCalls = mutableListOf<Int>()
 
     @Before fun reset() {
+        KeyDispatch.letVolumeKeysThrough = false
         InputProbe.clearForTest()
         volumeCalls.clear()
         volumeUps = 0
@@ -43,6 +44,21 @@ class KeyDispatchTest {
 
     private fun down(code: Int, repeat: Int = 0) = KeyEvent(0L, 0L, KeyEvent.ACTION_DOWN, code, repeat)
     private fun up(code: Int) = KeyEvent(0L, 500L, KeyEvent.ACTION_UP, code, 0)
+
+    /**
+     * The session-only probe (2026-11-23): with it on, the volume key is handed to the system
+     * instead of to the app's own path, so the unit's own handling of it can be seen for once.
+     */
+    @Test fun theLetThroughProbeHandsTheVolumeKeyToTheSystemAndStillLogsIt() {
+        KeyDispatch.letVolumeKeysThrough = true
+        assertTrue(dispatch(down(KeyEvent.KEYCODE_VOLUME_UP), superResult = true))
+        assertTrue(volumeCalls.isEmpty())
+        assertEquals(listOf(KeyEvent.KEYCODE_VOLUME_UP), superCalls)
+        assertTrue(InputProbe.volume.value.last().text, "handled" in InputProbe.volume.value.last().text)
+        assertFalse(dispatch(up(KeyEvent.KEYCODE_VOLUME_UP), superResult = false))
+        assertEquals(0, volumeUps)
+        assertTrue(InputProbe.volume.value.last().text, "passed-on" in InputProbe.volume.value.last().text)
+    }
 
     @Test fun aPrintableKeyProducesNoLogLineAndIsPassedOnUnchanged() {
         assertTrue(dispatch(down(KeyEvent.KEYCODE_A), superResult = true))
