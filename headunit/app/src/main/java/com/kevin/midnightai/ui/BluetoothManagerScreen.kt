@@ -1,5 +1,6 @@
 package com.kevin.midnightai.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,7 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kevin.midnightai.bluetooth.ExternalScreen
+import com.kevin.midnightai.util.ExternalScreen
 import com.kevin.midnightai.bluetooth.LinkState
 import com.kevin.midnightai.bluetooth.PhoneLinkCapability
 import com.kevin.midnightai.bluetooth.PhoneLinkInfo
@@ -187,8 +188,15 @@ internal fun BluetoothManagerScreen(onBack: () -> Unit) {
 }
 
 private fun launchVendorApp(context: Context) {
-    val intent = PhoneLinkManager.vendorAppLaunchIntent(context) ?: return
-    PhoneLinkManager.openSystemScreen(ExternalScreen.VENDOR_APP) { context.startActivity(intent) }
+    PhoneLinkManager.openSystemScreen(ExternalScreen.VENDOR_APP) {
+        // A null launch intent is the vendor app present in the package list with no launcher
+        // activity, or uninstalled between the last refresh and this tap - which is exactly what
+        // VENDOR_APP's words are for, so it goes through the same door instead of returning and
+        // leaving a dead button. Same treatment as ReverseCameraLauncher's null intent.
+        val intent = PhoneLinkManager.vendorAppLaunchIntent(context)
+            ?: throw ActivityNotFoundException("no launch intent for the vendor Bluetooth app")
+        context.startActivity(intent)
+    }
 }
 
 @Composable
