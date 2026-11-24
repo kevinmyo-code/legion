@@ -46,6 +46,22 @@ WITH_DDL = STATE_ONLY.replace(
 )
 # `database_operations` by name but not a literal: what it holds cannot be read here.
 VARIABLE_DB_OPS = STATE_ONLY.replace("database_operations=[],", "database_operations=OPS,")
+# The two the ship must keep refusing, as whole migrations rather than fragments: these DO run DDL.
+DELETE_MODEL = '''"""Drops the gadgets table."""
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [("widgets", "0002_gadgets")]
+
+    operations = [migrations.DeleteModel(name="Gadget")]
+'''
+REMOVE_FIELD = DELETE_MODEL.replace(
+    'migrations.DeleteModel(name="Gadget")',
+    'migrations.RemoveField(model_name="widget", name="gadget")',
+).replace("Drops the gadgets table.", "Drops the widget.gadget column.")
 
 
 def test_pins_parse_and_refuse_bad_lines():
@@ -115,8 +131,14 @@ def test_a_state_only_migration_ships():
     assert _one_migration(STATE_ONLY) == []
 
 
-def test_a_drop_beside_the_state_operations_is_still_refused():
-    for source, what in ((WITH_DDL, "real DDL"), (VARIABLE_DB_OPS, "unreadable database_operations")):
+def test_real_ddl_is_still_refused():
+    cases = {
+        "DeleteModel with SQL": DELETE_MODEL,
+        "RemoveField with SQL": REMOVE_FIELD,
+        "a drop beside the state operations": WITH_DDL,
+        "database_operations it cannot read": VARIABLE_DB_OPS,
+    }
+    for what, source in cases.items():
         problems = _one_migration(source)
         assert len(problems) == 1, (what, problems)
         assert "holds a destructive database operation" in problems[0], what
