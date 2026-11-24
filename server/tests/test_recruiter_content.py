@@ -320,6 +320,24 @@ def test_an_owner_may_preview(token_a, tmp_path):
     assert token_a.get("/api/demo/asset/resume").status_code == 200
 
 
+def test_an_owner_of_a_SECOND_household_may_not_preview(token_b, tmp_path):
+    """The preview is the ENGINE household's owner's, not any owner's
+    (2026-11-24, `household.permissions.is_engine_owner`).
+
+    `token_b` owns household B (ADR 0045: one engine holds more than one
+    family, and Kevin's parents' is coming). The page carries no household of
+    its own - it is one person's resume, report and clips - so an unqualified
+    owner check handed a second family's owner the resume PDF and the report
+    HTML. They get the plain member's refusal now, and the file's bytes never
+    appear in the body.
+    """
+    load_fake(tmp_path)
+    for path in ("/api/demo/content", "/api/demo/asset/report", "/api/demo/asset/resume"):
+        refused = token_b.get(path)
+        assert refused.status_code == 403 and refused.data == {"detail": NOT_A_READER}, path
+        assert FAKE_PDF not in refused.content and FAKE_REPORT not in refused.content, path
+
+
 def test_a_plain_member_and_a_stranger_are_refused(plain_member, tmp_path):
     load_fake(tmp_path)
     for path in ("/api/demo/content", "/api/demo/asset/report", "/api/demo/asset/resume"):

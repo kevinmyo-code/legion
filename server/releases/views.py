@@ -31,9 +31,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from household.models import HouseholdMember
-from household.permissions import IsHouseholdOwner
-from household.tenancy import resolve_default_household
+from household.permissions import IsHouseholdOwner, is_engine_owner
 from releases import signing
 from releases.models import APPS, HEX64, AppRelease
 
@@ -57,10 +55,7 @@ class IsReleasePublisher(IsHouseholdOwner):
             return False
         if getattr(request.user, "is_superuser", False):
             return True
-        engine_household = resolve_default_household()
-        return engine_household is not None and HouseholdMember.objects.filter(
-            user=request.user, household=engine_household, role=HouseholdMember.OWNER
-        ).exists()
+        return is_engine_owner(request.user)
 
 
 class AppReleaseSerializer(serializers.ModelSerializer):
