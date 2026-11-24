@@ -33,25 +33,62 @@ internal fun ambiguousServiceQuestion(candidates: List<String>): String =
 /**
  * The confirmation for a service that matched a scheduled item.
  *
- * Two sets, not one with a blank: with no mileage on the row the schedule can only time this item
- * by date, so "I'll let you know when it's due again" would promise something about the mileage
- * axis the row cannot keep. Neither set ASKS for the number - a reading he offers next is a reading
- * (`set_odometer`), and a reply that invites one here invites a second log of the same work.
+ * One set per thing the schedule can honestly promise, which is four and not one with a blank. With
+ * no mileage on the row the schedule cannot keep the mileage axis, so "I'll let you know when it's
+ * due again" would promise something the row cannot hold. With no MONTHS interval it cannot time
+ * the item by date either, so "I'm timing that one by date" names a schedule the item does not have
+ * - the same rule in the other direction ([VehicleController.needsMileageReading] is the state such
+ * an item lands in, and the due surfaces ask for the reading there). And an item with NEITHER
+ * interval - the shape an earlier unmatched log creates - is timed by nothing at all and may not be
+ * told it is on a mileage interval.
+ *
+ * No set ASKS for the number: a reading he offers next is a reading (`set_odometer`), and a reply
+ * that invites one here invites a second log of the same work, so the asking lives on the surfaces
+ * that report what is due rather than on this confirmation.
  */
-internal fun loggedServiceMessage(serviceName: String, statedMileage: Int?): String =
-    if (statedMileage != null) {
-        listOf(
+internal fun loggedServiceMessage(
+    serviceName: String,
+    statedMileage: Int?,
+    timedByDate: Boolean,
+    timedByMiles: Boolean,
+): String =
+    when {
+        statedMileage != null -> listOf(
             "Nice, logged the $serviceName at $statedMileage miles. I'll let you know when it's due again.",
             "Got it - $serviceName done at $statedMileage. One less thing to worry about.",
             "Logged: $serviceName at $statedMileage miles.",
         ).random()
-    } else {
-        listOf(
+
+        timedByDate -> listOf(
             "Nice, logged the $serviceName. No mileage on it, so I'm timing that one by date.",
             "Got it - $serviceName done today. No reading given, so it's timed by date.",
             "Logged: $serviceName, today, no mileage.",
         ).random()
+
+        timedByMiles -> listOf(
+            "Nice, logged the $serviceName. It's tracked by mileage only, and I've no reading for it, " +
+                "so I can't say when it's next due.",
+            "Got it - $serviceName done today, no reading given. That one's on a mileage interval, " +
+                "so it isn't timed until I have a mileage.",
+            "Logged: $serviceName, today, no mileage - and mileage is the only thing that item is tracked on.",
+        ).random()
+
+        else -> listOf(
+            "Nice, logged the $serviceName. There's no interval on it, so nothing times it yet - " +
+                "tell me one when you want it tracked.",
+            "Got it - $serviceName done today. It has no interval on file, so I can't say when it's next due.",
+            "Logged: $serviceName, today. No interval on that item yet, so nothing is timing it.",
+        ).random()
     }
+
+/**
+ * [note] in front of [message], or [message] alone. The note is `setOdometer`'s own low-reading
+ * question (`VehicleController.odometerQuestionNote`): a stated reading goes through the one
+ * odometer writer, so when that reading rewinds the odometer the driver hears about it here, in the
+ * same sentence as the log. Without this the note was computed and thrown away, and a misheard
+ * 42,300 against a 50,000 estimate moved the odometer back 7,700 miles in silence.
+ */
+internal fun noteThen(note: String?, message: String): String = note?.let { "$it $message" } ?: message
 
 /**
  * The service was logged but its schedule item disappeared between the read and the reset (ticket

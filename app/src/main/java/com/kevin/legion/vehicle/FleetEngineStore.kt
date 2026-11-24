@@ -914,7 +914,7 @@ object FleetEngineStore {
         return outcome
     }
 
-    suspend fun editMileageAndCost(context: Context, id: Long, mileageMiles: Int, costCents: Long?): Int {
+    suspend fun editMileageAndCost(context: Context, id: Long, mileageMiles: Int?, costCents: Long?): Int {
         ensureServiceHistoryReconciled(context)
         val db = CarDatabase.getDatabase(context)
         val written = db.serviceRecordDao().editMileageAndCost(id, mileageMiles, costCents)

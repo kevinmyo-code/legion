@@ -77,6 +77,11 @@ object CarAspectSummaries {
             "$mileageLabel · ${next.byTime.serviceName} in ${next.byTime.remaining} days" +
                 (if (next.byTime.isGuess) " - guess, unconfirmed" else "")
         next.allDue -> "$mileageLabel · everything scheduled is already due"
+        // Before the "nothing due yet" fallback: with a miles-only item and no reading on its
+        // newest service, nothing can be timed and "nothing due yet" would be a claim about a
+        // schedule this car does not have (VehicleController.needsMileageReading).
+        next.needsMileage.isNotEmpty() ->
+            "$mileageLabel · ${next.needsMileage.first()} needs a mileage reading before it can be timed"
         else -> "$mileageLabel · nothing due yet"
     }
 

@@ -215,7 +215,15 @@ object FleetDigestBuilder : DigestBuilder {
             byTime != null -> "${byTime.serviceName} in $timePhrase$timeGuess"
             else -> "nothing anchored on either axis"
         }
-        return DigestText.withTier(DigestText.line("NEXT", phrase), TrustTier.REPORTED)
+        // A miles-only item with no reading on its newest service row can be timed on no axis at
+        // all (VehicleController.needsMileageReading). It is named here, on the same line, because
+        // this feeds a model's own context and an omission reads as "fine".
+        val needsMileage = if (next.needsMileage.isNotEmpty()) {
+            " (no mileage reading against ${next.needsMileage.joinToString(", ")}, so nothing times those)"
+        } else {
+            ""
+        }
+        return DigestText.withTier(DigestText.line("NEXT", phrase + needsMileage), TrustTier.REPORTED)
     }
 
     /** Recent DTCs, distinct by code, newest-first, capped at [MAX_DTC_LINES] named exemplars - see
@@ -260,28 +268,37 @@ object FleetDigestBuilder : DigestBuilder {
     private fun odometerTrendLine(recentServices: List<ServiceRecord>, mileageLabel: String, now: Long): String {
         if (recentServices.isEmpty()) return DigestText.line("ODOMETER TREND", DigestText.notLogged())
         // ServiceRecord.mileage/.date widened to nullable at v46->v47 (engine retirement step 3) to
-        // let an ASSERTED anchor row state only one axis - but every row THIS function ever sees
-        // came from FleetEngineStore.serviceRecordsForVehicle/getRecentForVehicle, which filter to
-        // kind == OBSERVED only, and an OBSERVED row always carries both, non-null, by construction
-        // (FleetEngineStore.insertObserved's own signature takes non-null mileage/date). `?: 0`
-        // below is therefore a type-satisfying fallback that real data never actually exercises,
-        // not a silent "unknown reads as zero" - see [FleetRecordBridge]'s own doc for the ASSERTED/
-        // OBSERVED split this reflects.
+        // let an ASSERTED anchor row state only one axis, and as of the car plan's slice 0 an
+        // OBSERVED row carries a mileage only when the DRIVER stated one - so a null mileage here
+        // is real data meaning "no reading on this row", not a type artifact. Every figure below is
+        // therefore computed from the rows that DO carry a reading, and a bucket with none reads
+        // notLogged: this function's own doc promises there is no such thing as zero miles on an
+        // odometer that has moved, and a `?: 0` would have broken that promise on the one line
+        // tagged TrustTier.REPORTED, by inventing an average off a zero nobody recorded.
+        val withMileage = recentServices.filter { it.mileage != null }
         val buckets = (0 until WINDOW_PERIODS).map { periodIndex ->
             val bucketEnd = now - periodIndex * MONTH_MS
             val bucketStart = bucketEnd - MONTH_MS
-            val inBucket = recentServices.filter { (it.date ?: 0L) in bucketStart..bucketEnd }
-            inBucket.maxOfOrNull { it.mileage ?: 0 }
+            val inBucket = withMileage.filter { (it.date ?: 0L) in bucketStart..bucketEnd }
+            inBucket.mapNotNull { it.mileage }.maxOrNull()
         }
         val bucketText = buckets.mapIndexed { i, mileage ->
             val label = if (i == 0) "current" else "-${i}mo"
             "$label ${mileage?.let { groupThousands(it) } ?: DigestText.notLogged()}"
         }.joinToString(", ")
 
-        val oldest = recentServices.minByOrNull { it.date ?: 0L }
-        val newest = recentServices.maxByOrNull { it.date ?: 0L }
-        val olderTrend = if (oldest != null && newest != null && (oldest.date ?: 0L) < now - WINDOW_PERIODS * MONTH_MS && oldest.id != newest.id) {
-            val milesDelta = (newest.mileage ?: 0) - (oldest.mileage ?: 0)
+        // Oldest/newest among the rows that state a reading, so the delta is between two real
+        // anchors - two rows, both with a mileage, or there is no trend to state.
+        val oldest = withMileage.minByOrNull { it.date ?: 0L }
+        val newest = withMileage.maxByOrNull { it.date ?: 0L }
+        val oldestMiles = oldest?.mileage
+        val newestMiles = newest?.mileage
+        val olderTrend = if (oldestMiles != null && newestMiles != null && oldest!!.id != newest!!.id &&
+            (oldest.date ?: 0L) < now - WINDOW_PERIODS * MONTH_MS
+        ) {
+            // Both figures come from rows that state one - no `?: 0` anywhere in the arithmetic, or
+            // the average below is computed against a reading nobody recorded.
+            val milesDelta = newestMiles - oldestMiles
             val monthsSpan = (((newest.date ?: 0L) - (oldest.date ?: 0L)).toDouble() / MONTH_MS).coerceAtLeast(1.0)
             "%,d mi over %.1f mo (avg %.0f mi/mo)".format(milesDelta, monthsSpan, milesDelta / monthsSpan)
         } else {
@@ -303,7 +320,10 @@ object FleetDigestBuilder : DigestBuilder {
             DigestText.withTier(
                 DigestText.line(
                     "LAST SERVICE ${record.serviceName}",
-                    "${compactDate(record.date ?: 0L)} at ${groupThousands(record.mileage ?: 0)} mi",
+                    // A row with no reading says so - "at 0 mi" would state a mileage the row does
+                    // not hold, into a model's own context, on a REPORTED line.
+                    compactDate(record.date ?: 0L) +
+                        (record.mileage?.let { " at ${groupThousands(it)} mi" } ?: " (mileage ${DigestText.notLogged()})"),
                 ),
                 TrustTier.REPORTED,
             )

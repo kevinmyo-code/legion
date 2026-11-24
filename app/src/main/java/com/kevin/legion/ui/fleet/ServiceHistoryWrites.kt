@@ -17,7 +17,7 @@ import com.kevin.legion.vehicle.VehicleController.WriteOutcome
  */
 
 /** The edit dialog's SAVE - see [VehicleController.editServiceRecordDirect]'s own doc for the write shape. */
-suspend fun writeEditServiceRecord(context: Context, id: Long, mileage: Int, costCents: Long?): WriteOutcome =
+suspend fun writeEditServiceRecord(context: Context, id: Long, mileage: Int?, costCents: Long?): WriteOutcome =
     VehicleController.editServiceRecordDirect(context, id, mileage, costCents)
 
 /**

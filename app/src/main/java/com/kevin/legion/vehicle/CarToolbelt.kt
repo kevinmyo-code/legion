@@ -247,10 +247,14 @@ object CarToolbelt {
         return recs.joinToString("\n") { r ->
             buildString {
                 // r.date/.mileage are type-nullable since v46->v47 (an ASSERTED anchor can state
-                // only one axis) but getRecentForVehicle only ever returns OBSERVED rows, which
-                // always carry both - `?: 0` is a type-satisfying fallback, never real data.
+                // only one axis), and as of the car plan's slice 0 an OBSERVED row carries a
+                // mileage only when the driver stated one. So a null mileage is REAL DATA here,
+                // meaning "he did not say a reading" - it is said in those words rather than
+                // rendered as a figure. "at 0 mi" would be a reading this row does not hold, read
+                // aloud (CLAUDE.md section 7's outcome rule), and there is no such thing as zero
+                // miles on an odometer that has moved.
                 append(shortDate(r.date ?: 0L)).append(": ").append(r.serviceName)
-                append(" at ${"%,d".format(r.mileage ?: 0)} mi")
+                append(r.mileage?.let { " at ${"%,d".format(it)} mi" } ?: " (no mileage logged)")
                 // costCents is cents (ticket 11, CLAUDE.md §4 rule 3) - divide by 100
                 // here at the formatting edge, never carry a raw cents figure further.
                 // Two decimals, not "%.0f". Rounding to the nearest dollar here turned a $45.99

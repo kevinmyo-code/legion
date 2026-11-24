@@ -127,6 +127,18 @@ data class DueRowView(
      * same preview/test-compat reason [fraction] defaults to `null`.
      */
     val isGuess: Boolean = false,
+    /**
+     * True when this not-yet-due row has NO axis to compute a due figure on, so its [value] is "-"
+     * and its [sub] says why ("odometer not set", "no mileage on the last service", "no interval on
+     * file"). The row is still listed - it is a real item, and dropping it is the silent loss
+     * [buildDueRows]'s own doc calls out - but it is NOT evidence that the car is fine, which is
+     * what [com.kevin.legion.ui.buildFleetTile]'s `OK` hero claims. Ticket 09 reserved that word
+     * for "nothing overdue AND nothing unknown"; a row with no figure is the same class of
+     * not-known-to-be-fine, and the car plan's slice 0 made it reachable by plain speech ("I got my
+     * oil changed today" on a miles-only item). Defaults to `false` for the same preview/test-compat
+     * reason [fraction] and [isGuess] do.
+     */
+    val untimed: Boolean = false,
 )
 
 /**
@@ -291,6 +303,11 @@ private fun toDueRow(item: MaintenanceItem, currentMileage: Int, odometerUnset: 
     val intervalPhrase = intervalWords(item)
     val milesBlockedByOdometer = axis == null && odometerUnset &&
         item.intervalMiles != null && item.lastDoneMileage != null
+    // The same shape as milesBlockedByOdometer, one axis over: there IS a miles interval and the
+    // service was logged, but the log states no reading, so no due figure can be computed and there
+    // is no time axis to fall back on. A bare "every 5,000 mi" beside a "-" would leave the row
+    // looking like a rendering gap rather than a missing fact the driver can supply.
+    val milesBlockedByNoReading = axis == null && VehicleController.needsMileageReading(item)
 
     val value = when {
         overdue -> "OVERDUE"
@@ -309,12 +326,17 @@ private fun toDueRow(item: MaintenanceItem, currentMileage: Int, odometerUnset: 
     val sub = when {
         intervalPhrase != null && axis != null -> "$intervalPhrase - " + if (overdue) "overdue" else "due $value"
         intervalPhrase != null && milesBlockedByOdometer -> "$intervalPhrase - odometer not set"
+        intervalPhrase != null && milesBlockedByNoReading -> "$intervalPhrase - no mileage on the last service"
         intervalPhrase != null -> intervalPhrase
         item.neverDone -> "never logged"
         else -> "no interval on file"
     }
 
-    return DueRowView(item.serviceName, value, sub, overdue, dueFraction(item, currentMileage, odometerUnset, now, overdue), isGuessTag(item))
+    return DueRowView(
+        item.serviceName, value, sub, overdue,
+        dueFraction(item, currentMileage, odometerUnset, now, overdue), isGuessTag(item),
+        untimed = !overdue && axis == null,
+    )
 }
 
 /**
