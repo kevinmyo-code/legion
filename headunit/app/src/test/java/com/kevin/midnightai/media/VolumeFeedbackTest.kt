@@ -6,8 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * A volume press that moves nothing says why (Kevin, 2026-11-23: "the volume button still doesnt
- * work"). Pure; which branch this unit takes is only knowable in the car.
+ * A volume press that moves nothing says why (Kevin, 2026-11-23: the volume button still does not
+ * work). Pure; which branch this unit takes is only knowable in the car.
  */
 class VolumeFeedbackTest {
 

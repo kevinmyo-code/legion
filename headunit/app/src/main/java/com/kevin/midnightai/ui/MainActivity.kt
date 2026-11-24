@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
         }
         StartupTrace.span("main_permissions") { checkAndRequestPermissions() }
 
-        // On a clean install (or after a reset), pre-fill safe Zero/Sulafat
+        // On a clean install (or after a reset), pre-fill safe Uncle Moose
         // defaults so the onboarding wizard below starts from sensible values
         // instead of blank fields. Idempotent (only writes if fields are blank)
         // and does NOT mark onboarding complete - the wizard still runs.
@@ -163,7 +163,7 @@ class MainActivity : ComponentActivity() {
                     // was always a live mic session racing the just-fired
                     // permission request, which was implicated in startup
                     // crashes. Decoupled: the app is usable immediately with
-                    // seeded Zero/Sulafat defaults, and voice setup becomes an
+                    // seeded Uncle Moose defaults, and voice setup becomes an
                     // explicit, optional action from a Cruise prompt (or
                     // Settings) - never something that has to race anything.
                     var onboarded by remember { mutableStateOf(OnboardingState.isComplete(this@MainActivity)) }

@@ -168,8 +168,8 @@ object CompanionProfile {
      * One-time rewrite of the retired mascot's voice to Moose's own on installs that already saved
      * it, the exact shape of [migrateRetiredDefaultName] and for the same reason: the old
      * `seedDefaults` wrote "Sulafat" into the prefs on every fresh install, so the wrong voice was
-     * stored as if the driver had chosen it, and Moose spoke in it (Kevin, 2026-11-23: "moose voice
-     * is like a woman's voice which is wrong. it was algenib before").
+     * stored as if the driver had chosen it, and Moose spoke in it (Kevin, 2026-11-23: the stored
+     * voice was wrong and it should be Algenib, as it was before).
      *
      * Sweeps the flat key and every per-car key, not only the active car, because at app start the
      * dongle often has not resolved the active vehicle yet (see [identityString]).

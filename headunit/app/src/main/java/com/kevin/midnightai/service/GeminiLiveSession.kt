@@ -1869,7 +1869,7 @@ class GeminiLiveSession(
 
         // Prebuilt Gemini voice for a car that chose none: Moose's own, stated once in
         // CompanionIdentity (2026-11-23). This used to hold its own "Sulafat" literal, the retired
-        // Zero mascot's voice, so a blank stored voice made Moose sound like a woman.
+        // Zero mascot's voice, so a blank stored voice made Moose speak as someone else.
         private const val VOICE = com.kevin.midnightai.ai.CompanionIdentity.VOICE
 
         private const val INPUT_RATE = 16000   // Live API requires 16 kHz input

@@ -47,8 +47,8 @@ object CompanionIdentity {
     /**
      * The prebuilt Gemini voice Moose speaks in: "Algenib", Google's gravelly one.
      *
-     * **This is persona data, not a fallback default** (Kevin, 2026-11-23: "moose voice is like a
-     * woman's voice which is wrong. it was algenib before"). It lives here, beside WHO is speaking,
+     * **This is persona data, not a fallback default** (Kevin, 2026-11-23: the stored voice was
+     * wrong and it should be Algenib, as it was before). It lives here, beside WHO is speaking,
      * for the same reason the identity clause does: three files each held their own default and all
      * three still named Sulafat, the warm female voice chosen for the retired Zero mascot, so a
      * stored voice that went blank or was never set made Moose sound like someone else.

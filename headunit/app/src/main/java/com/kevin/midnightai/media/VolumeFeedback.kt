@@ -2,7 +2,7 @@ package com.kevin.midnightai.media
 
 /**
  * What to tell the driver after a volume press that did not move the stream (Kevin, 2026-11-23:
- * "the volume button still doesnt work").
+ * the volume button still does not work).
  *
  * Why this exists rather than a third attempt at the write. Two fixes already assume the same
  * premise - that `adjustStreamVolume(STREAM_MUSIC, ..., FLAG_SHOW_UI)` reaches this unit's amp:

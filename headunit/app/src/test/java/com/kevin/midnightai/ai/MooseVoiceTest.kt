@@ -5,12 +5,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Moose's voice is persona data, not a fallback default (Kevin, 2026-11-23: "moose voice is like a
- * woman's voice which is wrong. it was algenib before").
+ * Moose's voice is persona data, not a fallback default (Kevin, 2026-11-23: the stored voice was
+ * wrong and it should be Algenib, as it was before).
  *
  * [CompanionIdentity] is the single source of WHO is speaking, so it owns the voice he speaks in.
- * Gravelly suits a gruff old moose; the retired Zero mascot's warm, female Sulafat does not, and it
- * is only ever reached when the stored voice is blank.
+ * Gravelly suits a gruff old moose; the retired Zero mascot's Sulafat does not, and it is only ever
+ * reached when the stored voice is blank.
  */
 class MooseVoiceTest {
 

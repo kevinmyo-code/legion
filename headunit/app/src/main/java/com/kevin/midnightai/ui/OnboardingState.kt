@@ -49,7 +49,8 @@ object OnboardingState {
     }
 
     /**
-     * Writes safe Uncle Moose/Sulafat defaults so the wizard (typed or conversational)
+     * Writes safe Uncle Moose defaults, his own voice included (`CompanionIdentity.VOICE`,
+     * 2026-11-23; it wrote the retired mascot's Sulafat until then), so the wizard
      * starts from sensible values instead of blank fields. Only fills in blank
      * fields, so a reset flow that has already written partial data is never
      * clobbered. Does NOT mark onboarding complete - that only happens once the
