@@ -103,7 +103,7 @@ class EarpieceWiringTest {
         val service = stripComments(File(sourceRoot(), "service/AriaForegroundService.kt").readText())
         assertTrue(service.contains("call = intent.getBooleanExtra(EXTRA_CALL, false)"))
         val controller = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
-        assertTrue("a tap passes the call on", bodyOf(controller, "onTap").contains("call = call,"))
+        assertTrue("a tap passes the call on", bodyOf(controller, "onTap").contains("call = call)"))
         assertTrue("and it reaches the session", bodyOf(controller, "openCascade").contains("call = call,"))
         assertTrue(session().contains("EarpieceRoute(ctx, audioManager, call = call)"))
         val earpiece = stripComments(File(sourceRoot(), "service/cascade/EarpieceRoute.kt").readText())

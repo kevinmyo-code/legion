@@ -496,13 +496,10 @@ class LiveSessionController(context: Context) {
         // cascade; Live is reachable only if LIVE_RETIRED is flipped back (it reads as Cloud).
         val engine = VoiceEngineSettings.engine(appContext)
         if (engine != VoiceEngine.LIVE) {
-            openCascade(
-                fromWakeWord,
-                oneShot,
-                laptopFirst = engine == VoiceEngine.LAPTOP,
-                inHand = inHand,
-                call = call,
-            )
+            val laptop = engine == VoiceEngine.LAPTOP
+            // One line: the refusal scan reads the statement above a standalone `return` to see that
+            // the tap was handed off, and a wrapped call hides it.
+            openCascade(fromWakeWord, oneShot, laptopFirst = laptop, inHand = inHand, call = call)
             return
         }
 

@@ -23,7 +23,7 @@ class VoiceSpeedWiringTest {
     fun `a tap opens the route and the mic before the voice service, and says nothing`() {
         val s = session()
         val openNow = bodyOf(s, "openNow")
-        val micNow = openNow.indexOf("openMicNow()")
+        val micNow = openNow.indexOf("openMicNow(")
         assertTrue("a tap opens the mic in openNow", micNow >= 0)
         assertTrue("before the turn models", micNow < openNow.indexOf("TurnModels.awaitReady("))
         assertTrue("before the voice service", micNow < openNow.indexOf("openBackend("))
