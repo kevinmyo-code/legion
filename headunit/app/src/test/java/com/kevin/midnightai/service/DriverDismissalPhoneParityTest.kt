@@ -167,6 +167,25 @@ class DriverDismissalPhoneParityTest {
         }
     }
 
+    /**
+     * The phone's `LoneWordWriteGuardTest` walks its own stop lists rather than a sample of them
+     * ("the stop words never reach the guard, they end the turn before the model"), so this walks
+     * ours. A phrase that sits in the data and does not close is dead data, which reads as covered.
+     */
+    @Test
+    fun `every phrase in the stop data closes, as a whole turn, in the state it is meant for`() {
+        for (p in DriverDismissal.STOP_PHRASES + DriverDismissal.FAREWELLS) {
+            assertTrue(p, closes(p, name = ALFRED))
+        }
+        for (p in DriverDismissal.HARD_STOPS + (DriverDismissal.FAREWELLS - DriverDismissal.AMBIGUOUS_ALONE)) {
+            // One row of the data is a farewell that is also an answer: "see you tomorrow" holds
+            // "tomorrow". The veto wins there, on the phone too ("tomorrow morning, good night" is
+            // in its own answer table), so the walk asserts the veto rather than skipping it.
+            val closed = closes(p, name = ALFRED, awaited = true)
+            assertTrue("$p, $AWAITED", closed == !DriverDismissal.answersQuestion(p))
+        }
+    }
+
     @Test
     fun `the phone's courtesy table is set aside, and courtesy around a request changes nothing`() {
         for (u in COURTESY_CLOSES) assertTrue(u, closes(u, name = ALFRED))
