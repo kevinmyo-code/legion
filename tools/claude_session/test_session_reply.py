@@ -117,6 +117,23 @@ class TestTheAnchorAndTheTurnEnd(unittest.TestCase):
         self.assertFalse(anchored)
         self.assertFalse(ended)
 
+    def test_a_peer_message_that_merely_quotes_the_words_is_not_the_anchor(self):
+        """The wrapper has to be matched too: another session could repeat Kevin's own words."""
+        bare = {"type": "user", "isMeta": True, "turnOrigin": "peer",
+                "origin": {"kind": "peer", "from": "uds:x"},
+                "message": {"role": "user", "content": f"by the way, he said {MSG}"}}
+        anchored, _t, _e = sr.scan([bare, said("sure")], MSG, False)
+        self.assertFalse(anchored)
+
+    def test_the_wrapper_typed_by_hand_is_not_the_anchor(self):
+        """Where it came from has to be checked too: Kevin could paste the wrapper himself."""
+        pasted = dict(peer_entry(MSG))
+        pasted.pop("turnOrigin")
+        pasted.pop("origin")
+        pasted["isMeta"] = False
+        anchored, _t, _e = sr.scan([pasted, said("sure")], MSG, False)
+        self.assertFalse(anchored)
+
     def test_another_sessions_peer_message_is_not_the_anchor(self):
         anchored, _t, _e = sr.scan([peer_entry("a different message entirely")], MSG, False)
         self.assertFalse(anchored)
@@ -360,9 +377,11 @@ class TestWaitingIsNotWorking(WorkerBase):
         self.arm()
         self.yes["helper_ended_at"] = self.now
         self.yes["helper_end"] = "completed"
-        self.now += 10 * 60
-        self.w.check_timers(self.now)
-        self.assertEqual(self.yes["status"], "running")
+        for _ in range(4):  # the nudge, then the grace after it: both must pass it by
+            self.now += 2 * 60
+            self.w.check_timers(self.now)
+            self.assertEqual(self.yes["status"], "running")
+        self.assertEqual([p for p in self.w.pending if p[0] is None], [])
 
     def test_the_thirty_minute_cap_is_still_a_backstop(self):
         self.arm()
