@@ -83,11 +83,39 @@ internal fun groupServiceRecordsByYear(recordsNewestFirst: List<ServiceRecord>):
     return byYear.map { (year, records) -> year to records }
 }
 
+/**
+ * What the edit dialog's mileage box means, as a value rather than as three branches inside a
+ * button's onClick - so the rule is readable and testable (it is driven directly by
+ * `MileagelessRecordReadersTest`, beside the other surfaces that read a null mileage).
+ *
+ * BLANK is [None] and keeps the row with no reading: a service logged without one (the car plan's
+ * slice 0) must be editable for its COST without a mileage being invented to get past the form. A
+ * `0` or a negative is [Invalid], not a reading: an odometer that has moved never reads zero, and a
+ * zero that reached the record would be a STATED mileage, which projects onto the item's anchor and
+ * reads the service as overdue from then on.
+ */
+internal sealed interface MileageEntry {
+    /** The box is empty: the record carries no reading, and saving keeps it that way. */
+    data object None : MileageEntry
+
+    /** Not a number, or not a reading an odometer can show. The save is refused with a reason. */
+    data object Invalid : MileageEntry
+
+    data class Reading(val miles: Int) : MileageEntry
+}
+
+internal fun parseMileageEntry(text: String): MileageEntry {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return MileageEntry.None
+    val miles = trimmed.toIntOrNull()
+    return if (miles == null || miles <= 0) MileageEntry.Invalid else MileageEntry.Reading(miles)
+}
+
 @Composable
 fun ServiceHistoryScreen(
     recordsNewestFirst: List<ServiceRecord>,
     spend: FleetSpendView,
-    onEditRecord: suspend (id: Long, mileage: Int, costCents: Long?) -> WriteOutcome,
+    onEditRecord: suspend (id: Long, mileage: Int?, costCents: Long?) -> WriteOutcome,
     onDeleteRecord: suspend (id: Long) -> WriteOutcome,
     onBack: () -> Unit,
 ) {
@@ -229,13 +257,19 @@ fun ServiceHistoryRow(record: ServiceRecord, showServiceName: Boolean, onClick: 
             if (showServiceName) {
                 Text(record.serviceName, style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
             }
-            // Both fallbacks below are type-satisfying only - this row only ever renders an
-            // OBSERVED record (see [groupServiceRecordsByYear]'s own comment), which always
-            // carries both non-null.
+            // The date fallback is type-satisfying only - this row only ever renders an OBSERVED
+            // record (see [groupServiceRecordsByYear]'s own comment), which always carries a date.
+            // The MILEAGE is different: since the car plan's slice 0 a logged service carries one
+            // only when the driver stated it, so a null is real and reads like the cost does one
+            // line below - in words, never as a "0 mi" figure this row does not hold.
             Text(shortDate(record.date ?: 0L), style = LegionType.stamp, color = sem.faint)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text("${groupThousands(record.mileage ?: 0)} mi", style = LegionType.reading, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                record.mileage?.let { "${groupThousands(it)} mi" } ?: "no mileage logged",
+                style = LegionType.reading,
+                color = if (record.mileage != null) MaterialTheme.colorScheme.onSurface else sem.faint,
+            )
             Text(
                 record.costCents?.let { "$${formatCents(it)}" } ?: "no cost logged",
                 style = LegionType.stamp,
@@ -252,20 +286,30 @@ fun ServiceHistoryRow(record: ServiceRecord, showServiceName: Boolean, onClick: 
  * button already uses. **A non-blank cost field that fails to parse REFUSES the save with a stated
  * reason rather than silently writing `null`** - a typo in the cost box must never look, on save,
  * like the driver chose to clear a cost that was already there.
+ *
+ * **Mileage behaves the same way, and a BLANK box means no reading** (car plan slice 0): a record
+ * logged without one shows an empty field, saves back with it still empty, and a typed `0` is
+ * refused. Both halves are load-bearing: the point of this dialog is adding a cost retroactively,
+ * which must not force a reading onto the row, and a `0` that reached the record would be a STATED
+ * mileage of zero - an anchor that reads the service as overdue forever.
  */
 @Composable
 private fun EditServiceRecordDialog(
     record: ServiceRecord,
     onDismiss: () -> Unit,
-    onSave: suspend (mileage: Int, costCents: Long?) -> WriteOutcome,
-    onSaved: (mileage: Int, costCents: Long?) -> Unit,
+    onSave: suspend (mileage: Int?, costCents: Long?) -> WriteOutcome,
+    onSaved: (mileage: Int?, costCents: Long?) -> Unit,
     onDelete: suspend () -> WriteOutcome,
     onDeleted: () -> Unit,
 ) {
     SoftTheme {
         val sem = LocalLegionSemantics.current
         val scope = rememberCoroutineScope()
-        var mileageText by remember(record.id) { mutableStateOf((record.mileage ?: 0).toString()) }
+        // BLANK for a record with no reading, never "0": this dialog exists so a cost can be added
+        // to an existing record retroactively, and a pre-filled 0 that SAVE then wrote would turn
+        // "he gave no reading" into a STATED reading of zero - which projects onto the item's
+        // mileage anchor and reads the service as permanently overdue from then on.
+        var mileageText by remember(record.id) { mutableStateOf(record.mileage?.toString().orEmpty()) }
         // Plain "%.2f" here, deliberately NOT formatCents' grouped-thousands form ("1,234.56") - this
         // field round-trips through toDoubleOrNull() on SAVE below, and a comma would fail that parse
         // for any cost >= $1,000 the driver didn't happen to retype by hand.
@@ -300,10 +344,13 @@ private fun EditServiceRecordDialog(
                 DeckButton(
                     text = "Save",
                     onClick = {
-                        val mileage = mileageText.trim().toIntOrNull()
-                        if (mileage == null) {
-                            statusText = "Mileage needs to be a number."
-                            return@DeckButton
+                        val mileage = when (val entry = parseMileageEntry(mileageText)) {
+                            MileageEntry.Invalid -> {
+                                statusText = "Mileage needs to be a reading above zero - leave it blank for no mileage."
+                                return@DeckButton
+                            }
+                            MileageEntry.None -> null
+                            is MileageEntry.Reading -> entry.miles
                         }
                         val trimmedCost = costText.trim()
                         val costCents: Long? = if (trimmedCost.isEmpty()) {

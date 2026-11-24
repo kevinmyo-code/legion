@@ -278,6 +278,11 @@ object HomeDigestBuilder : DigestBuilder {
                 (if (next.byMiles.isGuess) " - guess, unconfirmed" else "")
             next.byTime != null -> "next ${next.byTime.serviceName} in ${next.byTime.remaining} days" +
                 (if (next.byTime.isGuess) " - guess, unconfirmed" else "")
+            // Named rather than read as "on track": a miles-only item with no reading on its
+            // newest service cannot be timed at all (VehicleController.needsMileageReading), and
+            // this line feeds a model's own context.
+            next.needsMileage.isNotEmpty() ->
+                "no mileage reading against ${next.needsMileage.joinToString(", ")}, so nothing can be timed by miles"
             else -> "on track, nothing anchored yet"
         }
         return DigestText.withTier(DigestText.line("FLEET", phrase), TrustTier.REPORTED)

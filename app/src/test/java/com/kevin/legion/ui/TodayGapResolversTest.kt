@@ -397,6 +397,17 @@ class TodayGapResolversTest {
     }
 
     @Test
+    fun `FLEET tile - a row with no figure to show never reads OK either`() {
+        // Ticket 09 reserved OK for "nothing overdue AND nothing unknown". An item logged with no
+        // mileage on a miles-only interval is the same class of not-known-to-be-fine, and the car
+        // plan's slice 0 made it reachable by plain speech.
+        val rows = listOf(DueRowView("Oil Change", "-", "every 5,000 mi - no mileage on the last service", overdue = false, untimed = true))
+        val tile = buildFleetTile(rows, unknownCount = 0)
+        assertEquals("0 DUE", tile.hero)
+        assertEquals("0 due - 1 not timed", tile.caption)
+    }
+
+    @Test
     fun `FLEET tile - ticket 09 Jeep case, unknowns present, never reads OK`() {
         // Kevin's real phone, 2026-08-15: seven of ten items unanchored. Old logic read
         // "OK / NEXT BRAKE FLUID -" here, which was not true.

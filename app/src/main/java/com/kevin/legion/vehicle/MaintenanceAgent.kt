@@ -182,9 +182,12 @@ object MaintenanceAgent {
         // mergeBackfillAnchors' "supplying both keeps both" rule means a dated anchor's mileage and
         // date came from the SAME driver statement, so there is nothing to reconcile it against.
         // record.date/.mileage are type-nullable since v46->v47 (an ASSERTED anchor can state only
-        // one axis), but [record] here only ever comes from an OBSERVED-filtered read (see
-        // describeItem's own doc), which always carries both - `?: 0` fallbacks below are
-        // type-satisfying only, never a value real data exercises.
+        // one axis), and as of the car plan's slice 0 an OBSERVED row carries a mileage only when
+        // the DRIVER stated one - so a null mileage below is real data ("he gave no reading") and
+        // is said in words. It is never coalesced to 0: this clause goes into a model's own prompt,
+        // and a stated "at 0 mi" both invents a reading and fails the drift comparison below, which
+        // then speaks the loud "the maintenance clock was later set to N mi" branch about a
+        // disagreement that does not exist.
         if (item.lastDoneDate != null && (record == null || item.lastDoneDate >= (record.date ?: 0L))) {
             return listOfNotNull(
                 item.lastDoneMileage?.let { "at ${"%,d".format(it)} mi" },
@@ -201,12 +204,18 @@ object MaintenanceAgent {
 
         // record != null and the anchor's own date is either absent or older than record's date -
         // the record is the more recent (or the only) known event, so it is the derivation.
-        val recordMileage = record.mileage ?: 0
+        val recordMileage = record.mileage
         val recordDate = record.date ?: 0L
-        val recordClause = "at ${"%,d".format(recordMileage)} mi on ${shortDate(recordDate)}"
         val anchorMileage = item.lastDoneMileage
         return when {
-            anchorMileage == null -> recordClause
+            // The record states no reading, so there is nothing to compare and nothing to name on
+            // that axis. The anchor's own mileage, when it has one, is still reported - as the
+            // clock's figure, never as this event's.
+            recordMileage == null -> listOfNotNull(
+                "on ${shortDate(recordDate)}",
+                anchorMileage?.let { "the maintenance clock reads ${"%,d".format(it)} mi" },
+            ).joinToString("; ") + if (anchorMileage == null) " (no mileage logged)" else ""
+            anchorMileage == null -> "at ${"%,d".format(recordMileage)} mi on ${shortDate(recordDate)}"
             abs(anchorMileage - recordMileage) <= PLAUSIBLE_MILEAGE_DRIFT ->
                 "at ${"%,d".format(anchorMileage)} mi on ${shortDate(recordDate)}"
             else ->

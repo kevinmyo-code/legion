@@ -19,12 +19,34 @@ internal object MatrixFleetText {
         MatrixCar(
             label = label,
             status = CarAspectSummaries.serviceSubtitle(mileageLabel, next),
-            unknown = next?.takeIf { it.unknownCount > 0 }?.let {
-                "${it.unknownCount} maintenance item(s) have no recorded last-done date " +
-                    "(${it.unknownNames.joinToString(", ")}). They are not counted as due, and not known to be fine."
-            },
+            unknown = unknownNote(next),
             failed = false,
         )
+
+    /**
+     * The two shapes of "not known to be fine", in one note because this screen has one slot for
+     * them: items with no last-done at all, and items whose only interval is a mileage one and
+     * whose newest service carries no reading ([VehicleController.needsMileageReading]). The second
+     * is named for what it needs - a reading - because that is the thing the driver can supply.
+     */
+    private fun unknownNote(next: VehicleController.NextService?): String? {
+        if (next == null) return null
+        val parts = buildList {
+            if (next.unknownCount > 0) {
+                add(
+                    "${next.unknownCount} maintenance item(s) have no recorded last-done date " +
+                        "(${next.unknownNames.joinToString(", ")}). They are not counted as due, and not known to be fine.",
+                )
+            }
+            if (next.needsMileage.isNotEmpty()) {
+                add(
+                    "No mileage reading against ${next.needsMileage.joinToString(", ")}, so nothing times " +
+                        "${if (next.needsMileage.size == 1) "it" else "them"} by miles. Say your mileage and it will.",
+                )
+            }
+        }
+        return parts.joinToString(" ").ifBlank { null }
+    }
 
     fun unreadableCar(label: String, mileageLabel: String): MatrixCar = MatrixCar(
         label = label,

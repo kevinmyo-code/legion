@@ -173,6 +173,16 @@ object VehicleServiceToolbox {
             else -> "Nothing's due or coming up soon that I can time yet."
         }
 
+        // A miles-only item whose newest service carries no reading cannot be timed on any axis,
+        // and the only thing that fixes it is a number the driver has in front of him. So it is
+        // NAMED and asked about: never folded into `allDue` (computeNextService holds that false
+        // whenever this list is non-empty) and never silently dropped out of the schedule.
+        val needsMileageNote = if (next.needsMileage.isNotEmpty()) {
+            val names = next.needsMileage.joinToString(", ")
+            val them = if (next.needsMileage.size == 1) "that one" else "those"
+            " I don't have a mileage reading against $names, so I can't time $them by miles - what's on the odometer?"
+        } else ""
+
         val unknownNote = if (next.unknownCount > 0) {
             if (next.unknownCount == 1) {
                 " 1 more I don't have a last-done for - say the word and I'll fill it in."
@@ -191,7 +201,7 @@ object VehicleServiceToolbox {
             VehicleController.mileageCaveat(vehicle)?.let { " Your mileage is $it." } ?: ""
         } else ""
 
-        return result(true, "For ${theCar(label)}: " + body + unknownNote + mileageNote)
+        return result(true, "For ${theCar(label)}: " + body + needsMileageNote + unknownNote + mileageNote)
     }
 
     /**

@@ -512,17 +512,30 @@ fun buildCredBalanceLine(balances: List<AccountBalance>, nominatedAccountId: Str
  * never `OK` - and the caption states the unknown count in words (`"3 due - 7 unknown"`) rather than
  * a colour or a glyph (CLAUDE.md §4 rule 7). Seven characters of hero max (mission-control ticket 05)
  * - `"N DUE"` fits at any single or double-digit N.
+ *
+ * **A row with no figure bars `OK` too** ([DueRowView.untimed]): same reasoning, one state over.
+ * Such an item is listed rather than dropped, and nothing about it says the car is fine.
  */
 data class FleetTileData(val hero: String, val caption: String)
 
 fun buildFleetTile(rows: List<DueRowView>, unknownCount: Int): FleetTileData {
     if (rows.isEmpty() && unknownCount == 0) return FleetTileData(hero = "NO LINK", caption = "no maintenance schedule")
     val overdueCount = rows.count { it.overdue }
-    if (overdueCount == 0 && unknownCount == 0) {
+    // A row with no axis to compute on ([DueRowView.untimed]) is the same class of
+    // not-known-to-be-fine as an unknown-anchor item, so it bars `OK` for the same reason: ticket
+    // 09 reserved that word for the one state that is actually true. Reachable by plain speech
+    // since the car plan's slice 0 - "I got my oil changed today" on a miles-only item leaves the
+    // item listed with a "-" and nothing timing it.
+    val untimedCount = rows.count { it.untimed }
+    if (overdueCount == 0 && unknownCount == 0 && untimedCount == 0) {
         val next = rows.first()
         return FleetTileData(hero = "OK", caption = "next ${next.label} ${next.value}")
     }
-    val caption = if (unknownCount > 0) "$overdueCount due - $unknownCount unknown" else "overdue - see fleet"
+    val caption = when {
+        unknownCount > 0 -> "$overdueCount due - $unknownCount unknown"
+        untimedCount > 0 -> "$overdueCount due - $untimedCount not timed"
+        else -> "overdue - see fleet"
+    }
     return FleetTileData(hero = "$overdueCount DUE", caption = caption)
 }
 
