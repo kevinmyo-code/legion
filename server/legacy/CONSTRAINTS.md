@@ -215,6 +215,7 @@ Two Postgres ENUM types also bind columns typed `provenance` or
 ## Tables with no CHECK constraints at all
 
 `categories`, `category_rules`, `event_skips`, `goals`, `grocery_staples`,
-`household_members`, `ingested_files`, `item_lists`, `list_items` - nine of
-the 41. These rely only on `NOT NULL`, their unique indexes, and their
-foreign keys.
+`household_members`, `ingested_files` - seven of the 39. These rely only on
+`NOT NULL`, their unique indexes, and their foreign keys. (`item_lists` and
+`list_items` were the other two, and two of the 41, until the lists redesign
+slice 1a dropped both tables.)

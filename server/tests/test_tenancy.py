@@ -36,14 +36,15 @@ one fewer case.
 
 ## What is deliberately NOT covered, and why
 
-`conversation_audit`, `item_lists` and `list_items` carry the column
-but have no route and no rows in the test database - they are not in
-`tests/legacy_test_schema.py`'s mirror at all, because nothing has ever
-written to them through this server. `TABLES_ABSENT_FROM_THE_TEST_MIRROR`
-below names them, and `test_every_tenant_table_that_exists_here_has_the_column`
-uses that list rather than skipping quietly, so adding one of them to the
-mirror without the column fails, and removing one from `TENANT_TABLES`
-without updating the list fails too.
+`conversation_audit` carries the column but has no route and no rows in the
+test database - it is not in `tests/legacy_test_schema.py`'s mirror at all,
+because nothing has ever written to it through this server.
+`TABLES_ABSENT_FROM_THE_TEST_MIRROR` below names it, and
+`test_every_tenant_table_that_exists_here_has_the_column` uses that list rather
+than skipping quietly, so adding it to the mirror without the column fails, and
+removing one from `TENANT_TABLES` without updating the list fails too.
+(`item_lists` and `list_items` were in that set until the lists redesign slice
+1a dropped both tables.)
 
 `chassis_quirks` is per-household for reads and per-SERVER for its identity:
 its primary key is a human-assigned `quirk_id` text column, and re-keying a
@@ -79,12 +80,12 @@ pytestmark = pytest.mark.django_db
 
 EPOCH = "1970-01-01T00:00:00Z"
 
-# See this module's own doc comment. Three tenant tables with no route, no
-# writer and no rows anywhere in this suite. (`goals` joined the mirror with the
-# fat-loss map: `body_coach/` reads the weight goal.)
-TABLES_ABSENT_FROM_THE_TEST_MIRROR = frozenset(
-    {"conversation_audit", "item_lists", "list_items"}
-)
+# See this module's own doc comment. One tenant table with no route, no writer
+# and no rows anywhere in this suite. (`goals` joined the mirror with the
+# fat-loss map: `body_coach/` reads the weight goal. `item_lists` and
+# `list_items` left this set with their TENANT_TABLES entries when the lists
+# redesign slice 1a dropped both tables.)
+TABLES_ABSENT_FROM_THE_TEST_MIRROR = frozenset({"conversation_audit"})
 
 
 # =============================================================================
