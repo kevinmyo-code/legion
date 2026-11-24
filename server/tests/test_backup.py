@@ -13,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,6 +23,7 @@ from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from devicelogs.models import DeviceLog
 from household import tenancy
 from household.models import Household
 from ingest import backup, drive, vault
@@ -166,6 +168,9 @@ def test_a_backup_lands_a_dated_folder_and_says_media_is_not_in_it(drive_login, 
     assert run.rows_written == 1
     assert "Media (photos, recordings" in run.watermark and "NOT in this backup" in run.watermark
     assert "Not dumped: auth, storage." in run.watermark
+    # The device log rows are left out on purpose, so the run says so the way
+    # it says media is missing: in words, on every ok run.
+    assert backup.DEVICE_LOGS_NOT_BACKED_UP in run.watermark
     assert dump["id"] in run.watermark
 
     entry = _fresh(household_a)
@@ -346,6 +351,46 @@ def test_pg_dump_passes_the_password_in_the_environment_never_argv(monkeypatch, 
         "--schema=public",
         "--schema=private",
     ]
+
+
+def test_pg_dump_leaves_the_device_log_rows_out_and_keeps_the_table(monkeypatch, tmp_path):
+    """Supabase egress: `device_logs` is the biggest table and the devices make
+    it again. Its schema is dumped, its rows are not. The argv is checked here;
+    that the pattern MATCHES is the drill's job, since pg_dump does not mind a
+    pattern that hits nothing."""
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        seen["args"] = args
+        Path(args[2].removeprefix("--file=")).write_bytes(b"PGDMP")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(backup, "pg_binary", lambda name: f"/usr/bin/{name}")
+    backup.pg_dump(tmp_path / "out.dump", run=fake_run)
+
+    assert "--exclude-table-data=public.device_logs" in seen["args"]
+    assert backup.DATA_EXCLUDED_TABLES == ("public.device_logs",)
+    # Schema-qualified, so it cannot match a same-named table in another schema.
+    assert all("." in name for name in backup.DATA_EXCLUDED_TABLES)
+    assert not any(arg.startswith("--exclude-table=") for arg in seen["args"])
+
+
+def test_the_drill_expects_a_data_excluded_table_empty_and_fails_on_rows():
+    """The drill is where the exclusion is proved, so it must not merely
+    tolerate the difference: an empty table passes, rows in it fail, and a
+    table missing altogether still fails."""
+    excluded = "public.device_logs"
+    live = {excluded: 4000, "public.events": 7}
+
+    ok_lines, ok_mismatched = backup.compare({excluded: 0, "public.events": 7}, live)
+    assert ok_mismatched == []
+    assert any("0 rows as intended" in line for line in ok_lines)
+
+    _lines, carried = backup.compare({excluded: 12, "public.events": 7}, live)
+    assert carried == [excluded]
+
+    _lines, missing = backup.compare({"public.events": 7}, live)
+    assert missing == [excluded]
 
 
 def test_a_failed_pg_dump_is_a_failure_in_words(tmp_path):
@@ -702,11 +747,24 @@ def test_subprocess_is_the_default_runner():
     os.environ.get("LEGION_BACKUP_DRILL") != "1",
     reason="Opt-in: creates and drops a database on the test server. LEGION_BACKUP_DRILL=1.",
 )
-def test_a_real_dump_restores_into_a_throwaway_database_with_equal_counts(tmp_path):
+def test_a_real_dump_restores_into_a_throwaway_database_with_equal_counts(tmp_path, household_a):
     """The real client tools against the TEST database (never live): pg_dump,
     CREATE DATABASE, extensions, pg_restore, counts, DROP. Proves the
-    mechanics; the drill against live is still owed by hand."""
+    mechanics; the drill against live is still owed by hand.
+
+    Also the one place `--exclude-table-data` is proved rather than read off an
+    argv: a real device log row goes in first, and the restore must hold the
+    table with none of it. A pattern that matched nothing would leave the row
+    in the dump and fail here."""
     assert settings.DATABASES["default"]["NAME"].startswith("test_"), "never against live"
+    DeviceLog.objects.create(
+        household=household_a,
+        batch_id=uuid.uuid4(),
+        device_label="drill phone",
+        reason="conversation",
+        raw_bytes=3,
+        body_gz=b"gz",
+    )
     dump_bin, restore_bin = backup.pg_binary("pg_dump"), backup.pg_binary("pg_restore")
     backup.check_versions(dump_bin)
     path = tmp_path / "drill.dump"
@@ -726,6 +784,8 @@ def test_a_real_dump_restores_into_a_throwaway_database_with_equal_counts(tmp_pa
         print(line)
     assert restored, "the restore produced no tables"
     assert mismatched == []
+    assert live["public.device_logs"] >= 1
+    assert restored["public.device_logs"] == 0
 
 
 def test_source_credential_config_carries_only_the_switch(vault_key, household_a, db):
