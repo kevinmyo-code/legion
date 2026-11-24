@@ -639,23 +639,24 @@ object VehicleController {
         // to stop.
         val existingItems = FleetEngineStore.getForVehicle(context, vehicle.obdMac)
         val match = matchServiceName(serviceName, existingItems.map { it.serviceName })
-        if (match is ServiceMatch.Ambiguous) {
-            return WriteOutcome(
+        val matchedName = (match as? ServiceMatch.Matched)?.name
+
+        // ONE zero-write refusal with two reasons, in this order.
+        //
+        // An ambiguous name is asked about before anything is written, as above. A stated reading
+        // then goes through [setOdometer], the one odometer writer, so its range check, its
+        // low-reading note and its drift log apply exactly as they do to `set_odometer`; out of
+        // range, it questions the figure and nothing else has been written yet. The ambiguity
+        // branch is first so an ambiguous name never moves the odometer either.
+        val refusal = when {
+            match is ServiceMatch.Ambiguous -> WriteOutcome(
                 false,
                 "That could be ${match.candidates.joinToString(" or ")} - which one, or is this a new item?",
             )
+            statedMileage != null -> setOdometer(context, statedMileage, vehicleId).takeIf { !it.success }
+            else -> null
         }
-        val matchedName = (match as? ServiceMatch.Matched)?.name
-
-        // A stated reading is recorded as a reading, through the one odometer writer, BEFORE
-        // anything else is written - a figure out of range is questioned there rather than filed
-        // here, and a refusal leaves nothing behind (same zero-write posture as the ambiguity
-        // refusal above). It runs after the match check so an ambiguous service name still writes
-        // nothing at all.
-        if (statedMileage != null) {
-            val odometer = setOdometer(context, statedMileage, vehicleId)
-            if (!odometer.success) return odometer
-        }
+        if (refusal != null) return refusal
 
         // The ServiceRecord is ALWAYS written - work done is a true fact
         // regardless of what the schedule knows (ticket 08 decision). Filed
@@ -671,11 +672,12 @@ object VehicleController {
         val insertResult = FleetEngineStore.insertObserved(
             context, vehicle.obdMac, targetName, statedMileage, now, costCents,
         )
-        if (insertResult is FleetEngineStore.InsertObservedResult.Failure) {
-            return WriteOutcome(false, "Couldn't log $targetName - ${insertResult.reason}.")
-        }
+        // One outcome, three cases, as an expression rather than three more returns.
+        return when {
+            insertResult is FleetEngineStore.InsertObservedResult.Failure ->
+                WriteOutcome(false, "Couldn't log $targetName - ${insertResult.reason}.")
 
-        if (matchedName != null) {
+            matchedName != null -> {
             // Targeted write (ticket 05): touches only the anchor columns - no
             // read-modify-write, so a concurrent interval edit can't be lost
             // between the read above and this write. neverDone is cleared here
@@ -691,39 +693,43 @@ object VehicleController {
             // call's only remaining job is clearing MaintenanceSchedule.neverDone back to false. Kept
             // as its own call (rather than folded into insertObserved) because a never-matched new
             // item (the branch below) has no MaintenanceSchedule row yet to clear it on.
-            val written = FleetEngineStore.setNeverDoneCleared(context, vehicle.obdMac, matchedName, now)
-            // matchedName came from a read moments ago; only a concurrent
-            // delete/rename between that read and this write can zero it, and
-            // ticket 05's no-op law says that must be reported, not assumed.
-            if (written == 0) {
-                return WriteOutcome(
-                    false,
-                    "Logged the $matchedName${atMiles(statedMileage)}, but the schedule item disappeared before I " +
-                        "could reset it - it may have just been deleted.",
+                val written = FleetEngineStore.setNeverDoneCleared(context, vehicle.obdMac, matchedName, now)
+                // matchedName came from a read moments ago; only a concurrent
+                // delete/rename between that read and this write can zero it, and
+                // ticket 05's no-op law says that must be reported, not assumed.
+                if (written == 0) {
+                    WriteOutcome(
+                        false,
+                        "Logged the $matchedName${atMiles(statedMileage)}, but the schedule item disappeared " +
+                            "before I could reset it - it may have just been deleted.",
+                    )
+                } else {
+                    WriteOutcome(true, loggedServiceMessage(matchedName, statedMileage))
+                }
+            }
+
+            // No existing item matched (ticket 08): create it and SAY SO, under the
+            // canonical form of what was said - a bad canonicalisation is then
+            // visible immediately, not discovered three days later on a database
+            // pull the way Kevin's silently-created Brake Fluid/Brake Pads rows were.
+            //
+            // lastDoneMileage/lastDoneDate are NOT passed here anymore (cutover 4) - the OBSERVED
+            // row insertObserved just wrote above already projects onto this exact anchor the
+            // instant FleetEngineStore.getForVehicle reads it back; a MaintenanceSchedule row
+            // carries no anchor of its own to set (wave4-carve's headline finding).
+            else -> {
+                FleetEngineStore.upsertNewItem(
+                    context,
+                    MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical, neverDone = false),
+                )
+                WriteOutcome(
+                    true,
+                    "Logged the $canonical${atMiles(statedMileage)}. Nothing on your schedule matched, so " +
+                        "I've added $canonical as an item - it has no interval yet, tell me one when you " +
+                        "want it tracked.",
                 )
             }
-            return WriteOutcome(true, loggedServiceMessage(matchedName, statedMileage))
         }
-
-        // No existing item matched (ticket 08): create it and SAY SO, under the
-        // canonical form of what was said - a bad canonicalisation is then
-        // visible immediately, not discovered three days later on a database
-        // pull the way Kevin's silently-created Brake Fluid/Brake Pads rows were.
-        //
-        // lastDoneMileage/lastDoneDate are NOT passed here anymore (cutover 4) - the OBSERVED row
-        // insertObserved just wrote above already projects onto this exact anchor the instant
-        // FleetEngineStore.getForVehicle reads it back; a MaintenanceSchedule row carries no anchor
-        // of its own to set (wave4-carve's headline finding).
-        FleetEngineStore.upsertNewItem(
-            context,
-            MaintenanceItem(vehicleId = vehicle.obdMac, serviceName = canonical, neverDone = false),
-        )
-        return WriteOutcome(
-            true,
-            "Logged the $canonical${atMiles(statedMileage)}. Nothing on your schedule matched, so " +
-                "I've added $canonical " +
-                "as an item - it has no interval yet, tell me one when you want it tracked.",
-        )
     }
 
     /**
