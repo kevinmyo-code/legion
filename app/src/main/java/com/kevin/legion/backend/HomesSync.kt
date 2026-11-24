@@ -30,8 +30,6 @@ import kotlinx.serialization.json.JsonObject
  *   one compare. This is what repairs a write-through that failed while offline: the queue is
  *   the Room table itself.
  * - **Write-through** ([HomesWriteThrough]) and **pull** of what the engine wrote ([HomesPull]).
- * - **User-aspect records** (ticket 15, [HomesRecordsSync]): trackers he authored, their record
- *   types, fields and entries, translated so no local id leaves the phone.
  * - **Service records** ([pushServiceRecords]): the push the Django transport used to refuse. Each
  *   run sends the local records the engine has no id for, under their own `syncId`.
  *
@@ -141,8 +139,6 @@ object HomesSync {
             if (first && report.clean) prefs.edit().putBoolean(KEY_DONE + table.key, true).apply()
             report
         }
-        // Ticket 15: the user-aspect records, after their own pull, parents first.
-        val records = HomesRecordsSync.run(context, backend)
         val fleet = fleetBackend(context)
         Log.i(
             TAG,
@@ -152,7 +148,7 @@ object HomesSync {
                 pushServiceRecords(context, fleet)
             },
         )
-        return reports + records
+        return reports
     }
 
     /** The live Room rows of [table] as engine rows. Raises: every one the first time, then the recent ones. */
@@ -171,10 +167,6 @@ object HomesSync {
                 val since = if (full) 0L else now - RAISE_RECONCILE_MS
                 db.proactiveRaiseDao().since(since).map(HomesRows::raise)
             }
-            // Ticket 15's tables are translated as a set (`HomesRecordsSync.Snapshot`), not row by row.
-            HomeTable.USER_ASPECTS, HomeTable.USER_RECORD_TYPES, HomeTable.USER_FIELD_DEFS,
-            HomeTable.USER_RECORDS,
-            -> HomesRecordsSync.snapshot(context).rows(table)
         }
     }
 
