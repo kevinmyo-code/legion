@@ -188,6 +188,72 @@ class TestAWrittenScriptCannotForgeAYes(ForgeCase):
         self.assertTrue(self.names_root(f"{self.paths.tokens.as_posix()}/41-yes.json"))
 
 
+class TestACdCannotReachTheRoot(ForgeCase):
+    """RED review B1 and B2, 2026-11-24, which are one defect. The real session's cwd is the whole
+    work folder (`worker.MainSession` starts it there), so from there a single `..` IS the worker's
+    root: `cd ..; cat config.json` handed a helper the engine's device token and `ls tokens`
+    listed Kevin's confirmations, with no script, no taint and no cleverness. The same missing
+    `cd` made ordinary build work deny from a task folder, because `../../reports` was read as the
+    worker's `reports` folder.
+
+    Both halves are the one fix: the root check resolves each part of the command against the
+    folder that part really runs in, and any folder the command moves INTO that lies in the root
+    outside the work folder is itself a read of the root.
+    """
+
+    DENY = (
+        ("Bash", "cd ..; cat config.json"),
+        ("PowerShell", "cd ..; type config.json"),
+        ("Bash", "cd .. ; ls tokens"),
+        ("Bash", "cd .. && grep -r . tokens"),
+        ("PowerShell", "pushd ..; type state.json"),
+        ("Bash", "cd .. && cat ./config.json"),
+        ("Bash", "cd .. && cat $PWD/config.json"),
+        ("Bash", "cd ../tokens && cat 50-yes.json"),
+        ("Bash", "cat ../config.json"),
+        # A `cd` that does not GOVERN the read: on a real shell the read still runs in `work`, so
+        # the check stays fail-closed for every spelling but a plain `&&` chain.
+        ("Bash", "cat ../config.json; cd task-50"),
+        ("Bash", "cd nope; cat ../config.json"),
+        ("Bash", "cd nope && true; cat ../config.json"),
+        ("Bash", "(cd task-50); cat ../config.json"),
+        # No `cd` at all. A bare `..`, a quoted name and a glob are paths that a regex over path
+        # SHAPES never sees (it wants a drive, a leading separator or a `./` `../` prefix).
+        ("Bash", "cat ../*.json"),
+        ("Bash", 'cat ../"config.json"'),
+        ("Bash", "grep -r token .."),
+        ("Bash", "ls .."),
+    )
+
+    def test_the_root_is_never_read_from_the_sessions_own_cwd(self):
+        for tool, cmd in self.DENY:
+            with self.subTest(cmd=cmd):
+                d, rule, out = self.decide(tool, {"command": cmd}, agent="agentZ",
+                                           cwd=self.paths.work)
+                self.assertEqual((d, rule), ("deny", "worker files read"), cmd)
+                self.assertIn("WORKER FILES", self.reason(out))
+
+    def test_ordinary_build_work_in_a_task_folder_still_runs(self):
+        """The other direction, and the cost of getting it wrong is a whole task: `reports`,
+        `logs`, `tokens`, `config.json` and `state.json` are common names in a checkout, and the
+        refusal tells a helper not to work around it."""
+        (self.own / "wt" / "server").mkdir(parents=True, exist_ok=True)
+        for cmd in ("cd wt/server && pytest --junitxml=../../reports/junit.xml",
+                    "cd wt/server && cat ../../reports/last.txt",
+                    "cd wt && cat ../../logs/build.log",
+                    "cd wt && ls ../../tokens",
+                    "cd wt && cat ../../config.json",
+                    "cd wt/server && pytest -q",
+                    "cd wt/server && pytest --junitxml=../reports/x.xml"):
+            with self.subTest(cmd=cmd):
+                self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.own)
+
+    def test_the_task_folder_itself_is_still_the_helpers_own(self):
+        for cmd in ("cd task-50 && ls", "cat task-50/notes.md", "ls .", "cd task-50; cat ../x.csv"):
+            with self.subTest(cmd=cmd):
+                self.passed("Bash", {"command": cmd}, agent="agentZ", cwd=self.paths.work)
+
+
 class TestUploadStillRefusesTheRoot(ForgeCase):
     """B5's other half (RED review, 2026-11-24). `CREDENTIAL_NAMES` lost `config.json` and
     `*token*`; `worker.uploadable` makes its OWN root test before it looks at a name, so the

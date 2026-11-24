@@ -616,6 +616,50 @@ def _cwd_candidates(command: str, cwd: str) -> list[str]:
     return bases
 
 
+_NOT_AND_ONLY_RE = re.compile(r"[;|\n`(]|\$\(")
+
+
+def _cd_scoped(command: str, cwd: str) -> list:
+    """(base, text) pairs saying which folder each part of the command really resolves against.
+
+    A `cd` may move the base only for work that CANNOT run unless that `cd` succeeded, which on a
+    plain `&&` chain is everything after it. Anywhere else (a `;`, a pipe, a `||`, a subshell, a
+    newline) the `cd` may fail and the next command still runs in the old folder, so
+    `cd nope; cat ../config.json` reads the root on a real shell: there every candidate base is
+    checked, the raw cwd included, and the check stays fail-closed (RED review B1, 2026-11-24)."""
+    if _NOT_AND_ONLY_RE.search(command or ""):
+        return [(b, command) for b in _cwd_candidates(command, cwd)]
+    out, base = [], cwd
+    for seg in re.split(r"&&", command or ""):
+        if base:
+            out.append((base, seg))
+        m = CD_RE.search(seg)
+        if m:
+            d = _to_os_path(next(g for g in m.groups() if g is not None))
+            if d.startswith(("~", "$", "%")):
+                base = None
+            elif DRIVE_RE.match(d):
+                base = d
+            elif base is not None:
+                base = os.path.normpath(os.path.join(base, d))
+    return out
+
+
+def _root_read_denied(command: str, cwd: str, paths: Paths) -> bool:
+    """Does this command READ the worker's own root outside the work folder?
+
+    Two rules. A folder the command moves INTO that lies in the root outside the work folder is
+    itself a read of the root (`cd ..` from the session's own cwd lands on the root, and no path
+    in `cat config.json` is root-shaped at all). And each part of the command is checked against
+    the folder that part really runs in, which is what keeps the guard off a checkout's own
+    `../../reports` (RED review B1 and B2, 2026-11-24: one defect, measured in both directions)."""
+    if any(b and is_under(b, paths.root) and not is_under(b, paths.work)
+           for b in _cwd_candidates(command, cwd)):
+        return True
+    return any(C.command_names_root(text, base, paths)
+               for base, text in _cd_scoped(command, cwd))
+
+
 def _redirect_only(command: str) -> bool:
     """The overwrite rule matched through a redirect and through nothing else."""
     return (re.search(REDIRECT_OUT, command, re.I) is not None
@@ -890,18 +934,22 @@ def _containment(event: dict, paths: Paths, cfg: dict, task: int | None,
         target = inp.get("file_path") or inp.get("path") or cwd
         if target and C.credential_path(paths, target, paths.work):
             return _deny(C.CRED_REASON), "worker files read", True
-    if command and not ours and C.names_worker_root(command, cwd, paths):
+    if command and not ours and _root_read_denied(command, cwd, paths):
         return _deny(C.CRED_REASON), "worker files read", True
 
     if command and not ours:
+        # Every one of these resolves a relative word, so every one of them takes the folders a
+        # `cd` in the command moves to, not the raw cwd: `cd task-50 && python post.py` ran a
+        # recorded net script from the session's own cwd (RED review debt, 2026-11-24).
+        bases = _cwd_candidates(command, cwd)
         roots = C.root_script_paths(paths)
         if roots and any(C.names_blocked(command, base, roots)
                          or C.runs_blocked_module(command, base, roots)
-                         for base in _cwd_candidates(command, cwd)):
+                         for base in bases):
             return _deny(C.ROOT_SCRIPT_REASON), "root script", True
-        if C.names_blocked(command, cwd, C.written_paths(paths)):
+        if any(C.names_blocked(command, base, C.written_paths(paths)) for base in bases):
             return _deny(C.WRITTEN_REASON), "read_through written", True
-        if C.names_blocked(command, cwd, C.blocked_paths(paths)):
+        if any(C.names_blocked(command, base, C.blocked_paths(paths)) for base in bases):
             return _deny(C.NET_REASON), "net script", True
         why = C.network_denial(command, cfg)
         if why:

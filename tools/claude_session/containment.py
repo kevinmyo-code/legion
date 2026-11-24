@@ -548,15 +548,22 @@ def root_entries(paths: Paths) -> set[str]:
 
 
 def _worker_own(cand: str, cwd: str, paths: Paths) -> bool:
-    """A path the WORKER owns: under the root, outside the work folder, and its first segment is
-    one of the root's own entries."""
+    """A path the WORKER owns: under the root, outside the work folder, and either the root itself
+    or a first segment that is one of the root's own entries.
+
+    The root ITSELF counts (`cd ..`, `ls ../`, a `cd` that lands there): listing or searching the
+    root reads what is in it, and `_names_root_by_tail` has always counted the bare root for an
+    absolute spelling. A glob counts for the same reason it does there: `cat ../*.json` is
+    `config.json` and `state.json` (RED review B1, 2026-11-24)."""
     try:
         target = cand if os.path.isabs(cand) else (os.path.join(cwd, cand) if cwd else "")
         if not target or not is_under(target, paths.root) or is_under(target, paths.work):
             return False
         rest = norm(target)[len(norm(paths.root)):].strip("\\/")
-        first = re.split(r"[\\/]", rest)[0].lower() if rest else ""
-        return first in root_entries(paths)
+        if not rest:
+            return True
+        first = re.split(r"[\\/]", rest)[0].lower()
+        return first in root_entries(paths) or "*" in first or "?" in first
     except (OSError, ValueError):
         return False
 
@@ -605,6 +612,31 @@ def names_worker_root(text: str, cwd: str, paths: Paths) -> bool:
         return False
     return (_names_root_by_tail(text, paths)
             or any(_worker_own(c, cwd, paths) for c in _path_texts(text)))
+
+
+def command_names_root(command: str, cwd: str, paths: Paths) -> bool:
+    """`names_worker_root` for a COMMAND, where a bare word is a path too.
+
+    `_PATH_TEXT_RE` wants a drive, a leading separator or a `./` `../` prefix, so `grep -r token
+    ..`, `ls ..` and `cat ../"config.json"` name the worker's root without ever writing a
+    path-shaped run (measured, RED review B1, 2026-11-24, from the session's real cwd
+    `<root>/work`). A shell word, on the other hand, is a path by position, so every word of the
+    command is resolved against `cwd` as well. Only a command goes through this: a script's own
+    text has no shell words."""
+    if names_worker_root(command, cwd, paths):
+        return True
+    if not cwd:
+        return False
+    for m in _TOKEN_RE.finditer(command or ""):
+        tok = next(g for g in m.groups() if g is not None).strip().rstrip(",;:")
+        if not tok or tok.startswith("-"):
+            continue
+        g = re.match(r"^/([a-zA-Z])/(.*)$", tok)
+        if g and os.name == "nt":
+            tok = f"{g.group(1)}:/{g.group(2)}"
+        if _worker_own(tok, cwd, paths):
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------- paths in a command
