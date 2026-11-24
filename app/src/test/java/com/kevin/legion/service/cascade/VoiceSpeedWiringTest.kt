@@ -36,8 +36,10 @@ class VoiceSpeedWiringTest {
         // No greeting pack is even fetched for a tap.
         assertTrue(openNow.contains("if (opening == OpeningRule.Opening.GREETING)"))
         val micNowBody = bodyOf(s, "openMicNow")
-        assertTrue("route first", micNowBody.indexOf("enterRoute(") < micNowBody.indexOf("startMic(chime = true)"))
-        assertTrue(micNowBody.indexOf("backlog = MicBacklog()") < micNowBody.indexOf("startMic(chime = true)"))
+        val micAt = micNowBody.indexOf("startMic(chime =")
+        assertTrue("the mic starts in openMicNow", micAt >= 0)
+        assertTrue("route first", micNowBody.indexOf("enterRoute(") in 0 until micAt)
+        assertTrue(micNowBody.indexOf("backlog = MicBacklog()") in 0 until micAt)
     }
 
     @Test
