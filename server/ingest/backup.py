@@ -117,9 +117,9 @@ def not_set_up_reason() -> str:
     household = resolve_default_household()
     if household is None:
         return (
-            "backup: not set up. This engine holds more than one household and "
-            "LEGION_BOOTSTRAP_HOUSEHOLD_ID names none of them, so no household owns the "
-            "whole-database backup. Nothing was dumped."
+            "backup: not set up. This engine holds more than one real household (the "
+            "demo's own are not counted) and LEGION_BOOTSTRAP_HOUSEHOLD_ID names none of "
+            "them, so no household owns the whole-database backup. Nothing was dumped."
         )
     return (
         f"backup: not set up. Household {household.pk} runs this engine but has no Drive "
