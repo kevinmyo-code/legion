@@ -48,10 +48,10 @@ Grouped by what they are for:
 |---|---|
 | **Engine sync plumbing** | `OutboxEntry` (the `sync_outbox` queue), `VehicleReplica`, `ServiceHistoryReplica`, `VehicleSidecar`, `BackgroundPassState` |
 | **Events** (dates) | `Event`, `EventSkip` |
-| **Checklists** (notes) | `Checklist`, `ChecklistItem`, `ChecklistTick`, `ItemList`, `ListItem`, `ListItemSkip` |
+| **Checklists** (notes) | `Checklist`, `ChecklistItem`, `ChecklistTick`, `ItemList`, `LegacyListItem` *(frozen `list_items`; read only by the Wave 1 migrator)*, `ListItemSkip` |
 | **Fleet** | `Vehicle`, `VehicleSpec`, `VehicleCapability`, `ServiceRecord`, `MaintenanceItem`, `BuildEntry`, `OdbSample`, `CodeEvent`, `CodeClearEvent`, `OilAnalysis`, `ChassisQuirk`, `ForesightNote`, `MonthlyRecap`, `DailyDriveLog`, `YearlyWrapped`, `Drive`, `DriveReassignment` |
 | **Ledger** | `LedgerTransaction`, `Category`, `CategoryRule`, `BudgetTarget`, `IngestedFile`, `MerchantAlias` |
-| **Pantry, grocery, meals** | `PantryReceipt`, `PantryLineItem`, `GroceryItem`, `GroceryStaple`, `MealTarget`, `MealLog` |
+| **Pantry, grocery, meals** | `PantryReceipt`, `PantryLineItem`, `GroceryItem` *(read only by `GroceryChecklistMigration`)*, `GroceryStaple` *(no reader left)*, `MealTarget`, `MealLog` |
 | **Body** | `WorkoutPlan`, `WorkoutPlanItem`, `WorkoutSetLog`, `BodyweightLog`, `SleepTarget`, `SleepLog` |
 | **Places** | `TaggedPlace`, `PlaceReminder` *(tombstone)* |
 | **Voice notes** | `VoiceNote` |
@@ -108,8 +108,8 @@ than reaching for one, which is why it is not in this roster: it is storage, not
 
 **Ledger** - `LedgerController`.
 
-**Pantry and food** - `PantryController`, `GroceryController`, `MealController`,
-`PurchasesController`.
+**Pantry and food** - `PantryController`, `MealController`, `PurchasesController`.
+(`GroceryController` was deleted in the lists redesign slice 1a, 2026-11-24: it had no caller.)
 
 **Body and goals** - `WorkoutController`, `SleepController`, `GoalController`.
 
