@@ -613,6 +613,26 @@ class TestTheWatchIsOffUnlessItIsSwitchedOn(WorkerBase):
         self.assertEqual(FakeSummariser.made, [])
         self.assertFalse(self.w.session_read(42))
 
+    def test_a_watch_in_the_state_file_closes_on_the_first_poll_after_a_restart(self):
+        """The same leftover, but through the state file and a worker started with no key at all."""
+        self.pin()
+        self.transcript()
+        self.report()
+        self.w.drain_reports(self.now)
+        self.w.save()
+        self.wcfg = {k: v for k, v in self.wcfg.items() if k != "session_reply_watch"}
+        write_json_atomic(self.paths.config, self.wcfg)
+        self.transcript(peer_entry(MSG), said("the android job is red"))
+
+        after = self.build()
+        after.poll_replies(self.now)
+        task = after.state["tasks"]["42"]
+        self.assertEqual(task["status"], "done")
+        self.assertNotIn("reply_watch", task)
+        self.assertIn("switched off", after.state["outbox"][0]["payload"]["summary"])
+        self.assertEqual(FakeSummariser.made, [])
+        self.assertFalse(after.session_read(42))
+
 
 class TestHoldingTheTaskOpen(WorkerBase):
     def test_a_delivered_message_is_held_open_not_finished(self):
