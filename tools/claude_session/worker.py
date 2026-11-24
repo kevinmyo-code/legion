@@ -73,6 +73,7 @@ from session import MainSession, build_command, child_env, kill_tree  # noqa: E4
 import containment  # noqa: E402
 import health as hl  # noqa: E402
 import integrity  # noqa: E402
+import session_reply as sr  # noqa: E402
 import sessions  # noqa: E402
 import warm_worktree  # noqa: E402
 import workflows as wfl  # noqa: E402
@@ -315,7 +316,8 @@ def setup_logging(paths: Paths) -> None:
 
 class Worker:
     def __init__(self, paths: Paths, cfg: dict, *, engine=None, power=None, clock=time.time,
-                 today=None, drives=None, base_env=None, idle=None, health=None):
+                 today=None, drives=None, base_env=None, idle=None, health=None,
+                 projects=None, summariser=None):
         self.paths = paths.ensure()
         self.cfg = {**DEFAULTS, **cfg}
         self.scope = self.cfg.get("scope", "listed")
@@ -367,6 +369,15 @@ class Worker:
         self.reports_root = Path(self.cfg.get("workflow_reports") or (legion / "reports"))
         self.task_log = Path(self.cfg.get("task_log") or (legion / "task-log.jsonl"))
         self.agent_rules = Path(self.cfg.get("agent_rules") or (legion / "AGENT-RULES.md"))
+        # The hub's thread (claude-hub slice S2): a message Kevin sent from his phone whose
+        # session has not answered yet. The watch itself lives in the task's own state (so a
+        # worker restart resumes it, or lets its deadline close it); the summariser is a child
+        # process and only in memory.
+        self.projects = Path(projects) if projects else sr.projects_dir()
+        self.summarisers: dict[int, sr.Summariser] = {}
+        self.replies: dict[int, str] = {}  # a turn's text, in memory only, never in state.json
+        self.make_summariser = summariser or sr.Summariser
+        self.next_reply_poll = 0.0
         self.catalog: list[dict] = []
         self.catalog_hash: str | None = None
         self.catalog_at: float | None = None
@@ -380,6 +391,16 @@ class Worker:
 
     def running(self) -> list[dict]:
         return [t for t in self.state["tasks"].values() if t["status"] == "running"]
+
+    def working(self) -> list[dict]:
+        """Running tasks a helper is still working on.
+
+        A task that is only waiting for one of Kevin's sessions to answer his message (slice S2)
+        is running but doing nothing: it must not make this machine look busy to the engine's
+        machine picker, and it must not be failed when the main session restarts, because it does
+        not need the main session at all.
+        """
+        return [t for t in self.running() if not t.get("reply_watch")]
 
     def save(self, force: bool = False) -> None:
         if self.dirty or force:
@@ -409,7 +430,7 @@ class Worker:
                 log.info("stopped the previous main session process")
             else:
                 log.info("previous main session pid not verified; left alone")
-        for t in self.running():
+        for t in self.working():
             self.finish(t, "failed", SAY_RESTARTED)
         self.claude_version = self.read_claude_version()
         self.prune(self.clock())
@@ -482,7 +503,7 @@ class Worker:
             log.warning("main session exited code=%s stderr_lines=%s", code, self.session.stderr_lines)
             self.session = None
             self.awaiting_since = None
-            for t in self.running():
+            for t in self.working():
                 self.finish(t, "failed", SAY_RESTARTED)
             if quick and self.state["session_started"]:
                 self.resume_failures += 1
@@ -533,7 +554,7 @@ class Worker:
             return
         if self.state["session_date"] == self.today():
             return
-        if self.running() or self.pending or self.awaiting_since is not None:
+        if self.working() or self.pending or self.awaiting_since is not None:
             return  # rotate only when idle: closing the process stops its helpers
         self.stop_session()
         self.start_session(now, fresh=True)
@@ -719,8 +740,136 @@ class Worker:
                 status, summary = self.review_result(t)
                 self.finish(t, status, summary)
                 continue
+            if self.arm_reply_watch(t, r, now):
+                continue  # held open until that session answers, or ten minutes pass (S2)
             self.finish(t, r.get("status", "failed"), r.get("summary", ""), r.get("question", ""),
                         r.get("found") or [])
+
+    def sent_plan(self, t: dict) -> dict | None:
+        """The message plan this task DELIVERED, from the worker's own files only.
+
+        Every fact is one the worker wrote itself: the task is the phone's `confirms` follow-up to
+        a card whose question the worker wrote from the plan (`send_plan_sha`), the plan's words
+        still hash to that same card, and `sessions.py send` recorded that the courier and the
+        gate both said the message went. Nothing here reads the helper's summary, so a helper
+        cannot talk the worker into watching a session.
+        """
+        parent = t.get("parent")
+        if self.scope != "full" or not parent or not t.get("confirms"):
+            return None
+        p = self._task(parent)
+        if not p or not p.get("send_plan_sha"):
+            return None
+        plan = sessions.pinned_plan(self.paths, parent)
+        if not plan or plan.get("sha256") != p["send_plan_sha"]:
+            return None
+        return plan if plan.get("delivered") is True else None
+
+    def arm_reply_watch(self, t: dict, r: dict, now: float) -> bool:
+        """Hold a delivered message's task open while its session answers. True when it is held.
+
+        `drain_reports` would otherwise finish the task the moment the helper reports, and the
+        engine takes one finish per task (FinishView answers 409 to a second). So the one place
+        this can wait is here.
+        """
+        if r.get("status") != "done" or t.get("reply_watch"):
+            return False
+        plan = self.sent_plan(t)
+        if plan is None:
+            return False
+        path, why = sr.may_watch(self.paths, self.cfg, plan, self.projects)
+        if path is None:
+            # A guard said no. The message still went, so the card says so and says what did not.
+            self.finish(t, "done", sr.SAY_GONE.format(name=plan["name"], why=why))
+            log.info("task %s armed no reply watch: %s", t["id"], why)
+            return True
+        t["reply_watch"] = {"plan_task": int(plan["task"]),
+                            "offset": int(plan.get("transcript_bytes") or 0),
+                            "deadline": now + sr.WINDOW_S, "anchored": False}
+        self.progress[t["id"]] = sr.STEP_IN_INBOX
+        self.dirty = True
+        log.info("task %s waiting for a session reply for up to %.0f min", t["id"],
+                 sr.WINDOW_S / 60)
+        return True
+
+    def poll_replies(self, now: float) -> None:
+        """Read each watched transcript from its own offset, on the heartbeat's beat."""
+        if now < self.next_reply_poll:
+            return
+        self.next_reply_poll = now + sr.POLL_S
+        for t in [x for x in self.running() if x.get("reply_watch")]:
+            try:
+                self.poll_one_reply(t, now)
+            except OSError:
+                log.warning("task %s reply watch could not read the transcript", t["id"])
+
+    def poll_one_reply(self, t: dict, now: float) -> None:
+        watch = t["reply_watch"]
+        plan = sessions.pinned_plan(self.paths, watch["plan_task"]) or {}
+        name = plan.get("name") or "that session"
+        if t["id"] in self.summarisers:
+            self.collect_summary(t, name, now)
+            return
+        path, why = sr.may_watch(self.paths, self.cfg, plan, self.projects)
+        if path is None:
+            t.pop("reply_watch", None)
+            self.finish(t, "done", sr.SAY_GONE.format(name=name, why=why))
+            return
+        entries, watch["offset"] = sr.read_entries(path, int(watch["offset"]))
+        if entries:
+            # The worker itself has now read that session's transcript, so the task carries the
+            # same read-through mark `sessions.py read` leaves. `finish` keys its summary cap on
+            # this mark, so the cap holds here too even if the summariser ever returned more.
+            try:
+                containment.mark(self.paths, t["id"], t.get("agent"), "session_transcript")
+            except OSError:
+                log.warning("task %s read-through mark could not be written", t["id"])
+        anchored, text, ended = sr.scan(entries, plan.get("text") or "",
+                                        bool(watch.get("anchored")))
+        watch["anchored"] = anchored
+        self.dirty = True
+        if text:
+            # In memory only: the session's own words never go in the worker's state file. A
+            # worker restart mid-turn loses what it had read and the deadline closes the watch.
+            self.replies[t["id"]] = text
+        if not ended:
+            self.close_if_late(t, watch, name, now)
+            return
+        reply = self.replies.pop(t["id"], "")
+        if not reply:
+            t.pop("reply_watch", None)
+            self.finish(t, "done", sr.SAY_NO_REPLY.format(name=name))
+            return
+        # Still held open: only the summary may leave this laptop (R1), and it is not back yet.
+        watch["summarising"] = True
+        self.summarisers[t["id"]] = self.make_summariser(reply, self.cfg, self.paths,
+                                                         self.base_env, now)
+        log.info("task %s turn ended; summarising its reply on this laptop", t["id"])
+        self.collect_summary(t, name, now)  # one that is already done needs no second poll
+
+    def collect_summary(self, t: dict, name: str, now: float) -> bool:
+        """Finish the task once the laptop's summary is back. True when it answered.
+
+        A summariser that failed, timed out or said nothing falls back to a sentence of the
+        worker's own: the only other thing to send would be the session's own words, and Kevin
+        ruled that a summary may leave the laptop and a transcript may not (R1).
+        """
+        pending = self.summarisers.get(t["id"])
+        if pending is None or not pending.done(now):
+            return False
+        self.summarisers.pop(t["id"], None)
+        summary = pending.summary()
+        t.pop("reply_watch", None)
+        self.finish(t, "done", summary or sr.SAY_NO_SUMMARY.format(name=name))
+        log.info("task %s reply %s", t["id"], "summarised" if summary else "not summarised")
+        return True
+
+    def close_if_late(self, t: dict, watch: dict, name: str, now: float) -> None:
+        if now < watch["deadline"]:
+            return
+        t.pop("reply_watch", None)
+        self.finish(t, "done", sr.SAY_NO_REPLY.format(name=name))
+        log.info("task %s reply window closed with nothing", t["id"])
 
     def keep_late_report(self, t: dict, r: dict) -> None:
         """A helper's report that came after the worker failed its task. Still in the outbox (the
@@ -782,7 +931,7 @@ class Worker:
         payload = {"status": status, "summary": summary, "question": question,
                    "turns": int(t.get("turns", 0)),
                    "duration_ms": int(max(0.0, now - t.get("started_at", now)) * 1000),
-                   "found": found}
+                   "found": found, **self.thread_fields(t, status)}
         self.state["outbox"].append({"task": t["id"], "payload": payload})
         if status != "needs_confirmation":  # a question keeps the warm tree for its follow-up
             try:
@@ -796,6 +945,29 @@ class Worker:
         self.dirty = True
         log.info("task %s finished %s found=%s", t["id"], status, len(found))
 
+    def thread_fields(self, t: dict, status: str) -> dict:
+        """The hub thread's two engine columns (slice S1), from the worker's own pinned plan.
+
+        The card carries the session it is about and the exact message Kevin is being asked to
+        approve; its yes carries the session only, so the refusal or the reply lands in the same
+        thread. The text is always `plan["text"]`, the words on the card: never the helper's
+        summary, and never anything read out of a transcript. A summaries-only machine sends
+        neither (the engine drops `session_text` from one anyway, and arms no send here).
+        """
+        if self.scope != "full":
+            return {}
+        if status == "needs_confirmation":
+            plan = sessions.pinned_plan(self.paths, t["id"])
+            if plan is not None:
+                return {"session_id": plan["session_id"], "session_text": plan["text"]}
+        parent = t.get("parent")
+        if parent and t.get("confirms"):
+            p = self._task(parent) or {}
+            plan = sessions.pinned_plan(self.paths, parent) if p.get("send_plan_sha") else None
+            if plan is not None and plan.get("sha256") == p.get("send_plan_sha"):
+                return {"session_id": plan["session_id"]}
+        return {}
+
     def session_read(self, tid) -> bool:
         """Did task `tid` read a Claude session transcript (its read-through mark says so)?"""
         mark = read_json(self.paths.taint / f"task-{int(tid)}.json", None) or {}
@@ -807,6 +979,8 @@ class Worker:
                 self._stop_helper(t, "stop", f"[stop {t['id']}] Task {t['id']} hit the 30 minute "
                                   f"limit. Stop task {t['id']}'s helper now with TaskStop. One line.")
                 self.finish(t, "failed", SAY_CAP)
+            elif t.get("reply_watch"):
+                continue  # poll_replies owns it, and closes it at its own deadline (S2)
             elif t.get("helper_completed_at") and not t.get("helper_ended_at"):
                 if now - t["helper_completed_at"] < self.cfg["settle_s"]:
                     continue
@@ -834,7 +1008,7 @@ class Worker:
         if self.awaiting_since is not None and now - self.awaiting_since > self.cfg["hang_s"]:
             log.warning("main session did not answer; restarting it")
             self.stop_session(kill=True)
-            for t in self.running():
+            for t in self.working():
                 self.finish(t, "failed", SAY_HUNG)
             self.start_session(now)
 
@@ -973,6 +1147,7 @@ class Worker:
             self.power.update()
             self.refresh_catalog(now)
             running = sorted(t["id"] for t in self.running())
+            working = sorted(t["id"] for t in self.working())
             self.progress = {k: v for k, v in self.progress.items() if k in running}
             wf_fields = self.catalog_fields(now)
             snap = self.health.take() if self.health else None
@@ -982,7 +1157,7 @@ class Worker:
             extra = {"health": snap} if snap else {}
             reply = self.engine.heartbeat({
                 "name": self.name, "hostname": socket.gethostname(), "scope": self.scope,
-                "state": "busy" if running else "idle", "running": running,
+                "state": "busy" if working else "idle", "running": running,
                 "progress": {str(k): v for k, v in self.progress.items()},
                 "claude_version": self.claude_version, "can_mail": self.can_mail(),
                 # memory-review ticket 15: the engine mints the daily review only when idle.
@@ -1357,6 +1532,7 @@ class Worker:
         self.ensure_session(now)
         self.drain_events(now)
         self.drain_reports(now)
+        self.poll_replies(now)
         self.check_timers(now)
         self.flush_pending(now)
         self.maybe_rotate(now)
