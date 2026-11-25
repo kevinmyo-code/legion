@@ -99,6 +99,14 @@ data class SpotifyPlaylist(val name: String, val uri: String, val id: String, va
  */
 data class ArtistAlbum(val name: String, val uri: String)
 
+/**
+ * One row of `/v1/me/tracks` - the driver's liked songs (music-suggestions-1124 P7, which found
+ * `browse_my_music`'s merged hint promising "liked songs" with no source behind it). Carries its
+ * [uri] for the same reason every other playable row does: `play_music` takes the URI, never a
+ * re-search by name.
+ */
+data class LikedTrack(val name: String, val artist: String, val uri: String)
+
 object SpotifyWebApi {
     private const val TAG = "SpotifyWebApi"
     private const val AUTH_HOST = "https://accounts.spotify.com/authorize"
@@ -780,7 +788,15 @@ object SpotifyWebApi {
      * requirement (ticket 05, part C.9) exists to avoid at the tool layer.
      */
     sealed interface LibraryOutcome<out T> {
-        data class Found<T>(val items: List<T>) : LibraryOutcome<T>
+        /**
+         * [total] is how many rows Spotify says EXIST, when its response states one, against
+         * [items] which is only the page asked for. Null means the response stated no total, which
+         * is a different fact from "the total equals what you see" and must never be rendered as
+         * one: the tool layer only ever says "that is all of them" when a total says so. Without
+         * this field the result could not tell a five-row page from a five-row library, and the
+         * page count was reported as the library size (music-suggestions-1124 P7/P8).
+         */
+        data class Found<T>(val items: List<T>, val total: Int? = null) : LibraryOutcome<T>
 
         /** The browser grant was never completed, or the stored credentials are gone. */
         object NeedsAuthorization : LibraryOutcome<Nothing>
@@ -844,10 +860,18 @@ object SpotifyWebApi {
      * [LibraryOutcome.Failed] rather than a silently empty [LibraryOutcome.Found] - an empty list
      * must only ever mean "Spotify said zero", never "something went wrong reading the answer".
      */
+    /**
+     * Spotify's own `total` on a paged response, or null when the body states none. Never defaults
+     * to the page size: a caller that cannot tell a page from a library has to say so, and
+     * `optInt(..., 0)` would hand it a confident zero to say instead.
+     */
+    internal fun pageTotal(json: JSONObject): Int? = json.optInt("total", -1).takeIf { it >= 0 }
+
     private suspend fun <T> libraryGet(
         context: Context,
         url: String,
         parse: (JSONObject) -> List<T>,
+        total: (JSONObject) -> Int? = { null },
     ): LibraryOutcome<T> = withContext(Dispatchers.IO) {
         val token = when (val outcome = accessToken(context)) {
             is TokenOutcome.Token -> outcome.value
@@ -871,13 +895,14 @@ object SpotifyWebApi {
                     else -> LibraryOutcome.Failed(code, detail, body.trim().take(300))
                 }
             }
-            val items = try {
-                parse(JSONObject(body))
+            val (items, stated) = try {
+                val json = JSONObject(body)
+                parse(json) to total(json)
             } catch (e: Exception) {
                 Log.w(TAG, "Library parse error: ${e.message}")
                 return@withContext LibraryOutcome.Failed(code, "Could not read Spotify's response", body.trim().take(300))
             }
-            LibraryOutcome.Found(items)
+            LibraryOutcome.Found(items, stated)
         } catch (e: Exception) {
             Log.w(TAG, "Library read error: ${e.message}")
             LibraryOutcome.Unreachable
@@ -917,6 +942,46 @@ object SpotifyWebApi {
             .appendQueryParameter("limit", limit.toString())
             .build().toString()
         return libraryGet(context, url, ::parseTopTracks)
+    }
+
+    // --- Liked songs (music-suggestions-1124 P7) ----------------------------------------------
+
+    private const val LIKED_SONGS_URL = "https://api.spotify.com/v1/me/tracks"
+
+    /**
+     * `items[].track` -> [LikedTrack]. Same nesting as [parseRecentlyPlayed], different payload:
+     * `/me/tracks` wraps each saved track in an object carrying `added_at`, which nothing here
+     * needs. Pure, unit-testable.
+     */
+    internal fun parseLikedSongs(json: JSONObject): List<LikedTrack> {
+        val items = json.optJSONArray("items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i ->
+            val track = items.optJSONObject(i)?.optJSONObject("track") ?: return@mapNotNull null
+            val name = track.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val artist = track.optJSONArray("artists")?.optJSONObject(0)?.optString("name").orEmpty()
+            LikedTrack(name = name, artist = artist, uri = track.optString("uri"))
+        }
+    }
+
+    /**
+     * The driver's liked (saved) songs, newest-saved first. `user-library-read` is already in
+     * [SCOPES] for `/me/albums`, and `GET /me/tracks` needs the same one, so this adds no scope
+     * and cannot stale an existing grant. Carries Spotify's own `total`, because the tool's answer
+     * ("you have N liked songs") is a library figure and a page of five cannot support it.
+     *
+     * **Unverified against this account's own dev-mode token**, same posture as [LIBRARY_LIMIT]:
+     * the February 2026 cull deprecated the library WRITE family (`PUT /me/tracks`, replaced by
+     * `/me/library`) and `GET /me/tracks` was not on the removed list
+     * (`.scratch/spotify-voice/research/01-api-capability-surface.md`), but an absence of evidence
+     * is not evidence of availability. A read that 403s or 404s here surfaces as
+     * [LibraryOutcome.Unauthorized] or [LibraryOutcome.Failed] with Spotify's own words, never as
+     * "you have no liked songs" - so the failure mode is honest, not silent.
+     */
+    suspend fun getLikedSongs(context: Context, limit: Int = LIBRARY_LIMIT): LibraryOutcome<LikedTrack> {
+        val url = Uri.parse(LIKED_SONGS_URL).buildUpon()
+            .appendQueryParameter("limit", limit.toString())
+            .build().toString()
+        return libraryGet(context, url, ::parseLikedSongs, ::pageTotal)
     }
 
     // --- Queue read (ticket 04, 2026-08-19) ---------------------------------------------------
@@ -959,6 +1024,7 @@ object SpotifyWebApi {
     private const val KEY_USER_ID = "spotify_user_id"
     private const val KEY_PLAYLIST_CACHE = "playlist_cache"
     private const val KEY_PLAYLIST_CACHE_AT = "playlist_cache_at"
+    private const val KEY_PLAYLIST_CACHE_TOTAL = "playlist_cache_total"
 
     /**
      * How long [myPlaylists] trusts its own cache before hitting `/me/playlists` again. Ticket
@@ -1049,12 +1115,19 @@ object SpotifyWebApi {
         }
     }
 
-    /** On-disk cache read, or null when absent, corrupt, or past [PLAYLIST_CACHE_TTL_MS]. */
-    private fun freshCachedPlaylists(context: Context): List<SpotifyPlaylist>? {
+    /**
+     * On-disk cache read, or null when absent, corrupt, or past [PLAYLIST_CACHE_TTL_MS]. The
+     * stated total is cached beside the rows: without it a cache hit would have to report the row
+     * count as the library size, which is the claim P7/P8 exist to stop, and is wrong exactly when
+     * [MAX_PLAYLIST_PAGES] cut the fetch short.
+     */
+    private fun freshCachedPlaylists(context: Context): LibraryOutcome.Found<SpotifyPlaylist>? {
         val at = authPrefs(context).getLong(KEY_PLAYLIST_CACHE_AT, 0L)
         if (System.currentTimeMillis() - at > PLAYLIST_CACHE_TTL_MS) return null
         val raw = authPrefs(context).getString(KEY_PLAYLIST_CACHE, null) ?: return null
-        return deserializePlaylists(raw)
+        val rows = deserializePlaylists(raw) ?: return null
+        val total = authPrefs(context).getInt(KEY_PLAYLIST_CACHE_TOTAL, -1).takeIf { it >= 0 }
+        return LibraryOutcome.Found(rows, total)
     }
 
     /**
@@ -1068,6 +1141,7 @@ object SpotifyWebApi {
             .appendQueryParameter("limit", PLAYLISTS_PAGE_LIMIT.toString())
             .build().toString()
         var pages = 0
+        var stated: Int? = null
         while (url != null && pages < MAX_PLAYLIST_PAGES) {
             val (code, body) = try {
                 getWithToken(url, token)
@@ -1089,11 +1163,12 @@ object SpotifyWebApi {
                 Log.w(TAG, "Playlists parse error: ${e.message}")
                 return LibraryOutcome.Failed(code, "Could not read Spotify's response", body.trim().take(300))
             }
+            if (stated == null) stated = pageTotal(page)
             out += parsePlaylistsPage(page, userId)
             url = page.optString("next").takeIf { it.isNotBlank() && it != "null" }
             pages++
         }
-        return LibraryOutcome.Found(out)
+        return LibraryOutcome.Found(out, stated)
     }
 
     /**
@@ -1106,7 +1181,7 @@ object SpotifyWebApi {
      */
     suspend fun myPlaylists(context: Context, forceRefresh: Boolean = false): LibraryOutcome<SpotifyPlaylist> = withContext(Dispatchers.IO) {
         if (!forceRefresh) {
-            freshCachedPlaylists(context)?.let { return@withContext LibraryOutcome.Found(it) }
+            freshCachedPlaylists(context)?.let { return@withContext it }
         }
         val token = when (val outcome = accessToken(context)) {
             is TokenOutcome.Token -> outcome.value
@@ -1122,6 +1197,7 @@ object SpotifyWebApi {
             authPrefs(context).edit()
                 .putString(KEY_PLAYLIST_CACHE, serializePlaylists(result.items))
                 .putLong(KEY_PLAYLIST_CACHE_AT, System.currentTimeMillis())
+                .putInt(KEY_PLAYLIST_CACHE_TOTAL, result.total ?: -1)
                 .apply()
         }
         result

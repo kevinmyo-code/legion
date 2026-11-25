@@ -4,8 +4,10 @@ import android.content.Context
 import com.kevin.legion.data.local.CarDatabase
 import com.kevin.legion.data.local.MusicPlayHistoryEntry
 import com.kevin.legion.media.SpotifyController
+import com.kevin.legion.media.SpotifyPlaylist
 import com.kevin.legion.media.SpotifyWebApi
 import com.kevin.legion.service.LiveToolbox.result
+import com.kevin.legion.service.tools.music.BrowseSource
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -47,11 +49,23 @@ object MusicLibraryToolbox {
      */
     private suspend fun browseMyMusic(context: Context, args: JSONObject): JSONObject {
         val limit = args.optInt("limit", 5).coerceIn(1, 10)
-        return when (val source = args.optString("source")) {
-            "saved_albums" -> libraryOutcomeToJson(context, SpotifyWebApi.getSavedAlbums(context, limit), "saved albums") { a ->
+        val raw = args.optString("source")
+        val source = BrowseSource.fromWire(raw)
+            ?: return result(success = false, message = "Unknown source: $raw")
+        return when (source) {
+            BrowseSource.SAVED_ALBUMS -> libraryOutcomeToJson(context, SpotifyWebApi.getSavedAlbums(context, limit), "saved albums") { a ->
                 JSONObject().put("name", a.name).put("artist", a.artist)
             }
-            "recently_played" -> {
+            // Deliberately ignores `limit`: answering "which playlists do I have" from a page of
+            // five is how a library read turned into a claim about what is NOT in the library, and
+            // a NAMED lookup served off the first five rows can still miss the one he asked for
+            // (music-suggestions-1124 P7). Playlist names are short; the whole cached list is
+            // cheaper than a wrong answer.
+            BrowseSource.PLAYLISTS -> browsePlaylists(context, args.optString("playlistName").ifBlank { null })
+            BrowseSource.LIKED_SONGS -> libraryOutcomeToJson(context, SpotifyWebApi.getLikedSongs(context, limit), "liked songs") { t ->
+                JSONObject().put("name", t.name).put("artist", t.artist).put("spotifyUri", t.uri)
+            }
+            BrowseSource.RECENTLY_PLAYED -> {
                 val json = libraryOutcomeToJson(context, SpotifyWebApi.getRecentlyPlayed(context, limit), "recently played") { t ->
                     JSONObject().put("name", t.name).put("artist", t.artist)
                         .put("playedAt", com.kevin.legion.util.LocalClock.stamp(t.playedAt))
@@ -68,15 +82,89 @@ object MusicLibraryToolbox {
                     )
                 } else json
             }
-            "top_artists" -> libraryOutcomeToJson(context, SpotifyWebApi.getTopArtists(context, limit), "top artists") { a ->
+            BrowseSource.TOP_ARTISTS -> libraryOutcomeToJson(context, SpotifyWebApi.getTopArtists(context, limit), "top artists") { a ->
                 JSONObject().put("name", a.name)
             }
-            "top_tracks" -> libraryOutcomeToJson(context, SpotifyWebApi.getTopTracks(context, limit), "top tracks") { t ->
+            BrowseSource.TOP_TRACKS -> libraryOutcomeToJson(context, SpotifyWebApi.getTopTracks(context, limit), "top tracks") { t ->
                 JSONObject().put("name", t.name).put("artist", t.artist)
             }
-            "legion_history" -> browseLegionHistory(context, limit)
-            "artist_albums" -> browseArtistAlbums(context, limit)
-            else -> result(success = false, message = "Unknown source: $source")
+            BrowseSource.LEGION_HISTORY -> browseLegionHistory(context, limit)
+            BrowseSource.ARTIST_ALBUMS -> browseArtistAlbums(context, limit)
+        }
+    }
+
+    /**
+     * `playlists` source of [browseMyMusic] (music-suggestions-1124 P7): the capability
+     * ([SpotifyWebApi.myPlaylists]) already existed and served the by-name play and add-to-playlist
+     * paths, but nothing could LIST playlists, so "find the playlist called X" and "what playlists
+     * do I have" had no read to land on and Alfred answered them off the saved-albums page.
+     *
+     * Every row, never a page - see the call site's comment. [spoken], when the model passed one,
+     * also runs the same fuzzy match the by-name play path uses, and the closest name rides on the
+     * result as `match`; a miss says so in words beside the full list, because "no playlist by
+     * that name" and "here is everything you have" are different answers and he is owed both.
+     *
+     * One read: the match runs against the rows this call already has, rather than through
+     * [SpotifyWebApi.findMyPlaylist], which would read the cache a second time.
+     */
+    private suspend fun browsePlaylists(context: Context, spoken: String?): JSONObject {
+        val outcome = SpotifyWebApi.myPlaylists(context)
+        val json = libraryOutcomeToJson(context, outcome, "playlists", ::playlistRow)
+        if (outcome !is SpotifyWebApi.LibraryOutcome.Found || spoken == null) return json
+        return withPlaylistMatch(json, outcome.items, spoken)
+    }
+
+    /**
+     * The successful shape of every library read: the rows, how many are IN THIS PAGE (`count`),
+     * and - only when Spotify's own response stated one - how many exist (`total`) with whether
+     * the page fell short of it (`truncated`).
+     *
+     * `count` on its own could not tell a five-row page from a five-row library, so the page size
+     * was spoken as the library size (music-suggestions-1124 P8). A source whose response states
+     * no total emits NEITHER field, because `truncated: false` would stand in for "that is all of
+     * them" on exactly the reads that cannot know it.
+     *
+     * An empty row list is a REAL, distinct answer ("Spotify said zero"), never a failure shape
+     * and never phrased as if nothing was checked. Pure and `internal`: a plain JVM test.
+     */
+    internal fun pageResult(rows: List<JSONObject>, total: Int?, sourceLabel: String): JSONObject {
+        val items = JSONArray()
+        rows.forEach { items.put(it) }
+        val message = if (rows.isEmpty()) "Spotify has no $sourceLabel to show right now." else null
+        return result(success = true, message = message)
+            .put("items", items)
+            .put("count", rows.size)
+            .apply {
+                total?.let {
+                    put("total", it)
+                    put("truncated", rows.size < it)
+                }
+            }
+    }
+
+    /** One playlist row: named, playable by URI, and honest about whether he can add to it. */
+    internal fun playlistRow(p: SpotifyPlaylist): JSONObject =
+        JSONObject().put("name", p.name).put("spotifyUri", p.uri).put("ownOrCollaborative", p.readable)
+
+    /**
+     * Adds the closest name to [spoken] to a successful playlists result, or a note saying nothing
+     * scored close enough. Pure and `internal` so the exact wording is a plain JVM test rather
+     * than something only a real turn could check.
+     */
+    internal fun withPlaylistMatch(
+        json: JSONObject,
+        playlists: List<SpotifyPlaylist>,
+        spoken: String,
+    ): JSONObject {
+        val matched = SpotifyWebApi.bestPlaylistMatch(playlists, spoken)
+        return if (matched != null) {
+            json.put("match", matched.name)
+        } else {
+            json.put(
+                "matchNote",
+                "No playlist of his scored close enough to \"$spoken\" to call it a match. Say that, " +
+                    "and that the names in items are what he does have - never that he has no playlists.",
+            )
         }
     }
 
@@ -99,16 +187,8 @@ object MusicLibraryToolbox {
         sourceLabel: String,
         toJson: (T) -> JSONObject,
     ): JSONObject = when (outcome) {
-        is SpotifyWebApi.LibraryOutcome.Found -> {
-            val items = JSONArray()
-            outcome.items.forEach { items.put(toJson(it)) }
-            // An empty Found is a REAL, distinct answer ("Spotify said zero") - never let this
-            // collapse into a failure shape, and never phrase it as if nothing was checked.
-            val message = if (outcome.items.isEmpty()) {
-                "Spotify has no $sourceLabel to show right now."
-            } else null
-            result(success = true, message = message).put("items", items).put("count", outcome.items.size)
-        }
+        is SpotifyWebApi.LibraryOutcome.Found ->
+            pageResult(outcome.items.map(toJson), outcome.total, sourceLabel)
         SpotifyWebApi.LibraryOutcome.NeedsAuthorization -> result(
             success = false,
             message = "Spotify hasn't been authorized on this device yet - open Setup, Spotify, " +
