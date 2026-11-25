@@ -45,6 +45,9 @@ See `.scratch/web-revamp/spec.md` D7.
 - [x] Shots in `research/shots/15/`: every notifications state (on, off, denied, iOS install card,
       unsupported browser, not set up, unreachable, everything off), 390x844 and 1440x900, light and
       dark.
+- Some shots in that set were REMOVED in the 2026-11-24 privacy pass: they rendered a
+  household member's real first name, the household's own real surname or a real course
+  code. Screenshot removed; the states they covered are the ones listed above.
 - [ ] Impossible without a phone, owed on live (Kevin): the "Turn these off" button itself, pressed by
       the OS. Reasoned, not seen: MDN lists notification `actions` as limited availability (not
       Baseline) and I did not see the Safari cell, so on an iPhone the button may not render and the

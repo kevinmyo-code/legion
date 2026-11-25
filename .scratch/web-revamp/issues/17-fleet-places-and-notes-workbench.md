@@ -30,6 +30,9 @@ See `.scratch/web-revamp/spec.md` D1 rail; web-and-households 06 trust rules car
       sentence, empty states in words. DONE; vehicles are edit-only and notes are read-only, see the
       resolution note below.
 - [x] Shots in `research/shots/17/`.
+- Some shots in that set were REMOVED in the 2026-11-24 privacy pass: they rendered a
+  household member's real first name, the household's own real surname or a real course
+  code. Screenshot removed; the states they covered are the ones listed above.
 
 ## Resolution (2026-10-03, branch `feat/web-aspects`)
 

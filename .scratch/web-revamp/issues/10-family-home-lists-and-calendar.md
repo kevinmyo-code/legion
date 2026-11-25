@@ -32,4 +32,7 @@ See `.scratch/web-revamp/spec.md` D6, D10 (family), D11 (family).
       (`routes/-family-home.test.tsx`, `routes/-family-lists.test.tsx`, `lib/pins.test.ts`.)
 - [x] Shots at 390x844 light and dark in `research/shots/10/`, plus the 1440 Home to show the
       workbench Home did not move.
+- Some shots in that set were REMOVED in the 2026-11-24 privacy pass: they rendered a
+  household member's real first name, the household's own real surname or a real course
+  code. Screenshot removed; the states they covered are the ones listed above.
 - [ ] Owed on live (Kevin): Member B's spend card equals the phone's Money figure to the cent.
