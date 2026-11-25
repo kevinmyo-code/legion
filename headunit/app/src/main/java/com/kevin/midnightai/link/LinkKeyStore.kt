@@ -248,7 +248,7 @@ class LinkKeyStore(
         if (!prefs.contains(KEY_COMMITTED)) return false
         val before = engine.snapshot()
         val userId = engine.carLinkUserId().orEmpty()
-        if (!engine.saveStrict(url, token, userId, vehicleId ?: engine.carLinkVehicleId())) return false
+        if (!engine.saveStrict(url, token, userId, vehicleId ?: engine.carLinkVehicleId())) return true
         val provenance = (prefs.getString(KEY_FROM_LINK, null)?.let { runCatching { JSONObject(it) }.getOrNull() }
             ?: JSONObject()).put("engine", engine.rawToken())
         if (!prefs.edit().putString(KEY_FROM_LINK, provenance.toString()).commit()) {

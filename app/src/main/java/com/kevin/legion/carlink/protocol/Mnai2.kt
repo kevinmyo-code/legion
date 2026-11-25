@@ -193,7 +193,7 @@ object Mnai2 {
         require(t.size in 1..MAX_TOKEN && printable(token)) { "token" }
         require(v.size <= MAX_VEHICLE && (vehicleId == null || vehicleId.isNotEmpty())) { "vehicle id" }
         return ByteBuffer.allocate(challenge.size + 2 + t.size + v.size)
-            .put(challenge).put(t.size.toByte()).put(t).put(v.size.toByte()).put(v).array()
+            .put(challenge).put(v.size.toByte()).put(v).put(t.size.toByte()).put(t).array()
     }
 
     /** A TOKEN_OK body: the [fingerprint] of the token the unit stored, or null when it is not one. */

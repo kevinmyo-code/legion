@@ -126,7 +126,6 @@ class Mnai2Feed(
         nowMs: Long,
     ): List<Outgoing> = when (d.type) {
         Mnai2.HELLO -> onHello(d, slot, from, fromPort, nowMs)
-        Mnai2.TOKEN_OK -> onTokenOk(d, slot, from, fromPort)
         else -> emptyList()
     }
 

@@ -290,7 +290,6 @@ object PhoneLinkWire {
                 if (body.size != CHALLENGE_BYTES) return null to BodyRefusal.BAD_FIELDS.name
                 Decoded.Revoke(opened.session, opened.counter, body.copyOf()) to null
             }
-            TYPE_TOKEN -> parseToken(opened, body)
             else -> null to BodyRefusal.WRONG_TYPE.name
         }
     }

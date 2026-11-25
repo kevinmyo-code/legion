@@ -49,7 +49,7 @@ class LinkFeedSet(
                 if (accepted) oldKeyOnlySince = null
                 val commit = accepted && !commitReported && nowMs() >= commitRetryAt
                 if (commit) commitReported = true
-                return Result(out, commitPending = commit, underPending = true)
+                return Result(out, commitPending = commit)
             }
         }
         val c = committed ?: return Result(PhoneFeed.Outcome.Rejected(PhoneFeed.Refusal.AUTH_FAILED))

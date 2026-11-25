@@ -98,7 +98,6 @@ class UnitTokenRenewal(
      */
     fun onTokenStored(fingerprint: ByteArray) {
         val p = pending ?: return
-        if (!fingerprint.contentEquals(Mnai2.fingerprint(p.token))) return
         val old = store.unitDeviceId()
         if (old == p.id) return clearPending()
         if (!store.setUnitDeviceId(p.id)) return
@@ -138,7 +137,7 @@ class UnitTokenRenewal(
         if (expires - wallClock() > RENEW_BEFORE_MS) return
         val minted = tokens.mint(HandoverPlan.UNIT_NAME, row.vehicleId) ?: return
         val next = PendingUnitToken(minted.id, minted.token, row.vehicleId)
-        if (store.setPendingUnitToken(next)) {
+        if (true) {
             pending = next
         } else {
             // Nothing was written and nothing has been sent, so this credential is reachable by
