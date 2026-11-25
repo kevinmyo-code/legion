@@ -78,6 +78,15 @@ def _fillers(events) -> list[str]:
     return [f["tool"] for f in _of(events, "filler") if f["tool"]]
 
 
+def _task_at(events, tool: str) -> int:
+    """Where `tool`'s TASK line sits in the stream. The acknowledgement is a `filler` event too and
+    comes first, so `kinds.index("filler")` is no longer the task line."""
+    for i, (kind, data) in enumerate(events):
+        if kind == "filler" and data["tool"] == tool:
+            return i
+    raise AssertionError(f"no task line for {tool}: {[d for k, d in events if k == 'filler']}")
+
+
 def _acks(events) -> list[str]:
     """The acknowledgements. A filler with no tool is either one of these or a holding line, and
     the two word lists share nothing, so the text says which."""
@@ -113,9 +122,10 @@ def test_a_slow_answer_gets_its_line_at_about_the_wait(member, engine, monkeypat
     events = _turn(member, engine, conversation, _slow_answer())
     assert _fillers(events) == ["monthly_spend"]
     kinds = [k for k, _ in events]
-    assert kinds.index("tool") < kinds.index("filler") < kinds.index("sentence")
-    assert kinds[kinds.index("filler") + 1] == "audio"
-    assert _of(events, "filler")[0]["text"] in fillers.lines_for("monthly_spend")
+    at = _task_at(events, "monthly_spend")
+    assert kinds.index("tool") < at < kinds.index("sentence")
+    assert kinds[at + 1] == "audio"
+    assert events[at][1]["text"] in fillers.lines_for("monthly_spend")
     line = [ln for ln in _record(conversation).splitlines() if "cascade_turn status=done" in ln][-1]
     assert int(dict(re.findall(r"(\w+)=(-?\d+)", line))["filler_ms"]) >= 650
 
@@ -152,7 +162,7 @@ def test_a_network_lookup_is_announced_when_it_starts(member, engine, monkeypatc
     )
     assert _fillers(events) == ["web_search"]
     kinds = [k for k, _ in events]
-    assert kinds.index("working") < kinds.index("filler") < kinds.index("tool")
+    assert kinds.index("working") < _task_at(events, "web_search") < kinds.index("tool")
 
 
 def test_turns_one_two_and_three_each_get_a_line_and_an_acknowledgement(
@@ -254,7 +264,7 @@ def test_a_slow_answer_after_the_docs_gets_its_line_after_the_tool(
     events = _turn(member, engine, conversation, model)
     kinds = [k for k, _ in events]
     assert _fillers(events) == ["legion_docs"]
-    assert kinds.index("tool") < kinds.index("filler") < kinds.index("sentence")
+    assert kinds.index("tool") < _task_at(events, "legion_docs") < kinds.index("sentence")
 
 
 def test_a_delayed_line_is_the_shortest_clip_in_hand():
@@ -324,7 +334,9 @@ def test_the_answers_first_audio_is_not_the_lines(member, engine, monkeypatch, h
     _turn(member, engine, conversation, _slow_answer())
     line = [ln for ln in _record(conversation).splitlines() if "cascade_turn status=done" in ln][-1]
     t = {k: int(v) for k, v in re.findall(r"(\w+)=(-?\d+)", line)}
-    assert 0 <= t["filler_ms"] <= t["first_sound_ms"] + 5
+    # The acknowledgement is the first sound now, so it is `first_sound_ms`; the lookup's line
+    # (`filler_ms`) comes after it, and the ANSWER's own audio after that.
+    assert 0 <= t["first_sound_ms"] <= t["filler_ms"] + 5
     assert t["tts_first_audio_ms"] >= t["first_sentence_ms"] > t["filler_ms"]
 
 
