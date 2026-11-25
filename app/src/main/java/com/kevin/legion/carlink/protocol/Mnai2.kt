@@ -52,6 +52,8 @@ class PhoneFix(
  * Section 4.2's datagram: `MNAI2` | version 1 | type | session 16 | counter u64 BE | SEAL(sessKey,
  * NONCE(dir, counter), aad = bytes 0..30, body). Big-endian throughout (4.3).
  */
+// One function per frame type and per field block: splitting the table would hide the format.
+@Suppress("TooManyFunctions")
 object Mnai2 {
     const val PORT = 17311
     const val MAX_DATAGRAM = 256
@@ -61,6 +63,14 @@ object Mnai2 {
     const val FIX = 'F'
     const val ZONE = 'Z'
     const val REVOKE = 'R'
+
+    /**
+     * 4.3 rev 9: the unit's own engine sign-in, after the pairing (phone to unit), and the unit's
+     * "I stored it" (unit to phone). A unit built before rev 9 refuses an unknown type before it
+     * reads anything else, so one of these costs it nothing.
+     */
+    const val TOKEN = 'T'
+    const val TOKEN_OK = 'C'
     private const val MAGIC = "MNAI2"
     private const val VERSION: Byte = 1
     private const val OFF_TYPE = 6
@@ -74,6 +84,11 @@ object Mnai2 {
     private const val MIN_INTERVAL_MS = 250L
     private const val MAX_INTERVAL_MS = 60_000L
     private const val MAX_ZONE = 64
+    const val MAX_TOKEN = 160
+    const val MAX_VEHICLE = 64
+    const val FINGERPRINT_LEN = 8
+    /** The bytes an engine token can hold: printable ASCII, no space (section 5.1's alphabet). */
+    private val PRINTABLE = 0x21..0x7E
     private val zoneId = Regex("""[A-Za-z0-9_+\-/]{1,64}""")
 
     private const val FLAG_ACC = 1
@@ -164,4 +179,37 @@ object Mnai2 {
         require(challenge.size == CHALLENGE_LEN)
         return challenge.copyOf()
     }
+
+    /**
+     * A TOKEN body (4.3 rev 9): `challenge 8 | len u8 | token | len u8 | vehicle id`. The vehicle id
+     * rides along so the frame alone says everything the unit must store, and a unit that lost its
+     * sign-in (an older build dropped one for want of an https address) is whole again from it.
+     */
+    fun tokenBody(challenge: ByteArray, token: String, vehicleId: String?): ByteArray {
+        require(challenge.size == CHALLENGE_LEN)
+        val t = ascii(token)
+        val v = vehicleId?.let(::ascii) ?: ByteArray(0)
+        require(t.size in 1..MAX_TOKEN && printable(token)) { "token" }
+        require(v.size <= MAX_VEHICLE && (vehicleId == null || vehicleId.isNotEmpty())) { "vehicle id" }
+        return ByteBuffer.allocate(challenge.size + 2 + t.size + v.size)
+            .put(challenge).put(t.size.toByte()).put(t).put(v.size.toByte()).put(v).array()
+    }
+
+    /** A TOKEN_OK body: the [fingerprint] of the token the unit stored, or null when it is not one. */
+    fun readTokenOk(body: ByteArray): ByteArray? = body.takeIf { it.size == FINGERPRINT_LEN }?.copyOf()
+
+    fun tokenOkBody(fingerprint: ByteArray): ByteArray {
+        require(fingerprint.size == FINGERPRINT_LEN)
+        return fingerprint.copyOf()
+    }
+
+    /**
+     * The first 8 bytes of SHA-256 over the token: what the unit echoes to say WHICH token it
+     * stored, so a lost reply cannot be mistaken for a reply about the token before it. Not a
+     * secret (8 bytes of a hash of 256 random bits cannot be walked back), and never the token.
+     */
+    fun fingerprint(token: String): ByteArray =
+        LinkCrypto.sha256(ascii(token)).copyOf(FINGERPRINT_LEN)
+
+    private fun printable(token: String) = token.all { it.code in PRINTABLE }
 }

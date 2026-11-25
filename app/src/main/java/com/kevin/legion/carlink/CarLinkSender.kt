@@ -8,6 +8,17 @@ import java.io.Closeable
 import java.io.IOException
 import java.net.InetAddress
 
+/**
+ * What [UnitTokenRenewal] needs of a live link: the monotonic clock it paces itself by, and one
+ * hand-over attempt. Its own interface so the renewal has no socket, no feed and no key.
+ */
+interface TokenCarrier {
+    fun nowMs(): Long
+
+    /** False = not in range, or the send threw. Never a confirmation: only the unit's answer is. */
+    fun handToken(token: String, vehicleId: String?): Boolean
+}
+
 /** A datagram that arrived: its length in the caller's buffer and its source address. */
 class Incoming(val length: Int, val from: InetAddress, val port: Int)
 
@@ -40,7 +51,7 @@ class CarLinkSender(
     private val clock: () -> Long,
     private val fixes: FixSource,
     private val sendFixes: () -> Boolean,
-) {
+) : TokenCarrier {
     private val buf = ByteArray(Mnai2.MAX_DATAGRAM + 1)
     private var fastHeld = false
 
@@ -73,7 +84,7 @@ class CarLinkSender(
     fun acceptedHellos(): Long = feed.acceptedHellos()
 
     /** The sender's monotonic clock, milliseconds. */
-    fun nowMs(): Long = clock()
+    override fun nowMs(): Long = clock()
 
     @Suppress("TooGenericExceptionCaught") // the point: nothing a peer sends may crash the app
     private inline fun contained(now: Long, block: () -> Unit) {
@@ -85,6 +96,16 @@ class CarLinkSender(
             faultStreak++
             quietUntil = now + minOf(BACKOFF_MS * faultStreak, MAX_BACKOFF_MS)
         }
+    }
+
+    /**
+     * Hands the unit a new engine sign-in (4.3 rev 9). False = not in range, or the send threw; the
+     * phone keeps the old credential either way and tries again. Delivery is never confirmation:
+     * only the unit's TOKEN_OK is, and it arrives through the feed.
+     */
+    override fun handToken(token: String, vehicleId: String?): Boolean {
+        val out = feed.handToken(clock(), token, vehicleId) ?: return false
+        return send(listOf(out))
     }
 
     /** REVOKE for "Forget head unit" (4.3, 5.4). False = the unit is not in range. */

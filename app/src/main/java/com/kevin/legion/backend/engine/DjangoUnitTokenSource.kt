@@ -1,15 +1,20 @@
 package com.kevin.legion.backend.engine
 
 import android.util.Log
+import com.kevin.legion.carlink.UnitRecord
 import com.kevin.legion.carlink.UnitToken
+import com.kevin.legion.carlink.UnitTokenDirectory
 import com.kevin.legion.carlink.UnitTokenSource
 import io.ktor.http.encodeURLPathPart
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
 
 private const val HEAD_UNITS = "/api/auth/head-units"
 private const val KIND = "head_unit"
@@ -46,7 +51,7 @@ private const val KIND = "head_unit"
  * **[revoke] answers true for a 404.** "No live head unit of yours has that id" is the outcome the
  * caller asked about: it is gone either way, and reporting false would make Forget look failed.
  */
-class DjangoUnitTokenSource(private val http: EngineHttp) : UnitTokenSource {
+class DjangoUnitTokenSource(private val http: EngineHttp) : UnitTokenSource, UnitTokenDirectory {
 
     override suspend fun mint(name: String, vehicleId: String?): UnitToken? {
         val body = JsonObject(
@@ -57,6 +62,52 @@ class DjangoUnitTokenSource(private val http: EngineHttp) : UnitTokenSource {
             },
         ).toString()
         return issued("mint", http.post(HEAD_UNITS, body))
+    }
+
+    /**
+     * The member's own live units (5.6): id, when the token runs out and which car it is bound to.
+     * Null when the engine could not be asked, which is never the same as "this member has none":
+     * the renewal must not treat an unreachable engine as a revoked unit.
+     */
+    override suspend fun list(): List<UnitRecord>? {
+        val result = http.get(HEAD_UNITS)
+        val ok = result.getOrNull()
+            ?: run {
+                Log.w(TAG, "list refused: ${status((result.exceptionOrNull() as? EngineHttpException)?.failure)}")
+                return null
+            }
+        return try {
+            engineSyncedJson.parseToJsonElement(ok.body).jsonArray.mapNotNull { row ->
+                val o = row.jsonObject
+                val id = o["id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                UnitRecord(
+                    id = id,
+                    expiresAtMs = millis(o["expires_at"]?.jsonPrimitive?.contentOrNull),
+                    vehicleId = o["vehicle_id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+                )
+            }
+        } catch (_: SerializationException) {
+            Log.w(TAG, "list reply did not decode")
+            null
+        } catch (_: IllegalArgumentException) {
+            Log.w(TAG, "list reply did not decode")
+            null
+        }
+    }
+
+    /**
+     * An ISO-8601 instant as milliseconds, or null when it is absent or in a shape this build does
+     * not read. Null means "do not renew on this answer", never "renew now": a date nobody parsed
+     * is not a reason to mint a credential every few hours.
+     */
+    private fun millis(text: String?): Long? {
+        if (text.isNullOrBlank()) return null
+        return try {
+            OffsetDateTime.parse(text).toInstant().toEpochMilli()
+        } catch (_: DateTimeParseException) {
+            Log.w(TAG, "list gave an expiry this build does not read")
+            null
+        }
     }
 
     override suspend fun rotate(id: String): UnitToken? =
