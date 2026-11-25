@@ -9,6 +9,7 @@ import com.kevin.midnightai.location.PhoneLinkWire
 import com.kevin.midnightai.service.DeviceRole
 import com.kevin.midnightai.service.DeviceRole.Role
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -61,6 +62,14 @@ class CarLinkFeedTest {
         /** Reads of PENDING that fail before it decrypts (review P2). */
         var pendingFailures = 0
         var reads = 0
+        /** 5.6: what the link handed over, and whether this unit could store it. */
+        val handed = mutableListOf<Pair<String, String?>>()
+        var takeToken = true
+        override fun acceptHandedToken(token: String, vehicleId: String?): Boolean {
+            if (!takeToken) return false
+            handed += token to vehicleId
+            return true
+        }
         override fun hasRecord() = committed != null || pending != null || broken
         override fun keys(): LinkKeys = when {
             broken -> LinkKeys(null, null, LinkStatus.BROKEN)
@@ -150,6 +159,40 @@ class CarLinkFeedTest {
         } finally {
             BeaconClient.beforeInstallForTest = null
         }
+    }
+
+    @Test fun aHandedOverSignInIsStoredAndAnsweredWithItsOwnFingerprint() {
+        store.committed = keyA.copyOf()
+        BeaconClient.start(context)
+        waitFor("MNAI2") { BeaconClient.feedsForTest() != null }
+        val set = BeaconClient.feedsForTest()!!
+        val hello = synchronized(set) { set.committed!!.hello(1000) }
+        val heard = PhoneLinkWire.decodeHello(PhoneLinkWire.unitToPhoneKey(keyA), hello, hello.size)!!
+        val token = "hu1_renewed-over-the-link"
+        val frame = PhoneLinkWire.encodeToken(
+            PhoneLinkWire.phoneToUnitKey(keyA), ByteArray(16) { 8 }, 1, heard.challenge, token, "veh-9",
+        )
+        val answer = BeaconClient.handleForTest(context, frame)
+        assertEquals(token to "veh-9", store.handed.single())
+        assertNotNull("the phone is told, or it keeps handing the same one over", answer)
+        assertArrayEquals(
+            PhoneLinkWire.fingerprint(token),
+            PhoneLinkWire.decodeTokenOk(PhoneLinkWire.unitToPhoneKey(keyA), answer!!, answer.size),
+        )
+    }
+
+    @Test fun aHandOverThisUnitCouldNotStoreIsNotAnswered() {
+        store.committed = keyA.copyOf()
+        store.takeToken = false
+        BeaconClient.start(context)
+        waitFor("MNAI2") { BeaconClient.feedsForTest() != null }
+        val set = BeaconClient.feedsForTest()!!
+        val hello = synchronized(set) { set.committed!!.hello(1000) }
+        val heard = PhoneLinkWire.decodeHello(PhoneLinkWire.unitToPhoneKey(keyA), hello, hello.size)!!
+        val frame = PhoneLinkWire.encodeToken(
+            PhoneLinkWire.phoneToUnitKey(keyA), ByteArray(16) { 8 }, 1, heard.challenge, "hu1_refused", null,
+        )
+        assertNull(BeaconClient.handleForTest(context, frame))
     }
 
     @Test fun anAcceptedRevokeForgetsThePairingAndStopsTheReceiver() {
