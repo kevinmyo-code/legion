@@ -47,12 +47,12 @@ class RewakeCarryTest {
     }
 
     @Test
-    fun `it is taken once`() {
+    fun `a cold start that fails does not spend the context`() {
         val carry = RewakeCarry()
         conversation(carry)
         carry.ended(1_000)
-        assertNotNull(carry.take(1_100))
-        assertNull(carry.take(1_200))
+        assertNotNull("the connect takes it", carry.take(1_100))
+        assertNotNull("the connect failed; his next tap still has it", carry.take(1_200))
     }
 
     @Test
@@ -84,15 +84,18 @@ class RewakeCarryTest {
     }
 
     @Test
-    fun `a turn after an end starts a new conversation's list`() {
+    fun `turns accumulate across a park, so a proactive line does not replace his conversation`() {
         val carry = RewakeCarry()
         carry.turn("the first one", "sure")
         carry.ended(1_000)
+        // A proactive line spoken on the warm socket, then another exchange.
+        carry.turn("", "Rain in ten minutes.")
         carry.turn("the second one", "fine")
         carry.ended(2_000)
         val block = carry.take(2_100)!!
+        assertTrue(block.contains("the first one"))
+        assertTrue(block.contains("Rain in ten minutes."))
         assertTrue(block.contains("the second one"))
-        assertFalse("the earlier conversation is gone", block.contains("the first one"))
     }
 
     @Test

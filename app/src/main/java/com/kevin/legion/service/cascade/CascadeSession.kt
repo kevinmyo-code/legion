@@ -356,11 +356,20 @@ internal class CascadeSession(
      * The last conversation's turns, when he woke Alfred again inside [RewakeCarry.WINDOW_MS]
      * (Kevin, 2026-11-24). Deliberately NOT part of [history]: it rides his turns' prompt
      * (`turnContentsFor`) and nothing else, so every rule that reads [history] still sees this
-     * conversation alone. Taken once, here, so it cannot change mid-conversation. The clock is
-     * monotonic: a wall clock that jumps (this phone's does) must not widen the window.
+     * conversation alone. Taken once, here, so it cannot change mid-conversation. Taking does not
+     * spend it: a conversation that hears nothing leaves the same context for his next try. The
+     * clock is monotonic: a wall clock that jumps (this phone's does) must not widen the window.
      */
     private val carried: List<ChatTurn> =
         if (ownConversation) rewake.take(SystemClock.elapsedRealtime()) else emptyList()
+
+    /**
+     * [carried] as a prompt reads it: the turns, then [RewakeCarry.NOTE] saying where they end. The
+     * note is not part of what this conversation leaves behind ([shutdown] passes [carried]), so a
+     * second re-wake never stacks notes.
+     */
+    private val carriedBlock: List<ChatTurn> =
+        if (carried.isEmpty()) emptyList() else carried + ChatTurn(fromUser = false, text = RewakeCarry.NOTE)
 
     /**
      * This conversation ever read outside text (ADR 0090): a read-through opener's prompt, a
@@ -2571,7 +2580,7 @@ internal class CascadeSession(
      * inside the window prepends the last conversation's turns here, and only here ([carried]).
      */
     private fun turnContentsFor(heard: String) =
-        CascadePrompt.contents(carried + history, heard, turnPreamble())
+        CascadePrompt.contents(carriedBlock + history, heard, turnPreamble())
 
     /**
      * His one word is the answer to the which-car question code spoke on connect ([SpokenWhichCarAsk]):
@@ -3911,7 +3920,9 @@ internal class CascadeSession(
         if (ownConversation) {
             rewake.ended(
                 reason = reason,
-                turns = history.toList(),
+                // What was in front of the model: what this conversation carried in, then its
+                // own turns. So a second follow-up still reaches the conversation that started it.
+                turns = carried + history,
                 test = test != null,
                 // A read-through tool in the turn this close interrupted: that turn never reached
                 // history, so nothing of it leaks, but the conversation still read outside text.

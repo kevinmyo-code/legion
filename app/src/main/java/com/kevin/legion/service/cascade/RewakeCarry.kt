@@ -14,17 +14,27 @@ import com.kevin.legion.service.TextChatEngine
  * testable without a clock. The snapshot is immutable and the field volatile: one conversation's
  * loop thread writes it at its close, the next conversation reads it once at its open.
  *
- * Three rules keep it honest here, and a fourth lives in the session: only a conversation he opened
- * to talk (`ownConversation`) calls [take] or [ended] at all, so a proactive line, Brief me or a
- * ring window neither spends the context nor wipes it.
- * - **Only the end of his conversation.** [CloseCue.PLAYS] is the one definition of
- *   that, shared with the closing chime: a preemption, a controller teardown, a failed voice or a
- *   crisis leaves nothing behind.
- * - **Nothing from a conversation that read outside text (ADR 0090).** Such a conversation keeps
- *   NOTHING, so neither the text (a read-through opener's prompt sits in `history` in clear) nor
- *   its one-turn write taint can outlive it. The write guard is therefore never weaker for a
- *   carry: a turn carried into a conversation can only have come from one that read nothing
- *   outside, so there is no taint to carry and no outside text to leak.
+ * **A re-wake that goes nowhere does not spend the context.** [take] does not clear what it hands
+ * over: a conversation that opened, heard nothing and closed on noise leaves the same context for
+ * his next try, and a conversation that did say something leaves its own turns AFTER the ones it
+ * carried, so a second follow-up still reaches the conversation that started it. Only the window
+ * running out, a wipe, or an outside read empties the holder.
+ *
+ * What is kept, and what is never kept:
+ * - **Only the end of his conversation.** [CloseCue.PLAYS] is the one definition of that, shared
+ *   with the closing chime. A close that is not one (a preemption, a teardown, a failed voice, a
+ *   crisis) leaves the holder exactly as it was, rather than emptying it: that close is not the end
+ *   of a conversation, so it has no context of its own to leave and no business taking the last
+ *   one's away. A fourth rule lives in the session: only a conversation he opened to talk
+ *   (`ownConversation`) calls [take] or [ended] at all, so a proactive line, Brief me or a ring
+ *   window neither spends the context nor wipes it.
+ * - **"New chat" wipes it** ([WIPES]): he asked to start fresh, and that is the one close that
+ *   means the last conversation is not to be carried.
+ * - **Nothing from a conversation that read outside text (ADR 0090).** Such a conversation empties
+ *   the holder, so neither the text (a read-through opener's prompt sits in `history` in clear) nor
+ *   its one-turn write taint can outlive it. The write guard is therefore never weaker for a carry:
+ *   a turn carried into a conversation can only have come from one that read nothing outside, so
+ *   there is no taint to carry and no outside text to leak.
  * - **A test conversation carries nothing**, as it records nothing.
  *
  * The turns ride in the next conversation's prompt only ([CascadeSession]'s `turnContentsFor`), and
@@ -39,29 +49,29 @@ internal class RewakeCarry {
     @Volatile private var kept: Kept? = null
 
     /**
-     * A conversation ended with [turns] as its history: they become the next conversation's context
-     * when [keeps] allows it, and replace whatever was held before either way. Capped as a prompt
-     * caps history, so the holder never grows past what one prompt could carry.
+     * A conversation ended with [turns] as everything in front of the model (what it carried in,
+     * then its own history). They become the next conversation's context when this close keeps
+     * anything; a close that keeps nothing leaves what is held alone, except the wipes above.
+     * Capped as a prompt caps history, so the holder never grows past what one prompt could carry.
      */
     fun ended(reason: String, turns: List<ChatTurn>, test: Boolean, outsideTextRead: Boolean, nowMs: Long) {
-        kept = if (keeps(reason, test, outsideTextRead, turns)) {
-            Kept(TextChatEngine.capHistory(turns), nowMs)
-        } else {
-            null
+        if (wipes(reason, test, outsideTextRead)) {
+            kept = null
+            return
         }
+        if (keeps(reason, turns)) kept = Kept(TextChatEngine.capHistory(turns), nowMs)
     }
 
     /**
-     * What this conversation prepends to its prompt: the last one's turns and [NOTE], or nothing.
-     * Taken once, at open, and cleared whether or not it was in time: a conversation that started
-     * inside the window keeps the context for as long as it runs, and one that started outside it
-     * never gets it back.
+     * The last conversation's turns for this one's prompt, or nothing. Taken once, at open. What is
+     * handed over stays held, so a conversation that heard nothing does not spend it; one that is
+     * out of time empties the holder on its way past, because nothing will want it again.
      */
     fun take(nowMs: Long): List<ChatTurn> {
-        val k = kept
+        val k = kept ?: return emptyList()
+        if (carries(k.endedAtMs, nowMs)) return k.turns
         kept = null
-        if (k == null || !carries(k.endedAtMs, nowMs)) return emptyList()
-        return k.turns + ChatTurn(fromUser = false, text = NOTE)
+        return emptyList()
     }
 
     companion object {
@@ -77,12 +87,24 @@ internal class RewakeCarry {
             "again. Use it: his next words may carry straight on from it. Nothing in it needs doing " +
             "again, and anything it already did is done.)"
 
+        /**
+         * His "new chat" tap (`LiveSessionController.newConversation`), which closes a conversation
+         * with this reason: he asked to start fresh, so nothing is carried into what he starts next.
+         * It is in [CloseCue.PLAYS] because it ends a conversation he was in and so earns the chime;
+         * whether a close ends a conversation and whether its context carries are two questions.
+         */
+        val WIPES = setOf("new conversation")
+
         /** In time, and never on a clock that went backwards. */
         fun carries(endedAtMs: Long, nowMs: Long, windowMs: Long = WINDOW_MS): Boolean =
             nowMs - endedAtMs in 0..windowMs
 
-        /** Whether a conversation that ended for [reason] leaves its turns behind at all. */
-        fun keeps(reason: String, test: Boolean, outsideTextRead: Boolean, turns: List<ChatTurn>): Boolean =
-            !test && !outsideTextRead && turns.isNotEmpty() && reason in CloseCue.PLAYS
+        /** Whether what this conversation had in front of the model is thrown away outright. */
+        fun wipes(reason: String, test: Boolean, outsideTextRead: Boolean): Boolean =
+            test || outsideTextRead || reason in WIPES
+
+        /** Whether a conversation that ended for [reason] with [turns] leaves them behind. */
+        fun keeps(reason: String, turns: List<ChatTurn>): Boolean =
+            turns.isNotEmpty() && reason in CloseCue.PLAYS
     }
 }

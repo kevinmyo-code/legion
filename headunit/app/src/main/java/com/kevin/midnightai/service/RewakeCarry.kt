@@ -32,16 +32,14 @@ class RewakeCarry {
     private var endedAtMs: Long? = null
 
     /**
-     * A completed exchange of the running conversation. A turn arriving after an end belongs to a
-     * new conversation on the same socket, so it starts the list over.
+     * A completed exchange. Turns accumulate across a park: a proactive line spoken on the warm
+     * socket, and the next conversation on it, are both more of what he last heard, so they join
+     * the list rather than replacing it, and the next end re-stamps the lot. Only [take] running
+     * out of time, or [abandoned] on a conversation that never ended, empties it.
      */
     @Synchronized
     fun turn(driver: String, companion: String) {
         if (driver.isBlank() && companion.isBlank()) return
-        if (endedAtMs != null) {
-            turns.clear()
-            endedAtMs = null
-        }
         turns.addLast(Turn(driver.trim(), companion.trim()))
         while (turns.size > MAX_TURNS) turns.removeFirst()
     }
@@ -68,17 +66,22 @@ class RewakeCarry {
 
     /**
      * The block a cold conversation puts in front of its greeting, or null when there is nothing to
-     * carry or it is too late. Taken once: whatever was held is cleared either way, so a
-     * conversation that opened outside the window never gets it back.
+     * carry or it is too late. What is handed over stays held: a cold connect that fails, or a
+     * conversation that hears nothing, does not cost him the context. Out of time, it is emptied on
+     * the way past, because nothing will want it again.
      */
     @Synchronized
     fun take(nowMs: Long): String? {
         val endedAt = endedAtMs
-        val kept = turns.toList()
-        turns.clear()
-        endedAtMs = null
-        if (kept.isEmpty() || endedAt == null || !carries(endedAt, nowMs)) return null
-        return block(kept)
+        if (turns.isEmpty()) return null
+        if (endedAt == null || !carries(endedAt, nowMs)) {
+            if (endedAt != null) {
+                turns.clear()
+                endedAtMs = null
+            }
+            return null
+        }
+        return block(turns.toList())
     }
 
     companion object {
