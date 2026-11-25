@@ -1,9 +1,8 @@
-"""T3b: a head unit's own engine sign-in, minted by the member's phone while it pairs (DARK).
+"""T3b: a head unit's own engine sign-in, minted by the member's phone while it pairs.
 
 What is proved here, from the outside where it can be:
 - the token: 256 random bits, shown once, only its hash stored, never in a log or any row;
-- the five doors (mint, list, rotate, revoke, revoke-all): who may call each, and a
-  404 with no database query at all while `LEGION_HEADUNIT_SIGNIN` is off;
+- the five doors (mint, list, rotate, revoke, revoke-all): who may call each;
 - the scope: a walk over EVERY URL pattern in the project, every method, where a head-unit token
   must get exactly what an unknown token gets unless the (route, method) is on
   `headunit_signin.scope.ROUTES`; and inside a turn, only `scope.TOOLS`;
@@ -33,7 +32,6 @@ from rest_framework.test import APIClient
 from agents.legion.flags import TURN_ENV
 from headunit_signin import scope
 from headunit_signin.authentication import HeadUnitTokenAuthentication
-from headunit_signin.flags import SIGNIN_ENV
 from headunit_signin.models import (
     LIFETIME,
     MAX_AGE,
@@ -57,11 +55,6 @@ def _fresh_throttles():
     cache.clear()
     yield
     cache.clear()
-
-
-@pytest.fixture
-def on(monkeypatch):
-    monkeypatch.setenv(SIGNIN_ENV, "on")
 
 
 @pytest.fixture
@@ -133,47 +126,25 @@ def test_rotation_never_reaches_past_max_age_from_pairing(household_a, household
 
 
 # =============================================================================
-# Switched off: a 404 before any work
-# =============================================================================
-
-
-@pytest.mark.parametrize(
-    ("method", "path"),
-    [
-        ("get", LIST),
-        ("post", LIST),
-        ("delete", f"{LIST}/{uuid.uuid4()}"),
-        ("post", REVOKE_ALL),
-        ("post", f"{LIST}/{uuid.uuid4()}/rotate"),
-    ],
-)
-def test_every_door_is_a_404_with_no_query_while_switched_off(
-    phone, method, path, django_assert_num_queries
-):
-    with django_assert_num_queries(0):
-        response = getattr(phone, method)(path, UNIT if method == "post" else None, format="json")
-    assert response.status_code == 404
-    assert "LEGION_HEADUNIT_SIGNIN is not on" in response.data["detail"]
-
-
-def test_a_unit_token_is_an_unknown_token_with_no_query_while_switched_off(
-    phone, on, monkeypatch, django_assert_num_queries
-):
-    _id, raw = _paired(phone)
-    monkeypatch.delenv(SIGNIN_ENV)
-    unit = unit_client(raw)
-    with django_assert_num_queries(0):
-        response = unit.post("/api/device-logs/", {}, format="multipart")
-    assert response.status_code == 401
-    assert response.data["detail"] == "Invalid token."
-
-
-# =============================================================================
 # Mint: the member's phone only
 # =============================================================================
 
 
-def test_the_phone_mints_a_token_shown_once_and_lists_it_without_the_token(phone, on):
+def test_a_plain_engine_mints_with_no_switch_set(phone, monkeypatch):
+    """Kevin, 2026-11-24: "yes switch it on by default why is there even a switch". The switch is
+    gone, so an engine whose environment names nothing head-unit-shaped still mints and still lets
+    the minted token through its own allow-listed route. Setting the old name back changes nothing:
+    there is no code left that reads it."""
+    monkeypatch.delenv("LEGION_HEADUNIT_SIGNIN", raising=False)
+    issued = _mint(phone)
+    assert issued.status_code == 201, issued.data
+    unit = unit_client(issued.data["token"])
+    assert unit.post("/api/device-logs/", _log_upload(), format="multipart").status_code == 201
+    monkeypatch.setenv("LEGION_HEADUNIT_SIGNIN", "off")
+    assert _mint(phone).status_code == 201
+
+
+def test_the_phone_mints_a_token_shown_once_and_lists_it_without_the_token(phone):
     before = timezone.now()
     response = _mint(phone)
     assert response.status_code == 201, response.data
@@ -199,13 +170,13 @@ def test_the_phone_mints_a_token_shown_once_and_lists_it_without_the_token(phone
     assert raw not in repr(listed.content)
 
 
-def test_a_mint_names_its_kind(phone, on):
+def test_a_mint_names_its_kind(phone):
     response = _mint(phone, {"name": "Invented car", "kind": "phone"})
     assert response.status_code == 400
     assert not HeadUnitCredential.objects.exists()
 
 
-def test_a_browser_session_cannot_mint(household_user, on):
+def test_a_browser_session_cannot_mint(household_user):
     browser = APIClient()
     browser.force_login(household_user)
     response = _mint(browser)
@@ -216,7 +187,7 @@ def test_a_browser_session_cannot_mint(household_user, on):
 
 
 @pytest.mark.parametrize("scope_name", [DeviceToken.SCOPE_READ, DeviceToken.SCOPE_WRITE])
-def test_a_recruiter_cannot_mint(on, scope_name):
+def test_a_recruiter_cannot_mint(scope_name):
     visit = Household.objects.create(name="Invented visit", is_demo_visit=True)
     visitor = User.objects.create_user(email=f"visitor-{uuid.uuid4().hex[:8]}@demo.invalid")
     HouseholdMember.objects.create(user=visitor, household=visit, role=HouseholdMember.RECRUITER)
@@ -228,20 +199,20 @@ def test_a_recruiter_cannot_mint(on, scope_name):
     assert not HeadUnitCredential.objects.exists()
 
 
-def test_a_read_scoped_token_cannot_mint(household_user, on):
+def test_a_read_scoped_token_cannot_mint(household_user):
     _token, key = DeviceToken.issue(household_user, "Invented tool", DeviceToken.SCOPE_READ)
     assert _mint(unit_client(key)).status_code == 403
     assert not HeadUnitCredential.objects.exists()
 
 
-def test_minting_is_five_an_hour_per_member(phone, on):
+def test_minting_is_five_an_hour_per_member(phone):
     for _ in range(5):
         assert _mint(phone).status_code == 201
     assert _mint(phone).status_code == 429
     assert HeadUnitCredential.objects.count() == 5
 
 
-def test_never_over_mcp(phone, on, settings):
+def test_never_over_mcp(phone, settings):
     """`/mcp` is not a door to minting: no tool mints, and a head-unit token is refused there."""
     from engine_mcp.tools import TOOLS_BY_NAME
 
@@ -257,7 +228,7 @@ def test_never_over_mcp(phone, on, settings):
 # =============================================================================
 
 
-def test_the_unit_cannot_refresh_itself(phone, on):
+def test_the_unit_cannot_refresh_itself(phone):
     """Review B1: a unit holding its own token cannot rotate it (a thief would lock the real unit
     out). Rotation is the member's, over the phone."""
     _id, raw = _paired(phone)
@@ -266,7 +237,7 @@ def test_the_unit_cannot_refresh_itself(phone, on):
     assert _probe(raw).status_code == 400
 
 
-def test_the_member_rotates_a_unit_and_the_old_token_dies(phone, on):
+def test_the_member_rotates_a_unit_and_the_old_token_dies(phone):
     cred_id, old = _paired(phone)
     response = _rotate(phone, cred_id)
     assert response.status_code == 200, response.data
@@ -277,7 +248,7 @@ def test_the_member_rotates_a_unit_and_the_old_token_dies(phone, on):
     assert _probe(new).status_code == 400
 
 
-def test_an_old_token_after_rotation_is_refused_and_recorded_not_revoked(phone, on):
+def test_an_old_token_after_rotation_is_refused_and_recorded_not_revoked(phone):
     cred_id, old = _paired(phone)
     new = _rotate(phone, cred_id).data["token"]
     for _ in range(2):
@@ -292,7 +263,7 @@ def test_an_old_token_after_rotation_is_refused_and_recorded_not_revoked(phone, 
     assert listed["rotated_at"] is not None and listed["stale_used_at"] is not None
 
 
-def test_only_the_pairing_members_phone_may_rotate(phone, on, household_a, token_b, household_user):
+def test_only_the_pairing_members_phone_may_rotate(phone, household_a, token_b, household_user):
     cred_id, raw = _paired(phone)
     mia = _client_for(_member(household_a, "mia@example.com"))
     assert _rotate(mia, cred_id).status_code == 404
@@ -306,13 +277,13 @@ def test_only_the_pairing_members_phone_may_rotate(phone, on, household_a, token
     assert _probe(raw).status_code == 400
 
 
-def test_a_revoked_unit_cannot_be_rotated_back_to_life(phone, on):
+def test_a_revoked_unit_cannot_be_rotated_back_to_life(phone):
     cred_id, _raw = _paired(phone)
     phone.delete(f"{LIST}/{cred_id}")
     assert _rotate(phone, cred_id).status_code == 404
 
 
-def test_rotation_is_throttled_per_unit(phone, on):
+def test_rotation_is_throttled_per_unit(phone):
     cred_id, _raw = _paired(phone)
     for _ in range(6):
         assert _rotate(phone, cred_id).status_code == 200
@@ -330,7 +301,7 @@ def _dead(response):
     return response.status_code, response.data
 
 
-def test_expired_revoked_and_removed_are_answered_as_unknown(phone, on, household_user):
+def test_expired_revoked_and_removed_are_answered_as_unknown(phone, household_user):
     unknown = _dead(_probe(_unknown_key()))
     assert unknown == (401, {"detail": "Invalid token."})
 
@@ -347,7 +318,7 @@ def test_expired_revoked_and_removed_are_answered_as_unknown(phone, on, househol
     assert _dead(_probe(raw)) == unknown
 
 
-def test_a_member_removed_from_the_household_signs_their_units_out(phone, on, household_user):
+def test_a_member_removed_from_the_household_signs_their_units_out(phone, household_user):
     _cred_id, raw = _paired(phone)
     HouseholdMember.objects.filter(user=household_user).delete()
     assert _dead(_probe(raw)) == (401, {"detail": "Invalid token."})
@@ -358,7 +329,7 @@ def test_a_member_removed_from_the_household_signs_their_units_out(phone, on, ho
 # =============================================================================
 
 
-def test_revoke_is_immediate(phone, on):
+def test_revoke_is_immediate(phone):
     cred_id, raw = _paired(phone)
     assert phone.delete(f"{LIST}/{cred_id}").status_code == 204
     row = HeadUnitCredential.objects.get(pk=cred_id)
@@ -368,7 +339,7 @@ def test_revoke_is_immediate(phone, on):
     assert phone.delete(f"{LIST}/{cred_id}").status_code == 204  # already revoked: same answer
 
 
-def test_another_member_of_the_household_cannot_list_or_revoke(phone, on, household_a):
+def test_another_member_of_the_household_cannot_list_or_revoke(phone, household_a):
     cred_id, raw = _paired(phone)
     mia = _client_for(_member(household_a, "mia@example.com"))
     assert mia.get(LIST).data == []
@@ -377,7 +348,7 @@ def test_another_member_of_the_household_cannot_list_or_revoke(phone, on, househ
     assert _probe(raw).status_code == 400
 
 
-def test_a_member_of_another_household_cannot_list_or_revoke(phone, on, token_b):
+def test_a_member_of_another_household_cannot_list_or_revoke(phone, token_b):
     cred_id, raw = _paired(phone)
     assert token_b.get(LIST).data == []
     assert token_b.delete(f"{LIST}/{cred_id}").status_code == 404
@@ -385,7 +356,7 @@ def test_a_member_of_another_household_cannot_list_or_revoke(phone, on, token_b)
     assert _probe(raw).status_code == 400
 
 
-def test_revoke_all_signs_out_every_unit_of_the_member_and_no_one_elses(phone, on, household_a):
+def test_revoke_all_signs_out_every_unit_of_the_member_and_no_one_elses(phone, household_a):
     _a, raw_a = _paired(phone)
     _b, raw_b = _paired(phone)
     mia = _client_for(_member(household_a, "mia@example.com"))
@@ -403,7 +374,7 @@ def test_revoke_all_signs_out_every_unit_of_the_member_and_no_one_elses(phone, o
     assert reasons == {REASON_LOST_OR_SOLD}
 
 
-def test_a_unit_token_cannot_mint_list_or_revoke(phone, on):
+def test_a_unit_token_cannot_mint_list_or_revoke(phone):
     cred_id, raw = _paired(phone)
     unit = unit_client(raw)
     assert _mint(unit).status_code == 401
@@ -418,7 +389,7 @@ def test_a_unit_token_cannot_mint_list_or_revoke(phone, on):
 # =============================================================================
 
 
-def test_last_used_is_written_at_most_every_five_minutes(phone, on):
+def test_last_used_is_written_at_most_every_five_minutes(phone):
     cred_id, raw = _paired(phone)
     unit = unit_client(raw)
     recent = timezone.now() - timedelta(minutes=1)
@@ -459,7 +430,7 @@ def _rows_holding(text: str) -> list[str]:
     return found
 
 
-def test_the_token_is_never_logged_and_never_stored(phone, on, caplog, monkeypatch):
+def test_the_token_is_never_logged_and_never_stored(phone, caplog, monkeypatch):
     caplog.set_level("DEBUG")
     monkeypatch.setenv(TURN_ENV, "on")
     _id, raw = _paired(phone)
@@ -474,7 +445,7 @@ def test_the_token_is_never_logged_and_never_stored(phone, on, caplog, monkeypat
         assert _rows_holding(body) == []
 
 
-def test_a_unit_may_not_upload_a_conversation_or_any_reason_the_unit_does_not_send(phone, on):
+def test_a_unit_may_not_upload_a_conversation_or_any_reason_the_unit_does_not_send(phone):
     """Review B2: `conversation` (and the phone's logcat and crash) are what the Claude worker and
     the conversation spool read. A unit token uploads drive logs only."""
     from devicelogs.models import DeviceLog
@@ -493,7 +464,7 @@ def test_a_unit_may_not_upload_a_conversation_or_any_reason_the_unit_does_not_se
         assert response.status_code == 201, (reason, response.data)
 
 
-def test_a_unit_upload_is_marked_and_the_worker_facing_reader_never_returns_it(phone, on):
+def test_a_unit_upload_is_marked_and_the_worker_facing_reader_never_returns_it(phone):
     from devicelogs.models import DeviceLog
 
     _id, raw = _paired(phone)
@@ -509,7 +480,7 @@ def test_a_unit_upload_is_marked_and_the_worker_facing_reader_never_returns_it(p
     assert phone.get(f"/api/device-logs/{phone_row.pk}/render").status_code == 200
 
 
-def test_a_unit_cannot_probe_another_devices_batch_id(phone, on):
+def test_a_unit_cannot_probe_another_devices_batch_id(phone):
     _id, raw = _paired(phone)
     upload = _log_upload()
     batch = upload["batch_id"]
@@ -522,7 +493,7 @@ def test_a_unit_cannot_probe_another_devices_batch_id(phone, on):
     assert str(mine.data["id"]) not in str(response.data)
 
 
-def test_unit_uploads_are_throttled_per_unit(phone, on, monkeypatch):
+def test_unit_uploads_are_throttled_per_unit(phone, monkeypatch):
     from headunit_signin.views import UploadThrottle
 
     monkeypatch.setattr(UploadThrottle, "rate", "2/hour", raising=False)
@@ -541,7 +512,7 @@ def test_unit_uploads_are_throttled_per_unit(phone, on, monkeypatch):
     assert phone.post("/api/device-logs/", _log_upload(), format="multipart").status_code == 201
 
 
-def test_a_unit_upload_has_its_own_size_cap(phone, on, monkeypatch):
+def test_a_unit_upload_has_its_own_size_cap(phone, monkeypatch):
     from headunit_signin import scope as unit_scope
 
     monkeypatch.setattr(unit_scope, "LOG_MAX_RAW_BYTES", 8)
@@ -569,7 +540,7 @@ def _sample(vehicle_id: str, second: int = 0) -> dict:
     }
 
 
-def test_a_unit_is_bound_at_mint_to_one_vehicle_of_its_household(phone, on, token_b):
+def test_a_unit_is_bound_at_mint_to_one_vehicle_of_its_household(phone, token_b):
     mine = _vehicle(phone, 0)
     theirs = _vehicle(token_b, 5)
     response = _mint(phone, {**UNIT, "vehicle_id": mine})
@@ -583,7 +554,7 @@ def test_a_unit_is_bound_at_mint_to_one_vehicle_of_its_household(phone, on, toke
     assert str(listed["vehicle_id"]) == mine
 
 
-def test_a_unit_writes_obd_samples_only_for_its_own_vehicle(phone, on, token_b):
+def test_a_unit_writes_obd_samples_only_for_its_own_vehicle(phone, token_b):
     from legacy.models.fleet import ObdSample
 
     bound, other = _vehicle(phone, 0), _vehicle(phone, 1)
@@ -600,7 +571,7 @@ def test_a_unit_writes_obd_samples_only_for_its_own_vehicle(phone, on, token_b):
     assert ObdSample.objects.count() == 1
 
 
-def test_a_unit_bound_to_no_vehicle_writes_no_obd_samples(phone, on):
+def test_a_unit_bound_to_no_vehicle_writes_no_obd_samples(phone):
     from legacy.models.fleet import ObdSample
 
     vehicle = _vehicle(phone, 0)
@@ -612,13 +583,12 @@ def test_a_unit_bound_to_no_vehicle_writes_no_obd_samples(phone, on):
     assert not ObdSample.objects.exists()
 
 
-def test_switched_off_a_phone_upload_answers_exactly_as_before(phone, monkeypatch):
-    """With LEGION_HEADUNIT_SIGNIN unset, a phone's upload and its retry answer as on dev: the same
-    statuses, keys and words, the retry echoing its own row. The only new thing is the stored
-    row's `uploader_kind`, `member` by default."""
+def test_a_phone_upload_answers_exactly_as_before_head_unit_sign_in(phone):
+    """A member's own upload and its retry answer as they did before T3b: the same statuses, keys
+    and words, the retry echoing its own row. The only new thing is the stored row's
+    `uploader_kind`, `member` by default."""
     from devicelogs.models import DeviceLog
 
-    monkeypatch.delenv(SIGNIN_ENV, raising=False)
     upload = _log_upload()
     batch = upload["batch_id"]
     first = phone.post("/api/device-logs/", upload, format="multipart")
@@ -651,7 +621,7 @@ def test_the_previous_revision_can_still_insert_a_device_log(household_a, househ
     assert (row.uploader_kind, row.headunit_id) == ("member", None)
 
 
-def test_a_unit_upload_lands_in_its_members_household(phone, on, household_user, household_a):
+def test_a_unit_upload_lands_in_its_members_household(phone, household_user, household_a):
     from devicelogs.models import DeviceLog
 
     _id, raw = _paired(phone)
@@ -716,7 +686,7 @@ def test_the_unit_class_is_listed_only_on_allow_listed_views_and_never_by_defaul
 
 
 def test_every_url_refuses_a_unit_token_unless_its_route_is_on_the_list(
-    phone, on, monkeypatch, settings
+    phone, monkeypatch, settings
 ):
     """The walk. Every switch this suite knows is on, so a dark door cannot hide an acceptance
     behind its 404. A head-unit token must get exactly what an unknown key gets (401 or 403 where
@@ -759,7 +729,7 @@ def test_every_url_refuses_a_unit_token_unless_its_route_is_on_the_list(
     assert _probe(raw).status_code == 400  # the token was live all along
 
 
-def test_each_allow_listed_route_accepts_a_unit_token(phone, on, monkeypatch):
+def test_each_allow_listed_route_accepts_a_unit_token(phone, monkeypatch):
     """The positive control: each listed route lets the token through authentication and the
     household fence, and stops at its own body check, before any model or write."""
     monkeypatch.setenv(TURN_ENV, "on")
@@ -789,7 +759,7 @@ def test_each_allow_listed_route_accepts_a_unit_token(phone, on, monkeypatch):
     }
 
 
-def test_a_unit_token_reads_only_its_own_apps_releases(phone, on):
+def test_a_unit_token_reads_only_its_own_apps_releases(phone):
     """The second fence (`scope.releases_refusal`): the route is open, the other app's rows are
     not. A unit must never list or fetch the PHONE's APK, and a member still reads both."""
     from releases.models import AppRelease
@@ -825,16 +795,6 @@ def test_a_unit_token_reads_only_its_own_apps_releases(phone, on):
     # A member reads both apps, exactly as before.
     assert phone.get("/api/releases/latest?app=phone").data["id"] == str(ph.id)
     assert phone.get("/api/releases/latest?app=headunit").data["id"] == str(hu.id)
-
-
-def test_the_release_routes_refuse_a_unit_token_while_the_switch_is_off(phone, on, monkeypatch):
-    """With `LEGION_HEADUNIT_SIGNIN` unset the class 401s every `hu1_` key, so adding it to these
-    two views changes nothing for anyone until the switch is turned on."""
-    _id, raw = _paired(phone)
-    monkeypatch.delenv(SIGNIN_ENV, raising=False)
-    unit = unit_client(raw)
-    assert unit.get("/api/releases/latest?app=headunit").status_code == 401
-    assert unit.get(f"/api/releases/{uuid.uuid4()}/download").status_code == 401
 
 
 def test_the_household_fence_refuses_a_unit_credential_a_tool_dispatches(
@@ -908,7 +868,7 @@ def test_a_unit_turn_refuses_a_tool_outside_its_list(household_a, household_user
 
 
 def test_a_real_turn_through_the_door_keeps_to_the_units_tools_and_stores_no_token(
-    phone, on, monkeypatch
+    phone, monkeypatch
 ):
     """End to end: `POST /api/agents/turn` with a head-unit token. The model is offered exactly
     the unit's tools, a money tool it asks for anyway is refused, the conversation is the unit's,
@@ -979,7 +939,7 @@ def test_a_unit_turn_checks_conditions_at_coordinates_only(household_a, househol
     assert outcome.guard != "headunit"
 
 
-def test_a_unit_turn_reads_its_own_vehicle_only(phone, on, household_a, household_user):
+def test_a_unit_turn_reads_its_own_vehicle_only(phone, household_a, household_user):
     bound, other = _vehicle(phone, 0), _vehicle(phone, 1)
     row, _raw = HeadUnitCredential.mint(
         household=household_a, owner_user=household_user, label="Invented unit"
@@ -999,7 +959,7 @@ def test_a_unit_turn_reads_its_own_vehicle_only(phone, on, household_a, househol
 
 
 def test_a_unit_turns_prompt_carries_the_clock_and_not_the_members_name(
-    phone, on, monkeypatch, household_user
+    phone, monkeypatch, household_user
 ):
     from agents.runtime import model as m
 
@@ -1032,7 +992,7 @@ def _turn_ready(monkeypatch, rounds):
     )
 
 
-def test_a_unit_cannot_make_the_engine_say_a_line(phone, on, monkeypatch):
+def test_a_unit_cannot_make_the_engine_say_a_line(phone, monkeypatch):
     """Review B6: `kind=say` speaks any line at the member's cost; a unit token never may."""
     _turn_ready(monkeypatch, [])
     _id, raw = _paired(phone)
@@ -1042,7 +1002,7 @@ def test_a_unit_cannot_make_the_engine_say_a_line(phone, on, monkeypatch):
     assert response.status_code == 403, response.data
 
 
-def test_a_unit_has_its_own_daily_cap_inside_the_members(phone, on, monkeypatch):
+def test_a_unit_has_its_own_daily_cap_inside_the_members(phone, monkeypatch):
     from agents.runtime import model as m
     from headunit_signin import spend
 
@@ -1067,7 +1027,7 @@ def test_a_unit_has_its_own_daily_cap_inside_the_members(phone, on, monkeypatch)
     ).status_code == 200
 
 
-def test_a_units_cap_holds_across_engine_instances(phone, on, monkeypatch):
+def test_a_units_cap_holds_across_engine_instances(phone, monkeypatch):
     """The unit's day is a row in the database, not process memory: a second instance (a fresh
     process cache, a fresh request, the credential read again) refuses the turn too."""
     from agents.runtime import model as m

@@ -46,7 +46,10 @@ want "POST /api/agents/turn/<id>/go" "$(code -X POST -H "$J" -d '{}' "$U/api/age
 want "POST /api/agents/turn/<id>/take" "$(code -X POST -H "$J" -d '{}' "$U/api/agents/turn/$Z/take")" "401 403"
 want "GET /api/demo/media/<x>" "$(code "$U/api/demo/media/ship-check.glb")" "401 403"
 HU=$U/api/auth/head-units
-if has_switch LEGION_HEADUNIT_SIGNIN; then HU_OK="404"; else HU_OK="401 403 404"; fi
+# Head-unit sign-in is live on every engine (no switch since 2026-11-24), so an uncredentialled
+# probe is refused by authentication, not by a 404 gate. 404 stays accepted: a detail route with a
+# made-up id answers 404 once the caller is known, and these probes send no credentials.
+HU_OK="401 403 404"
 want "GET head-units" "$(code "$HU")" "$HU_OK"
 want "POST head-units" "$(code -X POST -H "$J" -d '{"label":"ship check"}' "$HU")" "$HU_OK"
 want "DELETE head-units/<id>" "$(code -X DELETE "$HU/$Z")" "$HU_OK"
