@@ -458,7 +458,7 @@ private fun PreviewTransactionRowLlm() = SoftTheme {
     Surface {
         LedgerTransactionRow(
             previewTxn.copy(
-                description = "PAYROLL DES:DIRECT DEP ID:9928471 INDN:K MYO",
+                description = "PAYROLL DES:DIRECT DEP ID:5510329 INDN:K DOE",
                 amountCents = 384_512,
                 ingestMethod = IngestMethod.LLM_RECONCILED,
             ),

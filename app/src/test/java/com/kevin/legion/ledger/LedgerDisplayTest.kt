@@ -22,8 +22,8 @@ class LedgerDisplayTest {
     @Test
     fun `strips DES colon and INDN colon wherever they occur, not just as a leading prefix`() {
         assertEquals(
-            "PAYROLL DIRECT DEP ID:9928471 K MYO",
-            displayDescription("PAYROLL DES:DIRECT DEP ID:9928471 INDN:K MYO"),
+            "PAYROLL DIRECT DEP ID:5510329 K DOE",
+            displayDescription("PAYROLL DES:DIRECT DEP ID:5510329 INDN:K DOE"),
         )
     }
 
