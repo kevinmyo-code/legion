@@ -8,7 +8,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * How the conversation wires the SPEAKER / CALL toggle, checked in the source because the session
+ * How the conversation wires the earpiece and the Call button, checked in the source because the session
  * needs a whole voice stack to run: the route is released on every exit before the mode is restored,
  * every way out of call audio keeps the earpiece, and only [com.kevin.legion.service.turn.CallAudioMode]
  * ever enters the communication mode (so LEGION never looks like a foreign call to itself).
@@ -87,9 +87,31 @@ class EarpieceWiringTest {
         val service = stripComments(File(sourceRoot(), "service/AriaForegroundService.kt").readText())
         assertTrue(service.contains("inHand = intent.getBooleanExtra(EXTRA_IN_HAND, false)"))
         val controller = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
-        val tapOpen = "openCascade(fromWakeWord, oneShot, laptopFirst = engine == VoiceEngine.LAPTOP, inHand = inHand)"
-        assertTrue("a tap passes it on", bodyOf(controller, "onTap").contains(tapOpen))
+        val tap = bodyOf(controller, "onTap")
+        assertTrue("a tap passes it on", tap.contains("inHand = inHand,"))
         assertTrue("and it reaches the session", bodyOf(controller, "openCascade").contains("inHand = inHand,"))
+    }
+
+    /**
+     * The call's intent travels with the conversation and is never stored: the Call button's extra
+     * reaches the session, the session hands it to its own [EarpieceRoute], and nothing in the
+     * earpiece path reads a preference, so a phone that saved CALL before 2026-11-24 does not send a
+     * plain orb tap to the earpiece.
+     */
+    @Test
+    fun `the call intent is per conversation and read from no preference`() {
+        val service = stripComments(File(sourceRoot(), "service/AriaForegroundService.kt").readText())
+        assertTrue(service.contains("call = intent.getBooleanExtra(EXTRA_CALL, false)"))
+        val controller = stripComments(File(sourceRoot(), "service/LiveSessionController.kt").readText())
+        assertTrue("a tap passes the call on", bodyOf(controller, "onTap").contains("call = call)"))
+        assertTrue("and it reaches the session", bodyOf(controller, "openCascade").contains("call = call,"))
+        assertTrue(session().contains("EarpieceRoute(ctx, audioManager, call = call)"))
+        val earpiece = stripComments(File(sourceRoot(), "service/cascade/EarpieceRoute.kt").readText())
+        assertFalse("no preference in the earpiece path", earpiece.contains("SharedPreferences"))
+        assertFalse(earpiece.contains("getSharedPreferences"))
+        val output = stripComments(File(sourceRoot(), "service/turn/VoiceOutput.kt").readText())
+        assertFalse("the saved SPEAKER / CALL choice is gone", output.contains("KEY_CHOICE"))
+        assertTrue("and the old file is deleted", output.contains("deleteSharedPreferences(LEGACY_PREFS)"))
     }
 
     @Test

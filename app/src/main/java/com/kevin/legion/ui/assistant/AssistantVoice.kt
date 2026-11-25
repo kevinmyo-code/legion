@@ -34,6 +34,8 @@ data class AssistantVoice(
     val state: AssistantStripResolver.State,
     /** The tap: starts a turn (or interrupts Alfred while he speaks), or opens Settings when the mic is refused. */
     val talk: () -> Unit,
+    /** The Call button (2026-11-24): the same conversation, opened at his ear like a phone call. */
+    val call: () -> Unit,
     val typedChat: TypedChatUi,
     val panel: ChatPanelState,
 )
@@ -79,21 +81,27 @@ fun rememberAssistantVoice(onOpenSettings: () -> Unit): AssistantVoice {
         unreadReply = panel.unread,
         onOpenChat = panel::show,
     )
-    val talk: () -> Unit = {
+    // One way in, two faces: the orb talks on the speaker, Call opens the same conversation at his
+    // ear (the service decides nothing else differently).
+    val open: (Boolean) -> Unit = { asCall ->
         if (micGranted) {
             context.startService(
                 Intent(context, AriaForegroundService::class.java).setAction(AriaForegroundService.ACTION_TALK)
-                    .putExtra(AriaForegroundService.EXTRA_IN_HAND, true),
+                    .putExtra(AriaForegroundService.EXTRA_IN_HAND, true)
+                    .putExtra(AriaForegroundService.EXTRA_CALL, asCall),
             )
         } else {
             onOpenSettings()
         }
     }
+    val talk: () -> Unit = { open(false) }
+    val call: () -> Unit = { open(true) }
     return AssistantVoice(
         enabled = enabled,
         phase = phase,
         state = AssistantStripResolver.resolve(phase, caption, notice, micGranted, silenced, toolRunning),
         talk = talk,
+        call = call,
         typedChat = typedChat,
         panel = panel,
     )

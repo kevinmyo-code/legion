@@ -721,11 +721,18 @@ object ScriptedLines {
     val FIXED_DONE_LINES: List<String> = listOf(GENERIC_DONE, UNCONFIRMED_ONE) +
         PHRASES.values.filter { "%s" !in it }.map { doneText(listOf(it)) }
 
-    /** The opening acks, fillers, missed line, check-in closers ([ClosingLines]) and fixed write lines. */
+    /**
+     * The opening acks, fillers, missed line, check-in closers ([ClosingLines]), the fixed write
+     * lines and the call pickups ([CallPickup]). Membership is what lets a line be kept at all: the
+     * cloud voice files and answers for these and no others, so a line left out is fetched on every
+     * single use. The pickups are here under the register's own name, which is why a renamed persona
+     * falls back to the lines that say no name (CallPickup's doc).
+     */
     val KEEP: Set<String> =
         (
             AckLines.DEFAULT + FILLERS + MISSED + VOICE_LOST + ToolFillers.ALL + Backchannel.LINES +
-                WaitFillers.LINES + com.kevin.legion.service.Farewells.SPOKEN + ClosingLines.LINES + FIXED_DONE_LINES
+                WaitFillers.LINES + com.kevin.legion.service.Farewells.SPOKEN + ClosingLines.LINES +
+                FIXED_DONE_LINES + CallPickup.warmable(com.kevin.legion.ai.ALFRED.defaultName)
             ).toSet()
 
     /**

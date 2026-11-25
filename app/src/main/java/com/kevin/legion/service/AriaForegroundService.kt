@@ -412,7 +412,19 @@ class AriaForegroundService : Service() {
         if (intent?.action == ACTION_TALK) {
             val wake = intent.getBooleanExtra(EXTRA_FROM_WAKE_WORD, false)
             val inHand = intent.getBooleanExtra(EXTRA_IN_HAND, false)
-            sessionController.onTap(fromWakeWord = wake, inHand = inHand)
+            val call = intent.getBooleanExtra(EXTRA_CALL, false)
+            sessionController.onTap(fromWakeWord = wake, inHand = inHand, call = call)
+        }
+
+        // The in-call screen's three controls (2026-11-24): the session is here, not in the Activity.
+        if (intent?.action == ACTION_CALL_MUTE) {
+            sessionController.onCallMute(intent.getBooleanExtra(EXTRA_CALL_CONTROL_ON, false))
+        }
+        if (intent?.action == ACTION_CALL_ROUTE) {
+            sessionController.onCallRoute(intent.getBooleanExtra(EXTRA_CALL_CONTROL_ON, false))
+        }
+        if (intent?.action == ACTION_CALL_HANG_UP) {
+            sessionController.onHangUp()
         }
 
         // The alarm ring screen's Brief me (alfred-clock ticket 07): a tap, never an alarm firing.
@@ -1181,6 +1193,24 @@ class AriaForegroundService : Service() {
 
         /** Set by a tap in the app itself (phone in hand): only such a conversation may use the earpiece. */
         const val EXTRA_IN_HAND = "com.kevin.legion.IN_HAND"
+
+        /**
+         * [ACTION_TALK]: this conversation is a CALL (the Call button, 2026-11-24). Alfred's voice
+         * goes to the earpiece from the first word and the conversation is drawn as a call.
+         */
+        const val EXTRA_CALL = "com.kevin.legion.CALL"
+
+        /** The in-call screen's Mute: [EXTRA_CALL_CONTROL_ON] true mutes his microphone. */
+        const val ACTION_CALL_MUTE = "com.kevin.legion.CALL_MUTE"
+
+        /** The in-call screen's Speaker / Earpiece: [EXTRA_CALL_CONTROL_ON] true asks for the earpiece. */
+        const val ACTION_CALL_ROUTE = "com.kevin.legion.CALL_ROUTE"
+
+        /** The in-call screen's Hang up: the call ends with its closing tone, as a conversation does. */
+        const val ACTION_CALL_HANG_UP = "com.kevin.legion.CALL_HANG_UP"
+
+        /** The boolean the two switch controls carry. Absent reads as false. */
+        const val EXTRA_CALL_CONTROL_ON = "com.kevin.legion.CALL_CONTROL_ON"
 
         // Start-intent actions: show / hide the floating companion badge. Show
         // is fired right after LiveToolbox opens nav/music fullscreen; hide is

@@ -7,7 +7,6 @@ import android.os.PowerManager
 import androidx.test.core.app.ApplicationProvider
 import com.kevin.legion.service.turn.CallAudioMode
 import com.kevin.legion.service.turn.Opening
-import com.kevin.legion.service.turn.OutputChoice
 import com.kevin.legion.service.turn.VoiceOutput
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -25,8 +24,8 @@ import org.robolectric.shadows.AudioDeviceInfoBuilder
 import org.robolectric.shadows.ShadowPowerManager
 
 /**
- * The earpiece toggle and the call guard ([CallPause]) together. Every state the toggle's own call
- * audio produces (entering it, switching speaker and earpiece mid-conversation, a midway entry,
+ * The call's earpiece and the call guard ([CallPause]) together. Every state a call's own call
+ * audio produces (entering it, switching speaker and earpiece mid-call, a midway entry,
  * leaving it) is read the way the guard reads the phone and fed through its two-reading debounce: none
  * may close the conversation. A real call while on the earpiece closes it quietly (no chime), and the
  * release puts the route, the mode and the screen back.
@@ -36,7 +35,7 @@ class EarpieceCallGuardTest {
 
     private val ctx = ApplicationProvider.getApplicationContext<Context>()
     private val audio = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    private val route = EarpieceRoute(ctx, audio, { false }, { true })
+    private val route = EarpieceRoute(ctx, audio, call = true, inCall = { false }, screenOn = { true })
     private val debounce = CallPause.Debounce()
 
     private fun device(type: Int) = AudioDeviceInfoBuilder.newBuilder().setType(type).build()
@@ -74,20 +73,18 @@ class EarpieceCallGuardTest {
     @After
     fun speakerAgain() {
         route.stop()
-        VoiceOutput.set(ctx, OutputChoice.SPEAKER)
     }
 
     @Test
-    fun `entering call audio and flipping speaker and earpiece mid-conversation never trips the guard`() = runBlocking {
+    fun `entering call audio and moving speaker and earpiece mid-call never trips the guard`() = runBlocking {
         val mode = CallAudioMode(audio)
         assertNull(poll())
         mode.enter()
         assertNull("speaker call audio", poll())
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         route.reapply({ mode }, {})
         assertTrue(mode.onEarpiece)
         assertNull("switched to the earpiece", poll())
-        VoiceOutput.set(ctx, OutputChoice.SPEAKER)
+        route.askRoute(earpiece = false)
         route.reapply({ mode }, {})
         assertFalse(mode.onEarpiece)
         assertNull("back on the speaker", poll())
@@ -98,7 +95,6 @@ class EarpieceCallGuardTest {
     @Test
     fun `a midway entry onto the earpiece and its exit never trip the guard`() = runBlocking {
         var session: CallAudioMode? = null
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         route.reapply({ session }) { session = CallAudioMode(audio).also { it.enter(earpiece = true) } }
         assertTrue(session!!.onEarpiece)
         assertNull(poll())
@@ -127,7 +123,6 @@ class EarpieceCallGuardTest {
 
     @Test
     fun `a real call on the earpiece closes quietly and the release puts everything back`() = runBlocking {
-        VoiceOutput.set(ctx, OutputChoice.CALL)
         val mode = CallAudioMode(audio).also { it.enter(earpiece = true) }
         route.sync(mode)
         assertTrue(ShadowPowerManager.getLatestWakeLock()!!.isHeld)
@@ -149,7 +144,7 @@ class EarpieceCallGuardTest {
         route.stop()
         mode.exit("cascade $close")
         assertFalse("screen back", ShadowPowerManager.getLatestWakeLock()!!.isHeld)
-        assertNull("toggle stops reading the closed conversation", VoiceOutput.live.value)
+        assertNull("the UI stops reading the closed conversation", VoiceOutput.live.value)
         assertEquals(AudioManager.MODE_NORMAL, audio.mode)
         assertNull("no stuck earpiece", audio.communicationDevice)
         assertFalse("no stuck own communication mode", CallAudioMode.ownCommActive)

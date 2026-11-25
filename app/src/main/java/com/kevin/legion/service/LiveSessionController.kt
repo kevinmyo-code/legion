@@ -1,5 +1,6 @@
 package com.kevin.legion.service
 
+import com.kevin.legion.service.turn.VoiceOutput
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.local.VoskLocalCommandGate
 import com.kevin.legion.service.local.LocalSpeaker
@@ -431,14 +432,17 @@ class LiveSessionController(context: Context) {
     }
 
     @Suppress("ReturnCount") // one early exit per tap state; folding them is riskier than the rule is worth
-    fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false, inHand: Boolean = false) {
+    // [call] is the Call button: this conversation opens on the earpiece, like a phone call. The
+    // signature stays on one line: the source-reading wiring tests take an `=` before the brace on a
+    // line of its own for an expression body, and read the wrong text when it is wrapped.
+    fun onTap(fromWakeWord: Boolean = false, oneShot: Boolean = false, inHand: Boolean = false, call: Boolean = false) {
         // Ticket 11: never let a dismissal armed by a previous turn survive into this one. If the
         // driver tapped stop, or the socket died, between the tool call and TurnComplete, the flag
         // was never consumed - and a stale one would hang up the NEXT conversation the instant the
         // assistant finished its first sentence, which would be indistinguishable from a bug.
         dismissAfterTurn = false
         // The cascade's own conversation takes the tap (interrupt a reply, else end it).
-        if (cascadeOwnsTap()) { onTapCascade(fromWakeWord, oneShot, inHand); return }
+        if (cascadeOwnsTap()) { onTapCascade(fromWakeWord, oneShot, inHand, call); return }
         // Set before anything async can emit MicOpened; a plain tap always clears it.
         oneShotGate.start(oneShot)
         val s = session
@@ -493,7 +497,10 @@ class LiveSessionController(context: Context) {
         // cascade; Live is reachable only if LIVE_RETIRED is flipped back (it reads as Cloud).
         val engine = VoiceEngineSettings.engine(appContext)
         if (engine != VoiceEngine.LIVE) {
-            openCascade(fromWakeWord, oneShot, laptopFirst = engine == VoiceEngine.LAPTOP, inHand = inHand)
+            val laptop = engine == VoiceEngine.LAPTOP
+            // One line: the refusal scan reads the statement above a standalone `return` to see that
+            // the tap was handed off, and a wrapped call hides it.
+            openCascade(fromWakeWord, oneShot, laptopFirst = laptop, inHand = inHand, call = call)
             return
         }
 
@@ -833,19 +840,46 @@ class LiveSessionController(context: Context) {
      * A speak-only proactive line has no mic to go back to: it is ended and the tap opens a
      * conversation once it has let go, as a tap over a Live proactive line did.
      */
-    private fun onTapCascade(fromWakeWord: Boolean, oneShot: Boolean, inHand: Boolean) {
+    private fun onTapCascade(fromWakeWord: Boolean, oneShot: Boolean, inHand: Boolean, call: Boolean = false) {
         val c = cascade ?: return
         // A test conversation (adb) gives way at once to real use, as a speak-only line does: it
         // ends, then this tap runs.
         val test = testDriver.owns(c)
         if (test || !c.listensForReply) {
             endCascadeThen(if (test) "test_real_tap" else "tap over a proactive line") {
-                onTap(fromWakeWord, oneShot, inHand)
+                onTap(fromWakeWord, oneShot, inHand, call)
             }
             return
         }
-        // The session says which it did ("Listening", or "Ended the chat").
-        c.onTap()
+        if (call) {
+            // The Call button over a conversation already running moves it to his ear, and never
+            // ends it (review F2): the button's words promise he answers at the ear, and the output
+            // toggle that used to hold that slot did move a live conversation.
+            c.onCallButton()
+        } else {
+            // The orb still carries both tap meanings, and the session says which it did
+            // ("Listening", or "Ended the chat").
+            c.onTap()
+        }
+    }
+
+    /** The in-call Mute control: his mic stays open, nothing it hears starts a turn. */
+    fun onCallMute(on: Boolean) {
+        cascade?.setMuted(on)
+    }
+
+    /** The in-call Speaker / Earpiece control: the open conversation moves without restarting. */
+    fun onCallRoute(earpiece: Boolean) {
+        VoiceOutput.askRoute(earpiece)
+    }
+
+    /**
+     * The in-call Hang up. The same door a tap's "end the chat" uses ([CascadeSession.onTap]), so a
+     * write he has not heard is written down rather than dropped, and the strip says the chat ended;
+     * only the reason differs, and `hung_up` is what plays the closing tone.
+     */
+    fun onHangUp() {
+        cascade?.close("hung_up", userEnded = true)
     }
 
     /**
@@ -922,6 +956,7 @@ class LiveSessionController(context: Context) {
         micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
         test: TestSession? = null,
         inHand: Boolean = false,
+        call: Boolean = false,
     ) {
         supersede("cascade")
         if (opener?.listen != false) ConversationCards.begin()
@@ -974,6 +1009,7 @@ class LiveSessionController(context: Context) {
             micClaimant = micClaimant,
             test = test,
             inHand = inHand,
+            call = call,
         )
         cascadeBridge = bridge
         cascade = c

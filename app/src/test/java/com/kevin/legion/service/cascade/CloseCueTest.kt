@@ -2,6 +2,7 @@
 
 package com.kevin.legion.service.cascade
 
+import android.media.AudioManager
 import com.kevin.legion.service.ListenCue
 import com.kevin.legion.service.turn.AudioRoute
 import com.kevin.legion.service.turn.MicReopen
@@ -23,6 +24,34 @@ class CloseCueTest {
         played: Boolean = false,
         rateMatches: Boolean = true,
     ) = CloseCue.decide(reason, quiet, onCall, audioOpened, played, rateMatches)
+
+    /**
+     * Plan 1.4 and review T4. Hang up is the end of a conversation he was in, so it chimes; and on a
+     * call the screen is dark at his ear, so the tone is the only way he hears it ended.
+     */
+    @Test
+    fun `hang up chimes, and LEGION's own call audio is not a call on the line`() {
+        assertNull("Hang up plays the closing tone", decide("hung_up"))
+        assertEquals(CloseCue.Skip.PLAYED, decide("hung_up", played = true))
+        // The second clause: `onCall` comes from Backchannel.callOnLine, and LEGION's own
+        // MODE_IN_COMMUNICATION (ownComm) must not read as another app's call, or every call to
+        // Alfred would end in silence.
+        val own = Backchannel.callOnLine(
+            telephonyInCall = false,
+            audioMode = AudioManager.MODE_IN_COMMUNICATION,
+            ownComm = true,
+        )
+        assertFalse("LEGION's own call audio is not a call on the line", own)
+        assertNull("so the chime is not skipped", decide("hung_up", onCall = own))
+        // Another app's VoIP call in that same mode still is, and still silences the tone.
+        val foreign = Backchannel.callOnLine(
+            telephonyInCall = false,
+            audioMode = AudioManager.MODE_IN_COMMUNICATION,
+            ownComm = false,
+        )
+        assertTrue(foreign)
+        assertEquals(CloseCue.Skip.ON_CALL, decide("hung_up", onCall = foreign))
+    }
 
     @Test
     fun `each way a conversation ends chimes exactly once`() {

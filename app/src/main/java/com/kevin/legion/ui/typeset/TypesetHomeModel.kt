@@ -78,8 +78,9 @@ data class TypesetHomeActions(
     /** The orb: talk, or interrupt Alfred while he speaks. */
     val onTalk: () -> Unit = {},
     /** The toggle beside the orb: Alfred's voice on the speaker, or the earpiece (call mode). */
-    val onFlipOutput: () -> Unit = {},
     val onType: () -> Unit = {},
+    /** The Call button: a conversation that opens at his ear, like a phone call. */
+    val onCall: () -> Unit = {},
     /** "Close all": puts the cards away until the next one; the conversation goes on. */
     val onDismissCard: () -> Unit = {},
     /** A card's own Close: that card leaves the stack. */

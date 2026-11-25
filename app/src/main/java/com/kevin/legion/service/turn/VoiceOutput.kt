@@ -8,27 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/**
- * Where Alfred's voice comes out when nothing plugged in decides it: the loudspeaker, or the earpiece
- * with the phone held to the ear like a call.
- */
-enum class OutputChoice { SPEAKER, CALL }
-
 /** Where his voice actually goes in a conversation, after headsets, Bluetooth and phone calls have their say. */
 enum class VoiceOutlet { LOUDSPEAKER, EARPIECE, WIRED, BLUETOOTH, PHONE_CALL }
-
-/**
- * The toggle under the orb. [choice] is the choice a tap flips from, [outlet] where the voice
- * goes, [enabled] false when a headset, Bluetooth or a phone call decides the route; [label] and
- * [detail] (what TalkBack says) name the real route, so the toggle never claims one it does not have.
- */
-data class OutputToggle(
-    val choice: OutputChoice,
-    val outlet: VoiceOutlet,
-    val enabled: Boolean,
-    val label: String,
-    val detail: String,
-)
 
 /**
  * How a conversation opened. Only a tap in the app (phone in hand, screen on) may use the earpiece:
@@ -41,17 +22,29 @@ internal enum class Opening { APP_TAP, WAKE_WORD, LINE, OTHER_TAP, TEST }
  * What an open conversation's audio actually does, from the platform's readback: on the earpiece, or
  * [refused] (the earpiece was asked for inside call audio and the phone did not route to it).
  */
-internal data class LiveOutput(val onEarpiece: Boolean, val refused: Boolean)
+internal data class LiveOutput(val onEarpiece: Boolean, val refused: Boolean, val outlet: VoiceOutlet)
 
-/** The pure decisions behind the earpiece toggle: no Android types, so every case is a unit test. */
+/**
+ * One ask from the in-call Speaker / Earpiece control. [serial] carries no meaning beyond being
+ * different every time: without it a [kotlinx.coroutines.flow.StateFlow] of the bare boolean would
+ * drop the second identical ask, so pressing Speaker on one call and then Speaker on the next would
+ * reach the second conversation not at all.
+ */
+internal data class RouteAsk(val earpiece: Boolean, val serial: Long)
+
+/** The pure decisions behind the earpiece: no Android types, so every case is a unit test. */
 internal object VoiceOutputRule {
 
-    /** Headsets and Bluetooth win over the choice; a phone call on the line means hands off. */
-    fun outlet(choice: OutputChoice, route: AudioRoute, inCall: Boolean, hasEarpiece: Boolean): VoiceOutlet = when {
+    /**
+     * Headsets and Bluetooth win over the call; a phone call on the line means hands off. [call] is
+     * THIS conversation's own intent (the Call button), never a saved setting: a plain orb tap is
+     * always `false` and therefore always the loudspeaker.
+     */
+    fun outlet(call: Boolean, route: AudioRoute, inCall: Boolean, hasEarpiece: Boolean): VoiceOutlet = when {
         inCall -> VoiceOutlet.PHONE_CALL
         route == AudioRoute.BLUETOOTH -> VoiceOutlet.BLUETOOTH
         route == AudioRoute.WIRED_HEADSET -> VoiceOutlet.WIRED
-        choice == OutputChoice.CALL && hasEarpiece -> VoiceOutlet.EARPIECE
+        call && hasEarpiece -> VoiceOutlet.EARPIECE
         else -> VoiceOutlet.LOUDSPEAKER
     }
 
@@ -68,61 +61,14 @@ internal object VoiceOutputRule {
         else -> Opening.OTHER_TAP
     }
 
-    /** CALL applies only to a conversation he started by a tap in the app with the screen on. */
+    /** The earpiece applies only to a conversation he started by a tap in the app with the screen on. */
     fun earpieceAllowed(opening: Opening, screenOn: Boolean): Boolean = opening == Opening.APP_TAP && screenOn
-
-    /**
-     * The toggle's face; null hides it (a tablet: no earpiece to choose). With a conversation open
-     * ([live] not null) it shows what the audio does: CALL that is not on the earpiece reads
-     * "Earpiece unavailable" when the phone refused it, else "Speaker" (a conversation he did not
-     * start by a tap, or one still waiting to move).
-     */
-    fun toggle(
-        choice: OutputChoice,
-        route: AudioRoute,
-        inCall: Boolean,
-        hasEarpiece: Boolean,
-        live: LiveOutput? = null,
-    ): OutputToggle? {
-        val outlet = outlet(choice, route, inCall, hasEarpiece)
-        val notOnEarpiece = outlet == VoiceOutlet.EARPIECE && live != null && !live.onEarpiece
-        return when {
-            !hasEarpiece -> null
-            notOnEarpiece && live?.refused == true ->
-                OutputToggle(OutputChoice.CALL, VoiceOutlet.LOUDSPEAKER, true, "Earpiece unavailable", REFUSED)
-            notOnEarpiece -> OutputToggle(OutputChoice.SPEAKER, VoiceOutlet.LOUDSPEAKER, true, "Speaker", SPEAKER_NOW)
-            else -> face(choice, outlet)
-        }
-    }
-
-    private fun face(choice: OutputChoice, outlet: VoiceOutlet): OutputToggle =
-        when (outlet) {
-            VoiceOutlet.LOUDSPEAKER -> OutputToggle(choice, outlet, true, "Speaker", SPEAKER)
-            VoiceOutlet.EARPIECE -> OutputToggle(choice, outlet, true, "Call", EARPIECE)
-            VoiceOutlet.WIRED -> OutputToggle(choice, outlet, false, "Headphones", WIRED)
-            VoiceOutlet.BLUETOOTH -> OutputToggle(choice, outlet, false, "Bluetooth", BLUETOOTH)
-            VoiceOutlet.PHONE_CALL -> OutputToggle(choice, outlet, false, "On a call", PHONE_CALL)
-        }
-
-    /** What a tap on the toggle saves: the other choice from the one it shows. */
-    fun flipped(shown: OutputChoice): OutputChoice =
-        if (shown == OutputChoice.SPEAKER) OutputChoice.CALL else OutputChoice.SPEAKER
 
     /**
      * Whether the conversation enters call audio ([CallAudioMode]): for barge-in as before, and for the
      * earpiece, which only exists as a communication route.
      */
     fun callAudio(barge: Boolean, earpiece: Boolean): Boolean = barge || earpiece
-
-    private const val SPEAKER = "Alfred's voice on the speaker. Tap for call mode, phone at your ear"
-    private const val EARPIECE = "Alfred's voice on the earpiece, call mode. Tap for the speaker"
-    private const val SPEAKER_NOW =
-        "Alfred's voice on the speaker for this conversation. Tap to move it to the earpiece"
-    private const val REFUSED =
-        "Earpiece unavailable: this phone kept Alfred's voice on the speaker. Tap for speaker mode"
-    private const val WIRED = "Alfred's voice on headphones. Speaker or call mode applies when they are unplugged"
-    private const val BLUETOOTH = "Alfred's voice on Bluetooth. Speaker or call mode applies when it disconnects"
-    private const val PHONE_CALL = "On a phone call. Speaker or call mode applies after it"
 
     /**
      * The communication device type to select from [available] types: a wired headset first, then the
@@ -141,23 +87,28 @@ internal object VoiceOutputRule {
 }
 
 /**
- * The persisted choice (default SPEAKER) and its live value, shared by the toggle and an open
- * conversation, which follows a flip without restarting.
+ * What the open conversation's audio does, and the in-call control that moves it.
+ *
+ * **There is no saved choice any more** (2026-11-24, the Call button): the earpiece is a per-call
+ * intent passed to the session at construction and held by its own [com.kevin.legion.service.cascade.EarpieceRoute].
+ * [routeChanges] is a CHANGE SIGNAL only, never the truth: the in-call Speaker / Earpiece control
+ * asks here, the open conversation applies it, and a conversation that never hears an ask keeps the
+ * intent it opened with. The old `voice_output` preference is deleted by [forgetSavedChoice], so a
+ * phone that saved CALL does not send every orb tap to the earpiece after the toggle went.
  */
 internal object VoiceOutput {
-    private const val PREFS = "voice_output"
-    private const val KEY_CHOICE = "choice"
+    private const val LEGACY_PREFS = "voice_output"
 
-    private val state = MutableStateFlow(OutputChoice.SPEAKER)
-    @Volatile private var loaded = false
+    private val asks = MutableStateFlow<RouteAsk?>(null)
+    private val serial = java.util.concurrent.atomic.AtomicLong(0)
 
-    /** The live choice. Read [choice] once first so it holds the saved value. */
-    val flow: StateFlow<OutputChoice> = state.asStateFlow()
+    /** Asks the open conversation to move its route: true the earpiece, false the loudspeaker. */
+    val routeChanges: StateFlow<RouteAsk?> = asks.asStateFlow()
 
-    private val tapCount = MutableStateFlow(0)
-
-    /** Counts taps on the toggle: an open conversation applies the choice on each one, either way. */
-    val taps: StateFlow<Int> = tapCount.asStateFlow()
+    /** The in-call control: a conversation collecting [routeChanges] moves without restarting. */
+    fun askRoute(earpiece: Boolean) {
+        asks.value = RouteAsk(earpiece, serial.incrementAndGet())
+    }
 
     private val liveState = MutableStateFlow<LiveOutput?>(null)
 
@@ -168,25 +119,12 @@ internal object VoiceOutput {
         liveState.value = output
     }
 
-    /** A tap on the toggle: saves the other choice from the one [shown], and tells the conversation. */
-    fun flip(context: Context, shown: OutputChoice) {
-        set(context, VoiceOutputRule.flipped(shown))
-        tapCount.value += 1
-    }
-
-    fun choice(context: Context): OutputChoice {
-        if (!loaded) {
-            val saved = prefs(context).getString(KEY_CHOICE, null)
-            state.value = OutputChoice.entries.firstOrNull { it.name == saved } ?: OutputChoice.SPEAKER
-            loaded = true
-        }
-        return state.value
-    }
-
-    fun set(context: Context, choice: OutputChoice) {
-        prefs(context).edit().putString(KEY_CHOICE, choice.name).apply()
-        loaded = true
-        state.value = choice
+    /**
+     * Drops the retired SPEAKER / CALL preference. Idempotent, so it runs at every start. No API
+     * guard: `deleteSharedPreferences` came in API 24 and `minSdk` is 24.
+     */
+    fun forgetSavedChoice(context: Context) {
+        runCatching { context.applicationContext.deleteSharedPreferences(LEGACY_PREFS) }
     }
 
     /** True when the phone has an earpiece to route to (false on a tablet). */
@@ -197,7 +135,4 @@ internal object VoiceOutput {
             audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
         }
     }.getOrDefault(false)
-
-    private fun prefs(context: Context) =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

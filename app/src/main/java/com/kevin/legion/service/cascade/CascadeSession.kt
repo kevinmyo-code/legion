@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.os.Build
 import android.util.Log
 import com.kevin.legion.BuildConfig
+import com.kevin.legion.ai.ALFRED
 import com.kevin.legion.ai.AriaBrain
 import com.kevin.legion.ai.CompanionProfile
 import com.kevin.legion.clock.RingControl
@@ -55,6 +56,7 @@ import com.kevin.legion.service.turn.EndOfTurnPolicy
 import com.kevin.legion.service.turn.MicReopen
 import com.kevin.legion.service.turn.TurnModels
 import com.kevin.legion.service.turn.TurnTaker
+import com.kevin.legion.service.turn.VoiceOutput
 import com.kevin.legion.service.turn.VoiceOutputRule
 import com.kevin.legion.service.turn.VoiceTurnSettings
 import com.kevin.legion.service.testturn.TestSession
@@ -137,7 +139,13 @@ internal class CascadeSession(
     private val micClaimant: MicArbiter.Claimant = MicArbiter.Claimant.LIVE_TURN,
     /** The cloud voice, in the companion's own voice (a fake in a test). */
     private val cloudSpeech: (CoroutineScope, (CallUsage) -> Unit) -> SpeechBackend = { parent, usage ->
-        defaultCloudSpeech(parent, VoiceEngineSettings.cloudVoice(context), usage)
+        defaultCloudSpeech(
+            parent,
+            VoiceEngineSettings.cloudVoice(context),
+            usage,
+            // A renamed persona's pickup lines, which no static set can hold (review F6).
+            keepAlso = CallPickup.renamedKeep(CompanionProfile.name(context), ALFRED.defaultName),
+        )
     },
     /** Whether the cloud voice can start at all: it runs on the key Kevin pasted in Settings. */
     private val cloudCanStart: () -> Boolean = GeminiKeyProvider::hasKey,
@@ -145,6 +153,11 @@ internal class CascadeSession(
     private val test: TestSession? = null,
     /** Opened by a tap in the app (phone in hand): only then may the earpiece apply ([EarpieceRoute]). */
     private val inHand: Boolean = false,
+    /**
+     * A CALL (the Call button, 2026-11-24): the earpiece from the first word, as a phone call. Per
+     * conversation, never saved, so a plain orb tap is always the loudspeaker.
+     */
+    private val call: Boolean = false,
 ) {
     private val ctx = context.applicationContext
     private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -199,7 +212,19 @@ internal class CascadeSession(
     @Volatile private var openStartedAtMs = 0L
 
     /** How this conversation opens ([OpeningRule]): a tap gets the chime and the mic at once. */
-    private val opening = OpeningRule.of(fromWakeWord, opener != null)
+    private val opening = OpeningRule.of(fromWakeWord, opener != null, call)
+
+    /**
+     * This conversation's own call id ([CallLine]), so the screen a closed call tears down can never
+     * be the one a newer call put up. Allotted for every conversation, published only for a call.
+     */
+    private val callId = CallLine.nextId()
+
+    /** The call screen is up for this conversation: set by [beginCallLine], the one door to it. */
+    private val callLineUp = AtomicBoolean(false)
+
+    /** Mute: his mic stays open and nothing it hears reaches the turn detector ([onMicBuffer]). */
+    @Volatile private var micMuted = false
 
     /** A tap's audio from the mic's start until [turnTaker] exists ([MicBacklog]). Under [turnLock]. */
     private var backlog: MicBacklog? = null
@@ -250,7 +275,7 @@ internal class CascadeSession(
 
     /** Focus, the car's hands-free mic, and the Bluetooth watch ([CascadeAudio]). */
     private val audioRoute = CascadeAudio(ctx, audioManager)
-    private val earpiece = EarpieceRoute(ctx, audioManager)
+    private val earpiece = EarpieceRoute(ctx, audioManager, call = call)
 
     /** A call or a silenced capture mid-conversation ([CallPause]); [callPaused] once it has fired. */
     private val callWatch = CallWatch(ctx, audioManager) { reason -> scope.launch(loop) { pauseForCall(reason) } }
@@ -492,6 +517,8 @@ internal class CascadeSession(
     fun open() {
         openStartedAtMs = System.currentTimeMillis()
         host.phase(Phase.CONNECTING, "Connecting...")
+        // He pressed Call: the call's screen is up before anything opens, saying "Connecting...".
+        if (call) beginCallLine()
         scope.launch(loop) {
             try {
                 openNow()
@@ -537,7 +564,13 @@ internal class CascadeSession(
             }
         }
         LiveLatency.log(LiveLatency.TAG, "open_mic_ms=${System.currentTimeMillis() - started}")
+        // A call does NOT open the mic here (plan 2.1): it answers first, like the wake word's
+        // greeting. It DOES take its route here (review F10): the proximity lock follows the route, so
+        // entering it only after the turn models and the voice service left the screen live at his
+        // cheek for the second he was raising the phone. No chime, no backlog, no capture: those are
+        // the tap's, and a call's first sound is the pickup line.
         if (listens && opening == OpeningRule.Opening.CHIME) openMicNow()
+        if (listens && opening == OpeningRule.Opening.PICKUP) enterRouteNow()
         // Either voice needs the phone's turn detection to listen: without it, nothing can.
         val models = if (listens) {
             withContext(Dispatchers.IO) { TurnModels.awaitReady(ctx, CascadeTimings.MODEL_WAIT_MS) }
@@ -641,6 +674,10 @@ internal class CascadeSession(
         }
         if (opening == OpeningRule.Opening.CHIME) {
             listenAfterChime()
+            return
+        }
+        if (opening == OpeningRule.Opening.PICKUP) {
+            speakPickup()
             return
         }
         val plan = greetingPlan?.await()
@@ -2713,6 +2750,9 @@ internal class CascadeSession(
             },
             onClipStarted = { text ->
                 lastClipText = text
+                // The call is answered when its first audio starts, as a phone's timer is: idempotent,
+                // so a later clip never restarts it.
+                if (callLineUp.get()) CallLine.answered(callId, System.currentTimeMillis())
                 audit.assistant(text, readThrough = turn?.readThrough == true)
                 // The voice sheet and the talk strip read the caption, as for Live's subtitles.
                 CompanionPhase.setCaption(text.takeLast(CAPTION_CHARS))
@@ -2857,6 +2897,9 @@ internal class CascadeSession(
         b.tts.warm(FILLERS_SPOKEN)
         // The backchannels' and the wait lines' second renders, kept apart ([Backchannel.TAKES]).
         b.tts.warmTakes((Backchannel.LINES + WaitFillers.LINES).map { SpokenText.forSpeech(it) }, 1)
+        // A renamed persona's pickup lines, which the static keep set cannot hold (review F6). Empty,
+        // and so free, under the register's own name, which is every install that never renamed him.
+        b.tts.warm(CallPickup.renamedKeep(CompanionProfile.name(ctx), ALFRED.defaultName))
     }
 
     /** Tap or barge-in: stop the reply now. A tool already running finishes and is reported. */
@@ -2897,6 +2940,41 @@ internal class CascadeSession(
                 ReplySpeaker.Outcome.Interrupted -> Unit
             }
         }
+    }
+
+    /**
+     * He pressed Call, so Alfred answers like a person ([CallPickup]): one short scripted line, said
+     * before the floor is his, and then the mic is open as after any reply. Never a model turn and
+     * never the opening earcon, so what he hears first is a voice saying hello.
+     *
+     * Each line is kept after it is first said ([ScriptedLines.KEEP] holds the pool under the
+     * register's own name, and the cloud voice files a kept line's audio when it renders it), so a
+     * line costs one voice fetch the first time it comes up and plays from memory after that.
+     * Nothing is warmed ahead: nine fetches at the moment he starts talking is what the 11-17 review
+     * cut. The clips are not in the APK either: rendering them needs Kevin's own key
+     * (`tools/render_fixed_clips.py`), which no agent may spend.
+     */
+    private fun speakPickup() {
+        val voice = backend ?: return
+        val name = CompanionProfile.name(ctx)
+        val line = CallPickup.pick(
+            ctx,
+            name,
+            ALFRED.defaultName,
+            inHand = { voice.tts.inHand(SpokenText.forSpeech(it)) },
+        )
+        val spoken = SpokenText.forSpeech(line)
+        LiveLatency.log(LiveLatency.TAG, "pickup in_hand=${voice.tts.inHand(spoken)}")
+        val reply = newSpeaker(null)
+        reply.say(line)
+        turnJob = scope.launch(loop) {
+            when (val o = reply.await()) {
+                ReplySpeaker.Outcome.Played -> afterReply()
+                is ReplySpeaker.Outcome.Failed -> onScriptedFailed(voice, line, o.reason)
+                ReplySpeaker.Outcome.Interrupted -> Unit
+            }
+        }
+        openingJob = turnJob
     }
 
     /**
@@ -3177,7 +3255,8 @@ internal class CascadeSession(
         val windowMs = FollowUpWindow.windowAfter(lastClipText)
         LiveLatency.log("LIVE_FOLLOWUP", "armed ms=$windowMs engine=${engineToken()}")
         followUpJob = scope.launch(loop) {
-            delay(windowMs)
+            waitOutWindow(windowMs)
+            if (closing.get()) return@launch
             val now = System.currentTimeMillis()
             followUpEvent(
                 FollowUpWindow.Event.Elapsed(
@@ -3185,6 +3264,25 @@ internal class CascadeSession(
                     msSinceLocalSpeech = lastLocalSpeechAtMs.takeIf { it >= followUpArmedAtMs }?.let { now - it },
                 ),
             )
+        }
+    }
+
+    /**
+     * The window, held while he is muted and then started again (plan 1.5: Mute pauses the idle
+     * rules, because a muted call is him choosing silence and silence must not hang up on him).
+     *
+     * Nothing is emitted while it holds, so the window's state machine stays armed; and it is the
+     * WHOLE window again once he is back, not the instant he unmutes. Swallowing the expiry instead
+     * would be a one-way door: the window is armed by a reply, so after Mute, expiry, Unmute,
+     * silence would never close the conversation again.
+     */
+    private suspend fun waitOutWindow(windowMs: Long) {
+        while (true) {
+            delay(windowMs)
+            if (!micMuted || closing.get()) return
+            LiveLatency.log("LIVE_FOLLOWUP", "held muted engine=${engineToken()}")
+            while (micMuted && !closing.get()) delay(MUTE_HOLD_POLL_MS)
+            if (closing.get()) return
         }
     }
 
@@ -3797,6 +3895,9 @@ internal class CascadeSession(
         step("player") { player?.release() }
         step("route_watch") { audioRoute.stopWatching() }
         step("earpiece") { earpiece.stop() }
+        // The call's screen goes with the call. By id, so a close that lands after the next call
+        // opened cannot take the live one's screen down with it.
+        step("call_line") { CallLine.ended(callId) }
         step("call_audio") { callAudio?.let { if (it.isActive) it.exit("cascade $reason") } }
         val routeReleasedMs = System.currentTimeMillis() - releaseStartMs
         LiveLatency.log(LiveLatency.TAG, CloseCue.orderLine(micReleasedMs, chimeEndMs, routeReleasedMs))
@@ -3861,6 +3962,9 @@ internal class CascadeSession(
     private fun onMicBuffer(buf: ByteArray, n: Int) {
         // A call came: nothing more reaches any speech-to-text, from this buffer on ([pauseForCall]).
         if (callPaused) return
+        // Muted: the capture stays open (reopening it mid-call is a click and a claim fight), and
+        // nothing it hears reaches the turn detector, so no turn of his can start.
+        if (micMuted) return
         if (micBufferSeen.compareAndSet(false, true)) {
             LiveLatency.log(LiveLatency.TAG, "open_capture_ms=${System.currentTimeMillis() - openStartedAtMs}")
         }
@@ -3887,6 +3991,67 @@ internal class CascadeSession(
         enterRoute(barge, "tap")
         synchronized(turnLock) { backlog = MicBacklog() }
         startMic(chime = true)
+    }
+
+    /**
+     * A call's route, at the tap (review F10): the earpiece and with it the proximity lock, so the
+     * screen is already dark by the time the phone reaches his ear. The mic is NOT opened and no
+     * audio is held: the pickup line is the first sound and [startMic] runs where it does for every
+     * other opening. Sets [tapRoute] / [tapBarge] for the same reason the tap does, so the turn plan
+     * takes the route the audio mode was entered for and nothing enters it a second time.
+     */
+    private fun enterRouteNow() {
+        val route = CallAudioMode.route(audioManager)
+        val barge = OpeningRule.bargeIn(VoiceTurnSettings.bargeIn(ctx), route, TelephonyController.isInCall)
+        tapRoute = route
+        tapBarge = barge
+        enterRoute(barge, "call")
+    }
+
+    /**
+     * The call's own screen ([CallLine]), and the route readback it needs to label its Speaker
+     * control. One door, idempotent: a call opened by the button comes through at open, and a
+     * conversation the Call button moves to the ear mid-way comes through [onCallButton].
+     */
+    private fun beginCallLine(answeredAtMs: Long? = null) {
+        if (!callLineUp.compareAndSet(false, true)) return
+        CallLine.began(
+            callId,
+            VoiceOutputRule.outlet(
+                call = true,
+                route = CallAudioMode.route(audioManager),
+                inCall = TelephonyController.isInCall,
+                hasEarpiece = VoiceOutput.hasEarpiece(audioManager),
+            ),
+        )
+        answeredAtMs?.let { CallLine.answered(callId, it) }
+        // The route's own readback is the only honest source for where the audio really is: a headset
+        // plugged in mid-call moves it, and the Speaker control must say so rather than offer a move.
+        scope.launch(loop) {
+            VoiceOutput.live.collect { out -> out?.let { CallLine.outlet(callId, it.outlet) } }
+        }
+    }
+
+    /**
+     * The Call button pressed over a conversation already running (review F2): it moves that
+     * conversation to his ear and draws it as a call, instead of hanging it up. The button says
+     * "He answers at your ear", so that is what it has to do; the orb is still the way to interrupt
+     * or end. The move is the in-call control's own path ([VoiceOutput.askRoute]), so there is one
+     * way to change a live route.
+     */
+    fun onCallButton() {
+        if (closing.get()) return
+        VoiceOutput.askRoute(earpiece = true)
+        // Already talking to him, so the call is answered: the timer starts now, not at a pickup
+        // line that is not going to be said.
+        beginCallLine(answeredAtMs = System.currentTimeMillis())
+    }
+
+    /** The in-call Mute control: his mic stays open, and nothing it hears reaches a turn. */
+    fun setMuted(on: Boolean) {
+        micMuted = on
+        CallLine.muted(callId, on)
+        LiveLatency.log(LiveLatency.TAG, "call_mute on=$on")
     }
 
     /**
@@ -4017,6 +4182,9 @@ internal class CascadeSession(
         private const val TEST_POLL_MS = 50L
         private const val MIDWAY_POLL_MS = 50L
 
+        /** How often a held idle window looks to see whether he is back ([waitOutWindow]). */
+        private const val MUTE_HOLD_POLL_MS = 250L
+
 
         private const val CAPTION_CHARS = 160
 
@@ -4113,7 +4281,12 @@ internal class CascadeSession(
         }
 
         /** The production cloud voice: Gemini on the user's own key, metered and logged like the text loop. */
-        fun defaultCloudSpeech(parent: CoroutineScope, voice: String, usage: (CallUsage) -> Unit): SpeechBackend =
+        fun defaultCloudSpeech(
+            parent: CoroutineScope,
+            voice: String,
+            usage: (CallUsage) -> Unit,
+            keepAlso: Set<String> = emptySet(),
+        ): SpeechBackend =
             CloudSpeech.create(
                 parent = parent,
                 transport = OkHttpGemini(),
@@ -4123,6 +4296,9 @@ internal class CascadeSession(
                 usage = usage,
                 hint = { SttHintStore.line },
                 instruction = { SttHintStore.instruction },
+                // The scripted lines the voice may keep: the static set, plus whatever only this
+                // install's own names make ([CallPickup.renamedKeep]).
+                keepLines = ScriptedLines.KEEP + keepAlso,
             )
 
         /** One cache store for the process: the cache outlives any one conversation. */

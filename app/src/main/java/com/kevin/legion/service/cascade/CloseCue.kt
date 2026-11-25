@@ -25,6 +25,9 @@ internal object CloseCue {
     private val PLAYS = setOf(
         "stopped", "sleep_phrase", "follow_up", "dismissed", "noise", "missed_twice", "check_in_no_reply",
         "check_in_answered", "new conversation",
+        // Hang up on the call screen (2026-11-24). It is the end of a conversation he was in, and on
+        // a call the screen is dark at his ear, so the tone is the only way he hears that it ended.
+        "hung_up",
     )
     private const val VOICE_FAILED = "voice_failed_"
 
