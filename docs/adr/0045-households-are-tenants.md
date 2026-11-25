@@ -27,7 +27,7 @@ This amends [[0044-django-is-the-engine]] rule 3 ("one household per server") an
 intact; "no tenancy" becomes "tenancy by household, nothing finer"; "no roles" becomes "one role,
 for membership only".
 
-Kevin, 2026-09-08: *"my parents can also register as users, they create a new household group."*
+Kevin, 2026-09-08: his parents may register as users too, creating a new household group of their own.
 
 ## Context
 

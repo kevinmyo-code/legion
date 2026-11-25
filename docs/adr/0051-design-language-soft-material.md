@@ -23,8 +23,8 @@ covered; it keeps its own family-first register.
 
 ## Context
 
-Kevin, 2026-09-27, asking for a non-scrolling home and lists that look like lists: *"the lists now
-also doesnt look very appealing. it should look like an actual list."* Offered mission control
+Kevin, 2026-09-27, asked for a non-scrolling home and lists that look like actual lists rather than
+their present shape. Offered mission control
 upgraded, soft modern Material, or light and warm, he picked soft Material, then approved a
 clickable prototype in it.
 

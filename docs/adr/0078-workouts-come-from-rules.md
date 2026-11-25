@@ -15,8 +15,7 @@ ACCEPTED 2026-11-06. Map `.scratch/fat-loss/`, tickets 23 to 26.
 
 ## Context
 
-Kevin wants LEGION to make workouts he can tick off (*"i wanna have it make workouts for me that
-i can tick off"*). Two model-written training surfaces already existed: a Gemini sub-agent that
+Kevin wants LEGION to make workouts he can tick off. Two model-written training surfaces already existed: a Gemini sub-agent that
 invented a weekly plan (`create_workout_plan`), and the BIO advisor's daily tickbox list, whose
 ticks recorded nothing. He found them confusing. A number the model makes up is a number nobody
 can check, and progression only works if next week's weight follows from this week's sets.

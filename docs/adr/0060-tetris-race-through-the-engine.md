@@ -3,7 +3,7 @@ status: accepted
 decided: 2026-10-18
 decided-by: Kevin
 supersedes: []
-source: "[[decisions#2026-10-18 - Tetris, built in, and a score race with Mia through the engine (Kevin)]]"
+source: "[[decisions#2026-10-18 - Tetris, built in, and a score race with a second member through the engine (Kevin)]]"
 tags: [adr]
 ---
 

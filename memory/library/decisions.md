@@ -602,7 +602,7 @@ The era itself is now genuinely open, which nobody decided on purpose: Zero went
 ## 2026-07-16 - Car profiles: vehicle identity decoupled from the dongle, companion goes per-car
 
 **Kevin's call, explicit reopening of a §9 guardrail.** Trigger: he owns two cars (Outlander daily,
-XJ Cherokee with the head unit, driven by his wife) and ONE v020 dongle + one phone. He wants to move
+XJ Cherokee with the head unit, driven by a second member) and ONE v020 dongle + one phone. He wants to move
 the dongle between them, pick the car on the device, and have the avatar, persona, prompts, wallpaper
 and settings follow - all through the same Google Drive.
 
@@ -1211,7 +1211,7 @@ correctly, not a blind delete. Full list and the grep to reproduce it live in th
 
 **Two operational items resolved along the way, worth keeping:**
 - **Commit identity.** This repo's git config used a work email address. Kevin
-  chose `kevinmyo@gmail.com` for the new repo's LOCAL git config only (not global, doesn't touch
+  chose his personal address for the new repo's LOCAL git config only (not global, doesn't touch
   this repo) so the work email never enters LEGION's public commit history.
 - **`gh` CLI wasn't installed and machine-wide `winget install` was cancelled at a UAC prompt.**
   `winget install --id GitHub.cli -e --source winget --scope user` succeeded (installs the zip
@@ -1642,7 +1642,7 @@ prototype and worth remembering as a pattern:
    and balance, plus a date gutter) simply do not fit at 360dp with a real description.
 2. That variant also **inverted its own hierarchy** - the running balance rendered visually heavier
    than the amount, so the derived number dominated the real one.
-3. **BofA descriptions are prefix-heavy** (`CHECKCARD 0701 TRADER JOES #452 SAN JOSE CA`), so
+3. **BofA descriptions are prefix-heavy** (`CHECKCARD 0000 STORE NAME #000 CITY ST`), so
    right-truncation strips the merchant and keeps the boilerplate. That is a data-shape finding
    independent of any variant, and it argues for display-time prefix stripping. Display only - the
    stored description is never modified, matching ticket 04's normalization rule.
@@ -1845,12 +1845,12 @@ when a gated file covers the same dates. It narrows what "commit" means without 
 that later reads as strong.
 
 **The collision worth remembering.** Calls 2 and 3+4 do not compose: the CSV's `accountId` is
-`"7823"` and the card PDF's is `"4111111111117823"`, and every ledger mechanism keys on equality, so
+`"9012"` and the card PDF's is `"4111111111119012"`, and every ledger mechanism keys on equality, so
 supersede would never fire and one card would render as two accounts - the same bug the whitespace
 strip in `LedgerStatementAgent` was written to fix, through a different door. Resolved by a last-4
 suffix relation (`ledger/LedgerAccountIdentity.kt`, `sameCard`) in exactly three places - the
 supersede delete, the balance pairing, the balances grouping - and deliberately NOT in
-`resolveDedup`, where loosening the key would let a checking account ending 7823 absorb card rows.
+`resolveDedup`, where loosening the key would let a checking account ending 9012 absorb card rows.
 Documented weakness: two accounts sharing a last-4 collide. Four accounts today, no collision.
 
 **Ordering property that is load-bearing and invisible.** The supersede delete runs inside
@@ -3972,8 +3972,8 @@ never run. Two senior-review SHOULD-FIX items were fixed before commit rather th
 
 ## 2026-08-16 - Kevin's altitude ruling (STANDING)
 
-Mid-grilling on ticket 01, Kevin: **"as a CTO and VP you shouldnt be coming to me about low level
-stuff. im all the way up the abstraction layer."** Consequence: bring him forks carrying real cost
+Mid-grilling on ticket 01, Kevin set the altitude he wants to be consulted at: a CTO or VP is not
+brought low-level questions, and he works above that layer. Consequence: bring him forks carrying real cost
 or taste; decide implementation without asking. `tested` by the remainder of session 9 working that
 way.
 
@@ -4647,7 +4647,7 @@ from scratch, removing the main argument in its favour.
 
 4. **Personas and memories BIND TO THE USER ACCOUNT (Kevin, 2026-08-25).** Today a profile is a
    named persona + clock; there is no human-user entity in the app. That changes: Alfred is Kevin's
-   and Dorothy is his wife's, and the persona follows each user to the laptop instead of being
+   and Dorothy is a second member's, and the persona follows each user to the laptop instead of being
    whatever that device last picked. Memories gain a user tag so the assistant knows who it is
    speaking to and who said what. Required by cross-interface-memory (already on the map) and by
    CLAUDE.md §7 (recalling one person's statement as the other's is unfalsifiable-memory violation).
@@ -4896,7 +4896,7 @@ restore on every backup the running app produced - found mid-restore-drill, on a
 that button. `CarDatabaseSchemaVersionTest` now fails the build on the next drift.
 
 **The phase-0 restore drill is DONE**: full round trip on the A25, all 65 tables back to their
-pre-drill counts. Phase-6 mirror deletion is unblocked. And the "device work needs the Kwin laptop"
+pre-drill counts. Phase-6 mirror deletion is unblocked. And the "device work needs the first laptop"
 constraint was false - both machines carry the same debug key.
 
 ---
@@ -4958,8 +4958,8 @@ alone, and stripping the widget and the authoring leaves nothing aspect-shaped. 
 same test only because vehicles and service records are authored beside its read-only OBD stream.
 Consequence: no engine record type, no Room table, no migration, no CLAUDE.md §1 edit.
 
-**Ruled: Azure DevOps is read-through, never persisted.** Kevin: *"its company's azure, but its all
-my own projects, solo dev work."* That weakens §7's third-party concern - the work items are his
+**Ruled: Azure DevOps is read-through, never persisted.** Kevin said the tenant belongs to his
+employer but the work items in it are his own solo projects. That weakens §7's third-party concern - the work items are his
 own writing, not a colleague's - but leaves the company's ownership of the tenant untouched.
 Querying live and discarding satisfies §7 natively rather than carving an exception out of it, and
 costs a second of latency on an occasional question. Four binding conditions: nothing persists
@@ -5024,7 +5024,7 @@ write-through-plus-outbox for creation, tombstone propagation, and Realtime. Tha
 its own record, dangerous: it wiped every local `kind = reminder` row unconditionally and refilled
 from the server, **withholding** any row it could not attribute to a still-live local engine
 record - a withheld row vanishes rather than reading as unconfirmed, which is what hid 120 real
-coursework rows (`COSC 3334`/`COSC 3318`/`COSC 4305`) on Kevin's phone for weeks. Separately, its
+coursework rows (`CSCI 2200`/`CSCI 2100`/`CSCI 3300`) on Kevin's phone for weeks. Separately, its
 retraction guard treated a second Settings tap **in the same process** as consent and soft-deleted
 the candidate set on re-tap - roughly 130 rows, including real coursework, on a routine re-check
 that was meant only to confirm a warning, not act on it a second time. It compared no timestamps at
@@ -5188,7 +5188,7 @@ tick matched a real submission.
 Three rulings that stand:
 
 1. **Every coursework row is `kind = task`** (ticket 08's kind, first written tonight), including
-   the 39 unpublished modules Canvas has not released yet. The two MKTG notices ("Letter grades
+   the 39 unpublished modules Canvas has not released yet. The two BUSN 2400 notices ("Letter grades
    posted", "Last day of course") are `event` - you do not complete a notice.
 2. **`done` on a Canvas-backed row is Canvas's submission state**, `provenance = DETERMINISTIC`,
    and the evidence rides in `structured_meta` (assignment id, workflow state, submitted_at, score,
@@ -5198,15 +5198,15 @@ Three rulings that stand:
    merge and the unique index key on; the titles name the sections and Kevin knows them. Canvas's
    own id lives in `structured_meta`, so a re-read matches on it next time.
 
-**What this is NOT: sync.** It is a one-shot reconciliation, correct as of 2026-09-05T03:39Z, and it
+**What this is NOT: sync.** It is a one-shot reconciliation, correct as of 2026-09-05, and it
 will be stale the moment Kevin submits the next assignment. Ticket 08 already says where the real
 thing lives - a Supabase edge function polling Canvas on a schedule, BYO token - and tonight does not
 change that. `tmp/canvas_reconcile.py` is the reusable generator; a fresh `canvas.json` from the same
 API call regenerates the SQL and matches on the stored assignment id. Until the edge function exists,
 "keep track of what I've done" is only as current as the last time someone ran that.
 
-Also settled by the read: the COSC 4320 midterm is 2026-10-11 23:59 online with LockDown Browser, not
-the 2026-10-13 13:00 in-person sitting the syllabus prints - the server row was right and the
+Also settled by the read: the CSCI 3400 midterm is 2026-10-11, end of day, online with LockDown
+Browser, not the 2026-10-13 in-person sitting the syllabus prints - the server row was right and the
 syllabus is stale. And the syllabus-vs-server Module 1 conflicts flagged earlier were all resolved in
 the server's favour by Canvas.
 
@@ -5220,16 +5220,16 @@ right outcome - a bulk write to the production database is his to fire - and the
 Kevin: *"be careful about the canvas events called discussions. the due date in canvas calendar is one
 thing but sometimes it requires a post on wednesday and 2 replies on friday."* Then, when the syllabi
 came back silent for every course but MATH: *"look at the other discussions too. i think they are
-split too."* He was right. The COSC 4320 syllabus prints one date per discussion; the Canvas
+split too."* He was right. The CSCI 3400 syllabus prints one date per discussion; the Canvas
 discussion DESCRIPTIONS split all eight - initial post Wednesday, two peer replies Sunday, dates
 written out in full. Only the description carries it, and Canvas's single `due_at` is the replies.
 
-22 first-post rows written as their own `task` rows (14 MATH 3391 from the syllabus rule, confirmed by
-Module 1 and 2's descriptions; 8 COSC 4320 from the descriptions themselves), each carrying
+22 first-post rows written as their own `task` rows (14 STAT 2300 from the syllabus rule, confirmed by
+Module 1 and 2's descriptions; 8 CSCI 3400 from the descriptions themselves), each carrying
 `structured_meta.parent_canvas_assignment_id` so a future edge function groups them under the parent.
-No replies rows: their day IS the parent's `due_at`. COSC 3334 ("post your initial response by the due
-date") and MKTG (a participation window) do not split; nothing written for them. The three first posts
-already past (4320 D1, MATH M1, MATH M2) are marked done from the parent's `submitted_at`, which in each
+No replies rows: their day IS the parent's `due_at`. CSCI 2200 ("post your initial response by the due
+date") and BUSN 2400 (a participation window) do not split; nothing written for them. The three first
+posts already past (3400 D1, STAT M1, STAT M2) are marked done from the parent's `submitted_at`, which in each
 case precedes the Wednesday.
 
 **The rule this leaves behind, now in ticket 08:** the Canvas edge function must read the description,
@@ -5242,15 +5242,16 @@ same night had not. Scale, not content, appears to be the line.
 
 ## 2026-09-05 - WebAssign is the source of truth for WebAssign homework, not Canvas and not the syllabus
 
-Kevin: *"why is september 6 having web assign 1.4 1.3 1.2 1.1? that was due last week and its already
-been done"* - then handed over his WebAssign session so it could be read directly.
+Kevin reported that a week's WebAssign sections were showing a later due date than the one he had
+already worked to, and that the work was done - then handed over his WebAssign session so it could
+be read directly.
 
-Three sources disagreed on when MATH 3391's Sections 1.1-1.4 homework was due. The syllabus said week
+Three sources disagreed on when STAT 2300's Sections 1.1-1.4 homework was due. The syllabus said week
 1 (Aug 30). Canvas's `Module 1: Assignment (on Webassign)` placeholder said Aug 30. The seeded server
 rows said Sep 6. I moved the rows to Aug 30 on the strength of two sources agreeing - and WebAssign's
-own assignment list, read a minute later, said **Sun, Sep 6, 2026, 11:59 PM CDT**. The seeded rows had
-been right. Reverted with WebAssign cited in `notes`. It also showed Chapter 1 Quiz due Thu Sep 3 11:38
-PM, where Canvas said Sep 6; corrected the same way.
+own assignment list, read a minute later, said **Sun, Sep 6, 2026, end of day**. The seeded rows had
+been right. Reverted with WebAssign cited in `notes`. It also showed Chapter 1 Quiz due end of day on
+Thu Sep 3, where Canvas said Sep 6; corrected the same way.
 
 **The ruling:** for anything that lives on WebAssign, WebAssign's own due date wins over Canvas's
 placeholder and over the syllabus, in that order of loss. Canvas's `not_graded` WebAssign rows are
@@ -5266,16 +5267,17 @@ appear there.
 
 ## 2026-09-05 - REVERSED within the hour: the syllabus, not WebAssign, anchors WebAssign homework
 
-The entry above ruled WebAssign's own due column the source of truth. Kevin, reading the same page:
-*"i think the webassign will keep rolling over done assignments. because last week it was due aug 30.
-i think section 2 will also follow and move up that way. lets follow the syllabus, preseed if we can."*
+The entry above ruled WebAssign's own due column the source of truth. Kevin, reading the same page,
+judged that WebAssign rolls finished assignments forward - the same sections had carried an earlier
+date the week before, and the next section would move the same way - and ruled: follow the syllabus,
+and preseed from it where possible.
 
 He is right and the earlier ruling was wrong. WebAssign showed Sections 1.1-1.4 due Sep 6 on Sep 5; a
 week earlier the same page said Aug 30. A due date that advances after the work is done is not a
 deadline, it is a display artefact of WebAssign's extension policy, and anchoring on it would drag
 every finished week forward one week at a time.
 
-**Standing ruling:** MATH 3391 WebAssign homework and chapter quizzes are dated from the SYLLABUS -
+**Standing ruling:** STAT 2300 WebAssign homework and chapter quizzes are dated from the SYLLABUS -
 "WebAssign homework due Sunday" of the week that covers those sections, "Day 7 of Week N" for the
 quizzes. Canvas's `not_graded` placeholders happen to agree and are welcome corroboration; WebAssign's
 own list is read for COMPLETION (what has been submitted and scored), never for dates. Sections
@@ -5351,12 +5353,12 @@ self-corrections.
 ## 2026-09-05 - Django is the engine: one server, a native Android limb, a web limb
 
 Evening, after the framework ruling and the two-clients ADRs, Kevin asked for an architecture
-meeting: Supabase, the Android app, a Django app for the desk and for his wife's iPhone, *"find
+meeting: Supabase, the Android app, a Django app for the desk and for a second member's iPhone, *"find
 holes in the architecture and deployment. is there a better solution."* The review found three:
 ADR 0042's contract was three RPCs and no `created_by` column; ADR 0043 conflated a UI (should be
 RLS-bound, per user) with a worker (service role); and the assistant's 112 tools are Kotlin-only, so
-every future limb reimplements them. Then: *"how does things like instagram run? do we even need
-supabase?"* and *"im thinking we copy instagram right, django with 2 native apps reading it."*
+every future limb reimplements them. Kevin then asked how something like Instagram is run and
+whether Supabase is needed at all, and proposed: *"im thinking we copy instagram right, django with 2 native apps reading it."*
 To the shape "Django plus Postgres in compose is the engine and only writer, Android native, her
 client a PWA, Supabase retires": *"yeah i think thats the way to go."*
 
@@ -5381,7 +5383,7 @@ absorbed by django-engine 07 and 06.
 ## 2026-09-05 - Where the engine runs: Supabase Postgres, Django, then the phone and the PWA
 
 Kevin, after the hosting survey (`tmp/` research, every free tier checked against its own pricing
-page): *"i guess best is supabase > django > android/pwa?"* Yes.
+page): he proposed Supabase, then Django, then the Android app and the PWA. Yes.
 
 **The database stays where it is.** Supabase keeps exactly one job, hosting Postgres on its free
 tier; PostgREST, Auth and Realtime go dark at cutover and the `anon` key is revoked. Django is the
@@ -5436,7 +5438,7 @@ drained (`sent 1`) when the engine came back - the whole §7 posture, working.
 **Defect 1, pre-existing and serious: the events done-toggle has no push side at all.**
 `NotesController.tickAppointment` writes Room and stops; `EventsSync.kt:230` says so in its own
 comment. So every task ticked on the phone since the backend cutover has been local-only, on either
-transport, and at least one row has already diverged (a COSC 4320 assignment reads ticked on the
+transport, and at least one row has already diverged (a CSCI 3400 assignment reads ticked on the
 phone and `done = false` on the server). The Django port did not cause this; it revealed it, because
 this is the first time anything checked.
 
@@ -5535,8 +5537,8 @@ superseded by web-and-households 04/05/06.
 
 ## 2026-09-08 - Hosting reopened: an always-on Oracle VM, Postgres in compose, Pay As You Go
 
-Kevin, on being told the Cloud Run cold start measured 5.4 s: *"why cold start? wont the linux vm we
-host on be always on"* and then *"we are reopening the oracle VM. new hosting decisions."* Asked the two
+Kevin, on being told the Cloud Run cold start measured 5.4 s, asked why there was a cold start at
+all when the Linux VM they host on is always on, and then: *"we are reopening the oracle VM. new hosting decisions."* Asked the two
 forks: Postgres moves onto the VM in compose (the `full` profile the compose file already defines),
 and the OCI tenancy upgrades to Pay As You Go.
 
@@ -5565,14 +5567,14 @@ and user signup etc. then open shows calendar and todo lists. i'll do the oracle
 need to rush to deploy it. do it right."*
 
 Three things settled by that sentence. **Ticket 03 is built in full** - signup, household creation
-and invite codes, not the one-wife slice that would have got her signed in this week; the narrow
+and invite codes, not the single-member slice that would have signed one person in this week; the narrow
 session-auth dispatch already in flight becomes its foundation rather than its replacement.
 **Ticket 05's route table is unchanged and was already right**: `/login`, `/signup` + `/join/<code>`,
 `/` as Today, `/lists`, `/settings/household`. And **the deploy stops being the pacing item** -
-Cloud Run was offered as the fast path to his wife's iPhone this week and explicitly declined in
+Cloud Run was offered as the fast path to a second member's iPhone this week and explicitly declined in
 favour of doing it properly, with the Oracle VM (ticket 13 section 1) moving to Kevin's own hands.
 
-The first user is his wife, into the existing "Home" household. Parents come later, which is what
+The first user is a second member, into the existing "Home" household. Parents come later, which is what
 makes the invite-code path worth building rather than a second household nobody needs yet.
 
 ## 2026-09-10 - "Excelsior" wakes and "that will be all" sleeps
@@ -5604,10 +5606,10 @@ confirms on the phone that the new phrase fires.
 
 ## 2026-09-10 - Kratos, and handing the conversation to another companion by voice
 
-Kevin asked for both in one sentence: *"I want to be able to switch voice personas by voice 'hey can
-i talk to dorothy' switches to dorothy. Also create another persona called Kratos, exact god of war
-personality (the newer versions where hes old and wise) epitome of masculinity, stoicness and
-wisdom. i talk to him when im feeling lazy to do things i should etc."*
+Kevin asked for both in one sentence: switching voice personas by voice, so that asking for Dorothy
+by name hands the conversation to her; and a new persona called Kratos, written as the God of
+War character in its later, older and wiser form - masculinity, stoicism and wisdom - to be talked
+to when he wants pushing on something he has been putting off.
 
 **Kratos is the third built-in persona** (`ai/Personas.kt`), the later restrained one rather than
 the Greek-era berserker, on "Algenib" - the only curated voice Google describes as Gravelly. Being a
@@ -5634,10 +5636,10 @@ gets the same spoken handover the voice path does.
 
 ## 2026-09-10 - the HOME restructure, and three decisions taken on delegated taste
 
-Kevin, on the Android app: *"calendar home page > today's plan > no need since we have bio to do
-list. the advisor would tell me what would be a good daily todo list for workouts > and populate it
-that way. A news feed page > pulled from my gmail or just rss feeds. thinking of retiring meters
-page. just everything on home page (rename it from calendar)"* - then, on being handed the three open
+Kevin, on the Android app: the home page becomes the calendar; no separate today's plan, because
+the Bio to-do list already covers it and the advisor can propose a daily workout list and populate
+it that way; a news feed page pulled from mail or plain RSS; the meters page probably retires; and
+everything sits on the home page, renamed from Calendar - then, on being handed the three open
 decisions the map produced: **_"run everything with your taste"_**.
 
 So 01, 04 and 06 below were decided by Opus, not by Kevin, and that is recorded here rather than left
@@ -5690,7 +5692,8 @@ out to matter, that is a real reason to reopen it, with an argument, by Kevin.
 
 ## 2026-09-11 - `read_calendar` reads both row kinds, and the gap it left open for three weeks
 
-**Kevin:** *"the AI doesnt see anything thats due on sunday for sch. i asked it and it didnt know."*
+**Kevin** reported that the assistant could see nothing due that Sunday for his coursework; he asked
+it directly and it did not know.
 
 Seven assignments were due that Sunday. Every one is `kind = task`; the tool asked for
 `kind = event`; the model was handed an empty window and said so, which reads exactly like "you have
@@ -5703,7 +5706,7 @@ day. Assignments were unreachable by voice entirely, which is also an ADR 0035 g
 with a weak hands path, one with no path at all.
 
 **The dates were always right, and that is worth recording**, because the first suspicion was a
-timezone fault. These rows carry `allDay = 0` and a true instant (Canvas writes an 11:59pm local
+timezone fault. These rows carry `allDay = 0` and a true instant (Canvas writes an end-of-day local
 deadline as `04:59Z the next day`), so the local-window bucketing already placed them correctly. Only
 the `kind` filter was wrong.
 
@@ -5712,7 +5715,7 @@ source-reading passes got this wrong in opposite directions - stale comments cla
 TASK rows yet, while 145 existed. One pull from the device settled it in seconds.
 
 **It then sat unfixed on the phone for five more days**, because the fix was committed and the APK
-was never installed. On 2026-09-16 Kevin asked why the assistant could not see a MATH 3391 discussion
+was never installed. On 2026-09-16 Kevin asked why the assistant could not see a STAT 2300 discussion
 due the next night; the row was correct, the code was correct, and the build on the device predated
 the fix. A fix that is not installed is not a fix.
 
@@ -5777,8 +5780,8 @@ Standing rule, so it binds the next surface built on ticks: [[0049-a-tick-is-a-t
 
 ## 2026-09-16 - A tick renders at the speed of a local write
 
-**Kevin:** *"tickking a box on both phone and laptop is slow, takes maybe 1 sec for the tick to
-register."*
+**Kevin** reported that ticking a box was slow on both the phone and the laptop, taking about a
+second to register.
 
 The same mistake in two codebases: **both surfaces waited for the server to confirm something they
 already knew.** The web checkbox read its state from the `/api/changes` payload, so a tap waited for
@@ -5916,11 +5919,10 @@ completion (backend-etl 05) is not needed for now and is parked KIV.
 
 ## 2026-09-27 - HOME becomes a launcher, and the phone's look goes soft
 
-**Kevin:** *"i want a complete redesign of the home page. right now it needs scrolling. a calendar,
-then lists then whatever scrolls down. i want a single non scrolling landing page with buttons i can
-click to open up and navigate to different pages and reports. every list should be like a card icon
-that i can open. the lists now also doesnt look very appealing. it should look like an actual
-list."*
+**Kevin** asked for a complete redesign of the home page. It scrolls today - a calendar, then
+lists, then whatever follows. He wants a single non-scrolling landing page of buttons that open and
+navigate to the other pages and reports, every list a card icon he can open, and the lists
+themselves to look like actual lists rather than their present shape.
 
 Settled in one interview and a clickable prototype canvas, every call his:
 
@@ -5928,7 +5930,7 @@ Settled in one interview and a clickable prototype canvas, every call his:
 - **A today card over a 2 x 4 grid of tiles**, nothing scrolling: Calendar, Lists, Money, Body,
   Fleet, Recordings, News, Reports. The calendar moves to its own route. The meter bands retire;
   a breach becomes that tile's status, in words.
-- **Groceries is a list, not a tile** - *"grocery is just a list no?"* The receipts page is reached
+- **Groceries is a list, not a tile**, on his reading that groceries are just a list. The receipts page is reached
   from Money.
 - **Recordings keeps one-tap record on its tile.**
 - **A list opens Keep-style**: tick in place, ticked items sink into a collapsible group, add
@@ -5997,7 +5999,7 @@ Still open: 04 (how the phone consumes it), 07 (ingestion over MCP), 08 (public 
 Kevin, interviewed for `.scratch/web-revamp/spec.md`: *"revamp it. both desktop and mobile pwa."*
 
 - **Scope:** the full web client in one map: look, shell, settings, every aspect screen, push.
-- **Two surfaces by viewport** (ADR 0053): Kevin's workbench at 1024 px and up, Mia's family view
+- **Two surfaces by viewport** (ADR 0053): Kevin's workbench at 1024 px and up, a second member's family view
   below. Rendered as different trees, never CSS-hidden. Records the 2026-09-12 two-surfaces ruling,
   which never got an entry here.
 - **Look: soft Material light, with dark following the system** (ADR 0053). Picked "C" from three
@@ -6005,7 +6007,7 @@ Kevin, interviewed for `.scratch/web-revamp/spec.md`: *"revamp it. both desktop 
 - **Private rows, server-enforced** (ADR 0052, amends 0045): *"canvas and my class schedules should
   be only mine no? shared ones give it a distinct color like pink."* Imports private, hand-made rows
   shared by default.
-- **Mia's PWA:** today, ticks, add/edit events, groceries as a shared checklist, spend this month on
+- **The second member's PWA:** today, ticks, add/edit events, groceries as a shared checklist, spend this month on
   BofA checking and card. iPhone.
 - **Ledger source is the daily BofA activity pull, not statements** (*"we dont use statements
   anymore"*); the web reviews and categorises, never ingests. Kevin confirms the pull has run
@@ -6039,8 +6041,8 @@ Vosk grammar over the buffered ~2 s before Gemini opens. A hit Vosk rejects is l
 ## 2026-10-03 - "Excelsior" dropped; the wake phrase is "hey <companion name>" only
 
 Kevin: "just keep hey alfred." On-device (A25 logcat, 2026-10-03) "excelsior" never fired, under
-Vosk-only (11:40-12:33) or the two-stage spotter (12:34:01: VAD on, no KWS hit), while "hey alfred"
-fired first try (12:34:13: KWS hit, confirm accept, Gemini opened). Supersedes the 2026-09-10 entry
+Vosk-only over the first stretch, or the two-stage spotter (VAD on, no KWS hit), while "hey alfred"
+fired first try twelve seconds later (KWS hit, confirm accept, Gemini opened). Supersedes the 2026-09-10 entry
 above for the wake half; "that will be all" sleeps unchanged. `WakePhrases.WAKE` is gone;
 `grammar(name)` is `["hey <name>"]`, or EMPTY for a blank name. Wake-word ticket 09's rule is
 live again: `WakeWordEngine.start` and `WakeKeywords.build` refuse a blank name in words.
@@ -6050,7 +6052,7 @@ live again: `WakeWordEngine.start` and `WakeKeywords.build` refuse a blank name 
 Kevin reopened the §3 drop. Asked how far voice navigation could go on the existing Google Maps
 hand-off (`open_navigation`, built and verified on the phone 2026-08-19), he was shown the ceiling:
 once Google Maps is open, LEGION cannot touch it. No public API reroutes, adds a stop, cancels, or
-reports the next turn or ETA. Kevin: *"how about mapbox? me as a single user should be free"*, then
+reports the next turn or ETA. Kevin raised Mapbox, expecting a single user to fall inside its free tier, then ruled:
 *"full mapbox native. i want max voice functionality"*.
 
 - **Cost is not an objection, as already found 2026-07-08.** Free tier (mapbox.com/pricing, read
@@ -6082,8 +6084,8 @@ the SDK, and 2.7.2 / 2.10.1 forbid storing Mapbox results.
 
 ## 2026-10-03 - Mapbox licence risk accepted; the token lives per phone
 
-Kevin on Product Terms 1.2.2: *"covers a phone app. im not gonna email mapbox man its just a hobby
-app for my self."* The clause stays ambiguous; the risk is accepted knowingly
+Kevin on Product Terms 1.2.2: he read it as covering a phone app, and declined to write to Mapbox
+for clarification on a personal hobby app. The clause stays ambiguous; the risk is accepted knowingly
 (`.scratch/mapbox-nav/issues/13-*.md`). Token placement delegated to Opus: per phone in `KeyVault`
 via Setup, plus a dev token baked from the `MAPBOX_ACCESS_TOKEN` Gradle property, `-Pnokey` baking an
 empty one (`issues/08-*.md`).
@@ -6112,32 +6114,32 @@ on leaving the nav screen (ticket 07).
 
 ## 2026-10-04 - The household bought log, and the assistant on the web
 
-Kevin: *"wife wants to be able to keep track when we bought certain household items. like shampoo
-etc."* and *"give the web/phone app a chatbox + push to talk same like my android app"*. Interviewed
-the same day; Mia is on an iPhone and uses the web app only.
+Kevin asked for a way to keep track of when the household bought certain items, shampoo and the
+like, and for *"give the web/phone app a chatbox + push to talk same like my android app"*. Interviewed
+the same day; the second member is on an iPhone and uses the web app only.
 
 - **Bought log** (`.scratch/purchase-log/`): a bought entry is its own record (item, date, who;
   optional store, price as entered, quantity / note), household-shared with an optional private flag
   (ADR 0052's model). **A tick on the Groceries list logs a purchase by itself** (ADR 0055, narrowing
   ADR 0049 for that one list); every other list stays "ticked".
-- **Web assistant** (`.scratch/web-assistant/`): a chatbox and a LIVE voice conversation on Mia's
+- **Web assistant** (`.scratch/web-assistant/`): a chatbox and a LIVE voice conversation on the second member's
   PWA and Kevin's web workbench, plus a typed chatbox on Kevin's Android app answering in text only.
   Reaches everything the engine holds, with private rows staying private. Runs on the household key
   held by the engine, which mints short-lived tokens; no key ever reaches a browser (ADR 0056).
   History is session-only.
 
-## 2026-10-04 - Bought log details, and Mia's companion is Dorothy
+## 2026-10-04 - Bought log details, and the second member's companion is Dorothy
 
 `.scratch/purchase-log/`: past Groceries ticks are imported as bought entries with "logged by: not
 recorded"; lookups search loosely and always name the entry they matched; **the phone reaches the
 bought log online only** (Kevin's deliberate exception to the Room-replica rule, server down said in
-words). Opus proposed the table and hook details in ticket 01 for Kevin to veto. On the web, Mia's
+words). Opus proposed the table and hook details in ticket 01 for Kevin to veto. On the web, the second member's
 assistant is **Dorothy**, the existing companion (Kevin: *"give that to her"*).
 
 ## 2026-10-04 - Web assistant: browser runs tools via the engine, build first, screen lock ends it
 
 Kevin on `.scratch/web-assistant/`: live voice on an iPhone PWA is viable with caveats (research 01);
-Mia is on iOS 27; **no device spike first, build it all and test after**; screen lock or app switch
+the second member is on iOS 27; **no device spike first, build it all and test after**; screen lock or app switch
 ends the conversation; **the browser executes tool calls by calling a session-authenticated engine
 endpoint** (never `/mcp`). Opus proposed, for veto: shared prompt clauses generated from one file for
 Kotlin and TypeScript, the engine assembling the web prompt into the locked token, companions per
@@ -6229,14 +6231,15 @@ tool returned it.
 
 ## 2026-10-07 - Merchant aliases: a rename shown over the bank's text
 
-Kevin asked that card rows reading "JOHN NAUS MD PA COLLEYVILLE TX" show as Walmart. Ledger rows are
-gate-only and immutable, so the bank's `description` is never rewritten. Offered a display-only rename
-layer, a recategorisation, or hiding the rows, Kevin picked the rename layer, then: *"just add straight
-to server. basically anything john naus just show as walmart. nothing manual. auto."*
+Kevin asked that card rows whose bank descriptor names the billing operator rather than the store
+show instead as the retailer he actually shopped at. Ledger rows are gate-only and immutable, so the bank's `description`
+is never rewritten. Offered a display-only rename layer, a recategorisation, or hiding the rows,
+Kevin picked the rename layer, and ruled that the alias go straight to the server and be applied
+automatically, with nothing done by hand.
 - **`merchant_aliases`** (substring to display name, household-scoped, oldest live match wins) changes
   what every surface SHOWS. Category rules, dedup, transfer detection and the gate keep reading the
   bank's text. A row with an alias says "Bank text: ..." in words on its detail.
-- His rule ("JOHN NAUS" to "Walmart") was written to the live engine directly, not seeded in code:
+- His own alias row was written to the live engine directly, not seeded in code:
   clone-and-run must not inherit one household's renames.
 
 ## 2026-10-09 - Places are saved by address; the prompt ceiling rises to 24,000
@@ -6253,7 +6256,7 @@ to addresses? so i can say hey save this palce > its addres is X"*.
 - **Live setup payload ceiling 23,800 -> 24,000 tokens.** `rename_place` and the data-access honesty
   line did not fit. Offered raising, trimming other tool descriptions, or dropping voice rename, Kevin
   chose raising. Kevin had ruled the previous raise on 2026-10-05.
-- Kevin declined restoring the old Katy "home" coordinates from a backup.
+- Kevin declined restoring the old "home" coordinates from a backup.
 
 ## 2026-10-09 - HOME becomes the calendar (prototype A); a map app may sit in the Maps bucket
 
@@ -6438,10 +6441,11 @@ now pulls them into Room (`backend/ObdSamplePull.kt`) and the screen keeps readi
   `created_at` order, so each arrival walk starts five minutes before the stored cursor (deduped);
   a batch that commits within five minutes of its statement start is still picked up.
 
-## 2026-10-18 - Tetris, built in, and a score race with Mia through the engine (Kevin)
+## 2026-10-18 - Tetris, built in, and a score race with a second member through the engine (Kevin)
 
-Kevin: *"i want tetris on there. also i wanna be able to play multiplayer with my wife on her pwa.
-elt me invite her, she gets a notification on her phone and accepts and we play together."*
+Kevin asked for Tetris in the launcher, and for multiplayer against another household member on
+their PWA: he invites them, they get a notification on their phone, accept, and the two play
+together.
 
 - **Tetris is built into LEGION**, on the phone (Compose) and the PWA (React), solo and multiplayer.
   It sits in the Games sheet beside the ROM shelves; it is not a ROM and needs no emulator.
@@ -6451,8 +6455,8 @@ elt me invite her, she gets a notification on her phone and accepts and we play 
 - **The engine keeps transient match state only (Kevin).** Invite, seed, clock and live progress,
   deleted after the match ends or the invite expires. No scores, no history, no leaderboard. This
   AMENDS ADR 0058's "nothing reaches the engine"; ADR 0060.
-- **Invites go both ways, always (Kevin).** Kevin to Mia: a Web Push on her PWA, sent at invite
-  time (not by the 5-minute `push_dispatch` cron). Mia to Kevin: the phone has no push channel
+- **Invites go both ways, always (Kevin).** Kevin to the second member: a Web Push on that PWA, sent
+  at invite time (not by the 5-minute `push_dispatch` cron). The second member to Kevin: the phone has no push channel
   (Firebase stays banned), so the phone polls the engine for invites in the background and raises
   a local notification. Its battery cost was stated when he chose it.
 - **Transport is polling, not websockets (orchestrator call, stated not asked).** The engine is
@@ -6549,7 +6553,7 @@ Kevin: "notify me when canvas login expires". Built, no server change.
 
 ## 2026-10-22 - Dumb phone mode (Kevin)
 
-Kevin, for his ADHD: no social media, no doomscrolling, only Mia and his parents reach him. Designed
+Kevin, for his ADHD: no social media, no doomscrolling, only a second member and his parents reach him. Designed
 through an interview and clickable prototypes (home layout A, text list). ADR 0062. All rulings:
 
 - **Toggle: manual only.** A switch, a Settings row and a quick-settings tile. No schedule, no voice,
@@ -6557,7 +6561,7 @@ through an interview and clickable prototypes (home layout A, text list). ADR 00
 - **Leaving: 60 s wall-clock wait, persisted, then the typed sentence** "I am choosing to leave dumb
   mode" (case-insensitive, trimmed). "Stay in dumb mode" is the primary button.
 - **Home A:** clock, date, "dumb for 2h 14m · 4 days in a row", Phone, Messages, Maps, Camera, Music,
-  To-dos, Calendar, Books, Assistant, footer "Mia, Mom, Dad get through", Leave. LEGION is the default
+  To-dos, Calendar, Books, Assistant, footer "Member B, Mom, Dad get through", Leave. LEGION is the default
   HOME app. Maps is LEGION's own nav screen (ADR 0054). Games hidden. System-app entries resolve through
   role and intent lookups, never a hard-coded OEM package.
 - **Allowlist.** Everything not kept is hidden, including the browser; new installs hidden automatically.
@@ -6610,9 +6614,8 @@ Approved by Kevin with the matrix batch, 2026-10-23.
 
 ## 2026-10-24 - Matrix mode blocks feeds, not everything (Kevin)
 
-Kevin: *"i like matrix mode. its good. the thing is some stuff is hidden that i would like. honestly i
-just need to stop the social media apps... basically everything thats not a distraction or causes me to
-doomscroll should stay."* Decided by interview, 2026-10-24.
+Kevin approved Matrix mode but said too much was hidden: what he needs blocked is the social media
+apps, and everything that is not a distraction should stay. Decided by interview, 2026-10-24.
 
 - **Blocklist replaces the allowlist.** An app is blocked when Android tags it Social, Video or News
   (`ApplicationInfo.category`), OR it is on a seed list of known feed apps (Instagram, TikTok,
@@ -6640,7 +6643,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-10-23 - Brief News: section-level sources when grounding ties no bullet (Kevin)
 
-- The first live brief (2026-10-23 05:00) dropped News entirely: "no item tied to a web source".
+- The first live brief (2026-10-23, that morning) dropped News entirely: "no item tied to a web source".
 - Kevin chose the fallback over a strict drop: bullets ship without links of their own, and the
   section's sources sit on one trailing line that says in words they are not per item.
 - Amends `.scratch/ai-upgrade/issues/02-daily-brief.md` ruling 3 (News: "each with its source
@@ -6853,8 +6856,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-10-28 - Voice: a conversation audit log in logcat (Kevin)
 
-- **Kevin, after the A25 lookup test:** *"cant u like record what i say in the logs too so u can see
-  everything and audit"*. The `fast` build cannot be read over Room, so the audit lives in logcat.
+- **Kevin, after the A25 lookup test:** asked that what he says be recorded in the logs too, so the
+  whole turn can be seen and audited.. The `fast` build cannot be read over Room, so the audit lives in logcat.
 - **What:** `LIVE_AUDIT` lines (`service/LiveAudit.kt`): what the user said, what the assistant said,
   each tool's args and result, turn and mic events. Logcat only, never the on-screen probe log.
   `tools/voice_audit.py` turns a capture into a timeline. Async-lookups ticket 05.
@@ -6867,8 +6870,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-10-28 - Phone: a livelier register for Alfred, the manner and not the lines (Kevin)
 
-- **Kevin:** *"right now he sounds very generic, maybe because its alfred, can we make him more
-  lively and have a bit of personality? like you know how tony stark's jarvis talks"*. The day's
+- **Asked:** Alfred sounds generic; make him livelier, with some personality, in the register of
+  Tony Stark's JARVIS.. The day's
   `LIVE_AUDIT` capture: every answer correct, every answer flat, the same holding line before each
   lookup, a bare figure with no read, a stock butler sign-off.
 - **Ruling, agreed with Kevin:** quick, dry, quietly amused, competent. The MANNER of a film-butler
@@ -7209,8 +7212,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-05 - Patch Alfred over the internet: the pack and self-update (Kevin)
 
-- **Asked:** *"today we deploy via adb installs, is there anyway to patch alfred over the
-  internet"*, then *"lets do it. write a plan then we implement"*. Map `.scratch/alfred-ota/`.
+- **Asked:** whether Alfred could be patched over the internet instead of by adb install, then
+  *"lets do it. write a plan then we implement"*. Map `.scratch/alfred-ota/`.
 - **Ruled, all five as recommended:** (1) the Alfred pack is a repo file changed by an engine
   deploy, not Postgres rows; (2) a locked set (crisis, safety, honesty, ask-before, no-passwords)
   stays compiled into the app and no pack may override it; (3) always ask before installing, by
@@ -7238,8 +7241,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-05 - Centralized memory and the ID vault (Kevin)
 
-- **Asked:** *"alfred's memory should stay on a centralized place, like the engine no? i thought
-  we did memories that way"*, then *"yeah lets do it. centralized memory. and the id vault"*. Map
+- **Asked:** whether Alfred's memory should not live in one central place, the engine, since he had
+  thought memories already worked that way; then *"yeah lets do it. centralized memory. and the id vault"*. Map
   `.scratch/memory-and-vault/`.
 - **Ruled:** a memory is private to the member it is about, a shared household fact may be marked
   shared (ADR 0052's ownership); the Claude worker on the Alienware may read and write (*"claude
@@ -7247,8 +7250,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   forgettable, and forgetting is a hard delete. The ID vault: phone only, behind fingerprint,
   never on the web, never readable by Claude, never spoken, never sent to a model, never logged;
   passport, NRIC, SSN, A-number, bank accounts; plate, VIN and insurance policy are ordinary data.
-  A `plate` field on the vehicle. Later the same day: *"can i enter it on the pc man, but later.
-  not important now"* (web entry, write-only, KIV).
+  A `plate` field on the vehicle. Later the same day he asked to be able to enter them on the PC,
+  but later: not a priority now (web entry, write-only, KIV).
 - **Reverses** the engine-mcp ruling of 2026-10-02 (no engine tool reads or writes memory) for
   memory v2. The legacy memory tables stay out of the record tools.
 - **Decided in the map, open to Kevin:** lexical recall with two decay classes, embeddings next
@@ -7274,14 +7277,14 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-05 - The fat-loss loop; Body is the seventh aspect (Kevin)
 
-- **Asked:** the goal *"get lean, keep muscle"*; an inventory and proposal for the Body side, and
-  Kevin's answers to its twelve questions the same day. Later: *"revamp body screens too then,
-  today it has a bunch of checklists and the visuals are a bit hard to understand"*. Map
+- **Asked:** a body-composition goal, lose fat and keep muscle; an inventory and proposal for the Body side, and
+  Kevin's answers to its twelve questions the same day. Later he asked for the Body screens to be
+  revamped too: a pile of checklists whose visuals were hard to read. Map
   `.scratch/fat-loss/`.
 - **Ruled:** Body is the seventh CLAUDE.md section 1 aspect (*"10 ok"*); no syncing scale, no watch
   (*"4 no"*), so no Health Connect now (parked); food logging *"mostly voice + saved meals"*, kcal and
   protein only, carbs and fat optional; gym access, three full-body strength days by default;
-  *"i can follow any kind of diet i dont have food preferences"*; his wife won't use it (*"8 no"*),
+  he follows no particular diet and has no food preferences; a second member will not use it (*"8 no"*),
   so the body tables stay household-shared and **that rests on this ruling**; a Monday 8 am trend
   line, on, silenceable in one instruction; weight, steps, sleep and daily totals may go to the
   engine and Gemini, never heart rate; no medical condition or medication (*"12 no"*). A weekly
@@ -7299,7 +7302,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 - **Asked:** "stop keeping a voice session open while idle; only open one when you tap or say the
   wake word." **Kevin: "OK".**
 - **Why:** prod LIVE_AUDIT on the A25 (263092342): after a conversation a socket reopened at once,
-  Google closed it for client inactivity every ~2 minutes, and it reopened, 19:39 to 20:17, with
+  Google closed it for client inactivity every ~2 minutes, and it reopened over about 40 minutes, with
   `superseded` and "already connected to an existing client" collisions. Each reopen re-sent the
   ~16k-token setup (ticket 24's measure) and cost a `cold_start_ms` of 500-1000.
 - **Supersedes** hands-and-senses ticket 24's 10 minute idle window (2026-08-22, "yeah take it"),
@@ -7314,8 +7317,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-06 - Workouts the engine writes, ticked off on the phone; the old tickboxes go (Kevin)
 
-- **Asked:** *"i wanna have it make workouts for me that i can tick off, log meals etc. right now
-  theres the old workout tickboxes left over from before and its confusing"*. Kevin picked
+- **Asked:** workouts LEGION makes that he can tick off, plus meal logging, noting that the old
+  workout tickboxes left over from before were confusing. Kevin picked
   **direction 2** of the workout prototypes (a Body card that says today's targets and why; Start
   opens a session screen, one row per set, big tick, tappable numbers), with the week-1
   calibration card.
@@ -7371,8 +7374,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-06 - The head unit updates itself too (Kevin)
 
-- **Asked:** *"can the headunit also receive updates like this instead of me having to install a
-  new apk everytime"*, then *"yes"*. This un-parks the head unit bullet of
+- **Asked:** whether the head unit could receive the same updates instead of a new APK install each
+  time, then *"yes"*. This un-parks the head unit bullet of
   `.scratch/alfred-ota/issues/08-later.md` (KIV 2026-11-05, "least important").
 - **Ruled:** the head unit gets the phone's updater (ADR 0072 half B): engine release
   `app=headunit`, sha256 and signer verified, never a downgrade, never installed without Kevin's
@@ -7394,7 +7397,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   the engine's bucket, and it must carry no dev key. Written into ticket
   `.scratch/alfred-ota/issues/09-head-unit-updater.md`, `headunit/CLAUDE.md` section 15 and
   `headunit/README.md`.
-- **Asked:** *"seemed the car build had outdated models? can u check"*. It had: Live ran
+- **Asked:** whether the car build still carried outdated models, and to check. It had: Live ran
   `gemini-3.1-flash-live-preview`; the phone moved to `gemini-3.8-live` on 2026-09-27 (`29057645`).
 - **Built on `feat/headunit-ota`:** Live on `models/gemini-3.8-live` with the phone's 3.8 rules
   (every declaration `BLOCKING`; no `thinkingConfig`, `proactivity` or `enableAffectiveDialog`;
@@ -7407,9 +7410,9 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-06 - Body coach 2: change the plan by asking, and what to eat from what's left (Kevin)
 
-- **Kevin, by voice:** *"will i be able to tell it like hey i wanna change the workouts. recommend
-  me alternatives etc and change it accordingly"*, *"or ask it what to eat based on what i have
-  left calorie and macro wise etc?"*, *"that aligns with my weight goals"*. He said go. Map
+- **Kevin, by voice:** asked whether he could tell Alfred he wants the workouts changed and have it
+  recommend alternatives and apply them, and whether he could ask what to eat from the calories and
+  macros he has left; he confirmed both fit the goal he had set. He said go. Map
   `.scratch/body-coach-2/`.
 - **Later the same day:** *"i dont really need detailed screens for this. i just want a simple
   checklist of workouts to do and calories and macroes ive consumed + whats remaining. most of it
@@ -7461,7 +7464,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   grocery list; (d) plan adjustment proposals (a stall or deload, a kcal change). **No
   workout-due or "you haven't trained" nudge.**
 - **6. Macros: A.** Targets are kcal and protein only; carbs and fat are shown when known, with no
-  target (*"im not too particular or strict about macros"*).
+  target, because he is not strict about macros.
 - **7. Weigh-ins: C, weekly.** No waist, no photos; extra weigh-ins still count. The calorie
   adaptation needs **at least 4 weekly points (about 28 days)**, not 14 days.
 - **8. Tone: B, coach-style.** Short, the reason in one clause; "more detail" gets the full why.
@@ -7495,7 +7498,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   four-weigh-in adaptation, stalls, deloads) or Kevin's ("my knee hurts", "4 days now");
   accepting one makes a new version with a one-line reason, so "what changed in my plan" reads
   from the history.
-- **The rate:** Alfred picks it by rule. For "get lean, keep muscle" while lifting, **0.5% of
+- **The rate:** Alfred picks it by rule. For a lose-fat-keep-muscle goal while lifting, **0.5% of
   bodyweight a week**; the clamp is unchanged (0.25 to 1.0).
 - **Protein** stays the existing rule. **A target he sets himself by voice stays his** until he
   says "let Alfred set it". **The goal plan generator no longer writes a meal target**: one owner.
@@ -7605,8 +7608,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-10 - Worker workflows: named jobs and recurring runs on the Claude worker (Kevin)
 
-- **Kevin's words:** *"legion can call u or the worker session. So certain repeated things can
-  turn into workflows etc."* (2026-11-09, planning); *"All ur picks"* (2026-11-09, the four
+- **Asked:** that LEGION be able to call Claude or the worker session, so repeated things can turn
+  into workflows (2026-11-09, planning); *"All ur picks"* (2026-11-09, the four
   rulings); *"yeah as per ur recs"* (2026-11-10, build).
 - **Ruled, all as recommended (`.scratch/worker-workflows/issues/01-rulings.md`):** R1 a workflow
   is a private worker skill plus `workflow.json` on the laptop, the engine a derived cache; R2
@@ -7885,9 +7888,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-10 - Box breathing and Field on the Typeset home (Kevin)
 
-- **Kevin's words:** *"box breathing. when i feel like scrolling or etc. i want to have a button to
-  press that opens up a box breathing gif in full screen."* and *"same for compass. add to ui
-  somewhere coherent."*
+- **Asked:** a button that opens a full-screen box-breathing GIF, to press instead of opening a
+  feed, and *"same for compass. add to ui somewhere coherent."*
 - **Ruled:** both ship with Typeset (ADR 0081). Box breathing is a native full-screen Compose
   animation in the Typeset style, not a GIF (assets are bundled, CLAUDE.md section 7): an ink dot
   traces a square, in, hold, out, hold, 4 s each, the phase word and a count in Source Serif, the
@@ -7979,7 +7981,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-13 - Release and deploy from GitHub, no laptop; injection guard (Kevin)
 
-- **Kevin's words:** *"How can we get past the laptop limits... Im not home now and laptop is off"*,
+- **Asked:** how to get past the limits of needing the laptop, which was not available at the time,
   then *"yes to all4"* to: merge the session branch into dev and main; set up engine deploys from
   GitHub (Workload Identity Federation, done from Cloud Shell, project `legion-engine-260906`);
   refuse write tools in a turn that read third-party text; and a GitHub release workflow for the
@@ -7991,7 +7993,7 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
   map had placed there. **Accepted with open eyes:** the signing key lives in GitHub secrets; anyone
   holding it could sign an APK the phone accepts as an update.
 - **A new key from the phone was asked about; the agent advised against it, Kevin's call is open**
-  (*"Can we sign another apk from the phone"*): Android installs an update only when it is signed by the installed app's key, so a new
+  (whether another APK could be signed from the phone): Android installs an update only when it is signed by the installed app's key, so a new
   key means uninstalling LEGION, which wipes the phone-only ID vault (ADR 0076) and settings, and
   breaks Spotify, Drive backup and Google sign-in, whose clients are keyed to the current SHA-1
   (`app/build.gradle.kts`, `fast` comment). The advised path: the laptop's existing key goes into
@@ -8001,11 +8003,10 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-13 - Alfred greets like a person, from your real day (Kevin)
 
-- **Kevin's words:** *"Throughout the day Alfred should reply or greet as if he was a person... if
-  it's morning he would go. Hey how's it going, how did the (event from yesterday) go last night?
-  Or if he sees i had an exam to study on the todo he'd say hey how's the studying going etc...
-  Like now I'm in Georgia. He would say hey don't forget to check out x thing that is must do where
-  I am etc."*, then, interviewed:
+- **Asked:** that Alfred reply and greet through the day as a person would - in the morning, asking
+  how it is going and how yesterday's event went; seeing study work on the to-do list, asking how
+  the studying is going; and, when he is travelling, naming something worth doing where he is.
+  Then, interviewed:
   - **When:** *"Every tap and wake word and also unprompted. We will move to the kyutai pipeline
     anyways so voice won't be so expensive anymore"*. On Live too, accepting the cost for now.
     This reverses ADR 0087's "a tap asks the model for nothing" (ADR 0091).
@@ -8184,8 +8185,8 @@ doomscroll should stay."* Decided by interview, 2026-10-24.
 
 ## 2026-11-19 - Audio-first also on the phone's own loop; the voice contract's open questions answered (Kevin)
 
-- **Audio-first (about 23:15):** *"audio first earlier . together with the speed branch."* Audio-first is allowed on the phone's own loop behind a Settings switch (branch `feat/phone-audio-first-1119`), and on the engine it moves to right after the speech stage (V1). This replaces the same day's "audio-first is built only on the engine". The phone wiring is transitional and goes with the phone's own loop.
-- **Contract v1 section 14 (about 23:30):** *"1 ok 2 ok 3 ok 4 ok 5 later 6 ok 7 later"*.
+- **Audio-first (later the same night):** *"audio first earlier . together with the speed branch."* Audio-first is allowed on the phone's own loop behind a Settings switch (branch `feat/phone-audio-first-1119`), and on the engine it moves to right after the speech stage (V1). This replaces the same day's "audio-first is built only on the engine". The phone wiring is transitional and goes with the phone's own loop.
+- **Contract v1 section 14 (later still):** *"1 ok 2 ok 3 ok 4 ok 5 later 6 ok 7 later"*.
   - Q1: when the turn models fail, every client falls back to the 1.2 s silence rule; the conversation does not end.
   - Q2: the barge-in verdict grace stays per client (web 320 ms, phone none), to be unified after a measurement in the car.
   - Q3: the engine's generic acknowledgement stops when the client plays backchannels; the slow-tool task line stays, spaced after the backchannel.

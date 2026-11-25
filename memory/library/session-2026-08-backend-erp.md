@@ -161,7 +161,7 @@ a bad cutover behind; per-aspect rollback is stop writing to Supabase, restore t
 a Phase 0 gate on 2026-08-25 (the A25 has never been attached to the second machine, `adb devices`
 is empty), over a stated objection - an untested restore is a hope, which is L36's exact shape. It
 is **still owed before the phase 6 mirror deletion**, because deleting the mirror with no proven
-replacement leaves a window with no recovery path at all. **Must be done from the Kwin laptop**
+replacement leaves a window with no recovery path at all. **Must be done from the first laptop**
 (debug keystore lives there; never uninstall to fix a signature mismatch).
 
 **PHASE 0 IS DONE except the device half (2026-08-25).** Both buildable items landed and are
@@ -243,7 +243,7 @@ corpus**, which is ticket 03 ruling 2's real deliverable - two implementations o
 arithmetic now exist and nothing proves they agree.
 
 **PHASE 1 IS DONE except the phone.** Secrets set and the keep-alive workflow run manually and
-concluded success (2026-08-26 00:48Z, `workflow_dispatch`), so the daily 07:00 UTC cron is live.
+concluded success (2026-08-26, `workflow_dispatch`), so the daily 07:00 UTC cron is live. clock-ok: a cron schedule, not a log time.
 
 **ONE user for now (Kevin, 2026-08-25).** The household model is unchanged, it simply has one
 member; adding the second is a dashboard job whenever he wants it, and the schema gives clients no
@@ -277,7 +277,7 @@ unchanged, 168 legacy ledger rows, 71 list items, 5 vehicles.
 
 **`ScheduledBackup` also proved itself on hardware**, both directions: it recorded a real failure in
 words while Drive was unauthorised, then ran automatically and succeeded once it was ("Automatic
-backup: last succeeded Aug 25, 22:19").
+backup: last succeeded Aug 25").
 
 **The historical finding, kept because it still binds any UNREGISTERED machine:**
 A build signed with this machine's debug key fails authorisation with
@@ -287,8 +287,7 @@ reasoned about. **Consequence: the `DatabaseSnapshot` restore exercise cannot ru
 backup and restore both go through Drive - so it stays owed, and stays a gate on the phase 6 mirror
 deletion.
 
-**One console entry unblocks it.** This machine's debug SHA-1 is
-`52:4F:39:23:7E:8B:3B:5B:C2:3A:76:A7:EE:BD:16:ED:82:77:30:07`; registering it as a second Android
+**One console entry unblocks it.** This machine has its own debug SHA-1 (read it with `keytool`; it is not recorded here); registering it as a second Android
 OAuth client for the package makes Drive work from here permanently.
 
 **Also still owed:** the Gemini key and every other `KeyVault` secret must be re-entered by hand.
@@ -318,8 +317,8 @@ silently diverges the live schema from the committed file.
 **OPEN AND MINE: 51 rows on Kevin's live project were falsely marked missed.** `e91a296` made
 `NotesController` read the replica when configured, so `AlarmScheduler`'s start-up sweep saw the
 merged 325-row events table instead of 56 Notes Items and marked 51 historical rows missed, writing
-through to Supabase. Home went from "1 missed" to "51 missed". Stamped 08:37:19-08:37:21, sequential
-- the exact moment the build first launched. **The data was not cleared: that is Kevin's call and
+through to Supabase. Home went from "1 missed" to "51 missed". Stamped within three seconds of each
+other, sequential - the exact moment the build first launched. **The data was not cleared: that is Kevin's call and
 needs the guard landed first, or the next sweep re-marks them.**
 
 **Two consequences of ruling 4's merge that the ticket never followed through**, both unruled:
@@ -407,7 +406,7 @@ Also landed 2026-08-25:
 - **Calendar description blocks merged** (LEGION::v1 sentinel: machine fields reach the model,
   prose does not) - from Kevin's cross-session patch, plus a JSONObject-wrapping fix.
 - **Home flip reverted to classic** (section below); the revert build is pushed but **NOT yet
-  installed - the A25 dropped off adb**. Install MUST happen from the Kwin laptop (debug keystore
+  installed - the A25 dropped off adb**. Install MUST happen from the first laptop (debug keystore
   lives there; never uninstall to fix a signature mismatch).
 - **Wiki-notes research resolved**: video I3bpdgFJCUY = Ben Holmes's llm-wiki pattern (agent does
   the gardening nightly; wiki compiled weekly). Mapping: a Note record type on the Notes aspect,
@@ -495,8 +494,8 @@ owing small on-device verdicts; open: 22 cutover, 23 deferred fleet entities).
 
 **The wake word works and Kevin has used it.** "hey alfred" opens a turn, the assistant
 acknowledges, "nevermind" closes it, and an ordinary "no" does not - all four verified by ear on the
-A25. The greeting no longer assumes a drive and no longer mentions Chicago; Kevin: *"sounds good
-now."*
+A25. The greeting no longer assumes a drive and no longer mentions Chicago, which Kevin confirmed
+sounded right.
 
 **Read `.scratch/wake-word/map.md` first if you are picking up the wake word.** 5 of 12 tickets
 resolved tonight.
@@ -532,14 +531,14 @@ how the mileage bug got diagnosed.
 greeting Kevin approved. Do not assume silence in the trail means silence from the assistant.
 
 **Open and unexplained: `.scratch/hands-and-senses/issues/20-it-said-142k.md`.** The assistant said
-the Jeep was at 142k when the record says 227,612. The data is correct everywhere, that figure is in
+the Jeep was at 142k when the record says 199,612 (an invented figure, the offset preserved). The data is correct everywhere, that figure is in
 no table, the tool returns the right label, and it could not be reproduced. The audit trail now
 exists precisely so the next occurrence can be read rather than guessed at.
 
 ## START HERE - 2026-08-20 - SPOTIFY VOICE, INSTALLED BUT NOT EXERCISED
 
 **Ten of twelve tickets on `.scratch/spotify-voice/` are built, merged to `dev` and pushed.** Suite
-**1747 green** (re-run 2026-08-20 on the Kwin laptop). The APK is now **installed on the A25 and
+**1747 green** (re-run 2026-08-20 on the first laptop). The APK is now **installed on the A25 and
 hash-verified** - it launches, `AriaService` starts, Room v26 opens with no migration error. That is
 all the install proves: **not one Spotify path has been spoken to.** Everything below is
 `built`+`tested`+`installed`, nothing is `on-device` in the sense of having been USED.
@@ -551,13 +550,12 @@ all the install proves: **not one Spotify path has been spoken to.** Everything 
 2. ~~**Install from the OTHER laptop.**~~ **DONE 2026-08-20, and the instruction was written in a
    frame that inverts when you move.** It said "this machine" / "the OTHER laptop" from the SECOND
    laptop, so read from anywhere else it points the wrong way, and it cost a failed attempt. Named
-   absolutely: **the A25's install is signed by the FIRST (Kwin) laptop's
-   `C:\Users\Kwin\.android\debug.keystore`**, SHA-256
-   `4419FEDD4965BB5FD4250DD008266D978DF1CD61A02A1E4E88504B64D05F2FF3`. Verified by pulling the
+   absolutely: **the A25's install is signed by the FIRST laptop's own
+   `~/.android/debug.keystore`**, whose SHA-256 is withheld here. Verified by pulling the
    running `base.apk` off the phone and reading its signer with `apksigner verify --print-certs`,
-   not by trusting a note. **Only the Kwin laptop can `adb install -r` onto the A25.** **NEVER
+   not by trusting a note. **Only the first laptop can `adb install -r` onto the A25.** **NEVER
    uninstall to get around a signature mismatch** - `sync/` has still never executed, so the phone
-   holds the only copy of 18,645 OBD samples, 148 ledger rows and the Keystore-sealed Gemini key.
+   holds the only copy of every OBD sample, every ledger row and the Keystore-sealed Gemini key.
    Check the signer; do not deduce it from whichever machine you happen to be sitting at.
 
 **What landed:** the App Remote spine (it CREATES an active device rather than needing one, so
@@ -641,9 +639,9 @@ Fails at HEAD with the session's work stashed - verified, not assumed. Everythin
   holds a full copy of the database as a fallback, so do not wipe it, but **never write to it.** Both
   phones were identical at the moment of migration and **`sync/` has still never executed**, so
   anything written to the A17k diverges silently and nothing reconciles it.
-  - **Migration verified row-for-row**: 5 vehicles / 54 maintenance items / 2 service records /
-    18,645 obd_samples / 148 ledger rows / 188 ingested_files, and **totals identical to the cent on
-    both sides.** WAL was checkpointed into the main file before the copy and the target's stale
+  - **Migration verified row-for-row**: every table counted on both sides - vehicles, maintenance
+    items, service records, obd_samples, ledger rows and ingested_files - and **totals identical to
+    the cent on both sides.** WAL was checkpointed into the main file before the copy and the target's stale
     `-wal`/`-shm` deleted, so no mismatched journal could replay.
   - **The Gemini key did NOT come across** - it is sealed by the A17k's hardware Keystore, which is
     device-bound by design. Drive authorisation and runtime permissions (mic, calendar) also need

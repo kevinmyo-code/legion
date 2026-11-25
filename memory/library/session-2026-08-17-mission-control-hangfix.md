@@ -21,7 +21,7 @@ See `decisions.md` section "2026-08-17 - Meal-logging hang" for the investigatio
 
 ## Reboot verification of 80a1758 (wireless adb recovery)
 
-**Context:** Commit 80a1758 (2026-08-17 08:15) was reported to start AriaForegroundService correctly on boot. This note verifies the claim.
+**Context:** Commit 80a1758 (2026-08-17) was reported to start AriaForegroundService correctly on boot. This note verifies the claim.
 
 **Test:** deliberate phone reboot on the real A25 (Samsung Galaxy SM-A256U).
 

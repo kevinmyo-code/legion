@@ -17,7 +17,7 @@ browser, stored in one, or typed into one. Each phone still uses its own key.
 
 ## Context
 
-Kevin, 2026-10-04, asked for a chatbox and live voice on the web for Mia (iPhone, web app only) and
+Kevin, 2026-10-04, asked for a chatbox and live voice on the web for a second member (iPhone, web app only) and
 himself. Offered a household key on the server or a key each person pastes into their browser, he
 picked the household key. The engine already holds one (`LEGION_GEMINI_KEY`, used for statement
 PDFs).
