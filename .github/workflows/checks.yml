@@ -2,7 +2,8 @@
 #
 # Findings reviewers kept repeating, turned into checks (tools/checks/):
 #   (a) clock times in docs and comments, (b) code files over 600 lines, (c) schema files declared and
-#   existing ones untouched, (d) em dashes in user-facing copy, (f) the detekt baseline only shrinks.
+#   existing ones untouched, (d) em dashes in user-facing copy, (f) the detekt baseline only shrinks,
+#   (g) hand-written page scripts parse (node --check; the runner has node, no setup step needed).
 #   (e) offhand quotes is not mechanical.
 # Each check reads only what the change ADDS, so existing debt never fails the build; the counts for the
 # whole tree come from `python tools/checks/run_all.py --all`.

@@ -25,6 +25,7 @@ import detekt_baseline  # noqa: E402
 import em_dashes  # noqa: E402
 import file_size  # noqa: E402
 import gitdiff  # noqa: E402
+import inline_scripts  # noqa: E402
 import migrations  # noqa: E402
 from common import FAIL, WARN, Finding  # noqa: E402
 
@@ -34,6 +35,7 @@ CHECKS = (
     ("c", migrations.NAME, "schema files declared, existing ones untouched", "FAIL; WARN with a migration-edit-ok marker"),
     ("d", em_dashes.NAME, "em dashes in user-facing copy", "FAIL strings.xml + copy modules; WARN code"),
     ("f", detekt_baseline.NAME, "detekt baseline only shrinks or re-keys", "FAIL"),
+    ("g", inline_scripts.NAME, "hand-written page scripts parse", "FAIL; WARN with no node on PATH"),
 )
 SKIPPED = "(e) offhand quotes: skipped, not mechanically detectable (intent is not in the text); reviewers keep it."
 SHOW = 40
@@ -41,7 +43,8 @@ SHOW = 40
 
 def run(change: gitdiff.Change) -> list[Finding]:
     return (clock_times.check(change) + file_size.check(change) + migrations.check(change)
-            + em_dashes.check(change) + detekt_baseline.check(change))
+            + em_dashes.check(change) + detekt_baseline.check(change)
+            + inline_scripts.check(change))
 
 
 def gate(base: str, head: str) -> int:
@@ -116,6 +119,12 @@ def count_all(head: str) -> int:
     for name, level, _ in em_dashes.AREAS:
         print(f"      {name} [{level} in the gate]: {per_area[name]}")
     print(f"(f) detekt baseline entries: {detekt_baseline.count(change)} (only a diff can grow or shrink it)")
+    files, blocks = inline_scripts.count(change)
+    scripts = inline_scripts.check(change)
+    print(f"(g) hand-written page scripts: {blocks} blocks in {files} files under .scratch/ and docs/"
+          f" ({_levels(scripts)})")
+    for f in scripts[:10]:
+        print(f"      {f.where()}: {f.message}")
     print(SKIPPED)
     return 0
 
