@@ -179,6 +179,80 @@ class SpotifyMatchTest {
         assertEquals("spotify:track:ug", SpotifyMatch.pick(wrong + real, "Ugly by The Gazette", null)?.optString("uri"))
     }
 
+    // --- 2026-11-24: artist agreement taken from the query, not from the `artist` argument -----
+    // The model left `artist` unset on every music call that went wrong that day, so both rules
+    // below have to work from the query's own words. Invented songs and artists throughout.
+
+    @Test
+    fun `a contained title whose surplus words name another artist is rejected`() {
+        // The title really is inside the request, so containment says yes - and the two words the
+        // request carried beyond it belong to nobody involved. That is the wrong song.
+        val wrongArtist = track("Paper Lanterns", "Hana Reed", "spotify:track:hr", 80)
+        assertNull(SpotifyMatch.pick(listOf(wrongArtist), "paper lanterns north sail", null))
+        // The same title by the artist the request actually named is accepted, on that evidence.
+        val right = track("Paper Lanterns", "North Sail", "spotify:track:ns", 10)
+        assertEquals(
+            "spotify:track:ns",
+            SpotifyMatch.pick(listOf(wrongArtist, right), "paper lanterns north sail", null)?.optString("uri"),
+        )
+    }
+
+    @Test
+    fun `surplus words that are filler or the catalogue's own decoration still accept`() {
+        val c = track("Paper Lanterns", "Hana Reed", "spotify:track:hr")
+        assertEquals("spotify:track:hr", SpotifyMatch.pick(listOf(c), "the paper lanterns song", null)?.optString("uri"))
+        assertEquals("spotify:track:hr", SpotifyMatch.pick(listOf(c), "paper lanterns hana reed", null)?.optString("uri"))
+        // "- Live" is stripped from the candidate title before comparison, so it would otherwise
+        // read as a surplus word the request invented.
+        val live = track("Paper Lanterns - Live", "Hana Reed", "spotify:track:lv")
+        assertEquals("spotify:track:lv", SpotifyMatch.pick(listOf(live), "paper lanterns live", null)?.optString("uri"))
+    }
+
+    @Test
+    fun `a mis-said title word is not treated as surplus`() {
+        // The overlap branch, where the unmatched token is a wrong word rather than extra
+        // information. Rejecting on it would break requests that work today.
+        val c = track("Keep Ya Head Up", "Invented MC", "spotify:track:ky")
+        assertEquals("spotify:track:ky", SpotifyMatch.pick(listOf(c), "keep your head up", null)?.optString("uri"))
+    }
+
+    @Test
+    fun `a title in another script is accepted when the query names the artist and it is the top hit`() {
+        val top = track("紙燈籠", "Hana Reed", "spotify:track:cjk", 40)
+        val other = track("Paper Mill", "Someone Else", "spotify:track:pm", 90)
+        assertEquals(
+            "spotify:track:cjk",
+            SpotifyMatch.pick(listOf(top, other), "paper lanterns hana reed", null)?.optString("uri"),
+        )
+        // Not the top hit: Spotify's own best answer is the only one this rule may promote.
+        assertNull(SpotifyMatch.pick(listOf(other, top), "paper lanterns hana reed", null))
+    }
+
+    @Test
+    fun `an artist name on its own never accepts that artist's foreign-script track as the song`() {
+        val top = track("紙燈籠", "Hana Reed", "spotify:track:cjk")
+        // Nothing is left of the query once the artist's words come out, so there is no title to
+        // have matched and nothing to accept.
+        assertNull(SpotifyMatch.pick(listOf(top), "hana reed", null))
+    }
+
+    @Test
+    fun `the cross-script rule also runs when the model did fill the artist argument`() {
+        val top = track("紙燈籠", "Hana Reed", "spotify:track:cjk")
+        assertEquals("spotify:track:cjk", SpotifyMatch.pick(listOf(top), "paper lanterns", "Hana Reed")?.optString("uri"))
+        // Same two scripts, wrong artist: the title still proves nothing on its own.
+        val notHers = track("紙燈籠", "Another Name", "spotify:track:an")
+        assertNull(SpotifyMatch.pick(listOf(notHers), "paper lanterns", "Hana Reed"))
+    }
+
+    @Test
+    fun `two titles in one script are never treated as unrelatable alphabets`() {
+        assertTrue(SpotifyMatch.noSharedScript("紙燈籠", "paper lanterns"))
+        assertFalse(SpotifyMatch.noSharedScript("Paper Mill", "paper lanterns"))
+        // Punctuation and digits alone decide nothing either way.
+        assertFalse(SpotifyMatch.noSharedScript("1999", "2000"))
+    }
+
     @Test
     fun `Despacito and the audited wrong-song hits never cross`() {
         // S36/S37: a play for Despacito must not land on any of the earlier wrong tracks.

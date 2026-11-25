@@ -26,6 +26,15 @@ import org.json.JSONObject
  *    With a confirmed artist the containment minimum drops to one token.
  *  - Artist match (when an artist is known): some candidate artist's tokens contain the wanted
  *    artist's tokens as a whole sequence, or vice versa, after normalisation.
+ *  - **Artist agreement is derived from the request, not waited for** (2026-11-24). The `artist`
+ *    argument is routinely left unset by the model, so the query's own words are matched against
+ *    the candidate's artists. Two rules follow from that one piece of evidence:
+ *    - a CONTAINED title match whose surplus query words (filler aside) name neither this
+ *      candidate's artist nor anything in its raw title is REJECTED, so a title that happens to
+ *      sit inside a request for a different artist's song no longer plays;
+ *    - a title in a wholly different writing system from the request is ACCEPTED when the artist
+ *      agrees, the candidate is Spotify's own first hit, and a non-empty title remainder is left
+ *      once the artist's words come out of the query.
  */
 @Suppress("TooManyFunctions") // one pure helper per pipeline step
 internal object SpotifyMatch {
@@ -79,12 +88,16 @@ internal object SpotifyMatch {
     private fun sequencesEqual(a: List<String>, b: List<String>) =
         a.size == b.size && a.indices.all { tokensMatch(a[it], b[it]) }
 
-    private fun containsSequence(long: List<String>, short: List<String>): Boolean {
-        if (short.isEmpty() || short.size > long.size) return false
-        return (0..long.size - short.size).any { start ->
+    /** Where [short] sits inside [long] as a whole run, or -1. */
+    private fun indexOfSequence(long: List<String>, short: List<String>): Int {
+        if (short.isEmpty() || short.size > long.size) return -1
+        return (0..long.size - short.size).firstOrNull { start ->
             short.indices.all { tokensMatch(long[start + it], short[it]) }
-        }
+        } ?: -1
     }
+
+    private fun containsSequence(long: List<String>, short: List<String>): Boolean =
+        indexOfSequence(long, short) >= 0
 
     // ---------------------------------------------------------------- the checks
 
@@ -112,6 +125,52 @@ internal object SpotifyMatch {
 
     fun titleIsExact(candidateTitle: String, wantedTitle: String): Boolean =
         sequencesEqual(tokens(normalizeCandidateTitle(candidateTitle)), tokens(normalize(wantedTitle)))
+
+    /**
+     * Words a spoken request puts around a title. They are never evidence of a different artist,
+     * so a leftover that is only filler ("play the mask off song") must not reject a hit.
+     */
+    private val FILLER = setOf(
+        "song", "songs", "track", "tune", "music", "version", "please", "the", "a", "an",
+        "by", "on", "for", "me", "some", "that", "it", "spotify",
+    )
+
+    /**
+     * The wanted tokens a CONTAINED title match left unused, filler dropped; null when the
+     * candidate's title was not wholly contained in the wanted tokens.
+     *
+     * Only the containment branch, deliberately. That is the branch where the wanted side is
+     * LONGER than the title it matched, so the surplus is extra information the request carried -
+     * usually the artist (music-suggestions-1124 P5: a two-token title sat inside a four-token
+     * query, the title matched, and the two words naming a DIFFERENT artist were never looked at,
+     * so the wrong artist's song of the same name played). In the overlap branch an unmatched
+     * token is a mis-said title word rather than surplus ("keep your head up" against "Keep Ya
+     * Head Up"), and rejecting on it would break requests that work today.
+     */
+    internal fun containmentLeftovers(candidateTitle: String, wantedTitle: String): List<String>? {
+        val c = tokens(normalizeCandidateTitle(candidateTitle))
+        val w = tokens(normalize(wantedTitle))
+        if (c.isEmpty() || w.isEmpty() || c.size >= w.size) return null
+        val at = indexOfSequence(w, c)
+        if (at < 0) return null
+        return (w.take(at) + w.drop(at + c.size)).filterNot { it in FILLER }
+    }
+
+    /**
+     * Is every token in [leftovers] accounted for by this candidate - as part of an artist's name,
+     * or as a word the catalogue's own raw title carries (a "- Live" suffix, a "(Remix)", a
+     * "feat. X" tail) that [normalizeCandidateTitle] had stripped before the comparison?
+     *
+     * Per token, not as one sequence: the surplus words need not be adjacent in the request.
+     */
+    internal fun leftoversExplained(
+        leftovers: List<String>,
+        candidateArtists: List<String>,
+        candidateRawTitle: String,
+    ): Boolean {
+        val pool = candidateArtists.flatMap { tokens(normalize(it)) } + tokens(normalize(candidateRawTitle))
+        return leftovers.all { l -> pool.any { tokensMatch(it, l) } }
+    }
 
     fun artistMatches(candidateArtists: List<String>, wantedArtist: String): Boolean {
         val w = tokens(normalize(wantedArtist))
@@ -176,13 +235,88 @@ internal object SpotifyMatch {
             ?.let { arr -> (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") } }
             .orEmpty()
 
-    private fun accepts(c: JSONObject, reading: Wanted): Boolean =
-        if (reading.artist == null) {
-            titleMatches(c.optString("name"), reading.title)
-        } else {
-            artistMatches(artistsOf(c), reading.artist) &&
-                titleMatches(c.optString("name"), reading.title, artistConfirmed = true)
+    // ---------------------------------------------------------------- across scripts
+
+    /** The writing systems [s]'s letters are in, ignoring punctuation, digits and spaces. */
+    private fun scriptsOf(s: String): Set<Character.UnicodeScript> {
+        val out = mutableSetOf<Character.UnicodeScript>()
+        var i = 0
+        while (i < s.length) {
+            val cp = s.codePointAt(i)
+            if (Character.isLetter(cp)) {
+                val script = Character.UnicodeScript.of(cp)
+                val neutral = script == Character.UnicodeScript.COMMON ||
+                    script == Character.UnicodeScript.INHERITED ||
+                    script == Character.UnicodeScript.UNKNOWN
+                if (!neutral) out.add(script)
+            }
+            i += Character.charCount(cp)
         }
+        return out
+    }
+
+    /**
+     * True when these two titles are written in entirely different writing systems, so no token
+     * rule in this file can ever relate them: every comparison here is over normalised Latin-ish
+     * tokens, and a translated or romanised title shares not one token with the catalogue's own
+     * spelling. Scoring zero is then a fact about the alphabets, not evidence about the song.
+     */
+    internal fun noSharedScript(a: String, b: String): Boolean {
+        val x = scriptsOf(a)
+        val y = scriptsOf(b)
+        return x.isNotEmpty() && y.isNotEmpty() && x.intersect(y).isEmpty()
+    }
+
+    /**
+     * The confirmed-artist escape from a cross-script title (music-suggestions-1124 P2: the right
+     * track, by the right artist, came back as Spotify's own first hit and the gate rejected it
+     * because the asked-for title was in another script).
+     *
+     * All three conditions carry weight. The artist is independent evidence, already established
+     * by the caller. [isTopHit] keeps this to Spotify's own best answer for the query, so it can
+     * never promote hit three. And [wantedTitle] must be a non-empty REMAINDER after the artist's
+     * own words: without that, a query naming only an artist would "match" that artist's top
+     * foreign-script track and play it as the song he asked for.
+     */
+    private fun crossScriptAccepts(candidateTitle: String, wantedTitle: String, isTopHit: Boolean): Boolean =
+        isTopHit && wantedTitle.isNotBlank() && noSharedScript(candidateTitle, wantedTitle)
+
+    /**
+     * What is left of [query] once some candidate artist's own words are taken out of it - the
+     * title half of a request that put both in one string. Blank when the query was only the
+     * artist, which is what stops [crossScriptAccepts] from firing on one.
+     */
+    internal fun titleRemainder(query: String, candidateArtists: List<String>): String {
+        val q = tokens(normalize(query))
+        for (a in candidateArtists) {
+            val at = indexOfSequence(q, tokens(normalize(a)))
+            if (at >= 0) {
+                val artistSize = tokens(normalize(a)).size
+                return (q.take(at) + q.drop(at + artistSize)).filterNot { it in FILLER }.joinToString(" ")
+            }
+        }
+        return query
+    }
+
+    @Suppress("ReturnCount") // guard clauses, one worded exit each
+    private fun accepts(c: JSONObject, reading: Wanted, isTopHit: Boolean): Boolean {
+        val name = c.optString("name")
+        val artists = artistsOf(c)
+        if (reading.artist != null) {
+            if (!artistMatches(artists, reading.artist)) return false
+            if (titleMatches(name, reading.title, artistConfirmed = true)) return true
+            return crossScriptAccepts(name, reading.title, isTopHit)
+        }
+        // No artist argument: the query is everything known, so artist agreement is derived from
+        // the query's own words rather than waited for. The model left `artist` unset on every
+        // one of the four calls that went wrong on 2026-11-24, so nothing here may depend on it.
+        val artistInQuery = artistMatches(artists, reading.title)
+        if (titleMatches(name, reading.title, artistConfirmed = artistInQuery)) {
+            val leftovers = containmentLeftovers(name, reading.title) ?: return true
+            return leftovers.isEmpty() || leftoversExplained(leftovers, artists, name)
+        }
+        return artistInQuery && crossScriptAccepts(name, titleRemainder(reading.title, artists), isTopHit)
+    }
 
     /**
      * Picks from [candidates] (Spotify's own order) for a track or album, or null when nothing is
@@ -202,8 +336,12 @@ internal object SpotifyMatch {
         isImposter: (JSONObject) -> Boolean = { false },
     ): JSONObject? {
         val readings = readings(query, artist)
+        // Spotify's own first answer for the query, taken from the UNFILTERED list: the
+        // cross-script rule leans on "this is the best hit Spotify had", which the imposter
+        // filter's ordering must not be able to redefine.
+        val topHit = candidates.firstOrNull()
         fun acceptedFrom(pool: List<JSONObject>): List<Pair<JSONObject, Wanted>> =
-            pool.mapNotNull { c -> readings.firstOrNull { accepts(c, it) }?.let { c to it } }
+            pool.mapNotNull { c -> readings.firstOrNull { accepts(c, it, c === topHit) }?.let { c to it } }
 
         val clean = candidates.filterNot(isImposter)
         val accepted = acceptedFrom(clean).ifEmpty { acceptedFrom(candidates) }
