@@ -292,8 +292,10 @@ object FleetDigestBuilder : DigestBuilder {
             "$label ${mileage?.let { groupThousands(it) } ?: DigestText.notLogged()}"
         }.joinToString(", ")
 
-        // Two DIFFERENT readings or there is no span to state at all.
-        val span = readings.first().takeIf { readings.size > 1 && it.id != readings.last().id }
+        // Two DIFFERENT readings or there is no span to state at all - and `firstOrNull`, because
+        // a car whose every logged service states no mileage leaves this list EMPTY, which is the
+        // ordinary case this whole change exists for.
+        val span = readings.firstOrNull()?.takeIf { readings.size > 1 && it.id != readings.last().id }
         val olderTrend = if (span != null && span.on < now - WINDOW_PERIODS * MONTH_MS) {
             val newest = readings.last()
             val milesDelta = newest.miles - span.miles
