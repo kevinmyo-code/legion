@@ -40,7 +40,9 @@ Why, traced on both sides:
   APK could not wipe data anyway: the updater refuses to install one.
 - Replay state is in memory on both ends, so a restart draws a fresh session rather than tripping a
   replay check.
-- The phone restarts the link itself after an update, on the package-replaced broadcast.
+- The phone restarts the link itself after an update: the package-replaced receiver brings the
+  process up, and `MidnightApplication`'s `onCreate` starts the car link unconditionally. The
+  receiver itself never mentions the link.
 
 ## What WOULD make him pair again, ranked
 

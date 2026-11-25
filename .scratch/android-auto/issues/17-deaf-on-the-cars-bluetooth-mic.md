@@ -49,25 +49,38 @@ Live on 2026-11-15, so the one instrument built for this failure was missing whe
 
 ## What was built
 
-- `BluetoothMic.fallBack`, the whole decision as a pure function: on the hands-free mic only, once per
-  conversation only, when the capture has stayed at digital silence past `DEAF_MS`.
+- `BluetoothMic.fallBack`, the whole decision as a pure function: on the hands-free mic only, never
+  during a Call Alfred call, once per conversation only, and only when the capture has stayed at
+  digital silence past `DEAF_MS`.
+- `DeafMicFallback` holds the window that decision reads: one capture's silence clock and loudest
+  sample, the once-per-conversation verdict, and the claim `handOver` keeps for the whole switch, so
+  the conversation never ends up with two live captures feeding one turn detector.
 - The cascade reads one peak per buffer where every buffer passes, publishes it for the screen's mic
   bar, and logs `mic_peak=` about once a second with the route it is on.
 - A window that closes having heard no turn now logs `heard_nothing=true` with its route and the
   loudest sample it ever read.
-- On a trip: the link goes, the player is rebuilt, the phone's mic opens with the open chime, and he
-  is told in words. The conversation, its backend and its prompt stay up.
-- A capture is never judged while Alfred is playing: a hands-free unit's own echo cancelling can hold
-  its microphone down to nothing while the far end speaks, and that is a working mic.
+- On a trip: the hands-free link goes, the player is rebuilt for the route that just left, the
+  phone's own mic opens in its place, and he is told out loud, "I can't hear you through the car.
+  Listening on the phone's mic now." The line is said the way every other short line of code's own
+  is, so his whole follow-up window is armed again at its drain. The conversation, its backend and
+  its prompt stay up. With no voice built yet to say it with, the open chime carries it instead.
+- A capture is never judged in a moment he could not have been heard anyway, and each of those
+  starts the window over rather than banking its silence: Alfred playing (a hands-free unit's own
+  echo cancelling can hold its microphone down to nothing while the far end speaks, and that is a
+  working mic doing its job), Mute on, a call pause, and an open whose voice is not built yet.
 
 ## Verification
 
 - Failing tests first, then the fix. Pure tests over the decision, wiring tests over the plumbing.
 - Android, Checks and Server workflows in GitHub Actions.
-- NOT done, and the gap to close: no level from the real failure has ever been measured, so
-  `DEAF_MS` and the silence floor are guesses inherited from `MicSignal`, which says so about its
-  own. The new `mic_peak=` and `heard_nothing=` lines are what settle it. A capture carrying noise
-  but no voice, which one of the six conversations looks like, would not trip the fallback.
+- NOT done, and the gap to close: no level from the real failure has ever been measured, so both
+  numbers the decision rests on are **GUESSED**, and the source says so. The silence floor is
+  `MicSignal.SILENCE_PEAK_THRESHOLD`, 50. `DEAF_MS` is 2,500 ms, deliberately half of
+  `MicSignal.DEAF_MIC_ELAPSED_MS` (5,000), the value that file argues for, so he repeats one
+  sentence instead of a whole conversation; the cost of being quick is that a working car mic has
+  2.5 s to clear the floor. The new `mic_peak=` and `heard_nothing=` lines are what settle both. A
+  capture carrying noise but no voice, which one of the six conversations looks like, would not trip
+  the fallback.
 - Owed: a drive with the head unit's Bluetooth connected, then a read of the phone's log for
   `heard_nothing=`, `mic_peak=` and `hands-free mic deaf`.
 
