@@ -89,3 +89,6 @@ All three are public help or engineering pages, loaded in a browser and read as 
   (read from the two help pages as rendered).
 - That the layouts are good: **in-browser** only to the extent of my own Playwright shots at 390x844
   and 1440x900 (`.scratch/web-revamp/research/shots/05/`, `/15/`). Nobody has used them on a phone.
+  Most of those two sets were removed in the 2026-11-24 privacy pass: they were captured against
+  Kevin's own household rather than the demo one, so they rendered its real name. Screenshot
+  removed; what each one showed is described above.

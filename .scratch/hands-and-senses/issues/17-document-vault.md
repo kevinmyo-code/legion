@@ -90,7 +90,7 @@ folder like any other folder, and the app follows.
 ### 2. Answers come FROM the document, with a citation, always
 
 **Nothing is extracted and stored as truth.** Asked about his policy excess, it reads the paper and
-answers *"per your State Farm policy dated March 2025, ..."*.
+answers *"per your insurer's policy dated March 2025, ..."*.
 
 This is the reconciliation gate's posture applied to a source that **cannot** be gated. A bank
 statement prints a total to reconcile line items against; **an insurance policy prints nothing.**

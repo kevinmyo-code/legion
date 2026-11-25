@@ -472,7 +472,10 @@ One web client, two surfaces, split by viewport.
 - **Seeing it, not inferring it.** MEMORY 2026-09-11: the phone-width layout was "inferred from
   Tailwind classes, never seen". Each screen ticket ends with Playwright screenshots against `npm run
   build && npm run preview` with the fake engine, at 390x844 and 1440x900, light and dark, saved
-  (not deleted) under `.scratch/web-revamp/research/shots/<ticket>/`. These are evidence for review,
+  under `.scratch/web-revamp/research/shots/<ticket>/`. These are evidence for review,
+  not golden tests, and they are kept rather than deleted after a ticket closes, EXCEPT where a
+  shot rendered real personal data: the 2026-11-24 privacy pass removed 186 of them across ten
+  sets. A shot of the demo household is evidence; a shot of his own is a leak.
   not golden tests (web-and-households 04: screenshot tests out of scope).
 - Server tests follow `memory`: one server test DB at a time, no `--reuse-db`, `uv run --no-sync`.
 - `npm run check:api` must pass after every server change that touches `openapi.yaml`.
