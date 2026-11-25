@@ -181,6 +181,19 @@ def test_django_state_only_migration_is_not_destructive():
     assert _judge(STATE_ONLY) == []
 
 
+def test_django_state_only_keeps_the_exemption_with_the_usual_django_imports():
+    """60 of the engine's migrations bind `django` twice (`import django.db.models.deletion` beside
+    `import django.utils.timezone`). Two imports of one name from the SAME source are not ambiguous,
+    so the file's imports still read and a state-only migration still ships."""
+    usual = STATE_ONLY.replace(
+        "from django.db import migrations",
+        "import django.db.models.deletion\nimport django.utils.timezone\n\n"
+        "from django.db import migrations",
+    )
+    assert usual != STATE_ONLY
+    assert _judge(usual) == []
+
+
 def test_django_real_ddl_warns_however_it_is_dressed():
     """Every one of these runs a real drop, so every one keeps the old rule. The four after the
     first two try to carry an operation out of the exempt list or to look like Django and not be."""
