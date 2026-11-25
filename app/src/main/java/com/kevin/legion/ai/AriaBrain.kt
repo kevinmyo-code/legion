@@ -1073,11 +1073,12 @@ internal const val TOOL_RESULT_CLAUSE =
  * action, something current, or a fact about the user; the two examples show the plain-chat case.
  * Moose carries the same words in the head unit's prompt (Kevin's voice-parity rule, 2026-11-24).
  * It replaces the old tool sentence (live data, music, saved places, location reminders, "never say
- * you're pulling up music..."), whose tools describe themselves, and is 4 chars shorter than it, so
- * LiveSetupPayloadSizeTest's ceiling holds (the first, additive wording failed it on PR #449).
+ * you're pulling up music..."), whose tools describe themselves, keeping the action rule's words
+ * that AriaBrainHonestyClauseTest pins, and is shorter than it, so LiveSetupPayloadSizeTest's
+ * ceiling holds (the first, additive wording failed it on PR #449).
  */
 internal const val CHAT_FIRST_CLAUSE =
-    "Call a tool to act, for live data or facts about him, and before saying you did something. " +
+    "Always call the matching tool before claiming you've done something. " +
         "Chat and general questions need no tool. Use his calendar, memory or records only when " +
         "asked about them; confirm a memory save only when asked. \"I love hiking\" gets a reply, " +
         "not a save; \"how far is the moon?\" an answer, not a calendar check. "
