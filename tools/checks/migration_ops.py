@@ -34,9 +34,9 @@ match judged them. All five must hold:
    exactly once, and every other assignment's value is a literal (so nothing can mutate
    `operations` or rebind a name the next rule trusts);
 3. the exempt `SeparateDatabaseAndState` call is a DIRECT element of that `operations` literal, its
-   callee is a name taken from `django.db`, it takes no positional argument and no keyword but the
-   two, and both are literal lists or tuples with `database_operations` empty;
-4. every element of `state_operations` is a call whose callee is a name taken from `django.db`;
+   callee is an operation constructor by rule 5, it takes no positional argument and no keyword but
+   the two, and both are literal lists or tuples with `database_operations` empty;
+4. every element of `state_operations` is an operation constructor by rule 5;
 5. nowhere in the file is there a `lambda` or a `:=`, and every call in the file is on the
    allow-list below.
 
@@ -49,10 +49,12 @@ module, makes every builtin import-rooted, which is how `setattr` reached
 - an OPERATION CONSTRUCTOR: `<name>.<Attr>(...)` where the name is bound to EXACTLY `django.db`,
   `django.db.migrations` or `django.db.models`. An exact set, not a `django.db.` prefix, because
   anything re-exported under such a path would otherwise count as Django's; or
-- a HELPER nested inside an operation's ARGUMENT, bound from a module that is not in the standard
-  library (`checklists/0002_household.py` passes its constraint name through its own
-  `household_unique_name(...)`, which is why the second clause exists and the rule is not simply
-  "no non-Django calls").
+- a HELPER nested inside an operation's ARGUMENT, rooted at an imported name whose source is in
+  neither the standard library nor `django` (`checklists/0002_household.py` passes its constraint
+  name through its own `household_unique_name(...)`, which is why the second clause exists and the
+  rule is not simply "no non-Django calls"). A `django`-rooted callee must be an operation
+  constructor and nothing else: `migrations.__dict__.update(...)` and
+  `serializer.builtins.setattr(...)` are both rooted at a Django import.
 
 Every DIRECT element of `operations`, and of an exempt `state_operations`, must be an operation
 constructor, so nothing else runs beside the exempt call.
@@ -320,10 +322,19 @@ def _only_allowed_helpers(
 ) -> bool:
     """Whether every remaining call in the file - each one nested inside an operation's argument,
     since rules 1 and 2 leave nowhere else for a call to sit - is an operation constructor or a
-    helper from a module outside the standard library (rule 5's second clause).
+    project helper (rule 5's second clause).
 
-    The stdlib ban is what shuts `builtins.setattr` and friends, however they were imported: a
-    `django.db`-pathed re-export of `builtins` is still the `builtins` module.
+    A helper is a call rooted at an imported name whose source is in neither the standard library
+    nor `django`. A `django`-rooted callee has to be an operation constructor and nothing else,
+    because an attribute chain off a Django import is a place to read a function out of something
+    the import did not name: `migrations.__dict__.update(...)`,
+    `serializer.builtins.setattr(...)` and a stdlib function re-exported under a `django` path all
+    went that way. Anything else withdraws the exemption, so the file is judged by its operations
+    and by the old text match.
+
+    This is stricter than it has to be for a `db_default=django.db.models.functions.datetime.Now()`,
+    which is honest and loses the exemption. One tracked migration is that shape, it is not
+    state-only, and the whole-tree sweep is unchanged, so the strictness costs nothing today.
     """
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or id(node) in constructors:
@@ -333,9 +344,10 @@ def _only_allowed_helpers(
         root = node.func
         while isinstance(root, ast.Attribute):
             root = root.value
-        if not isinstance(root, ast.Name) or root.id not in bindings:
+        if not isinstance(root, ast.Name):
             return False
-        if set(bindings[root.id].split(".")) & sys.stdlib_module_names:
+        parts = bindings.get(root.id, "").split(".")
+        if not parts[0] or parts[0] == "django" or set(parts) & sys.stdlib_module_names:
             return False
     return True
 
