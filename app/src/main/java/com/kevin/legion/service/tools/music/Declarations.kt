@@ -41,7 +41,7 @@ internal object Declarations {
                     )),
                 "query" to schema("string", "queue: what to add, in his words."),
                 "seconds" to schema("integer", "seek: seconds to jump."),
-                "playlistName" to schema("string", "add_to_playlist: which playlist, in his words."),
+                "playlistName" to schema("string", "which playlist, in his words."),
             ),
             required = listOf("action"),
         ))
@@ -65,8 +65,8 @@ internal object Declarations {
             // (LiveSurface.RESULT_RULES["play_music"]).
             description = "Play a named song, artist, album or playlist on Spotify. type: song " +
                 "(default), artist, album or playlist; a playlist is looked up in his own first. " +
-                "spotifyUri: only one a tool result gave you (control_music browse_my_music " +
-                "legion_history rows with replayable true, artist_albums rows); never invent one. " +
+                "spotifyUri: any one a tool result gave you, exactly as given; never invent one, " +
+                "and a row whose uri is null or replayable false has none. " +
                 "Play, pause and skip are control_music.",
             params = obj(
                 "query" to schema("string",
@@ -83,7 +83,10 @@ internal object Declarations {
         add(fn(
             name = "browse_my_music",
             description = "Look up the user's Spotify listening. 'saved_albums' - albums " +
-                "they've liked on Spotify. 'recently_played' - Spotify's OWN play history, " +
+                "they've liked on Spotify. 'playlists' - every playlist of their own, plus ones " +
+                "they collaborate on; pass playlistName to have the lookup name the closest " +
+                "match as well. 'liked_songs' - songs they've liked. " +
+                "'recently_played' - Spotify's OWN play history, " +
                 "across every device they use Spotify on, not just here - say so if you mention " +
                 "it. 'top_artists'/'top_tracks' - Spotify's own top rankings for this account. " +
                 "'legion_history' - what LEGION ITSELF has observed playing on THIS device only; " +
@@ -103,10 +106,7 @@ internal object Declarations {
                 "out the whole list.",
             params = obj(
                 "source" to schema("string", "Which listening data to look up.",
-                    enum = listOf(
-                        "saved_albums", "recently_played", "top_artists", "top_tracks",
-                        "legion_history", "artist_albums",
-                    )),
+                    enum = BrowseSource.WIRE_VALUES),
                 "limit" to schema("integer",
                     "How many results to return. Defaults to 5 - a live voice turn shouldn't " +
                         "read out fifty rows."),

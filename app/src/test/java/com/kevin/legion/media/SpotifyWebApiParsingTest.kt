@@ -33,6 +33,43 @@ class SpotifyWebApiParsingTest {
         assertEquals(SavedAlbum("Random Access Memories", "Daft Punk", "spotify:album:def"), albums[1])
     }
 
+    // ------------------------------------------------------------ liked songs (P7)
+
+    @Test
+    fun `parseLikedSongs reads name, first artist and uri from each item's nested track`() {
+        val json = JSONObject(
+            """
+            {"total": 412, "items": [
+                {"added_at": "2026-01-02T03:04:05Z", "track": {"name": "Paper Lanterns",
+                    "uri": "spotify:track:aaa", "artists": [{"name": "Hana Reed"}, {"name": "Guest"}]}},
+                {"added_at": "2026-01-01T00:00:00Z", "track": {"name": "Green Linoleum",
+                    "uri": "spotify:track:bbb", "artists": [{"name": "The Quiet Part"}]}}
+            ]}
+            """.trimIndent(),
+        )
+        val liked = SpotifyWebApi.parseLikedSongs(json)
+        assertEquals(2, liked.size)
+        assertEquals(LikedTrack("Paper Lanterns", "Hana Reed", "spotify:track:aaa"), liked[0])
+        assertEquals(LikedTrack("Green Linoleum", "The Quiet Part", "spotify:track:bbb"), liked[1])
+    }
+
+    @Test
+    fun `parseLikedSongs skips an item with no track name rather than throwing`() {
+        val json = JSONObject("""{"items": [{"track": {"uri": "spotify:track:aaa", "artists": []}}, {}]}""")
+        assertTrue(SpotifyWebApi.parseLikedSongs(json).isEmpty())
+    }
+
+    // ------------------------------------------------------------ the stated total (P7, P8)
+
+    @Test
+    fun `pageTotal reads Spotify's own total and stays null when the body states none`() {
+        assertEquals(412, SpotifyWebApi.pageTotal(JSONObject("""{"total": 412, "items": []}""")))
+        // Null, never 0: a result that cannot tell a page from a library has to say so, and a
+        // confident zero would let the page size be spoken as the library size all over again.
+        assertEquals(null, SpotifyWebApi.pageTotal(JSONObject("""{"items": []}""")))
+        assertEquals(0, SpotifyWebApi.pageTotal(JSONObject("""{"total": 0, "items": []}""")))
+    }
+
     @Test
     fun `parseSavedAlbums skips an item with no album name rather than throwing`() {
         val json = JSONObject("""{"items": [{"album": {"uri": "spotify:album:abc", "artists": []}}]}""")
