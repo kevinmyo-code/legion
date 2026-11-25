@@ -75,7 +75,7 @@ def test_the_closing_chime_is_the_phones():
     (`service/ListenCue.kt`). The web test cannot read a file (that project builds for a browser and
     has no `@types/node`), so the drift guard lives here, where reading Kotlin is already the habit.
     It was a single 150 ms 880 Hz tone at half gain until 2026-11-24."""
-    kt = (CASCADE_KT.parents[1] / "ListenCue.kt").read_text(encoding="utf-8")
+    kt = (CASCADE_KT.parent / "ListenCue.kt").read_text(encoding="utf-8")
     ts = (
         Path(__file__).resolve().parents[1] / "frontend/src/assistant/cascade-words.ts"
     ).read_text(encoding="utf-8")
@@ -93,10 +93,13 @@ def test_the_closing_chime_is_the_phones():
         assert phone is not None, f"{name} is gone from ListenCue.kt: the phone's chime moved"
         assert web is not None, f"{name} is gone from cascade-words.ts"
         assert float(phone.group(1)) == float(web.group(1)), name
-    # The gain too: the phone's `EARCON_GAIN`, which the web spells the same.
-    assert re.search(r"private const val EARCON_GAIN = ([\d.]+)", kt).group(1) == re.search(
-        r"const EARCON_GAIN = ([\d.]+)", ts
-    ).group(1)
+    # The gain too: the phone's `EARCON_GAIN`, which the web spells the same. Compared as a NUMBER
+    # like the six above, so writing one side as 0.250 does not fail it for no reason.
+    phone_gain = re.search(r"private const val EARCON_GAIN = ([\d.]+)", kt)
+    web_gain = re.search(r"const EARCON_GAIN = ([\d.]+)", ts)
+    assert phone_gain is not None, "EARCON_GAIN is gone from ListenCue.kt"
+    assert web_gain is not None, "EARCON_GAIN is gone from cascade-words.ts"
+    assert float(phone_gain.group(1)) == float(web_gain.group(1))
 
 
 def test_the_goodbye_skip_knows_the_phones_farewell_words():
@@ -107,13 +110,58 @@ def test_the_goodbye_skip_knows_the_phones_farewell_words():
 
 
 @pytest.mark.parametrize(
+    "ours,theirs",
+    [
+        (fillers._FILLER_LEADS, "FILLER_LEADS"),
+        (fillers._ASSENT_LEADS, "ASSENT_LEADS"),
+        (fillers._THANKS, "THANKS"),
+        (fillers._TAILS, "TAILS"),
+    ],
+)
+def test_the_courtesy_taken_off_a_goodbye_is_the_phones(ours, theirs):
+    # The lists `Farewells.withoutCourtesy` strips, not only the farewells themselves: holding one
+    # as a flat set of single words is what made "see you" lose its "you" and stop being a goodbye.
+    kt = (CASCADE_KT.parent / "Farewells.kt").read_text(encoding="utf-8")
+    # `[^)]*`, not `.*?\n    \)`: TAILS is written on one line and the rest over several.
+    found = re.search(rf"val {theirs}: List<String> = listOf\(([^)]*)\)", kt, re.S)
+    assert found is not None, f"Farewells.{theirs} moved: the phone's words are the source"
+    assert tuple(re.findall(r'"([^"]+)"', found.group(1))) == ours
+
+
+@pytest.mark.parametrize(
     "words",
-    ["bye", "Goodbye.", "bye bye", "thanks, bye", "okay bye", "See you later!", "take care"],
+    [
+        "bye",
+        "Goodbye.",
+        "bye bye",
+        "thanks, bye",
+        "okay bye",
+        "See you later!",
+        "take care",
+        # A bare "see you" was read as "see" once a flat courtesy set took its "you" off, and the
+        # three lead-ins below were never stripped as phrases at all.
+        "see you",
+        "See you.",
+        "hey bye",
+        "um bye",
+        "appreciate it bye",
+        # Every segmentation, not the greedy longest first (`Farewells.madeOf`).
+        "bye bye bye",
+        "goodbye good night",
+    ],
 )
 def test_a_goodbye_is_one_however_it_is_said(words):
     # The engine's `is_stop_utterance` closes a conversation but does not know a plain "bye", so
     # the acknowledgement asks the phone's list instead (`fillers.is_farewell`).
     assert fillers.is_farewell(words)
+
+
+@pytest.mark.parametrize("words", ["Alfred, bye", "bye Alfred", "Alfred, see you"])
+def test_the_companions_name_comes_off_a_goodbye(words):
+    # The phone strips the name at either end (`Farewells.withoutCourtesy`), so a goodbye said to
+    # the companion by name is still a goodbye. Invented name.
+    assert fillers.is_farewell(words, "Alfred")
+    assert not fillers.is_farewell("Alfred", "Alfred"), "the name alone is not a goodbye"
 
 
 @pytest.mark.parametrize(
