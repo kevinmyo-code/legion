@@ -1,7 +1,9 @@
-"""`/api/auth/head-units*`: a head unit's own engine sign-in (T3b), DARK.
+"""`/api/auth/head-units*`: a head unit's own engine sign-in (T3b).
 
-Every route here is a 404 before authentication unless `LEGION_HEADUNIT_SIGNIN=on`
-(`headunit_signin.flags`), so with the switch off nothing is read, written or queried.
+Live on every engine. It used to sit behind `LEGION_HEADUNIT_SIGNIN` (Kevin, 2026-11-24: "yes
+switch it on by default why is there even a switch"); the switch is gone, not inverted, so there is
+one path here and no off-state to reason about. What still fences a unit's token is
+`headunit_signin.scope`'s route allow-list, which is where the narrowing belongs.
 
 - `GET /api/auth/head-units`: the member's own live head units: label, created, last used,
   expires. Never a token (only hashes are kept). Device token or browser session.
@@ -26,14 +28,13 @@ from __future__ import annotations
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework import exceptions, serializers, status
+from rest_framework import serializers, status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from api.schema import DetailSerializer
-from headunit_signin import flags
 from headunit_signin.models import (
     LABEL_MAX,
     REASON_FORGOTTEN,
@@ -48,10 +49,6 @@ from household.tenancy import household_of, visible
 
 TAGS = ["auth"]
 KIND = "head_unit"
-OFF_WORDS = (
-    "Nothing was done: head-unit sign-in is switched off on this server "
-    "(LEGION_HEADUNIT_SIGNIN is not on)."
-)
 MINT_FROM_PHONE = (
     "Nothing was issued. A head unit's sign-in is minted by the member's phone while it pairs, "
     "with the phone's own device token, not from a browser."
@@ -66,15 +63,7 @@ NOT_FOUND = "Nothing was revoked: no head unit of yours has that id."
 NO_SUCH_VEHICLE = "Nothing was issued. No vehicle in this household has that vehicle_id."
 
 
-class _OffBeforeAnything(APIView):
-    # The switch first, before authentication: with it off, no query of any kind runs.
-    def initial(self, request, *args, **kwargs):
-        if not flags.signin_enabled():
-            raise exceptions.NotFound(OFF_WORDS)
-        super().initial(request, *args, **kwargs)
-
-
-class _MemberView(_OffBeforeAnything):
+class _MemberView(APIView):
     authentication_classes = [DeviceTokenAuthentication, SessionAuthentication]
     permission_classes = [IsHouseholdMember]
 
@@ -162,7 +151,6 @@ class HeadUnitListView(_MemberView):
                 HeadUnitSerializer(many=True),
                 description="The calling member's own live head units, newest first. No token.",
             ),
-            404: OpenApiResponse(DetailSerializer, description="Head-unit sign-in is off."),
         },
     )
     def get(self, request):
@@ -178,7 +166,6 @@ class HeadUnitListView(_MemberView):
             201: OpenApiResponse(IssuedSerializer, description="The token, shown this once."),
             400: DetailSerializer,
             403: DetailSerializer,
-            404: OpenApiResponse(DetailSerializer, description="Head-unit sign-in is off."),
             429: DetailSerializer,
         },
     )

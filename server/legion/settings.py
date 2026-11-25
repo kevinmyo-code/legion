@@ -222,8 +222,8 @@ INSTALLED_APPS = [
     # pending transactions (`public.advisor_advice`, `pending_transactions`, `proactive_raises`).
     "homes",
     # T3b: a head unit's own engine sign-in, minted by the member's phone while it pairs
-    # (`public.headunit_credentials`, private to that member, hashes only). DARK: every route
-    # refuses unless LEGION_HEADUNIT_SIGNIN=on.
+    # (`public.headunit_credentials`, private to that member, hashes only). Live on every engine
+    # since 2026-11-24; a unit's token is fenced by `headunit_signin.scope`, not by a switch.
     "headunit_signin",
     # The factory board's off-laptop copy (`public.board_snapshots`, one row per member, private).
     # DARK: every route refuses unless LEGION_BOARD=on (`board/views.py`).

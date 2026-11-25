@@ -25,7 +25,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework import authentication, exceptions
 
-from headunit_signin import flags, scope
+from headunit_signin import scope
 from headunit_signin.models import TOKEN_PREFIX, HeadUnitCredential, hash_token
 from household.models import HouseholdMember
 
@@ -96,8 +96,6 @@ class HeadUnitTokenAuthentication(authentication.BaseAuthentication):
         raw = headunit_key(request)
         if raw is None:
             return None
-        if not flags.signin_enabled():
-            raise exceptions.AuthenticationFailed(UNKNOWN)
         now = timezone.now()
         row = live_credential(raw, now)
         if row is None:

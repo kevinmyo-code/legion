@@ -340,11 +340,9 @@ def test_the_stream_route_takes_no_head_unit_token():
     assert not any(name == "agents-turn-stream" for name, _method in ROUTES)
 
 
-def test_a_head_unit_token_on_the_stream_route_is_refused(auth_client, stream, monkeypatch):
-    from headunit_signin.flags import SIGNIN_ENV
+def test_a_head_unit_token_on_the_stream_route_is_refused(auth_client, stream):
     from tests.test_headunit_signin import _paired, unit_client
 
-    monkeypatch.setenv(SIGNIN_ENV, "on")
     _id, raw = _paired(auth_client)
     response = unit_client(raw).post(URL, utterance(), content_type="application/octet-stream")
     assert response.status_code in (401, 403)
