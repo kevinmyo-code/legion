@@ -23,9 +23,11 @@ class CallScreenWiringTest {
     @Test
     fun `the Call button over a running conversation moves it to the ear and never ends it`() {
         val tap = bodyOf(controller(), "onTapCascade")
-        val move = tap.indexOf("if (call) { c.onCallButton(); return }")
-        assertTrue("a call press is its own branch", move >= 0)
-        assertTrue("before the tap meaning that ends the chat", move < tap.indexOf("c.onTap()"))
+        val move = tap.indexOf("c.onCallButton()")
+        val ends = tap.indexOf("c.onTap()")
+        assertTrue("a call press is its own branch", tap.contains("if (call) {") && move >= 0)
+        assertTrue("and the tap meaning that ends the chat is the other one", tap.contains("} else {"))
+        assertTrue("never both", move < ends)
         val begin = bodyOf(session(), "onCallButton")
         assertTrue("it asks for the earpiece", begin.contains("VoiceOutput.askRoute(earpiece = true)"))
         assertTrue("and draws the call as answered", begin.contains("beginCallLine(answeredAtMs ="))
@@ -97,10 +99,8 @@ class CallScreenWiringTest {
         val mute = bodyOf(session(), "setMuted")
         assertFalse("the capture is not closed", mute.contains("micJob"))
         assertTrue("the screen is told", mute.contains("CallLine.muted(callId, on)"))
-        val expired = bodyOf(session(), "onFollowUpExpired")
-        val held = expired.indexOf("if (micMuted)")
-        assertTrue("a muted call is not closed by its follow-up window", held >= 0)
-        assertTrue(held < expired.indexOf("host.closed(\"follow_up\")"))
+        // The idle window itself is held rather than its expiry swallowed; its own case below says why.
+        assertTrue("a muted call is not closed by silence", bodyOf(session(), "waitOutWindow").contains("micMuted"))
     }
 
     @Test
@@ -125,7 +125,8 @@ class CallScreenWiringTest {
         }
         assertTrue(bodyOf(controller, "onCallMute").contains("cascade?.setMuted(on)"))
         assertTrue(bodyOf(controller, "onCallRoute").contains("VoiceOutput.askRoute(earpiece)"))
-        assertTrue("hang up ends the conversation", bodyOf(controller, "onHangUp").contains("close(\"hung_up\")"))
+        val hangUp = bodyOf(controller, "onHangUp")
+        assertTrue("hang up ends the conversation", hangUp.contains("close(\"hung_up\", userEnded = true)"))
         val screen = stripComments(File(sourceRoot(), "ui/call/InCallScreen.kt").readText())
         assertTrue("and the screen sends them, holding no session", screen.contains("context.startService("))
         assertFalse(screen.contains("CascadeSession"))
@@ -144,8 +145,8 @@ class CallScreenWiringTest {
             "handed to the voice at construction",
             s.contains("keepAlso = CallPickup.renamedKeep(CompanionProfile.name(context), ALFRED.defaultName)"),
         )
-        val speech = bodyOf(s, "defaultCloudSpeech")
-        assertTrue("and it widens the keep set", speech.contains("keepLines = ScriptedLines.KEEP + keepAlso"))
+        // An expression body, so this reads the file rather than a brace-matched body.
+        assertTrue("and it widens the keep set", s.contains("keepLines = ScriptedLines.KEEP + keepAlso"))
         val warm = bodyOf(s, "warmFillers")
         assertTrue(
             "and warmed where the fillers are",

@@ -851,12 +851,16 @@ class LiveSessionController(context: Context) {
             }
             return
         }
-        // The Call button over a conversation already running moves it to his ear, and never ends it
-        // (review F2): the button's words promise he answers at the ear, and the old output toggle in
-        // that slot did move a live conversation. The orb is still the way to interrupt or end.
-        if (call) { c.onCallButton(); return }
-        // The session says which it did ("Listening", or "Ended the chat").
-        c.onTap()
+        if (call) {
+            // The Call button over a conversation already running moves it to his ear, and never
+            // ends it (review F2): the button's words promise he answers at the ear, and the output
+            // toggle that used to hold that slot did move a live conversation.
+            c.onCallButton()
+        } else {
+            // The orb still carries both tap meanings, and the session says which it did
+            // ("Listening", or "Ended the chat").
+            c.onTap()
+        }
     }
 
     /** The in-call Mute control: his mic stays open, nothing it hears starts a turn. */
