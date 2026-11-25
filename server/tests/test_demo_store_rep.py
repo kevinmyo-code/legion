@@ -414,6 +414,14 @@ def test_a_quote_over_the_stock_is_refused(visitor, shop_visit, engine):
         ("Can I get a recommendation?", False),
         ("Give me some options", False),
         ("I need a pack, what do you recommend?", False),
+        # Want or need plus a thing plus "for" is the shopper saying what the use is, which is
+        # what the rep asked for, not an order. Nor is "we have two people" a commit verb.
+        ("I need one for weekend hikes, what do you recommend?", False),
+        ("We have two people, what tent do you recommend?", False),
+        # Number must not decide it here either: these are a request for a list, like the two
+        # above them, however the shopper words it.
+        ("What are the other options?", False),
+        ("Which is the lighter one?", False),
         # One price read out is not a cart. These used to pass the gate, so the rep could reach
         # the read-back purely to say what one thing costs, which the frame forbids.
         ("How much is the 40L?", False),
@@ -459,6 +467,12 @@ def test_a_quote_over_the_stock_is_refused(visitor, shop_visit, engine):
         ("What would that come to?", True),
         ("Can you total that up?", True),
         ("Total please", True),
+        # A price question covering more than one thing, or the delivery on top of one, is a
+        # question about the order: only the read-back can answer it. Each of these reads like a
+        # one-price question and is not.
+        ("How much for both?", True),
+        ("How much is the 40L with delivery?", True),
+        ("How much for the pack and the cover?", True),
     ],
 )
 def test_wants_to_buy_reads_the_shoppers_own_words(words, buying):

@@ -15,8 +15,9 @@ quantities and code prices them from the catalogue.
 - `shop_find`: a catalogue lookup. Read.
 - `shop_quote`: prices the order and reads it back, asking for a yes. Keeps the quote on the visit
   (a cart, not an order), so not a write, and it ends the turn: the yes must be the visitor's.
-  Code reads the shopper's own words first (`wants_to_buy`): while they are still asking, nothing
-  is priced.
+  Code reads the shopper's own words first (`wants_to_buy`): while they are still asking about a
+  product, nothing is priced. A question about the ORDER's total is the one exception, because
+  the read-back is the only place a total is ever said.
 - `shop_place_order`: places the quoted order, only in a turn AFTER the read-back. A write.
 - `shop_handoff`: "let me get someone". Says where the callback form is, or, with the switch off
   or the day's callbacks used up, that no person can be reached from here.
@@ -362,6 +363,14 @@ _TOTAL = re.compile(
     r"in all|all in)\b",
     re.I,
 )
+# A price question that covers more than one thing, or the delivery on top of one, is a question
+# about the ORDER and not about a product, so it passes too. Only ever read on a message
+# `_PRICE_ONLY` would otherwise refuse, so it can never pull a browsing message into a read-back.
+_WHOLE_ORDER = re.compile(
+    r"\b(for both|for all of|for the lot|for the two|with delivery|with shipping|"
+    r"with postage|including delivery|including shipping|and the \w+\?)",
+    re.I,
+)
 # Words that commit to this purchase, with a thing attached. Checked before the browse list, so a
 # message that both asks and commits ("which one? I'll take the 40L") still quotes. The thing is
 # what does the work: "can I get the 40L" is an order, "can I get a recommendation" is not, so
@@ -376,14 +385,14 @@ _BUY = re.compile(
     r"order (it|that|this|them|the|a|one|two|both|please|now)|place (the|my|that) order|"
     r"(i|we)(?:'|’)?(?:ll| will|d| would) (take|have|get|go with|buy|order|do)|"
     rf"(i|we)(?:'|’)?(?:d| would) like {_THING}|"
-    rf"(i|we) (want|need|take|have) {_THING}|"
+    # "Want" and "need" only: "we have two people" and "I'll take it" are a use statement and an
+    # order, and a "for" behind the thing makes it the use again ("I need one for weekend hikes").
+    rf"(i|we) (want|need) {_THING}(?! for\b)|"
     rf"(can|could|may) (i|we) (get|have|take) {_THING}|"
     rf"give me {_THING}|put me down for {_THING}|yes to {_THING}|"
     # The accept-the-recommendation turn, in either tense and with or without a verb in front.
     r"(the|that) one you (recommend|recommended|suggest|suggested)|"
     r"what you (recommend|recommended|suggest|suggested)|"
-    # The objection answer: the frame steers the rep to the cheaper product and they take it.
-    r"(cheaper|cheapest|bigger|smaller|lighter|heavier|other|second) (one|ones|option|options)|"
     r"let(?:'|’)?s (do|get|take|buy|order|go with)|sign me up|i(?:'|’)?m sold)\b",
     re.I,
 )
@@ -398,15 +407,17 @@ _PRICE_ONLY = re.compile(
 # Asking for advice or a listing, not ordering. A blocklist on purpose, and a short one: a
 # refused real order is worse for this demo than an early read-back, so only a message that
 # plainly asks for advice or what the shop has is held back. Every verb takes every ending it
-# has, so the gate never turns on the shopper's tense or number: "recommend", "recommended" and
+# has, so the gate never turns on the shopper's tense: "recommend", "recommended" and
 # "recommendation" are all asking, and the accept-the-recommendation shapes are named in `_BUY`
-# above, which is checked first.
+# above, which is checked first. "Options" is plural only, so a request for a list ("what are my
+# options?") is held while the objection answer ("the cheaper option") passes: the gate must not
+# turn on the shopper's number either.
 _BROWSING = re.compile(
     r"\b(recommend\w*|suggest\w*|what (do|are|is|have)|what(?:'|’)?s|"
     r"what (sort|kind|type)s? of|which (one|of|is)|"
     r"any (ideas|options)|help me (choose|pick|decide)|"
     r"(just )?(looking|browsing)|difference|not sure|thinking about|tell me about|"
-    r"what about|options?)\b",
+    r"what about|options)\b",
     re.I,
 )
 
@@ -421,7 +432,9 @@ def wants_to_buy(words: str) -> bool:
     text = words or ""
     if _TOTAL.search(text) or _BUY.search(text):
         return True
-    return not (_PRICE_ONLY.search(text) or _BROWSING.search(text))
+    if _PRICE_ONLY.search(text):
+        return bool(_WHOLE_ORDER.search(text))
+    return not _BROWSING.search(text)
 
 
 def _quote(request, arguments: dict) -> ToolResult:
