@@ -1819,7 +1819,7 @@ a device; the next connect attempt is what confirms or refutes it.
 ### 2026-08-06 (session 5) - A provisional tier under the reconciliation gate
 
 Kevin asked for LLM ingestion of a CSV of recent transactions. Reading his real file
-(`currentTransaction_7823.csv`, read then left alone, never copied into the repo) showed it is the
+(`currentTransaction_1199.csv`, read then left alone, never copied into the repo) showed it is the
 one case already refused BY NAME: Bank of America's mid-cycle card export, which
 `BofaCardCsvStatementParser` existed solely to reject. 40 data rows, 38 debits, 2 credits, CRLF, no
 balance column, no total row, no account number anywhere in the body (only in the filename).
@@ -1845,12 +1845,12 @@ when a gated file covers the same dates. It narrows what "commit" means without 
 that later reads as strong.
 
 **The collision worth remembering.** Calls 2 and 3+4 do not compose: the CSV's `accountId` is
-`"9012"` and the card PDF's is `"4111111111119012"`, and every ledger mechanism keys on equality, so
+`"1199"` and the card PDF's is `"4111111111111199"`, and every ledger mechanism keys on equality, so
 supersede would never fire and one card would render as two accounts - the same bug the whitespace
 strip in `LedgerStatementAgent` was written to fix, through a different door. Resolved by a last-4
 suffix relation (`ledger/LedgerAccountIdentity.kt`, `sameCard`) in exactly three places - the
 supersede delete, the balance pairing, the balances grouping - and deliberately NOT in
-`resolveDedup`, where loosening the key would let a checking account ending 9012 absorb card rows.
+`resolveDedup`, where loosening the key would let a checking account ending 1199 absorb card rows.
 Documented weakness: two accounts sharing a last-4 collide. Four accounts today, no collision.
 
 **Ordering property that is load-bearing and invisible.** The supersede delete runs inside
