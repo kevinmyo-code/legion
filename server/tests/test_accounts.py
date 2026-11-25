@@ -449,12 +449,12 @@ def test_a_member_may_read_the_household(member_client, household_a):
 
 
 def test_an_owner_renames_the_household(owner_client, household_a):
-    response = owner_client.patch("/api/households/me", {"name": "The Wins"}, format="json")
+    response = owner_client.patch("/api/households/me", {"name": "The Larksons"}, format="json")
 
     assert response.status_code == 200, response.data
-    assert response.data["name"] == "The Wins"
+    assert response.data["name"] == "The Larksons"
     household_a.refresh_from_db()
-    assert household_a.name == "The Wins"
+    assert household_a.name == "The Larksons"
 
 
 def test_a_member_cannot_rename_the_household(member_client, household_a):

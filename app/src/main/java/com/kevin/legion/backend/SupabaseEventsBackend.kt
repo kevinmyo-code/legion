@@ -68,7 +68,7 @@ private data class EventUpsertDto(
     // still uses for the local Room column since backend-erp ticket 17's repoint - only the WRITE
     // TARGET moved off this DTO's own EventsReconcile-fed upload path, not the JSON shape itself),
     // and serializing a Kotlin String property sends it to Postgrest as a quoted, backslash-escaped
-    // JSON STRING SCALAR, so `structured_meta` would end up holding `"{\"course\":\"COSC4320\"}"` -
+    // JSON STRING SCALAR, so `structured_meta` would end up holding `"{\"course\":\"CSCI3400\"}"` -
     // a jsonb value that IS a string, not the JSON OBJECT this migration's own doc comment promises
     // ("Postgres can index and query it"). EventUpsertDto.from parses the text back into a real
     // JsonElement before it ever reaches this DTO, same pattern SupabasePantryBackend.commitReceipt

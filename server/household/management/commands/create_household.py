@@ -1,4 +1,4 @@
-"""`manage.py create_household --name "The Wins" --owner-email kevin@example.com`
+"""`manage.py create_household --name "The Larksons" --owner-email kevin@example.com`
 - found a household from the command line and give it its first owner.
 
 The bootstrap path (django-engine ticket 11, ADR 0045's "a fresh compose

@@ -106,11 +106,11 @@ describe('the household, as the owner', () => {
     expect(screen.getByText(/Owner · Joined Sep 1, 2026/)).toBeInTheDocument()
     expect(screen.getByText(/Member · Joined Sep 12, 2026/)).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Household name'), { target: { value: 'The Myos' } })
+    fireEvent.change(screen.getByLabelText('Household name'), { target: { value: 'The Larksons' } })
     press('Rename')
-    expect(await screen.findByText('The household is now called The Myos.')).toBeInTheDocument()
-    expect(engine.householdName).toBe('The Myos')
-    expect(engine.writes.at(-1)).toMatchObject({ method: 'PATCH', pathname: '/api/households/me', body: { name: 'The Myos' } })
+    expect(await screen.findByText('The household is now called The Larksons.')).toBeInTheDocument()
+    expect(engine.householdName).toBe('The Larksons')
+    expect(engine.writes.at(-1)).toMatchObject({ method: 'PATCH', pathname: '/api/households/me', body: { name: 'The Larksons' } })
   })
 
   test('a refused rename says what did not happen, in the engine words', async () => {
@@ -118,7 +118,7 @@ describe('the household, as the owner', () => {
     engine.refusals['PATCH /api/households/me'] = { status: 400, body: { detail: 'Nothing was changed: the name is taken.' } }
     renderApp('/settings/household', engine, 'family')
     await screen.findByText('Mia')
-    fireEvent.change(screen.getByLabelText('Household name'), { target: { value: 'The Myos' } })
+    fireEvent.change(screen.getByLabelText('Household name'), { target: { value: 'The Larksons' } })
     press('Rename')
     expect(await screen.findByText('Nothing was changed: the name is taken.')).toBeInTheDocument()
   })
@@ -337,12 +337,12 @@ describe('account', () => {
 
     const field = await screen.findByLabelText('Name')
     expect(field).toHaveValue('Mia')
-    fireEvent.change(field, { target: { value: 'Mia Myo' } })
+    fireEvent.change(field, { target: { value: 'Rae Larkson' } })
     press('Save name')
 
     expect(await screen.findByText('Your name is saved.')).toBeInTheDocument()
-    expect(engine.settings.name).toBe('Mia Myo')
-    expect(engine.writes.at(-1)).toMatchObject({ method: 'PATCH', pathname: '/api/auth/me', body: { name: 'Mia Myo' } })
+    expect(engine.settings.name).toBe('Rae Larkson')
+    expect(engine.writes.at(-1)).toMatchObject({ method: 'PATCH', pathname: '/api/auth/me', body: { name: 'Rae Larkson' } })
   })
 
   test('a wrong current password shows the engine sentence verbatim and claims nothing', async () => {

@@ -31,7 +31,7 @@ const roster = (myRole: 'owner' | 'member') => [
 ]
 
 const settingsEngine = (myRole: 'owner' | 'member' = 'owner', settings = {}) =>
-  createEngine({ ...seedHousehold(), householdName: 'The Myo House', members: roster(myRole), settings })
+  createEngine({ ...seedHousehold(), householdName: 'The Test House', members: roster(myRole), settings })
 
 const withInvites = () =>
   settingsEngine('owner', {
@@ -50,7 +50,7 @@ const withDevices = () =>
   })
 
 const signedOut = (previews: Record<string, ReturnType<typeof livePreview>>) => () =>
-  createEngine({ ...seedHousehold(), householdName: 'The Myo House', signedIn: false, settings: { previews } })
+  createEngine({ ...seedHousehold(), householdName: 'The Test House', signedIn: false, settings: { previews } })
 
 const fill = (page: Page, label: string, value: string) => page.getByLabel(label).fill(value)
 
@@ -62,7 +62,7 @@ export const settingsShots: Shot[] = [
     name: 'join',
     url: '/join/abc123',
     ready: 'You have been invited to join',
-    engine: signedOut({ abc123: livePreview('abc123', { household_name: 'The Myo House' }) }),
+    engine: signedOut({ abc123: livePreview('abc123', { household_name: 'The Test House' }) }),
     labels: [...BOTH],
   },
   {
@@ -76,7 +76,7 @@ export const settingsShots: Shot[] = [
     name: 'join-refused',
     url: '/join/abc123',
     ready: 'You have been invited to join',
-    engine: signedOut({ abc123: livePreview('abc123', { household_name: 'The Myo House' }) }),
+    engine: signedOut({ abc123: livePreview('abc123', { household_name: 'The Test House' }) }),
     after: async (page) => {
       await fill(page, 'Your name', 'Dad')
       await fill(page, 'Email', 'taken@example.test')
@@ -90,7 +90,7 @@ export const settingsShots: Shot[] = [
     name: 'join-weak-password',
     url: '/join/abc123',
     ready: 'You have been invited to join',
-    engine: signedOut({ abc123: livePreview('abc123', { household_name: 'The Myo House' }) }),
+    engine: signedOut({ abc123: livePreview('abc123', { household_name: 'The Test House' }) }),
     after: async (page) => {
       await fill(page, 'Your name', 'Dad')
       await fill(page, 'Email', 'dad@example.test')
@@ -105,7 +105,7 @@ export const settingsShots: Shot[] = [
     url: '/join/old',
     ready: 'This invite has expired.',
     engine: signedOut({
-      old: livePreview('old', { live: false, expires_at: '2020-01-01T00:00:00Z', household_name: 'The Myo House', reason: 'expired' }),
+      old: livePreview('old', { live: false, expires_at: '2020-01-01T00:00:00Z', household_name: 'The Test House', reason: 'expired' }),
     }),
     labels: [...BOTH],
   },
@@ -114,7 +114,7 @@ export const settingsShots: Shot[] = [
     url: '/join/spent',
     ready: 'This invite has already been used by everyone it was for.',
     engine: signedOut({
-      spent: livePreview('spent', { live: false, uses_left: 0, household_name: 'The Myo House', reason: 'used' }),
+      spent: livePreview('spent', { live: false, uses_left: 0, household_name: 'The Test House', reason: 'used' }),
     }),
     labels: [...BOTH],
   },
@@ -123,7 +123,7 @@ export const settingsShots: Shot[] = [
     url: '/join/pulled',
     ready: 'This invite was cancelled by the person who sent it.',
     engine: signedOut({
-      pulled: livePreview('pulled', { live: false, household_name: 'The Myo House', reason: 'revoked' }),
+      pulled: livePreview('pulled', { live: false, household_name: 'The Test House', reason: 'revoked' }),
     }),
     labels: [...BOTH],
   },

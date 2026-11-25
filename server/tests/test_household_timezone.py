@@ -78,10 +78,10 @@ def test_the_owner_sets_and_clears_it(auth_client, household_a):
 
 def test_a_rename_leaves_the_timezone_alone(auth_client, household_a):
     _set_zone(household_a, "America/Chicago")
-    response = auth_client.patch(URL, {"name": "The Wins"}, format="json")
+    response = auth_client.patch(URL, {"name": "The Larksons"}, format="json")
     assert response.status_code == 200, response.data
     household_a.refresh_from_db()
-    assert (household_a.name, household_a.timezone) == ("The Wins", "America/Chicago")
+    assert (household_a.name, household_a.timezone) == ("The Larksons", "America/Chicago")
 
 
 def test_a_member_is_refused_in_words_and_nothing_changes(member_client, household_a):

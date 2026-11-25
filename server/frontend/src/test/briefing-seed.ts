@@ -201,7 +201,7 @@ export function briefingEngine(overrides: EngineOptions = {}): Engine {
   const aspects = seedAspects()
   const engine = createEngine({
     ...briefingCalendar(),
-    householdName: 'The Wins',
+    householdName: 'The Larksons',
     members: [{ role: 'owner', user_id: ME.user_id, email: ME.email, name: 'Kevin', joined_at: '2026-09-01T00:00:00Z' }],
     tables: { ...aspects, ...briefingFleet(), ...briefingLedger() },
     spend: briefingSpend(),

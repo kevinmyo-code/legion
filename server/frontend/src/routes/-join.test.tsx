@@ -77,13 +77,13 @@ describe('an invite that works', () => {
     renderApp('/join/founder', engine)
 
     expect(await screen.findByText('You have been invited to start a household')).toBeInTheDocument()
-    fill('Name your household', 'The Myos')
+    fill('Name your household', 'The Larksons')
     fill('Your name', 'Mom')
     fill('Email', 'mom@example.test')
     fill('Password', 'a-long-enough-password')
     fireEvent.click(screen.getByRole('button', { name: 'Create the household' }))
 
-    await waitFor(() => expect(engine.writes[0]?.body).toMatchObject({ household_name: 'The Myos' }))
+    await waitFor(() => expect(engine.writes[0]?.body).toMatchObject({ household_name: 'The Larksons' }))
   })
 })
 
