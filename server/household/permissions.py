@@ -20,6 +20,15 @@ and 02) is fenced, and a browser session it holds dies with the visitor
 token it was issued beside. Owners and members are untouched by every line
 of that.
 
+**2026-11-24: the owner check names the household it acts on.** It asked
+`user=..., role=owner` and nothing else, which answers "is this caller an
+owner somewhere" rather than "may this caller administer the household this
+request acts on". The two have the same answer while `HouseholdMember.user`
+is a `OneToOneField`, so nothing was reachable through it; `is_owner_of`
+states the household instead of inheriting it from a constraint in another
+file. `is_engine_owner` joined it for the handful of engine-wide things that
+have no household to be scoped to at all.
+
 **ADR 0069 (ticket 13, Kevin 2026-11-02) moved the fence, and it still only
 narrows.** Each visit now has its own throwaway household
 (`Household.is_demo_visit`) with the visitor as its only member, so the
@@ -36,6 +45,7 @@ from rest_framework import exceptions, permissions
 
 from household.models import DeviceToken, HouseholdMember, is_recruiter
 from household.recruiter_routes import route_refusal
+from household.tenancy import household_of, resolve_default_household
 
 READ_SCOPE_REFUSAL = (
     "Nothing was written. This device token is read-only (scope `read`), so it may read "
@@ -110,6 +120,48 @@ def _recruiter_visit_is_live(request) -> bool:
         return False
     token = DeviceToken.objects.filter(pk=token_id, user=request.user).first()
     return token is not None and token.is_live
+
+
+def is_owner_of(user, household) -> bool:
+    """True when `user` owns THAT household, never "owns one somewhere".
+
+    The role lives on a membership row, so an owner check that names only the
+    user is answering a different question from the one every owner-only route
+    asks: "may this caller administer the household this request acts on".
+    Those two questions have the same answer today, because
+    `HouseholdMember.user` is a `OneToOneField` - one membership per user,
+    enforced by a unique index since migration 0001 - so the row the role
+    comes from is always the row `household_of` reads the household from. They
+    are the same answer by an invariant two files away, which is why the
+    household is named here rather than left implied: the day a person may
+    belong to two households, a check written the other way grants an owner of
+    one family the membership verbs of the other, silently and everywhere at
+    once.
+    """
+    return HouseholdMember.objects.filter(
+        user=user, household=household, role=HouseholdMember.OWNER
+    ).exists()
+
+
+def is_engine_owner(user) -> bool:
+    """True when `user` owns the household that RUNS this engine (the
+    bootstrap household).
+
+    The fence for the few things that are engine-wide rather than one
+    household's: publishing an app release (`releases.views`), the garage tool
+    (`assistant.surface`), and previewing the recruiter page
+    (`demo.content_views`). Being an owner somewhere is not enough for any of
+    them - an owner of a second household (ADR 0045) administers that
+    household's membership, not the engine - and `is_owner_of` cannot answer
+    it, because the rows in question carry no household at all.
+
+    False when no bootstrap household can be resolved
+    (`resolve_default_household`), which is the closed answer: on an engine
+    holding several families with `LEGION_BOOTSTRAP_HOUSEHOLD_ID` unset there
+    is no honest guess at which one runs it.
+    """
+    engine_household = resolve_default_household()
+    return engine_household is not None and is_owner_of(user, engine_household)
 
 
 class IsHouseholdMember(permissions.BasePermission):
@@ -196,6 +248,4 @@ class IsHouseholdOwner(IsHouseholdMember):
     def has_permission(self, request, view) -> bool:
         if not super().has_permission(request, view):
             return False
-        return HouseholdMember.objects.filter(
-            user=request.user, role=HouseholdMember.OWNER
-        ).exists()
+        return is_owner_of(request.user, household_of(request))
