@@ -253,7 +253,7 @@ def test_another_member_never_sees_or_moves_my_position(auth_client, mia_client)
     _put_position(auth_client, _position(0.70, "2026-10-23T10:00:00Z"))
     assert mia_client.get(f"/api/books/positions?since={EPOCH}").data == []
 
-    # Mia reading the same file is her own row, even with a newer clock, and
+    # The other member reading the same file is her own row, even with a newer clock, and
     # she can be behind Kevin without either one moving the other.
     hers = _put_position(mia_client, _position(0.05, "2026-10-23T12:00:00Z", device="web"))
     assert hers.status_code == 200

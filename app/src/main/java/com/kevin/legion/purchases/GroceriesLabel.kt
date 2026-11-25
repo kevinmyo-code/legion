@@ -2,7 +2,7 @@ package com.kevin.legion.purchases
 
 /**
  * The item-editor history line for the Groceries list (ADR 0055): "Last bought Sep 20 (middle dot)
- * Mia", where every other list keeps "Last ticked" (ADR 0049). Split from [PurchaseWording] to keep
+ * Rae", where every other list keeps "Last ticked" (ADR 0049). Split from [PurchaseWording] to keep
  * each object under detekt's function ceiling, not for any difference in rule: same wording rules.
  */
 object GroceriesLabel {
@@ -19,7 +19,7 @@ object GroceriesLabel {
     fun isGroceriesList(systemKey: String?): Boolean =
         systemKey == com.kevin.legion.data.local.Checklist.SYSTEM_KEY_GROCERIES
 
-    /** "Last bought Sep 20 (dot) Mia"; a loose match names its own text; a backfilled entry says
+    /** "Last bought Sep 20 (dot) Rae"; a loose match names its own text; a backfilled entry says
      * "who not recorded". */
     fun label(match: PurchaseMatch, today: Int): String {
         val who = match.entry.loggedBy ?: "who not recorded"

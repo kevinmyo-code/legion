@@ -21,7 +21,7 @@ import {
 import { renderApp } from '@/test/render-app'
 
 /**
- * Mia's Home (web-revamp 10, spec D6): the day in the order she asks the
+ * The second member's Home (web-revamp 10, spec D6): the day in the order she asks the
  * questions, each section answering for itself. Every test drives the real
  * route against the fake engine and reads what a person reads.
  */

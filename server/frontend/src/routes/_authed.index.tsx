@@ -9,7 +9,7 @@ export const Route = createFileRoute('/_authed/')({
 })
 
 /**
- * `/`: the family Home below 1024 px (Mia's glance-and-tick day, ticket 10) or
+ * `/`: the family Home below 1024 px (the glance-and-tick day, ticket 10) or
  * the Morning briefing from 1024 px up (recruiter-demo ticket 14, prototype A).
  * Two trees, not one page reflowed (ADR 0053); each lives in `screens/`.
  */

@@ -25,7 +25,7 @@ export function useMyUserId(): string | null {
   return me.data?.signedIn ? me.data.me.user_id : null
 }
 
-/** "You and Mia want to go", with a pin beside it. Nothing when nobody has
+/** "You and Rae want to go", with a pin beside it. Nothing when nobody has
  * pinned it. The words carry the meaning; the icon is decoration. */
 export function SuggestionPinnedLine({
   event,

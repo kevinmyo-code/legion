@@ -4,7 +4,7 @@
  * `LiveClient` knows nothing about `AudioContext`, worklets or getUserMedia; it
  * talks to this interface. That is deliberate (web-assistant 08): iOS audio is
  * the risk of this whole feature (`research/01-live-from-an-iphone-pwa.md`,
- * section 4), and if live voice proves unusable on Mia's phone the fix is a
+ * section 4), and if live voice proves unusable on an iPhone the fix is a
  * different `AudioIO` (record a turn, send it, play the answer) behind the same
  * interface, not a rewrite of the conversation.
  */

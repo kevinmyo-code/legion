@@ -76,8 +76,8 @@ export function isPinnedBy(event: Pick<Event, 'pinned_by'>, userId: string | nul
 
 /**
  * Who wants to go, in words (Kevin, 2026-10-09). "You" first, then everyone
- * else in the order they pinned: "You want to go", "Mia wants to go", "You and
- * Mia want to go", "You, Mia and Sam want to go". Null when nobody has pinned
+ * else in the order they pinned: "You want to go", "Rae wants to go", "You and
+ * Rae want to go", "You, Rae and Sam want to go". Null when nobody has pinned
  * it. The Android row says exactly the same (`SuggestionPin.words` in
  * `calendar/EventSuggestions.kt`).
  */

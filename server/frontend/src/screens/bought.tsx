@@ -19,7 +19,7 @@ import { useSurface } from '@/lib/surface'
  *
  * "When did we last buy shampoo?" is the question, so the screen is a search box
  * and the answer. The answer names the EXACT entry it found, its date and who
- * ("Shampoo, bought Sep 20 by Mia"), because matching is loose and "shampoo" may
+ * ("Shampoo, bought Sep 20 by Rae"), because matching is loose and "shampoo" may
  * have matched "Head & Shoulders shampoo". Then come the other matches, newest
  * first, each with where it came from.
  *

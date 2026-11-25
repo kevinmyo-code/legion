@@ -103,7 +103,7 @@ data class SuggestionPin(val userId: String, val displayName: String) {
 
         /**
          * Who wants to go, in words (never colour alone), mirrored by the web: "You want to go",
-         * "Mia wants to go", "You and Mia want to go", "You, Mia and Sam want to go". The phone's
+         * "Rae wants to go", "You and Rae want to go", "You, Rae and Sam want to go". The phone's
          * own user is "You" and always first; everyone else follows in [pins] order. Null when
          * nobody has pinned it.
          */

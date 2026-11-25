@@ -23,7 +23,7 @@ data class DumbUiState(
     /** The line under the date: "in the matrix for 2h 14m", plus " · 4 days in a row" once there is a streak. */
     val statusLine: String = "",
     val entries: List<KeptEntry> = KeptEntry.entries,
-    /** "Mia, Mom, Dad get through", or words saying nobody is chosen. */
+    /** "Rae, Mom, Dad get through", or words saying nobody is chosen. */
     val peopleLine: String = "",
     /** Non-null while a leave is pending; the screen shows the Leave flow instead of the list. */
     val leave: LeaveUi? = null,
@@ -45,7 +45,7 @@ object DumbFormat {
         return if (h > 0) "${h}h ${m}m" else "${m}m"
     }
 
-    /** The prototype's footer: "Mia, Mom, Dad get through". Plural verb only for more than one name. */
+    /** The prototype's footer: "Rae, Mom, Dad get through". Plural verb only for more than one name. */
     fun statusLine(elapsed: String, streakDays: Int): String = when (streakDays) {
         0 -> "in the matrix for $elapsed"
         1 -> "in the matrix for $elapsed \u00b7 1 day in a row"

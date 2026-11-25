@@ -24,7 +24,7 @@ import { itemsDueOn } from '@/lib/today'
 export const OVERDUE_SHOWN = 3
 
 /**
- * Mia's Home, below 1024 px (spec D6, ticket 10): what is on today, what has
+ * The second member's Home, below 1024 px (spec D6, ticket 10): what is on today, what has
  * slipped, what needs doing, the lists she pinned, and what the two accounts
  * have spent. In that order, because that is the order she asks the questions.
  *

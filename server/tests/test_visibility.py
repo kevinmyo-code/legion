@@ -1,7 +1,7 @@
 """ADR 0052: a row may be private to one member (web-revamp ticket 06).
 
 `tests/test_tenancy.py` proves one household never sees another's rows. This
-file proves the other boundary: two members of ONE household, Kevin and Mia,
+file proves the other boundary: two members of ONE household, Kevin and a second member,
 and the five privacy-bearing tables (events, checklists, items, ticks, and
 event skips, which inherit their event's - their routes and their own
 checks are in `tests/test_event_skips.py`). Every route and every MCP tool
@@ -271,7 +271,7 @@ def test_the_feed_carries_another_members_private_rows_only_as_redacted(kevin_cl
 
 @pytest.mark.django_db(transaction=True)
 def test_making_a_row_private_reaches_a_replica_that_already_holds_it(kevin_client, mia_client):
-    """Mia's replica pulled the event and the list while they were shared.
+    """The second member's replica pulled the event and the list while they were shared.
     Kevin makes both private. Her next pull from her stored watermark carries
     a redacted tombstone for each, and for the list's item and tick, whose
     own `updated_at` never moved.
@@ -892,7 +892,7 @@ def test_the_database_refuses_an_agent_row_owned_by_a_non_member(household_a, ke
 
 def test_a_limb_is_private_to_its_member(kevin, kevin_client, mia, monkeypatch):
     """engine-brain ticket 04 (E1): `agents_limb` carries `owner_user`, never null (`OWNER_PATHS`):
-    `visible()` hands Mia none of Kevin's devices. Invented device."""
+    `visible()` hands the second member none of Kevin's devices. Invented device."""
     from agents.evals.runner import member_request
     from agents.legion.flags import TURN_ENV
     from agents.models import Limb
@@ -925,7 +925,7 @@ def test_the_database_refuses_a_limb_owned_by_a_non_member(household_a, kevin, u
 
 def test_a_headunit_credential_is_private_to_the_member_who_paired(household_a, kevin, mia):
     """T3b: `headunit_credentials` carries `owner_user`, never null (`OWNER_PATHS`): `visible()`
-    hands Mia none of Kevin's units. Invented label."""
+    hands the second member none of Kevin's units. Invented label."""
     from agents.evals.runner import member_request
     from headunit_signin.models import HeadUnitCredential
     from household.tenancy import visible
@@ -987,7 +987,7 @@ def test_advice_and_raises_are_private_to_their_member(kevin, kevin_client, mia,
         assert mia_client.get(prefix).data["results"] == []
     assert AdvisorAdvice.objects.get().owner_user_id == kevin.pk
     assert ProactiveRaise.objects.get().owner_user_id == kevin.pk
-    # Mia naming Kevin's identity does not reach his row: hers would be a second row, which the
+    # A member naming Kevin's identity does not reach his row: hers would be a second row, which the
     # household-unique identity refuses, in words, without touching his.
     taken = mia_client.put("/api/advisor/advice/adv-1/", {**_ADVICE, "gist": "x"}, format="json")
     assert taken.status_code == 400

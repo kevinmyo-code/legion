@@ -418,7 +418,7 @@ def test_one_members_said_charge_is_carried_for_that_member_only(
     _sync(household_a, added=[_bank("t-post", 48.00, pending_of="t-pend")], removed=["t-pend"])
     evaluate_household(household_a, _later(2))
     assert len(_firings(kevin, baseline=False)) == 1
-    # Mia's watch was armed after the pending row: the posted row is her first sighting.
+    # The member's watch was armed after the pending row: the posted row is her first sighting.
     (hers,) = _firings(mia, baseline=False)
     assert hers.fact_key == "txn:t-post"
 

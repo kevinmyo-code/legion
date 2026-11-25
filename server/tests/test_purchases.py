@@ -267,7 +267,7 @@ def test_private_is_set_on_create_and_changed_by_the_rule(auth_client, mia_clien
     assert auth_client.patch(
         f"{URL}{mine['id']}", {"visibility": "shared"}, format="json"
     ).data["visibility"] == "shared"
-    # Mia did not log it, so she may not make it private.
+    # The other member did not log it, so she may not make it private.
     refused = mia_client.patch(f"{URL}{mine['id']}", {"visibility": "private"}, format="json")
     assert refused.status_code == 403
     assert Purchase.objects.get(pk=mine["id"]).owner_user_id is None

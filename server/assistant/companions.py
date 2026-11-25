@@ -1,10 +1,11 @@
 """Which companion a member talks to (web-assistant ticket 03).
 
 Kevin, 2026-10-04: "her own companion. we already have dorothy. give that to
-her." Mia talks to Dorothy; Kevin talks to his own companion, which on the
-engine is Alfred until the phone pushes its roster up (ticket 03's "Kevin's
-phone pushes its companion roster up"; not built - there is no write path yet
-beyond the admin and `manage.py set_companion`).
+her." A member whose signup first name matches the seed below talks to Dorothy;
+Kevin talks to his own companion, which on the engine is Alfred until the phone
+pushes its roster up (ticket 03's "Kevin's phone pushes its companion roster
+up"; not built - there is no write path yet beyond the admin and `manage.py
+set_companion`).
 
 A member's `Companion` row is the answer when there is one. When there is not
 - a member who joined after the seeding migration ran - the companion is the

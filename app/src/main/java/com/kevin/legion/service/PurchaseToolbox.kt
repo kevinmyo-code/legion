@@ -25,7 +25,7 @@ import org.json.JSONObject
  * list.
  *
  * This is not third-party content: the household's own entries, logged by its own members, so the
- * read-through rule (section 7) does not apply. Entries Mia marked private are filtered by the
+ * read-through rule (section 7) does not apply. Entries a member marked private are filtered by the
  * engine for Kevin, not here.
  */
 object PurchaseToolbox {

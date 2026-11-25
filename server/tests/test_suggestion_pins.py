@@ -131,7 +131,7 @@ def test_a_member_cannot_unpin_another_members_pin(kevin_client, mia_client):
     mia_client.post(f"/api/events/{row['id']}/pins")
 
     # The only unpin route is "mine": Kevin unpinning removes Kevin's (none),
-    # and Mia's stays.
+    # and the other member's stays.
     response = kevin_client.delete(f"/api/events/{row['id']}/pins/mine")
     assert response.status_code == 200
     assert _names(response.data) == ["Mia"]
@@ -237,7 +237,7 @@ def test_a_pin_on_a_private_suggestion_has_its_events_visibility(kevin_client, m
     row = _suggestion(kevin_client, visibility="private")
     kevin_client.post(f"/api/events/{row['id']}/pins")
 
-    # Mia cannot reach Kevin's private suggestion, so cannot pin it either.
+    # The other member cannot reach Kevin's private suggestion, so cannot pin it either.
     assert mia_client.post(f"/api/events/{row['id']}/pins").status_code == 404
     assert mia_client.delete(f"/api/events/{row['id']}/pins/mine").status_code == 404
     # And his pin on it reaches her feed only as a redacted tombstone.

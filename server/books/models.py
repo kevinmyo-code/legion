@@ -9,8 +9,8 @@ no book text: the engine learns that a book with hash X is 43% read, nothing
 more. `books/reading.py` drops a Readium locator's `text` member on the way
 in, because that member quotes the page.
 
-**Per member, not per household** (ticket 07, orchestrator call): Mia's place
-in a book is hers. Every read and write goes through
+**Per member, not per household** (ticket 07, orchestrator call): a member's
+place in a book is their own. Every read and write goes through
 `household.tenancy.scoped`, then narrows to the signed-in member, the same
 two steps `brief/views.py` takes.
 

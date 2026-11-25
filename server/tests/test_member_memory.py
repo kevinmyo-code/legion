@@ -141,7 +141,7 @@ def test_only_the_member_who_shared_a_fact_can_forget_it(auth_client, mia_client
     assert "only the member who shared it" in refused.data["detail"]
     assert MemberMemory.objects.filter(pk=shared["id"]).exists()
     assert MemberMemory.objects.filter(pk=private["id"]).exists()
-    # Mia can still read it, so the refusal is about deleting, not about seeing.
+    # The other member can still read it, so the refusal is about deleting, not about seeing.
     assert "Kevin's gym is on Elm Street" in _texts(mia_client)
     # The member who shared it still can, and the older version it replaced goes with it.
     assert auth_client.delete(f"{URL}{shared['id']}").status_code == 204
@@ -189,7 +189,7 @@ def test_only_the_member_who_shared_a_fact_can_edit_it(auth_client, mia_client, 
     assert "only the member who shared it" in refused.data["detail"]
     row = MemberMemory.objects.get(pk=shared["id"])
     assert getattr(row, field) == shared[field]
-    # Mia can still read it, so the refusal is about changing it, not about seeing it.
+    # The other member can still read it, so the refusal is about changing it, not about seeing it.
     assert "The Jeep lives in the left bay" in _texts(mia_client)
     # The member who shared it still can.
     mine = auth_client.patch(f"{URL}{shared['id']}", {field: value}, format="json")
