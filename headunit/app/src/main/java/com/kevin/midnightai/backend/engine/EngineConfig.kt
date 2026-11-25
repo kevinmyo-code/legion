@@ -82,6 +82,10 @@ class EngineConfig(
     /** The ONE engine vehicle the car's own sign-in may upload OBD samples for (from the hand-over). */
     fun carLinkVehicleId(): String? = prefs.getString(KEY_VEHICLE_ID, null)?.takeIf { it.isNotBlank() }
 
+    /** The member id the car's own sign-in was minted for, in use or in reserve. Plain, a UUID. */
+    fun carLinkUserId(): String? =
+        (if (isCarLinkSignIn()) userId() else prefs.getString(KEY_RESERVE_USER, null))?.takeIf { it.isNotBlank() }
+
     /** The engine answered 401 to the car's sign-in: nothing more is sent until a new hand-over. */
     fun carLinkRefused(): Boolean = prefs.getString(KEY_REFUSED, null) != null
 

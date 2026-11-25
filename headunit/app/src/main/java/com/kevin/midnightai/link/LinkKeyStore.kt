@@ -18,11 +18,17 @@ interface EngineAccess {
     fun restore(snapshot: Map<String, String?>): Boolean
     /** Encrypts and writes with commit(); false (nothing written) if the Keystore or disk fails. */
     fun saveStrict(baseUrl: String, token: String, userId: String, vehicleId: String?): Boolean
+    /** The car it is bound to, as stored here. Null when none is stored. */
+    fun carLinkVehicleId(): String? = null
+
     /** The stored token's ciphertext, to recognise "still the one the link handed over". */
     fun rawToken(): String?
 
     /** A member is signed in on the unit (the car's token then waits in reserve, review F1). */
     fun memberSignedIn(): Boolean = false
+
+    /** The member the car's own sign-in belongs to, from the pairing. Null when there is none. */
+    fun carLinkUserId(): String? = null
     fun clear(): Boolean
 }
 
@@ -223,6 +229,37 @@ class LinkKeyStore(
         return null
     }
 
+    /**
+     * A renewed engine sign-in for THIS unit, handed over the live link after the pairing (5.6).
+     *
+     * The phone mints the replacement and sends it while the old one still works, so this write is
+     * the only moment the car's sign-in changes, and it is all or nothing: the token, the engine
+     * address the build allows, and the provenance Forget reads, or nothing at all and no answer to
+     * the phone (which then keeps the old credential and hands this one over again). Idempotent: the
+     * same token arriving twice writes the same bytes.
+     *
+     * The vehicle comes from the frame, not from what is stored here, so a unit that lost its
+     * sign-in (an older build dropped one for want of an https address) is whole again from it.
+     *
+     * Off the main thread (Keystore).
+     */
+    override fun acceptHandedToken(token: String, vehicleId: String?): Boolean {
+        val url = EnginePolicy.handoverEngineUrl(engineConstant) ?: return false
+        if (!prefs.contains(KEY_COMMITTED)) return false
+        val before = engine.snapshot()
+        val userId = engine.carLinkUserId().orEmpty()
+        if (!engine.saveStrict(url, token, userId, vehicleId ?: engine.carLinkVehicleId())) return false
+        val provenance = (prefs.getString(KEY_FROM_LINK, null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?: JSONObject()).put("engine", engine.rawToken())
+        if (!prefs.edit().putString(KEY_FROM_LINK, provenance.toString()).commit()) {
+            engine.restore(before)
+            return false
+        }
+        LogRedactor.addLiteral(token)
+        if (engine.memberSignedIn()) lastNote = MEMBER_KEPT
+        return true
+    }
+
     override fun dropPending() {
         prefs.edit().remove(KEY_PENDING).commit()
     }
@@ -322,6 +359,8 @@ class LinkKeyStore(
                 engineConfig.saveSessionStrict(baseUrl, token, userId, carLink = true, vehicleId = vehicleId)
             // The car's token wherever it is kept (in use, or in reserve behind a member sign-in).
             override fun rawToken() = engineConfig.carLinkRawToken()
+            override fun carLinkUserId() = engineConfig.carLinkUserId()
+            override fun carLinkVehicleId() = engineConfig.carLinkVehicleId()
             override fun clear() = engineConfig.clearCarLink()
             override fun memberSignedIn() = engineConfig.signIn() == com.kevin.midnightai.backend.engine.EngineSignIn.MEMBER
         }
